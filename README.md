@@ -87,9 +87,9 @@ at any time by typing `/compact`.
 A summary keeps the gist, but details get lost. Claude Code helps a little on
 its own: afterwards it reloads your notes, re-reads the files Claude used most
 recently, and reminds Claude of background jobs still running. But it checks
-for room before every step, so it can compact in the middle of a task, and the
-summary may drop exactly what you asked, what Claude had just said, or the
-notes it meant to write when it finished.
+for room before every step, so it can compact in the middle of a task. The
+summary may then lose the details of what you asked, what Claude had just
+said, or the notes it meant to write when it finished.
 
 project-memory protects your work before, during and after:
 
@@ -119,10 +119,10 @@ needs one setting to fire. See [Compaction](docs/how-it-works.md#compaction).
   Claude can still find those notes, and every change is in the history.
 - **What it costs.** Each conversation starts with a short briefing, usually
   under 1,000 tokens: about half a percent of a 200,000-token context window.
-  After a compaction the briefing also repeats the latest exchanges, so it can
-  reach about 3,000 tokens.
   In return, the table of contents Claude reads at every start stays under
-  7,000 characters. Claude Code allows up to 25,000.
+  7,000 characters, where Claude Code allows up to 25,000. After a compaction
+  the briefing also repeats the latest exchanges, so it can reach about 3,000
+  tokens.
 - **Where it works.** On Windows, macOS and Linux, wherever Claude Code runs on
   your computer and can find Node.js.
 - **One computer.** Your notes and their history stay on the computer they
@@ -137,7 +137,7 @@ table of contents when it nears its limit, and after a compaction it reloads
 your notes, re-reads recent files and reminds Claude of jobs still running.
 project-memory adds what it still doesn't do: a new conversation that starts
 knowing where the last one stopped, every version of every note, a shared
-notebook for all your projects, and care with several windows open.
+notebook for all your projects, and safe use of several windows at once.
 
 project-memory isn't the only add-on either. This table compares it with five
 popular tools, going only by each one's own documentation on 27 October 2026.
@@ -188,13 +188,13 @@ Two more are worth knowing about:
   Claude Code plugin that works on the same notebook. It sorts your work into
   "workstreams", each with its own record of where you left off. It also logs
   your git commits into daily notes, and before a compaction it notes your
-  branch and the changes you haven't committed yet. Every few minutes it sends the latest part of the
-  conversation to Claude's small Haiku model, which picks out corrections,
-  decisions and plans.
+  branch and the changes you haven't committed yet. Every few minutes it
+  sends the latest part of the conversation to Claude's small Haiku model,
+  which picks out corrections, decisions and plans.
 - **[MemPalace](https://github.com/milla-jovovich/mempalace)** keeps your
   conversations word for word and searches them by meaning, without calling
-  any online service. It runs in Python with a ChromaDB database, and Claude
-  reaches it as an MCP server (a tool Claude can call).
+  any online service. It needs Python, keeps everything in its own database,
+  and Claude reaches it as an MCP server (a tool Claude can call).
 
 ## Before you install
 
@@ -253,7 +253,7 @@ When you want something from your notes, just ask in your own words:
 | *"I deleted the note about pricing by mistake. Can you bring it back?"* | Claude restores it from the history. |
 | *"Make the note about short answers apply to all my projects."* | Claude asks you to confirm, then moves it to the shared notebook. |
 | *"Remember for all my projects that I like plain language."* | Claude saves it straight to the shared notebook. |
-| *"We changed how we ship. Replace the old note."* | Claude writes the new note and marks the old one as replaced, so the old one moves to the archive and points to the new one. |
+| *"We changed how we ship. Replace the old note."* | Claude writes a new note and marks the old one as replaced. The old note moves to the archive and points to the new one. |
 
 If you'd rather type a command, these do the same things:
 
