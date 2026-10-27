@@ -1,6 +1,6 @@
 {
   "name": "project-memory",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Memory that survives parallel sessions and compaction: a tiered index under a byte budget, a rolling handoff, in-flight recovery after a mid-turn compaction, git snapshots with restore, ranked recall, and a shared store for lessons that hold in every project.",
   "author": { "name": "zdraveski", "url": "https://github.com/zdraveski" },
   "homepage": "https://github.com/zdraveski/project-memory",

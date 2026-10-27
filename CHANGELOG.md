@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 (2026-10-27)
+
+- A plugin icon, `.claude-plugin/icon.png`, also shown in the README
+
 ## 1.0.0 (2026-10-27)
 
 First public release.
