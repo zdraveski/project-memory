@@ -82,17 +82,16 @@ newer, and Git?"* Claude will check for you. If one is missing, download it from
 
 3. Close Claude Code and open it again.
 
-4. Ask Claude anything, for example *"hello"*, and wait for the answer.
-   project-memory does its first save when Claude finishes a reply.
-
-5. Check that it's working by typing:
+4. Check that it's working by typing:
 
    ```
    /project-memory:memory doctor
    ```
 
-   Every line should start with `ok`. A line that starts with `PROBLEM` says
-   what to do about it. See [If something seems wrong](#if-something-seems-wrong).
+   Every line should start with `ok`. Until Claude finishes its first reply,
+   one of them says it's waiting for that reply, which is normal. A line that
+   starts with `PROBLEM` says what to do about it. See
+   [If something seems wrong](#if-something-seems-wrong).
 
 ## Using it day to day
 
@@ -130,9 +129,10 @@ off?"* If Claude still doesn't know, type `/project-memory:memory doctor`.
 **The check says "not wired".** project-memory isn't installed or isn't
 switched on. Go through the [Install](#install) steps again.
 
-**The check says "no Stop hook has run on this machine yet".** project-memory
-saves when Claude finishes a reply. Ask Claude anything, wait for the answer,
-then check again.
+**The check says "its Stop hook is not running".** Claude finished a reply,
+but project-memory didn't save after it. Restart Claude Code. If the line is
+still there after Claude's next reply, ask Claude to check that Node.js is
+installed.
 
 **Any other line that starts with `PROBLEM`.** The line ends with what to do.
 If it's unclear, ask Claude: *"What does this line mean, and how do I fix it?"*

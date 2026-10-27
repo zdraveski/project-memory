@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.2 (2026-10-27)
+
+- `doctor` no longer reports a problem right after you install. Until Claude
+  finishes its first reply, it says it's waiting. It reports a problem only
+  when a reply finished over a minute ago and nothing was saved.
+- The README is a plain-language guide. The technical details are in
+  `docs/how-it-works.md`, and tests and releasing in `CONTRIBUTING.md`.
+
 ## 1.0.1 (2026-10-27)
 
 - A plugin icon, `.claude-plugin/icon.png`, also shown in the README

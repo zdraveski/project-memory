@@ -24,7 +24,7 @@ const ASK = 240;          // chars kept of what was asked
 const DID = 400;          // chars kept of the answer
 const TAIL = 512_000;     // first read; grown 4× until it reaches the latest prompt
 const ACTIVE = 30 * 60000;    // a transcript this recently changed: its session is still working
-const GRACE = 60000;          // the Stop hook runs seconds after a turn ends
+export const GRACE = 60000;   // the Stop hook runs seconds after a turn ends
 const RECENT = 7 * 86400000;  // older than this, the startup line has nothing to say
 // What compact-gate's Stop nudge opens with. `asked()` skips it because it
 // begins with `[SYSTEM`, and `turns()` freezes the turn's answer at it: the
@@ -237,14 +237,10 @@ export function transcripts(dir, me) {
   } catch { return []; }
 }
 
-// Stop output reaches nobody, so a Stop hook that stopped running -- unwired,
-// or failing before it loads the handoff -- was silence. memory-tier touches
-// `.stop-ran` on every `--stop`: a turn the newest other session finished
-// after that went unrecorded. A tail full of messages the hooks cannot read
-// means the transcript format moved under them.
-export function stalled(t) {
-  if (!t) return [];
-  let raw; try { raw = readTail(t.p, TAIL).text; } catch { return []; }
+// When a transcript's last finished turn ended (NaN: none in its tail), and how
+// many of its last messages are model replies the hooks know.
+export function lastTurn(p) {
+  const raw = readTail(p, TAIL).text;
   let end = NaN, seen = 0, known = 0;
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;
@@ -256,6 +252,17 @@ export function stalled(t) {
     known++;
     if (r.message.stop_reason === 'end_turn') end = Date.parse(r.timestamp);
   }
+  return { end, seen, known };
+}
+
+// Stop output reaches nobody, so a Stop hook that stopped running -- unwired,
+// or failing before it loads the handoff -- was silence. memory-tier touches
+// `.stop-ran` on every `--stop`: a turn the newest other session finished
+// after that went unrecorded. A tail full of messages the hooks cannot read
+// means the transcript format moved under them.
+export function stalled(t) {
+  if (!t) return [];
+  let end, seen, known; try { ({ end, seen, known } = lastTurn(t.p)); } catch { return []; }
   if (seen >= 50 && !known) return [`Memory hooks cannot read [${t.s}]'s transcript: none of its last ${seen} messages is a model reply they know. Has Claude Code's transcript format changed?`];
   // No file is not knowing (just installed, or cleaned away), not "never ran".
   let ran; try { ran = statSync(join(projectsRoot(), '.stop-ran')).mtimeMs; } catch { return []; }

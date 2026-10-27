@@ -211,6 +211,23 @@ settings({ hooks: { Stop: hook('memory-tier.mjs --stop') } });
 ok(/^PROBLEM settings\.json wires Stop but not SessionStart, PreCompact/m.test(cli('doctor').stdout), 'doctor: a half-wired settings.json is named');
 settings({});
 ok(/^PROBLEM not wired[^\n]*claude plugin install project-memory@project-memory/m.test(cli('doctor').stdout), 'doctor: nothing wired is a problem, with the install');
+// Before Claude's first reply nothing has saved: waiting, not a problem. A reply
+// this conversation finished over a minute ago, with nothing saved, is one.
+{
+  const stopRan = join(root, '.stop-ran'), had = existsSync(stopRan) ? readFileSync(stopRan, 'utf8') : null;
+  rmSync(stopRan, { force: true });
+  const doc = (id) => spawnSync(process.execPath, [CLI, 'doctor'], { env: id ? { ...noSession, CLAUDE_CODE_SESSION_ID: id } : noSession, encoding: 'utf8' }).stdout;
+  const replied = (id, ago) => writeFileSync(join(root, 'C--mem-cli', `${id}.jsonl`),
+    JSON.stringify({ type: 'assistant', timestamp: new Date(Date.now() - ago).toISOString(), message: { usage: { input_tokens: 1 }, stop_reason: 'end_turn', content: [] } }) + '\n');
+  ok(/^ok +waiting for Claude's first reply/m.test(doc()), 'doctor: before the first reply, waiting is no problem');
+  replied('sess-fresh', 10_000);
+  ok(/^ok +waiting for Claude's first reply/m.test(doc('sess-fresh')), 'doctor: a reply that ended seconds ago is still waiting');
+  replied('sess-dead', 5 * 60_000);
+  const dead = doc('sess-dead');
+  ok(/^PROBLEM Claude finished a reply at [^\n]*its Stop hook is not running\. The user's fix: restart Claude Code/m.test(dead), `doctor: a reply long finished with nothing saved is a problem (got ${dead})`);
+  for (const id of ['sess-fresh', 'sess-dead']) rmSync(join(root, 'C--mem-cli', `${id}.jsonl`));
+  if (had !== null) writeFileSync(stopRan, had);
+}
 // Installed from GitHub, with nothing deployed here: it runs its own cached copy.
 const gh = join(home, '.claude', 'plugins', 'cache', 'project-memory', 'project-memory', '1.0.0');
 mkdirSync(join(gh, '.claude-plugin'), { recursive: true });

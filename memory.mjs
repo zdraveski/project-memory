@@ -18,7 +18,7 @@ import { homedir } from 'node:os';
 import { execFileSync, execSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, front, allStores, same } from './store.mjs';
-import { sectionOf, parse, transcripts, stalled, edited, local, clip } from './handoff-log.mjs';
+import { sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip } from './handoff-log.mjs';
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
 
@@ -311,8 +311,15 @@ export function doctor() {
     else { const e = edited(at); say(!e.length, e[0] || `the plugin runs the last deploy, ${deployedCommit(at)}, from ${at}`); }
   }
   const ran = join(projectsRoot(), '.stop-ran');
-  if (!existsSync(ran)) say(false, 'no Stop hook has run on this machine yet');
-  else { const s = stalled(transcripts(sessionStore(), '')[0]); say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}`); }
+  if (!existsSync(ran)) {
+    // Nothing has saved before Claude's first reply ends: that is waiting, and
+    // a new install checked at once said PROBLEM. It is one when this
+    // conversation finished a reply over a minute ago and still nothing saved.
+    const id = process.env.CLAUDE_CODE_SESSION_ID;
+    let end = NaN; try { if (id) end = lastTurn(join(dirname(sessionStore()), `${id}.jsonl`)).end; } catch {}
+    if (Date.now() - end > GRACE) say(false, `Claude finished a reply at ${local(end)}, but project-memory has not saved after any reply: its Stop hook is not running. The user's fix: restart Claude Code; if this line stays, check that Node.js is installed (node --version)`);
+    else say(true, "waiting for Claude's first reply: project-memory saves each time Claude finishes one");
+  } else { const s = stalled(transcripts(sessionStore(), '')[0]); say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}`); }
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return Date.now() - statSync(l).mtimeMs > LOCK_STALE; } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);
   try { execFileSync('git', ['--version'], { stdio: 'ignore' }); say(true, 'git on PATH'); } catch { say(false, 'git is not on PATH: no memory snapshots'); }

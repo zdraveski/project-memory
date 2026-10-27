@@ -181,6 +181,9 @@ const suites = {
     'rule share measured on the whole budget': ['Math.max(0, budget - pinnedBytes) * RULE_SHARE', 'budget * RULE_SHARE'],
   }],
   'memory.mjs': ['memory.test.mjs', {
+    'the first reply called a problem': ['if (Date.now() - end > GRACE) say(false, `Claude finished', 'if (true) say(false, `Claude finished'],
+    'a dead Stop hook called waiting': ['if (Date.now() - end > GRACE) say(false, `Claude finished', 'if (false) say(false, `Claude finished'],
+    'a reply seconds old called a dead hook': ['if (Date.now() - end > GRACE) say(false, `Claude finished', 'if (Date.now() - end > 0) say(false, `Claude finished'],
     'a run through a symlink does nothing': ['pathToFileURL(realpathSync(process.argv[1])).href', 'pathToFileURL(process.argv[1]).href'],
     'a name weighs no more than a mention': ['(name.includes(t) ? 3 : 0)', '(name.includes(t) ? 1 : 0)'],
     'no strong-match bonus': ['(strong ? 5 : every ? 2 : 0)', '(every ? 2 : 0)'],
