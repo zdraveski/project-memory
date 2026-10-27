@@ -15,7 +15,8 @@
 //    rejected call. A mid-turn compaction it does let through first writes
 //    the handoff entry and a note of what was in flight: the ask, the last
 //    words said, background tasks still running with their output files,
-//    files edited. It is the only writer of handoff.md on that event.
+//    files edited. It is the only writer of handoff.md on that event. A
+//    conversation marked <private-session> gets neither.
 //  * Stop: `nudge(payload)` -- when the context is past the trigger a
 //    compaction is a turn or two away, so the stop is blocked ONCE with the reason "write
 //    memory now"; the model writes it, stops again, and passes. Re-armed when

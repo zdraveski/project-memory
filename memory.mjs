@@ -5,7 +5,8 @@
 // writes only when told to, under the same lock.
 const USAGE = `node memory.mjs <command> [--store <dir> | --shared]
   search <terms...> [--all] [--limit N]   ranked: name, description, then body; archive included
-  status [--all]                          index size, hot/archived, problems, dangling [[links]]
+  status [--all]                          index size, hot/archived, problems, dangling [[links]],
+                                          the memories changed in the last 7 days
   history <memory> [--all]                the snapshots that changed it
   restore <memory> [--rev <commit>] [--force]   back from the snapshots, with its index line
   promote <memory>                        move it to the shared store, for every project

@@ -17,7 +17,8 @@ import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY,
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
 const EVENT_DAYS = 3;    // a memory whose *filename* carries a date is an event log
 const STALE_DAYS = 7;    // anything not touched this long stops earning its line
-// Frontmatter `tier: hot` / `tier: archive` overrides both windows. The archive
+// Frontmatter `tier: hot` / `tier: archive` overrides both windows, and
+// `superseded-by:` reads as `tier: archive` (store.mjs's front()). The archive
 // is a one-way door: a pointer already there stays there unless `tier: hot`,
 // because moving it was a decision and a date is not grounds to overturn it.
 // The one exception is a line the byte ceiling evicted: it is marked, and it

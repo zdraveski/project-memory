@@ -12,6 +12,10 @@
 // Several sessions can share one project. Each entry carries its session's tag,
 // each session keeps its own last ten, and the file is written by one hook at a
 // time (store.mjs).
+//
+// Every snapshot keeps this file, so what must not stay is kept out before it
+// is written: secrets (SECRETS), the answer to a <private> message (answer()),
+// and every entry of a conversation marked <private-session> (hushed()).
 import { readFileSync, writeFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -65,8 +69,9 @@ const nudged = (s) => s.slice(0, 200).includes(NUDGE_TAG);
 // A compaction summary ("This session is being continued from...") is a user
 // record too, flagged isCompactSummary; 17 had been recorded as asks.
 // A tool result has no text, so `s` is empty.
-// A message the user opens with <private> or <private-session> is still theirs:
-// skipped, its answer was saved as the answer to the message before.
+// A message the user opens with <private> or <private-session> is still theirs.
+// Skipped like the harness's own <...> messages, its answer was saved as the
+// answer to the message before.
 export const asked = (r, s) => s && !r.isMeta && !r.isCompactSummary && (!s.trimStart().startsWith('<') || /^<private/i.test(s.trimStart())) && !s.includes('<command-name>')
   && !s.startsWith('[SYSTEM') && !nudged(s) && !s.startsWith('[Request interrupted');
 
