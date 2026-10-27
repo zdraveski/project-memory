@@ -2,8 +2,31 @@
 
 ## Unreleased
 
-Fixes from a four-way review before the directory listing: hostile input,
-security and privacy, the docs against the code, and a new user's first week.
+Fixes from two four-way reviews before the directory listing. The first:
+hostile input, security and privacy, the docs against the code, and a new
+user's first week. The second: many windows and killed processes, upgrades and
+months of use, Claude Code's own documentation, and a privacy red team.
+
+**Works the way Claude Code does**
+- A conversation started in a subfolder or a worktree of a git repository
+  uses the repository's notebook, as Claude Code's auto memory does. Before,
+  it wrote its record to a folder Claude Code never loads.
+- While auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, the
+  hooks do nothing, and `doctor` says so.
+- `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_PROJECT_DIR_NAME` are followed. Before,
+  with them set, nothing was saved and nothing said why.
+- The reminder before a compaction is sent as feedback, so it no longer shows
+  as a hook error. It reads the window sizes as Claude Code does: `200k` and
+  `1M` work, and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`,
+  `CLAUDE_CODE_DISABLE_1M_CONTEXT` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` count.
+  On a 400K model, the compaction gate no longer asks to wait past the model's
+  limit.
+- Finished background tasks leave the "still running" list. Claude Code now
+  reports a task's end in a record the list never read, so after a
+  compaction Claude was told not to rerun tasks that had already finished.
+- The startup briefing also stays within the 10,000 characters Claude Code
+  passes on whole. `doctor` understands an install from claude.ai.
+
 
 **Privacy**
 - The history of your notes no longer keeps the record of your latest
@@ -20,6 +43,25 @@ security and privacy, the docs against the code, and a new user's first week.
   and is remembered for the newest 1,000 conversations, not 50.
 - After a compaction, a conversation is shown only its own exchanges, never
   another conversation's.
+- A private conversation gets no reminder to write notes and no recovery
+  note. The reminder had Claude write the private work into `handoff.md`.
+- `<private>` and `<private-session>` work in more spellings: self-closed,
+  with spaces, fullwidth, with hidden characters, nested, inside another tag,
+  and in a message typed while Claude is working. A prompt that mentions
+  `<command-name>` is no longer taken for a slash command, which turned both
+  off. An agent's report quoting the tags no longer marks a conversation.
+- Over a hundred common secret shapes were tested. Newly recognized: PyPI,
+  Stripe webhook, SendGrid, AWS STS, Google OAuth, Groq, xAI, Shopify,
+  DigitalOcean, Notion, Atlassian, Vault and Docker tokens, base64 private
+  keys, `curl -u`, `--password`, `docker login -p`, `DB_PASS=`, passwords in
+  web addresses with no user name, and "the password for … is …". Code that
+  only looks like a secret (`password: string`, `jwt.sign(…`, `${VAR}`) is no
+  longer cut, nor are "Basic" and "Bearer" in plain prose.
+- The compaction note keeps file names, not paths, and a task's output path
+  is checked for secrets. A web page Claude read can no longer add a
+  "task" with its own instructions to that note.
+- An entry from before 1.0.5 whose question was private loses its saved
+  answer too.
 
 **Safety**
 - Text from an earlier conversation can no longer pose as Claude Code's own
@@ -35,6 +77,24 @@ security and privacy, the docs against the code, and a new user's first week.
 - An index line can no longer point outside its notebook, or at a web page.
 
 **Things that went wrong**
+- A hand-written index line moving back from the archive (a pin, or a line
+  that fits again) could be lost if the index changed at that moment. It now
+  stays in the archive until the index has it.
+- Taking `handoff.md` out of the history is retried until it succeeds. If
+  the first try was interrupted, it stayed in every snapshot.
+- Stale git locks a killed commit leaves (`HEAD.lock`, a branch's lock) are
+  cleared like `index.lock`, and a lock dated in the future no longer reads as
+  busy for days. Two windows committing at once no longer count as a failure.
+- A note dated ahead of the clock is indexed. Note settings written with
+  quotes or capitals (`tier: "hot"`), a `# comment`, a list or a folded
+  description is read as YAML reads it; a quoted pin used to age out.
+- A turn skipped while another window held the notebook is saved at the next
+  turn, even after a very long one. A window still on 1.0.7 no longer
+  multiplies entries, and upgrading no longer records old turns twice.
+- A line in the archive whose note was deleted no longer warns at every
+  start. Merge-conflict markers in the table of contents do.
+- Promoting a lesson into a full shared notebook says it may move to the
+  archive, and how to keep it in view.
 - Snapshots no longer use your own git settings. With commit signing or a
   global hooks folder set, every snapshot failed, and your hooks ran on the
   memory history. Long paths on Windows are saved too.

@@ -16,7 +16,8 @@ messages shortened to fit.*
 ## Quick start
 
 With Node.js 20 or newer and Git on your computer, type these two lines in
-Claude Code, then restart it:
+Claude Code (in the menu the second one opens, choose to install it for you),
+then restart it:
 
 ```
 /plugin marketplace add zdraveski/project-memory
@@ -118,9 +119,11 @@ project-memory protects your work before, during and after:
 Long tasks keep their thread, you don't have to explain things again after a
 summary, and Claude is less likely to redo work it had already started.
 
-The reminder at 85% assumes a large context window of 1,000,000 tokens (a
-token is about three quarters of a word). If yours is smaller, the reminder
-needs one setting to fire. See [Compaction](docs/how-it-works.md#compaction).
+The reminder at 85% assumes a context window of 1,000,000 tokens (a token is
+about three quarters of a word), unless your environment sets a smaller one.
+A size you chose with `/autocompact` is kept in your settings, which
+project-memory doesn't read, so the reminder needs one more setting to match
+it. See [Compaction](docs/how-it-works.md#compaction).
 
 ## Good to know
 
@@ -131,13 +134,19 @@ needs one setting to fire. See [Compaction](docs/how-it-works.md#compaction).
 - **What it costs.** Each conversation starts with a short briefing, usually
   under 1,000 tokens: about half a percent of a 200,000-token context window.
   In return, the table of contents Claude reads at every start stays under
-  7,000 characters, where Claude Code allows up to 25,000. After a compaction
+  7 KB, where Claude Code reads up to 25 KB or 200 lines. After a compaction
   the briefing also repeats the latest exchanges, but it stays under 9,500
   characters, about 2,500 tokens.
 - **Where it works.** On Windows, macOS and Linux, wherever Claude Code runs on
   your computer and can find Node.js.
 - **One computer.** Your notes and their history stay on the computer they
   were made on. They don't sync to your other computers.
+- **Repositories.** A conversation started in a subfolder or a worktree of a
+  git repository uses that repository's notebook, as Claude Code does.
+- **If you turn off auto memory.** While `CLAUDE_CODE_DISABLE_AUTO_MEMORY` is
+  set, project-memory does nothing. If you turn auto memory off with `/memory`
+  instead, project-memory can't see that, because it doesn't read your
+  settings: [turn it off](#turning-it-off-or-removing-it) as well.
 - **Your own files.** project-memory only writes inside Claude Code's own
   folder. It never touches your project's files or your own git repositories.
   If you made Claude Code's projects folder into a git repository yourself,
@@ -167,7 +176,8 @@ newer, and Git?"* Claude will check for you. If one is missing, download it from
    /plugin marketplace add zdraveski/project-memory
    ```
 
-2. Then type this one and press Enter:
+2. Then type this one and press Enter. In the menu that opens, choose to
+   install it for you (user scope), so it works in every project:
 
    ```
    /plugin install project-memory@project-memory
@@ -241,11 +251,10 @@ off?"* If Claude still doesn't know, type `/project-memory:memory doctor`.
 **The check says "not installed".** project-memory isn't installed, and it
 has never run. Go through the [Install](#install) steps again.
 
-**The check says "the Stop hook ran twice for one reply".** project-memory is
-set up twice, so everything it does happens twice. Run `claude plugin list` in
-a terminal: if project-memory is listed twice, uninstall one copy. If it's
-listed once, its hooks were probably also added to your Claude Code settings by
-hand at some point: ask Claude to remove those, and keep the plugin.
+**The check says "the Stop hook ran twice for one reply".** project-memory's
+hooks are set up twice, so everything it does happens twice. That happens when
+its hooks were also added to your Claude Code settings by hand at some point:
+ask Claude to remove those, and keep the plugin.
 
 **The briefing says "Memory hooks look stopped".** Another conversation in
 this project finished a reply after project-memory last saved. If you had
@@ -290,9 +299,12 @@ back.
 - To keep something out, put it between `<private>` and `</private>`. That
   part isn't saved, and neither is Claude's reply to that message, since a
   reply often repeats what it was told, nor the names of the files changed in
-  that turn.
+  that turn. It works in any letter case, and in a message you type while
+  Claude is still working. A later reply that repeats the private part is
+  saved like any other, so for a longer secret use `<private-session>`.
 - To keep a whole conversation out of the record, type `<private-session>` in
-  any message. What was saved before is removed from the record. Claude can
+  any message. What was saved before is removed from the record, and Claude
+  isn't asked to write notes before the conversation is shortened. Claude can
   still write notes in that conversation if you ask it to.
 
 The full details are in the [privacy policy](PRIVACY.md).
@@ -306,7 +318,9 @@ their history stay as they are.
 claude plugin disable project-memory@project-memory
 ```
 
-`claude plugin enable project-memory@project-memory` turns it back on.
+`claude plugin enable project-memory@project-memory` turns it back on. If you
+added project-memory from claude.ai, turn it off or remove it with `/plugin`
+in Claude Code instead.
 
 To remove it, type this in Claude Code:
 

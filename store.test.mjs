@@ -174,6 +174,62 @@ const { gitArgs } = await import('./store.mjs');
 const ga = gitArgs('status');
 ok(ga.includes('commit.gpgsign=false') && ga.includes('core.longpaths=true') && ga.some((a) => /^core\.hooksPath=.*no-hooks$/.test(a)) && ga.at(-1) === 'status',
   `the snapshot repo's git turns off signing and hooks, and on long paths (got ${ga.join(' ')})`);
-ok(gitWhy({ code: 'ENOENT', message: 'spawnSync git ENOENT' }) === 'git is not installed', 'no git is said in words, not as spawnSync git ENOENT');
+ok(gitWhy({ code: 'ENOENT', syscall: 'spawnSync git', message: 'spawnSync git ENOENT' }) === 'git is not installed', 'no git is said in words, not as spawnSync git ENOENT');
+// A file gone between two calls is ENOENT too, and is no missing git.
+ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or directory, unlink 'x\\index.lock'" }) !== 'git is not installed', 'a vanished lock is not "git is not installed"');
+
+// Round 3 (2026-10-27).
+{
+  const { repoRoot, projectsRoot, memoryOff } = await import('./store.mjs');
+  const slug = (p) => p.replace(/[^A-Za-z0-9]/g, '-');
+  // A repository, a subfolder of it, a worktree of it (its .git a file naming
+  // a folder in the main .git), and a submodule (one with no commondir).
+  const repo = join(home, 'work', 'repo'), sub = join(repo, 'packages', 'web');
+  mkdirSync(join(repo, '.git', 'worktrees', 'wt1'), { recursive: true }); mkdirSync(sub, { recursive: true });
+  writeFileSync(join(repo, '.git', 'worktrees', 'wt1', 'commondir'), '../..\n');
+  const wt = join(home, 'work', 'repo-wt1'); mkdirSync(wt, { recursive: true });
+  writeFileSync(join(wt, '.git'), `gitdir: ${join(repo, '.git', 'worktrees', 'wt1')}\n`);
+  const subm = join(repo, 'vendor', 'lib'); mkdirSync(join(repo, '.git', 'modules', 'lib'), { recursive: true }); mkdirSync(subm, { recursive: true });
+  writeFileSync(join(subm, '.git'), `gitdir: ../../.git/modules/lib\n`);
+  ok(repoRoot(repo) === repo && repoRoot(sub) === repo && repoRoot(wt) === repo && repoRoot(subm) === subm && repoRoot(join(home, 'work')) === null,
+    `the repository a folder is in: itself, its root, a worktree's main one, a submodule its own, none (got ${[repoRoot(sub), repoRoot(wt), repoRoot(subm)].join(' | ')})`);
+  // A session started in a subfolder or a worktree has its store at the
+  // repository's folder, as Claude Code keeps auto memory, though its
+  // transcript sits in a folder named for where it started.
+  const started = (cwd) => {
+    const t = join(projectsRoot(), slug(cwd), 's.jsonl');
+    mkdirSync(join(projectsRoot(), slug(cwd)), { recursive: true });
+    writeFileSync(t, JSON.stringify({ type: 'summary' }) + '\n' + JSON.stringify({ type: 'user', cwd, message: { content: 'hi' } }) + '\n');
+    return storeOf({ cwd: join(home, 'moved', 'elsewhere'), transcript_path: t });
+  };
+  const repoStore = join(projectsRoot(), slug(repo), 'memory');
+  ok(started(sub) === repoStore && started(wt) === repoStore, `a session started in a subfolder or a worktree keeps the repository's store (got ${started(sub)})`);
+  ok(started(repo) === join(projectsRoot(), slug(repo), 'memory') && started(join(home, 'work')) === join(projectsRoot(), slug(join(home, 'work')), 'memory'),
+    'one started at the root, or outside any repository, keeps its own folder');
+  ok(storeOf({ cwd: sub }) === repoStore, 'with no transcript, the cwd goes by its repository too');
+  // Claude Code's folder where CLAUDE_CONFIG_DIR puts it, and a project folder
+  // named by CLAUDE_CODE_PROJECT_DIR_NAME: under either, the hooks wrote nothing.
+  const cfg = join(home, 'cfg');
+  process.env.CLAUDE_CONFIG_DIR = cfg;
+  let named, rooted;
+  try { rooted = projectsRoot(); process.env.CLAUDE_CODE_PROJECT_DIR_NAME = 'shared-name'; named = storeOf({ cwd: sub }); }
+  finally { delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; }
+  ok(rooted === join(cfg, 'projects') && named === join(cfg, 'projects', 'shared-name', 'memory'), `CLAUDE_CONFIG_DIR and CLAUDE_CODE_PROJECT_DIR_NAME are followed (got ${rooted} | ${named})`);
+  for (const [v, want] of [['1', true], ['true', true], ['0', false], ['', false]]) {
+    process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = v;
+    try { ok(memoryOff() === want, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=${JSON.stringify(v)} is ${want ? 'off' : 'on'}`); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  }
+
+  // Valid YAML in every spelling: quoted either way, any case, a comment after
+  // it, a list, a folded description. Read only bare, a pin aged out.
+  const f1 = front('---\ntier: "hot"\ntype: Feedback\n---\nbody tier: archive');
+  const f2 = front("---\nmetadata:\n  tier: 'Hot'\n---\n");
+  const f3 = front('---\nsuperseded-by: "b.md" # the newer one\n---\n');
+  const f4 = front('---\nsuperseded-by:\n  - c.md\n  - d.md\nname: x\n---\n');
+  const f5 = front('---\ndescription: >-\n  folded line one\n  and two\nname: n\n---\n');
+  const f6 = front('---\nsuperseded-by:\nname: next\n---\n');
+  ok(f1.tier === 'hot' && f1.type === 'feedback' && f2.tier === 'hot' && f3.superseded === 'b.md' && f4.superseded === 'c.md' && f5.desc === 'folded line one and two' && f6.superseded === '' && f6.name === 'next',
+    `frontmatter is read in every YAML spelling (got ${JSON.stringify([f1, f2, f3, f4, f5, f6].map((f) => [f.tier, f.type, f.superseded, f.desc]))})`);
+}
 
 console.log(`store: ${checks} checks passed`);

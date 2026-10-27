@@ -634,5 +634,90 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(readFileSync(join(nine, 'MEMORY.md'), 'utf8').includes('- [Pin](pin.md)'), 'a pin past 1,200 bytes, inside 1,200 characters, holds');
 }
 
+// Round 3 (2026-10-27).
+{
+  // A store of its own, run alone with --dir.
+  const fresh3 = (name) => { const d = join(root, name, 'memory'); mkdirSync(d, { recursive: true }); return d; };
+  const noteIn = (d, s, head = '', when = tenMin) => {
+    writeFileSync(join(d, `${s}.md`), `---\nname: ${s}\ndescription: "${s}"\nmetadata:\n  type: project${head}\n---\nbody\n`);
+    utimesSync(join(d, `${s}.md`), when, when);
+  };
+  const tierOne = (d, ...a) => spawnSync(process.execPath, [TOOL, '--dir', d, ...a], { encoding: 'utf8' });
+
+  // A line going back from the archive to the index survives an index write
+  // that fails: taken out of the archive first, an edit during the pass (a
+  // conflict) left it in neither file.
+  const back = fresh3('proj-back');
+  noteIn(back, 'pinned', '\n  tier: hot');
+  writeFileSync(join(back, 'MEMORY.md'), '# Index\n');
+  writeFileSync(join(back, 'MEMORY-archive.md'), '# Archive\n\n- [Pinned](pinned.md) — the hand-written hook\n');
+  const held = spawn(process.execPath, [TOOL, '--dir', back, '--pause', '2500'], { stdio: 'ignore' });
+  await new Promise((res) => setTimeout(res, 900));
+  writeFileSync(join(back, 'MEMORY.md'), '# Index\n\nWritten by the model during the pass.\n');
+  await new Promise((res) => held.on('exit', res));
+  const both = readFileSync(join(back, 'MEMORY.md'), 'utf8') + readFileSync(join(back, 'MEMORY-archive.md'), 'utf8');
+  ok(both.includes('- [Pinned](pinned.md) — the hand-written hook'), `a line coming back from the archive survives an index write that conflicts (got ${both})`);
+  tierOne(back);
+  ok(readFileSync(join(back, 'MEMORY.md'), 'utf8').includes('- [Pinned](pinned.md) — the hand-written hook') && !readFileSync(join(back, 'MEMORY-archive.md'), 'utf8').includes('pinned.md'),
+    'and the next pass moves it back, hook and all, out of the archive');
+
+  // A note dated ahead of the clock is no younger than its age: it read as
+  // just written for as long as the skew lasted, and was never indexed.
+  const ahead = fresh3('proj-ahead');
+  writeFileSync(join(ahead, 'MEMORY.md'), '# Index\n');
+  utimesSync(join(ahead, 'MEMORY.md'), tenMin, tenMin);   // an index edited just now is left alone
+  noteIn(ahead, 'from-the-future', '', new Date(Date.now() + 3 * 3600_000));
+  tierOne(ahead);
+  const idx3 = readFileSync(join(ahead, 'MEMORY.md'), 'utf8') + (existsSync(join(ahead, 'MEMORY-archive.md')) ? readFileSync(join(ahead, 'MEMORY-archive.md'), 'utf8') : '');
+  ok(idx3.includes('(from-the-future.md)'), `a note dated ahead of the clock is indexed (got ${idx3})`);
+
+  // An archive line whose note is gone is history, not a warning at every
+  // startup; merge-conflict markers in the index are one.
+  const hist = fresh3('proj-hist');
+  noteIn(hist, 'kept');
+  writeFileSync(join(hist, 'MEMORY.md'), '# Index\n\n- [Kept](kept.md) — kept\n<<<<<<< HEAD\n- [Kept](kept.md) — kept here\n=======\n- [Kept](kept.md) — kept there\n>>>>>>> laptop\n');
+  writeFileSync(join(hist, 'MEMORY-archive.md'), '# Archive\n\n- [Gone](gone.md) — deleted since\n');
+  utimesSync(join(hist, 'MEMORY.md'), tenMin, tenMin);   // an index edited just now reports no missing lines at all
+  tierOne(hist);
+  const h3 = existsSync(join(hist, '.health')) ? readFileSync(join(hist, '.health'), 'utf8') : '';
+  ok(!/gone\.md/.test(h3) && /merge-conflict markers/.test(h3), `an archived line to a deleted note warns of nothing; conflict markers in the index do (got ${h3})`);
+
+  // handoff.md leaves the snapshots even when the run that rewrote .gitignore
+  // lost its untrack (a busy index, a killed hook): nothing retried it.
+  writeFileSync(join(root, 'proj-one', 'memory', 'handoff.md'), '---\nname: handoff\n---\n');
+  git('add', '-f', 'proj-one/memory/handoff.md');
+  rmSync(join(root, '.git', 'project-memory-ignored'), { force: true });
+  note('proj-one', 'r3a');
+  plain();
+  ok(!tracked().includes('proj-one/memory/handoff.md'), `an untrack a run lost is redone by the next (tracked: ${tracked().filter((f) => f.includes('handoff')).join(', ')})`);
+
+  // Stale locks a killed commit leaves: HEAD's as well as the index's, and one
+  // dated ahead of the clock is as stale as one long behind it.
+  const gitDir = join(root, '.git');
+  writeFileSync(join(gitDir, 'HEAD.lock'), '');
+  utimesSync(join(gitDir, 'HEAD.lock'), new Date(Date.now() - 11 * 60000), new Date(Date.now() - 11 * 60000));
+  note('proj-one', 'r3b');
+  r = plain();
+  ok(!existsSync(join(gitDir, 'HEAD.lock')) && /memory snapshot: committed/.test(r.stdout), `a dead HEAD.lock is cleared and the snapshot goes on (got ${r.stdout.trim().split('\n').at(-1)})`);
+  writeFileSync(join(gitDir, 'index.lock'), '');
+  utimesSync(join(gitDir, 'index.lock'), new Date(Date.now() + 86400000), new Date(Date.now() + 86400000));
+  note('proj-one', 'r3c');
+  r = plain();
+  ok(!existsSync(join(gitDir, 'index.lock')) && /memory snapshot: committed/.test(r.stdout), `an index.lock dated a day ahead is stale, not busy forever (got ${r.stdout.trim().split('\n').at(-1)})`);
+
+  // The run log from before 1.0.7 was one time with no newline: the first new
+  // line was glued to it, and that run was lost.
+  writeFileSync(join(root, '.stop-ran'), '2026-10-01T00:00:00.000Z');
+  stop();
+  let glued = null; try { glued = JSON.parse(runLines().at(-1)); } catch {}
+  ok(glued?.s === 'tst', `a run logged after the old format is a line of its own (got ${runLines().at(-1)})`);
+
+  // Auto memory turned off: the Stop hook does nothing, not even its log.
+  const before = runLines().length;
+  process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+  try { stop(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  ok(runLines().length === before, 'with auto memory off the Stop hook does nothing');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

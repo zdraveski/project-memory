@@ -2,25 +2,81 @@
 // way. Our hooks take the lock; Claude Code's own Edit and Write tools do not,
 // so a write the model makes during a pass can only be detected --
 // replaceIfUnchanged -- never prevented.
-import { mkdirSync, rmdirSync, rmSync, statSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, readdirSync, realpathSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { mkdirSync, rmdirSync, rmSync, statSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, readdirSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
+import { join, dirname, resolve, basename } from 'node:path';
 import { homedir } from 'node:os';
 
-export const projectsRoot = () => join(homedir(), '.claude', 'projects');
+// Claude Code's folder: ~/.claude, or CLAUDE_CONFIG_DIR when that is set
+// (read by its fixed name). Under it, the hooks wrote nothing and said nothing.
+export const configDir = () => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+export const projectsRoot = () => join(configDir(), 'projects');
 export const same = (a, b) => (process.platform === 'win32'
   ? resolve(a).toLowerCase() === resolve(b).toLowerCase()
   : resolve(a) === resolve(b));
+// Auto memory turned off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): the hooks do
+// nothing. They recorded and briefed all the same. Off in settings
+// (autoMemoryEnabled) they cannot see: the plugin reads no settings file.
+export const memoryOff = () => /^(1|true|yes|on)$/i.test(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY || '');
 
-// The project folder Claude Code chose holds the transcript, and its `memory`
-// is the store whatever the cwd is now: a session that moved into another
-// project's folder wrote that project's handoff. A transcript anywhere else (a
-// test, a payload without one) falls back to the cwd's slug, as before.
-// Resolved: `<projects>/../x.jsonl` passed the check and named a store outside
-// it. A path that is no string (a malformed payload) threw, and the Stop hook with it.
+const slugOf = (p) => String(p).replace(/[^A-Za-z0-9]/g, '-');
+
+// The git repository a folder is in, as Claude Code finds it for memory: the
+// nearest folder up with a `.git`, and for a worktree (whose `.git` is a file
+// naming a folder in the main repo's .git) the main repository. null: none.
+export function repoRoot(dir) {
+  for (let d = resolve(dir); ; d = dirname(d)) {
+    let st = null; try { st = statSync(join(d, '.git')); } catch {}
+    if (st?.isDirectory()) return d;
+    if (st?.isFile()) {
+      const g = (raw(join(d, '.git')) || '').match(/^gitdir:\s*(.+?)\s*$/m);
+      const common = g && (raw(join(resolve(d, g[1]), 'commondir')) || '').trim();
+      const main = common && resolve(resolve(d, g[1]), common);
+      return main && basename(main) === '.git' ? dirname(main) : d;   // a submodule is its own
+    }
+    if (dirname(d) === d) return null;
+  }
+}
+
+// The folder a session started in: the first cwd its transcript records.
+// From its head only, once per process.
+const started = new Map();
+function startCwd(t) {
+  if (!started.has(t)) {
+    let cwd = null;
+    try {
+      const fd = openSync(t, 'r'), buf = Buffer.alloc(65536);
+      const n = readSync(fd, buf, 0, buf.length, 0); closeSync(fd);
+      for (const line of buf.toString('utf8', 0, n).split('\n')) {
+        let r; try { r = JSON.parse(line); } catch { continue; }
+        if (typeof r?.cwd === 'string' && r.cwd) { cwd = r.cwd; break; }
+      }
+    } catch {}
+    started.set(t, cwd);
+  }
+  return started.get(t);
+}
+
+// A session's store. Claude Code keeps one memory folder per git repository,
+// shared by its worktrees and subfolders, and per folder outside one; the
+// transcript goes by the folder the session started in. A session started in
+// `repo/web` wrote its handoff to a `repo-web` folder Claude Code never loads.
+// The folder it started in, read from the transcript, not the cwd now: a
+// session that moved into another project's folder wrote that project's
+// handoff. A transcript anywhere else (a test, a payload without one) falls
+// back to the cwd. Resolved: `<projects>/../x.jsonl` passed the check and
+// named a store outside it. A path that is no string threw, and the hook with it.
+// shortcut: a repository path long enough for Claude Code to shorten its
+// folder name with a hash gets the long name here; build that if one turns up.
 export function storeOf(payload = {}) {
+  const named = process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
+  if (named) return join(projectsRoot(), slugOf(named), 'memory');
   const t = typeof payload.transcript_path === 'string' && resolve(payload.transcript_path);
-  if (t && same(dirname(dirname(t)), projectsRoot())) return join(dirname(t), 'memory');
-  return join(projectsRoot(), String(payload.cwd || process.cwd()).replace(/[^A-Za-z0-9]/g, '-'), 'memory');
+  if (t && same(dirname(dirname(t)), projectsRoot())) {
+    const cwd = startCwd(t), repo = cwd && repoRoot(cwd);
+    return repo && !same(repo, cwd) ? join(projectsRoot(), slugOf(repo), 'memory') : join(dirname(t), 'memory');
+  }
+  const cwd = String(payload.cwd || process.cwd());
+  return join(projectsRoot(), slugOf(repoRoot(cwd) || cwd), 'memory');
 }
 
 // Lessons that hold in every project. `_` is in no project's slug -- storeOf
@@ -69,13 +125,20 @@ export function front(text) {
   // A value stays on its line: an emptied `superseded-by:` took the next line
   // as its value. \r too, for a file saved CRLF.
   const get = (re) => ((head.match(re) || [])[1] || '').trim();
-  const superseded = get(/^[ \t]*superseded-by:[ \t]*"?(.*?)"?[ \t\r]*$/m);
+  // A YAML block value (`description: >-`, a list under `superseded-by:`):
+  // its indented lines. Read as the line itself, a hook said `>-`.
+  const block = (key) => (head.match(new RegExp(`^[ \\t]*${key}:[ \\t]*[>|]?[-+]?[ \\t\\r]*\\n((?:[ \\t]+-?[ \\t]*\\S.*(?:\\n|$))+)`, 'm'))?.[1] ?? '')
+    .split('\n').map((l) => l.trim().replace(/^-[ \t]*/, '')).filter(Boolean);
+  // Valid YAML all: quoted either way, a `# comment` after it, any case
+  // (`tier: "hot"`, `tier: Hot`). Read only bare, the pin aged out.
+  const superseded = get(/^[ \t]*superseded-by:[ \t]*(.*?)[ \t\r]*$/m).replace(/\s+#.*$/, '').replace(/^(["'])(.*)\1$/, '$2') || block('superseded-by')[0] || '';
+  const desc = get(/^description:[ \t]*"?(.*?)"?[ \t\r]*$/m);
   return {
     name: get(/^name:[ \t]*"?(.*?)"?[ \t\r]*$/m),
     // YAML-escaped quotes stay escaped otherwise: a recovered pointer read `\"gaps\"`.
-    desc: get(/^description:[ \t]*"?(.*?)"?[ \t\r]*$/m).replace(/\\"/g, '"'),
-    type: get(/^[ \t]*type:[ \t]*(\w+)/m),
-    tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*(\w+)/m),
+    desc: (/^[>|][-+]?$/.test(desc) ? block('description').join(' ') : desc).replace(/\\"/g, '"'),
+    type: get(/^[ \t]*type:[ \t]*["']?(\w+)/m).toLowerCase(),
+    tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)/m).toLowerCase(),
     superseded,
     // A date alone is that day here: read as UTC midnight, it printed as the
     // day before anywhere west of Greenwich.
@@ -94,7 +157,7 @@ export const gitArgs = (...a) => ['-C', projectsRoot(), '-c', 'core.longpaths=tr
 // repack Windows could not finish leaves an .idx with no .pack, and git warns
 // of it on every command (2026-10-27) -- else the message's, which only says
 // which command failed.
-export const gitWhy = (e) => (e.code === 'ENOENT' ? 'git is not installed'
+export const gitWhy = (e) => (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn') ? 'git is not installed'
   : String(e.stderr || '').split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('warning:')) || String(e.message).split('\n')[0]);
 
 // A file's text, or null when there is none: what replaceIfUnchanged compares.
@@ -123,11 +186,17 @@ export const BUSY = ['EPERM', 'EBUSY', 'EACCES'];
 // same instant; that needs a killed hook first, and costs one merged write.
 export function withLock(dir, fn) {
   const lock = join(dir, '.lock');
+  let refused = 0;
   for (const until = Date.now() + LOCK_WAIT; ;) {
     try { mkdirSync(lock); break; }
     catch (e) {
       // The last holder's rmdir still settling: the same codes a rename retries.
       if (e.code !== 'EEXIST' && !BUSY.includes(e.code)) throw e;
+      // Refused with no lock there, again and again: a folder that takes no new
+      // entries, not a holder. Read as busy, every turn waited 2 s and saved
+      // nothing, unseen.
+      refused = e.code !== 'EEXIST' && !existsSync(lock) ? refused + 1 : 0;
+      if (refused > 8) throw e;
       let stale = false;
       // Either way: a lock dated in the future (a clock set back) was never stale.
       try { stale = Math.abs(Date.now() - statSync(lock).mtimeMs) > LOCK_STALE; } catch {}

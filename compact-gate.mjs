@@ -33,18 +33,33 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, own, prompt, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG, PRIVATE } from './handoff-log.mjs';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot } from './store.mjs';
+import { readTail, text, prompt, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote } from './handoff-log.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
-const MODEL_WINDOW = 1_000_000;  // the model's own window (Fable / Opus, 1M on)
-// The window Claude Code compacts against: settings `env` sets it to 800000.
-export const WINDOW = Number(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW;
+// A token count as Claude Code takes one: `800000`, `800k`, `1M`. NaN: none.
+// Only the plain number was read: `200k` was NaN, and the nudge never came.
+export const tokens = (v) => {
+  const m = String(v ?? '').trim().match(/^(\d+(?:\.\d+)?)\s*([km]?)$/i);
+  return m ? Math.round(Number(m[1]) * (m[2] ? (m[2].toLowerCase() === 'k' ? 1e3 : 1e6) : 1)) : NaN;
+};
+const on = (v) => /^(1|true|yes|on)$/i.test(v || '');
+// The model's own window: 1M for the models that run with it natively, unless
+// the user set another (CLAUDE_CODE_MAX_CONTEXT_TOKENS, read by its name) or
+// held them at 200K. Taken as 1M under a 400K window, the gate deferred a
+// compaction at 390k into the context-limit error it exists to avoid.
+export const MODEL_WINDOW = tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) || (on(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) ? 200_000 : 1_000_000);
+// The window Claude Code compacts against, as the environment sets it; one
+// set with /autocompact or autoCompactWindow lives in settings, which the
+// plugin does not read (README says so). Never past the model's.
+export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW, MODEL_WINDOW);
 // Claude Code compacts at ~0.959 of its window (863,324 of 900,000; 767,072 of
 // 800,000). The nudge has to land a whole turn before that, and a turn above
 // 300k adds 18k tokens at the median, 46k at p75 and 148k at p90 (2026-10-26):
 // at 0.95 the room was 7k and no nudge was ever seen. 0.85 leaves ~87k.
-export const TRIGGER = 0.85;
+// Lower when CLAUDE_AUTOCOMPACT_PCT_OVERRIDE makes it compact earlier.
+const PCT = Number(process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE);
+export const TRIGGER = PCT > 0 && PCT < 96 ? 0.85 * PCT / 96 : 0.85;
 // Over this share of the model's window a mid-turn compaction goes through.
 // The API refuses a call when input + max output exceeds the window, so the
 // margin must hold the response budget (32k+) and one more tool result: 10 %.
@@ -85,12 +100,21 @@ function state(path, { ask = true } = {}) {
 }
 
 function walk(raw) {
-  const s = { ctx: 0, midTurn: false, ask: '', said: '', hidden: false, at: '', running: new Map(), edited: new Set() };
+  const s = { ctx: 0, midTurn: false, ask: '', raw: '', said: '', hidden: false, at: '', running: new Map(), edited: new Set(), launchers: new Set() };
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
     const m = r.message, c = Array.isArray(m?.content) ? m.content : [];
-    const t = text(r).trim();
+    const t = norm(text(r)).trim();
+    // A record queued while Claude worked: how a task's end arrives now (read
+    // only from user records, every finished task stayed "still running", and
+    // the note said not to rerun it), and a message the user typed meanwhile:
+    // private, its answer is not shown.
+    if (r.type === 'attachment' && r.attachment?.type === 'queued_command') {
+      const q = norm(String(r.attachment.prompt ?? ''));
+      for (const hit of q.matchAll(DONE)) s.running.delete(hit[1]);
+      if (/<\s*private/i.test(unquote(q))) s.hidden = true;
+    }
     if (r.type === 'user') {
       // A new prompt starts a new turn's edits. Not its running tasks: a build
       // launched two turns ago is still running now, and a note that said
@@ -98,11 +122,18 @@ function walk(raw) {
       // Its answer too: the last one said belonged to the turn before, and
       // after a private ask it was shown under the next one.
       const ask = prompt(r, t);
-      if (ask) { s.ask = ask; s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
-      else if (/<private/i.test(own(t))) s.hidden = true;
+      if (ask) { s.ask = ask; s.raw = unwrap(t); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
+      // Not in what the harness quotes: an agent's report quoting the tag hid
+      // the last words said.
+      else if (/<\s*private/i.test(unquote(unwrap(t)))) s.hidden = true;
+      // A launch is read from the result of a Bash or Agent call only: from any
+      // tool result, a fetched page that spelt one out put its words, and any
+      // instruction in them, into the note printed after the compaction.
       for (const b of c) {
-        const body = typeof b?.content === 'string' ? b.content : Array.isArray(b?.content) ? b.content.map((x) => x?.text || '').join(' ') : b?.text || '';
+        if (b?.type !== 'tool_result' || !s.launchers.has(b.tool_use_id)) continue;
+        const body = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => x?.text || '').join(' ') : '';
         for (const hit of body.matchAll(LAUNCH)) {
+          if (!/^(?:[A-Za-z]:[\\/]|\/)/.test(hit[2])) continue;   // an output file is an absolute path
           s.running.set(hit[1], hit[2]);
           if (s.running.size > LIST_MAX) s.running.delete(s.running.keys().next().value);
         }
@@ -118,9 +149,12 @@ function walk(raw) {
         s.midTurn = m.stop_reason !== 'end_turn';
       }
       for (const b of c) {
+        if (b?.type === 'tool_use' && /^(Bash|Agent|Task)$/.test(b.name)) s.launchers.add(b.id);
         if (b?.type !== 'tool_use' || !/^(Edit|Write|NotebookEdit)$/.test(b.name)) continue;
         const file = b.input?.file_path || b.input?.notebook_path;   // NotebookEdit names its file differently
-        if (file) s.edited.add(file);
+        // The name, not the path: the path names the user's folders, and the
+        // project says where it is.
+        if (file) s.edited.add(String(file).split(/[\\/]/).pop());
       }
     }
   }
@@ -132,15 +166,16 @@ function walk(raw) {
  *  lives exactly until the next turn ends. `--print` never shows it: it is no
  *  entry, and `recover()` builds the same note from the same transcript. */
 function note(payload, s) {
-  const running = [...s.running].map(([id, p]) => `${id} → ${p}`).join('; ') || 'none';
-  // A private turn's files are its own too: their paths named what it was about.
-  const quiet = s.hidden || PRIVATE.test(s.ask);
+  // Each item clipped like an entry: a path can hold a key, a tag or a marker.
+  const running = [...s.running].map(([id, p]) => `${clip(id, 40)} → ${clip(p, 200)}`).join('; ') || 'none';
+  // A private turn's files are its own too: their names said what it was about.
+  const quiet = s.hidden || PRIVATE.test(s.raw || s.ask);
   // Capped like the running tasks: a wide refactor turn listed tens of KB.
-  const edited = quiet ? '[private]' : newest([...s.edited], LIST_MAX, 'earlier') || 'none';
+  const edited = quiet ? '[private]' : clip(newest([...s.edited], LIST_MAX, 'earlier'), 1200) || 'none';
   const t = tag(payload.session_id);
   // Tagged, so a parallel session's note is never taken for this one's.
   return `- **cut mid-turn**${t ? ` [${t}]` : ''} ${local()} at ${Math.round(s.ctx / 1000)}k tokens, asked ${s.at}: ${clip(s.ask, 240)}\n` +
-    `  **last said:** ${s.hidden ? '[private]' : answer(s.ask, s.said, 400) || '(nothing yet: the turn was running tools)'}\n  **still running (read their output files, do not rerun):** ${running}\n  **edited this turn:** ${edited}`;
+    `  **last said:** ${s.hidden ? '[private]' : answer(s.raw || s.ask, s.said, 400) || '(nothing yet: the turn was running tools)'}\n  **still running (read their output files, do not rerun):** ${running}\n  **edited this turn:** ${edited}`;
 }
 
 function inflight(payload, s) {
@@ -166,11 +201,17 @@ function inflight(payload, s) {
  *  from the file anyway. */
 export function recover(input) {
   const t = input.transcript_path;
-  if (!t || !existsSync(t)) return '';
+  if (typeof t !== 'string' || !existsSync(t)) return '';
   const s = state(t);
-  if (!s.midTurn) return '';
+  // None for a private conversation, as the gate writes none.
+  if (!s.midTurn || secret(input, s)) return '';
   return note(input, s);
 }
+
+// A conversation marked private, or this turn's private ask: the gate, the
+// recovery note and the nudge leave it alone. The nudge told Claude to write
+// its work into handoff.md and the notes, which nothing then removed.
+const secret = (payload, s) => hushed(storeOf(payload), tag(payload.session_id)) || PRIVATE_SESSION.test(s.raw || s.ask) || PRIVATE.test(s.raw || s.ask);
 
 /** PreCompact: 0 lets the compaction run, 2 defers it. */
 export function gate(payload) {
@@ -216,7 +257,9 @@ export function nudge(payload) {
   // then have passed with no memory written (found by the second audit).
   if (payload.hook_event_name !== 'Stop' || payload.stop_hook_active || !payload.transcript_path || !existsSync(payload.transcript_path)) return null;
   const s = state(payload.transcript_path, { ask: false });
-  const id = String(payload.session_id || 'none').replace(/[^\w-]/g, '');
+  if (secret(payload, s)) return null;
+  // The conversation's tag, as everywhere else: its full id named a file.
+  const id = tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''));
   const mine = join(NUDGES(), id);
   let given = 0; try { given = Number(readFileSync(mine, 'utf8')) || 0; } catch {}
   // Whether the nudge is on record: one that could not be (`.nudge` a file, or
@@ -245,14 +288,17 @@ export function nudge(payload) {
   if (given && s.ctx >= given) return null;
   if (!arm(s.ctx)) return null;
   const pct = Math.round(100 * s.ctx / WINDOW);
-  // The tag keeps the reason, which Claude Code puts into the conversation,
+  // Feedback, not a block: the conversation goes on so Claude can act on it,
+  // and it shows as hook feedback, where a block showed as a hook error
+  // (Claude Code's hooks reference, Stop decision control).
+  // The tag keeps the text, which Claude Code puts into the conversation,
   // from reading as a prompt: handoff-log's `asked()` skips it, so it is
   // neither the turn's ask nor a reason to clear the turn's edits. Outside the
   // auto section: the next Stop rewrites what is inside it.
-  return { decision: 'block', reason:
+  return { hookSpecificOutput: { hookEventName: 'Stop', additionalContext:
     `${NUDGE_TAG} Context is at ${pct}% of the compaction window: this session compacts within a turn or two. ` +
     'Before stopping, update memory -- handoff.md, outside its auto section (what this task finished, what is open, every background task id with its output file), ' +
-    'and any project memory this work changed -- then stop. Start no new work.' };
+    'and any project memory this work changed -- then stop. Start no new work.' } };
 }
 
 // Node names the script by its real path: compared with the path it was
@@ -270,7 +316,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   let payload = null;
   try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch {}
   let r = { code: 0, why: 'no payload' };
-  if (payload) { try { r = gate(payload); } catch (e) { r = { code: 0, why: `gate failed, not deferred: ${e.message}` }; } }
+  if (payload && memoryOff()) r = { code: 0, why: 'auto memory is off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): nothing done' };
+  else if (payload) { try { r = gate(payload); } catch (e) { r = { code: 0, why: `gate failed, not deferred: ${e.message}` }; } }
   // Always said, so the hooks debug log shows why a compaction ran or waited;
   // Claude Code shows exit-2 stderr to the user only for a manual /compact.
   process.stderr.write(`compaction gate: ${r.why}\n`);

@@ -20,15 +20,22 @@ command-line tool described [below](#the-memory-tool-from-a-terminal).
 
 A hook that fails exits with status 0, so a failure never blocks a session:
 what went wrong is reported in the startup briefing instead. Two hold things up
-on purpose, briefly: the Stop hook keeps Claude from stopping once per
-compaction cycle, to ask it to write its notes, and the compaction gate can
-ask Claude Code to wait (exit status 2).
+on purpose, briefly: once per compaction cycle the Stop hook sends Claude
+feedback that keeps the conversation going, to ask it to write its notes, and
+the compaction gate can ask Claude Code to wait (exit status 2). While
+`CLAUDE_CODE_DISABLE_AUTO_MEMORY` is set, every hook does nothing.
 
 ## Where things live
 
 Claude Code keeps one folder per project under `~/.claude/projects/`, named
 after the project's path with every character that isn't a letter or digit
-replaced by `-`. Auto memory lives in its `memory/` subfolder.
+replaced by `-`. Auto memory lives in its `memory/` subfolder. For memory, a
+project is a git repository: a conversation started in a subfolder or a
+worktree uses the repository's folder, though its transcript sits in the
+folder named for where it started. project-memory finds the repository the
+same way, from the folder the conversation started in. With
+`CLAUDE_CONFIG_DIR` set, all of this is under that folder instead of
+`~/.claude`, and `CLAUDE_CODE_PROJECT_DIR_NAME` names the project folder.
 
 | Where | What |
 |---|---|
@@ -39,7 +46,7 @@ replaced by `-`. Auto memory lives in its `memory/` subfolder.
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
 | `~/.claude/projects/.git` | the snapshot repository |
-| `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran, the snapshot's state, the reminder's state per session |
+| `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran, the snapshot's state, the reminder's state per conversation tag |
 
 ## The index
 
@@ -81,18 +88,29 @@ the turn changed (from Edit, Write and NotebookEdit; the 8 edited last, and
 how many more). A slash command is recorded as you typed it, with its
 arguments. The answer is the reply Claude Code hands the Stop hook, since the
 transcript file can lag behind it. A project gets its `memory/` folder for
-this if Claude hasn't saved a note there yet.
+this if Claude hasn't saved a note there yet. Entries carry your local time
+and are ordered by it: after you change time zones, the order can be off
+until the clock passes the older entries.
 
 Before any of it is written, secrets are taken out: text between `<private>`
 and `</private>`, private key blocks (PGP's too), keys and tokens known by
-their prefix (`sk-`, Stripe's `sk_live_`/`pk_test_`/`rk_live_`, `ghp_`,
-`github_pat_`, GitLab's `glpat-`, npm's `npm_`, Hugging Face's `hf_`, `xox…-`,
-`AKIA`, `AIza`, JWTs, `Bearer …` in any case), Slack webhook addresses, the
-password in a web address (`postgres://user:…@host`), `mysql -p…`, "password
-is …", and a value after `password`, `passphrase`, `secret`, `access_token`,
-`auth_token`, `api_key`, `account_key`, `private_key` or `pwd`, also inside a
-longer name (`DB_PASSWORD=`, `PGPASSWORD=`, `dbPassword`, `clientSecret`) and
-with the value on the next line. A bare `token` is left alone, so a count like
+their prefix (`sk-`, Stripe's `sk_live_`/`pk_test_`/`rk_live_` and `whsec_`,
+`ghp_`, `github_pat_`, GitLab's `glpat-`, npm's `npm_`, PyPI's `pypi-`, Hugging
+Face's `hf_`, Slack's `xox…-` and `xapp-`, AWS's `AKIA` and `ASIA`, Google's
+`AIza`, `GOCSPX-` and `ya29.`, SendGrid's `SG.`, Groq's `gsk_`, xAI's `xai-`,
+Shopify's `shpat_`, DigitalOcean's `dop_v1_`, Notion's `ntn_`, Atlassian's
+`ATATT`, Vault's `hvs.`, Docker's `dckr_pat_`, JWTs, a private key in base64,
+and `Bearer`, `Basic` or `Token` before one with a digit), Slack webhook
+addresses, the password in a web address (`postgres://user:…@host`, also with
+no user name), `curl -u user:…`, `--password …`, `mysql -p…`, `docker login`,
+`sshpass` and `twine` with `-p …`, "password is …", "the password for the
+server is …", "the api key is …", and a value after `password`, `pass`,
+`passphrase`, `secret`, `access_token`, `auth_token`, `api_key`,
+`account_key`, `private_key`, `key-data` or `pwd`, also inside a longer name
+(`DB_PASSWORD=`, `DB_PASS=`, `PGPASSWORD=`, `dbPassword`, `clientSecret`) and
+with the value on the next line. A value that is plainly code stays: a type
+(`password: string`), a call or a member (`jwt.sign(…`, `process.env.X`), a
+`${…}` reference, a path. A bare `token` is left alone, so a count like
 `input_tokens: 863324` stays. No list of patterns finds every secret: anything
 else goes between `<private>` tags. The same applies to the startup briefing
 and the compaction recovery note.
@@ -106,8 +124,13 @@ The answer to a message that contains `<private>` is saved as `[private]`,
 because an answer often repeats what it was told, and so are the names of the
 files changed in that turn. A message that contains `<private-session>`, a
 slash command's arguments included, marks its whole conversation: its entries
-are removed from `handoff.md`, later turns write none, and the compaction gate
-writes no recovery note for it. The mark is kept by the conversation's tag in
+are removed from `handoff.md`, later turns write none, the compaction gate
+writes no recovery note for it, and Claude gets no reminder to write notes.
+Both tags are read in any case, with spaces or attributes, self-closed,
+fullwidth, with hidden zero-width characters, and as `private_session`; in a
+message typed while Claude works (a queued record); and inside another tag.
+The tags inside what Claude Code quotes, such as an agent's report or a task's
+result, are not the user's and mark nothing. The mark is kept by the conversation's tag in
 `.private-sessions` (the newest 1,000), because only the turn that typed it
 sees it in the transcript. `handoff.md` is not in the snapshots.
 
@@ -144,11 +167,13 @@ things soften that.
 
 - **A reminder.** When a conversation passes 85% of the compaction window, the
   Stop hook asks Claude once to write its notes now. It asks again only after
-  a compaction.
+  a compaction, and never in a private conversation. It's sent as hook
+  feedback (`additionalContext`), so the conversation goes on and no hook
+  error is shown.
 - **A short wait.** When Claude Code compacts on its own in the middle of a
   turn, `compact-gate.mjs` asks it to wait for the end of the turn, while the
-  conversation is between 200,000 tokens and 90% of a 1,000,000-token model
-  window: past that there may be no room for one more step. Below that, or
+  conversation is between 200,000 tokens and 90% of the model's window: past
+  that there may be no room for one more step. Below that, or
   above it, or at the end of a turn, the compaction goes ahead. Claude Code
   compacts at about 96% of its compaction window, so the gate can wait only
   when `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is set below the model's window: set
@@ -158,13 +183,24 @@ things soften that.
   always honour the request either.
 - **A recovery note.** When a turn is cut anyway, the next startup briefing
   gives Claude what it had in flight: what you asked, its last words,
-  background tasks still running with their output files, and the files it
-  had edited.
+  background tasks still running with their output files, and the names of
+  the files it had edited. A task counts as running from the result of the
+  Bash or Agent call that started it until its end is reported; nothing else
+  in the conversation adds one.
 
-The plugin assumes a compaction window of 1,000,000 tokens. On a smaller
-window, put the size in `CLAUDE_CODE_AUTO_COMPACT_WINDOW` under `env` in your
-Claude Code settings, for example `"200000"`. Otherwise the reminder never
-fires.
+The plugin reads the window sizes from the environment, as Claude Code does:
+
+- the model's window: 1,000,000 tokens, or `CLAUDE_CODE_MAX_CONTEXT_TOKENS`,
+  or 200,000 when `CLAUDE_CODE_DISABLE_1M_CONTEXT` is set;
+- the compaction window: `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`800000`, `800k`
+  and `0.8M` all work), never more than the model's;
+- `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` moves the reminder earlier to match.
+
+A window chosen with `/autocompact`, `autoCompactWindow` or `--autocompact`
+is kept in Claude Code's settings, which the plugin doesn't read. With one of
+those, also put the size in `CLAUDE_CODE_AUTO_COMPACT_WINDOW` under `env` in
+your Claude Code settings, for example `"200k"`. Otherwise the reminder
+never fires.
 
 ## Snapshots
 
@@ -254,7 +290,8 @@ with 1 when a command is refused or fails.
 
 - Node.js 20 or newer. No other dependencies.
 - Git, for snapshots.
-- Paths assume `~/.claude`. `CLAUDE_CONFIG_DIR` is not supported yet.
+- Paths follow `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_PROJECT_DIR_NAME`. The
+  `autoMemoryDirectory` setting is not followed: the plugin reads no settings.
 - Tested on Linux, macOS and Windows, with Node 20 and 24.
 - The snapshot repository only grows.
 

@@ -22,7 +22,7 @@ import { readFileSync, writeFileSync, existsSync, openSync, readSync, closeSync,
 import { join, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, raw } from './store.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
@@ -98,17 +98,22 @@ const unwrap = (s) => {
 // nothing, and its answer filed under the ask before. Any case: <PRIVATE> too.
 export const own = (s) => unwrap(s)
   .replace(/^(?:\s*<(?!private|pasted)(?=[A-Za-z]\w{0,62}[_-])([A-Za-z][\w-]{0,63})(?=[\s>])[^>]{0,2000}>[\s\S]*?<\/\1>)+/i, '').trim();
+// A slash command's record opens with its tags. Quoted anywhere else in a
+// prompt (a question about a transcript), the prompt was taken for the command,
+// and its <private> parts were missed.
+const isCommand = (s) => /^\s*<command-(?:name|message)>/.test(unwrap(s));
 // What a prompt starts with is the user's: 4 prompts here began with a paste,
 // and read as no ask, each one's answer was saved as the answer to the one before.
 // (A record the harness added, or a compaction summary, prompt() turns away first.)
 export const asked = (r, s) => {
-  if (!s || s.includes('<command-name>') || nudged(s)) return false;
+  if (!s || isCommand(s) || nudged(s)) return false;
   const o = own(s);
   return !!o && !o.startsWith('[SYSTEM') && !o.startsWith('[Request interrupted');
 };
 // A slash command's record names it and its arguments, and the user typed
 // both. Read as no ask, its reply was saved as the answer to the ask before.
 const command = (s) => {
+  if (!isCommand(s)) return '';
   const n = s.match(/<command-name>\s*([^<]{1,200}?)\s*<\/command-name>/);
   if (!n) return '';
   const a = (s.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1] ?? '').trim();
@@ -119,8 +124,32 @@ const command = (s) => {
 // answer was filed under the ask before.
 const image = (r) => Array.isArray(r.message?.content) && r.message.content.some((b) => b?.type === 'image');
 export const prompt = (r, s) => (r.isMeta || r.isCompactSummary ? '' : command(s) || (asked(r, s) ? own(s) : '') || (!s && image(r) ? '[image]' : ''));
-// A <private> block, its tag in any case and with attributes.
-export const PRIVATE = /<private(?:\s[^>]*)?>/i;
+// A <private> block's opener, and the <private-session> mark: in any case,
+// with spaces or attributes, self-closed, or as private_session. Only the
+// exact forms counted, and `<private-session/>` recorded the conversation.
+export const PRIVATE = /<\s*private(?![-_\w])[^>]*>/i;
+export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]*>/i;
+// Text read the same in any width and without hidden characters: a fullwidth
+// ＜private＞, or a zero-width space inside the tag, kept what it should hide.
+export const norm = (s) => s.normalize('NFKC').replace(/[​-‍⁠﻿]/g, '');
+// The harness's blocks that quote others: an agent's message, a task's end, a
+// command's output. What they quote is not the user's, and a red-team report
+// quoting <private-session> marked the conversation that read it private.
+// By index, at most 50 blocks: linear on any input.
+const QUOTES = /<(task-notification|agent-message|teammate-message|local-command-std(?:out|err)|bash-std(?:out|err))\b[^>]{0,2000}>/gi;
+export const unquote = (s) => {
+  let out = '', i = 0;
+  for (let n = 0; n < 50; n++) {
+    QUOTES.lastIndex = i;
+    const m = QUOTES.exec(s);
+    const end = m ? s.indexOf(`</${m[1]}>`, m.index) : -1;
+    if (end === -1) break;
+    out += s.slice(i, m.index);
+    i = end + m[1].length + 3;
+  }
+  return out + s.slice(i);
+};
+export { unwrap };
 
 export { local };
 // A session's short tag: enough to tell parallel sessions apart in one file.
@@ -146,18 +175,28 @@ function turns(raw) {
         pending.changed.push(String(f));
       }
     }
-    const t = text(r).trim();
+    const t = norm(text(r)).trim();
     const ask = r.type === 'user' ? prompt(r, t) : '';
-    if (!t && !ask) continue;
-    if (ask) {
-      pending = { at: local(r.timestamp), ask, did: '', changed: [] };
-      // Marked whether or not a reply follows: a turn of tool calls, or one
-      // the user stopped, writes no entry but must still mark.
-      if (/<private-session>/i.test(pending.ask)) out.hush = true;
-    }
+    // What the user typed, tags and all: a slash command's arguments, a
+    // wrapper own() strips, a message queued while Claude worked (an
+    // attachment record, read by nothing before). Not what the harness quotes
+    // (an agent's report or a task's end can quote the mark, and marked the
+    // conversation private), nor a record it added, nor a compaction summary.
+    const mine = r.type === 'user' ? unquote(unwrap(t)) : '';
+    const typed = r.type === 'user' && !r.isMeta && !r.isCompactSummary ? mine
+      : r.type === 'attachment' && r.attachment?.type === 'queued_command' ? unquote(norm(String(r.attachment.prompt ?? ''))) : '';
+    // Marked whether or not a reply follows: a turn of tool calls, or one
+    // the user stopped, writes no entry but must still mark.
+    if (PRIVATE_SESSION.test(typed)) out.hush = true;
+    // The nudge as hook feedback: an attachment record, not a user one. Its
+    // answer is the memory update, not this turn's.
+    if (r.type === 'attachment' && /^hook_(?:additional_context|blocking_error)$/.test(r.attachment?.type ?? '')
+      && nudged(JSON.stringify(r.attachment.content ?? r.attachment.blockingError ?? ''))) { if (pending) pending.frozen = true; continue; }
+    if (!t && !ask && !typed) continue;
+    if (ask) pending = { at: local(r.timestamp), ask, raw: unwrap(t), did: '', changed: [] };
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
-    else if (r.type === 'user' && pending && (nudged(t) || /<private/i.test(own(t)))) pending.frozen = true;
+    else if ((r.type === 'user' || typed) && pending && (nudged(t) || /<\s*private/i.test(typed || mine))) pending.frozen = true;
     else if (r.type === 'assistant' && pending) {
       if (!pending.frozen) pending.did = t;     // last text block of the turn wins, unless a nudge froze it
       if (out[out.length - 1] !== pending) out.push(pending);
@@ -171,35 +210,62 @@ function turns(raw) {
 // for good. A key or token is known by its issuer's prefix, or by the word
 // before it; anything in <private>...</private> goes whole. Before clipping,
 // so no half of a key is left behind.
+// A value that is code, not a secret: one with no digit that names a type,
+// a member or a call (`string`, `request.form[`, `hashed_password`), a
+// template, a path. 25 of 35 ordinary lines of code and config were cut.
+const code = (v) => /^(?:\$[{(]|\/|~\/|[A-Za-z]:[\\/])/.test(v) || (!/\d/.test(v)
+  && (/^[A-Za-z_$][\w$-]*[.([_$]/.test(v) || /^(?:string|number|boolean|str|int|bytes|any|unknown|null|undefined|none|true|false|object|bool|float|char|optional|secretstr)$/i.test(v)));
 const SECRETS = [
-  [/<private(?:\s[^>]*)?>[\s\S]*?(?:<\/private\s*>|$)/gi, '[private]'],
+  // From the first opener to the last closer: nested, the text after the inner
+  // closer was saved. Self-closed or unclosed, to the end.
+  [/<\s*private(?![-_\w])[^>]*>(?:[\s\S]*<\s*\/\s*private\s*>|[\s\S]*)/gi, '[private]'],
   // PGP's says PRIVATE KEY BLOCK.
   [/-----BEGIN [A-Z ]*PRIVATE KEY[A-Z ]*-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY[A-Z ]*-----|$)/g, '[redacted]'],
   // sk-... (Anthropic, OpenAI); sk_live_, pk_test_, rk_live_ (Stripe).
   [/\b(?:sk|rk|pk)(?:-|_(?:live|test)_)[A-Za-z0-9_-]{20,}/g, '[redacted]'],
   [/\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{40,}/g, '[redacted]'],
-  [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, '[redacted]'],
-  [/\bAKIA[0-9A-Z]{16}\b/g, '[redacted]'],
+  [/\bxox[abprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}/g, '[redacted]'],
+  // AWS keys, long-lived and STS.
+  [/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, '[redacted]'],
   [/\bAIza[0-9A-Za-z_-]{35}/g, '[redacted]'],
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[redacted]'],
-  [/\b(Bearer|Basic) [A-Za-z0-9._~+/=-]{20,}/gi, '$1 [redacted]'],
+  // With a digit in it: "Basic implementation/approach" and "Bearer
+  // authentication-header" were prose, and were cut.
+  [/\b(Bearer|Basic|Token) (?=[A-Za-z0-9._~+/=-]{0,200}\d)[A-Za-z0-9._~+/=-]{20,}/gi, '$1 [redacted]'],
   // GitLab, npm and Hugging Face tokens; a Slack webhook is its own secret.
   [/\bglpat-[A-Za-z0-9_-]{20,}|\bnpm_[A-Za-z0-9]{36}\b|\bhf_[A-Za-z0-9]{30,}/g, '[redacted]'],
+  // PyPI, Stripe webhooks, SendGrid, Google OAuth, Groq, xAI, Shopify,
+  // DigitalOcean, Notion, Atlassian, Vault, Docker; and a PEM key in base64
+  // (kubeconfig's client-key-data).
+  [/\bpypi-AgE[A-Za-z0-9_-]{20,}|\bwhsec_[A-Za-z0-9+/=]{20,}|\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|\bGOCSPX-[A-Za-z0-9_-]{20,}|\bya29\.[A-Za-z0-9_-]{20,}|\bgsk_[A-Za-z0-9]{20,}|\bxai-[A-Za-z0-9]{20,}|\bshp(?:at|ca|pa|ss)_[A-Fa-f0-9]{32}|\bdop_v1_[a-f0-9]{64}|\bntn_[A-Za-z0-9]{20,}|\bATATT[A-Za-z0-9_=-]{20,}|\bhvs\.[A-Za-z0-9_-]{20,}|\bdckr_pat_[A-Za-z0-9_-]{20,}|LS0tLS1CRUdJTi[A-Za-z0-9+/=]{20,}/g, '[redacted]'],
   [/(hooks\.slack\.com\/services\/)[A-Za-z0-9/]+/g, '$1[redacted]'],
-  // The password in a URL: postgres://user:it@host.
-  [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{1,100}:)[^\s@/]{1,200}@/gi, '$1[redacted]@'],
+  // The password in a URL: postgres://user:it@host, redis://:it@host (no
+  // user), one with an @ in it (to the last one). Not a query: a port
+  // before `?user=me@x` was cut as a password.
+  [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)[^\s/?#]{1,200}@/gi, '$1[redacted]@'],
+  // curl -u user:it, --user user:it.
+  [/((?:^|\s)(?:-u|--user)[ =]+[^\s:'"]{1,100}:)[^\s'"]{1,200}/g, '$1[redacted]'],
+  // --password it; docker login, sshpass and twine take it as -p it.
+  [/(--password[ =]|\b(?:docker\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+)(?!-)[^\s"']{3,}/g, '$1[redacted]'],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
-  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
+  // In the mysql command only: `; find . -print` after it was cut.
+  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n|;&]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
   // "my password is IT": one with a digit or a symbol, as a password has --
   // "the password is hashed" names none.
-  [/\b((?:password|passwd|passphrase)\s{1,5}(?:is|was)\s{1,5})["']?(?=\S*[0-9!@#$%^&*_+=-])[^\s"',;]{3,}[^\s"',;.]/gi, '$1[redacted]'],
+  // Also "the password for the prod db is IT", "the api key is IT", and
+  // "password IT" with no verb, when IT has a letter and a digit.
+  [/\b((?:password|passwd|passphrase|api[ _-]?key|token|secret)(?:\s{1,5}(?:for|of|to)\s{1,5}[^.,;:\n]{1,40}?)?\s{1,5}(?:is|was)\s{1,5})["']?(?=\S*[0-9!@#$%^&*_+=-])[^\s"',;]{3,}[^\s"',;.]/gi, '$1[redacted]'],
+  [/\b((?:password|passwd)\s{1,3})(?=[^\s"',;]{0,200}\d)(?=[^\s"',;]{0,200}[A-Za-z])[^\s"',;:]{6,}/gi, '$1[redacted]'],
   // The word can end a longer name, glued (PGPASSWORD=, dbPassword, clientSecret,
   // stripeApiKey) or not (DB_PASSWORD=, AWS_SECRET_ACCESS_KEY=), and the value
   // can sit on the next line (YAML). `pwd` needs its own start. Bounded, so no
   // input backtracks. Not a bare `token`: "input_tokens: 863324" is a count.
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|(?<![A-Za-z0-9])pwd)[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)[^\s"',;]{6,}/gi, '$1[redacted]'],
+  // `pass` alone too (DB_PASS=, pass:), and a key's data. Not a value that
+  // is plainly code: `password: string`, `token = jwt.sign(payload`,
+  // `secret: process.env.JWT_SECRET`, `${DB_PASSWORD}`, a path.
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
-  [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?=[^\s"',;]{0,200}[A-Za-z])[^\s"',;]{6,}/gi, '$1[redacted]'],
+  [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
 ];
 export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
 // The answer to a private message often repeats what it was told, so it is
@@ -210,10 +276,15 @@ export const answer = (ask, did, n) => (PRIVATE.test(ask) ? '[private]' : clip(p
 // the next run and strand every entry before it as prose, and a tag printed at
 // startup (`</system-reminder>`) could end the wrapper Claude Code puts the
 // briefing in and pose as its own text. No tag survives: `<` before a letter,
-// `/`, `!` or `?` is written `&lt;`.
+// `/`, `!` or `?` is written `&lt;`, and so is one with spaces or hidden
+// characters before it (`< /system-reminder>`), or in another width (＜, ﹤).
+// A line break that is not \n (a lone \r, U+2028, U+0085) is a space: in a
+// shared index line or a health message it started a line of its own, and
+// posed as one.
 // Never half an emoji, and no lone surrogate: one is written as U+FFFD, the
 // entry read back no longer matched its turn, and the turn was added again every Stop.
-export const defuse = (s) => s.replace(/<(?=[A-Za-z/!?])/g, '&lt;');
+export const defuse = (s) => s.replace(/[<\uFF1C\uFE64](?=[\u200B-\u200D\u2060\uFEFF]*[A-Za-z/!?]|\s+\/)/g, '&lt;')
+  .replace(/\r(?!\n)|[\u2028\u2029\u0085]/g, ' ');
 export const clip = (s, n) => {
   const one = defuse(redact(s).replace(/\s+/g, ' ')).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
   return one.length > n ? one.slice(0, n - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : one;
@@ -234,18 +305,25 @@ export const plain = (s) => s.split('\n')
   .join('\n');
 
 // One turn can be megabytes of tool output, so a fixed tail read nothing on
-// 65 of 76 transcripts here. Grow until the latest prompt is inside it; the
-// section on disk already holds the earlier ones, so that is all it needs.
-function latest(path) {
+// 65 of 76 transcripts here. Grow until the latest prompt is inside it, and
+// back to `since`, the last turn the section holds for this session: a turn
+// skipped while another hook held the store, then pushed out of the tail by a
+// long next turn, was never written. Bounded: 32 MB.
+function latest(path, since = '') {
   for (let bytes = TAIL; ; bytes *= 4) {
     const { text: raw, whole } = readTail(path, bytes);
     const got = turns(raw);
-    if (got.length || whole) return got;
+    if ((got.length && (!since || got[0].at <= since)) || whole || bytes >= 32 * 2 ** 20) return got;
   }
 }
 
-const render = (t) => `- **asked** ${t.at}${t.s ? ` [${t.s}]` : ''}: ${clip(t.ask, ASK)}\n  **did:** ${clip(t.did, DID)}`
-  + (t.changed ? `\n  **changed:** ${clip(t.changed, DID)}` : '');
+// An entry whose ask is private shows no answer and no files, whoever wrote
+// it: one written before 1.0.5 kept an answer that repeated the secret.
+const render = (t) => {
+  const hid = t.ask.includes('[private]');
+  return `- **asked** ${t.at}${t.s ? ` [${t.s}]` : ''}: ${clip(t.ask, ASK)}\n  **did:** ${hid ? '[private]' : clip(t.did, DID)}`
+    + (t.changed && !hid ? `\n  **changed:** ${clip(t.changed, DID)}` : '');
+};
 // The newest n of a list, and how many older ones it leaves out.
 export const newest = (xs, n, older = 'more') => (xs.length > n ? `${xs.slice(-n).join(', ')}, and ${xs.length - n} ${older}` : xs.join(', '));
 // \r-tolerant: an editor that saves this file CRLF must not make every entry
@@ -307,7 +385,16 @@ function build(raw, fresh, drop = null, me = fresh[0]?.s) {
   const key = (t) => `${t.s} ${bare(t)}`;
   const bare = (t) => `${t.at} ${clip(t.ask.replace(/<!- -/g, '<!--'), ASK)}`;
   const seen = new Set(fresh.map(key)), seenBare = new Set(fresh.map(bare));
-  const kept = have.filter((t) => !seen.has(key(t)) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop);
+  // One turn, two spellings: an ask an older version wrote otherwise (with a
+  // trailing reminder before 1.0.6, its leading element cut in 1.0.6-1.0.7)
+  // is the turn re-read when the session and minute match and one ask holds
+  // the other. Kept beside it, an upgrade doubled every resumed turn.
+  const ask = (t) => clip(t.ask, ASK).replace(/…$/, '');
+  const twin = (x, y) => x.s === y.s && x.at === y.at && !!ask(x) && !!ask(y) && (ask(x).includes(ask(y)) || ask(y).includes(ask(x)));
+  // And one spelling twice: a window still on 1.0.7 keyed its entries raw,
+  // matched none of the escaped ones, and added each again every Stop.
+  const last = new Map(have.map((t) => [key(t), t]));
+  const kept = have.filter((t) => last.get(key(t)) === t && !seen.has(key(t)) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop && !fresh.some((f) => twin(f, t)));
   const merged = keep([...kept, ...fresh], me);
   if (!merged.length && !(drop && has)) return null;
   // An entry kept from the file is rendered once, for the comparison and the
@@ -338,7 +425,8 @@ export function hushed(dir, s, mark = false) {
   // one was written again.
   let have = []; try { have = readFileSync(p, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean); } catch {}
   if (!s) return false;
-  if (mark && !have.includes(s)) { have = [...have, s].slice(-1000); writeFileSync(p, have.join('\n') + '\n'); }
+  // By rename: written in place, a hook killed mid-write forgot every mark.
+  if (mark && !have.includes(s)) { have = [...have, s].slice(-1000); replaceIfUnchanged(p, raw(p), have.join('\n') + '\n'); }
   return have.includes(s);
 }
 
@@ -357,7 +445,10 @@ export function handoff(input) {
   if (!existsSync(dir)) { if (!existsSync(dirname(dir))) return false; mkdirSync(dir, { recursive: true }); }
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);
-  const got = latest(input.transcript_path);
+  // Read without the lock: a hint for how far back to read, nothing more.
+  let since = '';
+  try { const d = readFileSync(file, 'utf8'), { a, b } = sectionOf(d); if (a !== -1) since = parse(d.slice(a, b)).filter((t) => t.s === s).map((t) => t.at).sort().at(-1) ?? ''; } catch {}
+  const got = latest(input.transcript_path, since);
   // The transcript can lag the reply that ends it: on Stop, Claude Code passes
   // that reply itself (hooks docs). Not after a block: then it is the reply
   // to the block.
@@ -366,9 +457,11 @@ export function handoff(input) {
     open.did = last.trim();
     if (got.at(-1) !== open) got.push(open);
   }
-  // File names, not paths; none for a private message's turn.
-  const fresh = got.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.ask, t.did, DID),
-    changed: PRIVATE.test(t.ask) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) }));
+  // File names, not paths; none for a private message's turn. Private by what
+  // the user typed, not the ask made of it: a wrapper own() strips, or a
+  // command, hid the tag from the test.
+  const fresh = got.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.raw ?? t.ask, t.did, DID),
+    changed: PRIVATE.test(t.raw ?? t.ask) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) }));
   const hush = got.hush === true;
   // Sessions of one project write this file at once, so they take turns: 8 at
   // once lost 22 of 40 turns without the lock (2026-10-26). The model can still
@@ -406,14 +499,21 @@ function health(dir) {
 }
 
 // The project's other sessions, newest first: Claude Code keeps each one's
-// transcript, named by its id, in the folder above the store.
-export function transcripts(dir, me) {
-  const project = dirname(dir);
-  try {
-    return readdirSync(project).filter((f) => f.endsWith('.jsonl') && tag(f) !== me)
-      .map((f) => ({ s: tag(f), p: join(project, f), m: statSync(join(project, f)).mtimeMs }))
-      .sort((x, y) => y.m - x.m);
-  } catch { return []; }
+// transcript, named by its id, in the folder of the folder it started in. The
+// store's, and this session's own (`t`) when it started in a subfolder of the
+// repository, whose store is the repository's.
+// shortcut: a session started in another subfolder is not seen as working;
+// scan every project folder's first cwd if that is ever wanted.
+export function transcripts(dir, me, t) {
+  const folders = [dirname(dir)];
+  if (typeof t === 'string' && same(dirname(dirname(t)), projectsRoot()) && !same(dirname(t), folders[0])) folders.push(dirname(t));
+  const all = [];
+  for (const project of folders) {
+    try {
+      for (const f of readdirSync(project)) if (f.endsWith('.jsonl') && tag(f) !== me) all.push({ s: tag(f), p: join(project, f), m: statSync(join(project, f)).mtimeMs });
+    } catch {}
+  }
+  return all.sort((x, y) => y.m - x.m);
 }
 
 // When a transcript's last finished turn ended (NaN: none in its tail), how
@@ -517,6 +617,14 @@ function shared() {
 // Claude Code passes a hook's text whole up to 10,000 characters; past that,
 // a preview and a file, and the shared lessons at the end were what was cut.
 const SAY = 9500;
+// Defused, then held to SAY at a line's end, on both paths: the startup's
+// health lists and the compaction note's task lists had no bound, and `<`
+// grows fourfold as `&lt;`. The shared lessons, last, are cut first; the
+// next startup prints them again.
+const fit = (s) => {
+  const d = defuse(s);
+  return d.length <= SAY ? d : `${d.slice(0, SAY - 60).replace(/[^\n]*$/, '')}(the rest cut to fit Claude Code's startup limit)\n`;
+};
 
 // The SessionStart hook. After a compaction (source "compact"): the note on a
 // turn the compaction cut, then this session's own exchanges -- a parallel
@@ -540,7 +648,7 @@ async function print(input) {
   // time of the ask, and a session an hour into one prompt read as ended.
   // Recent, with a turn still open: one that finished its turn is closed, or
   // waiting for its user, and the one closed for a restart read as working.
-  const live = transcripts(dir, me);
+  const live = transcripts(dir, me, input.transcript_path);
   // Newest first, the first two only: each is a 512 KB read.
   const busy = (t) => { try { return lastTurn(t.p).open; } catch { return false; } };
   const working = [];
@@ -555,10 +663,11 @@ async function print(input) {
     // the last entry: named, it brought back the ask the user had cleared away.
     const lines = input.source === 'clear' ? [] : others.length ? others
       : last && age(last) < RECENT ? [`Last session here ended ${last.at} on: ${clip(last.ask, 120)} (log: ${file})`] : [];
-    // A project with no handoff is not judged: its sessions (`claude -p` runs
-    // that load no user hooks) were never the Stop hook's to record.
+    // A project with no handoff is not judged: its sessions were never the
+    // Stop hook's to record (from before the plugin, or `claude --bare` runs,
+    // which load no hooks).
     lines.push(...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared());
-    return defuse(lines.join('\n') + '\n');
+    return fit(lines.join('\n') + '\n');
   }
   let note = '';
   try { note = (await import(new URL('./compact-gate.mjs', import.meta.url))).recover(input); } catch {}
@@ -569,7 +678,7 @@ async function print(input) {
   // The oldest exchanges go first, until it fits.
   let out = say();
   while (mine.length && out.length > SAY) { mine.shift(); out = say(); }
-  return defuse(out);
+  return fit(out);
 }
 
 // Run directly (the harnesses do): payload on stdin, always exit 0.
@@ -583,7 +692,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   (async () => {
     try {
       const input = JSON.parse(readFileSync(0, 'utf8'));
-      if (process.argv.includes('--print')) process.stdout.write(await print(input));
+      if (memoryOff()) {}   // auto memory off: no record, no briefing
+      else if (process.argv.includes('--print')) process.stdout.write(await print(input));
       else handoff(input);
     } catch {
       // A hook that throws on every turn is worse than one that misses a turn.

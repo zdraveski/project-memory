@@ -7,6 +7,7 @@ This page says what it reads, what it saves, and how to remove it.
 
 - Claude Code's record of your conversations in this project (the files Claude
   Code keeps in `~/.claude/projects`), to know what was asked and answered.
+  If you set `CLAUDE_CONFIG_DIR`, that folder's `projects` instead.
 - The notes Claude Code's built-in memory writes in the same folder.
 - Claude Code's list of installed plugins in `~/.claude/plugins`, only when
   you run the `doctor` check, to see where the plugin is installed. It never
@@ -26,16 +27,26 @@ All of it stays in `~/.claude/projects` on your computer:
   secret. Anything you write between `<private>` and `</private>` is left out,
   and so are Claude's reply to that message and the names of the files changed
   in that turn. A conversation where you type `<private-session>` is left out
-  entirely, and its earlier entries are removed.
+  entirely, and its earlier entries are removed. Both work in any letter case,
+  and in a message typed while Claude is still working. A later reply that
+  repeats something private is saved like any other reply.
 - When Claude Code shortens a conversation in the middle of a task, a note of
   what was in progress: your request, the start of Claude's last words, any
-  background tasks still running, and the files Claude had changed. It lasts
-  until Claude's next reply.
+  background tasks still running, and the names of the files Claude had
+  changed. It lasts until Claude's next reply. None is made for a private
+  conversation.
+- When a conversation is about 85% full, project-memory asks Claude to write
+  down the work in progress: in its notes, and in `handoff.md` below the
+  automatic record. Those lines are Claude's own writing, and stay until
+  Claude or you change them. Claude isn't asked in a private conversation.
 - A history of your notes, in a local git repository: after each reply that
   changed a note, its new version is kept. It holds your notes only, never the record
   of where you left off.
 - A few small bookkeeping files, such as when it last ran, and the short tags
   of conversations you marked `<private-session>`.
+
+If auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY`,
+project-memory reads and saves nothing.
 
 ## What it sends
 

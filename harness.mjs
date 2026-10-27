@@ -31,6 +31,10 @@ export function tempDir(prefix) {
 export function tempHome(prefix) {
   const home = tempDir(prefix);
   process.env.HOME = home; process.env.USERPROFILE = home;
+  // Claude Code's own folder settings point the hooks elsewhere: one set on
+  // the machine would have sent every test to the real store.
+  delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY;
+  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS; delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT; delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE;
   return { home, env: undefined };
 }
 

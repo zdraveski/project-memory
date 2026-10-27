@@ -6,7 +6,7 @@
     {
       "name": "project-memory",
       "source": "./",
-      "description": "Helps Claude Code remember your work between conversations. It picks up where you left off, keeps long tasks on track when a conversation is compacted, saves every version of its notes so a lost one can come back, and shares lessons across your projects."
+      "description": "Helps Claude Code remember your work between conversations. It picks up where you left off, keeps long tasks on track when a conversation is compacted, keeps old versions of its notes so a lost one can come back, and shares lessons across your projects."
     }
   ]
 }

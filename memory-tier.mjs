@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync, e
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, allStores, front, gitWhy, gitArgs, raw } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, allStores, front, gitWhy, gitArgs, raw, memoryOff } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -135,7 +135,7 @@ function tier(dir, now) {
   // Neither is a problem while the index is this fresh. Either one leaves the
   // store `waiting`: unstamped, so the next turn looks again -- a stamp would
   // hold until the date changed, and the grace would become a day.
-  const young = now - statSync(mainPath).mtimeMs < ORPHAN_GRACE;
+  const young = Math.abs(now - statSync(mainPath).mtimeMs) < ORPHAN_GRACE;   // dated ahead of the clock is no younger
   let waiting = false;
   const main = split(mainText);
   // No trailing blank in the default: render adds one, and a second blank was
@@ -161,10 +161,12 @@ function tier(dir, now) {
   // by a decision, and it comes back when there is room (a pin removed, a
   // hook shortened, three event logs aged out). The mark comes off here; a
   // line that stays cold now does so by its window, and is sticky again.
+  // One whose file is gone stays, unreported: the archive is history, and a
+  // note deleted after its line was archived warned at every startup, for good.
   for (const p of arc.pointers) {
     p.f = factsFor(dir, p.target);
-    if (!p.f) missing.push(p.target);
     const overflow = p.line.endsWith(OVERFLOW);
+    p.was = p.line;   // as the archive holds it, mark and all
     if (overflow) p.line = p.line.slice(0, -OVERFLOW.length).trimEnd();
     place(p, p.f && (p.f.tier === 'hot' || (overflow && isHot(p.f, now, shared))) ? hot : cold);
   }
@@ -179,7 +181,7 @@ function tier(dir, now) {
     // Its writer is about to point at it. A recovered line placed now would
     // beat the hand-written one to the index. Not handoff.md: this same Stop
     // just rewrote it, and its writer never adds a pointer.
-    if (f !== 'handoff.md' && now - statSync(join(dir, f)).mtimeMs < ORPHAN_GRACE) { waiting = true; continue; }
+    if (f !== 'handoff.md' && Math.abs(now - statSync(join(dir, f)).mtimeMs) < ORPHAN_GRACE) { waiting = true; continue; }
     // A name no index line can point at (`lesson (1).md`): its line, read back,
     // named another file, and a new one was added on every pass.
     if ((`- [x](${f})`.match(POINTER) || [])[1] !== f) { odd.push(f); continue; }
@@ -253,18 +255,28 @@ function tier(dir, now) {
   // Archive first. If the second write fails, the worst case is a pointer in
   // both files -- which the dedupe above then heals. Writing main first and
   // failing would delete hand-written prose that had nowhere else to live.
+  // A line going back to the index stays in the archive, as it was, until the
+  // index has it: taken out first, a failed index write (an edit meanwhile, a
+  // file another program held, a killed hook) left it in neither file, and the
+  // next pass filed a machine-written line for it in the archive for good.
   // A conflict means the model wrote an index during the pass: its write is
   // kept, this pass is dropped, and the next turn redoes it from what it wrote.
   let wrote = false, conflict = false;
   if (!dry) {
-    const a = write(arcPath, arcText, nextArc);
+    const back = arc.pointers.filter((p) => hot.includes(p));
+    const first = back.length ? [...arc.preamble, '', ...cold.map((p) => p.line), ...back.map((p) => p.was)].join('\n') + '\n' : nextArc;
+    const a = write(arcPath, arcText, first);
     const m = a === 'conflict' ? 'conflict' : write(mainPath, mainText, nextMain);
-    conflict = a === 'conflict' || m === 'conflict';
-    wrote = a === true || m === true;
+    const b = back.length && a !== 'conflict' && m !== 'conflict' ? write(arcPath, a === true ? first : arcText, nextArc) : false;
+    conflict = a === 'conflict' || m === 'conflict' || b === 'conflict';
+    wrote = a === true || m === true || b === true;
   }
 
   return { dir, budget, before, after: Buffer.byteLength(nextMain), hot: hot.length, cold: cold.length,
-    missing: young ? [] : missing, waiting: waiting || (young && missing.length > 0), dupes, recovered, odd, wrote, conflict };
+    missing: young ? [] : missing, waiting: waiting || (young && missing.length > 0), dupes, recovered, odd, wrote, conflict,
+    // A merge left unresolved (a store synced between two machines): loaded into
+    // every session as it is, and one side's line for a note silently dropped.
+    merged: /^(?:<{7}|={7}|>{7})(?:[ \t].*)?\r?$/m.test(mainText) };
 }
 
 // Recall is a grep, not a flag: `rg -il <term> ~/.claude/projects/*/memory --glob '!MEMORY*'`
@@ -304,7 +316,12 @@ function snapshot() {
   process.env.LC_ALL = 'C';
   // A git that hangs (a prompt nobody sees) must not hold the Stop hook.
   const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 });
-  const lock = join(root, '.git', 'index.lock');
+  // git's lock files a commit takes: the index, HEAD, the branch's, config.
+  const locks = () => {
+    const g = join(root, '.git'), heads = join(g, 'refs', 'heads');
+    let hs = []; try { hs = readdirSync(heads).filter((f) => f.endsWith('.lock')).map((f) => join(heads, f)); } catch {}
+    return [join(g, 'index.lock'), join(g, 'HEAD.lock'), join(g, 'config.lock'), join(g, 'packed-refs.lock'), ...hs];
+  };
   try {
     const fresh = !existsSync(join(root, '.git'));
     const ignorePath = join(root, '.gitignore');
@@ -318,12 +335,16 @@ function snapshot() {
       if (!(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)) return `off: ${root} is a git repository project-memory did not make, so it commits nothing there`;
       git('config', 'project-memory.snapshots', 'true');
     }
-    // A fresh index.lock is another session's commit in flight: busy, not a
-    // failure -- the next turn retries. One older than ten minutes outlived the
-    // git that made it, and would refuse every commit from now on.
-    if (existsSync(lock)) {
-      if (Date.now() - statSync(lock).mtimeMs < GIT_LOCK_STALE) return 'busy';
-      unlinkSync(lock);
+    // A fresh lock is another session's commit in flight: busy, not a failure
+    // -- the next turn retries. One older than ten minutes outlived the git
+    // that made it, and would refuse every commit from now on: index.lock, and
+    // HEAD's or the branch's, which a killed commit leaves too (only the
+    // index's was cleared). Dated ahead of the clock is as old: it read as
+    // busy, uncounted, until the clock caught up. Gone meanwhile is gone.
+    for (const l of locks()) {
+      let age; try { age = Math.abs(Date.now() - statSync(l).mtimeMs); } catch { continue; }
+      if (age < GIT_LOCK_STALE) return 'busy';
+      try { unlinkSync(l); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     }
     // Everything is ignored except the memory markdown: this directory also
     // holds ~890 MB of session transcripts that must never be committed.
@@ -331,13 +352,18 @@ function snapshot() {
     // after the repo existed would otherwise be double-tracked forever.
     const want = gitignore();
     const have = raw(ignorePath);
-    if (have !== want) {
-      // By rename: another session's `git add -A` reading it half written
-      // would stage every transcript.
-      replaceIfUnchanged(ignorePath, have, want);
-      // Whatever it now ignores leaves the index. `--`: on Linux and macOS
-      // every project's folder name starts with `-`, and read as an option.
+    // By rename: another session's `git add -A` reading it half written
+    // would stage every transcript.
+    if (have !== want) replaceIfUnchanged(ignorePath, have, want);
+    // Whatever it ignores leaves the index, until a run has done it: done
+    // only by the run that rewrote .gitignore, an untrack that run lost (a
+    // busy index, a killed hook) was never retried, and handoff.md stayed in
+    // every snapshot after. `--`: on Linux and macOS every project's folder
+    // name starts with `-`, and read as an option.
+    const applied = join(root, '.git', 'project-memory-ignored');
+    if (have !== want || raw(applied) !== want) {
       for (const l of want.split('\n').filter((x) => x && x !== '*' && !x.startsWith('!'))) git('rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', l);
+      writeFileSync(applied, want);
     }
     git('add', '-A');
     // Straight to the commit, which says so when nothing changed: a `git status`
@@ -354,14 +380,17 @@ function snapshot() {
     return fresh ? 'initialised' : 'committed';
   } catch (e) {
     // No git is a setup, not a failure: everything but the history works.
-    if (e.code === 'ENOENT') return 'off: git is not installed';
+    // Only git's own start: a lock that vanished between two calls is ENOENT
+    // too, and was recorded as "git is not installed".
+    if (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn')) return 'off: git is not installed';
     const why = gitWhy(e);   // git's reason, not a warning before it, nor 'Command failed'
     // This session runs two or three git commands, and another session's commit can
-    // take index.lock in a gap between them: busy, like the pre-check, not a
-    // failure the startup line would count. Only that: a lock git may not
-    // create (Permission denied), or a dead one that cannot be deleted, is a
-    // failure, and read as busy it stopped every snapshot unseen.
-    if (/index\.lock'?: File exists/.test(why)) return 'busy';
+    // take a lock in a gap between them, or move HEAD under this one's: busy,
+    // like the pre-check, not a failure the startup line would count. Only
+    // that: a lock git may not create (Permission denied), or a dead one that
+    // cannot be deleted, is a failure, and read as busy it stopped every
+    // snapshot unseen.
+    if (/\.lock'?: File exists|cannot lock ref|reference already exists|could not lock config file/.test(why)) return 'busy';
     return `snapshot failed: ${why}`;
   }
 }
@@ -400,6 +429,8 @@ const now = nowAt !== -1 ? Number(process.argv[nowAt + 1]) : Date.now();
 // so a manual run never blocks on a terminal). The handoff is written first, in
 // this process -- a second Node start cost a median 200 ms a turn on this box.
 const stop = process.argv.includes('--stop');
+// Auto memory turned off: no record, no nudge, no tiering.
+if (stop && memoryOff()) process.exit(0);
 let payload = null;
 if (stop) {
   try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch {}
@@ -420,7 +451,9 @@ if (stop) {
       // The event too, and whether a block sent it back: a /compact typed
       // right after a reply, or a reply to the nudge, is a second run seconds
       // later, not a second wiring.
-      appendFileSync(ran, JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
+      // On a line of its own: before 1.0.7 the file was one time and no newline.
+      const prev = raw(ran);
+      appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
       if (statSync(ran).size > 8192) writeFileSync(ran, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
     } catch {}
     if (payload) handoff(payload);
@@ -472,6 +505,7 @@ for (const dir of todo) {
   if (r.conflict) { console.log(`${dir}: changed during the pass — the edit wins; the next turn redoes it`); continue; }
   const problems = [];
   if (r.missing.length) problems.push(`pointers with no file: ${r.missing.join(', ')}`);
+  if (r.merged) problems.push('merge-conflict markers in MEMORY.md (<<<<<<< ======= >>>>>>>): every session loads them as they are; resolve them by hand');
   if (r.odd.length) problems.push(`file names an index line cannot point at, so they are unlisted (rename them): ${r.odd.join(', ')}`);
   // Say so when the hooks have drifted back into being content.
   if (r.after > r.budget) problems.push(`over budget: ${r.after}B > ${r.budget}B — ${Math.round(r.after / r.hot)}B a line; trim the hooks, not the count`);

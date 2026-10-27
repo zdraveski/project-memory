@@ -2,7 +2,7 @@
   "name": "project-memory",
   "version": "1.0.7",
   "displayName": "Project Memory",
-  "description": "Helps Claude remember your work between conversations. It picks up where you left off, keeps every version of its notes so a lost one can come back, and shares lessons across all your projects.",
+  "description": "Helps Claude remember your work between conversations. It picks up where you left off, keeps old versions of its notes so a lost one can come back, and shares lessons across all your projects.",
   "author": { "name": "zdraveski", "url": "https://github.com/zdraveski" },
   "homepage": "https://github.com/zdraveski/project-memory",
   "icon": "./.claude-plugin/icon.svg",

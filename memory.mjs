@@ -18,7 +18,7 @@ import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, same } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, same, configDir, memoryOff } from './store.mjs';
 import { sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip } from './handoff-log.mjs';
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
@@ -28,7 +28,7 @@ const OVERFLOW = /\s*<!-- overflow -->$/;
 export const PLUGIN = 'project-memory@project-memory';
 export const LIVE = join(homedir(), '.claude', 'hooks-live');
 const json = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
-const plugins = (f) => json(join(homedir(), '.claude', 'plugins', f));
+const plugins = (f) => json(join(configDir(), 'plugins', f));
 // The installed plugin's id, from whichever marketplace added it: this repo's
 // own (GitHub, or the live copy) or another that lists it.
 const installedId = () => Object.keys(plugins('installed_plugins.json')?.plugins ?? {}).find((k) => k.split('@')[0] === 'project-memory');
@@ -180,12 +180,16 @@ function snapshots() {
 // ${CLAUDE_SESSION_ID} there), never one read from the environment: the plugin
 // directory holds a plugin that reads what it could take for a credential.
 let session = '';
+// The session's transcript, by its id, in whichever project folder holds it.
+function transcriptOf(id) {
+  const root = projectsRoot();
+  let all = []; try { all = readdirSync(root); } catch {}
+  for (const p of all) if (existsSync(join(root, p, `${id}.jsonl`))) return join(root, p, `${id}.jsonl`);
+  return null;
+}
 function sessionStore() {
-  const id = session, root = projectsRoot();
-  if (id) {
-    let all = []; try { all = readdirSync(root); } catch {}
-    for (const p of all) if (existsSync(join(root, p, `${id}.jsonl`))) return storeOf({ transcript_path: join(root, p, `${id}.jsonl`) });
-  }
+  const t = session && transcriptOf(session);
+  if (t) return storeOf({ transcript_path: t });
   for (let d = process.cwd(); ; d = dirname(d)) {
     if (existsSync(storeOf({ cwd: d }))) return storeOf({ cwd: d });
     if (dirname(d) === d) return storeOf({ cwd: process.cwd() });
@@ -316,7 +320,13 @@ export function promote(dir, file) {
     return true;
   }));
   if (r === null) return no('a store is busy (another hook holds it); try again');
-  return r === true ? { ok: true, lines: [`moved ${file} to ${to}; every project's sessions see its line from their next start`] } : no(r);
+  if (r !== true) return no(r);
+  // Over the shared ceiling, the next reply moves the oldest lines out to the
+  // archive, which no startup prints: a lesson promoted into a full store
+  // vanished from every session while this said each one would see it.
+  const size = Buffer.byteLength(raw(join(to, 'MEMORY.md')) ?? ''), cap = budgetOf(to);
+  return { ok: true, lines: [size <= cap ? `moved ${file} to ${to}; every project's sessions see its line from their next start`
+    : `moved ${file} to ${to}. The shared index is now ${size} of its ${cap} bytes: after the next reply its oldest lines move to the shared archive, which no session start prints. To keep this one in view, add "tier: hot" to its frontmatter`] };
 }
 
 // The Stop hook's runs, oldest first, one JSON line each (memory-tier.mjs).
@@ -337,11 +347,16 @@ export function doctor() {
   // reads it. The Stop hook logs each run in .stop-ran (memory-tier.mjs).
   const id = installedId(), runs = stopRuns();
   if (id) say(true, `installed as ${id}`);
-  else if (runs.length) say(true, `the hooks run from ${runs.at(-1).from}, without the plugin installed`);
+  // No install record: added from claude.ai (`project-memory@synced`), or wired by hand.
+  else if (runs.length) say(true, `the hooks run from ${runs.at(-1).from} (no install record: added from claude.ai, or wired by hand)`);
   else say(false, `not installed: the project-memory plugin is not installed, and its hooks have never run. The user's fix: claude plugin marketplace add zdraveski/project-memory, then claude plugin install ${PLUGIN}`);
   // Two runs for one reply, seconds apart: two wirings answered one Stop.
   const twice = runs.slice(-10).find((r, i, rs) => i > 0 && twin(r, rs[i - 1]));
-  if (twice) say(false, `the Stop hook ran twice for one reply (${local(twice.at)}): project-memory is set up twice, so every hook runs twice. The user's fix: claude plugin list shows each copy installed; uninstall all but one. If its hooks were also once added to settings.json by hand, remove those`);
+  // Two enabled plugins of one name run one's hooks only (Claude Code leaves
+  // the other's out): a second run is hooks added to settings.json by hand.
+  if (twice) say(false, `the Stop hook ran twice for one reply (${local(twice.at)}): project-memory's hooks are wired twice, so every hook runs twice. The user's fix: remove the project-memory hooks added to settings.json by hand (the plugin wires its own); if a second copy is installed under another name, uninstall it`);
+  // Auto memory turned off: the hooks do nothing, so nothing below applies.
+  if (memoryOff()) { say(true, 'auto memory is off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): the hooks save and brief nothing until it is on again'); return { ok: !bad, lines }; }
   if (existsSync(join(LIVE, '.deployed.json'))) { const e = edited(LIVE); say(!e.length, e[0] || `${LIVE} matches what deploy.mjs checked`); }
   // Installed from the live copy, the plugin runs it in place; from anywhere
   // else, a cached copy that only `claude plugin update` refreshes.
@@ -367,14 +382,14 @@ export function doctor() {
     // Outside a session (a terminal), the project's newest conversation: with
     // none to read, a dead hook said "waiting" forever.
     let end = NaN;
-    try { const p = id ? join(dirname(sessionStore()), `${id}.jsonl`) : transcripts(sessionStore(), '')[0]?.p; if (p) end = lastTurn(p).end; } catch {}
+    try { const p = id ? transcriptOf(id) : transcripts(sessionStore(), '')[0]?.p; if (p) end = lastTurn(p).end; } catch {}
     if (Date.now() - end > GRACE) say(false, `Claude finished a reply at ${local(end)}, but project-memory has not saved after any reply: its Stop hook is not running. The user's fix: restart Claude Code; if this line stays, check that Node.js is installed (node --version)`);
     else say(true, "waiting for Claude's first reply: project-memory saves each time Claude finishes one");
   } else {
     // The newest conversation, and the newest other than this one, which is
     // the one the startup briefing judges: checked on the newest alone, the
     // two disagreed when this window saved and another did not.
-    const ts = transcripts(sessionStore(), ''), s = [ts[0], ts.find((t) => t.s !== session.slice(0, 8))].flatMap((t) => stalled(t, false));
+    const ts = transcripts(sessionStore(), '', session && transcriptOf(session)), s = [ts[0], ts.find((t) => t.s !== session.slice(0, 8))].flatMap((t) => stalled(t, false));
     say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`);
   }
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return Date.now() - statSync(l).mtimeMs > LOCK_STALE; } catch { return false; } });

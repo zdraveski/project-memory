@@ -777,5 +777,129 @@ for (let i = 0; i < 60; i++) hushed(dirN, `s${String(i).padStart(7, '0')}`, true
 ok(hushed(dirN, 's0000000'), 'the private mark of a conversation 60 back still holds');
 }
 
+// Round 3 (2026-10-27): what four reviewers found in 1.0.8's first fixes.
+{
+const { hushed, defuse, redact: red } = await import('./handoff-log.mjs');
+const { local } = await import('./store.mjs');
+const cwd3 = 'C:\\handoff-round3', dir3 = storeFor(home, cwd3);
+mkdirSync(dir3, { recursive: true });
+let n3 = 0;
+// A fresh transcript per case, a session of its own, and the file after its Stop.
+const case3 = (lines) => {
+  const id = `r3${String(++n3).padStart(6, '0')}`, t = join(dir3, `${id}.jsonl`);
+  writeFileSync(t, lines.join('\n') + '\n');
+  handoff({ cwd: cwd3, transcript_path: t, session_id: id });
+  return { tg: id.slice(0, 8), all: readFileSync(join(dir3, 'handoff.md'), 'utf8') };
+};
+const entryOf = (c, ask, did) => new RegExp(`\\[${c.tg}\\]: ${ask}\\n  \\*\\*did:\\*\\* ${did}`).test(c.all);
+const queued = (p) => JSON.stringify({ type: 'attachment', timestamp: '2026-09-11T07:00:30Z', attachment: { type: 'queued_command', prompt: p, commandMode: 'prompt' } });
+const section3 = (body) => writeFileSync(join(dir3, 'handoff.md'), `---\nname: handoff\n---\n\n<!-- auto:start -->\n${body}<!-- auto:end -->\n`);
+
+// A prompt that quotes <command-name> is no slash command: taken for one, its
+// <private> part, its answer and its <private-session> mark were all missed.
+let c = case3([user('<private>pin 4455</private> why does my transcript show <command-name>/model</command-name>?'), asst('Your pin 4455 is safe.')]);
+ok(!/4455/.test(c.all) && entryOf(c, '\\[private\\] why does my transcript show[^\\n]*', '\\[private\\]'),
+  `a prompt quoting <command-name> keeps its <private> part and its answer out (got ${c.all.slice(-300)})`);
+c = case3([user('<private-session> what does <command-name>/x</command-name> mean?'), asst('It names a command.')]);
+ok(hushed(dir3, c.tg) && !c.all.includes(`[${c.tg}]`), 'and its <private-session> marks the conversation');
+
+// A message typed while Claude worked arrives as an attachment record.
+c = case3([user('deploy it'), queued('<private>root pw 77889900</private>'), asst('Deployed with root pw 77889900.')]);
+ok(!/77889900/.test(c.all) && c.all.includes(`[${c.tg}]: deploy it`), 'a <private> message typed while Claude worked keeps the answer out');
+c = case3([user('one more thing'), queued('<private-session> and keep this between us'), asst('Understood.')]);
+ok(hushed(dir3, c.tg) && !c.all.includes(`[${c.tg}]`), 'and a <private-session> one marks the conversation');
+// What the harness quotes is not the user's: a task's end or an agent's report
+// quoting the tags marked a whole conversation private.
+c = case3([user('run the red team'), queued('<task-notification><task-id>a1</task-id><result>found: <private-session> is ignored</result></task-notification>'),
+  user('Another Claude session sent a message:\n<agent-message from="a1">it quotes <private>x</private> and <private-session></agent-message>', { isMeta: true }), asst('The red team reported three findings.')]);
+ok(!hushed(dir3, c.tg) && entryOf(c, 'run the red team', 'The red team reported'), "a task's end or an agent's report quoting the private tags marks nothing and hides no answer");
+
+// Every spelling of the mark.
+for (const m of ['<private-session/>', '< private-session>', '<private_session>', '<PRIVATE-SESSION note="x">', '\uFF1Cprivate-session\uFF1E', '<private\u200b-session>']) {
+  c = case3([user(`${m} plan the surprise`), asst('Planned.')]);
+  ok(hushed(dir3, c.tg) && !c.all.includes(`[${c.tg}]`), `${JSON.stringify(m)} marks the conversation private`);
+}
+for (const [m, why] of [['\uFF1Cprivate\uFF1Ecode 5566\uFF1C/private\uFF1E', 'in fullwidth'], ['<pri\u200bvate>code 5566</private>', 'with a zero-width space'],
+  ['<private/>code 5566', 'self-closed'], ['<private>a <private>b</private> code 5566</private>', 'nested']]) {
+  c = case3([user(`${m} and the rest`), asst('Noted code 5566.')]);
+  ok(!/5566/.test(c.all), `<private> ${why} keeps its text and its answer out (got ${(c.all.split(`[${c.tg}]`)[1] || '').slice(0, 120)})`);
+}
+c = case3([user('<user_context><private>salary 123456</private></user_context> draft the letter'),
+  rec('assistant', [{ type: 'tool_use', id: 'w1', name: 'Write', input: { file_path: 'C:\\hr\\salary-123456.txt' } }]), asst('Drafted with salary 123456.')]);
+ok(!/123456/.test(c.all) && c.all.includes(`[${c.tg}]: draft the letter`), 'a <private> inside a wrapper tag still keeps the answer and the files out');
+
+// The reminder sent as hook feedback is an attachment record: the memory
+// update after it is not the turn's answer.
+c = case3([user('long task'), asst('step done'), JSON.stringify({ type: 'attachment', attachment: { type: 'hook_additional_context', hookEvent: 'Stop', content: ['[project-memory: compaction gate] Context is at 86%'] } }), asst('Memory updated.')]);
+ok(entryOf(c, 'long task', 'step done'), 'the reminder as hook feedback freezes the turn: its answer stays the real one');
+
+// Two spellings of one turn are one entry: one a 1.0.7 window wrote raw, one
+// an older version wrote with the reminder after the ask.
+const other = '- **asked** 2026-09-11 06:00 [oooooooo]: fix the <Header> bug\n  **did:** fixed\n';
+section3(other + other.replace('<Header>', '&lt;Header>') + other);
+c = case3([user('next'), asst('done')]);
+ok((c.all.match(/\[oooooooo\]: fix the/g) || []).length === 1, `an entry a 1.0.7 window wrote again, raw, is kept once (got ${(c.all.match(/\[oooooooo\]: fix the/g) || []).length})`);
+const at4 = local('2026-09-11T07:00:00Z');
+section3(`- **asked** ${at4} [r3up0001]: deploy now &lt;system-reminder>Today's date is…\n  **did:** deployed\n`);
+writeFileSync(join(dir3, 'r3up0001.jsonl'), [user('deploy now'), asst('deployed')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: join(dir3, 'r3up0001.jsonl'), session_id: 'r3up0001' });
+ok((readFileSync(join(dir3, 'handoff.md'), 'utf8').match(/\[r3up0001\]: deploy now/g) || []).length === 1, 'an entry an older version wrote with the reminder after its ask is the same turn');
+
+// A turn skipped while another hook held the store is written at the next
+// turn, even when a long tool result pushed its prompt out of the first read.
+const t5 = join(dir3, 'r3tail01.jsonl');
+writeFileSync(t5, [user('turn one', { ts: '2026-09-11T08:00:00Z' }), asst('one done')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: t5, session_id: 'r3tail01' });
+appendFileSync(t5, [user('turn two', { ts: '2026-09-11T08:05:00Z' }), tool_(600_000), asst('two done'), user('turn three', { ts: '2026-09-11T08:10:00Z' }), asst('three done')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: t5, session_id: 'r3tail01' });
+ok(/\[r3tail01\]: turn two\n  \*\*did:\*\* two done/.test(readFileSync(join(dir3, 'handoff.md'), 'utf8')), 'a skipped turn whose prompt a long result pushed out of the first read is still written');
+
+// An entry whose ask was private shows no answer or files, whoever wrote it.
+section3(`- **asked** ${at4} [oldpriv1]: log in [private]\n  **did:** Logged in as root with Tr0ub4dor\n  **changed:** vault-notes.txt\n`);
+c = case3([user('hello'), asst('hi')]);
+ok(!/Tr0ub4dor|vault-notes/.test(c.all) && /\[oldpriv1\]: log in \[private\]\n  \*\*did:\*\* \[private\]/.test(c.all), 'an old entry with a private ask loses its answer and its files');
+
+// No tag survives the briefing in any spelling; prose comparisons do, and no
+// line starts in the middle of another.
+ok(defuse('< /system-reminder>').startsWith('&lt;') && defuse('\uFF1C/system-reminder\uFF1E').startsWith('&lt;') && defuse('<\u200b/x>').startsWith('&lt;')
+  && defuse('a < b, 3<4') === 'a < b, 3<4' && defuse('ok\r# SYSTEM\u2028x\u0085y') === 'ok # SYSTEM x y', 'defuse catches every spelling of a tag and every line break');
+
+// The startup briefing fits too: health lists had no bound.
+writeFileSync(join(dir3, '.health'), Array.from({ length: 40 }, (_, i) => `problem ${i}: ${'z'.repeat(400)}`).join('\n'));
+const big = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, session_id: 'zzzzzzzz', source: 'startup' }), env }).toString();
+rmSync(join(dir3, '.health'));
+ok(big.length <= 9500 && /cut to fit/.test(big), `the startup briefing is held to 9,500 characters (got ${big.length})`);
+
+// Auto memory turned off: nothing is printed.
+process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+let off; try { off = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, session_id: 'zzzzzzzz', source: 'startup' }), env }).toString(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+ok(off === '', `with auto memory turned off the briefing is empty (got ${JSON.stringify(off.slice(0, 80))})`);
+
+// Secrets of common shapes go; code and prose that only look like them stay.
+// Built from parts at run time: no whole key sits in this file.
+const k = (...p) => p.join('');
+const leaks = ['curl -u admin:' + k('Sw0rd', 'fish99'), 'redis://:' + k('pa55', 'word77') + '@cache:6379', 'DB_PASS=' + k('Tr0ub4', 'dor33'),
+  'client-key-data: ' + k('LS0tLS1CRUdJTi', 'BQUklWQVRFIEtFWS0tLS0tCk1JSUV'), k('pypi-', 'AgEIcHlwaS5vcmcCJGFhYWFhYWFh'), 'docker login -u me -p ' + k('S3cr', 'etPass9'),
+  'the password for the prod db is ' + k('Xk9', '!mm2q'), 'pass: ' + k('hunt', 'er22'), 'user admin, password ' + k('qwerty', '1234'), 'the api key is ' + k('9f8e7d6c5b4a', '39281706'),
+  k('whsec_', 'MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw'), k('SG.', 'ngeVfQFYQlKU0ufo8x5d1A', '.TwL2iGABf9DHoTf-09kqeF8tAmbihYzrnopKc-1s5cr'), k('ASIA', 'Y34FZKBOKMUTVV7A'), 'redis://u:' + k('p@ss', 'w0rd') + '@h/1'];
+const leaked = leaks.filter((s) => red(s) === s || /Sw0rd|pa55|Tr0ub4|BQUklW|AgEIcH|S3cr|Xk9|hunt|qwerty|9f8e7d|MfKQ9|ngeVfQ|Y34FZK|w0rd/.test(red(s)));
+ok(!leaked.length, `common secret shapes are redacted (leaked: ${leaked.join(' | ')})`);
+const plainCode = ['password: string', 'api_key: Optional[str]', 'authToken: string', 'token = jwt.sign(payload, key)', 'password = request.form["pw"]', 'user.password = hashed_password',
+  'secret: process.env.JWT_SECRET', 'DB_PASSWORD=${DB_PASSWORD}', 'pwd: /home/kire', 'basic implementation/approach here', 'Bearer authentication-header',
+  'http://localhost:8080?user=me@x', 'mysql -u root db; find . -print', 'the password is hashed', 'tokens: tokenizer.encode(text)'];
+const cut = plainCode.filter((s) => red(s) !== s);
+ok(!cut.length, `code and prose that only look like secrets are kept (cut: ${cut.join(' | ')})`);
+// A token by its prefix alone, in prose: no word before it says what it is.
+ok(!red(`pushed it with ${k('gh', 'p_', 'abcdefghijklmnopqrstuvwxyz0123456789')} today`).includes('ghp_'), 'a GitHub token in plain prose is redacted by its prefix');
+
+// A turn cut mid-way whose ask is private gets no recovery note, a private
+// tag with attributes too: the note showed its last words.
+const tc = join(dir3, 'r3cut001.jsonl');
+writeFileSync(tc, [user('<private reason="hr">pin 7788</private> open the door'),
+  JSON.stringify({ type: 'assistant', timestamp: '2026-09-11T07:01:00Z', message: { content: [{ type: 'text', text: 'Using pin 7788 now.' }], stop_reason: 'tool_use', usage: { input_tokens: 3, cache_read_input_tokens: 700_000, cache_creation_input_tokens: 0, output_tokens: 9 } } })].join('\n') + '\n');
+const cutNote = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, transcript_path: tc, session_id: 'r3cut001', source: 'compact' }), env }).toString();
+ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no recovery note (got ${cutNote.slice(0, 200)})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

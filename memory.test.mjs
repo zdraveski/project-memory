@@ -276,10 +276,10 @@ r = cli('doctor');
 ok(r.status === 1 && /^PROBLEM not installed[^\n]*claude plugin install project-memory@project-memory/m.test(r.stdout) && !/settings\.json (does not parse|wires)/.test(r.stdout),
   `doctor: not installed and never run is a problem, with the install; settings.json is not read (got ${r.stdout})`);
 ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
-ok(/^ok +the hooks run from C:\/x, without the plugin installed/m.test(cli('doctor').stdout), 'doctor: hooks that run without the plugin installed are fine');
+ok(/^ok +the hooks run from C:\/x \(no install record: added from claude\.ai, or wired by hand\)/m.test(cli('doctor').stdout), 'doctor: hooks that run with no install record (a claude.ai install, @synced) are fine');
 ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(59_000), s: 'aaaaaaaa', from: 'C:/y' });
 r = cli('doctor');
-ok(r.status === 1 && /^PROBLEM the Stop hook ran twice for one reply[^\n]*The user's fix: claude plugin list/m.test(r.stdout), 'doctor: two runs for one reply, seconds apart, are hooks wired twice');
+ok(r.status === 1 && /^PROBLEM the Stop hook ran twice for one reply[^\n]*The user's fix: remove the project-memory hooks added to settings.json by hand/m.test(r.stdout), 'doctor: two runs for one reply, seconds apart, are hooks wired twice');
 ranLog({ at: ago(120_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(59_000), s: 'bbbbbbbb', from: 'C:/x' });
 ok(!/ran twice/.test(cli('doctor').stdout), 'doctor: replies a minute apart, and two conversations at once, are not');
 // A /compact typed right after a reply runs the same --stop as PreCompact, and
@@ -391,5 +391,21 @@ const sharedIdx = join(shared, 'MEMORY.md');
 if (!/\]\(MEMORY-archive\.md\)/.test(readFileSync(sharedIdx, 'utf8'))) writeFileSync(sharedIdx, readFileSync(sharedIdx, 'utf8').replace(/\n*$/, '\n') + '- [Archive](MEMORY-archive.md) — 0 older pointers\n');
 r = cli('promote', 'late-lesson');
 ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.test(readFileSync(sharedIdx, 'utf8')), `a promoted line goes in before the archive line (got ${readFileSync(sharedIdx, 'utf8')})`);
+
+// Round 3 (2026-10-27).
+{
+  // A lesson promoted into a full shared index is archived at the next reply,
+  // and no session start prints it: promote says so, and how to keep it.
+  const sharedIdx3 = join(shared, 'MEMORY.md');
+  writeFileSync(sharedIdx3, readFileSync(sharedIdx3, 'utf8').replace(/\n*$/, '\n') + Array.from({ length: 40 }, (_, i) => `- [Filler ${i}](filler-${i}.md) — ${'f'.repeat(80)}`).join('\n') + '\n');
+  writeFileSync(join(dir, 'old-lesson.md'), '---\nname: old-lesson\ndescription: "an old lesson"\nmetadata:\n  type: feedback\n  modified: 2026-01-01\n---\nbody\n');
+  const full = cli('promote', 'old-lesson');
+  ok(full.status === 0 && /of its 3000 bytes/.test(full.stdout) && /tier: hot/.test(full.stdout) && !/every project's sessions see its line/.test(full.stdout),
+    `promote into a full shared index says the line may be archived, and how to keep it (got ${full.stdout.trim()})`);
+  // Auto memory turned off: doctor says so, and judges nothing that needs the hooks.
+  process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+  let offDoc; try { offDoc = cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  ok(/auto memory is off/.test(offDoc.stdout) && !/Stop hook is not running|ran twice/.test(offDoc.stdout), `doctor says auto memory is off, and stops there (got ${offDoc.stdout.trim()})`);
+}
 
 console.log(`memory: ${checks} checks passed`);
