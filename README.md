@@ -37,7 +37,7 @@ project-memory looks after that notebook.
 |---|---|
 | You start a new conversation and explain again where you were. | Claude starts already knowing where the last conversation stopped. |
 | When the notebook's table of contents gets too long, Claude Code asks Claude to shorten it, and Claude decides what to merge or drop. | The table of contents is kept short for Claude, and nothing is dropped. Older lines move to an archive that Claude can still search. |
-| A very long conversation is shortened to a summary, and details of the task in progress can get lost. | Claude saves its notes before that happens, and afterwards it's told exactly what you asked and what it last said. |
+| A very long conversation is shortened to a summary, and details of the task in progress can get lost. | Claude saves its notes before that happens, and afterwards it's told what you asked and what it last said. |
 | A note deleted or overwritten by mistake is gone for good. | Every version of every note is kept. Ask Claude, and it brings one back. |
 | You teach Claude how you like to work again in every project. | Lessons that apply everywhere are shared with all your projects. |
 | Two Claude windows on the same project can overwrite each other's notes. | No window overwrites another's notes, and each new conversation is told what the other windows are doing. |
@@ -119,6 +119,8 @@ needs one setting to fire. See [Compaction](docs/how-it-works.md#compaction).
   Claude can still find those notes, and every change is in the history.
 - **What it costs.** Each conversation starts with a short briefing, usually
   under 1,000 tokens: about half a percent of a 200,000-token context window.
+  After a compaction the briefing also repeats the latest exchanges, so it can
+  reach about 3,000 tokens.
   In return, the table of contents Claude reads at every start stays under
   7,000 characters. Claude Code allows up to 25,000.
 - **Where it works.** On Windows, macOS and Linux, wherever Claude Code runs on
@@ -133,9 +135,9 @@ needs one setting to fire. See [Compaction](docs/how-it-works.md#compaction).
 Claude Code's own memory keeps improving. It now asks Claude to shorten the
 table of contents when it nears its limit, and after a compaction it reloads
 your notes, re-reads recent files and reminds Claude of jobs still running.
-project-memory adds what it still doesn't do: the record of where you left
-off, every version of every note, a shared notebook for all your projects, and
-care with several windows open.
+project-memory adds what it still doesn't do: a new conversation that starts
+knowing where the last one stopped, every version of every note, a shared
+notebook for all your projects, and care with several windows open.
 
 project-memory isn't the only add-on either. This table compares it with five
 popular tools, going only by each one's own documentation on 27 October 2026.
@@ -185,14 +187,14 @@ Two more are worth knowing about:
 - **[memory-toolkit](https://github.com/IlyaGorsky/memory-toolkit)** is a
   Claude Code plugin that works on the same notebook. It sorts your work into
   "workstreams", each with its own record of where you left off. It also logs
-  your git commits into daily notes and saves your branch and unsaved changes
-  before a compaction. Every few minutes it sends the latest part of the
+  your git commits into daily notes, and before a compaction it notes your
+  branch and the changes you haven't committed yet. Every few minutes it sends the latest part of the
   conversation to Claude's small Haiku model, which picks out corrections,
   decisions and plans.
 - **[MemPalace](https://github.com/milla-jovovich/mempalace)** keeps your
-  conversations word for word and searches them by meaning, with no AI calls.
-  It runs in Python with a ChromaDB database, and Claude reaches it as an MCP
-  server (a tool Claude can call).
+  conversations word for word and searches them by meaning, without calling
+  any online service. It runs in Python with a ChromaDB database, and Claude
+  reaches it as an MCP server (a tool Claude can call).
 
 ## Before you install
 
