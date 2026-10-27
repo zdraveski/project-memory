@@ -18,8 +18,7 @@ messages shortened to fit.*
 Every new conversation in Claude Code starts fresh. To carry things over,
 Claude Code keeps a notebook for each project (it calls this *auto memory*),
 where Claude writes down your preferences, decisions and corrections.
-project-memory looks after that notebook, so Claude remembers more and loses
-less.
+project-memory looks after that notebook.
 
 | Without project-memory | With project-memory |
 |---|---|
@@ -62,10 +61,10 @@ difference.
 
 ## Long conversations and compaction
 
-Claude can only keep so much of a conversation in view at once: your
-messages, its replies, and everything it has read or run along the way. This
-space is called the *context window*. Think of it as a desk. When the desk is
-full, something has to go.
+Claude has a limited amount of room for a conversation, like a desk that only
+holds so many papers. Everything has to fit on it: your messages, its replies,
+and everything it has read or run along the way. This room is called the
+*context window*.
 
 When a conversation nearly fills the context window, Claude Code makes room on
 its own. It replaces the older part of the conversation with a short summary,
@@ -91,9 +90,8 @@ project-memory protects your work before, during and after:
    was in the middle of: what you asked, what it last said, any background
    jobs still running, and the files it had changed.
 
-For you, this means long tasks keep their thread, you don't have to explain
-things again after a summary, and Claude is less likely to redo work it had
-already started.
+Long tasks keep their thread, you don't have to explain things again after a
+summary, and Claude is less likely to redo work it had already started.
 
 The reminder at 85% assumes a large context window of 1,000,000 tokens (a
 token is about three quarters of a word). If yours is smaller, the reminder
