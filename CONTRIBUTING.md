@@ -42,13 +42,16 @@ Beyond the suites:
 - Keep the numbers at the top of each file; the comments say why each is
   what it is.
 - Add a test with the change, and a mutant for any new rule.
+- Don't run the `claude` command, read a credential, or connect to anything.
+  The plugin directory's security scan holds a plugin that does.
 
 ## Releasing
 
 1. Bump `version` in `.claude-plugin/plugin.json` and add the entry to
    `CHANGELOG.md`.
-2. Push to `master` and wait for CI to pass on every job.
-3. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release.
+2. Run `claude plugin validate . --strict`. It should find nothing to report.
+3. Push to `master` and wait for CI to pass on every job.
+4. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release.
 
 ## The author's setup
 
@@ -56,5 +59,6 @@ The author keeps this repository at `~/.claude/hooks` and runs the hooks from
 a checked copy. `node deploy.mjs` runs every check above, then copies the
 plugin to `~/.claude/hooks-live`, which also serves as a local marketplace.
 `node wire.mjs --plugin` or `--settings` switches between that plugin and
-hook entries in `settings.json`. None of this is needed to use or to change
-the plugin.
+hook entries in `settings.json`. It installs nothing itself: when the plugin
+has to be installed or uninstalled first, it prints the `claude plugin`
+command to run. None of this is needed to use or to change the plugin.

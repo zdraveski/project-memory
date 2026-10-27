@@ -14,7 +14,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { hash } from './handoff-log.mjs';
 import { BUSY, sleep } from './store.mjs';
-import { PLUGIN, LIVE, installPath, pluginRoot, deployedCommit, claude as cli } from './memory.mjs';
+import { LIVE, installPath, pluginRoot, deployedCommit } from './memory.mjs';
 
 // The hooks, the CLI, and the plugin around them: the live copy is also the
 // project-memory plugin's root and its marketplace. Installed from there, the
@@ -87,10 +87,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     execFile(process.execPath, [`${t}.test.mjs`], { cwd: repo, encoding: 'utf8' }, (e, out, err) => done(e && `${t}.test: ${(err + out).trim().split('\n').slice(-3).join(' | ')}`)))));
   if (suites.some(Boolean)) { console.log('FAILED'); fail(suites.filter(Boolean).join('; ')); }
   console.log('ok');
-  // The live copy is a plugin too: a manifest Claude Code refuses loads none of it.
-  let claude = true;
-  try { cli(['--version']); } catch { claude = false; }
-  if (claude) step('plugin validate', () => cli(['plugin', 'validate', repo]));
+  // The manifest is checked with `claude plugin validate . --strict` before a
+  // release (CONTRIBUTING.md), not here: the plugin runs no signed-in claude CLI,
+  // which the plugin directory's security scan holds.
   step('mutation check (~8 min)', () => node('mutate.mjs'));
   step('soak', () => node('memory-tier.soak.mjs'));
   step('break harness', () => {
@@ -112,12 +111,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   install(repo, LIVE, commit, Number(git('rev-list', '--count', 'HEAD')), process.execPath);
   console.log(`deployed ${commit} to ${LIVE}`);
   // Installed as a plugin: it reads the live copy in place, so this deploy is
-  // already what it runs. The cache copy beside it is refreshed too, in case a
-  // Claude Code reads that one; the live copy is written either way, so a
-  // failure here only warns -- said, not swallowed.
+  // already what it runs. The cache copy beside it is not refreshed (that took
+  // `claude plugin update`); nothing runs it.
   if (installPath()) {
-    try { cli(['plugin', 'update', PLUGIN]); }
-    catch (e) { console.log(`warning: claude plugin update failed (${String(e.stderr || e.message).trim().split('\n')[0]}): the cache copy beside ${LIVE} is stale`); }
     const ran = deployedCommit(pluginRoot());
     console.log(ran === commit ? `the plugin runs ${commit} from ${pluginRoot()}` : `warning: the plugin runs ${ran || 'an unknown copy'} from ${pluginRoot()}, not ${commit}: node memory.mjs doctor says why`);
   }

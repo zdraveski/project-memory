@@ -15,7 +15,7 @@ folder above it with one) unless --store or --shared says otherwise.`;
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, unlinkSync, realpathSync } from 'node:fs';
 import { join, relative, basename, dirname } from 'node:path';
 import { homedir } from 'node:os';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, front, allStores, same } from './store.mjs';
 import { sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip } from './handoff-log.mjs';
@@ -40,17 +40,6 @@ export const installPath = () => plugins('installed_plugins.json')?.plugins?.[in
 // the cache copy only sits beside it (measured 2026-10-27, Claude Code 2.1.311).
 export const marketplace = () => plugins('known_marketplaces.json')?.[installedId()?.split('@')[1]]?.source ?? null;
 export const pluginRoot = () => installPath() && (marketplace()?.source === 'directory' ? marketplace().path : installPath());
-// The claude CLI. claude.exe takes its arguments with no shell between; an npm
-// install puts a .cmd shim there instead, which Node starts only through a
-// shell: then one command line, quoted here (every argument is our own).
-export function claude(args) {
-  const opts = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] };
-  try { return execFileSync('claude', args, opts); }
-  catch (e) {
-    if (process.platform !== 'win32' || (e.code !== 'ENOENT' && e.code !== 'EINVAL')) throw e;
-    return execSync(['claude', ...args.map((a) => `"${a}"`)].join(' '), opts);
-  }
-}
 // The commit deploy.mjs checked and copied into a folder.
 export const deployedCommit = (dir) => json(join(dir, '.deployed.json'))?.commit ?? null;
 

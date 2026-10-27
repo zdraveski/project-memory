@@ -1,10 +1,14 @@
 {
   "name": "project-memory",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "displayName": "Project Memory",
   "description": "Helps Claude remember your work between conversations. It picks up where you left off, keeps every version of its notes so a lost one can come back, and shares lessons across all your projects.",
   "author": { "name": "zdraveski", "url": "https://github.com/zdraveski" },
   "homepage": "https://github.com/zdraveski/project-memory",
+  "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://github.com/zdraveski/project-memory#readme",
+  "supportUrl": "https://github.com/zdraveski/project-memory/issues",
+  "privacyPolicyUrl": "https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md",
   "repository": "https://github.com/zdraveski/project-memory",
   "license": "MIT",
   "keywords": ["memory", "handoff", "compaction", "recall", "parallel-sessions", "hooks"]

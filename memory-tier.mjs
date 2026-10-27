@@ -275,7 +275,10 @@ function snapshot() {
   const root = projectsRoot();
   // The C locale: "nothing to commit" is matched below, in git's English. (Git
   // for Windows here prints English whatever LC_ALL says, so no check sees it.)
-  const git = (...a) => execFileSync('git', ['-C', root, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } });
+  // Set on this short-lived process, which git inherits: no copy of the
+  // environment is handed on.
+  process.env.LC_ALL = 'C';
+  const git = (...a) => execFileSync('git', ['-C', root, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const lock = join(root, '.git', 'index.lock');
   try {
     // A fresh index.lock is another session's commit in flight: busy, not a

@@ -245,7 +245,9 @@ const suites = {
     'settings take the checkout\'s entries': ["rewire(settings, LIVE, process.execPath, live)", 'rewire(settings)'],
     'rewire doubles the entries': ['const base = unwire(settings), hooks', 'const base = settings, hooks'],
     'a dry run writes': ['if (dry) process.exit(0);', ''],
-    'a failed uninstall puts the entries back': ["if (mode === 'settings' && enabled()) fail(", 'if (false) fail('],
+    'entries put back while the plugin is enabled': ["if (mode === 'settings' && enabled) fail(", 'if (false) fail('],
+    'entries dropped before the plugin is enabled': ["if (mode === 'plugin' && !enabled) fail(", 'if (false) fail('],
+    'the switch writes nothing': ['if (replaceIfUnchanged(SETTINGS, text, ', 'if (false && replaceIfUnchanged(SETTINGS, text, '],
   }],
   'hooks/hooks.json': ['wire.test.mjs', {
     'the plugin starts handoff-log without --print': ['handoff-log.mjs", "--print"]', 'handoff-log.mjs"]'],

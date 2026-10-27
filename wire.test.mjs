@@ -58,11 +58,27 @@ ok(run.status === 0 && /settings\.json runs now:\n  PreCompact \(manual\)/.test(
 ok(spawnSync(process.execPath, [tool('wire.mjs')], { env, encoding: 'utf8' }).status === 1, 'no mode is a usage error');
 const toSettings = spawnSync(process.execPath, [tool('wire.mjs'), '--settings', '--dry-run'], { env, encoding: 'utf8' });
 ok(toSettings.status === 0 && /it would run:[^]*memory-tier\.mjs --stop --deployed/.test(toSettings.stdout), `--settings takes the live copy's entries, not this checkout's (got ${toSettings.stdout.split('it would run:')[1]?.trim().split('\n')[1]})`);
-// An uninstall that fails (no claude on PATH here) leaves the plugin enabled:
-// putting the entries back would run every hook twice.
-const pluginOn = JSON.stringify({ ...u, enabledPlugins: { 'project-memory@project-memory': true } });
-writeFileSync(path, pluginOn);
-const back = spawnSync(process.execPath, [tool('wire.mjs'), '--settings'], { env: { ...env, PATH: '', Path: '' }, encoding: 'utf8' });
-ok(back.status === 1 && /still enabled/.test(back.stderr) && readFileSync(path, 'utf8') === pluginOn, '--settings refuses while the plugin is still enabled, and changes nothing');
+// The plugin's state decides, and wire installs nothing: it says which claude
+// plugin command to run first. Entries dropped before the plugin is enabled
+// leave no hook running; entries put back while it is, every hook twice.
+const wire = (mode) => spawnSync(process.execPath, [tool('wire.mjs'), mode], { env, encoding: 'utf8' });
+const before = JSON.stringify(settings);
+writeFileSync(path, before);
+let w = wire('--plugin');
+ok(w.status === 1 && /not enabled yet[^]*claude plugin install project-memory@project-memory/.test(w.stderr) && readFileSync(path, 'utf8') === before,
+  `--plugin refuses until the plugin is enabled, says how to install it, and changes nothing (got ${w.stderr.trim()})`);
+const pluginOn = { ...settings, enabledPlugins: { ...settings.enabledPlugins, 'project-memory@project-memory': true } };
+writeFileSync(path, JSON.stringify(pluginOn));
+w = wire('--settings');
+ok(w.status === 1 && /still enabled[^]*claude plugin uninstall project-memory@project-memory/.test(w.stderr) && readFileSync(path, 'utf8') === JSON.stringify(pluginOn),
+  '--settings refuses while the plugin is still enabled, says how to uninstall it, and changes nothing');
+w = wire('--plugin');
+const plugged = JSON.parse(readFileSync(path, 'utf8'));
+ok(w.status === 0 && ourCount(plugged) === 0 && commands(plugged).includes('rtk hook claude') && plugged.enabledPlugins['project-memory@project-memory'] && plugged.env.X === '1',
+  `with the plugin enabled, --plugin drops these hooks' entries and keeps every other hook and key (got ${w.stderr.trim()})`);
+writeFileSync(path, JSON.stringify(u));
+w = wire('--settings');
+const wired = JSON.parse(readFileSync(path, 'utf8'));
+ok(w.status === 0 && ourCount(wired) === 4 && commands(wired).some((c) => c.endsWith('--deployed')), "with the plugin gone, --settings puts the live copy's four entries back");
 
 console.log(`wire: ${checks} checks passed`);

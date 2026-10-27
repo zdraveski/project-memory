@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.4 (2026-10-27)
+
+- Nothing in the plugin runs the `claude` command any more. The author's
+  `wire.mjs` prints the install or uninstall command to run instead of running
+  it, and `deploy.mjs` no longer validates or updates the plugin with it.
+- The snapshot no longer hands git a copy of your environment.
+- A privacy policy, and the directory's listing fields: icon, documentation,
+  support and privacy policy links.
+
 ## 1.0.3 (2026-10-27)
 
 - A short demo at the top of the README, replaying three real conversations

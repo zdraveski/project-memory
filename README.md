@@ -164,6 +164,8 @@ back.
   Claude's replies, and the history keeps old versions of every note. If you
   copy or share your `.claude` folder, all of that goes with it.
 
+The full details are in the [privacy policy](PRIVACY.md).
+
 ## Removing it
 
 In Claude Code, type:

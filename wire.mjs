@@ -5,15 +5,18 @@
 // race each other for the same store.
 //
 // Run: node wire.mjs --plugin | --settings [--dry-run]
-//   --plugin    install the plugin from the live copy, then drop the settings.json entries
-//   --settings  uninstall the plugin, then put the settings.json entries back
-// settings.json is backed up beside itself first. Deploy before --plugin.
+//   --plugin    once the plugin is installed from the live copy, drop the settings.json entries
+//   --settings  once the plugin is uninstalled, put the settings.json entries back
+// It installs and uninstalls nothing: when the plugin is not in the state the
+// switch needs, it prints the claude plugin command to run first. (Running the
+// signed-in claude CLI from the plugin is what the plugin directory's security
+// scan holds.) settings.json is backed up beside itself first. Deploy before --plugin.
 import { readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { replaceIfUnchanged, raw } from './store.mjs';
-import { PLUGIN, LIVE, ours, claude } from './memory.mjs';
+import { PLUGIN, LIVE, ours } from './memory.mjs';
 
 const SETTINGS = join(homedir(), '.claude', 'settings.json');
 // The plugin's own wiring is the one table: settings.json gets the same
@@ -64,26 +67,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   console.log(`settings.json runs now:\n  ${handlers(settings).join('\n  ') || '(none of these hooks)'}`);
   console.log(`${dry ? 'it would run' : 'and from now'}:\n  ${handlers(want).join('\n  ') || '(none: the plugin runs them)'}`);
   if (dry) process.exit(0);
+  // The plugin's state decides: entries dropped before it is installed leave no
+  // hook running, and entries put back while it is enabled run every hook twice.
+  const enabled = settings.enabledPlugins?.[PLUGIN] === true;
+  if (mode === 'settings' && enabled) fail(`${PLUGIN} is still enabled; settings.json unchanged. Uninstall it first, then run this again:\n  claude plugin uninstall ${PLUGIN} --scope user`);
+  if (mode === 'plugin' && !enabled) fail(`${PLUGIN} is not enabled yet; settings.json unchanged. Install it first, then run this again:\n  claude plugin marketplace add "${LIVE}"\n  claude plugin install ${PLUGIN} --scope user`);
   const backup = `${SETTINGS}.bak-${new Date().toISOString().replace(/[:.]/g, '-')}`;
   if (text !== null) writeFileSync(backup, text);
-  const enabled = () => { try { return JSON.parse(read() ?? '{}').enabledPlugins?.[PLUGIN] === true; } catch { return false; } };
-  try {
-    if (mode === 'plugin') {
-      // Installed first: a failed install leaves the settings.json wiring running.
-      try { claude(['plugin', 'marketplace', 'add', LIVE]); } catch {}   // already added is no failure; the install says if it is
-      claude(['plugin', 'install', PLUGIN, '--scope', 'user']);
-    } else {
-      try { claude(['plugin', 'uninstall', PLUGIN, '--scope', 'user']); } catch {}
-    }
-  } catch (e) { fail(`claude plugin: ${String(e.stderr || e.message).trim().split('\n')[0]}; settings.json unchanged`); }
-  // Either way the plugin's state decides, not the CLI's exit: an uninstall
-  // that failed quietly, with the entries put back, wired every hook twice.
-  if (mode === 'settings' && enabled()) fail(`${PLUGIN} is still enabled (claude plugin uninstall failed?); settings.json unchanged`);
-  if (mode === 'plugin' && !enabled()) fail(`${PLUGIN} did not end up enabled; settings.json unchanged`);
-  // The CLI rewrote settings.json (enabledPlugins): edit what it wrote.
-  const now = read();
-  const next = JSON.stringify(mode === 'plugin' ? unwire(JSON.parse(now ?? '{}')) : rewire(JSON.parse(now ?? '{}'), LIVE, process.execPath, live), null, 2) + '\n';
-  if (replaceIfUnchanged(SETTINGS, now, next) === 'conflict') fail('settings.json changed meanwhile: run again');
+  if (replaceIfUnchanged(SETTINGS, text, JSON.stringify(want, null, 2) + '\n') === 'conflict') fail('settings.json changed meanwhile: run again');
   console.log(`wired by ${mode === 'plugin' ? `the ${PLUGIN} plugin` : 'settings.json'}; backup ${backup}.`);
   // Claude Code's file watcher applies a settings.json hook edit to running
   // sessions at once; a plugin loads only at a session's start or /reload-plugins.
