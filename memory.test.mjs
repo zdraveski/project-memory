@@ -210,6 +210,15 @@ symlinkSync(dirname(CLI), join(home, 'linked-cli'), 'junction');
 r = spawnSync(process.execPath, [join(home, 'linked-cli', 'memory.mjs'), 'status', '--store', dir], { env, encoding: 'utf8' });
 ok(r.stdout.includes(dir), `the CLI run through a symlinked folder still runs (got ${JSON.stringify(r.stdout + r.stderr)})`);
 
+// The plugin's own wiring, hooks/hooks.json: the four hooks, each with its
+// matcher and its flag, run by node from the plugin's folder.
+const hookFile = JSON.parse(readFileSync(tool('hooks/hooks.json'), 'utf8'));
+const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((e) => e.hooks.map((x) =>
+  `${ev} | ${e.matcher || ''} | ${x.command} ${(x.args || []).join(' ')}`))).sort();
+ok(JSON.stringify(wiring) === JSON.stringify(['PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop',
+  'SessionStart | startup|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/handoff-log.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
+  `the plugin wires the four hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
+
 // 5. Doctor: what is installed and what ran, never settings.json (it can
 // hold the user's keys). A settings.json that does not even parse goes unsaid.
 writeFileSync(join(home, '.claude', 'settings.json'), '{ not json: doctor never reads this');

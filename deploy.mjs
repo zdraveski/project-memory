@@ -1,11 +1,10 @@
 #!/usr/bin/env node
-// The only way the hooks go live. settings.json runs them from
-// ~/.claude/hooks-live, as does the plugin installed from there, never from this
-// repo: run from here, an edit was live in every session before any test saw
-// it (2026-10-26). This refuses hooks
-// with uncommitted changes, runs the full check, then copies them over and
-// writes a manifest of their hashes; handoff-log's startup line names any live
-// file that no longer matches it.
+// The only way the hooks go live. The plugin installed from ~/.claude/hooks-live
+// runs them from there, never from this repo: run from here, an edit was live
+// in every session before any test saw it (2026-10-26). This refuses hooks with
+// uncommitted changes, runs the full check, then copies them over and writes a
+// manifest of their hashes; handoff-log's startup line names any live file that
+// no longer matches it.
 //
 // Run: node deploy.mjs [--tiering-change]   (from this repo; ~9 minutes)
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSync, realpathSync } from 'node:fs';
@@ -29,8 +28,8 @@ const HOOKS = ['store.mjs', 'handoff-log.mjs', 'compact-gate.mjs', 'memory-tier.
 // shortcut: not all at once -- a hook starting in the milliseconds between
 // renames can load one new file beside an old one; deploys are rare.
 // `patch` stamps the plugin's version: the same version is never re-copied.
-// `node` names the node that runs the live hooks, as settings.json's entries
-// always did: a Claude Code started without node on its PATH (the desktop app,
+// `node` names the node that runs the live hooks, as the hook entries once
+// did: a Claude Code started without node on its PATH (the desktop app,
 // a service) would run none of them, and the startup line that says so is a
 // hook too. The repo's hooks.json keeps plain `node`.
 export function install(from, to, commit, patch, node) {
@@ -83,7 +82,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // The six suites side by side, each in its own throwaway HOME: one after
   // another they were a minute of the gate.
   process.stdout.write('the six suites ... ');
-  const suites = await Promise.all(['store', 'handoff-log', 'compact-gate', 'memory-tier', 'memory', 'wire'].map((t) => new Promise((done) =>
+  const suites = await Promise.all(['store', 'handoff-log', 'compact-gate', 'memory-tier', 'memory'].map((t) => new Promise((done) =>
     execFile(process.execPath, [`${t}.test.mjs`], { cwd: repo, encoding: 'utf8' }, (e, out, err) => done(e && `${t}.test: ${(err + out).trim().split('\n').slice(-3).join(' | ')}`)))));
   if (suites.some(Boolean)) { console.log('FAILED'); fail(suites.filter(Boolean).join('; ')); }
   console.log('ok');

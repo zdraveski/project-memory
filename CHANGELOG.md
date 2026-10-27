@@ -8,6 +8,9 @@
   mean project-memory is set up twice.
 - The tests build their made-up keys and passwords while they run, so no file
   in the repository looks like it holds a secret.
+- `wire.mjs`, the author's switch between the plugin and hook entries in
+  `settings.json`, is removed. Nothing in the repository reads
+  `settings.json` now.
 
 ## 1.0.6 (2026-10-27)
 

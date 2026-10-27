@@ -22,4 +22,3 @@ jobs:
       - run: node handoff-log.test.mjs
       - run: node memory-tier.test.mjs
       - run: node memory.test.mjs
-      - run: node wire.test.mjs

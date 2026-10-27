@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import { tool, tempDir } from './harness.mjs';
 
 // Every file a suite may import, copied beside the mutant.
-const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs', 'wire.mjs',
+const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs',
   '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md'];
 
 const suites = {
@@ -283,17 +283,7 @@ const suites = {
     'doctor: two conversations read as one': ['r.s && r.s === rs[i - 1].s', 'r.s'],
     'doctor: an orphaned pack index unseen': [".endsWith('.idx') && !packs.includes(", ".endsWith('.never') && !packs.includes("],
   }],
-  'wire.mjs': ['wire.test.mjs', {
-    'unwire drops a foreign hook': ['.filter((h) => !ours(h))', '.filter(() => false)'],
-    'an emptied entry kept': ['.filter((e) => e.hooks.length);', ';'],
-    'settings take the checkout\'s entries': ["rewire(settings, LIVE, process.execPath, live)", 'rewire(settings)'],
-    'rewire doubles the entries': ['const base = unwire(settings), hooks', 'const base = settings, hooks'],
-    'a dry run writes': ['if (dry) process.exit(0);', ''],
-    'entries put back while the plugin is enabled': ["if (mode === 'settings' && enabled) fail(", 'if (false) fail('],
-    'entries dropped before the plugin is enabled': ["if (mode === 'plugin' && !enabled) fail(", 'if (false) fail('],
-    'the switch writes nothing': ['if (replaceIfUnchanged(SETTINGS, text, ', 'if (false && replaceIfUnchanged(SETTINGS, text, '],
-  }],
-  'hooks/hooks.json': ['wire.test.mjs', {
+  'hooks/hooks.json': ['memory.test.mjs', {
     'the plugin starts handoff-log without --print': ['handoff-log.mjs", "--print"]', 'handoff-log.mjs"]'],
     'the plugin forgets the auto compaction gate': ['"matcher": "auto"', '"matcher": "never"'],
     '/clear left out of the matcher': ['"matcher": "startup|clear|compact"', '"matcher": "startup|compact"'],

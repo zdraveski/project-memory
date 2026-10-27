@@ -14,10 +14,9 @@ node compact-gate.test.mjs
 node handoff-log.test.mjs
 node memory-tier.test.mjs
 node memory.test.mjs
-node wire.test.mjs
 ```
 
-CI runs all six on Linux, macOS and Windows, with Node 20 and 24.
+CI runs all five on Linux, macOS and Windows, with Node 20 and 24.
 
 Beyond the suites:
 
@@ -57,8 +56,8 @@ Beyond the suites:
 
 The author keeps this repository at `~/.claude/hooks` and runs the hooks from
 a checked copy. `node deploy.mjs` runs every check above, then copies the
-plugin to `~/.claude/hooks-live`, which also serves as a local marketplace.
-`node wire.mjs --plugin` or `--settings` switches between that plugin and
-hook entries in `settings.json`. It installs nothing itself: when the plugin
-has to be installed or uninstalled first, it prints the `claude plugin`
-command to run. None of this is needed to use or to change the plugin.
+plugin to `~/.claude/hooks-live`, which also serves as a local marketplace
+the plugin is installed from. None of this is needed to use or to change the
+plugin. Nothing in the repository reads Claude Code's `settings.json`: the
+switch between the plugin and hook entries there, `wire.mjs`, was removed
+after the move to the plugin (it is in the history before 1.0.7).

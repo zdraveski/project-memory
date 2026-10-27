@@ -23,12 +23,10 @@ import { sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local,
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
 
-// What wire.mjs and deploy.mjs need to agree with doctor about, defined once:
-// the plugin, the live copy, which handlers are these hooks, and what runs.
+// What deploy.mjs needs to agree with doctor about, defined once: the plugin,
+// the live copy, and what runs.
 export const PLUGIN = 'project-memory@project-memory';
 export const LIVE = join(homedir(), '.claude', 'hooks-live');
-const HOOK_FILES = ['memory-tier.mjs', 'handoff-log.mjs', 'compact-gate.mjs'];
-export const ours = (h) => [h.command, ...(h.args || [])].some((c) => HOOK_FILES.some((f) => String(c || '').includes(f)));
 const json = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
 const plugins = (f) => json(join(homedir(), '.claude', 'plugins', f));
 // The installed plugin's id, from whichever marketplace added it: this repo's
@@ -322,7 +320,7 @@ export function doctor() {
     }
     // Added from anywhere but the live copy (the repo, a worktree), it runs
     // untested edits, and no plugin update fixes that.
-    else if (marketplace()?.source === 'directory' && !same(at, LIVE)) say(false, `the plugin is read from ${at}, not the live copy. The user's fix: claude plugin marketplace remove ${installedId().split('@')[1]}, then in ~/.claude/hooks node wire.mjs --plugin`);
+    else if (marketplace()?.source === 'directory' && !same(at, LIVE)) say(false, `the plugin is read from ${at}, not the live copy. The user's fix: claude plugin marketplace remove ${installedId().split('@')[1]}, then claude plugin marketplace add "${LIVE}" and claude plugin install ${PLUGIN}`);
     else if (deployedCommit(at) !== deployedCommit(LIVE)) say(false, `the plugin runs ${deployedCommit(at) || 'an undeployed copy'} from ${at}, the last deploy is ${deployedCommit(LIVE)}. The user's fix: claude plugin update ${PLUGIN}`);
     else { const e = edited(at); say(!e.length, e[0] || `the plugin runs the last deploy, ${deployedCommit(at)}, from ${at}`); }
   }
