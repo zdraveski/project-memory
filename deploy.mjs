@@ -79,9 +79,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   if (git('rev-parse', '--abbrev-ref', 'HEAD') !== 'master') fail('deploy from master: the manifest names this folder as the place to edit');
   if (dirty()) fail('uncommitted changes: commit first');
   const commit = git('rev-parse', '--short', 'HEAD');
-  // The six suites side by side, each in its own throwaway HOME: one after
+  // The five suites side by side, each in its own throwaway HOME: one after
   // another they were a minute of the gate.
-  process.stdout.write('the six suites ... ');
+  process.stdout.write('the five suites ... ');
   const suites = await Promise.all(['store', 'handoff-log', 'compact-gate', 'memory-tier', 'memory'].map((t) => new Promise((done) =>
     execFile(process.execPath, [`${t}.test.mjs`], { cwd: repo, encoding: 'utf8' }, (e, out, err) => done(e && `${t}.test: ${(err + out).trim().split('\n').slice(-3).join(' | ')}`)))));
   if (suites.some(Boolean)) { console.log('FAILED'); fail(suites.filter(Boolean).join('; ')); }
