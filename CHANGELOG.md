@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3 (2026-10-27)
+
+- A short demo at the top of the README, replaying three real conversations
+- The README explains what you get, who it's for, and a week with the plugin
+- A display name, "Project Memory", and a plain-language description for the
+  plugin directory
+
 ## 1.0.2 (2026-10-27)
 
 - `doctor` no longer reports a problem right after you install. Until Claude
