@@ -1,3 +1,5 @@
+<img src=".claude-plugin/icon.png" alt="" width="96" align="right">
+
 # project-memory
 
 Memory for Claude Code that holds up when you run several sessions at once,
