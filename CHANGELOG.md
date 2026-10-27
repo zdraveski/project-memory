@@ -8,6 +8,8 @@
 - The snapshot no longer hands git a copy of your environment.
 - A privacy policy, and the directory's listing fields: icon, documentation,
   support and privacy policy links.
+- The README explains the context window and auto-compaction, and how the
+  plugin protects your work before, during and after one.
 
 ## 1.0.3 (2026-10-27)
 

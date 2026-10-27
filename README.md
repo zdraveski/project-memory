@@ -60,6 +60,45 @@ difference.
 - **Friday.** You open a different project. Claude already knows you like
   short, plain answers, because you shared that lesson with all your projects.
 
+## Long conversations and compaction
+
+Claude can only keep so much of a conversation in view at once: your
+messages, its replies, and everything it has read or run along the way. This
+space is called the *context window*. Think of it as a desk. When the desk is
+full, something has to go.
+
+When a conversation nearly fills the context window, Claude Code makes room on
+its own. It replaces the older part of the conversation with a short summary,
+then carries on. This is called *auto-compaction*. You can also do it yourself
+at any time by typing `/compact`.
+
+A summary keeps the gist, but details get lost. And because Claude Code checks
+for room before every step, it can compact in the middle of a task. Claude may
+then forget a background job it was waiting for, a change it was about to
+save, or the notes it meant to write when it finished.
+
+project-memory protects your work before, during and after:
+
+1. **Before.** When a conversation is about 85% full, Claude is asked once to
+   write its notes, so what's worth keeping is saved before any summary is
+   made. When you type `/compact` yourself, the notes are tidied and the
+   record of where you are is saved first.
+2. **During.** If Claude Code starts to compact in the middle of a task,
+   project-memory asks it to wait until Claude finishes what it's doing and
+   hands back to you, when there's still room to wait. Claude Code doesn't
+   always agree.
+3. **After.** If a task is cut off anyway, Claude is told straight away what it
+   was in the middle of: what you asked, what it last said, any background
+   jobs still running, and the files it had changed.
+
+For you, this means long tasks keep their thread, you don't have to explain
+things again after a summary, and Claude is less likely to redo work it had
+already started.
+
+The reminder at 85% assumes a large context window of 1,000,000 tokens (a
+token is about three quarters of a word). If yours is smaller, the reminder
+needs one setting to fire. See [Compaction](docs/how-it-works.md#compaction).
+
 ## Before you install
 
 You need three things. If you already use Claude Code, you probably have
@@ -187,9 +226,11 @@ the history of your notes as well, delete the hidden folder `.git` inside
 - **Notebook**: all of one project's notes, with their table of contents (a
   file called `MEMORY.md`).
 - **Project**: the folder you open Claude Code in.
-- **Shortening**: what Claude Code does when a conversation gets too long. It
-  replaces the older part with a summary. Claude Code calls this
-  *compacting*.
+- **Context window**: how much of a conversation Claude can keep in view at
+  once. Its size is counted in tokens, about three quarters of a word each.
+- **Compaction** (or shortening): what Claude Code does when a conversation
+  nearly fills the context window. It replaces the older part with a summary.
+  When Claude Code does it on its own, it's called *auto-compaction*.
 - **Plugin**: an add-on for Claude Code.
 
 ## More
