@@ -212,9 +212,12 @@ function build(raw, fresh, drop = null) {
   const kept = have.filter((t) => !seen.has(key(t)) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop);
   const merged = keep([...kept, ...fresh]);
   if (!merged.length && !(drop && has)) return null;
-  const core = merged.map(render).join('\n');
+  // An entry kept from the file is rendered once, for the comparison and the
+  // write: each render runs every secret pattern over it.
+  const shown = new Map(), show = (t) => shown.get(t) ?? shown.set(t, render(t)).get(t);
+  const core = merged.map(show).join('\n');
   // Compare the entries, not the stamp line, or the guard is dead code.
-  if (have.map(render).join('\n') === core) return 'unchanged';
+  if (have.map(show).join('\n') === core) return 'unchanged';
   const body = [START,
     `_Written after every turn by \`handoff-log.mjs\`, so an interrupted session still leaves this. Last: ${local()}._`,
     '', core, END].join('\n');
