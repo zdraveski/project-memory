@@ -1,18 +1,25 @@
 # Changelog
 
-## Unreleased
+## 1.0.7 (2026-10-27)
+
+project-memory now passes the Anthropic plugin directory's checks with no
+policy holds. It reads less of your machine to get there:
 
 - `doctor` no longer reads your Claude Code settings file, which can hold
   keys. It checks what is installed (Claude Code's plugin list) and what
   actually ran: the Stop hook now logs each run, and two runs for one reply
-  mean project-memory is set up twice.
+  mean project-memory is set up twice. Its messages changed to match: "not
+  installed" and "the Stop hook ran twice for one reply".
+- The memory tool no longer reads the session id from the environment. The
+  skill passes it as `--session`, and an id that isn't one is ignored. Run
+  `/reload-plugins` in an open conversation to pick this up.
+- Nothing in the repository reads your environment, apart from one setting the
+  plugin uses: `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. The tests used to copy the
+  whole environment for the programs they start.
 - The tests build their made-up keys and passwords while they run, so no file
   in the repository looks like it holds a secret.
 - The plugin's icon is an SVG file. A PNG icon named in `plugin.json` is an
-  image the directory's validator can't read as code, which holds the plugin
-  for review.
-- The memory tool no longer reads the session id from the environment. The
-  skill passes it as `--session`, and an id that isn't one is ignored.
+  image the directory's validator can't read as code.
 - `wire.mjs`, the author's switch between the plugin and hook entries in
   `settings.json`, is removed. Nothing in the repository reads
   `settings.json` now.
