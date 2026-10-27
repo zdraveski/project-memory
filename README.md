@@ -285,8 +285,12 @@ back.
 - Claude reads your notes during your conversations. Claude Code's built-in
   memory works the same way.
 - The record of where you left off includes the start of your messages and of
-  Claude's replies, and the history keeps old versions of every note. If you
-  copy or share your `.claude` folder, all of that goes with it.
+  Claude's replies, and the names of the files Claude changed. The history
+  keeps old versions of every note. If you copy or share your `.claude` folder,
+  all of that goes with it.
+- Keys, tokens and passwords you paste into a message are replaced with
+  `[redacted]` before anything is saved. To keep anything else out, put it
+  between `<private>` and `</private>`.
 
 The full details are in the [privacy policy](PRIVACY.md).
 

@@ -69,8 +69,16 @@ written when nothing changed.
 
 `handoff.md` records the latest exchanges after every reply: up to 10 per
 conversation, for up to 3 conversations, keeping the first 240 characters of
-what you asked and the first 400 of the answer. A turn that is only a slash
-command is not recorded.
+what you asked and the first 400 of the answer, and the names of the files
+the turn changed (from Edit, Write and NotebookEdit; the last 8, and how many
+more). A turn that is only a slash command is not recorded.
+
+Before any of it is written, secrets are taken out: text between `<private>`
+and `</private>`, private key blocks, keys and tokens known by their prefix
+(`sk-`, `ghp_`, `github_pat_`, `xox…-`, `AKIA`, `AIza`, JWTs, `Bearer …`), and
+a value after `password`, `secret`, `api_key`, `access_token` or
+`auth_token`. The same applies to the startup briefing and the compaction
+recovery note.
 
 ## The startup briefing
 

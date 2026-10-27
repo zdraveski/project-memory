@@ -22,6 +22,7 @@ const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
 const ASK = 240;          // chars kept of what was asked
 const DID = 400;          // chars kept of the answer
+const CHANGED = 8;        // files an entry names: the turn's last
 const TAIL = 512_000;     // first read; grown 4× until it reaches the latest prompt
 const ACTIVE = 30 * 60000;    // a transcript this recently changed: its session is still working
 export const GRACE = 60000;   // the Stop hook runs seconds after a turn ends
@@ -77,9 +78,18 @@ function turns(raw) {
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
     let r; try { r = JSON.parse(line); } catch { continue; }
+    // A turn's edits are tool calls with no text: taken before the text test skips them.
+    if (r.type === 'assistant' && pending && Array.isArray(r.message?.content)) {
+      for (const b of r.message.content) {
+        const f = b.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path);
+        if (!f) continue;
+        const name = String(f).split(/[\\/]/).pop();   // a Windows path read on any system
+        if (!pending.changed.includes(name)) pending.changed.push(name);
+      }
+    }
     const t = text(r).trim();
     if (!t) continue;
-    if (r.type === 'user' && asked(r, t)) pending = { at: local(r.timestamp), ask: t, did: '' };
+    if (r.type === 'user' && asked(r, t)) pending = { at: local(r.timestamp), ask: t, did: '', changed: [] };
     else if (r.type === 'user' && pending && nudged(t)) pending.frozen = true;
     else if (r.type === 'assistant' && pending) {
       if (!pending.frozen) pending.did = t;     // last text block of the turn wins, unless a nudge froze it
@@ -89,10 +99,28 @@ function turns(raw) {
   return out;
 }
 
+// A secret pasted into a message is never written: the snapshots would keep it
+// for good. A key or token is known by its issuer's prefix, or by the word
+// before it; anything in <private>...</private> goes whole. Before clipping,
+// so no half of a key is left behind.
+const SECRETS = [
+  [/<private>[\s\S]*?(?:<\/private>|$)/gi, '[private]'],
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, '[redacted]'],
+  [/\b(?:sk|rk|pk)-(?:ant-|proj-|live_|test_)?[A-Za-z0-9_-]{20,}/g, '[redacted]'],
+  [/\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{40,}/g, '[redacted]'],
+  [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, '[redacted]'],
+  [/\bAKIA[0-9A-Z]{16}\b/g, '[redacted]'],
+  [/\bAIza[0-9A-Za-z_-]{35}/g, '[redacted]'],
+  [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[redacted]'],
+  [/\b(Bearer|Basic) [A-Za-z0-9._~+/=-]{20,}/g, '$1 [redacted]'],
+  [/\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|pwd)["']?[ \t]*[:=][ \t]*["']?)[^\s"',;]{6,}/gi, '$1[redacted]'],
+];
+export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
+
 // Marker text inside an ask or an answer would become the section boundary on
 // the next run and strand every entry before it as prose. Defuse it.
 export const clip = (s, n) => {
-  const one = s.replace(/\s+/g, ' ').replace(/<!--/g, '<!- -').trim();
+  const one = redact(s).replace(/\s+/g, ' ').replace(/<!--/g, '<!- -').trim();
   return one.length > n ? one.slice(0, n - 1) + '…' : one;
 };
 
@@ -121,13 +149,15 @@ function latest(path) {
   }
 }
 
-const render = (t) => `- **asked** ${t.at}${t.s ? ` [${t.s}]` : ''}: ${clip(t.ask, ASK)}\n  **did:** ${clip(t.did, DID)}`;
+const render = (t) => `- **asked** ${t.at}${t.s ? ` [${t.s}]` : ''}: ${clip(t.ask, ASK)}\n  **did:** ${clip(t.did, DID)}`
+  + (t.changed ? `\n  **changed:** ${clip(t.changed, DID)}` : '');
+const named = (c) => (c.length > CHANGED ? `${c.slice(-CHANGED).join(', ')}, and ${c.length - CHANGED} more` : c.join(', '));
 // \r-tolerant: an editor that saves this file CRLF must not make every entry
 // unparseable, which silently emptied the section. The tag is optional:
 // entries written before it read as one untagged session. The time is lazy:
 // greedy, it took the colon of an untagged "[word]: ..." ask, and the word read as a tag.
-const ENTRY = /^- \*\*asked\*\* (\S+ \S+?)(?: \[([\w-]+)\])?: (.*?)\r?\n  \*\*did:\*\* (.*?)\r?$/gm;
-export const parse = (section) => [...section.matchAll(ENTRY)].map((m) => ({ at: m[1], s: m[2] || '', ask: m[3], did: m[4] }));
+const ENTRY = /^- \*\*asked\*\* (\S+ \S+?)(?: \[([\w-]+)\])?: (.*?)\r?\n  \*\*did:\*\* (.*?)\r?$(?:\n  \*\*changed:\*\* (.*?)\r?$)?/gm;
+export const parse = (section) => [...section.matchAll(ENTRY)].map((m) => ({ at: m[1], s: m[2] || '', ask: m[3], did: m[4], changed: m[5] || '' }));
 // The LAST marker pair. Searching for the first START let a stray START --
 // one whose END was lost -- pair with the next run's END, and everything
 // hand-written between them was replaced.
@@ -193,7 +223,7 @@ export function handoff(input) {
   if (!existsSync(dir) || !input.transcript_path || !existsSync(input.transcript_path)) return false;
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);
-  const fresh = latest(input.transcript_path).map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: clip(plain(t.did), DID) }));
+  const fresh = latest(input.transcript_path).map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: clip(plain(t.did), DID), changed: named(t.changed) }));
   // Sessions of one project write this file at once, so they take turns: 8 at
   // once lost 22 of 40 turns without the lock (2026-10-26). The model can still
   // edit the file by hand meanwhile -- the nudge asks it to -- and then the

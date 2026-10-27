@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.5 (2026-10-27)
+
+- Secrets stay out of what the plugin saves. Keys, tokens and passwords pasted
+  into a message are replaced with `[redacted]`, and anything between
+  `<private>` and `</private>` is left out, in the handoff, the startup
+  briefing and the compaction note.
+- Each handoff entry names the files Claude changed in that turn.
+- The README compares project-memory with five other memory tools, and gains
+  a quick start, updating and pausing instructions, and a longer glossary.
+
 ## 1.0.4 (2026-10-27)
 
 - Nothing in the plugin runs the `claude` command any more. The author's

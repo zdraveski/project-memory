@@ -479,4 +479,38 @@ const sharedBytes = Buffer.byteLength(capped.split('\n').filter((l) => l.startsW
 ok(sharedBytes <= 3000 && /^\(\d+ more shared line\(s\) over the 3000 B ceiling, in /m.test(capped), `printed shared lines stop at 3000 B and say how many more (${sharedBytes} B)`);
 
 rmSync(home, { recursive: true, force: true });
+
+// 30. A secret pasted into a message never reaches the handoff, where the
+// snapshots would keep it for good: a key by its prefix, a password by the
+// word before it, anything in <private> tags whole.
+const cwdZ = 'C:\\handoff-privacy', dirZ = storeFor(home, cwdZ), tz = join(dirZ, 'z.jsonl');
+mkdirSync(dirZ, { recursive: true });
+const zs = (...lines) => writeFileSync(tz, lines.join('\n') + '\n', { flag: 'a' });
+const zrun = () => handoff({ cwd: cwdZ, transcript_path: tz, session_id: 'zzzzzzzz-5' });
+const zdoc = () => readFileSync(join(dirZ, 'handoff.md'), 'utf8');
+zs(user('deploy with sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123 and <private>my pin is 4321</private> please', { ts: '2026-10-27T10:00:00Z' }),
+  asst('Done. I set password: hunter2222 and token ghp_abcdefghijklmnopqrstuvwxyz0123456789.'));
+zrun();
+ok(!/sk-ant-api03|4321|hunter2222|ghp_abc/.test(zdoc()) && /deploy with \[redacted\] and \[private\] please/.test(zdoc()) && /password: \[redacted\]/.test(zdoc()),
+  `a key, a password, a token and a <private> block are not written (got ${zdoc().split('**asked**')[1]})`);
+// 31. Each entry names the files its turn changed, by name, from Edit, Write
+// and NotebookEdit, and keeps them when the entry is read back and rewritten.
+const toolUse = (name, input) => rec('assistant', [{ type: 'tool_use', id: name, name, input }]);
+zs(user('fix the pricing page', { ts: '2026-10-27T10:05:00Z' }), toolUse('Edit', { file_path: 'C:\\site\\src\\pricing.html' }),
+  toolUse('Write', { file_path: '/site/notes.md' }), toolUse('Edit', { file_path: 'C:\\site\\src\\pricing.html' }),
+  toolUse('NotebookEdit', { notebook_path: 'C:\\site\\data.ipynb' }), toolUse('Read', { file_path: 'C:\\site\\read-only.txt' }), asst('fixed'));
+zrun();
+ok(/fix the pricing page\n  \*\*did:\*\* fixed\n  \*\*changed:\*\* pricing\.html, notes\.md, data\.ipynb\n/.test(zdoc()) && !/read-only/.test(zdoc()),
+  `the files a turn changed are named once each, and a read is not a change (got ${zdoc().split('fix the pricing page')[1]})`);
+ok(!/hunter2222[\s\S]*\*\*changed:\*\*[\s\S]*fix the pricing/.test(zdoc()) && (zdoc().match(/\*\*changed:\*\*/g) || []).length === 1, 'a turn that changed nothing gets no changed line');
+// Another session's Stop rewrites the file: this session's entries come only
+// from reading it back, so the changed line has to survive the parse.
+const tz2 = join(dirZ, 'y.jsonl');
+writeFileSync(tz2, [user('one more', { ts: '2026-10-27T10:09:00Z' }), asst('ok')].join('\n') + '\n');
+handoff({ cwd: cwdZ, transcript_path: tz2, session_id: 'yyyyyyyy-6' });
+ok(/\*\*changed:\*\* pricing\.html, notes\.md, data\.ipynb\n/.test(zdoc()) && (zdoc().match(/\*\*asked\*\*/g) || []).length === 3, 'read back and written again by another session, the changed line stays');
+zs(user('rename everything', { ts: '2026-10-27T10:12:00Z' }), ...Array.from({ length: 11 }, (_, i) => toolUse('Write', { file_path: 'C:\\site\\f' + i + '.txt' })), asst('renamed'));
+zrun();
+ok(/\*\*changed:\*\* f3\.txt, f4\.txt, [^\n]*f10\.txt, and 3 more\n/.test(zdoc()), 'many files: the last 8, and how many more');
+
 console.log(`handoff-log: ${checks} checks passed`);

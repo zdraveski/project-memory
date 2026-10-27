@@ -16,9 +16,11 @@ This page says what it reads, what it saves, and how to remove it.
 All of it stays in `~/.claude/projects` on your computer:
 
 - A record of where you left off: the start of your latest messages (up to 240
-  characters each) and of Claude's replies (up to 400), for the last 10
-  exchanges of each of your 3 most recent conversations. Older entries are
-  replaced as you go.
+  characters each) and of Claude's replies (up to 400), and the names of the
+  files Claude changed, for the last 10 exchanges of each of your 3 most recent
+  conversations. Older entries are replaced as you go. Keys, tokens and
+  passwords are replaced with `[redacted]` first, and anything you write
+  between `<private>` and `</private>` is left out.
 - When Claude Code shortens a conversation in the middle of a task, a note of
   what was in progress: your request, the start of Claude's last words, any
   background tasks still running, and the files Claude had changed.
