@@ -26,7 +26,7 @@ node "${CLAUDE_PLUGIN_ROOT}/memory.mjs" <command>
 | `history <memory>` | to see when a memory changed or was deleted; get its name from `search` first. "in the first snapshot" means it already existed then. Its last line is the command that shows one change |
 | `restore <memory>` | a memory was deleted or overwritten: it comes back from the snapshots, with its index line. `--rev <commit>` picks a version from `history`; `--force` replaces a file that exists |
 | `promote <memory>` | a lesson holds in every project (how the user works, a tool installed machine-wide): moves it, and its index line, to the shared store, where every project's startup prints it. Ask the user first. It leaves its project, so its `[[links]]` to that project's memories stop resolving: trim project-only details first |
-| `doctor` | the hooks may not be running: wiring, the deployed copy, the Stop hook, locks, git |
+| `doctor` | the hooks may not be running: the install, the deployed copy, the Stop hook (and whether it runs twice per reply), locks, git. It never reads settings.json |
 
 A memory is named by its file name, with or without `.md`. `--shared` runs a
 command against the shared store; `--store <dir>` against another project's

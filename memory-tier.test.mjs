@@ -344,6 +344,14 @@ ok(r.status === 0 && existsSync(stamp('proj-one')) && !existsSync(stamp('proj-tw
 const ranBefore = statSync(join(root, '.stop-ran')).mtimeMs;
 r = stop();
 ok(statSync(join(root, '.stop-ran')).mtimeMs > ranBefore, '--stop: every Stop, even a quiet one, leaves its proof of life');
+// The proof is a line a run, naming the conversation and the copy that ran, and
+// the log is cut back to its newest 20 lines once it passes 8 KB.
+const runLines = () => readFileSync(join(root, '.stop-ran'), 'utf8').split('\n').filter(Boolean);
+const lastRun = JSON.parse(runLines().at(-1));
+ok(lastRun.s && lastRun.from && !Number.isNaN(Date.parse(lastRun.at)), `--stop: a run's line says when, which conversation and which copy (got ${runLines().at(-1)})`);
+writeFileSync(join(root, '.stop-ran'), Array.from({ length: 200 }, (_, i) => JSON.stringify({ at: new Date(i).toISOString(), s: 'old', from: 'x'.repeat(30) })).join('\n') + '\n');
+stop();
+ok(runLines().length <= 20 && JSON.parse(runLines().at(-1)).s !== 'old', `--stop: the log keeps the newest runs only (got ${runLines().length} lines)`);
 // A handoff-log.mjs that cannot load writes no handoff: no proof of life either.
 const broken = tempDir('broken-');
 for (const f of ['memory-tier.mjs', 'store.mjs', 'compact-gate.mjs']) copyFileSync(tool(f), join(broken, f));

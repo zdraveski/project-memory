@@ -292,28 +292,30 @@ export function promote(dir, file) {
   return r === true ? { ok: true, lines: [`moved ${file} to ${to}; every project's sessions see its line from their next start`] } : no(r);
 }
 
+// The Stop hook's runs, oldest first, one JSON line each (memory-tier.mjs).
+const stopRuns = () => (read(join(projectsRoot(), '.stop-ran')) ?? '').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r?.at ? [r] : []; } catch { return []; } });
+const TWICE = 5000;   // two Stop runs of one conversation this close answered one reply
+
 export function doctor() {
   const lines = [];
   let bad = 0;
   const say = (fine, text) => { lines.push(`${fine ? 'ok     ' : 'PROBLEM'} ${text}`); if (!fine) bad++; };
-  const settingsPath = join(homedir(), '.claude', 'settings.json');
-  let settings = {};
-  try { settings = JSON.parse(readFileSync(settingsPath, 'utf8')); }
-  catch (e) { if (existsSync(settingsPath)) say(false, `${settingsPath} does not parse: ${e.message}`); }
-  const wired = Object.entries(settings.hooks || {}).filter(([, es]) => (es || []).some((e) => (e.hooks || []).some(ours))).map(([ev]) => ev);
-  const plugin = Object.entries(settings.enabledPlugins || {}).some(([k, v]) => v && k.split('@')[0] === 'project-memory');
-  if (wired.length && plugin) say(false, `wired twice, by settings.json (${wired.join(', ')}) and by the project-memory plugin: every hook runs twice. The user's fix: delete those entries from settings.json, or disable the plugin`);
-  else if (plugin) say(true, 'wired by the project-memory plugin');
-  else if (wired.length) {
-    const missing = ['Stop', 'SessionStart', 'PreCompact'].filter((ev) => !wired.includes(ev));
-    say(!missing.length, missing.length ? `settings.json wires ${wired.join(', ')} but not ${missing.join(', ')}` : 'wired by settings.json: Stop, SessionStart, PreCompact (the memory skill comes only with the plugin, a switch for the user to make: in ~/.claude/hooks, node wire.mjs --plugin, then /reload-plugins in each open session)');
-  } else say(false, `not wired: no hook in settings.json runs these, and the project-memory plugin is not enabled. The user's fix: claude plugin install ${PLUGIN} (after claude plugin marketplace add zdraveski/project-memory)`);
+  // What is installed and what ran, never what settings.json says: that file
+  // can hold the user's keys, and the plugin directory holds a plugin that
+  // reads it. The Stop hook logs each run in .stop-ran (memory-tier.mjs).
+  const id = installedId(), runs = stopRuns();
+  if (id) say(true, `installed as ${id}`);
+  else if (runs.length) say(true, `the hooks run from ${runs.at(-1).from}, without the plugin installed`);
+  else say(false, `not installed: the project-memory plugin is not installed, and its hooks have never run. The user's fix: claude plugin marketplace add zdraveski/project-memory, then claude plugin install ${PLUGIN}`);
+  // Two runs for one reply, seconds apart: two wirings answered one Stop.
+  const twice = runs.slice(-10).find((r, i, rs) => i > 0 && r.s && r.s === rs[i - 1].s && Math.abs(Date.parse(r.at) - Date.parse(rs[i - 1].at)) < TWICE);
+  if (twice) say(false, `the Stop hook ran twice for one reply (${local(twice.at)}): project-memory is wired twice, by the plugin and by hook entries in settings.json, or installed twice. Every hook runs twice. The user's fix: delete project-memory's hooks from settings.json, or uninstall the second copy`);
   if (existsSync(join(LIVE, '.deployed.json'))) { const e = edited(LIVE); say(!e.length, e[0] || `${LIVE} matches what deploy.mjs checked`); }
   // Installed from the live copy, the plugin runs it in place; from anywhere
   // else, a cached copy that only `claude plugin update` refreshes.
-  if (plugin) {
+  if (id) {
     const at = pluginRoot();
-    if (!at) say(false, `${PLUGIN} is enabled but not installed. The user's fix: claude plugin install ${PLUGIN}`);
+    if (!at) say(false, `${id} is listed as installed, but with no folder. The user's fix: claude plugin install ${PLUGIN}`);
     // From GitHub, or from any copy where nothing was deployed: it runs that copy.
     else if (!existsSync(join(LIVE, '.deployed.json')) || (marketplace()?.source !== 'directory' && !deployedCommit(at))) {
       say(true, `the plugin runs version ${json(join(at, '.claude-plugin', 'plugin.json'))?.version ?? '(none)'} from ${at}`);
@@ -336,7 +338,7 @@ export function doctor() {
     try { const p = id ? join(dirname(sessionStore()), `${id}.jsonl`) : transcripts(sessionStore(), '')[0]?.p; if (p) end = lastTurn(p).end; } catch {}
     if (Date.now() - end > GRACE) say(false, `Claude finished a reply at ${local(end)}, but project-memory has not saved after any reply: its Stop hook is not running. The user's fix: restart Claude Code; if this line stays, check that Node.js is installed (node --version)`);
     else say(true, "waiting for Claude's first reply: project-memory saves each time Claude finishes one");
-  } else { const s = stalled(transcripts(sessionStore(), '')[0]); say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}`); }
+  } else { const s = stalled(transcripts(sessionStore(), '')[0]); say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`); }
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return Date.now() - statSync(l).mtimeMs > LOCK_STALE; } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);
   try { execFileSync('git', ['--version'], { stdio: 'ignore' }); say(true, 'git on PATH'); } catch { say(false, 'git is not on PATH: no memory snapshots'); }

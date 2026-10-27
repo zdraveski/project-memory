@@ -8,8 +8,9 @@ This page says what it reads, what it saves, and how to remove it.
 - Claude Code's record of your conversations in this project (the files Claude
   Code keeps in `~/.claude/projects`), to know what was asked and answered.
 - The notes Claude Code's built-in memory writes in the same folder.
-- Claude Code's settings and plugin list in `~/.claude`, only when you run
-  the `doctor` check, to see whether the plugin is switched on.
+- Claude Code's list of installed plugins in `~/.claude/plugins`, only when
+  you run the `doctor` check, to see where the plugin is installed. It never
+  reads your Claude Code settings file, which can hold keys.
 
 ## What it saves
 

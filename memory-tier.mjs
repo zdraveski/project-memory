@@ -8,8 +8,9 @@
 // As the Stop hook (and before a manual /compact) it runs with `--stop`, the
 // payload on stdin, and tiers that session's own store; a manual run walks them all.
 
-import { readFileSync, writeFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, allStores, front, gitWhy } from './store.mjs';
 
@@ -370,7 +371,15 @@ if (stop) {
     // Proof of life for the startup line (handoff-log's stalled()), once the
     // handoff has loaded: Stop output reaches nobody, so a hook that stopped
     // running was silence.
-    try { writeFileSync(join(projectsRoot(), '.stop-ran'), new Date().toISOString()); } catch {}
+    // One line a run: when, which conversation, which copy. Two runs for one
+    // reply, seconds apart, are hooks wired twice (memory.mjs doctor, which
+    // reads this and never settings.json). Appended, so two copies running at
+    // once both land; cut back to the newest 20 past 8 KB.
+    try {
+      const ran = join(projectsRoot(), '.stop-ran');
+      appendFileSync(ran, JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
+      if (statSync(ran).size > 8192) writeFileSync(ran, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
+    } catch {}
     if (payload) handoff(payload);
   } catch {}
   try {

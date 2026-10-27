@@ -210,22 +210,23 @@ symlinkSync(dirname(CLI), join(home, 'linked-cli'), 'junction');
 r = spawnSync(process.execPath, [join(home, 'linked-cli', 'memory.mjs'), 'status', '--store', dir], { env, encoding: 'utf8' });
 ok(r.stdout.includes(dir), `the CLI run through a symlinked folder still runs (got ${JSON.stringify(r.stdout + r.stderr)})`);
 
-// 5. Doctor: one wiring, not two, not none.
-const settings = (s) => writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify(s));
-const hook = (cmd) => [{ hooks: [{ type: 'command', command: `node "C:/x/${cmd}"` }] }];
-const wired = { hooks: { Stop: hook('memory-tier.mjs --stop'), SessionStart: hook('handoff-log.mjs --print'), PreCompact: hook('compact-gate.mjs') } };
-settings(wired);
+// 5. Doctor: what is installed and what ran, never settings.json (it can
+// hold the user's keys). A settings.json that does not even parse goes unsaid.
+writeFileSync(join(home, '.claude', 'settings.json'), '{ not json: doctor never reads this');
+const ranLog = (...runs) => writeFileSync(join(root, '.stop-ran'), runs.map((x) => JSON.stringify(x)).join('\n') + '\n');
+const ago = (ms) => new Date(Date.now() - ms).toISOString();
+rmSync(join(root, '.stop-ran'), { force: true });
 r = cli('doctor');
-ok(/^ok +wired by settings\.json/m.test(r.stdout), 'doctor: wired by settings.json');
-settings({ ...wired, enabledPlugins: { 'project-memory@local': true } });
+ok(r.status === 1 && /^PROBLEM not installed[^\n]*claude plugin install project-memory@project-memory/m.test(r.stdout) && !/settings\.json (does not parse|wires)/.test(r.stdout),
+  `doctor: not installed and never run is a problem, with the install; settings.json is not read (got ${r.stdout})`);
+ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
+ok(/^ok +the hooks run from C:\/x, without the plugin installed/m.test(cli('doctor').stdout), 'doctor: hooks that run without the plugin installed are fine');
+ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(59_000), s: 'aaaaaaaa', from: 'C:/y' });
 r = cli('doctor');
-ok(r.status === 1 && /^PROBLEM wired twice[^\n]*\. The user's fix: delete those entries/m.test(r.stdout), 'doctor: settings.json and the plugin both wired is every hook twice, and the fix is the user\'s');
-settings({ enabledPlugins: { 'project-memory@local': true, 'other@x': true } });
-ok(/^ok +wired by the project-memory plugin/m.test(cli('doctor').stdout), 'doctor: wired by the plugin');
-settings({ hooks: { Stop: hook('memory-tier.mjs --stop') } });
-ok(/^PROBLEM settings\.json wires Stop but not SessionStart, PreCompact/m.test(cli('doctor').stdout), 'doctor: a half-wired settings.json is named');
-settings({});
-ok(/^PROBLEM not wired[^\n]*claude plugin install project-memory@project-memory/m.test(cli('doctor').stdout), 'doctor: nothing wired is a problem, with the install');
+ok(r.status === 1 && /^PROBLEM the Stop hook ran twice for one reply[^\n]*The user's fix: delete project-memory's hooks from settings\.json/m.test(r.stdout), 'doctor: two runs for one reply, seconds apart, are hooks wired twice');
+ranLog({ at: ago(120_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(59_000), s: 'bbbbbbbb', from: 'C:/x' });
+ok(!/ran twice/.test(cli('doctor').stdout), 'doctor: replies a minute apart, and two conversations at once, are not');
+rmSync(join(root, '.stop-ran'), { force: true });
 // Before Claude's first reply nothing has saved: waiting, not a problem. A reply
 // this conversation finished over a minute ago, with nothing saved, is one.
 {
@@ -260,7 +261,6 @@ writeFileSync(join(gh, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 
 const installed = (id, at, source) => {
   writeFileSync(join(home, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { [id]: [{ installPath: at }] } }));
   writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ [id.split('@')[1]]: { source } }));
-  settings({ enabledPlugins: { [id]: true } });
 };
 installed('project-memory@project-memory', gh, { source: 'github', repo: 'zdraveski/project-memory' });
 r = cli('doctor');
@@ -273,7 +273,6 @@ const live = join(home, '.claude', 'hooks-live'), cache = join(home, '.claude', 
 for (const [d, commit] of [[live, 'bbb'], [cache, 'aaa']]) { mkdirSync(d, { recursive: true }); writeFileSync(join(d, '.deployed.json'), JSON.stringify({ commit, files: {} })); }
 writeFileSync(join(home, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@project-memory': [{ installPath: cache }] } }));
 writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), '{}');
-settings({ enabledPlugins: { 'project-memory@project-memory': true } });
 ok(/^PROBLEM the plugin runs aaa from [^\n]*, the last deploy is bbb\. The user's fix: claude plugin update/m.test(cli('doctor').stdout), 'doctor: a plugin copy older than the last deploy is named');
 writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: {} }));
 ok(/^ok +the plugin runs the last deploy, bbb/m.test(cli('doctor').stdout), 'doctor: and one that matches is fine');
@@ -286,7 +285,6 @@ ok(/^ok +the plugin runs the last deploy, bbb, from [^\n]*hooks-live$/m.test(r.s
 // Added from the repo instead, it runs untested edits: no update fixes that.
 writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'project-memory': { source: { source: 'directory', path: join(home, 'repo') } } }));
 ok(/^PROBLEM the plugin is read from [^\n]*repo, not the live copy\. The user's fix: claude plugin marketplace remove project-memory,/m.test(cli('doctor').stdout), 'doctor: a plugin read from anywhere but the live copy is named, with the way back');
-settings({});
 const packDir = join(root, '.git', 'objects', 'pack');
 mkdirSync(packDir, { recursive: true });
 writeFileSync(join(packDir, 'pack-dead.idx'), 'x');

@@ -226,8 +226,13 @@ What changed in each version is in the [changelog](CHANGELOG.md).
 **Claude doesn't remember the last conversation.** Ask *"Where did we leave
 off?"* If Claude still doesn't know, type `/project-memory:memory doctor`.
 
-**The check says "not wired".** project-memory isn't installed or isn't
-switched on. Go through the [Install](#install) steps again.
+**The check says "not installed".** project-memory isn't installed, and it
+has never run. Go through the [Install](#install) steps again.
+
+**The check says "the Stop hook ran twice for one reply".** project-memory is
+set up twice, so everything it does happens twice. This usually means an old
+copy of its hooks is still listed in your Claude Code settings. Ask Claude to
+remove project-memory's hooks from your settings file, and keep the plugin.
 
 **The check says "its Stop hook is not running".** Claude finished a reply,
 but project-memory didn't save after it. Restart Claude Code. If the line is

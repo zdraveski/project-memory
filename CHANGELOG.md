@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- `doctor` no longer reads your Claude Code settings file, which can hold
+  keys. It checks what is installed (Claude Code's plugin list) and what
+  actually ran: the Stop hook now logs each run, and two runs for one reply
+  mean project-memory is set up twice.
+- The tests build their made-up keys and passwords while they run, so no file
+  in the repository looks like it holds a secret.
+
 ## 1.0.6 (2026-10-27)
 
 - A private message stays private. A message that starts with `<private>` was
