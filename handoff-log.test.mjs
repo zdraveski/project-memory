@@ -10,9 +10,9 @@ import { tool, tempHome, storeFor } from './harness.mjs';
 
 const HOOK = tool('handoff-log.mjs'), TIER = tool('memory-tier.mjs');
 const { home, env } = tempHome('hl-test-');
-// The hooks in this process too, under the same throwaway HOME: a check that
-// needs no stdin or exit code calls handoff() itself, not a node start per turn.
-process.env.HOME = home; process.env.USERPROFILE = home;
+// The hooks in this process too, under the same throwaway HOME (tempHome set
+// it here): a check that needs no stdin or exit code calls handoff() itself,
+// not a node start per turn.
 const { handoff, edited, plain, redact, clip } = await import('./handoff-log.mjs');
 const cwd = 'C:\\handoff-log-selftest';
 const dir = storeFor(home, cwd);

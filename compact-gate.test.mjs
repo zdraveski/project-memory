@@ -32,8 +32,8 @@ const gate = (trigger = 'auto') => {
   try { execFileSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger, session_id: 's1' }), env, stdio: ['pipe', 'pipe', 'pipe'] }); return { code: 0, err: '' }; }
   catch (e) { return { code: e.status, err: String(e.stderr) }; }
 };
-// The nudge runs inside memory-tier.mjs's Stop path; call it in-process here.
-process.env.HOME = home; process.env.USERPROFILE = home;
+// The nudge runs inside memory-tier.mjs's Stop path; call it in-process here,
+// under the throwaway HOME tempHome set.
 const { nudge, TRIGGER, WINDOW } = await import('./compact-gate.mjs');
 // The trigger moves with CLAUDE_CODE_AUTO_COMPACT_WINDOW: sizes are relative to it.
 const T = Math.round(TRIGGER * WINDOW);

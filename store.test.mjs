@@ -10,7 +10,6 @@ import assert from 'node:assert';
 import { tool, tempHome } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-process.env.HOME = home; process.env.USERPROFILE = home;
 const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores } = await import('./store.mjs');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };

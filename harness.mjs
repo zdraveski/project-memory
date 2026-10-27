@@ -23,10 +23,22 @@ export function tempDir(prefix) {
 }
 
 // A throwaway HOME: a store built under the real projects dir is committed by
-// the next Stop hook that fires while it exists.
+// the next Stop hook that fires while it exists. Set on this process, whose
+// children inherit it, and nothing copies the whole environment: the plugin
+// directory's review holds a plugin that reads it, as a credential that could
+// leave the machine. `env` stays undefined, which is "inherit" to a spawn.
 export function tempHome(prefix) {
   const home = tempDir(prefix);
-  return { home, env: { ...process.env, HOME: home, USERPROFILE: home } };
+  process.env.HOME = home; process.env.USERPROFILE = home;
+  return { home, env: undefined };
+}
+
+// Run f with these variables set for this process and the children it starts,
+// then put them back, a failing f included. Only the named variables are read.
+export function withEnv(vars, f) {
+  const had = Object.keys(vars).map((k) => [k, process.env[k]]);
+  Object.assign(process.env, vars);
+  try { return f(); } finally { for (const [k, v] of had) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
 }
 
 // This machine's largest store (most files), resolved: what the soak, the break

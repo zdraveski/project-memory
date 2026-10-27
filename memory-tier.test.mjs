@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, u
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
-import { tool, tempDir, tempHome, pointers } from './harness.mjs';
+import { tool, tempDir, tempHome, pointers, withEnv } from './harness.mjs';
 
 const TOOL = tool('memory-tier.mjs');
 let checks = 0;
@@ -237,7 +237,7 @@ const store = (name) => {
 store('proj-one'); store('proj-two');
 writeFileSync(join(root, 'proj-one', 'session.jsonl'), 'x'.repeat(50_000));   // must never be tracked
 
-const plain = (extra) => spawnSync(process.execPath, [TOOL], { env: { ...env, ...extra }, encoding: 'utf8' });
+const plain = (extra = {}) => withEnv(extra, () => spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }));
 writeFileSync(join(root, 'proj-two', 'session.jsonl'), '');
 const stop = (proj = 'proj-one') => spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8',
   input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, proj, 'session.jsonl'), session_id: 'tst' }) });
@@ -259,13 +259,13 @@ ok(tracked().every((f) => f === '.gitignore' || /\/memory\/[^/]+\.md$/.test(f)) 
 // was found by, yet none is a link to another. All were ignored as links, and
 // the snapshots tracked nothing.
 {
-  const { home: realHome } = tempHome('memtier-real-'), linkedHome = join(tempDir('memtier-link-'), 'home');
+  const realHome = tempDir('memtier-real-'), linkedHome = join(tempDir('memtier-link-'), 'home');
   symlinkSync(realHome, linkedHome, 'junction');
   const lroot = join(linkedHome, '.claude', 'projects'), d = join(lroot, 'proj-l', 'memory');
   mkdirSync(d, { recursive: true });
   writeFileSync(join(d, 'a.md'), '---\nname: a\ndescription: "a"\nmetadata:\n  type: project\n---\nbody\n');
   writeFileSync(join(d, 'MEMORY.md'), '# Index\n\n- [a](a.md) — a\n');
-  const lr = spawnSync(process.execPath, [TOOL], { env: { ...env, HOME: linkedHome, USERPROFILE: linkedHome }, encoding: 'utf8' });
+  const lr = withEnv({ HOME: linkedHome, USERPROFILE: linkedHome }, () => spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }));
   const files = existsSync(join(lroot, '.git')) ? execFileSync('git', ['-C', lroot, 'ls-files'], { encoding: 'utf8' }) : '';
   ok(lr.status === 0 && /proj-l\/memory\/a\.md/.test(files), `a home reached through a symlink still has its stores snapshotted (got ${JSON.stringify(files || lr.stdout)})`);
 }
