@@ -13,47 +13,52 @@ commands to get the benefit.
 *The demo replays three real conversations in a sample project, with the
 messages shortened to fit.*
 
-## Why you might want it
+## What you get
 
-Each new conversation in Claude Code starts fresh. To carry things over,
-Claude Code keeps a notebook for each project, called *auto memory*. Claude
-writes down what's worth keeping, like your preferences, decisions and
-corrections, and reads the notebook's table of contents at the start of every
-conversation.
+Every new conversation in Claude Code starts fresh. To carry things over,
+Claude Code keeps a notebook for each project (it calls this *auto memory*),
+where Claude writes down your preferences, decisions and corrections.
+project-memory looks after that notebook, so Claude remembers more and loses
+less.
 
-That works well until:
+| Without project-memory | With project-memory |
+|---|---|
+| You start a new conversation and explain again where you were. | Claude starts already knowing where the last conversation stopped. |
+| The notebook's table of contents keeps growing, until Claude stops reading the newest notes. | The table of contents stays short, so Claude reads all of it. Older notes move to an archive that Claude can still search. |
+| A very long conversation gets shortened, and the task Claude was in the middle of gets lost. | Claude saves its notes before that happens, and afterwards it's told what it was in the middle of. |
+| A note deleted or overwritten by mistake is gone for good. | Every version of every note is kept. Ask Claude, and it brings one back. |
+| You teach Claude how you like to work again in every project. | Lessons that apply everywhere are shared with all your projects. |
+| Two Claude windows on the same project can overwrite each other's notes. | No window overwrites another's notes, and each new conversation is told what the other windows are doing. |
 
-- The table of contents gets too long, and Claude stops reading the newest
-  notes.
-- A conversation ends in the middle of a task, and the next one doesn't know
-  where you stopped.
-- A conversation gets very long. Claude Code then shortens it into a summary to
-  make room, and work in progress can get lost.
-- A note gets deleted or overwritten by mistake, with no way to get it back.
-- Something you taught Claude in one project, like "keep answers short", is
-  unknown in your other projects.
-- You have two Claude windows open on the same project, and one overwrites the
-  other's notes.
+It runs on its own after every reply, with no waiting you'd notice, and
+everything stays on your computer.
 
-project-memory takes care of all of these.
+## Who it's for
 
-## What it does for you
+project-memory helps most if you:
 
-- It keeps the table of contents short, so Claude always reads all of it.
-  Older entries move to an archive page that Claude can still search.
-- After every reply it saves a short record of your latest exchanges, and the
-  next conversation starts by reading it.
-- Before Claude Code shortens a conversation, it reminds Claude to save its
-  notes. If a task gets cut off anyway, Claude is told afterwards what it was
-  in the middle of.
-- It keeps every version of every note, so a note that was deleted or changed
-  by mistake can be brought back.
-- Notes that apply everywhere, such as how you like to work, go into a shared
-  notebook that every project reads.
-- With several windows open, no window overwrites another's notes, and each
-  new conversation is told what the other windows are working on.
+- come back to the same project over days or weeks,
+- give Claude long tasks,
+- keep more than one Claude window open,
+- or work on several projects and want Claude to know your habits in all of
+  them.
 
-Everything stays on your computer.
+If you only ask Claude the occasional one-off question, you won't notice much
+difference.
+
+## A week with project-memory
+
+- **Monday.** You tell Claude the bakery's cake prices, and that orders come
+  by phone. Claude writes it down.
+- **Tuesday.** You start a new conversation and ask *"Where did we leave
+  off?"* Claude already knows.
+- **Wednesday.** A big task runs so long that Claude Code shortens the
+  conversation. Claude saved its notes first, and it's told what it was in the
+  middle of, so it can carry on.
+- **Thursday.** A note gets deleted by mistake. You ask Claude to bring it
+  back, and it does.
+- **Friday.** You open a different project. Claude already knows you like
+  short, plain answers, because you shared that lesson with all your projects.
 
 ## Before you install
 
