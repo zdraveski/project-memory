@@ -1,12 +1,12 @@
 {
   "name": "project-memory",
   "owner": { "name": "zdraveski" },
-  "description": "project-memory: Claude Code memory that survives parallel sessions and compaction.",
+  "description": "project-memory: helps Claude Code remember your work between conversations.",
   "plugins": [
     {
       "name": "project-memory",
       "source": "./",
-      "description": "Per-project and shared memory for Claude Code: tiering, handoff, compaction recovery, snapshots, recall."
+      "description": "Helps Claude Code remember your work between conversations. It picks up where you left off, keeps long tasks on track when a conversation is compacted, saves every version of its notes so a lost one can come back, and shares lessons across your projects."
     }
   ]
 }
