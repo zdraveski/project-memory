@@ -69,11 +69,19 @@ const nudged = (s) => s.slice(0, 200).includes(NUDGE_TAG);
 // A compaction summary ("This session is being continued from...") is a user
 // record too, flagged isCompactSummary; 17 had been recorded as asks.
 // A tool result has no text, so `s` is empty.
-// A message the user opens with <private> or <private-session> is still theirs.
-// Skipped like the harness's own <...> messages, its answer was saved as the
-// answer to the message before.
-export const asked = (r, s) => s && !r.isMeta && !r.isCompactSummary && (!s.trimStart().startsWith('<') || /^<private/i.test(s.trimStart())) && !s.includes('<command-name>')
-  && !s.startsWith('[SYSTEM') && !nudged(s) && !s.startsWith('[Request interrupted');
+// What the user wrote, without what Claude Code wraps in tags around it: a
+// <system-reminder> anywhere, and before the words a slash command's
+// <command-name>, a <task-notification>, an IDE's <ide_opened_file>. Read
+// whole, an IDE prompt opened with a tag and was no ask, and a <private>
+// message after one had its answer saved as the answer to the message before.
+// A <private> or <private-session> block is the user's own.
+export const own = (s) => s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+  .replace(/^(?:\s*<(?!private)([A-Za-z][\w-]*)\b[^>]*>[\s\S]*?<\/\1>)+/, '').trim();
+export const asked = (r, s) => {
+  if (!s || r.isMeta || r.isCompactSummary || s.includes('<command-name>') || nudged(s)) return false;
+  const o = own(s);
+  return !!o && (!o.startsWith('<') || /^<private/i.test(o)) && !o.startsWith('[SYSTEM') && !o.startsWith('[Request interrupted');
+};
 
 export { local };
 // A session's short tag: enough to tell parallel sessions apart in one file.
@@ -96,8 +104,15 @@ function turns(raw) {
     }
     const t = text(r).trim();
     if (!t) continue;
-    if (r.type === 'user' && asked(r, t)) pending = { at: local(r.timestamp), ask: t, did: '', changed: [] };
-    else if (r.type === 'user' && pending && nudged(t)) pending.frozen = true;
+    if (r.type === 'user' && asked(r, t)) {
+      pending = { at: local(r.timestamp), ask: own(t), did: '', changed: [] };
+      // Marked whether or not a reply follows: a turn of tool calls, or one
+      // the user stopped, writes no entry but must still mark.
+      if (/<private-session>/i.test(pending.ask)) out.hush = true;
+    }
+    // A nudge, or a private message that is no ask: the answer after it is not
+    // this turn's, and it is not saved.
+    else if (r.type === 'user' && pending && (nudged(t) || /<private/i.test(own(t)))) pending.frozen = true;
     else if (r.type === 'assistant' && pending) {
       if (!pending.frozen) pending.did = t;     // last text block of the turn wins, unless a nudge froze it
       if (out[out.length - 1] !== pending) out.push(pending);
@@ -112,15 +127,19 @@ function turns(raw) {
 // so no half of a key is left behind.
 const SECRETS = [
   [/<private>[\s\S]*?(?:<\/private>|$)/gi, '[private]'],
-  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, '[redacted]'],
-  [/\b(?:sk|rk|pk)-(?:ant-|proj-|live_|test_)?[A-Za-z0-9_-]{20,}/g, '[redacted]'],
+  // PGP's says PRIVATE KEY BLOCK.
+  [/-----BEGIN [A-Z ]*PRIVATE KEY[A-Z ]*-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY[A-Z ]*-----|$)/g, '[redacted]'],
+  // sk-... (Anthropic, OpenAI); sk_live_, pk_test_, rk_live_ (Stripe).
+  [/\b(?:sk|rk|pk)(?:-|_(?:live|test)_)[A-Za-z0-9_-]{20,}/g, '[redacted]'],
   [/\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{40,}/g, '[redacted]'],
   [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, '[redacted]'],
   [/\bAKIA[0-9A-Z]{16}\b/g, '[redacted]'],
   [/\bAIza[0-9A-Za-z_-]{35}/g, '[redacted]'],
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[redacted]'],
-  [/\b(Bearer|Basic) [A-Za-z0-9._~+/=-]{20,}/g, '$1 [redacted]'],
-  [/\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|pwd)["']?[ \t]*[:=][ \t]*["']?)[^\s"',;]{6,}/gi, '$1[redacted]'],
+  [/\b(Bearer|Basic) [A-Za-z0-9._~+/=-]{20,}/gi, '$1 [redacted]'],
+  // The word can end a longer name (DB_PASSWORD=, AWS_SECRET_ACCESS_KEY=), and
+  // the value can sit on the next line (YAML). Bounded, so no input backtracks.
+  [/(?<![A-Za-z0-9])((?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|pwd)[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)[^\s"',;]{6,}/gi, '$1[redacted]'],
 ];
 export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
 // The answer to a private message often repeats what it was told, so it is
@@ -131,7 +150,9 @@ export const answer = (ask, did, n) => (/<private>/i.test(ask) ? '[private]' : c
 // the next run and strand every entry before it as prose. Defuse it.
 export const clip = (s, n) => {
   const one = redact(s).replace(/\s+/g, ' ').replace(/<!--/g, '<!- -').trim();
-  return one.length > n ? one.slice(0, n - 1) + '…' : one;
+  // Never half an emoji: a lone surrogate is written as U+FFFD, the entry read
+  // back no longer matched its turn, and the turn was added again every Stop.
+  return one.length > n ? one.slice(0, n - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : one;
 };
 
 // An answer is markdown, and its marks carry no words: heading hashes, bold,
@@ -216,8 +237,11 @@ function build(raw, fresh, drop = null) {
   // write: each render runs every secret pattern over it.
   const shown = new Map(), show = (t) => shown.get(t) ?? shown.set(t, render(t)).get(t);
   const core = merged.map(show).join('\n');
-  // Compare the entries, not the stamp line, or the guard is dead code.
-  if (have.map(show).join('\n') === core) return 'unchanged';
+  // Compare the entries, not the stamp line, or the guard is dead code. A note
+  // the compaction gate left lives until the next write: with one there, this
+  // is a write.
+  const notes = has && doc.slice(a, b).includes('**cut mid-turn**');
+  if (!notes && have.map(show).join('\n') === core) return 'unchanged';
   const body = [START,
     `_Written after every turn by \`handoff-log.mjs\`, so an interrupted session still leaves this. Last: ${local()}._`,
     '', core, END].join('\n');
@@ -231,7 +255,9 @@ function build(raw, fresh, drop = null) {
 const QUIET = '.private-sessions';
 export function hushed(dir, s, mark = false) {
   const p = join(dir, QUIET);
-  let have = []; try { have = readFileSync(p, 'utf8').split('\n').filter(Boolean); } catch {}
+  // CRLF too: a tag with a \r left over matched no conversation, and a marked
+  // one was written again.
+  let have = []; try { have = readFileSync(p, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean); } catch {}
   if (!s) return false;
   if (mark && !have.includes(s)) { have = [...have, s].slice(-50); writeFileSync(p, have.join('\n') + '\n'); }
   return have.includes(s);
@@ -247,9 +273,9 @@ export function handoff(input) {
   if (!existsSync(dir) || !input.transcript_path || !existsSync(input.transcript_path)) return false;
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);
-  const turns = latest(input.transcript_path);
-  const fresh = turns.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.ask, t.did, DID), changed: newest(t.changed, CHANGED) }));
-  const hush = turns.some((t) => /<private-session>/i.test(t.ask));
+  const got = latest(input.transcript_path);
+  const fresh = got.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.ask, t.did, DID), changed: newest(t.changed, CHANGED) }));
+  const hush = got.hush === true;
   // Sessions of one project write this file at once, so they take turns: 8 at
   // once lost 22 of 40 turns without the lock (2026-10-26). The model can still
   // edit the file by hand meanwhile -- the nudge asks it to -- and then the

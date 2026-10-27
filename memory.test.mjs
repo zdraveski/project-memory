@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesS
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
-import { tool, tempHome } from './harness.mjs';
+import { tool, tempHome, storeFor } from './harness.mjs';
 
 const CLI = tool('memory.mjs'), TIER = tool('memory-tier.mjs');
 const { home, env } = tempHome('memcli-');
@@ -98,6 +98,11 @@ ok(r.status === 0 && existsSync(join(dir, 'deploy-notes.md')) && readFileSync(jo
 r = cli('status');
 ok(/changed in the last 7 days: [^\n]*deleted deploy-notes/.test(r.stdout) && !/added [^·\n]*deploy-notes/.test(r.stdout), `status names the week's changes (got ${r.stdout})`);
 ok(!/changed in the last 7 days:[^\n]*secret/.test(r.stdout), "another project's memory is not listed");
+// A name git would quote (not ASCII) is listed as it is.
+memory(dir, 'café-notes', 'notes from the café');
+tier();
+ok(/changed in the last 7 days: [^\n]*café-notes/.test(cli('status').stdout), 'a memory with an accented name is listed');
+unlinkSync(join(dir, 'café-notes.md'));
 ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').includes(handLine), 'with its hand-written index line');
 r = cli('restore', 'deploy-notes');
 ok(r.status === 1 && /exists/.test(r.stdout), 'restore refuses to replace a memory that exists');
@@ -236,6 +241,14 @@ ok(/^PROBLEM not wired[^\n]*claude plugin install project-memory@project-memory/
   const dead = doc('sess-dead');
   ok(/^PROBLEM Claude finished a reply at [^\n]*its Stop hook is not running\. The user's fix: restart Claude Code/m.test(dead), `doctor: a reply long finished with nothing saved is a problem (got ${dead})`);
   for (const id of ['sess-fresh', 'sess-dead']) rmSync(join(root, 'C--mem-cli', `${id}.jsonl`));
+  // From a terminal (no session), the project's newest conversation decides:
+  // with none to read, dead hooks said "waiting" forever.
+  const hs = storeFor(home, home);
+  mkdirSync(hs, { recursive: true });
+  writeFileSync(join(dirname(hs), 'sess-term.jsonl'), JSON.stringify({ type: 'assistant', timestamp: new Date(Date.now() - 5 * 60_000).toISOString(), message: { usage: { input_tokens: 1 }, stop_reason: 'end_turn', content: [] } }) + '\n');
+  const term = spawnSync(process.execPath, [CLI, 'doctor'], { env: noSession, cwd: home, encoding: 'utf8' }).stdout;
+  ok(/^PROBLEM Claude finished a reply at [^\n]*its Stop hook is not running/m.test(term), `doctor from a terminal reads the project's newest conversation (got ${term})`);
+  rmSync(dirname(hs), { recursive: true, force: true });
   if (had !== null) writeFileSync(stopRan, had);
 }
 // Installed from GitHub, with nothing deployed here: it runs its own cached copy.

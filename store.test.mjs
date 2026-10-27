@@ -144,4 +144,10 @@ ok(replaceIfUnchanged(join(dir, 'new.md'), null, 'fresh') === true && readFileSy
 ok(replaceIfUnchanged(join(dir, 'new.md'), null, 'again') === 'conflict', 'and one that appeared meanwhile is not overwritten');
 ok(!readdirSync(dir).some((x) => x.includes('.tmp')), 'no temp file is left behind');
 
+// A value stays on its line, the body is no frontmatter, and CRLF keeps quotes off.
+const emptied = front('---\nname: a\nsuperseded-by:\nmetadata:\n  type: project\n---\nbody');
+ok(emptied.superseded === '' && emptied.tier === '' && emptied.type === 'project', `an empty superseded-by: is empty (got ${JSON.stringify(emptied)})`);
+ok(front('---\nname: fmt\n---\nHow to retire a note:\n  superseded-by: new.md\n  tier: archive\n').tier === '', 'a body that quotes the format does not archive its note');
+ok(front('---\r\nname: crlf\r\ndescription: "quoted"\r\n---\r\n').desc === 'quoted' && front('\uFEFF---\nname: bom\n---\n').name === 'bom', 'CRLF and a BOM read the same');
+
 console.log(`store: ${checks} checks passed`);

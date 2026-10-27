@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, asked, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG } from './handoff-log.mjs';
+import { readTail, text, own, asked, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -82,7 +82,7 @@ function state(path, { ask = true } = {}) {
 }
 
 function walk(raw) {
-  const s = { ctx: 0, midTurn: false, ask: '', said: '', at: '', running: new Map(), edited: new Set() };
+  const s = { ctx: 0, midTurn: false, ask: '', said: '', hidden: false, at: '', running: new Map(), edited: new Set() };
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
@@ -92,7 +92,10 @@ function walk(raw) {
       // A new prompt starts a new turn's edits. Not its running tasks: a build
       // launched two turns ago is still running now, and a note that said
       // "none" had the model rerun it after the compaction.
-      if (asked(r, t)) { s.ask = t; s.at = local(r.timestamp); s.edited.clear(); }
+      // Its answer too: the last one said belonged to the turn before, and
+      // after a private ask it was shown under the next one.
+      if (asked(r, t)) { s.ask = own(t); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
+      else if (/<private/i.test(own(t))) s.hidden = true;
       for (const b of c) {
         const body = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => x.text || '').join(' ') : b.text || '';
         for (const hit of body.matchAll(LAUNCH)) {
@@ -131,7 +134,7 @@ function note(payload, s) {
   const t = tag(payload.session_id);
   // Tagged, so a parallel session's note is never taken for this one's.
   return `- **cut mid-turn**${t ? ` [${t}]` : ''} ${local()} at ${Math.round(s.ctx / 1000)}k tokens, asked ${s.at}: ${clip(s.ask, 240)}\n` +
-    `  **last said:** ${answer(s.ask, s.said, 400)}\n  **still running (read their output files, do not rerun):** ${running}\n  **edited this turn:** ${edited}`;
+    `  **last said:** ${s.hidden ? '[private]' : answer(s.ask, s.said, 400)}\n  **still running (read their output files, do not rerun):** ${running}\n  **edited this turn:** ${edited}`;
 }
 
 function inflight(payload, s) {

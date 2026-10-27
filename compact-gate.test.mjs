@@ -191,4 +191,25 @@ gate();
 const pdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
 ok(/cut mid-turn[^\n]*\[private\] unlock it\n  \*\*last said:\*\* \[private\]/.test(pdoc) && !/4321/.test(pdoc), `a private message's answer is not in the note (got ${pdoc})`);
 
+// The answer to a private message is not shown as the next turn's last words.
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('<private>my SSN is 123-45-6789</private> fill the form'), asst('Filled the form with SSN 123-45-6789.', 500_000, 'end_turn'),
+  user('now submit it'), asst('', 965_000, 'tool_use'), result('ok'));
+gate();
+const sdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
+ok(/cut mid-turn[^\n]*now submit it/.test(sdoc) && !/123-45-6789/.test(sdoc), `a private answer is not the next turn's last words (got ${sdoc})`);
+// A <private-session> typed in this very turn, before any Stop saved the mark.
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('<private-session> the merger target is Contoso'), asst('', 965_000, 'tool_use'), result('ok'));
+gate();
+ok(!/Contoso|cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a mark typed this turn already keeps the note out');
+rmSync(join(dir, '.private-sessions'), { force: true });
+// A private message that is no ask (it opens with an unclosed tag): the answer
+// after it is not shown under the ask before.
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('keep going'), user('<b>note <private>pin 44556677</private>'), asst('Pin 44556677 noted.', 965_000, 'tool_use'), result('ok'));
+gate();
+const hdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
+ok(/cut mid-turn[^\n]*keep going\n  \*\*last said:\*\* \[private\]/.test(hdoc) && !/44556677/.test(hdoc), `the answer to a private message that is no ask is withheld (got ${hdoc})`);
+
 console.log(`compact-gate: ${checks} checks passed`);

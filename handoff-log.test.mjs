@@ -13,7 +13,7 @@ const { home, env } = tempHome('hl-test-');
 // The hooks in this process too, under the same throwaway HOME: a check that
 // needs no stdin or exit code calls handoff() itself, not a node start per turn.
 process.env.HOME = home; process.env.USERPROFILE = home;
-const { handoff, edited, plain } = await import('./handoff-log.mjs');
+const { handoff, edited, plain, redact, clip } = await import('./handoff-log.mjs');
 const cwd = 'C:\\handoff-log-selftest';
 const dir = storeFor(home, cwd);
 const transcript = join(dir, 'transcript.jsonl');
@@ -543,6 +543,61 @@ handoff({ cwd: cwdO, transcript_path: to, session_id: 'oooooooo-9' });
 writeFileSync(to, [user('<private-session>', { ts: '2026-10-27T11:11:00Z' }), asst('ok')].join('\n') + '\n', { flag: 'a' });
 handoff({ cwd: cwdO, transcript_path: to, session_id: 'oooooooo-9' });
 ok(!/alone here|\*\*asked\*\*/.test(readFileSync(join(dirO, 'handoff.md'), 'utf8')), 'the only conversation, marked private, leaves no entry');
+
+// 34. Secrets in the shapes the first patterns missed: a name that ends in the
+// word (.env), Stripe's underscores, a value on the next line, lowercase
+// bearer, a PGP block. Ordinary text around them stays. The Stripe-shaped keys
+// are put together here: whole, GitHub's push protection refuses the file.
+const stripe = (kind, mode) => [kind, mode, '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
+const shapes = ['DB_PASSWORD=hunter2hunter2', 'CLIENT_SECRET=s3cr3tvalue99', 'AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENG', 'MY_SERVICE_API_KEY=abc123def456ghi',
+  stripe('sk', 'live'), stripe('pk', 'test'), stripe('rk', 'live'), 'password:\n  hunter2secret',
+  'authorization: bearer abcdefghijklmnopqrstuvwxyz0123', '-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBF0abc\n-----END PGP PRIVATE KEY BLOCK-----'];
+for (const l of shapes) ok(!/hunter2|s3cr3t|wJalr|abc123def|51Habc|lQOYBF|abcdefghijklmnop/.test(clip(l, 400)), `not written: ${JSON.stringify(l)} (got ${clip(l, 400)})`);
+ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 'sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6', 'ordinary text is left alone');
+const t34 = Date.now(); redact('_secret'.repeat(20_000)); redact('password' + ' '.repeat(100_000));
+ok(Date.now() - t34 < 1000, 'a name-and-value pattern cannot be made to backtrack');
+
+// 35. A message that opens with some other tag is still the user's: its
+// <private> part and its answer stay out. An IDE's note before the words is
+// not part of the ask. A private message that is no ask at all leaves the
+// answer before it as it was.
+const cwdI = 'C:\\handoff-tags', dirI = storeFor(home, cwdI), ti = join(dirI, 'i.jsonl');
+mkdirSync(dirI, { recursive: true });
+const is = (...lines) => writeFileSync(ti, lines.join('\n') + '\n', { flag: 'a' });
+const irun = (id = 'iiiiiiii-1') => handoff({ cwd: cwdI, transcript_path: ti, session_id: id });
+const idoc = () => readFileSync(join(dirI, 'handoff.md'), 'utf8');
+is(user('plan the trip', { ts: '2026-10-27T12:00:00Z' }), asst('planned'),
+  user('<div>context</div> <private>my passport is X1234567</private> book it', { ts: '2026-10-27T12:01:00Z' }), asst('Booked with passport X1234567.'),
+  rec('user', [{ type: 'text', text: '<ide_opened_file>The user opened the file c:\\app\\login.ts in the IDE.</ide_opened_file>' }, { type: 'text', text: 'fix the login bug' }], { ts: '2026-10-27T12:02:00Z' }), asst('fixed it'),
+  user('<b>keep <private>pin 99887766</private>', { ts: '2026-10-27T12:03:00Z' }), asst('Your pin 99887766 is kept.'));
+irun();
+ok(!/X1234567|99887766/.test(idoc()) && /plan the trip\n  \*\*did:\*\* planned/.test(idoc()) && /\[private\] book it\n  \*\*did:\*\* \[private\]/.test(idoc()),
+  `a private part after another tag, and its answer, stay out (got ${idoc().split('<!-- auto:start -->')[1]})`);
+ok(/: fix the login bug\n  \*\*did:\*\* fixed it\n/.test(idoc()) && !/ide_opened_file/.test(idoc()), 'an IDE prompt is an ask, without the note before it');
+
+// 36. <private-session> marks a turn that got no text, only tool calls.
+const tm = join(dirI, 'm.jsonl');
+writeFileSync(tm, [user('<private-session>', { ts: '2026-10-27T12:10:00Z' }), rec('assistant', [{ type: 'tool_use', id: 'x', name: 'Read', input: { file_path: 'a' } }]),
+  user('my salary is 123456', { ts: '2026-10-27T12:11:00Z' }), asst('noted')].join('\n') + '\n');
+ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'private' && !/123456|salary/.test(idoc()) && /mmmmmmmm/.test(readFileSync(join(dirI, '.private-sessions'), 'utf8')),
+  'a mark with no reply after it still keeps the conversation out');
+
+// 37. A note the compaction gate left for a conversation marked since goes at
+// its next Stop, though no entry changed.
+writeFileSync(join(dirI, 'handoff.md'), idoc().replace('<!-- auto:end -->', '- **cut mid-turn** [mmmmmmmm] 2026-10-27 12:12 at 965k tokens, asked 2026-10-27 12:11: the Contoso plan\n  **last said:** x\n  **still running (read their output files, do not rerun):** none\n  **edited this turn:** none\n<!-- auto:end -->'));
+ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'private' && !/Contoso/.test(idoc()) && /fix the login bug/.test(idoc()), 'the note goes, the other entries stay');
+
+// 38. An ask cut through an emoji is written once, not again at every Stop.
+const te = join(dirI, 'e.jsonl');
+writeFileSync(te, [user('a'.repeat(238) + '\u{1F600} and more', { ts: '2026-10-27T12:20:00Z' }), asst('ok')].join('\n') + '\n');
+for (let i = 0; i < 3; i++) handoff({ cwd: cwdI, transcript_path: te, session_id: 'eeeeeeee-3' });
+ok((idoc().match(/\[eeeeeeee\]/g) || []).length === 1 && !/\uFFFD/.test(idoc()), 'a cut emoji leaves no half behind and no copies');
+
+// 39. The list of private conversations read CRLF, as an editor may save it.
+writeFileSync(join(dirI, '.private-sessions'), 'mmmmmmmm\r\ncccccccc\r\n');
+const tc = join(dirI, 'c.jsonl');
+writeFileSync(tc, [user('crlf secret plan', { ts: '2026-10-27T12:30:00Z' }), asst('ok')].join('\n') + '\n');
+ok(handoff({ cwd: cwdI, transcript_path: tc, session_id: 'cccccccc-4' }) === 'private' && !/crlf secret/.test(idoc()), 'a mark saved CRLF still keeps its conversation out');
 
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

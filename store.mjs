@@ -57,16 +57,23 @@ export function allStores() {
 // `modified` is NaN when the memory has no stamp. A memory a newer one
 // replaced (`superseded-by: <file>`) is archived, as `tier: archive` would.
 export function front(text) {
-  const get = (re) => ((text.match(re) || [])[1] || '').trim();
-  const superseded = get(/^\s*superseded-by:\s*"?(.*?)"?\s*$/m);
+  // The frontmatter only: a note that quotes `tier: archive` in its body (one
+  // about the format) is not archived by it. Unclosed, it is all frontmatter.
+  const t = text.replace(/^﻿/, '');
+  const end = t.startsWith('---') ? t.indexOf('\n---', 3) : 0;
+  const head = end === -1 ? t : t.slice(0, end);
+  // A value stays on its line: an emptied `superseded-by:` took the next line
+  // as its value. \r too, for a file saved CRLF.
+  const get = (re) => ((head.match(re) || [])[1] || '').trim();
+  const superseded = get(/^[ \t]*superseded-by:[ \t]*"?(.*?)"?[ \t\r]*$/m);
   return {
-    name: get(/^name:\s*"?(.*?)"?\s*$/m),
+    name: get(/^name:[ \t]*"?(.*?)"?[ \t\r]*$/m),
     // YAML-escaped quotes stay escaped otherwise: a recovered pointer read `\"gaps\"`.
-    desc: get(/^description:\s*"?(.*?)"?\s*$/m).replace(/\\"/g, '"'),
-    type: get(/^\s*type:\s*(\w+)/m),
-    tier: superseded ? 'archive' : get(/^\s*tier:\s*(\w+)/m),
+    desc: get(/^description:[ \t]*"?(.*?)"?[ \t\r]*$/m).replace(/\\"/g, '"'),
+    type: get(/^[ \t]*type:[ \t]*(\w+)/m),
+    tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*(\w+)/m),
     superseded,
-    modified: Date.parse(get(/^\s*modified:\s*(\S+)/m)),
+    modified: Date.parse(get(/^[ \t]*modified:[ \t]*(\S+)/m)),
   };
 }
 

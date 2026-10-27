@@ -75,11 +75,17 @@ the turn changed (from Edit, Write and NotebookEdit; the last 8, and how many
 more). A turn that is only a slash command is not recorded.
 
 Before any of it is written, secrets are taken out: text between `<private>`
-and `</private>`, private key blocks, keys and tokens known by their prefix
-(`sk-`, `ghp_`, `github_pat_`, `xox…-`, `AKIA`, `AIza`, JWTs, `Bearer …`), and
-a value after `password`, `secret`, `api_key`, `access_token` or
-`auth_token`. The same applies to the startup briefing and the compaction
+and `</private>`, private key blocks (PGP's too), keys and tokens known by
+their prefix (`sk-`, Stripe's `sk_live_`/`pk_test_`/`rk_live_`, `ghp_`,
+`github_pat_`, `xox…-`, `AKIA`, `AIza`, JWTs, `Bearer …` in any case), and a
+value after `password`, `secret`, `api_key`, `access_token` or `auth_token`,
+also as the end of a longer name (`DB_PASSWORD=`) and with the value on the
+next line. The same applies to the startup briefing and the compaction
 recovery note.
+
+What is recorded as your message is your own words: Claude Code's
+`<system-reminder>` blocks, and tags it puts before them (a slash command's,
+a task notification, an IDE's note of the open file), are left out.
 
 The answer to a message that contains `<private>` is saved as `[private]`,
 because an answer often repeats what it was told. A message that contains

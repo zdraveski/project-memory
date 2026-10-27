@@ -139,7 +139,7 @@ const more = (xs, n) => xs.slice(0, n).join(', ') + (xs.length > n ? `, and ${xs
 // and are left out.
 const RECENT_DAYS = 7;
 function recent(dir) {
-  let out; try { out = git('log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=', '--', tracked(dir, '')); } catch { return ''; }
+  let out; try { out = git('-c', 'core.quotepath=off', 'log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=', '--', tracked(dir, '')); } catch { return ''; }
   const last = new Map(), born = new Set();
   for (const l of out.split('\n')) {
     const [st, p] = l.trim().split('\t');
@@ -330,7 +330,10 @@ export function doctor() {
     // a new install checked at once said PROBLEM. It is one when this
     // conversation finished a reply over a minute ago and still nothing saved.
     const id = process.env.CLAUDE_CODE_SESSION_ID;
-    let end = NaN; try { if (id) end = lastTurn(join(dirname(sessionStore()), `${id}.jsonl`)).end; } catch {}
+    // Outside a session (a terminal), the project's newest conversation: with
+    // none to read, a dead hook said "waiting" forever.
+    let end = NaN;
+    try { const p = id ? join(dirname(sessionStore()), `${id}.jsonl`) : transcripts(sessionStore(), '')[0]?.p; if (p) end = lastTurn(p).end; } catch {}
     if (Date.now() - end > GRACE) say(false, `Claude finished a reply at ${local(end)}, but project-memory has not saved after any reply: its Stop hook is not running. The user's fix: restart Claude Code; if this line stays, check that Node.js is installed (node --version)`);
     else say(true, "waiting for Claude's first reply: project-memory saves each time Claude finishes one");
   } else { const s = stalled(transcripts(sessionStore(), '')[0]); say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}`); }

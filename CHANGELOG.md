@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.6 (2026-10-27)
+
+- A private message stays private. A message that starts with `<private>` was
+  not counted as a message, so Claude's reply to it was saved as the reply to
+  the message before. Now the reply to any message containing `<private>` is
+  saved as `[private]`, in the handoff and in the compaction note, since a
+  reply often repeats what it was told.
+- `<private-session>` keeps a whole conversation out of the handoff. What it
+  saved earlier is removed, and no compaction note is written for it.
+- `superseded-by: <note>.md` in a note's frontmatter moves it to the archive,
+  even when it's pinned, and `search` names the note that replaced it.
+- `status` lists the notes added, changed or deleted in the last 7 days.
+- More secrets are recognised: names that end in `PASSWORD`, `SECRET` or
+  `API_KEY` (as in a `.env` file), Stripe keys, a password on the line after
+  its label, lowercase `bearer`, and PGP private key blocks.
+- A message that starts with a tag Claude Code added, such as an IDE's note of
+  the open file, is recorded, without the tag. Before, it was skipped, and
+  Claude's reply to it was saved as the reply to the message before.
+- Fixed: a message cut in the middle of an emoji was saved again after every
+  reply; `superseded-by:` with no value read the next line as its value, and a
+  note's body could archive it; `status` left out notes with accented names;
+  `doctor` run from a terminal said "waiting" even when the hooks had stopped.
+- The README is honest about what Claude Code now does on its own, describes
+  memory-toolkit and MemPalace, says how to open your notes, and puts the
+  install steps before the comparison.
+
 ## 1.0.5 (2026-10-27)
 
 - Secrets stay out of what the plugin saves. Keys, tokens and passwords pasted
