@@ -242,8 +242,10 @@ ok(/^PROBLEM not wired[^\n]*claude plugin install project-memory@project-memory/
   ok(/^PROBLEM Claude finished a reply at [^\n]*its Stop hook is not running\. The user's fix: restart Claude Code/m.test(dead), `doctor: a reply long finished with nothing saved is a problem (got ${dead})`);
   for (const id of ['sess-fresh', 'sess-dead']) rmSync(join(root, 'C--mem-cli', `${id}.jsonl`));
   // From a terminal (no session), the project's newest conversation decides:
-  // with none to read, dead hooks said "waiting" forever.
-  const hs = storeFor(home, home);
+  // with none to read, dead hooks said "waiting" forever. The project is the
+  // cwd as the CLI sees it: on macOS, /var/... resolves to /private/var/...
+  const seen = spawnSync(process.execPath, ['-e', 'process.stdout.write(process.cwd())'], { cwd: home, encoding: 'utf8' }).stdout;
+  const hs = storeFor(home, seen);
   mkdirSync(hs, { recursive: true });
   writeFileSync(join(dirname(hs), 'sess-term.jsonl'), JSON.stringify({ type: 'assistant', timestamp: new Date(Date.now() - 5 * 60_000).toISOString(), message: { usage: { input_tokens: 1 }, stop_reason: 'end_turn', content: [] } }) + '\n');
   const term = spawnSync(process.execPath, [CLI, 'doctor'], { env: noSession, cwd: home, encoding: 'utf8' }).stdout;
