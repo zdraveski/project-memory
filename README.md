@@ -1,4 +1,4 @@
-<img src=".claude-plugin/icon.png" alt="" width="96" align="right">
+![project-memory icon](docs/icon-128.png)
 
 # project-memory
 
@@ -7,6 +7,11 @@
 project-memory is a free add-on (a "plugin") for Claude Code. Once it's
 installed, it works on its own in the background. You don't have to learn any
 commands to get the benefit.
+
+![A short demo. On Monday Claude saves a pricing decision. On Tuesday a new conversation knows where things stopped. Later, a note deleted by mistake comes back.](docs/demo.gif)
+
+*The demo replays three real conversations in a sample project, with the
+messages shortened to fit.*
 
 ## Why you might want it
 
