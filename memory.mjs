@@ -14,11 +14,11 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared]
 The store is this session's own (outside a session: the cwd's project, or the nearest
 folder above it with one) unless --store or --shared says otherwise.`;
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, unlinkSync, realpathSync } from 'node:fs';
-import { join, relative, basename, dirname } from 'node:path';
+import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, front, allStores, same } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, same } from './store.mjs';
 import { sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip } from './handoff-log.mjs';
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
@@ -137,9 +137,13 @@ const more = (xs, n) => xs.slice(0, n).join(', ') + (xs.length > n ? `, and ${xs
 // and are left out.
 const RECENT_DAYS = 7;
 function recent(dir) {
-  let out; try { out = git('-c', 'core.quotepath=off', 'log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=', '--', tracked(dir, '')); } catch { return ''; }
+  let out; try { out = git('-c', 'core.quotepath=off', 'log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=@%s', '--', tracked(dir, '')); } catch { return ''; }
   const last = new Map(), born = new Set();
+  let first = false;
   for (const l of out.split('\n')) {
+    // The first snapshot took in what was already there: not added this week.
+    if (l.startsWith('@')) { first = l === '@memory: first snapshot'; continue; }
+    if (first) continue;
     const [st, p] = l.trim().split('\t');
     const f = p && p.split('/').pop();
     if (!f || !f.endsWith('.md') || f === 'handoff.md' || f.startsWith('MEMORY')) continue;
@@ -154,7 +158,9 @@ function recent(dir) {
 function snapshots() {
   let h = null; try { h = JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8')); } catch {}
   if (!h) return 'snapshots: none recorded yet';
-  return h.failures ? `snapshots: failing, ${h.failures} in a row (${h.error}); last ok ${h.lastOk ? local(h.lastOk) : 'never'}`
+  if (h.off) return `snapshots: off, ${h.off}: everything else works, but an old version of a note cannot be brought back`;
+  return h.failures ? `snapshots: failing, ${h.failures} in a row (${h.error}); last ok ${h.lastOk ? local(h.lastOk) : 'never'}. ` +
+    `The user's fix: run git -C "${projectsRoot()}" status in a terminal to see git's own message; if git says the repository is damaged, rename its .git folder and the next reply starts a new history`
     : `snapshots: ok, last ${local(h.lastOk)}`;
 }
 
@@ -181,7 +187,7 @@ function sessionStore() {
 
 // The snapshot repo is ~/.claude/projects and tracks each store by its real
 // path: memory-tier.mjs ignores the junctions.
-const git = (...a) => execFileSync('git', ['-C', projectsRoot(), ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20 });
+const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20, timeout: 60_000 });
 // The on-disk spelling: git's paths are case-sensitive, and the JS realpath
 // keeps whatever case it was handed (a cwd typed in lower case).
 const real = (p) => { try { return realpathSync.native(p); } catch { return p; } };
@@ -218,13 +224,20 @@ export function restore(dir, file, { rev, force = false } = {}) {
   if (existsSync(path) && !force) return no(`${path} exists; restore --force replaces it with the snapshot`);
   // Deleted here by a promote: brought back, it would be in both stores, loaded twice, drifting apart.
   if (!isShared(dir) && existsSync(join(sharedStore(), file)) && !force) return no(`${file} was promoted: it is in ${sharedStore()}; restore --force brings a second copy back here`);
+  // A commit's name, or one counted back from it (abc123^, HEAD~2): anything
+  // else reached git as an option, and `--format=...` wrote git's own output
+  // into the note.
+  if (rev !== undefined && !/^[\w^~.]{1,80}$/.test(rev)) return no(`--rev takes a commit from history, like abc1234: not "${rev}"`);
   let from = rev, text;
   try {
     if (!from) {
       try { git('cat-file', '-e', `HEAD:${at}`); from = 'HEAD'; }
       catch { const gone = git('log', '-1', '--format=%h', '--diff-filter=D', '--', at).trim(); from = gone ? `${gone}^` : 'HEAD'; }
     }
-    text = git('show', `${from}:${at}`);
+    try { text = git('show', `${from}:${at}`); }
+    // The commit history names as "deleted" no longer has it: the version it
+    // deleted is the one before.
+    catch (e) { if (!rev) throw e; text = git('show', `${rev}^:${at}`); from = `${rev}^`; }
   } catch (e) { return no(`no snapshot of ${at} at ${from || 'HEAD'}: ${gitWhy(e)}`); }
   let line = null;
   if (!file.startsWith('MEMORY')) {
@@ -242,7 +255,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
     if (cur !== null && cur.replace(/^\uFEFF/, '') === text) return `${path} already matches ${from}: nothing to restore; history lists older versions, --rev <commit> picks one`;
     // What --force replaces is kept in the repo, not lost: no snapshot may hold it yet.
     let kept = '';
-    if (cur !== null) { try { kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${execFileSync('git', ['-C', projectsRoot(), 'hash-object', '-w', '--stdin'], { input: cur, encoding: 'utf8' }).trim()}`; } catch {} }
+    if (cur !== null) { try { kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: cur, encoding: 'utf8' }).trim()}`; } catch {} }
     if (replaceIfUnchanged(path, cur, text) === 'conflict') return `${path} changed meanwhile; nothing written`;
     if (file.startsWith('MEMORY')) return `restored ${path} from ${from}${kept}`;
     const idx = join(dir, 'MEMORY.md'), main = raw(idx);
@@ -296,7 +309,12 @@ export function promote(dir, file) {
 
 // The Stop hook's runs, oldest first, one JSON line each (memory-tier.mjs).
 const stopRuns = () => (read(join(projectsRoot(), '.stop-ran')) ?? '').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r?.at ? [r] : []; } catch { return []; } });
-const TWICE = 5000;   // two Stop runs of one conversation this close answered one reply
+// Two wirings answer one Stop at once. Not a /compact typed after a reply (a
+// PreCompact run), nor the reply to a block (stop_hook_active): both are a
+// second run seconds later, and both read as hooks wired twice.
+const TWICE = 2000;
+const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h &&
+  Math.abs(Date.parse(r.at) - Date.parse(p.at)) < TWICE;
 
 export function doctor() {
   const lines = [];
@@ -310,8 +328,8 @@ export function doctor() {
   else if (runs.length) say(true, `the hooks run from ${runs.at(-1).from}, without the plugin installed`);
   else say(false, `not installed: the project-memory plugin is not installed, and its hooks have never run. The user's fix: claude plugin marketplace add zdraveski/project-memory, then claude plugin install ${PLUGIN}`);
   // Two runs for one reply, seconds apart: two wirings answered one Stop.
-  const twice = runs.slice(-10).find((r, i, rs) => i > 0 && r.s && r.s === rs[i - 1].s && Math.abs(Date.parse(r.at) - Date.parse(rs[i - 1].at)) < TWICE);
-  if (twice) say(false, `the Stop hook ran twice for one reply (${local(twice.at)}): project-memory is wired twice, by the plugin and by hook entries in settings.json, or installed twice. Every hook runs twice. The user's fix: delete project-memory's hooks from settings.json, or uninstall the second copy`);
+  const twice = runs.slice(-10).find((r, i, rs) => i > 0 && twin(r, rs[i - 1]));
+  if (twice) say(false, `the Stop hook ran twice for one reply (${local(twice.at)}): project-memory is set up twice, so every hook runs twice. The user's fix: claude plugin list shows each copy installed; uninstall all but one. If its hooks were also once added to settings.json by hand, remove those`);
   if (existsSync(join(LIVE, '.deployed.json'))) { const e = edited(LIVE); say(!e.length, e[0] || `${LIVE} matches what deploy.mjs checked`); }
   // Installed from the live copy, the plugin runs it in place; from anywhere
   // else, a cached copy that only `claude plugin update` refreshes.
@@ -340,10 +358,11 @@ export function doctor() {
     try { const p = id ? join(dirname(sessionStore()), `${id}.jsonl`) : transcripts(sessionStore(), '')[0]?.p; if (p) end = lastTurn(p).end; } catch {}
     if (Date.now() - end > GRACE) say(false, `Claude finished a reply at ${local(end)}, but project-memory has not saved after any reply: its Stop hook is not running. The user's fix: restart Claude Code; if this line stays, check that Node.js is installed (node --version)`);
     else say(true, "waiting for Claude's first reply: project-memory saves each time Claude finishes one");
-  } else { const s = stalled(transcripts(sessionStore(), '')[0]); say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`); }
+  } else { const s = stalled(transcripts(sessionStore(), '')[0], false); say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`); }
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return Date.now() - statSync(l).mtimeMs > LOCK_STALE; } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);
-  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); say(true, 'git on PATH'); } catch { say(false, 'git is not on PATH: no memory snapshots'); }
+  // No git is a setup the README allows: everything works but the history.
+  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); say(true, 'git on PATH'); } catch { say(true, 'git is not installed: everything works except bringing back an old version of a note. Installing Git (git-scm.com) turns that on'); }
   // A repack Windows could not finish leaves an index with no pack: harmless,
   // but git warns of each one on every command the snapshot runs.
   const pack = join(projectsRoot(), '.git', 'objects', 'pack');
@@ -358,13 +377,22 @@ export function doctor() {
 // Node names the script by its real path: compared with the path it was
 // given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
-  const [cmd, ...rest] = process.argv.slice(2);
+  // No command (the skill run with no arguments: just `--session <id>`) is status.
+  const argv = process.argv.slice(2);
+  const [cmd, ...rest] = !argv.length || argv[0].startsWith('--') ? ['status', ...argv] : argv;
   const valued = new Set(['--store', '--rev', '--limit', '--session']);
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
   // A session id names a file: anything but an id's characters is ignored.
   if (/^[\w-]{1,100}$/.test(opt('--session') || '')) session = opt('--session');
   const args = rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1]));
-  const here = rest.includes('--shared') ? sharedStore() : opt('--store') || sessionStore();
+  // Another store is a memory folder under the projects root: promote and
+  // restore write where it points, and one anywhere else was written there.
+  const store = opt('--store') && resolve(opt('--store'));
+  if (store && !(basename(store) === 'memory' && same(dirname(dirname(store)), projectsRoot()))) {
+    console.log(`--store takes a memory folder in ${projectsRoot()} (search names them): not ${store}`);
+    process.exit(1);
+  }
+  const here = rest.includes('--shared') ? sharedStore() : store || sessionStore();
   // --all includes the shared store before it has an index, as the default does.
   const scope = rest.includes('--all') ? [...new Set([...allStores(), sharedStore()])] : isShared(here) ? [here] : [here, sharedStore()];
   // A memory is named by its file, with or without `.md`; never by a path.

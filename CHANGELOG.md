@@ -1,5 +1,75 @@
 # Changelog
 
+## Unreleased
+
+Fixes from a four-way review before the directory listing: hostile input,
+security and privacy, the docs against the code, and a new user's first week.
+
+**Privacy**
+- The history of your notes no longer keeps the record of your latest
+  exchanges (`handoff.md`): it lasts only until newer exchanges replace it, as
+  the privacy policy said. Copies an earlier version put in the history stay
+  there until you delete the history (see [PRIVACY.md](PRIVACY.md)).
+- More secrets are recognized and replaced with `[redacted]`: passwords in web
+  addresses, GitLab, npm and Hugging Face tokens, Slack webhooks, Azure account
+  keys, `mysql -p…`, "my password is …", and names like `PGPASSWORD=`,
+  `dbPassword` and `clientSecret`.
+- A `<private>` message's turn no longer records the names of the files it
+  changed. `<private-session>` also works inside a slash command's arguments,
+  and is remembered for the newest 1,000 conversations, not 50.
+- After a compaction, a conversation is shown only its own exchanges, never
+  another conversation's.
+
+**Safety**
+- Text from an earlier conversation can no longer pose as Claude Code's own
+  message in the startup briefing: a tag in it is written `&lt;`.
+- The compaction reminder is labelled `[project-memory: …]`, not `[SYSTEM: …]`.
+- `--store` only accepts a memory folder inside `~/.claude/projects`, and
+  `--rev` only a commit. Before, `promote --store` could delete a file
+  anywhere, and `--rev --format=…` wrote git's output into a note.
+- If `~/.claude/projects` is a git repository you made, project-memory leaves
+  it alone instead of committing into it.
+- An index line can no longer point outside its notebook, or at a web page.
+
+**Things that went wrong**
+- Snapshots no longer use your own git settings. With commit signing or a
+  global hooks folder set, every snapshot failed, and your hooks ran on the
+  memory history. Long paths on Windows are saved too.
+- Without Git, everything else works quietly, as the README says, instead of
+  warning at every start and redoing the whole tidy-up after every reply.
+- A git lock that cannot be cleared counts as a failure; it used to read as
+  "busy" forever while nothing was saved.
+- A prompt that starts with pasted text, or with `<`, is recorded, and so is a
+  slash command. Each used to be skipped, and its answer saved under the
+  question before.
+- With four or more windows on one project, a window's own turn is no longer
+  dropped from the record.
+- A project gets its record of where you left off from the first reply, not
+  only after Claude saves its first note.
+- "Another session is working" means a turn is still open in it, so a window
+  you just closed (for example to restart after installing) isn't reported as
+  working.
+- `doctor` no longer reports "ran twice" for a `/compact` typed right after a
+  reply, or for the reply to the compaction reminder. "Memory hooks look
+  stopped" says that a pause explains it, and doctor no longer tells you to
+  run doctor.
+- The briefing after a compaction stays within the 10,000 characters Claude
+  Code passes on whole, so the shared notes at its end are no longer cut off.
+- Notes with the same date no longer swap in and out of the index on every
+  pass. File names with brackets (`lesson (1).md`) are reported instead of
+  getting a new index line every pass.
+- `status` no longer lists every note as "added" in the first week. `restore
+  --rev` works with a commit `history` lists as "deleted". Dates of notes are
+  no longer shown a day early west of Greenwich. The skill run with no
+  arguments shows `status`.
+- Hostile input no longer slows the hooks down: a crafted message took 35
+  seconds a hook, and a store of 10,000 notes 24 seconds a tidy-up.
+- The README, the how-it-works page and the graphics say what the code does:
+  the compaction wait needs room set aside, and the history keeps old
+  versions, not every version.
+- A security policy, [SECURITY.md](SECURITY.md), says how to report a problem
+  privately.
+
 ## 1.0.7 (2026-10-27)
 
 project-memory now passes the Anthropic plugin directory's checks with no

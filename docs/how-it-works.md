@@ -18,9 +18,11 @@ Claude Code runs project-memory at three moments, and gives Claude one skill.
 The skill is `memory` (`/project-memory:memory`). It runs `memory.mjs`, the
 command-line tool described [below](#the-memory-tool-from-a-terminal).
 
-Every hook exits with status 0, even when something goes wrong, so a hook can
-never block a session. What went wrong is reported in the startup briefing
-instead.
+A hook that fails exits with status 0, so a failure never blocks a session:
+what went wrong is reported in the startup briefing instead. Two hold things up
+on purpose, briefly: the Stop hook keeps Claude from stopping once per
+compaction cycle, to ask it to write its notes, and the compaction gate can
+ask Claude Code to wait (exit status 2).
 
 ## Where things live
 
@@ -63,50 +65,76 @@ After each reply it decides which lines stay in `MEMORY.md` and which move to
   Any other move to the archive is final, unless the note says `tier: hot`.
 
 Lines are moved word for word, never rewritten. A note that has no line gets
-one, two minutes after it was written. Duplicate lines are removed. Nothing is
-written when nothing changed.
+one, built from its description, two minutes after it was written. That line
+goes in the archive (in the shared notebook, in its index) unless the note
+says `tier: hot`. A file name no line can point at, such as `lesson (1).md`,
+is reported in the startup briefing instead, to be renamed. A line that points
+at a web page or a path outside the notebook is kept as plain text. Duplicate
+lines are removed. Nothing is written when nothing changed.
 
 ## The handoff
 
 `handoff.md` records the latest exchanges after every reply: up to 10 per
 conversation, for up to 3 conversations, keeping the first 240 characters of
 what you asked and the first 400 of the answer, and the names of the files
-the turn changed (from Edit, Write and NotebookEdit; the last 8, and how many
-more). A turn that is only a slash command is not recorded.
+the turn changed (from Edit, Write and NotebookEdit; the 8 edited last, and
+how many more). A slash command is recorded as you typed it, with its
+arguments. The answer is the reply Claude Code hands the Stop hook, since the
+transcript file can lag behind it. A project gets its `memory/` folder for
+this if Claude hasn't saved a note there yet.
 
 Before any of it is written, secrets are taken out: text between `<private>`
 and `</private>`, private key blocks (PGP's too), keys and tokens known by
 their prefix (`sk-`, Stripe's `sk_live_`/`pk_test_`/`rk_live_`, `ghp_`,
-`github_pat_`, `xox…-`, `AKIA`, `AIza`, JWTs, `Bearer …` in any case), and a
-value after `password`, `secret`, `api_key`, `access_token` or `auth_token`,
-also as the end of a longer name (`DB_PASSWORD=`) and with the value on the
-next line. The same applies to the startup briefing and the compaction
-recovery note.
+`github_pat_`, GitLab's `glpat-`, npm's `npm_`, Hugging Face's `hf_`, `xox…-`,
+`AKIA`, `AIza`, JWTs, `Bearer …` in any case), Slack webhook addresses, the
+password in a web address (`postgres://user:…@host`), `mysql -p…`, "password
+is …", and a value after `password`, `passphrase`, `secret`, `access_token`,
+`auth_token`, `api_key`, `account_key`, `private_key` or `pwd`, also inside a
+longer name (`DB_PASSWORD=`, `PGPASSWORD=`, `dbPassword`, `clientSecret`) and
+with the value on the next line. A bare `token` is left alone, so a count like
+`input_tokens: 863324` stays. No list of patterns finds every secret: anything
+else goes between `<private>` tags. The same applies to the startup briefing
+and the compaction recovery note.
 
 What is recorded as your message is your own words: Claude Code's
-`<system-reminder>` blocks, and tags it puts before them (a slash command's,
-a task notification, an IDE's note of the open file), are left out.
+`<system-reminder>` blocks, and tags it puts before them (a task notification,
+an IDE's note of the open file), are left out. Text you pasted is yours and
+stays.
 
 The answer to a message that contains `<private>` is saved as `[private]`,
-because an answer often repeats what it was told. A message that contains
-`<private-session>` marks its whole conversation: its entries are removed from
-`handoff.md`, later turns write none, and the compaction gate writes no
-recovery note for it. The mark is kept by the conversation's tag in
-`.private-sessions` (the newest 50), because only the turn that typed it sees
-it in the transcript. Snapshots taken before the mark keep their versions of
-`handoff.md`.
+because an answer often repeats what it was told, and so are the names of the
+files changed in that turn. A message that contains `<private-session>`, a
+slash command's arguments included, marks its whole conversation: its entries
+are removed from `handoff.md`, later turns write none, and the compaction gate
+writes no recovery note for it. The mark is kept by the conversation's tag in
+`.private-sessions` (the newest 1,000), because only the turn that typed it
+sees it in the transcript. `handoff.md` is not in the snapshots.
 
 ## The startup briefing
 
-At the start of a conversation, after `/clear`, and after a compaction,
-Claude is told:
+At the start of a conversation, and after `/clear`, Claude is told:
 
 - which other conversations are working in this project right now (their
-  transcript changed in the last 30 minutes), and what they were last asked;
-- where the last conversation stopped;
-- anything failing: the Stop hook not running, snapshots failing;
-- the shared notebook's index, up to 3,000 bytes;
-- after a compaction that cut a turn short: what that turn had in flight.
+  transcript changed in the last 30 minutes and has a turn still open), and
+  what they were last asked; if none, where the last conversation stopped, if
+  that was in the last 7 days. After `/clear` neither, since the conversation
+  just cleared is the newest;
+- anything failing: the Stop hook not running, snapshots failing, a notebook
+  that needs attention;
+- the shared notebook's index, up to 3,000 bytes.
+
+After a compaction, Claude is told:
+
+- what the turn the compaction cut had in flight, if it cut one;
+- this conversation's own latest exchanges, never another's;
+- which other conversations are working here;
+- the shared notebook's index.
+
+The briefing stays under 9,500 characters, inside the 10,000 Claude Code
+passes on whole: the oldest exchanges are left out first. A `<` that starts a
+tag is written `&lt;`, so text from an earlier conversation can't pose as part
+of Claude Code's own message.
 
 ## Compaction
 
@@ -119,9 +147,15 @@ things soften that.
   a compaction.
 - **A short wait.** When Claude Code compacts on its own in the middle of a
   turn, `compact-gate.mjs` asks it to wait for the end of the turn, while the
-  conversation is between 200,000 tokens and 90% of the model's window. Below
-  that, or above it, or at the end of a turn, the compaction goes ahead.
-  Claude Code doesn't always honour the request.
+  conversation is between 200,000 tokens and 90% of a 1,000,000-token model
+  window: past that there may be no room for one more step. Below that, or
+  above it, or at the end of a turn, the compaction goes ahead. Claude Code
+  compacts at about 96% of its compaction window, so the gate can wait only
+  when `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is set below the model's window: set
+  to `800000` on a 1M model, Claude Code compacts at about 767,000 tokens, and
+  the turn can finish first. With the default settings the compaction goes
+  ahead, and the recovery note below does the work. Claude Code doesn't
+  always honour the request either.
 - **A recovery note.** When a turn is cut anyway, the next startup briefing
   gives Claude what it had in flight: what you asked, its last words,
   background tasks still running with their output files, and the files it
@@ -134,21 +168,27 @@ fires.
 
 ## Snapshots
 
-After each change, the Stop hook commits the notes to a git repository at
-`~/.claude/projects`. The repository ignores everything except
-`*/memory/*.md`: transcripts are never committed. It has no remote and is
-never pushed.
+After each reply that changed a note, the Stop hook commits the notes to a git
+repository at `~/.claude/projects`. The repository ignores everything except
+`*/memory/*.md`, and `handoff.md` too: transcripts and the record of the
+latest exchanges are never committed. It has no remote and is never pushed.
+Your own git settings don't reach it: no hooks of yours run on it, commits
+aren't signed, and long paths work on Windows. If `~/.claude/projects` is
+already a git repository that project-memory didn't make, it commits nothing
+there, and `doctor` says snapshots are off.
 
 - `history <note>` lists the commits that changed a note.
 - `status` names the notes the snapshots saw added, edited or deleted in the
   last 7 days, leaving out `MEMORY.md`, the archive and `handoff.md`, which
-  change after nearly every reply.
+  change after nearly every reply, and what the first snapshot found.
 - `restore <note>` writes it back from the newest snapshot that has it,
-  together with its index line. `--rev <commit>` picks an older version.
-  `--force` replaces a note that exists, and keeps the replaced text in the
-  repository, printing the command that shows it.
+  together with its index line. `--rev <commit>` picks a version `history`
+  lists; a commit it lists as "deleted" brings back the version that commit
+  deleted. `--force` replaces a note that exists, and keeps the replaced text
+  in the repository, printing the command that shows it.
 - A store reached through a link to another project's store is committed once.
-- Without git there are no snapshots, and `doctor` says so.
+- Without git there are no snapshots, everything else works, and `doctor` says
+  so.
 
 To drop the history, delete `~/.claude/projects/.git`. The next change starts
 a new one.
@@ -178,7 +218,8 @@ again next time.
 ## Search
 
 `search` looks at notes in this project and the shared notebook, archive
-included (`--all`: every project). Words shorter than 3 letters are ignored.
+included (`--all`: every project). Words shorter than 3 letters are ignored,
+and so are common words such as "the", "how" and "what".
 For each word: +3 if it's in the note's name, +2 in its description, +1 per
 mention in the body, up to 2. A note that has every word in its name or
 description gets +5; one that has every word somewhere gets +2. Equal scores
@@ -189,7 +230,7 @@ show the newest first.
 The skill runs `memory.mjs`, and so can you:
 
 ```
-node ~/.claude/plugins/cache/project-memory/project-memory/<version>/memory.mjs <command>
+node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory.mjs" <command>
 ```
 
 | Command | Options |
@@ -205,8 +246,9 @@ Every command works on the project of the conversation that `--session <id>`
 names (the skill passes Claude Code's session id), or, without it, on the
 project of the folder you're in. The tool reads no environment variable to
 find the conversation. `--store <folder>` picks another project's `memory`
-folder, and `--shared` picks the shared notebook. The tool exits with 1 when a
-command is refused or fails.
+folder, one inside `~/.claude/projects` (any other is refused), and `--shared`
+picks the shared notebook. With no command, it runs `status`. The tool exits
+with 1 when a command is refused or fails.
 
 ## Requirements and limits
 

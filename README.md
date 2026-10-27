@@ -40,14 +40,14 @@ project-memory looks after that notebook.
 | You start a new conversation and explain again where you were. | Claude starts already knowing where the last conversation stopped. |
 | When the notebook's table of contents gets too long, Claude Code asks Claude to shorten it, and Claude decides what to merge or drop. | The table of contents is kept short for Claude, and nothing is dropped. Older lines move to an archive that Claude can still search. |
 | A very long conversation is shortened to a summary, and details of the task in progress can get lost. | Claude saves its notes before that happens, and afterwards it's told what you asked and what it last said. |
-| A note deleted or overwritten by mistake is gone for good. | Every version of every note is kept. Ask Claude, and it brings one back. |
+| A note deleted or overwritten by mistake is gone for good. | Each change to a note is kept in a history on your computer. Ask Claude, and it brings an old version back. |
 | You teach Claude how you like to work again in every project. | Lessons that apply everywhere are shared with all your projects. |
-| Two Claude windows on the same project can overwrite each other's notes. | No window overwrites another's notes, and each new conversation is told what the other windows are doing. |
+| Two Claude windows on the same project can overwrite each other's notes. | project-memory never writes over a change another window just made, and each new conversation is told what the other windows are doing. |
 
 It runs on its own after every reply, with no waiting you'd notice, and
 everything stays on your computer.
 
-![How it works: you work with Claude, and it writes down your decisions, preferences and corrections. After every reply, project-memory tidies the notes, records where you are and keeps every version. Your next conversation starts already knowing where you stopped.](docs/how-it-works.svg)
+![How it works: you work with Claude, and it writes down your decisions, preferences and corrections. After every reply, project-memory tidies the notes, records where you are and keeps old versions. Your next conversation starts already knowing where you stopped.](docs/how-it-works.svg)
 
 ## Who it's for
 
@@ -96,7 +96,7 @@ for room before every step, so it can compact in the middle of a task. The
 summary may then lose the details of what you asked, what Claude had just
 said, or the notes it meant to write when it finished.
 
-![Long conversations, kept on track. Before: at 85% full, Claude is asked to write its notes while there's still room. During: if the conversation fills up in the middle of a task, project-memory asks Claude Code to wait for the end of the step Claude is on. After: once it's shortened to a summary, Claude is told what you asked, what it last said and what was still running.](docs/long-conversations.svg)
+![Long conversations, kept on track. Before: at 85% full, Claude is asked to write its notes while there's still room. During: if the conversation fills up in the middle of a task, project-memory writes down the step Claude is on, and asks Claude Code to wait for it when there's room. After: once it's shortened to a summary, Claude is told what you asked, what it last said and what was still running.](docs/long-conversations.svg)
 
 project-memory protects your work before, during and after:
 
@@ -105,9 +105,12 @@ project-memory protects your work before, during and after:
    made. When you type `/compact` yourself, the notes are tidied and the
    record of where you are is saved first.
 2. **During.** If Claude Code starts to compact in the middle of a task,
-   project-memory asks it to wait until Claude finishes what it's doing and
-   hands back to you, when there's still room to wait. Claude Code doesn't
-   always agree.
+   project-memory writes down what Claude is in the middle of. It can also ask
+   Claude Code to wait until Claude finishes the step it's on, but only when
+   there's room to wait: with Claude Code's usual settings, a conversation is
+   compacted when it's nearly full, and there's none. To give it room, see
+   [Compaction](docs/how-it-works.md#compaction). Claude Code doesn't always
+   agree to wait.
 3. **After.** If a task is cut off anyway, Claude is told straight away what it
    was in the middle of: what you asked, what it last said, any background
    jobs still running, and the files it had changed.
@@ -128,14 +131,16 @@ needs one setting to fire. See [Compaction](docs/how-it-works.md#compaction).
   under 1,000 tokens: about half a percent of a 200,000-token context window.
   In return, the table of contents Claude reads at every start stays under
   7,000 characters, where Claude Code allows up to 25,000. After a compaction
-  the briefing also repeats the latest exchanges, so it can reach about 3,000
-  tokens.
+  the briefing also repeats the latest exchanges, but it stays under 9,500
+  characters, about 2,500 tokens.
 - **Where it works.** On Windows, macOS and Linux, wherever Claude Code runs on
   your computer and can find Node.js.
 - **One computer.** Your notes and their history stay on the computer they
   were made on. They don't sync to your other computers.
 - **Your own files.** project-memory only writes inside Claude Code's own
   folder. It never touches your project's files or your own git repositories.
+  If you made Claude Code's projects folder into a git repository yourself,
+  project-memory leaves it alone and keeps no history there.
 
 ## Before you install
 
@@ -236,9 +241,20 @@ off?"* If Claude still doesn't know, type `/project-memory:memory doctor`.
 has never run. Go through the [Install](#install) steps again.
 
 **The check says "the Stop hook ran twice for one reply".** project-memory is
-set up twice, so everything it does happens twice. This usually means an old
-copy of its hooks is still listed in your Claude Code settings. Ask Claude to
-remove project-memory's hooks from your settings file, and keep the plugin.
+set up twice, so everything it does happens twice. Run `claude plugin list` in
+a terminal: if project-memory is listed twice, uninstall one copy. If it's
+listed once, its hooks were probably also added to your Claude Code settings by
+hand at some point: ask Claude to remove those, and keep the plugin.
+
+**The briefing says "Memory hooks look stopped".** Another conversation in
+this project finished a reply after project-memory last saved. If you had
+turned project-memory off for a while, this goes away after the next reply. If
+not, type `/project-memory:memory doctor`.
+
+**The check says "snapshots: off".** Git isn't installed, or Claude Code's
+projects folder is a git repository you made yourself. Everything works except
+bringing back an old version of a note. To turn the history on, install Git,
+or move your own repository out of that folder.
 
 **The check says "its Stop hook is not running".** Claude finished a reply,
 but project-memory didn't save after it. Restart Claude Code. If the line is
@@ -262,18 +278,21 @@ back.
 - Claude reads your notes during your conversations. Claude Code's built-in
   memory works the same way.
 - The record of where you left off includes the start of your messages and of
-  Claude's replies, and the names of the files Claude changed. The history
-  keeps old versions of every note. If you copy or share your `.claude` folder,
-  all of that goes with it.
-- Keys, tokens and passwords you paste into a message are replaced with
-  `[redacted]` before anything is saved.
-- To keep something else out, put it between `<private>` and `</private>`.
-  That part isn't saved, and neither is Claude's reply to that message, since
-  a reply often repeats what it was told.
+  Claude's replies, and the names of the files Claude changed. It's kept only
+  until newer exchanges replace it, and it's not part of the history. The
+  history keeps old versions of your notes. If you copy or share your
+  `.claude` folder, all of that goes with it.
+- Common kinds of keys, tokens and passwords you paste into a message are
+  replaced with `[redacted]` before anything is saved: API keys, access
+  tokens, passwords in web addresses, and settings such as `password=`. No
+  tool can recognize every secret, so use `<private>` for anything else.
+- To keep something out, put it between `<private>` and `</private>`. That
+  part isn't saved, and neither is Claude's reply to that message, since a
+  reply often repeats what it was told, nor the names of the files changed in
+  that turn.
 - To keep a whole conversation out of the record, type `<private-session>` in
-  your first message. If you type it later, what was saved before is removed
-  from the record, but older versions in the history still have it. Claude
-  can still write notes in that conversation if you ask it to.
+  any message. What was saved before is removed from the record. Claude can
+  still write notes in that conversation if you ask it to.
 
 The full details are in the [privacy policy](PRIVACY.md).
 
@@ -304,7 +323,7 @@ Claude Code's own memory keeps improving. It now asks Claude to shorten the
 table of contents when it nears its limit, and after a compaction it reloads
 your notes, re-reads recent files and reminds Claude of jobs still running.
 project-memory adds what it still doesn't do: a new conversation that starts
-knowing where the last one stopped, every version of every note, a shared
+knowing where the last one stopped, a history of every note, a shared
 notebook for all your projects, and safe use of several windows at once.
 
 project-memory isn't the only add-on either. This table compares it with five
@@ -324,7 +343,7 @@ so check their pages before you choose.
 | Search | By words | By words and by meaning | By meaning | By meaning | By words and by meaning, plus links between notes | By words |
 | Picks up where you left off | Yes | Yes | Brings back up to 5 memories at the start | Searches memory on every message | When Claude reads the notes | Yes |
 | Protects work when a conversation is compacted | Before, during and after | Not stated | Not stated | Not stated | Not stated | Yes |
-| Every version kept, so you can undo | Yes | Not stated | Not stated | Not stated | Paid cloud only | No |
+| Old versions kept, so you can undo | Yes | Not stated | Not stated | Not stated | Paid cloud only | No |
 | Lessons shared across your projects | Yes | Not stated | No, kept per repository | A personal profile | Yes, one knowledge base | Search across projects |
 | Shared with a team | No | Optional | Yes | Yes | Not stated | No |
 | Safe with several windows open | Yes, and each window is told about the others | Not stated | Not stated | Not stated | Not stated | Not stated |
@@ -379,7 +398,8 @@ Two more are worth knowing about:
   Claude changed, so the next conversation can pick up from there.
 - **Shared notebook**: notes that apply to all your projects. Every
   conversation, in every project, reads its table of contents.
-- **History**: every version of every note, kept with Git on your computer.
+- **History**: each change to your notes, kept with Git on your computer, so
+  an old version can be brought back.
 - **Project**: the folder you open Claude Code in.
 - **Context window**: how much of a conversation Claude can keep in view at
   once. Its size is counted in tokens, about three quarters of a word each.

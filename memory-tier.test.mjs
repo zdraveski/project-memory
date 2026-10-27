@@ -295,13 +295,59 @@ store('proj-three');
 r = plain();
 ok(r.status === 0 && tracked().includes('proj-three/memory/MEMORY.md'), 'a store created after the repo is picked up');
 
-r = noGit();
-ok(r.status === 0 && /snapshot failed/.test(r.stdout), 'git missing from PATH: exit 0, says so');
+// No git is a setup, not a failure: no count, no startup warning, and the
+// store is stamped, or every reply redid the whole pass.
 r = noGit();
 const sh = () => JSON.parse(readFileSync(join(root, '.snapshot-health'), 'utf8'));
-ok(sh().failures === 2 && sh().error, 'failed snapshots are counted for the startup line');
+ok(r.status === 0 && /memory snapshot: off: git is not installed/.test(r.stdout) && sh().failures === 0 && sh().off, `git missing from PATH: exit 0, snapshots off, no failure counted (got ${r.stdout.trim()})`);
+r = plain();
+ok(sh().failures === 0 && sh().lastOk && !sh().off, 'and with git back, snapshots are on again');
+// A repository that cannot be read is a failure, counted for the startup line.
+renameSync(join(root, '.git'), join(root, '.gitaside'));
+writeFileSync(join(root, '.git'), `gitdir: ${join(root, 'no-such-repo').replace(/\\/g, '/')}\n`);
+note('proj-one', 'counted'); plain(); plain();
+ok(sh().failures === 2 && sh().error, `failed snapshots are counted for the startup line (got ${JSON.stringify(sh())})`);
+unlinkSync(join(root, '.git'));
+renameSync(join(root, '.gitaside'), join(root, '.git'));
 r = plain();
 ok(sh().failures === 0 && sh().lastOk, 'and a good one resets the count');
+// The user's own git settings are not the snapshot's: a global hooks path
+// (a pre-commit that fails) and commit signing with no signer failed every
+// snapshot, and ran the user's hooks on the memory repo.
+{
+  const hooks = tempDir('memtier-hooks-');
+  for (const h of ['pre-commit', 'prepare-commit-msg', 'commit-msg']) writeFileSync(join(hooks, h), '#!/bin/sh\necho "the user\'s hook ran" >&2\nexit 1\n', { mode: 0o755 });
+  writeFileSync(join(home, '.gitconfig'), `[core]\n\thooksPath = ${hooks.replace(/\\/g, '/')}\n[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = no-such-signer\n`);
+  note('proj-one', 'signed');
+  try { r = plain(); } finally { rmSync(join(home, '.gitconfig'), { force: true }); }
+  ok(sh().failures === 0 && tracked().includes('proj-one/memory/signed.md'), `a global hooks path and commit signing do not reach the snapshot (got ${r.stdout.trim()})`);
+}
+// The handoff is not snapshotted, and one an older version committed leaves
+// the index when the new .gitignore is written.
+writeFileSync(join(root, 'proj-one', 'memory', 'handoff.md'), 'the last exchanges\n');
+writeFileSync(join(root, '.gitignore'), '*\n!*/\n!*/memory/*.md\n!.gitignore\n');
+git('add', '-f', 'proj-one/memory/handoff.md'); git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'an older version');
+r = plain();
+ok(!tracked().includes('proj-one/memory/handoff.md') && readFileSync(join(root, '.gitignore'), 'utf8').includes('*/memory/handoff.md'), `handoff.md leaves the snapshots (tracked: ${tracked().join(', ')})`);
+// A repository the user made there is theirs: nothing committed into it, its
+// .gitignore untouched. One this tool made before it marked them is adopted.
+{
+  renameSync(join(root, '.git'), join(root, '.gitmine'));
+  const ours = readFileSync(join(root, '.gitignore'), 'utf8');
+  writeFileSync(join(root, '.gitignore'), 'node_modules/\n');
+  execFileSync('git', ['-C', root, 'init', '-q']);
+  note('proj-one', 'theirs');
+  r = plain();
+  const commits = spawnSync('git', ['-C', root, 'rev-list', '--all'], { encoding: 'utf8' }).stdout.trim();
+  ok(/off: .*did not make/.test(r.stdout) && readFileSync(join(root, '.gitignore'), 'utf8') === 'node_modules/\n' && commits === '', `a git repository the user made there is left alone (got ${r.stdout.trim()})`);
+  rmSync(join(root, '.git'), { recursive: true, force: true });
+  renameSync(join(root, '.gitmine'), join(root, '.git'));
+  writeFileSync(join(root, '.gitignore'), ours);
+  git('config', '--remove-section', 'project-memory');
+  note('proj-one', 'adopted');
+  r = plain();
+  ok(tracked().includes('proj-one/memory/adopted.md') && /\[project-memory\]/.test(readFileSync(join(root, '.git', 'config'), 'utf8')), `a repository this tool made before the mark is adopted (got ${r.stdout.trim()})`);
+}
 // Another session's git took index.lock between this one's git calls: the
 // pre-check passed and `git add` failed. That is busy, not a failure -- three
 // sessions stopping in the same half-second raised a false alarm (final
@@ -325,14 +371,17 @@ unlinkSync(join(root, '.git'));
 renameSync(realGit, join(root, '.git'));
 r = plain();
 ok(sh().failures === 0, 'and with the repo back, the count resets');
-// A warning before the reason is not the reason: a stale pack index makes git
-// warn on every command. A pre-commit hook makes the failure deterministic.
-mkdirSync(join(root, '.git', 'hooks'), { recursive: true });
-writeFileSync(join(root, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\necho "warning: no corresponding .pack: x.idx" >&2\necho "the real reason" >&2\nexit 1\n', { mode: 0o755 });
-note('proj-one', 'warned');
+// A lock git may not take, or a dead one that cannot be deleted, is a failure:
+// read as busy, it stopped every snapshot unseen. A folder named index.lock,
+// an hour old, is both.
+mkdirSync(join(root, '.git', 'index.lock'));
+writeFileSync(join(root, '.git', 'index.lock', 'x'), '');
+const hourAgo = new Date(Date.now() - 3600_000);
+utimesSync(join(root, '.git', 'index.lock'), hourAgo, hourAgo);
+note('proj-one', 'locked-out');
 r = plain();
-ok(sh().error === 'the real reason', `a failed snapshot records the reason, not a warning before it (got: ${sh().error})`);
-unlinkSync(join(root, '.git', 'hooks', 'pre-commit'));
+ok(/snapshot failed/.test(r.stdout) && sh().failures === 1, `an index.lock that cannot be removed is a failure, not busy (got ${r.stdout.trim()})`);
+rmSync(join(root, '.git', 'index.lock'), { recursive: true, force: true });
 r = plain();
 
 r = plain();
@@ -522,6 +571,51 @@ wide(six, 40);
 writeFileSync(join(root, 'proj-six', 'session.jsonl'), '');
 stop('proj-six');
 ok(Buffer.byteLength(readFileSync(join(six, 'MEMORY.md'), 'utf8')) > 3000, 'a project store keeps its own 7000 B budget');
+
+// 1.0.8. A web link in an index is prose, not a memory with no file; a name no
+// index line can carry (`lesson (1).md`) is reported, not given a new line on
+// every pass.
+{
+  const seven = join(root, 'proj-seven', 'memory');
+  mkdirSync(seven, { recursive: true });
+  const put = (f, body) => { writeFileSync(join(seven, f), body); utimesSync(join(seven, f), tenMin, tenMin); };
+  put('a.md', '---\nname: a\ndescription: "a"\nmetadata:\n  type: feedback\n---\nbody\n');
+  put('lesson (1).md', '---\nname: copy\ndescription: "a copy"\nmetadata:\n  type: project\n---\nbody\n');
+  writeFileSync(join(seven, 'MEMORY.md'), '# Index\n\n- [Repo](https://github.com/x/y) — the code\n- [a](a.md) — a\n');
+  const tierSeven = () => spawnSync(process.execPath, [TOOL, '--dir', seven], { encoding: 'utf8' });
+  tierSeven();
+  const m7 = readFileSync(join(seven, 'MEMORY.md'), 'utf8'), a7 = readFileSync(join(seven, 'MEMORY-archive.md'), 'utf8');
+  tierSeven();
+  const h7 = readFileSync(join(seven, '.health'), 'utf8');
+  ok(/github\.com/.test(m7) && !/pointers with no file/.test(h7) && /cannot point at[^\n]*lesson \(1\)\.md/.test(h7)
+    && readFileSync(join(seven, 'MEMORY.md'), 'utf8') === m7 && readFileSync(join(seven, 'MEMORY-archive.md'), 'utf8') === a7,
+    `a web link stays as prose, and a name no line can carry is reported, not added each pass (health: ${h7.trim()})`);
+}
+// Notes of one date: every pass evicts the same lines. In index order, the
+// lines a pass brought back went last, and each pass evicted different ones.
+{
+  const eight = join(root, 'proj-eight', 'memory'), day = new Date(Date.now() - 86400000).toISOString().slice(0, 10), ls = [];
+  mkdirSync(eight, { recursive: true });
+  for (let i = 0; i < 60; i++) {
+    const n = `same-day-${String(i).padStart(2, '0')}`;
+    writeFileSync(join(eight, `${n}.md`), `---\nname: ${n}\ndescription: "${n}"\nmetadata:\n  type: project\n  modified: ${day}\n---\nbody\n`);
+    utimesSync(join(eight, `${n}.md`), tenMin, tenMin);
+    ls.push(`- [${n}](${n}.md) — ${'a hook long enough that sixty of them overflow '.repeat(2).trim()}`);
+  }
+  writeFileSync(join(eight, 'MEMORY.md'), '# Index\n\n' + ls.join('\n') + '\n');
+  const tierEight = () => spawnSync(process.execPath, [TOOL, '--dir', eight], { encoding: 'utf8' });
+  tierEight();
+  const m8 = readFileSync(join(eight, 'MEMORY.md'), 'utf8'), a8 = readFileSync(join(eight, 'MEMORY-archive.md'), 'utf8');
+  tierEight(); tierEight();
+  ok(/overflow/.test(a8) && readFileSync(join(eight, 'MEMORY.md'), 'utf8') === m8 && readFileSync(join(eight, 'MEMORY-archive.md'), 'utf8') === a8, 'notes of one date: every pass evicts the same lines');
+}
+// A run says which event ran it, and whether a block sent it back; a transcript
+// path that is no string still exits 0.
+spawnSync(process.execPath, [TOOL, '--stop'], { encoding: 'utf8', input: JSON.stringify({ transcript_path: join(root, 'proj-one', 'session.jsonl'), session_id: 'evt', hook_event_name: 'Stop', stop_hook_active: true }) });
+const evt = JSON.parse(runLines().at(-1));
+ok(evt.e === 'Stop' && evt.h === 1, `--stop: a run says which event ran it, and whether a block sent it back (got ${runLines().at(-1)})`);
+r = spawnSync(process.execPath, [TOOL, '--stop'], { encoding: 'utf8', input: JSON.stringify({ transcript_path: 42, session_id: 'bad' }) });
+ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (got ${r.status}: ${r.stderr.slice(0, 200)})`);
 
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

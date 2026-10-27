@@ -149,4 +149,30 @@ ok(emptied.superseded === '' && emptied.tier === '' && emptied.type === 'project
 ok(front('---\nname: fmt\n---\nHow to retire a note:\n  superseded-by: new.md\n  tier: archive\n').tier === '', 'a body that quotes the format does not archive its note');
 ok(front('---\r\nname: crlf\r\ndescription: "quoted"\r\n---\r\n').desc === 'quoted' && front('\uFEFF---\nname: bom\n---\n').name === 'bom', 'CRLF and a BOM read the same');
 
+// 1.0.8. A pointer names a file in the store, by its name: a web link was a
+// memory with no file at every startup, and `../../big.bin` was read whole by
+// every Stop.
+const { POINTER } = await import('./store.mjs');
+ok(POINTER.test('- [a](a.md) \u2014 x') && !POINTER.test('- [Repo](https://github.com/x/y) \u2014 the code') && !POINTER.test('- [x](../../big.bin) \u2014 x') && !POINTER.test('- [x](C:\\big.bin) \u2014 x'),
+  'a pointer names a file in the store, never a link or a path');
+// A date alone is that day where the user is: read as UTC midnight, it printed
+// as the day before west of Greenwich.
+ok(local(front('---\nmodified: 2025-09-01\n---\n').modified).startsWith('2025-09-01 00:00'), 'a modified: date alone is that day, here');
+// A transcript path that is no string threw, and the Stop hook with it; one
+// that climbs out of the projects folder named a store outside it.
+ok(storeOf({ cwd: 'C:\\x', transcript_path: 42 }) === join(root, 'C--x', 'memory') && storeOf({ cwd: 'C:\\x', transcript_path: `${root}/../x.jsonl` }) === join(root, 'C--x', 'memory'),
+  'a transcript path that is no string, or leaves the projects folder, falls back to the cwd');
+// A lock dated in the future (a clock set back) is as dead as an old one.
+mkdirSync(join(dir, '.lock'));
+const later = new Date(Date.now() + 3600_000);
+utimesSync(join(dir, '.lock'), later, later);
+ok(withLock(dir, () => 'taken') === 'taken', 'a lock dated an hour ahead is taken over');
+// The snapshot repo's git ignores the user's own config: commit signing failed
+// every snapshot, a global hooks folder ran the user's hooks on it, and on
+// Windows a path past 260 characters was skipped with only a warning.
+const { gitArgs } = await import('./store.mjs');
+const ga = gitArgs('status');
+ok(ga.includes('commit.gpgsign=false') && ga.includes('core.longpaths=true') && ga.some((a) => /^core\.hooksPath=.*no-hooks$/.test(a)) && ga.at(-1) === 'status',
+  `the snapshot repo's git turns off signing and hooks, and on long paths (got ${ga.join(' ')})`);
+
 console.log(`store: ${checks} checks passed`);

@@ -94,7 +94,7 @@ write(user('q3'), asst('over the trigger, mid-turn', T + 60_000, 'tool_use'));
 ok(stop('s3', { hook_event_name: 'PreCompact', trigger: 'auto' }) === null, 'a PreCompact payload is never nudged');
 const n3 = stop('s3');
 ok(n3?.decision === 'block', 'and it did not arm the stamp: the turn end still gets its nudge');
-ok(n3.reason.startsWith('[SYSTEM: compaction gate]'), 'the reason is tagged so the handoff never reads it as a prompt');
+ok(n3.reason.startsWith('[project-memory: compaction gate]') && /outside its auto section/.test(n3.reason), 'the reason is tagged with the plugin, never as system text, and says where in handoff.md to write');
 const nudgeDir = join(home, '.claude', 'projects', '.nudge');
 ok(existsSync(join(nudgeDir, 's1')) && existsSync(join(nudgeDir, 's2')), 'each session keeps its nudge state in a file of its own');
 writeFileSync(join(nudgeDir, 'gone-session'), '5');
@@ -204,12 +204,38 @@ write(user('<private-session> the merger target is Contoso'), asst('', 965_000, 
 gate();
 ok(!/Contoso|cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a mark typed this turn already keeps the note out');
 rmSync(join(dir, '.private-sessions'), { force: true });
-// A private message that is no ask (it opens with an unclosed tag): the answer
-// after it is not shown under the ask before.
+// A prompt that opens with a tag is the user's (a paste, a <template>): an
+// ask, and a private one's answer and the paths its turn edited are withheld.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
-write(user('keep going'), user('<b>note <private>pin 44556677</private>'), asst('Pin 44556677 noted.', 965_000, 'tool_use'), result('ok'));
+write(user('keep going'), user('<b>note <private>pin 44556677</private>'), asst('Pin 44556677 noted.', 965_000, 'tool_use', [edit('C:/x/pin-44556677.txt')]), result('ok'));
 gate();
-const hdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
-ok(/cut mid-turn[^\n]*keep going\n  \*\*last said:\*\* \[private\]/.test(hdoc) && !/44556677/.test(hdoc), `the answer to a private message that is no ask is withheld (got ${hdoc})`);
+let hdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
+ok(/cut mid-turn[^\n]*&lt;b>note \[private\]\n  \*\*last said:\*\* \[private\][\s\S]*edited this turn:\*\* \[private\]/.test(hdoc) && !/44556677/.test(hdoc), `a private prompt that opens with a tag: its answer and files are withheld (got ${hdoc})`);
+// A private message that is no ask (text the harness added): the answer after
+// it is not shown under the ask before.
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('keep going'), rec('user', [{ type: 'text', text: 'queued: <private>pin 11223344</private>' }], { isMeta: true }), asst('Pin 11223344 noted.', 965_000, 'tool_use'), result('ok'));
+gate();
+hdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
+ok(/cut mid-turn[^\n]*keep going\n  \*\*last said:\*\* \[private\]/.test(hdoc) && !/11223344/.test(hdoc), `the answer to a private message that is no ask is withheld (got ${hdoc})`);
+
+// 1.0.8. A slash command is the ask; a null block is skipped, not a throw that
+// let the compaction through with no note; a task's output path may hold a
+// space (a Windows user name); a turn of tool calls only says so.
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('<command-name>/deploy</command-name>\n<command-args>staging</command-args>'),
+  rec('user', [null, { type: 'tool_result', tool_use_id: 'x', content: 'Command running in background with ID: b77. Output is being written to: C:\\Users\\Jo Smith\\Temp\\tasks\\b77.output. You will be notified.' }]),
+  asst('', 965_000, 'tool_use', [null]));
+const g8 = gate();
+hdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
+ok(g8.code === 0 && /cut mid-turn[^\n]*\/deploy staging\n  \*\*last said:\*\* \(nothing yet[^\n]*\n  \*\*still running[^\n]*b77 → C:\\Users\\Jo Smith\\Temp\\tasks\\b77\.output/.test(hdoc),
+  `a slash command is the ask, a null block is skipped, a path with a space is whole, and a turn of tool calls says so (got ${hdoc} / ${g8.err})`);
+// A nudge that cannot be put on record is not given: it was given again on
+// every Stop, each one a blocked stop.
+rmSync(nudgeDir, { recursive: true, force: true });
+writeFileSync(nudgeDir, 'not a folder');
+write(user('q9'), asst('over the trigger', T + 60_000, 'end_turn'));
+ok(stop('s9') === null && stop('s9') === null, 'a nudge that cannot be recorded is not given');
+rmSync(nudgeDir, { force: true });
 
 console.log(`compact-gate: ${checks} checks passed`);

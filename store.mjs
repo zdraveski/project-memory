@@ -15,8 +15,10 @@ export const same = (a, b) => (process.platform === 'win32'
 // is the store whatever the cwd is now: a session that moved into another
 // project's folder wrote that project's handoff. A transcript anywhere else (a
 // test, a payload without one) falls back to the cwd's slug, as before.
+// Resolved: `<projects>/../x.jsonl` passed the check and named a store outside
+// it. A path that is no string (a malformed payload) threw, and the Stop hook with it.
 export function storeOf(payload = {}) {
-  const t = payload.transcript_path;
+  const t = typeof payload.transcript_path === 'string' && resolve(payload.transcript_path);
   if (t && same(dirname(dirname(t)), projectsRoot())) return join(dirname(t), 'memory');
   return join(projectsRoot(), String(payload.cwd || process.cwd()).replace(/[^A-Za-z0-9]/g, '-'), 'memory');
 }
@@ -34,8 +36,10 @@ export const SHARED_BUDGET = 3000;
 export const budgetOf = (dir) => (isShared(dir) ? SHARED_BUDGET : BUDGET);
 
 // An index line: `- [Title](file.md) — hook`. The archive's own line in
-// MEMORY.md is matched by its target, never its title.
-export const POINTER = /^- \[[^\]]*\]\(([^)]+)\)/;
+// MEMORY.md is matched by its target, never its title. A file in the store,
+// by its name: a web link was reported as a memory with no file on every
+// startup, and `../../big.bin` was read whole by every Stop.
+export const POINTER = /^- \[[^\]]*\]\(([^)/\\:]+)\)/;
 export const ARCHIVE = 'MEMORY-archive.md';
 
 // Every store once: one reached by two paths (a junction back to another
@@ -73,9 +77,18 @@ export function front(text) {
     type: get(/^[ \t]*type:[ \t]*(\w+)/m),
     tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*(\w+)/m),
     superseded,
-    modified: Date.parse(get(/^[ \t]*modified:[ \t]*(\S+)/m)),
+    // A date alone is that day here: read as UTC midnight, it printed as the
+    // day before anywhere west of Greenwich.
+    modified: Date.parse(get(/^[ \t]*modified:[ \t]*(\S+)/m).replace(/^(\d{4}-\d\d-\d\d)$/, '$1T00:00')),
   };
 }
+
+// git for the snapshot repo, whatever the user's own git config says: a global
+// commit.gpgsign failed every snapshot, a global hooks path ran the user's
+// hooks on it, and on Windows a path past 260 characters was skipped with only
+// a warning. The hooks path names a folder that does not exist: no hooks.
+export const gitArgs = (...a) => ['-C', projectsRoot(), '-c', 'core.longpaths=true', '-c', 'commit.gpgsign=false',
+  '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`, ...a];
 
 // git's reason for a failure: stderr's first line that is not a warning -- a
 // repack Windows could not finish leaves an .idx with no .pack, and git warns
@@ -115,7 +128,8 @@ export function withLock(dir, fn) {
       // The last holder's rmdir still settling: the same codes a rename retries.
       if (e.code !== 'EEXIST' && !BUSY.includes(e.code)) throw e;
       let stale = false;
-      try { stale = Date.now() - statSync(lock).mtimeMs > LOCK_STALE; } catch {}
+      // Either way: a lock dated in the future (a clock set back) was never stale.
+      try { stale = Math.abs(Date.now() - statSync(lock).mtimeMs) > LOCK_STALE; } catch {}
       // A killed hook's lock, whatever it left: a file, a folder with something
       // in it. One still there when the wait is up throws, so the pass that
       // fails says so in .health: busy every turn was silence.

@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, own, asked, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG } from './handoff-log.mjs';
+import { readTail, text, own, prompt, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -64,7 +64,8 @@ const NUDGES = () => join(projectsRoot(), '.nudge');
 // One tool result each: a Bash launch says "ID: x ... Output is being written
 // to: <path>", an Agent launch "agentId: x ... output_file: <path>" with ~450
 // characters of instructions between (a 200-character cap missed every agent).
-const LAUNCH = /(?:running in background with ID|agentId): ?(\w+)[\s\S]*?(?:Output is being written to|output_file): ?(\S+?\.output)/g;
+// The path to the end of its line: a Windows user name can hold a space.
+const LAUNCH = /(?:running in background with ID|agentId): ?(\w+)[\s\S]*?(?:Output is being written to|output_file): ?([^\n]+?\.output)/g;
 const DONE = /<task-id>(\w+)<\/task-id>/g;
 
 /** What the transcript says right now: context size, whether a turn is open,
@@ -94,10 +95,11 @@ function walk(raw) {
       // "none" had the model rerun it after the compaction.
       // Its answer too: the last one said belonged to the turn before, and
       // after a private ask it was shown under the next one.
-      if (asked(r, t)) { s.ask = own(t); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
+      const ask = prompt(r, t);
+      if (ask) { s.ask = ask; s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
       else if (/<private/i.test(own(t))) s.hidden = true;
       for (const b of c) {
-        const body = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => x.text || '').join(' ') : b.text || '';
+        const body = typeof b?.content === 'string' ? b.content : Array.isArray(b?.content) ? b.content.map((x) => x?.text || '').join(' ') : b?.text || '';
         for (const hit of body.matchAll(LAUNCH)) {
           s.running.set(hit[1], hit[2]);
           if (s.running.size > LIST_MAX) s.running.delete(s.running.keys().next().value);
@@ -114,7 +116,7 @@ function walk(raw) {
         s.midTurn = m.stop_reason !== 'end_turn';
       }
       for (const b of c) {
-        if (b.type !== 'tool_use' || !/^(Edit|Write|NotebookEdit)$/.test(b.name)) continue;
+        if (b?.type !== 'tool_use' || !/^(Edit|Write|NotebookEdit)$/.test(b.name)) continue;
         const file = b.input?.file_path || b.input?.notebook_path;   // NotebookEdit names its file differently
         if (file) s.edited.add(file);
       }
@@ -129,12 +131,14 @@ function walk(raw) {
  *  entry, and `recover()` builds the same note from the same transcript. */
 function note(payload, s) {
   const running = [...s.running].map(([id, p]) => `${id} → ${p}`).join('; ') || 'none';
+  // A private turn's files are its own too: their paths named what it was about.
+  const quiet = s.hidden || /<private>/i.test(s.ask);
   // Capped like the running tasks: a wide refactor turn listed tens of KB.
-  const edited = newest([...s.edited], LIST_MAX, 'earlier') || 'none';
+  const edited = quiet ? '[private]' : newest([...s.edited], LIST_MAX, 'earlier') || 'none';
   const t = tag(payload.session_id);
   // Tagged, so a parallel session's note is never taken for this one's.
   return `- **cut mid-turn**${t ? ` [${t}]` : ''} ${local()} at ${Math.round(s.ctx / 1000)}k tokens, asked ${s.at}: ${clip(s.ask, 240)}\n` +
-    `  **last said:** ${s.hidden ? '[private]' : answer(s.ask, s.said, 400)}\n  **still running (read their output files, do not rerun):** ${running}\n  **edited this turn:** ${edited}`;
+    `  **last said:** ${s.hidden ? '[private]' : answer(s.ask, s.said, 400) || '(nothing yet: the turn was running tools)'}\n  **still running (read their output files, do not rerun):** ${running}\n  **edited this turn:** ${edited}`;
 }
 
 function inflight(payload, s) {
@@ -213,16 +217,21 @@ export function nudge(payload) {
   const id = String(payload.session_id || 'none').replace(/[^\w-]/g, '');
   const mine = join(NUDGES(), id);
   let given = 0; try { given = Number(readFileSync(mine, 'utf8')) || 0; } catch {}
+  // Whether the nudge is on record: one that could not be (`.nudge` a file, or
+  // read-only) would be given again on every Stop, each one a blocked stop.
   const arm = (ctx) => {
     try {
       mkdirSync(NUDGES(), { recursive: true });
       writeFileSync(mine, String(ctx));
-      // A file per session needs pruning; a week is longer than any session.
+    } catch { return false; }
+    // A file per session needs pruning; a week is longer than any session.
+    try {
       for (const f of readdirSync(NUDGES())) {
         const p = join(NUDGES(), f);
         if (Date.now() - statSync(p).mtimeMs > WEEK) unlinkSync(p);
       }
     } catch {}
+    return true;
   };
   if (s.ctx < TRIGGER * WINDOW) {
     // Below the trigger with a nudge on record: the context came down (a
@@ -232,14 +241,15 @@ export function nudge(payload) {
   }
   // Same cycle, the context only grown: the nudge was already given.
   if (given && s.ctx >= given) return null;
-  arm(s.ctx);
+  if (!arm(s.ctx)) return null;
   const pct = Math.round(100 * s.ctx / WINDOW);
   // The tag keeps the reason, which Claude Code puts into the conversation,
-  // from reading as a prompt: handoff-log's `asked()` skips `[SYSTEM`, so it
-  // is neither the turn's ask nor a reason to clear the turn's edits.
+  // from reading as a prompt: handoff-log's `asked()` skips it, so it is
+  // neither the turn's ask nor a reason to clear the turn's edits. Outside the
+  // auto section: the next Stop rewrites what is inside it.
   return { decision: 'block', reason:
     `${NUDGE_TAG} Context is at ${pct}% of the compaction window: this session compacts within a turn or two. ` +
-    'Before stopping, update memory -- handoff.md (what this task finished, what is open, every background task id with its output file) ' +
+    'Before stopping, update memory -- handoff.md, outside its auto section (what this task finished, what is open, every background task id with its output file), ' +
     'and any project memory this work changed -- then stop. Start no new work.' };
 }
 

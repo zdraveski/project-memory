@@ -98,6 +98,13 @@ ok(r.status === 0 && existsSync(join(dir, 'deploy-notes.md')) && readFileSync(jo
 r = cli('status');
 ok(/changed in the last 7 days: [^\n]*deleted deploy-notes/.test(r.stdout) && !/added [^·\n]*deploy-notes/.test(r.stdout), `status names the week's changes (got ${r.stdout})`);
 ok(!/changed in the last 7 days:[^\n]*secret/.test(r.stdout), "another project's memory is not listed");
+// Added this week and deleted again: deleted, not added.
+memory(dir, 'brief-note', 'here and gone');
+tier();
+unlinkSync(join(dir, 'brief-note.md'));
+tier();
+r = cli('status');
+ok(/deleted [^·\n]*brief-note/.test(r.stdout) && !/added [^·\n]*brief-note/.test(r.stdout), `a memory added and deleted this week is listed as deleted (got ${r.stdout})`);
 // A name git would quote (not ASCII) is listed as it is.
 memory(dir, 'café-notes', 'notes from the café');
 tier();
@@ -118,6 +125,28 @@ ok(!/--all looks/.test(cli('history', 'never-was', '--all').stdout), 'history --
 r = cli('history', 'never-was');
 ok(cli('restore', 'never-was').status === 1 && r.status === 1 && /search <words> finds a memory's name; --all looks in every project/.test(r.stdout), 'a memory no snapshot holds: restore and history fail, and history says how to find the name');
 ok(cli('restore', 'mentions', '--force', '--rev', 'nosuchrev').status === 1, 'an unknown revision fails');
+// The commit history calls "deleted" no longer has the memory: --rev with it
+// failed. It brings back the version that commit deleted.
+const deletedAt = cli('history', 'deploy-notes').stdout.match(/^  (\w+) .*deleted$/m)?.[1];
+writeFileSync(join(dir, 'deploy-notes.md'), 'scribbled again');
+r = cli('restore', 'deploy-notes', '--rev', deletedAt, '--force');
+ok(deletedAt && r.status === 0 && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes('deploy deploy'), `restore --rev with a "deleted" row brings back what it deleted (got ${r.stdout.trim()})`);
+// --rev is a commit, never an option: `--format=...` wrote git's output into the note.
+r = cli('restore', 'deploy-notes', '--force', '--rev', '--format=INJECTED %H');
+ok(r.status === 1 && /--rev takes a commit/.test(r.stdout) && !/INJECTED/.test(readFileSync(join(dir, 'deploy-notes.md'), 'utf8')), '--rev that is no commit is refused');
+// The first snapshot took in what was there: none of it was "added" this week.
+ok(!/added [^·\n]*(release-checklist|mentions)/.test(cli('status').stdout), 'status does not call what the first snapshot found "added"');
+// No command (the skill run with no arguments) is status.
+r = cli('--session', 'nobody');
+ok(r.status === 0 && /index \d+ \/ 7000 B/.test(r.stdout), `no command, only --session: status (got ${r.stdout.slice(0, 200)})`);
+// Another store is a memory folder under the projects root: promote deleted a
+// note from any folder it was pointed at.
+const outside = join(home, 'elsewhere', 'memory');
+mkdirSync(outside, { recursive: true });
+writeFileSync(join(outside, 'o.md'), '---\nname: o\ndescription: "o"\n---\nkeep me\n');
+writeFileSync(join(outside, 'MEMORY.md'), '- [o](o.md) — o\n');
+r = spawnSync(process.execPath, [CLI, 'promote', 'o', '--store', outside], { env, encoding: 'utf8' });
+ok(r.status === 1 && /--store takes a memory folder/.test(r.stdout) && existsSync(join(outside, 'o.md')) && !existsSync(join(shared, 'o.md')), '--store outside the projects folder is refused, and nothing there is touched');
 // Deleted, made again, changed, deleted again before any snapshot: the newest
 // snapshot has the newest version, not the one before the first deletion.
 memory(dir, 'cycle', 'v1', 'v1'); tier();
@@ -240,9 +269,17 @@ ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
 ok(/^ok +the hooks run from C:\/x, without the plugin installed/m.test(cli('doctor').stdout), 'doctor: hooks that run without the plugin installed are fine');
 ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(59_000), s: 'aaaaaaaa', from: 'C:/y' });
 r = cli('doctor');
-ok(r.status === 1 && /^PROBLEM the Stop hook ran twice for one reply[^\n]*The user's fix: delete project-memory's hooks from settings\.json/m.test(r.stdout), 'doctor: two runs for one reply, seconds apart, are hooks wired twice');
+ok(r.status === 1 && /^PROBLEM the Stop hook ran twice for one reply[^\n]*The user's fix: claude plugin list/m.test(r.stdout), 'doctor: two runs for one reply, seconds apart, are hooks wired twice');
 ranLog({ at: ago(120_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(59_000), s: 'bbbbbbbb', from: 'C:/x' });
 ok(!/ran twice/.test(cli('doctor').stdout), 'doctor: replies a minute apart, and two conversations at once, are not');
+// A /compact typed right after a reply runs the same --stop as PreCompact, and
+// a reply to a blocked stop runs the Stop hook again: neither is a second wiring.
+ranLog({ at: ago(60_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' }, { at: ago(59_000), s: 'aaaaaaaa', e: 'PreCompact', from: 'C:/x' });
+ok(!/ran twice/.test(cli('doctor').stdout), 'doctor: a /compact right after a reply is not a second wiring');
+ranLog({ at: ago(60_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' }, { at: ago(59_000), s: 'aaaaaaaa', e: 'Stop', h: 1, from: 'C:/x' });
+ok(!/ran twice/.test(cli('doctor').stdout), 'doctor: the reply to a blocked stop is not a second wiring');
+ranLog({ at: ago(60_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' }, { at: ago(56_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' });
+ok(!/ran twice/.test(cli('doctor').stdout), 'doctor: two replies four seconds apart are two replies');
 rmSync(join(root, '.stop-ran'), { force: true });
 // Before Claude's first reply nothing has saved: waiting, not a problem. A reply
 // this conversation finished over a minute ago, with nothing saved, is one.
@@ -306,5 +343,26 @@ const packDir = join(root, '.git', 'objects', 'pack');
 mkdirSync(packDir, { recursive: true });
 writeFileSync(join(packDir, 'pack-dead.idx'), 'x');
 ok(/^ok +1 pack index file\(s\) [^\n]*have no pack[^\n]*pack-dead\.idx$/m.test(cli('doctor').stdout), 'doctor: an index a repack left with no pack is named');
+// No git is a setup the README allows: said, not a problem. Snapshots off say
+// what is lost; failing ones come with what to do.
+r = spawnSync(process.execPath, [CLI, 'doctor'], { env: { HOME: home, USERPROFILE: home, PATH: '' }, encoding: 'utf8' });
+ok(/^ok +git is not installed: everything works except/m.test(r.stdout), `doctor: no git is said, not a problem (got ${r.stdout})`);
+writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, failures: 0, off: 'git is not installed' }));
+ok(/^ok +snapshots: off, git is not installed: everything else works/m.test(cli('doctor').stdout), 'doctor: snapshots off are said, not a problem');
+writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, failures: 4, error: 'fatal: bad object HEAD' }));
+ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.test(cli('doctor').stdout), 'doctor: failing snapshots come with what to do');
+// Hooks that look stopped are said; doctor, which is the check, does not tell
+// the user to run itself.
+{
+  const minsAgo = (m) => new Date(Date.now() - m * 60000);
+  writeFileSync(join(dirname(dir), 'stall-1.jsonl'), [
+    JSON.stringify({ type: 'user', timestamp: minsAgo(6).toISOString(), message: { content: 'q' } }),
+    JSON.stringify({ type: 'assistant', timestamp: minsAgo(5).toISOString(), message: { content: [{ type: 'text', text: 'a' }], stop_reason: 'end_turn', usage: { input_tokens: 1 } } }),
+  ].join('\n') + '\n');
+  writeFileSync(join(root, '.stop-ran'), JSON.stringify({ at: minsAgo(20).toISOString(), s: 'zzzzzzzz', from: 'C:/x' }) + '\n');
+  utimesSync(join(root, '.stop-ran'), minsAgo(20), minsAgo(20));
+  r = spawnSync(process.execPath, [CLI, 'doctor', '--session', 'stall-1'], { env, encoding: 'utf8' });
+  ok(/^PROBLEM Memory hooks look stopped: [^\n]*clears after the next reply\.$/m.test(r.stdout), `doctor: hooks that look stopped are said, with no "run doctor" (got ${r.stdout})`);
+}
 
 console.log(`memory: ${checks} checks passed`);

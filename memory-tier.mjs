@@ -8,11 +8,11 @@
 // As the Stop hook (and before a manual /compact) it runs with `--stop`, the
 // payload on stdin, and tiers that session's own store; a manual run walks them all.
 
-import { readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, allStores, front, gitWhy } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, allStores, front, gitWhy, gitArgs, raw } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -76,10 +76,17 @@ function factsFor(dir, file) {
   // A target that is missing or is no file (a directory) is treated as missing
   // rather than aborting the whole store. One another program holds fails the
   // pass instead: read as missing, its alarm was stamped and stayed a day.
-  let head;
-  try { head = readFileSync(path, 'utf8').slice(0, 1200); } catch (e) { if (BUSY.includes(e.code)) throw e; return null; }
+  // The head only: the frontmatter is at the top, and a 1.5 GB file read whole
+  // cost seconds of every Stop.
+  let head, st;
+  try {
+    st = statSync(path);
+    if (!st.isFile()) return null;
+    const fd = openSync(path, 'r'), buf = Buffer.alloc(1200);
+    try { head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)); } finally { closeSync(fd); }
+  } catch (e) { if (BUSY.includes(e.code)) throw e; return null; }
   const { type, tier, desc, modified: stamp } = front(head);
-  const modified = Number.isNaN(stamp) ? statSync(path).mtimeMs : stamp;
+  const modified = Number.isNaN(stamp) ? st.mtimeMs : stamp;
   const named = (file.match(/(\d{4})-(\d{2})-(\d{2})/) || [])[0];
   const eventDate = named ? Date.parse(named) : null;
   return { type, tier, modified, eventDate, desc, when: eventDate ?? modified };
@@ -135,7 +142,7 @@ function tier(dir, now) {
   // trimmed on the next run -- a fresh store rewrote its archive one session late.
   const arc = arcText !== null ? split(arcText) : { preamble: ['# Archive'], pointers: [] };
 
-  const hot = [], cold = [], missing = [], seen = new Set(), dupes = [], recovered = [];
+  const hot = [], cold = [], missing = [], seen = new Set(), dupes = [], recovered = [], odd = [];
   // One line per memory. A target already placed is a duplicate -- the store had
   // one before this guard existed -- and emitting it twice doubles its cost and
   // makes the two copies drift apart.
@@ -173,9 +180,12 @@ function tier(dir, now) {
     // beat the hand-written one to the index. Not handoff.md: this same Stop
     // just rewrote it, and its writer never adds a pointer.
     if (f !== 'handoff.md' && now - statSync(join(dir, f)).mtimeMs < ORPHAN_GRACE) { waiting = true; continue; }
+    // A name no index line can point at (`lesson (1).md`): its line, read back,
+    // named another file, and a new one was added on every pass.
+    if ((`- [x](${f})`.match(POINTER) || [])[1] !== f) { odd.push(f); continue; }
     const facts = factsFor(dir, f);
     if (!facts) continue;
-    const title = f.replace(/\.md$/, '').replace(/-/g, ' ');
+    const title = f.replace(/\.md$/, '').replace(/-/g, ' ').replace(/[[\]]/g, '');
     const hook = facts.desc.slice(0, 140) || 'recovered: no description';
     // Cold, except a pin -- which the archive would promote on the next run
     // anyway, leaving the store rewriting itself one session behind forever.
@@ -185,16 +195,17 @@ function tier(dir, now) {
     recovered.push(f);
   }
 
-  const render = () => [...main.preamble, ...hot.map((p) => p.line),
-    `- [Archive](MEMORY-archive.md) — ${cold.length} older pointers; grep it before assuming something was never learned`,
-  ].join('\n') + '\n';
+  const archiveLine = (n) => `- [Archive](MEMORY-archive.md) — ${n} older pointers; grep it before assuming something was never learned`;
+  const render = () => [...main.preamble, ...hot.map((p) => p.line), archiveLine(cold.length)].join('\n') + '\n';
 
   // A ceiling, not a warning. The windows cap how many lines survive, not how
   // long they are, so a corpus that writes six memories a day outgrows any
   // window. Evict oldest-first until the file fits: event logs before durable
   // notes, how-to-work rules last, pinned lines never.
   const evictable = hot.filter((p) => p.f && p.f.tier !== 'hot');
-  const byAge = (a, b) => a.f.when - b.f.when;
+  // Equal dates by file name: in the order the lines happened to be in, the
+  // lines a pass brought back went last, and each pass evicted different ones.
+  const byAge = (a, b) => a.f.when - b.f.when || (a.target < b.target ? -1 : a.target > b.target ? 1 : 0);
   const rules = evictable.filter((p) => KEEP_TYPES.has(p.f.type)).sort(byAge);
   // Event logs before durable notes, and only then by age: a day's log is
   // worth less at session start than the note on where the work stands.
@@ -220,13 +231,19 @@ function tier(dir, now) {
   // Bytes, not string length: `.length` counts UTF-16 units, and every em-dash
   // costs three bytes. Only 1.4 % on this index -- but a budget measured in the
   // wrong unit enforces a number that does not exist, and the gap grows with
-  // every arrow someone adds.
-  while (Buffer.byteLength(render()) > budget && queue.length) {
-    const victim = queue.shift();
-    hot.splice(hot.indexOf(victim), 1);
+  // every arrow someone adds. Counted once and kept up to date: a render per
+  // eviction was quadratic, 24 s for a store of 10,000 notes.
+  const bytes = (s) => Buffer.byteLength(s);
+  let size = bytes(render());
+  const evicted = new Set();
+  for (let q = 0; size > budget && q < queue.length; q++) {
+    const victim = queue[q];
+    size -= bytes(victim.line) + 1 + bytes(archiveLine(cold.length)) - bytes(archiveLine(cold.length + 1));
+    evicted.add(victim);
     victim.line += ' ' + OVERFLOW;        // so the archive loop knows it may come back
     cold.push(victim);
   }
+  if (evicted.size) hot.splice(0, hot.length, ...hot.filter((p) => !evicted.has(p)));
 
   const before = Buffer.byteLength(mainText);
   const nextMain = render();
@@ -247,7 +264,7 @@ function tier(dir, now) {
   }
 
   return { dir, budget, before, after: Buffer.byteLength(nextMain), hot: hot.length, cold: cold.length,
-    missing: young ? [] : missing, waiting: waiting || (young && missing.length > 0), dupes, recovered, wrote, conflict };
+    missing: young ? [] : missing, waiting: waiting || (young && missing.length > 0), dupes, recovered, odd, wrote, conflict };
 }
 
 // Recall is a grep, not a flag: `rg -il <term> ~/.claude/projects/*/memory --glob '!MEMORY*'`
@@ -270,8 +287,13 @@ function gitignore() {
     // every store read as a link, and nothing was snapshotted.
     .filter((d) => !same(realpathSync(d), join(real, d.slice(root.length + 1))))
     .map((d) => `${d.slice(root.length + 1).replace(/\\/g, '/')}/`);
-  return ['*', '!*/', '!*/memory/*.md', '!.gitignore', ...linked].join('\n') + '\n';
+  // Not the handoff: it holds the last exchanges, and is kept only until newer
+  // ones replace it. Committed, every version stayed in the history for good.
+  return ['*', '!*/', '!*/memory/*.md', '*/memory/handoff.md', '!.gitignore', ...linked].join('\n') + '\n';
 }
+// What this tool's .gitignore starts with: a repository that has it is one
+// this tool made before it marked them.
+const IGNORE_HEAD = '*\n!*/\n!*/memory/*.md\n';
 
 function snapshot() {
   const root = projectsRoot();
@@ -280,7 +302,8 @@ function snapshot() {
   // Set on this short-lived process, which git inherits: no copy of the
   // environment is handed on.
   process.env.LC_ALL = 'C';
-  const git = (...a) => execFileSync('git', ['-C', root, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  // A git that hangs (a prompt nobody sees) must not hold the Stop hook.
+  const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 });
   const lock = join(root, '.git', 'index.lock');
   try {
     // A fresh index.lock is another session's commit in flight: busy, not a
@@ -292,6 +315,12 @@ function snapshot() {
     }
     const fresh = !existsSync(join(root, '.git'));
     if (fresh) git('init', '-q');
+    // Only a repository this tool made: one the user made there is theirs, and
+    // its .gitignore, its index and its history are not this tool's to change.
+    if (!/^\[project-memory\]/m.test(raw(join(root, '.git', 'config')) ?? '')) {
+      if (!fresh && !(raw(join(root, '.gitignore')) ?? '').startsWith(IGNORE_HEAD)) return `off: ${root} is a git repository project-memory did not make, so it commits nothing there`;
+      git('config', 'project-memory.snapshots', 'true');
+    }
     // Everything is ignored except the memory markdown: this directory also
     // holds ~890 MB of session transcripts that must never be committed.
     // Recomputed each run and written when it differs: a junction created
@@ -303,7 +332,9 @@ function snapshot() {
       // By rename: another session's `git add -A` reading it half written
       // would stage every transcript.
       replaceIfUnchanged(ignorePath, have, want);
-      for (const l of want.split('\n').filter((x) => x.endsWith('/') && !x.startsWith('!'))) git('rm', '-r', '-q', '--cached', '--ignore-unmatch', l);
+      // Whatever it now ignores leaves the index. `--`: on Linux and macOS
+      // every project's folder name starts with `-`, and read as an option.
+      for (const l of want.split('\n').filter((x) => x && x !== '*' && !x.startsWith('!'))) git('rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', l);
     }
     git('add', '-A');
     // Straight to the commit, which says so when nothing changed: a `git status`
@@ -319,11 +350,15 @@ function snapshot() {
     }
     return fresh ? 'initialised' : 'committed';
   } catch (e) {
+    // No git is a setup, not a failure: everything but the history works.
+    if (e.code === 'ENOENT') return 'off: git is not installed';
     const why = gitWhy(e);   // git's reason, not a warning before it, nor 'Command failed'
     // This session runs two or three git commands, and another session's commit can
     // take index.lock in a gap between them: busy, like the pre-check, not a
-    // failure the startup line would count.
-    if (/index\.lock/.test(why)) return 'busy';
+    // failure the startup line would count. Only that: a lock git may not
+    // create (Permission denied), or a dead one that cannot be deleted, is a
+    // failure, and read as busy it stopped every snapshot unseen.
+    if (/index\.lock'?: File exists/.test(why)) return 'busy';
     return `snapshot failed: ${why}`;
   }
 }
@@ -345,8 +380,10 @@ function snapshotHealth(s) {
   const p = join(projectsRoot(), '.snapshot-health');
   let h = {}; try { h = JSON.parse(readFileSync(p, 'utf8')); } catch {}
   const failed = typeof s === 'string' && s.startsWith('snapshot failed');
+  const off = typeof s === 'string' && s.startsWith('off: ');
   const next = failed
     ? { lastOk: h.lastOk || null, failures: (h.failures || 0) + 1, error: s.slice('snapshot failed: '.length) }
+    : off ? { lastOk: h.lastOk || null, failures: 0, off: s.slice('off: '.length) }
     : { lastOk: new Date().toISOString(), failures: 0 };
   try { writeFileSync(p, JSON.stringify(next)); } catch {}
 }
@@ -377,7 +414,10 @@ if (stop) {
     // once both land; cut back to the newest 20 past 8 KB.
     try {
       const ran = join(projectsRoot(), '.stop-ran');
-      appendFileSync(ran, JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
+      // The event too, and whether a block sent it back: a /compact typed
+      // right after a reply, or a reply to the nudge, is a second run seconds
+      // later, not a second wiring.
+      appendFileSync(ran, JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
       if (statSync(ran).size > 8192) writeFileSync(ran, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
     } catch {}
     if (payload) handoff(payload);
@@ -429,6 +469,7 @@ for (const dir of todo) {
   if (r.conflict) { console.log(`${dir}: changed during the pass — the edit wins; the next turn redoes it`); continue; }
   const problems = [];
   if (r.missing.length) problems.push(`pointers with no file: ${r.missing.join(', ')}`);
+  if (r.odd.length) problems.push(`file names an index line cannot point at, so they are unlisted (rename them): ${r.odd.join(', ')}`);
   // Say so when the hooks have drifted back into being content.
   if (r.after > r.budget) problems.push(`over budget: ${r.after}B > ${r.budget}B — ${Math.round(r.after / r.hot)}B a line; trim the hooks, not the count`);
   // A file an editor or a scanner holds costs this turn's note, never the hook.

@@ -38,7 +38,7 @@
   <g font-size="21" fill="#C5CADF">
     <circle cx="481" cy="411" r="5" fill="#F5B544"/><text x="496" y="418">tidies the notes</text>
     <circle cx="481" cy="441" r="5" fill="#F5B544"/><text x="496" y="448">records where you are</text>
-    <circle cx="481" cy="471" r="5" fill="#F5B544"/><text x="496" y="478">keeps every version</text>
+    <circle cx="481" cy="471" r="5" fill="#F5B544"/><text x="496" y="478">keeps old versions</text>
   </g>
 
   <path d="M770 350 H812" stroke="#F5B544" stroke-width="6" stroke-linecap="round"/>

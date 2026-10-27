@@ -13,10 +13,12 @@
 // each session keeps its own last ten, and the file is written by one hook at a
 // time (store.mjs).
 //
-// Every snapshot keeps this file, so what must not stay is kept out before it
-// is written: secrets (SECRETS), the answer to a <private> message (answer()),
-// and every entry of a conversation marked <private-session> (hushed()).
-import { readFileSync, writeFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync } from 'node:fs';
+// What it writes stays until newer exchanges replace it -- the snapshots leave
+// this file out -- and what must not be written is kept out before it is:
+// secrets (SECRETS), the answer to a <private> message and the files its turn
+// changed (answer()), and every entry of a conversation marked
+// <private-session> (hushed()).
+import { readFileSync, writeFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -31,10 +33,13 @@ const TAIL = 512_000;     // first read; grown 4× until it reaches the latest p
 const ACTIVE = 30 * 60000;    // a transcript this recently changed: its session is still working
 export const GRACE = 60000;   // the Stop hook runs seconds after a turn ends
 const RECENT = 7 * 86400000;  // older than this, the startup line has nothing to say
-// What compact-gate's Stop nudge opens with. `asked()` skips it because it
-// begins with `[SYSTEM`, and `turns()` freezes the turn's answer at it: the
-// words written after it are the memory update, not what the turn did.
-export const NUDGE_TAG = '[SYSTEM: compaction gate]';
+// What compact-gate's Stop nudge opens with. `asked()` skips it, and `turns()`
+// freezes the turn's answer at it: the words written after it are the memory
+// update, not what the turn did. Named for the plugin: `[SYSTEM: ...]`, its
+// label before 1.0.8, read as text posing as Claude Code's own, and
+// transcripts from then still carry it.
+export const NUDGE_TAG = '[project-memory: compaction gate]';
+const NUDGE_TAGS = [NUDGE_TAG, '[SYSTEM: compaction gate]'];
 const START = '<!-- auto:start -->';
 const END = '<!-- auto:end -->';
 
@@ -59,7 +64,7 @@ export const text = (r) => {
 // Claude Code may hand a Stop reason back wrapped ("Stop hook feedback: ..."),
 // and no real nudge record survives to show which: look near the start, not
 // only at it.
-const nudged = (s) => s.slice(0, 200).includes(NUDGE_TAG);
+const nudged = (s) => NUDGE_TAGS.some((n) => s.slice(0, 200).includes(n));
 
 // A user record can also be a tool result, a slash-command echo, or something
 // the harness injected (`isMeta`: a skill body, a hook's output). None is a
@@ -74,14 +79,39 @@ const nudged = (s) => s.slice(0, 200).includes(NUDGE_TAG);
 // <command-name>, a <task-notification>, an IDE's <ide_opened_file>. Read
 // whole, an IDE prompt opened with a tag and was no ask, and a <private>
 // message after one had its answer saved as the answer to the message before.
-// A <private> or <private-session> block is the user's own.
-export const own = (s) => s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
-  .replace(/^(?:\s*<(?!private)([A-Za-z][\w-]*)\b[^>]*>[\s\S]*?<\/\1>)+/, '').trim();
-export const asked = (r, s) => {
-  if (!s || r.isMeta || r.isCompactSummary || s.includes('<command-name>') || nudged(s)) return false;
-  const o = own(s);
-  return !!o && (!o.startsWith('<') || /^<private/i.test(o)) && !o.startsWith('[SYSTEM') && !o.startsWith('[Request interrupted');
+// A <private> or <private-session> block is the user's own, and so is text the
+// user pasted (<pasted_content>).
+// Linear on any input: a regex took 35 s on a tag name of 50,000 `a-`, and
+// stalled every hook that read the message.
+const unwrap = (s) => {
+  let out = '', i = 0;
+  for (;;) {
+    const a = s.indexOf('<system-reminder>', i), b = a === -1 ? -1 : s.indexOf('</system-reminder>', a);
+    if (b === -1) return out + s.slice(i);
+    out += s.slice(i, a);
+    i = b + '</system-reminder>'.length;
+  }
 };
+export const own = (s) => unwrap(s)
+  .replace(/^(?:\s*<(?!private|pasted)([A-Za-z][\w-]{0,63})(?=[\s>])[^>]{0,2000}>[\s\S]*?<\/\1>)+/, '').trim();
+// What a prompt starts with is the user's: 4 prompts here began with a paste,
+// and read as no ask, each one's answer was saved as the answer to the one before.
+// (A record the harness added, or a compaction summary, prompt() turns away first.)
+export const asked = (r, s) => {
+  if (!s || s.includes('<command-name>') || nudged(s)) return false;
+  const o = own(s);
+  return !!o && !o.startsWith('[SYSTEM') && !o.startsWith('[Request interrupted');
+};
+// A slash command's record names it and its arguments, and the user typed
+// both. Read as no ask, its reply was saved as the answer to the ask before.
+const command = (s) => {
+  const n = s.match(/<command-name>\s*([^<]{1,200}?)\s*<\/command-name>/);
+  if (!n) return '';
+  const a = (s.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1] ?? '').trim();
+  return `${n[1].startsWith('/') ? '' : '/'}${n[1]}${a ? ` ${a}` : ''}`;
+};
+// The prompt a user record opens a turn with, or '' when it opens none.
+export const prompt = (r, s) => (r.isMeta || r.isCompactSummary ? '' : command(s) || (asked(r, s) ? own(s) : ''));
 
 export { local };
 // A session's short tag: enough to tell parallel sessions apart in one file.
@@ -94,18 +124,24 @@ function turns(raw) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
     let r; try { r = JSON.parse(line); } catch { continue; }
     // A turn's edits are tool calls with no text: taken before the text test skips them.
-    if (r.type === 'assistant' && pending && Array.isArray(r.message?.content)) {
+    // Not once a nudge or a private message froze the turn: what follows is
+    // the memory update, or the private part.
+    if (r.type === 'assistant' && pending && !pending.frozen && Array.isArray(r.message?.content)) {
       for (const b of r.message.content) {
-        const f = b.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path);
+        const f = b?.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path);
         if (!f) continue;
-        const name = String(f).split(/[\\/]/).pop();   // a Windows path read on any system
-        if (!pending.changed.includes(name)) pending.changed.push(name);
+        // The newest edit last, and by path: two index.ts files are two, and
+        // a file edited first and last is one of the turn's last.
+        const at = pending.changed.indexOf(String(f));
+        if (at !== -1) pending.changed.splice(at, 1);
+        pending.changed.push(String(f));
       }
     }
     const t = text(r).trim();
     if (!t) continue;
-    if (r.type === 'user' && asked(r, t)) {
-      pending = { at: local(r.timestamp), ask: own(t), did: '', changed: [] };
+    const ask = r.type === 'user' ? prompt(r, t) : '';
+    if (ask) {
+      pending = { at: local(r.timestamp), ask, did: '', changed: [] };
       // Marked whether or not a reply follows: a turn of tool calls, or one
       // the user stopped, writes no entry but must still mark.
       if (/<private-session>/i.test(pending.ask)) out.hush = true;
@@ -118,6 +154,7 @@ function turns(raw) {
       if (out[out.length - 1] !== pending) out.push(pending);
     }
   }
+  out.open = pending;   // the turn the transcript ends in
   return out;
 }
 
@@ -137,9 +174,21 @@ const SECRETS = [
   [/\bAIza[0-9A-Za-z_-]{35}/g, '[redacted]'],
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[redacted]'],
   [/\b(Bearer|Basic) [A-Za-z0-9._~+/=-]{20,}/gi, '$1 [redacted]'],
-  // The word can end a longer name (DB_PASSWORD=, AWS_SECRET_ACCESS_KEY=), and
-  // the value can sit on the next line (YAML). Bounded, so no input backtracks.
-  [/(?<![A-Za-z0-9])((?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|pwd)[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)[^\s"',;]{6,}/gi, '$1[redacted]'],
+  // GitLab, npm and Hugging Face tokens; a Slack webhook is its own secret.
+  [/\bglpat-[A-Za-z0-9_-]{20,}|\bnpm_[A-Za-z0-9]{36}\b|\bhf_[A-Za-z0-9]{30,}/g, '[redacted]'],
+  [/(hooks\.slack\.com\/services\/)[A-Za-z0-9/]+/g, '$1[redacted]'],
+  // The password in a URL: postgres://user:it@host.
+  [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{1,100}:)[^\s@/]{1,200}@/gi, '$1[redacted]@'],
+  // `mysql -pIT`: the password glued to the flag.
+  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n]{0,200}?\s-p)[^\s-][^\s]{2,}/gi, '$1[redacted]'],
+  // "my password is IT".
+  [/\b((?:password|passwd|passphrase)\s{1,5}(?:is|was)\s{1,5})["']?[^\s"',;.]{4,}/gi, '$1[redacted]'],
+  // The word can end a longer name, glued (PGPASSWORD=, dbPassword, clientSecret)
+  // or not (DB_PASSWORD=, AWS_SECRET_ACCESS_KEY=), and the value can sit on the
+  // next line (YAML). A short word needs its own start: `monkey=` names no key.
+  // Bounded, so no input backtracks.
+  // Not a bare `token`: "input_tokens: 863324" is a count.
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?<![A-Za-z0-9])(?:api[_-]?key|account[_-]?key|private[_-]?key|pwd))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)[^\s"',;]{6,}/gi, '$1[redacted]'],
 ];
 export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
 // The answer to a private message often repeats what it was told, so it is
@@ -147,11 +196,15 @@ export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), 
 export const answer = (ask, did, n) => (/<private>/i.test(ask) ? '[private]' : clip(plain(did), n));
 
 // Marker text inside an ask or an answer would become the section boundary on
-// the next run and strand every entry before it as prose. Defuse it.
+// the next run and strand every entry before it as prose, and a tag printed at
+// startup (`</system-reminder>`) could end the wrapper Claude Code puts the
+// briefing in and pose as its own text. No tag survives: `<` before a letter,
+// `/`, `!` or `?` is written `&lt;`.
+// Never half an emoji, and no lone surrogate: one is written as U+FFFD, the
+// entry read back no longer matched its turn, and the turn was added again every Stop.
+export const defuse = (s) => s.replace(/<(?=[A-Za-z/!?])/g, '&lt;');
 export const clip = (s, n) => {
-  const one = redact(s).replace(/\s+/g, ' ').replace(/<!--/g, '<!- -').trim();
-  // Never half an emoji: a lone surrogate is written as U+FFFD, the entry read
-  // back no longer matched its turn, and the turn was added again every Stop.
+  const one = defuse(redact(s).replace(/\s+/g, ' ')).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
   return one.length > n ? one.slice(0, n - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : one;
 };
 
@@ -190,20 +243,31 @@ export const newest = (xs, n, older = 'more') => (xs.length > n ? `${xs.slice(-n
 // greedy, it took the colon of an untagged "[word]: ..." ask, and the word read as a tag.
 const ENTRY = /^- \*\*asked\*\* (\S+ \S+?)(?: \[([\w-]+)\])?: (.*?)\r?\n  \*\*did:\*\* (.*?)\r?$(?:\n  \*\*changed:\*\* (.*?)\r?$)?/gm;
 export const parse = (section) => [...section.matchAll(ENTRY)].map((m) => ({ at: m[1], s: m[2] || '', ask: m[3], did: m[4], changed: m[5] || '' }));
-// The LAST marker pair. Searching for the first START let a stray START --
-// one whose END was lost -- pair with the next run's END, and everything
-// hand-written between them was replaced.
-export const sectionOf = (doc) => { const b = doc.lastIndexOf(END), a = b === -1 ? -1 : doc.lastIndexOf(START, b); return { a, b }; };
+// The LAST START that has an END after it, and the first END after it.
+// Searching for the first START let a stray START -- one whose END was lost --
+// pair with the next run's END; taking the last END let one quoted below the
+// section pair with the real START. Either way, everything hand-written
+// between them was replaced.
+export const sectionOf = (doc) => {
+  for (let a = doc.lastIndexOf(START); a !== -1; a = a ? doc.lastIndexOf(START, a - 1) : -1) {
+    const b = doc.indexOf(END, a);
+    if (b !== -1) return { a, b };
+  }
+  return { a: -1, b: -1 };
+};
 
 // The newest SESSIONS sessions, the last TURNS of each, in time order. `at` is
 // a fixed-width `2026-10-27 01:07`, so code-unit order is time order;
 // localeCompare loaded ICU's collator for it, ~16 ms of every Stop (profiled).
 const byAt = (x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0);
-function keep(all) {
+// The writing session's always, then the newest others: ranked by when its
+// last ask was made, a turn asked first and finished last lost to three
+// later asks, and its own Stop dropped it.
+function keep(all, me) {
   const by = new Map();
   for (const t of [...all].sort(byAt)) { if (!by.has(t.s)) by.set(t.s, []); by.get(t.s).push(t); }
   return [...by.values()]
-    .sort((x, y) => byAt(y[y.length - 1], x[x.length - 1]))
+    .sort((x, y) => (y[0].s === me) - (x[0].s === me) || byAt(y[y.length - 1], x[x.length - 1]))
     .slice(0, SESSIONS)
     .flatMap((g) => g.slice(-TURNS))
     .sort(byAt);
@@ -213,7 +277,7 @@ const FRONT = `---\nname: handoff\ndescription: "The rolling handoff"\nmetadata:
 
 // What handoff.md should say, from what it says now and this turn's entries:
 // the new text, 'unchanged', or null when there is nothing to write.
-function build(raw, fresh, drop = null) {
+function build(raw, fresh, drop = null, me = fresh[0]?.s) {
   let doc = (raw ?? '').replace(/^﻿/, '');
   // A file emptied by a failed edit has no `tier: hot`, so tiering would age
   // the handoff out of the index a week later.
@@ -226,12 +290,13 @@ function build(raw, fresh, drop = null) {
   // by time. Without the session in the key, "continue" typed into two
   // sessions in the same minute was one turn, and each Stop dropped the
   // other's. An untagged entry (written before tags) whose time and ask match
-  // is this session's own, re-seen: replaced, not kept beside.
-  const key = (t) => `${t.s} ${t.at} ${t.ask}`;
-  const bare = (t) => `${t.at} ${t.ask}`;
+  // is this session's own, re-seen: replaced, not kept beside. The ask as it
+  // is written: one an older version wrote with a raw tag still matches.
+  const key = (t) => `${t.s} ${bare(t)}`;
+  const bare = (t) => `${t.at} ${clip(t.ask, ASK)}`;
   const seen = new Set(fresh.map(key)), seenBare = new Set(fresh.map(bare));
   const kept = have.filter((t) => !seen.has(key(t)) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop);
-  const merged = keep([...kept, ...fresh]);
+  const merged = keep([...kept, ...fresh], me);
   if (!merged.length && !(drop && has)) return null;
   // An entry kept from the file is rendered once, for the comparison and the
   // write: each render runs every secret pattern over it.
@@ -251,7 +316,9 @@ function build(raw, fresh, drop = null) {
 
 // Exported so memory-tier.mjs can run it in the same process from the Stop
 // hook: a second Node start cost a median 200 ms a turn on this box.
-// The conversations marked private, by tag: the newest 50, one per line.
+// The conversations marked private, by tag: the newest 1,000, one per line
+// (9 KB). The newest 50 let an older private conversation, resumed, be
+// recorded again.
 const QUIET = '.private-sessions';
 export function hushed(dir, s, mark = false) {
   const p = join(dir, QUIET);
@@ -259,7 +326,7 @@ export function hushed(dir, s, mark = false) {
   // one was written again.
   let have = []; try { have = readFileSync(p, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean); } catch {}
   if (!s) return false;
-  if (mark && !have.includes(s)) { have = [...have, s].slice(-50); writeFileSync(p, have.join('\n') + '\n'); }
+  if (mark && !have.includes(s)) { have = [...have, s].slice(-1000); writeFileSync(p, have.join('\n') + '\n'); }
   return have.includes(s);
 }
 
@@ -270,11 +337,25 @@ export function handoff(input) {
   // write, 'busy' another hook held the store -- because a caller that reads
   // silence as success reports "handoff written" over a store that does not
   // exist (the compaction gate did).
-  if (!existsSync(dir) || !input.transcript_path || !existsSync(input.transcript_path)) return false;
+  if (typeof input.transcript_path !== 'string' || !existsSync(input.transcript_path)) return false;
+  // Claude Code makes a project's memory folder when Claude first saves a
+  // note: until then, no conversation in it was recorded. Made here, inside
+  // the project's own folder, never a new one.
+  if (!existsSync(dir)) { if (!existsSync(dirname(dir))) return false; mkdirSync(dir); }
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);
   const got = latest(input.transcript_path);
-  const fresh = got.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.ask, t.did, DID), changed: newest(t.changed, CHANGED) }));
+  // The transcript can lag the reply that ends it: on Stop, Claude Code passes
+  // that reply itself (hooks docs). Not after a block: then it is the reply
+  // to the block.
+  const open = got.open, last = input.last_assistant_message;
+  if (open && !open.frozen && input.hook_event_name === 'Stop' && !input.stop_hook_active && typeof last === 'string' && last.trim()) {
+    open.did = last.trim();
+    if (got.at(-1) !== open) got.push(open);
+  }
+  // File names, not paths; none for a private message's turn.
+  const fresh = got.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.ask, t.did, DID),
+    changed: /<private>/i.test(t.ask) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) }));
   const hush = got.hush === true;
   // Sessions of one project write this file at once, so they take turns: 8 at
   // once lost 22 of 40 turns without the lock (2026-10-26). The model can still
@@ -287,7 +368,7 @@ export function handoff(input) {
     const quiet = hushed(dir, s, hush);
     for (let i = 0; i < 3; i++) {
       const raw = existsSync(file) ? readFileSync(file, 'utf8') : null;
-      const next = build(raw, quiet ? [] : fresh, quiet ? s : null);
+      const next = build(raw, quiet ? [] : fresh, quiet ? s : null, s);
       if (next === null || next === 'unchanged') return quiet ? 'private' : next ?? false;
       const w = replaceIfUnchanged(file, raw, next);
       if (w !== 'conflict') return quiet ? 'private' : w || 'unchanged';
@@ -322,22 +403,25 @@ export function transcripts(dir, me) {
   } catch { return []; }
 }
 
-// When a transcript's last finished turn ended (NaN: none in its tail), and how
-// many of its last messages are model replies the hooks know.
+// When a transcript's last finished turn ended (NaN: none in its tail), how
+// many of its last messages are model replies the hooks know, and whether a
+// turn is open in it: a prompt, or a reply that did not end the turn, last.
 export function lastTurn(p) {
   const raw = readTail(p, TAIL).text;
-  let end = NaN, seen = 0, known = 0;
+  let end = NaN, seen = 0, known = 0, open = false;
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
     // Messages only: a session's start-up records (attachments, modes, titles)
     // ran to 41 before its first reply.
     if (r.type === 'user' || r.type === 'assistant') seen++;
+    if (r.type === 'user' && prompt(r, text(r).trim())) open = true;
     if (r.type !== 'assistant' || !r.message?.usage) continue;
     known++;
-    if (r.message.stop_reason === 'end_turn') end = Date.parse(r.timestamp);
+    open = r.message.stop_reason !== 'end_turn';
+    if (!open) end = Date.parse(r.timestamp);
   }
-  return { end, seen, known };
+  return { end, seen, known, open };
 }
 
 // Stop output reaches nobody, so a Stop hook that stopped running -- unwired,
@@ -345,14 +429,18 @@ export function lastTurn(p) {
 // `.stop-ran` on every `--stop`: a turn the newest other session finished
 // after that went unrecorded. A tail full of messages the hooks cannot read
 // means the transcript format moved under them.
-export function stalled(t) {
+// `hint`: the startup line says how to look closer; doctor, which is that,
+// does not tell the user to run itself.
+export function stalled(t, hint = true) {
   if (!t) return [];
   let end, seen, known; try { ({ end, seen, known } = lastTurn(t.p)); } catch { return []; }
   if (seen >= 50 && !known) return [`Memory hooks cannot read [${t.s}]'s transcript: none of its last ${seen} messages is a model reply they know. Has Claude Code's transcript format changed?`];
   // No file is not knowing (just installed, or cleaned away), not "never ran".
   let ran; try { ran = statSync(join(projectsRoot(), '.stop-ran')).mtimeMs; } catch { return []; }
   if (end - ran > GRACE && Date.now() - end > GRACE) {
-    return [`Memory hooks look stopped: [${t.s}] finished a turn at ${local(end)}, and the Stop hook last ran ${local(ran)}. Run: node "${join(dirname(fileURLToPath(import.meta.url)), 'memory.mjs')}" doctor`];
+    return [`Memory hooks look stopped: [${t.s}] finished a reply at ${local(end)}, but project-memory last saved after one at ${local(ran)}. ` +
+      `If project-memory was turned off meanwhile, this clears after the next reply.` +
+      (hint ? ` If not: node "${join(dirname(fileURLToPath(import.meta.url)), 'memory.mjs')}" doctor` : '')];
   }
   return [];
 }
@@ -401,11 +489,19 @@ function shared() {
     lines.push(l);
   }
   if (cut) lines.push(`(${cut} more shared line(s) over the ${SHARED_BUDGET} B ceiling, in ${join(at, 'MEMORY.md')})`);
-  const head = lines.some((l) => !l.includes(`](${ARCHIVE})`))
-    ? `Shared memory, every project (${at}): open a file there when its line applies; a new lesson that holds in every project goes there too, with a pointer in its MEMORY.md.`
-    : `Shared memory: lessons that hold in every project (how the user works, machine-wide tools) go in ${at}, same format, with a pointer in its MEMORY.md.`;
-  return [head, ...lines];
+  // An empty archive's line says nothing, in every session.
+  const said = lines.filter((l) => !(l.includes(`](${ARCHIVE})`) && / — 0 older/.test(l)));
+  // Once the user agrees: a lesson there reaches every project, the ones a
+  // conversation here should not speak for too.
+  const head = said.some((l) => !l.includes(`](${ARCHIVE})`))
+    ? `Shared memory, every project (${at}): open a file there when its line applies; a new lesson that holds in every project can go there too, once the user agrees, with a pointer in its MEMORY.md.`
+    : `Shared memory: lessons that hold in every project (how the user works, machine-wide tools) can go in ${at} once the user agrees, same format, with a pointer in its MEMORY.md.`;
+  return [head, ...said];
 }
+
+// Claude Code passes a hook's text whole up to 10,000 characters; past that,
+// a preview and a file, and the shared lessons at the end were what was cut.
+const SAY = 9500;
 
 // The SessionStart hook. After a compaction (source "compact"): the note on a
 // turn the compaction cut, then this session's own exchanges -- a parallel
@@ -416,7 +512,9 @@ function shared() {
 async function print(input) {
   const dir = storeOf(input);
   const file = join(dir, 'handoff.md');
-  const doc = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  // One that cannot be read (a folder, a file another program holds) is none:
+  // thrown, it took every other line of the briefing with it.
+  let doc = ''; try { doc = readFileSync(file, 'utf8'); } catch {}
   const { a, b } = sectionOf(doc);
   const section = a === -1 ? '' : doc.slice(a + START.length, b);
   const all = parse(section);
@@ -425,8 +523,11 @@ async function print(input) {
   const age = (t) => Date.now() - Date.parse(t.at.replace(' ', 'T'));
   // Working is judged by the transcript, not the entry: an entry carries the
   // time of the ask, and a session an hour into one prompt read as ended.
+  // Recent, with a turn still open: one that finished its turn is closed, or
+  // waiting for its user, and the one closed for a restart read as working.
   const live = transcripts(dir, me);
-  const others = live.filter((t) => Date.now() - t.m < ACTIVE).slice(0, 2).map((t) => {
+  const busy = (t) => { try { return lastTurn(t.p).open; } catch { return false; } };
+  const others = live.filter((t) => Date.now() - t.m < ACTIVE && busy(t)).slice(0, 2).map((t) => {
     const e = all.filter((x) => x.s === t.s).at(-1);
     return `Another session is working in this project: ${e ? `${e.at} [${t.s}] ${clip(e.ask, 120)}` : `${local(t.m)} [${t.s}] (no handoff entry)`}`;
   });
@@ -439,16 +540,18 @@ async function print(input) {
     // A project with no handoff is not judged: its sessions (`claude -p` runs
     // that load no user hooks) were never the Stop hook's to record.
     lines.push(...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared());
-    return lines.join('\n') + '\n';
+    return defuse(lines.join('\n') + '\n');
   }
   let note = '';
   try { note = (await import(new URL('./compact-gate.mjs', import.meta.url))).recover(input); } catch {}
-  const mine = all.filter((t) => t.s === me);
-  // None of its own yet (cut in its first turn): the newest TURNS, not every
-  // session's -- three sessions' thirty were ~5k tokens.
-  const shown = (mine.length ? mine : all.slice(-TURNS)).map(render);
-  const lines = note || shown.length ? ['The last exchanges before this compaction, from handoff.md:', ...(note ? [note] : []), ...shown, ...others] : [];
-  return [...lines, ...shared()].join('\n') + '\n';
+  // Its own exchanges only. None yet (cut in its first turn, or a private
+  // conversation) is none: another session's, shown here, read as its own.
+  const mine = all.filter((t) => t.s === me).map(render), tail = shared();
+  const say = () => [...(note || mine.length ? ['The last exchanges before this compaction, from handoff.md:', ...(note ? [note] : []), ...mine, ...others] : []), ...tail].join('\n') + '\n';
+  // The oldest exchanges go first, until it fits.
+  let out = say();
+  while (mine.length && out.length > SAY) { mine.shift(); out = say(); }
+  return defuse(out);
 }
 
 // Run directly (the harnesses do): payload on stdin, always exit 0.
