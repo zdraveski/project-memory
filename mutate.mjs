@@ -218,6 +218,8 @@ const suites = {
     'rule share measured on the whole budget': ['Math.max(0, budget - pinnedBytes) * RULE_SHARE', 'budget * RULE_SHARE'],
   }],
   'memory.mjs': ['memory.test.mjs', {
+    "--session ignored": ["if (/^[\\w-]{1,100}$/.test(opt('--session') || '')) session = opt('--session');", ""],
+    "any --session taken, a path too": ["/^[\\w-]{1,100}$/.test(opt('--session') || '')", "opt('--session')"],
     "non-ASCII names quoted away": ["'-c', 'core.quotepath=off', ", ""],
     "doctor from a terminal waits forever": [": transcripts(sessionStore(), '')[0]?.p", ": null"],
     "a replaced memory unlabeled": ["...(h.superseded ? [", "...(false ? ["],

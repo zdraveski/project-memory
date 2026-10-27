@@ -163,8 +163,12 @@ function snapshots() {
 // a Bash cwd moved into another project once wrote that project's store.
 // Outside a session, the cwd's project or the nearest folder above it with a
 // store: a subdirectory's own slug has none, and searching it said "nothing".
+// The session is the one the skill names with --session (Claude Code fills in
+// ${CLAUDE_SESSION_ID} there), never one read from the environment: the plugin
+// directory holds a plugin that reads what it could take for a credential.
+let session = '';
 function sessionStore() {
-  const id = process.env.CLAUDE_CODE_SESSION_ID, root = projectsRoot();
+  const id = session, root = projectsRoot();
   if (id) {
     let all = []; try { all = readdirSync(root); } catch {}
     for (const p of all) if (existsSync(join(root, p, `${id}.jsonl`))) return storeOf({ transcript_path: join(root, p, `${id}.jsonl`) });
@@ -329,7 +333,7 @@ export function doctor() {
     // Nothing has saved before Claude's first reply ends: that is waiting, and
     // a new install checked at once said PROBLEM. It is one when this
     // conversation finished a reply over a minute ago and still nothing saved.
-    const id = process.env.CLAUDE_CODE_SESSION_ID;
+    const id = session;
     // Outside a session (a terminal), the project's newest conversation: with
     // none to read, a dead hook said "waiting" forever.
     let end = NaN;
@@ -355,8 +359,10 @@ export function doctor() {
 // given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   const [cmd, ...rest] = process.argv.slice(2);
-  const valued = new Set(['--store', '--rev', '--limit']);
+  const valued = new Set(['--store', '--rev', '--limit', '--session']);
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
+  // A session id names a file: anything but an id's characters is ignored.
+  if (/^[\w-]{1,100}$/.test(opt('--session') || '')) session = opt('--session');
   const args = rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1]));
   const here = rest.includes('--shared') ? sharedStore() : opt('--store') || sessionStore();
   // --all includes the shared store before it has an index, as the default does.

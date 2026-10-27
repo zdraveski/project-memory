@@ -201,10 +201,12 @@ node ~/.claude/plugins/cache/project-memory/project-memory/<version>/memory.mjs 
 | `promote <note>` | |
 | `doctor` | |
 
-Every command works on the current conversation's project, or, outside
-Claude Code, on the project of the folder you're in. `--store <folder>`
-picks another project's `memory` folder, and `--shared` picks the shared
-notebook. The tool exits with 1 when a command is refused or fails.
+Every command works on the project of the conversation that `--session <id>`
+names (the skill passes Claude Code's session id), or, without it, on the
+project of the folder you're in. The tool reads no environment variable to
+find the conversation. `--store <folder>` picks another project's `memory`
+folder, and `--shared` picks the shared notebook. The tool exits with 1 when a
+command is refused or fails.
 
 ## Requirements and limits
 

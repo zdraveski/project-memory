@@ -13,10 +13,11 @@ live in the shared store, `~/.claude/projects/_shared/memory/`, whose index is
 printed at the start of every session in every project. Every memory change is
 committed to a git repo at `~/.claude/projects`.
 
-The CLI, run with Bash (it finds this session's store itself, whatever the cwd):
+The CLI, run with Bash. `--session` names this conversation, so the CLI finds
+its project whatever the cwd:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/memory.mjs" <command>
+node "${CLAUDE_PLUGIN_ROOT}/memory.mjs" <command> --session ${CLAUDE_SESSION_ID}
 ```
 
 | Command | Use it when |
@@ -37,6 +38,6 @@ When a new memory replaces an old one, keep the old file and add
 `superseded-by: <new-file>.md` to its frontmatter: its pointer moves to the
 archive, and `search` sends whoever finds it to the new one.
 
-When invoked by the user, run `node "${CLAUDE_PLUGIN_ROOT}/memory.mjs" $ARGUMENTS`
+When invoked by the user, run `node "${CLAUDE_PLUGIN_ROOT}/memory.mjs" $ARGUMENTS --session ${CLAUDE_SESSION_ID}`
 (no arguments: `status`) and report the output plainly. After `restore` or
 `promote`, say what changed on disk.

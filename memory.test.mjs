@@ -192,8 +192,14 @@ ok(r.status === 0 && readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').in
 // 4d. The store is the session's, found as the hooks find it: by its transcript,
 // not by the cwd. Outside a session, the nearest folder above the cwd with a store.
 writeFileSync(join(root, 'C--mem-cli', 'sess-cli-1.jsonl'), '');
-const fromElsewhere = spawnSync(process.execPath, [CLI, 'status'], { env: { ...env, CLAUDE_CODE_SESSION_ID: 'sess-cli-1' }, cwd: home, encoding: 'utf8' });
+const fromElsewhere = spawnSync(process.execPath, [CLI, 'status', '--session', 'sess-cli-1'], { env, cwd: home, encoding: 'utf8' });
 ok(fromElsewhere.stdout.split('\n')[0] === dir, `inside a session, the CLI uses the session's store wherever the cwd is (got ${fromElsewhere.stdout.split('\n')[0]})`);
+// The session comes from --session only: an environment variable is not read,
+// and an id that is no id (a path) is ignored.
+const viaEnv = spawnSync(process.execPath, [CLI, 'status'], { env: { ...env, CLAUDE_CODE_SESSION_ID: 'sess-cli-1' }, cwd: home, encoding: 'utf8' });
+ok(viaEnv.stdout.split('\n')[0] !== dir, `the session is not read from the environment (got ${viaEnv.stdout.split('\n')[0]})`);
+const viaPath = spawnSync(process.execPath, [CLI, 'status', '--session', '../C--mem-cli/sess-cli-1'], { env, cwd: home, encoding: 'utf8' });
+ok(viaPath.stdout.split('\n')[0] !== dir, `a --session that is a path is ignored (got ${viaPath.stdout.split('\n')[0]})`);
 const proj = join(home, 'proj'), deeper = join(proj, 'sub', 'deeper');
 mkdirSync(deeper, { recursive: true });
 // The cwd as the OS reports it, which is what a process sees: on macOS the
@@ -241,7 +247,7 @@ rmSync(join(root, '.stop-ran'), { force: true });
 {
   const stopRan = join(root, '.stop-ran'), had = existsSync(stopRan) ? readFileSync(stopRan, 'utf8') : null;
   rmSync(stopRan, { force: true });
-  const doc = (id) => spawnSync(process.execPath, [CLI, 'doctor'], { env: id ? { ...noSession, CLAUDE_CODE_SESSION_ID: id } : noSession, encoding: 'utf8' }).stdout;
+  const doc = (id) => spawnSync(process.execPath, [CLI, 'doctor', ...(id ? ['--session', id] : [])], { env: noSession, encoding: 'utf8' }).stdout;
   const replied = (id, ago) => writeFileSync(join(root, 'C--mem-cli', `${id}.jsonl`),
     JSON.stringify({ type: 'assistant', timestamp: new Date(Date.now() - ago).toISOString(), message: { usage: { input_tokens: 1 }, stop_reason: 'end_turn', content: [] } }) + '\n');
   ok(/^ok +waiting for Claude's first reply/m.test(doc()), 'doctor: before the first reply, waiting is no problem');
