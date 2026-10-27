@@ -13,6 +13,19 @@ commands to get the benefit.
 *The demo replays three real conversations in a sample project, with the
 messages shortened to fit.*
 
+## Quick start
+
+With Node.js 20 or newer and Git on your computer, type these two lines in
+Claude Code, then restart it:
+
+```
+/plugin marketplace add zdraveski/project-memory
+/plugin install project-memory@project-memory
+```
+
+The [step-by-step install](#install) explains each step and what you need
+first.
+
 ## What you get
 
 Every new conversation in Claude Code starts fresh. To carry things over,
