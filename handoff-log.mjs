@@ -92,8 +92,12 @@ const unwrap = (s) => {
     i = b + '</system-reminder>'.length;
   }
 };
+// Only a harness-style name, one with `-` or `_` (every tag Claude Code puts
+// before a prompt here: task-notification, command-name, local-command-stdout,
+// ide_opened_file): a prompt that was one <template> element was stripped to
+// nothing, and its answer filed under the ask before. Any case: <PRIVATE> too.
 export const own = (s) => unwrap(s)
-  .replace(/^(?:\s*<(?!private|pasted)([A-Za-z][\w-]{0,63})(?=[\s>])[^>]{0,2000}>[\s\S]*?<\/\1>)+/, '').trim();
+  .replace(/^(?:\s*<(?!private|pasted)(?=[A-Za-z]\w{0,62}[_-])([A-Za-z][\w-]{0,63})(?=[\s>])[^>]{0,2000}>[\s\S]*?<\/\1>)+/i, '').trim();
 // What a prompt starts with is the user's: 4 prompts here began with a paste,
 // and read as no ask, each one's answer was saved as the answer to the one before.
 // (A record the harness added, or a compaction summary, prompt() turns away first.)
@@ -110,8 +114,13 @@ const command = (s) => {
   const a = (s.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1] ?? '').trim();
   return `${n[1].startsWith('/') ? '' : '/'}${n[1]}${a ? ` ${a}` : ''}`;
 };
-// The prompt a user record opens a turn with, or '' when it opens none.
-export const prompt = (r, s) => (r.isMeta || r.isCompactSummary ? '' : command(s) || (asked(r, s) ? own(s) : ''));
+// The prompt a user record opens a turn with, or '' when it opens none. One of
+// images only has no words, and opens a turn all the same: read as none, its
+// answer was filed under the ask before.
+const image = (r) => Array.isArray(r.message?.content) && r.message.content.some((b) => b?.type === 'image');
+export const prompt = (r, s) => (r.isMeta || r.isCompactSummary ? '' : command(s) || (asked(r, s) ? own(s) : '') || (!s && image(r) ? '[image]' : ''));
+// A <private> block, its tag in any case and with attributes.
+export const PRIVATE = /<private(?:\s[^>]*)?>/i;
 
 export { local };
 // A session's short tag: enough to tell parallel sessions apart in one file.
@@ -138,8 +147,8 @@ function turns(raw) {
       }
     }
     const t = text(r).trim();
-    if (!t) continue;
     const ask = r.type === 'user' ? prompt(r, t) : '';
+    if (!t && !ask) continue;
     if (ask) {
       pending = { at: local(r.timestamp), ask, did: '', changed: [] };
       // Marked whether or not a reply follows: a turn of tool calls, or one
@@ -163,7 +172,7 @@ function turns(raw) {
 // before it; anything in <private>...</private> goes whole. Before clipping,
 // so no half of a key is left behind.
 const SECRETS = [
-  [/<private>[\s\S]*?(?:<\/private>|$)/gi, '[private]'],
+  [/<private(?:\s[^>]*)?>[\s\S]*?(?:<\/private\s*>|$)/gi, '[private]'],
   // PGP's says PRIVATE KEY BLOCK.
   [/-----BEGIN [A-Z ]*PRIVATE KEY[A-Z ]*-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY[A-Z ]*-----|$)/g, '[redacted]'],
   // sk-... (Anthropic, OpenAI); sk_live_, pk_test_, rk_live_ (Stripe).
@@ -179,21 +188,23 @@ const SECRETS = [
   [/(hooks\.slack\.com\/services\/)[A-Za-z0-9/]+/g, '$1[redacted]'],
   // The password in a URL: postgres://user:it@host.
   [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{1,100}:)[^\s@/]{1,200}@/gi, '$1[redacted]@'],
-  // `mysql -pIT`: the password glued to the flag.
-  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n]{0,200}?\s-p)[^\s-][^\s]{2,}/gi, '$1[redacted]'],
-  // "my password is IT".
-  [/\b((?:password|passwd|passphrase)\s{1,5}(?:is|was)\s{1,5})["']?[^\s"',;.]{4,}/gi, '$1[redacted]'],
-  // The word can end a longer name, glued (PGPASSWORD=, dbPassword, clientSecret)
-  // or not (DB_PASSWORD=, AWS_SECRET_ACCESS_KEY=), and the value can sit on the
-  // next line (YAML). A short word needs its own start: `monkey=` names no key.
-  // Bounded, so no input backtracks.
-  // Not a bare `token`: "input_tokens: 863324" is a count.
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?<![A-Za-z0-9])(?:api[_-]?key|account[_-]?key|private[_-]?key|pwd))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)[^\s"',;]{6,}/gi, '$1[redacted]'],
+  // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
+  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
+  // "my password is IT": one with a digit or a symbol, as a password has --
+  // "the password is hashed" names none.
+  [/\b((?:password|passwd|passphrase)\s{1,5}(?:is|was)\s{1,5})["']?(?=\S*[0-9!@#$%^&*_+=-])[^\s"',;]{3,}[^\s"',;.]/gi, '$1[redacted]'],
+  // The word can end a longer name, glued (PGPASSWORD=, dbPassword, clientSecret,
+  // stripeApiKey) or not (DB_PASSWORD=, AWS_SECRET_ACCESS_KEY=), and the value
+  // can sit on the next line (YAML). `pwd` needs its own start. Bounded, so no
+  // input backtracks. Not a bare `token`: "input_tokens: 863324" is a count.
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|(?<![A-Za-z0-9])pwd)[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)[^\s"',;]{6,}/gi, '$1[redacted]'],
+  // A bare `token=` or `token:` whose value has a letter: a key, not a count.
+  [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?=[^\s"',;]{0,200}[A-Za-z])[^\s"',;]{6,}/gi, '$1[redacted]'],
 ];
 export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
 // The answer to a private message often repeats what it was told, so it is
 // withheld whole.
-export const answer = (ask, did, n) => (/<private>/i.test(ask) ? '[private]' : clip(plain(did), n));
+export const answer = (ask, did, n) => (PRIVATE.test(ask) ? '[private]' : clip(plain(did), n));
 
 // Marker text inside an ask or an answer would become the section boundary on
 // the next run and strand every entry before it as prose, and a tag printed at
@@ -292,8 +303,9 @@ function build(raw, fresh, drop = null, me = fresh[0]?.s) {
   // other's. An untagged entry (written before tags) whose time and ask match
   // is this session's own, re-seen: replaced, not kept beside. The ask as it
   // is written: one an older version wrote with a raw tag still matches.
+  // 1.0.7 wrote a marker in an ask as `<!- -`.
   const key = (t) => `${t.s} ${bare(t)}`;
-  const bare = (t) => `${t.at} ${clip(t.ask, ASK)}`;
+  const bare = (t) => `${t.at} ${clip(t.ask.replace(/<!- -/g, '<!--'), ASK)}`;
   const seen = new Set(fresh.map(key)), seenBare = new Set(fresh.map(bare));
   const kept = have.filter((t) => !seen.has(key(t)) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop);
   const merged = keep([...kept, ...fresh], me);
@@ -341,7 +353,8 @@ export function handoff(input) {
   // Claude Code makes a project's memory folder when Claude first saves a
   // note: until then, no conversation in it was recorded. Made here, inside
   // the project's own folder, never a new one.
-  if (!existsSync(dir)) { if (!existsSync(dirname(dir))) return false; mkdirSync(dir); }
+  // Recursive: two sessions starting in a new project at once both make it.
+  if (!existsSync(dir)) { if (!existsSync(dirname(dir))) return false; mkdirSync(dir, { recursive: true }); }
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);
   const got = latest(input.transcript_path);
@@ -355,7 +368,7 @@ export function handoff(input) {
   }
   // File names, not paths; none for a private message's turn.
   const fresh = got.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.ask, t.did, DID),
-    changed: /<private>/i.test(t.ask) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) }));
+    changed: PRIVATE.test(t.ask) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) }));
   const hush = got.hush === true;
   // Sessions of one project write this file at once, so they take turns: 8 at
   // once lost 22 of 40 turns without the lock (2026-10-26). The model can still
@@ -415,7 +428,9 @@ export function lastTurn(p) {
     // Messages only: a session's start-up records (attachments, modes, titles)
     // ran to 41 before its first reply.
     if (r.type === 'user' || r.type === 'assistant') seen++;
-    if (r.type === 'user' && prompt(r, text(r).trim())) open = true;
+    // Not a slash command: a local one (/exit, /model) gets no reply, and the
+    // turn it opened never closed.
+    if (r.type === 'user' && !text(r).includes('<command-name>') && prompt(r, text(r).trim())) open = true;
     if (r.type !== 'assistant' || !r.message?.usage) continue;
     known++;
     open = r.message.stop_reason !== 'end_turn';
@@ -526,8 +541,11 @@ async function print(input) {
   // Recent, with a turn still open: one that finished its turn is closed, or
   // waiting for its user, and the one closed for a restart read as working.
   const live = transcripts(dir, me);
+  // Newest first, the first two only: each is a 512 KB read.
   const busy = (t) => { try { return lastTurn(t.p).open; } catch { return false; } };
-  const others = live.filter((t) => Date.now() - t.m < ACTIVE && busy(t)).slice(0, 2).map((t) => {
+  const working = [];
+  for (const t of live) { if (working.length === 2 || Date.now() - t.m >= ACTIVE) break; if (busy(t)) working.push(t); }
+  const others = working.map((t) => {
     const e = all.filter((x) => x.s === t.s).at(-1);
     return `Another session is working in this project: ${e ? `${e.at} [${t.s}] ${clip(e.ask, 120)}` : `${local(t.m)} [${t.s}] (no handoff entry)`}`;
   });

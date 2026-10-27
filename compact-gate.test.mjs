@@ -237,5 +237,11 @@ writeFileSync(nudgeDir, 'not a folder');
 write(user('q9'), asst('over the trigger', T + 60_000, 'end_turn'));
 ok(stop('s9') === null && stop('s9') === null, 'a nudge that cannot be recorded is not given');
 rmSync(nudgeDir, { force: true });
+// A tool result of launches with no output file each: every one read on to the
+// end, 9 s over 520 KB on every Stop.
+write(user('scan the logs'), result('agentId: abc\n'.repeat(40_000)), asst('', 300_000, 'tool_use'));
+const tLaunch = Date.now();
+execFileSync(process.execPath, [GATE, '--state', transcript], { env, stdio: 'ignore' });
+ok(Date.now() - tLaunch < 2000, `launches with no output file are read once each (${Date.now() - tLaunch} ms)`);
 
 console.log(`compact-gate: ${checks} checks passed`);

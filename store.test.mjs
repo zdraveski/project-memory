@@ -174,5 +174,6 @@ const { gitArgs } = await import('./store.mjs');
 const ga = gitArgs('status');
 ok(ga.includes('commit.gpgsign=false') && ga.includes('core.longpaths=true') && ga.some((a) => /^core\.hooksPath=.*no-hooks$/.test(a)) && ga.at(-1) === 'status',
   `the snapshot repo's git turns off signing and hooks, and on long paths (got ${ga.join(' ')})`);
+ok(gitWhy({ code: 'ENOENT', message: 'spawnSync git ENOENT' }) === 'git is not installed', 'no git is said in words, not as spawnSync git ENOENT');
 
 console.log(`store: ${checks} checks passed`);

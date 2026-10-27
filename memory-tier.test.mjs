@@ -336,10 +336,14 @@ ok(!tracked().includes('proj-one/memory/handoff.md') && readFileSync(join(root, 
   const ours = readFileSync(join(root, '.gitignore'), 'utf8');
   writeFileSync(join(root, '.gitignore'), 'node_modules/\n');
   execFileSync('git', ['-C', root, 'init', '-q']);
+  // Its commit in progress: an hour-old lock, which this tool would clear in its own repository.
+  writeFileSync(join(root, '.git', 'index.lock'), '');
+  utimesSync(join(root, '.git', 'index.lock'), new Date(Date.now() - 3600_000), new Date(Date.now() - 3600_000));
   note('proj-one', 'theirs');
   r = plain();
   const commits = spawnSync('git', ['-C', root, 'rev-list', '--all'], { encoding: 'utf8' }).stdout.trim();
-  ok(/off: .*did not make/.test(r.stdout) && readFileSync(join(root, '.gitignore'), 'utf8') === 'node_modules/\n' && commits === '', `a git repository the user made there is left alone (got ${r.stdout.trim()})`);
+  ok(/off: .*did not make/.test(r.stdout) && readFileSync(join(root, '.gitignore'), 'utf8') === 'node_modules/\n' && commits === '' && existsSync(join(root, '.git', 'index.lock')),
+    `a git repository the user made there is left alone, its lock too (got ${r.stdout.trim()})`);
   rmSync(join(root, '.git'), { recursive: true, force: true });
   renameSync(join(root, '.gitmine'), join(root, '.git'));
   writeFileSync(join(root, '.gitignore'), ours);
@@ -616,6 +620,19 @@ const evt = JSON.parse(runLines().at(-1));
 ok(evt.e === 'Stop' && evt.h === 1, `--stop: a run says which event ran it, and whether a block sent it back (got ${runLines().at(-1)})`);
 r = spawnSync(process.execPath, [TOOL, '--stop'], { encoding: 'utf8', input: JSON.stringify({ transcript_path: 42, session_id: 'bad' }) });
 ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (got ${r.status}: ${r.stderr.slice(0, 200)})`);
+// A note's head is its first 1,200 characters, not bytes: a long Cyrillic
+// description pushed `tier: hot` past 1,200 bytes, and the pin was lost.
+{
+  const nine = join(root, 'proj-nine', 'memory');
+  mkdirSync(nine, { recursive: true });
+  writeFileSync(join(nine, 'pin.md'), `---\nname: pin\ndescription: "${'я'.repeat(600)}"\nmetadata:\n  type: project\n  tier: hot\n  modified: 2020-01-01\n---\nbody\n`);
+  // Old by its file date too: cut before `modified:`, a fresh file would stay by its date.
+  const monthAgo = new Date(Date.now() - 30 * 86400000);
+  utimesSync(join(nine, 'pin.md'), monthAgo, monthAgo);
+  writeFileSync(join(nine, 'MEMORY.md'), '# Index\n\n- [Pin](pin.md) — pinned\n');
+  spawnSync(process.execPath, [TOOL, '--dir', nine], { encoding: 'utf8' });
+  ok(readFileSync(join(nine, 'MEMORY.md'), 'utf8').includes('- [Pin](pin.md)'), 'a pin past 1,200 bytes, inside 1,200 characters, holds');
+}
 
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

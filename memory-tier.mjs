@@ -77,13 +77,13 @@ function factsFor(dir, file) {
   // rather than aborting the whole store. One another program holds fails the
   // pass instead: read as missing, its alarm was stamped and stayed a day.
   // The head only: the frontmatter is at the top, and a 1.5 GB file read whole
-  // cost seconds of every Stop.
+  // cost seconds of every Stop. 1,200 characters, as before: up to 4 bytes each.
   let head, st;
   try {
     st = statSync(path);
     if (!st.isFile()) return null;
-    const fd = openSync(path, 'r'), buf = Buffer.alloc(1200);
-    try { head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)); } finally { closeSync(fd); }
+    const fd = openSync(path, 'r'), buf = Buffer.alloc(4800);
+    try { head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)).slice(0, 1200); } finally { closeSync(fd); }
   } catch (e) { if (BUSY.includes(e.code)) throw e; return null; }
   const { type, tier, desc, modified: stamp } = front(head);
   const modified = Number.isNaN(stamp) ? st.mtimeMs : stamp;
@@ -306,6 +306,18 @@ function snapshot() {
   const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 });
   const lock = join(root, '.git', 'index.lock');
   try {
+    const fresh = !existsSync(join(root, '.git'));
+    const ignorePath = join(root, '.gitignore');
+    // A new repository gets this tool's .gitignore first, then git: one cut off
+    // between the two is still known for this tool's by it, and adopted below.
+    // Marked only after the init, a cut-off one read as the user's for good.
+    if (fresh) { replaceIfUnchanged(ignorePath, raw(ignorePath), gitignore()); git('init', '-q'); }
+    // Only a repository this tool made: one the user made there is theirs, and
+    // its .gitignore, its lock, its index and its history are not this tool's.
+    if (!/^\[project-memory\]/m.test(raw(join(root, '.git', 'config')) ?? '')) {
+      if (!(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)) return `off: ${root} is a git repository project-memory did not make, so it commits nothing there`;
+      git('config', 'project-memory.snapshots', 'true');
+    }
     // A fresh index.lock is another session's commit in flight: busy, not a
     // failure -- the next turn retries. One older than ten minutes outlived the
     // git that made it, and would refuse every commit from now on.
@@ -313,21 +325,12 @@ function snapshot() {
       if (Date.now() - statSync(lock).mtimeMs < GIT_LOCK_STALE) return 'busy';
       unlinkSync(lock);
     }
-    const fresh = !existsSync(join(root, '.git'));
-    if (fresh) git('init', '-q');
-    // Only a repository this tool made: one the user made there is theirs, and
-    // its .gitignore, its index and its history are not this tool's to change.
-    if (!/^\[project-memory\]/m.test(raw(join(root, '.git', 'config')) ?? '')) {
-      if (!fresh && !(raw(join(root, '.gitignore')) ?? '').startsWith(IGNORE_HEAD)) return `off: ${root} is a git repository project-memory did not make, so it commits nothing there`;
-      git('config', 'project-memory.snapshots', 'true');
-    }
     // Everything is ignored except the memory markdown: this directory also
     // holds ~890 MB of session transcripts that must never be committed.
     // Recomputed each run and written when it differs: a junction created
     // after the repo existed would otherwise be double-tracked forever.
     const want = gitignore();
-    const ignorePath = join(root, '.gitignore');
-    const have = existsSync(ignorePath) ? readFileSync(ignorePath, 'utf8') : null;
+    const have = raw(ignorePath);
     if (have !== want) {
       // By rename: another session's `git add -A` reading it half written
       // would stage every transcript.

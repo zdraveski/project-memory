@@ -40,7 +40,7 @@ project-memory looks after that notebook.
 | You start a new conversation and explain again where you were. | Claude starts already knowing where the last conversation stopped. |
 | When the notebook's table of contents gets too long, Claude Code asks Claude to shorten it, and Claude decides what to merge or drop. | The table of contents is kept short for Claude, and nothing is dropped. Older lines move to an archive that Claude can still search. |
 | A very long conversation is shortened to a summary, and details of the task in progress can get lost. | Claude saves its notes before that happens, and afterwards it's told what you asked and what it last said. |
-| A note deleted or overwritten by mistake is gone for good. | Each change to a note is kept in a history on your computer. Ask Claude, and it brings an old version back. |
+| A note deleted or overwritten by mistake is gone for good. | After each reply that changed a note, the note is saved to a history on your computer. Ask Claude, and it brings an old version back. |
 | You teach Claude how you like to work again in every project. | Lessons that apply everywhere are shared with all your projects. |
 | Two Claude windows on the same project can overwrite each other's notes. | project-memory never writes over a change another window just made, and each new conversation is told what the other windows are doing. |
 
@@ -126,7 +126,8 @@ needs one setting to fire. See [Compaction](docs/how-it-works.md#compaction).
 
 - **Your existing notes.** The first time it runs, project-memory may move
   older lines from the table of contents to the archive. Nothing is deleted,
-  Claude can still find those notes, and every change is in the history.
+  Claude can still find those notes, and the history keeps the table of
+  contents as it was.
 - **What it costs.** Each conversation starts with a short briefing, usually
   under 1,000 tokens: about half a percent of a 200,000-token context window.
   In return, the table of contents Claude reads at every start stays under
@@ -398,8 +399,8 @@ Two more are worth knowing about:
   Claude changed, so the next conversation can pick up from there.
 - **Shared notebook**: notes that apply to all your projects. Every
   conversation, in every project, reads its table of contents.
-- **History**: each change to your notes, kept with Git on your computer, so
-  an old version can be brought back.
+- **History**: your notes as they were after each reply that changed them,
+  kept with Git on your computer, so an old version can be brought back.
 - **Project**: the folder you open Claude Code in.
 - **Context window**: how much of a conversation Claude can keep in view at
   once. Its size is counted in tokens, about three quarters of a word each.

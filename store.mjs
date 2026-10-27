@@ -94,7 +94,8 @@ export const gitArgs = (...a) => ['-C', projectsRoot(), '-c', 'core.longpaths=tr
 // repack Windows could not finish leaves an .idx with no .pack, and git warns
 // of it on every command (2026-10-27) -- else the message's, which only says
 // which command failed.
-export const gitWhy = (e) => String(e.stderr || '').split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('warning:')) || String(e.message).split('\n')[0];
+export const gitWhy = (e) => (e.code === 'ENOENT' ? 'git is not installed'
+  : String(e.stderr || '').split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('warning:')) || String(e.message).split('\n')[0]);
 
 // A file's text, or null when there is none: what replaceIfUnchanged compares.
 export const raw = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);

@@ -48,6 +48,13 @@ const read = (p) => { try { return readFileSync(p, 'utf8').replace(/^﻿/, ''); 
 const target = (line) => (line.replace(/^\uFEFF/, '').match(POINTER) || [])[1];
 const targets = (text) => (text ?? '').split(/\r?\n/).map(target).filter((t) => t && t !== ARCHIVE);
 const no = (why) => ({ ok: false, lines: [why] });
+// A line added to an index goes before the archive's own line, which tiering
+// keeps last and leaves where it is when nothing else changed.
+const withLine = (text, line) => {
+  const ls = text.replace(/\n*$/, '').split('\n'), at = ls.findIndex((l) => target(l) === ARCHIVE);
+  if (at === -1) ls.push(line); else ls.splice(at, 0, line);
+  return ls.join('\n') + '\n';
+};
 
 // Every memory in a store: what its frontmatter says, its [[links]], and which
 // index names it.
@@ -227,7 +234,8 @@ export function restore(dir, file, { rev, force = false } = {}) {
   // A commit's name, or one counted back from it (abc123^, HEAD~2): anything
   // else reached git as an option, and `--format=...` wrote git's own output
   // into the note.
-  if (rev !== undefined && !/^[\w^~.]{1,80}$/.test(rev)) return no(`--rev takes a commit from history, like abc1234: not "${rev}"`);
+  // No `..` either: `A..B:path` is a range, and git showed it as an empty note.
+  if (rev !== undefined && !/^[\w^~]{1,80}$/.test(rev)) return no(`--rev takes a commit from history, like abc1234: not "${rev}"`);
   let from = rev, text;
   try {
     if (!from) {
@@ -236,8 +244,12 @@ export function restore(dir, file, { rev, force = false } = {}) {
     }
     try { text = git('show', `${from}:${at}`); }
     // The commit history names as "deleted" no longer has it: the version it
-    // deleted is the one before.
-    catch (e) { if (!rev) throw e; text = git('show', `${rev}^:${at}`); from = `${rev}^`; }
+    // deleted is the one before. Neither there: the error is the commit's own.
+    catch (e) {
+      if (!rev) throw e;
+      try { text = git('show', `${rev}^:${at}`); } catch { throw e; }
+      from = `${rev}^`;
+    }
   } catch (e) { return no(`no snapshot of ${at} at ${from || 'HEAD'}: ${gitWhy(e)}`); }
   let line = null;
   if (!file.startsWith('MEMORY')) {
@@ -261,7 +273,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
     const idx = join(dir, 'MEMORY.md'), main = raw(idx);
     if ([main, raw(join(dir, ARCHIVE))].some((t) => targets(t).includes(file))) return `restored ${path} from ${from}; its index line is still there${kept}`;
     if (!line) return `restored ${path} from ${from}; no index line at that revision: the next turn's tiering gives it one${kept}`;
-    const next = main ? main.replace(/\n*$/, '\n') + line + '\n' : line + '\n';
+    const next = main ? withLine(main, line) : line + '\n';
     if (replaceIfUnchanged(idx, main, next) === 'conflict') return `restored ${path} from ${from}; the index changed meanwhile, so the next turn's tiering gives it a line${kept}`;
     return `restored ${path} from ${from}, with its line: ${line}${kept}`;
   });
@@ -290,7 +302,7 @@ export function promote(dir, file) {
     line ??= `- [${file.replace(/\.md$/, '').replace(/-/g, ' ')}](${file}) — ${front(text).desc || 'promoted'}`;
     if (replaceIfUnchanged(dst, null, text) === 'conflict') return `the shared store got a ${file} meanwhile; nothing moved`;
     const idx = join(to, 'MEMORY.md'), idxText = raw(idx);
-    const next = (idxText ? idxText.replace(/\n*$/, '\n') : '# Shared memory\n\n') + line + '\n';
+    const next = idxText ? withLine(idxText, line) : '# Shared memory\n\n' + line + '\n';
     if (replaceIfUnchanged(idx, idxText, next) === 'conflict') return `the shared index changed meanwhile: ${file} is in both stores, not yet in the shared index`;
     // The model's Edit takes no lock: one that landed since the copy keeps the
     // project copy, and its index line, where it was written.
@@ -358,7 +370,13 @@ export function doctor() {
     try { const p = id ? join(dirname(sessionStore()), `${id}.jsonl`) : transcripts(sessionStore(), '')[0]?.p; if (p) end = lastTurn(p).end; } catch {}
     if (Date.now() - end > GRACE) say(false, `Claude finished a reply at ${local(end)}, but project-memory has not saved after any reply: its Stop hook is not running. The user's fix: restart Claude Code; if this line stays, check that Node.js is installed (node --version)`);
     else say(true, "waiting for Claude's first reply: project-memory saves each time Claude finishes one");
-  } else { const s = stalled(transcripts(sessionStore(), '')[0], false); say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`); }
+  } else {
+    // The newest conversation, and the newest other than this one, which is
+    // the one the startup briefing judges: checked on the newest alone, the
+    // two disagreed when this window saved and another did not.
+    const ts = transcripts(sessionStore(), ''), s = [ts[0], ts.find((t) => t.s !== session.slice(0, 8))].flatMap((t) => stalled(t, false));
+    say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`);
+  }
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return Date.now() - statSync(l).mtimeMs > LOCK_STALE; } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);
   // No git is a setup the README allows: everything works but the history.
@@ -377,10 +395,13 @@ export function doctor() {
 // Node names the script by its real path: compared with the path it was
 // given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
-  // No command (the skill run with no arguments: just `--session <id>`) is status.
+  // The command is the first word that is no option or an option's value, so
+  // `--store X search foo` searches; none (the skill run with no arguments,
+  // just `--session <id>`) is status.
   const argv = process.argv.slice(2);
-  const [cmd, ...rest] = !argv.length || argv[0].startsWith('--') ? ['status', ...argv] : argv;
   const valued = new Set(['--store', '--rev', '--limit', '--session']);
+  const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
+  const cmd = at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
   // A session id names a file: anything but an id's characters is ignored.
   if (/^[\w-]{1,100}$/.test(opt('--session') || '')) session = opt('--session');

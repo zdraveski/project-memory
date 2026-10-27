@@ -12,8 +12,9 @@ security and privacy, the docs against the code, and a new user's first week.
   there until you delete the history (see [PRIVACY.md](PRIVACY.md)).
 - More secrets are recognized and replaced with `[redacted]`: passwords in web
   addresses, GitLab, npm and Hugging Face tokens, Slack webhooks, Azure account
-  keys, `mysql -p…`, "my password is …", and names like `PGPASSWORD=`,
-  `dbPassword` and `clientSecret`.
+  keys, `mysql -p…`, "my password is …" (when it holds a digit or a symbol, as
+  a password does), names like `PGPASSWORD=`, `dbPassword`, `clientSecret` and
+  `stripeApiKey`, and a `token=` value with letters in it.
 - A `<private>` message's turn no longer records the names of the files it
   changed. `<private-session>` also works inside a slash command's arguments,
   and is remembered for the newest 1,000 conversations, not 50.
@@ -26,9 +27,11 @@ security and privacy, the docs against the code, and a new user's first week.
 - The compaction reminder is labelled `[project-memory: …]`, not `[SYSTEM: …]`.
 - `--store` only accepts a memory folder inside `~/.claude/projects`, and
   `--rev` only a commit. Before, `promote --store` could delete a file
-  anywhere, and `--rev --format=…` wrote git's output into a note.
+  anywhere, `--rev --format=…` wrote git's output into a note, and a range
+  (`A..B`) wrote an empty one.
 - If `~/.claude/projects` is a git repository you made, project-memory leaves
-  it alone instead of committing into it.
+  it alone, its lock included, instead of committing into it.
+- `<private>` works in capitals and with attributes too.
 - An index line can no longer point outside its notebook, or at a web page.
 
 **Things that went wrong**
@@ -39,16 +42,18 @@ security and privacy, the docs against the code, and a new user's first week.
   warning at every start and redoing the whole tidy-up after every reply.
 - A git lock that cannot be cleared counts as a failure; it used to read as
   "busy" forever while nothing was saved.
-- A prompt that starts with pasted text, or with `<`, is recorded, and so is a
-  slash command. Each used to be skipped, and its answer saved under the
-  question before.
+- A prompt that starts with pasted text or with `<`, one that is a single
+  element like `<template>`, one of images only, and a slash command are all
+  recorded. Each used to be skipped, and its answer saved under the question
+  before.
 - With four or more windows on one project, a window's own turn is no longer
   dropped from the record.
 - A project gets its record of where you left off from the first reply, not
   only after Claude saves its first note.
 - "Another session is working" means a turn is still open in it, so a window
-  you just closed (for example to restart after installing) isn't reported as
-  working.
+  you just closed (for example to restart after installing, or with `/exit`)
+  isn't reported as working. `doctor` checks the same windows the startup
+  briefing does.
 - `doctor` no longer reports "ran twice" for a `/compact` typed right after a
   reply, or for the reply to the compaction reminder. "Memory hooks look
   stopped" says that a pause explains it, and doctor no longer tells you to

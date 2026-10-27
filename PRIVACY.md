@@ -31,8 +31,8 @@ All of it stays in `~/.claude/projects` on your computer:
   what was in progress: your request, the start of Claude's last words, any
   background tasks still running, and the files Claude had changed. It lasts
   until Claude's next reply.
-- A history of your notes, in a local git repository: each time a note
-  changes, the new version is kept. It holds your notes only, never the record
+- A history of your notes, in a local git repository: after each reply that
+  changed a note, its new version is kept. It holds your notes only, never the record
   of where you left off.
 - A few small bookkeeping files, such as when it last ran, and the short tags
   of conversations you marked `<private-session>`.

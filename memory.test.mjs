@@ -134,6 +134,16 @@ ok(deletedAt && r.status === 0 && readFileSync(join(dir, 'deploy-notes.md'), 'ut
 // --rev is a commit, never an option: `--format=...` wrote git's output into the note.
 r = cli('restore', 'deploy-notes', '--force', '--rev', '--format=INJECTED %H');
 ok(r.status === 1 && /--rev takes a commit/.test(r.stdout) && !/INJECTED/.test(readFileSync(join(dir, 'deploy-notes.md'), 'utf8')), '--rev that is no commit is refused');
+r = cli('restore', 'deploy-notes', '--force', '--rev', 'HEAD~1..HEAD');
+ok(r.status === 1 && /--rev takes a commit/.test(r.stdout) && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes('deploy deploy'), 'a range is no commit: refused, never an empty note');
+r = cli('restore', 'deploy-notes', '--force', '--rev', 'HEAD~999');
+ok(r.status === 1 && /at HEAD~999: /.test(r.stdout), `an unknown commit is named as given (got ${r.stdout.trim()})`);
+// The command is the first word that is no option: an option before it worked.
+r = spawnSync(process.execPath, [CLI, '--store', dir, 'search', 'deploy'], { env, encoding: 'utf8' });
+ok(r.status === 0 && /match\(es\) in/.test(r.stdout), `an option before the command still runs it (got ${r.stdout.slice(0, 200)})`);
+// Without git, history says so, not "spawnSync git ENOENT".
+r = spawnSync(process.execPath, [CLI, 'history', 'deploy-notes', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '' }, encoding: 'utf8' });
+ok(r.status === 1 && /git is not installed/.test(r.stdout), `history without git says git is not installed (got ${r.stdout.trim()})`);
 // The first snapshot took in what was there: none of it was "added" this week.
 ok(!/added [^·\n]*(release-checklist|mentions)/.test(cli('status').stdout), 'status does not call what the first snapshot found "added"');
 // No command (the skill run with no arguments) is status.
@@ -363,6 +373,23 @@ ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.te
   utimesSync(join(root, '.stop-ran'), minsAgo(20), minsAgo(20));
   r = spawnSync(process.execPath, [CLI, 'doctor', '--session', 'stall-1'], { env, encoding: 'utf8' });
   ok(/^PROBLEM Memory hooks look stopped: [^\n]*clears after the next reply\.$/m.test(r.stdout), `doctor: hooks that look stopped are said, with no "run doctor" (got ${r.stdout})`);
+  // The briefing judges the newest other window; doctor, judging only the
+  // newest, said all ok from the window that saved while another did not.
+  const said = (name, endMin) => writeFileSync(join(dirname(dir), `${name}.jsonl`), [
+    JSON.stringify({ type: 'user', timestamp: minsAgo(endMin + 1).toISOString(), message: { content: 'q' } }),
+    JSON.stringify({ type: 'assistant', timestamp: minsAgo(endMin).toISOString(), message: { content: [{ type: 'text', text: 'a' }], stop_reason: 'end_turn', usage: { input_tokens: 1 } } }),
+  ].join('\n') + '\n');
+  said('other-22', 4);
+  said('mine-2222', 25);
+  r = spawnSync(process.execPath, [CLI, 'doctor', '--session', 'mine-2222'], { env, encoding: 'utf8' });
+  ok(/^PROBLEM Memory hooks look stopped: \[other-22\]/m.test(r.stdout), `doctor: another window that stopped saving is said, as the briefing says it (got ${r.stdout})`);
 }
+// A promoted line goes in before the shared index's archive line, which
+// tiering keeps last.
+memory(dir, 'late-lesson', 'a lesson learned late');
+const sharedIdx = join(shared, 'MEMORY.md');
+if (!/\]\(MEMORY-archive\.md\)/.test(readFileSync(sharedIdx, 'utf8'))) writeFileSync(sharedIdx, readFileSync(sharedIdx, 'utf8').replace(/\n*$/, '\n') + '- [Archive](MEMORY-archive.md) — 0 older pointers\n');
+r = cli('promote', 'late-lesson');
+ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.test(readFileSync(sharedIdx, 'utf8')), `a promoted line goes in before the archive line (got ${readFileSync(sharedIdx, 'utf8')})`);
 
 console.log(`memory: ${checks} checks passed`);

@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, own, prompt, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG } from './handoff-log.mjs';
+import { readTail, text, own, prompt, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG, PRIVATE } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -64,8 +64,10 @@ const NUDGES = () => join(projectsRoot(), '.nudge');
 // One tool result each: a Bash launch says "ID: x ... Output is being written
 // to: <path>", an Agent launch "agentId: x ... output_file: <path>" with ~450
 // characters of instructions between (a 200-character cap missed every agent).
-// The path to the end of its line: a Windows user name can hold a space.
-const LAUNCH = /(?:running in background with ID|agentId): ?(\w+)[\s\S]*?(?:Output is being written to|output_file): ?([^\n]+?\.output)/g;
+// The path to the end of its line: a Windows user name can hold a space. The
+// gap stops at the next launch: unbounded, every `agentId:` with no output
+// file after it read on to the end, 2.7 s over a 512 KB tail on every Stop.
+const LAUNCH = /(?:running in background with ID|agentId): ?(\w+)(?:(?!agentId:|running in background with ID)[\s\S]){0,1000}?(?:Output is being written to|output_file): ?([^\n]+?\.output)/g;
 const DONE = /<task-id>(\w+)<\/task-id>/g;
 
 /** What the transcript says right now: context size, whether a turn is open,
@@ -132,7 +134,7 @@ function walk(raw) {
 function note(payload, s) {
   const running = [...s.running].map(([id, p]) => `${id} → ${p}`).join('; ') || 'none';
   // A private turn's files are its own too: their paths named what it was about.
-  const quiet = s.hidden || /<private>/i.test(s.ask);
+  const quiet = s.hidden || PRIVATE.test(s.ask);
   // Capped like the running tasks: a wide refactor turn listed tens of KB.
   const edited = quiet ? '[private]' : newest([...s.edited], LIST_MAX, 'earlier') || 'none';
   const t = tag(payload.session_id);
