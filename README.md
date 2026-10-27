@@ -348,7 +348,7 @@ Two more are worth knowing about:
   branch and the changes you haven't committed yet. Every few minutes it
   sends the latest part of the conversation to Claude's small Haiku model,
   which picks out corrections, decisions and plans.
-- **[MemPalace](https://github.com/milla-jovovich/mempalace)** keeps your
+- **[MemPalace](https://github.com/MemPalace/mempalace)** keeps your
   conversations word for word and searches them by meaning, without calling
   any online service. It needs Python, keeps everything in its own database,
   and Claude reaches it as an MCP server (a tool Claude can call).
