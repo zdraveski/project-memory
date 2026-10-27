@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesS
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
-import { tool, tempHome, storeFor, withEnv } from './harness.mjs';
+import { tool, tempHome, storeFor } from './harness.mjs';
 
 const CLI = tool('memory.mjs'), TIER = tool('memory-tier.mjs');
 const { home, env } = tempHome('memcli-');
@@ -196,7 +196,8 @@ const fromElsewhere = spawnSync(process.execPath, [CLI, 'status', '--session', '
 ok(fromElsewhere.stdout.split('\n')[0] === dir, `inside a session, the CLI uses the session's store wherever the cwd is (got ${fromElsewhere.stdout.split('\n')[0]})`);
 // The session comes from --session only: an environment variable is not read,
 // and an id that is no id (a path) is ignored.
-const viaEnv = withEnv({ CLAUDE_CODE_SESSION_ID: 'sess-cli-1' }, () => spawnSync(process.execPath, [CLI, 'status'], { cwd: home, encoding: 'utf8' }));
+process.env.CLAUDE_CODE_SESSION_ID = 'sess-cli-1';
+let viaEnv; try { viaEnv = spawnSync(process.execPath, [CLI, 'status'], { cwd: home, encoding: 'utf8' }); } finally { delete process.env.CLAUDE_CODE_SESSION_ID; }
 ok(viaEnv.stdout.split('\n')[0] !== dir, `the session is not read from the environment (got ${viaEnv.stdout.split('\n')[0]})`);
 const viaPath = spawnSync(process.execPath, [CLI, 'status', '--session', '../C--mem-cli/sess-cli-1'], { env, cwd: home, encoding: 'utf8' });
 ok(viaPath.stdout.split('\n')[0] !== dir, `a --session that is a path is ignored (got ${viaPath.stdout.split('\n')[0]})`);

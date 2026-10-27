@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, u
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
-import { tool, tempDir, tempHome, pointers, withEnv } from './harness.mjs';
+import { tool, tempDir, tempHome, pointers } from './harness.mjs';
 
 const TOOL = tool('memory-tier.mjs');
 let checks = 0;
@@ -237,7 +237,10 @@ const store = (name) => {
 store('proj-one'); store('proj-two');
 writeFileSync(join(root, 'proj-one', 'session.jsonl'), 'x'.repeat(50_000));   // must never be tracked
 
-const plain = (extra = {}) => withEnv(extra, () => spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }));
+const plain = () => spawnSync(process.execPath, [TOOL], { encoding: 'utf8' });
+// No git: an environment made of the throwaway home and an empty PATH, nothing
+// read from this process's.
+const noGit = () => spawnSync(process.execPath, [TOOL], { env: { HOME: home, USERPROFILE: home, PATH: '' }, encoding: 'utf8' });
 writeFileSync(join(root, 'proj-two', 'session.jsonl'), '');
 const stop = (proj = 'proj-one') => spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8',
   input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, proj, 'session.jsonl'), session_id: 'tst' }) });
@@ -265,7 +268,8 @@ ok(tracked().every((f) => f === '.gitignore' || /\/memory\/[^/]+\.md$/.test(f)) 
   mkdirSync(d, { recursive: true });
   writeFileSync(join(d, 'a.md'), '---\nname: a\ndescription: "a"\nmetadata:\n  type: project\n---\nbody\n');
   writeFileSync(join(d, 'MEMORY.md'), '# Index\n\n- [a](a.md) — a\n');
-  const lr = withEnv({ HOME: linkedHome, USERPROFILE: linkedHome }, () => spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }));
+  process.env.HOME = linkedHome; process.env.USERPROFILE = linkedHome;
+  let lr; try { lr = spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }); } finally { process.env.HOME = home; process.env.USERPROFILE = home; }
   const files = existsSync(join(lroot, '.git')) ? execFileSync('git', ['-C', lroot, 'ls-files'], { encoding: 'utf8' }) : '';
   ok(lr.status === 0 && /proj-l\/memory\/a\.md/.test(files), `a home reached through a symlink still has its stores snapshotted (got ${JSON.stringify(files || lr.stdout)})`);
 }
@@ -291,9 +295,9 @@ store('proj-three');
 r = plain();
 ok(r.status === 0 && tracked().includes('proj-three/memory/MEMORY.md'), 'a store created after the repo is picked up');
 
-r = plain({ PATH: '', Path: '' });
+r = noGit();
 ok(r.status === 0 && /snapshot failed/.test(r.stdout), 'git missing from PATH: exit 0, says so');
-r = plain({ PATH: '', Path: '' });
+r = noGit();
 const sh = () => JSON.parse(readFileSync(join(root, '.snapshot-health'), 'utf8'));
 ok(sh().failures === 2 && sh().error, 'failed snapshots are counted for the startup line');
 r = plain();
