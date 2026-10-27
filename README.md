@@ -36,8 +36,8 @@ project-memory looks after that notebook.
 | Without project-memory | With project-memory |
 |---|---|
 | You start a new conversation and explain again where you were. | Claude starts already knowing where the last conversation stopped. |
-| The notebook's table of contents keeps growing, until Claude stops reading the newest notes. | The table of contents stays short, so Claude reads all of it. Older notes move to an archive that Claude can still search. |
-| A very long conversation gets shortened, and the task Claude was in the middle of gets lost. | Claude saves its notes before that happens, and afterwards it's told what it was in the middle of. |
+| When the notebook's table of contents gets too long, Claude Code asks Claude to shorten it, and Claude decides what to merge or drop. | The table of contents is kept short for Claude, and nothing is dropped. Older lines move to an archive that Claude can still search. |
+| A very long conversation is shortened to a summary, and details of the task in progress can get lost. | Claude saves its notes before that happens, and afterwards it's told exactly what you asked and what it last said. |
 | A note deleted or overwritten by mistake is gone for good. | Every version of every note is kept. Ask Claude, and it brings one back. |
 | You teach Claude how you like to work again in every project. | Lessons that apply everywhere are shared with all your projects. |
 | Two Claude windows on the same project can overwrite each other's notes. | No window overwrites another's notes, and each new conversation is told what the other windows are doing. |
@@ -84,10 +84,12 @@ its own. It replaces the older part of the conversation with a short summary,
 then carries on. This is called *auto-compaction*. You can also do it yourself
 at any time by typing `/compact`.
 
-A summary keeps the gist, but details get lost. And because Claude Code checks
-for room before every step, it can compact in the middle of a task. Claude may
-then forget a background job it was waiting for, a change it was about to
-save, or the notes it meant to write when it finished.
+A summary keeps the gist, but details get lost. Claude Code helps a little on
+its own: afterwards it reloads your notes, re-reads the files Claude used most
+recently, and reminds Claude of background jobs still running. But it checks
+for room before every step, so it can compact in the middle of a task, and the
+summary may drop exactly what you asked, what Claude had just said, or the
+notes it meant to write when it finished.
 
 project-memory protects your work before, during and after:
 
@@ -128,10 +130,17 @@ needs one setting to fire. See [Compaction](docs/how-it-works.md#compaction).
 
 ## How it compares
 
-project-memory isn't the only way to give Claude Code a better memory. This
-table compares it with five popular tools, going only by each one's own
-documentation on 27 October 2026. "Not stated" means that documentation
-doesn't say. These tools change often, so check their pages before you choose.
+Claude Code's own memory keeps improving. It now asks Claude to shorten the
+table of contents when it nears its limit, and after a compaction it reloads
+your notes, re-reads recent files and reminds Claude of jobs still running.
+project-memory adds what it still doesn't do: the record of where you left
+off, every version of every note, a shared notebook for all your projects, and
+care with several windows open.
+
+project-memory isn't the only add-on either. This table compares it with five
+popular tools, going only by each one's own documentation on 27 October 2026.
+"Not stated" means that documentation doesn't say. These tools change often,
+so check their pages before you choose.
 
 | | project-memory | [claude-mem](https://github.com/thedotmack/claude-mem) | [Mem0](https://docs.mem0.ai/integrations/claude-code) | [Supermemory](https://github.com/supermemoryai/claude-supermemory) | [Basic Memory](https://github.com/basicmachines-co/basic-memory) | [context-mode](https://github.com/mksglu/context-mode) |
 |---|---|---|---|---|---|---|
@@ -170,6 +179,20 @@ In plain words:
 - **context-mode** mainly keeps long tool output out of the context window.
   Its session memory is a bonus. It does a different job, and it runs fine
   alongside project-memory.
+
+Two more are worth knowing about:
+
+- **[memory-toolkit](https://github.com/IlyaGorsky/memory-toolkit)** is a
+  Claude Code plugin that works on the same notebook. It sorts your work into
+  "workstreams", each with its own record of where you left off. It also logs
+  your git commits into daily notes and saves your branch and unsaved changes
+  before a compaction. Every few minutes it sends the latest part of the
+  conversation to Claude's small Haiku model, which picks out corrections,
+  decisions and plans.
+- **[MemPalace](https://github.com/milla-jovovich/mempalace)** keeps your
+  conversations word for word and searches them by meaning, with no AI calls.
+  It runs in Python with a ChromaDB database, and Claude reaches it as an MCP
+  server (a tool Claude can call).
 
 ## Before you install
 
@@ -228,12 +251,13 @@ When you want something from your notes, just ask in your own words:
 | *"I deleted the note about pricing by mistake. Can you bring it back?"* | Claude restores it from the history. |
 | *"Make the note about short answers apply to all my projects."* | Claude asks you to confirm, then moves it to the shared notebook. |
 | *"Remember for all my projects that I like plain language."* | Claude saves it straight to the shared notebook. |
+| *"We changed how we ship. Replace the old note."* | Claude writes the new note and marks the old one as replaced, so the old one moves to the archive and points to the new one. |
 
 If you'd rather type a command, these do the same things:
 
 | Type | What it does |
 |---|---|
-| `/project-memory:memory status` | A quick health check of this project's notes |
+| `/project-memory:memory status` | A quick health check of this project's notes, and which notes were added, changed or deleted this week |
 | `/project-memory:memory search logo colors` | Finds notes about "logo colors" |
 | `/project-memory:memory history pricing` | Shows when the note called "pricing" changed |
 | `/project-memory:memory restore pricing` | Brings back the note called "pricing" |
@@ -289,8 +313,14 @@ back.
   keeps old versions of every note. If you copy or share your `.claude` folder,
   all of that goes with it.
 - Keys, tokens and passwords you paste into a message are replaced with
-  `[redacted]` before anything is saved. To keep anything else out, put it
-  between `<private>` and `</private>`.
+  `[redacted]` before anything is saved.
+- To keep something else out, put it between `<private>` and `</private>`.
+  That part isn't saved, and neither is Claude's reply to that message, since
+  a reply often repeats what it was told.
+- To keep a whole conversation out of the record, type `<private-session>` in
+  your first message. If you type it later, what was saved before is removed
+  from the record, but older versions in the history still have it. Claude
+  can still write notes in that conversation if you ask it to.
 
 The full details are in the [privacy policy](PRIVACY.md).
 

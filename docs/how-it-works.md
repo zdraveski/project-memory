@@ -55,7 +55,8 @@ After each reply it decides which lines stay in `MEMORY.md` and which move to
 - A note whose file name carries a date is an event log. It stays for
   **3 days**.
 - `tier: hot` or `tier: archive` in a note's front matter overrides all of
-  this.
+  this. `superseded-by: <file>` counts as `tier: archive`, even next to
+  `tier: hot`, and `search` names the replacement under the note.
 - When the index is over its size limit, lines are moved out, dated event logs
   first, then the oldest, and marked. Marked lines come back by themselves
   when there is room.
@@ -79,6 +80,15 @@ and `</private>`, private key blocks, keys and tokens known by their prefix
 a value after `password`, `secret`, `api_key`, `access_token` or
 `auth_token`. The same applies to the startup briefing and the compaction
 recovery note.
+
+The answer to a message that contains `<private>` is saved as `[private]`,
+because an answer often repeats what it was told. A message that contains
+`<private-session>` marks its whole conversation: its entries are removed from
+`handoff.md`, later turns write none, and the compaction gate writes no
+recovery note for it. The mark is kept by the conversation's tag in
+`.private-sessions` (the newest 50), because only the turn that typed it sees
+it in the transcript. Snapshots taken before the mark keep their versions of
+`handoff.md`.
 
 ## The startup briefing
 
@@ -124,6 +134,9 @@ After each change, the Stop hook commits the notes to a git repository at
 never pushed.
 
 - `history <note>` lists the commits that changed a note.
+- `status` names the notes the snapshots saw added, edited or deleted in the
+  last 7 days, leaving out `MEMORY.md`, the archive and `handoff.md`, which
+  change after nearly every reply.
 - `restore <note>` writes it back from the newest snapshot that has it,
   together with its index line. `--rev <commit>` picks an older version.
   `--force` replaces a note that exists, and keeps the replaced text in the

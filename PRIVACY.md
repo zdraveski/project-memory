@@ -19,13 +19,17 @@ All of it stays in `~/.claude/projects` on your computer:
   characters each) and of Claude's replies (up to 400), and the names of the
   files Claude changed, for the last 10 exchanges of each of your 3 most recent
   conversations. Older entries are replaced as you go. Keys, tokens and
-  passwords are replaced with `[redacted]` first, and anything you write
-  between `<private>` and `</private>` is left out.
+  passwords are replaced with `[redacted]` first. Anything you write between
+  `<private>` and `</private>` is left out, and so is Claude's reply to that
+  message. A conversation where you type `<private-session>` is left out
+  entirely, and its earlier entries are removed (the history of your notes
+  still has them).
 - When Claude Code shortens a conversation in the middle of a task, a note of
   what was in progress: your request, the start of Claude's last words, any
   background tasks still running, and the files Claude had changed.
 - A history of every version of your notes, in a local git repository.
-- A few small bookkeeping files, such as when it last ran.
+- A few small bookkeeping files, such as when it last ran, and the short tags
+  of conversations you marked `<private-session>`.
 
 ## What it sends
 
