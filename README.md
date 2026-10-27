@@ -269,6 +269,11 @@ If you'd rather type a command, these do the same things:
 A note's name is the name of its file, without the `.md` ending. `search`
 shows them.
 
+To read your notes yourself, type `/memory` in Claude Code and open the auto
+memory folder. The record of where you left off is the file `handoff.md` in
+that folder. To keep a message or a whole conversation out of that record, see
+[Your privacy](#your-privacy).
+
 ## Updating
 
 In a terminal (Terminal on a Mac, PowerShell on Windows), run these two
@@ -357,6 +362,9 @@ the history of your notes as well, delete the hidden folder `.git` inside
   file called `MEMORY.md`).
 - **Archive**: where older lines from the table of contents go. Claude doesn't
   read it at the start of every conversation, but it can search it.
+- **Record of where you left off**: the file `handoff.md` in each notebook. It
+  holds the start of your latest messages and Claude's replies, and the files
+  Claude changed, so the next conversation can pick up from there.
 - **Shared notebook**: notes that apply to all your projects. Every
   conversation, in every project, reads its table of contents.
 - **History**: every version of every note, kept with Git on your computer.
