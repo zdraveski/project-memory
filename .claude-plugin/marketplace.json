@@ -1,0 +1,12 @@
+{
+  "name": "project-memory",
+  "owner": { "name": "zdraveski" },
+  "description": "project-memory: Claude Code memory that survives parallel sessions and compaction.",
+  "plugins": [
+    {
+      "name": "project-memory",
+      "source": "./",
+      "description": "Per-project and shared memory for Claude Code: tiering, handoff, compaction recovery, snapshots, recall."
+    }
+  ]
+}
