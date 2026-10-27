@@ -54,15 +54,18 @@ export function allStores() {
 
 // What a memory's frontmatter says. One reading for the tiering, the CLI and
 // promote: three copies had drifted, and promote's had lost the unescape.
-// `modified` is NaN when the memory has no stamp.
+// `modified` is NaN when the memory has no stamp. A memory a newer one
+// replaced (`superseded-by: <file>`) is archived, as `tier: archive` would.
 export function front(text) {
   const get = (re) => ((text.match(re) || [])[1] || '').trim();
+  const superseded = get(/^\s*superseded-by:\s*"?(.*?)"?\s*$/m);
   return {
     name: get(/^name:\s*"?(.*?)"?\s*$/m),
     // YAML-escaped quotes stay escaped otherwise: a recovered pointer read `\"gaps\"`.
     desc: get(/^description:\s*"?(.*?)"?\s*$/m).replace(/\\"/g, '"'),
     type: get(/^\s*type:\s*(\w+)/m),
-    tier: get(/^\s*tier:\s*(\w+)/m),
+    tier: superseded ? 'archive' : get(/^\s*tier:\s*(\w+)/m),
+    superseded,
     modified: Date.parse(get(/^\s*modified:\s*(\S+)/m)),
   };
 }

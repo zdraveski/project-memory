@@ -61,10 +61,10 @@ export function memories(dir) {
     if (text === null) return [];
     const end = text.startsWith('---') ? text.indexOf('\n---', 3) : -1;
     const head = end === -1 ? '' : text.slice(0, end);
-    const { name, desc, type, modified: stamp } = front(head);
+    const { name, desc, type, modified: stamp, superseded } = front(head);
     let mtime = 0; try { mtime = statSync(path).mtimeMs; } catch {}
     return [{
-      file, path, dir, name, desc, type,
+      file, path, dir, name, desc, type, superseded,
       body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1),
       links: [...new Set([...text.matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim()))],
       modified: Number.isNaN(stamp) ? mtime : stamp,
@@ -125,7 +125,29 @@ export function status(dir, sharedNames = []) {
   const { a, b } = sectionOf(doc ?? '');
   const all = a === -1 ? [] : parse(doc.slice(a, b));
   if (all.length) lines.push(`  handoff: ${all.length} exchanges from ${new Set(all.map((t) => t.s)).size} session(s), newest ${all.at(-1).at}`);
+  const ch = recent(dir);
+  if (ch) lines.push(`  changed in the last ${RECENT_DAYS} days: ${ch}`);
   return lines;
+}
+
+// What the snapshots saw change in a store lately, so the user can see what
+// Claude wrote down or dropped. The index and the handoff change every turn
+// and are left out.
+const RECENT_DAYS = 7;
+function recent(dir) {
+  let out; try { out = git('log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=', '--', tracked(dir, '')); } catch { return ''; }
+  const last = new Map(), born = new Set();
+  for (const l of out.split('\n')) {
+    const [st, p] = l.trim().split('\t');
+    const f = p && p.split('/').pop();
+    if (!f || !f.endsWith('.md') || f === 'handoff.md' || f.startsWith('MEMORY')) continue;
+    if (!last.has(f)) last.set(f, st);                 // git lists the newest first
+    if (st === 'A') born.add(f);
+  }
+  const of = (want) => [...last].filter(([f, st]) => want(f, st)).map(([f]) => f.replace(/\.md$/, ''));
+  const few = (xs) => xs.slice(0, 6).join(', ') + (xs.length > 6 ? ` and ${xs.length - 6} more` : '');
+  return [['added', of((f, st) => st !== 'D' && born.has(f))], ['edited', of((f, st) => st !== 'D' && !born.has(f))], ['deleted', of((f, st) => st === 'D')]]
+    .filter(([, xs]) => xs.length).map(([w, xs]) => `${w} ${few(xs)}`).join(' · ');
 }
 
 function snapshots() {
@@ -344,7 +366,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     const where = scope.length <= 2 ? scope.join(' and ') : `${scope.length} stores`;
     r = { ok: true, lines: !words(q).length ? [`nothing to search for: "${q}" has no word of 3+ letters that says which memory`]
       : hits.length ? [...hits.flatMap((h) => [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
-        `     ${clip(h.desc || '(no description)', 200)}`, ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]),
+        `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
+        ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]),
         // A hit's date, and what was not shown or not searched.
         `${hits.length} of ${all.length} match(es) in ${where}${all.length > hits.length ? '; --limit N shows more' : ''}${rest.includes('--all') ? '' : '; --all searches every project'}`]
       : [`nothing matches "${q}" in ${where}${rest.includes('--all') ? '' : '; --all searches every project'}`] };

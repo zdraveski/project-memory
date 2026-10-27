@@ -32,7 +32,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, asked, handoff, tag, local, clip, plain, sectionOf, NUDGE_TAG } from './handoff-log.mjs';
+import { readTail, text, asked, handoff, hushed, tag, local, clip, answer, sectionOf, NUDGE_TAG } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -131,13 +131,14 @@ function note(payload, s) {
   const t = tag(payload.session_id);
   // Tagged, so a parallel session's note is never taken for this one's.
   return `- **cut mid-turn**${t ? ` [${t}]` : ''} ${local()} at ${Math.round(s.ctx / 1000)}k tokens, asked ${s.at}: ${clip(s.ask, 240)}\n` +
-    `  **last said:** ${clip(plain(s.said), 400)}\n  **still running (read their output files, do not rerun):** ${running}\n  **edited this turn:** ${edited}`;
+    `  **last said:** ${answer(s.ask, s.said, 400)}\n  **still running (read their output files, do not rerun):** ${running}\n  **edited this turn:** ${edited}`;
 }
 
 function inflight(payload, s) {
   const dir = storeOf(payload);
   const file = join(dir, 'handoff.md');
   if (!existsSync(file)) return false;
+  if (hushed(dir, tag(payload.session_id))) return 'private';
   const r = withLock(dir, () => {
     const doc = readFileSync(file, 'utf8');
     const { a, b } = sectionOf(doc);
@@ -190,6 +191,7 @@ export function gate(payload) {
   } catch (e) { failed.push(`handoff: ${e.message}`); }
   try {
     const n = inflight(payload, s);
+    if (n === 'private') return { code: 0, why: `mid-turn at ${pct}%, over the ceiling: a private conversation, nothing written` };
     if (n === 'busy') failed.push(`note: ${held}`);
     else if (!n) failed.push('note: no handoff.md with markers in the store');
   } catch (e) { failed.push(`note: ${e.message}`); }

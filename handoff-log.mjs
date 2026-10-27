@@ -12,7 +12,7 @@
 // Several sessions can share one project. Each entry carries its session's tag,
 // each session keeps its own last ten, and the file is written by one hook at a
 // time (store.mjs).
-import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -65,7 +65,9 @@ const nudged = (s) => s.slice(0, 200).includes(NUDGE_TAG);
 // A compaction summary ("This session is being continued from...") is a user
 // record too, flagged isCompactSummary; 17 had been recorded as asks.
 // A tool result has no text, so `s` is empty.
-export const asked = (r, s) => s && !r.isMeta && !r.isCompactSummary && !s.trimStart().startsWith('<') && !s.includes('<command-name>')
+// A message the user opens with <private> or <private-session> is still theirs:
+// skipped, its answer was saved as the answer to the message before.
+export const asked = (r, s) => s && !r.isMeta && !r.isCompactSummary && (!s.trimStart().startsWith('<') || /^<private/i.test(s.trimStart())) && !s.includes('<command-name>')
   && !s.startsWith('[SYSTEM') && !nudged(s) && !s.startsWith('[Request interrupted');
 
 export { local };
@@ -116,6 +118,9 @@ const SECRETS = [
   [/\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|pwd)["']?[ \t]*[:=][ \t]*["']?)[^\s"',;]{6,}/gi, '$1[redacted]'],
 ];
 export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
+// The answer to a private message often repeats what it was told, so it is
+// withheld whole.
+export const answer = (ask, did, n) => (/<private>/i.test(ask) ? '[private]' : clip(plain(did), n));
 
 // Marker text inside an ask or an answer would become the section boundary on
 // the next run and strand every entry before it as prose. Defuse it.
@@ -181,7 +186,7 @@ const FRONT = `---\nname: handoff\ndescription: "The rolling handoff"\nmetadata:
 
 // What handoff.md should say, from what it says now and this turn's entries:
 // the new text, 'unchanged', or null when there is nothing to write.
-function build(raw, fresh) {
+function build(raw, fresh, drop = null) {
   let doc = (raw ?? '').replace(/^﻿/, '');
   // A file emptied by a failed edit has no `tier: hot`, so tiering would age
   // the handoff out of the index a week later.
@@ -198,9 +203,9 @@ function build(raw, fresh) {
   const key = (t) => `${t.s} ${t.at} ${t.ask}`;
   const bare = (t) => `${t.at} ${t.ask}`;
   const seen = new Set(fresh.map(key)), seenBare = new Set(fresh.map(bare));
-  const kept = have.filter((t) => !seen.has(key(t)) && !(t.s === '' && seenBare.has(bare(t))));
+  const kept = have.filter((t) => !seen.has(key(t)) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop);
   const merged = keep([...kept, ...fresh]);
-  if (!merged.length) return null;
+  if (!merged.length && !(drop && has)) return null;
   const core = merged.map(render).join('\n');
   // Compare the entries, not the stamp line, or the guard is dead code.
   if (have.map(render).join('\n') === core) return 'unchanged';
@@ -213,6 +218,16 @@ function build(raw, fresh) {
 
 // Exported so memory-tier.mjs can run it in the same process from the Stop
 // hook: a second Node start cost a median 200 ms a turn on this box.
+// The conversations marked private, by tag: the newest 50, one per line.
+const QUIET = '.private-sessions';
+export function hushed(dir, s, mark = false) {
+  const p = join(dir, QUIET);
+  let have = []; try { have = readFileSync(p, 'utf8').split('\n').filter(Boolean); } catch {}
+  if (!s) return false;
+  if (mark && !have.includes(s)) { have = [...have, s].slice(-50); writeFileSync(p, have.join('\n') + '\n'); }
+  return have.includes(s);
+}
+
 export function handoff(input) {
   const dir = storeOf(input);
   const file = join(dir, 'handoff.md');
@@ -223,19 +238,24 @@ export function handoff(input) {
   if (!existsSync(dir) || !input.transcript_path || !existsSync(input.transcript_path)) return false;
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);
-  const fresh = latest(input.transcript_path).map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: clip(plain(t.did), DID), changed: named(t.changed) }));
+  const turns = latest(input.transcript_path);
+  const fresh = turns.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.ask, t.did, DID), changed: named(t.changed) }));
+  const hush = turns.some((t) => /<private-session>/i.test(t.ask));
   // Sessions of one project write this file at once, so they take turns: 8 at
   // once lost 22 of 40 turns without the lock (2026-10-26). The model can still
   // edit the file by hand meanwhile -- the nudge asks it to -- and then the
   // merge is redone from what it wrote.
   const r = withLock(dir, () => {
+    // A conversation marked private writes nothing, and what it wrote before
+    // the mark goes. The mark is kept in a file: only the turn that typed it
+    // sees it in the transcript.
+    const quiet = hushed(dir, s, hush);
     for (let i = 0; i < 3; i++) {
       const raw = existsSync(file) ? readFileSync(file, 'utf8') : null;
-      const next = build(raw, fresh);
-      if (next === null) return false;
-      if (next === 'unchanged') return 'unchanged';
+      const next = build(raw, quiet ? [] : fresh, quiet ? s : null);
+      if (next === null || next === 'unchanged') return quiet ? 'private' : next ?? false;
       const w = replaceIfUnchanged(file, raw, next);
-      if (w !== 'conflict') return w || 'unchanged';
+      if (w !== 'conflict') return quiet ? 'private' : w || 'unchanged';
     }
     return false;
   });

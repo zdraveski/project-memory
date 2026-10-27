@@ -177,4 +177,18 @@ rmSync(join(dir, '.lock'), { recursive: true });
 ok(heldGate.status === 0 && /handoff: another hook held the store/.test(heldGate.stderr) && /note: another hook held the store/.test(heldGate.stderr),
   `a held store is reported as held, and the compaction runs (got ${heldGate.status}: ${heldGate.stderr.trim()})`);
 
+// A conversation marked <private-session> gets no in-flight note: the note
+// holds its ask and its last words.
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+writeFileSync(join(dir, '.private-sessions'), 's1\n');
+write(user('secret plan'), asst('working', 965_000, 'tool_use'), result('ok'));
+ok(gate().code === 0 && !/cut mid-turn|secret plan/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a private conversation is compacted with nothing written');
+rmSync(join(dir, '.private-sessions'));
+// A private message's answer is withheld from the note, as from the handoff.
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('<private>pin 4321</private> unlock it'), asst('Unlocking with 4321', 965_000, 'tool_use'), result('ok'));
+gate();
+const pdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
+ok(/cut mid-turn[^\n]*\[private\] unlock it\n  \*\*last said:\*\* \[private\]/.test(pdoc) && !/4321/.test(pdoc), `a private message's answer is not in the note (got ${pdoc})`);
+
 console.log(`compact-gate: ${checks} checks passed`);

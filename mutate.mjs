@@ -13,6 +13,7 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'compact-gate.mjs'
 
 const suites = {
   'store.mjs': ['store.test.mjs', {
+    "a replaced memory stays hot": ["tier: superseded ? 'archive' : get(", "tier: get("],
     'transcript ignored': ['if (t && same(', 'if (false && same('],
     'path case and slashes matter': ['resolve(a).toLowerCase() === resolve(b).toLowerCase()', 'a === b'],
     'lock not exclusive': ['try { mkdirSync(lock); break; }', 'try { mkdirSync(lock, { recursive: true }); break; }'],
@@ -35,6 +36,8 @@ const suites = {
     'temp file left behind': ['} finally { try { unlinkSync(tmp); } catch {} }', '} finally {}'],
   }],
   'compact-gate.mjs': ['compact-gate.test.mjs', {
+    "a private conversation gets a note": ["  if (hushed(dir, tag(payload.session_id))) return 'private';\n", ""],
+    "a private answer in the note": ["${answer(s.ask, s.said, 400)}", "${clip(s.said, 400)}"],
     'a run through a symlink does nothing': ['pathToFileURL(realpathSync(process.argv[1])).href', 'pathToFileURL(process.argv[1]).href'],
     'a PreCompact payload is nudged too': ["payload.hook_event_name !== 'Stop' || ", ''],
     'no ceiling: mid-turn always deferred': ['if (s.ctx < CEILING * MODEL_WINDOW) return', 'if (true) return'],
@@ -64,6 +67,13 @@ const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    "a private message not a message": ["(!s.trimStart().startsWith('<') || /^<private/i.test(s.trimStart()))", "!s.trimStart().startsWith('<')"],
+    "a private answer kept": ["(/<private>/i.test(ask) ? '[private]' : clip(plain(did), n))", "clip(plain(did), n)"],
+    "the private-session mark ignored": ["const hush = turns.some((t) => /<private-session>/i.test(t.ask));", "const hush = false;"],
+    "a marked conversation keeps its entries": [" && t.s !== drop);", ");"],
+    "the only marked conversation keeps its entries": ["if (!merged.length && !(drop && has)) return null;", "if (!merged.length) return null;"],
+    "the mark forgotten after its turn": ["  return have.includes(s);\n}", "  return mark;\n}"],
+    "a private conversation reported written": ["if (w !== 'conflict') return quiet ? 'private' : w || 'unchanged';", "if (w !== 'conflict') return w || 'unchanged';"],
     "a private block saved": ["  [/<private>[\\s\\S]*?(?:<\\/private>|$)/gi, '[private]'],", ""],
     "an API key saved": ["  [/\\b(?:sk|rk|pk)-(?:ant-|proj-|live_|test_)?[A-Za-z0-9_-]{20,}/g, '[redacted]'],", ""],
     "a GitHub token saved": ["  [/\\bgh[pousr]_[A-Za-z0-9]{30,}|\\bgithub_pat_[A-Za-z0-9_]{40,}/g, '[redacted]'],", ""],
@@ -191,6 +201,10 @@ const suites = {
     'rule share measured on the whole budget': ['Math.max(0, budget - pinnedBytes) * RULE_SHARE', 'budget * RULE_SHARE'],
   }],
   'memory.mjs': ['memory.test.mjs', {
+    "a replaced memory unlabeled": ["...(h.superseded ? [", "...(false ? ["],
+    "the week's changes not shown": ["if (ch) lines.push(", "if (false) lines.push("],
+    "the week's changes of every store": ["'--', tracked(dir, ''));", "'--', '.'));"],
+    "a deleted memory also called added": ["of((f, st) => st !== 'D' && born.has(f))", "of((f, st) => born.has(f))"],
     'the first reply called a problem': ['if (Date.now() - end > GRACE) say(false, `Claude finished', 'if (true) say(false, `Claude finished'],
     'a dead Stop hook called waiting': ['if (Date.now() - end > GRACE) say(false, `Claude finished', 'if (false) say(false, `Claude finished'],
     'a reply seconds old called a dead hook': ['if (Date.now() - end > GRACE) say(false, `Claude finished', 'if (Date.now() - end > 0) say(false, `Claude finished'],

@@ -71,6 +71,12 @@ ok(/links to no memory: crlf-note\.md → \[\[ghost\]\]$/m.test(r.stdout), 'a li
 ok(/frontmatter without a description or type: bare\.md/.test(r.stdout), 'a memory with no description is named');
 ok(/_shared[\\/]memory  \(shared by every project\)\n  index \d+ \/ 3000 B/.test(r.stdout), 'and the shared store is reported against its 3000 B budget');
 
+// A memory a newer one replaced says so where it is found.
+memory(dir, 'old-way', 'the old way to ship', 'ship it', '  superseded-by: new-way.md\n');
+r = cli('search', 'old way ship');
+ok(/old-way\.md\n     the old way to ship\n     replaced by new-way\.md: read that one/.test(r.stdout), `a replaced memory names its replacement (got ${r.stdout})`);
+unlinkSync(join(dir, 'old-way.md'));
+
 // 3. History and restore, from the snapshots memory-tier makes.
 const tier = () => spawnSync(process.execPath, [TIER], { env, encoding: 'utf8' });
 const other = join(root, 'C--other', 'memory');
@@ -88,6 +94,10 @@ const show = r.stdout.match(/^  a change: git -C "([^"]+)" show <commit> -- (\S+
 ok(show && first && /deploy notes/.test(spawnSync('git', ['-C', show[1], 'show', first[1], '--', show[2]], { encoding: 'utf8' }).stdout), `history ends with the command that shows a change (got ${show && show[0]})`);
 r = cli('restore', 'deploy-notes');
 ok(r.status === 0 && existsSync(join(dir, 'deploy-notes.md')) && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes('deploy deploy'), 'restore brings a deleted memory back from before its deletion');
+// Status names what the snapshots saw change this week, in this store only.
+r = cli('status');
+ok(/changed in the last 7 days: [^\n]*deleted deploy-notes/.test(r.stdout) && !/added [^·\n]*deploy-notes/.test(r.stdout), `status names the week's changes (got ${r.stdout})`);
+ok(!/changed in the last 7 days:[^\n]*secret/.test(r.stdout), "another project's memory is not listed");
 ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').includes(handLine), 'with its hand-written index line');
 r = cli('restore', 'deploy-notes');
 ok(r.status === 1 && /exists/.test(r.stdout), 'restore refuses to replace a memory that exists');

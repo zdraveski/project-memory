@@ -19,12 +19,12 @@ const iso = (daysAgo) => new Date(Date.now() - daysAgo * 86400000).toISOString()
 // Files are dated ten minutes back unless `fresh`: a pointerless file younger
 // than two minutes is its writer's, not an orphan (ORPHAN_GRACE).
 const backdate = (name) => { const t = new Date(Date.now() - 10 * 60000); utimesSync(join(dir, `${name}.md`), t, t); };
-function memory(name, { type = 'project', tier, days = 0, fresh = false } = {}) {
+function memory(name, { type = 'project', tier, days = 0, fresh = false, extra = '' } = {}) {
   writeFileSync(join(dir, `${name}.md`), `---
 name: ${name}
 description: "desc of ${name}"
 metadata:
-  type: ${type}${tier ? `\n  tier: ${tier}` : ''}
+  type: ${type}${tier ? `\n  tier: ${tier}` : ''}${extra}
   modified: ${iso(days)}
 ---
 
@@ -43,11 +43,12 @@ const lines = {
   buried: memory('already-archived', { days: 0 }),                      // sticky: stays archived
   dupe: memory('seen-twice', { days: 0 }),
   cold: memory('pinned-cold', { tier: 'archive', days: 0 }),            // pin beats freshness the other way
+  replaced: memory('replaced-note', { tier: 'hot', days: 0, extra: '\n  superseded-by: fresh-note.md' }),  // replaced beats a pin
 };
 writeFileSync(join(dir, 'MEMORY.md'),
   // A BOM on the index must not orphan the first pointer.
   '\uFEFF' + ['# Index', '', lines.rule, lines.pinned, lines.fresh, lines.stale, lines.event,
-    lines.dupe, lines.dupe, lines.cold, '- [Archive](MEMORY-archive.md) — 0 older pointers'].join('\n') + '\n');
+    lines.dupe, lines.dupe, lines.cold, lines.replaced, '- [Archive](MEMORY-archive.md) — 0 older pointers'].join('\n') + '\n');
 writeFileSync(join(dir, 'MEMORY-archive.md'), ['# Archive', '', lines.buried].join('\n') + '\n');
 
 const run = (...args) => execFileSync(process.execPath, [TOOL, '--dir', dir, ...args], { encoding: 'utf8' });
@@ -61,6 +62,7 @@ ok(has(main, lines.pinned), 'tier: hot must beat the stale window');
 ok(has(main, lines.fresh), 'a memory inside the stale window stays hot');
 ok(has(arc, lines.stale), 'a memory past the stale window is archived');
 ok(has(arc, lines.cold) && !has(main, lines.cold), 'tier: archive beats freshness');
+ok(has(arc, lines.replaced) && !has(main, lines.replaced), 'a memory another replaced is archived, even one pinned hot');
 ok(has(arc, lines.event), 'a dated filename is an event log and archives fast');
 ok(has(arc, lines.buried) && !has(main, lines.buried), 'the archive is a one-way door');
 ok(main.split('\n').filter((l) => l === lines.dupe).length === 1, 'a duplicate pointer is dropped');

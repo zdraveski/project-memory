@@ -478,21 +478,19 @@ const capped = printX('startup');
 const sharedBytes = Buffer.byteLength(capped.split('\n').filter((l) => l.startsWith('- [Pin')).join('\n'));
 ok(sharedBytes <= 3000 && /^\(\d+ more shared line\(s\) over the 3000 B ceiling, in /m.test(capped), `printed shared lines stop at 3000 B and say how many more (${sharedBytes} B)`);
 
-rmSync(home, { recursive: true, force: true });
-
 // 30. A secret pasted into a message never reaches the handoff, where the
 // snapshots would keep it for good: a key by its prefix, a password by the
-// word before it, anything in <private> tags whole.
+// word before it.
 const cwdZ = 'C:\\handoff-privacy', dirZ = storeFor(home, cwdZ), tz = join(dirZ, 'z.jsonl');
 mkdirSync(dirZ, { recursive: true });
 const zs = (...lines) => writeFileSync(tz, lines.join('\n') + '\n', { flag: 'a' });
 const zrun = () => handoff({ cwd: cwdZ, transcript_path: tz, session_id: 'zzzzzzzz-5' });
 const zdoc = () => readFileSync(join(dirZ, 'handoff.md'), 'utf8');
-zs(user('deploy with sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123 and <private>my pin is 4321</private> please', { ts: '2026-10-27T10:00:00Z' }),
+zs(user('deploy with sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123 please', { ts: '2026-10-27T10:00:00Z' }),
   asst('Done. I set password: hunter2222 and token ghp_abcdefghijklmnopqrstuvwxyz0123456789.'));
 zrun();
-ok(!/sk-ant-api03|4321|hunter2222|ghp_abc/.test(zdoc()) && /deploy with \[redacted\] and \[private\] please/.test(zdoc()) && /password: \[redacted\]/.test(zdoc()),
-  `a key, a password, a token and a <private> block are not written (got ${zdoc().split('**asked**')[1]})`);
+ok(!/sk-ant-api03|hunter2222|ghp_abc/.test(zdoc()) && /deploy with \[redacted\] please/.test(zdoc()) && /password: \[redacted\]/.test(zdoc()),
+  `a key, a password and a token are not written (got ${zdoc().split('**asked**')[1]})`);
 // 31. Each entry names the files its turn changed, by name, from Edit, Write
 // and NotebookEdit, and keeps them when the entry is read back and rewritten.
 const toolUse = (name, input) => rec('assistant', [{ type: 'tool_use', id: name, name, input }]);
@@ -513,4 +511,38 @@ zs(user('rename everything', { ts: '2026-10-27T10:12:00Z' }), ...Array.from({ le
 zrun();
 ok(/\*\*changed:\*\* f3\.txt, f4\.txt, [^\n]*f10\.txt, and 3 more\n/.test(zdoc()), 'many files: the last 8, and how many more');
 
+// 32. What is between <private> tags is not written, and neither is the
+// answer to that message, which may repeat it. A message that opens with the
+// tag is still a message: skipped, its answer landed on the one before.
+const cwdV = 'C:\\handoff-private', dirV = storeFor(home, cwdV), tv = join(dirV, 'p.jsonl');
+mkdirSync(dirV, { recursive: true });
+const vs = (...lines) => writeFileSync(tv, lines.join('\n') + '\n', { flag: 'a' });
+const vrun = (id = 'pppppppp-7') => handoff({ cwd: cwdV, transcript_path: tv, session_id: id });
+const vdoc = () => readFileSync(join(dirV, 'handoff.md'), 'utf8');
+vs(user('plan the trip', { ts: '2026-10-27T11:00:00Z' }), asst('planned'),
+  user('<private>my passport is X1234567</private> book it', { ts: '2026-10-27T11:01:00Z' }), asst('Booked with passport X1234567.'));
+vrun();
+ok(!/X1234567/.test(vdoc()) && /plan the trip\n  \*\*did:\*\* planned/.test(vdoc()) && /\[private\] book it\n  \*\*did:\*\* \[private\]/.test(vdoc()),
+  `a private message and its answer are withheld, and the message before keeps its own answer (got ${vdoc().split('<!-- auto:start -->')[1]})`);
+// 33. <private-session> keeps the whole conversation out: what it wrote before
+// the mark goes, later turns write nothing, and other conversations stay.
+const tqv = join(dirV, 'q.jsonl');
+writeFileSync(tqv, [user('other work', { ts: '2026-10-27T11:02:00Z' }), asst('done')].join('\n') + '\n');
+handoff({ cwd: cwdV, transcript_path: tqv, session_id: 'qqqqqqqq-8' });
+vs(user('<private-session> from here on, keep this out', { ts: '2026-10-27T11:03:00Z' }), asst('ok'));
+ok(vrun() === 'private' && !/plan the trip|book it|keep this out/.test(vdoc()) && /other work/.test(vdoc()), `the marked conversation's entries are gone, another's stay (got ${vdoc().split('<!-- auto:start -->')[1]})`);
+vs(tool_(700_000), user('and a later question', { ts: '2026-10-27T11:05:00Z' }), asst('answered'));
+ok(vrun() === 'private' && !/later question/.test(vdoc()), 'a turn after the mark, which no longer sees it, writes nothing');
+ok(readFileSync(join(dirV, '.private-sessions'), 'utf8') === 'pppppppp\n', 'the mark is kept once, by tag');
+
+// The marked conversation's entries go even when they were the only ones.
+const cwdO = 'C:\\handoff-only-private', dirO = storeFor(home, cwdO), to = join(dirO, 'o.jsonl');
+mkdirSync(dirO, { recursive: true });
+writeFileSync(to, [user('alone here', { ts: '2026-10-27T11:10:00Z' }), asst('yes')].join('\n') + '\n');
+handoff({ cwd: cwdO, transcript_path: to, session_id: 'oooooooo-9' });
+writeFileSync(to, [user('<private-session>', { ts: '2026-10-27T11:11:00Z' }), asst('ok')].join('\n') + '\n', { flag: 'a' });
+handoff({ cwd: cwdO, transcript_path: to, session_id: 'oooooooo-9' });
+ok(!/alone here|\*\*asked\*\*/.test(readFileSync(join(dirO, 'handoff.md'), 'utf8')), 'the only conversation, marked private, leaves no entry');
+
+rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

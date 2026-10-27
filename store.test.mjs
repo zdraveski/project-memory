@@ -38,6 +38,8 @@ ok(times.every((t) => local(t) === new Date(t).toLocaleString('sv-SE').slice(0, 
 const fm = front('---\nname: a-note\ndescription: "says \\"gaps\\" here"\nmetadata:\n  type: feedback\n  tier: hot\n  modified: 2026-01-02T03:04:05Z\n---\nbody');
 ok(fm.name === 'a-note' && fm.desc === 'says "gaps" here' && fm.type === 'feedback' && fm.tier === 'hot' && fm.modified === Date.parse('2026-01-02T03:04:05Z')
   && Number.isNaN(front('no frontmatter').modified), 'front() reads the name, the description unescaped, the type, the tier and the stamp');
+ok(front('---\nname: old\nmetadata:\n  tier: hot\n  superseded-by: "new.md"\n---\n').tier === 'archive' && front('---\nsuperseded-by: new.md\n---').superseded === 'new.md',
+  'a memory a newer one replaced reads as archived, even pinned hot, and names its replacement');
 // git's own reason, not a warning before it, nor the "Command failed" line.
 ok(gitWhy({ stderr: 'warning: no corresponding .pack: x.idx\nfatal: the real reason\n', message: 'Command failed: git add' }) === 'fatal: the real reason'
   && gitWhy({ stderr: '', message: 'Command failed: git x\nmore' }) === 'Command failed: git x', "gitWhy() is stderr's first line that is not a warning");
