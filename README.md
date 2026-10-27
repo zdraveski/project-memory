@@ -2,155 +2,186 @@
 
 # project-memory
 
-Memory for Claude Code that holds up when you run several sessions at once,
-and when a long session gets compacted.
+**Helps Claude remember your work from one conversation to the next.**
 
-Claude Code's auto memory keeps notes for each project in
-`~/.claude/projects/<project>/memory/`, with an index, `MEMORY.md`, that is
-loaded at the start of every session. This plugin looks after that folder:
+project-memory is a free add-on (a "plugin") for Claude Code. Once it's
+installed, it works on its own in the background. You don't have to learn any
+commands to get the benefit.
 
-- **The index stays small.** `MEMORY.md` is kept under 7,000 bytes. Older
-  pointers move to `MEMORY-archive.md`, which is not loaded but can still be
-  searched. A memory with no pointer gets one back, and duplicate lines go.
-- **A rolling handoff.** After every turn, `handoff.md` records the last ten
-  exchanges of each session, so the next session, or one running beside it,
-  knows where things stopped.
-- **A startup briefing.** Each session starts by learning who else is working
-  in the project, where the last session stopped, what is failing, and the
-  lessons shared by every project.
-- **Compaction loses nothing in flight.** A mid-turn auto compaction waits for
-  the end of the turn when that is safe. Before one, the model is asked once
-  to write its memory. If a turn is cut anyway, what it had in flight (the ask,
-  background tasks and their output files, the files it edited) comes back
-  after the compaction.
-- **Undo.** Every change to a memory is committed to a local git repo at
-  `~/.claude/projects`. `history` and `restore` bring back a memory that was
-  deleted or overwritten.
-- **Shared lessons.** `~/.claude/projects/_shared/memory/` holds lessons that
-  apply everywhere: how you work, tools installed on the machine. Its index is
-  shown in every session of every project, capped at 3,000 bytes. `promote`
-  moves a memory there.
-- **Recall.** `search` ranks memories by name, then description, then body,
-  archive included, in one project or all of them.
-- **Safe in parallel.** Each store has a lock, and every write checks the file
-  first, so an edit the hook did not see is never overwritten. Every hook exits
-  0: a failure never blocks a session.
+## Why you might want it
 
-No dependencies: Node built-ins and git.
+Each new conversation in Claude Code starts fresh. To carry things over,
+Claude Code keeps a notebook for each project, called *auto memory*. Claude
+writes down what's worth keeping, like your preferences, decisions and
+corrections, and reads the notebook's table of contents at the start of every
+conversation.
+
+That works well until:
+
+- The table of contents gets too long, and Claude stops reading the newest
+  notes.
+- A conversation ends in the middle of a task, and the next one doesn't know
+  where you stopped.
+- A conversation gets very long. Claude Code then shortens it into a summary to
+  make room, and work in progress can get lost.
+- A note gets deleted or overwritten by mistake, with no way to get it back.
+- Something you taught Claude in one project, like "keep answers short", is
+  unknown in your other projects.
+- You have two Claude windows open on the same project, and one overwrites the
+  other's notes.
+
+project-memory takes care of all of these.
+
+## What it does for you
+
+- It keeps the table of contents short, so Claude always reads all of it.
+  Older entries move to an archive page that Claude can still search.
+- After every reply it saves a short record of your latest exchanges, and the
+  next conversation starts by reading it.
+- Before Claude Code shortens a conversation, it reminds Claude to save its
+  notes. If a task gets cut off anyway, Claude is told afterwards what it was
+  in the middle of.
+- It keeps every version of every note, so a note that was deleted or changed
+  by mistake can be brought back.
+- Notes that apply everywhere, such as how you like to work, go into a shared
+  notebook that every project reads.
+- With several windows open, no window overwrites another's notes, and each
+  new conversation is told what the other windows are working on.
+
+Everything stays on your computer.
+
+## Before you install
+
+You need three things. If you already use Claude Code, you probably have
+them.
+
+1. Claude Code, with its built-in memory switched on. It's on unless you
+   turned it off. To check, type `/memory` in Claude Code.
+2. Node.js 20 or newer. This free program is what runs project-memory.
+3. Git. This free program keeps the history of your notes. Without it,
+   everything works except bringing back old versions of a note.
+
+If you're not sure about the last two, ask Claude: *"Do I have Node.js 20 or
+newer, and Git?"* Claude will check for you. If one is missing, download it from
+[nodejs.org](https://nodejs.org) (choose the LTS version) or
+[git-scm.com](https://git-scm.com).
 
 ## Install
 
-You need Claude Code with auto memory on, Node.js 20 or newer on your PATH
-(Claude Code's native installer does not include Node), and git for the
-snapshots. Without git everything else still works.
+1. In Claude Code, type this line and press Enter:
 
-In Claude Code:
+   ```
+   /plugin marketplace add zdraveski/project-memory
+   ```
 
-```
-/plugin marketplace add zdraveski/project-memory
-/plugin install project-memory@project-memory
-```
+2. Then type this one and press Enter:
 
-Or in a terminal:
+   ```
+   /plugin install project-memory@project-memory
+   ```
 
-```
-claude plugin marketplace add zdraveski/project-memory
-claude plugin install project-memory@project-memory
-```
+3. Close Claude Code and open it again.
 
-Then restart Claude Code, or run `/reload-plugins` in each open session, and
-check the result with `/project-memory:memory doctor`.
+4. Ask Claude anything, for example *"hello"*, and wait for the answer.
+   project-memory does its first save when Claude finishes a reply.
 
-## Use
+5. Check that it's working by typing:
 
-The hooks run on their own. The `memory` skill covers the rest, for you and
-for the model:
+   ```
+   /project-memory:memory doctor
+   ```
 
-| `/project-memory:memory …` | What it does |
+   Every line should start with `ok`. A line that starts with `PROBLEM` says
+   what to do about it. See [If something seems wrong](#if-something-seems-wrong).
+
+## Using it day to day
+
+There's nothing you have to do. Keep working with Claude as you always have.
+
+When you want something from your notes, just ask in your own words:
+
+| You say | What happens |
 |---|---|
-| `status` | index size against its budget, hot and archived counts, problems, `[[links]]` to no memory |
-| `search <words>` | ranked hits from this project and the shared store; `--all` searches every project |
-| `history <memory>` | the snapshots that changed it |
-| `restore <memory>` | brings it back from the snapshots, with its index line; `--rev <commit>` picks a version, `--force` replaces a file that exists |
-| `promote <memory>` | moves it to the shared store |
-| `doctor` | wiring, the Stop hook, locks, git, snapshots |
+| *"Remember that I prefer short answers."* | Claude saves a note. |
+| *"Where did we leave off?"* | Claude reads the record of your last conversation. |
+| *"Did we decide anything about the logo?"* | Claude searches your notes, the archive too. |
+| *"I deleted the note about pricing by mistake. Can you bring it back?"* | Claude restores it from the history. |
+| *"Make the note about short answers apply to all my projects."* | Claude asks you to confirm, then moves it to the shared notebook. |
 
-The model uses the skill without being asked: it searches before saying
-something was never learned. It asks you before promoting anything.
+If you'd rather type a command, these do the same things:
 
-The same commands work from a terminal: `node <plugin folder>/memory.mjs <command>`.
-
-## What it writes
-
-Everything stays on your machine. Nothing is sent anywhere.
-
-| Where | What |
+| Type | What it does |
 |---|---|
-| `~/.claude/projects/<project>/memory/MEMORY.md` | pointers moved, restored or de-duplicated |
-| `…/memory/MEMORY-archive.md` | the pointers `MEMORY.md` no longer lists |
-| `…/memory/handoff.md` | the last ten exchanges of each session: the start of each prompt and of each reply |
-| `…/memory/.lock`, `.tiered`, `.health` | the store's lock, a change fingerprint, problems for the startup briefing |
-| `~/.claude/projects/_shared/memory/` | the shared store |
-| `~/.claude/projects/.git` | the snapshot repo. It tracks only `*/memory/*.md` and is never pushed |
-| `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping |
+| `/project-memory:memory status` | A quick health check of this project's notes |
+| `/project-memory:memory search logo colors` | Finds notes about "logo colors" |
+| `/project-memory:memory history pricing` | Shows when the note called "pricing" changed |
+| `/project-memory:memory restore pricing` | Brings back the note called "pricing" |
+| `/project-memory:memory promote pricing` | Moves the note called "pricing" to the shared notebook |
+| `/project-memory:memory doctor` | Checks that project-memory is set up and running |
 
-The handoff holds the start of your prompts, and the snapshot repo keeps every
-version of it. Bear that in mind before you share the folder.
+A note's name is the name of its file, without the ending. `search` shows
+them.
 
-## Compaction window
+## If something seems wrong
 
-The memory nudge fires at 85% of the window Claude Code compacts against,
-which this plugin assumes is 1,000,000 tokens. On a smaller window, put that
-size in `CLAUDE_CODE_AUTO_COMPACT_WINDOW` under `env` in your settings, for
-example `"200000"`. Otherwise the nudge never fires. A compaction under
-200,000 tokens is never deferred.
+**Claude doesn't remember the last conversation.** Ask *"Where did we leave
+off?"* If Claude still doesn't know, type `/project-memory:memory doctor`.
 
-## Limits
+**The check says "not wired".** project-memory isn't installed or isn't
+switched on. Go through the [Install](#install) steps again.
 
-- Paths assume `~/.claude`. `CLAUDE_CONFIG_DIR` is not supported yet.
-- Tested on Linux, macOS and Windows, with Node 20 and 24.
-- A turn that is only a slash command gets no handoff entry.
-- The snapshot repo only grows. Delete `~/.claude/projects/.git` to drop the
-  history; the next change starts a new one.
+**The check says "no Stop hook has run on this machine yet".** project-memory
+saves when Claude finishes a reply. Ask Claude anything, wait for the answer,
+then check again.
 
-## Uninstall
+**Any other line that starts with `PROBLEM`.** The line ends with what to do.
+If it's unclear, ask Claude: *"What does this line mean, and how do I fix it?"*
+
+**A note seems to be gone.** It may have moved to the archive, where it's still
+kept. Ask Claude to search for it. If it was deleted, ask Claude to bring it
+back.
+
+**"node" is not found.** Install Node.js (see
+[Before you install](#before-you-install)), then restart Claude Code.
+
+## Your privacy
+
+- project-memory never connects to the internet. What it saves stays on your
+  computer, in Claude Code's own folder (`.claude`, in your home folder).
+- Claude reads your notes during your conversations. Claude Code's built-in
+  memory works the same way.
+- The record of where you left off includes the start of your messages and of
+  Claude's replies, and the history keeps old versions of every note. If you
+  copy or share your `.claude` folder, all of that goes with it.
+
+## Removing it
+
+In Claude Code, type:
 
 ```
 /plugin uninstall project-memory@project-memory
 ```
 
-Your memories, the archive files and the snapshot repo stay where they are.
+Your notes stay where they are, and Claude Code keeps using them. To delete
+the history of your notes as well, delete the hidden folder `.git` inside
+`.claude/projects` in your home folder.
 
-## Development
+## Words used here
 
-Each suite builds a throwaway home folder and never touches your `~/.claude`:
+- **Conversation**: one session with Claude, from when you start it until you
+  close or clear it.
+- **Note**: a short file where Claude writes down something worth keeping.
+  Claude Code calls these *memories*.
+- **Notebook**: all of one project's notes, with their table of contents (a
+  file called `MEMORY.md`).
+- **Project**: the folder you open Claude Code in.
+- **Shortening**: what Claude Code does when a conversation gets too long. It
+  replaces the older part with a summary. Claude Code calls this
+  *compacting*.
+- **Plugin**: an add-on for Claude Code.
 
-```
-node store.test.mjs
-node compact-gate.test.mjs
-node handoff-log.test.mjs
-node memory-tier.test.mjs
-node memory.test.mjs
-node wire.test.mjs
-```
+## More
 
-- `node mutate.mjs [text]` breaks one rule at a time and expects a suite to
-  fail: all mutants, or those whose label contains the text. The full run
-  takes several minutes.
-- `node memory-tier.soak.mjs` and `node memory-tier.break.mjs` copy the
-  largest store on the machine (or the one you pass) to a temp folder, then
-  race it and break it.
-- `node bench.mjs` times the hooks on copies of your largest transcript and
-  store.
-
-The design and its measurements are in `docs/specs/`.
-
-The author runs this repo from `~/.claude/hooks`. `node deploy.mjs` runs every
-check, then copies the plugin to `~/.claude/hooks-live`, which serves as a
-local marketplace. `node wire.mjs --plugin` or `--settings` switches between
-the plugin and hooks in `settings.json`. You need none of this to use the
-plugin.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+- [How it works](docs/how-it-works.md): the technical details, for the curious.
+- [Contributing](CONTRIBUTING.md): running the tests and changing the code.
+- License: [MIT](LICENSE). Free to use, change and share.
