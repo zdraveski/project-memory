@@ -33,6 +33,8 @@ Claude Code keeps a notebook for each project (it calls this *auto memory*),
 where Claude writes down your preferences, decisions and corrections.
 project-memory looks after that notebook.
 
+![What project-memory does for you: it picks up where you left off, never loses a note, keeps long tasks on track, and shares what you teach it with all your projects. It works on its own after every reply, and nothing leaves your computer.](docs/what-it-does.svg)
+
 | Without project-memory | With project-memory |
 |---|---|
 | You start a new conversation and explain again where you were. | Claude starts already knowing where the last conversation stopped. |
@@ -44,6 +46,8 @@ project-memory looks after that notebook.
 
 It runs on its own after every reply, with no waiting you'd notice, and
 everything stays on your computer.
+
+![How it works: you work with Claude, and it writes down your decisions, preferences and corrections. After every reply, project-memory tidies the notes, records where you are and keeps every version. Your next conversation starts already knowing where you stopped.](docs/how-it-works.svg)
 
 ## Who it's for
 
@@ -91,6 +95,8 @@ recently, and reminds Claude of background jobs still running. But it checks
 for room before every step, so it can compact in the middle of a task. The
 summary may then lose the details of what you asked, what Claude had just
 said, or the notes it meant to write when it finished.
+
+![Long conversations, kept on track. Before: at 85% full, Claude is asked to write its notes while there's still room. During: if the conversation fills up in the middle of a task, project-memory asks Claude Code to wait for the end of the step Claude is on. After: once it's shortened to a summary, Claude is told what you asked, what it last said and what was still running.](docs/long-conversations.svg)
 
 project-memory protects your work before, during and after:
 
