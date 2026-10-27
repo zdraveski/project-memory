@@ -179,7 +179,7 @@ When you want something from your notes, just ask in your own words:
 |---|---|
 | *"Remember that I prefer short answers."* | Claude saves a note. |
 | *"Where did we leave off?"* | Claude reads the record of your last conversation. |
-| *"Did we decide anything about the logo?"* | Claude searches your notes, the archive too. |
+| *"Did we decide anything about the logo?"* | Claude searches your notes, including the archive. |
 | *"I deleted the note about pricing by mistake. Can you bring it back?"* | Claude restores it from the history. |
 | *"Make the note about short answers apply to all my projects."* | Claude asks you to confirm, then moves it to the shared notebook. |
 | *"Remember for all my projects that I like plain language."* | Claude saves it straight to the shared notebook. |
@@ -195,12 +195,13 @@ If you'd rather type a command, these do the same things:
 | `/project-memory:memory promote pricing` | Moves the note called "pricing" to the shared notebook |
 | `/project-memory:memory doctor` | Checks that project-memory is set up and running |
 
-A note's name is the name of its file, without the ending. `search` shows
-them.
+A note's name is the name of its file, without the `.md` ending. `search`
+shows them.
 
 ## Updating
 
-In a terminal, run these two commands, then restart Claude Code:
+In a terminal (Terminal on a Mac, PowerShell on Windows), run these two
+commands, then restart Claude Code:
 
 ```
 claude plugin marketplace update project-memory
@@ -273,6 +274,11 @@ the history of your notes as well, delete the hidden folder `.git` inside
   Claude Code calls these *memories*.
 - **Notebook**: all of one project's notes, with their table of contents (a
   file called `MEMORY.md`).
+- **Archive**: where older lines from the table of contents go. Claude doesn't
+  read it at the start of every conversation, but it can search it.
+- **Shared notebook**: notes that apply to all your projects. Every
+  conversation, in every project, reads its table of contents.
+- **History**: every version of every note, kept with Git on your computer.
 - **Project**: the folder you open Claude Code in.
 - **Context window**: how much of a conversation Claude can keep in view at
   once. Its size is counted in tokens, about three quarters of a word each.
@@ -280,6 +286,8 @@ the history of your notes as well, delete the hidden folder `.git` inside
   nearly fills the context window. It replaces the older part with a summary.
   When Claude Code does it on its own, it's called *auto-compaction*.
 - **Plugin**: an add-on for Claude Code.
+- **Terminal**: the app where you type commands: Terminal on a Mac, PowerShell
+  on Windows.
 
 ## More
 
