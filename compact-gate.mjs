@@ -32,7 +32,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, asked, handoff, hushed, tag, local, clip, answer, sectionOf, NUDGE_TAG } from './handoff-log.mjs';
+import { readTail, text, asked, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -126,8 +126,7 @@ function walk(raw) {
 function note(payload, s) {
   const running = [...s.running].map(([id, p]) => `${id} → ${p}`).join('; ') || 'none';
   // Capped like the running tasks: a wide refactor turn listed tens of KB.
-  const ed = [...s.edited];
-  const edited = ed.length ? ed.slice(-LIST_MAX).join(', ') + (ed.length > LIST_MAX ? `, and ${ed.length - LIST_MAX} earlier` : '') : 'none';
+  const edited = newest([...s.edited], LIST_MAX, 'earlier') || 'none';
   const t = tag(payload.session_id);
   // Tagged, so a parallel session's note is never taken for this one's.
   return `- **cut mid-turn**${t ? ` [${t}]` : ''} ${local()} at ${Math.round(s.ctx / 1000)}k tokens, asked ${s.at}: ${clip(s.ask, 240)}\n` +

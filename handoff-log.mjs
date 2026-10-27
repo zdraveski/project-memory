@@ -156,7 +156,8 @@ function latest(path) {
 
 const render = (t) => `- **asked** ${t.at}${t.s ? ` [${t.s}]` : ''}: ${clip(t.ask, ASK)}\n  **did:** ${clip(t.did, DID)}`
   + (t.changed ? `\n  **changed:** ${clip(t.changed, DID)}` : '');
-const named = (c) => (c.length > CHANGED ? `${c.slice(-CHANGED).join(', ')}, and ${c.length - CHANGED} more` : c.join(', '));
+// The newest n of a list, and how many older ones it leaves out.
+export const newest = (xs, n, older = 'more') => (xs.length > n ? `${xs.slice(-n).join(', ')}, and ${xs.length - n} ${older}` : xs.join(', '));
 // \r-tolerant: an editor that saves this file CRLF must not make every entry
 // unparseable, which silently emptied the section. The tag is optional:
 // entries written before it read as one untagged session. The time is lazy:
@@ -239,7 +240,7 @@ export function handoff(input) {
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);
   const turns = latest(input.transcript_path);
-  const fresh = turns.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.ask, t.did, DID), changed: named(t.changed) }));
+  const fresh = turns.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.ask, t.did, DID), changed: newest(t.changed, CHANGED) }));
   const hush = turns.some((t) => /<private-session>/i.test(t.ask));
   // Sessions of one project write this file at once, so they take turns: 8 at
   // once lost 22 of 40 turns without the lock (2026-10-26). The model can still

@@ -130,6 +130,9 @@ export function status(dir, sharedNames = []) {
   return lines;
 }
 
+// The first n of a list, and how many it leaves out.
+const more = (xs, n) => xs.slice(0, n).join(', ') + (xs.length > n ? `, and ${xs.length - n} more` : '');
+
 // What the snapshots saw change in a store lately, so the user can see what
 // Claude wrote down or dropped. The index and the handoff change every turn
 // and are left out.
@@ -145,9 +148,8 @@ function recent(dir) {
     if (st === 'A') born.add(f);
   }
   const of = (want) => [...last].filter(([f, st]) => want(f, st)).map(([f]) => f.replace(/\.md$/, ''));
-  const few = (xs) => xs.slice(0, 6).join(', ') + (xs.length > 6 ? ` and ${xs.length - 6} more` : '');
   return [['added', of((f, st) => st !== 'D' && born.has(f))], ['edited', of((f, st) => st !== 'D' && !born.has(f))], ['deleted', of((f, st) => st === 'D')]]
-    .filter(([, xs]) => xs.length).map(([w, xs]) => `${w} ${few(xs)}`).join(' · ');
+    .filter(([, xs]) => xs.length).map(([w, xs]) => `${w} ${more(xs, 6)}`).join(' · ');
 }
 
 function snapshots() {
@@ -362,7 +364,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     const q = args.join(' '), all = search(scope, q, Infinity), n = Number(opt('--limit')), hits = all.slice(0, n > 0 ? n : 8);
     // What the model reads back: a hit's lines stay short (a 13-link hit was a
     // quarter of its output), and a miss says where it looked in one line.
-    const more = (xs, n) => xs.slice(0, n).join(', ') + (xs.length > n ? `, and ${xs.length - n} more` : '');
     const where = scope.length <= 2 ? scope.join(' and ') : `${scope.length} stores`;
     r = { ok: true, lines: !words(q).length ? [`nothing to search for: "${q}" has no word of 3+ letters that says which memory`]
       : hits.length ? [...hits.flatMap((h) => [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
