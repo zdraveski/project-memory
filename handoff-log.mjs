@@ -19,7 +19,7 @@
 // changed (answer()), and every entry of a conversation marked
 // <private-session> (hushed()).
 import { readFileSync, writeFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, raw } from './store.mjs';
@@ -116,7 +116,9 @@ const command = (s) => {
   if (!isCommand(s)) return '';
   const n = s.match(/<command-name>\s*([^<]{1,200}?)\s*<\/command-name>/);
   if (!n) return '';
-  const a = (s.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1] ?? '').trim();
+  // By index: a regex read on to the end from every opener, 20 s a megabyte.
+  const i = s.indexOf('<command-args>'), j = i === -1 ? -1 : s.indexOf('</command-args>', i);
+  const a = (j === -1 ? '' : s.slice(i + '<command-args>'.length, j)).trim();
   return `${n[1].startsWith('/') ? '' : '/'}${n[1]}${a ? ` ${a}` : ''}`;
 };
 // The prompt a user record opens a turn with, or '' when it opens none. One of
@@ -182,7 +184,7 @@ function turns(raw) {
     // and every entry an older version wrote was added again beside it.
     const t = text(r).trim(), n = norm(t);
     let ask = r.type === 'user' ? prompt(r, t) : '';
-    if (ask && !PRIVATE.test(ask) && PRIVATE.test(norm(ask))) ask = norm(ask);
+    if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
     // What the user typed, tags and all: a slash command's arguments, a
     // wrapper own() strips, a message queued while Claude worked (an
     // attachment record, read by nothing before). Not what the harness quotes
@@ -222,7 +224,10 @@ function turns(raw) {
 // parts or more. 25 of 35 ordinary lines were cut; but a value with a `_` or
 // a `.` in it is no code (correct_horse_battery_staple, Summer.Sunshine), and
 // a looser rule let those through.
-const code = (v) => /^\$[{(]|^(?:process\.env|os\.environ|os\.getenv|System\.getenv|ENV\[)/.test(v)
+// A member whose last name is the secret's own word (`user.password`,
+// `this.apiKey`, `settings.SECRET_KEY`) is a reference to one, not one.
+const code = (v) => /^\$[{(]|^(?:process\.env[.[]|os\.environ|os\.getenv|System\.getenv|ENV\[)/.test(v)
+  || (!/\d/.test(v) && /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(v) && /(?:pass|secret|token|key|pwd|auth|cred)\w*$/i.test(v))
   || /^(?:string|number|boolean|str|int|bytes|any|unknown|null|undefined|none|true|false|object|bool|float|char|optional|secretstr)$/i.test(v)
   || (!/\d/.test(v) && (/^[A-Za-z_$][\w$.]*[([]/.test(v) || /^(?:\/|~\/|[A-Za-z]:[\\/])[^\s/\\]+[\\/]/.test(v)));
 const SECRETS = [
@@ -230,7 +235,8 @@ const SECRETS = [
   // closer was saved. Self-closed or unclosed, to the end.
   [/<\s*private(?![-_\w])(?:[^>]*>(?:[\s\S]*<\s*\/\s*private\s*>|[\s\S]*)|[^>]*$)/gi, '[private]'],
   // PGP's says PRIVATE KEY BLOCK.
-  [/-----BEGIN [A-Z ]*PRIVATE KEY[A-Z ]*-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY[A-Z ]*-----|$)/g, '[redacted]'],
+  // Bounded: `-----BEGIN ` then `PRIVATE KEY ` repeated took 20 s a megabyte.
+  [/-----BEGIN [A-Z ]{0,40}PRIVATE KEY[A-Z ]{0,40}-----[\s\S]*?(?:-----END [A-Z ]{0,40}PRIVATE KEY[A-Z ]{0,40}-----|$)/g, '[redacted]'],
   // sk-... (Anthropic, OpenAI); sk_live_, pk_test_, rk_live_ (Stripe).
   [/\b(?:sk|rk|pk)(?:-|_(?:live|test)_)[A-Za-z0-9_-]{20,}/g, '[redacted]'],
   [/\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{40,}/g, '[redacted]'],
@@ -254,7 +260,7 @@ const SECRETS = [
   // before `?user=me@x` was cut as a password.
   [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)[^\s/?#]{1,200}@/gi, '$1[redacted]@'],
   // curl -u user:it, --user user:it. Not `docker run -u 1000:1000`, a user and group.
-  [/((?:^|\s)(?:-u|--user)[ =]+[^\s:'"]{1,100}:)(?!\d+(?![^\s'"]))[^\s'"]{1,200}/g, '$1[redacted]'],
+  [/((?:^|\s)(?:-u|--user)[ =]+(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)[^\s'"]{1,200}/g, '$1[redacted]'],
   // --password it; docker login, sshpass and twine take it as -p it.
   [/(--password[ =]|\b(?:docker\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+)(?!-)[^\s"']{3,}/g, '$1[redacted]'],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
@@ -325,7 +331,7 @@ function latest(path, since = null) {
   for (let bytes = TAIL; ; bytes *= 4) {
     const { text: raw, whole } = readTail(path, bytes);
     const got = turns(raw);
-    const back = !since || got[0]?.at < since.at || got.some((t) => t.at === since.at && clip(t.ask, ASK) === since.ask);
+    const back = !since || got[0]?.at < since.at || got.some((t) => t.at === since.at && clip(t.ask, ASK) === since.ask && answer(t.raw ?? t.ask, t.did, DID) === since.did);
     if ((got.length && back) || whole || bytes >= 32e6) { got.whole = whole; return got; }
   }
 }
@@ -398,7 +404,7 @@ function build(raw, fresh, drop = null, me = fresh[0]?.s, whole = false) {
   // 1.0.7 wrote a marker in an ask as `<!- -`.
   const key = (t) => `${t.s} ${bare(t)}`;
   const bare = (t) => `${t.at} ${clip(t.ask.replace(/<!- -/g, '<!--'), ASK)}`;
-  const seen = new Set(fresh.map(key)), seenBare = new Set(fresh.map(bare));
+  const seenBare = new Set(fresh.map(bare));
   // One turn, two spellings: an ask an older version wrote otherwise (with a
   // trailing reminder before 1.0.6, its leading element cut in 1.0.6-1.0.7)
   // is the turn re-read when the session and minute match and one ask holds
@@ -415,7 +421,13 @@ function build(raw, fresh, drop = null, me = fresh[0]?.s, whole = false) {
   // whole entry, answer and all: "continue" asked twice in a minute is two.
   const whole1 = (t) => `${key(t)}\n${clip(t.did, DID)}\n${t.changed}`;
   const last = new Map(have.map((t) => [whole1(t), t]));
-  const kept = have.filter((t) => last.get(whole1(t)) === t && !seen.has(key(t)) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop && !fresh.some((f) => twin(f, t)));
+  // A turn read again replaces its own line, one for one, newest first:
+  // "continue" twice in a minute is two lines of one key, and replacing every
+  // line of the key lost the first when only the second was read again.
+  const uniq = have.filter((t) => last.get(whole1(t)) === t), left = new Map(), gone = new Set();
+  for (const f of fresh) left.set(key(f), (left.get(key(f)) ?? 0) + 1);
+  for (const t of [...uniq].reverse()) { const n = left.get(key(t)); if (n) { gone.add(t); left.set(key(t), n - 1); } }
+  const kept = uniq.filter((t) => !gone.has(t) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop && !fresh.some((f) => twin(f, t)));
   const merged = keep([...kept, ...fresh], me);
   if (!merged.length && !(drop && has)) return null;
   // An entry kept from the file is rendered once, for the comparison and the
@@ -514,8 +526,8 @@ function health(dir) {
   }
   // The record of where you left off could not be saved after the last reply.
   try {
-    const f = JSON.parse(readFileSync(join(projectsRoot(), '.handoff-failed'), 'utf8'));
-    if (same(f.dir, dir)) out.push(`Memory store needs attention (${dir}): the record of where you left off could not be saved after the reply at ${local(f.at)}: ${f.error}`);
+    const f = JSON.parse(readFileSync(join(projectsRoot(), `.handoff-failed-${basename(dirname(dir))}`), 'utf8'));
+    out.push(`Memory store needs attention (${dir}): the record of where you left off could not be saved after the reply at ${local(f.at)}: ${f.error}`);
   } catch {}
   try {
     const s = JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8'));

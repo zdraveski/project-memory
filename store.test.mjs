@@ -242,6 +242,16 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   const fresh = join(projectsRoot(), slug(sub), 'new.jsonl');
   writeFileSync(fresh, JSON.stringify({ type: 'summary' }) + '\n');
   ok(storeOf({ cwd: sub, transcript_path: fresh }) === repoStore, 'with no cwd recorded yet, the payload\'s cwd finds the repository');
+
+  // A worktree reached through a junction is still the repository's: git
+  // records the real path. And `_shared` names no project.
+  const viaJ = join(home, 'work', 'jwt');
+  try { symlinkSync(wt, viaJ, 'junction'); } catch {}
+  ok(!existsSync(viaJ) || repoRoot(viaJ) === repo, `a worktree through a junction maps to its repository (got ${existsSync(viaJ) ? repoRoot(viaJ) : 'no junction'})`);
+  process.env.CLAUDE_CONFIG_DIR = cfg; process.env.CLAUDE_CODE_PROJECT_DIR_NAME = '_shared';
+  let notShared; try { notShared = storeOf({ cwd: sub }); } finally { delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; }
+  ok(notShared === join(cfg, 'projects', slug(repo), 'memory'), `a project folder named _shared is ignored (got ${notShared})`);
+
   for (const [v, want] of [['1', true], ['true', true], ['0', false], ['', false]]) {
     process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = v;
     try { ok(memoryOff() === want, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=${JSON.stringify(v)} is ${want ? 'off' : 'on'}`); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }

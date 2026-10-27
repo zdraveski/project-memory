@@ -9,7 +9,7 @@
 // payload on stdin, and tiers that session's own store; a manual run walks them all.
 
 import { readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, allStores, front, gitWhy, gitArgs, raw, memoryOff } from './store.mjs';
@@ -467,9 +467,11 @@ if (stop) {
     } catch {}
     // One that throws (a store folder that takes no new files) is kept in a
     // file the next start reads: swallowed, nothing was saved, and nothing said.
-    const failed = join(projectsRoot(), '.handoff-failed');
+    // One per project, beside the projects, not in the store that refused it:
+    // shared, another project's next save cleared this one's.
+    const failed = join(projectsRoot(), `.handoff-failed-${basename(dirname(storeOf(payload || {})))}`);
     try { if (payload) handoff(payload); try { unlinkSync(failed); } catch {} }
-    catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), dir: storeOf(payload), error: String(e.message).split('\n')[0] })); }
+    catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\n')[0] })); }
   } catch {}
   try {
     // Past the compaction trigger, the next prompt compacts: block this stop

@@ -122,7 +122,7 @@ function walk(raw) {
       // Its answer too: the last one said belonged to the turn before, and
       // after a private ask it was shown under the next one.
       let ask = prompt(r, t);
-      if (ask && !PRIVATE.test(ask) && PRIVATE.test(norm(ask))) ask = norm(ask);
+      if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
       if (ask) { s.ask = ask; s.raw = norm(unwrap(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
       // Not in what the harness quotes: an agent's report quoting the tag hid
       // the last words said.
@@ -257,6 +257,9 @@ export function nudge(payload) {
   // deferring a compaction the gate defers anyway, and the turn's end would
   // then have passed with no memory written (found by the second audit).
   if (payload.hook_event_name !== 'Stop' || payload.stop_hook_active || !payload.transcript_path || !existsSync(payload.transcript_path)) return null;
+  // A conversation marked private, before any read: past the trigger, its
+  // whole turn was read again at every Stop, for no nudge.
+  if (hushed(storeOf(payload), tag(payload.session_id))) return null;
   const s = state(payload.transcript_path, { ask: false });
   // The conversation's tag, as everywhere else: its full id named a file.
   const id = tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''));

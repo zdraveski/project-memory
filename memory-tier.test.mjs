@@ -730,11 +730,11 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   const stopB = () => spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ transcript_path: tb, session_id: 'brkn' }) });
   stopB();
   const said = execFileSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: tb, session_id: 'other', source: 'startup' }), env }).toString();
-  ok(existsSync(join(root, '.handoff-failed')) && /could not be saved/.test(said), `a handoff that cannot be saved is said at the next start (got ${said.slice(0, 200)})`);
+  ok(existsSync(join(root, '.handoff-failed-proj-broken')) && /could not be saved/.test(said), `a handoff that cannot be saved is said at the next start (got ${said.slice(0, 200)})`);
   rmSync(join(broken, 'memory'));
   mkdirSync(join(broken, 'memory'));
   stopB();
-  ok(!existsSync(join(root, '.handoff-failed')), 'and the next save that works clears it');
+  ok(!existsSync(join(root, '.handoff-failed-proj-broken')), 'and the next save that works clears it');
 
   // A history to adopt (its own .gitignore, no mark yet) with a stale
   // config.lock: swept first, then adopted. Adopted first, `git config` was

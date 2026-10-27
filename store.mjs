@@ -45,7 +45,10 @@ function worktreeMain(d) {
     if (!g) return null;
     const gd = resolve(d, g[1]);
     const common = (raw(join(gd, 'commondir')) || '').trim(), back = (raw(join(gd, 'gitdir')) || '').trim();
-    if (!common || !back || basename(dirname(gd)) !== 'worktrees' || !same(resolve(gd, back), join(d, '.git'))) return null;
+    // By real path: git records the worktree's, and one reached through a
+    // junction or a link was taken for a stranger.
+    const real = (x) => { try { return realpathSync(x); } catch { return resolve(x); } };
+    if (!common || !back || basename(dirname(gd)) !== 'worktrees' || !same(real(resolve(gd, back)), real(join(d, '.git')))) return null;
     const main = resolve(gd, common);
     if (!same(dirname(dirname(gd)), main)) return null;
     return basename(main) === '.git' ? dirname(main) : main;
@@ -86,7 +89,8 @@ export function storeOf(payload = {}) {
   // _, used as it is; any other is ignored. Slugged, `my_proj` named a folder
   // Claude Code never made, and nothing was saved.
   const named = process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
-  if (named && /^[A-Za-z0-9_-]{1,64}$/.test(named) && !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(named)) return join(projectsRoot(), named, 'memory');
+  // Not `_shared`: that is every project's store, not one project's.
+  if (named && /^[A-Za-z0-9_-]{1,64}$/.test(named) && !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9]|_shared)$/i.test(named)) return join(projectsRoot(), named, 'memory');
   const t = typeof payload.transcript_path === 'string' && resolve(payload.transcript_path);
   if (t && same(dirname(dirname(t)), projectsRoot())) {
     // No cwd recorded yet (a session just started, or just cleared): the

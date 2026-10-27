@@ -283,6 +283,13 @@ ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 
 // Nor one whose private ask is further back than the tail read: the whole turn is read.
 writeFileSync(tp, [user('<private>card 4242</private> plan it'), result('z'.repeat(300_000)), asst('planning', T + 100_000, 'end_turn')].join('\n') + '\n');
 ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'rrrrrrrr-1' }) === null, 'nor a long turn whose private ask is past the tail');
+
+// The cut-mid-turn note keeps a fullwidth private block out, beside a plain one.
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('do \uFF1Cprivate\uFF1EGATESECRET\uFF1C/private\uFF1E and <private>x</private> now'), asst('working', 965_000, 'tool_use'));
+gate();
+ok(!readFileSync(join(dir, 'handoff.md'), 'utf8').includes('GATESECRET'), 'a fullwidth private block beside a plain one stays out of the compaction note');
+
 writeFileSync(tp, [user('plan it'), asst('planning', 700_000, 'tool_use')].join('\n') + '\n');
 const rp = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-1', source: 'compact' }), env }).toString();
 ok(!/cut mid-turn|plan it/.test(rp), `a private conversation cut mid-turn gets no recovery note (got ${rp.slice(0, 200)})`);

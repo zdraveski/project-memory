@@ -779,7 +779,7 @@ ok(hushed(dirN, 's0000000'), 'the private mark of a conversation 60 back still h
 
 // Round 3 (2026-10-27): what four reviewers found in 1.0.8's first fixes.
 {
-const { hushed, defuse, redact: red } = await import('./handoff-log.mjs');
+const { hushed, defuse, redact: red, own } = await import('./handoff-log.mjs');
 const { local } = await import('./store.mjs');
 const cwd3 = 'C:\\handoff-round3', dir3 = storeFor(home, cwd3);
 mkdirSync(dir3, { recursive: true });
@@ -929,6 +929,37 @@ writeFileSync(join(dir3, 'r3cjk001.jsonl'), [user('请修复（登录）问题�
 handoff({ cwd: cwd3, transcript_path: join(dir3, 'r3cjk001.jsonl'), session_id: 'r3cjk001' });
 const cjk = readFileSync(join(dir3, 'handoff.md'), 'utf8');
 ok((cjk.match(/\[r3cjk001\]/g) || []).length === 1 && cjk.includes('请修复（登录）问题，然后…'), `an ask keeps its own characters, and is not doubled (got ${cjk.split('[r3cjk001]').length - 1})`);
+
+// Third look. An ask with a plain <private> block and one in another spelling
+// keeps both out: normalized only when the raw text had no tag, the second leaked.
+c = case3([user('a \uFF1Cprivate\uFF1ESECRET1\uFF1C/private\uFF1E b <private>x</private> c'), asst('ok')]);
+ok(!/SECRET1/.test(c.all), 'a fullwidth private block beside a plain one stays out');
+c = case3([user('<pri\u200bvate>SECRET2</private> then <private>y</private> go'), asst('ok')]);
+ok(!/SECRET2/.test(c.all), 'a private block with a hidden character beside a plain one stays out');
+// A numeric password after -u is a password; only a numeric user:group is not.
+ok(!/123456/.test(red('curl -u admin:123456 https://x')) && !/987654321/.test(red('curl --user bob:987654321 x')) && red('docker run --user 0:0 img') === 'docker run --user 0:0 img',
+  'curl -u user:digits is redacted; a numeric user:group is kept');
+// A member named for its secret is a reference, not the secret.
+const refs = ['password = user.password', 'api_key: settings.SECRET_KEY', 'token = self.token', 'secret = req.body.secret', 'key: this.apiKey'];
+const refCut = refs.filter((s) => red(s) !== s);
+ok(!refCut.length, `a member named for its secret is kept (cut: ${refCut.join(' | ')})`);
+// "continue" twice in one minute, the first followed by a long result, then
+// another turn: both stay. Read again, the second replaced every line of its key.
+const t10 = join(dir3, 'r3cont01.jsonl');
+writeFileSync(t10, [user('continue', { ts: '2026-09-11T12:00:05Z' }), tool_(600_000), asst('step one')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: t10, session_id: 'r3cont01' });
+appendFileSync(t10, [user('continue', { ts: '2026-09-11T12:00:40Z' }), asst('step two')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: t10, session_id: 'r3cont01' });
+appendFileSync(t10, [user('next', { ts: '2026-09-11T12:01:30Z' }), asst('step three')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: t10, session_id: 'r3cont01' });
+const cont = readFileSync(join(dir3, 'handoff.md'), 'utf8');
+ok(/\[r3cont01\]: continue\n  \*\*did:\*\* step one/.test(cont) && /\[r3cont01\]: continue\n  \*\*did:\*\* step two/.test(cont), 'the same ask twice in a minute, after a long first turn, stays two entries');
+// Linear on hostile input: a key block's opener repeated, a command's args never closed.
+const t11 = Date.now();
+red('-----BEGIN ' + 'PRIVATE KEY '.repeat(22_000));
+case3([user('<command-name>/x</command-name>' + '<command-args>'.repeat(37_000)), asst('ok')]);
+ok(Date.now() - t11 < 2000, `hostile key blocks and command args are read in linear time (${Date.now() - t11} ms)`);
+
 
 // Second pass. A skipped turn in the same minute as the last one recorded:
 // read back only to that minute, it was lost.
