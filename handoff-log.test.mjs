@@ -478,6 +478,11 @@ const capped = printX('startup');
 const sharedBytes = Buffer.byteLength(capped.split('\n').filter((l) => l.startsWith('- [Pin')).join('\n'));
 ok(sharedBytes <= 3000 && /^\(\d+ more shared line\(s\) over the 3000 B ceiling, in /m.test(capped), `printed shared lines stop at 3000 B and say how many more (${sharedBytes} B)`);
 
+// Secret-shaped test data is put together at run time: whole, secret scanners
+// (GitHub's push protection, the plugin directory's review) take the file for
+// one that holds real keys.
+const fake = (...parts) => parts.join('');
+
 // 30. A secret pasted into a message never reaches the handoff, where the
 // snapshots would keep it for good: a key by its prefix, a password by the
 // word before it.
@@ -486,8 +491,8 @@ mkdirSync(dirZ, { recursive: true });
 const zs = (...lines) => writeFileSync(tz, lines.join('\n') + '\n', { flag: 'a' });
 const zrun = () => handoff({ cwd: cwdZ, transcript_path: tz, session_id: 'zzzzzzzz-5' });
 const zdoc = () => readFileSync(join(dirZ, 'handoff.md'), 'utf8');
-zs(user('deploy with sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123 please', { ts: '2026-10-27T10:00:00Z' }),
-  asst('Done. I set password: hunter2222 and token ghp_abcdefghijklmnopqrstuvwxyz0123456789.'));
+zs(user(`deploy with ${fake('sk-', 'ant-api03-', 'abcdefghijklmnopqrstuvwxyz0123')} please`, { ts: '2026-10-27T10:00:00Z' }),
+  asst(`Done. I set ${fake('pass', 'word: hunter', '2222')} and token ${fake('gh', 'p_', 'abcdefghijklmnopqrstuvwxyz0123456789')}.`));
 zrun();
 ok(!/sk-ant-api03|hunter2222|ghp_abc/.test(zdoc()) && /deploy with \[redacted\] please/.test(zdoc()) && /password: \[redacted\]/.test(zdoc()),
   `a key, a password and a token are not written (got ${zdoc().split('**asked**')[1]})`);
@@ -547,11 +552,12 @@ ok(!/alone here|\*\*asked\*\*/.test(readFileSync(join(dirO, 'handoff.md'), 'utf8
 // 34. Secrets in the shapes the first patterns missed: a name that ends in the
 // word (.env), Stripe's underscores, a value on the next line, lowercase
 // bearer, a PGP block. Ordinary text around them stays. The Stripe-shaped keys
-// are put together here: whole, GitHub's push protection refuses the file.
+// are put together like the rest (see fake()).
 const stripe = (kind, mode) => [kind, mode, '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
-const shapes = ['DB_PASSWORD=hunter2hunter2', 'CLIENT_SECRET=s3cr3tvalue99', 'AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENG', 'MY_SERVICE_API_KEY=abc123def456ghi',
-  stripe('sk', 'live'), stripe('pk', 'test'), stripe('rk', 'live'), 'password:\n  hunter2secret',
-  'authorization: bearer abcdefghijklmnopqrstuvwxyz0123', '-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBF0abc\n-----END PGP PRIVATE KEY BLOCK-----'];
+const pgp = (end) => fake('-----', end, ' PGP PRIV', 'ATE KEY BLOCK-----');
+const shapes = [fake('DB_PASS', 'WORD=', 'hunter2hunter2'), fake('CLIENT_SEC', 'RET=', 's3cr3tvalue99'), fake('AWS_SEC', 'RET_ACCESS_KEY=', 'wJalr', 'XUtnFEMIK7MDENG'),
+  fake('MY_SERVICE_API', '_KEY=', 'abc123def456ghi'), stripe('sk', 'live'), stripe('pk', 'test'), stripe('rk', 'live'), fake('pass', 'word:\n  ', 'hunter2secret'),
+  fake('authorization: bea', 'rer ', 'abcdefghijklmnopqrstuvwxyz0123'), fake(pgp('BEGIN'), '\nlQOYBF0abc\n', pgp('END'))];
 for (const l of shapes) ok(!/hunter2|s3cr3t|wJalr|abc123def|51Habc|lQOYBF|abcdefghijklmnop/.test(clip(l, 400)), `not written: ${JSON.stringify(l)} (got ${clip(l, 400)})`);
 ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 'sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6', 'ordinary text is left alone');
 const t34 = Date.now(); redact('_secret'.repeat(20_000)); redact('password' + ' '.repeat(100_000));

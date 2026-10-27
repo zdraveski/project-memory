@@ -193,11 +193,11 @@ ok(/cut mid-turn[^\n]*\[private\] unlock it\n  \*\*last said:\*\* \[private\]/.t
 
 // The answer to a private message is not shown as the next turn's last words.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
-write(user('<private>my SSN is 123-45-6789</private> fill the form'), asst('Filled the form with SSN 123-45-6789.', 500_000, 'end_turn'),
+write(user('<private>my locker code is 7319-2846</private> fill the form'), asst('Filled the form with locker code 7319-2846.', 500_000, 'end_turn'),
   user('now submit it'), asst('', 965_000, 'tool_use'), result('ok'));
 gate();
 const sdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
-ok(/cut mid-turn[^\n]*now submit it/.test(sdoc) && !/123-45-6789/.test(sdoc), `a private answer is not the next turn's last words (got ${sdoc})`);
+ok(/cut mid-turn[^\n]*now submit it/.test(sdoc) && !/7319-2846/.test(sdoc), `a private answer is not the next turn's last words (got ${sdoc})`);
 // A <private-session> typed in this very turn, before any Stop saved the mark.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
 write(user('<private-session> the merger target is Contoso'), asst('', 965_000, 'tool_use'), result('ok'));
