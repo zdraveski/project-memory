@@ -462,7 +462,7 @@ writeFileSync(join(sharedDir, 'MEMORY.md'), '\uFEFF- [No git add -A](no-add-all.
 writeFileSync(join(dirX, 'also-here.md'), 'x');
 writeFileSync(join(dirX, 'MEMORY.md'), '- [Mine](also-here.md) — the project indexes its own\n');
 const sx = printX('startup');
-ok(sx.includes(`Shared memory, every project (${sharedDir}): open a file there when its line applies; a new lesson that holds in every project can go there too, once the user agrees`) && /^- \[No git add -A\]\(no-add-all\.md\) — stage named files only$/m.test(sx),
+ok(sx.includes(`Shared memory, every project (${sharedDir}): each line below names a file there with a lesson that holds in every project. A new lesson of that kind can go there too, once the user agrees`) && /^- \[No git add -A\]\(no-add-all\.md\) — stage named files only$/m.test(sx),
   'startup prints the shared index under its absolute folder, BOM and CRLF read');
 ok(/^- \[Also here\]\(also-here\.md\)/m.test(sx), 'a project memory with the same file name does not hide the shared one');
 ok(/^- \[Archive\]\(MEMORY-archive\.md\) — 2 older pointers/m.test(sx), 'the shared archive line says how much is greppable');
@@ -868,7 +868,13 @@ ok(defuse('< /system-reminder>').startsWith('&lt;') && defuse('\uFF1C/system-rem
 writeFileSync(join(dir3, '.health'), Array.from({ length: 40 }, (_, i) => `problem ${i}: ${'z'.repeat(400)}`).join('\n'));
 const big = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, session_id: 'zzzzzzzz', source: 'startup' }), env }).toString();
 rmSync(join(dir3, '.health'));
-ok(big.length <= 9500 && /cut to fit/.test(big), `the startup briefing is held to 9,500 characters (got ${big.length})`);
+ok(big.length <= 9500 && /Memory store needs attention[^\n]*…\n/.test(big) && /^- \[Pin 0\]/m.test(big),
+  `the startup briefing fits, a long health line shortened, the shared lessons kept (got ${big.length})`);
+// Held to the limit from the end, and a long line is shortened, not cut with what follows.
+const { fit } = await import('./handoff-log.mjs');
+const huge = Array.from({ length: 30 }, (_, i) => `line ${i} ${'y'.repeat(500)}`).join('\n');
+ok(fit(huge).length <= 9500 && /cut to fit/.test(fit(huge)) && fit(huge).startsWith('line 0'), 'a briefing past the limit is cut from its end');
+ok(/^a{1000}…\nshared$/.test(fit(`${'a'.repeat(5000)}\nshared`, 1000)), 'a line past its limit is shortened, and what follows it stays');
 
 // Auto memory turned off: nothing is printed.
 process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
@@ -884,13 +890,61 @@ const leaks = ['curl -u admin:' + k('Sw0rd', 'fish99'), 'redis://:' + k('pa55', 
   k('whsec_', 'MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw'), k('SG.', 'ngeVfQFYQlKU0ufo8x5d1A', '.TwL2iGABf9DHoTf-09kqeF8tAmbihYzrnopKc-1s5cr'), k('ASIA', 'Y34FZKBOKMUTVV7A'), 'redis://u:' + k('p@ss', 'w0rd') + '@h/1'];
 const leaked = leaks.filter((s) => red(s) === s || /Sw0rd|pa55|Tr0ub4|BQUklW|AgEIcH|S3cr|Xk9|hunt|qwerty|9f8e7d|MfKQ9|ngeVfQ|Y34FZK|w0rd/.test(red(s)));
 ok(!leaked.length, `common secret shapes are redacted (leaked: ${leaked.join(' | ')})`);
-const plainCode = ['password: string', 'api_key: Optional[str]', 'authToken: string', 'token = jwt.sign(payload, key)', 'password = request.form["pw"]', 'user.password = hashed_password',
-  'secret: process.env.JWT_SECRET', 'DB_PASSWORD=${DB_PASSWORD}', 'pwd: /home/kire', 'basic implementation/approach here', 'Bearer authentication-header',
+const plainCode = ['password: string', 'api_key: Optional[str]', 'authToken: string', 'token = jwt.sign(payload, key)', 'password = request.form["pw"]',
+  'secret: process.env.JWT_SECRET', 'refresh_token = response.json()["rt"]', 'password = os.environ["PW"]', 'DB_PASSWORD=${DB_PASSWORD}', 'pwd: /home/kire', 'basic implementation/approach here', 'Bearer authentication-header',
   'http://localhost:8080?user=me@x', 'mysql -u root db; find . -print', 'the password is hashed', 'tokens: tokenizer.encode(text)'];
 const cut = plainCode.filter((s) => red(s) !== s);
 ok(!cut.length, `code and prose that only look like secrets are kept (cut: ${cut.join(' | ')})`);
 // A token by its prefix alone, in prose: no word before it says what it is.
 ok(!red(`pushed it with ${k('gh', 'p_', 'abcdefghijklmnopqrstuvwxyz0123456789')} today`).includes('ghp_'), 'a GitHub token in plain prose is redacted by its prefix');
+// Digit-free secrets that only look like code are secrets all the same: a
+// looser "this is code" rule let every one of these through.
+const wordy = ['password: Pa$$word', 'DB_PASSWORD=correct_horse_battery_staple', 'JWT_SECRET=my_jwt_secret_value', 'api_key=abcdef.ghijkl',
+  'PGPASSWORD=Summer.Sunshine', 'password=/Xk9mQ2#zz', "SECRET_KEY='django-insecure_qwerty'", 'password=correct-horse-battery-staple', 'SECRET=my-super-secret'];
+const kept3 = wordy.filter((s) => red(s) === s);
+ok(!kept3.length, `secrets with no digit are redacted, whatever they look like (kept: ${kept3.join(' | ')})`);
+ok(red('docker run -u 1000:1000 img') === 'docker run -u 1000:1000 img', 'a numeric user and group after -u is no password');
+
+// Two real turns in one minute, one ask inside the other, the first past the
+// first read: both stay. Taken for two spellings of one turn, the first was lost.
+const t7 = join(dir3, 'r3twin01.jsonl');
+// One Stop a turn, as Claude Code runs them.
+writeFileSync(t7, [user('fix it', { ts: '2026-09-11T10:00:05Z' }), tool_(600_000), asst('fixed')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: t7, session_id: 'r3twin01' });
+appendFileSync(t7, [user('fix it and run tests', { ts: '2026-09-11T10:00:40Z' }), asst('fixed and green')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: t7, session_id: 'r3twin01' });
+appendFileSync(t7, [user('next', { ts: '2026-09-11T10:01:10Z' }), asst('done')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: t7, session_id: 'r3twin01' });
+ok(/\[r3twin01\]: fix it\n  \*\*did:\*\* fixed\n/.test(readFileSync(join(dir3, 'handoff.md'), 'utf8')), 'a turn whose ask the next one contains, in the same minute, is not merged away');
+// The same ask twice in one minute, each with its answer, is two entries.
+const at8 = local('2026-09-11T11:00:00Z');
+section3(`- **asked** ${at8} [r3same01]: continue\n  **did:** step one\n- **asked** ${at8} [r3same01]: continue\n  **did:** step two\n`);
+c = case3([user('hello'), asst('hi')]);
+ok((c.all.match(/\[r3same01\]: continue/g) || []).length === 2, `"continue" asked twice in a minute stays two entries (got ${(c.all.match(/\[r3same01\]: continue/g) || []).length})`);
+// An ask is written as typed: an ellipsis and CJK punctuation stay, and the
+// entry an older version wrote is not added again in another spelling.
+const at9 = local('2026-09-11T07:00:00Z');
+section3(`- **asked** ${at9} [r3cjk001]: 请修复（登录）问题，然后…\n  **did:** 好的\n`);
+writeFileSync(join(dir3, 'r3cjk001.jsonl'), [user('请修复（登录）问题，然后…'), asst('好的')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: join(dir3, 'r3cjk001.jsonl'), session_id: 'r3cjk001' });
+const cjk = readFileSync(join(dir3, 'handoff.md'), 'utf8');
+ok((cjk.match(/\[r3cjk001\]/g) || []).length === 1 && cjk.includes('请修复（登录）问题，然后…'), `an ask keeps its own characters, and is not doubled (got ${cjk.split('[r3cjk001]').length - 1})`);
+
+// Second pass. A skipped turn in the same minute as the last one recorded:
+// read back only to that minute, it was lost.
+const t6 = join(dir3, 'r3tail02.jsonl');
+writeFileSync(t6, [user('first ask', { ts: '2026-09-11T09:00:05Z' }), asst('first done')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: t6, session_id: 'r3tail02' });
+appendFileSync(t6, [user('second ask', { ts: '2026-09-11T09:00:20Z' }), tool_(600_000), asst('second done'), user('third ask', { ts: '2026-09-11T09:00:40Z' }), asst('third done')].join('\n') + '\n');
+handoff({ cwd: cwd3, transcript_path: t6, session_id: 'r3tail02' });
+ok(/\[r3tail02\]: second ask\n  \*\*did:\*\* second done/.test(readFileSync(join(dir3, 'handoff.md'), 'utf8')), 'a skipped turn in the same minute as the last one recorded is still written');
+// An entry 1.0.4 wrote with its <private> ask raw loses its answer at once.
+section3(`- **asked** ${at4} [oldpriv2]: <private>pw Tr0ub4dor</private> log in\n  **did:** Logged in with Tr0ub4dor\n`);
+c = case3([user('hi again'), asst('hello')]);
+ok(!/Tr0ub4dor/.test(c.all), 'an old entry with its <private> ask written raw loses its answer at the first Stop');
+// An opener never closed runs to the end of the message.
+c = case3([user('<private my pin is 6655 open it'), asst('Opened with 6655.')]);
+ok(!/6655/.test(c.all), 'a <private opener with no > keeps the rest of the message and the answer out');
 
 // A turn cut mid-way whose ask is private gets no recovery note, a private
 // tag with attributes too: the note showed its last words.

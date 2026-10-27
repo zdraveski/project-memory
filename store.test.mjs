@@ -189,6 +189,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   writeFileSync(join(repo, '.git', 'worktrees', 'wt1', 'commondir'), '../..\n');
   const wt = join(home, 'work', 'repo-wt1'); mkdirSync(wt, { recursive: true });
   writeFileSync(join(wt, '.git'), `gitdir: ${join(repo, '.git', 'worktrees', 'wt1')}\n`);
+  writeFileSync(join(repo, '.git', 'worktrees', 'wt1', 'gitdir'), `${join(wt, '.git').replace(/\\/g, '/')}\n`);   // git writes it with forward slashes
   const subm = join(repo, 'vendor', 'lib'); mkdirSync(join(repo, '.git', 'modules', 'lib'), { recursive: true }); mkdirSync(subm, { recursive: true });
   writeFileSync(join(subm, '.git'), `gitdir: ../../.git/modules/lib\n`);
   ok(repoRoot(repo) === repo && repoRoot(sub) === repo && repoRoot(wt) === repo && repoRoot(subm) === subm && repoRoot(join(home, 'work')) === null,
@@ -215,6 +216,32 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   try { rooted = projectsRoot(); process.env.CLAUDE_CODE_PROJECT_DIR_NAME = 'shared-name'; named = storeOf({ cwd: sub }); }
   finally { delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; }
   ok(rooted === join(cfg, 'projects') && named === join(cfg, 'projects', 'shared-name', 'memory'), `CLAUDE_CONFIG_DIR and CLAUDE_CODE_PROJECT_DIR_NAME are followed (got ${rooted} | ${named})`);
+  // A .git file is followed only as Claude Code follows it: one pointing into
+  // another project's .git, with no worktree there naming it back, is its own.
+  const victim = join(home, 'work', 'victim'); mkdirSync(join(victim, '.git'), { recursive: true });
+  const lure = join(home, 'work', 'unpacked'), gd = join(lure, 'gd'); mkdirSync(gd, { recursive: true });
+  writeFileSync(join(lure, '.git'), 'gitdir: gd\n'); writeFileSync(join(gd, 'commondir'), `${join(victim, '.git')}\n`);
+  ok(repoRoot(lure) === lure, `a .git file that does not check out leads nowhere else (got ${repoRoot(lure)})`);
+  // Nothing it reads throws: a commondir that is a folder.
+  const odd = join(home, 'work', 'odd'), ogd = join(repo, '.git', 'worktrees', 'odd'); mkdirSync(join(ogd, 'commondir'), { recursive: true }); mkdirSync(odd, { recursive: true });
+  writeFileSync(join(odd, '.git'), `gitdir: ${ogd}\n`);
+  let thrown = null; try { repoRoot(odd); } catch (e) { thrown = e; }
+  ok(!thrown, `an unreadable worktree file never throws (got ${thrown?.message})`);
+  // A bare repository's worktree shares the bare folder's memory.
+  const bare = join(home, 'work', 'proj.bare'), bwt = join(home, 'work', 'proj-main'), bgd = join(bare, 'worktrees', 'main');
+  mkdirSync(bgd, { recursive: true }); mkdirSync(bwt, { recursive: true });
+  writeFileSync(join(bwt, '.git'), `gitdir: ${bgd}\n`); writeFileSync(join(bgd, 'commondir'), '../..\n'); writeFileSync(join(bgd, 'gitdir'), `${join(bwt, '.git')}\n`);
+  ok(repoRoot(bwt) === bare, `a bare repository's worktree is the bare folder's (got ${repoRoot(bwt)})`);
+  // CLAUDE_CODE_PROJECT_DIR_NAME as it is, `_` and all; any other name ignored.
+  process.env.CLAUDE_CONFIG_DIR = cfg;
+  let under, ignored;
+  try { process.env.CLAUDE_CODE_PROJECT_DIR_NAME = 'my_proj'; under = storeOf({ cwd: sub }); process.env.CLAUDE_CODE_PROJECT_DIR_NAME = 'a/b'; ignored = storeOf({ cwd: sub }); }
+  finally { delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; }
+  ok(under === join(cfg, 'projects', 'my_proj', 'memory') && ignored === join(cfg, 'projects', slug(repo), 'memory'), `a project folder name is used as it is, or ignored (got ${under} | ${ignored})`);
+  // At a session's start its transcript may record no cwd yet: the payload's is where it started.
+  const fresh = join(projectsRoot(), slug(sub), 'new.jsonl');
+  writeFileSync(fresh, JSON.stringify({ type: 'summary' }) + '\n');
+  ok(storeOf({ cwd: sub, transcript_path: fresh }) === repoStore, 'with no cwd recorded yet, the payload\'s cwd finds the repository');
   for (const [v, want] of [['1', true], ['true', true], ['0', false], ['', false]]) {
     process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = v;
     try { ok(memoryOff() === want, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=${JSON.stringify(v)} is ${want ? 'off' : 'on'}`); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }

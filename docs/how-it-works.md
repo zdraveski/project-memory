@@ -33,9 +33,12 @@ replaced by `-`. Auto memory lives in its `memory/` subfolder. For memory, a
 project is a git repository: a conversation started in a subfolder or a
 worktree uses the repository's folder, though its transcript sits in the
 folder named for where it started. project-memory finds the repository the
-same way, from the folder the conversation started in. With
-`CLAUDE_CONFIG_DIR` set, all of this is under that folder instead of
-`~/.claude`, and `CLAUDE_CODE_PROJECT_DIR_NAME` names the project folder.
+same way, from the folder the conversation started in, and follows a
+worktree's `.git` file only when the main repository's worktree record names
+it back, as Claude Code does. With `CLAUDE_CONFIG_DIR` set, all of this is
+under that folder instead of `~/.claude`, and a plain name in
+`CLAUDE_CODE_PROJECT_DIR_NAME` (up to 64 letters, digits, `-` and `_`) names
+the project folder.
 
 | Where | What |
 |---|---|
@@ -89,8 +92,10 @@ how many more). A slash command is recorded as you typed it, with its
 arguments. The answer is the reply Claude Code hands the Stop hook, since the
 transcript file can lag behind it. A project gets its `memory/` folder for
 this if Claude hasn't saved a note there yet. Entries carry your local time
-and are ordered by it: after you change time zones, the order can be off
-until the clock passes the older entries.
+and are ordered by it. After you move west, new turns rank before the newest
+entries and aren't kept until your clock passes them, up to the hours you
+moved; after you move east, recent turns can be listed twice until newer ones
+replace them.
 
 Before any of it is written, secrets are taken out: text between `<private>`
 and `</private>`, private key blocks (PGP's too), keys and tokens known by
@@ -109,8 +114,10 @@ server is …", "the api key is …", and a value after `password`, `pass`,
 `account_key`, `private_key`, `key-data` or `pwd`, also inside a longer name
 (`DB_PASSWORD=`, `DB_PASS=`, `PGPASSWORD=`, `dbPassword`, `clientSecret`) and
 with the value on the next line. A value that is plainly code stays: a type
-(`password: string`), a call or a member (`jwt.sign(…`, `process.env.X`), a
-`${…}` reference, a path. A bare `token` is left alone, so a count like
+(`password: string`), a reference (`${…}`, `$(…)`, `process.env.X`), a call or
+an index with no digit in it (`jwt.sign(…`, `request.form[…`), a path of two
+parts or more. Anything else after those words is redacted, even with no digit
+(`correct_horse_battery_staple`). A bare `token` is left alone, so a count like
 `input_tokens: 863324` stays. No list of patterns finds every secret: anything
 else goes between `<private>` tags. The same applies to the startup briefing
 and the compaction recovery note.

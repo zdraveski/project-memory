@@ -717,6 +717,42 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
   try { stop(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   ok(runLines().length === before, 'with auto memory off the Stop hook does nothing');
+
+  // A record of where you left off that cannot be saved (here the store's
+  // folder is a file, so its lock cannot be taken) is said at the next start,
+  // and the next save that works clears it. Swallowed, it was silence.
+  const broken = join(root, 'proj-broken');
+  mkdirSync(broken, { recursive: true });
+  writeFileSync(join(broken, 'memory'), 'not a folder');
+  const tb = join(broken, 's.jsonl');
+  writeFileSync(tb, [JSON.stringify({ type: 'user', timestamp: '2026-10-27T10:00:00Z', message: { content: [{ type: 'text', text: 'save me' }] } }),
+    JSON.stringify({ type: 'assistant', timestamp: '2026-10-27T10:00:05Z', message: { content: [{ type: 'text', text: 'saved' }] } })].join('\n') + '\n');
+  const stopB = () => spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ transcript_path: tb, session_id: 'brkn' }) });
+  stopB();
+  const said = execFileSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: tb, session_id: 'other', source: 'startup' }), env }).toString();
+  ok(existsSync(join(root, '.handoff-failed')) && /could not be saved/.test(said), `a handoff that cannot be saved is said at the next start (got ${said.slice(0, 200)})`);
+  rmSync(join(broken, 'memory'));
+  mkdirSync(join(broken, 'memory'));
+  stopB();
+  ok(!existsSync(join(root, '.handoff-failed')), 'and the next save that works clears it');
+
+  // A history to adopt (its own .gitignore, no mark yet) with a stale
+  // config.lock: swept first, then adopted. Adopted first, `git config` was
+  // refused, read as busy, and the history never started.
+  git('config', '--unset', 'project-memory.snapshots');
+  writeFileSync(join(gitDir, 'config.lock'), '');
+  utimesSync(join(gitDir, 'config.lock'), new Date(Date.now() - 11 * 60000), new Date(Date.now() - 11 * 60000));
+  note('proj-one', 'r3d');
+  r = plain();
+  ok(/^\[project-memory\]/m.test(readFileSync(join(gitDir, 'config'), 'utf8')) && /memory snapshot: committed/.test(r.stdout), `a stale config.lock does not stop the adoption (got ${r.stdout.trim().split('\n').at(-1)})`);
+
+  // A heading underlined with seven `=` is no merge conflict.
+  const head7 = fresh3('proj-head7');
+  noteIn(head7, 'n7');
+  writeFileSync(join(head7, 'MEMORY.md'), 'Index\n=======\n\n- [N7](n7.md) — n7\n');
+  utimesSync(join(head7, 'MEMORY.md'), tenMin, tenMin);
+  tierOne(head7);
+  ok(!/merge-conflict/.test(existsSync(join(head7, '.health')) ? readFileSync(join(head7, '.health'), 'utf8') : ''), 'a heading underlined with ======= is not taken for a merge conflict');
 }
 
 rmSync(home, { recursive: true, force: true });

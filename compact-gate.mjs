@@ -105,7 +105,7 @@ function walk(raw) {
     if (!line.startsWith('{')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
     const m = r.message, c = Array.isArray(m?.content) ? m.content : [];
-    const t = norm(text(r)).trim();
+    const t = text(r).trim();   // as typed; normalized only to find the private tags
     // A record queued while Claude worked: how a task's end arrives now (read
     // only from user records, every finished task stayed "still running", and
     // the note said not to rerun it), and a message the user typed meanwhile:
@@ -121,11 +121,12 @@ function walk(raw) {
       // "none" had the model rerun it after the compaction.
       // Its answer too: the last one said belonged to the turn before, and
       // after a private ask it was shown under the next one.
-      const ask = prompt(r, t);
-      if (ask) { s.ask = ask; s.raw = unwrap(t); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
+      let ask = prompt(r, t);
+      if (ask && !PRIVATE.test(ask) && PRIVATE.test(norm(ask))) ask = norm(ask);
+      if (ask) { s.ask = ask; s.raw = norm(unwrap(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
       // Not in what the harness quotes: an agent's report quoting the tag hid
       // the last words said.
-      else if (/<\s*private/i.test(unquote(unwrap(t)))) s.hidden = true;
+      else if (/<\s*private/i.test(unquote(unwrap(norm(t))))) s.hidden = true;
       // A launch is read from the result of a Bash or Agent call only: from any
       // tool result, a fetched page that spelt one out put its words, and any
       // instruction in them, into the note printed after the compaction.
@@ -175,7 +176,7 @@ function note(payload, s) {
   const t = tag(payload.session_id);
   // Tagged, so a parallel session's note is never taken for this one's.
   return `- **cut mid-turn**${t ? ` [${t}]` : ''} ${local()} at ${Math.round(s.ctx / 1000)}k tokens, asked ${s.at}: ${clip(s.ask, 240)}\n` +
-    `  **last said:** ${s.hidden ? '[private]' : answer(s.raw || s.ask, s.said, 400) || '(nothing yet: the turn was running tools)'}\n  **still running (read their output files, do not rerun):** ${running}\n  **edited this turn:** ${edited}`;
+    `  **last said:** ${s.hidden ? '[private]' : answer(s.raw || s.ask, s.said, 400) || '(nothing yet: the turn was running tools)'}\n  **still running (each output file holds its result; a rerun repeats the work):** ${running}\n  **edited this turn:** ${edited}`;
 }
 
 function inflight(payload, s) {
@@ -257,7 +258,6 @@ export function nudge(payload) {
   // then have passed with no memory written (found by the second audit).
   if (payload.hook_event_name !== 'Stop' || payload.stop_hook_active || !payload.transcript_path || !existsSync(payload.transcript_path)) return null;
   const s = state(payload.transcript_path, { ask: false });
-  if (secret(payload, s)) return null;
   // The conversation's tag, as everywhere else: its full id named a file.
   const id = tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''));
   const mine = join(NUDGES(), id);
@@ -286,6 +286,11 @@ export function nudge(payload) {
   }
   // Same cycle, the context only grown: the nudge was already given.
   if (given && s.ctx >= given) return null;
+  // Private, read whole and only now: from the tail alone, a <private> ask at
+  // the start of a long turn was missed, and so was a private message queued
+  // during it.
+  const full = state(payload.transcript_path);
+  if (secret(payload, full) || full.hidden) return null;
   if (!arm(s.ctx)) return null;
   const pct = Math.round(100 * s.ctx / WINDOW);
   // Feedback, not a block: the conversation goes on so Claude can act on it,

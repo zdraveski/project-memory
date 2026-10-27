@@ -13,14 +13,15 @@ months of use, Claude Code's own documentation, and a privacy red team.
   it wrote its record to a folder Claude Code never loads.
 - While auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, the
   hooks do nothing, and `doctor` says so.
-- `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_PROJECT_DIR_NAME` are followed. Before,
-  with them set, nothing was saved and nothing said why.
+- `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_PROJECT_DIR_NAME` are followed, as
+  Claude Code takes them. Before, with them set, nothing was saved and nothing
+  said why.
 - The reminder before a compaction is sent as feedback, so it no longer shows
   as a hook error. It reads the window sizes as Claude Code does: `200k` and
   `1M` work, and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`,
   `CLAUDE_CODE_DISABLE_1M_CONTEXT` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` count.
-  On a 400K model, the compaction gate no longer asks to wait past the model's
-  limit.
+  With `CLAUDE_CODE_MAX_CONTEXT_TOKENS` set (a gateway or a custom model), the
+  compaction gate no longer asks to wait past that window.
 - Finished background tasks leave the "still running" list. Claude Code now
   reports a task's end in a record the list never read, so after a
   compaction Claude was told not to rerun tasks that had already finished.
@@ -47,7 +48,7 @@ months of use, Claude Code's own documentation, and a privacy red team.
   note. The reminder had Claude write the private work into `handoff.md`.
 - `<private>` and `<private-session>` work in more spellings: self-closed,
   with spaces, fullwidth, with hidden characters, nested, inside another tag,
-  and in a message typed while Claude is working. A prompt that mentions
+  never closed, and in a message typed while Claude is working. A prompt that mentions
   `<command-name>` is no longer taken for a slash command, which turned both
   off. An agent's report quoting the tags no longer marks a conversation.
 - Over a hundred common secret shapes were tested. Newly recognized: PyPI,
@@ -95,6 +96,19 @@ months of use, Claude Code's own documentation, and a privacy red team.
   start. Merge-conflict markers in the table of contents do.
 - Promoting a lesson into a full shared notebook says it may move to the
   archive, and how to keep it in view.
+- A record of where you left off that could not be saved (a notebook folder
+  that takes no new files) is reported at the next start, not skipped in
+  silence.
+- Two windows committing or starting the history at the same moment, and a
+  restore while another window saves, no longer fail.
+- A health warning that names hundreds of files is shortened, so the startup
+  briefing keeps the shared lessons after it.
+
+**Going back to 1.0.7**
+- It works, with two limits until newer exchanges replace the old ones: some
+  turns are listed twice, and 1.0.7 records secrets that 1.0.8 would replace
+  with `[redacted]`. 1.0.7 also puts the record of where you left off back in
+  the history.
 - Snapshots no longer use your own git settings. With commit signing or a
   global hooks folder set, every snapshot failed, and your hooks ran on the
   memory history. Long paths on Windows are saved too.

@@ -43,7 +43,7 @@ export const pluginRoot = () => installPath() && (marketplace()?.source === 'dir
 export const deployedCommit = (dir) => json(join(dir, '.deployed.json'))?.commit ?? null;
 
 // `raw` (store.mjs) is what replaceIfUnchanged compares against; `read` is for parsing.
-const read = (p) => { try { return readFileSync(p, 'utf8').replace(/^﻿/, ''); } catch { return null; } };
+const read = (p) => { try { return readFileSync(p, 'utf8').replace(/^\uFEFF/, ''); } catch { return null; } };
 // A BOM before the first line hid its pointer: promote left that line behind.
 const target = (line) => (line.replace(/^\uFEFF/, '').match(POINTER) || [])[1];
 const targets = (text) => (text ?? '').split(/\r?\n/).map(target).filter((t) => t && t !== ARCHIVE);
@@ -243,7 +243,9 @@ export function restore(dir, file, { rev, force = false } = {}) {
   let from = rev, text;
   try {
     if (!from) {
-      try { git('cat-file', '-e', `HEAD:${at}`); from = 'HEAD'; }
+      // HEAD read once: a snapshot committed between two reads of it (another
+      // window deleting the note) failed the restore.
+      try { const head = git('rev-parse', '--short', 'HEAD').trim(); git('cat-file', '-e', `${head}:${at}`); from = head; }
       catch { const gone = git('log', '-1', '--format=%h', '--diff-filter=D', '--', at).trim(); from = gone ? `${gone}^` : 'HEAD'; }
     }
     try { text = git('show', `${from}:${at}`); }

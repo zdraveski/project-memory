@@ -280,6 +280,9 @@ hushed(dirP, 'pppppppp', true);
 ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-1' }) === null, 'a conversation marked private gets no nudge');
 writeFileSync(tp, [user('<private>card 4242</private> plan it'), asst('planning', T + 80_000, 'end_turn')].join('\n') + '\n');
 ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'qqqqqqqq-1' }) === null, 'nor does a turn whose ask is private');
+// Nor one whose private ask is further back than the tail read: the whole turn is read.
+writeFileSync(tp, [user('<private>card 4242</private> plan it'), result('z'.repeat(300_000)), asst('planning', T + 100_000, 'end_turn')].join('\n') + '\n');
+ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'rrrrrrrr-1' }) === null, 'nor a long turn whose private ask is past the tail');
 writeFileSync(tp, [user('plan it'), asst('planning', 700_000, 'tool_use')].join('\n') + '\n');
 const rp = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-1', source: 'compact' }), env }).toString();
 ok(!/cut mid-turn|plan it/.test(rp), `a private conversation cut mid-turn gets no recovery note (got ${rp.slice(0, 200)})`);

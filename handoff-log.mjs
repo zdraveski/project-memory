@@ -127,16 +127,18 @@ export const prompt = (r, s) => (r.isMeta || r.isCompactSummary ? '' : command(s
 // A <private> block's opener, and the <private-session> mark: in any case,
 // with spaces or attributes, self-closed, or as private_session. Only the
 // exact forms counted, and `<private-session/>` recorded the conversation.
-export const PRIVATE = /<\s*private(?![-_\w])[^>]*>/i;
-export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]*>/i;
+// An opener never closed with `>` runs to the end: `<private my pin` was saved.
+export const PRIVATE = /<\s*private(?![-_\w])(?:[^>]*>|[^>]*$)/i;
+// Bounded: with no `>`, 256 KB of openers took 5 s a test.
+export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 // Text read the same in any width and without hidden characters: a fullwidth
 // ＜private＞, or a zero-width space inside the tag, kept what it should hide.
-export const norm = (s) => s.normalize('NFKC').replace(/[​-‍⁠﻿]/g, '');
+export const norm = (s) => s.normalize('NFKC').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
 // The harness's blocks that quote others: an agent's message, a task's end, a
 // command's output. What they quote is not the user's, and a red-team report
 // quoting <private-session> marked the conversation that read it private.
 // By index, at most 50 blocks: linear on any input.
-const QUOTES = /<(task-notification|agent-message|teammate-message|local-command-std(?:out|err)|bash-std(?:out|err))\b[^>]{0,2000}>/gi;
+const QUOTES = /<(task-notification|agent-message|teammate-message|local-command-std(?:out|err)|bash-std(?:out|err))\b[^>]{0,200}>/gi;
 export const unquote = (s) => {
   let out = '', i = 0;
   for (let n = 0; n < 50; n++) {
@@ -175,14 +177,18 @@ function turns(raw) {
         pending.changed.push(String(f));
       }
     }
-    const t = norm(text(r)).trim();
-    const ask = r.type === 'user' ? prompt(r, t) : '';
+    // Read as typed; normalized (fullwidth, hidden characters) only to find the
+    // private tags. Written normalized, `…` and CJK punctuation became ASCII,
+    // and every entry an older version wrote was added again beside it.
+    const t = text(r).trim(), n = norm(t);
+    let ask = r.type === 'user' ? prompt(r, t) : '';
+    if (ask && !PRIVATE.test(ask) && PRIVATE.test(norm(ask))) ask = norm(ask);
     // What the user typed, tags and all: a slash command's arguments, a
     // wrapper own() strips, a message queued while Claude worked (an
     // attachment record, read by nothing before). Not what the harness quotes
     // (an agent's report or a task's end can quote the mark, and marked the
     // conversation private), nor a record it added, nor a compaction summary.
-    const mine = r.type === 'user' ? unquote(unwrap(t)) : '';
+    const mine = r.type === 'user' ? unquote(unwrap(n)) : '';
     const typed = r.type === 'user' && !r.isMeta && !r.isCompactSummary ? mine
       : r.type === 'attachment' && r.attachment?.type === 'queued_command' ? unquote(norm(String(r.attachment.prompt ?? ''))) : '';
     // Marked whether or not a reply follows: a turn of tool calls, or one
@@ -193,7 +199,7 @@ function turns(raw) {
     if (r.type === 'attachment' && /^hook_(?:additional_context|blocking_error)$/.test(r.attachment?.type ?? '')
       && nudged(JSON.stringify(r.attachment.content ?? r.attachment.blockingError ?? ''))) { if (pending) pending.frozen = true; continue; }
     if (!t && !ask && !typed) continue;
-    if (ask) pending = { at: local(r.timestamp), ask, raw: unwrap(t), did: '', changed: [] };
+    if (ask) pending = { at: local(r.timestamp), ask, raw: unwrap(n), did: '', changed: [] };
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
     else if ((r.type === 'user' || typed) && pending && (nudged(t) || /<\s*private/i.test(typed || mine))) pending.frozen = true;
@@ -210,15 +216,19 @@ function turns(raw) {
 // for good. A key or token is known by its issuer's prefix, or by the word
 // before it; anything in <private>...</private> goes whole. Before clipping,
 // so no half of a key is left behind.
-// A value that is code, not a secret: one with no digit that names a type,
-// a member or a call (`string`, `request.form[`, `hashed_password`), a
-// template, a path. 25 of 35 ordinary lines of code and config were cut.
-const code = (v) => /^(?:\$[{(]|\/|~\/|[A-Za-z]:[\\/])/.test(v) || (!/\d/.test(v)
-  && (/^[A-Za-z_$][\w$-]*[.([_$]/.test(v) || /^(?:string|number|boolean|str|int|bytes|any|unknown|null|undefined|none|true|false|object|bool|float|char|optional|secretstr)$/i.test(v)));
+// A value that is plainly code, not a secret: a type (`password: string`),
+// a reference (`${DB_PASSWORD}`, `$(cat f)`, `process.env.X`), a call or an
+// index with no digit (`jwt.sign(payload`, `request.form[`), a path of two
+// parts or more. 25 of 35 ordinary lines were cut; but a value with a `_` or
+// a `.` in it is no code (correct_horse_battery_staple, Summer.Sunshine), and
+// a looser rule let those through.
+const code = (v) => /^\$[{(]|^(?:process\.env|os\.environ|os\.getenv|System\.getenv|ENV\[)/.test(v)
+  || /^(?:string|number|boolean|str|int|bytes|any|unknown|null|undefined|none|true|false|object|bool|float|char|optional|secretstr)$/i.test(v)
+  || (!/\d/.test(v) && (/^[A-Za-z_$][\w$.]*[([]/.test(v) || /^(?:\/|~\/|[A-Za-z]:[\\/])[^\s/\\]+[\\/]/.test(v)));
 const SECRETS = [
   // From the first opener to the last closer: nested, the text after the inner
   // closer was saved. Self-closed or unclosed, to the end.
-  [/<\s*private(?![-_\w])[^>]*>(?:[\s\S]*<\s*\/\s*private\s*>|[\s\S]*)/gi, '[private]'],
+  [/<\s*private(?![-_\w])(?:[^>]*>(?:[\s\S]*<\s*\/\s*private\s*>|[\s\S]*)|[^>]*$)/gi, '[private]'],
   // PGP's says PRIVATE KEY BLOCK.
   [/-----BEGIN [A-Z ]*PRIVATE KEY[A-Z ]*-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY[A-Z ]*-----|$)/g, '[redacted]'],
   // sk-... (Anthropic, OpenAI); sk_live_, pk_test_, rk_live_ (Stripe).
@@ -243,8 +253,8 @@ const SECRETS = [
   // user), one with an @ in it (to the last one). Not a query: a port
   // before `?user=me@x` was cut as a password.
   [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)[^\s/?#]{1,200}@/gi, '$1[redacted]@'],
-  // curl -u user:it, --user user:it.
-  [/((?:^|\s)(?:-u|--user)[ =]+[^\s:'"]{1,100}:)[^\s'"]{1,200}/g, '$1[redacted]'],
+  // curl -u user:it, --user user:it. Not `docker run -u 1000:1000`, a user and group.
+  [/((?:^|\s)(?:-u|--user)[ =]+[^\s:'"]{1,100}:)(?!\d+(?![^\s'"]))[^\s'"]{1,200}/g, '$1[redacted]'],
   // --password it; docker login, sshpass and twine take it as -p it.
   [/(--password[ =]|\b(?:docker\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+)(?!-)[^\s"']{3,}/g, '$1[redacted]'],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
@@ -306,22 +316,26 @@ export const plain = (s) => s.split('\n')
 
 // One turn can be megabytes of tool output, so a fixed tail read nothing on
 // 65 of 76 transcripts here. Grow until the latest prompt is inside it, and
-// back to `since`, the last turn the section holds for this session: a turn
+// back to `since`, the last turn the section holds for this session (its time
+// and ask; by the minute alone, a turn skipped in that same minute was lost): a turn
 // skipped while another hook held the store, then pushed out of the tail by a
-// long next turn, was never written. Bounded: 32 MB.
-function latest(path, since = '') {
+// long next turn, was never written. Bounded: about 32 MB (2 ** 25 let it grow
+// once more, to 128 MB).
+function latest(path, since = null) {
   for (let bytes = TAIL; ; bytes *= 4) {
     const { text: raw, whole } = readTail(path, bytes);
     const got = turns(raw);
-    if ((got.length && (!since || got[0].at <= since)) || whole || bytes >= 32 * 2 ** 20) return got;
+    const back = !since || got[0]?.at < since.at || got.some((t) => t.at === since.at && clip(t.ask, ASK) === since.ask);
+    if ((got.length && back) || whole || bytes >= 32e6) { got.whole = whole; return got; }
   }
 }
 
 // An entry whose ask is private shows no answer and no files, whoever wrote
 // it: one written before 1.0.5 kept an answer that repeated the secret.
 const render = (t) => {
-  const hid = t.ask.includes('[private]');
-  return `- **asked** ${t.at}${t.s ? ` [${t.s}]` : ''}: ${clip(t.ask, ASK)}\n  **did:** ${hid ? '[private]' : clip(t.did, DID)}`
+  // As shown: 1.0.4 wrote the ask raw, <private> and all.
+  const ask = clip(t.ask, ASK), hid = ask.includes('[private]');
+  return `- **asked** ${t.at}${t.s ? ` [${t.s}]` : ''}: ${ask}\n  **did:** ${hid ? '[private]' : clip(t.did, DID)}`
     + (t.changed && !hid ? `\n  **changed:** ${clip(t.changed, DID)}` : '');
 };
 // The newest n of a list, and how many older ones it leaves out.
@@ -366,8 +380,8 @@ const FRONT = `---\nname: handoff\ndescription: "The rolling handoff"\nmetadata:
 
 // What handoff.md should say, from what it says now and this turn's entries:
 // the new text, 'unchanged', or null when there is nothing to write.
-function build(raw, fresh, drop = null, me = fresh[0]?.s) {
-  let doc = (raw ?? '').replace(/^﻿/, '');
+function build(raw, fresh, drop = null, me = fresh[0]?.s, whole = false) {
+  let doc = (raw ?? '').replace(/^\uFEFF/, '');
   // A file emptied by a failed edit has no `tier: hot`, so tiering would age
   // the handoff out of the index a week later.
   if (!doc.startsWith('---')) doc = FRONT + doc;
@@ -390,11 +404,18 @@ function build(raw, fresh, drop = null, me = fresh[0]?.s) {
   // is the turn re-read when the session and minute match and one ask holds
   // the other. Kept beside it, an upgrade doubled every resumed turn.
   const ask = (t) => clip(t.ask, ASK).replace(/…$/, '');
-  const twin = (x, y) => x.s === y.s && x.at === y.at && !!ask(x) && !!ask(y) && (ask(x).includes(ask(y)) || ask(y).includes(ask(x)));
-  // And one spelling twice: a window still on 1.0.7 keyed its entries raw,
-  // matched none of the escaped ones, and added each again every Stop.
-  const last = new Map(have.map((t) => [key(t), t]));
-  const kept = have.filter((t) => last.get(key(t)) === t && !seen.has(key(t)) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop && !fresh.some((f) => twin(f, t)));
+  // Only over a minute the read covered whole (the file, or a turn of this
+  // session before it): then every real turn of that minute is fresh, and a
+  // leftover is an old spelling. Not so, "fix it" was taken for an old
+  // spelling of "fix it and run tests" a minute later, and lost.
+  const covered = (t) => whole || fresh.some((f) => f.s === t.s && f.at < t.at);
+  const twin = (x, y) => x.s === y.s && x.at === y.at && covered(y) && !!ask(x) && !!ask(y) && (ask(x).includes(ask(y)) || ask(y).includes(ask(x)));
+  // And one entry twice: a window still on 1.0.7 keyed its entries raw,
+  // matched none of the escaped ones, and added each again every Stop. The
+  // whole entry, answer and all: "continue" asked twice in a minute is two.
+  const whole1 = (t) => `${key(t)}\n${clip(t.did, DID)}\n${t.changed}`;
+  const last = new Map(have.map((t) => [whole1(t), t]));
+  const kept = have.filter((t) => last.get(whole1(t)) === t && !seen.has(key(t)) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop && !fresh.some((f) => twin(f, t)));
   const merged = keep([...kept, ...fresh], me);
   if (!merged.length && !(drop && has)) return null;
   // An entry kept from the file is rendered once, for the comparison and the
@@ -446,8 +467,8 @@ export function handoff(input) {
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);
   // Read without the lock: a hint for how far back to read, nothing more.
-  let since = '';
-  try { const d = readFileSync(file, 'utf8'), { a, b } = sectionOf(d); if (a !== -1) since = parse(d.slice(a, b)).filter((t) => t.s === s).map((t) => t.at).sort().at(-1) ?? ''; } catch {}
+  let since = null;
+  try { const d = readFileSync(file, 'utf8'), { a, b } = sectionOf(d); if (a !== -1) since = parse(d.slice(a, b)).filter((t) => t.s === s).sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0)).at(-1) ?? null; } catch {}
   const got = latest(input.transcript_path, since);
   // The transcript can lag the reply that ends it: on Stop, Claude Code passes
   // that reply itself (hooks docs). Not after a block: then it is the reply
@@ -474,7 +495,7 @@ export function handoff(input) {
     const quiet = hushed(dir, s, hush);
     for (let i = 0; i < 3; i++) {
       const raw = existsSync(file) ? readFileSync(file, 'utf8') : null;
-      const next = build(raw, quiet ? [] : fresh, quiet ? s : null, s);
+      const next = build(raw, quiet ? [] : fresh, quiet ? s : null, s, got.whole);
       if (next === null || next === 'unchanged') return quiet ? 'private' : next ?? false;
       const w = replaceIfUnchanged(file, raw, next);
       if (w !== 'conflict') return quiet ? 'private' : w || 'unchanged';
@@ -491,6 +512,11 @@ function health(dir) {
   for (const d of [dir, sharedStore()]) {
     try { const h = readFileSync(join(d, '.health'), 'utf8').trim(); if (h) out.push(`Memory store needs attention (${d}): ${h.split('\n').join('; ')}`); } catch {}
   }
+  // The record of where you left off could not be saved after the last reply.
+  try {
+    const f = JSON.parse(readFileSync(join(projectsRoot(), '.handoff-failed'), 'utf8'));
+    if (same(f.dir, dir)) out.push(`Memory store needs attention (${dir}): the record of where you left off could not be saved after the reply at ${local(f.at)}: ${f.error}`);
+  } catch {}
   try {
     const s = JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8'));
     if (s.failures >= 3) out.push(`Memory snapshots have failed ${s.failures} times in a row, last ok ${s.lastOk || 'never'}: ${s.error}`);
@@ -597,7 +623,7 @@ function shared() {
   // whose file is gone: the ceiling is held here too, since this prints everywhere.
   const lines = [];
   let bytes = 0, cut = 0;
-  for (const l of index.replace(/^﻿/, '').split(/\r?\n/)) {
+  for (const l of index.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     if (!POINTER.test(l)) continue;
     if (bytes + Buffer.byteLength(l) + 1 > SHARED_BUDGET) { cut++; continue; }
     bytes += Buffer.byteLength(l) + 1;
@@ -609,7 +635,7 @@ function shared() {
   // Once the user agrees: a lesson there reaches every project, the ones a
   // conversation here should not speak for too.
   const head = said.some((l) => !l.includes(`](${ARCHIVE})`))
-    ? `Shared memory, every project (${at}): open a file there when its line applies; a new lesson that holds in every project can go there too, once the user agrees, with a pointer in its MEMORY.md.`
+    ? `Shared memory, every project (${at}): each line below names a file there with a lesson that holds in every project. A new lesson of that kind can go there too, once the user agrees, with a pointer in its MEMORY.md.`
     : `Shared memory: lessons that hold in every project (how the user works, machine-wide tools) can go in ${at} once the user agrees, same format, with a pointer in its MEMORY.md.`;
   return [head, ...said];
 }
@@ -619,10 +645,12 @@ function shared() {
 const SAY = 9500;
 // Defused, then held to SAY at a line's end, on both paths: the startup's
 // health lists and the compaction note's task lists had no bound, and `<`
-// grows fourfold as `&lt;`. The shared lessons, last, are cut first; the
-// next startup prints them again.
-const fit = (s) => {
-  const d = defuse(s);
+// grows fourfold as `&lt;`. What is cut is cut from the end, the shared
+// lessons first. At startup each line is held to `line` characters first:
+// one health line naming 400 files cut the briefing to 407 characters, the
+// shared lessons with it, at every start.
+export const fit = (s, line = Infinity) => {
+  const d = defuse(s).split('\n').map((l) => (l.length <= line ? l : `${l.slice(0, /[\uD800-\uDBFF]/.test(l[line - 1]) ? line - 1 : line)}…`)).join('\n');
   return d.length <= SAY ? d : `${d.slice(0, SAY - 60).replace(/[^\n]*$/, '')}(the rest cut to fit Claude Code's startup limit)\n`;
 };
 
@@ -667,7 +695,7 @@ async function print(input) {
     // Stop hook's to record (from before the plugin, or `claude --bare` runs,
     // which load no hooks).
     lines.push(...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared());
-    return fit(lines.join('\n') + '\n');
+    return fit(lines.join('\n') + '\n', 1000);
   }
   let note = '';
   try { note = (await import(new URL('./compact-gate.mjs', import.meta.url))).recover(input); } catch {}

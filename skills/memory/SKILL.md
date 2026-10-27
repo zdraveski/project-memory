@@ -11,7 +11,8 @@ Each project's memories live in `~/.claude/projects/<project>/memory/`. Its
 to `MEMORY-archive.md`, which is not loaded. Lessons that hold in every project
 live in the shared store, `~/.claude/projects/_shared/memory/`, whose index is
 printed at the start of every session in every project. Every memory change is
-committed to a git repo at `~/.claude/projects`.
+committed to a git repo at `~/.claude/projects`. (With `CLAUDE_CONFIG_DIR`
+set, all of these are under that folder instead of `~/.claude`.)
 
 The CLI, run with Bash. `--session` names this conversation, so the CLI finds
 its project whatever the cwd:

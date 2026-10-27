@@ -21,24 +21,40 @@ export const memoryOff = () => /^(1|true|yes|on)$/i.test(process.env.CLAUDE_CODE
 const slugOf = (p) => String(p).replace(/[^A-Za-z0-9]/g, '-');
 
 // The git repository a folder is in, as Claude Code finds it for memory: the
-// nearest folder up with a `.git`, and for a worktree (whose `.git` is a file
-// naming a folder in the main repo's .git) the main repository. null: none.
+// nearest folder up with a `.git`, and for a worktree (whose `.git` is a file)
+// the main repository. null: none. Nothing it reads can throw out of a hook:
+// a `commondir` that was a folder made the Stop hook exit 1.
 export function repoRoot(dir) {
-  for (let d = resolve(dir); ; d = dirname(d)) {
-    let st = null; try { st = statSync(join(d, '.git')); } catch {}
-    if (st?.isDirectory()) return d;
-    if (st?.isFile()) {
-      const g = (raw(join(d, '.git')) || '').match(/^gitdir:\s*(.+?)\s*$/m);
-      const common = g && (raw(join(resolve(d, g[1]), 'commondir')) || '').trim();
-      const main = common && resolve(resolve(d, g[1]), common);
-      return main && basename(main) === '.git' ? dirname(main) : d;   // a submodule is its own
+  try {
+    for (let d = resolve(dir); ; d = dirname(d)) {
+      let st = null; try { st = statSync(join(d, '.git')); } catch {}
+      if (st?.isDirectory()) return d;
+      if (st?.isFile()) return worktreeMain(d) ?? d;   // a submodule is its own
+      if (dirname(d) === d) return null;
     }
-    if (dirname(d) === d) return null;
-  }
+  } catch { return null; }
+}
+// A worktree's main repository, checked as Claude Code checks it: the .git
+// file names `<common>/worktrees/<name>`, whose `gitdir` names this .git back
+// and whose `commondir` leads to <common>. Trusted unchecked, a .git file
+// unpacked from an archive sent a session's handoff into another project's
+// store. A bare repository's worktrees share the bare folder's memory.
+function worktreeMain(d) {
+  try {
+    const g = (raw(join(d, '.git')) || '').match(/^gitdir:\s*(.+?)\s*$/m);
+    if (!g) return null;
+    const gd = resolve(d, g[1]);
+    const common = (raw(join(gd, 'commondir')) || '').trim(), back = (raw(join(gd, 'gitdir')) || '').trim();
+    if (!common || !back || basename(dirname(gd)) !== 'worktrees' || !same(resolve(gd, back), join(d, '.git'))) return null;
+    const main = resolve(gd, common);
+    if (!same(dirname(dirname(gd)), main)) return null;
+    return basename(main) === '.git' ? dirname(main) : main;
+  } catch { return null; }
 }
 
 // The folder a session started in: the first cwd its transcript records.
-// From its head only, once per process.
+// From its head only, once per process, by its text: a first record longer
+// than the head (a large paste) is no JSON to parse there.
 const started = new Map();
 function startCwd(t) {
   if (!started.has(t)) {
@@ -46,10 +62,8 @@ function startCwd(t) {
     try {
       const fd = openSync(t, 'r'), buf = Buffer.alloc(65536);
       const n = readSync(fd, buf, 0, buf.length, 0); closeSync(fd);
-      for (const line of buf.toString('utf8', 0, n).split('\n')) {
-        let r; try { r = JSON.parse(line); } catch { continue; }
-        if (typeof r?.cwd === 'string' && r.cwd) { cwd = r.cwd; break; }
-      }
+      const m = buf.toString('utf8', 0, n).match(/"cwd":"((?:[^"\\]|\\.){1,4096})"/);
+      if (m) cwd = JSON.parse(`"${m[1]}"`);
     } catch {}
     started.set(t, cwd);
   }
@@ -68,11 +82,17 @@ function startCwd(t) {
 // shortcut: a repository path long enough for Claude Code to shorten its
 // folder name with a hash gets the long name here; build that if one turns up.
 export function storeOf(payload = {}) {
+  // As Claude Code takes it: a plain name of up to 64 letters, digits, - and
+  // _, used as it is; any other is ignored. Slugged, `my_proj` named a folder
+  // Claude Code never made, and nothing was saved.
   const named = process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CODE_PROJECT_DIR_NAME;
-  if (named) return join(projectsRoot(), slugOf(named), 'memory');
+  if (named && /^[A-Za-z0-9_-]{1,64}$/.test(named) && !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(named)) return join(projectsRoot(), named, 'memory');
   const t = typeof payload.transcript_path === 'string' && resolve(payload.transcript_path);
   if (t && same(dirname(dirname(t)), projectsRoot())) {
-    const cwd = startCwd(t), repo = cwd && repoRoot(cwd);
+    // No cwd recorded yet (a session just started, or just cleared): the
+    // payload's, which is where it started. Read as the transcript's folder,
+    // the startup briefing of a subfolder's session read another store.
+    const cwd = startCwd(t) || (typeof payload.cwd === 'string' && payload.cwd) || null, repo = cwd && repoRoot(cwd);
     return repo && !same(repo, cwd) ? join(projectsRoot(), slugOf(repo), 'memory') : join(dirname(t), 'memory');
   }
   const cwd = String(payload.cwd || process.cwd());
@@ -119,7 +139,7 @@ export function allStores() {
 export function front(text) {
   // The frontmatter only: a note that quotes `tier: archive` in its body (one
   // about the format) is not archived by it. Unclosed, it is all frontmatter.
-  const t = text.replace(/^﻿/, '');
+  const t = text.replace(/^\uFEFF/, '');
   const end = t.startsWith('---') ? t.indexOf('\n---', 3) : 0;
   const head = end === -1 ? t : t.slice(0, end);
   // A value stays on its line: an emptied `superseded-by:` took the next line

@@ -114,7 +114,7 @@ function split(text) {
   const preamble = [];
   // A BOM binds to the first line and stops it matching POINTER, which quietly
   // demotes the top memory to prose and orphans it.
-  for (const line of text.replace(/^﻿/, '').split(/\r?\n/)) {
+  for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const m = line.match(POINTER);
     if (m && m[1] === ARCHIVE_TARGET) continue;   // regenerated with a live count
     if (m) pointers.push({ line, target: m[1] });
@@ -276,7 +276,8 @@ function tier(dir, now) {
     missing: young ? [] : missing, waiting: waiting || (young && missing.length > 0), dupes, recovered, odd, wrote, conflict,
     // A merge left unresolved (a store synced between two machines): loaded into
     // every session as it is, and one side's line for a note silently dropped.
-    merged: /^(?:<{7}|={7}|>{7})(?:[ \t].*)?\r?$/m.test(mainText) };
+    // Both ends: a heading underlined with seven `=` is no conflict.
+    merged: /^<{7}(?:[ \t].*)?\r?$/m.test(mainText) && /^>{7}(?:[ \t].*)?\r?$/m.test(mainText) };
 }
 
 // Recall is a grep, not a flag: `rg -il <term> ~/.claude/projects/*/memory --glob '!MEMORY*'`
@@ -331,10 +332,8 @@ function snapshot() {
     if (fresh) { replaceIfUnchanged(ignorePath, raw(ignorePath), gitignore()); git('init', '-q'); }
     // Only a repository this tool made: one the user made there is theirs, and
     // its .gitignore, its lock, its index and its history are not this tool's.
-    if (!/^\[project-memory\]/m.test(raw(join(root, '.git', 'config')) ?? '')) {
-      if (!(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)) return `off: ${root} is a git repository project-memory did not make, so it commits nothing there`;
-      git('config', 'project-memory.snapshots', 'true');
-    }
+    const ours = /^\[project-memory\]/m.test(raw(join(root, '.git', 'config')) ?? '');
+    if (!ours && !(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)) return `off: ${root} is a git repository project-memory did not make, so it commits nothing there`;
     // A fresh lock is another session's commit in flight: busy, not a failure
     // -- the next turn retries. One older than ten minutes outlived the git
     // that made it, and would refuse every commit from now on: index.lock, and
@@ -346,6 +345,9 @@ function snapshot() {
       if (age < GIT_LOCK_STALE) return 'busy';
       try { unlinkSync(l); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     }
+    // Adopted after the sweep: a stale config.lock refused `git config`, and read
+    // as busy, the history never started.
+    if (!ours) git('config', 'project-memory.snapshots', 'true');
     // Everything is ignored except the memory markdown: this directory also
     // holds ~890 MB of session transcripts that must never be committed.
     // Recomputed each run and written when it differs: a junction created
@@ -375,6 +377,10 @@ function snapshot() {
         'commit', '-qm', `memory: ${fresh ? 'first snapshot' : local()}`);
     } catch (e) {
       if (/nothing (added )?to commit/.test(String(e.stdout))) return null;   // nothing changed
+      // Another session's commit took what this one staged, and a file changed
+      // again since: busy, and the next turn commits it. Read as a failure, it
+      // counted against the history's health.
+      if (/no changes added to commit/.test(String(e.stdout))) return 'busy';
       throw e;
     }
     return fresh ? 'initialised' : 'committed';
@@ -390,7 +396,10 @@ function snapshot() {
     // that: a lock git may not create (Permission denied), or a dead one that
     // cannot be deleted, is a failure, and read as busy it stopped every
     // snapshot unseen.
-    if (/\.lock'?: File exists|cannot lock ref|reference already exists|could not lock config file/.test(why)) return 'busy';
+    // Two sessions starting the history at once race `git init` too.
+    // Only a lock another git holds, or a ref it moved: the same words with
+    // "Permission denied" are a history that can never commit, and busy hid it.
+    if (/\.lock'?: File exists|cannot lock ref '[^']*': is at |reference already exists|could not lock config file .*: File exists|cannot copy .* File exists/.test(why)) return 'busy';
     return `snapshot failed: ${why}`;
   }
 }
@@ -456,7 +465,11 @@ if (stop) {
       appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
       if (statSync(ran).size > 8192) writeFileSync(ran, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
     } catch {}
-    if (payload) handoff(payload);
+    // One that throws (a store folder that takes no new files) is kept in a
+    // file the next start reads: swallowed, nothing was saved, and nothing said.
+    const failed = join(projectsRoot(), '.handoff-failed');
+    try { if (payload) handoff(payload); try { unlinkSync(failed); } catch {} }
+    catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), dir: storeOf(payload), error: String(e.message).split('\n')[0] })); }
   } catch {}
   try {
     // Past the compaction trigger, the next prompt compacts: block this stop
@@ -477,7 +490,7 @@ if (dirAt !== -1 && !process.argv[dirAt + 1]) { console.log('--dir needs a path'
 // walks them all. The shared store is every project's, so any Stop may tier it,
 // under its own lock, when it changed.
 const dirs = dirAt !== -1 ? [process.argv[dirAt + 1]]
-  : stop ? [storeOf(payload || {}), sharedStore()].filter((d) => existsSync(join(d, 'MEMORY.md')))
+  : stop ? [(() => { try { return storeOf(payload || {}); } catch { return null; } })(), sharedStore()].filter((d) => d && existsSync(join(d, 'MEMORY.md')))
   : allStores();
 
 // Then only do the rest when a memory in the store changed. handoff.md changes
