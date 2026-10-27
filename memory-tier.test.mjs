@@ -252,6 +252,21 @@ const note = (name, s) => {
 let r = plain();
 ok(r.status === 0 && existsSync(join(root, '.git')), 'first run initialises the repo');
 ok(tracked().every((f) => f === '.gitignore' || /\/memory\/[^/]+\.md$/.test(f)) && tracked().length === 7, 'only memory markdown and .gitignore are tracked');
+// A home reached through a symlink (a dotfiles-managed ~/.claude; macOS's /var
+// under every temp folder): every store's real path differs from the path it
+// was found by, yet none is a link to another. All were ignored as links, and
+// the snapshots tracked nothing.
+{
+  const { home: realHome } = tempHome('memtier-real-'), linkedHome = join(tempDir('memtier-link-'), 'home');
+  symlinkSync(realHome, linkedHome, 'junction');
+  const lroot = join(linkedHome, '.claude', 'projects'), d = join(lroot, 'proj-l', 'memory');
+  mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, 'a.md'), '---\nname: a\ndescription: "a"\nmetadata:\n  type: project\n---\nbody\n');
+  writeFileSync(join(d, 'MEMORY.md'), '# Index\n\n- [a](a.md) — a\n');
+  const lr = spawnSync(process.execPath, [TOOL], { env: { ...env, HOME: linkedHome, USERPROFILE: linkedHome }, encoding: 'utf8' });
+  const files = existsSync(join(lroot, '.git')) ? execFileSync('git', ['-C', lroot, 'ls-files'], { encoding: 'utf8' }) : '';
+  ok(lr.status === 0 && /proj-l\/memory\/a\.md/.test(files), `a home reached through a symlink still has its stores snapshotted (got ${JSON.stringify(files || lr.stdout)})`);
+}
 
 note('proj-one', 'b');
 writeFileSync(join(root, '.git', 'index.lock'), '');
@@ -298,7 +313,8 @@ unlinkSync(join(realGit, 'index.lock'));
 // git's own reason reaches the startup line, not "Command failed: git ...".
 writeFileSync(join(root, '.git'), `gitdir: ${join(root, 'no-such-repo').replace(/\\/g, '/')}\n`);
 r = plain();
-ok(/not a git repository/.test(sh().error), `a failed snapshot records git's reason (got: ${sh().error})`);
+// git words it by version ("not a git repository", "gitfile does not point to a valid repository").
+ok(/repository/.test(sh().error) && !/^Command failed/.test(sh().error), `a failed snapshot records git's reason (got: ${sh().error})`);
 unlinkSync(join(root, '.git'));
 renameSync(realGit, join(root, '.git'));
 r = plain();

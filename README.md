@@ -106,7 +106,7 @@ example `"200000"`. Otherwise the nudge never fires. A compaction under
 ## Limits
 
 - Paths assume `~/.claude`. `CLAUDE_CONFIG_DIR` is not supported yet.
-- Tested on Windows (Node 24) and Linux (Node 20). macOS is untested.
+- Tested on Linux, macOS and Windows, with Node 20 and 24.
 - A turn that is only a slash command gets no handoff entry.
 - The snapshot repo only grows. Delete `~/.claude/projects/.git` to drop the
   history; the next change starts a new one.

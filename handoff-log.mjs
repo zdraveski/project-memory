@@ -12,7 +12,7 @@
 // Several sessions can share one project. Each entry carries its session's tag,
 // each session keeps its own last ten, and the file is written by one hook at a
 // time (store.mjs).
-import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -364,7 +364,9 @@ async function print(input) {
 // Not a top-level await: print() imports compact-gate, which imports this
 // module, and a module still awaiting at its top level can never be imported
 // back -- Node gives up with "unsettled top-level await".
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Node names the script by its real path: compared with the path it was
+// given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   (async () => {
     try {
       const input = JSON.parse(readFileSync(0, 'utf8'));

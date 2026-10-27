@@ -8,7 +8,7 @@
 // file that no longer matches it.
 //
 // Run: node deploy.mjs [--tiering-change]   (from this repo; ~9 minutes)
-import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSync, realpathSync } from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -62,7 +62,9 @@ export function install(from, to, commit, patch, node) {
   writeFileSync(join(to, 'README.md'), `Deployed by ${join(from, 'deploy.mjs')} after the full check. Edit there and deploy; an edit here is live and untested, and the startup line will say so.\n`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Node names the script by its real path: compared with the path it was
+// given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   const repo = dirname(fileURLToPath(import.meta.url));
   const node = (...args) => execFileSync(process.execPath, args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const git = (...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();

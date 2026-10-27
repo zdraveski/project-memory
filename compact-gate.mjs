@@ -29,7 +29,7 @@
 //
 // Run: node compact-gate.mjs   (PreCompact payload on stdin)
 //      node compact-gate.mjs --state <transcript.jsonl>   (print what it sees)
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readTail, text, asked, handoff, tag, local, clip, plain, sectionOf, NUDGE_TAG } from './handoff-log.mjs';
@@ -238,7 +238,9 @@ export function nudge(payload) {
     'and any project memory this work changed -- then stop. Start no new work.' };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Node names the script by its real path: compared with the path it was
+// given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   const i = process.argv.indexOf('--state');
   if (i !== -1) {
     const s = state(process.argv[i + 1]);

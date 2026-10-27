@@ -8,7 +8,7 @@
 //   --plugin    install the plugin from the live copy, then drop the settings.json entries
 //   --settings  uninstall the plugin, then put the settings.json entries back
 // settings.json is backed up beside itself first. Deploy before --plugin.
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -46,7 +46,9 @@ export function rewire(settings, live = LIVE, node = process.execPath, plugged =
 
 const handlers = (s) => Object.entries(s.hooks || {}).flatMap(([ev, es]) => (es || []).flatMap((e) => (e.hooks || []).filter(ours).map((h) => `${ev}${e.matcher ? ` (${e.matcher})` : ''}: ${[h.command, ...(h.args || [])].join(' ')}`)));
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Node names the script by its real path: compared with the path it was
+// given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   const mode = process.argv.includes('--plugin') ? 'plugin' : process.argv.includes('--settings') ? 'settings' : null;
   const dry = process.argv.includes('--dry-run');
   const fail = (why) => { console.error(`wire: ${why}`); process.exit(1); };

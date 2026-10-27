@@ -2,7 +2,7 @@
 // sits beyond the first tail window, records that must not become an "ask",
 // an existing section that must be merged, damaged files, and the two-hook
 // race. Run: node handoff-log.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, chmodSync, readdirSync, utimesSync, appendFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, chmodSync, readdirSync, utimesSync, appendFileSync, existsSync, symlinkSync } from 'node:fs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
@@ -377,6 +377,12 @@ ok(!/outside deploy/.test(printLive()), 'a deployed copy as deployed: nothing sa
 // A damaged manifest says nothing, and costs nothing else: thrown, it took the
 // whole startup line with it, the other-session warning too (review, 2026-10-26).
 const asDeployed = readFileSync(join(liveDir, '.deployed.json'), 'utf8'), whole = printLive();
+// Run through a symlinked folder (a dotfiles-managed ~/.claude, macOS's /var):
+// Node names the script by its real path, and a hook that compared the path
+// it was given ran nothing at all, silently.
+symlinkSync(liveDir, join(home, 'linked-live'), 'junction');
+const viaLink = execFileSync(process.execPath, [join(home, 'linked-live', 'handoff-log.mjs'), '--print'], { input: JSON.stringify({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString();
+ok(whole && viaLink === whole, `a hook run through a symlinked folder still runs (got ${JSON.stringify(viaLink)})`);
 for (const bad of ['{}', 'null', '{"files":null}']) {
   writeFileSync(join(liveDir, '.deployed.json'), bad);
   ok(whole && printLive() === whole, `a manifest of ${bad} costs the startup line nothing`);

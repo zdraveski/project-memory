@@ -260,11 +260,13 @@ function tier(dir, now) {
 // back the stale copy. allStores() already knows which paths are the same
 // store; ignore every path that is not the resolved one.
 function gitignore() {
-  const root = projectsRoot();
+  const root = projectsRoot(), real = realpathSync(root);
   const linked = stores(root)
     // Case-blind on Windows: a home dir spelt one way in USERPROFILE and another
     // on disk would otherwise read as fifteen junctions and ignore every store.
-    .filter((d) => !same(realpathSync(d), d))
+    // Against the root's real path: a symlinked ~/.claude, or macOS's /var, made
+    // every store read as a link, and nothing was snapshotted.
+    .filter((d) => !same(realpathSync(d), join(real, d.slice(root.length + 1))))
     .map((d) => `${d.slice(root.length + 1).replace(/\\/g, '/')}/`);
   return ['*', '!*/', '!*/memory/*.md', '!.gitignore', ...linked].join('\n') + '\n';
 }

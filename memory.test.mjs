@@ -1,9 +1,9 @@
 // Self-check for memory.mjs, the memory CLI: ranked search, status, history
 // and restore from real snapshots, promote, doctor. A throwaway HOME holds a
 // project store and the shared store. Run: node memory.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import assert from 'node:assert';
 import { tool, tempHome } from './harness.mjs';
 
@@ -181,11 +181,19 @@ const fromElsewhere = spawnSync(process.execPath, [CLI, 'status'], { env: { ...e
 ok(fromElsewhere.stdout.split('\n')[0] === dir, `inside a session, the CLI uses the session's store wherever the cwd is (got ${fromElsewhere.stdout.split('\n')[0]})`);
 const proj = join(home, 'proj'), deeper = join(proj, 'sub', 'deeper');
 mkdirSync(deeper, { recursive: true });
-const projStore = join(root, proj.replace(/[^A-Za-z0-9]/g, '-'), 'memory');
+// The cwd as the OS reports it, which is what a process sees: on macOS the
+// temp folder's /var is /private/var.
+const physical = spawnSync(process.execPath, ['-p', 'process.cwd()'], { cwd: proj, encoding: 'utf8' }).stdout.trim();
+const projStore = join(root, physical.replace(/[^A-Za-z0-9]/g, '-'), 'memory');
 mkdirSync(projStore, { recursive: true });
 const { CLAUDE_CODE_SESSION_ID: _, ...noSession } = env;
 const fromBelow = spawnSync(process.execPath, [CLI, 'status'], { env: noSession, cwd: deeper, encoding: 'utf8' });
 ok(fromBelow.stdout.split('\n')[0] === projStore, `outside a session, a subdirectory finds its project's store (got ${fromBelow.stdout.split('\n')[0]})`);
+
+// The CLI through a symlinked folder: Node names it by its real path.
+symlinkSync(dirname(CLI), join(home, 'linked-cli'), 'junction');
+r = spawnSync(process.execPath, [join(home, 'linked-cli', 'memory.mjs'), 'status', '--store', dir], { env, encoding: 'utf8' });
+ok(r.stdout.includes(dir), `the CLI run through a symlinked folder still runs (got ${JSON.stringify(r.stdout + r.stderr)})`);
 
 // 5. Doctor: one wiring, not two, not none.
 const settings = (s) => writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify(s));

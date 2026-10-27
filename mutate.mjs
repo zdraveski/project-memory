@@ -35,6 +35,7 @@ const suites = {
     'temp file left behind': ['} finally { try { unlinkSync(tmp); } catch {} }', '} finally {}'],
   }],
   'compact-gate.mjs': ['compact-gate.test.mjs', {
+    'a run through a symlink does nothing': ['pathToFileURL(realpathSync(process.argv[1])).href', 'pathToFileURL(process.argv[1]).href'],
     'a PreCompact payload is nudged too': ["payload.hook_event_name !== 'Stop' || ", ''],
     'no ceiling: mid-turn always deferred': ['if (s.ctx < CEILING * MODEL_WINDOW) return', 'if (true) return'],
     'a turn boundary is deferred too': ['if (!s.midTurn) return { code: 0', 'if (false) return { code: 0'],
@@ -63,6 +64,7 @@ const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    'a run through a symlink does nothing': ['pathToFileURL(realpathSync(process.argv[1])).href', 'pathToFileURL(process.argv[1]).href'],
     'a /clear names the conversation it cleared': ["input.source === 'clear' ? [] : others.length", 'others.length'],
     'every deployed file read and hashed': ['if (was && s.size === was[0] && s.mtimeMs === was[1]) return false;', ''],
     'a same-size edit taken as deployed': ['if (was && s.size === was[0] && s.mtimeMs === was[1]) return false;', 'if (was && s.size === was[0]) return false;'],
@@ -156,7 +158,8 @@ const suites = {
     'a reorder rewrites the index': ['read !== null && sameLines(read, next) ? false : ', ''],
     'no orphan grace': ['now - statSync(join(dir, f)).mtimeMs < ORPHAN_GRACE) { waiting = true; continue; }', 'false) { waiting = true; continue; }'],
     'the handoff waits out the grace every turn': ["f !== 'handoff.md' && ", ''],
-    'a junctioned store committed twice': ['.filter((d) => !same(realpathSync(d), d))', '.filter(() => false)'],
+    'a junctioned store committed twice': ['.filter((d) => !same(realpathSync(d), join(real, d.slice(root.length + 1))))', '.filter(() => false)'],
+    'a symlinked home snapshots nothing': ['!same(realpathSync(d), join(real, d.slice(root.length + 1)))', '!same(realpathSync(d), d)'],
     'a young orphan stamps its store': ['< ORPHAN_GRACE) { waiting = true; continue; }', '< ORPHAN_GRACE) continue;'],
     'a pointer before its file is a problem at once': ['missing: young ? [] : missing', 'missing'],
     'a young pointer stamps its store': ['waiting: waiting || (young && missing.length > 0)', 'waiting'],
@@ -178,6 +181,7 @@ const suites = {
     'rule share measured on the whole budget': ['Math.max(0, budget - pinnedBytes) * RULE_SHARE', 'budget * RULE_SHARE'],
   }],
   'memory.mjs': ['memory.test.mjs', {
+    'a run through a symlink does nothing': ['pathToFileURL(realpathSync(process.argv[1])).href', 'pathToFileURL(process.argv[1]).href'],
     'a name weighs no more than a mention': ['(name.includes(t) ? 3 : 0)', '(name.includes(t) ? 1 : 0)'],
     'no strong-match bonus': ['(strong ? 5 : every ? 2 : 0)', '(every ? 2 : 0)'],
     'body hits uncapped': ['Math.min(2, count(body, t))', 'count(body, t)'],

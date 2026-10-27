@@ -2,9 +2,9 @@
 // turn in flight defers it, the ceiling lets it through with the in-flight
 // note written, the Stop nudge fires once per cycle and re-arms after a
 // compaction, and the next Stop drops the note. Run: node compact-gate.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, symlinkSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import assert from 'node:assert';
 import { tool, tempHome, storeFor } from './harness.mjs';
 
@@ -121,6 +121,10 @@ ok(/\*\*asked\*\* \S+ \S+(?: \[\w+\])?: second turn\n  \*\*did:\*\* cut here/.te
   'the gate writes the handoff entry itself, before the note: one writer, no race');
 
 // A store whose handoff cannot be written still lets the compaction run, and says why.
+// Through a symlinked folder the gate still runs: --state prints what it sees.
+symlinkSync(dirname(GATE), join(home, 'linked-hooks'), 'junction');
+const viaLink = spawnSync(process.execPath, [join(home, 'linked-hooks', 'compact-gate.mjs'), '--state', transcript], { env, encoding: 'utf8' });
+ok(viaLink.stdout.trim() !== '', `the gate run through a symlinked folder still runs (got ${JSON.stringify(viaLink.stdout + viaLink.stderr)})`);
 const cwd2 = 'C:\\compact-gate-broken';
 mkdirSync(join(storeFor(home, cwd2), 'handoff.md'), { recursive: true });   // a directory where the file should be
 const broken = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd: cwd2, transcript_path: transcript, trigger: 'auto', session_id: 's9' }), env, encoding: 'utf8' });
