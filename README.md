@@ -97,6 +97,22 @@ The reminder at 85% assumes a large context window of 1,000,000 tokens (a
 token is about three quarters of a word). If yours is smaller, the reminder
 needs one setting to fire. See [Compaction](docs/how-it-works.md#compaction).
 
+## Good to know
+
+- **Your existing notes.** The first time it runs, project-memory may move
+  older lines from the table of contents to the archive. Nothing is deleted,
+  Claude can still find those notes, and every change is in the history.
+- **What it costs.** Each conversation starts with a short briefing, usually
+  under 1,000 tokens: about half a percent of a 200,000-token context window.
+  In return, the table of contents Claude reads at every start stays under
+  7,000 characters. Claude Code allows up to 25,000.
+- **Where it works.** On Windows, macOS and Linux, wherever Claude Code runs on
+  your computer and can find Node.js.
+- **One computer.** Your notes and their history stay on the computer they
+  were made on. They don't sync to your other computers.
+- **Your own files.** project-memory only writes inside Claude Code's own
+  folder. It never touches your project's files or your own git repositories.
+
 ## Before you install
 
 You need three things. If you already use Claude Code, you probably have
@@ -153,6 +169,7 @@ When you want something from your notes, just ask in your own words:
 | *"Did we decide anything about the logo?"* | Claude searches your notes, the archive too. |
 | *"I deleted the note about pricing by mistake. Can you bring it back?"* | Claude restores it from the history. |
 | *"Make the note about short answers apply to all my projects."* | Claude asks you to confirm, then moves it to the shared notebook. |
+| *"Remember for all my projects that I like plain language."* | Claude saves it straight to the shared notebook. |
 
 If you'd rather type a command, these do the same things:
 
@@ -167,6 +184,17 @@ If you'd rather type a command, these do the same things:
 
 A note's name is the name of its file, without the ending. `search` shows
 them.
+
+## Updating
+
+In a terminal, run these two commands, then restart Claude Code:
+
+```
+claude plugin marketplace update project-memory
+claude plugin update project-memory@project-memory
+```
+
+What changed in each version is in the [changelog](CHANGELOG.md).
 
 ## If something seems wrong
 
@@ -203,9 +231,18 @@ back.
 
 The full details are in the [privacy policy](PRIVACY.md).
 
-## Removing it
+## Turning it off or removing it
 
-In Claude Code, type:
+To pause it, run this in a terminal and restart Claude Code. Your notes and
+their history stay as they are.
+
+```
+claude plugin disable project-memory@project-memory
+```
+
+`claude plugin enable project-memory@project-memory` turns it back on.
+
+To remove it, type this in Claude Code:
 
 ```
 /plugin uninstall project-memory@project-memory
@@ -234,5 +271,8 @@ the history of your notes as well, delete the hidden folder `.git` inside
 ## More
 
 - [How it works](docs/how-it-works.md): the technical details, for the curious.
+- [Changelog](CHANGELOG.md): what changed in each version.
+- [Privacy policy](PRIVACY.md): what it reads and saves, in full.
 - [Contributing](CONTRIBUTING.md): running the tests and changing the code.
+- Questions or problems: [open an issue](https://github.com/zdraveski/project-memory/issues).
 - License: [MIT](LICENSE). Free to use, change and share.
