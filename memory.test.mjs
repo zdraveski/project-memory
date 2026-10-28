@@ -672,8 +672,8 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   // Written unredacted, as a hand edit or an entry from before a redaction rule could be.
   const key = ['sk', 'live', '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
   day(jd, '2026-10-03', [entry('2026-10-03 10:00', `paste the token ${key} into the config`)]);
-  // A reply that says the words twice and files named for them: still below the request.
-  day(jd, '2026-10-15', [entry('2026-10-15 09:00', 'tidy the readme', { answered: 'the deploy error, and the deploy error again', changed: ['deploy-error.md'] }),
+  // A reply that says the words three times and files named for them: still below the request.
+  day(jd, '2026-10-15', [entry('2026-10-15 09:00', 'tidy the readme', { answered: 'the deploy error, the deploy error again, and the deploy error once more', changed: ['deploy-error.md'] }),
     entry('2026-10-15 14:30', 'fix the deploy error')]);
   day(jd, '2026-10-22', [entry('2026-10-22 09:00', 'plan the release')]);
   writeFileSync(join(jd, 'journal', '2026-10-23.md'), '# Journal 2026-10-23\n');   // a day a sweep emptied

@@ -396,7 +396,12 @@ ok(/^Memory hooks changed outside deploy\.mjs, live and untested: compact-gate\.
 // Claude Code keeps a cached copy of an installed plugin per version: each deploy is a new one.
 const liveV = join(home, 'hooks-live-v');
 install(dirname(HOOK), liveV, 'test', 42, 'C:\\Program Files\\nodejs\\node.exe');
-const stamped = JSON.parse(readFileSync(join(liveV, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+// What a deployed file loads is deployed too: without journal.mjs, the live
+// hooks journal nothing and every search says it can't read it.
+const loads = [...new Set(readdirSync(liveV).filter((f) => f.endsWith('.mjs')).flatMap((f) => [...readFileSync(join(liveV, f), 'utf8').matchAll(/['"]\.\/([\w-]+\.mjs)['"]/g)].map((m) => m[1])))];
+const unshipped = loads.filter((f) => !existsSync(join(liveV, f)));
+ok(loads.includes('journal.mjs') && !unshipped.length, `every file a deployed hook loads is deployed (missing: ${unshipped.join(', ')})`);
+const stamped =JSON.parse(readFileSync(join(liveV, '.claude-plugin', 'plugin.json'), 'utf8')).version;
 const liveHooks = JSON.parse(readFileSync(join(liveV, 'hooks', 'hooks.json'), 'utf8')).hooks;
 ok(Object.values(liveHooks).flat().flatMap((e) => e.hooks).every((x) => x.command === 'C:/Program Files/nodejs/node.exe'), "the live plugin runs the deploying node by its path, not whatever node is on PATH");
 ok(/^\d+\.\d+\.42$/.test(stamped) && edited(liveV).length === 0, `the live plugin's version carries the deploy's number, and the manifest hashes what was written (got ${stamped})`);

@@ -459,6 +459,7 @@ const suites = {
     'a name weighs no more than a mention': ['(name.includes(t) ? 3 : 0)', '(name.includes(t) ? 1 : 0)'],
     'no strong-match bonus': ["kind: 'note', score: score + (strong ? 5 : every ? 2 : 0)", "kind: 'note', score: score + (every ? 2 : 0)"],
     'body hits uncapped': ['Math.min(2, count(body, t))', 'count(body, t)'],
+    'answer hits uncapped': ['Math.min(2, count(answered, t))', 'count(answered, t)'],
     'an archived memory unlabelled': ["cold.has(file) ? 'archived' : 'unindexed'", "'unindexed'"],
     'the shared store not searched': ['isShared(here) ? [here] : [here, sharedStore()]', '[here]'],
     "a BOM hides the frontmatter": ["readFileSync(p, 'utf8').replace(/^\\uFEFF/, '')", "readFileSync(p, 'utf8')"],
@@ -629,6 +630,7 @@ const suites = {
     'deploys from a branch': ["if (git('rev-parse', '--abbrev-ref', 'HEAD') !== 'master') fail(", 'if (false) fail('],
     'deploys uncommitted changes': ["if (dirty()) fail('uncommitted changes: commit first');", ''],
     'no stat in the manifest': ['files, stat })', 'files })'],
+    'journal.mjs never deployed': ["'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs'", "'handoff-log.mjs', 'compact-gate.mjs'"],
   }],
 };
 

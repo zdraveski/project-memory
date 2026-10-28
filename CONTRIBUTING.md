@@ -14,9 +14,10 @@ node compact-gate.test.mjs
 node handoff-log.test.mjs
 node memory-tier.test.mjs
 node memory.test.mjs
+node journal.test.mjs
 ```
 
-CI runs all five on Linux, macOS and Windows, with Node 20 and 24.
+CI runs all six on Linux, macOS and Windows, with Node 20 and 24.
 
 Beyond the suites:
 
@@ -55,7 +56,7 @@ they finish.
 
 ## Sending a change
 
-Open a pull request against `master`. Run the five suites first, and
+Open a pull request against `master`. Run the six suites first, and
 `node mutate.mjs` if you changed a rule; CI runs the suites on every platform.
 Leave the version number alone, and describe the change under an
 `## Unreleased` heading at the top of `CHANGELOG.md` (add the heading if it
@@ -75,7 +76,7 @@ The maintainer's steps:
 
 The author keeps this repository at `~/.claude/hooks` and runs the hooks from
 a checked copy. `node deploy.mjs` runs only on `master` with nothing
-uncommitted. It runs the five suites, the mutation check, the soak and the
+uncommitted. It runs the six suites, the mutation check, the soak and the
 break harness, then compares a dry run of the tidy-up with the live copy's,
 and copies the plugin to `~/.claude/hooks-live`, which also serves as a local
 marketplace the plugin is installed from. It doesn't run the validator or the
