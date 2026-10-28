@@ -4,7 +4,10 @@
 // every project, check the hooks are wired. The hooks write on their own; this
 // writes only when told to, under the same lock.
 const USAGE = `node memory.mjs <command> [--store <dir> | --shared]
-  search <terms...> [--all] [--limit N]   ranked: name, description, then body; archive included
+  search <terms...> [--since D] [--until D] [--all] [--limit N]
+                                          memories (name, description, then body; archive included)
+                                          and the journal (asked, then changed and ran, then answered),
+                                          ranked. D is YYYY-MM-DD; dates with no terms list those days' requests
   status [--all]                          index size, hot/archived, problems, dangling [[links]],
                                           the memories changed in the last 7 days
   history <memory> [--all]                the snapshots that changed it
@@ -20,6 +23,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, pathKey, same, configDir, memoryOff } from './store.mjs';
 import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip } from './handoff-log.mjs';
+import { entries } from './journal.mjs';
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
 
@@ -130,10 +134,13 @@ const count = (hay, t) => hay.split(t).length - 1;
 // match; every term somewhere in the body is a weak one, or a month-long log
 // that mentions everything outranked the memory named for the thing ("deploy
 // checklist", 2026-10-27).
-export function search(dirs, query, limit = 8) {
+export function search(dirs, query, limit = 8, { since, until } = {}) {
   const terms = words(query), hits = [];
   for (const dir of terms.length ? dirs : []) for (const m of memories(dir)) {
-    if (m.file === 'handoff.md') continue;   // a log the startup line prints, not a memory
+    // A log the startup line prints, and the journal's pointer: neither is a memory.
+    if (m.file === 'handoff.md' || m.file === 'journal.md') continue;
+    const d = local(m.modified).slice(0, 10);   // the date its hit line shows
+    if ((since && d < since) || (until && d > until)) continue;
     const name = `${m.file} ${m.name}`.toLowerCase(), desc = m.desc.toLowerCase(), body = m.body.toLowerCase();
     let score = 0, strong = true, every = true;
     for (const t of terms) {
@@ -143,7 +150,20 @@ export function search(dirs, query, limit = 8) {
       if (!s && !b) every = false;
       score += s + b;
     }
-    if (score) hits.push({ ...m, score: score + (strong ? 5 : every ? 2 : 0) });
+    if (score) hits.push({ ...m, kind: 'note', score: score + (strong ? 5 : every ? 2 : 0) });
+  }
+  // An entry by what was asked, then what it changed and ran, then the reply:
+  // a reply that names everything must not outrank the request for the thing.
+  for (const e of terms.length ? entries(dirs, { since, until }) : []) {
+    const asked = e.asked.toLowerCase(), did = [...e.changed, ...e.ran].join('\n').toLowerCase(), answered = e.answered.toLowerCase();
+    let score = 0, strong = true, every = true;
+    for (const t of terms) {
+      const s = (asked.includes(t) ? 3 : 0) + (did.includes(t) ? 2 : 0) + Math.min(2, count(answered, t));
+      if (!asked.includes(t)) strong = false;
+      if (!s) every = false;
+      score += s;
+    }
+    if (score) hits.push({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')), score: score + (strong ? 5 : every ? 2 : 0) });
   }
   return hits.sort((a, b) => b.score - a.score || b.modified - a.modified).slice(0, limit);
 }
@@ -498,8 +518,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // `--store X search foo` searches; none (the skill run with no arguments,
   // just `--session <id>`) is status.
   // `--store=X` as `--store X`: the equals form was dropped, and the command ran on the cwd's store.
-  const argv = process.argv.slice(2).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
-  const valued = new Set(['--store', '--rev', '--limit', '--session']);
+  const argv = process.argv.slice(2).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
+  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until']);
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
@@ -513,24 +533,38 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     console.log(`--store takes a memory folder in ${projectsRoot()} (search names them): not ${store}`);
     process.exit(1);
   }
+  // Days compare as text: `--since yesterday` would match no day, and say nothing matched.
+  for (const o of ['--since', '--until']) if (rest.includes(o) && !/^\d{4}-\d\d-\d\d$/.test(opt(o) ?? '')) { console.log(`${o} takes a date like 2026-10-01`); process.exit(1); }
+  const range = { since: opt('--since'), until: opt('--until') };
   const here = rest.includes('--shared') ? sharedStore() : store || sessionStore();
   // --all includes the shared store before it has an index, as the default does.
   const scope = rest.includes('--all') ? [...new Set([...allStores(), sharedStore()])] : isShared(here) ? [here] : [here, sharedStore()];
   // A memory is named by its file, with or without `.md`; never by a path.
   const file = args[0] && basename(args[0]).replace(/(\.md)?$/, '.md');
   let r;
+  // What the model reads back: a hit's lines stay short (a 13-link hit was a
+  // quarter of its output), and a miss says where it looked in one line.
+  const where = scope.length <= 2 ? scope.join(' and ') : `${scope.length} stores`, n = Number(opt('--limit'));
   if (cmd === 'search' && args.length) {
-    const q = args.join(' '), all = search(scope, q, Infinity), n = Number(opt('--limit')), hits = all.slice(0, n > 0 ? n : 8);
-    // What the model reads back: a hit's lines stay short (a 13-link hit was a
-    // quarter of its output), and a miss says where it looked in one line.
-    const where = scope.length <= 2 ? scope.join(' and ') : `${scope.length} stores`;
+    const q = args.join(' '), all = search(scope, q, Infinity, range), hits = all.slice(0, n > 0 ? n : 10);
+    // The top 3 entries whole, up to their caps, the rest clipped: ten whole entries can be 130 KB.
+    const top = new Set(hits.filter((h) => h.kind === 'journal').slice(0, 3));
+    const entry = (h, conv = join(projectsRoot(), `${h.t}.jsonl`)) => [`${String(h.score).padStart(3)}  journal   ${h.at}  conversation ${h.s}${h.branch ? ` · branch ${h.branch}` : ''}  (${h.path})`,
+      ...[['Asked', h.asked, 200], ['Answered', h.answered, 300], ['Changed', h.changed.join(', '), 300], ['Ran', h.ran.join(' · '), 300]]
+        .filter(([, v]) => v).map(([k, v, max]) => `     ${k}: ${top.has(h) ? v : clip(v, max)}`),
+      ...(existsSync(conv) ? [`     Full conversation: ${conv}`] : [])];
     r = { ok: true, lines: !words(q).length ? [`nothing to search for: "${q}" has no word of 3+ letters that says which memory`]
-      : hits.length ? [...hits.flatMap((h) => [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
+      : hits.length ? [...hits.flatMap((h) => h.kind === 'journal' ? entry(h) : [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
         `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]),
         // A hit's date, and what was not shown or not searched.
         `${hits.length} of ${all.length} match(es) in ${where}${all.length > hits.length ? '; --limit N shows more' : ''}${rest.includes('--all') ? '' : '; --all searches every project'}`]
       : [`nothing matches "${q}" in ${where}${rest.includes('--all') ? '' : '; --all searches every project'}`] };
+  } else if (cmd === 'search' && (range.since || range.until)) {
+    // What was asked on those days, newest first: "what did we do last week".
+    const es = entries(scope, range).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
+    r = { ok: true, lines: es.length ? [...shown.map((e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 200)}`), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
+      : [`no journal entry in that range in ${where}`] };
   } else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
     r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
