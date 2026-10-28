@@ -19,7 +19,7 @@
 // changed (answer()), and every entry of a conversation marked
 // <private-session> (hushed()).
 import { readFileSync, writeFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync, mkdirSync } from 'node:fs';
-import { join, dirname, basename } from 'node:path';
+import { join, dirname, basename, resolve } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, raw } from './store.mjs';
@@ -509,10 +509,17 @@ export function handoff(input) {
   // exist (the compaction gate did).
   if (typeof input.transcript_path !== 'string' || !existsSync(input.transcript_path)) return false;
   // Claude Code makes a project's memory folder when Claude first saves a
-  // note: until then, no conversation in it was recorded. Made here, inside
-  // the project's own folder, never a new one.
+  // note: until then, no conversation in it was recorded. Made here for a
+  // real session, one whose transcript Claude Code keeps in the projects
+  // folder; never for a payload's cwd alone. Its project folder too: one
+  // started in a repository's subfolder, with none yet at its root, has its
+  // store in a folder Claude Code makes with the first note, and recorded
+  // nothing until then (audit, 2026-10-28).
   // Recursive: two sessions starting in a new project at once both make it.
-  if (!existsSync(dir)) { if (!existsSync(dirname(dir))) return false; mkdirSync(dir, { recursive: true }); }
+  if (!existsSync(dir)) {
+    if (!same(dirname(dirname(resolve(input.transcript_path))), projectsRoot())) return false;
+    mkdirSync(dir, { recursive: true });
+  }
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);
   // Read without the lock: a hint for how far back to read, nothing more.

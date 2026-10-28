@@ -1143,5 +1143,23 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   } finally { if (was13 === null) rmSync(sh13, { force: true }); else writeFileSync(sh13, was13); }
 }
 
+// Round 6. A conversation started in a repository's subfolder, with none yet
+// at its root and no note saved, is recorded in the repository's store; a
+// payload naming only a cwd still makes no project folder.
+{
+  const repo15 = join(home, 'work15', 'mono'), web15 = join(repo15, 'web');
+  mkdirSync(join(repo15, '.git'), { recursive: true }); mkdirSync(web15, { recursive: true });
+  const proj15 = join(home, '.claude', 'projects', web15.replace(/[^A-Za-z0-9]/g, '-')); mkdirSync(proj15, { recursive: true });
+  const t15 = join(proj15, 'sub15aaa-1.jsonl');
+  writeFileSync(t15, [JSON.stringify({ type: 'user', cwd: web15, sessionId: 'sub15aaa-1', timestamp: '2026-10-28T11:00:00Z', message: { role: 'user', content: 'fix the login bug' } }),
+    JSON.stringify({ type: 'assistant', cwd: web15, timestamp: '2026-10-28T11:00:30Z', message: { role: 'assistant', content: [{ type: 'text', text: 'Fixed it.' }], stop_reason: 'end_turn', usage: { input_tokens: 9 } } })].join('\n') + '\n');
+  const p15 = { hook_event_name: 'Stop', cwd: web15, transcript_path: t15, session_id: 'sub15aaa-1' };
+  const store15 = join(home, '.claude', 'projects', repo15.replace(/[^A-Za-z0-9]/g, '-'), 'memory');
+  ok(handoff(p15) === true && /fix the login bug/.test(readFileSync(join(store15, 'handoff.md'), 'utf8')), 'a subfolder\'s first conversation is recorded in its repository\'s store');
+  const t16 = join(dir, 'loose16.jsonl'); writeFileSync(t16, readFileSync(t15, 'utf8'));
+  const nowhere = join(home, 'nowhere16');
+  ok(handoff({ cwd: nowhere, transcript_path: t16, session_id: 'loose16-1' }) === false && !existsSync(join(home, '.claude', 'projects', nowhere.replace(/[^A-Za-z0-9]/g, '-'))), 'a payload naming only a cwd makes no project folder');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

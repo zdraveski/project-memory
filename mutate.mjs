@@ -122,6 +122,7 @@ const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    "a payload's cwd alone makes a project folder": ["    if (!same(dirname(dirname(resolve(input.transcript_path))), projectsRoot())) return false;\n", ""],
     "the startup is silent on a store the snapshots leave out": ["    if (s.missed?.length) out.push(`Memory snapshots leave out ${s.missed.join(', ')}: ${MISSED}`);\n", ""],
     "same-minute entries of two sessions swap": [".sort((x, y) => byAt(x, y) || (x.s < y.s ? -1 : x.s > y.s ? 1 : 0));", ".sort(byAt);"],
     "a turn stopped with Escape reads as working": ["    if (r.type === 'user' && /^\\s*\\[Request interrupted by user/.test(text(r))) { open = false; continue; }\n", ""],
@@ -304,8 +305,7 @@ const suites = {
     'an unreadable handoff takes the briefing': ["let doc = ''; try { doc = readFileSync(file, 'utf8'); } catch {}", "let doc = existsSync(file) ? readFileSync(file, 'utf8') : '';"],
     'a transcript that lags keeps the stale answer': ['open.did = last.trim();', ''],
     'the reply to a block taken as the answer': [' && !input.stop_hook_active && typeof last', ' && typeof last'],
-    'no memory folder, no handoff': ['if (!existsSync(dir)) { if (!existsSync(dirname(dir))) return false; mkdirSync(dir, { recursive: true }); }', 'if (!existsSync(dir)) return false;'],
-    'a project folder made': ['if (!existsSync(dirname(dir))) return false; ', ''],
+    "no memory folder, no handoff": ["    mkdirSync(dir, { recursive: true });\n  }\n", "    return false;\n  }\n"],
     'private marks kept for 50': ['.slice(-1000)', '.slice(-50)'],
     "a BOM hides the first shared line": ["index.replace(/^\\uFEFF/, '')", "index"],
     'CRLF entries unparseable':['(.*?)\\r?\\n  \\*\\*did:\\*\\* (.*?)\\r?$', '(.*)\\n  \\*\\*did:\\*\\* (.*)$'],
