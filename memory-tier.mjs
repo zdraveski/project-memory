@@ -39,6 +39,7 @@ const GIT_LOCK_STALE = 10 * 60000;  // an index.lock this old outlived the git t
 // (memory-tier.soak.mjs 180). The index has two jobs: how to work here, and
 // where the work stands. A rule that outlives its share is still greppable.
 const RULE_SHARE = 0.5;
+const LINES = 200;   // of MEMORY.md, all Claude Code loads at a session's start
 const DAY = 86400000;
 // The archive line is matched by its target (store.mjs ARCHIVE), not its
 // title: renaming the line's text must not leave the old one behind as a
@@ -142,19 +143,27 @@ function tier(dir, now) {
   // trimmed on the next run -- a fresh store rewrote its archive one session late.
   const arc = arcText !== null ? split(arcText) : { preamble: ['# Archive'], pointers: [] };
 
-  const hot = [], cold = [], missing = [], seen = new Set(), dupes = [], recovered = [], odd = [];
+  const hot = [], cold = [], missing = [], dupes = [], recovered = [], odd = [];
   // One line per memory. A target already placed is a duplicate -- the store had
   // one before this guard existed -- and emitting it twice doubles its cost and
-  // makes the two copies drift apart.
-  const place = (p, where) => {
-    if (seen.has(p.target)) { dupes.push(p.target); return; }
-    seen.add(p.target);
+  // makes the two copies drift apart. In the index the newer, lower line wins,
+  // where the first was: Claude appends an updated line below the old one, and
+  // keeping the first threw the update away, in no file and no snapshot (the
+  // old one is in the history). An index line beats an archived one.
+  // By the name the disk goes by: on Windows (Kase.md) is kase.md's line, and
+  // read as no line for it, kase.md got a second, machine-written one.
+  const key = (t) => (process.platform === 'win32' ? t.toLowerCase() : t);
+  const placed = new Map();
+  const place = (p, where, inIndex = false) => {
+    const was = placed.get(key(p.target));
+    if (was) { dupes.push(p.target); if (inIndex && was.inIndex) was.p.line = p.line; return; }
+    placed.set(key(p.target), { p, inIndex });
     where.push(p);
   };
   for (const p of main.pointers) {
     p.f = factsFor(dir, p.target);
     if (!p.f) missing.push(p.target);
-    place(p, isHot(p.f, now, shared) ? hot : cold);
+    place(p, isHot(p.f, now, shared) ? hot : cold, true);
   }
   // Already archived: sticky. Only an explicit `tier: hot` brings one back --
   // or the ceiling's mark: a line evicted for a byte count was not archived
@@ -177,7 +186,7 @@ function tier(dir, now) {
   // from its own `description:`, always into the archive: recovered prose is
   // machine-written, so it is greppable but never billed at session start.
   for (const f of readdirSync(dir)) {
-    if (!f.endsWith('.md') || f.startsWith('MEMORY') || seen.has(f)) continue;
+    if (!f.endsWith('.md') || f.startsWith('MEMORY') || placed.has(key(f))) continue;
     // Its writer is about to point at it. A recovered line placed now would
     // beat the hand-written one to the index. Not handoff.md: this same Stop
     // just rewrote it, and its writer never adds a pointer.
@@ -237,9 +246,12 @@ function tier(dir, now) {
   // eviction was quadratic, 24 s for a store of 10,000 notes.
   const bytes = (s) => Buffer.byteLength(s);
   let size = bytes(render());
+  // And lines: Claude Code loads the first 200, and 7 KB of short lines is more.
+  let count = main.preamble.length + hot.length + 1;
   const evicted = new Set();
-  for (let q = 0; size > budget && q < queue.length; q++) {
+  for (let q = 0; (size > budget || count > LINES) && q < queue.length; q++) {
     const victim = queue[q];
+    count--;
     size -= bytes(victim.line) + 1 + bytes(archiveLine(cold.length)) - bytes(archiveLine(cold.length + 1));
     evicted.add(victim);
     victim.line += ' ' + OVERFLOW;        // so the archive loop knows it may come back
@@ -508,6 +520,10 @@ const fingerprint = (d) => new Date().toDateString() + JSON.stringify(readdirSyn
 const gated = stop && !dry && dirAt === -1;
 const todo = gated ? dirs.filter((d) => { try { return readFileSync(stampOf(d), 'utf8') !== fingerprint(d); } catch { return true; } }) : dirs;
 if (gated && !todo.length) process.exit(0);
+// The first time, the notebook is kept as it was found before the tidy-up
+// changes it: snapshotted after, the table of contents as the user had
+// written it could never come back (docs review, 2026-10-28).
+if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot();
 
 const clean = [];
 for (const dir of todo) {

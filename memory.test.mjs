@@ -426,11 +426,15 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   ok(r.status === 0 && readFileSync(join(dir, 'notes[1].md'), 'utf8').includes('the bracket body'), `a name with [ ] comes back with its own text, not an empty note (got ${r.stdout.trim()})`);
   r = cli('restore', 'star*');
   ok(r.status === 1 && /^no snapshot of /m.test(r.stdout) && !stack(r) && !(process.platform !== 'win32' && existsSync(join(dir, 'star*.md'))), `a name with * that no snapshot holds: no empty note, no stack trace (got ${r.stdout.trim()} ${r.stderr.trim()})`);
-  // Typed in another case: the note on disk is moved, and its own line with it.
+  // Typed in another case: where the disk opens casey.md by that name, the note
+  // on disk is moved, and its own line with it; where it does not (Linux), it
+  // is no note, and nothing moves.
   memory(dir, 'casey', 'a lesson about case');
   writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Casey](casey.md) — c\n');
+  const caseBlind = existsSync(join(dir, 'CASEY.md'));
   r = cli('promote', 'CASEY');
-  ok(r.status === 0 && readdirSync(shared).includes('casey.md') && !/\(casey\.md\)/i.test(readFileSync(join(dir, 'MEMORY.md'), 'utf8')) && /\]\(casey\.md\)/.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8')),
+  ok(caseBlind ? r.status === 0 && readdirSync(shared).includes('casey.md') && !/\(casey\.md\)/i.test(readFileSync(join(dir, 'MEMORY.md'), 'utf8')) && /\]\(casey\.md\)/.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8'))
+    : r.status === 1 && existsSync(join(dir, 'casey.md')) && !existsSync(join(shared, 'casey.md')),
     `promote CASEY moves casey.md under its own name, and its line (got ${r.stdout.trim()})`);
   // A note the disk will not replace (read-only on Windows): said, not thrown.
   memory(dir, 'locked', 'a locked note', 'v1');
@@ -440,6 +444,80 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   chmodSync(join(dir, 'locked.md'), 0o444);
   try { r = cli('restore', 'locked', '--force'); } finally { chmodSync(join(dir, 'locked.md'), 0o666); }
   ok(!stack(r) && (process.platform !== 'win32' || (r.status === 1 && /could not be written/.test(r.stdout))), `a note that cannot be replaced is said, not a stack trace (got ${r.stdout.trim()} ${r.stderr.trim().slice(0, 200)})`);
+}
+
+// Round 4, second pass: the disk names the file, never folded case; every
+// write that fails is said; a line in another case moves with its note; line
+// endings come back as written.
+{
+  const stack = (x) => /\n\s+at \S.*:\d+:\d+/.test(x.stdout + x.stderr);
+  const win = process.platform === 'win32';
+  writeFileSync(join(dir, 'cs-probe.md'), 'x');
+  const folds = existsSync(join(dir, 'CS-PROBE.md'));
+  rmSync(join(dir, 'cs-probe.md'));
+  // A version that never had the note: an error, not an empty note.
+  const first = spawnSync('git', ['-C', root, 'rev-list', '--max-parents=0', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+  r = cli('restore', 'notes[1]', '--rev', first, '--force');
+  ok(r.status === 1 && /^no snapshot of /m.test(r.stdout) && readFileSync(join(dir, 'notes[1].md'), 'utf8').includes('the bracket body'),
+    `a version without notes[1] is an error, and the note is left as it was (got ${r.stdout.trim()})`);
+  if (!folds) {
+    // Two notes whose names differ by case: each is itself.
+    memory(dir, 'Alpha', 'upper alpha', 'the upper body'); memory(dir, 'alpha', 'lower alpha', 'the lower body');
+    writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Upper](Alpha.md) — u\n- [Lower](alpha.md) — l\n');
+    tier();
+    rmSync(join(dir, 'Alpha.md'));
+    writeFileSync(join(dir, 'alpha.md'), 'an edit not yet snapshotted\n');
+    r = cli('restore', 'Alpha');
+    ok(r.status === 0 && readFileSync(join(dir, 'Alpha.md'), 'utf8').includes('the upper body') && readFileSync(join(dir, 'alpha.md'), 'utf8') === 'an edit not yet snapshotted\n',
+      `on a case-sensitive disk, restore Alpha brings back Alpha.md and leaves alpha.md alone (got ${r.stdout.trim()})`);
+  }
+  // A short 8.3 name of an index is still an index.
+  for (const short of ['MEMORY~1.MD', 'MEMORY~2.MD']) {
+    if (!existsSync(join(dir, short))) continue;
+    r = cli('promote', short);
+    ok(r.status === 1 && /only a memory is shared/.test(r.stdout) && existsSync(join(dir, 'MEMORY-archive.md')), `promote ${short} is refused: it names an index (got ${r.stdout.trim()})`);
+  }
+  if (win) {
+    // The index cannot be written: the note is back, and the reply says the line is not.
+    memory(dir, 'ro-index', 'a note whose line goes', 'ro body');
+    writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [RO](ro-index.md) — r\n');
+    tier();
+    rmSync(join(dir, 'ro-index.md'));
+    writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').filter((l) => !l.includes('(ro-index.md)')).join('\n'));
+    chmodSync(join(dir, 'MEMORY.md'), 0o444);
+    try { r = cli('restore', 'ro-index'); } finally { chmodSync(join(dir, 'MEMORY.md'), 0o666); }
+    ok(!stack(r) && existsSync(join(dir, 'ro-index.md')) && /index line could not be written/.test(r.stdout), `a read-only index: the note is restored and the reply says its line is not (got ${r.stdout.trim()} ${r.stderr.trim().slice(0, 200)})`);
+    // The shared index cannot be written: the note is in both stores, and the reply says so.
+    memory(dir, 'ro-share', 'a lesson to share');
+    writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [RS](ro-share.md) — s\n');
+    chmodSync(join(shared, 'MEMORY.md'), 0o444);
+    try { r = cli('promote', 'ro-share'); } finally { chmodSync(join(shared, 'MEMORY.md'), 0o666); }
+    ok(!stack(r) && r.status === 1 && /shared index could not be written/.test(r.stdout) && existsSync(join(dir, 'ro-share.md')), `a read-only shared index: said, and the note stays in its project (got ${r.stdout.trim()} ${r.stderr.trim().slice(0, 200)})`);
+    rmSync(join(shared, 'ro-share.md'), { force: true });
+    // A hand-written line in another case is the note's own: it moves with it.
+    memory(dir, 'casey2', 'a second case lesson');
+    writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Casey two](Casey2.md) — the hand-written hook\n');
+    r = cli('promote', 'casey2');
+    ok(r.status === 0 && !/casey2\.md/i.test(readFileSync(join(dir, 'MEMORY.md'), 'utf8')) && /the hand-written hook/.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8')),
+      `a line written (Casey2.md) moves with casey2.md, hook and all (got ${r.stdout.trim()})`);
+    // And restore finds a note's line written in another case: no second line.
+    memory(dir, 'kase', 'a note with a line in another case');
+    writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Kase](Kase.md) — k\n');
+    tier();
+    rmSync(join(dir, 'kase.md'));
+    r = cli('restore', 'kase');
+    ok(r.status === 0 && /its index line is still there/.test(r.stdout) && (readFileSync(join(dir, 'MEMORY.md'), 'utf8').match(/\(kase\.md\)/gi) || []).length === 1, `restore finds the line written (Kase.md) (got ${r.stdout.trim()})`);
+  }
+  // CRLF as written, whatever git is told elsewhere (Git for Windows: autocrlf).
+  spawnSync('git', ['-C', root, 'config', 'core.autocrlf', 'true']);
+  writeFileSync(join(dir, 'crlf-kept.md'), '---\r\nname: crlf-kept\r\ndescription: "crlf"\r\nmetadata:\r\n  type: project\r\n---\r\n\r\nline one\r\nline two\r\n');
+  utimesSync(join(dir, 'crlf-kept.md'), tenMin, tenMin);
+  writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [CRLF kept](crlf-kept.md) — c\n');
+  tier();
+  rmSync(join(dir, 'crlf-kept.md'));
+  r = cli('restore', 'crlf-kept');
+  ok(r.status === 0 && readFileSync(join(dir, 'crlf-kept.md'), 'utf8').includes('line one\r\nline two\r\n'), `a CRLF note comes back with CRLF, autocrlf or not (got ${r.stdout.trim()})`);
+  spawnSync('git', ['-C', root, 'config', '--unset', 'core.autocrlf']);
 }
 
 console.log(`memory: ${checks} checks passed`);

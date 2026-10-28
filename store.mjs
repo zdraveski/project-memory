@@ -177,7 +177,9 @@ export function front(text) {
 // commit.gpgsign failed every snapshot, a global hooks path ran the user's
 // hooks on it, and on Windows a path past 260 characters was skipped with only
 // a warning. The hooks path names a folder that does not exist: no hooks.
-export const gitArgs = (...a) => ['-C', projectsRoot(), '-c', 'core.longpaths=true', '-c', 'commit.gpgsign=false',
+// Line endings as written, too: Git for Windows sets core.autocrlf=true for
+// the whole machine, and a CRLF note came back from a restore with LF ones.
+export const gitArgs = (...a) => ['-C', projectsRoot(), '-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false',
   '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`, ...a];
 
 // git's reason for a failure: stderr's first line that is not a warning -- a

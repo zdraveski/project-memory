@@ -3,7 +3,7 @@
 // replace that will not overwrite a write it did not see. Run: node store.test.mjs
 import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
@@ -269,6 +269,22 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   const f6 = front('---\nsuperseded-by:\nname: next\n---\n');
   ok(f1.tier === 'hot' && f1.type === 'feedback' && f2.tier === 'hot' && f3.superseded === 'b.md' && f4.superseded === 'c.md' && f5.desc === 'folded line one and two' && f6.superseded === '' && f6.name === 'next',
     `frontmatter is read in every YAML spelling (got ${JSON.stringify([f1, f2, f3, f4, f5, f6].map((f) => [f.tier, f.type, f.superseded, f.desc]))})`);
+}
+
+// Round 4. The snapshots keep line endings as written, whatever git is told
+// elsewhere: Git for Windows sets core.autocrlf=true for the whole machine.
+{
+  const { gitArgs, projectsRoot } = await import('./store.mjs');
+  const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8' });
+  mkdirSync(projectsRoot(), { recursive: true });
+  if (!existsSync(join(projectsRoot(), '.git'))) {
+    try {
+      git('init', '-q'); git('config', 'core.autocrlf', 'true');
+      writeFileSync(join(projectsRoot(), 'crlf.md'), 'a\r\nb\r\n');
+      git('add', 'crlf.md');
+      ok(git('cat-file', '-p', ':crlf.md') === 'a\r\nb\r\n', 'a CRLF file is kept CRLF, autocrlf or not');
+    } finally { rmSync(join(projectsRoot(), '.git'), { recursive: true, force: true }); rmSync(join(projectsRoot(), 'crlf.md'), { force: true }); }
+  }
 }
 
 console.log(`store: ${checks} checks passed`);

@@ -755,5 +755,55 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(!/merge-conflict/.test(existsSync(join(head7, '.health')) ? readFileSync(join(head7, '.health'), 'utf8') : ''), 'a heading underlined with ======= is not taken for a merge conflict');
 }
 
+// Round 4. A second index line for one note: the newer, lower line wins, where
+// the first was. On Windows a line written (Kase.md) is kase.md's own: no
+// second, machine-written line for it.
+{
+  const d8 = tempDir('memtier-r4-');
+  const note8 = (name) => { writeFileSync(join(d8, `${name}.md`), `---\nname: ${name}\ndescription: "desc of ${name}"\nmetadata:\n  type: feedback\n---\n\nbody\n`); const t = new Date(Date.now() - 10 * 60000); utimesSync(join(d8, `${name}.md`), t, t); };
+  note8('pricing'); note8('other'); note8('kase');
+  writeFileSync(join(d8, 'MEMORY.md'), ['# Index', '', '- [Pricing](pricing.md) — the old hook', '- [Other](other.md) — o',
+    '- [Kase](Kase.md) — k', '- [Pricing](pricing.md) — the updated hook'].join('\n') + '\n');
+  execFileSync(process.execPath, [TOOL, '--dir', d8], { encoding: 'utf8' });
+  const m8 = readFileSync(join(d8, 'MEMORY.md'), 'utf8'), a8 = existsSync(join(d8, 'MEMORY-archive.md')) ? readFileSync(join(d8, 'MEMORY-archive.md'), 'utf8') : '';
+  const p8 = m8.split('\n').filter((l) => l.includes('(pricing.md)'));
+  ok(p8.length === 1 && p8[0].endsWith('the updated hook') && m8.indexOf('(pricing.md)') < m8.indexOf('(other.md)'),
+    `the newer of two lines for one note is kept, where the first was (got ${m8})`);
+  if (process.platform === 'win32') ok(!/\(kase\.md\)/.test(m8 + a8) && /\(Kase\.md\)/.test(m8), `a line written (Kase.md) is kase.md's: no second line for it (got ${m8} | ${a8})`);
+}
+
+// Round 4. Claude Code loads the first 200 lines of MEMORY.md: 230 short lines
+// under 7 KB are cut to 200, the rest to the archive, marked to come back.
+{
+  const d9 = tempDir('memtier-lines-');
+  const t9 = new Date(Date.now() - 10 * 60000), lines9 = [];
+  for (let i = 0; i < 230; i++) {
+    const n = `n${String(i).padStart(3, '0')}`;
+    writeFileSync(join(d9, `${n}.md`), `---\nname: ${n}\ndescription: "d"\nmetadata:\n  type: project\n---\n\nb\n`);
+    utimesSync(join(d9, `${n}.md`), t9, t9);
+    lines9.push(`- [${n}](${n}.md) — h`);
+  }
+  writeFileSync(join(d9, 'MEMORY.md'), lines9.join('\n') + '\n');
+  execFileSync(process.execPath, [TOOL, '--dir', d9], { encoding: 'utf8' });
+  const m9 = readFileSync(join(d9, 'MEMORY.md'), 'utf8');
+  ok(m9.replace(/\n$/, '').split('\n').length <= 200 && Buffer.byteLength(m9) < 7000 && (readFileSync(join(d9, 'MEMORY-archive.md'), 'utf8').match(/<!-- overflow -->/g) || []).length >= 30,
+    `MEMORY.md is held to 200 lines, the rest archived and marked (got ${m9.split('\n').length} lines)`);
+}
+// The first snapshot holds the notebook as it was found, before the first tidy-up.
+{
+  const was = [process.env.HOME, process.env.USERPROFILE];
+  const h9 = tempDir('memtier-first-'), root9 = join(h9, '.claude', 'projects'), s9 = join(root9, 'C--first', 'memory');
+  mkdirSync(s9, { recursive: true });
+  writeFileSync(join(s9, 'old-note.md'), `---\nname: old-note\ndescription: "an old note"\nmetadata:\n  type: project\n  modified: ${iso(30)}\n---\n\nbody\n`);
+  const t = new Date(Date.now() - 10 * 60000); utimesSync(join(s9, 'old-note.md'), t, t);
+  const original = '# My notes\n\n- [Old note](old-note.md) — written by hand\n';
+  writeFileSync(join(s9, 'MEMORY.md'), original);
+  process.env.HOME = h9; process.env.USERPROFILE = h9;
+  try { spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }); } finally { process.env.HOME = was[0]; process.env.USERPROFILE = was[1]; }
+  const first = execFileSync('git', ['-C', root9, 'rev-list', '--max-parents=0', 'HEAD'], { encoding: 'utf8' }).trim();
+  const firstIdx = execFileSync('git', ['-C', root9, 'cat-file', '-p', `${first}:C--first/memory/MEMORY.md`], { encoding: 'utf8' });
+  ok(firstIdx === original && readFileSync(join(s9, 'MEMORY.md'), 'utf8') !== original, `the first snapshot holds the index as found, and the tidy-up comes after (got ${JSON.stringify(firstIdx)})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

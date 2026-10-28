@@ -686,7 +686,9 @@ const SAY = 9500;
 // one health line naming 400 files cut the briefing to 407 characters, the
 // shared lessons with it, at every start.
 export const fit = (s, line = Infinity) => {
-  const d = defuse(s).split('\n').map((l) => (l.length <= line ? l : `${l.slice(0, /[\uD800-\uDBFF]/.test(l[line - 1]) ? line - 1 : line)}…`)).join('\n');
+  // Redacted whole: the shared index and the health lines are printed in
+  // every session too, and a key written into one was printed as it was.
+  const d = defuse(redact(s)).split('\n').map((l) => (l.length <= line ? l : `${l.slice(0, /[\uD800-\uDBFF]/.test(l[line - 1]) ? line - 1 : line)}…`)).join('\n');
   return d.length <= SAY ? d : `${d.slice(0, SAY - 60).replace(/[^\n]*$/, '')}(the rest cut to fit Claude Code's startup limit)\n`;
 };
 

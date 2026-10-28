@@ -1053,5 +1053,18 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   ok(/build E\n  \*\*did:\*\* Started E\./.test(d6), `right after the hold ends, the Stop payload's reply is not taken for the answer (got ${section()})`);
 }
 
+// Round 4. The shared index is printed in every session: a key written into
+// one is redacted there too, as in the entries.
+{
+  const gh = 'gh' + 'p_' + 'Q7'.repeat(18);
+  const idx9 = join(sharedDir, 'MEMORY.md'), was9 = existsSync(idx9) ? readFileSync(idx9, 'utf8') : null;
+  mkdirSync(sharedDir, { recursive: true });
+  writeFileSync(idx9, `- [Deploy key](deploy-key.md) — the token is ${gh}\n- [DB](db.md) — password=hunter22x\n`);
+  try {
+    const out9 = printX('startup');
+    ok(!out9.includes(gh) && !out9.includes('hunter22x') && /\[Deploy key\]\(deploy-key\.md\)/.test(out9), `the startup briefing redacts the shared index (got ${out9})`);
+  } finally { if (was9 === null) rmSync(idx9, { force: true }); else writeFileSync(idx9, was9); }
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

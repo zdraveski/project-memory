@@ -48,10 +48,24 @@ const read = (p) => { try { return readFileSync(p, 'utf8').replace(/^\uFEFF/, ''
 const target = (line) => (line.replace(/^\uFEFF/, '').match(POINTER) || [])[1];
 const targets = (text) => (text ?? '').split(/\r?\n/).map(target).filter((t) => t && t !== ARCHIVE);
 const no = (why) => ({ ok: false, lines: [why] });
-// A memory by the name it has on disk: on Windows `ALPHA` opens alpha.md, and
-// moved under the typed name, alpha.md's index line was left pointing at
-// nothing. The exact name first: on Linux the two can both exist.
-const onDisk = (dir, file) => { try { const fs = readdirSync(dir); return fs.includes(file) ? file : fs.find((f) => f.toLowerCase() === file.toLowerCase()) ?? file; } catch { return file; } };
+// A memory by the name it has on disk: on Windows `ALPHA` opens alpha.md (and
+// `memory~1` an index), and moved under the typed name, alpha.md's index line
+// was left pointing at nothing. The disk says which file a name opens, and
+// the entry that is that file is its name; case is never folded here: on
+// Linux Alpha.md and alpha.md are two notes, and a folded match restored the
+// other one. A name that opens nothing is kept as typed.
+const onDisk = (dir, file) => {
+  try {
+    const names = readdirSync(dir);
+    if (names.includes(file)) return file;
+    const st = statSync(join(dir, file), { bigint: true });   // throws when it opens nothing
+    return names.find((n) => { try { const s = statSync(join(dir, n), { bigint: true }); return s.ino === st.ino && s.dev === st.dev; } catch { return false; } }) ?? file;
+  } catch { return file; }
+};
+// A write the disk refuses (read-only, held by another program) is said, with
+// what it left behind: thrown, it was a stack trace, read as nothing done.
+const put = (p, read, next) => { try { return replaceIfUnchanged(p, read, next); } catch (e) { return `failed: ${e.code || e.message}`; } };
+const failed = (w) => typeof w === 'string' && w.startsWith('failed: ');
 // A line added to an index goes before the archive's own line, which tiering
 // keeps last and leaves where it is when nothing else changed.
 const withLine = (text, line) => {
@@ -282,16 +296,18 @@ export function restore(dir, file, { rev, force = false } = {}) {
     // What --force replaces is kept in the repo, not lost: no snapshot may hold it yet.
     let kept = '';
     if (cur !== null) { try { kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: cur, encoding: 'utf8' }).trim()}`; } catch {} }
-    // One the disk refuses (a name Windows cannot hold, from a store synced
-    // from Linux) is said: thrown, it was a stack trace.
-    let w; try { w = replaceIfUnchanged(path, cur, text); } catch (e) { return `${path} could not be written (${e.code || e.message}); nothing restored`; }
+    // Or one the disk refuses (a name Windows cannot hold, from a store synced from Linux).
+    const w = put(path, cur, text);
+    if (failed(w)) return `${path} could not be written (${w.slice(8)}); nothing restored`;
     if (w === 'conflict') return `${path} changed meanwhile; nothing written`;
     if (file.startsWith('MEMORY')) return `restored ${path} from ${from}${kept}`;
     const idx = join(dir, 'MEMORY.md'), main = raw(idx);
-    if ([main, raw(join(dir, ARCHIVE))].some((t) => targets(t).includes(file))) return `restored ${path} from ${from}; its index line is still there${kept}`;
+    if ([main, raw(join(dir, ARCHIVE))].some((t) => targets(t).some((x) => x === file || same(join(dir, x), path)))) return `restored ${path} from ${from}; its index line is still there${kept}`;
     if (!line) return `restored ${path} from ${from}; no index line at that revision: the next turn's tiering gives it one${kept}`;
     const next = main ? withLine(main, line) : line + '\n';
-    if (replaceIfUnchanged(idx, main, next) === 'conflict') return `restored ${path} from ${from}; the index changed meanwhile, so the next turn's tiering gives it a line${kept}`;
+    const wi = put(idx, main, next);
+    if (failed(wi)) return `restored ${path} from ${from}; its index line could not be written (${wi.slice(8)}): the next turn's tiering gives it one${kept}`;
+    if (wi === 'conflict') return `restored ${path} from ${from}; the index changed meanwhile, so the next turn's tiering gives it a line${kept}`;
     return `restored ${path} from ${from}, with its line: ${line}${kept}`;
   });
   if (r === null) return no(`${dir} is busy (another hook holds it); try again`);
@@ -312,22 +328,28 @@ export function promote(dir, file) {
     const text = raw(src);
     if (text === null) return `${src} went away meanwhile; nothing moved`;
     let home = null, homeText = null, line = null;
+    // Its line by the file it names: on Windows one written `(Casey.md)` names casey.md.
+    const its = (x) => { const t = target(x); return !!t && (t === file || same(join(dir, t), src)); };
     for (const p of [join(dir, 'MEMORY.md'), join(dir, ARCHIVE)]) {
-      const t = raw(p), l = t?.split(/\r?\n/).find((x) => target(x) === file);
+      const t = raw(p), l = t?.split(/\r?\n/).find(its);
       if (l) { home = p; homeText = t; line = l.replace(OVERFLOW, ''); break; }
     }
     line ??= `- [${file.replace(/\.md$/, '').replace(/-/g, ' ')}](${file}) — ${front(text).desc || 'promoted'}`;
-    if (replaceIfUnchanged(dst, null, text) === 'conflict') return `the shared store got a ${file} meanwhile; nothing moved`;
+    const wd = put(dst, null, text);
+    if (failed(wd)) return `${dst} could not be written (${wd.slice(8)}); nothing moved`;
+    if (wd === 'conflict') return `the shared store got a ${file} meanwhile; nothing moved`;
     const idx = join(to, 'MEMORY.md'), idxText = raw(idx);
     const next = idxText ? withLine(idxText, line) : '# Shared memory\n\n' + line + '\n';
-    if (replaceIfUnchanged(idx, idxText, next) === 'conflict') return `the shared index changed meanwhile: ${file} is in both stores, not yet in the shared index`;
+    const wx = put(idx, idxText, next);
+    if (failed(wx)) return `the shared index could not be written (${wx.slice(8)}): ${file} is in both stores, not yet in the shared index`;
+    if (wx === 'conflict') return `the shared index changed meanwhile: ${file} is in both stores, not yet in the shared index`;
     // The model's Edit takes no lock: one that landed since the copy keeps the
     // project copy, and its index line, where it was written.
     const edited = `${src} changed while it was copied: it is in both stores; merge the edit into ${dst}, then delete ${src} and its line by hand`;
     if (raw(src) !== text) return edited;
-    if (home && replaceIfUnchanged(home, homeText, homeText.split(/\r?\n/).filter((x) => target(x) !== file).join('\n')) === 'conflict') {
-      return `the project index changed meanwhile: ${file} is in both stores; delete ${src} and its line by hand`;
-    }
+    const wh = home ? put(home, homeText, homeText.split(/\r?\n/).filter((x) => !its(x)).join('\n')) : false;
+    if (failed(wh)) return `the project index could not be written (${wh.slice(8)}): ${file} is in both stores; delete ${src} and its line by hand`;
+    if (wh === 'conflict') return `the project index changed meanwhile: ${file} is in both stores; delete ${src} and its line by hand`;
     if (raw(src) !== text) return edited;
     try { unlinkSync(src); } catch (e) { return `${src} could not be deleted (${e.code}): it is in both stores; delete it by hand`; }
     return true;
