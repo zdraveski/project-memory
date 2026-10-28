@@ -158,12 +158,12 @@ function tier(dir, now) {
   // folds to only when it opens that very file: NTFS keeps the Kelvin sign
   // and k apart, and a plain fold let one note's line replace another's.
   let listed = []; try { listed = readdirSync(dir); } catch {}
-  const names = new Set(listed);
+  const names = new Set(listed), low = new Map();
+  for (const n of listed) low.set(n.toLowerCase(), [...(low.get(n.toLowerCase()) ?? []), n]);
   const id = (t) => { const s = statSync(join(dir, t), { bigint: true }); return `${s.dev}:${s.ino}`; };
   const key = (t) => {
     if (names.has(t)) return t;
-    const l = t.toLowerCase();
-    for (const n of listed) if (n.toLowerCase() === l) { try { if (id(t) === id(n)) return n; } catch {} }
+    for (const n of low.get(t.toLowerCase()) ?? []) { try { if (id(t) === id(n)) return n; } catch {} }
     return t;
   };
   const placed = new Map();

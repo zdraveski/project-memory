@@ -555,4 +555,14 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   ok(d14.status === 1 && /PROBLEM\s+snapshots: ok, last [^\n]*but they leave out \/x\/C--y\/memory: its memory folder is a link/.test(d14.stdout), `doctor names a store the snapshots leave out (got ${d14.stdout})`);
 }
 
+// Round 6. A huge index (300,000 lines naming no note) takes status a second
+// or so: read the folder once a line, it hung past a minute.
+{
+  const big = join(root, 'C--big16', 'memory'); mkdirSync(big, { recursive: true });
+  writeFileSync(join(big, 'MEMORY.md'), Array.from({ length: 300000 }, (_, i) => `- [n](n${i}.md) — h`).join('\n') + '\n');
+  const t16 = Date.now(), s16 = spawnSync(process.execPath, [CLI, 'status', '--store', big], { env, encoding: 'utf8', timeout: 25000 });
+  ok(s16.status === 0 && Date.now() - t16 < 20000, `status on a 300,000-line index finishes (exit ${s16.status} in ${Date.now() - t16} ms)`);
+  rmSync(join(root, 'C--big16'), { recursive: true, force: true });
+}
+
 console.log(`memory: ${checks} checks passed`);

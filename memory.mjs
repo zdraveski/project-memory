@@ -78,8 +78,17 @@ const withLine = (text, line) => {
 // index names it.
 export function memories(dir) {
   let files; try { files = readdirSync(dir); } catch { return []; }
-  // By the file each line opens, as tiering counts them: on Windows (Kase.md) is kase.md's.
-  const hot = new Set(targets(read(join(dir, 'MEMORY.md'))).map((t) => onDisk(dir, t))), cold = new Set(targets(read(join(dir, ARCHIVE))).map((t) => onDisk(dir, t)));
+  // By the file each line opens, as tiering counts them: on Windows (Kase.md)
+  // is kase.md's. One listing for the store: read once a line, a 5 MB index
+  // hung status for good.
+  const low = new Map();
+  for (const f of files) low.set(f.toLowerCase(), [...(low.get(f.toLowerCase()) ?? []), f]);
+  const id = (p) => { const s = statSync(p, { bigint: true }); return `${s.dev}:${s.ino}`; };
+  const opens = (t) => {
+    if (files.includes(t) || !low.has(t.toLowerCase())) return t;
+    try { const me = id(join(dir, t)); return low.get(t.toLowerCase()).find((n) => { try { return id(join(dir, n)) === me; } catch { return false; } }) ?? t; } catch { return t; }
+  };
+  const hot = new Set([...new Set(targets(read(join(dir, 'MEMORY.md'))))].map(opens)), cold = new Set([...new Set(targets(read(join(dir, ARCHIVE))))].map(opens));
   return files.filter((f) => f.endsWith('.md') && !f.startsWith('MEMORY')).flatMap((file) => {
     const path = join(dir, file);
     const text = read(path);
