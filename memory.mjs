@@ -102,8 +102,11 @@ export function memories(dir) {
       body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1),
       // Not in code (`grid[[0]]`, a fenced block: its fences start a line, an
       // inline ``` in prose hid the links up to the next fence; ```` holds a
-      // ``` fence and only ```` closes it), and `[[name.md]]` is name's.
-      links: [...new Set([...text.replace(/^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*(`{3,}|~{3,})[^`\n]*\n[\s\S]*?^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*\1/gm, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
+      // ``` fence and only ```` closes it), and `[[name.md]]` is name's. One
+      // never closed runs to the end, as Markdown reads it: tried again at
+      // each shorter run (and a tilde run giving tildes back), a long note
+      // took seconds a line (review).
+      links: [...new Set([...text.replace(/^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*(`{3,}|~{3,}(?!~))[^`\n]*\n[\s\S]*?(?:^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*\1|(?![\s\S]))/gm, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
       modified: Number.isNaN(stamp) ? mtime : stamp,
       where: hot.has(file) ? 'hot' : cold.has(file) ? 'archived' : 'unindexed',
     }];
@@ -172,10 +175,12 @@ const more = (xs, n) => xs.slice(0, n).join(', ') + (xs.length > n ? `, and ${xs
 
 // What the snapshots saw change in a store lately, so the user can see what
 // Claude wrote down or dropped. The index and the handoff change every turn
-// and are left out.
+// and are left out. By the kept link's path alone: a store with two links
+// whose index was gone for one snapshot had both tracked for it, and the
+// second's untracking then read as every note deleted (review).
 const RECENT_DAYS = 7;
 function recent(dir) {
-  let out; try { out = git('-c', 'core.quotepath=off', 'log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=@%s', '--', ...tracked(dir, '')); } catch { return ''; }
+  let out; try { out = git('-c', 'core.quotepath=off', 'log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=@%s', '--', tracked(dir, '')[0]); } catch { return ''; }
   const last = new Map(), born = new Set();
   let first = false;
   for (const l of out.split('\n')) {

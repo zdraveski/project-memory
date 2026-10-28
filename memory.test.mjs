@@ -630,12 +630,25 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     tier(); unlinkSync(join(out22, 'MEMORY.md'));
     const m22 = spawnSync(process.execPath, [CLI, 'restore', 'MEMORY', '--store', join(root, 'C--b22', 'memory')], { env, encoding: 'utf8' });
     ok(m22.status === 0 && /\(gone\.md\)/.test(readFileSync(join(out22, 'MEMORY.md'), 'utf8')), `a deleted index comes back through the second link as last snapshotted (got ${m22.stdout}${m22.stderr})`);
+    // Both links tracked while the index was gone: the week's changes read
+    // the kept path alone, or the second's untracking was every note deleted.
+    const out24 = join(home, 'Synced24', 'memory'); mkdirSync(out24, { recursive: true });
+    memory(out24, 'x24', 'x'); writeFileSync(join(out24, 'MEMORY.md'), '- [X](x24.md) — x\n');
+    for (const p of ['C--a24', 'C--b24']) { mkdirSync(join(root, p), { recursive: true }); symlinkSync(out24, join(root, p, 'memory'), process.platform === 'win32' ? 'junction' : 'dir'); }
+    tier(); unlinkSync(join(out24, 'MEMORY.md')); tier();
+    writeFileSync(join(out24, 'MEMORY.md'), '- [X](x24.md) — x\n'); tier();
+    const s24 = spawnSync(process.execPath, [CLI, 'status', '--store', join(root, 'C--a24', 'memory')], { env, encoding: 'utf8' }).stdout;
+    ok(/last 7 days: added x24/.test(s24), `a note on disk is not listed as deleted after a snapshot without the index (got ${s24})`);
   }
+  // A fence never closed runs to the end; a long tilde run is read once.
   const d23 = join(root, 'C--fence23', 'memory'); mkdirSync(d23, { recursive: true });
-  memory(d23, 'four', 'fences', '````md\n```js\nx\n```\n[[ghostf]]\n````\nsee [[ghosto]]\n');
-  writeFileSync(join(d23, 'MEMORY.md'), '- [Four](four.md) — f\n');
+  memory(d23, 'four', 'fences', '````md\n```js\nx\n```\n[[ghostf]]\n````\nsee [[ghosto]]\n```\n[[ghostu]]\n');
+  memory(d23, 'tilde', 'tildes', '~'.repeat(80000) + '`\n');
+  writeFileSync(join(d23, 'MEMORY.md'), '- [Four](four.md) — f\n- [Tilde](tilde.md) — t\n');
+  const t23 = Date.now();
   const s23 = spawnSync(process.execPath, [CLI, 'status', '--store', d23], { env, encoding: 'utf8' }).stdout;
-  ok(/links to no memory: four\.md → \[\[ghosto\]\]\s*$/m.test(s23), `a \`\`\`\` fence holding a \`\`\` one hides its links (got ${s23})`);
+  ok(/links to no memory: four\.md → \[\[ghosto\]\]\s*$/m.test(s23), `a \`\`\`\` fence holding a \`\`\` one, and one never closed, hide their links (got ${s23})`);
+  ok(Date.now() - t23 < 3000, `a long run of tildes does not slow status down (${Date.now() - t23} ms)`);
   // The shared store has its own index: this one's, deleted, was not promoted.
   tier();
   const h23 = spawnSync(process.execPath, [CLI, 'history', 'MEMORY', '--store', d23], { env, encoding: 'utf8' });
