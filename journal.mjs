@@ -125,9 +125,14 @@ export function days(dir) {
 }
 
 // The entries of the days in range (bounds inclusive, either optional). Only
-// those days' files are opened: a year of journal is ~30 MB.
-export const entries = (dirs, { since, until } = {}) => dirs.flatMap((dir) => days(dir).filter((d) => (!since || d >= since) && (!until || d <= until))
-  .flatMap((d) => { const path = dayFile(dir, d); return parseDay(raw(path) ?? '').entries.map((e) => ({ ...e, day: d, path, dir })); }));
+// those days' files are opened: a year of journal is ~30 MB. A day that will
+// not read goes in `failed`: passed over in silence, its work read as never done.
+export const entries = (dirs, { since, until, failed = [] } = {}) => dirs.flatMap((dir) => days(dir).filter((d) => (!since || d >= since) && (!until || d <= until))
+  .flatMap((d) => {
+    const path = dayFile(dir, d);
+    try { return parseDay(raw(path) ?? '').entries.map((e) => ({ ...e, day: d, path, dir })); }
+    catch (e) { failed.push({ path, code: e.code || e.message }); return []; }
+  }));
 
 // The day a conversation began: its transcript's first record time, from the
 // head alone (a transcript runs to 50 MB). '' when there is none to read.

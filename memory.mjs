@@ -134,7 +134,7 @@ const count = (hay, t) => hay.split(t).length - 1;
 // match; every term somewhere in the body is a weak one, or a month-long log
 // that mentions everything outranked the memory named for the thing ("deploy
 // checklist", 2026-10-27).
-export function search(dirs, query, limit = 8, { since, until } = {}) {
+export function search(dirs, query, limit = 8, { since, until, failed } = {}) {
   const terms = words(query), hits = [];
   for (const dir of terms.length ? dirs : []) for (const m of memories(dir)) {
     // A log the startup line prints, and the journal's pointer: neither is a memory.
@@ -154,7 +154,7 @@ export function search(dirs, query, limit = 8, { since, until } = {}) {
   }
   // An entry by what was asked, then what it changed and ran, then the reply:
   // a reply that names everything must not outrank the request for the thing.
-  for (const e of terms.length ? entries(dirs, { since, until }) : []) {
+  for (const e of terms.length ? entries(dirs, { since, until, failed }) : []) {
     const asked = e.asked.toLowerCase(), did = [...e.changed, ...e.ran].join('\n').toLowerCase(), answered = e.answered.toLowerCase();
     let score = 0, strong = true, every = true;
     for (const t of terms) {
@@ -535,7 +535,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   }
   // Days compare as text: `--since yesterday` would match no day, and say nothing matched.
   for (const o of ['--since', '--until']) if (rest.includes(o) && !/^\d{4}-\d\d-\d\d$/.test(opt(o) ?? '')) { console.log(`${o} takes a date like 2026-10-01`); process.exit(1); }
-  const range = { since: opt('--since'), until: opt('--until') };
+  const range = { since: opt('--since'), until: opt('--until') }, failed = [];
+  const span = [range.since && `since ${range.since}`, range.until && `until ${range.until}`].filter(Boolean).join(' ');
   const here = rest.includes('--shared') ? sharedStore() : store || sessionStore();
   // --all includes the shared store before it has an index, as the default does.
   const scope = rest.includes('--all') ? [...new Set([...allStores(), sharedStore()])] : isShared(here) ? [here] : [here, sharedStore()];
@@ -546,12 +547,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // quarter of its output), and a miss says where it looked in one line.
   const where = scope.length <= 2 ? scope.join(' and ') : `${scope.length} stores`, n = Number(opt('--limit'));
   if (cmd === 'search' && args.length) {
-    const q = args.join(' '), all = search(scope, q, Infinity, range), hits = all.slice(0, n > 0 ? n : 10);
+    const q = args.join(' '), all = search(scope, q, Infinity, { ...range, failed }), hits = all.slice(0, n > 0 ? n : 10);
     // The top 3 entries whole, up to their caps, the rest clipped: ten whole entries can be 130 KB.
+    // Whole is clip(v, Infinity): a day file edited by hand is redacted too.
     const top = new Set(hits.filter((h) => h.kind === 'journal').slice(0, 3));
     const entry = (h, conv = join(projectsRoot(), `${h.t}.jsonl`)) => [`${String(h.score).padStart(3)}  journal   ${h.at}  conversation ${h.s}${h.branch ? ` · branch ${h.branch}` : ''}  (${h.path})`,
       ...[['Asked', h.asked, 200], ['Answered', h.answered, 300], ['Changed', h.changed.join(', '), 300], ['Ran', h.ran.join(' · '), 300]]
-        .filter(([, v]) => v).map(([k, v, max]) => `     ${k}: ${top.has(h) ? v : clip(v, max)}`),
+        .filter(([, v]) => v).map(([k, v, max]) => `     ${k}: ${clip(v, top.has(h) ? Infinity : max)}`),
       ...(existsSync(conv) ? [`     Full conversation: ${conv}`] : [])];
     r = { ok: true, lines: !words(q).length ? [`nothing to search for: "${q}" has no word of 3+ letters that says which memory`]
       : hits.length ? [...hits.flatMap((h) => h.kind === 'journal' ? entry(h) : [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
@@ -559,12 +561,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]),
         // A hit's date, and what was not shown or not searched.
         `${hits.length} of ${all.length} match(es) in ${where}${all.length > hits.length ? '; --limit N shows more' : ''}${rest.includes('--all') ? '' : '; --all searches every project'}`]
-      : [`nothing matches "${q}" in ${where}${rest.includes('--all') ? '' : '; --all searches every project'}`] };
+      : [`nothing matches "${q}" in ${where}${span && ` ${span}`}${rest.includes('--all') ? '' : '; --all searches every project'}`] };
   } else if (cmd === 'search' && (range.since || range.until)) {
     // What was asked on those days, newest first: "what did we do last week".
-    const es = entries(scope, range).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
+    const es = entries(scope, { ...range, failed }).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
     r = { ok: true, lines: es.length ? [...shown.map((e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 200)}`), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
-      : [`no journal entry in that range in ${where}`] };
+      : [`no journal entry ${span} in ${where}`] };
   } else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
     r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
@@ -573,6 +575,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file));
   else if (cmd === 'doctor') r = doctor();
   else r = { ok: !cmd || cmd === 'help', lines: [USAGE] };
+  // A day the search could not read: what it holds is missing from the lines above.
+  r.lines.push(...failed.map((f) => `could not read ${f.path}: ${f.code}`));
   console.log(r.lines.join('\n'));
   process.exit(r.ok ? 0 : 1);
 }

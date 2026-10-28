@@ -7,7 +7,7 @@ import assert from 'node:assert';
 import { tempHome, storeFor, tool, slug } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill } = await import('./journal.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries } = await import('./journal.mjs');
 const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 let checks = 0;
@@ -340,6 +340,23 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   const ms = Date.now() - t0, line = listed(d).find((l) => l.startsWith(`${slug(r)}/${H} `)) ?? '';
   ok(ms < 3000 && out.stdout === '' && line.endsWith(' partial') && asks(d).includes('after the flood'),
     `backfill keeps to its budget on a huge transcript: the Stop takes ${ms} ms, says nothing, reads the last 64 MB and journals the turns after the output (got ${line}; ${out.stdout})`);
+}
+
+// entries(): the days in range, both bounds inclusive ("what did we do on the
+// 10th" is since = until); a day outside is never opened, one inside that
+// will not read is named and the rest still come back.
+{
+  const d = storeFor(home, 'C:\\entries-selftest');
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  for (const at of ['2026-10-09', '2026-10-10', '2026-10-11', '2026-10-12']) writeFileSync(dayFile(d, at), `# Journal ${at}\n\n${render(entryOf(turn({ at: `${at} 09:00`, id: at }), T))}\n`);
+  mkdirSync(dayFile(d, '2026-10-08'));   // a day file that cannot be read
+  const of = (range) => { const failed = []; return entries([d], { ...range, failed }).map((e) => e.day).join() + (failed.length ? ` failed ${failed.map((f) => f.path).join()}` : ''); };
+  ok(of({ since: '2026-10-10', until: '2026-10-10' }) === '2026-10-10', `a single day, since = until (got ${of({ since: '2026-10-10', until: '2026-10-10' })})`);
+  ok(of({ since: '2026-10-10', until: '2026-10-11' }) === '2026-10-10,2026-10-11', `both bounds kept, the day just outside each left out (got ${of({ since: '2026-10-10', until: '2026-10-11' })})`);
+  ok(of({ since: '2026-10-09' }) === '2026-10-09,2026-10-10,2026-10-11,2026-10-12', `a day outside the range is never opened (got ${of({ since: '2026-10-09' })})`);
+  ok(of({ until: '2026-10-09' }) === `2026-10-09 failed ${dayFile(d, '2026-10-08')}`, `a day inside it that will not read is named, the rest kept (got ${of({ until: '2026-10-09' })})`);
+  const e = entries([d], { since: '2026-10-12' })[0];
+  ok(e.day === '2026-10-12' && e.path === dayFile(d, '2026-10-12') && e.dir === d && e.asked === 'a question', `an entry carries its day, file and store (got ${JSON.stringify(e)})`);
 }
 
 console.log(`journal: ${checks} checks passed`);

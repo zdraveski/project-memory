@@ -668,6 +668,10 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   const entry = (at, asked, over = {}) => ({ key: `k${n++}`, at, s: 'c0ffee12', t: 'C--jr/c0ffee12-full', branch: 'main', asked, answered: 'done', changed: [], ran: [], ...over });
   const day = (store, d, es) => { mkdirSync(join(store, 'journal'), { recursive: true }); writeFileSync(join(store, 'journal', `${d}.md`), `# Journal ${d}\n\n${es.map(render).join('\n\n')}\n`); };
   day(jd, '2026-10-01', [entry('2026-10-01 10:00', 'deploy on the first')]);
+  day(jd, '2026-10-02', [entry('2026-10-02 10:00', 'tidy the scripts', { changed: ['memory-tier.mjs'], ran: ['node bench.mjs --runs 5'] })]);
+  // Written unredacted, as a hand edit or an entry from before a redaction rule could be.
+  const key = ['sk', 'live', '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
+  day(jd, '2026-10-03', [entry('2026-10-03 10:00', `paste the token ${key} into the config`)]);
   // A reply that says the words twice and files named for them: still below the request.
   day(jd, '2026-10-15', [entry('2026-10-15 09:00', 'tidy the readme', { answered: 'the deploy error, and the deploy error again', changed: ['deploy-error.md'] }),
     entry('2026-10-15 14:30', 'fix the deploy error')]);
@@ -683,6 +687,12 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     `search finds a journal entry by its request: first, labelled journal, with its date (got ${r.stdout})`);
   ok(/^ *\d+ +\w+ +\d{4}-\d\d-\d\d +.*[\\/]deploy\.md$/m.test(r.stdout) && /^ *\d+  journal   2026-10-15 09:00 /m.test(r.stdout), `a note and an entry rank together (got ${r.stdout})`);
   ok(!/[\\/]journal\.md$/m.test(jcli('search', 'every', 'exchange').stdout), "journal.md is the journal's pointer, not a search hit");
+  ok(/^     Asked: tidy the scripts$/m.test(jcli('search', 'memory-tier.mjs').stdout) && /^     Asked: tidy the scripts$/m.test(jcli('search', 'bench').stdout),
+    'an entry is found by a file it changed, and by a command it ran, alone');
+  r = jcli('search', 'token', 'config');
+  ok(/^     Asked: paste the token \[redacted\] into the config$/m.test(r.stdout) && !r.stdout.includes(key), `a top hit printed whole is still redacted (got ${r.stdout})`);
+  r = jcli('search', 'zzzqqq', '--since', '2026-10-10', '--until', '2026-10-20');
+  ok(/^nothing matches "zzzqqq" in .+ since 2026-10-10 until 2026-10-20; --all searches every project$/m.test(r.stdout), `a ranged miss names its range (got ${r.stdout})`);
   r = jcli('search', 'deploy', 'error', '--since=2026-10-10', '--until', '2026-10-20');
   const dates = [...r.stdout.matchAll(/^ *\d+  journal   (\d{4}-\d\d-\d\d)/gm)].map((m) => m[1]);
   ok(r.status === 0 && dates.join() === '2026-10-15,2026-10-15' && !/deploy\.md$/m.test(r.stdout), `--since/--until narrow by day, notes by their date too (got ${r.stdout})`);
@@ -708,17 +718,24 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   mkdirSync(join(big, 'journal'), { recursive: true });
   for (const d of year) writeFileSync(join(big, 'journal', `${d}.md`), `# Journal ${d}\n\n${[...Array(14).fill(tpl.replaceAll('2025-01-01', d)),
     ...(d === last ? [render(entry(`${d} 18:00`, 'find the needle: the lorem rollout plan, its module filter, and the build passed'))] : [])].join('\n\n')}\n`);
-  // Eight terms: 1.0 s here (2026-10-28, Windows); read once a term, 5.4 s.
+  // Eight terms: 1.0 s here alone, 1.3 s beside two other suites (2026-10-28,
+  // Windows); read once a term, 5.4 s.
   const t0 = Date.now();
   r = bcli('search', 'needle', 'lorem', 'rollout', 'build', 'passed', 'plan', 'module', 'filter');
   const took = Date.now() - t0, asks = [...r.stdout.matchAll(/^     Asked: (.*)$/gm)].map((m) => m[1].length);
-  ok(r.status === 0 && new RegExp(`^ *\\d+  journal   ${last} 18:00 `).test(r.stdout) && took < 2000, `search over 30 MB of journal is fast (${took} ms; got ${r.stdout.slice(0, 200)})`);
+  ok(took < 3000, `search over 30 MB of journal is fast (${took} ms)`);
+  ok(r.status === 0 && new RegExp(`^ *\\d+  journal   ${last} 18:00 `).test(r.stdout), `the one entry asking for every term is first (got ${r.stdout.slice(0, 200)})`);
   ok(asks.length === 10 && asks[1] === 2000 && asks[2] === 2000 && asks.slice(3).every((a) => a <= 200) && r.stdout.length < 30000 && /^10 of 5111 match\(es\)/m.test(r.stdout),
     `ten hits by default: the top 3 in full, the rest clipped (got ${asks}, ${r.stdout.length} chars)`);
+  r = bcli('search', '--since', year[0]);
+  ok((r.stdout.match(/^\d{4}-\d\d-\d\d \d\d:\d\d  conversation /gm) || []).length === 30 && /^30 of 5111 journal entries in .+; --limit N shows more$/m.test(r.stdout),
+    `a date range alone lists 30 by default, and says how many it left out (got ${r.stdout.split('\n').length} lines, ending ${r.stdout.trim().split('\n').pop()})`);
   rmSync(join(big, 'journal', `${year[0]}.md`)); mkdirSync(join(big, 'journal', `${year[0]}.md`));
-  ok(bcli('search', 'needle').status !== 0, 'a day that cannot be read fails the search that opens it (so the next check means it was never opened)');
+  r = bcli('search', 'needle');
+  ok(r.status === 0 && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && new RegExp(`^could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(r.stdout),
+    `a day that cannot be read is named, and the rest still found (got ${r.stdout.slice(-300)})`);
   r = bcli('search', 'needle', '--since', year.at(-7));
-  ok(r.status === 0 && !r.stderr && new RegExp(`journal   ${last} 18:00`).test(r.stdout), `with --since the last week, a day outside it is never opened (got ${r.stdout}${r.stderr})`);
+  ok(r.status === 0 && !r.stderr && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && !/could not read/.test(r.stdout), `with --since the last week, a day outside it is never opened (got ${r.stdout}${r.stderr})`);
 }
 
 console.log(`memory: ${checks} checks passed`);
