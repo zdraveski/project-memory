@@ -532,4 +532,27 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   ok(!/with no pointer yet/.test(st10.stdout) && !/links to no memory/.test(st10.stdout), `a line in another case counts, and [[x.md]] or a link in code is no dangling link (got ${st10.stdout.trim()})`);
 }
 
+// Round 6. A store whose memory folder links to a folder outside the root:
+// its notes come back by the link's path (resolved, git said the path was
+// outside the repository), and doctor names a store the snapshots leave out.
+{
+  const out14 = join(home, 'Synced14', 'memory'), at14 = join(root, 'C--ext14', 'memory');
+  mkdirSync(out14, { recursive: true }); mkdirSync(dirname(at14), { recursive: true });
+  memory(out14, 'price', 'our price');
+  writeFileSync(join(out14, 'MEMORY.md'), '- [Price](price.md) — p\n');
+  symlinkSync(out14, at14, process.platform === 'win32' ? 'junction' : 'dir');
+  tier();
+  const run14 = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', at14], { env, encoding: 'utf8' });
+  if (/C--ext14\/memory\/price\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
+    unlinkSync(join(out14, 'price.md'));
+    const r14 = run14('restore', 'price');
+    ok(r14.status === 0 && existsSync(join(out14, 'price.md')), `a note in a store linked outside the root comes back (got ${r14.stdout}${r14.stderr})`);
+  }
+  const sh14 = join(root, '.snapshot-health'), was14 = readFileSync(sh14, 'utf8');
+  writeFileSync(sh14, JSON.stringify({ lastOk: new Date().toISOString(), failures: 0, missed: ['/x/C--y/memory'] }));
+  const d14 = run14('doctor');
+  writeFileSync(sh14, was14);
+  ok(d14.status === 1 && /PROBLEM\s+snapshots: ok, last [^\n]*but they leave out \/x\/C--y\/memory: its memory folder is a link/.test(d14.stdout), `doctor names a store the snapshots leave out (got ${d14.stdout})`);
+}
+
 console.log(`memory: ${checks} checks passed`);

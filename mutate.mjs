@@ -122,6 +122,7 @@ const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    "the startup is silent on a store the snapshots leave out": ["    if (s.missed?.length) out.push(`Memory snapshots leave out ${s.missed.join(', ')}: ${MISSED}`);\n", ""],
     "same-minute entries of two sessions swap": [".sort((x, y) => byAt(x, y) || (x.s < y.s ? -1 : x.s > y.s ? 1 : 0));", ".sort(byAt);"],
     "a turn stopped with Escape reads as working": ["    if (r.type === 'user' && /^\\s*\\[Request interrupted by user/.test(text(r))) { open = false; continue; }\n", ""],
     "a turn stopped with Escape owes a Stop": ["/.test(text(r))) { open = false; continue; }", "/.test(text(r))) { open = false; end = Date.parse(r.timestamp); continue; }"],
@@ -310,6 +311,8 @@ const suites = {
     'CRLF entries unparseable':['(.*?)\\r?\\n  \\*\\*did:\\*\\* (.*?)\\r?$', '(.*)\\n  \\*\\*did:\\*\\* (.*)$'],
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
+    "a store linked outside the root ignored as a second path": [" && within(real, r); })", "; })"],
+    "a store git does follow said to be left out": ["try { return !git('ls-files', '--', ", "try { return true || !git('ls-files', '--', "],
     "a prose-only index divides by no lines": ["r.hot ? `${Math.round(r.after / r.hot)}B a line; trim the hooks, not the count` : 'the text above the lines; shorten it'", "`${Math.round(r.after / r.hot)}B a line; trim the hooks, not the count`"],
     "the front matter read from 1,200 bytes": ["Buffer.alloc(16384)", "Buffer.alloc(1200)"],
     "the case key folds as JavaScript does": ["    if (names.has(t)) return t;\n", "    return process.platform === 'win32' ? t.toLowerCase() : t;\n"],
@@ -365,8 +368,8 @@ const suites = {
     'a reorder rewrites the index': ['read !== null && sameLines(read, next) ? false : ', ''],
     "no orphan grace": ["Math.abs(now - statSync(join(dir, f)).mtimeMs) < ORPHAN_GRACE) { waiting = true; continue; }", "false) { waiting = true; continue; }"],
     'the handoff waits out the grace every turn': ["f !== 'handoff.md' && ", ''],
-    'a junctioned store committed twice': ['.filter((d) => !same(realpathSync(d), join(real, d.slice(root.length + 1))))', '.filter(() => false)'],
-    'a symlinked home snapshots nothing': ['!same(realpathSync(d), join(real, d.slice(root.length + 1)))', '!same(realpathSync(d), d)'],
+    "a junctioned store committed twice": [".filter((d) => { const r = realpathSync(d); return !same(r, join(real, d.slice(root.length + 1))) && within(real, r); })", ".filter(() => false)"],
+    "a symlinked home snapshots nothing": ["!same(r, join(real, d.slice(root.length + 1)))", "!same(r, d)"],
     'a young orphan stamps its store': ['< ORPHAN_GRACE) { waiting = true; continue; }', '< ORPHAN_GRACE) continue;'],
     'a pointer before its file is a problem at once': ['missing: young ? [] : missing', 'missing'],
     'a young pointer stamps its store': ['waiting: waiting || (young && missing.length > 0)', 'waiting'],
@@ -399,6 +402,9 @@ const suites = {
     'rule share measured on the whole budget': ['Math.max(0, budget - pinnedBytes) * RULE_SHARE', 'budget * RULE_SHARE'],
   }],
   'memory.mjs': ['memory.test.mjs', {
+    "a linked store found by its resolved path": ["const tracked = (dir, file) => {\n  const root = real(projectsRoot()), at = relative(root, real(dir));\n  const base = at.startsWith('..') || isAbsolute(at) ? join(real(dirname(dir)), basename(dir)) : real(dir);\n  return relative(root, join(base, file)).replace(/\\\\/g, '/');\n};", "const tracked = (dir, file) => relative(real(projectsRoot()), join(real(dir), file)).replace(/\\\\/g, '/');"],
+    "doctor says ok of snapshots that leave a store out": ["    : h.missed?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they leave out ${h.missed.join(', ')}: ${MISSED}`\n", ""],
+    "doctor counts a store left out as fine": [" && !snap.includes('but they leave out')", ""],
     "status counts a line by its exact name": [".map((t) => onDisk(dir, t))), cold", ")), cold"],
     "a link in code counted": [".replace(/```[\\s\\S]*?```/g, '').replace(/`[^`\\n]*`/g, '')", ""],
     "a link named with .md is to nothing": [".trim().replace(/\\.md$/i, ''))", ".trim())"],

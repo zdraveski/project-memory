@@ -1133,5 +1133,15 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   ok(again.every((r) => r === 'unchanged'), `same-minute entries of two sessions stay put (got ${again.join(', ')})`);
 }
 
+// Round 6. A store the snapshots leave out (a link git does not follow) is
+// named at startup.
+{
+  const sh13 = join(home, '.claude', 'projects', '.snapshot-health'), was13 = existsSync(sh13) ? readFileSync(sh13, 'utf8') : null;
+  writeFileSync(sh13, JSON.stringify({ lastOk: new Date().toISOString(), failures: 0, missed: ['/x/C--y/memory'] }));
+  try {
+    ok(/Memory snapshots leave out \/x\/C--y\/memory: its memory folder is a link/.test(printX('startup')), 'the startup names a store the snapshots leave out');
+  } finally { if (was13 === null) rmSync(sh13, { force: true }); else writeFileSync(sh13, was13); }
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

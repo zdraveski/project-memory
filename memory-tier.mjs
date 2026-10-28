@@ -9,7 +9,7 @@
 // payload on stdin, and tiers that session's own store; a manual run walks them all.
 
 import { readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
-import { join, dirname, basename } from 'node:path';
+import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, allStores, front, gitWhy, gitArgs, raw, memoryOff } from './store.mjs';
@@ -317,6 +317,7 @@ function tier(dir, now) {
 // paths is committed twice -- 186 files became 372, and a restore could bring
 // back the stale copy. allStores() already knows which paths are the same
 // store; ignore every path that is not the resolved one.
+const within = (base, p) => { const r = relative(base, p); return r !== '' && !r.startsWith('..') && !isAbsolute(r); };
 function gitignore() {
   const root = projectsRoot(), real = realpathSync(root);
   const linked = stores(root)
@@ -324,7 +325,10 @@ function gitignore() {
     // on disk would otherwise read as fifteen junctions and ignore every store.
     // Against the root's real path: a symlinked ~/.claude, or macOS's /var, made
     // every store read as a link, and nothing was snapshotted.
-    .filter((d) => !same(realpathSync(d), join(real, d.slice(root.length + 1))))
+    // A second path only when it leads to another folder in here: one linked to
+    // a folder elsewhere (a synced folder) is that store's only path, and
+    // ignored, it was never snapshotted (audit, 2026-10-28).
+    .filter((d) => { const r = realpathSync(d); return !same(r, join(real, d.slice(root.length + 1))) && within(real, r); })
     .map((d) => `${d.slice(root.length + 1).replace(/\\/g, '/')}/`);
   // Not the handoff: it holds the last exchanges, and is kept only until newer
   // ones replace it. Committed, every version stayed in the history for good.
@@ -334,6 +338,7 @@ function gitignore() {
 // this tool made before it marked them.
 const IGNORE_HEAD = '*\n!*/\n!*/memory/*.md\n';
 
+let missed = [];   // stores the snapshot cannot reach: set by snapshot(), kept by snapshotHealth()
 function snapshot() {
   const root = projectsRoot();
   // The C locale: "nothing to commit" is matched below, in git's English. (Git
@@ -414,6 +419,15 @@ function snapshot() {
       } else if (!/^error: open\("[^"]*"\): No such file or directory/.test(why)) throw e;
       stage();
     }
+    // A store linked to a folder outside the root is in the history only if git
+    // follows the link: Git for Windows follows a junction, git elsewhere keeps a
+    // symlink as a link. Asked of git, not guessed by platform: unsaid, nothing
+    // was snapshotted and doctor said ok (audit, 2026-10-28).
+    const top = realpathSync(root);
+    missed = allStores().filter((d) => {
+      try { if (within(top, realpathSync(d))) return false; } catch { return false; }
+      try { return !git('ls-files', '--', `${d.slice(root.length + 1).replace(/\\/g, '/')}/MEMORY.md`).trim(); } catch { return true; }
+    });
     // Straight to the commit, which says so when nothing changed: a `git status`
     // first was one more git start on every snapshot, ~80-300 ms on this box.
     try {
@@ -472,6 +486,7 @@ function snapshotHealth(s) {
     ? { lastOk: h.lastOk || null, failures: (h.failures || 0) + 1, error: s.slice('snapshot failed: '.length) }
     : off ? { lastOk: h.lastOk || null, failures: 0, off: s.slice('off: '.length) }
     : { lastOk: new Date().toISOString(), failures: 0 };
+  if (missed.length) next.missed = missed;
   try { writeFileSync(p, JSON.stringify(next)); } catch {}
 }
 

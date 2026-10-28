@@ -14,12 +14,12 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared]
 The store is this session's own (outside a session: the cwd's project, or the nearest
 folder above it with one) unless --store or --shared says otherwise.`;
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, unlinkSync, realpathSync } from 'node:fs';
-import { join, relative, basename, dirname, resolve } from 'node:path';
+import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, same, configDir, memoryOff } from './store.mjs';
-import { sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip } from './handoff-log.mjs';
+import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip } from './handoff-log.mjs';
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
 
@@ -188,6 +188,7 @@ function snapshots() {
   if (h.off) return `snapshots: off, ${h.off}: everything else works, but an old version of a note cannot be brought back`;
   return h.failures ? `snapshots: failing, ${h.failures} in a row (${h.error}); last ok ${h.lastOk ? local(h.lastOk) : 'never'}. ` +
     `The user's fix: run git -C "${projectsRoot()}" status in a terminal to see git's own message; if git says the repository is damaged, rename its .git folder and the next reply starts a new history`
+    : h.missed?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they leave out ${h.missed.join(', ')}: ${MISSED}`
     : `snapshots: ok, last ${local(h.lastOk)}`;
 }
 
@@ -226,7 +227,13 @@ const git = (...a) => execFileSync('git', gitArgs('--literal-pathspecs', ...a), 
 // The on-disk spelling: git's paths are case-sensitive, and the JS realpath
 // keeps whatever case it was handed (a cwd typed in lower case).
 const real = (p) => { try { return realpathSync.native(p); } catch { return p; } };
-const tracked = (dir, file) => relative(real(projectsRoot()), join(real(dir), file)).replace(/\\/g, '/');
+// A store linked to a folder outside the root is in the history by its link's
+// path: resolved, git said the path was outside the repository.
+const tracked = (dir, file) => {
+  const root = real(projectsRoot()), at = relative(root, real(dir));
+  const base = at.startsWith('..') || isAbsolute(at) ? join(real(dirname(dir)), basename(dir)) : real(dir);
+  return relative(root, join(base, file)).replace(/\\/g, '/');
+};
 
 export function history(dirs, file, everywhere = false) {
   const verb = { A: 'added', M: 'changed', D: 'deleted' };
@@ -440,7 +447,7 @@ export function doctor() {
   const orphans = packs.filter((f) => f.endsWith('.idx') && !packs.includes(f.replace(/\.idx$/, '.pack')));
   if (orphans.length) say(true, `${orphans.length} pack index file(s) in ${pack} have no pack (a repack that could not finish): harmless, but git warns of each on every command; the user can delete them: ${orphans.join(', ')}`);
   const snap = snapshots();
-  say(!snap.startsWith('snapshots: failing'), snap);
+  say(!snap.startsWith('snapshots: failing') && !snap.includes('but they leave out'), snap);
   return { ok: !bad, lines };
 }
 

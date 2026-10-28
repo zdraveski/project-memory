@@ -4,7 +4,7 @@
 // the --stop gate. Run: node memory-tier.test.mjs
 import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, unlinkSync, utimesSync, rmdirSync, renameSync, symlinkSync, openSync, closeSync, copyFileSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import assert from 'node:assert';
 import { tool, tempDir, tempHome, pointers } from './harness.mjs';
 
@@ -897,6 +897,33 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   execFileSync(process.execPath, [TOOL, '--dir', d9], { encoding: 'utf8' });
   const h9 = existsSync(join(d9, '.health')) ? readFileSync(join(d9, '.health'), 'utf8') : '';
   ok(/over budget/.test(h9) && !/Infinity|NaN/.test(h9) && /the text above the lines/.test(h9), `a prose-only index over budget is said plainly (got ${h9})`);
+}
+
+// Round 6. A memory folder linked to a folder outside the projects root is
+// its store's only path: snapshotted where git follows the link (a junction
+// on Windows), and said to be left out where it does not (a symlink on
+// Linux and macOS). It was ignored as a second path, and doctor said ok.
+{
+  const was = [process.env.HOME, process.env.USERPROFILE];
+  const h12 = tempDir('memtier-outside-'), root12 = join(h12, '.claude', 'projects'), out12 = join(h12, 'Synced', 'memory');
+  mkdirSync(out12, { recursive: true }); mkdirSync(join(root12, 'C--ext'), { recursive: true });
+  const t12 = new Date(Date.now() - 10 * 60000);
+  writeFileSync(join(out12, 'price.md'), '---\nname: price\ndescription: "p"\nmetadata:\n  type: project\n---\n\nbody\n'); utimesSync(join(out12, 'price.md'), t12, t12);
+  writeFileSync(join(out12, 'MEMORY.md'), '- [Price](price.md) — p\n'); utimesSync(join(out12, 'MEMORY.md'), t12, t12);
+  symlinkSync(out12, join(root12, 'C--ext', 'memory'), process.platform === 'win32' ? 'junction' : 'dir');
+  process.env.HOME = h12; process.env.USERPROFILE = h12;
+  let doc12;
+  try {
+    spawnSync(process.execPath, [TOOL], { encoding: 'utf8' });
+    doc12 = spawnSync(process.execPath, [join(dirname(TOOL), 'memory.mjs'), 'doctor', '--store', join(root12, 'C--ext', 'memory')], { encoding: 'utf8', cwd: h12 }).stdout;
+  } finally { process.env.HOME = was[0]; process.env.USERPROFILE = was[1]; }
+  const files12 = spawnSync('git', ['-C', root12, 'ls-files'], { encoding: 'utf8' }).stdout;
+  const sh12 = JSON.parse(readFileSync(join(root12, '.snapshot-health'), 'utf8'));
+  ok(!/C--ext/.test(readFileSync(join(root12, '.gitignore'), 'utf8')), 'a store linked outside the root is not ignored as a second path');
+  const tracked12 = /C--ext\/memory\/price\.md/.test(files12);
+  ok(process.platform !== 'win32' || tracked12, `a junction outside the root is snapshotted on Windows (got ${files12})`);
+  ok(tracked12 ? !sh12.missed && !/leave out/.test(doc12) : sh12.missed?.length === 1 && /PROBLEM\s+snapshots: ok, last [^\n]*but they leave out [^\n]*C--ext/.test(doc12),
+    `a store the snapshot cannot reach is said to be left out (got ${JSON.stringify(sh12)} / ${doc12})`);
 }
 
 rmSync(home, { recursive: true, force: true });
