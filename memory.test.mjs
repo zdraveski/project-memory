@@ -640,14 +640,14 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     const s24 = spawnSync(process.execPath, [CLI, 'status', '--store', join(root, 'C--a24', 'memory')], { env, encoding: 'utf8' }).stdout;
     ok(/last 7 days: added x24/.test(s24), `a note on disk is not listed as deleted after a snapshot without the index (got ${s24})`);
   }
-  // A fence never closed runs to the end; a long tilde run is read once.
+  // A fence never closed hides nothing; a long tilde run is read once.
   const d23 = join(root, 'C--fence23', 'memory'); mkdirSync(d23, { recursive: true });
   memory(d23, 'four', 'fences', '````md\n```js\nx\n```\n[[ghostf]]\n````\nsee [[ghosto]]\n```\n[[ghostu]]\n');
-  memory(d23, 'tilde', 'tildes', '~'.repeat(80000) + '`\n');
+  memory(d23, 'tilde', 'tildes', '~'.repeat(120000) + '`\n' + '~~~\r'.repeat(50000));
   writeFileSync(join(d23, 'MEMORY.md'), '- [Four](four.md) — f\n- [Tilde](tilde.md) — t\n');
   const t23 = Date.now();
   const s23 = spawnSync(process.execPath, [CLI, 'status', '--store', d23], { env, encoding: 'utf8' }).stdout;
-  ok(/links to no memory: four\.md → \[\[ghosto\]\]\s*$/m.test(s23), `a \`\`\`\` fence holding a \`\`\` one, and one never closed, hide their links (got ${s23})`);
+  ok(/four\.md → \[\[ghosto\]\]/.test(s23) && /four\.md → \[\[ghostu\]\]/.test(s23) && !/ghostf/.test(s23), `a \`\`\`\` fence holding a \`\`\` one hides its links, one never closed hides none (got ${s23})`);
   ok(Date.now() - t23 < 3000, `a long run of tildes does not slow status down (${Date.now() - t23} ms)`);
   // The shared store has its own index: this one's, deleted, was not promoted.
   tier();

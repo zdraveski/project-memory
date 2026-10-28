@@ -102,11 +102,15 @@ export function memories(dir) {
       body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1),
       // Not in code (`grid[[0]]`, a fenced block: its fences start a line, an
       // inline ``` in prose hid the links up to the next fence; ```` holds a
-      // ``` fence and only ```` closes it), and `[[name.md]]` is name's. One
-      // never closed runs to the end, as Markdown reads it: tried again at
-      // each shorter run (and a tilde run giving tildes back), a long note
-      // took seconds a line (review).
-      links: [...new Set([...text.replace(/^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*(`{3,}|~{3,}(?!~))[^`\n]*\n[\s\S]*?(?:^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*\1|(?![\s\S]))/gm, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
+      // ``` fence and only ```` closes it), and `[[name.md]]` is name's. A
+      // tilde run is taken whole: giving tildes back, 20,000 of them took
+      // 17 s (review). One never closed hides nothing: run to the end, a
+      // fence the regex misread hid the rest of the note.
+      // A fence starts after a newline: ^ starts a line at a lone \r or a
+      // U+2028 too, and lines of ~~~ split by them took 3 s per 100 KB.
+      // shortcut: unclosed fences of many lengths each rescan the rest (0.2 s
+      // for a hostile 300 KB note), upgrade to a line scanner if notes get that big.
+      links: [...new Set([...text.replace(/(?<![^\n])[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*(`{3,}|~{3,}(?!~))[^`\n]*\n[\s\S]*?^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*\1/gm, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
       modified: Number.isNaN(stamp) ? mtime : stamp,
       where: hot.has(file) ? 'hot' : cold.has(file) ? 'archived' : 'unindexed',
     }];
