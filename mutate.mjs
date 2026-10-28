@@ -404,7 +404,7 @@ const suites = {
     'rule share measured on the whole budget': ['Math.max(0, budget - pinnedBytes) * RULE_SHARE', 'budget * RULE_SHARE'],
   }],
   'memory.mjs': ['memory.test.mjs', {
-    "a linked store found by its resolved path": ["  if (!at.startsWith('..') && !isAbsolute(at)) return relative(root, join(real(dir), file)).replace(/\\\\/g, '/');", "  return relative(root, join(real(dir), file)).replace(/\\\\/g, '/');"],
+    "a linked store found by its resolved path": ["  if (!at.startsWith('..') && !isAbsolute(at)) return [relative(root, join(real(dir), file)).replace(/\\\\/g, '/')];", "  return [relative(root, join(real(dir), file)).replace(/\\\\/g, '/')];"],
     "a project folder linked outside named by its target": ["return (links.length ? links : [basename(dirname(dir))]).map((n) => `${n}/memory/${file}`);", "return [relative(root, join(real(dirname(dir)), basename(dir), file)).replace(/\\\\/g, '/')];"],
     "a store's second link named in the history": ["(links.length ? links : [basename(dirname(dir))])", "([basename(dirname(dir))])"],
     "a link's move read as a rename in history": ["git('log', '--no-renames', '--format=@%h %ad", "git('log', '--format=@%h %ad"],

@@ -626,9 +626,10 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     ok(r22.status === 0 && /GONE-V1/.test(readFileSync(join(out22, 'gone.md'), 'utf8')), `a note deleted before a link that sorts first was added comes back (got ${r22.stdout}${r22.stderr})`);
     const h22 = spawnSync(process.execPath, [CLI, 'history', 'other', '--store', join(root, 'C--b22', 'memory')], { env, encoding: 'utf8' }).stdout;
     ok((h22.match(/^  [0-9a-f]{7,} \d{4}-/gm) || []).length === 2, `history lists the snapshot that moved a note to a link that sorts first (got ${h22})`);
-    unlinkSync(join(out22, 'MEMORY.md'));
+    // The index the restore gave a line, snapshotted under the first link only.
+    tier(); unlinkSync(join(out22, 'MEMORY.md'));
     const m22 = spawnSync(process.execPath, [CLI, 'restore', 'MEMORY', '--store', join(root, 'C--b22', 'memory')], { env, encoding: 'utf8' });
-    ok(m22.status === 0 && existsSync(join(out22, 'MEMORY.md')), `a deleted index comes back through the second link (got ${m22.stdout}${m22.stderr})`);
+    ok(m22.status === 0 && /\(gone\.md\)/.test(readFileSync(join(out22, 'MEMORY.md'), 'utf8')), `a deleted index comes back through the second link as last snapshotted (got ${m22.stdout}${m22.stderr})`);
   }
   const d23 = join(root, 'C--fence23', 'memory'); mkdirSync(d23, { recursive: true });
   memory(d23, 'four', 'fences', '````md\n```js\nx\n```\n[[ghostf]]\n````\nsee [[ghosto]]\n');
