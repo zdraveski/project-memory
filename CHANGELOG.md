@@ -179,6 +179,30 @@ months of use, Claude Code's own documentation, and a privacy red team.
 - The README, the how-it-works page and the graphics say what the code does:
   the compaction wait needs room set aside, and the history keeps old
   versions, not every version.
+- A sentence in `handoff.md` that quotes the record's two markers no longer
+  takes the record's place. Before, the next reply wrote the record into that
+  sentence, and the hand-written text between the quoted markers was lost.
+- A conversation you stopped with Escape is no longer reported at the next
+  start as "another session is working" for half an hour.
+- A note's settings are read as YAML reads them. A pin set after a long
+  description is seen (the note used to be moved to the archive),
+  `superseded-by: null` no longer counts as replaced, and a quoted name or
+  description keeps its own quotes.
+- `status` and `search` count a table of contents line written in another
+  letter case on Windows. `[[note.md]]` and a `[[...]]` inside code are no
+  longer listed as links to nothing, and `--store=<folder>` works like
+  `--store <folder>`.
+- Two windows with replies in the same minute no longer rewrite the record
+  after every reply.
+- A memory folder that is a link to a folder elsewhere (a synced folder) is
+  in the snapshots where git follows the link, as it does a junction on
+  Windows. Where it does not, `doctor` and the startup say the folder is left
+  out, and how to fix it. Before, it was left out while `doctor` said ok.
+- A conversation started in a subfolder of a repository is recorded from its
+  first reply, also when no conversation has started at the repository's
+  root yet.
+- "Tests pass: all green" keeps its next word: the short keyword `pass`
+  counts as a password only as a setting (`PASS=`, `db_pass:`).
 
 **Going back to 1.0.7**
 - It works, with two limits until newer exchanges replace the old ones: some
