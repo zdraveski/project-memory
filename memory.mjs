@@ -101,9 +101,9 @@ export function memories(dir) {
       file, path, dir, name, desc, type, superseded,
       body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1),
       // Not in code (`grid[[0]]`, a fenced block: its fences start a line, an
-      // inline ``` in prose hid the links up to the next fence), and
-      // `[[name.md]]` is name's.
-      links: [...new Set([...text.replace(/^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*(```|~~~)[^`\n]*\n[\s\S]*?^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*\1/gm, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
+      // inline ``` in prose hid the links up to the next fence; ```` holds a
+      // ``` fence and only ```` closes it), and `[[name.md]]` is name's.
+      links: [...new Set([...text.replace(/^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*(`{3,}|~{3,})[^`\n]*\n[\s\S]*?^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*\1/gm, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
       modified: Number.isNaN(stamp) ? mtime : stamp,
       where: hot.has(file) ? 'hot' : cold.has(file) ? 'archived' : 'unindexed',
     }];
@@ -175,7 +175,7 @@ const more = (xs, n) => xs.slice(0, n).join(', ') + (xs.length > n ? `, and ${xs
 // and are left out.
 const RECENT_DAYS = 7;
 function recent(dir) {
-  let out; try { out = git('-c', 'core.quotepath=off', 'log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=@%s', '--', tracked(dir, '')); } catch { return ''; }
+  let out; try { out = git('-c', 'core.quotepath=off', 'log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=@%s', '--', ...tracked(dir, '')); } catch { return ''; }
   const last = new Map(), born = new Set();
   let first = false;
   for (const l of out.split('\n')) {
@@ -242,24 +242,28 @@ const real = (p) => { try { return realpathSync.native(p); } catch { return p; }
 // path: resolved, git said the path was outside the repository.
 // Its memory folder or its project folder, either can be the link: the
 // project folder as the root lists it, then memory/.
+// Every path git may hold it by, the one to read first first.
 const tracked = (dir, file) => {
   const root = real(projectsRoot()), at = relative(root, real(dir));
-  if (!at.startsWith('..') && !isAbsolute(at)) return relative(root, join(real(dir), file)).replace(/\\/g, '/');
+  if (!at.startsWith('..') && !isAbsolute(at)) return [relative(root, join(real(dir), file)).replace(/\\/g, '/')];
   // Of two links to one folder, the first, which the snapshot keeps: named by
   // the second, git read an ignored path, and restore brought back a version
-  // older than the last snapshot's.
+  // older than the last snapshot's. Then the others: a link that sorts first,
+  // added later, holds none of the history made before it. In the order
+  // gitignore() takes them, with no MEMORY.md needed: a deleted index is the
+  // one to restore.
   const me = pathKey(real(dir));
-  const kept = allStores().find((d) => pathKey(real(d)) === me);
-  const slug = basename(dirname(kept ?? dir));
   let names = []; try { names = readdirSync(projectsRoot()); } catch {}
-  return `${names.includes(slug) ? slug : names.find((n) => n.toLowerCase() === slug.toLowerCase()) ?? slug}/memory/${file}`;
+  const links = names.filter((n) => pathKey(real(join(projectsRoot(), n, 'memory'))) === me);
+  return (links.length ? links : [basename(dirname(dir))]).map((n) => `${n}/memory/${file}`);
 };
 
 export function history(dirs, file, everywhere = false) {
   const verb = { A: 'added', M: 'changed', D: 'deleted' };
   try {
     for (const dir of dirs) {
-      const out = git('log', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', tracked(dir, file));
+      // No renames: a link that sorts first moves every path to it, and an R line was no change.
+      const out = git('log', '--no-renames', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', ...tracked(dir, file));
       const lines = [];
       let head = null;
       for (const l of out.split('\n')) {
@@ -269,8 +273,8 @@ export function history(dirs, file, everywhere = false) {
       }
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
-      const moved = !isShared(dir) && existsSync(join(sharedStore(), file)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
-      if (lines.length) return { ok: true, lines: [join(dir, file), ...lines, ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- "${tracked(dir, file)}"`] };
+      const moved = !isShared(dir) && !file.startsWith('MEMORY') && existsSync(join(sharedStore(), file)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
+      if (lines.length) return { ok: true, lines: [join(dir, file), ...lines, ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, file).map((p) => `"${p}"`).join(' ')}`] };
     }
   } catch (e) { return no(`no snapshots to read: ${gitWhy(e)}`); }
   return no(`no snapshot holds ${file} (looked in ${dirs.join(', ')}): search <words> finds a memory's name${everywhere ? '' : '; --all looks in every project'}`);
@@ -282,36 +286,43 @@ export function history(dirs, file, everywhere = false) {
 // line it had at that revision comes back with it: hand-written, where
 // tiering's orphan recovery would give it a machine line in the archive.
 export function restore(dir, file, { rev, force = false } = {}) {
-  const path = join(dir, file), at = tracked(dir, file);
+  const path = join(dir, file);
   if (existsSync(path) && !force) return no(`${path} exists; restore --force replaces it with the snapshot`);
   // Deleted here by a promote: brought back, it would be in both stores, loaded twice, drifting apart.
-  if (!isShared(dir) && existsSync(join(sharedStore(), file)) && !force) return no(`${file} was promoted: it is in ${sharedStore()}; restore --force brings a second copy back here`);
+  // Not an index: every store has its own, and a deleted one read as promoted.
+  if (!isShared(dir) && !file.startsWith('MEMORY') && existsSync(join(sharedStore(), file)) && !force) return no(`${file} was promoted: it is in ${sharedStore()}; restore --force brings a second copy back here`);
   // A commit's name, or one counted back from it (abc123^, HEAD~2): anything
   // else reached git as an option, and `--format=...` wrote git's own output
   // into the note.
   // No `..` either: `A..B:path` is a range, and git showed it as an empty note.
   if (rev !== undefined && !/^[\w^~]{1,80}$/.test(rev)) return no(`--rev takes a commit from history, like abc1234: not "${rev}"`);
-  let from = rev, text;
-  try {
-    if (!from) {
-      // HEAD read once: a snapshot committed between two reads of it (another
-      // window deleting the note) failed the restore.
-      try { const head = git('rev-parse', '--short', 'HEAD').trim(); git('cat-file', '-e', `${head}:${at}`); from = head; }
-      catch { const gone = git('log', '-1', '--format=%h', '--diff-filter=D', '--', at).trim(); from = gone ? `${gone}^` : 'HEAD'; }
-    }
-    try { text = git('cat-file', '-p', `${from}:${at}`); }
-    // The commit history names as "deleted" no longer has it: the version it
-    // deleted is the one before. Neither there: the error is the commit's own.
-    catch (e) {
-      if (!rev) throw e;
-      try { text = git('cat-file', '-p', `${rev}^:${at}`); } catch { throw e; }
-      from = `${rev}^`;
-    }
-  } catch (e) { return no(`no snapshot of ${at} at ${from || 'HEAD'}: ${gitWhy(e)}`); }
+  // The first path that has it (tracked): the error is the first path's.
+  let from, text, failure;
+  for (const at of tracked(dir, file)) {
+    from = rev;
+    try {
+      if (!from) {
+        // HEAD read once: a snapshot committed between two reads of it (another
+        // window deleting the note) failed the restore.
+        try { const head = git('rev-parse', '--short', 'HEAD').trim(); git('cat-file', '-e', `${head}:${at}`); from = head; }
+        catch { const gone = git('log', '-1', '--format=%h', '--diff-filter=D', '--', at).trim(); from = gone ? `${gone}^` : 'HEAD'; }
+      }
+      try { text = git('cat-file', '-p', `${from}:${at}`); }
+      // The commit history names as "deleted" no longer has it: the version it
+      // deleted is the one before. Neither there: the error is the commit's own.
+      catch (e) {
+        if (!rev) throw e;
+        try { text = git('cat-file', '-p', `${rev}^:${at}`); } catch { throw e; }
+        from = `${rev}^`;
+      }
+      failure = null; break;
+    } catch (e) { failure ??= `no snapshot of ${at} at ${from || 'HEAD'}: ${gitWhy(e)}`; }
+  }
+  if (failure) return no(failure);
   let line = null;
   if (!file.startsWith('MEMORY')) {
     for (const idx of ['MEMORY.md', ARCHIVE]) {
-      let t; try { t = git('cat-file', '-p', `${from}:${tracked(dir, idx)}`); } catch { continue; }
+      const t = tracked(dir, idx).map((at) => { try { return git('cat-file', '-p', `${from}:${at}`); } catch { return ''; } }).join('\n');
       line = t.split(/\r?\n/).find((l) => target(l) === file)?.replace(OVERFLOW, '') ?? null;
       if (line) break;
     }

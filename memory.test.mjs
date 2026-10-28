@@ -608,4 +608,40 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   ok(/links to no memory: fenced\.md → \[\[ghostp\]\]\s*$/m.test(s21), `fences in a quote, a list or with ~~~ hide their links; a code span in prose does not hide the next (got ${s21})`);
 }
 
+// Review of round 6's second review. A link that sorts first, added after the
+// history was made, still lets the older versions come back through the
+// first link; a deleted index comes back through the second link; a ````
+// fence holding a ``` one hides its links.
+{
+  const out22 = join(home, 'Synced22', 'memory'); mkdirSync(out22, { recursive: true });
+  memory(out22, 'gone', 'gone', 'GONE-V1');
+  writeFileSync(join(out22, 'MEMORY.md'), '- [Gone](gone.md) — g\n');
+  const link22 = (p) => { mkdirSync(join(root, p), { recursive: true }); symlinkSync(out22, join(root, p, 'memory'), process.platform === 'win32' ? 'junction' : 'dir'); };
+  link22('C--b22'); tier();
+  if (/C--b22\/memory\/gone\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
+    unlinkSync(join(out22, 'gone.md')); memory(out22, 'other', 'other'); writeFileSync(join(out22, 'MEMORY.md'), '- [Other](other.md) — o\n');
+    tier();
+    link22('C--a22'); tier();
+    const r22 = spawnSync(process.execPath, [CLI, 'restore', 'gone', '--store', join(root, 'C--b22', 'memory')], { env, encoding: 'utf8' });
+    ok(r22.status === 0 && /GONE-V1/.test(readFileSync(join(out22, 'gone.md'), 'utf8')), `a note deleted before a link that sorts first was added comes back (got ${r22.stdout}${r22.stderr})`);
+    const h22 = spawnSync(process.execPath, [CLI, 'history', 'other', '--store', join(root, 'C--b22', 'memory')], { env, encoding: 'utf8' }).stdout;
+    ok((h22.match(/^  [0-9a-f]{7,} \d{4}-/gm) || []).length === 2, `history lists the snapshot that moved a note to a link that sorts first (got ${h22})`);
+    unlinkSync(join(out22, 'MEMORY.md'));
+    const m22 = spawnSync(process.execPath, [CLI, 'restore', 'MEMORY', '--store', join(root, 'C--b22', 'memory')], { env, encoding: 'utf8' });
+    ok(m22.status === 0 && existsSync(join(out22, 'MEMORY.md')), `a deleted index comes back through the second link (got ${m22.stdout}${m22.stderr})`);
+  }
+  const d23 = join(root, 'C--fence23', 'memory'); mkdirSync(d23, { recursive: true });
+  memory(d23, 'four', 'fences', '````md\n```js\nx\n```\n[[ghostf]]\n````\nsee [[ghosto]]\n');
+  writeFileSync(join(d23, 'MEMORY.md'), '- [Four](four.md) — f\n');
+  const s23 = spawnSync(process.execPath, [CLI, 'status', '--store', d23], { env, encoding: 'utf8' }).stdout;
+  ok(/links to no memory: four\.md → \[\[ghosto\]\]\s*$/m.test(s23), `a \`\`\`\` fence holding a \`\`\` one hides its links (got ${s23})`);
+  // The shared store has its own index: this one's, deleted, was not promoted.
+  tier();
+  const h23 = spawnSync(process.execPath, [CLI, 'history', 'MEMORY', '--store', d23], { env, encoding: 'utf8' });
+  ok(h23.status === 0 && !/promoted/.test(h23.stdout), `history does not call an index promoted (got ${h23.stdout}${h23.stderr})`);
+  unlinkSync(join(d23, 'MEMORY.md'));
+  const m23 = spawnSync(process.execPath, [CLI, 'restore', 'MEMORY', '--store', d23], { env, encoding: 'utf8' });
+  ok(existsSync(join(shared, 'MEMORY.md')) && m23.status === 0 && existsSync(join(d23, 'MEMORY.md')), `a deleted index comes back while the shared store has one (got ${m23.stdout}${m23.stderr})`);
+}
+
 console.log(`memory: ${checks} checks passed`);

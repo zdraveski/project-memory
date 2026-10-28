@@ -126,6 +126,9 @@ months of use, Claude Code's own documentation, and a privacy red team.
   it (`notes[1].md`), and with `--force` it emptied the note it replaced. git
   read the name as a pattern; `history` listed other notes' changes for the
   same reason. Both read names literally now.
+- `restore MEMORY` would not bring back a deleted table of contents while the
+  shared notebook had one: it said the file had been promoted, and `history`
+  said so too. A table of contents is never promoted.
 - `promote ALPHA` on Windows moved `alpha.md` but left its line in the table
   of contents, pointing at nothing. A note is now found by its name on disk:
   in any letter case on Windows and macOS, only as written on Linux.
