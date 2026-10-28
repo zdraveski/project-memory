@@ -166,7 +166,7 @@ export { local };
 // A session's short tag: enough to tell parallel sessions apart in one file.
 export const tag = (id) => String(id || '').slice(0, 8);
 
-function turns(raw) {
+export function turns(raw) {
   const out = [];
   let pending = null;
   // A nudge holds the answer for its memory update only; a private message
@@ -180,6 +180,7 @@ function turns(raw) {
     // the memory update, or the private part.
     if (r.type === 'assistant' && pending && !pending.frozen && Array.isArray(r.message?.content)) {
       for (const b of r.message.content) {
+        if (b?.type === 'tool_use' && /^(Bash|PowerShell)$/.test(b.name) && b.input?.command) pending.ran.push(String(b.input.command));
         const f = b?.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path);
         if (!f) continue;
         // The newest edit last, and by path: two index.ts files are two, and
@@ -223,7 +224,8 @@ function turns(raw) {
     if (r.type === 'attachment' && /^hook_(?:additional_context|blocking_error)$/.test(r.attachment?.type ?? '')
       && nudged(JSON.stringify(r.attachment.content ?? r.attachment.blockingError ?? ''))) { if (pending) hold(pending); continue; }
     if (!t && !ask && !typed) continue;
-    if (ask) pending = { at: local(r.timestamp), ask, raw: unwrap(n), did: '', changed: [] };
+    if (ask) pending = { at: local(r.timestamp), ask, raw: unwrap(n), did: '', changed: [], ran: [],
+      id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '' };
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
     else if ((r.type === 'user' || typed) && pending && /<\s*private/i.test(typed || mine)) pending.frozen = true;

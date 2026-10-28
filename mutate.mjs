@@ -125,6 +125,7 @@ const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    "a turn's commands not kept": ["pending.ran.push(String(b.input.command));", "void 0;"],
     "a payload's cwd alone makes a project folder": ["    if (!same(dirname(dirname(resolve(input.transcript_path))), projectsRoot())) return false;\n", ""],
     "the startup is silent on a store the snapshots leave out": ["    if (s.missed?.length) out.push(`Memory snapshots leave out ${s.missed.join(', ')}: ${MISSED}`);\n", ""],
     "same-minute entries of two sessions swap": [".sort((x, y) => byAt(x, y) || (x.s < y.s ? -1 : x.s > y.s ? 1 : 0));", ".sort(byAt);"],

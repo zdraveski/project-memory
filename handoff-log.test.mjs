@@ -1159,5 +1159,18 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
     ok(!red6(s).includes(v6), `a pass credential is redacted: ${JSON.stringify(s.replace(v6, 'V'))} (got ${JSON.stringify(red6(s).replace(v6, 'V'))})`);
 }
 
+// The journal's fields: commands, the prompt's uuid, branch and cwd.
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const u = (s, x = {}) => JSON.stringify({ type: 'user', timestamp: '2026-10-28T09:00:00Z', uuid: 'u-1', gitBranch: 'main', cwd: 'C:\\proj', message: { content: [{ type: 'text', text: s }] }, ...x });
+  const a = (content) => JSON.stringify({ type: 'assistant', timestamp: '2026-10-28T09:01:00Z', message: { content } });
+  const raw = [u('deploy it'), a([{ type: 'tool_use', name: 'Bash', input: { command: 'npm run build' } }]),
+    a([{ type: 'tool_use', name: 'PowerShell', input: { command: 'Get-ChildItem' } }]), a([{ type: 'text', text: 'Deployed.' }])].join('\n');
+  const [t] = turns(raw);
+  ok(t.id === 'u-1' && t.branch === 'main' && t.cwd === 'C:\\proj', 'a turn keeps its prompt uuid, branch and cwd');
+  ok(JSON.stringify(t.ran) === '["npm run build","Get-ChildItem"]', 'a turn keeps its Bash and PowerShell commands in order');
+  ok(turns(u('x', { gitBranch: 'HEAD' }) + '\n' + a([{ type: 'text', text: 'y' }]))[0].branch === '', 'a detached HEAD is no branch');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
