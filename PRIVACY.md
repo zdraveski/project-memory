@@ -27,19 +27,22 @@ This page says what it reads, what it saves, and how to remove it.
 
 All of it stays in `~/.claude/projects` on your computer:
 
-- A record of where you left off: the start of your latest messages (up to 240
-  characters each) and of Claude's replies (up to 400), and the names of the
-  files Claude changed, for the last 10 exchanges of each of your 3 most recent
-  conversations. Older entries are replaced as you go, and the record is not
-  part of the history below. Common kinds of keys, tokens and passwords (API
-  keys, access tokens, passwords in web addresses, settings such as
-  `password=`) are replaced with `[redacted]` first; no tool recognizes every
-  secret. Anything you write between `<private>` and `</private>` is left out,
-  and so are Claude's reply to that message and the names of the files changed
-  in that turn. A conversation where you type `<private-session>` is left out
-  entirely, and its earlier entries are removed. Both work in any letter case,
-  and in a message typed while Claude is still working. A later reply that
-  repeats something private is saved like any other reply.
+- A record of where you left off (`handoff.md`): the start of your latest
+  messages (up to 240 characters each) and of Claude's replies (up to 400),
+  and the names of the files Claude changed, for the last 10 exchanges of each
+  of your 3 most recent conversations. Older entries are replaced as you go,
+  and the record is not part of the history below.
+  - Common kinds of keys, tokens and passwords (API keys, access tokens,
+    passwords in web addresses, settings such as `password=`) are replaced
+    with `[redacted]` first. No tool recognizes every secret.
+  - Anything you write between `<private>` and `</private>` is left out, and
+    so are Claude's reply to that message and the names of the files changed
+    in that turn.
+  - A conversation where you type `<private-session>` is left out entirely,
+    and its earlier entries are removed.
+  - Both tags work in any letter case, and in a message typed while Claude is
+    still working. A later reply that repeats something private is saved like
+    any other reply.
 - When Claude Code shortens a nearly full conversation in the middle of a
   task, with no room to wait for the task's step to end, a note of what was in
   progress: your request, the start of Claude's last words, any background
@@ -50,8 +53,8 @@ All of it stays in `~/.claude/projects` on your computer:
   automatic record. Those lines are Claude's own writing, and stay until
   Claude or you change them. Claude isn't asked in a private conversation.
 - A history of your notes, in a local git repository: after each reply that
-  changed a note, its new version is kept. It holds your notes only, never the record
-  of where you left off.
+  changed a note, its new version is kept. It holds your notes only, never
+  the record of where you left off.
 - A few small bookkeeping files, such as when it last ran, and the short tags
   of conversations you marked `<private-session>`.
 

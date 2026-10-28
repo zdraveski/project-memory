@@ -30,20 +30,23 @@ every hook does nothing; the memory tool still works when you run it yourself.
 
 Claude Code keeps one folder per project under `~/.claude/projects/`, named
 after the project's path with every character that isn't a letter or digit
-replaced by `-`. Auto memory lives in its `memory/` subfolder. For memory, a
-project is a git repository: a conversation started in a subfolder or a
-worktree uses the repository's folder, though its transcript sits in the
-folder named for where it started. project-memory finds the repository the
-same way, from the folder the conversation started in, and follows a
-worktree's `.git` file only when the main repository's worktree record names
-it back, as Claude Code does. With `CLAUDE_CONFIG_DIR` set, all of this is
-under that folder instead of `~/.claude`, and then a plain name in
-`CLAUDE_CODE_PROJECT_DIR_NAME` (up to 64 letters, digits, `-` and `_`) names
-the project folder; without `CLAUDE_CONFIG_DIR` it is not followed, and
-neither are `_shared` and Windows device names such as `con` and `nul`. A
-repository whose path is so long that Claude Code shortens its folder name
-with a hash is not followed either: a conversation started in a subfolder of
-it writes its handoff under the long name.
+replaced by `-`. Auto memory lives in its `memory/` subfolder.
+
+For memory, a project is a git repository: a conversation started in a
+subfolder or a worktree uses the repository's folder, though its transcript
+sits in the folder named for where it started. project-memory finds the
+repository the same way, from the folder the conversation started in. It
+follows a worktree's `.git` file only when the main repository's worktree
+record names it back, as Claude Code does. A repository whose path is so long
+that Claude Code shortens its folder name with a hash is not followed: a
+conversation started in a subfolder of it writes its handoff under the long
+name.
+
+With `CLAUDE_CONFIG_DIR` set, all of this is under that folder instead of
+`~/.claude`, and a plain name in `CLAUDE_CODE_PROJECT_DIR_NAME` (up to 64
+letters, digits, `-` and `_`) names the project folder. Without
+`CLAUDE_CONFIG_DIR`, that name is not followed; neither are `_shared` and
+Windows device names such as `con` and `nul`.
 
 | Where | What |
 |---|---|
@@ -117,10 +120,12 @@ the turn changed (from Edit, Write and NotebookEdit; the 8 edited last, and
 how many more). A slash command is recorded as you typed it, with its
 arguments. The answer is the reply Claude Code hands the Stop hook, since the
 transcript file can lag behind it. A project gets its `memory/` folder for
-this if Claude hasn't saved a note there yet. Entries carry your local time
-and are ordered by it. After you move west, new turns rank before the newest
-entries and aren't kept until your clock passes them, up to the hours you
-moved; after you move east, recent turns can be listed twice until newer ones
+this if Claude hasn't saved a note there yet.
+
+Entries carry your local time and are ordered by it, so changing time zones
+shows up here. After you move west, new turns rank before the newest entries
+and aren't kept until your clock passes them, up to the hours you moved.
+After you move east, recent turns can be listed twice until newer ones
 replace them.
 
 Before any of it is written, these are taken out:
@@ -227,21 +232,22 @@ things soften that.
   next piece of work starts, such as a background task finishing.
 - **A short wait.** When Claude Code compacts on its own in the middle of a
   turn, `compact-gate.mjs` asks it to wait for the end of the turn, while the
-  conversation is between 200,000 tokens and 90% of the model's window: past
-  that there may be no room for one more step. Below that, or
-  above it, or at the end of a turn, the compaction goes ahead. Claude Code
-  compacts at about 96% of its compaction window, so the gate can wait only
-  when `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is set below the model's window: set
-  to `800000` on a 1M model, Claude Code compacts at about 767,000 tokens, and
-  the turn can finish first. With the default settings the compaction goes
-  ahead, and the recovery note below does the work. Claude Code doesn't
-  always honour the request either.
+  conversation is between 200,000 tokens and 90% of the model's window. Past
+  90% there may be no room for one more step, so the compaction goes ahead,
+  and the gate first writes the handoff and the turn's in-flight note into
+  `handoff.md`. Under 200,000 tokens, or at the end of a turn, it goes ahead
+  and nothing is written. Claude Code compacts at about 96% of its compaction
+  window, so the gate can wait only when `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is
+  set below the model's window: set to `800000` on a 1M model, Claude Code
+  compacts at about 767,000 tokens, and the turn can finish first. With the
+  default settings the compaction goes ahead, and the recovery note below
+  does the work. Claude Code doesn't always honour the request either.
 - **A recovery note.** When a turn is cut anyway, the briefing right after
-  the compaction gives Claude what it had in flight: what you asked, its last words,
-  background tasks still running with their output files, and the names of
-  the files it had edited. A task counts as running from the result of the
-  Bash or Agent call that started it until its end is reported; nothing else
-  in the conversation adds one.
+  the compaction gives Claude what it had in flight: what you asked, its last
+  words, background tasks still running with their output files, and the
+  names of the files it had edited. A task counts as running from the result
+  of the Bash or Agent call that started it until its end is reported;
+  nothing else in the conversation adds one.
 
 The plugin reads the window sizes from the environment, as Claude Code does:
 
@@ -269,8 +275,9 @@ written, and long paths work on Windows. Your other git settings still apply.
 A damaged index (git's working copy of the last snapshot, after a crash or a
 full disk) is rebuilt from that snapshot; no note is touched. If
 `~/.claude/projects` is already a git repository that project-memory didn't
-make, it commits nothing there, and `doctor` says snapshots are off. A repository at `~/.claude` itself (a dotfiles repository)
-doesn't count: project-memory still makes its own in `~/.claude/projects`.
+make, it commits nothing there, and `doctor` says snapshots are off. A
+repository at `~/.claude` itself (a dotfiles repository) doesn't count:
+project-memory still makes its own in `~/.claude/projects`.
 The first time, with no repository there yet, it takes a snapshot of every
 notebook as it finds it before its first tidy-up, then tidies.
 
@@ -358,8 +365,8 @@ node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory
 Every command works on the project of the conversation that `--session <id>`
 names (the skill passes Claude Code's session id). Without it, or when that
 conversation's transcript isn't found, it works on the nearest project with
-a notebook, from the folder you're in upward. The tool reads no environment variable to
-find the conversation. `--store <folder>` picks another project's `memory`
+a notebook, from the folder you're in upward. The tool reads no environment
+variable to find the conversation. `--store <folder>` picks another project's `memory`
 folder, one inside `~/.claude/projects` (any other is refused), and `--shared`
 picks the shared notebook. With no command, it runs `status`. The tool exits
 with 1 when a command is refused or fails.

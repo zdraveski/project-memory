@@ -15,9 +15,9 @@ messages shortened to fit.*
 
 ## Quick start
 
-With Node.js 20 or newer and Git on your computer, type these two lines in
-Claude Code (in the menu the second one opens, choose to install it for you),
-then restart it:
+If you have Node.js 20 or newer and Git, type these two lines in Claude Code,
+then restart it. When the second line opens a menu, choose to install it for
+you.
 
 ```
 /plugin marketplace add zdraveski/project-memory
@@ -106,31 +106,36 @@ project-memory protects your work before, during and after:
    made. When you type `/compact` yourself, the notes are tidied and the
    record of where you are is saved first.
 2. **During.** If Claude Code starts to compact in the middle of a task,
-   project-memory asks it to wait until Claude finishes the step it's on, as
-   long as the conversation holds more than 200,000 tokens (a token is about
-   three quarters of a word) and less than 90% of what the model can hold.
-   Past 90% there may be no room for one more step, so the compaction goes
-   ahead, and project-memory first writes down what Claude is in the middle
-   of. With Claude Code's usual settings, a conversation is compacted only
-   when it's nearly full, so there's no room to wait. To give it room, see
+   project-memory asks it to wait until Claude finishes the step it's on.
+   Waiting needs room for one more step, so it asks only while the
+   conversation is between 200,000 tokens (a token is about three quarters
+   of a word) and 90% of what the model can hold. Past 90%, it writes down
+   what Claude is in the middle of instead. With Claude Code's usual settings
+   a conversation is compacted only when it's past 90%, so this step writes
+   the note and doesn't wait. To give it room to wait, see
    [Compaction](docs/how-it-works.md#compaction). Claude Code doesn't always
    agree to wait.
 3. **After.** If a task is cut off anyway, Claude is told straight away what it
    was in the middle of: what you asked, what it last said, any background
    jobs still running, and the files it had changed.
 
-Long tasks keep their thread, you don't have to explain things again after a
-summary, and Claude is less likely to redo work it had already started.
+### If your model holds 200,000 tokens
 
-The reminder at 85% assumes a context window of 1,000,000 tokens, unless your
-environment sets a smaller one. On a model with a 200,000-token window, the
-"During" step does nothing, since the conversation never passes 200,000
-tokens, and the reminder never comes unless you set
-`CLAUDE_CODE_DISABLE_1M_CONTEXT=1` or `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200k`
-(ask Claude to add one of them under `env` in your Claude Code settings).
-A size you chose with `/autocompact` is kept in your settings, which
-project-memory doesn't read, so the reminder needs one more setting to match
-it. See [Compaction](docs/how-it-works.md#compaction).
+project-memory assumes a context window of 1,000,000 tokens unless your
+settings say otherwise. With a 200,000-token model, the reminder at 85% never
+comes, and the "During" step never runs, since the conversation never passes
+200,000 tokens. To get the reminder back, ask Claude to add one of these
+under `env` in your Claude Code settings:
+
+```
+"CLAUDE_CODE_DISABLE_1M_CONTEXT": "1"
+"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200k"
+```
+
+If you chose a size with `/autocompact`, put the same size in
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW`. project-memory doesn't read your settings,
+so it can't see the size you chose. See
+[Compaction](docs/how-it-works.md#compaction).
 
 ## Good to know
 
@@ -287,7 +292,8 @@ still there after Claude's next reply, ask Claude to check that Node.js is
 installed.
 
 **Any other line that starts with `PROBLEM`.** Most of these lines end with
-what to do. If it's unclear, ask Claude: *"What does this line mean, and how do I fix it?"*
+what to do. If it's unclear, ask Claude: *"What does this line mean, and how
+do I fix it?"*
 
 **A note seems to be gone.** It may have moved to the archive, where it's still
 kept. Ask Claude to search for it. If it was deleted, ask Claude to bring it
@@ -312,11 +318,12 @@ back.
   tokens, passwords in web addresses, and settings such as `password=`. No
   tool can recognize every secret, so use `<private>` for anything else.
 - To keep something out, put it between `<private>` and `</private>`. That
-  part isn't saved, and neither is Claude's reply to that message, since a
-  reply often repeats what it was told, nor the names of the files changed in
-  that turn. It works in any letter case, and in a message you type while
-  Claude is still working. A later reply that repeats the private part is
-  saved like any other, so for a longer secret use `<private-session>`.
+  part isn't saved. Claude's reply to that message isn't saved either, since a
+  reply often repeats what it was told, and neither are the names of the files
+  changed in that turn. The tags work in any letter case, and in a message you
+  type while Claude is still working. A later reply that repeats the private
+  part is saved like any other, so if it will come up again, use
+  `<private-session>`.
 - To keep a whole conversation out of the record, type `<private-session>` in
   any message. What was saved before is removed from the record, and Claude
   isn't asked to write notes before the conversation is shortened. Claude can
