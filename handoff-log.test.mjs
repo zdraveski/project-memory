@@ -1078,5 +1078,16 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   } finally { if (was5 === null) rmSync(idx5, { force: true }); else writeFileSync(idx5, was5); }
 }
 
+// Round 5. `pass` in prose is no key ("Both suites pass: handoff-log 207" lost
+// its next word on real data); as an assignment or a key it still is.
+{
+  const { redact: red5 } = await import('./handoff-log.mjs');
+  const v5 = 'hunt' + 'er22x';
+  for (const prose of ['Both suites pass: handoff-log 207, memory 105', 'lint and tests pass: everything green'])
+    ok(red5(prose) === prose, `prose with "pass:" is kept (got ${red5(prose)})`);
+  for (const key of [`DB_PASS=${v5}`, `export PASS=${v5}`, `db_pass: ${v5}`, `{"pass": "${v5}"}`, `pass: ${v5}`, `retries: 3\n  pass: ${v5}`, `smtp.pass=${v5}`])
+    ok(!red5(key).includes(v5), `a pass key is redacted: ${JSON.stringify(key.replace(v5, 'V'))} (got ${JSON.stringify(red5(key).replace(v5, 'V'))})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

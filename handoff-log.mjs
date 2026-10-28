@@ -299,10 +299,12 @@ const SECRETS = [
   // stripeApiKey) or not (DB_PASSWORD=, AWS_SECRET_ACCESS_KEY=), and the value
   // can sit on the next line (YAML). `pwd` needs its own start. Bounded, so no
   // input backtracks. Not a bare `token`: "input_tokens: 863324" is a count.
-  // `pass` alone too (DB_PASS=, pass:), and a key's data. Not a value that
+  // `pass` alone too, as an assignment or a key (DB_PASS=, db_pass:, "pass":,
+  // `pass:` starting a line), not in prose ("tests pass: all green"); and a
+  // key's data. Not a value that
   // is plainly code: `password: string`, `token = jwt.sign(payload`,
   // `secret: process.env.JWT_SECRET`, `${DB_PASSWORD}`, a path.
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z])(?=[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}=)|(?<=(?:^|\n)[ \t]{0,40}|[_."'{(\[,-])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
   [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
 ];

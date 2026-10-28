@@ -136,8 +136,8 @@ no user name), `curl -u user:…`, `--password …`, `mysql -p…`, `docker logi
 `sshpass` and `twine` with `-p …`, "password is …", "the password for the
 server is …" and "the api key is …" when the value has a digit or a symbol in
 it ("my password is sunshine" stays, since "the password is hashed" is
-prose), and a value of 6 characters or more after `password`, `pass`,
-`passphrase`, `secret`, `access_token`, `auth_token`, `api_key`,
+prose), and a value of 6 characters or more after `password`, `pass` (as an
+assignment or a key, not "tests pass: all green"), `passphrase`, `secret`, `access_token`, `auth_token`, `api_key`,
 `account_key`, `private_key`, `key-data` or `pwd`, also inside a longer name
 (`DB_PASSWORD=`, `DB_PASS=`, `PGPASSWORD=`, `dbPassword`, `clientSecret`) and
 with the value on the next line. A value that is plainly code stays: a type

@@ -118,6 +118,8 @@ const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    "pass in prose taken for a key": ["|(?<![A-Za-z0-9])pass(?![a-z])(?=[A-Za-z0-9_]{0,40}[\"']?[ \\t]{0,20}=)|(?<=(?:^|\\n)[ \\t]{0,40}|[_.\"'{(\\[,-])pass(?![a-z]))", "|(?<![A-Za-z0-9])pass(?![a-z]))"],
+    "a pass key starting a line kept": ["|(?<=(?:^|\\n)[ \\t]{0,40}|[_.\"'{(\\[,-])pass(?![a-z]))", "|(?<=[_.\"'{(\\[,-])pass(?![a-z]))"],
     "one private mention wipes the briefing after it": ["defuse(s.split('\\n').map(redact).join('\\n'))", "defuse(redact(s))"],
     "the briefing prints the shared index unredacted": ["defuse(s.split('\\n').map(redact).join('\\n'))", "defuse(s)"],
     "a queued prompt in blocks read as a string": ["? unquote(norm(queuedText(r))) : '';", "? unquote(norm(String(r.attachment.prompt ?? ''))) : '';"],
@@ -196,7 +198,7 @@ const suites = {
     "\"the password is hashed\" redacted": ["(?=\\S*[0-9!@#$%^&*_+=-])", ""],
     "a value on the next line kept": ["[:=]\\s{0,20}[\"']?)", "[:=][ \\t]{0,20}[\"']?)"],
     "lowercase bearer kept": ["{20,}/gi, '$1 [redacted]']", "{20,}/g, '$1 [redacted]']"],
-    "a name-and-value pattern backtracks": ["[A-Za-z0-9_]{0,40}", "[A-Za-z0-9_]*"],
+    "a name-and-value pattern backtracks": ["pass(?![a-z]))[A-Za-z0-9_]{0,40}[\"']?[ \\t]{0,20}[:=]", "pass(?![a-z]))[A-Za-z0-9_]*[\"']?[ \\t]{0,20}[:=]"],
     "an emoji cut in half": [".replace(/[\\uD800-\\uDBFF]$/, '')", ""],
     "a note left keeps the file unchanged": ["const notes = has && doc.slice(a, b).includes('**cut mid-turn**');", "const notes = false;"],
     "a prompt that opens with a tag is no ask": ["return !!o && !o.startsWith('[SYSTEM')", "return !!o && !o.startsWith('<') && !o.startsWith('[SYSTEM')"],
