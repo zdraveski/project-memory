@@ -201,8 +201,6 @@ months of use, Claude Code's own documentation, and a privacy red team.
 - A conversation started in a subfolder of a repository is recorded from its
   first reply, also when no conversation has started at the repository's
   root yet.
-- "Tests pass: all green" keeps its next word: the short keyword `pass`
-  counts as a password only as a setting (`PASS=`, `db_pass:`).
 
 **Going back to 1.0.7**
 - It works, with two limits until newer exchanges replace the old ones: some

@@ -1078,17 +1078,6 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   } finally { if (was5 === null) rmSync(idx5, { force: true }); else writeFileSync(idx5, was5); }
 }
 
-// Round 5. `pass` in prose is no key ("Both suites pass: handoff-log 207" lost
-// its next word on real data); as an assignment or a key it still is.
-{
-  const { redact: red5 } = await import('./handoff-log.mjs');
-  const v5 = 'hunt' + 'er22x';
-  for (const prose of ['Both suites pass: handoff-log 207, memory 105', 'lint and tests pass: everything green'])
-    ok(red5(prose) === prose, `prose with "pass:" is kept (got ${red5(prose)})`);
-  for (const key of [`DB_PASS=${v5}`, `export PASS=${v5}`, `db_pass: ${v5}`, `{"pass": "${v5}"}`, `pass: ${v5}`, `retries: 3\n  pass: ${v5}`, `smtp.pass=${v5}`])
-    ok(!red5(key).includes(v5), `a pass key is redacted: ${JSON.stringify(key.replace(v5, 'V'))} (got ${JSON.stringify(red5(key).replace(v5, 'V'))})`);
-}
-
 // Round 6. Markers quoted in a sentence below the section are text, not the
 // section: the next Stop writes into the real one, and the sentence stays.
 {
@@ -1159,6 +1148,15 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   const t16 = join(dir, 'loose16.jsonl'); writeFileSync(t16, readFileSync(t15, 'utf8'));
   const nowhere = join(home, 'nowhere16');
   ok(handoff({ cwd: nowhere, transcript_path: t16, session_id: 'loose16-1' }) === false && !existsSync(join(home, '.claude', 'projects', nowhere.replace(/[^A-Za-z0-9]/g, '-'))), 'a payload naming only a cwd makes no project folder');
+}
+
+// Round 6. `pass` before a colon is a credential in every form a person writes
+// it; narrowed to spare "tests pass: all green", these were printed as typed.
+{
+  const { redact: red6 } = await import('./handoff-log.mjs');
+  const v6 = 'hunt' + 'er22!';
+  for (const s of [`user: admin, pass: ${v6}`, `wifi pass: ${v6}`, `ssh root@box, pass:${v6}`, `- pass: ${v6}`, `> pass: ${v6}`, '`pass: ' + v6 + '`', `DB_PASS=${v6}`, `{"pass": "${v6}"}`])
+    ok(!red6(s).includes(v6), `a pass credential is redacted: ${JSON.stringify(s.replace(v6, 'V'))} (got ${JSON.stringify(red6(s).replace(v6, 'V'))})`);
 }
 
 rmSync(home, { recursive: true, force: true });
