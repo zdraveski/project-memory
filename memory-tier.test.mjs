@@ -809,5 +809,25 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(firstIdx === original && readFileSync(join(s9, 'MEMORY.md'), 'utf8') !== original, `the first snapshot holds the index as found, and the tidy-up comes after (got ${JSON.stringify(firstIdx)})`);
 }
 
+// Round 5. A damaged index (a crash or a full disk while git wrote it) is
+// rebuilt from the last commit: before, every snapshot after it failed.
+{
+  const was = [process.env.HOME, process.env.USERPROFILE];
+  const h5 = tempDir('memtier-index-'), root5 = join(h5, '.claude', 'projects'), s5 = join(root5, 'C--idx', 'memory');
+  mkdirSync(s5, { recursive: true });
+  const note5 = (n) => { writeFileSync(join(s5, `${n}.md`), `---\nname: ${n}\ndescription: "${n}"\nmetadata:\n  type: project\n---\n\nbody\n`); const t = new Date(Date.now() - 10 * 60000); utimesSync(join(s5, `${n}.md`), t, t); };
+  note5('a'); writeFileSync(join(s5, 'MEMORY.md'), '- [A](a.md) — a\n');
+  process.env.HOME = h5; process.env.USERPROFILE = h5;
+  let out5;
+  try {
+    spawnSync(process.execPath, [TOOL], { encoding: 'utf8' });
+    writeFileSync(join(root5, '.git', 'index'), 'not an index at all');
+    note5('b'); writeFileSync(join(s5, 'MEMORY.md'), '- [A](a.md) — a\n- [B](b.md) — b\n');
+    out5 = spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }).stdout;
+  } finally { process.env.HOME = was[0]; process.env.USERPROFILE = was[1]; }
+  const has5 = spawnSync('git', ['-C', root5, 'cat-file', '-e', 'HEAD:C--idx/memory/b.md']).status === 0;
+  ok(/memory snapshot: committed/.test(out5) && has5, `a damaged index is rebuilt and the snapshot goes on (got ${out5})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

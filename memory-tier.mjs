@@ -376,11 +376,27 @@ function snapshot() {
     // every snapshot after. `--`: on Linux and macOS every project's folder
     // name starts with `-`, and read as an option.
     const applied = join(root, '.git', 'project-memory-ignored');
-    if (have !== want || raw(applied) !== want) {
-      for (const l of want.split('\n').filter((x) => x && x !== '*' && !x.startsWith('!'))) git('rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', l);
-      writeFileSync(applied, want);
+    const stage = () => {
+      if (have !== want || raw(applied) !== want) {
+        for (const l of want.split('\n').filter((x) => x && x !== '*' && !x.startsWith('!'))) git('rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', l);
+        writeFileSync(applied, want);
+      }
+      git('add', '-A');
+    };
+    // A damaged index (a crash or a full disk while git wrote it) failed every
+    // snapshot after it, for good. It is only git's copy of the last commit
+    // and the notes on disk: dropped and rebuilt from the commit, no note touched.
+    // A note another window deleted between git's listing and its read is one
+    // more try: read as busy, a cause that never goes away (a link to nothing)
+    // would have hidden a history that never commits.
+    try { stage(); } catch (e) {
+      const why = gitWhy(e);
+      if (/index file (?:smaller than expected|corrupt)|bad (?:signature|index file)/.test(why)) {
+        try { unlinkSync(join(root, '.git', 'index')); } catch {}
+        try { git('reset', '-q'); } catch {}   // none before the first commit
+      } else if (!/^error: open\("[^"]*"\): No such file or directory/.test(why)) throw e;
+      stage();
     }
-    git('add', '-A');
     // Straight to the commit, which says so when nothing changed: a `git status`
     // first was one more git start on every snapshot, ~80-300 ms on this box.
     try {

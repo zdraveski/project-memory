@@ -298,6 +298,8 @@ const suites = {
     'CRLF entries unparseable':['(.*?)\\r?\\n  \\*\\*did:\\*\\* (.*?)\\r?$', '(.*)\\n  \\*\\*did:\\*\\* (.*)$'],
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
+    "a damaged index left as it is": ["        try { unlinkSync(join(root, '.git', 'index')); } catch {}\n", ""],
+    "a damaged index not recognised": ["if (/index file (?:smaller than expected|corrupt)|bad (?:signature|index file)/.test(why)) {", "if (false) {"],
     "a returning line loses its own trailing space": ["p.line.slice(0, -OVERFLOW.length).replace(/ $/, '')", "p.line.slice(0, -OVERFLOW.length).trimEnd()"],
     "no line ceiling": ["(size > budget || count > LINES) && q < queue.length", "size > budget && q < queue.length"],
     "the tidy-up before the first snapshot": ["if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot();\n", ""],
