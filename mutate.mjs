@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import { tool, tempDir } from './harness.mjs';
 
 // Every file a suite may import, copied beside the mutant.
-const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs',
+const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs',
   '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md'];
 
 const suites = {
@@ -524,6 +524,25 @@ const suites = {
     'the plugin starts handoff-log without --print': ['handoff-log.mjs", "--print"]', 'handoff-log.mjs"]'],
     'the plugin forgets the auto compaction gate': ['"matcher": "auto"', '"matcher": "never"'],
     '/clear left out of the matcher': ['"matcher": "startup|clear|compact"', '"matcher": "startup|compact"'],
+  }],
+  'journal.mjs': ['journal.test.mjs', {
+    'journal ask not capped': ['clip(turn.ask, J_ASK)', 'clip(turn.ask, 9e9)'],
+    'journal reply not capped': ['clip(turn.did, J_ANSWER)', 'clip(turn.did, 9e9)'],
+    'journal files not capped': ['turn.changed.slice(-J_FILES)', 'turn.changed'],
+    'journal commands not capped': ['turn.ran.slice(-J_RAN)', 'turn.ran'],
+    'journal command not clipped short': ['clip(c, J_CMD)', 'clip(c, 9e9)'],
+    'journal ask not redacted': ['asked: clip(turn.ask, J_ASK)', 'asked: turn.ask'],
+    'journal reply not redacted': ['clip(turn.did, J_ANSWER)', 'turn.did'],
+    'journal file not redacted': ['clip(rel(p, turn.cwd), 300)', 'rel(p, turn.cwd)'],
+    'journal command not redacted': ['clip(c, J_CMD)', 'c'],
+    'journal private answer kept': ["quiet ? '[private]' : clip", 'clip'],
+    'journal private files kept': ['changed: quiet ? [] : ', 'changed: '],
+    'journal private commands kept': ['ran: quiet ? [] : ', 'ran: '],
+    'journal entry not replaced by key': ['have.set(e.key, e);', 'have.has(e.key) || have.set(e.key, e);'],
+    'journal day taken from the write time': ['const e = entryOf(t, transcriptPath), d = day(e.at);', 'const e = entryOf(t, transcriptPath), d = new Date().toISOString().slice(0, 10);'],
+    'journal entries sorted by key only': ['(a.at < b.at ? -1 : a.at > b.at ? 1 : a.key', '(a.key'],
+    'journal prose dropped': ['[prose, ...all.map(render)]', '[...all.map(render)]'],
+    'journal key fallback unstable': ['hash(turn.raw ?? turn.ask).slice(0, 12)', 'Math.random()'],
   }],
   'deploy.mjs': ['handoff-log.test.mjs', {
     'the plugin version not stamped': ["if (patch !== undefined && f === '.claude-plugin/plugin.json') {", 'if (false) {'],
