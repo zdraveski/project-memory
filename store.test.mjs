@@ -49,6 +49,15 @@ writeFileSync(join(realStore, 'MEMORY.md'), '');
 mkdirSync(join(root, 'C--via-junction'));
 symlinkSync(realStore, join(root, 'C--via-junction', 'memory'), 'junction');
 ok(allStores().filter((d) => /C--(real|via-junction)/.test(d)).length === 1, 'allStores() lists a store reached by two paths once');
+// Round 6. On Windows, two links to one folder spelt in two cases are one store,
+// as the snapshot reads them: listed twice, doctor said one was left out.
+if (process.platform === 'win32') {
+  const out19 = join(home, 'Synced19', 'memory'); mkdirSync(out19, { recursive: true }); writeFileSync(join(out19, 'MEMORY.md'), '');
+  mkdirSync(join(root, 'C--a19')); mkdirSync(join(root, 'C--b19'));
+  symlinkSync(out19, join(root, 'C--a19', 'memory'), 'junction');
+  symlinkSync(join(home, 'SYNCED19', 'MEMORY'), join(root, 'C--b19', 'memory'), 'junction');
+  ok(allStores().filter((d) => /C--[ab]19/.test(d)).length === 1, 'two links to one folder spelt in two cases are one store');
+}
 
 // 2. Six processes contend for one store: never two inside at once.
 const log = join(home, 'lock.log');
@@ -297,6 +306,8 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
     ['description: Use the "fast" path', 'desc', 'Use the "fast" path'], ['description: Use the "fast"', 'desc', 'Use the "fast"'],
     ['description: "quoted \\"x\\""', 'desc', 'quoted "x"'], ['description: plain # comment', 'desc', 'plain # comment'], ['description: Fix issue #42 in the parser', 'desc', 'Fix issue #42 in the parser'],
     ['name: Sprint #3 retro', 'name', 'Sprint #3 retro'], ['description: "Long text wrapped', 'desc', 'Long text wrapped'], ['description: "a" and "b"', 'desc', '"a" and "b"'],
+    ['description: "Never" force-push main', 'desc', '"Never" force-push main'], ['description: null', 'desc', ''], ['description: ~', 'desc', ''],
+    ['description: # fill in later', 'desc', ''], ['description: #42 first', 'desc', '#42 first'], ['superseded-by: #none', 'superseded', ''], ['superseded-by: "new #2.md"', 'superseded', 'new #2.md'],
     ['description: C# tips', 'desc', 'C# tips'], ['description: "keep # this"', 'desc', 'keep # this']];
   for (const [src, k, want] of cases6) ok(f6(src)[k] === want, `${JSON.stringify(src)} reads ${k} ${JSON.stringify(want)} (got ${JSON.stringify(f6(src)[k])})`);
   ok(f6('superseded-by: null\nmetadata:\n  tier: hot').tier === 'hot', 'a null superseded-by leaves a pin a pin');

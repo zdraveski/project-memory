@@ -584,4 +584,28 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   }
 }
 
+// Round 6. Two links to one folder elsewhere: a note restored through the
+// second comes back as the last snapshot holds it, not from a path the
+// snapshot no longer updates. And fences in a quote, a list or with ~~~ hide
+// their links; one in prose does not.
+{
+  const out20 = join(home, 'Synced20', 'memory'); mkdirSync(out20, { recursive: true });
+  memory(out20, 'rate', 'our rate', 'VERSION-ONE');
+  writeFileSync(join(out20, 'MEMORY.md'), '- [Rate](rate.md) — r\n');
+  for (const p of ['C--a20', 'C--b20']) { mkdirSync(join(root, p), { recursive: true }); symlinkSync(out20, join(root, p, 'memory'), process.platform === 'win32' ? 'junction' : 'dir'); }
+  tier();
+  memory(out20, 'rate', 'our rate', 'VERSION-TWO'); utimesSync(join(out20, 'rate.md'), new Date(), new Date());
+  tier();
+  if (/C--a20\/memory\/rate\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
+    unlinkSync(join(out20, 'rate.md'));
+    const r20 = spawnSync(process.execPath, [CLI, 'restore', 'rate', '--store', join(root, 'C--b20', 'memory')], { env, encoding: 'utf8' });
+    ok(r20.status === 0 && /VERSION-TWO/.test(readFileSync(join(out20, 'rate.md'), 'utf8')), `a note restored through a second link is the last snapshot's (got ${r20.stdout}${r20.stderr})`);
+  }
+  const d21 = join(root, 'C--fence21', 'memory'); mkdirSync(d21, { recursive: true });
+  memory(d21, 'fenced', 'fences', '> ```\n> [[ghostq]]\n> ```\n- ```\n  [[ghostl]]\n  ```\n~~~\n[[ghostt]]\n~~~\n```x[[0]]``` is code, see [[ghostp]].\n```\ny = 2\n```\n');
+  writeFileSync(join(d21, 'MEMORY.md'), '- [Fenced](fenced.md) — f\n');
+  const s21 = spawnSync(process.execPath, [CLI, 'status', '--store', d21], { env, encoding: 'utf8' }).stdout;
+  ok(/links to no memory: fenced\.md → \[\[ghostp\]\]\s*$/m.test(s21), `fences in a quote, a list or with ~~~ hide their links; a code span in prose does not hide the next (got ${s21})`);
+}
+
 console.log(`memory: ${checks} checks passed`);

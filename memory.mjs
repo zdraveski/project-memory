@@ -18,7 +18,7 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, same, configDir, memoryOff } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, pathKey, same, configDir, memoryOff } from './store.mjs';
 import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip } from './handoff-log.mjs';
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
@@ -81,11 +81,11 @@ export function memories(dir) {
   // By the file each line opens, as tiering counts them: on Windows (Kase.md)
   // is kase.md's. One listing for the store: read once a line, a 5 MB index
   // hung status for good.
-  const low = new Map();
+  const listed = new Set(files), low = new Map();
   for (const f of files) low.set(f.toLowerCase(), [...(low.get(f.toLowerCase()) ?? []), f]);
   const id = (p) => { const s = statSync(p, { bigint: true }); return `${s.dev}:${s.ino}`; };
   const opens = (t) => {
-    if (files.includes(t) || !low.has(t.toLowerCase())) return t;
+    if (listed.has(t) || !low.has(t.toLowerCase())) return t;
     try { const me = id(join(dir, t)); return low.get(t.toLowerCase()).find((n) => { try { return id(join(dir, n)) === me; } catch { return false; } }) ?? t; } catch { return t; }
   };
   const hot = new Set([...new Set(targets(read(join(dir, 'MEMORY.md'))))].map(opens)), cold = new Set([...new Set(targets(read(join(dir, ARCHIVE))))].map(opens));
@@ -103,7 +103,7 @@ export function memories(dir) {
       // Not in code (`grid[[0]]`, a fenced block: its fences start a line, an
       // inline ``` in prose hid the links up to the next fence), and
       // `[[name.md]]` is name's.
-      links: [...new Set([...text.replace(/^[ \t]*```[\s\S]*?^[ \t]*```/gm, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
+      links: [...new Set([...text.replace(/^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*(```|~~~)[^`\n]*\n[\s\S]*?^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*\1/gm, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
       modified: Number.isNaN(stamp) ? mtime : stamp,
       where: hot.has(file) ? 'hot' : cold.has(file) ? 'archived' : 'unindexed',
     }];
@@ -245,7 +245,12 @@ const real = (p) => { try { return realpathSync.native(p); } catch { return p; }
 const tracked = (dir, file) => {
   const root = real(projectsRoot()), at = relative(root, real(dir));
   if (!at.startsWith('..') && !isAbsolute(at)) return relative(root, join(real(dir), file)).replace(/\\/g, '/');
-  const slug = basename(dirname(dir));
+  // Of two links to one folder, the first, which the snapshot keeps: named by
+  // the second, git read an ignored path, and restore brought back a version
+  // older than the last snapshot's.
+  const me = pathKey(real(dir));
+  const kept = allStores().find((d) => pathKey(real(d)) === me);
+  const slug = basename(dirname(kept ?? dir));
   let names = []; try { names = readdirSync(projectsRoot()); } catch {}
   return `${names.includes(slug) ? slug : names.find((n) => n.toLowerCase() === slug.toLowerCase()) ?? slug}/memory/${file}`;
 };

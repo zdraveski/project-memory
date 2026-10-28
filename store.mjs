@@ -128,13 +128,15 @@ export const ARCHIVE = 'MEMORY-archive.md';
 // Every store once: one reached by two paths (a junction back to another
 // project's store) is one brain, tiered and reported once; a junction whose
 // target is gone is none.
+// A real path as a key: Windows spells one folder in any case.
+export const pathKey = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
 export function allStores() {
   const root = projectsRoot(), seen = new Set();
   let all = []; try { all = readdirSync(root); } catch {}
   return all.map((p) => join(root, p, 'memory')).filter((d) => {
     let real; try { real = realpathSync(d); } catch { return false; }
-    if (seen.has(real) || !existsSync(join(d, 'MEMORY.md'))) return false;
-    seen.add(real);
+    if (seen.has(pathKey(real)) || !existsSync(join(d, 'MEMORY.md'))) return false;
+    seen.add(pathKey(real));
     return true;
   });
 }
@@ -160,19 +162,20 @@ export function front(text) {
   // (`tier: "hot"`, `tier: Hot`). Read only bare, the pin aged out.
   // A value as YAML reads it: quotes only when they open and close the whole
   // value (`Use the "fast"` keeps both of its own), '' for ' in single
-  // quotes, \" in double. A lone opening quote (a value wrapped onto the next
-  // line) is dropped. A plain name or description keeps a ` #`: Claude writes
-  // them unquoted, and "Fix issue #42" read as "Fix issue".
-  const scalar = (v) => {
+  // quotes, \" in double. A lone opening quote, with no other of its kind (a
+  // value wrapped onto the next line), is dropped. A plain name or description
+  // keeps a ` #`: Claude writes them unquoted, and "Fix issue #42" read as
+  // "Fix issue"; a file name (`cut`) loses it. YAML's null (`null`, `~`, a
+  // comment alone) is no value: `superseded-by: null` archived the note, and
+  // `description: null` hid that it had none.
+  const scalar = (v, cut = false) => {
     let m;
     if ((m = v.match(/^"((?:[^"\\]|\\.)*)"(?:[ \t]+#.*)?$/))) return m[1].replace(/\\(["\\])/g, '$1');
     if ((m = v.match(/^'((?:[^']|'')*)'(?:[ \t]+#.*)?$/))) return m[1].replace(/''/g, "'");
-    return v.trim().replace(/^(["'])(?!.*\1$)/, '');
+    const p = (cut ? v.replace(/(?:^|[ \t]+)#.*$/, '') : v).trim().replace(/^(["'])(?![\s\S]*\1)/, '');
+    return /^(?:null|Null|NULL|~|#(?:\s.*)?)$/.test(p) ? '' : p;
   };
-  // A file name: a ` #` comment cut, and YAML's null (`null`, `~`, nothing) is
-  // no value: `superseded-by: null` archived the note.
-  const file = (v) => { const p = scalar(v.replace(/(?:^|[ \t]+)#.*$/, '')); return /^(?:null|Null|NULL|~)$/.test(p) ? '' : p; };
-  const superseded = file(get(/^[ \t]*superseded-by:[ \t]*(.*?)[ \t\r]*$/m)) || block('superseded-by')[0] || '';
+  const superseded = scalar(get(/^[ \t]*superseded-by:[ \t]*(.*?)[ \t\r]*$/m), true) || block('superseded-by')[0] || '';
   const desc = get(/^description:[ \t]*(.*?)[ \t\r]*$/m);
   return {
     name: scalar(get(/^name:[ \t]*(.*?)[ \t\r]*$/m)),

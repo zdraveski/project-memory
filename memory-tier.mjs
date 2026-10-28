@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync, e
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, allStores, front, gitWhy, gitArgs, raw, memoryOff } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -331,7 +331,7 @@ function gitignore() {
     // Two links to one folder elsewhere: the first is its path, as allStores()
     // takes it; tracked by both, every note was in the history twice.
     .filter((d) => {
-      const r = realpathSync(d), k = process.platform === 'win32' ? r.toLowerCase() : r;
+      const r = realpathSync(d), k = pathKey(r);
       if (within(real, r)) return !same(r, join(real, d.slice(root.length + 1)));
       const twice = elsewhere.has(k); elsewhere.add(k); return twice;
     })

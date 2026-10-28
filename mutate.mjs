@@ -13,11 +13,11 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'compact-gate.mjs'
 
 const suites = {
   'store.mjs': ['store.test.mjs', {
-    "a null superseded-by is a replacement": ["return /^(?:null|Null|NULL|~)$/.test(p) ? '' : p;", "return p;"],
-    "a comment with no space before it kept": ["scalar(v.replace(/(?:^|[ \\t]+)#.*$/, ''))", "scalar(v.replace(/[ \\t]+#.*$/, ''))"],
+    "a null superseded-by is a replacement": ["return /^(?:null|Null|NULL|~|#(?:\\s.*)?)$/.test(p) ? '' : p;", "return p;"],
+    "a comment with no space before it kept": ["v.replace(/(?:^|[ \\t]+)#.*$/, '')", "v.replace(/[ \\t]+#.*$/, '')"],
     "single quotes kept": ["    if ((m = v.match(/^'((?:[^']|'')*)'(?:[ \\t]+#.*)?$/))) return m[1].replace(/''/g, \"'\");\n", ""],
-    "a plain description cut at #": ["    return v.trim().replace(", "    return v.replace(/[ \\t]+#.*$/, '').trim().replace("],
-    "a lone opening quote kept": [".replace(/^([\"'])(?!.*\\1$)/, '')", ""],
+    "a plain description cut at #": ["(cut ? v.replace(", "(true ? v.replace("],
+    "a lone opening quote kept": [".replace(/^([\"'])(?![\\s\\S]*\\1)/, '')", ""],
     "a quote stripped from one end only": ["if ((m = v.match(/^\"((?:[^\"\\\\]|\\\\.)*)\"(?:[ \\t]+#.*)?$/))) return m[1].replace(/\\\\([\"\\\\])/g, '$1');", "if ((m = v.match(/^\"?(.*?)\"?$/))) return m[1];"],
     "snapshots convert line endings": ["'-c', 'core.autocrlf=false', ", ""],
     "a relative path read against the hook's folder": ["    if (!isAbsolute(dir)) return null;\n", ""],
@@ -56,7 +56,8 @@ const suites = {
     'nothing-to-write rewrites': ['if (read() === next) return false;', ''],
     'a write it did not see is overwritten': ["if (read() !== expected) return 'conflict';", ''],
     'the shared store under a slug a cwd can make': ["join(projectsRoot(), '_shared', 'memory')", "join(projectsRoot(), '-shared', 'memory')"],
-    'a junctioned store listed twice': ['seen.has(real) || ', ''],
+    "a junctioned store listed twice": ["seen.has(pathKey(real)) || ", ""],
+    "one folder in two cases is two stores": ["export const pathKey = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);", "export const pathKey = (p) => p;"],
     "git's reason discarded": ["String(e.stderr || '').split('\\n').map((l) => l.trim()).find((l) => l && !l.startsWith('warning:')) || ", ''],
     "a warning taken for git's reason": [".find((l) => l && !l.startsWith('warning:'))", '.find((l) => l)'],
     "escaped quotes kept in a description": ["return m[1].replace(/\\\\([\"\\\\])/g, '$1');", "return m[1];"],
@@ -405,7 +406,10 @@ const suites = {
   'memory.mjs': ['memory.test.mjs', {
     "a linked store found by its resolved path": ["  if (!at.startsWith('..') && !isAbsolute(at)) return relative(root, join(real(dir), file)).replace(/\\\\/g, '/');", "  return relative(root, join(real(dir), file)).replace(/\\\\/g, '/');"],
     "a project folder linked outside named by its target": ["return `${names.includes(slug) ? slug : names.find((n) => n.toLowerCase() === slug.toLowerCase()) ?? slug}/memory/${file}`;", "return relative(root, join(real(dirname(dir)), basename(dir), file)).replace(/\\\\/g, '/');"],
-    "an inline fence in prose hides the links after it": ["text.replace(/^[ \\t]*```[\\s\\S]*?^[ \\t]*```/gm, '')", "text.replace(/```[\\s\\S]*?```/g, '')"],
+    "a store's second link named in the history": ["const kept = allStores().find((d) => pathKey(real(d)) === me);", "const kept = undefined;"],
+    "a fence in a quote or a list counted": ["/^[ \\t]*(?:(?:>|[*+-]|\\d+[.)])[ \\t]*)*(```|~~~)", "/^[ \\t]*(```|~~~)"],
+    "a ~~~ fence counted": ["(```|~~~)[^`", "(```)[^`"],
+    "an inline fence in prose hides the links after it": ["(```|~~~)[^`\\n]*\\n", "(```|~~~)"],
     "doctor says ok of snapshots that leave a store out": ["    : h.missed?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they leave out ${h.missed.join(', ')}: ${MISSED}`\n", ""],
     "doctor counts a store left out as fine": [" && !snap.includes('but they leave out')", ""],
     "status counts a line by its exact name": ["].map(opens)), cold", "]), cold"],
