@@ -104,7 +104,20 @@ export function record(dir, transcriptPath, turns) {
       if (w !== 'conflict') { n += changed; break; }
     }
   }
+  pin(dir);
   return n;
+}
+
+// journal.md is the note tiering gives a pinned index line, as it does handoff.md.
+// Written when missing or when an older day has turned up (a backfill): the
+// first day is in its description, and a rewrite on every record would keep its
+// mtime young.
+function pin(dir) {
+  const file = join(dir, 'journal.md'), before = raw(file);
+  const first = days(dir).find((d) => parseDay(raw(dayFile(dir, d)) ?? '').entries.length);   // a swept day may hold none
+  const had = /since (\d{4}-\d\d-\d\d)/.exec(before ?? '')?.[1];
+  if (!first || (before != null && !(had > first))) return;
+  replaceIfUnchanged(file, before, `---\nname: journal\ndescription: "Every exchange in this project since ${first}, one file per day in journal/; search it before saying something was never done or decided"\nmetadata:\n  node_type: memory\n  type: reference\n  tier: hot\n---\n\nproject-memory writes one entry here after every reply: what was asked, what was answered, the files changed and the commands run. Search it with the memory skill (\`search <words>\`, \`--since\`/\`--until YYYY-MM-DD\`).\n`);
 }
 
 export function days(dir) {

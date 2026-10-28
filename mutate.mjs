@@ -315,6 +315,8 @@ const suites = {
     'CRLF entries unparseable':['(.*?)\\r?\\n  \\*\\*did:\\*\\* (.*?)\\r?$', '(.*)\\n  \\*\\*did:\\*\\* (.*)$'],
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
+    "today's journal committed": ["`*/memory/journal/${today}.md`, ", ""],
+    'closed days never committed': ["'!*/memory/journal/*.md', ", ""],
     'a journal.mjs that cannot load stops the handoff': ["try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}", "sink = (await import(new URL('./journal.mjs', import.meta.url))).write;"],
     "a store linked outside the root ignored as a second path": ["      const twice = elsewhere.has(k); elsewhere.add(k); return twice;", "      return true;"],
     "two links to one folder elsewhere both tracked": ["const twice = elsewhere.has(k); elsewhere.add(k); return twice;", "return false;"],
@@ -531,6 +533,8 @@ const suites = {
     '/clear left out of the matcher': ['"matcher": "startup|clear|compact"', '"matcher": "startup|compact"'],
   }],
   'journal.mjs': ['journal.test.mjs', {
+    'journal.md not hot': ['tier: hot\\n---\\n\\nproject-memory', 'tier: warm\\n---\\n\\nproject-memory'],
+    'journal.md rewritten every record': ['|| (before != null && !(had > first))', ''],
     'journal ask not capped': ['clip(turn.ask, J_ASK)', 'clip(turn.ask, 9e9)'],
     'journal reply not capped': ['clip(turn.did, J_ANSWER)', 'clip(turn.did, 9e9)'],
     'journal files not capped': ['turn.changed.slice(-J_FILES)', 'turn.changed'],

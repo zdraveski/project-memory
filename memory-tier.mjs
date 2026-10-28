@@ -338,7 +338,10 @@ function gitignore() {
     .map((d) => `${d.slice(root.length + 1).replace(/\\/g, '/')}/`);
   // Not the handoff: it holds the last exchanges, and is kept only until newer
   // ones replace it. Committed, every version stayed in the history for good.
-  return ['*', '!*/', '!*/memory/*.md', '*/memory/handoff.md', '!.gitignore', ...linked].join('\n') + '\n';
+  // A journal day follows once it is over: today's file grows with every reply,
+  // and each version would stay in the history. The line changes at midnight.
+  const today = local().slice(0, 10);
+  return ['*', '!*/', '!*/memory/*.md', '*/memory/handoff.md', '!*/memory/journal/*.md', `*/memory/journal/${today}.md`, '!.gitignore', ...linked].join('\n') + '\n';
 }
 // What this tool's .gitignore starts with: a repository that has it is one
 // this tool made before it marked them.

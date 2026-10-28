@@ -495,6 +495,9 @@ ok(!tracked().some((f) => /\.tiered|\.health|\.lock|\.snapshot-health|\.stop-ran
 // young: under the orphan grace, a store whose index lacks its pointer was
 // never stamped, and every turn paid the full pass and a commit (audit, 2026-10-26).
 store('proj-four');
+// A journal.md the Stop itself just wrote is as young, and waits two minutes for its line.
+const jmd = join(root, 'proj-four', 'memory', 'journal.md');
+writeFileSync(jmd, '---\nname: journal\ndescription: "since 2000-01-01"\nmetadata:\n  tier: hot\n---\n'); utimesSync(jmd, tenMin, tenMin);
 writeFileSync(join(root, 'proj-four', 'session.jsonl'), [
   { type: 'user', message: { content: 'q1' }, timestamp: new Date().toISOString() },
   { type: 'assistant', message: { content: [{ type: 'text', text: 'a1' }] } },
@@ -957,6 +960,39 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   spawnSync(process.execPath, [TOOL, '--stop'], { env, input: JSON.stringify({ transcript_path: now, session_id: 'now' }) });
   const all = (existsSync(jd) ? readdirSync(jd).filter((f) => f.endsWith('.md')) : []).map((f) => readFileSync(join(jd, f), 'utf8')).join();
   ok(all.includes('asked last month') && all.includes('asked now'), `--stop: the Stop backfills the journal (got ${all.length} chars)`);
+}
+
+// A journal day is committed once it is over, never while it is today's.
+{
+  const { local } = await import('./store.mjs');
+  const today = local().slice(0, 10), yesterday = local(Date.now() - 86400e3).slice(0, 10);
+  const jd = join(root, 'proj-one', 'memory', 'journal'), rel = (d) => `proj-one/memory/journal/${d}.md`;
+  mkdirSync(jd, { recursive: true });
+  writeFileSync(join(jd, `${yesterday}.md`), `# Journal ${yesterday}\n`); writeFileSync(join(jd, `${today}.md`), `# Journal ${today}\n`);
+  plain();
+  ok(tracked().includes(rel(yesterday)) && !tracked().includes(rel(today)), `a closed journal day is committed, today's is not (tracked: ${tracked().filter((f) => f.includes('journal')).join(', ')})`);
+  // The day rolled over mid-run: what was committed as a closed day is today's again.
+  git('add', '-f', rel(today)); git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'rolled');
+  writeFileSync(join(root, '.gitignore'), readFileSync(join(root, '.gitignore'), 'utf8').replace(`*/memory/journal/${today}.md\n`, ''));
+  plain();
+  ok(!tracked().includes(rel(today)) && tracked().includes(rel(yesterday)), `today's journal leaves the snapshots even once committed (tracked: ${tracked().filter((f) => f.includes('journal')).join(', ')})`);
+}
+
+// The journal is pinned by its own line and its folder is no note.
+{
+  const jm = tempDir('memtier-journal-');
+  mkdirSync(join(jm, 'journal'));
+  writeFileSync(join(jm, 'journal', '2026-10-27.md'), '# Journal 2026-10-27\n');
+  writeFileSync(join(jm, 'MEMORY.md'), '# Index\n');
+  writeFileSync(join(jm, 'journal.md'), '---\nname: journal\ndescription: "Every exchange"\nmetadata:\n  node_type: memory\n  type: reference\n  tier: hot\n---\n\nbody\n');
+  const at = statSync(join(jm, 'journal.md')).mtimeMs, tierAt = (ms) => execFileSync(process.execPath, [TOOL, '--dir', jm, '--now', String(ms)], { encoding: 'utf8' });
+  tierAt(at + 3 * 60000);
+  const pinned = (f) => readFileSync(join(jm, f), 'utf8').split('\n').filter((l) => l.includes('](journal.md)'));
+  ok(pinned('MEMORY.md').length === 1, `journal.md gets a pinned index line (got ${JSON.stringify(pinned('MEMORY.md'))})`);
+  tierAt(at + 30 * 86400e3);
+  ok(pinned('MEMORY.md').length === 1 && pinned('MEMORY-archive.md').length === 0, 'and it stays after 30 days');
+  const health = existsSync(join(jm, '.health')) ? readFileSync(join(jm, '.health'), 'utf8') : '';
+  ok(!/journal/.test(health) && !/\]\(journal\)/.test(readFileSync(join(jm, 'MEMORY-archive.md'), 'utf8')), `the journal folder is no note (health: ${health.trim()})`);
 }
 
 // A journal.mjs that cannot load costs the journal, never the handoff.
