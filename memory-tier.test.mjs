@@ -781,13 +781,17 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
     const n = `n${String(i).padStart(3, '0')}`;
     writeFileSync(join(d9, `${n}.md`), `---\nname: ${n}\ndescription: "d"\nmetadata:\n  type: project\n---\n\nb\n`);
     utimesSync(join(d9, `${n}.md`), t9, t9);
-    lines9.push(`- [${n}](${n}.md) — h`);
+    lines9.push(`- [${n}](${n}.md) — h${i % 2 ? ' ' : ''}`);   // some hand-written with a trailing space
   }
   writeFileSync(join(d9, 'MEMORY.md'), lines9.join('\n') + '\n');
   execFileSync(process.execPath, [TOOL, '--dir', d9], { encoding: 'utf8' });
-  const m9 = readFileSync(join(d9, 'MEMORY.md'), 'utf8');
-  ok(m9.replace(/\n$/, '').split('\n').length <= 200 && Buffer.byteLength(m9) < 7000 && (readFileSync(join(d9, 'MEMORY-archive.md'), 'utf8').match(/<!-- overflow -->/g) || []).length >= 30,
+  const m9 = readFileSync(join(d9, 'MEMORY.md'), 'utf8'), a9 = readFileSync(join(d9, 'MEMORY-archive.md'), 'utf8');
+  ok(m9.replace(/\n$/, '').split('\n').length <= 200 && Buffer.byteLength(m9) < 7000 && (a9.match(/<!-- overflow -->/g) || []).length >= 30,
     `MEMORY.md is held to 200 lines, the rest archived and marked (got ${m9.split('\n').length} lines)`);
+  // A second pass changes nothing: a line ending in a space lost it when it
+  // came back, and the archive was written again (tiering fuzzer).
+  execFileSync(process.execPath, [TOOL, '--dir', d9], { encoding: 'utf8' });
+  ok(readFileSync(join(d9, 'MEMORY-archive.md'), 'utf8') === a9 && readFileSync(join(d9, 'MEMORY.md'), 'utf8') === m9, 'a second pass changes nothing, trailing spaces and all');
 }
 // The first snapshot holds the notebook as it was found, before the first tidy-up.
 {

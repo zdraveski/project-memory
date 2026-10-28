@@ -298,6 +298,7 @@ const suites = {
     'CRLF entries unparseable':['(.*?)\\r?\\n  \\*\\*did:\\*\\* (.*?)\\r?$', '(.*)\\n  \\*\\*did:\\*\\* (.*)$'],
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
+    "a returning line loses its own trailing space": ["p.line.slice(0, -OVERFLOW.length).replace(/ $/, '')", "p.line.slice(0, -OVERFLOW.length).trimEnd()"],
     "no line ceiling": ["(size > budget || count > LINES) && q < queue.length", "size > budget && q < queue.length"],
     "the tidy-up before the first snapshot": ["if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot();\n", ""],
     "a line in another case is not the note's": ["const key = (t) => (process.platform === 'win32' ? t.toLowerCase() : t);", "const key = (t) => t;"],

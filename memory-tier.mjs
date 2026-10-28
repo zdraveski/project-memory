@@ -176,7 +176,8 @@ function tier(dir, now) {
     p.f = factsFor(dir, p.target);
     const overflow = p.line.endsWith(OVERFLOW);
     p.was = p.line;   // as the archive holds it, mark and all
-    if (overflow) p.line = p.line.slice(0, -OVERFLOW.length).trimEnd();
+    // The one space the mark was added with: a trailing one the line had is its own.
+    if (overflow) p.line = p.line.slice(0, -OVERFLOW.length).replace(/ $/, '');
     place(p, p.f && (p.f.tier === 'hot' || (overflow && isHot(p.f, now, shared))) ? hot : cold);
   }
 
