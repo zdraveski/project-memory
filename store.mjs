@@ -160,16 +160,19 @@ export function front(text) {
   // (`tier: "hot"`, `tier: Hot`). Read only bare, the pin aged out.
   // A value as YAML reads it: quotes only when they open and close the whole
   // value (`Use the "fast"` keeps both of its own), '' for ' in single
-  // quotes, \" in double, and a ` #` comment cut from a plain one. YAML's
-  // null (`null`, `~`, nothing) is no value: `superseded-by: null` archived.
+  // quotes, \" in double. A lone opening quote (a value wrapped onto the next
+  // line) is dropped. A plain name or description keeps a ` #`: Claude writes
+  // them unquoted, and "Fix issue #42" read as "Fix issue".
   const scalar = (v) => {
     let m;
     if ((m = v.match(/^"((?:[^"\\]|\\.)*)"(?:[ \t]+#.*)?$/))) return m[1].replace(/\\(["\\])/g, '$1');
     if ((m = v.match(/^'((?:[^']|'')*)'(?:[ \t]+#.*)?$/))) return m[1].replace(/''/g, "'");
-    const plain = v.replace(/(?:^|[ \t]+)#.*$/, '').trim();
-    return /^(?:null|Null|NULL|~)$/.test(plain) ? '' : plain;
+    return v.trim().replace(/^(["'])(?!.*\1$)/, '');
   };
-  const superseded = scalar(get(/^[ \t]*superseded-by:[ \t]*(.*?)[ \t\r]*$/m)) || block('superseded-by')[0] || '';
+  // A file name: a ` #` comment cut, and YAML's null (`null`, `~`, nothing) is
+  // no value: `superseded-by: null` archived the note.
+  const file = (v) => { const p = scalar(v.replace(/(?:^|[ \t]+)#.*$/, '')); return /^(?:null|Null|NULL|~)$/.test(p) ? '' : p; };
+  const superseded = file(get(/^[ \t]*superseded-by:[ \t]*(.*?)[ \t\r]*$/m)) || block('superseded-by')[0] || '';
   const desc = get(/^description:[ \t]*(.*?)[ \t\r]*$/m);
   return {
     name: scalar(get(/^name:[ \t]*(.*?)[ \t\r]*$/m)),

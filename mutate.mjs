@@ -13,9 +13,11 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'compact-gate.mjs'
 
 const suites = {
   'store.mjs': ['store.test.mjs', {
-    "a null superseded-by is a replacement": ["return /^(?:null|Null|NULL|~)$/.test(plain) ? '' : plain;", "return plain;"],
-    "a comment with no space before it kept": ["v.replace(/(?:^|[ \\t]+)#.*$/, '')", "v.replace(/[ \\t]+#.*$/, '')"],
+    "a null superseded-by is a replacement": ["return /^(?:null|Null|NULL|~)$/.test(p) ? '' : p;", "return p;"],
+    "a comment with no space before it kept": ["scalar(v.replace(/(?:^|[ \\t]+)#.*$/, ''))", "scalar(v.replace(/[ \\t]+#.*$/, ''))"],
     "single quotes kept": ["    if ((m = v.match(/^'((?:[^']|'')*)'(?:[ \\t]+#.*)?$/))) return m[1].replace(/''/g, \"'\");\n", ""],
+    "a plain description cut at #": ["    return v.trim().replace(", "    return v.replace(/[ \\t]+#.*$/, '').trim().replace("],
+    "a lone opening quote kept": [".replace(/^([\"'])(?!.*\\1$)/, '')", ""],
     "a quote stripped from one end only": ["if ((m = v.match(/^\"((?:[^\"\\\\]|\\\\.)*)\"(?:[ \\t]+#.*)?$/))) return m[1].replace(/\\\\([\"\\\\])/g, '$1');", "if ((m = v.match(/^\"?(.*?)\"?$/))) return m[1];"],
     "snapshots convert line endings": ["'-c', 'core.autocrlf=false', ", ""],
     "a relative path read against the hook's folder": ["    if (!isAbsolute(dir)) return null;\n", ""],

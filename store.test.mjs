@@ -295,7 +295,8 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
     ['superseded-by: "new.md" # moved', 'superseded', 'new.md'], ['superseded-by: new.md', 'superseded', 'new.md'],
     ["name: 'deploy checklist'", 'name', 'deploy checklist'], ["name: 'it''s'", 'name', "it's"],
     ['description: Use the "fast" path', 'desc', 'Use the "fast" path'], ['description: Use the "fast"', 'desc', 'Use the "fast"'],
-    ['description: "quoted \\"x\\""', 'desc', 'quoted "x"'], ['description: plain # comment', 'desc', 'plain'],
+    ['description: "quoted \\"x\\""', 'desc', 'quoted "x"'], ['description: plain # comment', 'desc', 'plain # comment'], ['description: Fix issue #42 in the parser', 'desc', 'Fix issue #42 in the parser'],
+    ['name: Sprint #3 retro', 'name', 'Sprint #3 retro'], ['description: "Long text wrapped', 'desc', 'Long text wrapped'], ['description: "a" and "b"', 'desc', '"a" and "b"'],
     ['description: C# tips', 'desc', 'C# tips'], ['description: "keep # this"', 'desc', 'keep # this']];
   for (const [src, k, want] of cases6) ok(f6(src)[k] === want, `${JSON.stringify(src)} reads ${k} ${JSON.stringify(want)} (got ${JSON.stringify(f6(src)[k])})`);
   ok(f6('superseded-by: null\nmetadata:\n  tier: hot').tier === 'hot', 'a null superseded-by leaves a pin a pin');
