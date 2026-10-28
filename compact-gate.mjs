@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, prompt, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote } from './handoff-log.mjs';
+import { readTail, text, prompt, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -111,7 +111,7 @@ function walk(raw) {
     // the note said not to rerun it), and a message the user typed meanwhile:
     // private, its answer is not shown.
     if (r.type === 'attachment' && r.attachment?.type === 'queued_command') {
-      const q = norm(String(r.attachment.prompt ?? ''));
+      const q = norm(queuedText(r));
       for (const hit of q.matchAll(DONE)) s.running.delete(hit[1]);
       if (/<\s*private/i.test(unquote(q))) s.hidden = true;
     }
@@ -127,7 +127,9 @@ function walk(raw) {
       // Not in what the harness quotes: an agent's report quoting the tag hid
       // the last words said. Nor in a compaction summary, a recap: one that
       // named the tag hid them, and the nudge, for the rest of the turn.
-      else if (!r.isCompactSummary && /<\s*private/i.test(unquote(unwrap(norm(t))))) s.hidden = true;
+      // Unless no ask came before it (a file that opens with one): then it is
+      // all the turn has, and the words after it may answer what it quotes.
+      else if ((!r.isCompactSummary || !s.ask) && /<\s*private/i.test(unquote(unwrap(norm(t))))) s.hidden = true;
       // A launch is read from the result of a Bash or Agent call only: from any
       // tool result, a fetched page that spelt one out put its words, and any
       // instruction in them, into the note printed after the compaction.

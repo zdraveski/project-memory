@@ -335,4 +335,22 @@ gate();
   ok(stop('r4sum')?.hookSpecificOutput?.additionalContext, 'and the nudge is still given after it');
 }
 
+// Round 4, second pass: a private message queued as blocks hides the turn's
+// last words; a file that opens with a summary quoting a private ask too.
+{
+  const blank = () => writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+  blank();
+  write(user('keep going'), JSON.stringify({ type: 'attachment', timestamp: '2026-09-13T13:00:30Z', attachment: { type: 'queued_command', commandMode: 'prompt', prompt: [{ type: 'text', text: '<private>pin 445566</private> use it' }] } }),
+    asst('Pin 445566 used.', 965_000, 'tool_use'), result('ok'));
+  gate();
+  let h6 = readFileSync(join(dir, 'handoff.md'), 'utf8');
+  ok(!/445566/.test(h6) && /last said:\*\* \[private\]/.test(h6), `a private message queued as blocks hides the last words (got ${h6})`);
+  blank();
+  write(rec('user', 'This session is being continued from a previous conversation. User asked: <private>ssn 123456789</private> file taxes', { isCompactSummary: true }),
+    asst('Filing for 123456789.', 965_000, 'tool_use'), result('ok'));
+  gate();
+  h6 = readFileSync(join(dir, 'handoff.md'), 'utf8');
+  ok(!/123456789/.test(h6), `a file that opens with a summary quoting a private ask shows none of it (got ${h6})`);
+}
+
 console.log(`compact-gate: ${checks} checks passed`);

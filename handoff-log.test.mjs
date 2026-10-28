@@ -1026,5 +1026,32 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   ok(/migrate the data\n  \*\*did:\*\* Migration done: 3 tables moved\./.test(d5), `and a compaction after the memory update ends the hold too (got ${section()})`);
 }
 
+// Round 4, second pass: the hold's other ends, and what must not end it early.
+{
+  const t6 = join(dir, 'r4-pass2.jsonl');
+  const nudge6 = (ts) => JSON.stringify({ type: 'attachment', timestamp: ts, attachment: { type: 'hook_additional_context', hookEvent: 'Stop', content: ['[project-memory: compaction gate] Context is at 86%'] } });
+  const done6 = (ts, id = 'b6') => JSON.stringify({ type: 'attachment', timestamp: ts, attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: `<task-notification><task-id>${id}</task-id><status>completed</status></task-notification>` } });
+  const end6 = (s, ts) => asst(s, { ts, message: { content: [{ type: 'text', text: s }], stop_reason: 'end_turn' } });
+  const mid6 = (s, ts) => asst(s, { ts, message: { content: [{ type: 'text', text: s }], stop_reason: 'tool_use' } });
+  const stop6 = (lines, id, extra = {}) => { writeFileSync(t6, lines.join('\n') + '\n'); execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: id, transcript_path: t6, cwd, ...extra }), env }); return doc(); };
+  let d6 = stop6([user('build A', { ts: '2026-10-28T15:00:00Z' }), end6('Started A.', '2026-10-28T15:01:00Z'), nudge6('2026-10-28T15:05:00Z'), end6('Saved.', '2026-10-28T15:06:00Z'),
+    user('<task-notification><task-id>b7</task-id><status>completed</status></task-notification>', { ts: '2026-10-28T15:30:00Z' }), end6('A finished.', '2026-10-28T15:31:00Z')], 'r4ps2-0001');
+  ok(/build A\n  \*\*did:\*\* A finished\./.test(d6), `a task's end as a user record ends the hold (got ${section()})`);
+  d6 = stop6([user('build B', { ts: '2026-10-28T16:00:00Z' }), end6('Started B.', '2026-10-28T16:01:00Z'), nudge6('2026-10-28T16:05:00Z'), end6('Saved.', '2026-10-28T16:06:00Z'),
+    user('Another Claude session sent a message:\n<agent-message from="a1">all green</agent-message>', { ts: '2026-10-28T16:30:00Z', isMeta: true }), end6('The agent reported all green.', '2026-10-28T16:31:00Z')], 'r4ps2-0002');
+  ok(/build B\n  \*\*did:\*\* The agent reported all green\./.test(d6), `an agent's message in its isMeta form ends the hold (got ${section()})`);
+  d6 = stop6([user('build C', { ts: '2026-10-28T17:00:00Z' }), end6('Started C.', '2026-10-28T17:01:00Z'), nudge6('2026-10-28T17:05:00Z'), end6('Saved.', '2026-10-28T17:06:00Z'),
+    done6('2026-10-28T17:30:00Z'), end6('C halfway.', '2026-10-28T17:31:00Z'), nudge6('2026-10-28T17:35:00Z'), mid6('Saving again.', '2026-10-28T17:36:00Z'),
+    done6('2026-10-28T17:37:00Z', 'b8'), end6('Saved again.', '2026-10-28T17:38:00Z')], 'r4ps2-0003');
+  ok(/build C\n  \*\*did:\*\* C halfway\./.test(d6), `a second nudge holds again until its own memory update ends (got ${section()})`);
+  d6 = stop6([user('build D', { ts: '2026-10-28T18:00:00Z' }), end6('Started D.', '2026-10-28T18:01:00Z'), nudge6('2026-10-28T18:05:00Z'), end6('Saved.', '2026-10-28T18:06:00Z'),
+    JSON.stringify({ type: 'attachment', timestamp: '2026-10-28T18:30:00Z', attachment: { type: 'queued_command', commandMode: 'prompt', prompt: [{ type: 'text', text: '<private>pin 445566</private> use it' }, { type: 'image', source: { type: 'base64', data: 'AA==' } }] } }),
+    rec('assistant', [{ type: 'tool_use', id: 'v1', name: 'Write', input: { file_path: 'C:\\v\\vault-445566.txt' } }], { ts: '2026-10-28T18:31:00Z' }), end6('Used pin 445566 on the vault.', '2026-10-28T18:32:00Z')], 'r4ps2-0004');
+  ok(!/445566/.test(d6) && /build D\n  \*\*did:\*\* Started D\./.test(d6), `a private queued message in blocks keeps its answer and files out (got ${section()})`);
+  d6 = stop6([user('build E', { ts: '2026-10-28T19:00:00Z' }), end6('Started E.', '2026-10-28T19:01:00Z'), nudge6('2026-10-28T19:05:00Z'), end6('Saved notes.', '2026-10-28T19:06:00Z'),
+    done6('2026-10-28T19:30:00Z', 'b9')], 'r4ps2-0005', { hook_event_name: 'Stop', stop_hook_active: false, last_assistant_message: 'Saved notes.' });
+  ok(/build E\n  \*\*did:\*\* Started E\./.test(d6), `right after the hold ends, the Stop payload's reply is not taken for the answer (got ${section()})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

@@ -141,6 +141,13 @@ export const norm = (s) => s.normalize('NFKC').replace(/[\u200B-\u200D\u2060\uFE
 // quoting <private-session> marked the conversation that read it private.
 // By index, at most 50 blocks: linear on any input.
 const QUOTES = /<(task-notification|agent-message|teammate-message|local-command-std(?:out|err)|bash-std(?:out|err))\b[^>]{0,200}>/gi;
+// A queued message's words: its prompt is a string, or blocks (text beside
+// an image). Read as a string, blocks were "[object Object]" and a private
+// tag in them went unseen.
+export const queuedText = (r) => {
+  const p = r.attachment?.prompt;
+  return typeof p === 'string' ? p : Array.isArray(p) ? p.map((b) => (typeof b === 'string' ? b : b?.type === 'text' ? String(b.text ?? '') : '')).join(' ') : '';
+};
 export const unquote = (s) => {
   let out = '', i = 0;
   for (let n = 0; n < 50; n++) {
@@ -197,18 +204,19 @@ function turns(raw) {
     // that named the tag froze the rest of a long turn, its answer hours stale.
     const mine = r.type === 'user' && !r.isCompactSummary ? unquote(unwrap(n)) : '';
     const typed = r.type === 'user' && !r.isMeta && !r.isCompactSummary ? mine
-      : r.type === 'attachment' && r.attachment?.type === 'queued_command' ? unquote(norm(String(r.attachment.prompt ?? ''))) : '';
+      : r.type === 'attachment' && r.attachment?.type === 'queued_command' ? unquote(norm(queuedText(r))) : '';
     // Marked whether or not a reply follows: a turn of tool calls, or one
     // the user stopped, writes no entry but must still mark.
     if (PRIVATE_SESSION.test(typed)) out.hush = true;
     // The hold ends with the memory update's own turn. A turn no prompt opened
-    // after it (a task's end, an agent's message, a compaction) is work again:
+    // after it (a task's end, an agent's message, in either form, or a
+    // compaction) is work again:
     // held to the next prompt, a turn of hours kept the answer from before the
     // nudge, and every result after it was lost (real transcripts, 2026-10-28).
     if (pending?.frozen === 'nudge') {
       if (r.type === 'assistant' && r.message?.stop_reason === 'end_turn') pending.ended = true;
       else if (pending.ended && ((r.type === 'attachment' && r.attachment?.type === 'queued_command') || r.isCompactSummary
-        || (r.type === 'user' && !r.isMeta && /^\s*<task-notification>/.test(t)))) pending.frozen = false;
+        || (r.type === 'user' && /^\s*<task-notification>|<agent-message[\s>]/.test(unwrap(t))))) { pending.frozen = false; pending.reopened = true; }
     }
     // The nudge as hook feedback: an attachment record, not a user one. Its
     // answer is the memory update, not this turn's.
@@ -221,7 +229,7 @@ function turns(raw) {
     else if ((r.type === 'user' || typed) && pending && /<\s*private/i.test(typed || mine)) pending.frozen = true;
     else if (r.type === 'user' && pending && nudged(t)) hold(pending);
     else if (r.type === 'assistant' && pending) {
-      if (!pending.frozen) pending.did = t;     // last text block of the turn wins, unless a nudge froze it
+      if (!pending.frozen) { pending.did = t; pending.reopened = false; }     // last text block of the turn wins, unless a nudge froze it
       if (out[out.length - 1] !== pending) out.push(pending);
     }
   }
@@ -499,9 +507,10 @@ export function handoff(input) {
   const got = latest(input.transcript_path, since);
   // The transcript can lag the reply that ends it: on Stop, Claude Code passes
   // that reply itself (hooks docs). Not after a block: then it is the reply
-  // to the block.
+  // to the block. Nor when the hold has just ended and nothing was said since:
+  // the reply it passes is then the memory update's.
   const open = got.open, last = input.last_assistant_message;
-  if (open && !open.frozen && input.hook_event_name === 'Stop' && !input.stop_hook_active && typeof last === 'string' && last.trim()) {
+  if (open && !open.frozen && !open.reopened && input.hook_event_name === 'Stop' && !input.stop_hook_active && typeof last === 'string' && last.trim()) {
     open.did = last.trim();
     if (got.at(-1) !== open) got.push(open);
   }
