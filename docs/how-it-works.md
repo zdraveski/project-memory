@@ -11,7 +11,7 @@ Claude Code runs project-memory on three of its events, declared in
 
 | Moment | Claude Code event | What runs |
 |---|---|---|
-| Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, takes a snapshot, and reminds Claude to save notes when a compaction is close |
+| Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, writes the journal and imports a few older conversations into it, takes a snapshot, and reminds Claude to save notes when a compaction is close |
 | A conversation starts, is cleared with `/clear`, or resumes after a compaction | `SessionStart` | `handoff-log.mjs --print`: the startup briefing |
 | You run `/compact` | `PreCompact` (manual) | `memory-tier.mjs --stop`, so the notebook is tidy and the handoff current before the summary is made |
 | Claude Code compacts on its own | `PreCompact` (auto) | `compact-gate.mjs`: may ask Claude Code to wait for the end of the turn (see [Compaction](#compaction)) |
@@ -25,7 +25,9 @@ on purpose, briefly: once per compaction cycle the Stop hook sends Claude
 feedback that keeps the conversation going, to ask it to write its notes, and
 the compaction gate can ask Claude Code to wait (exit status 2). While
 `CLAUDE_CODE_DISABLE_AUTO_MEMORY` is `1`, `true`, `yes` or `on` (in any case),
-every hook does nothing; the memory tool still works when you run it yourself.
+every hook does nothing, except that the Stop hook notes the conversation's
+tag in `.memory-off` so the journal never imports it; the memory tool still
+works when you run it yourself.
 
 ## Where things live
 
@@ -54,6 +56,9 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/<project>/memory/MEMORY.md` | the index: one line per note, worth loading every session |
 | `…/memory/MEMORY-archive.md` | lines moved out of the index; not loaded, still searchable |
 | `…/memory/handoff.md` | the rolling handoff (see [The handoff](#the-handoff)) |
+| `…/memory/journal/YYYY-MM-DD.md` | the journal, one file per day (see [The journal](#the-journal)) |
+| `…/memory/journal.md` | the journal's note, so the index has a pinned line for it |
+| `…/memory/journal/.imported`, `.failed`, `.forgotten` | the transcripts imported, the journal's last failure, the keys of forgotten entries |
 | `…/memory/.lock` | the store's lock, a folder that exists while a write is in progress |
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
 | `…/memory/.private-sessions` | the tags of conversations marked private (the newest 1,000) |
@@ -62,6 +67,7 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/.git/project-memory-ignored` | bookkeeping for the snapshot's ignore list |
 | `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran, the snapshot's state, the reminder's state per conversation tag |
 | `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, and why; read at the next start |
+| `~/.claude/projects/.memory-off` | the tags of conversations held with auto memory off (the newest 1,000), which the journal never imports |
 
 Uninstalling the plugin leaves all of these, and the history, in place; you
 may delete them.
@@ -76,8 +82,9 @@ that point at no note) are never moved, so they alone can go past those
 limits; past 7,000 bytes, the startup briefing says the index is over budget.
 
 Every `MEMORY.md` ends with an Archive line that counts the archived lines,
-and a project's also gets a line for `handoff.md`, which is pinned. Prose and
-headings anywhere in it are gathered at the top, above the lines.
+and a project's also gets a line for `handoff.md` and, once it has a journal,
+one for `journal.md`; both are pinned. Prose and headings anywhere in it
+are gathered at the top, above the lines.
 
 After each reply it decides which lines stay in `MEMORY.md` and which move to
 `MEMORY-archive.md`:
@@ -187,6 +194,84 @@ summary that mentions them. The mark is kept by the conversation's tag in
 `.private-sessions` (the newest 1,000), because only the turn that typed it
 sees it in the transcript. `handoff.md` is not in the snapshots.
 
+## The journal
+
+The handoff keeps the last few exchanges; the journal keeps all of them. After
+every reply, the Stop hook writes each finished turn to
+`<project>/memory/journal/YYYY-MM-DD.md`, from the same read of the
+transcript that updates the handoff. A conversation started in a subfolder or
+a worktree writes to the repository's journal, as for the handoff. The shared
+notebook has none. An entry, with a blank line between entries:
+
+```
+<!-- j:<key> t:<project folder>/<session id> d:2026-10-28 -->
+## 14:05 · conversation 551dc2d3 · branch master
+**Asked:** your message, up to 2,000 characters
+**Answered:** Claude's reply, up to 3,000 characters
+**Changed:** the files edited or written in the turn, the last 20
+**Ran:** the Bash and PowerShell commands, the last 10, 200 characters each
+```
+
+- The time is local, as in the handoff. The branch comes from the
+  repository's `HEAD` file. A path inside the turn's folder is written
+  relative to it. `Changed` and `Ran` are left out when empty.
+- The key is the id of the turn's prompt record; a record without one gets
+  the conversation's tag, the time and a hash of the message. One key is one
+  entry: twin Stops, retries and a killed hook write nothing twice, and a
+  turn seen again with more in it replaces its entry. A turn skipped while
+  another window held the lock is written after the next reply, as the
+  handoff catches up.
+- Writes go under the store's lock through the same unchanged-file check as
+  every other write. Entries are kept in time order. Lines in a day file that
+  aren't part of an entry are kept, above the entries. A day's file is
+  rewritten only to add an entry, by `forget`, and by a later
+  `<private-session>`.
+- Every field goes through the redaction rules above, commands included. A
+  `<private>` message's answer is `[private]`, with no files or commands. A
+  `<private-session>` conversation writes nothing, and its entries are
+  removed from every day since it began. With auto memory off, nothing is
+  written.
+- `journal.md` is written once, the first time, as a `tier: hot` note, so
+  the index gets a pinned line telling Claude to search the journal. It is
+  never rewritten, so an edit to it stays.
+- A failure to write is kept in `journal/.failed` for `status`, and cleared
+  by the next write that succeeds.
+
+An entry is about 1.5 KB, and at most about 6 KB. At 50 exchanges a day
+that is about 27 MB a year.
+
+**Importing older conversations.** Each Stop also imports some of the
+conversations still on disk, so a new install starts with the last month
+(Claude Code deletes a transcript after 30 days without use, by default)
+instead of nothing. The candidates are the transcripts in the project's own
+folder and in folders whose name starts with it and `-` (its subfolders'),
+each confirmed to belong to this repository, oldest first. One changed in
+the last 30 minutes is left to its own Stop. The import holds the store's
+lock for up to 150 ms per Stop, plus one transcript past that, and reads at
+most the last 64 MB of a transcript. `journal/.imported` lists each one
+read, with its size: one that has grown since and been quiet for 30 minutes
+is read again (keys keep that harmless), and once nothing is left, the
+folders are looked at again at most every 30 minutes. A conversation never
+imported:
+
+- one whose tag is in `.private-sessions`, or in
+  `~/.claude/projects/.memory-off` (a Stop while auto memory is off puts it
+  there). A conversation held with auto memory off before this version has
+  no tag, and is imported;
+- one with a `<private-session>` mark in the part read. In a transcript from
+  before the plugin kept marks, a mark more than 64 MB before its end is not
+  seen.
+
+Keys listed in `journal/.forgotten` are never written again, by an import or
+a live Stop.
+
+**In the history.** Today's file grows with every reply, so it stays out of
+the snapshots: committed, every version would stay in the history. The
+ignore list names today's file, and changes at midnight, so a day is first
+committed at a reply on a later day. An entry `forget` or a later
+`<private-session>` removes from a finished day stays in that day's
+committed version; delete `~/.claude/projects/.git` to remove it.
+
 ## The startup briefing
 
 At the start of a conversation, and after `/clear`, Claude is told:
@@ -197,6 +282,10 @@ At the start of a conversation, and after `/clear`, Claude is told:
   that was in the last 7 days. After `/clear` neither, since the conversation
   just cleared is the newest. It names at most two, and only conversations
   started in the project's folder or in the folder this one started in;
+- when the project's journal has an entry, one line: "Earlier work in this
+  project since <first day> is in its journal: when asked about the past,
+  search it with the memory skill before saying you don't know." The
+  journal itself is never loaded;
 - anything failing: the Stop hook not running, snapshots failing three times
   in a row, a notebook that needs attention;
 - the shared notebook's index, up to 3,000 bytes.
@@ -268,7 +357,8 @@ never fires.
 ## Snapshots
 
 After each reply that changed a note, the Stop hook commits the notes to a git
-repository at `~/.claude/projects`. It commits only `*/memory/*.md`, never
+repository at `~/.claude/projects`. It commits only `*/memory/*.md` and the
+journal's finished days (`*/memory/journal/*.md` but today's), never
 `handoff.md`: transcripts and the record of the latest exchanges are never
 committed. It has no remote and is never pushed. It overrides the git
 settings that would break snapshots, whatever yours say: no hooks of yours run
@@ -309,7 +399,8 @@ notebook as it finds it before its first tidy-up, then tidies.
   so.
 
 To drop the history, delete `~/.claude/projects/.git`. The next change to a
-note, or the next day, starts a new one.
+note, or the next day, starts a new one. It is also the only way to remove
+an entry from a finished day's committed version.
 
 ## The shared notebook
 
@@ -337,15 +428,50 @@ Every write first checks that the file still holds what was read. When Claude
 edited the file in the meantime, Claude's edit is kept and the hook tries
 again next time.
 
-## Search
+## Search and forget
 
 `search` looks at notes in this project and the shared notebook, archive
-included (`--all`: every project). Words shorter than 3 letters are ignored,
-and so are common words such as "the", "how" and "what".
+included, and at this project's journal (`--all`: every project). Words
+shorter than 3 letters are ignored, and so are common words such as "the",
+"how" and "what".
 For each word: +3 if it's in the note's name, +2 in its description, +1 per
 mention in the body, up to 2. A note that has every word in its name or
-description gets +5; one that has every word somewhere gets +2. Equal scores
-show the newest first.
+description gets +5; one that has every word somewhere gets +2. A journal
+entry is scored the same way on its request (+3), its files and commands
+(+2) and its reply (+1 per mention, up to 2): every word in the request gets
++5, every word somewhere +2, so a reply that names everything can't outrank
+the request for the thing. Equal scores show the newest first.
+
+It shows the top 10 (`--limit N` for more), then how many matched. A journal
+hit shows its day and time, conversation tag, branch and day file. The top
+three journal hits are printed whole, up to the caps, and the rest are cut
+to 200 or 300 characters a field. When the hit's transcript is still on
+disk, its path follows, for the detail the entry left out.
+
+`--since` and `--until` take a date, `YYYY-MM-DD`, and keep only the days
+from one to the other, both included: a note by the day of its `modified:`
+date (or its file's), the journal by its day files. A day file outside the
+range is never opened. With dates and no words, `search` lists the requests
+of those days, newest first, 30 by default: the answer to "what did I work
+on last week". A day file that can't be read is named in the output, and
+the rest is still searched.
+
+`forget <words…>` finds the journal entries that hold every word (in any
+case) in their request, reply, branch, files or commands, narrowed by
+`--since`, `--until` and `--conversation <tag>`; it needs at least one of
+these. Without `--yes` it lists them (up to 20) and says how many would go;
+with `--yes` it removes them under the store's lock and lists what went.
+Their keys are added to `journal/.forgotten` first, so neither a killed
+`forget` nor a later import brings them back. It then names the days before
+today, which the snapshots already hold, and the folder to delete. It clears
+the journal only: `handoff.md` and Claude Code's transcripts are untouched.
+Its words are recorded in today's journal like any other request.
+`--since 1970-01-01 --yes` empties the journal; deleting the `journal` folder
+instead rebuilds it from the transcripts still on disk, since `.imported`
+and `.forgotten` are inside it.
+
+`status` adds a journal line: how many days since the first, the size, how
+many older conversations are still to import, and the last failure, if any.
 
 ## The memory tool from a terminal
 
@@ -357,7 +483,8 @@ node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory
 
 | Command | Options |
 |---|---|
-| `search <words…>` | `--all`, `--limit N` |
+| `search <words…>` | `--since D`, `--until D`, `--all`, `--limit N` |
+| `forget <words…>` | `--since D`, `--until D`, `--conversation <tag>`, `--yes` |
 | `status` | `--all` |
 | `history <note>` | `--all` |
 | `restore <note>` | `--rev <commit>`, `--force` |
@@ -371,7 +498,8 @@ a notebook, from the folder you're in upward. The tool reads no environment
 variable to find the conversation. `--store <folder>` picks another
 project's `memory` folder, one inside `~/.claude/projects` (any other is
 refused), and `--shared` picks the shared notebook. With no command, it runs
-`status`. The tool exits with 1 when a command is refused or fails.
+`status`. `D` is a date, `YYYY-MM-DD`. The tool exits with 1 when a command
+is refused or fails.
 
 `restore` and `promote` take a note's name as the disk resolves it: on Windows
 and on macOS by default in any letter case (on Windows, a short name such as

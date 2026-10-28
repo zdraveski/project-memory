@@ -10,7 +10,7 @@
   <text x="60" y="96" font-size="40" font-weight="700" fill="#F4F1EA">What project-memory does for you</text>
   <text x="60" y="138" font-size="24" fill="#9EA5C2">It works on its own after every reply, and it never goes online.</text>
 
-  <!-- Picks up where you left off -->
+  <!-- Remembers all your work -->
   <rect x="60" y="180" width="520" height="270" rx="20" fill="#1D2240" stroke="#323858" stroke-width="2"/>
   <g transform="translate(100 228)">
     <rect x="4" y="14" width="72" height="54" rx="14" fill="#F4F1EA"/>
@@ -19,8 +19,8 @@
     <rect x="16" y="46" width="28" height="7" rx="3.5" fill="#B9B2A3"/>
     <path d="M66 2 H90 V46 L78 36 L66 46 Z" fill="#F5B544"/>
   </g>
-  <text font-size="30" font-weight="700" fill="#F4F1EA"><tspan x="232" y="262">Picks up where</tspan><tspan x="232" y="298">you left off</tspan></text>
-  <text font-size="23" fill="#C5CADF"><tspan x="232" y="346">A new conversation starts</tspan><tspan x="232" y="378">knowing where the last</tspan><tspan x="232" y="410">one stopped.</tspan></text>
+  <text font-size="30" font-weight="700" fill="#F4F1EA"><tspan x="232" y="262">Remembers all</tspan><tspan x="232" y="298">your work</tspan></text>
+  <text font-size="23" fill="#C5CADF"><tspan x="232" y="346">Ask about any earlier</tspan><tspan x="232" y="378">day, not only where</tspan><tspan x="232" y="410">you left off.</tspan></text>
 
   <!-- Keeps old versions of your notes -->
   <rect x="620" y="180" width="520" height="270" rx="20" fill="#1D2240" stroke="#323858" stroke-width="2"/>

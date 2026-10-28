@@ -34,11 +34,12 @@ Claude Code keeps a notebook for each project (it calls this *auto memory*),
 where Claude writes down your preferences, decisions and corrections.
 project-memory looks after that notebook.
 
-![What project-memory does for you: it picks up where you left off, keeps old versions of your notes (needs Git), keeps long tasks on track, and shares what you teach it with all your projects. It works on its own after every reply, and it never goes online.](docs/what-it-does.svg)
+![What project-memory does for you: it remembers all your work, not only where you left off, keeps old versions of your notes (needs Git), keeps long tasks on track, and shares what you teach it with all your projects. It works on its own after every reply, and it never goes online.](docs/what-it-does.svg)
 
 | Without project-memory | With project-memory |
 |---|---|
 | You start a new conversation and explain again where you were. | Claude starts already knowing where the last conversation stopped. |
+| Work from a few weeks ago is hard to find again unless Claude wrote a note about it. | Every exchange is kept in a journal on your computer. Ask about any earlier work in your own words, and Claude searches it and answers with the date. |
 | When the notebook's table of contents gets too long, Claude Code asks Claude to shorten it, and Claude decides what to merge or drop. | The table of contents is kept short for Claude, and no note is dropped. Older lines move to an archive that Claude can still search. |
 | A very long conversation is shortened to a summary, and details of the task in progress can get lost. | Claude saves its notes before that happens, and afterwards it's told what you asked and what it last said. |
 | A note deleted or overwritten by mistake is gone for good. | After each reply that changed a note, the note is saved to a history on your computer. Ask Claude, and it brings an old version back. |
@@ -148,6 +149,10 @@ project-memory can't see the size you chose there. The details are under
   window. After a compaction it also repeats the latest exchanges, and stays
   under about 2,500 tokens. In return, the table of contents Claude reads at
   every start is kept small ([the numbers](docs/how-it-works.md#the-index)).
+  The journal isn't loaded at the start: the briefing has one line saying
+  it's there.
+- **Disk space.** The journal takes about 1.5 KB per exchange. A busy
+  project adds about 27 MB a year, in plain text files you can read.
 - **Where it works.** On Windows, macOS and Linux, wherever Claude Code runs on
   your computer and can find Node.js.
 - **One computer.** Your notes and their history stay on the computer they
@@ -155,11 +160,12 @@ project-memory can't see the size you chose there. The details are under
 - **Repositories.** A conversation started in a subfolder or a worktree of a
   git repository uses that repository's notebook, as Claude Code does.
 - **If you turn off auto memory.** While `CLAUDE_CODE_DISABLE_AUTO_MEMORY` is
-  set to `1`, `true`, `yes` or `on`, project-memory does nothing on its own;
-  only the memory skill still works when you ask for it. If you turn auto
-  memory off with `/memory` instead, project-memory can't see that, because it
-  doesn't read your settings: [turn it off](#turning-it-off-or-removing-it) as
-  well.
+  set to `1`, `true`, `yes` or `on`, project-memory does nothing on its own
+  except note the conversation's short tag, so the journal never takes it in
+  later. Only the memory skill still works when you ask for it. If you turn
+  auto memory off with `/memory` instead, project-memory can't see that,
+  because it doesn't read your settings:
+  [turn it off](#turning-it-off-or-removing-it) as well.
 - **Your own files.** project-memory only writes inside Claude Code's own
   folder. It never touches your project's files or your own git repositories.
   If you made Claude Code's projects folder into a git repository yourself,
@@ -213,13 +219,16 @@ newer, and Git?"* Claude will check for you. If one is missing, download it from
 
 There's nothing you have to do. Keep working with Claude as you always have.
 
-When you want something from your notes, just ask in your own words:
+When you want something from your notes or your earlier work, just ask in
+your own words:
 
 | You say | What happens |
 |---|---|
 | *"Remember that I prefer short answers."* | Claude saves a note. |
 | *"Where did we leave off?"* | Claude reads the record of your last conversation. |
-| *"Did we decide anything about the logo?"* | Claude searches your notes, including the archive. |
+| *"What did we decide about the logo in September?"* | Claude searches your notes, the archive and the journal, and answers with the date. |
+| *"What did I work on last week?"* | Claude lists what you asked each day last week, from the journal. |
+| *"Forget the password I pasted yesterday."* | Claude shows you the journal entries it would remove, and removes them when you say yes. |
 | *"I deleted the note about pricing by mistake. Can you bring it back?"* | Claude restores it from the history. |
 | *"Make the note about short answers apply to all my projects."* | Claude asks you to confirm, then moves it to the shared notebook. |
 | *"Remember for all my projects that I like plain language."* | Claude saves it straight to the shared notebook. |
@@ -230,7 +239,8 @@ If you'd rather type a command, these do the same things:
 | Type | What it does |
 |---|---|
 | `/project-memory:memory status` | A quick health check of this project's notes, and which notes were added, changed or deleted this week |
-| `/project-memory:memory search logo colors` | Finds notes about "logo colors" |
+| `/project-memory:memory search logo colors` | Finds notes and journal entries about "logo colors" |
+| `/project-memory:memory forget password` | Lists the journal entries that mention "password". Add `--yes` to remove them |
 | `/project-memory:memory history pricing` | Shows when the note called "pricing" changed |
 | `/project-memory:memory restore pricing` | Brings back the note called "pricing" |
 | `/project-memory:memory promote pricing` | Moves the note called "pricing" to the shared notebook |
@@ -241,7 +251,8 @@ shows them.
 
 To read your notes yourself, type `/memory` in Claude Code and open the auto
 memory folder. The record of where you left off is the file `handoff.md` in
-that folder. To keep a message or a whole conversation out of that record, see
+that folder, and the journal is its `journal` folder, one file per day. To
+keep a message or a whole conversation out of both, see
 [Your privacy](#your-privacy).
 
 ## Updating
@@ -307,16 +318,42 @@ back.
 
 - project-memory never connects to the internet. What it saves stays on your
   computer, in Claude Code's own folder (`.claude`, in your home folder).
-- Claude reads your notes during your conversations, as it does with Claude
-  Code's built-in memory. What project-memory adds to a conversation, such as
-  the briefing at its start, goes to Anthropic with the rest of the
-  conversation.
+- Claude reads your notes, and the journal entries it searches for, during
+  your conversations, as it does with Claude Code's built-in memory. What
+  project-memory adds to a conversation, such as the briefing at its start,
+  goes to Anthropic with the rest of the conversation.
 - The record of where you left off includes the start of your messages and of
   Claude's replies, and the names of the files Claude changed. It's kept only
   until newer exchanges replace it, and since version 1.1.0 it's not part of
   the history (the privacy policy says how to remove older copies). The
-  history keeps old versions of your notes. If you copy or share your
-  `.claude` folder, all of that goes with it.
+  history keeps old versions of your notes and the journal's finished days.
+  If you copy or share your `.claude` folder, all of that goes with it.
+- The journal keeps every exchange: your message (up to 2,000 characters),
+  Claude's reply (up to 3,000), the names of up to 20 files Claude changed,
+  and up to 10 commands it ran (the first 200 characters of each). It's in
+  the `journal` folder of each project's notebook, one file per day, with a
+  file `journal.md` beside it. It stays until you delete it or ask Claude to
+  forget part of it. It isn't loaded when a conversation starts: the briefing
+  only says, in one line, that it's there.
+- The first time it runs in a project, the journal also takes in the
+  conversations Claude Code still keeps for that project (by default, those
+  used in the last 30 days). It leaves out conversations marked
+  `<private-session>`, and those held while auto memory was turned off with
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY`. It can only tell for conversations held
+  while this version was installed: one held with auto memory off before
+  that is taken in.
+- Once a day is over, its journal file goes into the history. Removing an
+  entry later, by asking Claude to forget it or with `<private-session>`,
+  takes it out of the journal but not out of the history of an earlier day.
+  To remove those copies too, delete the history (the privacy policy says
+  how).
+- To remove something from the journal, ask Claude, for example *"Forget the
+  password I pasted yesterday."* Claude shows you the entries it would
+  remove, and removes them only when you confirm. This clears the journal
+  only: the record of where you left off and Claude Code's own conversation
+  files are separate. The words you use to ask are saved in that day's
+  journal entry, so describe what to forget instead of pasting it again. To
+  empty the journal, ask Claude to forget everything in it.
 - Common kinds of keys, tokens and passwords you paste into a message are
   replaced with `[redacted]` before anything is saved: API keys, access
   tokens, passwords in web addresses, and settings such as `password=`. No
@@ -327,14 +364,15 @@ back.
   changed in that turn. The tags work in any letter case, and in a message you
   type while Claude is still working. A later reply that repeats the private
   part is saved like any other, so if it will come up again, use
-  `<private-session>`. The tags keep text out of project-memory's record
+  `<private-session>`. The tags keep text out of project-memory's own files
   only: Claude still sees it, Claude Code still keeps it in its own
   conversation files, and if Claude writes it into a note, the history keeps
   that note.
-- To keep a whole conversation out of the record, type `<private-session>` in
-  any message. What was saved before is removed from the record, and Claude
-  isn't asked to write notes before the conversation is shortened. Claude can
-  still write notes in that conversation if you ask it to.
+- To keep a whole conversation out of the record and the journal, type
+  `<private-session>` in any message. What was saved before is removed from
+  both, and Claude isn't asked to write notes before the conversation is
+  shortened. Claude can still write notes in that conversation if you ask it
+  to.
 
 The full details are in the [privacy policy](PRIVACY.md).
 
@@ -357,11 +395,14 @@ To remove it, type this in Claude Code:
 /plugin uninstall project-memory@project-memory
 ```
 
-Your notes stay where they are, and Claude Code keeps using them. To delete
-the history of your notes as well, delete the hidden folder `.git` inside
-`.claude/projects` in your home folder, or ask Claude to. A few small files
-project-memory kept for itself stay too, and you can delete them: in
-`.claude/projects`, `.gitignore`, `.stop-ran`, `.snapshot-health`, any
+Your notes and the journal stay where they are, and Claude Code keeps using
+the notes. To delete the journal, delete the `journal` folder and the file
+`journal.md` in each project's `memory` folder, and the line that points to
+`journal.md` in that folder's `MEMORY.md`. To delete the history of your
+notes as well, delete the hidden folder `.git` inside `.claude/projects` in
+your home folder, or ask Claude to. A few small files project-memory kept for
+itself stay too, and you can delete them: in `.claude/projects`,
+`.gitignore`, `.stop-ran`, `.snapshot-health`, `.memory-off`, any
 `.handoff-failed-…` file and the folder `.nudge`; in each project's `memory`
 folder, `.tiered`, `.health` and `.private-sessions`.
 
@@ -371,7 +412,8 @@ Claude Code's own memory keeps improving. It now asks Claude to shorten the
 table of contents when it nears its limit, and after a compaction it reloads
 your notes, re-reads recent files and reminds Claude of jobs still running.
 project-memory adds what it still doesn't do: a new conversation that starts
-knowing where the last one stopped, a history of every note, a shared
+knowing where the last one stopped, a journal of every exchange that Claude
+searches when you ask about earlier work, a history of every note, a shared
 notebook for all your projects, and safe use of several windows at once.
 
 project-memory isn't the only add-on either. This table compares it with five
@@ -387,11 +429,11 @@ so check their pages before you choose.
 | Account or API key | No | Optional | Required | Required | No, unless you use the paid cloud | No |
 | Extra software | Node.js and Git | Node.js, Bun, uv and a background service | Python and Git | Node.js | Python | Node.js |
 | Uses an AI model to write memories | No | Yes: your Claude plan, your own key, or its paid service | Yes, on Mem0's side | Yes, on Supermemory's side | No | No |
-| How memories are made | Claude writes notes, and your latest exchanges are saved after every reply | Automatically, from everything Claude does | Automatically, from your conversations | Automatically, from your conversations | Claude writes notes when asked | Automatically, from what happens in a session |
+| How memories are made | Claude writes notes, and every exchange is saved to a journal after every reply | Automatically, from everything Claude does | Automatically, from your conversations | Automatically, from your conversations | Claude writes notes when asked | Automatically, from what happens in a session |
 | Search | By words | By words and by meaning | By meaning | By meaning | By words and by meaning, plus links between notes | By words |
 | Picks up where you left off | Yes | Yes | Brings back up to 5 memories at the start | Searches memory on every message | When Claude reads the notes | Yes |
 | Protects work when a conversation is compacted | Before, during and after | Not stated | Not stated | Not stated | Not stated | Yes |
-| Old versions kept, so you can undo | Yes | Not stated | Not stated | Not stated | Paid cloud only | No |
+| Old versions kept, so you can undo | Yes, of notes and of each finished day of the journal | Not stated | Not stated | Not stated | Paid cloud only | No |
 | Lessons shared across your projects | Yes | Not stated | No, kept per repository | A personal profile | Yes, one knowledge base | Search across projects |
 | Shared with a team | No | Optional | Yes | Yes | Not stated | No |
 | Safe with several windows open | Yes, and each window is told about the others | Not stated | Not stated | Not stated | Not stated | Not stated |
@@ -403,8 +445,9 @@ In plain words:
 
 - **project-memory** suits you if you want Claude Code's own memory kept
   tidy, safe from mistakes and intact through long conversations, with nothing
-  to sign up for and nothing leaving your computer. It searches by words only,
-  works in Claude Code only, and doesn't sync between computers or teammates.
+  to sign up for and nothing leaving your computer. It keeps a journal of
+  every exchange for Claude to search. It searches by words only, works in
+  Claude Code only, and doesn't sync between computers or teammates.
 - **claude-mem** records everything Claude does and searches it by meaning. It
   runs a background service, and an AI model writes its summaries, which uses
   your Claude plan, your own key or its paid service.
@@ -444,10 +487,15 @@ Two more are worth knowing about:
 - **Record of where you left off**: the file `handoff.md` in each notebook. It
   holds the start of your latest messages and Claude's replies, and the files
   Claude changed, so the next conversation can pick up from there.
+- **Journal**: the `journal` folder in each notebook, one file per day, where
+  project-memory keeps every exchange: what you asked, Claude's reply, the
+  files it changed and the commands it ran. Claude searches it when you ask
+  about earlier work.
 - **Briefing**: a short note project-memory gives Claude when a conversation
   starts, after `/clear` and after a compaction: where things stopped, what
-  other windows on the project are doing, the shared notebook's table of
-  contents, and anything that needs fixing. You don't normally see it.
+  other windows on the project are doing, that the journal is there, the
+  shared notebook's table of contents, and anything that needs fixing. You
+  don't normally see it.
 - **Shared notebook**: notes that apply to all your projects. In every
   project, Claude is shown its table of contents when a conversation starts,
   after `/clear` and after a compaction. A conversation you resume already
@@ -455,7 +503,8 @@ Two more are worth knowing about:
   when it fills up, the oldest shared lessons move to its archive and are no
   longer shown everywhere, unless they're marked to stay.
 - **History**: your notes as they were after each reply that changed them,
-  kept with Git on your computer, so an old version can be brought back.
+  and each finished day of the journal, kept with Git on your computer, so an
+  old version of a note can be brought back.
 - **Project**: the folder you open Claude Code in.
 - **Context window**: how much of a conversation Claude can keep in view at
   once. Its size is counted in tokens, about three quarters of a word each.

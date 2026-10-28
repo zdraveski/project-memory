@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+**A journal of your work**
+- project-memory now keeps a journal of every exchange: after each reply it
+  saves your message (up to 2,000 characters), Claude's reply (up to 3,000),
+  the files Claude changed (up to 20) and the commands it ran (up to 10), one
+  file per day in each project's notebook. Before, only the last few
+  exchanges were kept, and work Claude didn't write a note about was hard to
+  find again.
+- Ask about earlier work in your own words, such as "What did we decide
+  about the logo in September?" or "What did I work on last week?", and
+  Claude searches the journal and answers with the date.
+- The first time it runs in a project, it takes in the conversations Claude
+  Code still keeps on your computer, a few after each reply, so the journal
+  starts with about the last month instead of empty.
+- `search` looks in the journal too, and takes `--since` and `--until`
+  dates. With dates and no words, it lists what you asked on those days.
+- `forget` removes journal entries when you ask: it lists them first, and
+  removes them only with `--yes`.
+- The journal isn't loaded when a conversation starts. The briefing gets one
+  line saying it's there, and `status` shows its size and first day.
+- Each finished day goes into the history of your notes. Today's file stays
+  out until the day is over, so the history doesn't keep a copy after every
+  reply.
+
+**Privacy**
+- The journal follows the same rules as the record of where you left off:
+  secrets are replaced with `[redacted]`, `<private>` and `<private-session>`
+  keep text out, and nothing is saved while auto memory is off.
+- When it takes in older conversations, it leaves out those marked
+  `<private-session>` and those held while `CLAUDE_CODE_DISABLE_AUTO_MEMORY`
+  was set. A conversation held with auto memory off before this version has
+  no mark, and is taken in.
+- An entry removed later, by `forget` or by a later `<private-session>`,
+  stays in the history for days already over. The privacy policy says how
+  to remove it, and what's left behind after you uninstall.
+
 ## 1.1.0 "Cronos" (2026-10-28)
 
 Cronos is the hunt for bugs before the directory listing: about 200 were

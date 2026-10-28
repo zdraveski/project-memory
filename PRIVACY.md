@@ -6,7 +6,9 @@ This page says what it reads, what it saves, and how to remove it.
 ## What it reads
 
 - Claude Code's record of your conversations in this project (the files Claude
-  Code keeps in `~/.claude/projects`), to know what was asked and answered.
+  Code keeps in `~/.claude/projects`), to know what was asked and answered:
+  the current conversation's after every reply, and for the journal, once
+  each, the older conversations of this project and of the folders inside it.
   If you set `CLAUDE_CONFIG_DIR`, that folder's `projects` instead.
 - The notes Claude Code's built-in memory writes in the same folder.
 - The git information of the folder a conversation starts in (its `.git`
@@ -46,6 +48,29 @@ All of it stays in `~/.claude/projects` on your computer:
   - The tags keep text out of project-memory's own files only. Claude still
     sees it, Claude Code keeps it in its own conversation files, and a note
     Claude writes about it is kept in the history like any other note.
+- A journal of every exchange, one file per day in a project's `memory`
+  folder (`journal/YYYY-MM-DD.md`), with a file `journal.md` beside it that
+  tells Claude the journal is there. Each entry holds your message (up to
+  2,000 characters), Claude's reply (up to 3,000), the names of up to 20
+  files Claude changed, and up to 10 commands it ran (the first 200
+  characters of each), with the time, the conversation's short tag and the
+  git branch.
+  - The rules above apply to it too: secrets are replaced with `[redacted]`,
+    a `<private>` message's reply is saved as `[private]` with no files or
+    commands, and a conversation marked `<private-session>` writes nothing,
+    and its earlier entries are removed from every day's file.
+  - The first time it runs in a project, it takes in the conversations
+    Claude Code still keeps there (by default, Claude Code deletes one after
+    30 days without use), a few after each reply. It never takes in a
+    conversation marked `<private-session>`, or one held while
+    `CLAUDE_CODE_DISABLE_AUTO_MEMORY` was set: it knows them by their tags in
+    `.private-sessions` and in `~/.claude/projects/.memory-off`. A
+    conversation held with auto memory off before this version has no tag,
+    and is taken in. In a conversation from before you installed the plugin,
+    a `<private-session>` mark is seen only in its last 64 MB.
+  - It is never loaded at the start of a conversation. The briefing only
+    says, in one line, that it exists and since when. Claude reads entries
+    when it searches the journal.
 - When Claude Code shortens a nearly full conversation in the middle of a
   task, with no room to wait for the task's step to end, a note of what was in
   progress: your request, the start of Claude's last words, any background
@@ -56,14 +81,20 @@ All of it stays in `~/.claude/projects` on your computer:
   automatic record. Those lines are Claude's own writing, and stay until
   Claude or you change them. Claude isn't asked in a private conversation.
 - A history of your notes, in a local git repository: after each reply that
-  changed a note, its new version is kept. It holds your notes only, never
-  the record of where you left off.
-- A few small bookkeeping files, such as when it last ran, and the short tags
-  of conversations you marked `<private-session>`.
+  changed a note, its new version is kept. Once a day is over, that day's
+  journal file is kept there too. It never holds the record of where you
+  left off, or today's journal file.
+- A few small bookkeeping files, such as when it last ran, the short tags of
+  conversations you marked `<private-session>` or held with auto memory off,
+  and, in each `journal` folder, which conversations it has taken in
+  (`.imported`), its last failure (`.failed`) and which entries you had it
+  forget (`.forgotten`).
 
 If auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (set to
 `1`, `true`, `yes` or `on`), project-memory reads and saves nothing on its
-own. The memory skill still reads or changes your notes when you ask it to.
+own, except the conversation's short tag in `~/.claude/projects/.memory-off`
+(the newest 1,000), so the journal never takes that conversation in later.
+The memory skill still reads or changes your notes when you ask it to.
 
 ## What it sends
 
@@ -74,12 +105,14 @@ pushed.
 It does add a briefing to your conversations: when one starts, after
 `/clear` and after a compaction, up to 9,500 characters. The briefing can hold
 the start of recent messages and replies in this project, what other
-conversations open on this project were last asked, the shared notebook's
-table of contents, and problems to fix. A conversation marked
-`<private-session>` shows in other conversations' briefings only as working,
-without its messages. Claude reads the briefing and your notes like anything
-else in the conversation, so they go to Anthropic with it, as Claude Code's
-built-in memory does.
+conversations open on this project were last asked, a line saying the
+project has a journal and its first day, the shared notebook's table of
+contents, and problems to fix. A conversation marked `<private-session>`
+shows in other conversations' briefings only as working, without its
+messages. Claude reads the briefing and your notes like anything else in the
+conversation, so they go to Anthropic with it, as Claude Code's built-in
+memory does. Journal entries reach Anthropic only when Claude reads them in
+a conversation, after searching the journal.
 
 ## How long it keeps it
 
@@ -89,22 +122,48 @@ built-in memory does.
 - The note of a task in progress: until Claude's next reply.
 - Your notes: until you or Claude delete them. A deleted note's old versions
   stay in the history.
-- The history of your notes: until you delete it.
+- The journal: until you delete it, or remove entries with `forget`. A
+  finished day's file stays in the history even after entries are removed
+  from the journal.
+- The history of your notes and finished journal days: until you delete it.
 
 ## Deleting it
 
 Uninstalling the plugin leaves all of this in place. To delete:
 
-- the history: the hidden folder `.git` inside `~/.claude/projects`. That
-  removes the history of every project at once. While project-memory is on
-  and Git is installed, the next change to a note, or the next day, starts a
-  new one.
+- the history, finished journal days included: the hidden folder `.git`
+  inside `~/.claude/projects`. That removes the history of every project at
+  once. While project-memory is on and Git is installed, the next change to a
+  note, or the next day, starts a new one.
 - the record of where you left off: `handoff.md` in a project's `memory`
   folder.
+- the journal: the `journal` folder (with `.imported`, `.failed` and
+  `.forgotten` inside it) and `journal.md` in a project's `memory` folder,
+  and the line that points to `journal.md` in its `MEMORY.md`. While
+  project-memory is installed, a deleted `journal` folder is filled again
+  from the conversations Claude Code still keeps. To empty the journal and
+  keep them out, use `forget` as below.
 - the bookkeeping files: in `~/.claude/projects`, `.gitignore`, `.stop-ran`,
-  `.snapshot-health`, any `.handoff-failed-…` file and the folder `.nudge`;
-  in each project's `memory` folder, `.tiered`, `.health` and
-  `.private-sessions`.
+  `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` file and the
+  folder `.nudge`; in each project's `memory` folder, `.tiered`, `.health`
+  and `.private-sessions`.
+
+To remove only some journal entries, ask Claude (for example, "forget the
+password I pasted yesterday"), or run the memory tool's `forget` with words,
+a date range (`--since`, `--until`) or a conversation's tag. It first lists
+the entries that match, and removes them only when run again with
+`--yes`, after you confirm. Their keys are kept in `.forgotten`, so a later
+import never brings them back. To forget the whole journal, use
+`forget --since 1970-01-01 --yes`.
+
+- `forget` clears the journal only. The record of where you left off
+  (`handoff.md`) and Claude Code's own conversation files are separate.
+- The words you use to forget are recorded in that day's journal entry, like
+  any other request: describe what to forget instead of pasting it again.
+- A finished day's file is already in the history, and an entry removed
+  later by `forget`, or by a `<private-session>` typed later in its
+  conversation, stays there. `forget` names those days. Delete the `.git`
+  folder as above to remove them.
 
 Before version 1.1.0, the history also kept versions of the record of where
 you left off. If you used an earlier version, those older copies are still in
