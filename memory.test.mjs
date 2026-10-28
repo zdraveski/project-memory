@@ -802,4 +802,32 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     `--since 1970-01-01 --yes forgets the whole journal (got ${r.stdout}; ${listed})`);
 }
 
+// status and the journal: a line for a store that has one, what is left to
+// import, and a write that failed.
+{
+  const st = join(root, 'C--jst', 'memory');
+  const cli = () => spawnSync(process.execPath, [CLI, 'status', '--store', st], { env, encoding: 'utf8' }).stdout;
+  const day = (d, body = '') => { mkdirSync(join(st, 'journal'), { recursive: true }); writeFileSync(join(st, 'journal', `${d}.md`), `# Journal ${d}\n${body}`); };
+  const one = (d, k) => `\n<!-- j:${k} t:C--jst/aaaaaaaa-1 d:${d} -->\n## 09:00 · conversation aaaaaaaa\n**Asked:** ${k}\n`;
+  mkdirSync(st, { recursive: true });
+  writeFileSync(join(st, 'MEMORY.md'), '# Memory\n');
+  ok(!/journal:/.test(cli()), 'status says nothing of a store with no journal');
+  day('2026-10-01');   // a day a sweep emptied is no day
+  ok(!/journal:/.test(cli()), 'status says nothing of a journal holding only an emptied day');
+  day('2026-10-05', one('2026-10-05', 'k1'));
+  day('2026-10-06', one('2026-10-06', 'k2'));
+  let out = cli();
+  ok(/^  journal: 2 days since 2026-10-05, \d\.\d MB$/m.test(out), `status reports the journal (got ${out})`);
+  const tp = join(root, 'C--jst', 'bbbbbbbb-2.jsonl');
+  writeFileSync(tp, '{"type":"user"}\n');
+  const old = new Date(Date.now() - 2 * 86400000); utimesSync(tp, old, old);
+  out = cli();
+  ok(/^  journal: 2 days since 2026-10-05, \d\.\d MB; importing 1 older conversations$/m.test(out), `status says an import is pending (got ${out})`);
+  writeFileSync(join(st, 'journal', '.failed'), JSON.stringify({ at: '2026-10-06T09:00:00Z', error: 'disk full' }));
+  out = cli();
+  ok(/; last write failed: disk full$/m.test(out), `status says the last write failed (got ${out})`);
+  for (const d of ['2026-10-05', '2026-10-06']) unlinkSync(join(st, 'journal', `${d}.md`));
+  ok(/^  journal: no days yet; importing 1 older conversations; last write failed: disk full$/m.test(cli()), 'a journal that failed from its first write still says so');
+}
+
 console.log(`memory: ${checks} checks passed`);

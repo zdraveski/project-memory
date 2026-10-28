@@ -29,10 +29,11 @@ import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
 // (handoff-log's deploy gate test, 2026-10-28).
-let entries, forget;
-try { ({ entries, forget } = await import('./journal.mjs')); }
+let entries, forget, summary;
+try { ({ entries, forget, summary } = await import('./journal.mjs')); }
 catch (e) {
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: String(e.message).split('\n')[0] }); return []; };
+  summary = () => null;
   forget = (dir, terms, o) => ({ matched: entries([dir], o), removed: 0 });
 }
 
@@ -200,6 +201,9 @@ export function status(dir, sharedNames = []) {
   const { a, b } = sectionOf(doc ?? '');
   const all = a === -1 ? [] : parse(doc.slice(a, b));
   if (all.length) lines.push(`  handoff: ${all.length} exchanges from ${new Set(all.map((t) => t.s)).size} session(s), newest ${all.at(-1).at}`);
+  const j = summary(dir);
+  // Failing from the first write, it has no day to show: the failure is the news.
+  if (j?.first || j?.failed) lines.push(`  journal: ${j.first ? `${j.days} days since ${j.first}, ${(j.bytes / 1048576).toFixed(1)} MB` : 'no days yet'}` + (j.left > 0 ? `; importing ${j.left} older conversations` : '') + (j.failed ? `; last write failed: ${j.failed}` : ''));
   const ch = recent(dir);
   if (ch) lines.push(`  changed in the last ${RECENT_DAYS} days: ${ch}`);
   return lines;

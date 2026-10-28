@@ -1,7 +1,7 @@
 ---
 name: memory
-description: Search, restore or share Claude Code's memories on this machine, and check the memory hooks. Use before concluding something was never learned or decided here (the archive holds what MEMORY.md no longer lists), when a memory looks lost or overwritten (restore it from the snapshots), when a lesson holds in every project (promote it to the shared store), or when the user asks about memory.
-argument-hint: "[status | search <terms> | history <memory> | restore <memory> | promote <memory> | doctor]"
+description: Search, restore or share Claude Code's memories on this machine, and check the memory hooks. Use before concluding something was never learned or decided here (the archive holds what MEMORY.md no longer lists) and whenever the user asks about earlier work (what was done, decided, fixed, run or said, and when): the journal holds every exchange, when a memory looks lost or overwritten (restore it from the snapshots), when a lesson holds in every project (promote it to the shared store), or when the user asks about memory.
+argument-hint: "[status | search <terms> | forget <words> | history <memory> | restore <memory> | promote <memory> | doctor]"
 ---
 
 # Memory
@@ -25,12 +25,15 @@ node "${CLAUDE_PLUGIN_ROOT}/memory.mjs" <command> --session ${CLAUDE_SESSION_ID}
 
 | Command | Use it when |
 |---|---|
-| `search <terms...>` | before saying something was never learned: ranked hits from this project and the shared store, hot and archived, each with its date. Add `--all` for anything about the user (how they like things, how they work): it was learned wherever it came up. The last line says how many matched; `--limit N` shows more. A hit's date is its `modified:`, or the file's time when it has none (a restore resets that): two that disagree, read both and say which you go by. Read the top files. |
+| `search <terms...>` | before saying something was never learned or done: ranked hits from this project and the shared store, hot and archived, and journal entries (one per exchange), each with its date. `--since`/`--until YYYY-MM-DD` limit it to those days, inclusive; with no terms it lists the days' entries. Add `--all` for anything about the user (how they like things, how they work): it was learned wherever it came up. The last line says how many matched; `--limit N` shows more. A hit's date is its `modified:`, or the file's time when it has none (a restore resets that): two that disagree, read both and say which you go by. Read the top files. |
 | `status` | sizes against budget, hot/archived counts, problems, `[[links]]` to no memory, and which memories the snapshots saw added, edited or deleted in the last 7 days |
 | `history <memory>` | to see when a memory changed or was deleted; get its name from `search` first. "in the first snapshot" means it already existed then. Its last line is the command that shows one change |
 | `restore <memory>` | a memory was deleted or overwritten: it comes back from the snapshots, with its index line. `--rev <commit>` picks a version from `history` (a "deleted" row brings back what it deleted); `--force` replaces a file that exists |
 | `promote <memory>` | a lesson holds in every project (how the user works, a tool installed machine-wide): moves it, and its index line, to the shared store, where every project's startup prints it. Ask the user first. It leaves its project, so its `[[links]]` to that project's memories stop resolving: trim project-only details first |
+| `forget <words>` | the user asks to drop what the journal holds on something (or `--conversation <id>`, `--since`/`--until`): lists the entries first and removes them only with `--yes`, after the user confirms what it listed. It clears the journal only: `handoff.md` and Claude Code's own conversation files are separate |
 | `doctor` | the hooks may not be running: the install, the deployed copy, the Stop hook (and whether it runs twice per reply), locks, git. It never reads settings.json |
+
+Before answering a question about earlier work, search. When nothing is found, try other words (synonyms, a file's or a tool's name) and `--all`. For "what did I do last week", search with `--since`/`--until` alone. Answer with the date, and quote the entry when the exact words matter. Never say there is no record until notes, journal and `--all` were searched. Run `forget` only after the user confirms what it lists.
 
 A memory is named by its file name, with or without `.md`. `--shared` runs a
 command against the shared store; `--store <dir>` against another project's

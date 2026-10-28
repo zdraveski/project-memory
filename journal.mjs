@@ -298,3 +298,25 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {})
   try { const at = new Date(n < todo.length && !err ? t0 - ACTIVE : Date.now()); utimesSync(f, at, at); } catch {}
   return { imported: n, left: todo.length - n };
 }
+
+// The first day with an entry: a day a sweep or forget emptied is none. A few
+// reads at most, so the briefing can ask at every session start.
+export function firstDay(dir) {
+  for (const d of days(dir)) { try { if (parseDay(raw(dayFile(dir, d)) ?? '').entries.length) return d; } catch {} }
+  return null;
+}
+
+// What `status` says of a store's journal. `left`: the transcripts the backfill
+// has yet to read (candidates() is a folder walk: not for the briefing).
+export function summary(dir) {
+  let first = null, n = 0, bytes = 0, failed = null;
+  for (const d of days(dir)) {
+    try {
+      if (!parseDay(raw(dayFile(dir, d)) ?? '').entries.length) continue;
+      bytes += statSync(dayFile(dir, d)).size; n++; first ??= d;
+    } catch {}
+  }
+  try { failed = JSON.parse(raw(join(dir, JOURNAL, '.failed'))).error || null; } catch {}
+  let left = 0; try { left = candidates(dir).filter((c) => c.mine).length; } catch {}
+  return { first, days: n, bytes, left, failed };
+}

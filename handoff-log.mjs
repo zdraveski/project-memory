@@ -768,6 +768,10 @@ async function print(input) {
     // A project with no handoff is not judged: its sessions were never the
     // Stop hook's to record (from before the plugin, or `claude --bare` runs,
     // which load no hooks).
+    // A broken journal.mjs costs the line, never the briefing. Loaded here:
+    // journal.mjs imports this module.
+    let first = null; try { first = (await import(new URL('./journal.mjs', import.meta.url))).firstDay(dir); } catch {}
+    if (first) lines.push(`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`);
     lines.push(...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared());
     return fit(lines.join('\n') + '\n', 1000);
   }

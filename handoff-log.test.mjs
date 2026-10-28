@@ -1188,5 +1188,18 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
     'a sink that throws changes nothing the handoff returns or writes');
 }
 
+// The briefing names the journal when the store has one, with its first day.
+{
+  const cwdJ = 'C:\\handoff-journal', dirJ2 = storeFor(home, cwdJ);
+  mkdirSync(join(dirJ2, 'journal'), { recursive: true });
+  const brief = (source = 'startup') => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source }), env }).toString();
+  ok(!/is in its journal/.test(brief()), 'a store with no journal day has no journal line in the briefing');
+  writeFileSync(join(dirJ2, 'journal', '2026-09-01.md'), '# Journal 2026-09-01\n');   // emptied: no day
+  ok(!/is in its journal/.test(brief()), 'an emptied day is no journal');
+  writeFileSync(join(dirJ2, 'journal', '2026-09-03.md'), '# Journal 2026-09-03\n\n<!-- j:k1 t:C--x/aaaaaaaa-1 d:2026-09-03 -->\n## 09:00 · conversation aaaaaaaa\n**Asked:** one\n');
+  ok(/^Earlier work in this project since 2026-09-03 is in its journal: when asked about the past, search it with the memory skill before saying you don't know\.$/m.test(brief()), `the startup briefing names the journal and its first day (got ${brief()})`);
+  ok(/since 2026-09-03 is in its journal/.test(brief('clear')), 'and so does the clear briefing');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
