@@ -134,6 +134,10 @@ months of use, Claude Code's own documentation, and a privacy red team.
   crash.
 - The history keeps a note's line endings as written. On Windows, a note
   could come back from `restore` with its line endings changed.
+- A damaged git index in the history (after a crash or a full disk) is
+  rebuilt from the last snapshot. Before, every snapshot after it failed
+  until someone repaired it by hand. A note another window deletes while a
+  snapshot reads it is tried once more instead of failing the snapshot.
 - The first snapshot is taken before the first tidy-up, so the table of
   contents as you wrote it can come back. Before, the history started with it
   already tidied.

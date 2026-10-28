@@ -254,7 +254,8 @@ repository at `~/.claude/projects`. The repository ignores everything except
 latest exchanges are never committed. It has no remote and is never pushed.
 Your own git settings don't reach it: no hooks of yours run on it, commits
 aren't signed, line endings are kept exactly as written, and long paths work
-on Windows. If `~/.claude/projects` is already a git repository that
+on Windows. A damaged index (git's working copy of the last snapshot, after a
+crash or a full disk) is rebuilt from that snapshot; no note is touched. If `~/.claude/projects` is already a git repository that
 project-memory didn't make, it commits nothing there, and `doctor` says
 snapshots are off. A repository at `~/.claude` itself (a dotfiles repository)
 doesn't count: project-memory still makes its own in `~/.claude/projects`.
