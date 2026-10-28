@@ -13,6 +13,10 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'compact-gate.mjs'
 
 const suites = {
   'store.mjs': ['store.test.mjs', {
+    "a null superseded-by is a replacement": ["return /^(?:null|Null|NULL|~)$/.test(plain) ? '' : plain;", "return plain;"],
+    "a comment with no space before it kept": ["v.replace(/(?:^|[ \\t]+)#.*$/, '')", "v.replace(/[ \\t]+#.*$/, '')"],
+    "single quotes kept": ["    if ((m = v.match(/^'((?:[^']|'')*)'(?:[ \\t]+#.*)?$/))) return m[1].replace(/''/g, \"'\");\n", ""],
+    "a quote stripped from one end only": ["if ((m = v.match(/^\"((?:[^\"\\\\]|\\\\.)*)\"(?:[ \\t]+#.*)?$/))) return m[1].replace(/\\\\([\"\\\\])/g, '$1');", "if ((m = v.match(/^\"?(.*?)\"?$/))) return m[1];"],
     "snapshots convert line endings": ["'-c', 'core.autocrlf=false', ", ""],
     "a relative path read against the hook's folder": ["    if (!isAbsolute(dir)) return null;\n", ""],
     "a worktree through a junction is a stranger": ["!same(real(resolve(gd, back)), real(join(d, '.git')))", "!same(resolve(gd, back), join(d, '.git'))"],
@@ -26,7 +30,7 @@ const suites = {
     "CLAUDE_CONFIG_DIR ignored": ["process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')", "join(homedir(), '.claude')"],
     "auto memory never off": ["export const memoryOff = () => /^(1|true|yes|on)$/i.test(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY || '');", "export const memoryOff = () => false;"],
     "a quoted tier ignored": ["get(/^[ \\t]*tier:[ \\t]*[\"']?(\\w+)/m).toLowerCase()", "get(/^[ \\t]*tier:[ \\t]*(\\w+)/m)"],
-    "a folded description read as >-": ["(/^[>|][-+]?$/.test(desc) ? block('description').join(' ') : desc)", "desc"],
+    "a folded description read as >-": ["/^[>|][-+]?$/.test(desc) ? block('description').join(' ') : scalar(desc)", "scalar(desc)"],
     "the body read as frontmatter": ["const head = end === -1 ? t : t.slice(0, end);", "const head = t;"],
     "an emptied value takes the next line": ["superseded-by:[ \\t]*(.*?)", "superseded-by:\\s*(.*?)"],
     "a replaced memory stays hot": ["tier: superseded ? 'archive' : get(", "tier: get("],
@@ -53,7 +57,7 @@ const suites = {
     'a junctioned store listed twice': ['seen.has(real) || ', ''],
     "git's reason discarded": ["String(e.stderr || '').split('\\n').map((l) => l.trim()).find((l) => l && !l.startsWith('warning:')) || ", ''],
     "a warning taken for git's reason": [".find((l) => l && !l.startsWith('warning:'))", '.find((l) => l)'],
-    'escaped quotes kept in a description': [".replace(/\\\\\"/g, '\"')", ''],
+    "escaped quotes kept in a description": ["return m[1].replace(/\\\\([\"\\\\])/g, '$1');", "return m[1];"],
     'the shared store on the project budget': ['(isShared(dir) ? SHARED_BUDGET : BUDGET)', 'BUDGET'],
     'local time counts months from zero': ['pad(d.getMonth() + 1)', 'pad(d.getMonth())'],
     'local time unpadded': ["const pad = (n) => String(n).padStart(2, '0');", 'const pad = (n) => String(n);'],
@@ -305,6 +309,7 @@ const suites = {
     'CRLF entries unparseable':['(.*?)\\r?\\n  \\*\\*did:\\*\\* (.*?)\\r?$', '(.*)\\n  \\*\\*did:\\*\\* (.*)$'],
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
+    "the front matter read from 1,200 bytes": ["Buffer.alloc(16384)", "Buffer.alloc(1200)"],
     "the case key folds as JavaScript does": ["    if (names.has(t)) return t;\n", "    return process.platform === 'win32' ? t.toLowerCase() : t;\n"],
     "the case key matches without asking the disk": ["try { if (id(t) === id(n)) return n; } catch {}", "return n;"],
     "a rebuilt index keeps what is now ignored tracked": ["        try { unlinkSync(applied); } catch {}\n", ""],
@@ -379,7 +384,7 @@ const suites = {
     'an ignored file stays in the index': [".filter((x) => x && x !== '*' && !x.startsWith('!'))", ".filter((x) => x.endsWith('/') && !x.startsWith('!'))"],
     "a repository the user made is taken over": ["if (!ours && !(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)) return", "if (false) return"],
     'an old repository of this tool not adopted': ["!(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)", 'true'],
-    'a head read in bytes': ['Buffer.alloc(4800)', 'Buffer.alloc(1200)'],
+    "a head read in bytes": ["head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0));", "head = buf.toString('utf8', 0, readSync(fd, buf, 0, 200, 0));"],
     "no git counted as a failure": ["if (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn')) return 'off: git is not installed';", ""],
     'snapshots off read as ok': [": off ? { lastOk: h.lastOk || null, failures: 0, off: s.slice('off: '.length) }", ''],
     'a name no line can carry given one': ['if ((`- [x](${f})`.match(POINTER) || [])[1] !== f) { odd.push(f); continue; }', ''],

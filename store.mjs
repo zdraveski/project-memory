@@ -158,12 +158,22 @@ export function front(text) {
     .split('\n').map((l) => l.trim().replace(/^-[ \t]*/, '')).filter(Boolean);
   // Valid YAML all: quoted either way, a `# comment` after it, any case
   // (`tier: "hot"`, `tier: Hot`). Read only bare, the pin aged out.
-  const superseded = get(/^[ \t]*superseded-by:[ \t]*(.*?)[ \t\r]*$/m).replace(/\s+#.*$/, '').replace(/^(["'])(.*)\1$/, '$2') || block('superseded-by')[0] || '';
-  const desc = get(/^description:[ \t]*"?(.*?)"?[ \t\r]*$/m);
+  // A value as YAML reads it: quotes only when they open and close the whole
+  // value (`Use the "fast"` keeps both of its own), '' for ' in single
+  // quotes, \" in double, and a ` #` comment cut from a plain one. YAML's
+  // null (`null`, `~`, nothing) is no value: `superseded-by: null` archived.
+  const scalar = (v) => {
+    let m;
+    if ((m = v.match(/^"((?:[^"\\]|\\.)*)"(?:[ \t]+#.*)?$/))) return m[1].replace(/\\(["\\])/g, '$1');
+    if ((m = v.match(/^'((?:[^']|'')*)'(?:[ \t]+#.*)?$/))) return m[1].replace(/''/g, "'");
+    const plain = v.replace(/(?:^|[ \t]+)#.*$/, '').trim();
+    return /^(?:null|Null|NULL|~)$/.test(plain) ? '' : plain;
+  };
+  const superseded = scalar(get(/^[ \t]*superseded-by:[ \t]*(.*?)[ \t\r]*$/m)) || block('superseded-by')[0] || '';
+  const desc = get(/^description:[ \t]*(.*?)[ \t\r]*$/m);
   return {
-    name: get(/^name:[ \t]*"?(.*?)"?[ \t\r]*$/m),
-    // YAML-escaped quotes stay escaped otherwise: a recovered pointer read `\"gaps\"`.
-    desc: (/^[>|][-+]?$/.test(desc) ? block('description').join(' ') : desc).replace(/\\"/g, '"'),
+    name: scalar(get(/^name:[ \t]*(.*?)[ \t\r]*$/m)),
+    desc: /^[>|][-+]?$/.test(desc) ? block('description').join(' ') : scalar(desc),
     type: get(/^[ \t]*type:[ \t]*["']?(\w+)/m).toLowerCase(),
     tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)/m).toLowerCase(),
     superseded,

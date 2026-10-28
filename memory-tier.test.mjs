@@ -879,5 +879,16 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(head7.status !== 0 && g7('cat-file', '-e', 'HEAD:C--rt/memory/b.md').status === 0, `a rebuilt index untracks handoff.md again (got ${JSON.stringify(head7.stdout)})`);
 }
 
+// Round 6. A pin set after a long folded description is still a pin: the
+// first 1,200 characters were all that was read, and the note was archived.
+{
+  const d8 = tempDir('memtier-longfm-'), t8 = new Date(Date.now() - 30 * 86400000);
+  writeFileSync(join(d8, 'pinned.md'), `---\nname: pinned\ndescription: >-\n${'  a long folded description line\n'.repeat(70)}metadata:\n  type: project\n  tier: hot\n---\n\nbody\n`);
+  utimesSync(join(d8, 'pinned.md'), t8, t8);
+  writeFileSync(join(d8, 'MEMORY.md'), '- [Pinned](pinned.md) — p\n');
+  execFileSync(process.execPath, [TOOL, '--dir', d8], { encoding: 'utf8' });
+  ok(/\(pinned\.md\)/.test(readFileSync(join(d8, 'MEMORY.md'), 'utf8')), 'a pin after a 2,000-character description stays in the index');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

@@ -83,8 +83,10 @@ function factsFor(dir, file) {
   try {
     st = statSync(path);
     if (!st.isFile()) return null;
-    const fd = openSync(path, 'r'), buf = Buffer.alloc(4800);
-    try { head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)).slice(0, 1200); } finally { closeSync(fd); }
+    // 16 KB: the first 1,200 characters missed a pin set after a long folded
+    // description, and the note was archived for good (audit, 2026-10-28).
+    const fd = openSync(path, 'r'), buf = Buffer.alloc(16384);
+    try { head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)); } finally { closeSync(fd); }
   } catch (e) { if (BUSY.includes(e.code)) throw e; return null; }
   const { type, tier, desc, modified: stamp } = front(head);
   const modified = Number.isNaN(stamp) ? st.mtimeMs : stamp;
