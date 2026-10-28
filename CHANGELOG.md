@@ -103,6 +103,14 @@ months of use, Claude Code's own documentation, and a privacy red team.
   restore while another window saves, no longer fail.
 - A health warning that names hundreds of files is shortened, so the startup
   briefing keeps the shared lessons after it.
+- After the reminder to save notes, the record kept the answer from before
+  it until you typed again. In a turn that went on for hours with background
+  tasks, every result after the reminder was missing. It now picks up again
+  once the notes are saved and the next piece of work starts.
+- A compaction summary that mentioned the `<private>` tag stopped the record
+  of the rest of that turn, and the compaction note showed Claude's last words
+  as `[private]`, with no reminder after it. A summary is Claude Code's recap,
+  not your message, and no longer counts.
 
 **Going back to 1.0.7**
 - It works, with two limits until newer exchanges replace the old ones: some

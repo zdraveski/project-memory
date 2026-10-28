@@ -137,7 +137,8 @@ Both tags are read in any case, with spaces or attributes, self-closed,
 fullwidth, with hidden zero-width characters, and as `private_session`; in a
 message typed while Claude works (a queued record); and inside another tag.
 The tags inside what Claude Code quotes, such as an agent's report or a task's
-result, are not the user's and mark nothing. The mark is kept by the conversation's tag in
+result, are not the user's and mark nothing, and neither does a compaction
+summary that mentions them. The mark is kept by the conversation's tag in
 `.private-sessions` (the newest 1,000), because only the turn that typed it
 sees it in the transcript. `handoff.md` is not in the snapshots.
 
@@ -176,7 +177,9 @@ things soften that.
   Stop hook asks Claude once to write its notes now. It asks again only after
   a compaction, and never in a private conversation. It's sent as hook
   feedback (`additionalContext`), so the conversation goes on and no hook
-  error is shown.
+  error is shown. What Claude writes in answer is its notes, not the turn's
+  result, so the record keeps the answer from before the reminder until the
+  next piece of work starts, such as a background task finishing.
 - **A short wait.** When Claude Code compacts on its own in the middle of a
   turn, `compact-gate.mjs` asks it to wait for the end of the turn, while the
   conversation is between 200,000 tokens and 90% of the model's window: past

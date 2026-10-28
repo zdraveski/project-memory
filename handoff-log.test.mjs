@@ -986,5 +986,45 @@ const cutNote = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.
 ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no recovery note (got ${cutNote.slice(0, 200)})`);
 }
 
+// Round 4. A compaction summary that names the private tag is a recap, not
+// a private message: the turn it lands in goes on being recorded.
+{
+  const t4 = join(dir, 'r4-summary.jsonl');
+  writeFileSync(t4, [user('build the release', { ts: '2026-10-28T09:00:00Z' }), asst('Started the build.', { ts: '2026-10-28T09:00:10Z' }),
+    user('This session is being continued from a previous conversation. The user asked how <private> blocks are kept out.', { ts: '2026-10-28T09:30:00Z', isCompactSummary: true }),
+    asst('The build finished and all tests pass.', { ts: '2026-10-28T09:40:00Z' })].join('\n') + '\n');
+  execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: 'r4sum-0001', transcript_path: t4, cwd }), env });
+  ok(/build the release\n  \*\*did:\*\* The build finished and all tests pass\./.test(doc()), `a compaction summary naming <private> does not freeze the turn (got ${section()})`);
+}
+
+// Round 4. A nudge holds a turn's answer for its memory update only: a turn
+// no prompt opened after it (a task's end, a compaction) is recorded again.
+{
+  const t5 = join(dir, 'r4-nudge.jsonl');
+  const nudge5 = JSON.stringify({ type: 'attachment', timestamp: '2026-10-28T10:05:00Z', attachment: { type: 'hook_additional_context', hookEvent: 'Stop', content: ['[project-memory: compaction gate] Context is at 86%'] } });
+  const done5 = JSON.stringify({ type: 'attachment', timestamp: '2026-10-28T10:30:00Z', attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: '<task-notification><task-id>b1</task-id><status>completed</status></task-notification>' } });
+  const end5 = (s, ts) => asst(s, { ts, message: { content: [{ type: 'text', text: s }], stop_reason: 'end_turn' } });
+  const mid5 = (s, ts) => asst(s, { ts, message: { content: [{ type: 'text', text: s }], stop_reason: 'tool_use' } });
+  const stop5 = (lines, id) => { writeFileSync(t5, lines.join('\n') + '\n'); execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: id, transcript_path: t5, cwd }), env }); return doc(); };
+  let d5 = stop5([user('run the long job', { ts: '2026-10-28T10:00:00Z' }), end5('Started the job.', '2026-10-28T10:01:00Z'), nudge5,
+    end5('I saved where things stand.', '2026-10-28T10:06:00Z'), done5, end5('The job finished: 42 files converted.', '2026-10-28T10:31:00Z')], 'r4ndg-0001');
+  ok(/run the long job\n  \*\*did:\*\* The job finished: 42 files converted\./.test(d5), `after the memory update, a task's end is recorded again (got ${section()})`);
+  d5 = stop5([user('run the next job', { ts: '2026-10-28T11:00:00Z' }), end5('Started the next job.', '2026-10-28T11:01:00Z'), nudge5.replace('10:05', '11:05'),
+    mid5('Saving memory first.', '2026-10-28T11:06:00Z'), done5.replace('10:30', '11:07'), end5('Memory saved.', '2026-10-28T11:08:00Z')], 'r4ndg-0002');
+  ok(/run the next job\n  \*\*did:\*\* Started the next job\./.test(d5), `a task that ends during the memory update does not end the hold (got ${section()})`);
+  d5 = stop5([user('run the third job', { ts: '2026-10-28T12:00:00Z' }), end5('Started the third job.', '2026-10-28T12:01:00Z'), nudge5.replace('10:05', '12:05'),
+    end5('Saved.', '2026-10-28T12:06:00Z'), JSON.stringify({ type: 'attachment', timestamp: '2026-10-28T12:30:00Z', attachment: { type: 'queued_command', commandMode: 'prompt', prompt: '<private>badge 66778899</private> one more thing' } }),
+    end5('Badge 66778899 noted.', '2026-10-28T12:31:00Z')], 'r4ndg-0003');
+  ok(!/66778899/.test(d5) && /run the third job\n  \*\*did:\*\* Started the third job\./.test(d5), `a private message after the hold keeps its answer out (got ${section()})`);
+  d5 = stop5([user('plan the move', { ts: '2026-10-28T13:00:00Z' }), end5('Planned.', '2026-10-28T13:01:00Z'),
+    JSON.stringify({ type: 'attachment', timestamp: '2026-10-28T13:02:00Z', attachment: { type: 'queued_command', commandMode: 'prompt', prompt: '<private>door code 13572468</private>' } }),
+    end5('Door code 13572468 noted.', '2026-10-28T13:03:00Z'), nudge5.replace('10:05', '13:05'), end5('Saved.', '2026-10-28T13:06:00Z'),
+    done5.replace('10:30', '13:30'), end5('Door 13572468 opened for the movers.', '2026-10-28T13:31:00Z')], 'r4ndg-0004');
+  ok(!/13572468/.test(d5) && /plan the move\n  \*\*did:\*\* Planned\./.test(d5), `a nudge after a private message does not shorten its hold (got ${section()})`);
+  d5 = stop5([user('migrate the data', { ts: '2026-10-28T14:00:00Z' }), end5('Migration started.', '2026-10-28T14:01:00Z'), nudge5.replace('10:05', '14:05'), end5('Saved.', '2026-10-28T14:06:00Z'),
+    user('This session is being continued from a previous conversation.', { ts: '2026-10-28T14:10:00Z', isCompactSummary: true }), end5('Migration done: 3 tables moved.', '2026-10-28T14:20:00Z')], 'r4ndg-0005');
+  ok(/migrate the data\n  \*\*did:\*\* Migration done: 3 tables moved\./.test(d5), `and a compaction after the memory update ends the hold too (got ${section()})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

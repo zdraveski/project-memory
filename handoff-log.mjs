@@ -162,6 +162,9 @@ export const tag = (id) => String(id || '').slice(0, 8);
 function turns(raw) {
   const out = [];
   let pending = null;
+  // A nudge holds the answer for its memory update only; a private message
+  // (frozen: true) holds it to the next prompt.
+  const hold = (p) => { if (p.frozen !== true) { p.frozen = 'nudge'; p.ended = false; } };
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
     let r; try { r = JSON.parse(line); } catch { continue; }
@@ -190,21 +193,33 @@ function turns(raw) {
     // attachment record, read by nothing before). Not what the harness quotes
     // (an agent's report or a task's end can quote the mark, and marked the
     // conversation private), nor a record it added, nor a compaction summary.
-    const mine = r.type === 'user' ? unquote(unwrap(n)) : '';
+    // A summary is no part of it at all: it recaps the conversation, and one
+    // that named the tag froze the rest of a long turn, its answer hours stale.
+    const mine = r.type === 'user' && !r.isCompactSummary ? unquote(unwrap(n)) : '';
     const typed = r.type === 'user' && !r.isMeta && !r.isCompactSummary ? mine
       : r.type === 'attachment' && r.attachment?.type === 'queued_command' ? unquote(norm(String(r.attachment.prompt ?? ''))) : '';
     // Marked whether or not a reply follows: a turn of tool calls, or one
     // the user stopped, writes no entry but must still mark.
     if (PRIVATE_SESSION.test(typed)) out.hush = true;
+    // The hold ends with the memory update's own turn. A turn no prompt opened
+    // after it (a task's end, an agent's message, a compaction) is work again:
+    // held to the next prompt, a turn of hours kept the answer from before the
+    // nudge, and every result after it was lost (real transcripts, 2026-10-28).
+    if (pending?.frozen === 'nudge') {
+      if (r.type === 'assistant' && r.message?.stop_reason === 'end_turn') pending.ended = true;
+      else if (pending.ended && ((r.type === 'attachment' && r.attachment?.type === 'queued_command') || r.isCompactSummary
+        || (r.type === 'user' && !r.isMeta && /^\s*<task-notification>/.test(t)))) pending.frozen = false;
+    }
     // The nudge as hook feedback: an attachment record, not a user one. Its
     // answer is the memory update, not this turn's.
     if (r.type === 'attachment' && /^hook_(?:additional_context|blocking_error)$/.test(r.attachment?.type ?? '')
-      && nudged(JSON.stringify(r.attachment.content ?? r.attachment.blockingError ?? ''))) { if (pending) pending.frozen = true; continue; }
+      && nudged(JSON.stringify(r.attachment.content ?? r.attachment.blockingError ?? ''))) { if (pending) hold(pending); continue; }
     if (!t && !ask && !typed) continue;
     if (ask) pending = { at: local(r.timestamp), ask, raw: unwrap(n), did: '', changed: [] };
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
-    else if ((r.type === 'user' || typed) && pending && (nudged(t) || /<\s*private/i.test(typed || mine))) pending.frozen = true;
+    else if ((r.type === 'user' || typed) && pending && /<\s*private/i.test(typed || mine)) pending.frozen = true;
+    else if (r.type === 'user' && pending && nudged(t)) hold(pending);
     else if (r.type === 'assistant' && pending) {
       if (!pending.frozen) pending.did = t;     // last text block of the turn wins, unless a nudge froze it
       if (out[out.length - 1] !== pending) out.push(pending);

@@ -324,4 +324,15 @@ try { write(user('build it'), asst('running', 870_000, 'tool_use')); g5 = gate()
 ok(g5.code === 0, `with auto memory off the gate defers nothing: the same turn is deferred with it on (got ${g5.code}: ${g5.err})`);
 }
 
+// Round 4. A compaction summary naming the private tag hides nothing: the
+// note shows the turn's last words, and the nudge is still given.
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('ship the build'), rec('user', 'This session is being continued from a previous conversation. The user asked how <private> blocks work.', { isCompactSummary: true }), asst('Halfway through the build.', 965_000, 'tool_use'), result('ok'));
+gate();
+{
+  const h4 = readFileSync(join(dir, 'handoff.md'), 'utf8');
+  ok(/cut mid-turn[^\n]*ship the build\n  \*\*last said:\*\* Halfway through the build\./.test(h4), `a compaction summary naming <private> hides no words (got ${h4})`);
+  ok(stop('r4sum')?.hookSpecificOutput?.additionalContext, 'and the nudge is still given after it');
+}
+
 console.log(`compact-gate: ${checks} checks passed`);

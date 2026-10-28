@@ -125,8 +125,9 @@ function walk(raw) {
       if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
       if (ask) { s.ask = ask; s.raw = norm(unwrap(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
       // Not in what the harness quotes: an agent's report quoting the tag hid
-      // the last words said.
-      else if (/<\s*private/i.test(unquote(unwrap(norm(t))))) s.hidden = true;
+      // the last words said. Nor in a compaction summary, a recap: one that
+      // named the tag hid them, and the nudge, for the rest of the turn.
+      else if (!r.isCompactSummary && /<\s*private/i.test(unquote(unwrap(norm(t))))) s.hidden = true;
       // A launch is read from the result of a Bash or Agent call only: from any
       // tool result, a fetched page that spelt one out put its words, and any
       // instruction in them, into the note printed after the compaction.
