@@ -200,6 +200,8 @@ const repo = (name) => {
 const asks = (d) => days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries).map((e) => e.asked).sort();
 const listed = (d) => readFileSync(join(d, 'journal', '.imported'), 'utf8').split('\n').filter(Boolean);
 const fill = (d, o) => withLock(d, () => backfill(d, o));
+// The store's transcripts are looked at once in half an hour, by the list's age.
+const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
 {
   const [r, d] = repo('bf');
   const b = old(r, sid('b'), 40, ['b1']);
@@ -210,32 +212,59 @@ const fill = (d, o) => withLock(d, () => backfill(d, o));
   for (let i = 0; i < 5 && fill(d).left; i++);
   ok(asks(d).join() === 'a1,a2,b1,c1,e1' && listed(d).length === 4,
     `backfill imports old transcripts once: every quiet conversation, a subfolder's too, none still running, one line each (got ${asks(d)}; ${listed(d).length} lines)`);
-  // The listed ones are looked at again once in half an hour, by the list's age.
-  const due = () => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   const text = () => days(d).map((x) => readFileSync(dayFile(d, x), 'utf8')).join() + listed(d).join();
-  due();
+  due(d);
   const before = text(), again = fill(d);
   ok(again.imported === 0 && again.left === 0 && text() === before, `one more Stop changes nothing (got ${JSON.stringify(again)})`);
 
   // Grown since its import: read again once quiet, never while running, never
   // for the Stop it is the transcript of, and not before the list is due.
   appendFileSync(b, rec('user', sid('b'), '2026-09-02T10:00:00Z', 'b2', r) + '\n' + rec('assistant', sid('b'), '2026-09-02T10:00:30Z', 'b2: done', r) + '\n');
-  due();
+  due(d);
   ok(fill(d).imported === 0 && !asks(d).includes('b2'), 'a grown transcript still running is left to its own Stop');
   utimesSync(b, ago(1), ago(1));
   ok(fill(d).imported === 0 && !asks(d).includes('b2'), 'between looks, a listed transcript is not looked at');
-  due();
+  due(d);
   ok(fill(d, { skip: b }).imported === 0 && !asks(d).includes('b2'), "nor read again for the Stop it is the transcript of");
-  due();
+  due(d);
   const grown = fill(d);
   ok(grown.imported === 1 && asks(d).includes('b2') && listed(d).length === 4 && listed(d).includes(`${slug(r)}/${sid('b')} ${statSync(b).size}`),
     `quiet again, its new turns are journaled and its one line updated (got ${JSON.stringify(grown)}, ${listed(d)})`);
+
+  // Between looks not even a new conversation is looked at. A look drops the
+  // line of a transcript gone from disk (Claude Code deletes them after a month).
+  old(r, sid('g'), 5, ['g1']);
+  rmSync(join(projects, slug(join(r, 'web')), `${sid('e')}.jsonl`));
+  ok(fill(d).imported === 0 && !asks(d).includes('g1'), 'between looks, not even a new conversation is looked at');
+  due(d);
+  const look = fill(d);
+  ok(look.imported === 1 && asks(d).includes('g1') && asks(d).includes('e1') && listed(d).length === 4 && !listed(d).some((l) => l.includes(sid('e'))),
+    `the next look imports it, and drops the line of the transcript gone, not its entries (got ${JSON.stringify(look)}, ${listed(d)})`);
+  // A folder that won't list (here a file by a subfolder's name) prunes nothing.
+  const broken = join(projects, `${slug(r)}-broken`), lines = listed(d).join();
+  writeFileSync(broken, '');
+  rmSync(join(projects, slug(r), `${sid('g')}.jsonl`));
+  due(d); fill(d);
+  ok(listed(d).join() === lines, `a look whose listing failed drops no line (got ${listed(d)})`);
+  rmSync(broken);
+}
+{
+  // Between looks the list is not even read: its length costs an idle Stop nothing.
+  const [r, d] = repo('idle'), list = join(d, 'journal', '.imported'), failed = join(d, 'journal', '.failed');
+  old(r, sid('a'), 30, ['idle']);
+  mkdirSync(list, { recursive: true });   // a list no read can take
+  const idle = fill(d);
+  ok(idle.imported === 0 && !existsSync(failed), `between looks the list is not read at all (got ${JSON.stringify(idle)})`);
+  due(d); fill(d);
+  ok(existsSync(failed), 'a look reads it (and here fails on it, and says so)');
 }
 {
   const [r, d] = repo('kill');
   const ps = ['a', 'b', 'c', 'e'].map((c, i) => old(r, sid(c), 40 - i, [`k${c}`]));
   mkdirSync(join(d, 'journal'));
+  // A pass killed after its first import: the list it left is due within half an hour.
   writeFileSync(join(d, 'journal', '.imported'), `${slug(r)}/${sid('a')} ${statSync(ps[0]).size}\n`);
+  due(d);
   const got = fill(d);
   ok(got.imported === 3 && asks(d).join() === 'kb,kc,ke' && listed(d).length === 4, `backfill resumes after a kill: only the other three are imported (got ${JSON.stringify(got)}, ${asks(d)})`);
 }
@@ -276,9 +305,12 @@ const fill = (d, o) => withLock(d, () => backfill(d, o));
   ok(got.imported === 0 && got.left === 1 && Date.parse(fl?.at) && fl.error.startsWith('backfill: '),
     `a backfill that throws is kept in .failed, the conversation left for later (got ${JSON.stringify(got)}, ${JSON.stringify(fl)})`);
   rmSync(day1, { recursive: true });
+  ok(fill(d).imported === 0, 'a failed look waits for the next look, not the next Stop');
+  due(d);
   ok(fill(d).imported === 1 && !existsSync(failed) && asks(d).join() === 'imported at last', 'the next import that goes through clears it');
   writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: 'the live write failed' }));
   old(r, sid('9'), 10, ['one more']);
+  due(d);
   ok(fill(d).imported === 1 && existsSync(failed), "an import clears its own failure only, never the live write's");
 }
 // The Stop, as Claude Code runs it, on a conversation with a 70 MB tool result.

@@ -160,14 +160,14 @@ export function write(dir, transcriptPath, got, { quiet, hush }) {
 
 // What the backfill has read: `<folder>/<session> <bytes>`, one line a
 // transcript, ` partial` when only its tail was, ` other` when it is another
-// store's.
+// store's. `keep`: the transcripts still on disk; any other line goes.
 const IMPORTED = '.imported';
 const LINE = /^(.+) (\d+)(?: \w+)?$/;
-function mark(dir, lines) {
+function mark(dir, lines, keep = null) {
   const f = join(dir, JOURNAL, IMPORTED), ks = new Set(lines.map((l) => LINE.exec(l)[1]));
   mkdirSync(join(dir, JOURNAL), { recursive: true });
   for (let i = 0; i < 3; i++) {
-    const before = raw(f), kept = (before ?? '').split(/\r?\n/).filter((l) => l && !ks.has(LINE.exec(l)?.[1]));
+    const before = raw(f), kept = (before ?? '').split(/\r?\n/).filter((l) => { const k = LINE.exec(l)?.[1]; return l && !ks.has(k) && (!keep || keep.has(k)); });
     if (replaceIfUnchanged(f, before, [...kept, ...lines].join('\n') + '\n') !== 'conflict') return;
   }
 }
@@ -177,21 +177,24 @@ function mark(dir, lines) {
 // transcripts, read every Stop, would be hundreds of reads. Only quiet ones: a
 // conversation still running is its own Stop's to journal, and its last reply
 // may not be in its transcript yet. One listed is read again once it grew
-// (turns a live write missed), looked at when `due` only.
+// (turns a live write missed); a known one costs no read of its head. `seen`:
+// every transcript the folders hold.
 // shortcut: a worktree outside the repository's folder has another folder name
 // and is not backfilled (its live turns are still journaled); scan every
 // project folder's first cwd if one is ever missed.
-function candidates(dir, skip, due = true) {
-  const root = projectsRoot(), me = pathKey(basename(dirname(dir))), done = new Map();
+function candidates(dir, skip) {
+  const root = projectsRoot(), me = pathKey(basename(dirname(dir))), done = new Map(), out = [];
   for (const m of (raw(join(dir, JOURNAL, IMPORTED)) ?? '').split(/\r?\n/).map((l) => LINE.exec(l))) if (m) done.set(m[1], Number(m[2]));
-  const out = [];
-  let folders = []; try { folders = readdirSync(root).filter((f) => f !== '_shared' && (pathKey(f) === me || pathKey(f).startsWith(me + '-'))); } catch {}
+  // A listing that fails leaves `seen` null, so nothing is pruned: read as
+  // empty, it would drop the lines of every transcript in it.
+  out.seen = new Set();
+  let folders = []; try { folders = readdirSync(root).filter((f) => f !== '_shared' && (pathKey(f) === me || pathKey(f).startsWith(me + '-'))); } catch { out.seen = null; }
   for (const f of folders) {
-    let names = []; try { names = readdirSync(join(root, f)).filter((n) => n.endsWith('.jsonl')); } catch {}
+    let names = []; try { names = readdirSync(join(root, f)).filter((n) => n.endsWith('.jsonl')); } catch { out.seen = null; }
     for (const n of names) {
       const p = join(root, f, n), k = `${f}/${n.slice(0, -6)}`;
-      // The list first: a known transcript costs no stat between looks, and no read of its head.
-      if ((done.has(k) && !due) || (typeof skip === 'string' && same(p, skip))) continue;
+      out.seen?.add(k);
+      if (typeof skip === 'string' && same(p, skip)) continue;
       let st; try { st = statSync(p); } catch { continue; }
       if (Date.now() - st.mtimeMs < ACTIVE || (done.has(k) && st.size <= done.get(k))) continue;
       out.push({ p, k, size: st.size, m: st.mtimeMs, mine: same(storeOf({ transcript_path: p }), dir) });
@@ -209,14 +212,18 @@ function candidates(dir, skip, due = true) {
 // rest of a partial transcript for it if that turns up.
 export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {}) {
   const t0 = Date.now(), f = join(dir, JOURNAL, IMPORTED), bad = join(dir, JOURNAL, '.failed');
-  // The listed are looked at once in ACTIVE, by the list's age, not every
-  // Stop: a stat is ~70 µs on Windows, 5 ms a Stop for a month's 68 transcripts.
-  let due = true, todo = [], n = 0, err = null;
-  try { due = t0 - statSync(f).mtimeMs >= ACTIVE; } catch {}
+  // A look at the folders once in ACTIVE, the list's mtime the clock; between
+  // looks a Stop reads nothing more. A stat is ~70 µs on Windows (5 ms a Stop
+  // for a month's 68 transcripts), and the list was parsed whole every Stop.
+  let due = true; try { due = t0 - statSync(f).mtimeMs >= ACTIVE; } catch {}
+  if (!due) return { imported: 0, left: 0 };
+  let todo = [], n = 0, err = null;
   try {
-    const all = candidates(dir, skip, due), other = all.filter((c) => !c.mine).map((c) => `${c.k} ${c.size} other`);
+    const all = candidates(dir, skip);
     todo = all.filter((c) => c.mine);
-    if (other.length) mark(dir, other);
+    // Another store's are listed so no look opens them again, and a transcript
+    // gone from disk loses its line: the list holds a month, not every month.
+    mark(dir, all.filter((c) => !c.mine).map((c) => `${c.k} ${c.size} other`), all.seen);
     for (const [i, c] of todo.entries()) {
       if (i && Date.now() - t0 >= budgetMs) break;
       try {
@@ -237,6 +244,8 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {})
   // it, and only its own: a live write's failure is the live write's to clear.
   if (err) fault(dir, err, 'backfill: ');
   else if (n && (raw(bad) ?? '').includes('"error":"backfill: ')) try { unlinkSync(bad); } catch {}
-  if (due && n === todo.length) try { utimesSync(f, new Date(), new Date()); } catch {}
+  // The next look: the next Stop while the budget left some, else in ACTIVE (a
+  // failure too: retried every Stop, it would cost every Stop a look).
+  try { const at = new Date(n < todo.length && !err ? t0 - ACTIVE : Date.now()); utimesSync(f, at, at); } catch {}
   return { imported: n, left: todo.length - n };
 }
