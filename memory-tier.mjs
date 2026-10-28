@@ -573,7 +573,8 @@ for (const dir of todo) {
   if (r.merged) problems.push('merge-conflict markers in MEMORY.md (<<<<<<< ======= >>>>>>>): every session loads them as they are; resolve them by hand');
   if (r.odd.length) problems.push(`file names an index line cannot point at, so they are unlisted (rename them): ${r.odd.join(', ')}`);
   // Say so when the hooks have drifted back into being content.
-  if (r.after > r.budget) problems.push(`over budget: ${r.after}B > ${r.budget}B — ${Math.round(r.after / r.hot)}B a line; trim the hooks, not the count`);
+  // With no line in it, it is the prose at the top: "InfinityB a line" said nothing.
+  if (r.after > r.budget) problems.push(`over budget: ${r.after}B > ${r.budget}B — ${r.hot ? `${Math.round(r.after / r.hot)}B a line; trim the hooks, not the count` : 'the text above the lines; shorten it'}`);
   // A file an editor or a scanner holds costs this turn's note, never the hook.
   if (!dry) try { health(dir, problems); } catch {}
   // The stamp is what this pass saw, taken before the snapshot: a memory

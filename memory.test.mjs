@@ -520,4 +520,16 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   spawnSync('git', ['-C', root, 'config', '--unset', 'core.autocrlf']);
 }
 
+// Round 6. status and search count a line by the file it opens; a link
+// named with .md, or inside code, is no link to nothing; --store=<dir> works.
+{
+  const d10 = join(root, 'C--r6-status', 'memory'); mkdirSync(d10, { recursive: true });
+  memory(d10, 'kase', 'a lesson in a case');
+  memory(d10, 'linker', 'links to others', 'see [[kase.md]] and `grid[[0]]`\n```\nx = y[[1]]\n```\n');
+  writeFileSync(join(d10, 'MEMORY.md'), `- [Kase](${process.platform === 'win32' ? 'Kase' : 'kase'}.md) — k\n- [Linker](linker.md) — l\n`);
+  const st10 = spawnSync(process.execPath, [CLI, 'status', `--store=${d10}`], { env, encoding: 'utf8', cwd: home });
+  ok(st10.stdout.includes(d10), `--store=<dir> is the store (got ${st10.stdout.split('\n')[0]})`);
+  ok(!/with no pointer yet/.test(st10.stdout) && !/links to no memory/.test(st10.stdout), `a line in another case counts, and [[x.md]] or a link in code is no dangling link (got ${st10.stdout.trim()})`);
+}
+
 console.log(`memory: ${checks} checks passed`);

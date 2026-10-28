@@ -78,7 +78,8 @@ const withLine = (text, line) => {
 // index names it.
 export function memories(dir) {
   let files; try { files = readdirSync(dir); } catch { return []; }
-  const hot = new Set(targets(read(join(dir, 'MEMORY.md')))), cold = new Set(targets(read(join(dir, ARCHIVE))));
+  // By the file each line opens, as tiering counts them: on Windows (Kase.md) is kase.md's.
+  const hot = new Set(targets(read(join(dir, 'MEMORY.md'))).map((t) => onDisk(dir, t))), cold = new Set(targets(read(join(dir, ARCHIVE))).map((t) => onDisk(dir, t)));
   return files.filter((f) => f.endsWith('.md') && !f.startsWith('MEMORY')).flatMap((file) => {
     const path = join(dir, file);
     const text = read(path);
@@ -90,7 +91,8 @@ export function memories(dir) {
     return [{
       file, path, dir, name, desc, type, superseded,
       body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1),
-      links: [...new Set([...text.matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim()))],
+      // Not in code (`grid[[0]]`, a fenced block), and `[[name.md]]` is name's.
+      links: [...new Set([...text.replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
       modified: Number.isNaN(stamp) ? mtime : stamp,
       where: hot.has(file) ? 'hot' : cold.has(file) ? 'archived' : 'unindexed',
     }];
@@ -448,7 +450,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // The command is the first word that is no option or an option's value, so
   // `--store X search foo` searches; none (the skill run with no arguments,
   // just `--session <id>`) is status.
-  const argv = process.argv.slice(2);
+  // `--store=X` as `--store X`: the equals form was dropped, and the command ran on the cwd's store.
+  const argv = process.argv.slice(2).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
   const valued = new Set(['--store', '--rev', '--limit', '--session']);
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);

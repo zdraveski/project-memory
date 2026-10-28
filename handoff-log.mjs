@@ -411,7 +411,10 @@ function keep(all, me) {
     .sort((x, y) => (y[0].s === me) - (x[0].s === me) || byAt(y[y.length - 1], x[x.length - 1]))
     .slice(0, SESSIONS)
     .flatMap((g) => g.slice(-TURNS))
-    .sort(byAt);
+    // Ties by session: in the order the writer came first, two sessions with
+    // entries in one minute swapped places on every Stop, and the file was
+    // rewritten each time (audit, 2026-10-28).
+    .sort((x, y) => byAt(x, y) || (x.s < y.s ? -1 : x.s > y.s ? 1 : 0));
 }
 
 const FRONT = `---\nname: handoff\ndescription: "The rolling handoff"\nmetadata:\n  node_type: memory\n  type: project\n  tier: hot\n---\n\n`;

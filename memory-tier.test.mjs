@@ -890,5 +890,14 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(/\(pinned\.md\)/.test(readFileSync(join(d8, 'MEMORY.md'), 'utf8')), 'a pin after a 2,000-character description stays in the index');
 }
 
+// Round 6. An index of prose alone over budget says so, not "InfinityB a line".
+{
+  const d9 = tempDir('memtier-prose-');
+  writeFileSync(join(d9, 'MEMORY.md'), '# Notes\n\n' + 'Some long prose about the project. '.repeat(240) + '\n');
+  execFileSync(process.execPath, [TOOL, '--dir', d9], { encoding: 'utf8' });
+  const h9 = existsSync(join(d9, '.health')) ? readFileSync(join(d9, '.health'), 'utf8') : '';
+  ok(/over budget/.test(h9) && !/Infinity|NaN/.test(h9) && /the text above the lines/.test(h9), `a prose-only index over budget is said plainly (got ${h9})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

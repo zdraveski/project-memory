@@ -1122,5 +1122,16 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   ok(e7.open === false && Number.isNaN(e7.end), `a turn stopped with Escape is closed, and no Stop is owed for it (got ${JSON.stringify(e7)})`);
 }
 
+// Round 6. Two sessions with entries in the same minute keep one order: the
+// file is not rewritten by every Stop that changes nothing.
+{
+  const cw11 = 'C:\\r6-tie', d11 = storeFor(home, cw11); mkdirSync(d11, { recursive: true });
+  const t11 = (id) => { const p = join(d11, `${id}.jsonl`); writeFileSync(p, [user(`ask from ${id}`, { ts: '2026-10-28T13:00:05Z' }), asst(`answer for ${id}`, { ts: '2026-10-28T13:00:20Z' })].join('\n') + '\n'); return p; };
+  const ta = t11('r6tieaaa-1'), tb = t11('r6tiebbb-1');
+  handoff({ session_id: 'r6tieaaa-1', transcript_path: ta, cwd: cw11 }); handoff({ session_id: 'r6tiebbb-1', transcript_path: tb, cwd: cw11 });
+  const again = [handoff({ session_id: 'r6tieaaa-1', transcript_path: ta, cwd: cw11 }), handoff({ session_id: 'r6tiebbb-1', transcript_path: tb, cwd: cw11 })];
+  ok(again.every((r) => r === 'unchanged'), `same-minute entries of two sessions stay put (got ${again.join(', ')})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

@@ -122,6 +122,7 @@ const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    "same-minute entries of two sessions swap": [".sort((x, y) => byAt(x, y) || (x.s < y.s ? -1 : x.s > y.s ? 1 : 0));", ".sort(byAt);"],
     "a turn stopped with Escape reads as working": ["    if (r.type === 'user' && /^\\s*\\[Request interrupted by user/.test(text(r))) { open = false; continue; }\n", ""],
     "a turn stopped with Escape owes a Stop": ["/.test(text(r))) { open = false; continue; }", "/.test(text(r))) { open = false; end = Date.parse(r.timestamp); continue; }"],
     "a quoted start marker taken for the section": ["    if (!alone(doc, a, START)) continue;\n", ""],
@@ -309,6 +310,7 @@ const suites = {
     'CRLF entries unparseable':['(.*?)\\r?\\n  \\*\\*did:\\*\\* (.*?)\\r?$', '(.*)\\n  \\*\\*did:\\*\\* (.*)$'],
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
+    "a prose-only index divides by no lines": ["r.hot ? `${Math.round(r.after / r.hot)}B a line; trim the hooks, not the count` : 'the text above the lines; shorten it'", "`${Math.round(r.after / r.hot)}B a line; trim the hooks, not the count`"],
     "the front matter read from 1,200 bytes": ["Buffer.alloc(16384)", "Buffer.alloc(1200)"],
     "the case key folds as JavaScript does": ["    if (names.has(t)) return t;\n", "    return process.platform === 'win32' ? t.toLowerCase() : t;\n"],
     "the case key matches without asking the disk": ["try { if (id(t) === id(n)) return n; } catch {}", "return n;"],
@@ -397,6 +399,10 @@ const suites = {
     'rule share measured on the whole budget': ['Math.max(0, budget - pinnedBytes) * RULE_SHARE', 'budget * RULE_SHARE'],
   }],
   'memory.mjs': ['memory.test.mjs', {
+    "status counts a line by its exact name": [".map((t) => onDisk(dir, t))), cold", ")), cold"],
+    "a link in code counted": [".replace(/```[\\s\\S]*?```/g, '').replace(/`[^`\\n]*`/g, '')", ""],
+    "a link named with .md is to nothing": [".trim().replace(/\\.md$/i, ''))", ".trim())"],
+    "--store=dir ignored": ["process.argv.slice(2).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session))=([\\s\\S]*)$/); return m ? [m[1], m[2]] : [a]; });", "process.argv.slice(2);"],
     "the index line of a restore found by its exact name only": ["targets(t).some((x) => x === file || same(join(dir, x), path))", "targets(t).some((x) => x === file)"],
     "a line in another case left behind": ["return !!t && (t === file || same(join(dir, t), src));", "return !!t && t === file;"],
     "a version read by git show, as a pattern": ["text = git('cat-file', '-p', `${from}:${at}`);", "text = git('show', `${from}:${at}`);"],
