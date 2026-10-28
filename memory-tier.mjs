@@ -505,8 +505,15 @@ const now = nowAt !== -1 ? Number(process.argv[nowAt + 1]) : Date.now();
 // so a manual run never blocks on a terminal). The handoff is written first, in
 // this process -- a second Node start cost a median 200 ms a turn on this box.
 const stop = process.argv.includes('--stop');
-// Auto memory turned off: no record, no nudge, no tiering.
-if (stop && memoryOff()) process.exit(0);
+// Auto memory turned off: no record, no nudge, no tiering. Only the
+// conversation's tag, so no later Stop's backfill imports it (handoff-log OFF).
+if (stop && memoryOff()) {
+  try {
+    const p = JSON.parse(readFileSync(0, 'utf8')), { hushed, tag, OFF } = await import(new URL('./handoff-log.mjs', import.meta.url));
+    hushed(projectsRoot(), tag(p.session_id || basename(String(p.transcript_path || ''), '.jsonl')), true, OFF);
+  } catch {}
+  process.exit(0);
+}
 let payload = null;
 if (stop) {
   try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch {}

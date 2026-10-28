@@ -4,7 +4,7 @@
 // files and commands (uncapped in turns()) are shortened.
 import { mkdirSync, readdirSync, statSync, utimesSync, openSync, readSync, closeSync, unlinkSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
-import { clip, tag, PRIVATE, hash, turns, readTail, hushed, ACTIVE } from './handoff-log.mjs';
+import { clip, tag, PRIVATE, hash, turns, readTail, hushed, ACTIVE, OFF } from './handoff-log.mjs';
 import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey } from './store.mjs';
 
 export const JOURNAL = 'journal';
@@ -140,8 +140,14 @@ export function sweep(dir, s, transcriptPath) {
   return n;
 }
 
-// handoff()'s sink, called under its lock. A throw is kept in .failed for
-// `status` to report: swallowed, the journal would stop and nothing say so.
+// A throw kept in .failed for `status` to report: swallowed, the journal would
+// stop and nothing say so. `from` names the writer when it is not the sink.
+function fault(dir, e, from = '') {
+  const failed = join(dir, JOURNAL, '.failed');
+  try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(failed, raw(failed), JSON.stringify({ at: new Date().toISOString(), error: from + String(e.message).split('\n')[0] })); } catch {}
+}
+
+// handoff()'s sink, called under its lock.
 export function write(dir, transcriptPath, got, { quiet, hush }) {
   const failed = join(dir, JOURNAL, '.failed');
   try {
@@ -149,9 +155,7 @@ export function write(dir, transcriptPath, got, { quiet, hush }) {
     else if (!quiet) record(dir, transcriptPath, got);
     else return;   // already private: nothing tried, so nothing to clear
     try { unlinkSync(failed); } catch {}
-  } catch (e) {
-    try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(failed, raw(failed), JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\n')[0] })); } catch {}
-  }
+  } catch (e) { fault(dir, e); }
 }
 
 // What the backfill has read: `<folder>/<session> <bytes>`, one line a
@@ -204,27 +208,35 @@ function candidates(dir, skip, due = true) {
 // transcript's end, typed before the plugin kept marks, is not seen; read the
 // rest of a partial transcript for it if that turns up.
 export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {}) {
-  const t0 = Date.now(), f = join(dir, JOURNAL, IMPORTED);
+  const t0 = Date.now(), f = join(dir, JOURNAL, IMPORTED), bad = join(dir, JOURNAL, '.failed');
   // The listed are looked at once in ACTIVE, by the list's age, not every
   // Stop: a stat is ~70 µs on Windows, 5 ms a Stop for a month's 68 transcripts.
-  let due = true; try { due = t0 - statSync(f).mtimeMs >= ACTIVE; } catch {}
-  const all = candidates(dir, skip, due), todo = all.filter((c) => c.mine);
-  const other = all.filter((c) => !c.mine).map((c) => `${c.k} ${c.size} other`);
-  if (other.length) mark(dir, other);
-  let n = 0;
-  for (const [i, c] of todo.entries()) {
-    if (i && Date.now() - t0 >= budgetMs) break;
-    try {
-      let whole = true;
-      if (!hushed(dir, tag(basename(c.p, '.jsonl')))) {
-        const r = readTail(c.p, IMPORT_MAX_BYTES), got = turns(r.text);
-        if (!got.hush) record(dir, c.p, got);
-        whole = r.whole;
-      }
-      mark(dir, [`${c.k} ${c.size}${whole ? '' : ' partial'}`]);
-      n++;
-    } catch {}   // left for a later Stop: one transcript that won't read must not hold up the rest
-  }
+  let due = true, todo = [], n = 0, err = null;
+  try { due = t0 - statSync(f).mtimeMs >= ACTIVE; } catch {}
+  try {
+    const all = candidates(dir, skip, due), other = all.filter((c) => !c.mine).map((c) => `${c.k} ${c.size} other`);
+    todo = all.filter((c) => c.mine);
+    if (other.length) mark(dir, other);
+    for (const [i, c] of todo.entries()) {
+      if (i && Date.now() - t0 >= budgetMs) break;
+      try {
+        const s = tag(basename(c.p, '.jsonl'));
+        let whole = true;
+        // Private, or held with auto memory off: none of it is kept.
+        if (!hushed(dir, s) && !hushed(projectsRoot(), s, false, OFF)) {
+          const r = readTail(c.p, IMPORT_MAX_BYTES), got = turns(r.text);
+          if (!got.hush) record(dir, c.p, got);
+          whole = r.whole;
+        }
+        mark(dir, [`${c.k} ${c.size}${whole ? '' : ' partial'}`]);
+        n++;
+      } catch (e) { err = e; }   // left for a later Stop: one transcript that won't read must not hold up the rest
+    }
+  } catch (e) { err = e; }
+  // Kept in .failed as the sink's is; the next import that goes through clears
+  // it, and only its own: a live write's failure is the live write's to clear.
+  if (err) fault(dir, err, 'backfill: ');
+  else if (n && (raw(bad) ?? '').includes('"error":"backfill: ')) try { unlinkSync(bad); } catch {}
   if (due && n === todo.length) try { utimesSync(f, new Date(), new Date()); } catch {}
   return { imported: n, left: todo.length - n };
 }

@@ -123,7 +123,9 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
   say(X, '2026-10-28T09:00:00Z', 'asked with memory off', 'answered');
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
   try { stop(X); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
-  ok(!existsSync(join(sdir, 'journal')), 'auto memory off writes no journal');
+  let off = ''; try { off = readFileSync(join(home, '.claude', 'projects', '.memory-off'), 'utf8'); } catch {}
+  ok(!existsSync(sdir) && off.split(/\r?\n/).includes(X.slice(0, 8)),
+    `auto memory off writes no journal and makes no store, only the conversation's tag beside the projects (got ${JSON.stringify(off)})`);
 }
 {
   const ts = '2026-10-28T10:00:00Z';
@@ -255,6 +257,29 @@ const fill = (d, o) => withLock(d, () => backfill(d, o));
   ok(asks(d).join() === 'ours', `another store's transcript is never imported (got ${asks(d)})`);
   ok(listed(d).length === 2 && listed(d).includes(`${slug(r)}-other/${sid('b')} ${statSync(theirs).size} other`),
     `it is listed as another's, so no Stop opens it again, and no other project's folder is looked in (got ${listed(d)})`);
+}
+{
+  const [r, d] = repo('off'), held = old(r, sid('6'), 30, ['held with memory off']);
+  old(r, sid('7'), 20, ['held with memory on']);
+  process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+  try { spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: r, transcript_path: held, session_id: sid('6'), hook_event_name: 'Stop' }) }); }
+  finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  fill(d);
+  ok(asks(d).join() === 'held with memory on', `a conversation held with auto memory off is never imported, and another is (got ${asks(d)})`);
+}
+{
+  const [r, d] = repo('fails'), day1 = dayFile(d, local('2026-09-01T10:00:00Z')), failed = join(d, 'journal', '.failed');
+  old(r, sid('8'), 30, ['imported at last']);
+  mkdirSync(day1, { recursive: true });
+  const got = fill(d);
+  let fl = null; try { fl = JSON.parse(readFileSync(failed, 'utf8')); } catch {}
+  ok(got.imported === 0 && got.left === 1 && Date.parse(fl?.at) && fl.error.startsWith('backfill: '),
+    `a backfill that throws is kept in .failed, the conversation left for later (got ${JSON.stringify(got)}, ${JSON.stringify(fl)})`);
+  rmSync(day1, { recursive: true });
+  ok(fill(d).imported === 1 && !existsSync(failed) && asks(d).join() === 'imported at last', 'the next import that goes through clears it');
+  writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: 'the live write failed' }));
+  old(r, sid('9'), 10, ['one more']);
+  ok(fill(d).imported === 1 && existsSync(failed), "an import clears its own failure only, never the live write's");
 }
 // The Stop, as Claude Code runs it, on a conversation with a 70 MB tool result.
 {

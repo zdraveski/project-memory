@@ -712,11 +712,17 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   let glued = null; try { glued = JSON.parse(runLines().at(-1)); } catch {}
   ok(glued?.s === 'tst', `a run logged after the old format is a line of its own (got ${runLines().at(-1)})`);
 
-  // Auto memory turned off: the Stop hook does nothing, not even its log.
-  const before = runLines().length;
+  // Auto memory turned off: the Stop hook does nothing, not even its log. It
+  // keeps the conversation's tag beside the projects, so no backfill imports
+  // it later, and makes no store for it.
+  const before = runLines().length, po = join(root, 'proj-off');
+  mkdirSync(po); writeFileSync(join(po, 'offline1-0000.jsonl'), '');
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
-  try { stop(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
-  ok(runLines().length === before, 'with auto memory off the Stop hook does nothing');
+  try { spawnSync(process.execPath, [TOOL, '--stop'], { env, input: JSON.stringify({ transcript_path: join(po, 'offline1-0000.jsonl'), session_id: 'offline1-0000' }) }); }
+  finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  let off = ''; try { off = readFileSync(join(root, '.memory-off'), 'utf8'); } catch {}
+  ok(runLines().length === before && !existsSync(join(po, 'memory')) && off.split(/\r?\n/).includes('offline1'),
+    `with auto memory off the Stop hook keeps only the conversation's tag (got ${JSON.stringify(off)})`);
 
   // A record of where you left off that cannot be saved (here the store's
   // folder is a file, so its lock cannot be taken) is said at the next start,
@@ -939,6 +945,18 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   try { spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }); } finally { process.env.HOME = was[0]; process.env.USERPROFILE = was[1]; }
   const n18 = spawnSync('git', ['-C', root18, 'ls-files'], { encoding: 'utf8' }).stdout.split('\n').filter((l) => l.endsWith('/price.md')).length;
   ok(process.platform === 'win32' ? n18 === 1 : n18 <= 1, `two links to one folder elsewhere: its notes in the history once (got ${n18})`);
+}
+
+// The Stop imports a conversation still on disk, quiet for a month, into the journal.
+{
+  const pb = join(root, 'proj-backfill'), was = join(pb, 'was.jsonl'), now = join(pb, 'now.jsonl'), jd = join(pb, 'memory', 'journal');
+  const turn = (ask, ts) => [{ type: 'user', timestamp: ts, message: { content: ask } },
+    { type: 'assistant', timestamp: ts, message: { content: [{ type: 'text', text: 'answered' }] } }].map((r) => JSON.stringify(r)).join('\n') + '\n';
+  mkdirSync(pb); writeFileSync(was, turn('asked last month', '2026-09-28T09:00:00Z')); writeFileSync(now, turn('asked now', '2026-10-28T09:00:00Z'));
+  const month = new Date(Date.now() - 30 * 86400e3); utimesSync(was, month, month);
+  spawnSync(process.execPath, [TOOL, '--stop'], { env, input: JSON.stringify({ transcript_path: now, session_id: 'now' }) });
+  const all = (existsSync(jd) ? readdirSync(jd).filter((f) => f.endsWith('.md')) : []).map((f) => readFileSync(join(jd, f), 'utf8')).join();
+  ok(all.includes('asked last month') && all.includes('asked now'), `--stop: the Stop backfills the journal (got ${all.length} chars)`);
 }
 
 // A journal.mjs that cannot load costs the journal, never the handoff.

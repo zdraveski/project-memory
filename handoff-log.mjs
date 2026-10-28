@@ -489,8 +489,12 @@ function build(raw, fresh, drop = null, me = fresh[0]?.s, whole = false) {
 // (9 KB). The newest 50 let an older private conversation, resumed, be
 // recorded again.
 const QUIET = '.private-sessions';
-export function hushed(dir, s, mark = false) {
-  const p = join(dir, QUIET);
+// The conversations held with auto memory off, kept the same way beside the
+// projects (memory-tier's Stop, which makes no store for them): the journal's
+// backfill never imports them.
+export const OFF = '.memory-off';
+export function hushed(dir, s, mark = false, list = QUIET) {
+  const p = join(dir, list);
   // CRLF too: a tag with a \r left over matched no conversation, and a marked
   // one was written again.
   let have = []; try { have = readFileSync(p, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean); } catch {}
