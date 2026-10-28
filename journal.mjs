@@ -79,12 +79,13 @@ export function parseDay(text) {
 export const dayFile = (dir, at) => join(dir, JOURNAL, day(at) + '.md');
 const page = (d, prose, es) => `# Journal ${d}\n\n` + [prose, ...es.map(render)].filter(Boolean).join('\n\n') + '\n';
 // The keys forget removed, one a line: a backfill reads a quiet conversation
-// again once it grows, and would bring a forgotten entry back.
+// again once it grows, and would bring a forgotten entry back. Read trimmed,
+// as hushed() reads its list: a key with a \r or space after it is still one.
 const FORGOTTEN = '.forgotten';
 
 // Call under withLock(dir). Returns how many entries were added or changed.
 export function record(dir, transcriptPath, turns) {
-  const byDay = new Map(), gone = new Set((raw(join(dir, JOURNAL, FORGOTTEN)) ?? '').split(/\r?\n/));
+  const byDay = new Map(), gone = new Set((raw(join(dir, JOURNAL, FORGOTTEN)) ?? '').split(/\r?\n/).map((l) => l.trim()));
   for (const t of turns) {
     const e = entryOf(t, transcriptPath), d = day(e.at);
     if (gone.has(e.key)) continue;

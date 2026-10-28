@@ -579,15 +579,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     r = { ok: true, lines: es.length ? [...shown.map((e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 200)}`), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [`no journal entry ${span} in ${where}`] };
   } else if (cmd === 'forget') {
-    const conversation = opt('--conversation'), yes = rest.includes('--yes');
-    if (!args.length && !range.since && !range.until && !conversation) r = no(`forget needs words, a date range or --conversation; to drop the whole journal, delete ${join(here, 'journal')}`);
+    // A blank term is in every entry: `forget "" --yes` would empty the journal.
+    const conversation = opt('--conversation'), yes = rest.includes('--yes'), terms = args.filter((a) => a.trim());
+    // Not "delete the journal folder": the backfill's lists live in it, and
+    // without them it rebuilds the journal from the transcripts, forgotten entries too.
+    if (!terms.length && !range.since && !range.until && !conversation) r = no('forget needs words, a date range or --conversation; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)');
     else {
-      const got = forget(here, args, { ...range, conversation, apply: yes, failed }), m = got?.matched ?? [];
+      const got = forget(here, terms, { ...range, conversation, apply: yes, failed }), m = got?.matched ?? [];
+      // Under --yes too: what went, a turn recorded since the look included.
+      const shown = m.slice(0, 20).map((e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 120)}`);
       // A day before today is in the snapshots already (memory-tier commits a day once it closes).
       const old = [...new Set(m.filter((e) => e.day !== local().slice(0, 10)).map((e) => e.day))];
       r = !got ? no(`${here} is busy (another hook holds it); try again`)
-        : !yes ? { ok: true, lines: [...m.slice(0, 20).map((e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 120)}`), `${m.length} entr${m.length === 1 ? 'y' : 'ies'} would go; run again with --yes to remove them`] }
-        : { ok: true, lines: [`removed ${got.removed}`, ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : [])] };
+        : !yes ? { ok: true, lines: [...shown, `${m.length} entr${m.length === 1 ? 'y' : 'ies'} would go; run again with --yes to remove them`] }
+        : { ok: true, lines: [...shown, `removed ${got.removed}`, ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : [])] };
     }
   } else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));

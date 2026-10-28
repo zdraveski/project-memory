@@ -382,7 +382,7 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   ok(busy === null && text() === before && !existsSync(list), `while another holds the store's lock, nothing goes (got ${JSON.stringify(busy)})`);
   const r = forget(d, ['mango'], { until: '2026-10-20', apply: true });
   ok(r.removed === 1 && hits(['zebra']) === 'f-2' && readFileSync(f20, 'utf8').includes('My own note.'), `with apply the matches go, and a note written by hand stays (got ${r.removed}, ${hits(['zebra'])})`);
-  writeFileSync(list, readFileSync(list, 'utf8').replace(/\n/g, '\r\n'));   // as an editor may save it
+  writeFileSync(list, readFileSync(list, 'utf8').replace(/\n/g, ' \r\n'));   // as an editor may save it: CRLF, a space left after the key
   ok(record(d, T, [turn({ at: '2026-10-20 09:00', id: 'f-1', ask: 'the Zebra eats mango' })]) === 0 && hits(['mango'], { until: '2026-10-20' }) === '',
     'a forgotten turn recorded again stays gone');
   forget(d, ['mango'], { apply: true });

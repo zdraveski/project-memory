@@ -776,17 +776,30 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   r = fcli('forget', 'Zebra', 'mango', '--yes');
   ok(r.status === 0 && file('2025-10-20') === page('2025-10-20', [es[1]]) && file('2025-10-21') === page('2025-10-21', []) && kept(today),
     `forget --yes removes only the matches, the rest byte for byte (got ${r.stdout}${r.stderr})`);
-  ok(/^removed 2\nthe snapshots still hold the journal of 2025-10-20, 2025-10-21: deleting .*[\\/]\.git removes /.test(r.stdout), `and says the snapshots still hold the days before today (got ${r.stdout})`);
+  ok(/^2025-10-20 09:00  conversation aaaa1111  the zebra eats mango\n2025-10-21 09:00  conversation aaaa1111  mango, the zebra again\nremoved 2\nthe snapshots still hold the journal of 2025-10-20, 2025-10-21: deleting .*[\\/]\.git removes /.test(r.stdout),
+    `and lists what went, then says the snapshots still hold the days before today (got ${r.stdout})`);
   reset();
-  r = fcli('forget', '--yes');
-  ok(r.status === 1 && r.stdout.trim() === `forget needs words, a date range or --conversation; to drop the whole journal, delete ${fj}` && kept('2025-10-20', '2025-10-21', today),
-    `forget with nothing to match is refused (got ${r.stdout}${r.stderr})`);
+  // A blank word is in every entry: taken as a filter, it removed the whole journal.
+  const refused = 'forget needs words, a date range or --conversation; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)';
+  for (const blank of [[], [''], ['   ']]) {
+    r = fcli('forget', ...blank, '--yes');
+    ok(r.status === 1 && r.stdout.trim() === refused && kept('2025-10-20', '2025-10-21', today), `forget with nothing to match is refused, a blank word too (${JSON.stringify(blank)}: got ${r.stdout}${r.stderr})`);
+  }
   r = fcli('forget', '--conversation=bbbb2222');
   ok(r.stdout === `${today} 09:00  conversation bbbb2222  a zebra in another conversation\n${today} 10:00  conversation bbbb2222  unrelated\n2 entries would go; run again with --yes to remove them\n`,
     `--conversation=TAG lists that conversation (got ${r.stdout}${r.stderr})`);
+  // A turn of it recorded after the look goes too, and is listed with the rest.
+  writeFileSync(join(fj, `${today}.md`), page(today, [...es.slice(3), entry(`${today} 11:00`, 'a late turn', 'bbbb2222')]));
   r = fcli('forget', '--conversation', 'bbbb2222', '--yes');
-  ok(r.status === 0 && r.stdout === 'removed 2\n' && file(today) === page(today, []) && kept('2025-10-20', '2025-10-21'),
-    `forget --conversation removes one conversation; today's day, not yet in the snapshots, needs no word on them (got ${r.stdout}${r.stderr})`);
+  ok(r.status === 0 && r.stdout === `${today} 09:00  conversation bbbb2222  a zebra in another conversation\n${today} 10:00  conversation bbbb2222  unrelated\n` +
+    `${today} 11:00  conversation bbbb2222  a late turn\nremoved 3\n` && file(today) === page(today, []) && kept('2025-10-20', '2025-10-21'),
+    `forget --conversation removes one conversation, a turn since the look too; today's day, not yet in the snapshots, needs no word on them (got ${r.stdout}${r.stderr})`);
+  // What the refusal advises does forget the whole journal, every key listed so no backfill brings it back.
+  reset();
+  r = fcli('forget', '--since', '1970-01-01', '--yes');
+  const listed = readFileSync(join(fj, '.forgotten'), 'utf8').split('\n').filter(Boolean).sort().join();
+  ok(r.status === 0 && /^removed 5$/m.test(r.stdout) && Object.keys(want).every((d) => file(d) === page(d, [])) && listed === es.map((e) => e.key).sort().join(),
+    `--since 1970-01-01 --yes forgets the whole journal (got ${r.stdout}; ${listed})`);
 }
 
 console.log(`memory: ${checks} checks passed`);
