@@ -1,7 +1,7 @@
 // Self-check for memory.mjs, the memory CLI: ranked search, status, history
 // and restore from real snapshots, promote, doctor. A throwaway HOME holds a
 // project store and the shared store. Run: node memory.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync, readdirSync, chmodSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
@@ -90,8 +90,8 @@ tier();
 r = cli('history', 'deploy-notes');
 ok(r.status === 0 && /  \S+ \S+ \S+  deleted\n  \S+ \S+ \S+  in the first snapshot$/m.test(r.stdout), `history lists the snapshots that changed it, newest first; the first snapshot is not called its writing (got ${r.stdout})`);
 // Its last line is a command that works as printed: the path git tracks, no `~`.
-const show = r.stdout.match(/^  a change: git -C "([^"]+)" show <commit> -- (\S+)$/m), first = r.stdout.match(/^  (\w+) .*in the first snapshot$/m);
-ok(show && first && /deploy notes/.test(spawnSync('git', ['-C', show[1], 'show', first[1], '--', show[2]], { encoding: 'utf8' }).stdout), `history ends with the command that shows a change (got ${show && show[0]})`);
+const show = r.stdout.match(/^  a change: git -C "([^"]+)" --literal-pathspecs show <commit> -- "([^"]+)"$/m), first = r.stdout.match(/^  (\w+) .*in the first snapshot$/m);
+ok(show && first && /deploy notes/.test(spawnSync('git', ['-C', show[1], '--literal-pathspecs', 'show', first[1], '--', show[2]], { encoding: 'utf8' }).stdout), `history ends with the command that shows a change (got ${show && show[0]})`);
 r = cli('restore', 'deploy-notes');
 ok(r.status === 0 && existsSync(join(dir, 'deploy-notes.md')) && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes('deploy deploy'), 'restore brings a deleted memory back from before its deletion');
 // Status names what the snapshots saw change this week, in this store only.
@@ -406,6 +406,40 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
   let offDoc; try { offDoc = cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   ok(/auto memory is off/.test(offDoc.stdout) && !/Stop hook is not running|ran twice/.test(offDoc.stdout), `doctor says auto memory is off, and stops there (got ${offDoc.stdout.trim()})`);
+}
+
+// Round 4 (2026-10-28). A name git reads as a pattern (* ? [) is read as it
+// is written; the name on disk wins over the one typed; a file the disk
+// refuses is said, not a stack trace.
+{
+  const stack = (x) => /\n\s+at \S.*:\d+:\d+/.test(x.stdout + x.stderr);
+  memory(dir, 'notes[1]', 'a bracket note', 'the bracket body');
+  memory(dir, 'notes1', 'a plain note', 'the plain body');
+  writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Bracket](notes[1].md) — b\n- [Plain](notes1.md) — p\n');
+  tier();
+  writeFileSync(join(dir, 'notes1.md'), readFileSync(join(dir, 'notes1.md'), 'utf8') + 'changed\n');
+  tier();
+  r = cli('history', 'notes[1]');
+  ok(r.status === 0 && (r.stdout.match(/^  [0-9a-f]{4,} \d{4}-/gm) || []).length === 1, `history of notes[1] lists its own change, not notes1's (got ${r.stdout.trim()})`);
+  unlinkSync(join(dir, 'notes[1].md'));
+  r = cli('restore', 'notes[1]');
+  ok(r.status === 0 && readFileSync(join(dir, 'notes[1].md'), 'utf8').includes('the bracket body'), `a name with [ ] comes back with its own text, not an empty note (got ${r.stdout.trim()})`);
+  r = cli('restore', 'star*');
+  ok(r.status === 1 && /^no snapshot of /m.test(r.stdout) && !stack(r) && !(process.platform !== 'win32' && existsSync(join(dir, 'star*.md'))), `a name with * that no snapshot holds: no empty note, no stack trace (got ${r.stdout.trim()} ${r.stderr.trim()})`);
+  // Typed in another case: the note on disk is moved, and its own line with it.
+  memory(dir, 'casey', 'a lesson about case');
+  writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Casey](casey.md) — c\n');
+  r = cli('promote', 'CASEY');
+  ok(r.status === 0 && readdirSync(shared).includes('casey.md') && !/\(casey\.md\)/i.test(readFileSync(join(dir, 'MEMORY.md'), 'utf8')) && /\]\(casey\.md\)/.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8')),
+    `promote CASEY moves casey.md under its own name, and its line (got ${r.stdout.trim()})`);
+  // A note the disk will not replace (read-only on Windows): said, not thrown.
+  memory(dir, 'locked', 'a locked note', 'v1');
+  writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Locked](locked.md) — l\n');
+  tier();
+  writeFileSync(join(dir, 'locked.md'), 'v2\n');
+  chmodSync(join(dir, 'locked.md'), 0o444);
+  try { r = cli('restore', 'locked', '--force'); } finally { chmodSync(join(dir, 'locked.md'), 0o666); }
+  ok(!stack(r) && (process.platform !== 'win32' || (r.status === 1 && /could not be written/.test(r.stdout))), `a note that cannot be replaced is said, not a stack trace (got ${r.stdout.trim()} ${r.stderr.trim().slice(0, 200)})`);
 }
 
 console.log(`memory: ${checks} checks passed`);

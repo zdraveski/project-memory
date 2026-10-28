@@ -111,6 +111,14 @@ months of use, Claude Code's own documentation, and a privacy red team.
   of the rest of that turn, and the compaction note showed Claude's last words
   as `[private]`, with no reminder after it. A summary is Claude Code's recap,
   not your message, and no longer counts.
+- `restore` brought back an empty note for a name with `[`, `*` or `?` in
+  it (`notes[1].md`), and with `--force` it emptied the note it replaced. git
+  read the name as a pattern; `history` listed other notes' changes for the
+  same reason. Both read names literally now.
+- `promote ALPHA` on Windows moved `alpha.md` but left its line in the table
+  of contents, pointing at nothing. A note is now found by its name on disk.
+- A note `restore` cannot write (read-only, or a name Windows cannot hold) is
+  reported in one line instead of a crash.
 
 **Going back to 1.0.7**
 - It works, with two limits until newer exchanges replace the old ones: some

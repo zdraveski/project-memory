@@ -48,6 +48,10 @@ const read = (p) => { try { return readFileSync(p, 'utf8').replace(/^\uFEFF/, ''
 const target = (line) => (line.replace(/^\uFEFF/, '').match(POINTER) || [])[1];
 const targets = (text) => (text ?? '').split(/\r?\n/).map(target).filter((t) => t && t !== ARCHIVE);
 const no = (why) => ({ ok: false, lines: [why] });
+// A memory by the name it has on disk: on Windows `ALPHA` opens alpha.md, and
+// moved under the typed name, alpha.md's index line was left pointing at
+// nothing. The exact name first: on Linux the two can both exist.
+const onDisk = (dir, file) => { try { const fs = readdirSync(dir); return fs.includes(file) ? file : fs.find((f) => f.toLowerCase() === file.toLowerCase()) ?? file; } catch { return file; } };
 // A line added to an index goes before the archive's own line, which tiering
 // keeps last and leaves where it is when nothing else changed.
 const withLine = (text, line) => {
@@ -198,7 +202,11 @@ function sessionStore() {
 
 // The snapshot repo is ~/.claude/projects and tracks each store by its real
 // path: memory-tier.mjs ignores the junctions.
-const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20, timeout: 60_000 });
+// Paths literal: git reads a path with * ? [ as a pattern, and `notes[1].md`
+// matched other notes' history. A version is read with cat-file for the same
+// reason: `git show rev:a*.md` took the argument for a pattern, printed
+// nothing and succeeded, and restore wrote an empty note.
+const git = (...a) => execFileSync('git', gitArgs('--literal-pathspecs', ...a), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20, timeout: 60_000 });
 // The on-disk spelling: git's paths are case-sensitive, and the JS realpath
 // keeps whatever case it was handed (a cwd typed in lower case).
 const real = (p) => { try { return realpathSync.native(p); } catch { return p; } };
@@ -219,7 +227,7 @@ export function history(dirs, file, everywhere = false) {
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
       const moved = !isShared(dir) && existsSync(join(sharedStore(), file)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
-      if (lines.length) return { ok: true, lines: [join(dir, file), ...lines, ...moved, `  a change: git -C "${real(projectsRoot())}" show <commit> -- ${tracked(dir, file)}`] };
+      if (lines.length) return { ok: true, lines: [join(dir, file), ...lines, ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- "${tracked(dir, file)}"`] };
     }
   } catch (e) { return no(`no snapshots to read: ${gitWhy(e)}`); }
   return no(`no snapshot holds ${file} (looked in ${dirs.join(', ')}): search <words> finds a memory's name${everywhere ? '' : '; --all looks in every project'}`);
@@ -248,19 +256,19 @@ export function restore(dir, file, { rev, force = false } = {}) {
       try { const head = git('rev-parse', '--short', 'HEAD').trim(); git('cat-file', '-e', `${head}:${at}`); from = head; }
       catch { const gone = git('log', '-1', '--format=%h', '--diff-filter=D', '--', at).trim(); from = gone ? `${gone}^` : 'HEAD'; }
     }
-    try { text = git('show', `${from}:${at}`); }
+    try { text = git('cat-file', '-p', `${from}:${at}`); }
     // The commit history names as "deleted" no longer has it: the version it
     // deleted is the one before. Neither there: the error is the commit's own.
     catch (e) {
       if (!rev) throw e;
-      try { text = git('show', `${rev}^:${at}`); } catch { throw e; }
+      try { text = git('cat-file', '-p', `${rev}^:${at}`); } catch { throw e; }
       from = `${rev}^`;
     }
   } catch (e) { return no(`no snapshot of ${at} at ${from || 'HEAD'}: ${gitWhy(e)}`); }
   let line = null;
   if (!file.startsWith('MEMORY')) {
     for (const idx of ['MEMORY.md', ARCHIVE]) {
-      let t; try { t = git('show', `${from}:${tracked(dir, idx)}`); } catch { continue; }
+      let t; try { t = git('cat-file', '-p', `${from}:${tracked(dir, idx)}`); } catch { continue; }
       line = t.split(/\r?\n/).find((l) => target(l) === file)?.replace(OVERFLOW, '') ?? null;
       if (line) break;
     }
@@ -274,7 +282,10 @@ export function restore(dir, file, { rev, force = false } = {}) {
     // What --force replaces is kept in the repo, not lost: no snapshot may hold it yet.
     let kept = '';
     if (cur !== null) { try { kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: cur, encoding: 'utf8' }).trim()}`; } catch {} }
-    if (replaceIfUnchanged(path, cur, text) === 'conflict') return `${path} changed meanwhile; nothing written`;
+    // One the disk refuses (a name Windows cannot hold, from a store synced
+    // from Linux) is said: thrown, it was a stack trace.
+    let w; try { w = replaceIfUnchanged(path, cur, text); } catch (e) { return `${path} could not be written (${e.code || e.message}); nothing restored`; }
+    if (w === 'conflict') return `${path} changed meanwhile; nothing written`;
     if (file.startsWith('MEMORY')) return `restored ${path} from ${from}${kept}`;
     const idx = join(dir, 'MEMORY.md'), main = raw(idx);
     if ([main, raw(join(dir, ARCHIVE))].some((t) => targets(t).includes(file))) return `restored ${path} from ${from}; its index line is still there${kept}`;
@@ -452,8 +463,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     const sharedNames = names(memories(sharedStore()));
     r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'));
-  else if (cmd === 'restore' && file) r = restore(here, file, { rev: opt('--rev'), force: rest.includes('--force') });
-  else if (cmd === 'promote' && file) r = promote(here, file);
+  else if (cmd === 'restore' && file) r = restore(here, onDisk(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
+  else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file));
   else if (cmd === 'doctor') r = doctor();
   else r = { ok: !cmd || cmd === 'help', lines: [USAGE] };
   console.log(r.lines.join('\n'));

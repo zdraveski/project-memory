@@ -366,6 +366,11 @@ const suites = {
     'rule share measured on the whole budget': ['Math.max(0, budget - pinnedBytes) * RULE_SHARE', 'budget * RULE_SHARE'],
   }],
   'memory.mjs': ['memory.test.mjs', {
+    "a version read by git show, as a pattern": ["text = git('cat-file', '-p', `${from}:${at}`);", "text = git('show', `${from}:${at}`);"],
+    "history paths read as patterns": ["gitArgs('--literal-pathspecs', ...a)", "gitArgs(...a)"],
+    "promote by the typed name": ["r = promote(here, onDisk(here, file));", "r = promote(here, file);"],
+    "a refused write thrown": ["let w; try { w = replaceIfUnchanged(path, cur, text); } catch (e) { return `${path} could not be written (${e.code || e.message}); nothing restored`; }", "let w = replaceIfUnchanged(path, cur, text);"],
+    "the on-disk name ignores case": ["fs.find((f) => f.toLowerCase() === file.toLowerCase()) ?? file", "file"],
     "promote into a full shared index says all is well": ["lines: [size <= cap ? ", "lines: [true ? "],
     "doctor judges the hooks with auto memory off": ["  if (memoryOff()) { say(true, ", "  if (false) { say(true, "],
     "--session ignored": ["if (/^[\\w-]{1,100}$/.test(opt('--session') || '')) session = opt('--session');", ""],
