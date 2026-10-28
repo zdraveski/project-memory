@@ -541,6 +541,8 @@ const suites = {
     'journal entry not replaced by key': ['have.set(e.key, e);', 'have.has(e.key) || have.set(e.key, e);'],
     'journal day taken from the write time': ['const e = entryOf(t, transcriptPath), d = day(e.at);', 'const e = entryOf(t, transcriptPath), d = new Date().toISOString().slice(0, 10);'],
     'journal entries sorted by key only': ['(a.at < b.at ? -1 : a.at > b.at ? 1 : a.key', '(a.key'],
+    'journal CRLF not normalized': [".replace(/\\r\\n?/g, '\\n')", ''],
+    'journal BOM not stripped': [".replace(/^\\uFEFF/, '')", ''],
     'journal prose dropped': ['[prose, ...all.map(render)]', '[...all.map(render)]'],
     'journal key fallback unstable': ['hash(turn.raw ?? turn.ask).slice(0, 12)', 'Math.random()'],
   }],

@@ -12,7 +12,7 @@ let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 
 const stripe = (kind, mode) => [kind, mode, '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
-const T = 'C:\\x\\projects\\C--proj\\0123456789abcdef.jsonl';
+const T = '/x/projects/C--proj/0123456789abcdef.jsonl';
 const turn = (over) => ({ at: '2026-10-28 14:05', ask: 'a question', raw: 'a question', did: 'an answer', changed: [], ran: [], id: 'u-1', branch: 'main', cwd: 'C:\\proj', ...over });
 const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
 
@@ -40,7 +40,7 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   const e = entryOf(turn({ changed: ['C:\\proj\\a.js', 'D:\\o\\b.js'], ran: ['ls', 'git status'] }), T);
   assert.deepStrictEqual(parseDay(render(e)).entries[0], e); checks++;
   const f = entryOf(turn({ id: '', branch: '' }), T);
-  assert.deepStrictEqual(parseDay(render(f)).entries[0], f);
+  assert.deepStrictEqual(parseDay(render(f)).entries[0], f); checks++;
   ok(!render(f).includes('branch') && !render(f).includes('**Changed') && !render(f).includes('**Ran'), 'no branch, Changed or Ran when empty');
 }
 {
@@ -75,6 +75,16 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   const a = entryOf(turn({ id: '' }), T).key, b = entryOf(turn({ id: '' }), T).key;
   ok(a === b && a.startsWith('01234567 2026-10-28 14:05 '), `a key-less turn gets a stable key (got ${a})`);
   ok(entryOf(turn({ id: '', raw: 'other' }), T).key !== a, 'the key follows the text');
+}
+
+for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (t) => '\uFEFF' + t]]) {
+  const f = dayFile(dir, '2026-10-30');
+  record(dir, T, [turn({ at: '2026-10-30 10:00', id: 'c-1' })]);
+  writeFileSync(f, mark(readFileSync(f, 'utf8')));
+  ok(parseDay(readFileSync(f, 'utf8')).entries.length === 1 && parseDay(readFileSync(f, 'utf8')).prose === '', `a ${name} day file parses to its entry and no prose`);
+  record(dir, T, [turn({ at: '2026-10-30 10:00', id: 'c-1' })]);
+  ok(parseDay(readFileSync(f, 'utf8')).entries.length === 1, `re-recording in a ${name} day file adds no copy`);
+  writeFileSync(f, '');
 }
 
 console.log(`journal: ${checks} checks passed`);

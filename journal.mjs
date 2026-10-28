@@ -55,7 +55,8 @@ export const render = (e) => [
 export function parseDay(text) {
   const prose = [], entries = [];
   let e = null;
-  for (const line of text.replace(/^# Journal \d{4}-\d\d-\d\d\n*/, '').split('\n')) {
+  // An editor saves CRLF or a BOM: handoff.md lost its entries to both.
+  for (const line of text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').replace(/^# Journal \d{4}-\d\d-\d\d\n*/, '').split('\n')) {
     const m = MARK.exec(line);
     if (m) { e = { key: m[1], at: `${m[3]} 00:00`, s: '', t: m[2], branch: '', asked: '', answered: '', changed: [], ran: [] }; entries.push(e); continue; }
     const f = e && line.trim() && [HEAD.exec(line), /^\*\*(Asked|Answered|Changed|Ran):\*\* ?(.*)$/.exec(line)];
