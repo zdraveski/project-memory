@@ -8,6 +8,8 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared]
                                           memories (name, description, then body; archive included)
                                           and the journal (asked, then changed and ran, then answered),
                                           ranked. D is YYYY-MM-DD; dates with no terms list those days' requests
+  forget <words...> [--since D] [--until D] [--conversation TAG] [--yes]
+                                          the journal entries holding every word: listed; with --yes removed
   status [--all]                          index size, hot/archived, problems, dangling [[links]],
                                           the memories changed in the last 7 days
   history <memory> [--all]                the snapshots that changed it
@@ -27,9 +29,12 @@ import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
 // (handoff-log's deploy gate test, 2026-10-28).
-let entries;
-try { ({ entries } = await import('./journal.mjs')); }
-catch (e) { entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: String(e.message).split('\n')[0] }); return []; }; }
+let entries, forget;
+try { ({ entries, forget } = await import('./journal.mjs')); }
+catch (e) {
+  entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: String(e.message).split('\n')[0] }); return []; };
+  forget = (dir, terms, o) => ({ matched: entries([dir], o), removed: 0 });
+}
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
 
@@ -524,8 +529,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // `--store X search foo` searches; none (the skill run with no arguments,
   // just `--session <id>`) is status.
   // `--store=X` as `--store X`: the equals form was dropped, and the command ran on the cwd's store.
-  const argv = process.argv.slice(2).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
-  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until']);
+  const argv = process.argv.slice(2).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until|conversation))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
+  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation']);
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
@@ -573,6 +578,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     const es = entries(scope, { ...range, failed }).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
     r = { ok: true, lines: es.length ? [...shown.map((e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 200)}`), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [`no journal entry ${span} in ${where}`] };
+  } else if (cmd === 'forget') {
+    const conversation = opt('--conversation'), yes = rest.includes('--yes');
+    if (!args.length && !range.since && !range.until && !conversation) r = no(`forget needs words, a date range or --conversation; to drop the whole journal, delete ${join(here, 'journal')}`);
+    else {
+      const got = forget(here, args, { ...range, conversation, apply: yes, failed }), m = got?.matched ?? [];
+      // A day before today is in the snapshots already (memory-tier commits a day once it closes).
+      const old = [...new Set(m.filter((e) => e.day !== local().slice(0, 10)).map((e) => e.day))];
+      r = !got ? no(`${here} is busy (another hook holds it); try again`)
+        : !yes ? { ok: true, lines: [...m.slice(0, 20).map((e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 120)}`), `${m.length} entr${m.length === 1 ? 'y' : 'ies'} would go; run again with --yes to remove them`] }
+        : { ok: true, lines: [`removed ${got.removed}`, ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : [])] };
+    }
   } else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
     r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };

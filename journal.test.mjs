@@ -7,7 +7,7 @@ import assert from 'node:assert';
 import { tempHome, storeFor, tool, slug } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries } = await import('./journal.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget } = await import('./journal.mjs');
 const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 let checks = 0;
@@ -357,6 +357,47 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   ok(of({ until: '2026-10-09' }) === `2026-10-09 failed ${dayFile(d, '2026-10-08')}`, `a day inside it that will not read is named, the rest kept (got ${of({ until: '2026-10-09' })})`);
   const e = entries([d], { since: '2026-10-12' })[0];
   ok(e.day === '2026-10-12' && e.path === dayFile(d, '2026-10-12') && e.dir === d && e.asked === 'a question', `an entry carries its day, file and store (got ${JSON.stringify(e)})`);
+}
+
+// forget(): every term in one of an entry's fields, in any case, within the
+// dates; nothing goes without apply. What went stays gone: recorded again, or
+// read again by a backfill, a forgotten entry is not brought back.
+{
+  const d = storeFor(home, 'C:\\forget-selftest'), O = '/x/projects/C--proj/bbbbbbbb.jsonl', list = join(d, 'journal', '.forgotten');
+  const put = (at, id, ask, t = T) => record(d, t, [turn({ at, id, ask, raw: ask })]);
+  put('2026-10-20 09:00', 'f-1', 'the Zebra eats mango'); put('2026-10-20 09:05', 'f-2', 'the zebra policy');
+  put('2026-10-21 09:00', 'f-3', 'mango again'); put('2026-10-21 10:00', 'f-4', 'mango elsewhere', O);
+  const f20 = dayFile(d, '2026-10-20');
+  writeFileSync(f20, readFileSync(f20, 'utf8').replace('# Journal 2026-10-20\n\n', '# Journal 2026-10-20\n\nMy own note.\n\n'));
+  const text = () => days(d).map((x) => readFileSync(dayFile(d, x), 'utf8')).join('\0'), before = text();
+  const hits = (terms, o) => forget(d, terms, o).matched.map((e) => e.key).join();
+  ok(hits(['ZEBRA', 'mango']) === 'f-1', `every term must match, in any case (got ${hits(['ZEBRA', 'mango'])})`);
+  ok(hits(['mango'], { since: '2026-10-21' }) === 'f-3,f-4' && hits(['mango'], { until: '2026-10-20' }) === 'f-1',
+    `only entries within the dates match (got ${hits(['mango'], { since: '2026-10-21' })}; ${hits(['mango'], { until: '2026-10-20' })})`);
+  ok(hits([], { conversation: 'bbbbbbbb' }) === 'f-4', `--conversation alone matches that conversation's entries (got ${hits([], { conversation: 'bbbbbbbb' })})`);
+  ok(text() === before && !existsSync(list), 'without apply nothing goes');
+  mkdirSync(join(d, '.lock'));   // another hook's
+  const busy = forget(d, ['mango'], { apply: true });
+  rmSync(join(d, '.lock'), { recursive: true });
+  ok(busy === null && text() === before && !existsSync(list), `while another holds the store's lock, nothing goes (got ${JSON.stringify(busy)})`);
+  const r = forget(d, ['mango'], { until: '2026-10-20', apply: true });
+  ok(r.removed === 1 && hits(['zebra']) === 'f-2' && readFileSync(f20, 'utf8').includes('My own note.'), `with apply the matches go, and a note written by hand stays (got ${r.removed}, ${hits(['zebra'])})`);
+  writeFileSync(list, readFileSync(list, 'utf8').replace(/\n/g, '\r\n'));   // as an editor may save it
+  ok(record(d, T, [turn({ at: '2026-10-20 09:00', id: 'f-1', ask: 'the Zebra eats mango' })]) === 0 && hits(['mango'], { until: '2026-10-20' }) === '',
+    'a forgotten turn recorded again stays gone');
+  forget(d, ['mango'], { apply: true });
+  record(d, T, [turn({ at: '2026-10-20 09:00', id: 'f-1', ask: 'the Zebra eats mango' }), turn({ at: '2026-10-21 09:00', id: 'f-3', ask: 'mango again' })]);
+  ok(hits(['mango']) === '', `a second forget keeps the first one's keys (got ${hits(['mango'])})`);
+}
+{
+  const [r, d] = repo('forget'), p = old(r, sid('a'), 30, ['the zebra eats mango', 'the zebra policy']);
+  fill(d);
+  const gone = forget(d, ['mango'], { apply: true }).removed;
+  appendFileSync(p, rec('user', sid('a'), '2026-09-02T10:00:00Z', 'one more', r) + '\n' + rec('assistant', sid('a'), '2026-09-02T10:00:30Z', 'one more: done', r) + '\n');
+  utimesSync(p, ago(1), ago(1)); due(d);
+  const again = fill(d);
+  ok(gone === 1 && again.imported === 1 && asks(d).join() === 'one more,the zebra policy',
+    `a backfill reading the conversation again brings no forgotten entry back (got ${gone}, ${JSON.stringify(again)}, ${asks(d)})`);
 }
 
 console.log(`journal: ${checks} checks passed`);

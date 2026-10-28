@@ -5,7 +5,7 @@
 import { mkdirSync, readdirSync, statSync, utimesSync, openSync, readSync, closeSync, unlinkSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { clip, tag, PRIVATE, hash, turns, readTail, hushed, ACTIVE, OFF } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey } from './store.mjs';
+import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, withLock } from './store.mjs';
 
 export const JOURNAL = 'journal';
 export const J_ASK = 2000;     // chars of what was asked
@@ -78,12 +78,16 @@ export function parseDay(text) {
 
 export const dayFile = (dir, at) => join(dir, JOURNAL, day(at) + '.md');
 const page = (d, prose, es) => `# Journal ${d}\n\n` + [prose, ...es.map(render)].filter(Boolean).join('\n\n') + '\n';
+// The keys forget removed, one a line: a backfill reads a quiet conversation
+// again once it grows, and would bring a forgotten entry back.
+const FORGOTTEN = '.forgotten';
 
 // Call under withLock(dir). Returns how many entries were added or changed.
 export function record(dir, transcriptPath, turns) {
-  const byDay = new Map();
+  const byDay = new Map(), gone = new Set((raw(join(dir, JOURNAL, FORGOTTEN)) ?? '').split(/\r?\n/));
   for (const t of turns) {
     const e = entryOf(t, transcriptPath), d = day(e.at);
+    if (gone.has(e.key)) continue;
     byDay.set(d, [...(byDay.get(d) || []), e]);
   }
   let n = 0;
@@ -145,21 +149,43 @@ function began(transcriptPath) {
   } catch { return ''; }
 }
 
+// Day d without the entries `keep` refuses; its prose stays. Call under
+// withLock(dir). Returns how many went.
+function drop(dir, d, keep) {
+  const file = dayFile(dir, d);
+  for (let i = 0; i < 3; i++) {
+    const before = raw(file), { prose, entries } = parseDay(before ?? '');
+    const kept = entries.filter(keep);
+    if (kept.length === entries.length) return 0;
+    if (replaceIfUnchanged(file, before, page(d, prose, kept)) !== 'conflict') return entries.length - kept.length;
+  }
+  return 0;
+}
+
 // A conversation marked private takes back what it wrote: its entries go from
 // every day since it began. Call under withLock(dir). Returns how many went.
 export function sweep(dir, s, transcriptPath) {
   const from = began(transcriptPath);
-  let n = 0;
-  for (const d of days(dir).filter((x) => x >= from)) {
-    const file = dayFile(dir, d);
+  return days(dir).filter((x) => x >= from).reduce((n, d) => n + drop(dir, d, (e) => e.s !== s), 0);
+}
+
+// The entries with every term (any case) in one of their fields, in the range,
+// of the conversation when one is given. With apply they go, under the store's
+// lock (null when it stayed busy); their keys are listed first, so a forget
+// killed half-way leaves entries no record brings back.
+export function forget(dir, terms, { since, until, conversation, apply = false, failed } = {}) {
+  const ts = terms.map((t) => t.toLowerCase());
+  const matched = entries([dir], { since, until, failed }).filter((e) => (!conversation || e.s === conversation) &&
+    ts.every((t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.toLowerCase().includes(t))));
+  if (!apply || !matched.length) return { matched, removed: 0 };
+  const keys = new Set(matched.map((e) => e.key)), f = join(dir, JOURNAL, FORGOTTEN);
+  return withLock(dir, () => {
     for (let i = 0; i < 3; i++) {
-      const before = raw(file), { prose, entries } = parseDay(before ?? '');
-      const kept = entries.filter((e) => e.s !== s);
-      if (kept.length === entries.length) break;
-      if (replaceIfUnchanged(file, before, page(d, prose, kept)) !== 'conflict') { n += entries.length - kept.length; break; }
+      const before = raw(f);
+      if (replaceIfUnchanged(f, before, [...(before ?? '').split(/\r?\n/).filter(Boolean), ...keys].join('\n') + '\n') !== 'conflict') break;
     }
-  }
-  return n;
+    return { matched, removed: [...new Set(matched.map((e) => e.day))].reduce((n, d) => n + drop(dir, d, (e) => !keys.has(e.key)), 0) };
+  });
 }
 
 // A throw kept in .failed for `status` to report: swallowed, the journal would

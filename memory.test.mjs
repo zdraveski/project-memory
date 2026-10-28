@@ -707,6 +707,8 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
   ok(njs.status === 0 && r.status === 0 && /[\\/]deploy\.md$/m.test(r.stdout) && /^could not read journal\.mjs: /m.test(r.stdout),
     `a journal.mjs that will not load: status runs, search finds notes and says the journal was not read (got ${njs.stderr}${r.stdout}${r.stderr})`);
+  r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'forget', 'deploy', '--store', jd], { env, encoding: 'utf8' });
+  ok(/^could not read journal\.mjs: /m.test(r.stdout), `nor can forget, and it says so (got ${r.stdout}${r.stderr})`);
   r = jcli('search', 'deploy', 'error', '--since=2026-10-10', '--until', '2026-10-20');
   const dates = [...r.stdout.matchAll(/^ *\d+  journal   (\d{4}-\d\d-\d\d)/gm)].map((m) => m[1]);
   ok(r.status === 0 && dates.join() === '2026-10-15,2026-10-15' && !/deploy\.md$/m.test(r.stdout), `--since/--until narrow by day, notes by their date too (got ${r.stdout})`);
@@ -750,6 +752,41 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     `a day that cannot be read is named, and the rest still found (got ${r.stdout.slice(-300)})`);
   r = bcli('search', 'needle', '--since', year.at(-7));
   ok(r.status === 0 && !r.stderr && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && !/could not read/.test(r.stdout), `with --since the last week, a day outside it is never opened (got ${r.stdout}${r.stderr})`);
+}
+
+// forget: the user's say over the journal. Claude lists what would go, the
+// user confirms, and only --yes removes it.
+{
+  const { render } = await import('./journal.mjs'), { local } = await import('./store.mjs');
+  const fd = join(root, 'C--fg', 'memory'), fj = join(fd, 'journal'), today = local().slice(0, 10);
+  const fcli = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', fd], { env, encoding: 'utf8' });
+  let n = 0;
+  const entry = (at, asked, s = 'aaaa1111') => ({ key: `f${n++}`, at, s, t: `C--fg/${s}`, branch: '', asked, answered: 'done', changed: [], ran: [] });
+  const es = [entry('2025-10-20 09:00', 'the zebra eats mango'), entry('2025-10-20 10:00', 'the zebra policy'), entry('2025-10-21 09:00', 'mango, the zebra again'),
+    entry(`${today} 09:00`, 'a zebra in another conversation', 'bbbb2222'), entry(`${today} 10:00`, 'unrelated', 'bbbb2222')];
+  const page = (d, xs) => `# Journal ${d}\n\n${xs.map(render).join('\n\n')}\n`;
+  const want = { '2025-10-20': page('2025-10-20', es.slice(0, 2)), '2025-10-21': page('2025-10-21', es.slice(2, 3)), [today]: page(today, es.slice(3)) };
+  const reset = () => { rmSync(fj, { recursive: true, force: true }); mkdirSync(fj, { recursive: true }); for (const [d, t] of Object.entries(want)) writeFileSync(join(fj, `${d}.md`), t); };
+  const file = (d) => readFileSync(join(fj, `${d}.md`), 'utf8'), kept = (...ds) => ds.every((d) => file(d) === want[d]);
+
+  reset();
+  let r = fcli('forget', 'Zebra', 'mango');
+  ok(r.status === 0 && kept('2025-10-20', '2025-10-21', today) && r.stdout === '2025-10-20 09:00  conversation aaaa1111  the zebra eats mango\n' +
+    '2025-10-21 09:00  conversation aaaa1111  mango, the zebra again\n2 entries would go; run again with --yes to remove them\n', `forget lists and keeps without --yes (got ${r.stdout}${r.stderr})`);
+  r = fcli('forget', 'Zebra', 'mango', '--yes');
+  ok(r.status === 0 && file('2025-10-20') === page('2025-10-20', [es[1]]) && file('2025-10-21') === page('2025-10-21', []) && kept(today),
+    `forget --yes removes only the matches, the rest byte for byte (got ${r.stdout}${r.stderr})`);
+  ok(/^removed 2\nthe snapshots still hold the journal of 2025-10-20, 2025-10-21: deleting .*[\\/]\.git removes /.test(r.stdout), `and says the snapshots still hold the days before today (got ${r.stdout})`);
+  reset();
+  r = fcli('forget', '--yes');
+  ok(r.status === 1 && r.stdout.trim() === `forget needs words, a date range or --conversation; to drop the whole journal, delete ${fj}` && kept('2025-10-20', '2025-10-21', today),
+    `forget with nothing to match is refused (got ${r.stdout}${r.stderr})`);
+  r = fcli('forget', '--conversation=bbbb2222');
+  ok(r.stdout === `${today} 09:00  conversation bbbb2222  a zebra in another conversation\n${today} 10:00  conversation bbbb2222  unrelated\n2 entries would go; run again with --yes to remove them\n`,
+    `--conversation=TAG lists that conversation (got ${r.stdout}${r.stderr})`);
+  r = fcli('forget', '--conversation', 'bbbb2222', '--yes');
+  ok(r.status === 0 && r.stdout === 'removed 2\n' && file(today) === page(today, []) && kept('2025-10-20', '2025-10-21'),
+    `forget --conversation removes one conversation; today's day, not yet in the snapshots, needs no word on them (got ${r.stdout}${r.stderr})`);
 }
 
 console.log(`memory: ${checks} checks passed`);
