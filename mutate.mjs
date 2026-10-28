@@ -13,6 +13,7 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'compact-gate.mjs'
 
 const suites = {
   'store.mjs': ['store.test.mjs', {
+    "a relative path read against the hook's folder": ["    if (!isAbsolute(dir)) return null;\n", ""],
     "a worktree through a junction is a stranger": ["!same(real(resolve(gd, back)), real(join(d, '.git')))", "!same(resolve(gd, back), join(d, '.git'))"],
     "_shared taken as a project": ["|lpt[1-9]|_shared)$/i", "|lpt[1-9])$/i"],
     "a .git file trusted unchecked": ["if (!common || !back || basename(dirname(gd)) !== 'worktrees' || !same(real(resolve(gd, back)), real(join(d, '.git')))) return null;\n    const main = resolve(gd, common);\n    if (!same(dirname(dirname(gd)), main)) return null;", "if (!common) return null;\n    const main = resolve(gd, common);"],

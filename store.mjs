@@ -3,7 +3,7 @@
 // so a write the model makes during a pass can only be detected --
 // replaceIfUnchanged -- never prevented.
 import { mkdirSync, rmdirSync, rmSync, statSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, readdirSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
-import { join, dirname, resolve, basename } from 'node:path';
+import { join, dirname, resolve, basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 
 // Claude Code's folder: ~/.claude, or CLAUDE_CONFIG_DIR when that is set
@@ -23,9 +23,12 @@ const slugOf = (p) => String(p).replace(/[^A-Za-z0-9]/g, '-');
 // The git repository a folder is in, as Claude Code finds it for memory: the
 // nearest folder up with a `.git`, and for a worktree (whose `.git` is a file)
 // the main repository. null: none. Nothing it reads can throw out of a hook:
-// a `commondir` that was a folder made the Stop hook exit 1.
+// a `commondir` that was a folder made the Stop hook exit 1. A path that is
+// no absolute one (`C:\x` on Linux) is in no repository: resolved, it was
+// read against the hook's own folder, and a repository there named the store.
 export function repoRoot(dir) {
   try {
+    if (!isAbsolute(dir)) return null;
     for (let d = resolve(dir); ; d = dirname(d)) {
       let st = null; try { st = statSync(join(d, '.git')); } catch {}
       if (st?.isDirectory()) return d;

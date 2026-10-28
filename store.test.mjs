@@ -194,6 +194,8 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   writeFileSync(join(subm, '.git'), `gitdir: ../../.git/modules/lib\n`);
   ok(repoRoot(repo) === repo && repoRoot(sub) === repo && repoRoot(wt) === repo && repoRoot(subm) === subm && repoRoot(join(home, 'work')) === null,
     `the repository a folder is in: itself, its root, a worktree's main one, a submodule its own, none (got ${[repoRoot(sub), repoRoot(wt), repoRoot(subm)].join(' | ')})`);
+  // A relative path is in no repository, whatever folder the hook runs in.
+  { const was = process.cwd(); process.chdir(repo); try { ok(repoRoot('packages') === null, 'a path that is no absolute one is in no repository'); } finally { process.chdir(was); } }
   // A session started in a subfolder or a worktree has its store at the
   // repository's folder, as Claude Code keeps auto memory, though its
   // transcript sits in a folder named for where it started.
