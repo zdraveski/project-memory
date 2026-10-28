@@ -203,8 +203,8 @@ function tier(dir, now) {
     if (!f.endsWith('.md') || f.startsWith('MEMORY') || placed.has(key(f))) continue;
     // Its writer is about to point at it. A recovered line placed now would
     // beat the hand-written one to the index. Not handoff.md: this same Stop
-    // just rewrote it, and its writer never adds a pointer.
-    if (f !== 'handoff.md' && Math.abs(now - statSync(join(dir, f)).mtimeMs) < ORPHAN_GRACE) { waiting = true; continue; }
+    // just rewrote it, and its writer never adds a pointer. Nor journal.md's.
+    if (f !== 'handoff.md' && f !== 'journal.md' && Math.abs(now - statSync(join(dir, f)).mtimeMs) < ORPHAN_GRACE) { waiting = true; continue; }
     // A name no index line can point at (`lesson (1).md`): its line, read back,
     // named another file, and a new one was added on every pass.
     if ((`- [x](${f})`.match(POINTER) || [])[1] !== f) { odd.push(f); continue; }

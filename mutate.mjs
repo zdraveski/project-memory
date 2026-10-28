@@ -316,6 +316,7 @@ const suites = {
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
     "today's journal committed": ["`*/memory/journal/${today}.md`, ", ""],
+    'journal.md waits out the grace': ["f !== 'handoff.md' && f !== 'journal.md' && ", "f !== 'handoff.md' && "],
     'closed days never committed': ["'!*/memory/journal/*.md', ", ""],
     'a journal.mjs that cannot load stops the handoff': ["try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}", "sink = (await import(new URL('./journal.mjs', import.meta.url))).write;"],
     "a store linked outside the root ignored as a second path": ["      const twice = elsewhere.has(k); elsewhere.add(k); return twice;", "      return true;"],
@@ -534,7 +535,8 @@ const suites = {
   }],
   'journal.mjs': ['journal.test.mjs', {
     'journal.md not hot': ['tier: hot\\n---\\n\\nproject-memory', 'tier: warm\\n---\\n\\nproject-memory'],
-    'journal.md rewritten every record': ['|| (before != null && !(had > first))', ''],
+    'journal.md rewritten when it exists': ['if (raw(file) == null) replaceIfUnchanged(file, null,', 'replaceIfUnchanged(file, raw(file),'],
+    'a failed journal.md fails the record': ['  } catch {}\n}\n\nexport function days', '  } catch (e) { throw e; }\n}\n\nexport function days'],
     'journal ask not capped': ['clip(turn.ask, J_ASK)', 'clip(turn.ask, 9e9)'],
     'journal reply not capped': ['clip(turn.did, J_ANSWER)', 'clip(turn.did, 9e9)'],
     'journal files not capped': ['turn.changed.slice(-J_FILES)', 'turn.changed'],

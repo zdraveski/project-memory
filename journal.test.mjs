@@ -58,14 +58,15 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   ok(day('2026-10-27').includes('u-late') && !day().includes('u-late'), "an entry belongs to the day its turn started");
   ok(days(dir).join() === '2026-10-27,2026-10-28', `days lists the day files (got ${days(dir)})`);
   const jm = join(dir, 'journal.md'), text = () => readFileSync(jm, 'utf8');
-  ok(/^description: ".* since 2026-10-27, /m.test(text()) && /^  tier: hot$/m.test(text()), `journal.md is a hot note naming the first day (got ${text().split('\n')[2]})`);
-  const old = new Date(Date.now() - 3600e3); utimesSync(jm, old, old);
-  record(dir, T, [turn({ at: '2026-10-27 23:59', id: 'u-late' })]);
-  ok(Math.abs(statSync(jm).mtimeMs - old.getTime()) < 2000, 'journal.md is not rewritten by every record');
-  const mine = text().replace('since 2026-10-27', 'since 2000-01-01');
+  ok(text().includes('description: "Every exchange in this project, one file per day in journal/; search it before saying something was never done or decided"\n') && /^  tier: hot$/m.test(text()), 'journal.md is a hot note');
+  const mine = text().replace('Every exchange', 'My own words');
   writeFileSync(jm, mine);
-  record(dir, T, [turn({ at: '2026-10-27 23:59', id: 'u-late' })]);
-  ok(text() === mine, 'a journal.md that already starts earlier is left as it is');
+  record(dir, T, [turn({ at: '2026-10-26 23:59', id: 'u-older' })]);
+  ok(text() === mine, 'an existing journal.md is never rewritten, not even when an older day turns up');
+  // A journal.md that cannot be written costs the pin, not the entry.
+  const bad = storeFor(home, 'C:\\journal-nopin');
+  mkdirSync(join(bad, 'journal.md'), { recursive: true });
+  ok(record(bad, T, [turn()]) === 1 && readFileSync(dayFile(bad, '2026-10-28'), 'utf8').includes('a question'), 'a pin that fails does not fail the record');
 }
 {
   record(dir, T, [turn({ at: '2026-10-29 14:07', id: 'a' })]);

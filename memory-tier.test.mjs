@@ -495,9 +495,6 @@ ok(!tracked().some((f) => /\.tiered|\.health|\.lock|\.snapshot-health|\.stop-ran
 // young: under the orphan grace, a store whose index lacks its pointer was
 // never stamped, and every turn paid the full pass and a commit (audit, 2026-10-26).
 store('proj-four');
-// A journal.md the Stop itself just wrote is as young, and waits two minutes for its line.
-const jmd = join(root, 'proj-four', 'memory', 'journal.md');
-writeFileSync(jmd, '---\nname: journal\ndescription: "since 2000-01-01"\nmetadata:\n  tier: hot\n---\n'); utimesSync(jmd, tenMin, tenMin);
 writeFileSync(join(root, 'proj-four', 'session.jsonl'), [
   { type: 'user', message: { content: 'q1' }, timestamp: new Date().toISOString() },
   { type: 'assistant', message: { content: [{ type: 'text', text: 'a1' }] } },
@@ -505,6 +502,8 @@ writeFileSync(join(root, 'proj-four', 'session.jsonl'), [
 stop('proj-four');
 ok(existsSync(stamp('proj-four')) && /^- \[handoff\]\(handoff\.md\)/m.test(readFileSync(join(root, 'proj-four', 'memory', 'MEMORY.md'), 'utf8')),
   "a store whose index lacks the handoff's pointer gets it, hot, and is stamped in one Stop");
+ok(/^- \[journal\]\(journal\.md\)/m.test(readFileSync(join(root, 'proj-four', 'memory', 'MEMORY.md'), 'utf8')),
+  'journal.md, written by that same Stop, has its index line on the first pass, with no two-minute wait');
 // One store reached by two paths is one store: tiered once, committed once --
 // 186 files once became 372.
 mkdirSync(join(root, 'proj-link'));
@@ -965,7 +964,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 // A journal day is committed once it is over, never while it is today's.
 {
   const { local } = await import('./store.mjs');
-  const today = local().slice(0, 10), yesterday = local(Date.now() - 86400e3).slice(0, 10);
+  const today = local().slice(0, 10), yesterday = local(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - 1, 12)).slice(0, 10);   // noon: DST-safe
   const jd = join(root, 'proj-one', 'memory', 'journal'), rel = (d) => `proj-one/memory/journal/${d}.md`;
   mkdirSync(jd, { recursive: true });
   writeFileSync(join(jd, `${yesterday}.md`), `# Journal ${yesterday}\n`); writeFileSync(join(jd, `${today}.md`), `# Journal ${today}\n`);
