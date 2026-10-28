@@ -1,14 +1,14 @@
 // Self-check for journal.mjs: capped, redacted entries merged into one file
 // per day. Run: node journal.test.mjs
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, rmSync, statSync, utimesSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, storeFor, tool, slug } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep } = await import('./journal.mjs');
-const { local } = await import('./store.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill } = await import('./journal.mjs');
+const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
@@ -111,7 +111,7 @@ mkdirSync(proj, { recursive: true });
 const sid = (c) => `${c.repeat(8)}-0000-4000-8000-000000000000`;
 const tp = (id) => join(proj, `${id}.jsonl`);
 let uuid = 0;
-const rec = (type, id, ts, text) => JSON.stringify({ type, uuid: `${id.slice(0, 8)}-${++uuid}`, sessionId: id, cwd: scwd, gitBranch: 'feat/journal', timestamp: ts,
+const rec = (type, id, ts, text, cwd = scwd) => JSON.stringify({ type, uuid: `${id.slice(0, 8)}-${++uuid}`, sessionId: id, cwd, gitBranch: 'feat/journal', timestamp: ts,
   message: { role: type, content: type === 'user' ? text : [{ type: 'text', text }] } });
 const say = (id, ts, ask, reply) => appendFileSync(tp(id), [rec('user', id, ts, ask), ...(reply ? [rec('assistant', id, ts, reply)] : [])].join('\n') + '\n');
 const payload = (id, last) => JSON.stringify({ cwd: scwd, transcript_path: tp(id), session_id: id, hook_event_name: 'Stop', last_assistant_message: last });
@@ -176,6 +176,103 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
     ok(es.length === 10 && new Set(es.map((e) => e.key)).size === 10 && new Set(es.map((e) => e.asked)).size === 10,
       `parallel Stops lose no entry and write none twice (got ${es.length} for ${id.slice(0, 8)})`);
   }
+}
+
+// --- backfill: the conversations still on disk, a few a Stop -----------------
+const projects = join(home, '.claude', 'projects');
+const ago = (h) => (Date.now() - h * 3600e3) / 1000;   // utimes takes seconds
+// A conversation last written `h` hours ago, in Claude Code's folder for `cwd`.
+function old(cwd, id, h, asks) {
+  const p = join(projects, slug(cwd), `${id}.jsonl`);
+  mkdirSync(dirname(p), { recursive: true });
+  appendFileSync(p, asks.map((a, i) => [rec('user', id, `2026-09-01T10:0${i}:00Z`, a, cwd), rec('assistant', id, `2026-09-01T10:0${i}:30Z`, `${a}: done`, cwd)].join('\n')).join('\n') + '\n');
+  utimesSync(p, ago(h), ago(h));
+  return p;
+}
+// A repository (as storeOf finds one) and its store.
+const repo = (name) => {
+  const r = join(home, 'work', name), d = join(projects, slug(r), 'memory');
+  mkdirSync(join(r, '.git'), { recursive: true }); mkdirSync(d, { recursive: true });
+  return [r, d];
+};
+const asks = (d) => days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries).map((e) => e.asked).sort();
+const listed = (d) => readFileSync(join(d, 'journal', '.imported'), 'utf8').split('\n').filter(Boolean);
+const fill = (d, o) => withLock(d, () => backfill(d, o));
+{
+  const [r, d] = repo('bf');
+  const b = old(r, sid('b'), 40, ['b1']);
+  old(r, sid('a'), 50, ['a1', 'a2']); old(r, sid('c'), 30, ['c1']); old(join(r, 'web'), sid('e'), 20, ['e1']);
+  old(r, sid('f'), 0, ['f1']);
+  const one = fill(d, { budgetMs: 0 });
+  ok(one.imported === 1 && one.left === 3 && asks(d).join() === 'a1,a2', `out of time, a Stop still imports one conversation, the oldest (got ${JSON.stringify(one)}, ${asks(d)})`);
+  for (let i = 0; i < 5 && fill(d).left; i++);
+  ok(asks(d).join() === 'a1,a2,b1,c1,e1' && listed(d).length === 4,
+    `backfill imports old transcripts once: every quiet conversation, a subfolder's too, none still running, one line each (got ${asks(d)}; ${listed(d).length} lines)`);
+  // The listed ones are looked at again once in half an hour, by the list's age.
+  const due = () => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
+  const text = () => days(d).map((x) => readFileSync(dayFile(d, x), 'utf8')).join() + listed(d).join();
+  due();
+  const before = text(), again = fill(d);
+  ok(again.imported === 0 && again.left === 0 && text() === before, `one more Stop changes nothing (got ${JSON.stringify(again)})`);
+
+  // Grown since its import: read again once quiet, never while running, never
+  // for the Stop it is the transcript of, and not before the list is due.
+  appendFileSync(b, rec('user', sid('b'), '2026-09-02T10:00:00Z', 'b2', r) + '\n' + rec('assistant', sid('b'), '2026-09-02T10:00:30Z', 'b2: done', r) + '\n');
+  due();
+  ok(fill(d).imported === 0 && !asks(d).includes('b2'), 'a grown transcript still running is left to its own Stop');
+  utimesSync(b, ago(1), ago(1));
+  ok(fill(d).imported === 0 && !asks(d).includes('b2'), 'between looks, a listed transcript is not looked at');
+  due();
+  ok(fill(d, { skip: b }).imported === 0 && !asks(d).includes('b2'), "nor read again for the Stop it is the transcript of");
+  due();
+  const grown = fill(d);
+  ok(grown.imported === 1 && asks(d).includes('b2') && listed(d).length === 4 && listed(d).includes(`${slug(r)}/${sid('b')} ${statSync(b).size}`),
+    `quiet again, its new turns are journaled and its one line updated (got ${JSON.stringify(grown)}, ${listed(d)})`);
+}
+{
+  const [r, d] = repo('kill');
+  const ps = ['a', 'b', 'c', 'e'].map((c, i) => old(r, sid(c), 40 - i, [`k${c}`]));
+  mkdirSync(join(d, 'journal'));
+  writeFileSync(join(d, 'journal', '.imported'), `${slug(r)}/${sid('a')} ${statSync(ps[0]).size}\n`);
+  const got = fill(d);
+  ok(got.imported === 3 && asks(d).join() === 'kb,kc,ke' && listed(d).length === 4, `backfill resumes after a kill: only the other three are imported (got ${JSON.stringify(got)}, ${asks(d)})`);
+}
+{
+  const [r, d] = repo('hush');
+  old(r, sid('a'), 30, ['marked private']); old(r, sid('b'), 20, ['<private-session> from here on']); old(r, sid('c'), 10, ['an open one']);
+  writeFileSync(join(d, '.private-sessions'), `${sid('a').slice(0, 8)}\n`);
+  fill(d);
+  ok(asks(d).join() === 'an open one', `backfill skips a private conversation, in the list or marked in its transcript (got ${asks(d)})`);
+}
+{
+  const [r, d] = repo('mine');
+  old(r, sid('a'), 30, ['ours']);
+  // A folder named like a subfolder's, of a project beside this one; and one
+  // named like nothing of this project's.
+  const theirs = old(`${r}-other`, sid('b'), 20, ['theirs']);
+  old(join(home, 'work', 'far'), sid('c'), 10, ['far']);
+  fill(d);
+  ok(asks(d).join() === 'ours', `another store's transcript is never imported (got ${asks(d)})`);
+  ok(listed(d).length === 2 && listed(d).includes(`${slug(r)}-other/${sid('b')} ${statSync(theirs).size} other`),
+    `it is listed as another's, so no Stop opens it again, and no other project's folder is looked in (got ${listed(d)})`);
+}
+// The Stop, as Claude Code runs it, on a conversation with a 70 MB tool result.
+{
+  const [r, d] = repo('huge'), H = sid('h'), S = sid('s'), p = join(projects, slug(r), `${H}.jsonl`), ps = join(projects, slug(r), `${S}.jsonl`);
+  const [pre, post] = JSON.stringify({ type: 'user', uuid: 'h-big', sessionId: H, cwd: r, timestamp: '2026-09-03T10:01:00Z',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '@' }] } }).split('@');
+  writeFileSync(p, rec('user', H, '2026-09-03T10:00:00Z', 'before the flood', r) + '\n' + pre);
+  const mb = 'x'.repeat(1 << 20);
+  for (let i = 0; i < 70; i++) appendFileSync(p, mb);
+  appendFileSync(p, post + '\n' + rec('assistant', H, '2026-09-03T10:02:00Z', 'read it', r) + '\n'
+    + rec('user', H, '2026-09-03T10:03:00Z', 'after the flood', r) + '\n' + rec('assistant', H, '2026-09-03T10:03:30Z', 'calm', r) + '\n');
+  utimesSync(p, ago(2), ago(2));
+  writeFileSync(ps, rec('user', S, '2026-10-28T12:00:00Z', 'now', r) + '\n' + rec('assistant', S, '2026-10-28T12:00:30Z', 'ok', r) + '\n');
+  const t0 = Date.now();
+  const out = spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: r, transcript_path: ps, session_id: S, hook_event_name: 'Stop' }), encoding: 'utf8' });
+  const ms = Date.now() - t0, line = listed(d).find((l) => l.startsWith(`${slug(r)}/${H} `)) ?? '';
+  ok(ms < 3000 && out.stdout === '' && line.endsWith(' partial') && asks(d).includes('after the flood'),
+    `backfill keeps to its budget on a huge transcript: the Stop takes ${ms} ms, says nothing, reads the last 64 MB and journals the turns after the output (got ${line}; ${out.stdout})`);
 }
 
 console.log(`journal: ${checks} checks passed`);

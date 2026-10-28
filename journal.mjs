@@ -2,10 +2,10 @@
 // turn, kept apart from handoff.md so what was done last month is still
 // findable. Entries are capped and redacted here, the one place a turn's
 // files and commands (uncapped in turns()) are shortened.
-import { mkdirSync, readdirSync, openSync, readSync, closeSync, unlinkSync } from 'node:fs';
+import { mkdirSync, readdirSync, statSync, utimesSync, openSync, readSync, closeSync, unlinkSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
-import { clip, tag, PRIVATE, hash } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw, local } from './store.mjs';
+import { clip, tag, PRIVATE, hash, turns, readTail, hushed, ACTIVE } from './handoff-log.mjs';
+import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey } from './store.mjs';
 
 export const JOURNAL = 'journal';
 export const J_ASK = 2000;     // chars of what was asked
@@ -13,6 +13,12 @@ export const J_ANSWER = 3000;  // chars of the reply
 export const J_FILES = 20;     // files an entry names: the turn's last
 export const J_RAN = 10;       // commands an entry names: the turn's last
 export const J_CMD = 200;      // chars of one command
+// A Stop imports old conversations for this long, holding the store's lock,
+// then leaves the rest to the next: a month of them can be a gigabyte.
+export const IMPORT_BUDGET_MS = 150;
+// The most of one transcript an import reads, from its end: the lock is held
+// one transcript past the budget, and one tool result can be 70 MB.
+export const IMPORT_MAX_BYTES = 64 * 1024 * 1024;
 
 const MARK = /^<!-- j:(.+) t:(.*) d:(\d{4}-\d\d-\d\d) -->$/;
 const HEAD = /^## (\d\d:\d\d) · conversation (\S*?)(?: · branch (.*))?$/;
@@ -146,4 +152,79 @@ export function write(dir, transcriptPath, got, { quiet, hush }) {
   } catch (e) {
     try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(failed, raw(failed), JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\n')[0] })); } catch {}
   }
+}
+
+// What the backfill has read: `<folder>/<session> <bytes>`, one line a
+// transcript, ` partial` when only its tail was, ` other` when it is another
+// store's.
+const IMPORTED = '.imported';
+const LINE = /^(.+) (\d+)(?: \w+)?$/;
+function mark(dir, lines) {
+  const f = join(dir, JOURNAL, IMPORTED), ks = new Set(lines.map((l) => LINE.exec(l)[1]));
+  mkdirSync(join(dir, JOURNAL), { recursive: true });
+  for (let i = 0; i < 3; i++) {
+    const before = raw(f), kept = (before ?? '').split(/\r?\n/).filter((l) => l && !ks.has(LINE.exec(l)?.[1]));
+    if (replaceIfUnchanged(f, before, [...kept, ...lines].join('\n') + '\n') !== 'conflict') return;
+  }
+}
+
+// The transcripts a backfill would read, oldest first. Only in the store's own
+// folder and its subfolders' (`<folder>-*`): the head of every project's
+// transcripts, read every Stop, would be hundreds of reads. Only quiet ones: a
+// conversation still running is its own Stop's to journal, and its last reply
+// may not be in its transcript yet. One listed is read again once it grew
+// (turns a live write missed), looked at when `due` only.
+// shortcut: a worktree outside the repository's folder has another folder name
+// and is not backfilled (its live turns are still journaled); scan every
+// project folder's first cwd if one is ever missed.
+function candidates(dir, skip, due = true) {
+  const root = projectsRoot(), me = pathKey(basename(dirname(dir))), done = new Map();
+  for (const m of (raw(join(dir, JOURNAL, IMPORTED)) ?? '').split(/\r?\n/).map((l) => LINE.exec(l))) if (m) done.set(m[1], Number(m[2]));
+  const out = [];
+  let folders = []; try { folders = readdirSync(root).filter((f) => f !== '_shared' && (pathKey(f) === me || pathKey(f).startsWith(me + '-'))); } catch {}
+  for (const f of folders) {
+    let names = []; try { names = readdirSync(join(root, f)).filter((n) => n.endsWith('.jsonl')); } catch {}
+    for (const n of names) {
+      const p = join(root, f, n), k = `${f}/${n.slice(0, -6)}`;
+      // The list first: a known transcript costs no stat between looks, and no read of its head.
+      if ((done.has(k) && !due) || (typeof skip === 'string' && same(p, skip))) continue;
+      let st; try { st = statSync(p); } catch { continue; }
+      if (Date.now() - st.mtimeMs < ACTIVE || (done.has(k) && st.size <= done.get(k))) continue;
+      out.push({ p, k, size: st.size, m: st.mtimeMs, mine: same(storeOf({ transcript_path: p }), dir) });
+    }
+  }
+  return out.sort((a, b) => a.m - b.m);
+}
+
+// The conversations still on disk, into the journal: a new install starts with
+// the last month, not empty. Call under withLock(dir). Each is recorded before
+// it is listed, so a Stop killed between the two only reads it again (entries
+// go by key). `skip`: the Stop's own transcript.
+// shortcut: a <private-session> mark more than IMPORT_MAX_BYTES before a
+// transcript's end, typed before the plugin kept marks, is not seen; read the
+// rest of a partial transcript for it if that turns up.
+export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {}) {
+  const t0 = Date.now(), f = join(dir, JOURNAL, IMPORTED);
+  // The listed are looked at once in ACTIVE, by the list's age, not every
+  // Stop: a stat is ~70 µs on Windows, 5 ms a Stop for a month's 68 transcripts.
+  let due = true; try { due = t0 - statSync(f).mtimeMs >= ACTIVE; } catch {}
+  const all = candidates(dir, skip, due), todo = all.filter((c) => c.mine);
+  const other = all.filter((c) => !c.mine).map((c) => `${c.k} ${c.size} other`);
+  if (other.length) mark(dir, other);
+  let n = 0;
+  for (const [i, c] of todo.entries()) {
+    if (i && Date.now() - t0 >= budgetMs) break;
+    try {
+      let whole = true;
+      if (!hushed(dir, tag(basename(c.p, '.jsonl')))) {
+        const r = readTail(c.p, IMPORT_MAX_BYTES), got = turns(r.text);
+        if (!got.hush) record(dir, c.p, got);
+        whole = r.whole;
+      }
+      mark(dir, [`${c.k} ${c.size}${whole ? '' : ' partial'}`]);
+      n++;
+    } catch {}   // left for a later Stop: one transcript that won't read must not hold up the rest
+  }
+  if (due && n === todo.length) try { utimesSync(f, new Date(), new Date()); } catch {}
+  return { imported: n, left: todo.length - n };
 }

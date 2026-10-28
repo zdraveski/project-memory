@@ -543,6 +543,12 @@ if (stop) {
     try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
     try { if (payload) handoff(payload, sink); try { unlinkSync(failed); } catch {} }
     catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\n')[0] })); }
+    // Then a few of the conversations still on disk, into the journal, without
+    // a word; in a try of its own, so a failed import costs only the import.
+    try {
+      const { backfill, JOURNAL } = await import(new URL('./journal.mjs', import.meta.url)), d = payload && storeOf(payload);
+      if (d && (existsSync(join(d, JOURNAL)) || readdirSync(dirname(d)).some((f) => f.endsWith('.jsonl')))) withLock(d, () => backfill(d, { skip: payload.transcript_path }));
+    } catch {}
   } catch {}
   try {
     // Past the compaction trigger, the next prompt compacts: block this stop

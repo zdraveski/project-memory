@@ -30,7 +30,7 @@ const ASK = 240;          // chars kept of what was asked
 const DID = 400;          // chars kept of the answer
 const CHANGED = 8;        // files an entry names: the turn's last
 const TAIL = 512_000;     // first read; grown 4× until it reaches the latest prompt
-const ACTIVE = 30 * 60000;    // a transcript this recently changed: its session is still working
+export const ACTIVE = 30 * 60000;    // a transcript this recently changed: its session is still working
 export const GRACE = 60000;   // the Stop hook runs seconds after a turn ends
 const RECENT = 7 * 86400000;  // older than this, the startup line has nothing to say
 // What compact-gate's Stop nudge opens with. `asked()` skips it, and `turns()`
