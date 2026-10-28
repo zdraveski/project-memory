@@ -1109,5 +1109,18 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   ok(so6(below).a === 0 && so6(below).b === below.indexOf('<!-- auto:end -->'), 'a start marker quoted below the section does not start one');
 }
 
+// Round 6. A turn the user stopped with Escape is no turn still running.
+{
+  const { lastTurn: lt6 } = await import('./handoff-log.mjs');
+  const t7 = join(dir, 'r6-esc.jsonl');
+  const working = [user('refactor it', { ts: '2026-10-28T12:00:00Z' }),
+    rec('assistant', [{ type: 'tool_use', id: 'e1', name: 'Bash', input: {} }], { ts: '2026-10-28T12:00:10Z', message: { content: [{ type: 'tool_use', id: 'e1', name: 'Bash', input: {} }], stop_reason: 'tool_use', usage: { input_tokens: 9 } } })];
+  writeFileSync(t7, working.join('\n') + '\n');
+  ok(lt6(t7).open === true, 'a turn in its tools is open');
+  writeFileSync(t7, [...working, user('[Request interrupted by user for tool use]', { ts: '2026-10-28T12:00:20Z' })].join('\n') + '\n');
+  const e7 = lt6(t7);
+  ok(e7.open === false && Number.isNaN(e7.end), `a turn stopped with Escape is closed, and no Stop is owed for it (got ${JSON.stringify(e7)})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

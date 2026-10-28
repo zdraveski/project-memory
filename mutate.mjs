@@ -118,6 +118,8 @@ const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    "a turn stopped with Escape reads as working": ["    if (r.type === 'user' && /^\\s*\\[Request interrupted by user/.test(text(r))) { open = false; continue; }\n", ""],
+    "a turn stopped with Escape owes a Stop": ["/.test(text(r))) { open = false; continue; }", "/.test(text(r))) { open = false; end = Date.parse(r.timestamp); continue; }"],
     "a quoted start marker taken for the section": ["    if (!alone(doc, a, START)) continue;\n", ""],
     "a quoted end marker taken for the section": ["if (alone(doc, b, END)) return { a, b };", "return { a, b };"],
     "pass in prose taken for a key": ["|(?<![A-Za-z0-9])pass(?![a-z])(?=[A-Za-z0-9_]{0,40}[\"']?[ \\t]{0,20}=)|(?<=(?:^|\\n)[ \\t]{0,40}|[_.\"'{(\\[,-])pass(?![a-z]))", "|(?<![A-Za-z0-9])pass(?![a-z]))"],

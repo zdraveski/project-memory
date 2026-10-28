@@ -602,6 +602,10 @@ export function lastTurn(p) {
     // Not a slash command: a local one (/exit, /model) gets no reply, and the
     // turn it opened never closed.
     if (r.type === 'user' && !text(r).includes('<command-name>') && prompt(r, text(r).trim())) open = true;
+    // Stopped with Escape: closed, though no reply ended it. Not an end for
+    // stalled(): no Stop hook runs for it. Read as open, the startup said
+    // another session was working here for half an hour (audit, 2026-10-28).
+    if (r.type === 'user' && /^\s*\[Request interrupted by user/.test(text(r))) { open = false; continue; }
     if (r.type !== 'assistant' || !r.message?.usage) continue;
     known++;
     open = r.message.stop_reason !== 'end_turn';
