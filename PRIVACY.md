@@ -68,7 +68,7 @@ delete the hidden folder `.git` inside `~/.claude/projects`. To delete the
 record of where you left off, delete `handoff.md` in a project's `memory`
 folder.
 
-Before version 1.0.8, the history also kept versions of the record of where you
+Before version 1.1.0, the history also kept versions of the record of where you
 left off. If you used an earlier version, those older copies are still in the
 history: delete the `.git` folder as above to remove them. The next change to
 a note, or the next day, starts a new history of your notes.

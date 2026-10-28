@@ -222,7 +222,7 @@ gate();
 hdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
 ok(/cut mid-turn[^\n]*keep going\n  \*\*last said:\*\* \[private\]/.test(hdoc) && !/11223344/.test(hdoc), `the answer to a private message that is no ask is withheld (got ${hdoc})`);
 
-// 1.0.8. A slash command is the ask; a null block is skipped, not a throw that
+// 1.1.0. A slash command is the ask; a null block is skipped, not a throw that
 // let the compaction through with no note; a task's output path may hold a
 // space (a Windows user name); a turn of tool calls only says so.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');

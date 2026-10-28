@@ -158,7 +158,7 @@ ok(emptied.superseded === '' && emptied.tier === '' && emptied.type === 'project
 ok(front('---\nname: fmt\n---\nHow to retire a note:\n  superseded-by: new.md\n  tier: archive\n').tier === '', 'a body that quotes the format does not archive its note');
 ok(front('---\r\nname: crlf\r\ndescription: "quoted"\r\n---\r\n').desc === 'quoted' && front('\uFEFF---\nname: bom\n---\n').name === 'bom', 'CRLF and a BOM read the same');
 
-// 1.0.8. A pointer names a file in the store, by its name: a web link was a
+// 1.1.0. A pointer names a file in the store, by its name: a web link was a
 // memory with no file at every startup, and `../../big.bin` was read whole by
 // every Stop.
 const { POINTER } = await import('./store.mjs');

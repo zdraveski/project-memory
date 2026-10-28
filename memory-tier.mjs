@@ -419,7 +419,7 @@ function snapshot() {
         try { unlinkSync(join(root, '.git', 'index')); } catch {}
         try { git('reset', '-q'); } catch {}   // none before the first commit
         // Rebuilt from a commit that still tracks what is now ignored (a history
-        // from before 1.0.8 whose untracking never landed): untracked again, or
+        // from before 1.1.0 whose untracking never landed): untracked again, or
         // `add -A` updated it, handoff.md and all.
         try { unlinkSync(applied); } catch {}
       } else if (!/^error: open\("[^"]*"\): No such file or directory/.test(why)) throw e;

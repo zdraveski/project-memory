@@ -576,7 +576,7 @@ writeFileSync(join(root, 'proj-six', 'session.jsonl'), '');
 stop('proj-six');
 ok(Buffer.byteLength(readFileSync(join(six, 'MEMORY.md'), 'utf8')) > 3000, 'a project store keeps its own 7000 B budget');
 
-// 1.0.8. A web link in an index is prose, not a memory with no file; a name no
+// 1.1.0. A web link in an index is prose, not a memory with no file; a name no
 // index line can carry (`lesson (1).md`) is reported, not given a new line on
 // every pass.
 {
@@ -855,7 +855,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   }
 }
 // An index rebuilt from a commit that still tracks handoff.md (a history from
-// before 1.0.8 whose untracking never landed) does not commit it again.
+// before 1.1.0 whose untracking never landed) does not commit it again.
 {
   const was = [process.env.HOME, process.env.USERPROFILE];
   const h7 = tempDir('memtier-retrack-'), root7 = join(h7, '.claude', 'projects'), s7 = join(root7, 'C--rt', 'memory');

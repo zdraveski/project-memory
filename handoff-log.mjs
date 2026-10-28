@@ -36,7 +36,7 @@ const RECENT = 7 * 86400000;  // older than this, the startup line has nothing t
 // What compact-gate's Stop nudge opens with. `asked()` skips it, and `turns()`
 // freezes the turn's answer at it: the words written after it are the memory
 // update, not what the turn did. Named for the plugin: `[SYSTEM: ...]`, its
-// label before 1.0.8, read as text posing as Claude Code's own, and
+// label before 1.1.0, read as text posing as Claude Code's own, and
 // transcripts from then still carry it.
 export const NUDGE_TAG = '[project-memory: compaction gate]';
 const NUDGE_TAGS = [NUDGE_TAG, '[SYSTEM: compaction gate]'];

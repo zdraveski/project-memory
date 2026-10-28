@@ -619,7 +619,7 @@ const tc = join(dirI, 'c.jsonl');
 writeFileSync(tc, [user('crlf secret plan', { ts: '2026-10-27T12:30:00Z' }), asst('ok')].join('\n') + '\n');
 ok(handoff({ cwd: cwdI, transcript_path: tc, session_id: 'cccccccc-4' }) === 'private' && !/crlf secret/.test(idoc()), 'a mark saved CRLF still keeps its conversation out');
 
-// 40. What 1.0.8 fixed, each with the input that broke it.
+// 40. What 1.1.0 fixed, each with the input that broke it.
 {
 const { own, hushed } = await import('./handoff-log.mjs');
 const printOf = (cwd, session_id, source) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd, session_id, source }), env }).toString();
@@ -777,7 +777,7 @@ for (let i = 0; i < 60; i++) hushed(dirN, `s${String(i).padStart(7, '0')}`, true
 ok(hushed(dirN, 's0000000'), 'the private mark of a conversation 60 back still holds');
 }
 
-// Round 3 (2026-10-27): what four reviewers found in 1.0.8's first fixes.
+// Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.
 {
 const { hushed, defuse, redact: red, own } = await import('./handoff-log.mjs');
 const { local } = await import('./store.mjs');

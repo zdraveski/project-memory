@@ -1,11 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 "Cronos" (2026-10-28)
 
-Fixes from two four-way reviews before the directory listing. The first:
-hostile input, security and privacy, the docs against the code, and a new
-user's first week. The second: many windows and killed processes, upgrades and
-months of use, Claude Code's own documentation, and a privacy red team.
+Cronos is the hunt for bugs before the directory listing: about 200 were
+found and fixed. It began with two four-way reviews. The first: hostile input,
+security and privacy, the docs against the code, and a new user's first week.
+The second: many windows and killed processes, upgrades and months of use,
+Claude Code's own documentation, and a privacy red team. Then came eight hours
+of rounds, each from a new angle: real conversations replayed, random input,
+linked folders, crashes. A fresh reviewer checked every fix again.
 
 **Works the way Claude Code does**
 - A conversation started in a subfolder or a worktree of a git repository
@@ -209,7 +212,7 @@ months of use, Claude Code's own documentation, and a privacy red team.
 
 **Going back to 1.0.7**
 - It works, with two limits until newer exchanges replace the old ones: some
-  turns are listed twice, and 1.0.7 records secrets that 1.0.8 would replace
+  turns are listed twice, and 1.0.7 records secrets that 1.1.0 would replace
   with `[redacted]`. 1.0.7 also puts the record of where you left off back in
   the history.
 
