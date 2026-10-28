@@ -23,7 +23,13 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, pathKey, same, configDir, memoryOff } from './store.mjs';
 import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip } from './handoff-log.mjs';
-import { entries } from './journal.mjs';
+// Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
+// a copy without it) costs search the journal, said in its output, never doctor
+// or restore. Imported statically, deploy.mjs would not start without it
+// (handoff-log's deploy gate test, 2026-10-28).
+let entries;
+try { ({ entries } = await import('./journal.mjs')); }
+catch (e) { entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: String(e.message).split('\n')[0] }); return []; }; }
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
 

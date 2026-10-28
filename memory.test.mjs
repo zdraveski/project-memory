@@ -693,6 +693,20 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   ok(/^     Asked: paste the token \[redacted\] into the config$/m.test(r.stdout) && !r.stdout.includes(key), `a top hit printed whole is still redacted (got ${r.stdout})`);
   r = jcli('search', 'zzzqqq', '--since', '2026-10-10', '--until', '2026-10-20');
   ok(/^nothing matches "zzzqqq" in .+ since 2026-10-10 until 2026-10-20; --all searches every project$/m.test(r.stdout), `a ranged miss names its range (got ${r.stdout})`);
+  // A note's day is its modified: date; both bounds are inclusive for notes too.
+  for (const [name, at] of [['quokka-before', '2026-10-09'], ['quokka-since', '2026-10-10'], ['quokka-until', '2026-10-20'], ['quokka-after', '2026-10-21']]) memory(jd, name, 'a quokka note', 'body', `  modified: ${at}\n`);
+  r = jcli('search', 'quokka', '--since', '2026-10-10', '--until', '2026-10-20');
+  const quokkas = [...r.stdout.matchAll(/[\\/](quokka-\w+)\.md$/gm)].map((m) => m[1]).sort().join();
+  ok(quokkas === 'quokka-since,quokka-until', `a note dated on either bound is found, one a day outside is not (got ${quokkas})`);
+  // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
+  const nj = join(home, 'cli-nojournal');
+  mkdirSync(nj, { recursive: true });
+  for (const f of ['memory.mjs', 'store.mjs', 'handoff-log.mjs']) writeFileSync(join(nj, f), readFileSync(tool(f)));
+  writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
+  const njs = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'status', '--store', jd], { env, encoding: 'utf8' });
+  r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
+  ok(njs.status === 0 && r.status === 0 && /[\\/]deploy\.md$/m.test(r.stdout) && /^could not read journal\.mjs: /m.test(r.stdout),
+    `a journal.mjs that will not load: status runs, search finds notes and says the journal was not read (got ${njs.stderr}${r.stdout}${r.stderr})`);
   r = jcli('search', 'deploy', 'error', '--since=2026-10-10', '--until', '2026-10-20');
   const dates = [...r.stdout.matchAll(/^ *\d+  journal   (\d{4}-\d\d-\d\d)/gm)].map((m) => m[1]);
   ok(r.status === 0 && dates.join() === '2026-10-15,2026-10-15' && !/deploy\.md$/m.test(r.stdout), `--since/--until narrow by day, notes by their date too (got ${r.stdout})`);
