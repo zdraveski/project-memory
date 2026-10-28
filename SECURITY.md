@@ -1,9 +1,10 @@
 # Security
 
 project-memory runs only on your computer. It makes no internet connections,
-reads no credentials or settings file, and writes only inside Claude Code's
-own folder (`~/.claude/projects`). [PRIVACY.md](PRIVACY.md) says what it
-reads and saves.
+never opens a credentials or settings file, and writes only inside Claude
+Code's own folder (`~/.claude/projects`). It does read your conversations,
+which can hold secrets you pasted: [PRIVACY.md](PRIVACY.md) says what it
+reads and saves, and what it removes first.
 
 ## Reporting a problem
 

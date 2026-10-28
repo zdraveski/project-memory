@@ -43,6 +43,9 @@ All of it stays in `~/.claude/projects` on your computer:
   - Both tags work in any letter case, and in a message typed while Claude is
     still working. A later reply that repeats something private is saved like
     any other reply.
+  - The tags keep text out of project-memory's own files only. Claude still
+    sees it, Claude Code keeps it in its own conversation files, and a note
+    Claude writes about it is kept in the history like any other note.
 - When Claude Code shortens a nearly full conversation in the middle of a
   task, with no room to wait for the task's step to end, a note of what was in
   progress: your request, the start of Claude's last words, any background
@@ -64,27 +67,48 @@ own. The memory skill still reads or changes your notes when you ask it to.
 
 ## What it sends
 
-Nothing. project-memory makes no internet connections and has no server. The
-git repository it keeps has no remote and is never pushed. Claude reads your
-notes and the record of where you left off during your conversations, the same
-way it reads Claude Code's built-in memory, as part of your normal use of
-Claude.
+project-memory itself connects to nothing: it makes no internet connections
+and has no server, and the git repository it keeps has no remote and is never
+pushed.
+
+It does add a briefing to your conversations: when one starts, after
+`/clear` and after a compaction, up to 9,500 characters. The briefing can hold
+the start of recent messages and replies in this project, what other
+conversations open on this project were last asked, the shared notebook's
+table of contents, and problems to fix. A conversation marked
+`<private-session>` shows in other conversations' briefings only as working,
+without its messages. Claude reads the briefing and your notes like anything
+else in the conversation, so they go to Anthropic with it, as Claude Code's
+built-in memory does.
 
 ## How long it keeps it
 
-- The record of where you left off: until newer exchanges replace it.
-- Your notes: until you or Claude delete them.
+- The record of where you left off: until newer exchanges replace it. Lines
+  Claude writes in `handoff.md` outside the record: until Claude or you
+  change them.
+- The note of a task in progress: until Claude's next reply.
+- Your notes: until you or Claude delete them. A deleted note's old versions
+  stay in the history.
 - The history of your notes: until you delete it.
 
-Uninstalling the plugin leaves all of this in place. To delete the history,
-delete the hidden folder `.git` inside `~/.claude/projects`. To delete the
-record of where you left off, delete `handoff.md` in a project's `memory`
-folder.
+## Deleting it
 
-Before version 1.1.0, the history also kept versions of the record of where you
-left off. If you used an earlier version, those older copies are still in the
-history: delete the `.git` folder as above to remove them. The next change to
-a note, or the next day, starts a new history of your notes.
+Uninstalling the plugin leaves all of this in place. To delete:
+
+- the history: the hidden folder `.git` inside `~/.claude/projects`. That
+  removes the history of every project at once. While project-memory is on
+  and Git is installed, the next change to a note, or the next day, starts a
+  new one.
+- the record of where you left off: `handoff.md` in a project's `memory`
+  folder.
+- the bookkeeping files: in `~/.claude/projects`, `.gitignore`, `.stop-ran`,
+  `.snapshot-health`, any `.handoff-failed-…` file and the folder `.nudge`;
+  in each project's `memory` folder, `.tiered`, `.health` and
+  `.private-sessions`.
+
+Before version 1.1.0, the history also kept versions of the record of where
+you left off. If you used an earlier version, those older copies are still in
+the history: delete the `.git` folder as above to remove them.
 
 ## Children
 

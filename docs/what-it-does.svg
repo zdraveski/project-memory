@@ -8,7 +8,7 @@
   </defs>
   <rect width="1200" height="780" rx="28" fill="url(#bg)"/>
   <text x="60" y="96" font-size="40" font-weight="700" fill="#F4F1EA">What project-memory does for you</text>
-  <text x="60" y="138" font-size="24" fill="#9EA5C2">It works on its own after every reply. Nothing leaves your computer.</text>
+  <text x="60" y="138" font-size="24" fill="#9EA5C2">It works on its own after every reply, and it never goes online.</text>
 
   <!-- Picks up where you left off -->
   <rect x="60" y="180" width="520" height="270" rx="20" fill="#1D2240" stroke="#323858" stroke-width="2"/>

@@ -6,7 +6,8 @@ to use the plugin.
 
 ## When it runs
 
-Claude Code runs project-memory at three moments, and gives Claude one skill.
+Claude Code runs project-memory on three of its events, declared in
+`hooks/hooks.json`, and gives Claude one skill, `skills/memory/SKILL.md`.
 
 | Moment | Claude Code event | What runs |
 |---|---|---|
@@ -176,6 +177,7 @@ files changed in that turn. A message that contains `<private-session>`, a
 slash command's arguments included, marks its whole conversation: its entries
 are removed from `handoff.md`, later turns write none, the compaction gate
 writes no recovery note for it, and Claude gets no reminder to write notes.
+Other conversations' briefings name it as working, without its messages.
 Both tags are read in any case, with spaces or attributes, self-closed,
 fullwidth, with hidden zero-width characters, and as `private_session`; in a
 message typed while Claude works (a queued record); and inside another tag.
@@ -266,11 +268,11 @@ never fires.
 ## Snapshots
 
 After each reply that changed a note, the Stop hook commits the notes to a git
-repository at `~/.claude/projects`. The repository ignores everything except
-`*/memory/*.md`, and `handoff.md` too: transcripts and the record of the
-latest exchanges are never committed. It has no remote and is never pushed.
-It sets the git settings that broke snapshots, whatever yours say: no hooks of
-yours run on it, commits aren't signed, line endings are kept exactly as
+repository at `~/.claude/projects`. It commits only `*/memory/*.md`, never
+`handoff.md`: transcripts and the record of the latest exchanges are never
+committed. It has no remote and is never pushed. It overrides the git
+settings that would break snapshots, whatever yours say: no hooks of yours run
+on it, commits aren't signed, line endings are kept exactly as
 written, and long paths work on Windows. Your other git settings still apply.
 A damaged index (git's working copy of the last snapshot, after a crash or a
 full disk) is rebuilt from that snapshot; no note is touched. If
@@ -366,10 +368,10 @@ Every command works on the project of the conversation that `--session <id>`
 names (the skill passes Claude Code's session id). Without it, or when that
 conversation's transcript isn't found, it works on the nearest project with
 a notebook, from the folder you're in upward. The tool reads no environment
-variable to find the conversation. `--store <folder>` picks another project's `memory`
-folder, one inside `~/.claude/projects` (any other is refused), and `--shared`
-picks the shared notebook. With no command, it runs `status`. The tool exits
-with 1 when a command is refused or fails.
+variable to find the conversation. `--store <folder>` picks another
+project's `memory` folder, one inside `~/.claude/projects` (any other is
+refused), and `--shared` picks the shared notebook. With no command, it runs
+`status`. The tool exits with 1 when a command is refused or fails.
 
 `restore` and `promote` take a note's name as the disk resolves it: on Windows
 and on macOS by default in any letter case (on Windows, a short name such as

@@ -22,8 +22,10 @@ Beyond the suites:
 
 - `node mutate.mjs [text]` breaks one rule at a time and expects a suite to
   fail: all mutants, or those whose label contains the text. Every mutant
-  must be killed. A change to a line a mutant targets needs the mutant
-  updated too. The full run takes several minutes.
+  must be killed. The mutants are in `mutate.mjs`, grouped by source file
+  with the suite that must catch them; each is a label and a pair, the text
+  to find and what to put in its place. A change to a line a mutant targets
+  needs the mutant updated too. The full run takes several minutes.
 - `node memory-tier.soak.mjs [store]` copies a store (by default the largest
   on the machine) to a temp folder, then simulates a month of new notes and
   sessions ending at the same moment.
@@ -31,6 +33,10 @@ Beyond the suites:
   and checks that no line is lost.
 - `node bench.mjs [runs]` times each hook on copies of the machine's largest
   transcript and store.
+
+The soak, the break harness and the benchmark read your real notes and
+transcripts only to copy them into a temp folder, and delete the copies when
+they finish.
 
 ## Changing the code
 
@@ -47,10 +53,20 @@ Beyond the suites:
   plugin directory's security scan holds a plugin that does, and it reads
   every file, tests included.
 
+## Sending a change
+
+Open a pull request against `master`. Run the five suites first, and
+`node mutate.mjs` if you changed a rule; CI runs the suites on every platform.
+Leave the version number alone, and describe the change under an
+`## Unreleased` heading at the top of `CHANGELOG.md` (add the heading if it
+isn't there), in plain words for someone who uses the plugin.
+
 ## Releasing
 
-1. Bump `version` in `.claude-plugin/plugin.json` and add the entry to
-   `CHANGELOG.md`.
+The maintainer's steps:
+
+1. Bump `version` in `.claude-plugin/plugin.json`, and turn `## Unreleased`
+   in `CHANGELOG.md` into the version's heading.
 2. Run `claude plugin validate . --strict`. It should find nothing to report.
 3. Push to `master` and wait for CI to pass on every job.
 4. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release.
