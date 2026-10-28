@@ -2,7 +2,7 @@
 // the tiering rules that would silently lose or duplicate a pointer. Part two
 // builds a throwaway HOME with two stores and breaks the git snapshot path and
 // the --stop gate. Run: node memory-tier.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, unlinkSync, utimesSync, rmdirSync, renameSync, symlinkSync, openSync, closeSync, copyFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, unlinkSync, utimesSync, rmdirSync, renameSync, symlinkSync, openSync, closeSync, copyFileSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
@@ -827,6 +827,56 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   } finally { process.env.HOME = was[0]; process.env.USERPROFILE = was[1]; }
   const has5 = spawnSync('git', ['-C', root5, 'cat-file', '-e', 'HEAD:C--idx/memory/b.md']).status === 0;
   ok(/memory snapshot: committed/.test(out5) && has5, `a damaged index is rebuilt and the snapshot goes on (got ${out5})`);
+}
+
+// Round 5. Two notes NTFS keeps apart (the Kelvin sign and k) are two notes:
+// each keeps its own line.
+{
+  const d6 = tempDir('memtier-kelvin-'), K = String.fromCharCode(0x212A);
+  const t6 = new Date(Date.now() - 10 * 60000);
+  for (const n of [`${K}elvin-units`, 'kelvin-units']) {
+    writeFileSync(join(d6, `${n}.md`), `---\nname: x\ndescription: "units"\nmetadata:\n  type: feedback\n---\n\nbody\n`);
+    utimesSync(join(d6, `${n}.md`), t6, t6);
+  }
+  const both = readdirSync(d6).length === 2;
+  writeFileSync(join(d6, 'MEMORY.md'), `- [Kelvin sign](${K}elvin-units.md) — LINE-ONE\n- [Kelvin](kelvin-units.md) — LINE-TWO\n`);
+  execFileSync(process.execPath, [TOOL, '--dir', d6], { encoding: 'utf8' });
+  const m6 = readFileSync(join(d6, 'MEMORY.md'), 'utf8');
+  ok(!both || (/LINE-ONE/.test(m6) && /LINE-TWO/.test(m6)), `two notes the disk keeps apart keep a line each (got ${m6})`);
+  // And a line naming one that is not there is no line for the other.
+  const d7 = tempDir('memtier-kelvin2-');
+  writeFileSync(join(d7, 'kelvin-units.md'), `---\nname: x\ndescription: "units"\nmetadata:\n  type: feedback\n---\n\nbody\n`);
+  utimesSync(join(d7, 'kelvin-units.md'), t6, t6);
+  if (!existsSync(join(d7, `${K}elvin-units.md`))) {
+    writeFileSync(join(d7, 'MEMORY.md'), `- [Kelvin sign](${K}elvin-units.md) — gone\n`);
+    execFileSync(process.execPath, [TOOL, '--dir', d7], { encoding: 'utf8' });
+    const all7 = readFileSync(join(d7, 'MEMORY.md'), 'utf8') + (existsSync(join(d7, 'MEMORY-archive.md')) ? readFileSync(join(d7, 'MEMORY-archive.md'), 'utf8') : '');
+    ok(/\]\(kelvin-units\.md\)/.test(all7), `a line naming a note that is not there is not taken for another's (got ${all7})`);
+  }
+}
+// An index rebuilt from a commit that still tracks handoff.md (a history from
+// before 1.0.8 whose untracking never landed) does not commit it again.
+{
+  const was = [process.env.HOME, process.env.USERPROFILE];
+  const h7 = tempDir('memtier-retrack-'), root7 = join(h7, '.claude', 'projects'), s7 = join(root7, 'C--rt', 'memory');
+  mkdirSync(s7, { recursive: true });
+  const t7 = new Date(Date.now() - 10 * 60000);
+  writeFileSync(join(s7, 'a.md'), '---\nname: a\ndescription: "a"\nmetadata:\n  type: project\n---\n\nbody\n'); utimesSync(join(s7, 'a.md'), t7, t7);
+  writeFileSync(join(s7, 'MEMORY.md'), '- [A](a.md) — a\n');
+  writeFileSync(join(s7, 'handoff.md'), '---\nname: handoff\n---\nold exchanges\n');
+  const g7 = (...a) => spawnSync('git', ['-C', root7, '-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { encoding: 'utf8' });
+  process.env.HOME = h7; process.env.USERPROFILE = h7;
+  try {
+    spawnSync(process.execPath, [TOOL], { encoding: 'utf8' });
+    g7('add', '-f', 'C--rt/memory/handoff.md'); g7('commit', '-qm', 'as an old version left it');
+    writeFileSync(join(root7, '.git', 'index'), 'damaged');
+    writeFileSync(join(s7, 'handoff.md'), '---\nname: handoff\n---\nLATEST EXCHANGE\n');
+    writeFileSync(join(s7, 'b.md'), '---\nname: b\ndescription: "b"\nmetadata:\n  type: project\n---\n\nbody\n'); utimesSync(join(s7, 'b.md'), t7, t7);
+    writeFileSync(join(s7, 'MEMORY.md'), '- [A](a.md) — a\n- [B](b.md) — b\n');
+    spawnSync(process.execPath, [TOOL], { encoding: 'utf8' });
+  } finally { process.env.HOME = was[0]; process.env.USERPROFILE = was[1]; }
+  const head7 = g7('cat-file', '-p', 'HEAD:C--rt/memory/handoff.md');
+  ok(head7.status !== 0 && g7('cat-file', '-e', 'HEAD:C--rt/memory/b.md').status === 0, `a rebuilt index untracks handoff.md again (got ${JSON.stringify(head7.stdout)})`);
 }
 
 rmSync(home, { recursive: true, force: true });

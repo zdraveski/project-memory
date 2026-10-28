@@ -688,7 +688,10 @@ const SAY = 9500;
 export const fit = (s, line = Infinity) => {
   // Redacted whole: the shared index and the health lines are printed in
   // every session too, and a key written into one was printed as it was.
-  const d = defuse(redact(s)).split('\n').map((l) => (l.length <= line ? l : `${l.slice(0, /[\uD800-\uDBFF]/.test(l[line - 1]) ? line - 1 : line)}…`)).join('\n');
+  // Line by line, each line being its own: an unclosed <private> runs to the
+  // end of what it is given, and one shared lesson about the tags hid every
+  // lesson after it.
+  const d = defuse(s.split('\n').map(redact).join('\n')).split('\n').map((l) => (l.length <= line ? l : `${l.slice(0, /[\uD800-\uDBFF]/.test(l[line - 1]) ? line - 1 : line)}…`)).join('\n');
   return d.length <= SAY ? d : `${d.slice(0, SAY - 60).replace(/[^\n]*$/, '')}(the rest cut to fit Claude Code's startup limit)\n`;
 };
 

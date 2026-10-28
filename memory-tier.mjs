@@ -150,9 +150,20 @@ function tier(dir, now) {
   // where the first was: Claude appends an updated line below the old one, and
   // keeping the first threw the update away, in no file and no snapshot (the
   // old one is in the history). An index line beats an archived one.
-  // By the name the disk goes by: on Windows (Kase.md) is kase.md's line, and
-  // read as no line for it, kase.md got a second, machine-written one.
-  const key = (t) => (process.platform === 'win32' ? t.toLowerCase() : t);
+  // By the file the disk opens: on Windows and macOS (Kase.md) is kase.md's
+  // line, and read as no line for it, kase.md got a second, machine-written
+  // one. A name the folder lists is itself; another is the listed name it
+  // folds to only when it opens that very file: NTFS keeps the Kelvin sign
+  // and k apart, and a plain fold let one note's line replace another's.
+  let listed = []; try { listed = readdirSync(dir); } catch {}
+  const names = new Set(listed);
+  const id = (t) => { const s = statSync(join(dir, t), { bigint: true }); return `${s.dev}:${s.ino}`; };
+  const key = (t) => {
+    if (names.has(t)) return t;
+    const l = t.toLowerCase();
+    for (const n of listed) if (n.toLowerCase() === l) { try { if (id(t) === id(n)) return n; } catch {} }
+    return t;
+  };
   const placed = new Map();
   const place = (p, where, inIndex = false) => {
     const was = placed.get(key(p.target));
@@ -394,6 +405,10 @@ function snapshot() {
       if (/index file (?:smaller than expected|corrupt)|bad (?:signature|index file)/.test(why)) {
         try { unlinkSync(join(root, '.git', 'index')); } catch {}
         try { git('reset', '-q'); } catch {}   // none before the first commit
+        // Rebuilt from a commit that still tracks what is now ignored (a history
+        // from before 1.0.8 whose untracking never landed): untracked again, or
+        // `add -A` updated it, handoff.md and all.
+        try { unlinkSync(applied); } catch {}
       } else if (!/^error: open\("[^"]*"\): No such file or directory/.test(why)) throw e;
       stage();
     }

@@ -1066,5 +1066,17 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   } finally { if (was9 === null) rmSync(idx9, { force: true }); else writeFileSync(idx9, was9); }
 }
 
+// Round 5. A shared lesson about the private tags hides only its own line's
+// tail, never the lessons after it.
+{
+  const idx5 = join(sharedDir, 'MEMORY.md'), was5 = existsSync(idx5) ? readFileSync(idx5, 'utf8') : null;
+  mkdirSync(sharedDir, { recursive: true });
+  writeFileSync(idx5, '- [Private tags](private-tags.md) — wrap a one-off secret in <private> tags\n- [Git on Windows](git-win.md) — core.longpaths\n- [Node versions](node.md) — use 20 or 24\n');
+  try {
+    const out5 = printX('startup');
+    ok(/Git on Windows/.test(out5) && /Node versions/.test(out5) && /\[Private tags\]\(private-tags\.md\)/.test(out5), `one <private> mention in the shared index hides no other lesson (got ${out5})`);
+  } finally { if (was5 === null) rmSync(idx5, { force: true }); else writeFileSync(idx5, was5); }
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
