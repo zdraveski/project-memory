@@ -382,10 +382,17 @@ export const parse = (section) => [...section.matchAll(ENTRY)].map((m) => ({ at:
 // pair with the next run's END; taking the last END let one quoted below the
 // section pair with the real START. Either way, everything hand-written
 // between them was replaced.
+// And a marker counts only on a line of its own, as this file writes it: one
+// quoted in a sentence below the section was taken for it, the next Stop
+// wrote into that sentence, and the real section went stale (audit, 2026-10-28).
+const alone = (doc, i, mark) => {
+  const end = doc.indexOf('\n', i);
+  return /^[ \t]*$/.test(doc.slice(doc.lastIndexOf('\n', i - 1) + 1, i)) && /^[ \t]*\r?$/.test(doc.slice(i + mark.length, end === -1 ? doc.length : end));
+};
 export const sectionOf = (doc) => {
   for (let a = doc.lastIndexOf(START); a !== -1; a = a ? doc.lastIndexOf(START, a - 1) : -1) {
-    const b = doc.indexOf(END, a);
-    if (b !== -1) return { a, b };
+    if (!alone(doc, a, START)) continue;
+    for (let b = doc.indexOf(END, a); b !== -1; b = doc.indexOf(END, b + 1)) if (alone(doc, b, END)) return { a, b };
   }
   return { a: -1, b: -1 };
 };

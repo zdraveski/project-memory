@@ -1089,5 +1089,25 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
     ok(!red5(key).includes(v5), `a pass key is redacted: ${JSON.stringify(key.replace(v5, 'V'))} (got ${JSON.stringify(red5(key).replace(v5, 'V'))})`);
 }
 
+// Round 6. Markers quoted in a sentence below the section are text, not the
+// section: the next Stop writes into the real one, and the sentence stays.
+{
+  const cw6 = 'C:\\r6-markers', d6 = storeFor(home, cw6), t6 = join(d6, 'r6m.jsonl');
+  mkdirSync(d6, { recursive: true });
+  const note6 = 'Note: everything between `<!-- auto:start -->` and `<!-- auto:end -->` is rewritten after every reply.';
+  writeFileSync(join(d6, 'handoff.md'), `---\nname: handoff\n---\n\n## Last 10 exchanges\n\n<!-- auto:start -->\n<!-- auto:end -->\n\n${note6}\n`);
+  writeFileSync(t6, [user('ship it', { ts: '2026-10-28T11:00:00Z' }), asst('Shipped.', { ts: '2026-10-28T11:00:30Z' })].join('\n') + '\n');
+  handoff({ session_id: 'r6mk-0001', transcript_path: t6, cwd: cw6 });
+  const h6 = readFileSync(join(d6, 'handoff.md'), 'utf8');
+  ok(h6.includes(note6) && /<!-- auto:start -->\n_Written[^\n]*\n\n- \*\*asked\*\*[^\n]*ship it\n[^\n]*Shipped\.\n<!-- auto:end -->\n\nNote:/.test(h6), `markers quoted in a sentence are not the section (got ${h6})`);
+  // Each check on its own: an end marker quoted inside the section, and a start
+  // marker quoted below it before a stray end line an older write left.
+  const { sectionOf: so6 } = await import('./handoff-log.mjs');
+  const inner = 'x\n<!-- auto:start -->\nkept `<!-- auto:end -->` inside\n- e\n<!-- auto:end -->\ntail\n';
+  ok(so6(inner).b === inner.lastIndexOf('<!-- auto:end -->'), 'an end marker quoted inside the section does not end it');
+  const below = '<!-- auto:start -->\n- e\n<!-- auto:end -->\nsee `<!-- auto:start -->` above\n<!-- auto:end -->\n';
+  ok(so6(below).a === 0 && so6(below).b === below.indexOf('<!-- auto:end -->'), 'a start marker quoted below the section does not start one');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

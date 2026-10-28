@@ -118,6 +118,8 @@ const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    "a quoted start marker taken for the section": ["    if (!alone(doc, a, START)) continue;\n", ""],
+    "a quoted end marker taken for the section": ["if (alone(doc, b, END)) return { a, b };", "return { a, b };"],
     "pass in prose taken for a key": ["|(?<![A-Za-z0-9])pass(?![a-z])(?=[A-Za-z0-9_]{0,40}[\"']?[ \\t]{0,20}=)|(?<=(?:^|\\n)[ \\t]{0,40}|[_.\"'{(\\[,-])pass(?![a-z]))", "|(?<![A-Za-z0-9])pass(?![a-z]))"],
     "a pass key starting a line kept": ["|(?<=(?:^|\\n)[ \\t]{0,40}|[_.\"'{(\\[,-])pass(?![a-z]))", "|(?<=[_.\"'{(\\[,-])pass(?![a-z]))"],
     "one private mention wipes the briefing after it": ["defuse(s.split('\\n').map(redact).join('\\n'))", "defuse(redact(s))"],
@@ -237,7 +239,7 @@ const suites = {
     'the key ignores the session': ['const key = (t) => `${t.s} ${bare(t)}`;', 'const key = (t) => bare(t);'],
     'an untagged entry kept beside its tagged re-sighting': [" && !(t.s === '' && seenBare.has(bare(t)))", ''],
     'first start marker, not last': ['for (let a = doc.lastIndexOf(START);', 'for (let a = doc.indexOf(START);'],
-    'the last end marker, not the first after the start': ['const b = doc.indexOf(END, a);', 'const b = doc.lastIndexOf(END);'],
+    "the last end marker, not the first after the start": ["for (let b = doc.indexOf(END, a); b !== -1; b = doc.indexOf(END, b + 1))", "for (let b = doc.lastIndexOf(END); b !== -1; b = -1)"],
     "interrupts count as asks": [" && !o.startsWith('[Request interrupted')", ""],
     'no cap at TURNS': ['.slice(-TURNS)', ''],
     "rewrite even when unchanged": ["if (!notes && have.map(show).join('\\n') === core) return 'unchanged';", ""],
