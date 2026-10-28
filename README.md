@@ -34,12 +34,12 @@ Claude Code keeps a notebook for each project (it calls this *auto memory*),
 where Claude writes down your preferences, decisions and corrections.
 project-memory looks after that notebook.
 
-![What project-memory does for you: it picks up where you left off, never loses a note, keeps long tasks on track, and shares what you teach it with all your projects. It works on its own after every reply, and nothing leaves your computer.](docs/what-it-does.svg)
+![What project-memory does for you: it picks up where you left off, keeps old versions of your notes (needs Git), keeps long tasks on track, and shares what you teach it with all your projects. It works on its own after every reply, and nothing leaves your computer.](docs/what-it-does.svg)
 
 | Without project-memory | With project-memory |
 |---|---|
 | You start a new conversation and explain again where you were. | Claude starts already knowing where the last conversation stopped. |
-| When the notebook's table of contents gets too long, Claude Code asks Claude to shorten it, and Claude decides what to merge or drop. | The table of contents is kept short for Claude, and nothing is dropped. Older lines move to an archive that Claude can still search. |
+| When the notebook's table of contents gets too long, Claude Code asks Claude to shorten it, and Claude decides what to merge or drop. | The table of contents is kept short for Claude, and no note is dropped. Older lines move to an archive that Claude can still search. |
 | A very long conversation is shortened to a summary, and details of the task in progress can get lost. | Claude saves its notes before that happens, and afterwards it's told what you asked and what it last said. |
 | A note deleted or overwritten by mistake is gone for good. | After each reply that changed a note, the note is saved to a history on your computer. Ask Claude, and it brings an old version back. |
 | You teach Claude how you like to work again in every project. | Lessons that apply everywhere are shared with all your projects. |
@@ -106,10 +106,13 @@ project-memory protects your work before, during and after:
    made. When you type `/compact` yourself, the notes are tidied and the
    record of where you are is saved first.
 2. **During.** If Claude Code starts to compact in the middle of a task,
-   project-memory writes down what Claude is in the middle of. It can also ask
-   Claude Code to wait until Claude finishes the step it's on, but only when
-   there's room to wait: with Claude Code's usual settings, a conversation is
-   compacted when it's nearly full, and there's none. To give it room, see
+   project-memory asks it to wait until Claude finishes the step it's on, as
+   long as the conversation holds more than 200,000 tokens (a token is about
+   three quarters of a word) and less than 90% of what the model can hold.
+   Past 90% there may be no room for one more step, so the compaction goes
+   ahead, and project-memory first writes down what Claude is in the middle
+   of. With Claude Code's usual settings, a conversation is compacted only
+   when it's nearly full, so there's no room to wait. To give it room, see
    [Compaction](docs/how-it-works.md#compaction). Claude Code doesn't always
    agree to wait.
 3. **After.** If a task is cut off anyway, Claude is told straight away what it
@@ -119,8 +122,12 @@ project-memory protects your work before, during and after:
 Long tasks keep their thread, you don't have to explain things again after a
 summary, and Claude is less likely to redo work it had already started.
 
-The reminder at 85% assumes a context window of 1,000,000 tokens (a token is
-about three quarters of a word), unless your environment sets a smaller one.
+The reminder at 85% assumes a context window of 1,000,000 tokens, unless your
+environment sets a smaller one. On a model with a 200,000-token window, the
+"During" step does nothing, since the conversation never passes 200,000
+tokens, and the reminder never comes unless you set
+`CLAUDE_CODE_DISABLE_1M_CONTEXT=1` or `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200k`
+(ask Claude to add one of them under `env` in your Claude Code settings).
 A size you chose with `/autocompact` is kept in your settings, which
 project-memory doesn't read, so the reminder needs one more setting to match
 it. See [Compaction](docs/how-it-works.md#compaction).
@@ -128,13 +135,15 @@ it. See [Compaction](docs/how-it-works.md#compaction).
 ## Good to know
 
 - **Your existing notes.** The first time it runs, project-memory may move
-  older lines from the table of contents to the archive. Nothing is deleted,
-  Claude can still find those notes, and the history keeps the table of
-  contents as it was.
+  older lines from the table of contents to the archive. No note is deleted,
+  Claude can still find those notes, and if Git is installed, the first copy
+  in the history keeps the table of contents as it was.
 - **What it costs.** Each conversation starts with a short briefing, usually
   under 1,000 tokens: about half a percent of a 200,000-token context window.
   In return, the table of contents Claude reads at every start stays under
-  7 KB, where Claude Code reads up to 25 KB or 200 lines. After a compaction
+  7 KB and 200 lines, where Claude Code reads up to 25 KB or 200 lines. Only
+  notes you marked to stay (`tier: hot`) are never moved out, so they alone
+  can take it past that, and past 7 KB the briefing says so. After a compaction
   the briefing also repeats the latest exchanges, but it stays under 9,500
   characters, about 2,500 tokens.
 - **Where it works.** On Windows, macOS and Linux, wherever Claude Code runs on
@@ -144,7 +153,8 @@ it. See [Compaction](docs/how-it-works.md#compaction).
 - **Repositories.** A conversation started in a subfolder or a worktree of a
   git repository uses that repository's notebook, as Claude Code does.
 - **If you turn off auto memory.** While `CLAUDE_CODE_DISABLE_AUTO_MEMORY` is
-  set, project-memory does nothing. If you turn auto memory off with `/memory`
+  set to `1` (or `true`), project-memory does nothing on its own; only the
+  memory skill still works when you ask for it. If you turn auto memory off with `/memory`
   instead, project-memory can't see that, because it doesn't read your
   settings: [turn it off](#turning-it-off-or-removing-it) as well.
 - **Your own files.** project-memory only writes inside Claude Code's own
@@ -330,7 +340,10 @@ To remove it, type this in Claude Code:
 
 Your notes stay where they are, and Claude Code keeps using them. To delete
 the history of your notes as well, delete the hidden folder `.git` inside
-`.claude/projects` in your home folder.
+`.claude/projects` in your home folder. A few small files project-memory kept
+for itself stay too, and you can delete them: in `.claude/projects`,
+`.gitignore`, `.stop-ran`, `.snapshot-health` and the folder `.nudge`; in each
+project's `memory` folder, `.tiered`, `.health` and `.private-sessions`.
 
 ## How it compares
 
@@ -411,8 +424,10 @@ Two more are worth knowing about:
 - **Record of where you left off**: the file `handoff.md` in each notebook. It
   holds the start of your latest messages and Claude's replies, and the files
   Claude changed, so the next conversation can pick up from there.
-- **Shared notebook**: notes that apply to all your projects. Every
-  conversation, in every project, reads its table of contents.
+- **Shared notebook**: notes that apply to all your projects. In every
+  project, Claude is shown its table of contents when a conversation starts,
+  after `/clear` and after a compaction. A conversation you resume already
+  has it from when it began.
 - **History**: your notes as they were after each reply that changed them,
   kept with Git on your computer, so an old version can be brought back.
 - **Project**: the folder you open Claude Code in.

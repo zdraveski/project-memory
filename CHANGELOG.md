@@ -25,9 +25,13 @@ months of use, Claude Code's own documentation, and a privacy red team.
 - Finished background tasks leave the "still running" list. Claude Code now
   reports a task's end in a record the list never read, so after a
   compaction Claude was told not to rerun tasks that had already finished.
+- The briefing after a compaction stays within the 10,000 characters Claude
+  Code passes on whole, so the shared notes at its end are no longer cut off.
 - The startup briefing also stays within the 10,000 characters Claude Code
   passes on whole. `doctor` understands an install from claude.ai.
-
+- The table of contents is held to 200 lines as well as 7,000 bytes, since
+  Claude Code loads only its first 200 lines. Many short lines used to pass
+  that while under the byte limit.
 
 **Privacy**
 - The history of your notes no longer keeps the record of your latest
@@ -63,6 +67,9 @@ months of use, Claude Code's own documentation, and a privacy red team.
   "task" with its own instructions to that note.
 - An entry from before 1.0.5 whose question was private loses its saved
   answer too.
+- Everything the startup briefing and the note after a compaction print is
+  checked for secrets, the shared table of contents and the health lines
+  included. A key written into one of those was printed as it was.
 
 **Safety**
 - Text from an earlier conversation can no longer pose as Claude Code's own
@@ -76,6 +83,10 @@ months of use, Claude Code's own documentation, and a privacy red team.
   it alone, its lock included, instead of committing into it.
 - `<private>` works in capitals and with attributes too.
 - An index line can no longer point outside its notebook, or at a web page.
+- Hostile input no longer slows the hooks down: a crafted message took 35
+  seconds a hook, and a store of 10,000 notes 24 seconds a tidy-up.
+- A security policy, [SECURITY.md](SECURITY.md), says how to report a problem
+  privately.
 
 **Things that went wrong**
 - A hand-written index line moving back from the archive (a pin, or a line
@@ -116,15 +127,21 @@ months of use, Claude Code's own documentation, and a privacy red team.
   read the name as a pattern; `history` listed other notes' changes for the
   same reason. Both read names literally now.
 - `promote ALPHA` on Windows moved `alpha.md` but left its line in the table
-  of contents, pointing at nothing. A note is now found by its name on disk.
-- A note `restore` cannot write (read-only, or a name Windows cannot hold) is
-  reported in one line instead of a crash.
-
-**Going back to 1.0.7**
-- It works, with two limits until newer exchanges replace the old ones: some
-  turns are listed twice, and 1.0.7 records secrets that 1.0.8 would replace
-  with `[redacted]`. 1.0.7 also puts the record of where you left off back in
-  the history.
+  of contents, pointing at nothing. A note is now found by its name on disk:
+  in any letter case on Windows and macOS, only as written on Linux.
+- A note `restore` or `promote` cannot write (read-only, or a name Windows
+  cannot hold) is reported in one line that says what was left, instead of a
+  crash.
+- The history keeps a note's line endings as written. On Windows, a note
+  could come back from `restore` with its line endings changed.
+- The first snapshot is taken before the first tidy-up, so the table of
+  contents as you wrote it can come back. Before, the history started with it
+  already tidied.
+- When two lines in the table of contents point at the same note, the newer
+  (lower) one is kept, where the first one was. Keeping the first threw an
+  updated line away.
+- On Windows, a line written `(Kase.md)` counts as `kase.md`'s line. Before,
+  `kase.md` got a second, machine-written line in the archive.
 - Snapshots no longer use your own git settings. With commit signing or a
   global hooks folder set, every snapshot failed, and your hooks ran on the
   memory history. Long paths on Windows are saved too.
@@ -148,8 +165,6 @@ months of use, Claude Code's own documentation, and a privacy red team.
   reply, or for the reply to the compaction reminder. "Memory hooks look
   stopped" says that a pause explains it, and doctor no longer tells you to
   run doctor.
-- The briefing after a compaction stays within the 10,000 characters Claude
-  Code passes on whole, so the shared notes at its end are no longer cut off.
 - Notes with the same date no longer swap in and out of the index on every
   pass. File names with brackets (`lesson (1).md`) are reported instead of
   getting a new index line every pass.
@@ -157,13 +172,15 @@ months of use, Claude Code's own documentation, and a privacy red team.
   --rev` works with a commit `history` lists as "deleted". Dates of notes are
   no longer shown a day early west of Greenwich. The skill run with no
   arguments shows `status`.
-- Hostile input no longer slows the hooks down: a crafted message took 35
-  seconds a hook, and a store of 10,000 notes 24 seconds a tidy-up.
 - The README, the how-it-works page and the graphics say what the code does:
   the compaction wait needs room set aside, and the history keeps old
   versions, not every version.
-- A security policy, [SECURITY.md](SECURITY.md), says how to report a problem
-  privately.
+
+**Going back to 1.0.7**
+- It works, with two limits until newer exchanges replace the old ones: some
+  turns are listed twice, and 1.0.7 records secrets that 1.0.8 would replace
+  with `[redacted]`. 1.0.7 also puts the record of where you left off back in
+  the history.
 
 ## 1.0.7 (2026-10-27)
 

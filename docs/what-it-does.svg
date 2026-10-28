@@ -22,7 +22,7 @@
   <text font-size="30" font-weight="700" fill="#F4F1EA"><tspan x="232" y="262">Picks up where</tspan><tspan x="232" y="298">you left off</tspan></text>
   <text font-size="23" fill="#C5CADF"><tspan x="232" y="346">A new conversation starts</tspan><tspan x="232" y="378">knowing where the last</tspan><tspan x="232" y="410">one stopped.</tspan></text>
 
-  <!-- Never loses a note -->
+  <!-- Keeps old versions of your notes -->
   <rect x="620" y="180" width="520" height="270" rx="20" fill="#1D2240" stroke="#323858" stroke-width="2"/>
   <g transform="translate(660 228)">
     <path d="M72 26 A34 34 0 1 1 24 26" fill="none" stroke="#F5B544" stroke-width="8" stroke-linecap="round"/>
@@ -32,8 +32,8 @@
     <rect x="39" y="48" width="15" height="3.5" rx="1.75" fill="#B9B2A3"/>
     <rect x="39" y="55" width="11" height="3.5" rx="1.75" fill="#B9B2A3"/>
   </g>
-  <text font-size="30" font-weight="700" fill="#F4F1EA"><tspan x="792" y="262">Never loses</tspan><tspan x="792" y="298">a note</tspan></text>
-  <text font-size="23" fill="#C5CADF"><tspan x="792" y="346">Old versions are kept.</tspan><tspan x="792" y="378">Ask Claude, and a lost</tspan><tspan x="792" y="410">note comes back.</tspan></text>
+  <text font-size="30" font-weight="700" fill="#F4F1EA"><tspan x="792" y="262">Keeps old versions</tspan><tspan x="792" y="298">of your notes</tspan></text>
+  <text font-size="23" fill="#C5CADF"><tspan x="792" y="346">Ask Claude, and an</tspan><tspan x="792" y="378">earlier version comes</tspan><tspan x="792" y="410">back (needs Git).</tspan></text>
 
   <!-- Keeps long tasks on track -->
   <rect x="60" y="480" width="520" height="270" rx="20" fill="#1D2240" stroke="#323858" stroke-width="2"/>

@@ -45,8 +45,9 @@ All of it stays in `~/.claude/projects` on your computer:
 - A few small bookkeeping files, such as when it last ran, and the short tags
   of conversations you marked `<private-session>`.
 
-If auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY`,
-project-memory reads and saves nothing.
+If auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (set to
+`1`, `true`, `yes` or `on`), project-memory reads and saves nothing on its
+own. The memory skill still reads or changes your notes when you ask it to.
 
 ## What it sends
 
@@ -69,8 +70,8 @@ folder.
 
 Before version 1.0.8, the history also kept versions of the record of where you
 left off. If you used an earlier version, those older copies are still in the
-history: delete the `.git` folder as above to remove them. The next reply
-starts a new history of your notes.
+history: delete the `.git` folder as above to remove them. The next change to
+a note, or the next day, starts a new history of your notes.
 
 ## Children
 

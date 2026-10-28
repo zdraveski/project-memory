@@ -23,7 +23,8 @@ what went wrong is reported in the startup briefing instead. Two hold things up
 on purpose, briefly: once per compaction cycle the Stop hook sends Claude
 feedback that keeps the conversation going, to ask it to write its notes, and
 the compaction gate can ask Claude Code to wait (exit status 2). While
-`CLAUDE_CODE_DISABLE_AUTO_MEMORY` is set, every hook does nothing.
+`CLAUDE_CODE_DISABLE_AUTO_MEMORY` is `1`, `true`, `yes` or `on` (in any case),
+every hook does nothing; the memory tool still works when you run it yourself.
 
 ## Where things live
 
@@ -36,9 +37,13 @@ folder named for where it started. project-memory finds the repository the
 same way, from the folder the conversation started in, and follows a
 worktree's `.git` file only when the main repository's worktree record names
 it back, as Claude Code does. With `CLAUDE_CONFIG_DIR` set, all of this is
-under that folder instead of `~/.claude`, and a plain name in
+under that folder instead of `~/.claude`, and then a plain name in
 `CLAUDE_CODE_PROJECT_DIR_NAME` (up to 64 letters, digits, `-` and `_`) names
-the project folder.
+the project folder; without `CLAUDE_CONFIG_DIR` it is not followed, and
+neither are `_shared` and Windows device names such as `con` and `nul`. A
+repository whose path is so long that Claude Code shortens its folder name
+with a hash is not followed either: a conversation started in a subfolder of
+it writes its handoff under the long name.
 
 | Where | What |
 |---|---|
@@ -47,21 +52,35 @@ the project folder.
 | `…/memory/handoff.md` | the rolling handoff (see [The handoff](#the-handoff)) |
 | `…/memory/.lock` | the store's lock, a folder that exists while a write is in progress |
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
+| `…/memory/.private-sessions` | the tags of conversations marked private (the newest 1,000) |
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
-| `~/.claude/projects/.git` | the snapshot repository |
+| `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
+| `~/.claude/projects/.git/project-memory-ignored` | bookkeeping for the snapshot's ignore list |
 | `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran, the snapshot's state, the reminder's state per conversation tag |
+| `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, and why; read at the next start |
+
+Uninstalling the plugin leaves all of these, and the history, in place; you
+may delete them.
 
 ## The index
 
 Claude Code loads the first 200 lines or 25 KB of `MEMORY.md` at the start of
-every conversation. project-memory keeps it under **7,000 bytes**, so it is
-always read in full and costs few tokens.
+every conversation. project-memory keeps it under **7,000 bytes** and **200
+lines**, so it is read in full and costs few tokens. Pinned lines
+(`tier: hot`) and lines whose file is missing are never moved, so pins alone
+can go past those limits; past 7,000 bytes, the startup briefing says the
+index is over budget.
+
+Every `MEMORY.md` ends with an Archive line that counts the archived lines,
+and a project's also gets a line for `handoff.md`, which is pinned. Prose and
+headings anywhere in it are gathered at the top, above the lines.
 
 After each reply it decides which lines stay in `MEMORY.md` and which move to
 `MEMORY-archive.md`:
 
 - Notes of type `feedback` and `user` (how to work, who you are) stay. When
-  the index is full they get at most half of it.
+  the index is full they get at most half of what is left after the pinned
+  lines.
 - Any other note stays for **7 days** after it was last changed, by its
   `modified:` date or, failing that, the file's date.
 - A note whose file name carries a date is an event log. It stays for
@@ -69,9 +88,11 @@ After each reply it decides which lines stay in `MEMORY.md` and which move to
 - `tier: hot` or `tier: archive` in a note's front matter overrides all of
   this. `superseded-by: <file>` counts as `tier: archive`, even next to
   `tier: hot`, and `search` names the replacement under the note.
-- When the index is over its size limit, lines are moved out, dated event logs
-  first, then the oldest, and marked. Marked lines come back by themselves
-  when there is room.
+- When the index is over 7,000 bytes or 200 lines, lines are moved out and
+  marked: first `feedback` and `user` lines over their half, oldest first,
+  then dated event logs, then the oldest other notes, then the remaining
+  `feedback` and `user` lines. Marked lines come back by themselves when
+  there is room.
   Any other move to the archive is final, unless the note says `tier: hot`.
 
 Lines are moved word for word, never rewritten. A note that has no line gets
@@ -79,8 +100,12 @@ one, built from its description, two minutes after it was written. That line
 goes in the archive (in the shared notebook, in its index) unless the note
 says `tier: hot`. A file name no line can point at, such as `lesson (1).md`,
 is reported in the startup briefing instead, to be renamed. A line that points
-at a web page or a path outside the notebook is kept as plain text. Duplicate
-lines are removed. Nothing is written when nothing changed.
+at a web page or a path outside the notebook is kept as plain text. When two
+lines point at the same note, one is kept: in the index, the newer (lower)
+line, in the first one's place; an index line over an archived one. The other
+line is dropped, and the history still has it. On Windows, a line written
+`(Kase.md)` counts as `kase.md`'s line. Nothing is written when nothing
+changed.
 
 ## The handoff
 
@@ -109,7 +134,9 @@ and `Bearer`, `Basic` or `Token` before one with a digit), Slack webhook
 addresses, the password in a web address (`postgres://user:…@host`, also with
 no user name), `curl -u user:…`, `--password …`, `mysql -p…`, `docker login`,
 `sshpass` and `twine` with `-p …`, "password is …", "the password for the
-server is …", "the api key is …", and a value after `password`, `pass`,
+server is …" and "the api key is …" when the value has a digit or a symbol in
+it ("my password is sunshine" stays, since "the password is hashed" is
+prose), and a value of 6 characters or more after `password`, `pass`,
 `passphrase`, `secret`, `access_token`, `auth_token`, `api_key`,
 `account_key`, `private_key`, `key-data` or `pwd`, also inside a longer name
 (`DB_PASSWORD=`, `DB_PASS=`, `PGPASSWORD=`, `dbPassword`, `clientSecret`) and
@@ -117,10 +144,12 @@ with the value on the next line. A value that is plainly code stays: a type
 (`password: string`), a reference (`${…}`, `$(…)`, `process.env.X`), a call or
 an index with no digit in it (`jwt.sign(…`, `request.form[…`), a path of two
 parts or more. Anything else after those words is redacted, even with no digit
-(`correct_horse_battery_staple`). A bare `token` is left alone, so a count like
+(`correct_horse_battery_staple`). After `token` alone, a value is redacted
+only when it has a letter in it (`token: abc123def`), so a count like
 `input_tokens: 863324` stays. No list of patterns finds every secret: anything
-else goes between `<private>` tags. The same applies to the startup briefing
-and the compaction recovery note.
+these rules miss belongs between `<private>` tags. The same applies to
+everything the startup briefing and the compaction recovery note print, the
+shared index and the health lines included.
 
 What is recorded as your message is your own words: Claude Code's
 `<system-reminder>` blocks, and tags it puts before them (a task notification,
@@ -150,7 +179,8 @@ At the start of a conversation, and after `/clear`, Claude is told:
   transcript changed in the last 30 minutes and has a turn still open), and
   what they were last asked; if none, where the last conversation stopped, if
   that was in the last 7 days. After `/clear` neither, since the conversation
-  just cleared is the newest;
+  just cleared is the newest. It names at most two, and only conversations
+  started in the project's folder or in the folder this one started in;
 - anything failing: the Stop hook not running, snapshots failing, a notebook
   that needs attention;
 - the shared notebook's index, up to 3,000 bytes.
@@ -159,8 +189,12 @@ After a compaction, Claude is told:
 
 - what the turn the compaction cut had in flight, if it cut one;
 - this conversation's own latest exchanges, never another's;
-- which other conversations are working here;
+- which other conversations are working here, when there is a recovery note or
+  this conversation has exchanges of its own;
 - the shared notebook's index.
+
+A conversation that is resumed gets no briefing: its history already holds
+the one it got when it started.
 
 The briefing stays under 9,500 characters, inside the 10,000 Claude Code
 passes on whole: the oldest exchanges are left out first. A `<` that starts a
@@ -219,9 +253,13 @@ repository at `~/.claude/projects`. The repository ignores everything except
 `*/memory/*.md`, and `handoff.md` too: transcripts and the record of the
 latest exchanges are never committed. It has no remote and is never pushed.
 Your own git settings don't reach it: no hooks of yours run on it, commits
-aren't signed, and long paths work on Windows. If `~/.claude/projects` is
-already a git repository that project-memory didn't make, it commits nothing
-there, and `doctor` says snapshots are off.
+aren't signed, line endings are kept exactly as written, and long paths work
+on Windows. If `~/.claude/projects` is already a git repository that
+project-memory didn't make, it commits nothing there, and `doctor` says
+snapshots are off. A repository at `~/.claude` itself (a dotfiles repository)
+doesn't count: project-memory still makes its own in `~/.claude/projects`.
+The first time, with no repository there yet, it takes a snapshot of every
+notebook as it finds it before its first tidy-up, then tidies.
 
 - `history <note>` lists the commits that changed a note.
 - `status` names the notes the snapshots saw added, edited or deleted in the
@@ -231,13 +269,15 @@ there, and `doctor` says snapshots are off.
   together with its index line. `--rev <commit>` picks a version `history`
   lists; a commit it lists as "deleted" brings back the version that commit
   deleted. `--force` replaces a note that exists, and keeps the replaced text
-  in the repository, printing the command that shows it.
+  in the repository, printing the command that shows it. That text is a loose
+  object in no commit, so git's own cleanup may delete it after about two
+  weeks.
 - A store reached through a link to another project's store is committed once.
 - Without git there are no snapshots, everything else works, and `doctor` says
   so.
 
-To drop the history, delete `~/.claude/projects/.git`. The next change starts
-a new one.
+To drop the history, delete `~/.claude/projects/.git`. The next change to a
+note, or the next day, starts a new one.
 
 ## The shared notebook
 
@@ -296,12 +336,20 @@ folder, one inside `~/.claude/projects` (any other is refused), and `--shared`
 picks the shared notebook. With no command, it runs `status`. The tool exits
 with 1 when a command is refused or fails.
 
+`restore` and `promote` take a note's name as the disk resolves it: on Windows
+and on macOS by default in any letter case (on Windows, a short name such as
+`memory~1` too), on Linux only as written. git reads the name literally, so a
+name with `[`, `*` or `?` in it works. A write the disk refuses is reported in
+one line that says what was left behind.
+
 ## Requirements and limits
 
 - Node.js 20 or newer. No other dependencies.
 - Git, for snapshots.
-- Paths follow `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_PROJECT_DIR_NAME`. The
-  `autoMemoryDirectory` setting is not followed: the plugin reads no settings.
+- Paths follow `CLAUDE_CONFIG_DIR`, and `CLAUDE_CODE_PROJECT_DIR_NAME` only
+  when `CLAUDE_CONFIG_DIR` is set too (see [Where things live](#where-things-live)).
+  The `autoMemoryDirectory` setting is not followed: the plugin reads no
+  settings.
 - Tested on Linux, macOS and Windows, with Node 20 and 24.
 - The snapshot repository only grows.
 

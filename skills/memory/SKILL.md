@@ -10,7 +10,8 @@ Each project's memories live in `~/.claude/projects/<project>/memory/`. Its
 `MEMORY.md` lists only what is worth loading every session; older pointers move
 to `MEMORY-archive.md`, which is not loaded. Lessons that hold in every project
 live in the shared store, `~/.claude/projects/_shared/memory/`, whose index is
-printed at the start of every session in every project. Every memory change is
+printed in every project when a session starts, after `/clear` and after a
+compaction (a resumed session still has it from its start). Every memory change is
 committed to a git repo at `~/.claude/projects`. (With `CLAUDE_CONFIG_DIR`
 set, all of these are under that folder instead of `~/.claude`.)
 
