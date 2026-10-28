@@ -194,10 +194,12 @@ months of use, Claude Code's own documentation, and a privacy red team.
   `--store <folder>`.
 - Two windows with replies in the same minute no longer rewrite the record
   after every reply.
-- A memory folder that is a link to a folder elsewhere (a synced folder) is
-  in the snapshots where git follows the link, as it does a junction on
-  Windows. Where it does not, `doctor` and the startup say the folder is left
-  out, and how to fix it. Before, it was left out while `doctor` said ok.
+- A memory folder, or a project folder, that is a link to a folder
+  elsewhere (a synced folder) is in the snapshots once, where git follows
+  the link, as it does a junction on Windows; `restore` and `history` work
+  through any link to it. Where git does not follow it, `doctor` and the
+  startup say the folder is left out, and how to fix it. Before, it was left
+  out while `doctor` said ok.
 - A conversation started in a subfolder of a repository is recorded from its
   first reply, also when no conversation has started at the repository's
   root yet.
