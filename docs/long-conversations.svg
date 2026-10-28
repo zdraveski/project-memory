@@ -29,7 +29,7 @@
   <rect x="589" y="286" width="7" height="16" rx="2" fill="#14172A"/>
   <rect x="604" y="286" width="7" height="16" rx="2" fill="#14172A"/>
   <text x="472" y="340" font-size="19" fill="#9EA5C2">Full, in the middle of a task</text>
-  <text font-size="21" fill="#C5CADF"><tspan x="472" y="392">project-memory writes</tspan><tspan x="472" y="422">down the step Claude</tspan><tspan x="472" y="452">is on, and asks for a</tspan><tspan x="472" y="482">wait when there's room.</tspan></text>
+  <text font-size="21" fill="#C5CADF"><tspan x="472" y="392">It asks Claude Code to</tspan><tspan x="472" y="422">wait until the step ends.</tspan><tspan x="472" y="452">With no room, it writes</tspan><tspan x="472" y="482">the step down instead.</tspan></text>
 
   <!-- 3. After -->
   <rect x="824" y="180" width="316" height="330" rx="20" fill="#1D2240" stroke="#323858" stroke-width="2"/>

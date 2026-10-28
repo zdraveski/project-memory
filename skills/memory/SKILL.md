@@ -11,8 +11,9 @@ Each project's memories live in `~/.claude/projects/<project>/memory/`. Its
 to `MEMORY-archive.md`, which is not loaded. Lessons that hold in every project
 live in the shared store, `~/.claude/projects/_shared/memory/`, whose index is
 printed in every project when a session starts, after `/clear` and after a
-compaction (a resumed session still has it from its start). Every memory change is
-committed to a git repo at `~/.claude/projects`. (With `CLAUDE_CONFIG_DIR`
+compaction (a resumed session still has it from its start). After each reply
+that changed a memory, the memories (not `handoff.md`) are committed to a git
+repo at `~/.claude/projects`, when git is installed. (With `CLAUDE_CONFIG_DIR`
 set, all of these are under that folder instead of `~/.claude`.)
 
 The CLI, run with Bash. `--session` names this conversation, so the CLI finds

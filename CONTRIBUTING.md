@@ -35,14 +35,17 @@ Beyond the suites:
 ## Changing the code
 
 - A hook must exit 0 whatever happens, and finish fast: it runs after every
-  reply.
+  reply. The one deliberate exception is the compaction gate's exit 2, its
+  request to wait.
 - Write through `replaceIfUnchanged` under `withLock` (`store.mjs`), never
   straight to a file another process may be editing.
 - Keep the numbers at the top of each file; the comments say why each is
   what it is.
 - Add a test with the change, and a mutant for any new rule.
-- Don't run the `claude` command, read a credential, or connect to anything.
-  The plugin directory's security scan holds a plugin that does.
+- Don't run the `claude` command, read a credential or Claude Code's
+  `settings.json`, copy the whole environment, or connect to anything. The
+  plugin directory's security scan holds a plugin that does, and it reads
+  every file, tests included.
 
 ## Releasing
 
@@ -55,9 +58,9 @@ Beyond the suites:
 ## The author's setup
 
 The author keeps this repository at `~/.claude/hooks` and runs the hooks from
-a checked copy. `node deploy.mjs` runs every check above, then copies the
-plugin to `~/.claude/hooks-live`, which also serves as a local marketplace
-the plugin is installed from. None of this is needed to use or to change the
-plugin. Nothing in the repository reads Claude Code's `settings.json`: the
-switch between the plugin and hook entries there, `wire.mjs`, was removed
-after the move to the plugin (it is in the history before 1.0.7).
+a checked copy. `node deploy.mjs` runs only on `master` with nothing
+uncommitted. It runs the five suites, the mutation check, the soak and the
+break harness, then compares a dry run of the tidy-up with the live copy's,
+and copies the plugin to `~/.claude/hooks-live`, which also serves as a local
+marketplace the plugin is installed from. It doesn't run the validator or the
+benchmark. None of this is needed to use or to change the plugin.
