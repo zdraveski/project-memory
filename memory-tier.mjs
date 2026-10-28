@@ -537,7 +537,11 @@ if (stop) {
     // One per project, beside the projects, not in the store that refused it:
     // shared, another project's next save cleared this one's.
     const failed = join(projectsRoot(), `.handoff-failed-${basename(dirname(storeOf(payload || {})))}`);
-    try { if (payload) handoff(payload); try { unlinkSync(failed); } catch {} }
+    // The journal in a try of its own: a journal.mjs that cannot load costs
+    // the journal, never the handoff.
+    let sink = null;
+    try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
+    try { if (payload) handoff(payload, sink); try { unlinkSync(failed); } catch {} }
     catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\n')[0] })); }
   } catch {}
   try {

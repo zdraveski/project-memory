@@ -500,7 +500,7 @@ export function hushed(dir, s, mark = false) {
   return have.includes(s);
 }
 
-export function handoff(input) {
+export function handoff(input, sink = null) {
   const dir = storeOf(input);
   const file = join(dir, 'handoff.md');
   // What happened is returned -- true written, 'unchanged', false nothing to
@@ -550,6 +550,9 @@ export function handoff(input) {
     // the mark goes. The mark is kept in a file: only the turn that typed it
     // sees it in the transcript.
     const quiet = hushed(dir, s, hush);
+    // The journal (memory-tier's Stop passes its writer) takes this lock too,
+    // not one of its own; whatever it throws is its own.
+    if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush }); } catch {}
     for (let i = 0; i < 3; i++) {
       const raw = existsSync(file) ? readFileSync(file, 'utf8') : null;
       const next = build(raw, quiet ? [] : fresh, quiet ? s : null, s, got.whole);

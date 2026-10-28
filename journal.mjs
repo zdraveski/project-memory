@@ -2,10 +2,10 @@
 // turn, kept apart from handoff.md so what was done last month is still
 // findable. Entries are capped and redacted here, the one place a turn's
 // files and commands (uncapped in turns()) are shortened.
-import { mkdirSync, readdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, openSync, readSync, closeSync, unlinkSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { clip, tag, PRIVATE, hash } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw } from './store.mjs';
+import { replaceIfUnchanged, raw, local } from './store.mjs';
 
 export const JOURNAL = 'journal';
 export const J_ASK = 2000;     // chars of what was asked
@@ -71,6 +71,7 @@ export function parseDay(text) {
 }
 
 export const dayFile = (dir, at) => join(dir, JOURNAL, day(at) + '.md');
+const page = (d, prose, es) => `# Journal ${d}\n\n` + [prose, ...es.map(render)].filter(Boolean).join('\n\n') + '\n';
 
 // Call under withLock(dir). Returns how many entries were added or changed.
 export function record(dir, transcriptPath, turns) {
@@ -93,8 +94,7 @@ export function record(dir, transcriptPath, turns) {
         have.set(e.key, e);
       }
       const all = [...have.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-      const next = `# Journal ${d}\n\n` + [prose, ...all.map(render)].filter(Boolean).join('\n\n') + '\n';
-      const w = replaceIfUnchanged(file, before, next);
+      const w = replaceIfUnchanged(file, before, page(d, prose, all));
       if (w !== 'conflict') { n += changed; break; }
     }
   }
@@ -104,4 +104,46 @@ export function record(dir, transcriptPath, turns) {
 export function days(dir) {
   try { return readdirSync(join(dir, JOURNAL)).filter((f) => /^\d{4}-\d\d-\d\d\.md$/.test(f)).map((f) => f.slice(0, 10)).sort(); }
   catch { return []; }
+}
+
+// The day a conversation began: its transcript's first record time, from the
+// head alone (a transcript runs to 50 MB). '' when there is none to read.
+function began(transcriptPath) {
+  try {
+    const fd = openSync(transcriptPath, 'r'), buf = Buffer.alloc(65536);
+    const n = readSync(fd, buf, 0, buf.length, 0); closeSync(fd);
+    const at = Date.parse(/"timestamp":"([^"]{1,40})"/.exec(buf.toString('utf8', 0, n))?.[1]);
+    return at ? day(local(at)) : '';
+  } catch { return ''; }
+}
+
+// A conversation marked private takes back what it wrote: its entries go from
+// every day since it began. Call under withLock(dir). Returns how many went.
+export function sweep(dir, s, transcriptPath) {
+  const from = began(transcriptPath);
+  let n = 0;
+  for (const d of days(dir).filter((x) => x >= from)) {
+    const file = dayFile(dir, d);
+    for (let i = 0; i < 3; i++) {
+      const before = raw(file), { prose, entries } = parseDay(before ?? '');
+      const kept = entries.filter((e) => e.s !== s);
+      if (kept.length === entries.length) break;
+      if (replaceIfUnchanged(file, before, page(d, prose, kept)) !== 'conflict') { n += entries.length - kept.length; break; }
+    }
+  }
+  return n;
+}
+
+// handoff()'s sink, called under its lock. A throw is kept in .failed for
+// `status` to report: swallowed, the journal would stop and nothing say so.
+export function write(dir, transcriptPath, got, { quiet, hush }) {
+  const failed = join(dir, JOURNAL, '.failed');
+  try {
+    if (quiet && hush) sweep(dir, tag(basename(transcriptPath, '.jsonl')), transcriptPath);
+    else if (!quiet) record(dir, transcriptPath, got);
+    else return;   // already private: nothing tried, so nothing to clear
+    try { unlinkSync(failed); } catch {}
+  } catch (e) {
+    try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(failed, raw(failed), JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\n')[0] })); } catch {}
+  }
 }

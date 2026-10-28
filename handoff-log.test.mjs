@@ -1172,5 +1172,21 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   ok(turns(u('x', { gitBranch: 'HEAD' }) + '\n' + a([{ type: 'text', text: 'y' }]))[0].branch === '', 'a detached HEAD is no branch');
 }
 
+// The journal's writer rides the handoff's lock: called with what was read,
+// and a throw from it is never the handoff's.
+{
+  const cwdJ = 'C:\\handoff-sink-selftest', dirJ = storeFor(home, cwdJ), tJ = join(dirJ, 'sink.jsonl'), calls = [];
+  mkdirSync(dirJ, { recursive: true });
+  writeFileSync(tJ, [user('sink question', { ts: '2026-10-28T09:00:00Z' }), asst('sink answer')].join('\n') + '\n');
+  const input = { cwd: cwdJ, transcript_path: tJ, session_id: 'sinkjour' };
+  const r = handoff(input, (...a) => calls.push(a));
+  const [d, p, got, o] = calls[0] ?? [];
+  ok(r === true && calls.length === 1 && d === dirJ && p === tJ && got?.[0]?.did === 'sink answer' && o?.quiet === false && o?.hush === false,
+    `the sink gets the store, the transcript, the turns read and the privacy flags (got ${r}, ${calls.length} calls, ${d}, ${got?.[0]?.did})`);
+  writeFileSync(tJ, [user('after a throw', { ts: '2026-10-28T09:05:00Z' }), asst('still saved')].join('\n') + '\n', { flag: 'a' });
+  ok(handoff(input, () => { throw new Error('journal down'); }) === true && readFileSync(join(dirJ, 'handoff.md'), 'utf8').includes('after a throw'),
+    'a sink that throws changes nothing the handoff returns or writes');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

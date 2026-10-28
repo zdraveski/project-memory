@@ -941,5 +941,21 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(process.platform === 'win32' ? n18 === 1 : n18 <= 1, `two links to one folder elsewhere: its notes in the history once (got ${n18})`);
 }
 
+// A journal.mjs that cannot load costs the journal, never the handoff.
+{
+  const was = [process.env.HOME, process.env.USERPROFILE];
+  const hj = tempDir('memtier-nojournal-'), pj = join(hj, '.claude', 'projects', 'C--nj'), copy = tempDir('nojournal-'), tj = join(pj, 'nj.jsonl');
+  for (const f of ['memory-tier.mjs', 'store.mjs', 'compact-gate.mjs', 'handoff-log.mjs']) copyFileSync(tool(f), join(copy, f));
+  writeFileSync(join(copy, 'journal.mjs'), 'this is not javascript (');
+  mkdirSync(pj, { recursive: true });
+  writeFileSync(tj, [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'asked with no journal' } },
+    { type: 'assistant', timestamp: '2026-10-28T09:01:00Z', message: { content: [{ type: 'text', text: 'answered' }] } }].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  process.env.HOME = hj; process.env.USERPROFILE = hj;
+  try { spawnSync(process.execPath, [join(copy, 'memory-tier.mjs'), '--stop'], { input: JSON.stringify({ transcript_path: tj, session_id: 'nojournl' }) }); }
+  finally { process.env.HOME = was[0]; process.env.USERPROFILE = was[1]; }
+  let hd = ''; try { hd = readFileSync(join(pj, 'memory', 'handoff.md'), 'utf8'); } catch {}
+  ok(hd.includes('asked with no journal'), '--stop: a journal.mjs that cannot load leaves the handoff written');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);
