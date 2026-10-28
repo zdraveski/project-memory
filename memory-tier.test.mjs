@@ -926,5 +926,20 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
     `a store the snapshot cannot reach is said to be left out (got ${JSON.stringify(sh12)} / ${doc12})`);
 }
 
+// Round 6. Two links to one folder elsewhere: its notes are in the history once.
+{
+  const was = [process.env.HOME, process.env.USERPROFILE];
+  const h18 = tempDir('memtier-twolinks-'), root18 = join(h18, '.claude', 'projects'), out18 = join(h18, 'Synced', 'memory');
+  mkdirSync(out18, { recursive: true });
+  const t18 = new Date(Date.now() - 10 * 60000);
+  writeFileSync(join(out18, 'price.md'), '---\nname: price\ndescription: "p"\nmetadata:\n  type: project\n---\n\nbody\n'); utimesSync(join(out18, 'price.md'), t18, t18);
+  writeFileSync(join(out18, 'MEMORY.md'), '- [Price](price.md) — p\n'); utimesSync(join(out18, 'MEMORY.md'), t18, t18);
+  for (const p of ['C--a18', 'C--b18']) { mkdirSync(join(root18, p), { recursive: true }); symlinkSync(out18, join(root18, p, 'memory'), process.platform === 'win32' ? 'junction' : 'dir'); }
+  process.env.HOME = h18; process.env.USERPROFILE = h18;
+  try { spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }); } finally { process.env.HOME = was[0]; process.env.USERPROFILE = was[1]; }
+  const n18 = spawnSync('git', ['-C', root18, 'ls-files'], { encoding: 'utf8' }).stdout.split('\n').filter((l) => l.endsWith('/price.md')).length;
+  ok(process.platform === 'win32' ? n18 === 1 : n18 <= 1, `two links to one folder elsewhere: its notes in the history once (got ${n18})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

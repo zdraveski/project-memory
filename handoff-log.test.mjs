@@ -1128,7 +1128,7 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   const sh13 = join(home, '.claude', 'projects', '.snapshot-health'), was13 = existsSync(sh13) ? readFileSync(sh13, 'utf8') : null;
   writeFileSync(sh13, JSON.stringify({ lastOk: new Date().toISOString(), failures: 0, missed: ['/x/C--y/memory'] }));
   try {
-    ok(/Memory snapshots leave out \/x\/C--y\/memory: its memory folder is a link/.test(printX('startup')), 'the startup names a store the snapshots leave out');
+    ok(/Memory snapshots leave out \/x\/C--y\/memory: it is reached through a link/.test(printX('startup')), 'the startup names a store the snapshots leave out');
   } finally { if (was13 === null) rmSync(sh13, { force: true }); else writeFileSync(sh13, was13); }
 }
 

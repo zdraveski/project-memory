@@ -319,7 +319,7 @@ function tier(dir, now) {
 // store; ignore every path that is not the resolved one.
 const within = (base, p) => { const r = relative(base, p); return r !== '' && !r.startsWith('..') && !isAbsolute(r); };
 function gitignore() {
-  const root = projectsRoot(), real = realpathSync(root);
+  const root = projectsRoot(), real = realpathSync(root), elsewhere = new Set();
   const linked = stores(root)
     // Case-blind on Windows: a home dir spelt one way in USERPROFILE and another
     // on disk would otherwise read as fifteen junctions and ignore every store.
@@ -328,7 +328,13 @@ function gitignore() {
     // A second path only when it leads to another folder in here: one linked to
     // a folder elsewhere (a synced folder) is that store's only path, and
     // ignored, it was never snapshotted (audit, 2026-10-28).
-    .filter((d) => { const r = realpathSync(d); return !same(r, join(real, d.slice(root.length + 1))) && within(real, r); })
+    // Two links to one folder elsewhere: the first is its path, as allStores()
+    // takes it; tracked by both, every note was in the history twice.
+    .filter((d) => {
+      const r = realpathSync(d), k = process.platform === 'win32' ? r.toLowerCase() : r;
+      if (within(real, r)) return !same(r, join(real, d.slice(root.length + 1)));
+      const twice = elsewhere.has(k); elsewhere.add(k); return twice;
+    })
     .map((d) => `${d.slice(root.length + 1).replace(/\\/g, '/')}/`);
   // Not the handoff: it holds the last exchanges, and is kept only until newer
   // ones replace it. Committed, every version stayed in the history for good.

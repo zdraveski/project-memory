@@ -100,8 +100,10 @@ export function memories(dir) {
     return [{
       file, path, dir, name, desc, type, superseded,
       body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1),
-      // Not in code (`grid[[0]]`, a fenced block), and `[[name.md]]` is name's.
-      links: [...new Set([...text.replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
+      // Not in code (`grid[[0]]`, a fenced block: its fences start a line, an
+      // inline ``` in prose hid the links up to the next fence), and
+      // `[[name.md]]` is name's.
+      links: [...new Set([...text.replace(/^[ \t]*```[\s\S]*?^[ \t]*```/gm, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
       modified: Number.isNaN(stamp) ? mtime : stamp,
       where: hot.has(file) ? 'hot' : cold.has(file) ? 'archived' : 'unindexed',
     }];
@@ -238,10 +240,14 @@ const git = (...a) => execFileSync('git', gitArgs('--literal-pathspecs', ...a), 
 const real = (p) => { try { return realpathSync.native(p); } catch { return p; } };
 // A store linked to a folder outside the root is in the history by its link's
 // path: resolved, git said the path was outside the repository.
+// Its memory folder or its project folder, either can be the link: the
+// project folder as the root lists it, then memory/.
 const tracked = (dir, file) => {
   const root = real(projectsRoot()), at = relative(root, real(dir));
-  const base = at.startsWith('..') || isAbsolute(at) ? join(real(dirname(dir)), basename(dir)) : real(dir);
-  return relative(root, join(base, file)).replace(/\\/g, '/');
+  if (!at.startsWith('..') && !isAbsolute(at)) return relative(root, join(real(dir), file)).replace(/\\/g, '/');
+  const slug = basename(dirname(dir));
+  let names = []; try { names = readdirSync(projectsRoot()); } catch {}
+  return `${names.includes(slug) ? slug : names.find((n) => n.toLowerCase() === slug.toLowerCase()) ?? slug}/memory/${file}`;
 };
 
 export function history(dirs, file, everywhere = false) {

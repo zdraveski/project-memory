@@ -552,7 +552,7 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   writeFileSync(sh14, JSON.stringify({ lastOk: new Date().toISOString(), failures: 0, missed: ['/x/C--y/memory'] }));
   const d14 = run14('doctor');
   writeFileSync(sh14, was14);
-  ok(d14.status === 1 && /PROBLEM\s+snapshots: ok, last [^\n]*but they leave out \/x\/C--y\/memory: its memory folder is a link/.test(d14.stdout), `doctor names a store the snapshots leave out (got ${d14.stdout})`);
+  ok(d14.status === 1 && /PROBLEM\s+snapshots: ok, last [^\n]*but they leave out \/x\/C--y\/memory: it is reached through a link/.test(d14.stdout), `doctor names a store the snapshots leave out (got ${d14.stdout})`);
 }
 
 // Round 6. A huge index (300,000 lines naming no note) takes status a second
@@ -563,6 +563,25 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   const t16 = Date.now(), s16 = spawnSync(process.execPath, [CLI, 'status', '--store', big], { env, encoding: 'utf8', timeout: 25000 });
   ok(s16.status === 0 && Date.now() - t16 < 20000, `status on a 300,000-line index finishes (exit ${s16.status} in ${Date.now() - t16} ms)`);
   rmSync(join(root, 'C--big16'), { recursive: true, force: true });
+}
+
+// Round 6. The project folder, not its memory folder, linked outside the
+// root: its notes come back by their path in here. And an inline ``` in
+// prose is no fence: the links after it are read.
+{
+  const out17 = join(home, 'Synced17', 'C--p17'), at17 = join(root, 'C--p17');
+  mkdirSync(join(out17, 'memory'), { recursive: true });
+  memory(join(out17, 'memory'), 'cost', 'our cost', 'Wrap a block in ``` fences.\nSee [[ghost17]].\n```\nx = 1\n```\n');
+  writeFileSync(join(out17, 'memory', 'MEMORY.md'), '- [Cost](cost.md) — c\n');
+  symlinkSync(out17, at17, process.platform === 'win32' ? 'junction' : 'dir');
+  tier();
+  const run17 = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', join(at17, 'memory')], { env, encoding: 'utf8' });
+  ok(/links to no memory: cost\.md → \[\[ghost17\]\]/.test(run17('status').stdout), 'a link after an inline ``` in prose is read');
+  if (/C--p17\/memory\/cost\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
+    unlinkSync(join(out17, 'memory', 'cost.md'));
+    const r17 = run17('restore', 'cost');
+    ok(r17.status === 0 && existsSync(join(out17, 'memory', 'cost.md')), `a note under a project folder linked outside the root comes back (got ${r17.stdout}${r17.stderr})`);
+  }
 }
 
 console.log(`memory: ${checks} checks passed`);

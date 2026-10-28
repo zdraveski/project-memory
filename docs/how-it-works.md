@@ -274,8 +274,8 @@ notebook as it finds it before its first tidy-up, then tidies.
   object in no commit, so git's own cleanup may delete it after about two
   weeks.
 - A store reached through a link to another project's store is committed once.
-  A memory folder linked to a folder outside `~/.claude/projects` (a synced
-  folder) is snapshotted where git follows the link, as Git for Windows does
+  A memory folder, or a project folder, linked to a folder outside
+  `~/.claude/projects` (a synced folder) is snapshotted once where git follows the link, as Git for Windows does
   with a junction. Elsewhere git keeps a symlink as a link, so that folder's
   notes are not in the history, and `doctor` and the startup briefing say so.
   To have them snapshotted, keep the folder in `~/.claude/projects` and make

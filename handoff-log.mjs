@@ -375,7 +375,7 @@ export const newest = (xs, n, older = 'more') => (xs.length > n ? `${xs.slice(-n
 // greedy, it took the colon of an untagged "[word]: ..." ask, and the word read as a tag.
 const ENTRY = /^- \*\*asked\*\* (\S+ \S+?)(?: \[([\w-]+)\])?: (.*?)\r?\n  \*\*did:\*\* (.*?)\r?$(?:\n  \*\*changed:\*\* (.*?)\r?$)?/gm;
 // Why a store is not in the snapshots, and the user's fix. Shared with doctor.
-export const MISSED = 'its memory folder is a link to a folder outside ~/.claude/projects, and git does not follow that link, so no old version of a note there can be brought back. The fix: keep the folder in ~/.claude/projects and make the link the other way round';
+export const MISSED = 'it is reached through a link to a folder outside ~/.claude/projects, and git does not follow that link, so no old version of a note there can be brought back. The fix: keep the folder in ~/.claude/projects and make the link the other way round';
 export const parse = (section) => [...section.matchAll(ENTRY)].map((m) => ({ at: m[1], s: m[2] || '', ask: m[3], did: m[4], changed: m[5] || '' }));
 // The LAST START that has an END after it, and the first END after it.
 // Searching for the first START let a stray START -- one whose END was lost --
