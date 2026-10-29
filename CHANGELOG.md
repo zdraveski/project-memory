@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 (2026-10-29)
+## 1.2.0 "Bastet" (2026-10-29)
 
 **A journal of your work**
 - project-memory now keeps a journal of every exchange: after each reply it
