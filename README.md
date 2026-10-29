@@ -371,9 +371,9 @@ back.
   looks for what to forget and removes it are kept without their words, in
   the journal and in the record of where you left off, so what was removed
   isn't saved again. To empty the journal, ask Claude to forget everything
-  in it. It removes up to 200 entries at a time, so a big journal takes a
-  few rounds. That removes only what the journal holds so far: if `status`
-  shows conversations still to import, ask again once they're in.
+  in it: you confirm the dates it covers and how many entries go, not each
+  entry. That removes only what the journal holds so far: if `status` shows
+  conversations still to import, ask again once they're in.
 - Common kinds of keys, tokens and passwords are replaced with `[redacted]`
   before anything is saved, whether you paste them into a message or Claude
   passes them to a command: API keys, access tokens, passwords in web

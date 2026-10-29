@@ -59,7 +59,7 @@ Windows device names such as `con` and `nul`.
 | `…/memory/journal/YYYY-MM-DD.md` | the journal, one file per day (see [The journal](#the-journal)) |
 | `…/memory/journal.md` | the journal's note, so the index has a pinned line for it |
 | `…/memory/journal/.imported`, `.looked`, `.folders` | the transcripts imported and how far, the time of the last look for them, the worktree folders looked in too (see [The journal](#the-journal)) |
-| `…/memory/journal/.checked`, `.sweeps` | the conversations a Stop read whole for a mark, and those whose entries are still to be removed |
+| `…/memory/journal/.checked`, `.sweeps` | how far a Stop looked through each conversation for a mark, and those swept out; the tag and day of each sweep not yet done |
 | `…/memory/journal/.failed`, `.forgotten` | the last failure of the live write and of the import, one line each; the keys of forgotten entries |
 | `…/memory/.lock` | the store's lock, a folder that exists while a write is in progress |
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
@@ -168,8 +168,9 @@ Before any of it is written, these are taken out:
   a reference (`$TOKEN`, `${TOKEN}`, `$(cat pw)`), a path
   (`~/.ssh/id_ed25519`, `./pw.txt`, `certs/key.pem`), and a number under a
   name with a part such as `LIMIT`, `MAX`, `SIZE`, `COUNT`, `TTL`,
-  `TIMEOUT` or `PORT` (`TOKEN_LIMIT=4096`). A number after `--password` or
-  `--token` goes: it can be a PIN;
+  `TIMEOUT` or `PORT` (`TOKEN_LIMIT=4096`). A number after a password or
+  token option, or under a secret's name (`export TOKEN=12345678`), goes:
+  it can be a PIN;
 - "password is …", "the password for the server is …" and "the api key is …",
   when the value has a digit or a symbol in it ("my password is sunshine"
   stays, since "the password is hashed" is prose);
@@ -271,15 +272,22 @@ whole before it is cut, so no half of a secret is left at either cut.
   forget removes. With auto memory off, nothing is written.
 - A `<private-session>` conversation writes nothing, and its entries are
   removed from every day file. So does a conversation held with auto memory
-  off (its tag in `.memory-off`), even when it goes on with auto memory on:
-  entries an import wrote before its tag go at its next Stop with auto
-  memory on. When a Stop's read doesn't reach the start of its transcript
-  (it reads back from the end), the whole transcript is looked through once
-  for a mark, so a mark anywhere counts. `journal/.checked` lists the
-  conversations looked through, and those swept, so neither is done twice.
-- A sweep that stops short (a day it can't rewrite) is listed in
-  `journal/.sweeps` and done again at every Stop and every import look
-  until it goes through; its failure stays in `.failed` until then.
+  off (its tag in `.memory-off`), even when it goes on with auto memory on.
+  A conversation tagged after its entries were written (an import before
+  its memory-off tag, a mark only the compaction gate saw) loses them at its
+  next Stop with auto memory on or at the next import look that meets it,
+  whichever is first.
+  When a Stop's read doesn't reach the start of its transcript (it reads
+  back from the end), the transcript is looked through for a mark from
+  where the last look stopped, whenever more than 512 KB (what any Stop's
+  read covers) has been added since, so a mark anywhere counts.
+  `journal/.checked` holds how far each conversation was looked through,
+  and which were swept, so a sweep is done once.
+- A sweep that stops short (a day it can't rewrite) lists that day in
+  `journal/.sweeps`, and only the days listed are swept again, at every
+  Stop and every import look, until they go through. The live write's
+  failure line names the day until then; a look's failure to finish an
+  owed sweep is not the import's failure, and doesn't slow it.
 - `journal.md` is written once, the first time, as a `tier: hot` note, so
   the index gets a pinned line telling Claude to search the journal. It is
   never rewritten, so an edit to it stays.
@@ -302,12 +310,13 @@ uninstalled or off, since a live Stop doesn't list its own transcript. The
 candidates are the transcripts in the project's own folder, in folders
 whose name starts with it and `-` (its subfolders'), and in the folders
 listed in `journal/.folders`: a folder not named like the project's where
-a live Stop recorded a conversation of this repository (a worktree outside
-the repository's folder). A worktree folder where no Stop has recorded yet
-is not looked in. Each candidate is confirmed to belong to this repository
-by reading its start, oldest first. One of another repository is listed as
-`other` and not read again. One changed in the last 30 minutes is left to
-its own Stop.
+a live Stop ran for a conversation of this repository (a worktree outside
+the repository's folder). A worktree folder where no Stop has run yet is
+not looked in. A listed folder gone from disk, or holding only other
+repositories' transcripts, is dropped from the list. Each candidate is
+confirmed to belong to this repository by reading its start, oldest first.
+One of another repository is listed as `other` and not read again. One
+changed in the last 30 minutes is left to its own Stop.
 
 The import holds the store's lock for up to 150 ms per Stop, plus one
 segment past that, and goes on at the next Stop. It reads a transcript
@@ -332,8 +341,13 @@ the sweeps listed in `.sweeps`. A conversation never imported:
 
 - one whose tag is in `.private-sessions`, or in
   `~/.claude/projects/.memory-off` (the SessionStart and Stop hooks put it
-  there while auto memory is off). A conversation held with auto memory off
-  while this version wasn't installed and on has no tag, and is imported;
+  there while auto memory is off). A look that meets one takes back what
+  it has in the journal, and a private one's lines in `handoff.md`, once.
+  It meets a transcript only when it has grown since it was read, so one
+  tagged at a start with nothing typed after it keeps its entries until it
+  grows or has a Stop with auto memory on. A conversation held with auto
+  memory off while this version wasn't installed and on has no tag, and is
+  imported;
 - one with a `<private-session>` mark anywhere in it, typed while the
   plugin was off. The import then does what that turn's Stop would have
   done: it adds the tag to `.private-sessions` and removes the
@@ -563,9 +577,12 @@ case) in their request, reply, branch, files or commands, narrowed by
 key's. Without `--yes`, it lists each match with its key and says how many
 would go: this look is how the skill finds what to forget, and it removes
 nothing. When nothing matches, it names the words no entry holds. A look
-lists 200 at most: past that, it lists none and asks for a narrower one.
-With `--yes`, it looks again and removes what that look lists, under the
-store's lock, then lists what went; past 200 it removes nothing. A key the
+by words, keys or a conversation lists 200 at most: past that, it lists
+none and asks for a narrower one, and `--yes` removes nothing. A look by
+`--since` or `--until` alone is confirmed by its range: it lists the first
+20, says how many more, and names the first and last day of what would go.
+With `--yes`, it looks again and removes what that look found, under the
+store's lock, then lists what went (past 200, only how many). A key the
 store has no entry for is named, and the tool exits with 1. It works on one
 store: `--all` is refused, and `--store` picks another project's.
 
@@ -577,9 +594,8 @@ project-memory's, it then names the days before today, which the snapshots
 already hold, and the folder to delete. It clears the journal only:
 `handoff.md` and Claude Code's transcripts are untouched. The turn that
 runs it is kept without its words, in the journal and in `handoff.md` (see
-[The journal](#the-journal)). `--since 1970-01-01 --yes` empties a journal
-of up to 200 entries; a bigger one goes a range of days at a time, with
-`--until`. That removes what the journal holds so far; conversations
+[The journal](#the-journal)). `--since 1970-01-01 --yes` empties the
+journal of what it holds so far, however many entries; conversations
 `status` still counts as to import come in later and need another
 `forget`. Deleting the `journal` folder instead rebuilds it from the
 transcripts still on disk, since `.imported` and `.forgotten` are inside it.

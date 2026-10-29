@@ -30,8 +30,9 @@
   shows.
 - `forget` removes journal entries when you ask: it lists each match with
   its key, and after you confirm, removes exactly those
-  (`--key <key> --yes`). It works on one project at a time, lists up to
-  200, and names the words no entry holds.
+  (`--key <key> --yes`). It works on one project at a time and names the
+  words no entry holds. A forget by dates alone is confirmed by its range,
+  so `forget --since 1970-01-01 --yes` empties the journal.
 - The journal isn't loaded when a conversation starts. The briefing gets one
   line saying it's there, and `status` shows its size, first day,
   conversations still to import and any failure.
@@ -63,6 +64,9 @@
   `CLAUDE_CODE_DISABLE_AUTO_MEMORY` was set. A conversation held with auto
   memory off while this version wasn't installed and on has no tag, and is
   taken in.
+- A conversation marked private or held with auto memory off after the
+  journal took it in loses its entries at the journal's next look, even
+  with no reply of its own after the mark.
 - An exchange in which Claude runs `forget` is kept without its words, in
   the journal and in the record of where you left off, so the list of what
   it removes isn't saved again.

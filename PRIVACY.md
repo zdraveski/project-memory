@@ -10,8 +10,9 @@ This page says what it reads, what it saves, and how to remove it.
   the current conversation's after every reply, and for the journal, the
   other conversations of this project and of the folders inside it, each
   read whole and read again when it has grown. When a reply's read doesn't
-  reach back to the start of its conversation, the whole conversation is
-  read once, to look for a `<private-session>` mark. To tell which project
+  reach back to the start of its conversation, the part of it no earlier
+  look has read is read for a `<private-session>` mark, each time more than
+  512 KB has been added since the last look. To tell which project
   a conversation belongs to, it reads the start of the conversations in
   every folder whose name is this project's folder name followed by `-`,
   and in the folder of a worktree of the project once a reply there was
@@ -49,16 +50,20 @@ All of it stays in `~/.claude/projects` on your computer:
     `docker login` and the like, in `export`, `setx`,
     `SetEnvironmentVariable` or `aws configure set` of a name that says key,
     secret, token or password, in `htpasswd`, `gh secret set` and an npm
-    `_authToken`. A reference to one, such as `$API_TOKEN`, a file's path,
-    and a number under a name such as `TOKEN_LIMIT` are kept. No tool
-    recognizes every secret.
+    `_authToken`. A reference to one, such as `$API_TOKEN`, and a file's
+    path are kept. A number is kept only under a name that counts something,
+    such as `TOKEN_LIMIT=4096`; after a password or token option, or under a
+    secret's name, it is replaced, since it can be a PIN. No tool recognizes
+    every secret.
   - Anything you write between `<private>` and `</private>` is left out, and
     so are Claude's reply to that message and the names of the files changed
     in that turn.
   - A conversation where you type `<private-session>` is left out entirely,
     and its earlier entries are removed, also when the plugin finds the mark
-    later: when it takes the conversation into the journal, or reads the
-    whole conversation for one.
+    later: when it takes the conversation into the journal, when a reply
+    reads the part of the conversation its own read missed, or, for a mark
+    only the compaction step saw, the next time the journal looks for
+    conversations to take in.
   - An exchange in which Claude runs `forget` is saved as `[private]`, with
     no file names.
   - Both tags work in any letter case, and in a message typed while Claude is
@@ -101,8 +106,13 @@ All of it stays in `~/.claude/projects` on your computer:
     journal and from `handoff.md`, as it does for one typed while it is on.
     A conversation held with auto memory off while this version wasn't
     installed and on has no tag, and is taken in. If you go on with it later
-    with auto memory off, it is tagged then, and its entries are removed at
-    the first reply after that with auto memory on.
+    with auto memory off, it is tagged then. A conversation tagged after it
+    was taken in (by a reply with auto memory off, or by a
+    `<private-session>` only the compaction step saw) loses its entries at
+    the next look for conversations to take in, even if it never has another
+    reply, or at its next reply with auto memory on. The look meets it only
+    once it has grown since it was taken in: one tagged at a start with
+    nothing typed after it keeps its entries until then.
   - It is never loaded at the start of a conversation. The briefing only
     says, in one line, that it exists and since when. Claude reads entries
     when it searches the journal, shows one in full, lists them for
@@ -125,12 +135,13 @@ All of it stays in `~/.claude/projects` on your computer:
 - A few small bookkeeping files, such as when it last ran, the short tags of
   conversations you marked `<private-session>` or held with auto memory off,
   and, in each `journal` folder, which conversations it has taken in
-  (`.imported`) or read whole for a `<private-session>` mark (`.checked`),
-  the worktree folders it takes them from (`.folders`), when it last looked
-  for them (`.looked`), the last failure of the journal's write and of its
-  import (`.failed`), the private conversations whose entries are still to
-  be removed (`.sweeps`), and which entries you had it forget
-  (`.forgotten`).
+  (`.imported`), how far it read the current one for a `<private-session>`
+  mark and which it took out as private or held with auto memory off
+  (`.checked`), the worktree folders it takes them from (`.folders`), when
+  it last looked for them (`.looked`), the last failure of the journal's
+  write and of its import (`.failed`), the conversations and days whose
+  entries are still to be removed (`.sweeps`), and which entries you had it
+  forget (`.forgotten`).
 
 If auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (set to
 `1`, `true`, `yes` or `on`), project-memory reads and saves nothing on its
@@ -199,13 +210,14 @@ a date range (`--since`, `--until`) or a conversation's tag or id. It first
 lists the entries that match, each with its key, and removes nothing. After
 you confirm, `forget --key <key> --yes` removes exactly the entries whose
 keys you name, and `--yes` with the same words removes every entry they
-match. A list shows up to 200 entries; past that, narrow it, since `--yes`
-removes only what a list can show. Their keys are kept in `.forgotten`, so
-a later import never brings them back. To forget the whole journal, use
-`forget --since 1970-01-01 --yes`; past 200 entries, add `--until` and go a
-stretch of days at a time. That removes only what the journal holds so
-far: check that `status` shows no conversations left to import, or run it
-again once they're in.
+match. A list by words, keys or a conversation shows up to 200 entries;
+past that, narrow it, since `--yes` removes only what a list can show. A
+list by dates alone shows the first 20 and how many entries fall between
+the first and last day, and `--yes` removes them all, however many. Their
+keys are kept in `.forgotten`, so a later import never brings them back. To
+forget the whole journal, use `forget --since 1970-01-01 --yes`. That
+removes only what the journal holds so far: check that `status` shows no
+conversations left to import, or run it again once they're in.
 
 - `forget` works on one project's journal at a time. If you name a key that
   project has no entry for, it says so.
