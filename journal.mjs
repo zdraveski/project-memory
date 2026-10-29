@@ -4,6 +4,7 @@
 // files and commands (uncapped in turns()) are shortened.
 import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
+import { isUtf8 } from 'node:buffer';
 import { clip, tag, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL } from './handoff-log.mjs';
 import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, withLock } from './store.mjs';
 
@@ -55,10 +56,13 @@ function each(ds, fn) {
 // A list file's lines, trimmed (an editor's CRLF, a space left after one), none blank.
 const listOf = (text) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
-// A path inside the turn's folder reads shorter relative to it.
+// A path inside the turn's folder reads shorter relative to it. In any case
+// only where the disk ignores case (Windows, macOS): on Linux /home/USER is
+// not /home/user (final review).
+const fold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);
 const rel = (p, cwd) => {
   const c = cwd ? cwd.replace(/[\\/]+$/, '') : '';
-  return c && p.length > c.length + 1 && /[\\/]/.test(p[c.length]) && p.slice(0, c.length).toLowerCase() === c.toLowerCase() ? p.slice(c.length + 1) : p;
+  return c && p.length > c.length + 1 && /[\\/]/.test(p[c.length]) && fold(p.slice(0, c.length)) === fold(c) ? p.slice(c.length + 1) : p;
 };
 
 // A reply over the cap keeps its first J_ANSWER - J_TAIL characters and its
@@ -148,11 +152,12 @@ export function record(dir, transcriptPath, turns, when) {
   let n = 0;
   each(byDay.keys(), (d) => {
     const file = dayFile(dir, d), fresh = byDay.get(d);
+    let added = null;
     mkdirSync(join(dir, JOURNAL), { recursive: true });
     for (let i = 0; i < 3; i++) {
       const before = raw(file);
       const { prose, entries } = parseDay(before ?? '');
-      const have = new Map(entries.map((e) => [e.key, e]));
+      const have = new Map(entries.map((e) => [e.key, e])), novel = new Set(fresh.filter((e) => !have.has(e.key)).map((e) => e.key));
       let changed = 0;
       for (const e of fresh) {
         const was = have.get(e.key);
@@ -164,8 +169,12 @@ export function record(dir, transcriptPath, turns, when) {
       const all = [...have.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
       whole(file, before);
       const w = replaceIfUnchanged(file, before, page(d, prose, all));
-      if (w !== 'conflict') { n += changed; break; }
+      if (w !== 'conflict') { n += changed; added = novel; break; }
     }
+    // A key new here leaves the days beside it: dated again after a time-zone
+    // change (a backfill of a grown conversation), a turn was a day off, and
+    // in both (final review). After the write: killed between, it is twice, not gone.
+    if (added?.size) for (const k of [-1, 1]) drop(dir, new Date(Date.parse(d) + k * 864e5).toISOString().slice(0, 10), (e) => !added.has(e.key));
   });
   pin(dir);
   return n;
@@ -190,11 +199,16 @@ export function days(dir) {
 // The entries of the days in range (bounds inclusive, either optional). Only
 // those days' files are opened: a year of journal is ~30 MB. A day that will
 // not read goes in `failed`: passed over in silence, its work read as never done.
+// So does one not in UTF-8: saved as UTF-16 (PowerShell 5.1's Out-File), it
+// parsed as a day with no entry (final review).
 export const entries = (dirs, { since, until, failed = [] } = {}) => dirs.flatMap((dir) => days(dir).filter((d) => (!since || d >= since) && (!until || d <= until))
   .flatMap((d) => {
     const path = dayFile(dir, d);
-    try { return parseDay(raw(path) ?? '').entries.map((e) => ({ ...e, day: d, path, dir })); }
-    catch (e) { failed.push({ path, code: e.code || e.message }); return []; }
+    try {
+      const text = raw(path) ?? '';
+      try { whole(path, text); } catch (e) { failed.push({ path, code: e.code }); }
+      return parseDay(text).entries.map((e) => ({ ...e, day: d, path, dir }));
+    } catch (e) { failed.push({ path, code: e.code || e.message }); return []; }
   }));
 
 // Day d without the entries `keep` refuses; its prose stays. Call under
@@ -640,26 +654,31 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
 
 // Whether a day holds an entry: a marker line, found in its bytes. Parsed,
 // a year of days (~30 MB) took status 0.6-1 s each time.
-const held = (dir, d) => readFileSync(dayFile(dir, d)).includes('\n<!-- j:');
+const held = (b) => b.includes('\n<!-- j:');
 
 // The first day with an entry: a day a sweep or forget emptied is gone, so
 // this is one read, and the briefing can ask at every session start.
 export function firstDay(dir) {
-  for (const d of days(dir)) { try { if (held(dir, d)) return d; } catch {} }
+  for (const d of days(dir)) { try { if (held(readFileSync(dayFile(dir, d)))) return d; } catch {} }
   return null;
 }
 
 // What `status` says of a store's journal. `left`: the transcripts the backfill
 // has yet to read (candidates() is a folder walk: not for the briefing).
+// `unread`: the days that won't read or are not UTF-8, as search names them.
 export function summary(dir) {
   let first = null, n = 0, bytes = 0, failed = null;
+  const unread = [];
   for (const d of days(dir)) {
+    const f = dayFile(dir, d);
     try {
-      if (!held(dir, d)) continue;
-      bytes += statSync(dayFile(dir, d)).size; n++; first ??= d;
-    } catch {}
+      const b = readFileSync(f);
+      if (!isUtf8(b)) unread.push(`${f}: not UTF-8`);
+      if (!held(b)) continue;
+      bytes += b.length; n++; first ??= d;
+    } catch (e) { unread.push(`${f}: ${e.code || e.message}`); }
   }
   try { failed = (raw(join(dir, JOURNAL, FAILED)) ?? '').split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l).error).join('; ') || null; } catch {}
   let left = 0; try { left = candidates(dir).filter((c) => ours(dir, c.p)).length; } catch {}
-  return { first, days: n, bytes, left, failed };
+  return { first, days: n, bytes, left, failed, unread };
 }

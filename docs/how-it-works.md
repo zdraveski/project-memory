@@ -243,14 +243,17 @@ whole before it is cut, so no half of a secret is left at either cut.
 - The time is local, as in the handoff. The branch is the one Claude Code
   recorded with the message (`gitBranch`): the branch at the time of the
   turn, none on a detached HEAD. A path inside the turn's folder is written
-  relative to it, any other path in full. `Changed` and `Ran` are left out
+  relative to it, any other path in full; the folder's name matches in any
+  case on Windows and macOS, exactly on Linux. `Changed` and `Ran` are left out
   when empty.
 - The key is the id of the turn's prompt record; a record without one gets
   the conversation's tag, the time and a hash of the message. One key is one
   entry: twin Stops, retries and a killed hook write nothing twice, and a
   turn seen again with more in it replaces its entry. A turn skipped while
   another window held the lock is written after the next reply, as the
-  handoff catches up.
+  handoff catches up. A key written to a day leaves the day before and the
+  day after: read again after a time-zone change, a turn can fall on the
+  next or the previous day.
 - Writes go under the store's lock through the same unchanged-file check as
   every other write. Entries are kept in time order. A line in a day file
   that isn't part of an entry (a note you wrote) stays under the entry it
@@ -264,6 +267,9 @@ whole before it is cut, so no half of a secret is left at either cut.
   in the order they're written, each once, so a line shaped like a field
   under an entry is a note. A day file that isn't UTF-8 text is never
   rewritten: the write that needed it fails, and `status` names the file.
+  `search` and `status` name it too (`could not read <file>: not UTF-8`):
+  one saved as UTF-16, as Windows PowerShell 5.1's `Out-File` writes, reads
+  as a day with no entry.
 - Every field goes through the redaction rules above, commands included. A
   `<private>` message's answer is `[private]`, with no files or commands. A
   turn that ran `memory.mjs forget` in any of its commands, not only the 20
@@ -613,7 +619,8 @@ transcripts still on disk, since `.imported` and `.forgotten` are inside it.
 `status` adds a journal line: how many days hold entries since the first,
 the size, how many older conversations are still to import, and the last
 failure of the live write and of the import, if any. When `journal.mjs`
-won't load, the line says so.
+won't load, the line says so. A day file that can't be read or isn't
+UTF-8 gets a line of its own (`journal: could not read <file>: <why>`).
 
 ## The memory tool from a terminal
 

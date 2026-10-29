@@ -887,6 +887,14 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     `a day that cannot be read is named, the rest still found, and the count is still the last line (got ${r.stdout.slice(-300)})`);
   r = bcli('search', 'needle', '--since', year.at(-7));
   ok(r.status === 0 && !r.stderr && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && !/could not read/.test(r.stdout), `with --since the last week, a day outside it is never opened (got ${r.stdout}${r.stderr})`);
+  // A day saved as UTF-16 (PowerShell 5.1's Out-File) read as a day with no
+  // entry, named by neither: search and status name it, and status the
+  // unreadable day too (final review, 2026-10-29).
+  writeFileSync(join(big, 'journal', '2024-12-31.md'), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(`# Journal 2024-12-31\n\n${render(entry('2024-12-31 18:00', 'the needle in a wide day'))}\n`, 'utf16le')]));
+  r = bcli('search', 'needle');
+  const st = bcli('status').stdout, wide = String.raw`^%s.*[\\/]2024-12-31\.md: not UTF-8$`;
+  ok(new RegExp(wide.replace('%s', 'could not read '), 'm').test(r.stdout) && new RegExp(wide.replace('%s', '  journal: could not read '), 'm').test(st) &&
+    new RegExp(`^  journal: could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(st), `a day not in UTF-8 is named by search and status (got ${r.stdout.slice(-300)}; ${st})`);
 }
 
 // forget: the user's say over the journal. Claude lists what would go, the

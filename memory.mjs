@@ -253,6 +253,8 @@ export function status(dir, sharedNames = []) {
   if (j?.broken) lines.push(`  journal: could not read journal.mjs: ${j.broken}`);
   // Failing from the first write, it has no day to show: the failure is the news.
   if (j?.first || j?.failed) lines.push(`  journal: ${j.first ? `${j.days} days since ${j.first}, ${(j.bytes / 1048576).toFixed(1)} MB` : 'no days yet'}` + (j.left > 0 ? `; importing ${j.left} older conversations` : '') + (j.failed ? `; last write failed: ${j.failed}` : ''));
+  // A day search can't read: its entries are missing from every search.
+  lines.push(...(j?.unread ?? []).map((u) => `  journal: could not read ${u}`));
   const ch = recent(dir);
   if (ch) lines.push(`  changed in the last ${RECENT_DAYS} days: ${ch}`);
   return lines;

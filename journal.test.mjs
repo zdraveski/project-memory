@@ -184,6 +184,41 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   ok(r.matched.length === 1 && !r.removed.length && readFileSync(f).equals(bytes) && failedForget.some((x) => x.path === f), `forget leaves it, and names it (got ${JSON.stringify(failedForget)})`);
 }
 {
+  // A day saved as UTF-16 (PowerShell 5.1's Out-File) parsed as a day with no
+  // entry, and search and status said nothing of it: named, as a day that
+  // will not open is (final review, 2026-10-29).
+  const d = storeFor(home, 'C:\\journal-utf16'), f = dayFile(d, '2026-11-03'), failed = [];
+  record(d, T, [turn({ at: '2026-11-03 09:00', id: 'u16-1', ask: 'the wide day' }), turn({ at: '2026-11-04 09:00', id: 'u16-2', ask: 'the narrow day' })]);
+  writeFileSync(f, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(readFileSync(f, 'utf8'), 'utf16le')]));
+  const es = entries([d], { failed }), dir5 = dayFile(d, '2026-11-05');
+  mkdirSync(dir5);
+  const s = summary(d);
+  ok(es.map((e) => e.key).join() === 'u16-2' && JSON.stringify(failed) === JSON.stringify([{ path: f, code: 'not UTF-8' }]) && s.unread?.join('|') === `${f}: not UTF-8|${dir5}: EISDIR` && s.days === 1,
+    `a day not in UTF-8 is named by search, and status names it and a day that will not read (got ${JSON.stringify(failed)}, ${JSON.stringify(s)})`);
+}
+{
+  // A turn dated a day off after a time-zone change, recorded again (a backfill
+  // of a grown conversation), was in two days: record() keeps a key once a
+  // day. It leaves the day beside (final review, 2026-10-29); a note stays.
+  const d = storeFor(home, 'C:\\journal-zone'), keys = (x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries.map((e) => e.key).join();
+  record(d, T, [turn({ at: '2026-11-01 22:00', id: 'z-0', ask: 'an earlier turn' }), turn({ at: '2026-11-01 23:30', id: 'z-1', ask: 'the zone turn' })]);
+  appendFileSync(dayFile(d, '2026-11-01'), '\nMy note on the zone turn.\n');
+  record(d, T, [turn({ at: '2026-11-02 00:30', id: 'z-1', ask: 'the zone turn' })]);
+  record(d, T, [turn({ at: '2026-10-31 23:00', id: 'z-0', ask: 'an earlier turn' })]);
+  ok(keys('2026-11-02') === 'z-1' && keys('2026-10-31') === 'z-0' && keys('2026-11-01') === '' && readFileSync(dayFile(d, '2026-11-01'), 'utf8').includes('My note on the zone turn.'),
+    `a key recorded on a day leaves the days beside it, its note kept (got ${days(d).map((x) => `${x}: ${keys(x)}`)})`);
+}
+{
+  // A path is cut relative to the turn's folder in any case only where the
+  // disk ignores case (Windows, macOS): on Linux /home/USER is another folder.
+  const real = process.platform, on = (platform) => {
+    Object.defineProperty(process, 'platform', { value: platform });
+    try { return entryOf(turn({ cwd: '/home/user', changed: ['/home/USER/x.txt', '/home/user/y.txt'] }), T).changed.join(); }
+    finally { Object.defineProperty(process, 'platform', { value: real }); }
+  };
+  ok(on('linux') === '/home/USER/x.txt,y.txt' && on('darwin') === 'x.txt,y.txt' && on('win32') === 'x.txt,y.txt', `case folded on Windows and macOS only (got ${on('linux')}; ${on('darwin')}; ${on('win32')})`);
+}
+{
   // R33: a private sweep stopped short by a day not in UTF-8 is done again at
   // every write until it goes through, its failure shown until then. Never
   // redone, the conversation's entries stayed for good.
