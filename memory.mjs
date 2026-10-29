@@ -50,6 +50,10 @@ const OVERFLOW = /\s*<!-- overflow -->$/;
 // The most entries a forget's look lists, and so the most one --yes removes:
 // it showed 20 of 35, and --yes removed all 35.
 const LOOK = 200;
+// A forget by dates alone is confirmed by its range, not line by line: its look
+// shows this many, and --yes removes every match. Capped at LOOK, "forget the
+// whole journal" removed nothing past 200 entries (docs review, R35).
+const RANGE_SHOWN = 20;
 // What a journal hit prints: its request to HIT_ASK characters, and of the
 // reply, files and commands only the stretches that hold a search word, HIT_SPAN
 // either side, HIT_MORE in all. The top 3 printed whole were 30 KB, and the line
@@ -691,8 +695,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     // without them it rebuilds the journal from the transcripts, forgotten entries too.
     else if (!terms.length && !range.since && !range.until && !conversation && !named.length) r = no('forget needs words, a date range, --conversation or --key; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)');
     else {
-      const m = forget(here, terms, o).matched;
-      if (m.length > LOOK) r = { ok: !yes, lines: [`${m.length} entries in ${here} match; narrow it: a look lists ${LOOK} at most${yes ? ', and --yes removes only what a look can list: nothing removed' : ''}`] };
+      const m = forget(here, terms, o).matched, byRange = !terms.length && !named.length && !conversation;
+      const ds = m.map((e) => e.day).sort(), shown = byRange ? m.slice(0, RANGE_SHOWN) : m;
+      if (m.length > LOOK && !byRange) r = { ok: !yes, lines: [`${m.length} entries in ${here} match; narrow it: a look lists ${LOOK} at most${yes ? ', and --yes removes only what a look can list: nothing removed' : ''}`] };
       else if (!m.length) {
         // The words of a sentence ("the password I pasted yesterday"): the ones no entry holds are why nothing matched.
         // Not when the keys left no entry to hold them: the words were blamed for a key of another store.
@@ -700,7 +705,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
         const none = left ? terms.filter((t) => !forget(here, [t], { ...o, failed: [] }).matched.length) : [];
         const why = !terms.length || !left ? '' : `: no entry holds ${none.length ? none.map((t) => `"${t}"`).join(', ') : 'every word'}`;
         r = { ok: true, lines: [`nothing in ${here} matches${why}`] };
-      } else if (!yes) r = { ok: true, lines: [...m.map(line), `${m.length} entr${m.length === 1 ? 'y' : 'ies'} in ${here} would go; run again with --yes to remove them`] };
+      } else if (!yes) {
+        r = { ok: true, lines: [...shown.map(line), ...(m.length > shown.length ? [`and ${m.length - shown.length} more`] : []),
+          `${m.length} entr${m.length === 1 ? 'y' : 'ies'} in ${here}${byRange ? ` from ${ds[0]} to ${ds.at(-1)}` : ''} would go; run again with --yes to remove them`] };
+      }
       else {
         // What this look found and nothing since: --yes removes only what a look lists.
         let got;
@@ -715,7 +723,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
         const ours = /^\[project-memory\]/m.test(read(join(projectsRoot(), '.git', 'config')) ?? '');
         const old = ours ? [...new Set(gone.filter((e) => e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
         r = !got ? no(`${here} is busy (another hook holds it); try again`)
-          : { ok: true, lines: [...gone.map(line), ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : []),
+          // Past LOOK (a range's), the count, not every line.
+          : { ok: true, lines: [...(gone.length > LOOK ? [] : gone.map(line)), ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : []),
             `removed ${gone.length}${gone.length === tried.length ? '' : ` of ${tried.length}`} from ${here}`] };
       }
       if (lost.length) { r.lines.splice(-1, 0, ...lost); r.ok = false; }
