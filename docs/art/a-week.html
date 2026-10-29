@@ -1,0 +1,78 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A week with project-memory</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=block" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+<style>
+  .week { margin-top: 30px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; position: relative; }
+  .week::before { content: ""; position: absolute; left: 6%; right: 6%; top: 17px; height: 2px;
+    background: linear-gradient(90deg, rgba(34,211,238,.1), #22d3ee 20%, #60a5fa 60%, #a78bfa 90%, rgba(167,139,250,.1));
+    box-shadow: 0 0 12px rgba(34,211,238,.7); }
+  .day { display: grid; grid-template-rows: auto 1fr; gap: 16px; }
+  .pill { justify-self: center; position: relative; padding: 9px 16px; border-radius: 99px;
+    font: 800 14px/1 Inter, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: #04121f;
+    background: linear-gradient(160deg, #67e8f9, #3b82f6); box-shadow: 0 0 18px rgba(34,211,238,.55); }
+  .card { padding: 18px 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .card .ico { width: 44px; height: 44px; border-radius: 13px; }
+  .card .ico svg { width: 24px; height: 24px; }
+  .then { margin: 0; font-size: 15.5px; line-height: 1.45; color: var(--body); }
+  .now { margin: auto 0 0; padding-top: 12px; border-top: 1px solid var(--line);
+    font: 700 16px/1.4 Inter, sans-serif; color: var(--ink); }
+  .now::before { content: "✓ "; color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+</style>
+
+<div class="art">
+  <svg class="streaks" viewBox="0 0 1000 520" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
+    <defs>
+      <linearGradient id="sk" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity="0"/><stop offset=".55" stop-color="#38bdf8" stop-opacity=".6"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient>
+      <filter id="bl" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+    </defs>
+    <path d="M560 -20 C 720 70, 860 40, 1020 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
+    <path d="M560 -20 C 720 70, 860 40, 1020 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
+    <path d="M640 -20 C 780 100, 900 90, 1020 30" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
+  </svg>
+  <i class="stars"></i>
+  <i class="horizon"></i>
+  <svg width="0" height="0" style="position:absolute"><linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></svg>
+
+  <div class="eyebrow">A week with project-memory</div>
+  <h1>Monday to Friday, <span class="grad">Claude keeps up.</span></h1>
+
+  <div class="week">
+    <div class="day"><span class="pill">Mon</span>
+      <div class="glass card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7"/></svg></div>
+        <p class="then">You tell Claude the bakery's cake prices.</p>
+        <p class="now">Claude writes them down.</p>
+      </div>
+    </div>
+    <div class="day"><span class="pill">Tue</span>
+      <div class="glass card">
+        <div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/></svg></div>
+        <p class="then">A new conversation. “Where did we leave off?”</p>
+        <p class="now">Claude already knows.</p>
+      </div>
+    </div>
+    <div class="day"><span class="pill">Wed</span>
+      <div class="glass card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8M13 12h8M13 18h8"/></svg></div>
+        <p class="then">A big task runs so long that the conversation is shortened.</p>
+        <p class="now">Claude knows what it was doing and carries on.</p>
+      </div>
+    </div>
+    <div class="day"><span class="pill">Thu</span>
+      <div class="glass card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></div>
+        <p class="then">A note gets deleted by mistake.</p>
+        <p class="now">You ask, and it comes back.</p>
+      </div>
+    </div>
+    <div class="day"><span class="pill">Fri</span>
+      <div class="glass card lit">
+        <div class="ico"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg></div>
+        <p class="then">You open a different project.</p>
+        <p class="now">Claude knows you like short, plain answers.</p>
+      </div>
+    </div>
+  </div>
+</div>

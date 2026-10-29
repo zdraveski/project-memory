@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Good to know</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=block" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+<style>
+  .tiles { grid-template-columns: repeat(3, 1fr); }
+</style>
+
+<div class="art">
+  <svg class="streaks" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
+    <defs>
+      <linearGradient id="sk" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity="0"/><stop offset=".55" stop-color="#38bdf8" stop-opacity=".6"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient>
+      <filter id="bl" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+    </defs>
+    <path d="M560 -20 C 720 70, 860 40, 1020 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
+    <path d="M560 -20 C 720 70, 860 40, 1020 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
+    <path d="M640 -20 C 780 100, 900 90, 1020 30" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
+  </svg>
+  <i class="stars"></i>
+  <i class="horizon"></i>
+  <svg width="0" height="0" style="position:absolute"><linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></svg>
+
+  <div class="eyebrow">Good to know</div>
+  <h1>Good to know, <span class="grad">at a glance.</span></h1>
+
+  <div class="tiles">
+    <div class="glass tile">
+      <div class="ico"><svg viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg></div>
+      <h2>Your existing notes</h2>
+      <p>Older lines may move to the archive. No note is deleted.</p>
+    </div>
+    <div class="glass tile">
+      <div class="ico"><svg viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></div>
+      <h2>How much room it takes</h2>
+      <p>A short briefing, usually under 1,000 tokens: about 0.5% of a 200,000-token window.</p>
+    </div>
+    <div class="glass tile">
+      <div class="ico"><svg viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+      <h2>Where it works</h2>
+      <p>Windows, macOS and Linux, wherever Claude Code can find Node.js.</p>
+    </div>
+    <div class="glass tile">
+      <div class="ico"><svg viewBox="0 0 24 24"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/></svg></div>
+      <h2>One computer</h2>
+      <p>Notes stay on the computer they were made on. They don't sync to your others.</p>
+    </div>
+    <div class="glass tile">
+      <div class="ico"><svg viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></div>
+      <h2>Repositories</h2>
+      <p>Subfolders and worktrees of a git repository use its notebook.</p>
+    </div>
+    <div class="glass tile">
+      <div class="ico"><svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></div>
+      <h2>Your own files</h2>
+      <p>It writes only inside Claude Code's own folder, never in your project.</p>
+    </div>
+  </div>
+</div>

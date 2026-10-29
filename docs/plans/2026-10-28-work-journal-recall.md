@@ -397,7 +397,7 @@ project-memory writes one entry here after every reply: what was asked, what was
 - Modify: `.github/workflows/test.yml` (add `- run: node journal.test.mjs`)
 - Modify: `deploy.mjs` (the suites array, `'journal'`)
 - Modify: `CONTRIBUTING.md` (six suites)
-- Modify: `README.md`, `PRIVACY.md`, `docs/how-it-works.md`, `docs/what-it-does.svg`, `CHANGELOG.md`
+- Modify: `README.md`, `PRIVACY.md`, `docs/how-it-works.md`, `docs/art/what-you-get.html` (re-rendered to `docs/what-you-get.webp`), `CHANGELOG.md`
 
 **Interfaces:** none.
 
@@ -406,7 +406,7 @@ project-memory writes one entry here after every reply: what was asked, what was
   - README: in "What you get", a row for asking about any earlier work; examples in "Using it day to day" ("What did we decide about the logo in September?", "What did I work on last week?", "Forget the password I pasted yesterday."); the privacy bullets; the comparison table's "How memories are made" and "Old versions kept" rows; the leftover-files list (`journal` folders, `journal.md`).
   - PRIVACY: "What it saves" adds the journal (what an entry holds, the caps); "How long" adds it (until deleted or forgotten); "Deleting it" adds the `journal` folders and `journal.md`.
   - how-it-works: a "The journal" section (format, keys, backfill, closed-day snapshots); `search`'s new options; `forget`; the briefing line.
-  - `what-it-does.svg`: the first card says it remembers all your work, not only where you left off. Check the fit with the scratchpad's `svgcheck.cjs` (every line with at least 40 px to spare).
+  - `docs/art/what-you-get.html`: the first card says it remembers all your work, not only where you left off. Also its alt text in the README. Re-render with `node docs/art/render.mjs` and look at `docs/what-you-get.webp`: the title fits on one line, the card heights still match.
   - CHANGELOG: an `## Unreleased` section in plain words.
 - [ ] **Step 3: Check the docs.** Run the scratchpad's `doclinks.mjs` (0 broken) and the 80-column check on prose lines.
 - [ ] **Step 4: Run `node mutate.mjs`, the full run.** Expected: every mutant killed. Then push the branch and wait for CI: 6/6.

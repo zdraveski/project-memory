@@ -1,0 +1,82 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>How it works</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=block" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+<style>
+  .flow { margin-top: 38px; display: grid; grid-template-columns: 1fr 56px 1.35fr 56px 1fr; align-items: center; }
+  .node { padding: 26px 24px; }
+  .node h2 { margin: 18px 0 8px; font: 700 21px/1.25 Inter, sans-serif; letter-spacing: -.01em; }
+  .node p { margin: 0; font-size: 16.5px; line-height: 1.5; color: var(--body); }
+  .mid { padding: 28px 26px 26px; text-align: center; }
+  .mid .mark { width: 104px; height: 104px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center;
+    background: radial-gradient(circle, rgba(34,211,238,.22), rgba(11,20,64,.2) 70%); }
+  .mid .mark img { width: 92px; filter: drop-shadow(0 0 14px rgba(34,211,238,.55)); }
+  .mid .name { margin-top: 8px; font: 800 26px/1.1 Inter, sans-serif; letter-spacing: -.02em; }
+  .mid .when { margin-top: 6px; font: 600 14px/1 Inter, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--cyan); }
+  .mid ul { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 10px; text-align: left; }
+  .mid li { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px;
+    background: rgba(34,211,238,.07); border: 1px solid rgba(34,211,238,.22); font: 600 16.5px/1.2 Inter, sans-serif; }
+  .mid li svg { flex: none; width: 20px; height: 20px; }
+  .beam { position: relative; height: 2px; margin: 0 6px;
+    background: linear-gradient(90deg, rgba(34,211,238,.15), #22d3ee 60%, #60a5fa);
+    box-shadow: 0 0 12px rgba(34,211,238,.8); }
+  .beam::after { content: ""; position: absolute; right: -2px; top: -5px; border: 6px solid transparent;
+    border-left: 9px solid #60a5fa; border-right: 0; filter: drop-shadow(0 0 6px #60a5fa); }
+  .beam i { position: absolute; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: #cffafe; box-shadow: 0 0 10px #22d3ee, 0 0 3px #fff; }
+  .foot { margin-top: 30px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+</style>
+
+<div class="art">
+  <svg class="streaks" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
+    <defs>
+      <linearGradient id="sk" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity="0"/><stop offset=".55" stop-color="#38bdf8" stop-opacity=".6"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient>
+      <filter id="bl" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+    </defs>
+    <path d="M560 -20 C 720 70, 860 40, 1020 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
+    <path d="M560 -20 C 720 70, 860 40, 1020 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
+    <path d="M640 -20 C 780 100, 900 90, 1020 30" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
+  </svg>
+  <i class="stars"></i>
+  <i class="horizon"></i>
+  <svg width="0" height="0" style="position:absolute"><linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></svg>
+
+  <div class="eyebrow">How it works</div>
+  <h1>Your place, <span class="grad">saved after every reply.</span></h1>
+  <p class="sub">Every time Claude finishes a reply, in the background.</p>
+
+  <div class="flow">
+    <div class="glass node">
+      <div class="ico"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg></div>
+      <h2>You work with Claude</h2>
+      <p>It writes down your decisions, preferences and corrections.</p>
+    </div>
+
+    <div class="beam"><i style="left:22%"></i></div>
+
+    <div class="glass lit mid">
+      <div class="mark"><img src="brain.png" alt=""></div>
+      <div class="name">project-<span class="grad">memory</span></div>
+      <div class="when">After every reply</div>
+      <ul>
+        <li><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="rgba(34,211,238,.18)" stroke="#22d3ee" stroke-width="1.6"/><path d="m8 12.5 2.6 2.6L16.5 9" fill="none" stroke="#a5f3fc" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Tidies the notes</li>
+        <li><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="rgba(34,211,238,.18)" stroke="#22d3ee" stroke-width="1.6"/><path d="m8 12.5 2.6 2.6L16.5 9" fill="none" stroke="#a5f3fc" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Records where you are</li>
+        <li><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="rgba(34,211,238,.18)" stroke="#22d3ee" stroke-width="1.6"/><path d="m8 12.5 2.6 2.6L16.5 9" fill="none" stroke="#a5f3fc" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Keeps old versions</li>
+      </ul>
+    </div>
+
+    <div class="beam"><i style="left:22%"></i></div>
+
+    <div class="glass node">
+      <div class="ico"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="m8.5 10 2.5 2.5 4.5-4.5"/></svg></div>
+      <h2>Your next conversation</h2>
+      <p>Starts already knowing where you stopped.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span class="chip">Runs on its own</span>
+    <span class="chip">No waiting you'd notice</span>
+    <span class="chip">Stays on your computer</span>
+  </div>
+</div>
