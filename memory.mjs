@@ -627,6 +627,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const where = scope.length <= 2 ? scope.join(' and ') : `${scope.length} stores`, n = Number(opt('--limit'));
   // An entry's line; under --all, with the project it is from: forget and --store need it.
   const head = (e) => `${e.at}  conversation ${clip(e.s, 100)}${e.branch ? ` · branch ${clip(e.branch, 100)}` : ''}${rest.includes('--all') ? ` · project ${basename(dirname(e.dir))}` : ''}`;
+  // Its transcript, for detail; not a private turn's: the only detail it has
+  // is the private part, and the transcript still holds it (final review).
+  const full = (e, conv = join(projectsRoot(), `${e.t}.jsonl`)) => (e.answered !== '[private]' && existsSync(conv) ? [`     Full conversation: ${conv}`] : []);
   // Words that say nothing of which memory ("what did I do") with a range: the range's listing.
   if (cmd === 'search' && args.length && (words(args.join(' ')).length || !(range.since || range.until))) {
     const q = args.join(' '), terms = words(q), found = search(scope, q, Infinity, { ...range, failed });
@@ -640,14 +643,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
     const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (t.length > 2 ? t : alone(t).source)).join('|'), 'giu');
-    const entry = (h, also, conv = join(projectsRoot(), `${h.t}.jsonl`)) => {
+    const entry = (h, also) => {
       const hold = [['Answered', h.answered], ['Changed', h.changed.join(', ')], ['Ran', h.ran.join(' · ')]].filter(([, v]) => clip(v, Infinity).search(find) !== -1);
       const ds = [h, ...also].map((x) => x.day).sort();
       // Redacted before it is cut: a stretch must not cut a secret in two. The
       // copies' keys are named: a forget of the one shown left them (review).
       return [`${String(h.score).padStart(3)}  journal   ${head(h)}`, `     key: ${clip(h.key, Infinity)}`, `     Asked: ${clip(h.asked, HIT_ASK)}`,
         ...hold.map(([k, v]) => `     ${k}: ${around(clip(v, Infinity), find, Math.floor(HIT_MORE / hold.length))}`),
-        ...(existsSync(conv) ? [`     Full conversation: ${conv}`] : []),
+        ...full(h),
         ...(also.length ? [`     ${also.length} more like this, ${ds[0]}..${ds.at(-1)}: ${more(also.map((x) => clip(x.key, Infinity)), 5)}; --same takes them all`] : [])];
     };
     r = { ok: true, lines: !words(q).length ? [`nothing to search for: "${q}" has no word that says which memory`]
@@ -661,9 +664,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).
     const es = entries(scope, { failed }), got = args.map((k) => es.find((e) => e.key === k)), seen = new Set();
-    const whole = (e, conv = join(projectsRoot(), `${e.t}.jsonl`)) => [head(e), `     key: ${clip(e.key, Infinity)}`,
+    const whole = (e) => [head(e), `     key: ${clip(e.key, Infinity)}`,
       ...[['Asked', e.asked], ['Answered', e.answered], ['Changed', e.changed.join(', ')], ['Ran', e.ran.join(' · ')]].filter(([, v]) => v).map(([k, v]) => `     ${k}: ${clip(v, Infinity)}`),
-      `     Day file: ${e.path}`, ...(existsSync(conv) ? [`     Full conversation: ${conv}`] : [])];
+      `     Day file: ${e.path}`, ...full(e)];
     // --same: every entry asking what this one asked, the copies a hit counts.
     const alike = (e) => (rest.includes('--same') ? es.filter((x) => norm(x.asked) === norm(e.asked)) : [e]).filter((x) => !seen.has(x) && seen.add(x));
     r = { ok: got.every(Boolean), lines: got.flatMap((e, i) => e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${args[i]} in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };

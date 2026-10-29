@@ -831,6 +831,14 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   writeFileSync(conv, '{}\n');
   const was = named(); unlinkSync(conv);
   ok(was && !named(), 'the full conversation is named while it exists');
+  // A private turn's only detail is the private part, which its transcript
+  // still holds: neither a hit nor show points at it (final review, 2026-10-29).
+  const pin = entry('2026-09-30 10:00', 'my quokka pin is [private]', { answered: '[private]' }), pinDay = join(jd, 'journal', '2026-09-30.md');
+  day(jd, '2026-09-30', [pin]); writeFileSync(conv, '{}\n');
+  const pinHit = jcli('search', 'quokka', 'pin').stdout, pinShow = jcli('show', pin.key).stdout;
+  unlinkSync(conv); rmSync(pinDay);
+  ok(/^     Asked: my quokka pin is \[private\]$/m.test(pinHit) && /^     Day file: /m.test(pinShow) && !/Full conversation/.test(pinHit + pinShow),
+    `a private entry's hit and show name no transcript (got ${pinHit}${pinShow})`);
   mkdirSync(other, { recursive: true }); writeFileSync(join(other, 'MEMORY.md'), '# Index\n');
   const rot = entry('2026-10-20 10:00', 'rotate the signing key', { t: 'C--jr2/feed' });
   day(other, '2026-10-20', [rot]);

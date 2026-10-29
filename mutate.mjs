@@ -668,6 +668,7 @@ const suites = {
     'history ignores --limit': ["history(scope, file, rest.includes('--all'), n > 0 ? n : undefined)", "history(scope, file, rest.includes('--all'))"],
     'a journal-only store not searched by --all': [", ...ps.map((p) => join(projectsRoot(), p, 'memory')).filter((d) => existsSync(join(d, 'journal')))]", ']'],
     '--all searches a store reached by two links twice': ['return !seen.has(k) && seen.add(k);', 'return true;'],
+    "a private entry's hit names its transcript": ["e.answered !== '[private]' && existsSync(conv)", 'existsSync(conv)'],
   }],
   'hooks/hooks.json': ['memory.test.mjs', {
     'the plugin starts handoff-log without --print': ['handoff-log.mjs", "--print"]', 'handoff-log.mjs"]'],
