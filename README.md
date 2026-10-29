@@ -162,7 +162,8 @@ project-memory can't see the size you chose there. The details are under
 - **If you turn off auto memory.** While `CLAUDE_CODE_DISABLE_AUTO_MEMORY` is
   set to `1`, `true`, `yes` or `on`, project-memory does nothing on its own
   except note the conversation's short tag, so the journal never takes it in
-  later. Only the memory skill still works when you ask for it. If you turn
+  later, not even if you go on with it after turning auto memory back on.
+  Only the memory skill still works when you ask for it. If you turn
   auto memory off with `/memory` instead, project-memory can't see that,
   because it doesn't read your settings:
   [turn it off](#turning-it-off-or-removing-it) as well. When you turn it
@@ -333,7 +334,7 @@ back.
   If you copy or share your `.claude` folder, all of that goes with it, the
   journal too.
 - The journal keeps every exchange: your message (up to 2,000 characters),
-  Claude's reply (up to 3,000), the names of up to 20 files Claude changed,
+  Claude's reply (up to 3,000), the paths of up to 20 files Claude changed,
   and up to 10 commands it ran (the first 200 characters of each). It's in
   the `journal` folder of each project's notebook, one file per day, with a
   file `journal.md` beside it. It stays until you delete it or ask Claude to

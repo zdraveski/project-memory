@@ -212,9 +212,11 @@ notebook has none. An entry, with a blank line between entries:
 **Ran:** the Bash and PowerShell commands, the last 10, 200 characters each
 ```
 
-- The time is local, as in the handoff. The branch comes from the
-  repository's `HEAD` file. A path inside the turn's folder is written
-  relative to it. `Changed` and `Ran` are left out when empty.
+- The time is local, as in the handoff. The branch is the one Claude Code
+  recorded with the message (`gitBranch`): the branch at the time of the
+  turn, none on a detached HEAD. A path inside the turn's folder is written
+  relative to it, any other path in full. `Changed` and `Ran` are left out
+  when empty.
 - The key is the id of the turn's prompt record; a record without one gets
   the conversation's tag, the time and a hash of the message. One key is one
   entry: twin Stops, retries and a killed hook write nothing twice, and a
@@ -233,7 +235,9 @@ notebook has none. An entry, with a blank line between entries:
   forget` in any of its commands, not only the 10 an entry keeps, is kept
   like a private one, its request included: `[private]`, with no files or
   commands, since its reply lists what the forget removes. With auto memory
-  off, nothing is written.
+  off, nothing is written, and a conversation held with it off (its tag in
+  `.memory-off`) is never written, even when it goes on with auto memory
+  on.
 - `journal.md` is written once, the first time, as a `tier: hot` note, so
   the index gets a pinned line telling Claude to search the journal. It is
   never rewritten, so an edit to it stays.

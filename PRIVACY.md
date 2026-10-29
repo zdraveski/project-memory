@@ -55,7 +55,7 @@ All of it stays in `~/.claude/projects` on your computer:
 - A journal of every exchange, one file per day in a project's `memory`
   folder (`journal/YYYY-MM-DD.md`), with a file `journal.md` beside it that
   tells Claude the journal is there. Each entry holds your message (up to
-  2,000 characters), Claude's reply (up to 3,000), the names of up to 20
+  2,000 characters), Claude's reply (up to 3,000), the paths of up to 20
   files Claude changed, and up to 10 commands it ran (the first 200
   characters of each), with the time, the conversation's short tag and the
   git branch.
@@ -105,7 +105,9 @@ If auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (set to
 `1`, `true`, `yes` or `on`), project-memory reads and saves nothing on its
 own, except the conversation's short tag in `~/.claude/projects/.memory-off`
 (the newest 1,000), so the journal never takes that conversation in later.
-The memory skill still reads or changes your notes when you ask it to.
+It stays out of the journal even if you go on with it after turning auto
+memory back on. The memory skill still reads or changes your notes when you
+ask it to.
 
 ## What it sends
 
