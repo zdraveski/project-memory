@@ -129,3 +129,14 @@ h1 {
 }
 .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%;
   background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+
+/* tiles: an icon, a title and a line or two, for the section pictures */
+.tiles { margin-top: 32px; display: grid; gap: 18px; }
+.tile { padding: 22px 22px 24px; }
+.tile h2 { margin: 16px 0 6px; font: 700 19px/1.25 Inter, sans-serif; letter-spacing: -.01em; }
+.tile p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--body); }
+.code { font: 500 14.5px/1.4 var(--mono); color: #a5f3fc; white-space: nowrap;
+  background: rgba(8, 14, 40, .75); border: 1px solid rgba(34, 211, 238, .3); border-radius: 8px; padding: 3px 8px; }
+.aside { margin-top: 24px; display: flex; gap: 12px; align-items: center; font-size: 17px; color: var(--body); }
+.aside > svg { flex: none; width: 22px; height: 22px; fill: none; stroke: var(--muted); stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; }

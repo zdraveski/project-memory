@@ -54,31 +54,14 @@ it saves stays on your computer.
 
 ## Who it's for
 
-project-memory helps most if you:
+![Who it helps most: you come back to the same project over days or weeks, you give Claude long tasks, you keep more than one Claude window open, or you work on several projects and want Claude to know your habits in all of them. If you only ask Claude the occasional one-off question, you won't notice much difference.](docs/who-its-for.webp)
 
-- come back to the same project over days or weeks,
-- give Claude long tasks,
-- keep more than one Claude window open,
-- or work on several projects and want Claude to know your habits in all of
-  them.
-
-If you only ask Claude the occasional one-off question, you won't notice much
-difference. To weigh it against other memory tools, see
+To weigh it against other memory tools, see
 [How it compares](#how-it-compares).
 
 ## A week with project-memory
 
-- **Monday.** You tell Claude the bakery's cake prices, and that orders come
-  by phone. Claude writes it down.
-- **Tuesday.** You start a new conversation and ask *"Where did we leave
-  off?"* Claude already knows.
-- **Wednesday.** A big task runs so long that Claude Code shortens the
-  conversation. Claude saved its notes first, and it's told what it was in the
-  middle of, so it can carry on.
-- **Thursday.** A note gets deleted by mistake. You ask Claude to bring it
-  back, and it does.
-- **Friday.** You open a different project. Claude already knows you like
-  short, plain answers, because you shared that lesson with all your projects.
+![A week with project-memory. Monday: you tell Claude the bakery's cake prices, and Claude writes them down. Tuesday: in a new conversation you ask "Where did we leave off?", and Claude already knows. Wednesday: a big task runs so long that the conversation is shortened; Claude saved its notes first and is told what it was doing, so it carries on. Thursday: a note gets deleted by mistake; you ask, and it comes back. Friday: you open a different project, and Claude already knows you like short, plain answers, because you shared that lesson with all your projects.](docs/a-week.webp)
 
 ## Long conversations and compaction
 
@@ -140,6 +123,8 @@ project-memory can't see the size you chose there. The details are under
 
 ## Good to know
 
+![Good to know, at a glance. Your existing notes: older lines may move to the archive, and no note is deleted. How much room it takes: a short briefing, usually under 1,000 tokens, about 0.5% of a 200,000-token window. Where it works: Windows, macOS and Linux, wherever Claude Code can find Node.js. One computer: notes stay on the computer they were made on and don't sync. Repositories: subfolders and worktrees of a git repository use its notebook. Your own files: it writes only inside Claude Code's own folder, never in your project.](docs/good-to-know.webp)
+
 - **Your existing notes.** The first time it runs, project-memory may move
   older lines from the table of contents to the archive. No note is deleted,
   Claude can still find those notes, and if Git is installed, the first copy
@@ -169,21 +154,14 @@ project-memory can't see the size you chose there. The details are under
 
 ## Before you install
 
-You need three things. If you already use Claude Code, you probably have
-them.
+![Three things you probably already have. 1. Claude Code, with its built-in memory on. It's on unless you turned it off; to check, type /memory. 2. Node.js 20 or newer, a free program that runs project-memory, from nodejs.org (LTS). 3. Git, a free program that keeps the history of your notes. Without it, everything works except bringing back old versions. From git-scm.com. Not sure? Ask Claude: "Do I have Node.js 20 or newer, and Git?"](docs/before-you-install.webp)
 
-1. Claude Code, with its built-in memory switched on. It's on unless you
-   turned it off. To check, type `/memory` in Claude Code.
-2. Node.js 20 or newer. This free program is what runs project-memory.
-3. Git. This free program keeps the history of your notes. Without it,
-   everything works except bringing back old versions of a note.
-
-If you're not sure about the last two, ask Claude: *"Do I have Node.js 20 or
-newer, and Git?"* Claude will check for you. If one is missing, download it from
-[nodejs.org](https://nodejs.org) (choose the LTS version) or
-[git-scm.com](https://git-scm.com).
+If one is missing, download it from [nodejs.org](https://nodejs.org) (choose
+the LTS version) or [git-scm.com](https://git-scm.com).
 
 ## Install
+
+![Install it in four steps. 1. Add it to Claude Code: /plugin marketplace add zdraveski/project-memory. 2. Install it: /plugin install project-memory@project-memory, and in the menu choose to install it for you (user scope). 3. Close Claude Code and open it again. 4. Check that it works: /project-memory:memory doctor. Every line should start with ok.](docs/install.webp)
 
 1. In Claude Code, type this line and press Enter:
 
@@ -213,7 +191,7 @@ newer, and Git?"* Claude will check for you. If one is missing, download it from
 
 ## Using it day to day
 
-There's nothing you have to do. Keep working with Claude as you always have.
+![Nothing to learn. Just ask. Keep working as you always have. "Remember that I prefer short answers": Claude saves a note. "Where did we leave off?": Claude reads the record of your last conversation. "Did we decide anything about the logo?": Claude searches your notes, including the archive. "I deleted the note about pricing by mistake. Can you bring it back?": Claude restores it from the history. "Remember for all my projects that I like plain language": Claude saves it straight to the shared notebook.](docs/day-to-day.webp)
 
 When you want something from your notes, just ask in your own words:
 
@@ -306,6 +284,8 @@ back.
 [Before you install](#before-you-install)), then restart Claude Code.
 
 ## Your privacy
+
+![What it saves stays on your computer. It never goes online: everything it saves stays in Claude Code's own folder on your computer. Common secrets are blanked out: keys, tokens and passwords you paste become [redacted] before anything is saved. Keep part of a message out: put it between <private> and </private>, and it isn't saved. Keep a whole conversation out: type <private-session> in any message. Claude still sees what you write, and your conversation goes to Anthropic as usual.](docs/privacy.webp)
 
 - project-memory never connects to the internet. What it saves stays on your
   computer, in Claude Code's own folder (`.claude`, in your home folder).
