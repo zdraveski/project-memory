@@ -171,6 +171,24 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   ok(r.matched.length === 1 && !r.removed.length && readFileSync(f).equals(bytes) && failedForget.some((x) => x.path === f), `forget leaves it, and names it (got ${JSON.stringify(failedForget)})`);
 }
 {
+  // R33: a private sweep stopped short by a day not in UTF-8 is done again at
+  // every write until it goes through, its failure shown until then. Never
+  // redone, the conversation's entries stayed for good.
+  const d = storeFor(home, 'C:\\journal-owed'), f = dayFile(d, '2026-09-01'), failed = join(d, 'journal', '.failed'), owed = join(d, 'journal', '.sweeps');
+  const P = '/x/projects/C--proj/aaaaaaaa.jsonl', Q = '/x/projects/C--proj/cccccccc.jsonl', note = Buffer.from('\nNote: caf\xE9\n', 'latin1');
+  const holds = () => readFileSync(f, 'utf8').includes('my biopsy');
+  record(d, P, [turn({ at: '2026-09-01 10:00', id: 'p-1', ask: 'my biopsy result', raw: 'my biopsy result' })]);
+  appendFileSync(f, note);
+  write(d, P, [], { quiet: true, hush: true });   // the Stop of the turn that typed the mark
+  write(d, Q, [turn({ at: '2026-09-02 09:00', id: 'q-1' })], { quiet: false, hush: false });   // another conversation's
+  ok(holds() && summary(d).failed?.includes('not UTF-8') && readFileSync(owed, 'utf8').trim() === 'aaaaaaaa',
+    `until the day is fixed, every write tries the sweep again and says it failed (got ${summary(d).failed})`);
+  const b = readFileSync(f);
+  writeFileSync(f, Buffer.concat([b.subarray(0, b.length - note.length), Buffer.from('\nNote: café\n')]));   // the note saved again, in UTF-8
+  write(d, Q, [turn({ at: '2026-09-02 09:05', id: 'q-2' })], { quiet: false, hush: false });
+  ok(!holds() && !existsSync(failed) && !existsSync(owed) && readFileSync(f, 'utf8').includes('café'), 'the first write after the fix finishes it, and clears the failure');
+}
+{
   // A time that won't parse (a transcript another tool wrote) made the day file
   // NaN-NaN-Na.md, which nothing lists: no search, forget or sweep reached it.
   const d = storeFor(home, 'C:\\journal-nan'), now = local().slice(0, 10);
@@ -639,6 +657,23 @@ const small = { segment: 1024, budgetMs: 0 };
     let tags = ''; try { tags = readFileSync(join(d, '.private-sessions'), 'utf8'); } catch {}
     ok(!asks(d).length && tags.split(/\r?\n/).includes(M.slice(0, 8)), `a mark in the ${where} segment keeps the whole conversation out, and takes back what it wrote (got ${asks(d)})`);
   }
+}
+{
+  // R33 for a mark an import finds: the sweep a day not in UTF-8 stopped is
+  // done again at the next look, and its failure shown until then.
+  const [r, d] = repo('owed'), M = sid('o'), p = join(projects, slug(r), `${M}.jsonl`), f = dayFile(d, '2026-09-01'), failed = join(d, 'journal', '.failed');
+  const note = Buffer.from('\nNote: caf\xE9\n', 'latin1'), holds = () => readFileSync(f, 'utf8').includes('my biopsy');
+  record(d, p, [turn({ at: '2026-09-01 08:00', id: 'o-live', ask: 'my biopsy', raw: 'my biopsy' })]);
+  appendFileSync(f, note);
+  writeFileSync(p, exchange(M, r, 0) + rec('user', M, '2026-09-01T10:30:00Z', '<private-session> from here on', r) + '\n');
+  utimesSync(p, ago(2), ago(2));
+  fill(d);
+  ok(holds() && /^backfill: .*not UTF-8/.test(summary(d).failed), `a sweep an import could not finish says so (got ${summary(d).failed})`);
+  const b = readFileSync(f);
+  writeFileSync(f, Buffer.concat([b.subarray(0, b.length - note.length), Buffer.from('\nNote: café\n')]));
+  utimesSync(p, new Date(), new Date());   // running again: no import this look, only the sweep owed
+  due(d); fill(d);
+  ok(!holds() && !existsSync(failed) && !existsSync(join(d, 'journal', '.sweeps')), `the next look finishes it, and clears the failure (got ${summary(d).failed})`);
 }
 {
   // A transcript whose last line is longer than a segment is read to its end:

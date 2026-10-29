@@ -216,8 +216,28 @@ function drop(dir, d, keep) {
 // Call under withLock(dir). Returns how many went.
 export function sweep(dir, s) {
   let n = 0;
-  each(days(dir), (d) => { n += drop(dir, d, (e) => e.s !== s).length; });
+  try { each(days(dir), (d) => { n += drop(dir, d, (e) => e.s !== s).length; }); }
+  catch (e) { owe(dir, s, true); throw e; }
+  owe(dir, s, false);
   return n;
+}
+
+// The conversations whose sweep stopped short (a day not in UTF-8), one tag a
+// line, swept again at every write and every look until it goes through: the
+// mark is read once, and a private conversation's entries stayed (R33).
+const SWEEPS = '.sweeps';
+function owe(dir, s, yes) {
+  const f = join(dir, JOURNAL, SWEEPS), before = raw(f);
+  if (before == null && !yes) return;
+  const rest = before == null ? [] : before.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && l !== s), next = yes ? [...rest, s] : rest;
+  if (next.length) replaceIfUnchanged(f, before, next.join('\n') + '\n');
+  else try { unlinkSync(f); } catch {}
+}
+// The sweeps owed, each tried; throws while one still stops short. Returns how many.
+function resweep(dir) {
+  const owed = (raw(join(dir, JOURNAL, SWEEPS)) ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  each(owed, (s) => sweep(dir, s));
+  return owed.length;
 }
 
 // The entries with every term (any case) in one of their fields, in the range,
@@ -327,9 +347,10 @@ function noteFolder(dir, f) {
   }
 }
 
-// handoff()'s sink, called under its lock.
+// handoff()'s sink, called under its lock. A sweep still owed keeps its
+// failure until it goes through.
 export function write(dir, transcriptPath, got, opts) {
-  try { if (take(dir, transcriptPath, got, opts)) clear(dir, false); }
+  try { const did = take(dir, transcriptPath, got, opts); resweep(dir); if (did) clear(dir, false); }
   catch (e) { fault(dir, e); }
 }
 
@@ -468,8 +489,8 @@ function importOne(dir, c, fd, seg, cap, more) {
   if (hushed(dir, s)) return none;
   // A mark typed while the plugin was off is taken as its Stop takes one: the
   // conversation is marked, and what it wrote before goes, from the journal
-  // and from handoff.md.
-  if (marked(fd, c.looked, seg, size)) { hushed(dir, s, true); sweep(dir, s); unsay(dir, s); return none; }
+  // and from handoff.md (first: a sweep a day stops short throws, and is owed).
+  if (marked(fd, c.looked, seg, size)) { hushed(dir, s, true); unsay(dir, s); sweep(dir, s); return none; }
   if (hushed(projectsRoot(), s, false, OFF)) return none;
   let at = c.from;
   for (const { got, next } of segments(fd, at, seg, size, cap)) {
@@ -502,8 +523,9 @@ export function due(dir, t0 = Date.now()) {
 export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segment = IMPORT_SEGMENT, turns: cap = IMPORT_TURNS } = {}) {
   const t0 = Date.now(), look = join(dir, JOURNAL, LOOKED);
   if (!due(dir, t0)) return { imported: 0, left: 0 };
-  let all = [], n = 0, done = 0, err = null;
+  let all = [], n = 0, done = 0, err = null, owed = 0;
   const other = [];
+  try { owed = resweep(dir); } catch (e) { err = e; }
   try {
     all = candidates(dir, skip);
     for (const [i, c] of all.entries()) {
@@ -531,7 +553,7 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
   // Kept in .failed as the sink's is; the next import that goes through clears
   // it, and only its own: a live write's failure is the live write's to clear.
   if (err) fault(dir, err, 'backfill: ');
-  else if (n) clear(dir, true);
+  else if (n || owed) clear(dir, true);
   // The next look: the next Stop while the budget left some, else in ACTIVE (a
   // failure too: retried every Stop, it would cost every Stop a look).
   try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(look, raw(look), String(left && !err ? t0 - ACTIVE : Date.now())); } catch {}
