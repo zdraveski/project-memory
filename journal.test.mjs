@@ -162,6 +162,9 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   let fl = ''; try { fl = readFileSync(failed, 'utf8'); } catch {}
   ok(readFileSync(f).equals(bytes) && others() === 'w-0,w-3' && fl.includes('2026-11-12.md') && summary(d).failed?.includes('not UTF-8'),
     `a day file not in UTF-8 is left as it is, the other days are written, and status says why (got ${others()}; ${fl})`);
+  // Nothing to write, nothing to fail: the same turn again faulted every Stop.
+  write(d, T, [turn({ at: '2026-11-12 09:00', id: 'w-1', ask: 'the zebra', raw: 'the zebra' })], { quiet: false, hush: false });
+  ok(!existsSync(failed) && readFileSync(f).equals(bytes), `a turn with nothing to change on a day not in UTF-8 is no failure (got ${existsSync(failed) && readFileSync(failed, 'utf8')})`);
   record(d, P, [turn({ at: '2026-11-11 11:00', id: 'w-4' })]);
   ok(throws(() => sweep(d, 'aaaaaaaa')) && others() === 'w-0,w-3' && readFileSync(f).equals(bytes), 'a sweep leaves it too, after the other days, and says so');
   const failedForget = [], r = forget(d, ['zebra'], { apply: true, failed: failedForget });
@@ -636,6 +639,30 @@ const small = { segment: 1024, budgetMs: 0 };
     let tags = ''; try { tags = readFileSync(join(d, '.private-sessions'), 'utf8'); } catch {}
     ok(!asks(d).length && tags.split(/\r?\n/).includes(M.slice(0, 8)), `a mark in the ${where} segment keeps the whole conversation out, and takes back what it wrote (got ${asks(d)})`);
   }
+}
+{
+  // A transcript whose last line is longer than a segment is read to its end:
+  // its import never finished, and every Stop read it again under the lock.
+  const [r, d] = repo('longtail'), L = sid('t'), p = join(projects, slug(r), `${L}.jsonl`);
+  const big = JSON.stringify({ type: 'user', uuid: 'big-1', sessionId: L, cwd: r, timestamp: '2026-09-01T10:03:00Z',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'x'.repeat(5000) }] } });
+  writeFileSync(p, exchange(L, r, 0) + exchange(L, r, 1) + big + '\n');
+  utimesSync(p, ago(2), ago(2));
+  const got = fill(d, { segment: 1024 }), line = listed(d).find((l) => l.startsWith(`${slug(r)}/${L} `));
+  ok(got.left === 0 && line === `${slug(r)}/${L} ${statSync(p).size}` && asks(d).join() === 'question 0,question 1',
+    `a last line longer than a segment ends the import, not stalls it (got ${JSON.stringify(got)}, ${line}, ${asks(d)})`);
+}
+{
+  // A transcript the version before R24 read only the last 64 MB of (` partial`)
+  // is read again from its start.
+  const [r, d] = repo('partial'), Pp = sid('p'), p = join(projects, slug(r), `${Pp}.jsonl`);
+  writeFileSync(p, exchange(Pp, r, 0) + exchange(Pp, r, 1));
+  utimesSync(p, ago(2), ago(2));
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  writeFileSync(join(d, 'journal', '.imported'), `${slug(r)}/${Pp} ${statSync(p).size} partial\n`);
+  const got = fill(d);
+  ok(got.imported === 1 && asks(d).join() === 'question 0,question 1' && listed(d).join() === `${slug(r)}/${Pp} ${statSync(p).size}`,
+    `a transcript read only in part before is read whole (got ${JSON.stringify(got)}, ${asks(d)}, ${listed(d)})`);
 }
 {
   // One look imports a bounded number of turns, the rest at the next: a

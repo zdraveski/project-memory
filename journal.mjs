@@ -149,6 +149,8 @@ export function record(dir, transcriptPath, turns, when) {
         if (!was || render(was) !== render(e)) changed++;
         have.set(e.key, was?.after ? { ...e, after: was.after } : e);
       }
+      // Nothing new: no write, so a day not in UTF-8 is no failure of this one.
+      if (!changed) break;
       const all = [...have.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
       whole(file, before);
       const w = replaceIfUnchanged(file, before, page(d, prose, all));
@@ -361,9 +363,11 @@ function mark(dir, lines, keep = null, list = IMPORTED) {
 // in; scan every project folder's first cwd if one is ever missed.
 function candidates(dir, skip) {
   const root = projectsRoot(), noted = new Set(folders(dir).map(pathKey)), done = new Map(), out = [];
-  // Another's or one that won't open: up to its size, from nothing read.
+  // Another's or one that won't open: up to its size, from nothing read. One
+  // ` partial` (before R24 only its last 64 MB was read): nothing read either,
+  // or its start was never imported.
   for (const m of (raw(join(dir, JOURNAL, IMPORTED)) ?? '').split(/\r?\n/).map((l) => LINE.exec(l))) {
-    if (m) done.set(m[1], m[4] ? { upto: Number(m[2]), from: 0, looked: 0 } : { upto: Number(m[3] ?? m[2]), from: Number(m[3] ?? m[2]), looked: Number(m[2]) });
+    if (m && m[4] !== 'partial') done.set(m[1], m[4] ? { upto: Number(m[2]), from: 0, looked: 0 } : { upto: Number(m[3] ?? m[2]), from: Number(m[3] ?? m[2]), looked: Number(m[2]) });
   }
   // A listing that fails leaves `seen` null, so nothing is pruned: read as
   // empty, it would drop the lines of every transcript in it.
@@ -435,6 +439,10 @@ function* segments(fd, at, seg, size, cap) {
     at = next;
     yield { got, next: prompt ? null : at };
   }
+  // No whole line left (the last one longer than a segment, passed over): the
+  // end. Left at the line's start, the import never finished, and every look
+  // read the transcript again.
+  yield { got: [], next: size };
 }
 
 // Whether a typed <private-session> mark is in the bytes from `pos`: a text
