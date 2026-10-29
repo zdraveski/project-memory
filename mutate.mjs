@@ -369,7 +369,7 @@ const suites = {
     "a 7-= heading taken for a conflict": ["merged: /^<{7}(?:[ \\t].*)?\\r?$/m.test(mainText) && /^>{7}", "merged: /^(?:<{7}|={7})(?:[ \\t].*)?\\r?$/m.test(mainText) || /^>{7}"],
     "a failed handoff said nowhere": ["    catch (e) { writeFileSync(failed, ", "    catch (e) { (() => {})(failed, "],
     "a failed handoff never cleared": ["try { unlinkSync(failed); } catch {}", ""],
-    "a returning line taken from the archive first": ["const first = back.length ? ", "const first = false ? "],
+    "a returning line taken from the archive first": ["const first = back.length ? ", "const first = false ? ", { full: true }],
     "an untrack done only when .gitignore changes": ["if (have !== want || raw(applied) !== want) {", "if (have !== want) {"],
     "only index.lock cleared": ["[join(g, 'index.lock'), join(g, 'HEAD.lock'), ", "[join(g, 'index.lock'), "],
     "a lock dated ahead is busy": ["age = Math.abs(Date.now() - statSync(l).mtimeMs)", "age = Date.now() - statSync(l).mtimeMs"],
