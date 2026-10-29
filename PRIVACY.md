@@ -230,7 +230,9 @@ conversations left to import, or run it again once they're in.
   that conversation in the same minute goes too. Claude Code's own
   conversation files are separate.
 - A search hit or `show` of a private entry doesn't name its conversation
-  file, since that file still holds the private part.
+  file, since that file still holds the private part. A hit of another
+  exchange in the same conversation still names that file: it is Claude
+  Code's own record of the whole conversation, private parts included.
 - An exchange in which Claude runs `forget` is kept without its words, files
   or commands, in the journal and in `handoff.md`, so its list of what goes
   isn't saved again. Claude finds the entries with `forget` itself for that
