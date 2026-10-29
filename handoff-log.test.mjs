@@ -1055,12 +1055,16 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   ['npm config set //registry.npmjs.org/:_authToken ' + k('ab12', 'cd34ef56gh78'), 'ab12'], ['echo "//registry.npmjs.org/:_authToken=' + k('ab12', 'cd34ef56gh79') + '" >> .npmrc', 'ab12'],
   // Real-looking values where a reference, a path or a count would be kept.
   ['node cli.mjs --token ' + k('ghx0', 'Real1Token2'), 'ghx0'], ['oc login -u me -p ' + k('0cP', 'ass9word') + ' server', '0cP'], ['export SSH_KEY=' + k('AAAAC3Nza', 'C1lZDI1NTE5'), 'AAAAC3'],
-  ['export MY_SECRET_TOKEN=' + k('t0k', 'enValue5'), 't0k'], ['[Environment]::SetEnvironmentVariable("API_KEY", "' + k('k3y', 'Value66') + '", "User")', 'k3y']])
+  ['export MY_SECRET_TOKEN=' + k('t0k', 'enValue5'), 't0k'], ['[Environment]::SetEnvironmentVariable("API_KEY", "' + k('k3y', 'Value66') + '", "User")', 'k3y'],
+  // A number after a secret's flag or name is a PIN; only a count's name keeps one (R34).
+  ['psql --password ' + k('123', '456') + ' mydb', '123456'], ['tool --password=' + k('12', '34'), '1234'], ['export TOKEN=' + k('1234', '5678'), '12345678'],
+  ['setx DB_PASSWORD ' + k('86', '4213'), '864213'], ['[Environment]::SetEnvironmentVariable("APP_PIN_PASSWORD", "' + k('97', '5310') + '", "User")', '975310']])
   ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a secret passed to a command is redacted (got ${red(s)})`);
 // Over-redaction costs recall: the word after a command's flag is often its
-// point. A reference ($TOKEN, ${TOKEN}, $(cat pw)), a path or a number is no
-// secret; a name's word counts whole (KEYBOARD is no KEY) and not in a count
-// or a file's name (TOKEN_LIMIT, MAX_TOKEN, KEY_FILE); --no-x takes no value.
+// point. A reference ($TOKEN, ${TOKEN}, $(cat pw)) or a path is no secret, nor
+// a number under a count's name (TOKEN_LIMIT, MAX_TOKEN, R34); a name's word
+// counts whole (KEYBOARD is no KEY) and not in a file's name (KEY_FILE);
+// --no-x takes no value.
 const commands = ['mkdir -p build/out', 'git add -p', 'docker run -p 8080:80 -u 1000 img', 'ssh -p 2222 host', 'aws configure set region us-east-1',
   'aws configure get aws_secret_access_key', 'export TOKENIZERS_PARALLELISM=false', 'export KEYBOARD_LAYOUT=us', 'export API_KEY=$(cat ~/.key)',
   'export PUBLIC_KEY_PATH=~/.ssh/id.pub', '[Environment]::SetEnvironmentVariable("PATH", "C:\\tools", "User")', 'htpasswd -c .htpasswd admin',
@@ -1069,7 +1073,8 @@ const commands = ['mkdir -p build/out', 'git add -p', 'docker run -p 8080:80 -u 
   'tool --password ./pw.txt', 'tool --secret certs/key.pem', 'export SSH_KEY=~/.ssh/id_ed25519', 'export KEY_FILE=key.pem', 'KEY_FILE=key.pem', 'export TOKEN_LIMIT=4096',
   'TOKEN_LIMIT=4096', 'export MAX_TOKEN=8192', 'MAX_TOKEN=8192', '[Environment]::SetEnvironmentVariable("KEYBOARD", "us", "User")',
   '[Environment]::SetEnvironmentVariable("MONKEY_HOME", "C:\\m", "User")', 'setx PATH "%PATH%;C:\\tools"', 'setx TOKEN_LIMIT 4096',
-  'gh secret set X --body "$VALUE"', 'npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}', 'export PASS_THRESHOLD=80', 'gh secret set X --body-file ./b.txt'];
+  'gh secret set X --body "$VALUE"', 'npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}', 'gh secret set X --body-file ./b.txt',
+  'export MAX_TOKEN_SIZE=4096', '[Environment]::SetEnvironmentVariable("TOKEN_TTL", "3600", "User")', 'export SECRET_PORT=8443', 'tool --password $(cat pw.txt)'];
 const cutCmd = commands.filter((s) => red(s) !== s);
 ok(!cutCmd.length, `commands that only look like they pass a secret are kept (cut: ${cutCmd.join(' | ')})`);
 const tExport = Date.now();
