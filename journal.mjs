@@ -304,9 +304,10 @@ function clear(dir, backfill) {
   else try { unlinkSync(f); } catch {}
 }
 
-// The conversations a live Stop looked at whole for a mark, and those swept
-// out (private, or held with auto memory off): `<folder>/<session> <bytes>`,
-// ` swept` after one swept. Pruned as .imported is.
+// The conversations a live Stop looked at past its read for a mark,
+// `<folder>/<session> <bytes>` (how far), and those a Stop or a look swept
+// out (private, or held with auto memory off), ` swept` after. Pruned as
+// .imported is.
 const CHECKED = '.checked';
 const keyOf = (p) => `${basename(dirname(p))}/${basename(p, '.jsonl')}`;
 // Its line: `swept` in [4], the bytes looked at in [2].
