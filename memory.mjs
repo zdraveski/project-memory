@@ -10,11 +10,12 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared]
                                           ranked, a request asked many times once. D is YYYY-MM-DD; dates with
                                           no terms list those days' requests
   show <key...> [--all]                   journal entries whole, by the key a search hit prints
-  forget <words...> [--since D] [--until D] [--conversation TAG] [--yes]
-                                          the journal entries holding every word: listed; with --yes removed
+  forget [<words...>] [--key K]... [--since D] [--until D] [--conversation ID] [--yes]
+                                          the journal entries holding every word (with those keys, of
+                                          that conversation): listed, up to 200; with --yes removed
   status [--all]                          index size, hot/archived, problems, dangling [[links]],
                                           the memories changed in the last 7 days
-  history <memory> [--all]                the snapshots that changed it
+  history <memory> [--all] [--limit N]    the snapshots that changed it, the newest 30
   restore <memory> [--rev <commit>] [--force]   back from the snapshots, with its index line
   promote <memory>                        move it to the shared store, for every project
   doctor                                  wiring, live copy, Stop hook, locks, git
@@ -27,7 +28,7 @@ import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, pathKey, same, configDir, memoryOff } from './store.mjs';
-import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip } from './handoff-log.mjs';
+import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip, tag } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -35,12 +36,17 @@ import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited
 let entries, forget, summary;
 try { ({ entries, forget, summary } = await import('./journal.mjs')); }
 catch (e) {
-  entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: String(e.message).split('\n')[0] }); return []; };
-  summary = () => null;
+  const why = String(e.message).split('\n')[0];
+  entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: why }); return []; };
+  // Said by status too: silent, it read as a store with no journal.
+  summary = () => ({ broken: why });
   forget = (dir, terms, o) => ({ matched: entries([dir], o), removed: [] });
 }
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
+// The most entries a forget's look lists, and so the most one --yes removes:
+// it showed 20 of 35, and --yes removed all 35.
+const LOOK = 200;
 
 // What deploy.mjs needs to agree with doctor about, defined once: the plugin,
 // the live copy, and what runs.
@@ -213,7 +219,8 @@ const names = (ms) => ms.flatMap((m) => [m.file.replace(/\.md$/, ''), m.name].fi
 export function status(dir, sharedNames = []) {
   const ms = memories(dir), main = read(join(dir, 'MEMORY.md'));
   const lines = [`${dir}${isShared(dir) ? '  (shared by every project)' : ''}`];
-  if (main === null && !ms.length) return [...lines, '  no store here yet'];
+  // A journal alone is a store: search finds its entries.
+  if (main === null && !ms.length && !existsSync(join(dir, 'journal'))) return [...lines, '  no store here yet'];
   const n = (w) => ms.filter((m) => m.where === w).length;
   lines.push(`  index ${Buffer.byteLength(main ?? '')} / ${budgetOf(dir)} B · ${n('hot')} hot · ${n('archived')} archived` +
     (n('unindexed') ? ` · ${n('unindexed')} with no pointer yet` : ''));
@@ -229,6 +236,7 @@ export function status(dir, sharedNames = []) {
   const all = a === -1 ? [] : parse(doc.slice(a, b));
   if (all.length) lines.push(`  handoff: ${all.length} exchanges from ${new Set(all.map((t) => t.s)).size} session(s), newest ${all.at(-1).at}`);
   const j = summary(dir);
+  if (j?.broken) lines.push(`  journal: could not read journal.mjs: ${j.broken}`);
   // Failing from the first write, it has no day to show: the failure is the news.
   if (j?.first || j?.failed) lines.push(`  journal: ${j.first ? `${j.days} days since ${j.first}, ${(j.bytes / 1048576).toFixed(1)} MB` : 'no days yet'}` + (j.left > 0 ? `; importing ${j.left} older conversations` : '') + (j.failed ? `; last write failed: ${j.failed}` : ''));
   const ch = recent(dir);
@@ -329,7 +337,8 @@ const tracked = (dir, file) => {
   return (links.length ? links : [basename(dirname(dir))]).map((n) => `${n}/memory/${file}`);
 };
 
-export function history(dirs, file, everywhere = false) {
+// The newest `max`: a note edited every reply had 2,000 snapshots, 72 KB of output.
+export function history(dirs, file, everywhere = false, max = 30) {
   const verb = { A: 'added', M: 'changed', D: 'deleted' };
   try {
     for (const dir of dirs) {
@@ -345,7 +354,7 @@ export function history(dirs, file, everywhere = false) {
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
       const moved = !isShared(dir) && !file.startsWith('MEMORY') && existsSync(join(sharedStore(), file)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
-      if (lines.length) return { ok: true, lines: [join(dir, file), ...lines, ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, file).map((p) => `"${p}"`).join(' ')}`] };
+      if (lines.length) return { ok: true, lines: [join(dir, file), ...lines.slice(0, max), ...(lines.length > max ? [`  and ${lines.length - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, file).map((p) => `"${p}"`).join(' ')}`] };
     }
   } catch (e) { return no(`no snapshots to read: ${gitWhy(e)}`); }
   return no(`no snapshot holds ${file} (looked in ${dirs.join(', ')}): search <words> finds a memory's name${everywhere ? '' : '; --all looks in every project'}`);
@@ -562,8 +571,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // `--store=X` as `--store X`: the equals form was dropped, and the command ran on the cwd's store.
   // After `--` every word is a term: `search -- --no-verify` printed the usage.
   const given = process.argv.slice(2), cut = given.includes('--') ? given.indexOf('--') : given.length;
-  const argv = given.slice(0, cut).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until|conversation))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
-  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation']);
+  const argv = given.slice(0, cut).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until|conversation|key))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
+  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation', '--key']);
   // One it does not know is refused: dropped, `--from 2026-10-27` searched for
   // "2026", and `--after=2026-10-28` listed what came before it.
   const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force'].includes(a));
@@ -649,35 +658,58 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   } else if (cmd === 'forget') {
     // A blank term is in every entry: `forget "" --yes` would empty the journal.
     const conversation = opt('--conversation'), yes = rest.includes('--yes'), terms = args.filter((a) => a.trim());
+    const keys = rest.flatMap((a, i) => (a === '--key' && i + 1 < rest.length ? [rest[i + 1]] : []));
+    // By the tag, from the full session id too: the skill has the id, an entry the tag.
+    const o = { ...range, conversation: conversation && tag(conversation), keys: keys.length ? keys : undefined, failed };
+    const line = (e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 120)}`;
+    // One store: under --all it ran on this one alone, and said "removed 0" of
+    // an entry search had just shown in another.
+    if (rest.includes('--all')) r = no(`forget works on one store: --store <folder>, the memory folder of the project a search hit names (${join(projectsRoot(), '<project>', 'memory')})`);
     // Not "delete the journal folder": the backfill's lists live in it, and
     // without them it rebuilds the journal from the transcripts, forgotten entries too.
-    if (!terms.length && !range.since && !range.until && !conversation) r = no('forget needs words, a date range or --conversation; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)');
+    else if (!terms.length && !range.since && !range.until && !conversation && !keys.length) r = no('forget needs words, a date range, --conversation or --key; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)');
     else {
-      const got = forget(here, terms, { ...range, conversation, apply: yes, failed }), m = got?.matched ?? [], gone = got?.removed ?? [];
-      // Under --yes, what went, a turn recorded since the look included: a day
-      // that kept changing under the write keeps its entries, and listed with
-      // the rest they read as gone.
-      const shown = (yes ? gone : m).slice(0, 20).map((e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 120)}`);
-      // A day before today is in the snapshots already (memory-tier commits a
-      // day once it closes), when there are snapshots.
-      const old = existsSync(join(projectsRoot(), '.git')) ? [...new Set(gone.filter((e) => e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
-      r = !got ? no(`${here} is busy (another hook holds it); try again`)
-        : !yes ? { ok: true, lines: [...shown, `${m.length} entr${m.length === 1 ? 'y' : 'ies'} would go; run again with --yes to remove them`] }
-        : { ok: true, lines: [...shown, `removed ${gone.length}${gone.length === m.length ? '' : ` of ${m.length}`}`, ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : [])] };
+      const m = forget(here, terms, o).matched;
+      if (m.length > LOOK) r = { ok: !yes, lines: [`${m.length} entries in ${here} match; narrow it: a look lists ${LOOK} at most${yes ? ', and --yes removes only what a look can list: nothing removed' : ''}`] };
+      else if (!m.length) {
+        // The words of a sentence ("the password I pasted yesterday"): the ones no entry holds are why nothing matched.
+        const none = terms.filter((t) => !forget(here, [t], { ...o, failed: [] }).matched.length);
+        const why = !terms.length ? '' : `: no entry holds ${none.length ? none.map((t) => `"${t}"`).join(', ') : 'every word'}`;
+        r = { ok: true, lines: [`nothing in ${here} matches${why}`] };
+      } else if (!yes) r = { ok: true, lines: [...m.map(line), `${m.length} entr${m.length === 1 ? 'y' : 'ies'} in ${here} would go; run again with --yes to remove them`] };
+      else {
+        // What this look found and nothing since: --yes removes only what a look lists.
+        let got;
+        try { got = forget(here, terms, { ...o, keys: m.map((e) => e.key), apply: true }); }
+        catch (e) { failed.push({ path: String(e.dest || e.path || here).replace(/\.tmp\d+$/, ''), code: e.code || e.message, write: true }); got = { matched: m, removed: [] }; }
+        // Under --yes, what went: a day that kept changing under the write, or
+        // one the disk refused, keeps its entries, and listed they read as gone.
+        const all = got?.matched ?? [], gone = got?.removed ?? [];
+        // A day before today is in the snapshots already (memory-tier commits a
+        // day once it closes), when they are the plugin's: a repository the user
+        // made there holds no journal, and deleting it would lose their history.
+        const ours = /^\[project-memory\]/m.test(read(join(projectsRoot(), '.git', 'config')) ?? '');
+        const old = ours ? [...new Set(gone.filter((e) => e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
+        r = !got ? no(`${here} is busy (another hook holds it); try again`)
+          : { ok: true, lines: [...gone.map(line), ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : []),
+            `removed ${gone.length}${gone.length === all.length ? '' : ` of ${all.length}`} from ${here}`] };
+      }
     }
   } else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
     r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
-  } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'));
+  } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined);
   else if (cmd === 'restore' && file) r = restore(here, onDisk(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file));
   else if (cmd === 'doctor') r = doctor();
   else r = { ok: !cmd || cmd === 'help', lines: [USAGE] };
-  // A day the search could not read: what it holds is missing from the lines
-  // above. Before a search's last line, which is its count, as the skill says.
-  r.lines.splice(cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...failed.map((f) => `could not read ${f.path}: ${f.code}`));
+  // A day that could not be read or written: what it holds is missing from, or
+  // still in, the lines above. Before the last line of a search or a forget,
+  // which is its count, as the skill says. Once: a forget reads a day twice.
+  r.lines.splice(cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
   console.log(r.lines.join('\n'));
   // Not process.exit(): on macOS a pipe is written asynchronously, and exiting
-  // cut a 3-entry search at 8 KB (CI, 2026-10-29).
-  process.exitCode = r.ok ? 0 : 1;
+  // cut a 3-entry search at 8 KB (CI, 2026-10-29). A forget that failed
+  // anywhere fails: exit 0 read as all gone.
+  process.exitCode = r.ok && !(cmd === 'forget' && failed.length) ? 0 : 1;
 }
