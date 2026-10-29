@@ -144,7 +144,7 @@ ok(cli('restore', 'mentions', '--force', '--rev', 'nosuchrev').status === 1, 'an
   ok(made.status === 0 && r.status === 0 && rows(r.stdout) === 30 && /^  and 5 older; --limit N shows more$/m.test(r.stdout) && /^  a change: git -C /.test(r.stdout.trim().split('\n').pop()),
     `history shows the newest 30 and how many are older, its command still last (got ${made.stderr}${r.stdout})`);
   r = cli('history', 'busy-note', '--limit', '40');
-  ok(rows(r.stdout) === 35 && !/older/.test(r.stdout), `--limit shows more (got ${rows(r.stdout)})`);
+  ok(rows(r.stdout) === 35 && !/^  and \d+ older/m.test(r.stdout), `--limit shows more (got ${rows(r.stdout)}: ${r.stdout})`);
   unlinkSync(join(dir, 'busy-note.md'));
 }
 // The commit history calls "deleted" no longer has the memory: --rev with it
