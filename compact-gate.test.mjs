@@ -3,7 +3,7 @@
 // note written, the Stop nudge fires once per cycle and re-arms after a
 // compaction, and the next Stop drops the note. Run: node compact-gate.test.mjs
 import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, symlinkSync } from 'node:fs';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
 import { tool, tempHome, storeFor } from './harness.mjs';
@@ -53,6 +53,15 @@ ok(gate().code === 0, 'end_turn lets the compaction run');
 write(user('build it'), asst('running the suites', 870_000, 'tool_use'), result(launch('bg1')));
 const d = gate();
 ok(d.code === 2 && /mid-turn/.test(d.err), `mid-turn under the ceiling is deferred (got ${d.code}: ${d.err})`);
+// Its reader gone before the line is written: the deferral holds. Thrown with
+// no listener, the pipe's EPIPE made it exit 1, and the compaction ran (P1 hunt, 2026-10-29).
+const gone = await new Promise((done) => {
+  const c = spawn(process.execPath, [GATE], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+  c.stderr.destroy();
+  c.on('exit', done);
+  c.stdin.end(JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: 's1' }));
+});
+ok(gone === 2, `a deferral whose reader is gone still exits 2 (got ${gone})`);
 ok(gate('manual').code === 0, 'a manual /compact is never blocked');
 
 // 3. Mid-turn over the ceiling: allowed, and the handoff says what was in flight.

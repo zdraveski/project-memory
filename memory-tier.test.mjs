@@ -1010,5 +1010,24 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(hd.includes('asked with no journal'), '--stop: a journal.mjs that cannot load leaves the handoff written');
 }
 
+// The nudge's reader gone before it is written: exit 0. Thrown with no
+// listener, the pipe's EPIPE made the Stop exit 1 (P1 hunt, 2026-10-29).
+{
+  const { TRIGGER, WINDOW } = await import('./compact-gate.mjs');
+  const pe = join(root, 'C--epipe'), te = join(pe, 'epipe.jsonl'), ctx = Math.round(TRIGGER * WINDOW) + 5000;
+  mkdirSync(pe, { recursive: true });
+  writeFileSync(te, [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'go' } },
+    { type: 'assistant', timestamp: '2026-10-28T09:01:00Z', message: { content: [{ type: 'text', text: 'done' }], stop_reason: 'end_turn',
+      usage: { input_tokens: 3, cache_read_input_tokens: ctx - 3, cache_creation_input_tokens: 0, output_tokens: 9 } } }].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const nudged = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: te, session_id: 'epipe001', hook_event_name: 'Stop' }) });
+  const code = await new Promise((done) => {
+    const c = spawn(process.execPath, [TOOL, '--stop'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    c.stdout.destroy();
+    c.on('exit', done);
+    c.stdin.end(JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: te, session_id: 'epipe002', hook_event_name: 'Stop' }));
+  });
+  ok(/compaction gate/.test(nudged.stdout) && code === 0, `a Stop whose nudge has no reader left exits 0 (got ${code}; ${nudged.stdout.slice(0, 60)})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

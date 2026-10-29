@@ -898,6 +898,19 @@ ok(/^a{1000}…\nshared$/.test(fit(`${'a'.repeat(5000)}\nshared`, 1000)), 'a lin
 process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
 let off; try { off = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, session_id: 'zzzzzzzz', source: 'startup' }), env }).toString(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
 ok(off === '', `with auto memory turned off the briefing is empty (got ${JSON.stringify(off.slice(0, 80))})`);
+// Its reader gone before it writes (Claude Code cancelled the start): exit 0.
+// Thrown with no listener, the pipe's EPIPE made it exit 1 with a stack trace
+// once process.exit() no longer cut it short (P1 hunt, 2026-10-29).
+for (let i = 0; i < 2; i++) {
+  const gone = await new Promise((done) => {
+    const c = spawn(process.execPath, [HOOK, '--print'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let err = ''; c.stderr.on('data', (b) => { err += b; });
+    c.stdout.destroy();
+    c.on('exit', (code) => done({ code, err }));
+    c.stdin.end(JSON.stringify({ cwd: cwd3, session_id: 'zzzzzzzz', source: 'startup' }));
+  });
+  ok(gone.code === 0 && !gone.err, `a briefing whose reader is gone exits 0, and says nothing (got ${gone.code}: ${gone.err.trim().split('\n')[0]})`);
+}
 
 // Secrets of common shapes go; code and prose that only look like them stay.
 // Built from parts at run time: no whole key sits in this file.
@@ -922,6 +935,24 @@ const wordy = ['password: Pa$$word', 'DB_PASSWORD=correct_horse_battery_staple',
 const kept3 = wordy.filter((s) => red(s) === s);
 ok(!kept3.length, `secrets with no digit are redacted, whatever they look like (kept: ${kept3.join(' | ')})`);
 ok(red('docker run -u 1000:1000 img') === 'docker run -u 1000:1000 img', 'a numeric user and group after -u is no password');
+// A secret passed to a command as an argument: the journal keeps the commands
+// a turn ran (P1 hunt, 2026-10-29). Commands that only look like one stay.
+for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrXUtnFEMI/', 'K7MDENG/bPxRfiCYEXAMPLEKEY'), 'wJalr'],
+  ['aws configure set aws_session_token ' + k('FwoGZXIvYXdz', 'EBYaDHexample'), 'FwoGZ'], ['az login -u ops@corp.com -p ' + k('Sup3rS3', 'cret!2026'), 'Sup3r'],
+  ['vault write auth/x --client-secret ' + k('cl1ent', 'Secret88'), 'cl1ent'], ['tool --token=' + k('t0ken', 'Value99') + ' --verbose', 't0ken'], ['tool --secret ' + k('s3cret', 'Value77'), 's3cret'],
+  ['[Environment]::SetEnvironmentVariable("DB_PASSWORD", "' + k('hunter2', 'hunter2') + '", "User")', 'hunter2'],
+  ['htpasswd -b .htpasswd admin ' + k('Adm1n', 'Pass99'), 'Adm1n'], ['htpasswd -cbB -C 10 /etc/nginx/.htpasswd admin ' + k('An0ther', 'Pass1'), 'An0ther'],
+  ['htpasswd -nb admin ' + k('Sh0wn', 'Pass2'), 'Sh0wn'], ['export STRIPE_KEY=' + k('rk9', 'abcdefghij'), 'rk9abc'], ['export signing_key="' + k('s1gn', 'ingValue') + '"', 's1gn']])
+  ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a secret passed to a command is redacted (got ${red(s)})`);
+const commands = ['mkdir -p build/out', 'git add -p', 'docker run -p 8080:80 -u 1000 img', 'ssh -p 2222 host', 'aws configure set region us-east-1',
+  'aws configure get aws_secret_access_key', 'export TOKENIZERS_PARALLELISM=false', 'export KEYBOARD_LAYOUT=us', 'export API_KEY=$(cat ~/.key)',
+  'export PUBLIC_KEY_PATH=~/.ssh/id.pub', '[Environment]::SetEnvironmentVariable("PATH", "C:\\tools", "User")', 'htpasswd -c .htpasswd admin',
+  'curl --token-file ./t https://x', 'cli --max-tokens 4096'];
+const cutCmd = commands.filter((s) => red(s) !== s);
+ok(!cutCmd.length, `commands that only look like they pass a secret are kept (cut: ${cutCmd.join(' | ')})`);
+const tExport = Date.now();
+red('export ' + 'key_'.repeat(20_000));
+ok(Date.now() - tExport < 1000, `an exported name of 20,000 words is read in linear time (${Date.now() - tExport} ms)`);
 
 // Two real turns in one minute, one ask inside the other, the first past the
 // first read: both stay. Taken for two spellings of one turn, the first was lost.

@@ -286,8 +286,19 @@ const SECRETS = [
   [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)[^\s/?#]{1,200}@/gi, '$1[redacted]@'],
   // curl -u user:it, --user user:it. Not `docker run -u 1000:1000`, a user and group.
   [/((?:^|\s)(?:-u|--user)[ =]+(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)[^\s'"]{1,200}/g, '$1[redacted]'],
-  // --password it; docker login, sshpass and twine take it as -p it.
-  [/(--password[ =]|\b(?:docker\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+)(?!-)[^\s"']{3,}/g, '$1[redacted]'],
+  // --password it (--token, --client-secret); docker login, az login, sshpass
+  // and twine take it as -p it.
+  [/(--(?:[a-z]+-){0,3}(?:password|passwd|token|secret)[ =]|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+)(?!-)[^\s"']{3,}/g, '$1[redacted]'],
+  // A secret as a command's argument, which the journal's Ran field keeps (P1
+  // hunt, 2026-10-29): `aws configure set` of a secret, key or token; a
+  // SetEnvironmentVariable of one; htpasswd -b's password, after its file (none
+  // with -n) and user; an exported name whose word is a key's.
+  [/(\baws\s+configure\s+set\s+[\w.-]{0,100}(?:secret|key|token)[\w.-]{0,100}\s+)(?!-)[^\s"']+/gi, '$1[redacted]'],
+  [/(SetEnvironmentVariable\(\s*["'][^"'\n]{0,100}(?:password|passwd|secret|token|key)[^"'\n]{0,100}["']\s*,\s*["'])[^"'\n]+/gi, '$1[redacted]'],
+  [/(\bhtpasswd(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+(?:[^\s-]\S*\s+)?\S+\s+)[^\s;|&]+/g, '$1[redacted]'],
+  // The name read whole, then judged: as words in one pattern, KEY_ repeated
+  // took 28 s.
+  [/(\bexport\s+([A-Za-z_]\w{0,100})=["']?)([^\s"';|&]+)/g, (m, pre, name, v) => (/(?:^|_)(?:key|secret|token|password|passwd)(?:_|$)/i.test(name) && !code(v) ? `${pre}[redacted]` : m)],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
   // In the mysql command only: `; find . -print` after it was cut.
   [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n|;&]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
@@ -801,6 +812,10 @@ async function print(input) {
 // Node names the script by its real path: compared with the path it was
 // given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  // A reader gone before the write (Claude Code ended the hook): its EPIPE,
+  // thrown with no listener, exited 1 with a stack trace once process.exit()
+  // no longer came first (P1 hunt, 2026-10-29).
+  process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
   (async () => {
     try {
       const input = JSON.parse(readFileSync(0, 'utf8'));

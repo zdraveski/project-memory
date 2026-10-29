@@ -508,6 +508,9 @@ const now = nowAt !== -1 ? Number(process.argv[nowAt + 1]) : Date.now();
 // so a manual run never blocks on a terminal). The handoff is written first, in
 // this process -- a second Node start cost a median 200 ms a turn on this box.
 const stop = process.argv.includes('--stop');
+// A reader gone before the nudge is written: its EPIPE, thrown with no
+// listener, exited the Stop 1 (P1 hunt, 2026-10-29).
+process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
 // Auto memory turned off: no record, no nudge, no tiering. Only the
 // conversation's tag, so no later Stop's backfill imports it (handoff-log OFF).
 if (stop && memoryOff()) {

@@ -326,6 +326,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // are told apart, because "no payload" once covered every failure.
   let payload = null;
   try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch {}
+  // A reader gone before the line is written: its EPIPE, thrown with no
+  // listener, exited 1 and the deferral was lost (P1 hunt, 2026-10-29).
+  process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
   let r = { code: 0, why: 'no payload' };
   if (payload && memoryOff()) r = { code: 0, why: 'auto memory is off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): nothing done' };
   else if (payload) { try { r = gate(payload); } catch (e) { r = { code: 0, why: `gate failed, not deferred: ${e.message}` }; } }
