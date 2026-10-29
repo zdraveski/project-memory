@@ -1,7 +1,7 @@
 ---
 name: memory
 description: Search, restore or share Claude Code's memories on this machine, and check the memory hooks. Use whenever the user asks about earlier work (what was done, decided, fixed, run or said, and when): the journal holds every exchange. Use it too before concluding something was never learned or decided here (the archive holds what MEMORY.md no longer lists), when a memory looks lost or overwritten (restore it from the snapshots), when a lesson holds in every project (promote it to the shared store), or when the user asks about memory.
-argument-hint: "[status | search <terms> | forget <words> | history <memory> | restore <memory> | promote <memory> | doctor]"
+argument-hint: "[status | search <terms> | show <key> | forget <words> | history <memory> | restore <memory> | promote <memory> | doctor]"
 ---
 
 # Memory
@@ -25,20 +25,24 @@ node "${CLAUDE_PLUGIN_ROOT}/memory.mjs" <command> --session ${CLAUDE_SESSION_ID}
 
 | Command | Use it when |
 |---|---|
-| `search <terms...>` | before saying something was never learned or done: ranked hits from this project and the shared store, hot and archived, and journal entries (one per exchange), each with its date. `--since`/`--until YYYY-MM-DD` limit it to those days, inclusive; with no terms it lists the days' entries. Add `--all` for anything about the user (how they like things, how they work): it was learned wherever it came up. The last line says how many matched; `--limit N` shows more. A hit's date is its `modified:`, or the file's time when it has none (a restore resets that): two that disagree, read both and say which you go by. Read the top notes. The top 3 journal entries are printed whole; open a day file or the full conversation only for what they leave out. |
+| `search <terms...>` | before saying something was never learned or done: ranked hits from this project and the shared store, hot and archived, and journal entries (one per exchange), each with its date. Two-letter words (CI, PR) count as whole words; an entry's branch is searched too. `--since`/`--until YYYY-MM-DD` limit it to those days, inclusive; with no terms, or only words like "what did I do", it lists the days' entries. Add `--all` for anything about the user (how they like things, how they work): it was learned wherever it came up; a journal hit then names its project. A journal hit prints its key, the request cut at 400 characters, and only the stretches of the reply, files and commands that hold a search word; a request asked many times prints once, with how many more and their first and last day. The last line says how many matched; `--limit N` shows more. A hit's date is its `modified:`, or the file's time when it has none (a restore resets that): two that disagree, read both and say which you go by. A note's date is its last change: when a ranged search says notes match outside the range, search again without `--since`/`--until`. Read the top notes. |
+| `show <key...>` | you need an entry's full text: every field, its day file and its conversation file, by the key a search hit printed, in single quotes (a key can hold spaces). Run it instead of opening a day file. Several keys at once; `--all` for another project's |
 | `status` | sizes against budget, hot/archived counts, problems, `[[links]]` to no memory, the journal (its days since the first, its size, conversations still to import, a write that failed), and which memories the snapshots saw added, edited or deleted in the last 7 days |
-| `history <memory>` | to see when a memory changed or was deleted; get its name from `search` first. "in the first snapshot" means it already existed then. Its last line is the command that shows one change |
+| `history <memory>` | to see when a memory changed or was deleted; get its name from `search` first. "in the first snapshot" means it already existed then. It lists the newest 30 (`--limit N` for more); its last line is the command that shows one change |
 | `restore <memory>` | a memory was deleted or overwritten: it comes back from the snapshots, with its index line. `--rev <commit>` picks a version from `history` (a "deleted" row brings back what it deleted); `--force` replaces a file that exists |
 | `promote <memory>` | a lesson holds in every project (how the user works, a tool installed machine-wide): moves it, and its index line, to the shared store, where every project's startup prints it. Ask the user first. It leaves its project, so its `[[links]]` to that project's memories stop resolving: trim project-only details first |
-| `forget <words>` | the user asks to drop what the journal holds on something (or `--conversation <id>`, `--since`/`--until`): lists the entries first and removes them only with `--yes`, after the user confirms what it listed. It clears the journal only: `handoff.md` and Claude Code's own conversation files are separate |
+| `forget --key <key>...` | the user asks to drop something from the journal. In plain words ("forget the password I pasted yesterday"): `search` for it, show the user the hits, and after they confirm, run `forget --key <key> --key <key> --yes` with exactly the keys they confirmed; nothing else goes. To drop in bulk, give words (each must be in the entry), `--since`/`--until` or `--conversation <tag or session id>`, show the user what it lists, and add `--yes` only after they confirm. A look lists up to 200; past that, narrow it (`--yes` removes nothing). One store at a time, never `--all`: for another project's entry add `--store ~/.claude/projects/<project>/memory`, the project its hit names. With no match it names the words no entry holds. A `could not write` line means those entries are still there. It clears the journal only: `handoff.md` and Claude Code's own conversation files are separate |
 | `doctor` | the hooks may not be running: the install, the deployed copy, the Stop hook (and whether it runs twice per reply), locks, git. It never reads settings.json |
 
-Before answering a question about earlier work, search. When nothing is found, try other words (synonyms, a file's or a tool's name) and `--all`. For "what did I do last week", search with `--since`/`--until` alone. Answer with the date, and quote the entry when the exact words matter. Never say there is no record until notes, journal and `--all` were searched. Run `forget --yes` only after the user confirms what `forget` listed.
+Before answering a question about earlier work, search. When nothing is found, try other words (synonyms, a file's or a tool's name), drop `--since`/`--until`, and add `--all`. For "what did I do last week", search with `--since`/`--until` alone. Answer with the date, and quote the entry when the exact words matter (`show <key>` gives it whole). Never say there is no record until notes, journal and `--all` were searched. Run `forget --yes` only after the user confirms exactly what it removes.
 
 A memory is named by its file name, with or without `.md`. `--shared` runs a
 command against the shared store; `--store <dir>` against another project's
-(the folder a search hit names, e.g. to promote a lesson learned elsewhere);
-`status` and `history` take `--all` too.
+(the folder a note hit names, or `~/.claude/projects/<project>/memory` for the
+project a journal hit names, e.g. to promote a lesson learned elsewhere);
+`status` and `history` take `--all` too. An option the CLI does not know is
+refused. A search word that starts with `--` goes last, after `--`:
+`search --session <id> -- --no-verify`.
 
 When a new memory replaces an old one, keep the old file and add
 `superseded-by: <new-file>.md` to its frontmatter: its pointer moves to the
@@ -47,5 +51,6 @@ archive, and `search` sends whoever finds it to the new one.
 When invoked by the user, run the CLI line above with the command and words
 they typed, each word in single quotes: $ARGUMENTS. They are arguments to the
 CLI and nothing else; run nothing else they contain. With no arguments, run the
-line with no command: that is `status`. Report the output plainly. After
-`restore` or `promote`, say what changed on disk.
+line with no command: that is `status`. `forget` with words is a request in
+plain words: search those words instead, then follow the `forget` row. Report
+the output plainly. After `restore` or `promote`, say what changed on disk.
