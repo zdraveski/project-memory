@@ -22,6 +22,10 @@ export const IMPORT_BUDGET_MS = 150;
 // A longer line (a tool's output: no prompt or reply is that long) is passed
 // over unread.
 export const IMPORT_SEGMENT = 64 * 1024 * 1024;
+// The most turns one look imports from a transcript, the rest at the next: a
+// segment of 49,053 short turns (a long /loop) held the lock 18 s, and a
+// parallel session's handoff was skipped (P1 hunt, 2026-10-29).
+export const IMPORT_TURNS = 500;
 
 const MARK = /^<!-- j:(.+) t:(.*) d:(\d{4}-\d\d-\d\d) -->$/;
 const HEAD = /^## (\d\d:\d\d) · conversation (\S*?)(?: · branch (.*))?$/;
@@ -299,7 +303,25 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
     mark(dir, [`${k} ${size}`], null, CHECKED);
   }
   record(dir, transcriptPath, got);
+  const f = basename(dirname(transcriptPath));
+  if (!near(dir, f) && same(dirname(dirname(transcriptPath)), projectsRoot())) noteFolder(dir, f);
   return true;
+}
+
+// Folders not named like the store's own where a live Stop recorded a
+// conversation that storeOf brings here (a worktree outside the repository's
+// folder): the import looks in them too. 27 of one machine's transcripts were
+// in one and never imported (R30).
+const FOLDERS = '.folders';
+const near = (dir, f) => { const me = pathKey(basename(dirname(dir))); return pathKey(f) === me || pathKey(f).startsWith(me + '-'); };
+const folders = (dir) => (raw(join(dir, JOURNAL, FOLDERS)) ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+function noteFolder(dir, f) {
+  const file = join(dir, JOURNAL, FOLDERS);
+  mkdirSync(join(dir, JOURNAL), { recursive: true });
+  for (let i = 0; i < 3; i++) {
+    const before = raw(file), have = folders(dir);
+    if (have.some((h) => pathKey(h) === pathKey(f)) || replaceIfUnchanged(file, before, [...have, f].join('\n') + '\n') !== 'conflict') return;
+  }
 }
 
 // handoff()'s sink, called under its lock.
@@ -325,19 +347,19 @@ function mark(dir, lines, keep = null, list = IMPORTED) {
 }
 
 // The transcripts a backfill would read, oldest first. Only in the store's own
-// folder and its subfolders' (`<folder>-*`): the head of every project's
-// transcripts, read every Stop, would be hundreds of reads. Only quiet ones: a
+// folder, its subfolders' (`<folder>-*`) and the folders a live Stop noted:
+// the head of every project's transcripts, read every Stop, would be hundreds
+// of reads. Only quiet ones: a
 // conversation still running is its own Stop's to journal, and its last reply
 // may not be in its transcript yet. One listed is read again once it grew
 // (turns a live write missed), from where it was read up to; one imported in
 // part goes on from there; a known one costs no read of its head. `from`:
 // where its import goes on; `looked`: the bytes looked at for a mark. `seen`:
 // every transcript the folders hold.
-// shortcut: a worktree outside the repository's folder has another folder name
-// and is not backfilled (its live turns are still journaled); scan every
-// project folder's first cwd if one is ever missed.
+// shortcut: a worktree folder no live Stop has recorded in yet is not looked
+// in; scan every project folder's first cwd if one is ever missed.
 function candidates(dir, skip) {
-  const root = projectsRoot(), me = pathKey(basename(dirname(dir))), done = new Map(), out = [];
+  const root = projectsRoot(), noted = new Set(folders(dir).map(pathKey)), done = new Map(), out = [];
   // Another's or one that won't open: up to its size, from nothing read.
   for (const m of (raw(join(dir, JOURNAL, IMPORTED)) ?? '').split(/\r?\n/).map((l) => LINE.exec(l))) {
     if (m) done.set(m[1], m[4] ? { upto: Number(m[2]), from: 0, looked: 0 } : { upto: Number(m[3] ?? m[2]), from: Number(m[3] ?? m[2]), looked: Number(m[2]) });
@@ -345,8 +367,8 @@ function candidates(dir, skip) {
   // A listing that fails leaves `seen` null, so nothing is pruned: read as
   // empty, it would drop the lines of every transcript in it.
   out.seen = new Set();
-  let folders = []; try { folders = readdirSync(root).filter((f) => f !== '_shared' && (pathKey(f) === me || pathKey(f).startsWith(me + '-'))); } catch { out.seen = null; }
-  for (const f of folders) {
+  let looks = []; try { looks = readdirSync(root).filter((f) => f !== '_shared' && (near(dir, f) || noted.has(pathKey(f)))); } catch { out.seen = null; }
+  for (const f of looks) {
     let names = []; try { names = readdirSync(join(root, f)).filter((n) => n.endsWith('.jsonl')); } catch { out.seen = null; }
     for (const n of names) {
       const p = join(root, f, n), k = `${f}/${n.slice(0, -6)}`;
@@ -390,17 +412,20 @@ function chunk(fd, pos, seg, size) {
 // exchange; `next`: where the next starts. An exchange longer than a segment
 // is read in several, `next` null until it ends: each part after its prompt's
 // line and a record of what it held so far (its last reply, its commands and
-// files), so turns() reads it on as one.
+// files), so turns() reads it on as one. A segment of more than `cap` turns is
+// cut at the prompt of the first past them.
 // shortcut: the cut is found by the prompt record's uuid, which Claude Code
 // writes; in a transcript without one an exchange can be cut at a segment's
 // end (its rest unread), and only a transcript of 64 MB has two segments.
 const so = (t) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [
   ...t.ran.map((command) => ({ type: 'tool_use', name: 'Bash', input: { command } })),
   ...t.changed.map((file_path) => ({ type: 'tool_use', name: 'Edit', input: { file_path } })), { type: 'text', text: t.did }] } }) + '\n';
-function* segments(fd, at, seg, size) {
+function* segments(fd, at, seg, size, cap) {
   let prompt = '', head = '';
   for (let b; (b = chunk(fd, at, seg, size)); ) {
     const next = b.pos + b.buf.length, got = turns(head + b.buf.toString('utf8'));
+    const over = got.length > cap && got[cap].id ? b.buf.indexOf(`"uuid":"${got[cap].id}"`) : -1;
+    if (over > 0) { prompt = head = ''; at = b.pos + b.buf.lastIndexOf(10, over) + 1; yield { got: got.slice(0, cap), next: at }; continue; }
     if (next >= size) { yield { got, next: size }; return; }
     const id = got.open?.id, i = id ? b.buf.lastIndexOf(`"uuid":"${id}"`) : -1, cut = i === -1 ? -1 : b.buf.lastIndexOf(10, i) + 1;
     if (cut > 0 || (cut === 0 && prompt)) { prompt = head = ''; at = b.pos + cut; yield { got: got.filter((t) => t !== got.open), next: at }; continue; }
@@ -428,7 +453,7 @@ function marked(fd, pos, seg, size) {
 // offset the import reached (its size when done) and the size looked at.
 // shortcut: the look for the mark is not cut by the budget (~0.35 s for 64 MB);
 // make it go on at the next Stop if transcripts of gigabytes turn up.
-function importOne(dir, c, fd, seg, more) {
+function importOne(dir, c, fd, seg, cap, more) {
   const s = tag(basename(c.p, '.jsonl')), size = fstatSync(fd).size, none = { at: size, size };
   // Marked private already, its entries went then.
   if (hushed(dir, s)) return none;
@@ -438,7 +463,7 @@ function importOne(dir, c, fd, seg, more) {
   if (marked(fd, c.looked, seg, size)) { hushed(dir, s, true); sweep(dir, s); unsay(dir, s); return none; }
   if (hushed(projectsRoot(), s, false, OFF)) return none;
   let at = c.from;
-  for (const { got, next } of segments(fd, at, seg, size)) {
+  for (const { got, next } of segments(fd, at, seg, size, cap)) {
     // A turn whose time won't parse: the transcript's, not the import's.
     record(dir, c.p, got, local(c.m));
     if (next == null) continue;
@@ -448,21 +473,26 @@ function importOne(dir, c, fd, seg, more) {
   return { at, size };
 }
 
+// Whether a look at the folders is due: none in ACTIVE; between looks a Stop
+// reads nothing more (the list was parsed whole every Stop). The clock is the
+// time the last look wrote, in a file of its own: the list's mtime moved with
+// every write to it, and a pass killed after an import waited half an hour.
+// Either way: a look dated ahead (the clock set back since) stopped every
+// import until real time caught up. A time that won't read is no look. Asked
+// before the store's lock too: under contention a Stop waited for it twice to
+// learn nothing was due (P1 hunt, 2026-10-29).
+export function due(dir, t0 = Date.now()) {
+  try { return !(Math.abs(t0 - Number(raw(join(dir, JOURNAL, LOOKED)))) < ACTIVE); } catch { return true; }
+}
+
 // The conversations still on disk, into the journal: a new install starts with
 // the last month, not empty. Call under withLock(dir). Each is recorded before
 // it is listed, so a Stop killed between the two only reads it again (entries
-// go by key). `skip`: the Stop's own transcript. `segment`: IMPORT_SEGMENT's,
-// lowered by a test.
-export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segment = IMPORT_SEGMENT } = {}) {
+// go by key). `skip`: the Stop's own transcript. `segment` and `turns`:
+// IMPORT_SEGMENT's and IMPORT_TURNS', lowered by a test.
+export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segment = IMPORT_SEGMENT, turns: cap = IMPORT_TURNS } = {}) {
   const t0 = Date.now(), look = join(dir, JOURNAL, LOOKED);
-  // A look at the folders once in ACTIVE; between looks a Stop reads nothing
-  // more (the list was parsed whole every Stop). The clock is the time the
-  // last look wrote, in a file of its own: the list's mtime moved with every
-  // write to it, and a pass killed after an import waited half an hour.
-  // Either way: a look dated ahead (the clock set back since) stopped every
-  // import until real time caught up. A time that won't read is no look.
-  let due = true; try { due = !(Math.abs(t0 - Number(raw(look))) < ACTIVE); } catch {}
-  if (!due) return { imported: 0, left: 0 };
+  if (!due(dir, t0)) return { imported: 0, left: 0 };
   let all = [], n = 0, done = 0, err = null;
   const other = [];
   try {
@@ -477,7 +507,7 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
         // retried at every look, it failed at every look.
         let fd; try { fd = openSync(c.p, 'r'); } catch (e) { mark(dir, [`${c.k} ${c.size} failed`]); throw e; }
         try {
-          const { at, size } = importOne(dir, c, fd, segment, () => Date.now() - t0 < budgetMs);
+          const { at, size } = importOne(dir, c, fd, segment, cap, () => Date.now() - t0 < budgetMs);
           mark(dir, [at < size ? `${c.k} ${size} at ${at}` : `${c.k} ${size}`]);
           n++; if (at >= size) done++;
         } finally { closeSync(fd); }

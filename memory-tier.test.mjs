@@ -1010,6 +1010,27 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(hd.includes('asked with no journal'), '--stop: a journal.mjs that cannot load leaves the handoff written');
 }
 
+// Nothing due to import (a look within the half hour): a Stop waits for a store
+// another hook holds once, for the handoff, not again to learn the import has
+// nothing to do (4.2 s, P1 hunt, 2026-10-29).
+{
+  const pw = join(root, 'C--lockwait'), dw = join(pw, 'memory'), tw = join(pw, 'lockwait.jsonl');
+  mkdirSync(join(dw, 'journal'), { recursive: true });
+  writeFileSync(tw, [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'q' } },
+    { type: 'assistant', timestamp: '2026-10-28T09:01:00Z', message: { content: [{ type: 'text', text: 'a' }] } }].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const timed = () => {
+    writeFileSync(join(dw, 'journal', '.looked'), String(Date.now()));
+    const t0 = Date.now();
+    spawnSync(process.execPath, [TOOL, '--stop'], { env, input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: tw, session_id: 'lockwait', hook_event_name: 'Stop' }) });
+    return Date.now() - t0;
+  };
+  timed();
+  const free = timed();
+  mkdirSync(join(dw, '.lock'));
+  let held; try { held = timed(); } finally { rmSync(join(dw, '.lock'), { recursive: true, force: true }); }
+  ok(held - free < 3000, `with nothing due, a Stop waits for a held store once, not twice (held ${held} ms, free ${free} ms)`);
+}
+
 // The nudge's reader gone before it is written: exit 0. Thrown with no
 // listener, the pipe's EPIPE made the Stop exit 1 (P1 hunt, 2026-10-29).
 {

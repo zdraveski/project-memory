@@ -481,6 +481,22 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   ok(!hd.includes('said before the mark') && hd.includes('another conversation'), `and takes its entries out of handoff.md, no other's (got ${hd})`);
 }
 {
+  // A worktree outside the repository's folder: Claude Code keeps its
+  // conversations in a folder named for the worktree, which storeOf maps to the
+  // repository's store. Once a live Stop records one there, the import looks in
+  // that folder too: 27 of one machine's transcripts were never imported (R30).
+  const [r, d] = repo('wtmain'), w = join(home, 'trees', 'feature'), gd = join(r, '.git', 'worktrees', 'feature'), V = sid('v');
+  mkdirSync(gd, { recursive: true }); mkdirSync(w, { recursive: true });
+  writeFileSync(join(w, '.git'), `gitdir: ${gd}\n`); writeFileSync(join(gd, 'commondir'), '../..\n'); writeFileSync(join(gd, 'gitdir'), join(w, '.git') + '\n');
+  old(w, sid('x'), 30, ['asked in the worktree']);
+  fill(d);
+  const before = asks(d).join(), live = join(projects, slug(w), `${V}.jsonl`);
+  writeFileSync(live, rec('user', V, '2026-10-28T09:00:00Z', 'live in the worktree', w) + '\n' + rec('assistant', V, '2026-10-28T09:00:30Z', 'ok', w) + '\n');
+  spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: w, transcript_path: live, session_id: V, hook_event_name: 'Stop' }) });
+  due(d); fill(d);
+  ok(before === '' && asks(d).join() === 'asked in the worktree,live in the worktree', `a worktree's folder is imported from once a live Stop records there (got ${before}; ${asks(d)})`);
+}
+{
   // The conversations a live Stop looked at whole lose their line once their
   // transcript is gone, as the import's list does.
   const [r, d] = repo('checked'), list = join(d, 'journal', '.checked');
@@ -620,6 +636,20 @@ const small = { segment: 1024, budgetMs: 0 };
     let tags = ''; try { tags = readFileSync(join(d, '.private-sessions'), 'utf8'); } catch {}
     ok(!asks(d).length && tags.split(/\r?\n/).includes(M.slice(0, 8)), `a mark in the ${where} segment keeps the whole conversation out, and takes back what it wrote (got ${asks(d)})`);
   }
+}
+{
+  // One look imports a bounded number of turns, the rest at the next: a
+  // transcript of 49,053 short turns held the store's lock 18 s, and a
+  // parallel session's handoff was skipped (P1 hunt, 2026-10-29).
+  const [r, d] = repo('many'), Y = sid('y'), p = join(projects, slug(r), `${Y}.jsonl`), few = { turns: 5, budgetMs: 0 };
+  writeFileSync(p, Array.from({ length: 12 }, (_, i) => exchange(Y, r, i)).join(''));
+  utimesSync(p, ago(2), ago(2));
+  const one = fill(d, few), line = () => listed(d).find((l) => l.startsWith(`${slug(r)}/${Y} `)) ?? '';
+  ok(one.imported === 1 && one.left === 1 && asks(d).length === 5 && / at \d+$/.test(line()), `a look imports at most its turns, and says where the rest start (got ${JSON.stringify(one)}, ${asks(d).length}, ${line()})`);
+  for (let i = 0; i < 10 && fill(d, few).left; i++);
+  const es = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries);
+  ok(es.length === 12 && es.every((e) => e.answered.startsWith(`answer ${e.asked.split(' ')[1]} `)) && line() === `${slug(r)}/${Y} ${statSync(p).size}`,
+    `look by look, every turn is imported whole, once (got ${es.length}; ${line()})`);
 }
 
 // entries(): the days in range, both bounds inclusive ("what did we do on the

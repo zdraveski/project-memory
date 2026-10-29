@@ -558,9 +558,11 @@ if (stop) {
     catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\n')[0] })); }
     // Then a few of the conversations still on disk, into the journal, without
     // a word; in a try of its own, so a failed import costs only the import.
+    // Not due, no lock taken: another hook holding the store cost the Stop a
+    // second wait to learn there was nothing to do.
     try {
-      const { backfill, JOURNAL } = await import(new URL('./journal.mjs', import.meta.url)), d = payload && storeOf(payload);
-      if (d && (existsSync(join(d, JOURNAL)) || readdirSync(dirname(d)).some((f) => f.endsWith('.jsonl')))) withLock(d, () => backfill(d, { skip: payload.transcript_path }));
+      const { backfill, due, JOURNAL } = await import(new URL('./journal.mjs', import.meta.url)), d = payload && storeOf(payload);
+      if (d && due(d) && (existsSync(join(d, JOURNAL)) || readdirSync(dirname(d)).some((f) => f.endsWith('.jsonl')))) withLock(d, () => backfill(d, { skip: payload.transcript_path }));
     } catch {}
   } catch {}
   try {
