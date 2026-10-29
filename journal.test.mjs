@@ -196,8 +196,9 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   write(d, Q, [turn({ at: '2026-09-02 09:00', id: 'q-1' })], { quiet: false, hush: false });   // another conversation's
   ok(holds() && summary(d).failed?.includes('not UTF-8') && readFileSync(owed, 'utf8').trim() === 'aaaaaaaa',
     `until the day is fixed, every write tries the sweep again and says it failed (got ${summary(d).failed})`);
-  const b = readFileSync(f);
-  writeFileSync(f, Buffer.concat([b.subarray(0, b.length - note.length), Buffer.from('\nNote: café\n')]));   // the note saved again, in UTF-8
+  // Fixed as an editor that took it for the code page does: saved whole as
+  // UTF-8, every heading's `·` is `Â·`, and the entries' headings still read.
+  writeFileSync(f, readFileSync(f, 'latin1'));
   write(d, Q, [turn({ at: '2026-09-02 09:05', id: 'q-2' })], { quiet: false, hush: false });
   ok(!holds() && !existsSync(failed) && !existsSync(owed) && readFileSync(f, 'utf8').includes('café'), 'the first write after the fix finishes it, and clears the failure');
 }

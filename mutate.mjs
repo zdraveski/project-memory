@@ -787,6 +787,7 @@ const suites = {
     'journal backfill clears its failure while a transcript still fails to open': ["else if ((n || owed) && !FAILING.test(raw(join(dir, JOURNAL, IMPORTED)) ?? ''))", 'else if (n || owed)'],
     'journal backfill lists a failure to open without its time': ['failed ${Date.now()}`', 'failed`'],
     'journal a note shaped like a field taken for one': ['    else if (at > last) {', '    else if (at >= 0) {'],
+    'journal a heading re-saved in the code page read as a note': [String.raw`## (\d\d:\d\d) \S{1,4} conversation`, String.raw`## (\d\d:\d\d) · conversation`],
     'journal backfill looks every Stop once due': ['left && !err ? t0 - ACTIVE : Date.now()', 't0 - ACTIVE'],
     'journal backfill waits half an hour with work left': ['left && !err ? t0 - ACTIVE : Date.now()', 'Date.now()'],
     'journal backfill retries a failure every Stop': ['left && !err ? ', 'left ? '],

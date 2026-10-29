@@ -30,7 +30,9 @@ export const IMPORT_TURNS = 500;
 const RETRY = 24 * 3600e3;
 
 const MARK = /^<!-- j:(.+) t:(.*) d:(\d{4}-\d\d-\d\d) -->$/;
-const HEAD = /^## (\d\d:\d\d) · conversation (\S*?)(?: · branch (.*))?$/;
+// The `·` read in any spelling (`Â·`): a day re-saved whole by an editor that
+// took it for the code page lost every heading, and a sweep matched nothing.
+const HEAD = /^## (\d\d:\d\d) \S{1,4} conversation (\S*?)(?: \S{1,4} branch (.*))?$/;
 const TIME = /^\d{4}-\d\d-\d\d \d\d:\d\d$/;
 const FIELDS = ['Asked', 'Answered', 'Changed', 'Ran'];   // as render() writes them, after the heading
 const day = (at) => at.slice(0, 10);
