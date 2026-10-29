@@ -2,7 +2,7 @@
 // turn, kept apart from handoff.md so what was done last month is still
 // findable. Entries are capped and redacted here, the one place a turn's
 // files and commands (uncapped in turns()) are shortened.
-import { mkdirSync, readdirSync, readFileSync, statSync, utimesSync, openSync, readSync, closeSync, unlinkSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { clip, tag, PRIVATE, hash, turns, readTail, hushed, ACTIVE, OFF } from './handoff-log.mjs';
 import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, withLock } from './store.mjs';
@@ -292,7 +292,7 @@ export function write(dir, transcriptPath, got, opts) {
 // What the backfill has read: `<folder>/<session> <bytes>`, one line a
 // transcript, ` partial` when only its tail was, ` other` when it is another
 // store's. `keep`: the transcripts still on disk; any other line goes.
-const IMPORTED = '.imported';
+const IMPORTED = '.imported', LOOKED = '.looked';
 const LINE = /^(.+) (\d+)(?: \w+)?$/;
 function mark(dir, lines, keep = null) {
   const f = join(dir, JOURNAL, IMPORTED), ks = new Set(lines.map((l) => LINE.exec(l)[1]));
@@ -327,12 +327,13 @@ function candidates(dir, skip) {
       out.seen?.add(k);
       if (typeof skip === 'string' && same(p, skip)) continue;
       let st; try { st = statSync(p); } catch { continue; }
-      if (Date.now() - st.mtimeMs < ACTIVE || (done.has(k) && st.size <= done.get(k))) continue;
-      out.push({ p, k, size: st.size, m: st.mtimeMs, mine: same(storeOf({ transcript_path: p }), dir) });
+      if (Math.abs(Date.now() - st.mtimeMs) < ACTIVE || (done.has(k) && st.size <= done.get(k))) continue;
+      out.push({ p, k, size: st.size, m: st.mtimeMs });
     }
   }
   return out.sort((a, b) => a.m - b.m);
 }
+const ours = (dir, p) => same(storeOf({ transcript_path: p }), dir);
 
 // The conversations still on disk, into the journal: a new install starts with
 // the last month, not empty. Call under withLock(dir). Each is recorded before
@@ -342,41 +343,51 @@ function candidates(dir, skip) {
 // transcript's end, typed before the plugin kept marks, is not seen; read the
 // rest of a partial transcript for it if that turns up.
 export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {}) {
-  const t0 = Date.now(), f = join(dir, JOURNAL, IMPORTED);
-  // A look at the folders once in ACTIVE, the list's mtime the clock; between
-  // looks a Stop reads nothing more. A stat is ~70 µs on Windows (5 ms a Stop
-  // for a month's 68 transcripts), and the list was parsed whole every Stop.
-  let due = true; try { due = t0 - statSync(f).mtimeMs >= ACTIVE; } catch {}
+  const t0 = Date.now(), look = join(dir, JOURNAL, LOOKED);
+  // A look at the folders once in ACTIVE; between looks a Stop reads nothing
+  // more (the list was parsed whole every Stop). The clock is the time the
+  // last look wrote, in a file of its own: the list's mtime moved with every
+  // write to it, and a pass killed after an import waited half an hour.
+  // Either way: a look dated ahead (the clock set back since) stopped every
+  // import until real time caught up. A time that won't read is no look.
+  let due = true; try { due = !(Math.abs(t0 - Number(raw(look))) < ACTIVE); } catch {}
   if (!due) return { imported: 0, left: 0 };
-  let todo = [], n = 0, err = null;
+  let all = [], n = 0, err = null;
+  const other = [];
   try {
-    const all = candidates(dir, skip);
-    todo = all.filter((c) => c.mine);
-    // Another store's are listed so no look opens them again, and a transcript
-    // gone from disk loses its line: the list holds a month, not every month.
-    mark(dir, all.filter((c) => !c.mine).map((c) => `${c.k} ${c.size} other`), all.seen);
-    for (const [i, c] of todo.entries()) {
+    all = candidates(dir, skip);
+    for (const [i, c] of all.entries()) {
       if (i && Date.now() - t0 >= budgetMs) break;
+      // Whose it is, from its head, inside the budget: told for every one
+      // before the first import, a home folder's month took ~1 s.
+      if (!ours(dir, c.p)) { other.push(`${c.k} ${c.size} other`); continue; }
       try {
         // take() keeps none of a private one, nor of one held with auto memory
         // off. A mark typed while the plugin was off is taken as its Stop takes
         // one: the conversation is marked, and what it wrote before goes.
-        const r = readTail(c.p, IMPORT_MAX_BYTES), got = turns(r.text), hush = got.hush === true;
+        // One that won't read is listed as failed, read again once it grows:
+        // retried at every look, it failed at every look.
+        let r; try { r = readTail(c.p, IMPORT_MAX_BYTES); } catch (e) { mark(dir, [`${c.k} ${c.size} failed`]); throw e; }
+        const got = turns(r.text), hush = got.hush === true;
         // A turn whose time won't parse: the transcript's, not the import's.
         take(dir, c.p, got, { quiet: hushed(dir, tag(basename(c.p, '.jsonl')), hush), hush, when: local(c.m) });
         mark(dir, [`${c.k} ${c.size}${r.whole ? '' : ' partial'}`]);
         n++;
       } catch (e) { err = e; }   // left for a later Stop: one transcript that won't read must not hold up the rest
     }
+    // Another store's are listed so no look opens them again, and a transcript
+    // gone from disk loses its line: the list holds a month, not every month.
+    mark(dir, other, all.seen);
   } catch (e) { err = e; }
+  const left = all.length - n - other.length;
   // Kept in .failed as the sink's is; the next import that goes through clears
   // it, and only its own: a live write's failure is the live write's to clear.
   if (err) fault(dir, err, 'backfill: ');
   else if (n) clear(dir, true);
   // The next look: the next Stop while the budget left some, else in ACTIVE (a
   // failure too: retried every Stop, it would cost every Stop a look).
-  try { const at = new Date(n < todo.length && !err ? t0 - ACTIVE : Date.now()); utimesSync(f, at, at); } catch {}
-  return { imported: n, left: todo.length - n };
+  try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(look, raw(look), String(left && !err ? t0 - ACTIVE : Date.now())); } catch {}
+  return { imported: n, left };
 }
 
 // Whether a day holds an entry: a marker line, found in its bytes. Parsed,
@@ -401,6 +412,6 @@ export function summary(dir) {
     } catch {}
   }
   try { failed = (raw(join(dir, JOURNAL, FAILED)) ?? '').split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l).error).join('; ') || null; } catch {}
-  let left = 0; try { left = candidates(dir).filter((c) => c.mine).length; } catch {}
+  let left = 0; try { left = candidates(dir).filter((c) => ours(dir, c.p)).length; } catch {}
   return { first, days: n, bytes, left, failed };
 }

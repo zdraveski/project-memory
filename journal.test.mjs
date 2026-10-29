@@ -320,8 +320,9 @@ const asks = (d) => days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 
 const listed = (d) => readFileSync(join(d, 'journal', '.imported'), 'utf8').split('\n').filter(Boolean);
 // Time enough for every import: under six suites at once, 150 ms took two of three.
 const fill = (d, o) => withLock(d, () => backfill(d, { budgetMs: 60e3, ...o }));
-// The store's transcripts are looked at once in half an hour, by the list's age.
-const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
+// The store's transcripts are looked at once in half an hour, by the time the last look wrote.
+const looked = (d, ms) => writeFileSync(join(d, 'journal', '.looked'), String(ms));
+const due = (d) => looked(d, Date.now() - 3600e3);
 {
   const [r, d] = repo('bf');
   const b = old(r, sid('b'), 40, ['b1']);
@@ -373,6 +374,7 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   const [r, d] = repo('idle'), list = join(d, 'journal', '.imported'), failed = join(d, 'journal', '.failed');
   old(r, sid('a'), 30, ['idle']);
   mkdirSync(list, { recursive: true });   // a list no read can take
+  looked(d, Date.now());
   const idle = fill(d);
   ok(idle.imported === 0 && !existsSync(failed), `between looks the list is not read at all (got ${JSON.stringify(idle)})`);
   due(d); fill(d);
@@ -382,11 +384,50 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   const [r, d] = repo('kill');
   const ps = ['a', 'b', 'c', 'e'].map((c, i) => old(r, sid(c), 40 - i, [`k${c}`]));
   mkdirSync(join(d, 'journal'));
-  // A pass killed after its first import: the list it left is due within half an hour.
+  // A pass killed after its first import: the list it wrote is no look, and
+  // the next Stop goes on (by the list's mtime, it waited half an hour).
   writeFileSync(join(d, 'journal', '.imported'), `${slug(r)}/${sid('a')} ${statSync(ps[0]).size}\n`);
-  due(d);
   const got = fill(d);
-  ok(got.imported === 3 && asks(d).join() === 'kb,kc,ke' && listed(d).length === 4, `backfill resumes after a kill: only the other three are imported (got ${JSON.stringify(got)}, ${asks(d)})`);
+  ok(got.imported === 3 && asks(d).join() === 'kb,kc,ke' && listed(d).length === 4, `backfill resumes after a kill, at the next Stop: only the other three are imported (got ${JSON.stringify(got)}, ${asks(d)})`);
+}
+{
+  // A clock set back after a look (a VM restored, NTP) dated the look ahead,
+  // and no Stop imported until real time caught up; a transcript too.
+  const [r, d] = repo('ahead'), p = old(r, sid('a'), 30, ['written ahead']);
+  mkdirSync(join(d, 'journal'));
+  looked(d, Date.now() + 3 * 86400e3);
+  utimesSync(p, (Date.now() + 3 * 86400e3) / 1000, (Date.now() + 3 * 86400e3) / 1000);
+  ok(fill(d).imported === 1 && asks(d).join() === 'written ahead', `a look or a transcript dated ahead is no reason to wait (got ${asks(d)})`);
+  old(r, sid('b'), 30, ['after a garbled look']);
+  writeFileSync(join(d, 'journal', '.looked'), 'not a time');
+  ok(fill(d).imported === 1, 'a look time that will not read is no look');
+}
+{
+  // Out of time, a Stop tells no more transcripts' store (a read of each one's
+  // head: ~1 s for a home folder's month) than it imports.
+  const [r, d] = repo('lazy');
+  old(r, sid('a'), 30, ['ours']);
+  for (const c of ['b', 'c', 'e']) old(`${r}-x${c}`, sid(c), 20, ['theirs']);
+  const one = fill(d, { budgetMs: 0 });
+  ok(one.imported === 1 && one.left === 3 && listed(d).length === 1 && summary(d).left === 0, `out of time, the other heads wait for the next Stop; status counts none of them as left (got ${JSON.stringify(one)}, ${listed(d)}, ${summary(d).left})`);
+  const rest = fill(d);
+  ok(rest.imported === 0 && rest.left === 0 && listed(d).filter((l) => l.endsWith(' other')).length === 3 && asks(d).join() === 'ours', `which the next reads (got ${JSON.stringify(rest)}, ${listed(d)})`);
+}
+{
+  // A transcript that won't read (EACCES: one a `sudo claude` run left owned by
+  // root) is listed as failed, with its size, and read again only once it
+  // grows: retried at every look, it failed at every look.
+  const [r, d] = repo('unread'), p = old(r, sid('u'), 2, ['readable at last']), open = fs.openSync;
+  const line = () => listed(d).find((l) => l.startsWith(`${slug(r)}/${sid('u')} `)) ?? '';
+  fs.openSync = (q, ...a) => { if (q === p) throw Object.assign(new Error(`EACCES: permission denied, open '${q}'`), { code: 'EACCES' }); return open(q, ...a); };
+  syncBuiltinESMExports();
+  let first, again;
+  try { first = fill(d); due(d); again = fill(d); } finally { fs.openSync = open; syncBuiltinESMExports(); }
+  ok(first.imported === 0 && line() === `${slug(r)}/${sid('u')} ${statSync(p).size} failed`, `it is listed as failed, with its size (got ${JSON.stringify(first)}, ${line()})`);
+  ok(again.left === 0 && summary(d).left === 0 && summary(d).failed?.startsWith('backfill: EACCES'), `the next look leaves it, and status still names the failure (got ${JSON.stringify(again)}, ${summary(d).failed})`);
+  appendFileSync(p, rec('user', sid('u'), '2026-09-02T10:00:00Z', 'one more', r) + '\n' + rec('assistant', sid('u'), '2026-09-02T10:00:30Z', 'done', r) + '\n');
+  utimesSync(p, ago(2), ago(2)); due(d);
+  ok(fill(d).imported === 1 && asks(d).join() === 'one more,readable at last' && !line().endsWith(' failed'), `grown, it is read again (got ${asks(d)}, ${line()})`);
 }
 {
   const [r, d] = repo('hush');
