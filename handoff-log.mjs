@@ -264,6 +264,21 @@ const code = (v) => /^\$[{(]|^(?:process\.env[.[]|os\.environ|os\.getenv|System\
   || (!/\d/.test(v) && /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(v) && /(?:pass|secret|token|key|pwd|auth|cred)\w*$/i.test(v))
   || /^(?:string|number|boolean|str|int|bytes|any|unknown|null|undefined|none|true|false|object|bool|float|char|optional|secretstr)$/i.test(v)
   || (!/\d/.test(v) && (/^[A-Za-z_$][\w$.]*[([]/.test(v) || /^(?:\/|~\/|[A-Za-z]:[\\/])[^\s/\\]+[\\/]/.test(v)));
+// A command's argument that is no secret itself: a reference ($TOKEN,
+// ${TOKEN}, $(cat pw): the shell expands it) or a path (~/.ssh/id_ed25519,
+// ./pw.txt, /etc/x/y, certs/key.pem). Cut, the word a search would find was
+// lost (review, 2026-10-29). Not a number: after --password or TOKEN= it is a
+// PIN (R34).
+const arg = (v) => /^\$[{(A-Za-z_]|^~|^\.{1,2}[\\/]|^\/[^\s/]+\/|[\\/]\S*\.[A-Za-z]\w{0,7}$/.test(v);
+// A variable's name that holds a secret: one of its _-parts is the word (not
+// KEYBOARD or MONKEY), and it doesn't name a file (KEY_FILE, PUBLIC_KEY_PATH).
+const named = (n) => {
+  const ps = n.toUpperCase().split('_');
+  return ps.some((p) => /^(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|PASS|PWD)$/.test(p)) && !/^(?:FILE|PATH|DIR|NAME|ID)$/.test(ps.at(-1));
+};
+// A number under a count's name (TOKEN_LIMIT, MAX_TOKEN, SECRET_PORT): no
+// secret, as only a count-like whole part says (R34).
+const counted = (n, v) => /^\d+$/.test(v) && n.toUpperCase().split('_').some((p) => /^(?:LIMIT|MAX|MIN|SIZE|COUNT|LEN|TTL|TIMEOUT|BYTES|PORT)$/.test(p));
 const SECRETS = [
   // From the first opener to the last closer: nested, the text after the inner
   // closer was saved. Self-closed or unclosed, to the end.
@@ -296,18 +311,23 @@ const SECRETS = [
   // curl -u user:it, --user user:it. Not `docker run -u 1000:1000`, a user and group.
   [/((?:^|\s)(?:-u|--user)[ =]+(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)[^\s'"]{1,200}/g, '$1[redacted]'],
   // --password it (--token, --client-secret); docker login, az login, sshpass
-  // and twine take it as -p it.
-  [/(--(?:[a-z]+-){0,3}(?:password|passwd|token|secret)[ =]|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+)(?!-)[^\s"']{3,}/g, '$1[redacted]'],
+  // and twine take it as -p it. Not --no-password, whose next word is the
+  // command's own; nor "the --token flag", in prose.
+  [/(--(?!no-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret)[ =]|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+)(?!-)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)([^\s"']{3,})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // A secret as a command's argument, which the journal's Ran field keeps (P1
   // hunt, 2026-10-29): `aws configure set` of a secret, key or token; a
-  // SetEnvironmentVariable of one; htpasswd -b's password, after its file (none
-  // with -n) and user; an exported name whose word is a key's.
+  // SetEnvironmentVariable or setx of one; htpasswd -b's password, after its
+  // file (none with -n) and user, before any redirect (-n prints, so one
+  // follows: `> .htpasswd` was taken for the password); an exported name whose
+  // word is a key's; gh secret set's body; an npm registry's _authToken.
   [/(\baws\s+configure\s+set\s+[\w.-]{0,100}(?:secret|key|token)[\w.-]{0,100}\s+)(?!-)[^\s"']+/gi, '$1[redacted]'],
-  [/(SetEnvironmentVariable\(\s*["'][^"'\n]{0,100}(?:password|passwd|secret|token|key)[^"'\n]{0,100}["']\s*,\s*["'])[^"'\n]+/gi, '$1[redacted]'],
-  [/(\bhtpasswd(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+(?:[^\s-]\S*\s+)?\S+\s+)[^\s;|&]+/g, '$1[redacted]'],
+  [/(SetEnvironmentVariable\(\s*["']([^"'\n]{1,100})["']\s*,\s*["'])([^"'\n]+)/gi, (m, pre, name, v) => (named(name) && !arg(v) && !counted(name, v) ? `${pre}[redacted]` : m)],
+  [/(\bhtpasswd(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+(?:[^\s<>-]\S*\s+)?[^\s<>]+\s+)(?!\d*>)[^\s;|&<>]+/g, '$1[redacted]'],
   // The name read whole, then judged: as words in one pattern, KEY_ repeated
   // took 28 s.
-  [/(\bexport\s+([A-Za-z_]\w{0,100})=["']?)([^\s"';|&]+)/g, (m, pre, name, v) => (/(?:^|_)(?:key|secret|token|password|passwd)(?:_|$)/i.test(name) && !code(v) ? `${pre}[redacted]` : m)],
+  [/(\b(?:export\s+([A-Za-z_]\w{0,100})=|setx[ \t]+([A-Za-z_]\w{0,100})[ \t]+)["']?)([^\s"';|&]+)/g, (m, pre, a, b, v) => (named(a ?? b) && !arg(v) && !code(v) && !counted(a ?? b, v) ? `${pre}[redacted]` : m)],
+  [/(\bgh\s+secret\s+set\b[^\n|;&]{0,200}?\s(?:--body|-b)[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  [/(:_authToken[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
   // In the mysql command only: `; find . -print` after it was cut.
   [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n|;&]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
