@@ -223,10 +223,10 @@ export function sweep(dir, s) {
 // lock (null when it stayed busy); their keys are listed first, so a forget
 // killed half-way leaves entries no record brings back. `removed`: the matches
 // that went, fewer when a day kept changing under the write (its keys listed
-// all the same).
-export function forget(dir, terms, { since, until, conversation, apply = false, failed } = {}) {
+// all the same). `keys`: only those entries, the ones a search showed.
+export function forget(dir, terms, { since, until, conversation, keys: only, apply = false, failed = [] } = {}) {
   const ts = terms.map((t) => t.toLowerCase());
-  const matched = entries([dir], { since, until, failed }).filter((e) => (!conversation || e.s === conversation) &&
+  const matched = entries([dir], { since, until, failed }).filter((e) => (!conversation || e.s === conversation) && (!only || only.includes(e.key)) &&
     ts.every((t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.toLowerCase().includes(t))));
   if (!apply || !matched.length) return { matched, removed: [] };
   const keys = new Set(matched.map((e) => e.key)), f = join(dir, JOURNAL, FORGOTTEN);
@@ -235,10 +235,11 @@ export function forget(dir, terms, { since, until, conversation, apply = false, 
       const before = raw(f);
       if (replaceIfUnchanged(f, before, [...(before ?? '').split(/\r?\n/).filter(Boolean), ...keys].join('\n') + '\n') !== 'conflict') break;
     }
-    // A day that won't be written (not UTF-8) is named, the rest still go.
+    // A day that won't be written (not UTF-8, read-only, held open) keeps its
+    // entries and is named: thrown, the days after it went untried.
     const went = new Set([...new Set(matched.map((e) => e.day))].flatMap((d) => {
       try { return drop(dir, d, (e) => !keys.has(e.key)).map((e) => e.key); }
-      catch (e) { failed?.push({ path: dayFile(dir, d), code: e.code || e.message }); return []; }
+      catch (e) { failed.push({ path: dayFile(dir, d), code: e.code || e.message, write: true }); return []; }
     }));
     return { matched, removed: matched.filter((e) => went.has(e.key)) };
   });

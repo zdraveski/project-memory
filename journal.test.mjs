@@ -699,6 +699,7 @@ const small = { segment: 1024, budgetMs: 0 };
   ok(hits(['mango'], { since: '2026-10-21' }) === 'f-3,f-4' && hits(['mango'], { until: '2026-10-20' }) === 'f-1',
     `only entries within the dates match (got ${hits(['mango'], { since: '2026-10-21' })}; ${hits(['mango'], { until: '2026-10-20' })})`);
   ok(hits([], { conversation: 'bbbbbbbb' }) === 'f-4', `--conversation alone matches that conversation's entries (got ${hits([], { conversation: 'bbbbbbbb' })})`);
+  ok(hits([], { keys: ['f-2'] }) === 'f-2' && hits(['mango'], { keys: ['f-2', 'f-3'] }) === 'f-3', `keys pick those entries, with the other filters (got ${hits([], { keys: ['f-2'] })}; ${hits(['mango'], { keys: ['f-2', 'f-3'] })})`);
   ok(text() === before && !existsSync(list), 'without apply nothing goes');
   mkdirSync(join(d, '.lock'));   // another hook's
   const busy = forget(d, ['mango'], { apply: true });
@@ -728,6 +729,18 @@ const small = { segment: 1024, budgetMs: 0 };
   let r; try { r = forget(d, ['mango'], { apply: true }); } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
   ok(r.matched.length === 2 && r.removed.map((e) => e.key).join() === 'b-1' && parseDay(readFileSync(f21, 'utf8')).entries.length === 1 &&
     readFileSync(join(d, 'journal', '.forgotten'), 'utf8').includes('b-2'), `what forget says went is what went (got ${JSON.stringify(r?.removed)})`);
+}
+{
+  // A day the disk refuses (read-only, held open) keeps its entries and is
+  // named; the days after it still go. Thrown, it was a stack trace after half the work.
+  const d = storeFor(home, 'C:\\forget-refused'), f21 = dayFile(d, '2026-10-21'), failed = [];
+  record(d, T, [turn({ at: '2026-10-20 09:00', id: 'r-1', ask: 'mango one' }), turn({ at: '2026-10-21 09:00', id: 'r-2', ask: 'mango two' }), turn({ at: '2026-10-22 09:00', id: 'r-3', ask: 'mango three' })]);
+  const rename = fs.renameSync;
+  fs.renameSync = (a, b) => { if (b === f21) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }); return rename(a, b); };
+  syncBuiltinESMExports();
+  let r; try { r = forget(d, ['mango'], { apply: true, failed }); } finally { fs.renameSync = rename; syncBuiltinESMExports(); }
+  ok(r.removed.map((e) => e.key).join() === 'r-1,r-3' && parseDay(readFileSync(f21, 'utf8')).entries.length === 1 && JSON.stringify(failed) === JSON.stringify([{ path: f21, code: 'EPERM', write: true }]),
+    `a day that cannot be written keeps its entries and is named; the days after it still go (got ${JSON.stringify(r?.removed?.map((e) => e.key))}, ${JSON.stringify(failed)})`);
 }
 {
   const [r, d] = repo('forget'), p = old(r, sid('a'), 30, ['the zebra eats mango', 'the zebra policy']);

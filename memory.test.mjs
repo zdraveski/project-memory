@@ -126,6 +126,27 @@ ok(!/--all looks/.test(cli('history', 'never-was', '--all').stdout), 'history --
 r = cli('history', 'never-was');
 ok(cli('restore', 'never-was').status === 1 && r.status === 1 && /search <words> finds a memory's name; --all looks in every project/.test(r.stdout), 'a memory no snapshot holds: restore and history fail, and history says how to find the name');
 ok(cli('restore', 'mentions', '--force', '--rev', 'nosuchrev').status === 1, 'an unknown revision fails');
+// A note edited every reply has thousands of snapshots (2,000 were 72 KB of
+// output): history shows the newest 30 and says how many it left out.
+{
+  const g = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' }).stdout.trim();
+  const branch = g('symbolic-ref', 'HEAD'), from = g('rev-parse', 'HEAD');
+  let stream = '';
+  for (let i = 0; i < 35; i++) {
+    const body = `version ${i}\n`, msg = `memory: edit ${i}\n`;
+    stream += `commit ${branch}\ncommitter memory <memory@localhost> ${1600000000 + i * 60} +0000\ndata ${Buffer.byteLength(msg)}\n${msg}${i ? '' : `from ${from}\n`}` +
+      `M 100644 inline C--mem-cli/memory/busy-note.md\ndata ${Buffer.byteLength(body)}\n${body}\n`;
+  }
+  const made = spawnSync('git', ['-C', root, 'fast-import', '--quiet'], { input: stream, encoding: 'utf8' });
+  writeFileSync(join(dir, 'busy-note.md'), 'version 34\n');
+  const rows = (out) => out.split('\n').filter((l) => /^  \w+ \d{4}-\d\d-\d\d \d\d:\d\d  (added|changed)$/.test(l)).length;
+  r = cli('history', 'busy-note');
+  ok(made.status === 0 && r.status === 0 && rows(r.stdout) === 30 && /^  and 5 older; --limit N shows more$/m.test(r.stdout) && /^  a change: git -C /.test(r.stdout.trim().split('\n').pop()),
+    `history shows the newest 30 and how many are older, its command still last (got ${made.stderr}${r.stdout})`);
+  r = cli('history', 'busy-note', '--limit', '40');
+  ok(rows(r.stdout) === 35 && !/^  and \d+ older/m.test(r.stdout), `--limit shows more (got ${rows(r.stdout)}: ${r.stdout})`);
+  unlinkSync(join(dir, 'busy-note.md'));
+}
 // The commit history calls "deleted" no longer has the memory: --rev with it
 // failed. It brings back the version that commit deleted.
 const deletedAt = cli('history', 'deploy-notes').stdout.match(/^  (\w+) .*deleted$/m)?.[1];
@@ -142,6 +163,16 @@ ok(r.status === 1 && /at HEAD~999: /.test(r.stdout), `an unknown commit is named
 // The command is the first word that is no option: an option before it worked.
 r = spawnSync(process.execPath, [CLI, '--store', dir, 'search', 'deploy'], { env, encoding: 'utf8' });
 ok(r.status === 0 && /match\(es\) in/.test(r.stdout), `an option before the command still runs it (got ${r.stdout.slice(0, 200)})`);
+// An option it does not know is refused: dropped, `--from 2026-10-27` searched for "2026", and `--after=` ignored the date.
+r = cli('search', 'deploy', '--from', '2026-10-27');
+const after = cli('search', 'deploy', '--after=2026-10-28');
+ok(r.status === 1 && r.stdout === 'unknown option --from\n' && after.status === 1 && after.stdout === 'unknown option --after=2026-10-28\n', `an unknown option is refused (got ${r.stdout}${after.stdout})`);
+ok(['--help', '-h', 'help'].every((h) => { const u = cli(h); return u.status === 0 && u.stdout.startsWith('node memory.mjs <command>'); }), '--help and -h print the usage, as help does');
+// After `--` every word is a search word, one that looks like an option too.
+memory(dir, 'hook-rule', 'never commit with --no-verify');
+r = spawnSync(process.execPath, [CLI, 'search', '--store', dir, '--', '--no-verify', '--all'], { env, encoding: 'utf8' });
+ok(r.status === 0 && /[\\/]hook-rule\.md$/m.test(r.stdout) && /; --all searches every project$/m.test(r.stdout), `words after -- are searched, never read as options (got ${r.stdout})`);
+unlinkSync(join(dir, 'hook-rule.md'));
 // Without git, history says so, not "spawnSync git ENOENT".
 r = spawnSync(process.execPath, [CLI, 'history', 'deploy-notes', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '' }, encoding: 'utf8' });
 ok(r.status === 1 && /git is not installed/.test(r.stdout), `history without git says git is not installed (got ${r.stdout.trim()})`);
@@ -205,8 +236,8 @@ memory(dir, 'linky', 'a memory with many links', [1, 2, 3, 4, 5, 6, 7].map((i) =
 ok(!/the-plans-are-the-brand/.test(cli('search', 'how', 'the', 'deploy').stdout), '"the" and "how" score nothing, not even in a file name');
 ok(!/handoff\.md/.test(cli('search', 'rolling', 'handoff').stdout), 'the handoff is not a search hit');
 ok(/^ +links: l1, l2, l3, l4, l5, and 2 more$/m.test(cli('search', 'linky').stdout), 'a hit lists five links and counts the rest');
-r = cli('search', 'CI', 'a');
-ok(r.status === 0 && /no word of 3\+ letters/.test(r.stdout), 'a query of short words says so, not "nothing matches"');
+r = cli('search', 'what did I do');
+ok(r.status === 0 && /^nothing to search for: "what did I do" has no word that says which memory$/m.test(r.stdout), `a query of short and stop words says so, not "nothing matches" (got ${r.stdout})`);
 
 // 4b. Promote and restore take the store's lock: one held by a hook is busy, and nothing moves.
 memory(dir, 'locked-out', 'a memory to move');
@@ -672,10 +703,33 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   day(jd, '2026-10-02', [entry('2026-10-02 10:00', 'tidy the scripts', { changed: ['memory-tier.mjs'], ran: ['node bench.mjs --runs 5'] })]);
   // Written unredacted, as a hand edit or an entry from before a redaction rule could be.
   const key = ['sk', 'live', '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
-  day(jd, '2026-10-03', [entry('2026-10-03 10:00', `paste the token ${key} into the config`)]);
+  const pasted = entry('2026-10-03 10:00', `paste the token ${key} into the config`, { answered: `stored ${key} as the config token` });
+  day(jd, '2026-10-03', [pasted]);
+  // One long request asked on three days, in other cases and spacing, and one like it.
+  const feed = 'feed the wombat its evening meal of carrots and hay, then refill the water bowl in the back pen';
+  const w1 = entry('2026-10-04 10:00', feed.replace('feed the wombat', 'Feed the  Wombat')), w2 = entry('2026-10-05 10:00', feed), w3 = entry('2026-10-06 10:00', feed);
+  day(jd, '2026-10-04', [w1]);
+  day(jd, '2026-10-05', [w2]);
+  day(jd, '2026-10-06', [entry('2026-10-06 09:00', 'wombat feed schedule'), w3]);
+  // Short requests are different work each time; a short one retried shows each copy, with its key.
+  day(jd, '2026-10-09', [entry('2026-10-09 09:00', 'continue', { answered: 'moved the kestrel cage to the barn' }), entry('2026-10-09 10:00', 'continue', { answered: 'the kestrel flew off' }),
+    entry('2026-10-09 11:00', 'here is the zorbix login, use it', { answered: 'logged in' }), entry('2026-10-09 11:01', 'here is the zorbix login, use it', { answered: 'logged in again' })]);
+  // A branch says less than a command: one named in each must not outrank it.
+  day(jd, '2026-10-10', [entry('2026-10-10 09:00', 'tidy the docs', { ran: ['npm run ocelot'] }), entry('2026-10-10 10:00', 'tidy the tests', { branch: 'ocelot-v2' })]);
+  // A secret in a header and one a stretch would cut in two, in a hand-edited day.
+  const tagKey = ['sk', 'live', 'tagtagtagtagtagtagtagtag'].join('_'), brKey = ['sk', 'live', 'branchbranchbranchbranch'].join('_'), cutKey = ['sk', 'live', 'cutcutcutcutcutcutcutcut01'].join('_');
+  day(jd, '2026-10-11', [entry('2026-10-11 09:00', 'stow the narwhal', { s: tagKey, branch: `feat-${brKey}`, answered: `${cutKey} ${'y'.repeat(60)} narwhal stowed` })]);
+  // An entry at every cap, its word all through it.
+  const huge = entry('2026-10-07 10:00', 'zeppelin plan '.repeat(150).slice(0, 2000), {
+    answered: 'the hangar crew waited all morning in the cold for the wind over the field to drop at last, and then the zeppelin landed. '.repeat(25).slice(0, 3000).trim(),
+    changed: Array.from({ length: 20 }, (_, i) => `src/zeppelin/part${i}.mjs`), ran: Array.from({ length: 10 }, (_, i) => `npm run zeppelin -- --part ${i} ${'x'.repeat(170)}`) });
+  day(jd, '2026-10-07', [huge]);
+  // Two letters are a word (CI, PR, DB), but only standing alone; a branch is searched too.
+  day(jd, '2026-10-08', [entry('2026-10-08 10:00', 'set up CI on GitHub Actions'), entry('2026-10-08 11:00', 'a decision about the logo'),
+    entry('2026-10-08 12:00', 'tidy the imports', { branch: 'payments-v2' })]);
   // A reply that says the words three times and files named for them: still below the request.
-  day(jd, '2026-10-15', [entry('2026-10-15 09:00', 'tidy the readme', { answered: 'the deploy error, the deploy error again, and the deploy error once more', changed: ['deploy-error.md'] }),
-    entry('2026-10-15 14:30', 'fix the deploy error')]);
+  const fix = entry('2026-10-15 14:30', 'fix the deploy error');
+  day(jd, '2026-10-15', [entry('2026-10-15 09:00', 'tidy the readme', { answered: 'the deploy error, the deploy error again, and the deploy error once more', changed: ['deploy-error.md'] }), fix]);
   day(jd, '2026-10-22', [entry('2026-10-22 09:00', 'plan the release')]);
   writeFileSync(join(jd, 'journal', '2026-10-23.md'), '# Journal 2026-10-23\n');   // a day a sweep emptied
   day(jd, '2026-10-25', [entry('2026-10-25 08:00', 'review the pull request'), entry('2026-10-25 16:10', 'write the changelog')]);
@@ -684,14 +738,61 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   memory(jd, 'journal', 'Every exchange in this project, one file per day in journal/');
 
   let r = jcli('search', 'deploy', 'error');
-  ok(r.status === 0 && /^ *\d+  journal   2026-10-15 14:30  conversation c0ffee12 · branch main  \(.*[\\/]journal[\\/]2026-10-15\.md\)\n     Asked: fix the deploy error\n/.test(r.stdout),
-    `search finds a journal entry by its request: first, labelled journal, with its date (got ${r.stdout})`);
+  ok(r.status === 0 && new RegExp(`^ *\\d+  journal   2026-10-15 14:30  conversation c0ffee12 · branch main\\n     key: ${fix.key}\\n     Asked: fix the deploy error\\n`).test(r.stdout),
+    `search finds a journal entry by its request: first, labelled journal, with its date and key (got ${r.stdout})`);
   ok(/^ *\d+ +\w+ +\d{4}-\d\d-\d\d +.*[\\/]deploy\.md$/m.test(r.stdout) && /^ *\d+  journal   2026-10-15 09:00 /m.test(r.stdout), `a note and an entry rank together (got ${r.stdout})`);
+  // A hit is its request, cut, and of the rest only what holds a search word.
+  const blocks = (out) => out.split(/\n(?= *\d+  )/), of = (out, asked) => blocks(out).find((b) => b.includes(`\n     Asked: ${asked}`)) ?? '';
+  ok(!/Answered/.test(of(r.stdout, 'fix the deploy error')) && /^     Answered: the deploy error, the deploy error again, and the deploy error once more$/m.test(of(r.stdout, 'tidy the readme')),
+    `a reply is printed only when it holds a search word (got ${r.stdout})`);
+  r = jcli('search', 'zeppelin');
+  const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
+  ok(z.length < 1500 && zask.length === 400 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
+    `an entry at every cap: its request cut to 400, the rest the stretches around the word, under 1.5 KB in all (got ${z.length}: ${z})`);
+  // show: the whole entry, by the key its hit printed, and its day file.
+  const zkey = z.match(/^     key: (.*)$/m)?.[1];
+  r = jcli('show', zkey);
+  ok(zkey === huge.key && r.status === 0 && r.stdout.includes(`\n     Asked: ${huge.asked}\n     Answered: ${huge.answered}\n     Changed: ${huge.changed.join(', ')}\n     Ran: ${huge.ran.join(' · ')}\n`) &&
+    r.stdout.includes(`\n     Day file: ${join(jd, 'journal', '2026-10-07.md')}`), `show prints an entry whole, by the key search printed, with its day file (got ${r.stdout})`);
+  r = jcli('show', fix.key, pasted.key);
+  ok(r.status === 0 && /^     Asked: fix the deploy error$/m.test(r.stdout) && /^     Answered: stored \[redacted\] as the config token$/m.test(r.stdout) && !r.stdout.includes(key), `show takes several keys, and redacts (got ${r.stdout})`);
+  r = jcli('show', 'no-such-key');
+  ok(r.status === 1 && /^no journal entry has the key no-such-key in .+; --all looks in every project$/m.test(r.stdout), `a key that is no entry's says so, and fails (got ${r.stdout})`);
+  // One long request asked again and again is one hit, with its count, days and the copies' keys.
+  r = jcli('search', 'wombat', 'feed');
+  ok((r.stdout.match(/^     Asked: feed the wombat its evening/gim) || []).length === 1 && r.stdout.includes(`\n     2 more like this, 2026-10-04..2026-10-06: ${w2.key}, ${w1.key}; --same takes them all\n`) &&
+    /^     Asked: wombat feed schedule$/m.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout),
+    `identical long requests, in any case and spacing, print once with how many more, their days and keys (got ${r.stdout})`);
+  r = jcli('search', 'wombat', 'feed', '--limit', '1');
+  ok(/^     2 more like this/m.test(r.stdout) && !/schedule/.test(r.stdout) && /^1 of 2 match\(es\) in .+; --limit N shows more/m.test(r.stdout), `--limit counts the requests, not their repeats (got ${r.stdout})`);
+  // --same: show and forget take every copy of a request by one key.
+  r = jcli('show', w3.key, '--same');
+  ok(r.status === 0 && [w1, w2, w3].every((w) => r.stdout.includes(`\n     key: ${w.key}\n`)) && !/schedule/.test(r.stdout), `show --same prints every entry that asked the same (got ${r.stdout})`);
+  ok((jcli('show', w3.key).stdout.match(/^     key: /gm) || []).length === 1, 'show without --same prints the one entry');
+  r = jcli('forget', '--key', w3.key, '--same');
+  ok([w1, w2, w3].every((w) => r.stdout.includes(`(key ${w.key})\n`)) && /^3 entries in .+ would go/m.test(r.stdout), `forget --key --same takes every copy (got ${r.stdout})`);
+  // A short request ("continue", a short paste retried) is never collapsed: each copy and its key is shown.
+  r = jcli('search', 'kestrel');
+  ok((r.stdout.match(/^     Asked: continue$/gm) || []).length === 2 && !/more like this/.test(r.stdout), `two short requests with different work stay two hits (got ${r.stdout})`);
+  r = jcli('search', 'zorbix');
+  ok((r.stdout.match(/^     key: /gm) || []).length === 2 && !/more like this/.test(r.stdout), `a short request retried shows both copies and both keys (got ${r.stdout})`);
+  // A word only the branch names ranks below one a command names.
+  r = jcli('search', 'ocelot');
+  ok(r.stdout.indexOf('Asked: tidy the docs') !== -1 && r.stdout.indexOf('Asked: tidy the docs') < r.stdout.indexOf('Asked: tidy the tests'), `a branch weighs less than a command (got ${r.stdout})`);
+  // Header fields and stretches are redacted, and a stretch is cut from the redacted text.
+  r = jcli('search', 'narwhal');
+  ok(/conversation \[redacted\] · branch feat-\[redacted\]$/m.test(r.stdout) && !r.stdout.includes(tagKey) && !r.stdout.includes(brKey) && !r.stdout.includes(cutKey.slice(16)),
+    `a secret in a tag, a branch or under a stretch's cut is never printed (got ${r.stdout})`);
+  // Matches near each other are one stretch, not the same text twice.
+  ok(!/^     Answered: [^\n]* … /m.test(z), `close matches merge into one stretch (got ${z})`);
   ok(!/[\\/]journal\.md$/m.test(jcli('search', 'every', 'exchange').stdout), "journal.md is the journal's pointer, not a search hit");
   ok(/^     Asked: tidy the scripts$/m.test(jcli('search', 'memory-tier.mjs').stdout) && /^     Asked: tidy the scripts$/m.test(jcli('search', 'bench').stdout),
     'an entry is found by a file it changed, and by a command it ran, alone');
+  r = jcli('search', 'CI', '--since', '2026-10-08', '--until', '2026-10-08');
+  ok(/^     Asked: set up CI on GitHub Actions$/m.test(r.stdout) && !/decision/.test(r.stdout), `a two-letter word is searched, as a word of its own (got ${r.stdout})`);
+  ok(/^     Asked: tidy the imports$/m.test(jcli('search', 'payments').stdout), 'an entry is found by its branch');
   r = jcli('search', 'token', 'config');
-  ok(/^     Asked: paste the token \[redacted\] into the config$/m.test(r.stdout) && !r.stdout.includes(key), `a top hit printed whole is still redacted (got ${r.stdout})`);
+  ok(/^     Asked: paste the token \[redacted\] into the config$/m.test(r.stdout) && /^     Answered: stored \[redacted\] as the config token$/m.test(r.stdout) && !r.stdout.includes(key), `a hit is redacted, its reply too (got ${r.stdout})`);
   r = jcli('search', 'zzzqqq', '--since', '2026-10-10', '--until', '2026-10-20');
   ok(/^nothing matches "zzzqqq" in .+ since 2026-10-10 until 2026-10-20; --all searches every project$/m.test(r.stdout), `a ranged miss names its range (got ${r.stdout})`);
   // A note's day is its modified: date; both bounds are inclusive for notes too.
@@ -699,6 +800,11 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   r = jcli('search', 'quokka', '--since', '2026-10-10', '--until', '2026-10-20');
   const quokkas = [...r.stdout.matchAll(/[\\/](quokka-\w+)\.md$/gm)].map((m) => m[1]).sort().join();
   ok(quokkas === 'quokka-since,quokka-until', `a note dated on either bound is found, one a day outside is not (got ${quokkas})`);
+  // A note's date is its last change: one written in the range and edited since is out of it, and said.
+  const outside = (k) => `${k} notes match outside the range (a note's date is its last change); search without --since/--until`;
+  ok(r.stdout.includes(`\n${outside(2)}\n`) && /^2 of 2 match\(es\)/m.test(r.stdout.trim().split('\n').pop()), `a ranged search says how many notes match outside it, before the count (got ${r.stdout})`);
+  r = jcli('search', 'quokka', '--since', '2026-11-01');
+  ok(r.stdout.startsWith(`${outside(4)}\nnothing matches "quokka" in `), `a ranged miss says so too (got ${r.stdout})`);
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
@@ -706,16 +812,18 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   const njs = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'status', '--store', jd], { env, encoding: 'utf8' });
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
-  ok(njs.status === 0 && r.status === 0 && /[\\/]deploy\.md$/m.test(r.stdout) && /^could not read journal\.mjs: /m.test(r.stdout),
-    `a journal.mjs that will not load: status runs, search finds notes and says the journal was not read (got ${njs.stderr}${r.stdout}${r.stderr})`);
+  ok(njs.status === 0 && /^  journal: could not read journal\.mjs: /m.test(njs.stdout) && r.status === 0 && /[\\/]deploy\.md$/m.test(r.stdout) && /^could not read journal\.mjs: /m.test(r.stdout),
+    `a journal.mjs that will not load: status runs and says so, search finds notes and says the journal was not read (got ${njs.stdout}${njs.stderr}${r.stdout}${r.stderr})`);
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'forget', 'deploy', '--store', jd], { env, encoding: 'utf8' });
-  ok(/^could not read journal\.mjs: /m.test(r.stdout), `nor can forget, and it says so (got ${r.stdout}${r.stderr})`);
+  ok(r.status === 1 && /^could not read journal\.mjs: /m.test(r.stdout), `nor can forget: it says so, and fails (got ${r.stdout}${r.stderr})`);
   r = jcli('search', 'deploy', 'error', '--since=2026-10-10', '--until', '2026-10-20');
   const dates = [...r.stdout.matchAll(/^ *\d+  journal   (\d{4}-\d\d-\d\d)/gm)].map((m) => m[1]);
   ok(r.status === 0 && dates.join() === '2026-10-15,2026-10-15' && !/deploy\.md$/m.test(r.stdout), `--since/--until narrow by day, notes by their date too (got ${r.stdout})`);
   r = jcli('search', '--since', '2026-10-21', '--until', '2026-10-27');
-  const asked = [...r.stdout.matchAll(/^\d{4}-\d\d-\d\d \d\d:\d\d  conversation c0ffee12  (.*)$/gm)].map((m) => m[1]);
+  const asked = [...r.stdout.matchAll(/^\d{4}-\d\d-\d\d \d\d:\d\d  conversation c0ffee12 · branch main  (.*)$/gm)].map((m) => m[1]);
   ok(r.status === 0 && asked.join('|') === 'write the changelog|review the pull request|plan the release', `a date range alone lists the work of those days, newest first (got ${r.stdout})`);
+  // Words that say nothing of which memory ("what did I do") with a range: the range alone.
+  ok(jcli('search', 'what', 'did', 'I', 'do', '--since', '2026-10-21', '--until', '2026-10-27').stdout === r.stdout, 'stop words with a range list the range');
   r = jcli('search', 'deploy', '--since', 'yesterday');
   const r2 = jcli('search', 'deploy', '--until=2026-10');
   ok(r.status === 1 && r.stdout.trim() === '--since takes a date like 2026-10-01' && r2.status === 1 && r2.stdout.trim() === '--until takes a date like 2026-10-01', `a bad date is refused (got ${r.stdout}${r2.stdout})`);
@@ -724,8 +832,15 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   const was = named(); unlinkSync(conv);
   ok(was && !named(), 'the full conversation is named while it exists');
   mkdirSync(other, { recursive: true }); writeFileSync(join(other, 'MEMORY.md'), '# Index\n');
-  day(other, '2026-10-20', [entry('2026-10-20 10:00', 'rotate the signing key', { t: 'C--jr2/feed' })]);
-  ok(!/signing key/.test(jcli('search', 'rotate', 'signing').stdout) && /^     Asked: rotate the signing key$/m.test(jcli('search', 'rotate', 'signing', '--all').stdout), "--all searches every project's journal");
+  const rot = entry('2026-10-20 10:00', 'rotate the signing key', { t: 'C--jr2/feed' });
+  day(other, '2026-10-20', [rot]);
+  // show reaches another project's entry with --all, or with that project's --store.
+  r = spawnSync(process.execPath, [CLI, 'show', rot.key, '--store', other], { env, encoding: 'utf8' });
+  ok(jcli('show', rot.key).status === 1 && /^2026-10-20 10:00  conversation c0ffee12 · branch main · project C--jr2$/m.test(jcli('show', rot.key, '--all').stdout) && /^     Asked: rotate the signing key$/m.test(r.stdout),
+    `show finds another project's entry under --all or its --store (got ${r.stdout})`);
+  r = jcli('search', 'rotate', 'signing', '--all');
+  ok(!/signing key/.test(jcli('search', 'rotate', 'signing').stdout) && /^     Asked: rotate the signing key$/m.test(r.stdout) && /^ *\d+  journal   2026-10-20 10:00  conversation c0ffee12 · branch main · project C--jr2$/m.test(r.stdout),
+    `--all searches every project's journal, and a hit names its project (got ${r.stdout})`);
   // A project whose only memory is its journal has no MEMORY.md: --all passed
   // it over. Reached by a second link too, it is searched once.
   const lone = join(root, 'C--jr3', 'memory');
@@ -734,6 +849,9 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   symlinkSync(lone, join(root, 'C--jr3-link', 'memory'), process.platform === 'win32' ? 'junction' : 'dir');
   r = jcli('search', 'lone', 'telescope', '--all');
   ok(/^     Asked: calibrate the lone telescope$/m.test(r.stdout) && /^1 of 1 match\(es\)/m.test(r.stdout), `--all searches a journal with no MEMORY.md beside it, once (got ${r.stdout})`);
+  r = jcli('search', '--since', '2026-10-20', '--until', '2026-10-21', '--all');
+  ok(/^2026-10-21 10:00  conversation c0ffee12 · branch main · project C--jr3  calibrate the lone telescope$/m.test(r.stdout) && /· project C--jr2  rotate the signing key$/m.test(r.stdout),
+    `a date range under --all names each entry's project (got ${r.stdout})`);
 
   // A year of journal, ~30 MB: one entry rendered once, each day written in one call.
   const big = join(root, 'C--big', 'memory'), bcli = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', big], { env, encoding: 'utf8' });
@@ -747,18 +865,18 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   // Windows); read once a term, 5.4 s.
   const t0 = Date.now();
   r = bcli('search', 'needle', 'lorem', 'rollout', 'build', 'passed', 'plan', 'module', 'filter');
-  const took = Date.now() - t0, asks = [...r.stdout.matchAll(/^     Asked: (.*)$/gm)].map((m) => m[1].length);
+  const took = Date.now() - t0;
   ok(took < 3000, `search over 30 MB of journal is fast (${took} ms)`);
   ok(r.status === 0 && new RegExp(`^ *\\d+  journal   ${last} 18:00 `).test(r.stdout), `the one entry asking for every term is first (got ${r.stdout.slice(0, 200)})`);
-  ok(asks.length === 10 && asks[1] === 2000 && asks[2] === 2000 && asks.slice(3).every((a) => a <= 200) && r.stdout.length < 30000 && /^10 of 5111 match\(es\)/m.test(r.stdout),
-    `ten hits by default: the top 3 in full, the rest clipped (got ${asks}, ${r.stdout.length} chars)`);
+  ok(/^     5109 more like this, 2025-01-01\.\.2025-12-31: (k\d+, ){5}and 5104 more; --same takes them all$/m.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout) && r.stdout.length < 4000,
+    `a request asked 5,110 times is one hit, and the output stays small (got ${r.stdout.length} chars: ${r.stdout.slice(-400)})`);
   r = bcli('search', '--since', year[0]);
   ok((r.stdout.match(/^\d{4}-\d\d-\d\d \d\d:\d\d  conversation /gm) || []).length === 30 && /^30 of 5111 journal entries in .+; --limit N shows more$/m.test(r.stdout),
     `a date range alone lists 30 by default, and says how many it left out (got ${r.stdout.split('\n').length} lines, ending ${r.stdout.trim().split('\n').pop()})`);
   rmSync(join(big, 'journal', `${year[0]}.md`)); mkdirSync(join(big, 'journal', `${year[0]}.md`));
   r = bcli('search', 'needle');
-  ok(r.status === 0 && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && new RegExp(`^could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(r.stdout),
-    `a day that cannot be read is named, and the rest still found (got ${r.stdout.slice(-300)})`);
+  ok(r.status === 0 && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && new RegExp(`^could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(r.stdout) && /^1 of 1 match\(es\)/.test(r.stdout.trim().split('\n').pop()),
+    `a day that cannot be read is named, the rest still found, and the count is still the last line (got ${r.stdout.slice(-300)})`);
   r = bcli('search', 'needle', '--since', year.at(-7));
   ok(r.status === 0 && !r.stderr && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && !/could not read/.test(r.stdout), `with --since the last week, a day outside it is never opened (got ${r.stdout}${r.stderr})`);
 }
@@ -772,48 +890,119 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   let n = 0;
   const entry = (at, asked, s = 'aaaa1111') => ({ key: `f${n++}`, at, s, t: `C--fg/${s}`, branch: '', asked, answered: 'done', changed: [], ran: [] });
   const es = [entry('2025-10-20 09:00', 'the zebra eats mango'), entry('2025-10-20 10:00', 'the zebra policy'), entry('2025-10-21 09:00', 'mango, the zebra again'),
-    entry(`${today} 09:00`, 'a zebra in another conversation', 'bbbb2222'), entry(`${today} 10:00`, 'unrelated', 'bbbb2222')];
+    entry(`${today} 09:00`, 'a zebra in another conversation', 'bbbb2222'), entry(`${today} 10:00`, 'unrelated', 'bbbb2222')], lateTurn = entry(`${today} 11:00`, 'a late turn', 'bbbb2222');
   const page = (d, xs) => `# Journal ${d}\n\n${xs.map(render).join('\n\n')}\n`;
   const want = { '2025-10-20': page('2025-10-20', es.slice(0, 2)), '2025-10-21': page('2025-10-21', es.slice(2, 3)), [today]: page(today, es.slice(3)) };
   const reset = () => { rmSync(fj, { recursive: true, force: true }); mkdirSync(fj, { recursive: true }); for (const [d, t] of Object.entries(want)) writeFileSync(join(fj, `${d}.md`), t); };
   const file = (d) => readFileSync(join(fj, `${d}.md`), 'utf8'), gone = (d) => !existsSync(join(fj, `${d}.md`)), kept = (...ds) => ds.every((d) => file(d) === want[d]);
 
   reset();
+  // A look's line ends with the entry's key: the look is how the user's entries are found.
+  const fl = (e) => `${e.at}  conversation ${e.s}  ${e.asked}  (key ${e.key})\n`, zm = fl(es[0]) + fl(es[2]);
   let r = fcli('forget', 'Zebra', 'mango');
-  ok(r.status === 0 && kept('2025-10-20', '2025-10-21', today) && r.stdout === '2025-10-20 09:00  conversation aaaa1111  the zebra eats mango\n' +
-    '2025-10-21 09:00  conversation aaaa1111  mango, the zebra again\n2 entries would go; run again with --yes to remove them\n', `forget lists and keeps without --yes (got ${r.stdout}${r.stderr})`);
+  ok(r.status === 0 && kept('2025-10-20', '2025-10-21', today) && r.stdout === `${zm}2 entries in ${fd} would go; run again with --yes to remove them\n`, `forget lists and keeps without --yes, and names the store (got ${r.stdout}${r.stderr})`);
   r = fcli('forget', 'Zebra', 'mango', '--yes');
   ok(r.status === 0 && file('2025-10-20') === page('2025-10-20', [es[1]]) && gone('2025-10-21') && kept(today),
     `forget --yes removes only the matches, the rest byte for byte (got ${r.stdout}${r.stderr})`);
-  ok(/^2025-10-20 09:00  conversation aaaa1111  the zebra eats mango\n2025-10-21 09:00  conversation aaaa1111  mango, the zebra again\nremoved 2\nthe snapshots still hold the journal of 2025-10-20, 2025-10-21: deleting .*[\\/]\.git removes /.test(r.stdout),
-    `and lists what went, then says the snapshots still hold the days before today (got ${r.stdout})`);
+  ok(r.stdout.startsWith(zm) && r.stdout.endsWith(`\nremoved 2 from ${fd}\n`) && /^the snapshots still hold the journal of 2025-10-20, 2025-10-21: deleting .*[\\/]\.git removes /m.test(r.stdout),
+    `and lists what went, says the snapshots still hold the days before today, and ends with the count (got ${r.stdout})`);
   reset();
   // A blank word is in every entry: taken as a filter, it removed the whole journal.
-  const refused = 'forget needs words, a date range or --conversation; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)';
+  const refused = 'forget needs words, a date range, --conversation or --key; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)';
   for (const blank of [[], [''], ['   ']]) {
     r = fcli('forget', ...blank, '--yes');
     ok(r.status === 1 && r.stdout.trim() === refused && kept('2025-10-20', '2025-10-21', today), `forget with nothing to match is refused, a blank word too (${JSON.stringify(blank)}: got ${r.stdout}${r.stderr})`);
   }
+  const bb = fl(es[3]) + fl(es[4]);
   r = fcli('forget', '--conversation=bbbb2222');
-  ok(r.stdout === `${today} 09:00  conversation bbbb2222  a zebra in another conversation\n${today} 10:00  conversation bbbb2222  unrelated\n2 entries would go; run again with --yes to remove them\n`,
-    `--conversation=TAG lists that conversation (got ${r.stdout}${r.stderr})`);
+  ok(r.stdout === `${bb}2 entries in ${fd} would go; run again with --yes to remove them\n`, `--conversation=TAG lists that conversation (got ${r.stdout}${r.stderr})`);
+  ok(fcli('forget', '--conversation', 'bbbb2222-0000-4000-8000-00000000abcd').stdout === r.stdout, 'the full session id is that conversation too');
+  // The entries a search showed, by their keys, and nothing else.
+  r = fcli('forget', '--key', es[0].key, `--key=${es[3].key}`);
+  ok(r.stdout === `${fl(es[0])}${fl(es[3])}2 entries in ${fd} would go; run again with --yes to remove them\n`,
+    `--key lists the entries with those keys (got ${r.stdout}${r.stderr})`);
+  r = fcli('forget', 'zebra', '--key', es[0].key, '--key', es[4].key, '--yes');
+  ok(r.status === 0 && file('2025-10-20') === page('2025-10-20', [es[1]]) && kept('2025-10-21', today) && r.stdout.endsWith(`\nremoved 1 from ${fd}\n`),
+    `forget --key --yes removes exactly those that also hold the words (got ${r.stdout}${r.stderr})`);
+  reset();
+  // A key no entry here has (another project's) is named and fails the forget; the rest still go.
+  const lost = `no entry in ${fd} has the key k-elsewhere; is it another project's? use --store with its memory folder\n`;
+  r = fcli('forget', '--key', 'k-elsewhere', '--key', es[0].key, '--yes');
+  ok(r.status === 1 && r.stdout.endsWith(`${lost}removed 1 from ${fd}\n`) && file('2025-10-20') === page('2025-10-20', [es[1]]), `a key this store has no entry for is named, and fails the forget (got ${r.stdout})`);
+  reset();
+  // And the words are not blamed when the key left them nothing to match.
+  r = fcli('forget', 'zebra', '--key', 'k-elsewhere');
+  ok(r.status === 1 && r.stdout === `${lost}nothing in ${fd} matches\n`, `a key of another store is why nothing matched, not the words (got ${r.stdout})`);
+  // Keys that match nothing never widen to "every entry", --same or not.
+  r = fcli('forget', 'zebra', '--key', 'k-elsewhere', '--same', '--yes');
+  ok(r.status === 1 && kept('2025-10-20', '2025-10-21', today), `a --same of a key no entry has removes nothing (got ${r.stdout})`);
+  // A plain-words forget that matches nothing says which words no entry holds.
+  r = fcli('forget', 'the', 'zebra', 'pasted', 'yesterday');
+  ok(r.status === 0 && r.stdout === `nothing in ${fd} matches: no entry holds "pasted", "yesterday"\n`, `a forget that matches nothing names the words no entry holds (got ${r.stdout})`);
+  ok(fcli('forget', 'mango', 'policy').stdout === `nothing in ${fd} matches: no entry holds every word\n`, 'and when each word is somewhere, says no one entry holds them all');
+  // One store at a time: under --all it removed nothing, and said "removed 0" of an entry search had shown.
+  r = fcli('forget', 'zebra', '--all', '--yes');
+  ok(r.status === 1 && /^forget works on one store: --store <folder>/.test(r.stdout) && kept('2025-10-20', '2025-10-21', today), `forget refuses --all (got ${r.stdout})`);
   // A turn of it recorded after the look goes too, and is listed with the rest.
-  writeFileSync(join(fj, `${today}.md`), page(today, [...es.slice(3), entry(`${today} 11:00`, 'a late turn', 'bbbb2222')]));
+  writeFileSync(join(fj, `${today}.md`), page(today, [...es.slice(3), lateTurn]));
   r = fcli('forget', '--conversation', 'bbbb2222', '--yes');
-  ok(r.status === 0 && r.stdout === `${today} 09:00  conversation bbbb2222  a zebra in another conversation\n${today} 10:00  conversation bbbb2222  unrelated\n` +
-    `${today} 11:00  conversation bbbb2222  a late turn\nremoved 3\n` && gone(today) && kept('2025-10-20', '2025-10-21'),
+  ok(r.status === 0 && r.stdout === `${bb}${fl(lateTurn)}removed 3 from ${fd}\n` && gone(today) && kept('2025-10-20', '2025-10-21'),
     `forget --conversation removes one conversation, a turn since the look too; today's day, not yet in the snapshots, needs no word on them (got ${r.stdout}${r.stderr})`);
   // What the refusal advises does forget the whole journal, every key listed so no backfill brings it back.
   reset();
   r = fcli('forget', '--since', '1970-01-01', '--yes');
   const listed = readFileSync(join(fj, '.forgotten'), 'utf8').split('\n').filter(Boolean).sort().join();
-  ok(r.status === 0 && /^removed 5$/m.test(r.stdout) && Object.keys(want).every(gone) && listed === es.map((e) => e.key).sort().join(),
+  ok(r.status === 0 && r.stdout.endsWith(`\nremoved 5 from ${fd}\n`) && Object.keys(want).every(gone) && listed === es.map((e) => e.key).sort().join(),
     `--since 1970-01-01 --yes forgets the whole journal (got ${r.stdout}; ${listed})`);
   // With no history there is no old copy to delete: the snapshots go unmentioned.
   reset();
   renameSync(join(root, '.git'), join(root, '.git-away'));
   try { r = fcli('forget', 'Zebra', 'mango', '--yes'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
-  ok(r.status === 0 && r.stdout.endsWith('\nremoved 2\n'), `with no snapshots, forget --yes says nothing of them (got ${r.stdout}${r.stderr})`);
+  ok(r.status === 0 && r.stdout === `${zm}removed 2 from ${fd}\n`, `with no snapshots, forget --yes says nothing of them (got ${r.stdout}${r.stderr})`);
+  // Nor in a repository the user made there: the plugin commits nothing to it, and it is theirs to keep.
+  reset();
+  const cfg = join(root, '.git', 'config'), had = readFileSync(cfg, 'utf8');
+  writeFileSync(cfg, had.replace(/^\[project-memory\][^[]*/m, ''));
+  try { r = fcli('forget', 'Zebra', 'mango', '--yes'); } finally { writeFileSync(cfg, had); }
+  ok(had.includes('[project-memory]') && r.status === 0 && r.stdout === `${zm}removed 2 from ${fd}\n`, `nor in a repository the user made (got ${r.stdout}${r.stderr})`);
+  // A day the disk refuses keeps its entries and is named before the count, which says so; exit 1, never a stack trace.
+  reset();
+  const refuse = join(home, 'refuse-day.mjs'), refusing = (end) => {
+    writeFileSync(refuse, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst rename = fs.renameSync;\n" +
+      `fs.renameSync = (a, b) => { if (String(b).endsWith(${JSON.stringify(end)})) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM', syscall: 'rename', path: a, dest: b }); return rename(a, b); };\nsyncBuiltinESMExports();\n`);
+    return spawnSync(process.execPath, ['--import', pathToFileURL(refuse).href, CLI, 'forget', 'Zebra', 'mango', '--yes', '--store', fd], { env, encoding: 'utf8' });
+  };
+  r = refusing('2025-10-21.md');
+  ok(r.status === 1 && !r.stderr && r.stdout.endsWith(`could not write ${join(fj, '2025-10-21.md')}: EPERM\nremoved 1 of 2 from ${fd}\n`) && file('2025-10-21').includes('mango, the zebra again'),
+    `a day that cannot be written is named, counted as not removed, and fails the forget (got ${r.stdout}${r.stderr})`);
+  // A day that cannot be read is named once (the look and the removal both read it), and fails the forget.
+  reset();
+  mkdirSync(join(fj, '2025-10-19.md'));
+  r = fcli('forget', 'Zebra', 'mango', '--yes');
+  ok(r.status === 1 && r.stdout.split('could not read').length === 2 && r.stdout.endsWith(`\nremoved 2 from ${fd}\n`), `an unreadable day is said once, and the forget fails (got ${r.stdout})`);
+  // The list of forgotten keys refused: nothing goes, since a backfill would bring it back.
+  reset();
+  r = refusing('.forgotten');
+  ok(r.status === 1 && !r.stderr && r.stdout === `could not write ${join(fj, '.forgotten')}: EPERM\nremoved 0 of 2 from ${fd}\n` && kept('2025-10-20', '2025-10-21', today),
+    `a forget whose list cannot be written removes nothing, and says so (got ${r.stdout}${r.stderr})`);
+  // A turn recorded between the look and the removal stays: --yes removes only what a look lists.
+  reset();
+  const late = join(home, 'late-turn.mjs');
+  writeFileSync(late, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst read = fs.readFileSync; let n = 0;\n" +
+    `fs.readFileSync = (p, ...a) => { if (String(p).endsWith('2025-10-21.md') && ++n === 2) fs.appendFileSync(p, ${JSON.stringify('\n' + render(entry('2025-10-21 11:00', 'mango, a late zebra')) + '\n')}); return read(p, ...a); };\nsyncBuiltinESMExports();\n`);
+  r = spawnSync(process.execPath, ['--import', pathToFileURL(late).href, CLI, 'forget', 'Zebra', 'mango', '--yes', '--store', fd], { env, encoding: 'utf8' });
+  ok(r.status === 0 && r.stdout.endsWith(`\nremoved 2 from ${fd}\n`) && file('2025-10-21').includes('mango, a late zebra') && !file('2025-10-21').includes('mango, the zebra again'),
+    `a turn recorded after the look is not removed (got ${r.stdout}${r.stderr})`);
+  // A look lists every match up to 200; past that it asks for a narrower one, and --yes removes nothing it could not list.
+  reset();
+  writeFileSync(join(fj, '2025-10-22.md'), page('2025-10-22', Array.from({ length: 201 }, (_, i) => entry(`2025-10-22 ${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`, i ? `gnu herd ${i}` : 'gnu alone'))));
+  r = fcli('forget', 'gnu', 'herd');
+  ok(r.stdout.split('\n').filter((l) => / gnu herd \d+  \(key f\d+\)$/.test(l)).length === 200 && r.stdout.endsWith(`\n200 entries in ${fd} would go; run again with --yes to remove them\n`), `a look lists 200 matches (got ${r.stdout.slice(-300)})`);
+  r = fcli('forget', 'gnu');
+  const r2 = fcli('forget', 'gnu', '--yes');
+  ok(r.status === 0 && r.stdout === `201 entries in ${fd} match; narrow it: a look lists 200 at most\n` && r2.status === 1 &&
+    r2.stdout === `201 entries in ${fd} match; narrow it: a look lists 200 at most, and --yes removes only what a look can list: nothing removed\n` && file('2025-10-22').split('gnu').length === 202,
+    `past 200, a look asks for a narrower one, and --yes removes nothing (got ${r.stdout}${r2.stdout})`);
   // A day that changed under each of its three writes keeps its entries: what
   // is listed and counted is what went, out of what matched. The other writer
   // is simulated in the CLI's own process, just before each write lands.
@@ -822,7 +1011,7 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   writeFileSync(busy, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst read = fs.readFileSync;\n" +
     "fs.readFileSync = (p, ...a) => { if (String(p).endsWith('2025-10-21.md') && fs.existsSync(`${p}.tmp${process.pid}`)) fs.appendFileSync(p, '\\nanother writer'); return read(p, ...a); };\nsyncBuiltinESMExports();\n");
   r = spawnSync(process.execPath, ['--import', pathToFileURL(busy).href, CLI, 'forget', 'Zebra', 'mango', '--yes', '--store', fd], { env, encoding: 'utf8' });
-  ok(/^2025-10-20 09:00  conversation aaaa1111  the zebra eats mango\nremoved 1 of 2\nthe snapshots still hold the journal of 2025-10-20: /.test(r.stdout) && file('2025-10-21').includes('mango, the zebra again'),
+  ok(/^2025-10-20 09:00  conversation aaaa1111  the zebra eats mango  \(key f0\)\nthe snapshots still hold the journal of 2025-10-20: [^\n]*\nremoved 1 of 2 from /.test(r.stdout) && file('2025-10-21').includes('mango, the zebra again'),
     `a day the write never landed in keeps its entry, neither listed nor counted as removed (got ${r.stdout}${r.stderr})`);
 }
 
@@ -852,6 +1041,12 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   ok(/; last write failed: disk full$/m.test(out), `status says the last write failed (got ${out})`);
   for (const d of ['2026-10-05', '2026-10-06']) unlinkSync(join(st, 'journal', `${d}.md`));
   ok(/^  journal: no days yet; importing 1 older conversations; last write failed: disk full$/m.test(cli()), 'a journal that failed from its first write still says so');
+  // A store whose only memory is its journal (no index, no journal.md yet) is a store.
+  const lone = join(root, 'C--jonly', 'memory');
+  mkdirSync(join(lone, 'journal'), { recursive: true });
+  writeFileSync(join(lone, 'journal', '2026-10-05.md'), `# Journal 2026-10-05\n${one('2026-10-05', 'k9')}`);
+  out = spawnSync(process.execPath, [CLI, 'status', '--store', lone], { env, encoding: 'utf8' }).stdout;
+  ok(!/no store here yet/.test(out) && /^  journal: 1 days? since 2026-10-05, /m.test(out), `a store whose only memory is its journal shows it (got ${out})`);
 }
 
 console.log(`memory: ${checks} checks passed`);
