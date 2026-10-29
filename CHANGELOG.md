@@ -4,40 +4,68 @@
 
 **A journal of your work**
 - project-memory now keeps a journal of every exchange: after each reply it
-  saves your message (up to 2,000 characters), Claude's reply (up to 3,000),
-  the files Claude changed (up to 20) and the commands it ran (up to 10), one
-  file per day in each project's notebook. Before, only the last few
-  exchanges were kept, and work Claude didn't write a note about was hard to
-  find again.
+  saves your message (up to 2,000 characters), Claude's reply (up to 6,000;
+  of a longer one, its first 4,000 and its last 2,000, where it says what
+  was done), the files Claude changed (up to 20) and the last 20 commands it
+  ran (up to 400 characters each), one file per day in each project's
+  notebook. Before, only the last few exchanges were kept, and work Claude
+  didn't write a note about was hard to find again.
 - Ask about earlier work in your own words, such as "What did we decide
   about the logo in September?" or "What did I work on last week?", and
   Claude searches the journal and answers with the date.
 - After each reply, a few at a time, it takes in the project's conversations
-  it hasn't read yet that Claude Code still keeps on your computer: on a new
-  install, about the last month; after a pause, the conversations held while
-  project-memory was off.
+  it hasn't read yet that Claude Code still keeps on your computer, however
+  long: on a new install, about the last month; after a pause, the
+  conversations held while project-memory was off. A worktree kept outside
+  its repository's folder has its conversations taken in once Claude has
+  finished a reply there.
 - `search` looks in the journal too, and takes `--since` and `--until`
-  dates. With dates and no words, it lists what you asked on those days.
-- `forget` removes journal entries when you ask: it lists them first, and
-  removes them only with `--yes`.
+  dates. With dates and no words, it lists what you asked on those days. A
+  journal hit shows its request and only the lines around your words, so
+  ten hits fit in a short answer. A long request asked many times, such as
+  a script's prompt, shows once, with how many more and their keys.
+  Two-letter words such as CI and PR are found, and so is an entry's
+  branch.
+- `show <key>` prints one journal entry in full, by the key a search hit
+  shows.
+- `forget` removes journal entries when you ask: it lists each match with
+  its key, and after you confirm, removes exactly those
+  (`--key <key> --yes`). It works on one project at a time, lists up to
+  200, and names the words no entry holds.
 - The journal isn't loaded when a conversation starts. The briefing gets one
-  line saying it's there, and `status` shows its size and first day.
+  line saying it's there, and `status` shows its size, first day,
+  conversations still to import and any failure.
 - Each finished day goes into the history of your notes. Today's file stays
   out until the day is over, so the history doesn't keep a copy after every
-  reply.
+  reply. A day left with no entries is deleted.
+- A day's file stays readable after an editor or a Markdown formatter saves
+  it, and a note you write under an entry stays there. A day's file that
+  isn't UTF-8 text is left as it is, and `status` names it.
+- `--help` prints the memory tool's commands, and an option it doesn't know
+  is refused instead of ignored.
 
 **Privacy**
 - The journal follows the same rules as the record of where you left off:
   secrets are replaced with `[redacted]`, and `<private>` and
   `<private-session>` keep text out. While auto memory is off, only the
-  conversation's short tag is saved, so the journal never takes it in.
-- When it takes in other conversations, it leaves out those marked
-  `<private-session>`, even if the mark was typed while project-memory was
-  off, and those held while `CLAUDE_CODE_DISABLE_AUTO_MEMORY` was set. A
-  conversation held with auto memory off while this version wasn't installed
-  and on has no tag, and is taken in.
-- An exchange in which Claude runs `forget` is kept without its words, so
-  the list of what it removes isn't saved again.
+  conversation's short tag is saved, when it starts and after every reply,
+  so the journal never takes it in.
+- Passwords and tokens Claude passes to a command are replaced with
+  `[redacted]` too: after `--password`, `--token` or `--secret`, in
+  `az login -p`, `aws configure set`, `htpasswd`, `gh secret set` and an
+  npm `_authToken`, and in `export`, `setx` or `SetEnvironmentVariable` of
+  a name that says key, secret, token or password. A reference such as
+  `$TOKEN`, a file's path and a count stay.
+- `<private-session>` keeps a conversation out wherever in it you type the
+  mark, however long the conversation is. When it takes in other
+  conversations, it leaves out those marked `<private-session>`, even if
+  the mark was typed while project-memory was off, and those held while
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY` was set. A conversation held with auto
+  memory off while this version wasn't installed and on has no tag, and is
+  taken in.
+- An exchange in which Claude runs `forget` is kept without its words, in
+  the journal and in the record of where you left off, so the list of what
+  it removes isn't saved again.
 - An entry removed later, by `forget` or by a later `<private-session>`,
   stays in the history for days already over. The privacy policy says how
   to remove it, and what's left behind after you uninstall.
