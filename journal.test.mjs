@@ -53,19 +53,8 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
     ran: ['node "C:/p/memory.mjs" forget zebra --session x', ...Array.from({ length: 20 }, (_, i) => `ls ${i}`)] }), T);
   ok(f.asked === '[private]' && f.answered === '[private]' && !f.changed.length && !f.ran.length,
     `a turn that ran forget, even before its last 20 commands, keeps none of its words (got ${JSON.stringify(f)})`);
-  // Options may come before the command, as the CLI takes them.
-  for (const c of ['node memory.mjs forget zebra', "node '/p/memory.mjs' forget 'zebra' --yes", 'node "C:\\p\\memory.mjs" forget --since 1970-01-01 --yes',
-    'node "C:/p/memory.mjs" --session abc forget password', 'node "C:/p/memory.mjs" --store C:/s forget password --yes',
-    'node memory.mjs --store "C:/my dir/memory" --yes forget x', "node memory.mjs --session=abc --store 'C:/a b' forget x"])
-    ok(entryOf(turn({ ran: [c] }), T).asked === '[private]', `a forget run is seen: ${c}`);
-  // Only memory.mjs's forget command: a word after it elsewhere is not one.
-  for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget', 'git add memory.mjs && git commit -m "fix forget"', 'grep x memory.mjs; grep forget y', 'node memory.mjs status\nforget',
-    'node memory.mjs --session abc search forget'])
-    ok(entryOf(turn({ ran: [c] }), T).asked === 'a question', `a turn that ran no forget is kept: ${JSON.stringify(c)}`);
-  // Linear: an option read as the one before's value too doubled the work per option.
-  const t0 = Date.now();
-  entryOf(turn({ ran: ['node memory.mjs' + ' --a'.repeat(40) + ' x'] }), T);
-  ok(Date.now() - t0 < 1000, `a command of 40 options is read in linear time (${Date.now() - t0} ms)`);
+  // Which commands are a forget: handoff-log's FORGETS, checked in its suite.
+  ok(entryOf(turn({ ran: ['node memory.mjs search forget'] }), T).asked === 'a question', 'a turn that ran no forget is kept');
 }
 {
   const e = entryOf(turn({ changed: ['C:\\proj\\a.js', 'D:\\o\\b.js'], ran: ['ls', 'git status'] }), T);
@@ -298,6 +287,43 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
       `parallel Stops lose no entry and write none twice (got ${es.length} for ${id.slice(0, 8)})`);
   }
 }
+{
+  // A <private-session> mark further back than the Stop's read: the turn that
+  // typed it got no Stop (Escape, an API error), and 600 KB of a tool's output
+  // came after it. The next Stop looks at the whole transcript, once, and
+  // journals nothing; nor is the turn written to handoff.md (P1 hunt, 2026-10-29).
+  const P = sid('p');
+  say(P, '2026-10-28T12:00:00Z', '<private-session> read the payroll export');
+  appendFileSync(tp(P), JSON.stringify({ type: 'user', uuid: 'p-big', sessionId: P, cwd: scwd, timestamp: '2026-10-28T12:00:30Z',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'x'.repeat(600_000) }] } }) + '\n');
+  say(P, '2026-10-28T12:01:00Z', 'so what is Alice Smith salary', 'Alice Smith earns 184,000');
+  // What an import wrote of it before goes too.
+  record(sdir, tp(P), [turn({ at: '2026-10-28 11:00', id: 'p-imported' })]);
+  stop(P);
+  let tags = ''; try { tags = readFileSync(join(sdir, '.private-sessions'), 'utf8'); } catch {}
+  ok(!of(P).length && tags.split(/\r?\n/).includes(P.slice(0, 8)) && !readFileSync(join(sdir, 'handoff.md'), 'utf8').includes('Alice'),
+    `a mark further back than the Stop's read keeps the conversation out of the journal and handoff.md (got ${JSON.stringify(of(P))}; ${JSON.stringify(tags)})`);
+}
+{
+  // Marked by a writer that took nothing back (the compaction gate's handoff
+  // has no journal sink), and its next Stop's read short of the mark: what it
+  // wrote before goes all the same (P1 hunt, 2026-10-29).
+  const Q = sid('q'), failed = join(sdir, 'journal', '.failed');
+  say(Q, '2026-10-28T13:00:00Z', 'the root password policy', 'rotate monthly');
+  stop(Q);
+  const was = of(Q).length;
+  appendFileSync(join(sdir, '.private-sessions'), `${Q.slice(0, 8)}\n`);
+  say(Q, '2026-10-28T13:05:00Z', 'ok next thing', 'sure');
+  stop(Q);
+  ok(was === 1 && !of(Q).length, `a conversation marked by a writer that took nothing back loses its entries at its next Stop (got ${was}, ${of(Q).length})`);
+  // Once: a later Stop reads no day for it (one that won't read would fail it).
+  const bad = dayFile(sdir, '2026-11-20');
+  mkdirSync(bad, { recursive: true });
+  say(Q, '2026-10-28T13:10:00Z', 'and another', 'fine');
+  stop(Q);
+  ok(!existsSync(failed), `a conversation swept once is not swept at every Stop (got ${existsSync(failed) ? readFileSync(failed, 'utf8') : ''})`);
+  rmSync(bad, { recursive: true });
+}
 
 // --- backfill: the conversations still on disk, a few a Stop -----------------
 const projects = join(home, '.claude', 'projects');
@@ -441,6 +467,9 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   // marks the conversation and takes back what it wrote, as its Stop would have.
   const [r, d] = repo('late'), L = sid('l'), p = old(r, L, 30, ['said before the mark']);
   record(d, p, [turn({ at: '2026-09-01 12:00', id: 'l-live' })]);
+  // And its entries in handoff.md, through handoff's own removal; another's stay.
+  writeFileSync(join(d, 'handoff.md'), `---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** 2026-09-01 12:00 [${L.slice(0, 8)}]: said before the mark\n  **did:** noted\n`
+    + '- **asked** 2026-09-01 12:05 [kkkkkkkk]: another conversation\n  **did:** kept\n<!-- auto:end -->\n');
   appendFileSync(p, rec('user', L, '2026-09-01T10:05:00Z', '<private-session> from here on', r) + '\n');
   utimesSync(p, ago(1), ago(1));
   const before = asks(d).join();
@@ -448,6 +477,29 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   let tags = ''; try { tags = readFileSync(join(d, '.private-sessions'), 'utf8'); } catch {}
   ok(before === 'a question' && !asks(d).length && tags.split(/\r?\n/).includes(L.slice(0, 8)),
     `a mark the backfill finds removes the conversation's earlier entries and marks it (got ${before}; ${asks(d)}; ${JSON.stringify(tags)})`);
+  const hd = readFileSync(join(d, 'handoff.md'), 'utf8');
+  ok(!hd.includes('said before the mark') && hd.includes('another conversation'), `and takes its entries out of handoff.md, no other's (got ${hd})`);
+}
+{
+  // The conversations a live Stop looked at whole lose their line once their
+  // transcript is gone, as the import's list does.
+  const [r, d] = repo('checked'), list = join(d, 'journal', '.checked');
+  old(r, sid('a'), 30, ['still here']);
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  writeFileSync(list, `${slug(r)}/${sid('a')} 10\n${slug(r)}/${sid('z')} 10 swept\n`);
+  fill(d);
+  ok(readFileSync(list, 'utf8') === `${slug(r)}/${sid('a')} 10\n`, `a look drops the line of a looked-at conversation gone from disk (got ${JSON.stringify(readFileSync(list, 'utf8'))})`);
+}
+{
+  // Imported before its memory-off tag (a start the tag missed), a
+  // conversation loses what was imported at its next Stop (P1 hunt, 2026-10-29).
+  const [r, d] = repo('lateoff'), id = sid('o'), p = old(r, id, 30, ['my diagnosis came back']);
+  fill(d);
+  const was = asks(d).join();
+  appendFileSync(join(projects, '.memory-off'), `${id.slice(0, 8)}\n`);
+  appendFileSync(p, rec('user', id, '2026-09-02T10:00:00Z', 'and the note to HR', r) + '\n' + rec('assistant', id, '2026-09-02T10:00:30Z', 'drafted', r) + '\n');
+  spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: r, transcript_path: p, session_id: id, hook_event_name: 'Stop' }) });
+  ok(was === 'my diagnosis came back' && !asks(d).length, `a late memory-off tag takes back what an import wrote (got ${was}; ${asks(d)})`);
 }
 {
   const [r, d] = repo('mine');

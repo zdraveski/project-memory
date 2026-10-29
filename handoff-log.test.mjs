@@ -862,6 +862,44 @@ try { off({ session_id: 'capped00-0000' }); } finally { fs.readdirSync = rd; syn
 ok(tags().length === 10_001 && tags()[0] === 'many00050' && tags().at(-1) === 'capped00', `with no listing, the list keeps its newest 10,000 (got ${tags().length}, ${tags()[0]})`);
 }
 
+// A turn that ran forget is written like a private one: its ask and its
+// listing named what went (P1 hunt, 2026-10-29). The journal's rule.
+{
+const { FORGETS, unsay, hushed } = await import('./handoff-log.mjs');
+const cwdF = 'C:\\handoff-forget', dirF = storeFor(home, cwdF), tf = join(dirF, 'f.jsonl'), fdoc = () => readFileSync(join(dirF, 'handoff.md'), 'utf8');
+mkdirSync(dirF, { recursive: true });
+writeFileSync(tf, [user('forget the zebra policy', { ts: '2026-10-29T09:00:00Z' }),
+  rec('assistant', [{ type: 'tool_use', id: 'f1', name: 'Bash', input: { command: 'node "C:/p/memory.mjs" forget zebra --yes' } }, { type: 'tool_use', id: 'f2', name: 'Edit', input: { file_path: 'C:/p/zebra.md' } }], { ts: '2026-10-29T09:00:10Z' }),
+  asst('removed 2: the zebra policy notes', { ts: '2026-10-29T09:00:20Z' })].join('\n') + '\n');
+handoff({ cwd: cwdF, transcript_path: tf, session_id: 'ffffffff-1' });
+ok(/\[ffffffff\]: \[private\]\n  \*\*did:\*\* \[private\]$/m.test(fdoc()) && !/zebra/.test(fdoc()), `a turn that ran forget is written like a private one (got ${fdoc().split('[ffffffff]')[1]?.slice(0, 80)})`);
+// memory.mjs's forget command only. Options may come first, as the CLI takes them.
+for (const c of ['node memory.mjs forget zebra', "node '/p/memory.mjs' forget 'zebra' --yes", 'node "C:\\p\\memory.mjs" forget --since 1970-01-01 --yes',
+  'node "C:/p/memory.mjs" --session abc forget password', 'node "C:/p/memory.mjs" --store C:/s forget password --yes',
+  'node memory.mjs --store "C:/my dir/memory" --yes forget x', "node memory.mjs --session=abc --store 'C:/a b' forget x"])
+  ok(FORGETS.test(c), `a forget run is seen: ${c}`);
+for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget', 'git add memory.mjs && git commit -m "fix forget"', 'grep x memory.mjs; grep forget y', 'node memory.mjs status\nforget',
+  'node memory.mjs --session abc search forget'])
+  ok(!FORGETS.test(c), `a command that ran no forget is none: ${JSON.stringify(c)}`);
+// Linear: an option read as the one before's value too doubled the work per option.
+const tf0 = Date.now();
+FORGETS.test('node memory.mjs' + ' --a'.repeat(40) + ' x');
+ok(Date.now() - tf0 < 1000, `a command of 40 options is read in linear time (${Date.now() - tf0} ms)`);
+// A mark the journal's sink finds (its look at the whole transcript): the
+// turn stays out of handoff.md too.
+const th = join(dirF, 'h.jsonl');
+writeFileSync(th, [user('the merger terms', { ts: '2026-10-29T09:10:00Z' }), asst('noted the merger', { ts: '2026-10-29T09:10:30Z' })].join('\n') + '\n');
+const h = handoff({ cwd: cwdF, transcript_path: th, session_id: 'hhhhhhhh-1' }, (d) => hushed(d, 'hhhhhhhh', true));
+ok(h === 'private' && !/merger/.test(fdoc()), `a mark the journal's sink finds keeps the turn out of handoff.md (got ${h})`);
+// One conversation's entries out, the others' kept: what the journal's import
+// does with a mark it finds.
+const tg = join(dirF, 'g.jsonl');
+writeFileSync(tg, [user('the release plan', { ts: '2026-10-29T09:20:00Z' }), asst('drafted', { ts: '2026-10-29T09:20:30Z' })].join('\n') + '\n');
+handoff({ cwd: cwdF, transcript_path: tg, session_id: 'gggggggg-1' });
+unsay(dirF, 'ffffffff');
+ok(!fdoc().includes('[ffffffff]') && fdoc().includes('[gggggggg]: the release plan'), `unsay takes one conversation's entries out of handoff.md (got ${fdoc()})`);
+}
+
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.
 {
 const { hushed, defuse, redact: red, own } = await import('./handoff-log.mjs');

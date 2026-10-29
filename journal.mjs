@@ -4,7 +4,7 @@
 // files and commands (uncapped in turns()) are shortened.
 import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
-import { clip, tag, PRIVATE, PRIVATE_SESSION, norm, hash, turns, hushed, ACTIVE, OFF } from './handoff-log.mjs';
+import { clip, tag, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, ACTIVE, OFF } from './handoff-log.mjs';
 import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, withLock } from './store.mjs';
 
 export const JOURNAL = 'journal';
@@ -49,15 +49,6 @@ const rel = (p, cwd) => {
   const c = cwd ? cwd.replace(/[\\/]+$/, '') : '';
   return c && p.length > c.length + 1 && /[\\/]/.test(p[c.length]) && p.slice(0, c.length).toLowerCase() === c.toLowerCase() ? p.slice(c.length + 1) : p;
 };
-
-// A turn that ran forget is kept like a private one: its listing, saved as the
-// reply and committed with the day, kept what it removed (review, 2026-10-29).
-// The subcommand only: "memory.mjs" anywhere before the word took a commit
-// message or a search for "forget" for one, and dropped a whole turn.
-// Options may come first (`--session X forget`, as the CLI takes them). A
-// value never starts with - or a quote it does not close: one that could be
-// the next option too doubled the work per option (40 took 7 s).
-const FORGETS = /memory\.mjs["']?(?:\s+--[\w-]+(?:[= ](?:"[^"]*"|'[^']*'|[^\s"'-]\S*))?)*\s+forget\b/;
 
 // A reply over the cap keeps its first J_ANSWER - J_TAIL characters and its
 // last J_TAIL. Redacted whole first, so no half of a key is left at either
@@ -271,17 +262,43 @@ function clear(dir, backfill) {
   else try { unlinkSync(f); } catch {}
 }
 
+// The conversations a live Stop looked at whole for a mark, and those swept
+// out (private, or held with auto memory off): `<folder>/<session> <bytes>`,
+// ` swept` after one swept. Pruned as .imported is.
+const CHECKED = '.checked';
+const keyOf = (p) => `${basename(dirname(p))}/${basename(p, '.jsonl')}`;
+function checked(dir, k) {
+  for (const l of (raw(join(dir, JOURNAL, CHECKED)) ?? '').split(/\r?\n/)) { const m = LINE.exec(l); if (m?.[1] === k) return m[4] || 'looked'; }
+  return null;
+}
+
 // What a Stop's read of its conversation does to the journal (importOne does
-// the same for an import): the read that marks it private takes back what it
-// wrote. Call under withLock(dir). False when it was private already: nothing
-// tried. Held with auto memory off once, it is never recorded, live or
-// imported: resumed with memory on, its first Stop journaled every turn
-// (review, 2026-10-29). A private mark still sweeps it.
+// the same for an import). Call under withLock(dir). False when nothing was
+// tried for this read's sake: a conversation private or memory-off already.
 function take(dir, transcriptPath, got, { quiet, hush }) {
-  const s = tag(basename(transcriptPath, '.jsonl'));
-  if (quiet && hush) sweep(dir, s);
-  else if (!quiet && !hushed(projectsRoot(), s, false, OFF)) record(dir, transcriptPath, got);
-  else return false;
+  const s = tag(basename(transcriptPath, '.jsonl')), k = keyOf(transcriptPath), was = checked(dir, k);
+  // Private, or held with auto memory off once: never recorded, and what it
+  // has in the journal goes at its first such Stop, not only at the one whose
+  // read holds the mark. Marked by a writer with no sink (the compaction gate),
+  // it kept its entries, and so did one imported before its memory-off tag
+  // (P1 hunt, 2026-10-29). Resumed with memory on, a memory-off conversation's
+  // first Stop journaled every turn (review, 2026-10-29).
+  if (quiet || hushed(projectsRoot(), s, false, OFF)) {
+    if (hush || was !== 'swept') { sweep(dir, s); mark(dir, [`${k} 0 swept`], null, CHECKED); }
+    return hush;
+  }
+  // A read short of the whole transcript: the rest is looked at for a mark,
+  // once a conversation. A mark typed in a turn that got no Stop, then 512 KB
+  // of a tool's output, was never read, and the conversation was journaled
+  // and committed (P1 hunt, 2026-10-29).
+  if (got.whole === false && !was) {
+    const fd = openSync(transcriptPath, 'r');
+    let size, hit;
+    try { size = fstatSync(fd).size; hit = marked(fd, 0, IMPORT_SEGMENT, size); } finally { closeSync(fd); }
+    if (hit) { hushed(dir, s, true); sweep(dir, s); mark(dir, [`${k} ${size} swept`], null, CHECKED); return true; }
+    mark(dir, [`${k} ${size}`], null, CHECKED);
+  }
+  record(dir, transcriptPath, got);
   return true;
 }
 
@@ -298,8 +315,8 @@ export function write(dir, transcriptPath, got, opts) {
 // on disk; any other line goes.
 const IMPORTED = '.imported', LOOKED = '.looked';
 const LINE = /^(.+?) (\d+)(?: at (\d+)| (\w+))?$/;
-function mark(dir, lines, keep = null) {
-  const f = join(dir, JOURNAL, IMPORTED), ks = new Set(lines.map((l) => LINE.exec(l)[1]));
+function mark(dir, lines, keep = null, list = IMPORTED) {
+  const f = join(dir, JOURNAL, list), ks = new Set(lines.map((l) => LINE.exec(l)[1]));
   mkdirSync(join(dir, JOURNAL), { recursive: true });
   for (let i = 0; i < 3; i++) {
     const before = raw(f), kept = (before ?? '').split(/\r?\n/).filter((l) => { const k = LINE.exec(l)?.[1]; return l && !ks.has(k) && (!keep || keep.has(k)); });
@@ -394,6 +411,16 @@ function* segments(fd, at, seg, size) {
   }
 }
 
+// Whether a typed <private-session> mark is in the bytes from `pos`: a text
+// search, turns() only for a segment it finds one in.
+function marked(fd, pos, seg, size) {
+  for (let b; (b = chunk(fd, pos, seg, size)); pos = b.pos + b.buf.length) {
+    const t = b.buf.toString('utf8');
+    if (PRIVATE_SESSION.test(norm(t)) && turns(t).hush) return true;
+  }
+  return false;
+}
+
 // One transcript, from where the last look left it. First the
 // <private-session> mark, looked for in every byte not looked at yet: one
 // anywhere keeps the whole conversation out, so nothing of it may be recorded
@@ -405,13 +432,10 @@ function importOne(dir, c, fd, seg, more) {
   const s = tag(basename(c.p, '.jsonl')), size = fstatSync(fd).size, none = { at: size, size };
   // Marked private already, its entries went then.
   if (hushed(dir, s)) return none;
-  for (let b, pos = c.looked; (b = chunk(fd, pos, seg, size)); pos = b.pos + b.buf.length) {
-    // A text search: turns() reads only a segment it finds a mark in.
-    const t = b.buf.toString('utf8');
-    // A mark typed while the plugin was off is taken as its Stop takes one:
-    // the conversation is marked, and what it wrote before goes.
-    if (PRIVATE_SESSION.test(norm(t)) && turns(t).hush) { hushed(dir, s, true); sweep(dir, s); return none; }
-  }
+  // A mark typed while the plugin was off is taken as its Stop takes one: the
+  // conversation is marked, and what it wrote before goes, from the journal
+  // and from handoff.md.
+  if (marked(fd, c.looked, seg, size)) { hushed(dir, s, true); sweep(dir, s); unsay(dir, s); return none; }
   if (hushed(projectsRoot(), s, false, OFF)) return none;
   let at = c.from;
   for (const { got, next } of segments(fd, at, seg, size)) {
@@ -462,6 +486,7 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
     // Another store's are listed so no look opens them again, and a transcript
     // gone from disk loses its line: the list holds a month, not every month.
     mark(dir, other, all.seen);
+    if (raw(join(dir, JOURNAL, CHECKED)) != null) mark(dir, [], all.seen, CHECKED);
   } catch (e) { err = e; }
   const left = all.length - done - other.length;
   // Kept in .failed as the sink's is; the next import that goes through clears

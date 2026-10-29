@@ -133,6 +133,15 @@ export const prompt = (r, s) => (r.isMeta || r.isCompactSummary ? '' : command(s
 export const PRIVATE = /<\s*private(?![-_\w])(?:[^>]*>|[^>]*$)/i;
 // Bounded: with no `>`, 256 KB of openers took 5 s a test.
 export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
+// A turn that ran forget is kept like a private one, in the journal and in
+// handoff.md: its listing, saved as the reply and committed with the day, kept
+// what it removed (review, 2026-10-29).
+// The subcommand only: "memory.mjs" anywhere before the word took a commit
+// message or a search for "forget" for one, and dropped a whole turn.
+// Options may come first (`--session X forget`, as the CLI takes them). A
+// value never starts with - or a quote it does not close: one that could be
+// the next option too doubled the work per option (40 took 7 s).
+export const FORGETS = /memory\.mjs["']?(?:\s+--[\w-]+(?:[= ](?:"[^"]*"|'[^']*'|[^\s"'-]\S*))?)*\s+forget\b/;
 // Text read the same in any width and without hidden characters: a fullwidth
 // ＜private＞, or a zero-width space inside the tag, kept what it should hide.
 export const norm = (s) => s.normalize('NFKC').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
@@ -587,8 +596,12 @@ export function handoff(input, sink = null) {
   // File names, not paths; none for a private message's turn. Private by what
   // the user typed, not the ask made of it: a wrapper own() strips, or a
   // command, hid the tag from the test.
-  const fresh = got.map((t) => ({ ...t, s, ask: clip(t.ask, ASK), did: answer(t.raw ?? t.ask, t.did, DID),
-    changed: PRIVATE.test(t.raw ?? t.ask) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) }));
+  const fresh = got.map((t) => {
+    // A turn that ran forget says nothing, as a private one.
+    const gone = t.ran.some((c) => FORGETS.test(c));
+    return { ...t, s, ask: gone ? '[private]' : clip(t.ask, ASK), did: gone ? '[private]' : answer(t.raw ?? t.ask, t.did, DID),
+      changed: PRIVATE.test(t.raw ?? t.ask) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) };
+  });
   const hush = got.hush === true;
   // Sessions of one project write this file at once, so they take turns: 8 at
   // once lost 22 of 40 turns without the lock (2026-10-26). The model can still
@@ -599,21 +612,35 @@ export function handoff(input, sink = null) {
     // the mark goes. The mark is kept in a file: only the turn that typed it
     // sees it in the transcript.
     // Private by this read even when the mark could not be kept.
-    const quiet = hushed(dir, s, hush) || hush;
+    let quiet = hushed(dir, s, hush) || hush;
     // The journal (memory-tier's Stop passes its writer) takes this lock too,
     // not one of its own; whatever it throws is its own.
     if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush }); } catch {}
-    for (let i = 0; i < 3; i++) {
-      const raw = existsSync(file) ? readFileSync(file, 'utf8') : null;
-      const next = build(raw, quiet ? [] : fresh, quiet ? s : null, s, got.whole);
-      if (next === null || next === 'unchanged') return quiet ? 'private' : next ?? false;
-      const w = replaceIfUnchanged(file, raw, next);
-      if (w !== 'conflict') return quiet ? 'private' : w || 'unchanged';
-    }
-    return false;
+    // Or by the journal's look at the whole transcript, past this read.
+    quiet ||= hushed(dir, s);
+    const w = put(dir, quiet ? [] : fresh, quiet ? s : null, s, got.whole);
+    return quiet ? 'private' : w;
   });
   return r ?? 'busy';
 }
+
+// handoff.md with these entries merged in, and without a private
+// conversation's (`drop`). Call under withLock(dir). True written,
+// 'unchanged', false nothing to write.
+function put(dir, fresh, drop, me, whole) {
+  const file = join(dir, 'handoff.md');
+  for (let i = 0; i < 3; i++) {
+    const raw = existsSync(file) ? readFileSync(file, 'utf8') : null;
+    const next = build(raw, fresh, drop, me, whole);
+    if (next === null || next === 'unchanged') return next ?? false;
+    const w = replaceIfUnchanged(file, raw, next);
+    if (w !== 'conflict') return w || 'unchanged';
+  }
+  return false;
+}
+// A conversation the journal's import found marked private: its entries go
+// from handoff.md, as its own Stop's would have. Call under withLock(dir).
+export const unsay = (dir, s) => put(dir, [], s, s);
 
 // Warnings only: the startup line costs every session, so it says nothing
 // here when all is well. The shared store's problems are every project's.
