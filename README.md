@@ -1,4 +1,4 @@
-![project-memory icon](docs/icon-128.png)
+![project-memory: Give Claude Code a memory. Remember, restore, continue.](docs/banner.png)
 
 # project-memory
 
