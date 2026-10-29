@@ -609,5 +609,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // A day the search could not read: what it holds is missing from the lines above.
   r.lines.push(...failed.map((f) => `could not read ${f.path}: ${f.code}`));
   console.log(r.lines.join('\n'));
-  process.exit(r.ok ? 0 : 1);
+  // Not process.exit(): on macOS a pipe is written asynchronously, and exiting
+  // cut a 3-entry search at 8 KB (CI, 2026-10-29).
+  process.exitCode = r.ok ? 0 : 1;
 }
