@@ -11,7 +11,7 @@ Claude Code runs project-memory on three of its events, declared in
 
 | Moment | Claude Code event | What runs |
 |---|---|---|
-| Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, writes the journal and imports a few older conversations into it, takes a snapshot, and reminds Claude to save notes when a compaction is close |
+| Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, writes the journal and imports a few other conversations into it, takes a snapshot, and reminds Claude to save notes when a compaction is close |
 | A conversation starts, is cleared with `/clear`, or resumes after a compaction | `SessionStart` | `handoff-log.mjs --print`: the startup briefing |
 | You run `/compact` | `PreCompact` (manual) | `memory-tier.mjs --stop`, so the notebook is tidy and the handoff current before the summary is made |
 | Claude Code compacts on its own | `PreCompact` (auto) | `compact-gate.mjs`: may ask Claude Code to wait for the end of the turn (see [Compaction](#compaction)) |
@@ -229,38 +229,49 @@ notebook has none. An entry, with a blank line between entries:
 - Every field goes through the redaction rules above, commands included. A
   `<private>` message's answer is `[private]`, with no files or commands. A
   `<private-session>` conversation writes nothing, and its entries are
-  removed from every day since it began. With auto memory off, nothing is
-  written.
+  removed from every day since it began. A turn that ran `memory.mjs
+  forget` in any of its commands, not only the 10 an entry keeps, is kept
+  like a private one, its request included: `[private]`, with no files or
+  commands, since its reply lists what the forget removes. With auto memory
+  off, nothing is written.
 - `journal.md` is written once, the first time, as a `tier: hot` note, so
   the index gets a pinned line telling Claude to search the journal. It is
   never rewritten, so an edit to it stays.
 - A failure to write is kept in `journal/.failed` for `status`, and cleared
   by the next write that succeeds.
 
-An entry is about 1.5 KB, and at most about 6 KB. At 50 exchanges a day
-that is about 27 MB a year.
+The caps allow an entry of about 13,000 characters: 2,000 + 3,000, 20 paths
+of up to 300 and 10 commands of 200. With ordinary paths and commands, a
+full entry is about 6 KB; the memory suite's year of them, 14 a day, is
+30 MB, which `search` reads in about a second.
 
-**Importing older conversations.** Each Stop also imports some of the
-conversations still on disk, so a new install starts with the last month
-(Claude Code deletes a transcript after 30 days without use, by default)
-instead of nothing. The candidates are the transcripts in the project's own
-folder and in folders whose name starts with it and `-` (its subfolders'),
-each confirmed to belong to this repository, oldest first. One changed in
+**Importing other conversations.** Every Stop also imports some of the
+project's conversations still on disk that it hasn't read: on a new install
+the last month (Claude Code deletes a transcript after 30 days without use,
+by default), and afterwards any held while the plugin was disabled,
+uninstalled or off, since a live Stop doesn't list its own transcript. The
+candidates are the transcripts in the project's own folder and in folders
+whose name starts with it and `-` (its subfolders'), each confirmed to
+belong to this repository by reading its start, oldest first. One of
+another repository is listed as `other` and not read again. One changed in
 the last 30 minutes is left to its own Stop. The import holds the store's
 lock for up to 150 ms per Stop, plus one transcript past that, and reads at
-most the last 64 MB of a transcript. `journal/.imported` lists each one
-read, with its size: one that has grown since and been quiet for 30 minutes
-is read again (keys keep that harmless), and once nothing is left, the
-folders are looked at again at most every 30 minutes. A conversation never
-imported:
+most the last 64 MB of a transcript. The look that finds the candidates is
+not counted in the 150 ms: the first one reads the start of every
+transcript there not yet listed. `journal/.imported` lists each one read, with
+its size: one that has grown since and been quiet for 30 minutes is read
+again (keys keep that harmless), and once nothing is left, the folders are
+looked at again at most every 30 minutes. A conversation never imported:
 
 - one whose tag is in `.private-sessions`, or in
   `~/.claude/projects/.memory-off` (a Stop while auto memory is off puts it
-  there). A conversation held with auto memory off before this version has
-  no tag, and is imported;
-- one with a `<private-session>` mark in the part read. In a transcript from
-  before the plugin kept marks, a mark more than 64 MB before its end is not
-  seen.
+  there). A conversation held with auto memory off while this version
+  wasn't installed and on has no tag, and is imported;
+- one with a `<private-session>` mark in the part read, typed while the
+  plugin was off. The import then does what that turn's Stop would have
+  done: it adds the tag to `.private-sessions` and removes the
+  conversation's earlier entries. A mark more than 64 MB before the end of
+  its transcript is not seen.
 
 Keys listed in `journal/.forgotten` are never written again, by an import or
 a live Stop.
@@ -465,10 +476,12 @@ Their keys are added to `journal/.forgotten` first, so neither a killed
 `forget` nor a later import brings them back. It then names the days before
 today, which the snapshots already hold, and the folder to delete. It clears
 the journal only: `handoff.md` and Claude Code's transcripts are untouched.
-Its words are recorded in today's journal like any other request.
-`--since 1970-01-01 --yes` empties the journal; deleting the `journal` folder
-instead rebuilds it from the transcripts still on disk, since `.imported`
-and `.forgotten` are inside it.
+The turn that runs it is journaled without its words (see
+[The journal](#the-journal)). `--since 1970-01-01 --yes` empties the
+journal of what it holds so far; conversations `status` still counts as to
+import come in later and need another `forget`. Deleting the `journal`
+folder instead rebuilds it from the transcripts still on disk, since
+`.imported` and `.forgotten` are inside it.
 
 `status` adds a journal line: how many days since the first, the size, how
 many older conversations are still to import, and the last failure, if any.

@@ -12,9 +12,10 @@
 - Ask about earlier work in your own words, such as "What did we decide
   about the logo in September?" or "What did I work on last week?", and
   Claude searches the journal and answers with the date.
-- The first time it runs in a project, it takes in the conversations Claude
-  Code still keeps on your computer, a few after each reply, so the journal
-  starts with about the last month instead of empty.
+- After each reply, a few at a time, it takes in the project's conversations
+  it hasn't read yet that Claude Code still keeps on your computer: on a new
+  install, about the last month; after a pause, the conversations held while
+  project-memory was off.
 - `search` looks in the journal too, and takes `--since` and `--until`
   dates. With dates and no words, it lists what you asked on those days.
 - `forget` removes journal entries when you ask: it lists them first, and
@@ -27,12 +28,16 @@
 
 **Privacy**
 - The journal follows the same rules as the record of where you left off:
-  secrets are replaced with `[redacted]`, `<private>` and `<private-session>`
-  keep text out, and nothing is saved while auto memory is off.
-- When it takes in older conversations, it leaves out those marked
-  `<private-session>` and those held while `CLAUDE_CODE_DISABLE_AUTO_MEMORY`
-  was set. A conversation held with auto memory off before this version has
-  no mark, and is taken in.
+  secrets are replaced with `[redacted]`, and `<private>` and
+  `<private-session>` keep text out. While auto memory is off, only the
+  conversation's short tag is saved, so the journal never takes it in.
+- When it takes in other conversations, it leaves out those marked
+  `<private-session>`, even if the mark was typed while project-memory was
+  off, and those held while `CLAUDE_CODE_DISABLE_AUTO_MEMORY` was set. A
+  conversation held with auto memory off while this version wasn't installed
+  and on has no tag, and is taken in.
+- An exchange in which Claude runs `forget` is kept without its words, so
+  the list of what it removes isn't saved again.
 - An entry removed later, by `forget` or by a later `<private-session>`,
   stays in the history for days already over. The privacy policy says how
   to remove it, and what's left behind after you uninstall.

@@ -7,8 +7,12 @@ This page says what it reads, what it saves, and how to remove it.
 
 - Claude Code's record of your conversations in this project (the files Claude
   Code keeps in `~/.claude/projects`), to know what was asked and answered:
-  the current conversation's after every reply, and for the journal, once
-  each, the older conversations of this project and of the folders inside it.
+  the current conversation's after every reply, and for the journal, the
+  other conversations of this project and of the folders inside it, each
+  read again when it has grown. To tell which project a conversation belongs
+  to, it reads the start of the conversations in every folder whose name is
+  this project's folder name followed by `-`. One that belongs to another
+  project is listed in `.imported` as `other` and not read further.
   If you set `CLAUDE_CONFIG_DIR`, that folder's `projects` instead.
 - The notes Claude Code's built-in memory writes in the same folder.
 - The git information of the folder a conversation starts in (its `.git`
@@ -58,19 +62,26 @@ All of it stays in `~/.claude/projects` on your computer:
   - The rules above apply to it too: secrets are replaced with `[redacted]`,
     a `<private>` message's reply is saved as `[private]` with no files or
     commands, and a conversation marked `<private-session>` writes nothing,
-    and its earlier entries are removed from every day's file.
-  - The first time it runs in a project, it takes in the conversations
-    Claude Code still keeps there (by default, Claude Code deletes one after
-    30 days without use), a few after each reply. It never takes in a
-    conversation marked `<private-session>`, or one held while
-    `CLAUDE_CODE_DISABLE_AUTO_MEMORY` was set: it knows them by their tags in
-    `.private-sessions` and in `~/.claude/projects/.memory-off`. A
-    conversation held with auto memory off before this version has no tag,
-    and is taken in. In a conversation from before you installed the plugin,
-    a `<private-session>` mark is seen only in its last 64 MB.
+    and its earlier entries are removed from every day's file. An exchange in
+    which Claude runs `forget` is saved without its words, files or commands.
+  - After every reply, a few at a time, it takes in any of the project's
+    conversations it hasn't read yet that Claude Code still keeps (by
+    default, Claude Code deletes one after 30 days without use). That covers
+    a new install, and the conversations held while the plugin was disabled,
+    uninstalled or turned off. It never takes in a conversation marked
+    `<private-session>`, or one held while `CLAUDE_CODE_DISABLE_AUTO_MEMORY`
+    was set: it knows them by their tags in `.private-sessions` and in
+    `~/.claude/projects/.memory-off`, or by the mark in the conversation.
+    Finding a mark typed while the plugin was off, it tags the conversation
+    and removes its earlier entries, as it does for one typed while it is
+    on. A conversation held with auto memory off while this version wasn't
+    installed and on has no tag, and is taken in. A mark the plugin didn't
+    see when it was typed is found only in the last 64 MB of its
+    conversation.
   - It is never loaded at the start of a conversation. The briefing only
     says, in one line, that it exists and since when. Claude reads entries
-    when it searches the journal.
+    when it searches the journal, lists them for `forget`, or opens a day's
+    file.
 - When Claude Code shortens a nearly full conversation in the middle of a
   task, with no room to wait for the task's step to end, a note of what was in
   progress: your request, the start of Claude's last words, any background
@@ -112,7 +123,7 @@ shows in other conversations' briefings only as working, without its
 messages. Claude reads the briefing and your notes like anything else in the
 conversation, so they go to Anthropic with it, as Claude Code's built-in
 memory does. Journal entries reach Anthropic only when Claude reads them in
-a conversation, after searching the journal.
+a conversation.
 
 ## How long it keeps it
 
@@ -141,8 +152,8 @@ Uninstalling the plugin leaves all of this in place. To delete:
   `.forgotten` inside it) and `journal.md` in a project's `memory` folder,
   and the line that points to `journal.md` in its `MEMORY.md`. While
   project-memory is installed, a deleted `journal` folder is filled again
-  from the conversations Claude Code still keeps. To empty the journal and
-  keep them out, use `forget` as below.
+  from the conversations Claude Code still keeps. To empty the journal
+  instead, use `forget` as below.
 - the bookkeeping files: in `~/.claude/projects`, `.gitignore`, `.stop-ran`,
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` file and the
   folder `.nudge`; in each project's `memory` folder, `.tiered`, `.health`
@@ -154,12 +165,16 @@ a date range (`--since`, `--until`) or a conversation's tag. It first lists
 the entries that match, and removes them only when run again with
 `--yes`, after you confirm. Their keys are kept in `.forgotten`, so a later
 import never brings them back. To forget the whole journal, use
-`forget --since 1970-01-01 --yes`.
+`forget --since 1970-01-01 --yes`. That removes only what the journal holds
+so far: check that `status` shows no conversations left to import, or run it
+again once they're in.
 
 - `forget` clears the journal only. The record of where you left off
   (`handoff.md`) and Claude Code's own conversation files are separate.
-- The words you use to forget are recorded in that day's journal entry, like
-  any other request: describe what to forget instead of pasting it again.
+- An exchange in which Claude runs `forget` is kept in the journal without
+  its words, files or commands, so its list of what goes isn't saved again.
+  An earlier exchange, such as one where Claude searched for what to forget,
+  is kept as usual.
 - A finished day's file is already in the history, and an entry removed
   later by `forget`, or by a `<private-session>` typed later in its
   conversation, stays there. `forget` names those days. Delete the `.git`
