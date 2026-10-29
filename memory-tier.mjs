@@ -566,7 +566,9 @@ if (stop) {
     // a Stop decision is JSON on stdout, and the tiering lines below would
     // break it; tiering waits for the next turn, which redoes it anyway.
     const nudge = payload && (await import(new URL('./compact-gate.mjs', import.meta.url))).nudge(payload);
-    if (nudge) { console.log(JSON.stringify(nudge)); process.exit(0); }
+    // Exit once it is written: on macOS a pipe is written asynchronously, and
+    // an exit right after a write can cut it (handoff-log's --print, CI 2026-10-29).
+    if (nudge) { await new Promise((done) => process.stdout.write(JSON.stringify(nudge) + '\n', done)); process.exit(0); }
   } catch {}
 }
 

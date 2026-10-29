@@ -332,5 +332,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // Always said, so the hooks debug log shows why a compaction ran or waited;
   // Claude Code shows exit-2 stderr to the user only for a manual /compact.
   process.stderr.write(`compaction gate: ${r.why}\n`);
-  process.exit(r.code);
+  // Not process.exit(): on macOS a pipe is written asynchronously, and an
+  // exit right after a write can cut it (CI 2026-10-29).
+  process.exitCode = r.code;
 }

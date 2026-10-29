@@ -810,6 +810,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     } catch {
       // A hook that throws on every turn is worse than one that misses a turn.
     }
-    process.exit(0);
+    // Not process.exit(): on macOS a pipe is written asynchronously, and
+    // exiting cut a briefing of up to 9,500 characters at 8 KB (as memory.mjs's
+    // search, CI 2026-10-29).
+    process.exitCode = 0;
   })();
 }
