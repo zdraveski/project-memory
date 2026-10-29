@@ -4,7 +4,7 @@
       { "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs", "--stop"] }] }
     ],
     "SessionStart": [
-      { "matcher": "startup|clear|compact", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/handoff-log.mjs", "--print"] }] }
+      { "matcher": "startup|resume|clear|compact", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/handoff-log.mjs", "--print"] }] }
     ],
     "PreCompact": [
       { "matcher": "manual", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs", "--stop"] }] },

@@ -652,7 +652,8 @@ const suites = {
   'hooks/hooks.json': ['memory.test.mjs', {
     'the plugin starts handoff-log without --print': ['handoff-log.mjs", "--print"]', 'handoff-log.mjs"]'],
     'the plugin forgets the auto compaction gate': ['"matcher": "auto"', '"matcher": "never"'],
-    '/clear left out of the matcher': ['"matcher": "startup|clear|compact"', '"matcher": "startup|compact"'],
+    '/clear left out of the matcher': ['"matcher": "startup|resume|clear|compact"', '"matcher": "startup|resume|compact"'],
+    'a resumed conversation left out of the matcher (memory off untagged)': ['"matcher": "startup|resume|clear|compact"', '"matcher": "startup|clear|compact"'],
   }],
   'journal.mjs': ['journal.test.mjs', {
     'a day on --since left out': ['d >= since', 'd > since'],

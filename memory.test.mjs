@@ -295,7 +295,7 @@ const hookFile = JSON.parse(readFileSync(tool('hooks/hooks.json'), 'utf8'));
 const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((e) => e.hooks.map((x) =>
   `${ev} | ${e.matcher || ''} | ${x.command} ${(x.args || []).join(' ')}`))).sort();
 ok(JSON.stringify(wiring) === JSON.stringify(['PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop',
-  'SessionStart | startup|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/handoff-log.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
+  'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/handoff-log.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
   `the plugin wires the four hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
 
 // 5. Doctor: what is installed and what ran, never settings.json (it can
