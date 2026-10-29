@@ -7,7 +7,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
-import { tool, tempHome, storeFor } from './harness.mjs';
+import { tool, tempHome, storeFor, quick, fastClock } from './harness.mjs';
 
 const HOOK = tool('handoff-log.mjs'), TIER = tool('memory-tier.mjs');
 const { home, env } = tempHome('hl-test-');
@@ -115,7 +115,7 @@ for (const [name, breakIt] of Object.entries({
 // 11. The handoff write and the tiering pass, in parallel, twenty rounds: no lost write, no temp file.
 writeFileSync(join(dir, 'MEMORY.md'), '# Index\n\n- [handoff](handoff.md) — the rolling handoff\n');
 let lost = 0, leaks = 0;
-for (let i = 0; i < 20; i++) {
+for (let i = quick ? 19 : 0; i < 20; i++) {
   append(user(`race question ${i}`, { ts: `2026-09-11T09:${String(i).padStart(2, '0')}:00Z` }), asst(`race answer ${i}`));
   const input = JSON.stringify({ cwd, transcript_path: transcript });
   const procs = [spawn(process.execPath, [HOOK], { env }), spawn(process.execPath, [TIER, '--dir', dir], { env })];
@@ -220,45 +220,55 @@ ok(/a question before the gate\n  \*\*did:\*\* its answer$/m.test(section()), 'a
 
 // 18. Sessions ending a turn at the same moment. Without the store lock, 8 at
 // once lost 22 of 40 turns (2026-10-26).
-const cwdP = 'C:\\handoff-parallel';
-const dirP = storeFor(home, cwdP);
-mkdirSync(dirP, { recursive: true });
-const hookAt = (payload) => new Promise((res) => { const c = spawn(process.execPath, [HOOK], { env }); c.on('close', res); c.stdin.end(JSON.stringify(payload)); });
-let missed = 0;
-for (let round = 0; round < 5; round++) {
-  const payloads = Array.from({ length: 8 }, (_, k) => {
-    const t = join(dirP, `p${k}.jsonl`);
-    writeFileSync(t, user(`round ${round} writer ${k}`, { ts: `2026-09-12T0${round}:${String(k).padStart(2, '0')}:00Z` }) + '\n' + asst('ok') + '\n');
-    return { cwd: cwdP, transcript_path: t };
-  });
-  rmSync(join(dirP, 'handoff.md'), { force: true });
-  await Promise.all(payloads.map(hookAt));
-  const d = readFileSync(join(dirP, 'handoff.md'), 'utf8');
-  missed += payloads.filter((_, k) => !d.includes(`round ${round} writer ${k}`)).length;
+if (!quick) {
+  const cwdP = 'C:\\handoff-parallel';
+  const dirP = storeFor(home, cwdP);
+  mkdirSync(dirP, { recursive: true });
+  const hookAt = (payload) => new Promise((res) => { const c = spawn(process.execPath, [HOOK], { env }); c.on('close', res); c.stdin.end(JSON.stringify(payload)); });
+  let missed = 0;
+  for (let round = 0; round < 5; round++) {
+    const payloads = Array.from({ length: 8 }, (_, k) => {
+      const t = join(dirP, `p${k}.jsonl`);
+      writeFileSync(t, user(`round ${round} writer ${k}`, { ts: `2026-09-12T0${round}:${String(k).padStart(2, '0')}:00Z` }) + '\n' + asst('ok') + '\n');
+      return { cwd: cwdP, transcript_path: t };
+    });
+    rmSync(join(dirP, 'handoff.md'), { force: true });
+    await Promise.all(payloads.map(hookAt));
+    const d = readFileSync(join(dirP, 'handoff.md'), 'utf8');
+    missed += payloads.filter((_, k) => !d.includes(`round ${round} writer ${k}`)).length;
+  }
+  ok(missed === 0, `8 writers at once x5: every turn reaches handoff.md (${missed} of 40 missing)`);
+  for (let round = 0; round < 5; round++) {
+    await Promise.all(['s1aaaaaa', 's2bbbbbb', 's3cccccc'].map((id) => {
+      const t = join(dirP, `${id}.jsonl`);
+      writeFileSync(t, user(`${id} turn ${round}`, { ts: `2026-09-13T0${round}:00:00Z` }) + '\n' + asst('ok') + '\n', { flag: 'a' });
+      return hookAt({ cwd: cwdP, transcript_path: t, session_id: id });
+    }));
+  }
+  const dp = readFileSync(join(dirP, 'handoff.md'), 'utf8');
+  let threeMissed = 0;
+  for (const id of ['s1aaaaaa', 's2bbbbbb', 's3cccccc']) for (let round = 0; round < 5; round++) if (!dp.includes(`${id} turn ${round}`)) threeMissed++;
+  ok(threeMissed === 0, `three sessions ending turns together x5: all fifteen kept (${threeMissed} missing)`);
+  // Another hook holding the store: this turn's write waits, then is left for the next turn.
+  const held = readFileSync(join(dirP, 'handoff.md'), 'utf8');
+  writeFileSync(join(dirP, 's1aaaaaa.jsonl'), user('s1aaaaaa while held', { ts: '2026-09-13T09:00:00Z' }) + '\n' + asst('ok') + '\n', { flag: 'a' });
+  mkdirSync(join(dirP, '.lock'));
+  // In this process, for the answer: the compaction gate names a held store as
+  // that, not as one with nothing to write.
+  const t0 = Date.now();
+  const heldSays = handoff({ cwd: cwdP, transcript_path: join(dirP, 's1aaaaaa.jsonl'), session_id: 's1aaaaaa' });
+  ok(readFileSync(join(dirP, 'handoff.md'), 'utf8') === held && Date.now() - t0 >= 1900, 'a store another hook holds is waited on, then left alone');
+  ok(heldSays === 'busy', `and the writer says busy, not nothing to write (got ${heldSays})`);
+  rmSync(join(dirP, '.lock'), { recursive: true });
 }
-ok(missed === 0, `8 writers at once x5: every turn reaches handoff.md (${missed} of 40 missing)`);
-for (let round = 0; round < 5; round++) {
-  await Promise.all(['s1aaaaaa', 's2bbbbbb', 's3cccccc'].map((id) => {
-    const t = join(dirP, `${id}.jsonl`);
-    writeFileSync(t, user(`${id} turn ${round}`, { ts: `2026-09-13T0${round}:00:00Z` }) + '\n' + asst('ok') + '\n', { flag: 'a' });
-    return hookAt({ cwd: cwdP, transcript_path: t, session_id: id });
-  }));
+// The same held store on a fast clock, which a run under --mutant sees too.
+{
+  const cwdH = 'C:\\handoff-held', dirH = storeFor(home, cwdH), tH = join(dirH, 'h.jsonl');
+  mkdirSync(join(dirH, '.lock'), { recursive: true });
+  writeFileSync(tH, user('asked while held', { ts: '2026-09-13T09:30:00Z' }) + '\n' + asst('ok') + '\n');
+  const says = fastClock(() => handoff({ cwd: cwdH, transcript_path: tH, session_id: 'hhhhhhhh-1' }));
+  ok(says === 'busy' && !existsSync(join(dirH, 'handoff.md')), `a held store is left alone, and the writer says busy (got ${says})`);
 }
-const dp = readFileSync(join(dirP, 'handoff.md'), 'utf8');
-let threeMissed = 0;
-for (const id of ['s1aaaaaa', 's2bbbbbb', 's3cccccc']) for (let round = 0; round < 5; round++) if (!dp.includes(`${id} turn ${round}`)) threeMissed++;
-ok(threeMissed === 0, `three sessions ending turns together x5: all fifteen kept (${threeMissed} missing)`);
-// Another hook holding the store: this turn's write waits, then is left for the next turn.
-const held = readFileSync(join(dirP, 'handoff.md'), 'utf8');
-writeFileSync(join(dirP, 's1aaaaaa.jsonl'), user('s1aaaaaa while held', { ts: '2026-09-13T09:00:00Z' }) + '\n' + asst('ok') + '\n', { flag: 'a' });
-mkdirSync(join(dirP, '.lock'));
-// In this process, for the answer: the compaction gate names a held store as
-// that, not as one with nothing to write.
-const t0 = Date.now();
-const heldSays = handoff({ cwd: cwdP, transcript_path: join(dirP, 's1aaaaaa.jsonl'), session_id: 's1aaaaaa' });
-ok(readFileSync(join(dirP, 'handoff.md'), 'utf8') === held && Date.now() - t0 >= 1900, 'a store another hook holds is waited on, then left alone');
-ok(heldSays === 'busy', `and the writer says busy, not nothing to write (got ${heldSays})`);
-rmSync(join(dirP, '.lock'), { recursive: true });
 
 // 19. Two sessions typing the same thing in the same minute ("continue") are two
 // turns, not one: each Stop used to drop the other's entry (final review, 2026-10-26).
@@ -816,9 +826,10 @@ const { off, OFF } = await import('./handoff-log.mjs');
 const root = join(home, '.claude', 'projects'), list = join(root, OFF);
 const tags = () => { try { return readFileSync(list, 'utf8').split(/\r?\n/).filter(Boolean); } catch { return []; } };
 mkdirSync(root, { recursive: true });
-// Another hook holds the lock: the tag waits for it, and is not said written.
+// Another hook holds the lock: the tag waits for it (under --mutant on a fast
+// clock), and is not said written.
 mkdirSync(join(root, '.lock'));
-let held; try { held = off({ session_id: 'heldlock-0000' }); } finally { rmSync(join(root, '.lock'), { recursive: true }); }
+let held; try { held = (quick ? fastClock : (f) => f())(() => off({ session_id: 'heldlock-0000' })); } finally { rmSync(join(root, '.lock'), { recursive: true }); }
 ok(held === false && !tags().includes('heldlock'), `a tag waits for the projects' lock, and one it could not write is reported unwritten (got ${held}, ${tags()})`);
 // Every SessionStart while auto memory is off: no briefing, and the tag, so no
 // backfill imports a conversation whose first reply got no Stop (P1 hunt, 2026-10-29).
@@ -831,16 +842,18 @@ ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`sta
 // A resumed conversation, auto memory on: nothing printed (it was read as a compaction).
 ok(started('resume', 'nnnnnnnn-1') === '', 'a resumed conversation gets no briefing');
 // Twelve at once lose none.
-process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
-try {
-  await Promise.all(Array.from({ length: 12 }, (_, i) => new Promise((done) => {
-    const c = spawn(process.execPath, [HOOK, '--print'], { env, stdio: ['pipe', 'ignore', 'ignore'] });
-    c.on('exit', done);
-    c.stdin.end(JSON.stringify({ session_id: `par${String(i).padStart(5, '0')}-0000`, source: 'startup' }));
-  })));
-} finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
-const paired = Array.from({ length: 12 }, (_, i) => `par${String(i).padStart(5, '0')}`).filter((t) => !tags().includes(t));
-ok(!paired.length, `twelve memory-off starts at once lose no tag (lost ${paired})`);
+if (!quick) {
+  process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+  try {
+    await Promise.all(Array.from({ length: 12 }, (_, i) => new Promise((done) => {
+      const c = spawn(process.execPath, [HOOK, '--print'], { env, stdio: ['pipe', 'ignore', 'ignore'] });
+      c.on('exit', done);
+      c.stdin.end(JSON.stringify({ session_id: `par${String(i).padStart(5, '0')}-0000`, source: 'startup' }));
+    })));
+  } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  const paired = Array.from({ length: 12 }, (_, i) => `par${String(i).padStart(5, '0')}`).filter((t) => !tags().includes(t));
+  ok(!paired.length, `twelve memory-off starts at once lose no tag (lost ${paired})`);
+}
 // Pruned by the transcripts on disk: one whose transcript is there stays
 // however many come after it (the newest 1,000 anywhere evicted it, and its
 // conversation was imported). One whose transcript is gone goes, past the

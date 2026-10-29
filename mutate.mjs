@@ -49,7 +49,7 @@ const suites = {
     "the user's hooks run on the snapshot": ["\n  '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`,", ''],
     'long paths skipped on Windows': ["'-c', 'core.longpaths=true', ", ''],
     'a dead lock of any shape is not taken over': ['rmSync(lock, { recursive: true, force: true })', 'rmdirSync(lock)'],
-    'an unremovable dead lock is busy forever': ['catch (err) { if (Date.now() > until) throw err; }', 'catch {}'],
+    'an unremovable dead lock is busy forever': ['catch (err) { if (Date.now() > until) throw err; }', 'catch {}', { full: true }],
     'EACCES on the lock throws': ["if (e.code !== 'EEXIST' && !BUSY.includes(e.code)) throw e;", "if (e.code !== 'EEXIST' && e.code !== 'EPERM') throw e;"],
     'a held lock is not given up on': ['if (Date.now() > until) return null;', 'if (Date.now() > until) break;'],
     'lock kept after a throw': ['try { return fn(); } finally { try { rmdirSync(lock); } catch {} }', 'const out = fn(); try { rmdirSync(lock); } catch {} return out;'],
@@ -104,9 +104,9 @@ const suites = {
     'gate skips the handoff': ['const h = handoff(payload);', 'const h = true;'],
     'a silent handoff reads as written': ["else if (!h) failed.push('handoff: nothing written", "else if (h === 'never') failed.push('handoff: nothing written"],
     'a silent note reads as written': ['else if (!n) failed.push', "else if (n === 'never') failed.push"],
-    'a held store reads as no handoff': ["if (h === 'busy') failed.push", 'if (false) failed.push'],
-    'a held store reads as no markers': ["if (n === 'busy') failed.push", 'if (false) failed.push'],
-    'a held store reads as a written note': ["return r ?? 'busy';", 'return r ?? false;'],
+    'a held store reads as no handoff': ["if (h === 'busy') failed.push", 'if (false) failed.push', { full: true }],
+    'a held store reads as no markers': ["if (n === 'busy') failed.push", 'if (false) failed.push', { full: true }],
+    'a held store reads as a written note': ["return r ?? 'busy';", 'return r ?? false;', { full: true }],
     'edited list uncapped': ["newest([...s.edited], LIST_MAX, 'earlier')", "[...s.edited].join(', ')"],
     'floor removed: a 200k model is deferred': ['if (s.ctx < FLOOR) return { code: 0', 'if (false) return { code: 0'],
     'running tasks forgotten at each prompt': ['s.edited.clear(); }', 's.edited.clear(); s.running.clear(); }'],
@@ -115,7 +115,7 @@ const suites = {
     're-arm on drop removed': ['if (given) arm(0);', ''],
     'nudge repeats every turn': ['if (given && s.ctx >= given) return null;', ''],
     'agent launches missed': ['[\\s\\S]){0,1000}?(?:Output', '[\\s\\S]){0,200}?(?:Output'],
-    'a launch with no output file reads to the end': ['(?:(?!agentId:|running in background with ID)[\\s\\S]){0,1000}?', '[\\s\\S]*?'],
+    'a launch with no output file reads to the end': ['(?:(?!agentId:|running in background with ID)[\\s\\S]){0,1000}?', '[\\s\\S]*?', { full: true }],
     "recovery never runs": ["if (!s.midTurn || secret(input, s)) return '';", "return '';"],
     "a finished turn gets a note": ["if (!s.midTurn || secret(input, s)) return '';", "if (secret(input, s)) return '';"],
     "nudge back at 0.95": ["? 0.85 * PCT / 96 : 0.85;", "? 0.85 * PCT / 96 : 0.95;"],
@@ -345,7 +345,7 @@ const suites = {
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
     'a nudge with no reader exits 1': ["process.stdout.on('error', () => {}); ", ''],
-    'the backfill takes the lock when nothing is due': ['if (d && due(d) && (', 'if (d && ('],
+    'the backfill takes the lock when nothing is due': ['if (d && due(d) && (', 'if (d && (', { full: true }],
     "today's journal committed": ["`*/memory/journal/${today}.md`, ", ""],
     'journal.md waits out the grace': ["f !== 'handoff.md' && f !== 'journal.md' && ", "f !== 'handoff.md' && "],
     'closed days never committed': ["'!*/memory/journal/*.md', ", ""],
@@ -405,8 +405,8 @@ const suites = {
     'failed snapshot still stamps': ['if (gated && snapOk) for', 'if (gated) for'],
     "every store tiered on --stop": [": stop ? [(() => { try { return storeOf(payload || {}); } catch { return null; } })(), sharedStore()].filter((d) => d && existsSync(join(d, 'MEMORY.md')))", ": stop ? allStores()"],
     "the shared store not tiered on --stop": ["})(), sharedStore()].filter(", "})()].filter("],
-    'tier runs without the lock': ['withLock(dir, () => tier(dir, now))', 'tier(dir, now)'],
-    'the model\'s edit overwritten': ['write(mainPath, mainText, nextMain)', "write(mainPath, readFileSync(mainPath, 'utf8'), nextMain)"],
+    'tier runs without the lock': ['withLock(dir, () => tier(dir, now))', 'tier(dir, now)', { full: true }],
+    'the model\'s edit overwritten': ['write(mainPath, mainText, nextMain)', "write(mainPath, readFileSync(mainPath, 'utf8'), nextMain)", { full: true }],
     'a reorder rewrites the index': ['read !== null && sameLines(read, next) ? false : ', ''],
     "no orphan grace": ["Math.abs(now - statSync(join(dir, f)).mtimeMs) < ORPHAN_GRACE) { waiting = true; continue; }", "false) { waiting = true; continue; }"],
     'the handoff waits out the grace every turn': ["f !== 'handoff.md' && ", ''],
@@ -451,11 +451,11 @@ const suites = {
     "a history made before a first-sorting link lost": ["(links.length ? links : [", "(links.length ? links.slice(0, 1) : ["],
     "a deleted index hides the link the snapshot keeps": ["const links = names.filter((n) => ", "const links = names.filter((n) => existsSync(join(projectsRoot(), n, 'memory', 'MEMORY.md')) && "],
     "a fence in a quote or a list counted": ["(?<![^\\n])[ \\t]*(?:(?:>|[*+-]|\\d+[.)])[ \\t]*)*(`{3,}|~{3,}(?!~))", "(?<![^\\n])[ \\t]*(`{3,}|~{3,}(?!~))"],
-    "a lone CR starts a fence": ["text.replace(/(?<![^\\n])[ \\t]*", "text.replace(/^[ \\t]*"],
+    "a lone CR starts a fence": ["text.replace(/(?<![^\\n])[ \\t]*", "text.replace(/^[ \\t]*", { full: true }],
     "a ~~~ fence counted": ["(`{3,}|~{3,}(?!~))[^`", "(`{3,})[^`"],
     "a ```` fence closed by a ``` one": ["(`{3,}|~{3,}(?!~))[^`", "(```|~{3,}(?!~))[^`"],
     "an inline fence in prose hides the links after it": ["(`{3,}|~{3,}(?!~))[^`\\n]*\\n", "(`{3,}|~{3,}(?!~))"],
-    "a tilde run gives tildes back": ["~{3,}(?!~))[^`", "~{3,})[^`"],
+    "a tilde run gives tildes back": ["~{3,}(?!~))[^`", "~{3,})[^`", { full: true }],
     "doctor says ok of snapshots that leave a store out": ["    : h.missed?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they leave out ${h.missed.join(', ')}: ${MISSED}`\n", ""],
     "doctor counts a store left out as fine": [" && !snap.includes('but they leave out')", ""],
     "status counts a line by its exact name": ["].map(opens)), cold", "]), cold"],
@@ -499,8 +499,8 @@ const suites = {
     'restore from the deletion itself': ["from = gone ? `${gone}^` : 'HEAD'", "from = gone || 'HEAD'"],
     'a path reaches outside the store': ['basename(args[0])', 'args[0]'],
     'promote leaves the project copy': ['try { unlinkSync(src); } catch (e) {', 'try { } catch (e) {'],
-    'promote without the lock': ['const r = withLock(dir, () => withLock(to, () => {', 'const r = ((f) => f())(() => ((f) => f())(() => {'],
-    'restore without the lock': ['const r = withLock(dir, () => {\n    const cur = raw(path);', 'const r = ((f) => f())(() => {\n    const cur = raw(path);'],
+    'promote without the lock': ['const r = withLock(dir, () => withLock(to, () => {', 'const r = ((f) => f())(() => ((f) => f())(() => {', { full: true }],
+    'restore without the lock': ['const r = withLock(dir, () => {\n    const cur = raw(path);', 'const r = ((f) => f())(() => {\n    const cur = raw(path);', { full: true }],
     'restore keeps the overflow mark': [".find((l) => target(l) === file)?.replace(OVERFLOW, '') ?? null;", '.find((l) => target(l) === file) ?? null;'],
     'restore ignores the archive': ["for (const idx of ['MEMORY.md', ARCHIVE])", "for (const idx of ['MEMORY.md'])"],
     'a shared memory promoted again': ['if (isShared(dir)) return no(', 'if (false) return no('],
@@ -795,19 +795,25 @@ const tests = [...new Set(Object.values(suites).map(([t]) => t))];
 const code = Object.fromEntries([...FILES, ...tests].filter((f) => existsSync(tool(f))).map((f) => [f, readFileSync(tool(f))]));
 const jobs = [];
 for (const [name, [testName, mutants]] of Object.entries(suites)) {
-  for (const [label, [from, to]] of Object.entries(mutants)) if (!only || label.includes(only)) jobs.push({ name, testName, label, from, to });
+  for (const [label, [from, to, opts]] of Object.entries(mutants)) if (!only || label.includes(only)) jobs.push({ name, testName, label, from, to, full: !!opts?.full });
 }
+// --mutant skips a suite's slow blocks (harness.mjs `quick`): a lock waited
+// out, a race, a big fixture, paid again by each of ~750 mutants, and a clock
+// that beside the other mutants failed on the right code, a kill by the time,
+// not by the rule. A mutant only those blocks kill is marked { full: true }.
+const how = (j) => (j.full ? j.testName : `${j.testName} --mutant`);
 // A suite that fails unmutated kills every mutant, and the check then proves
 // nothing: a missing file once passed 132 mutants in 6 seconds.
-const run = (testName, name, from, to) => new Promise((done) => {
+const run = (args, name, from, to, limit) => new Promise((done) => {
   const src = name && code[name].toString('utf8');
   if (name && !src.includes(from)) return done('MUTATION DID NOT APPLY');
   const dir = tempDir('mut-');
   for (const [f, buf] of Object.entries(code)) { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), f === name ? src.replace(from, to) : buf); }
-  const child = spawn(process.execPath, [join(dir, testName)], { stdio: 'ignore' });
+  const [testName, ...flags] = args.split(' ');
+  const child = spawn(process.execPath, [join(dir, testName), ...flags], { stdio: 'ignore' });
   // A suite cut off by the clock proved nothing: not a kill.
   let late = false;
-  const timer = setTimeout(() => { late = true; child.kill(); }, 120_000);
+  const timer = setTimeout(() => { late = true; child.kill(); }, limit);
   // A child a killed suite left behind can still hold the folder: TEMP keeps it.
   child.on('exit', (status) => { clearTimeout(timer); try { rmSync(dir, { recursive: true, force: true }); } catch {} done(late ? 'TIMED OUT' : status === 0 ? 'SURVIVED' : 'killed'); });
 });
@@ -819,19 +825,21 @@ const pool = async (items, fn) => {
   await Promise.all(Array.from({ length: Math.max(1, availableParallelism() - 1) }, worker));
 };
 const took = {};
-await pool([...new Set(jobs.map((j) => j.testName))], async (t) => {
+await pool([...new Set(jobs.map(how))], async (t) => {
   const t0 = Date.now();
-  if (await run(t) !== 'SURVIVED') { console.log(`${t} fails unmutated: fix it before the mutants can say anything`); process.exit(1); }
+  if (await run(t, undefined, undefined, undefined, 600_000) !== 'SURVIVED') { console.log(`${t} fails unmutated: fix it before the mutants can say anything`); process.exit(1); }
   took[t] = Date.now() - t0;
 });
 // Longest suites first, timed by their controls: in file order the last
-// handoff-log mutants ran on alone while the other workers sat idle.
-jobs.sort((a, b) => took[b.testName] - took[a.testName]);
+// handoff-log mutants ran on alone while the other workers sat idle. A mutant
+// that hangs is cut off at three times its control: a whole memory.test.mjs
+// took 122 s beside other work, past the 120 s every mutant once had.
+jobs.sort((a, b) => took[how(b)] - took[how(a)]);
 let survived = 0;
 await pool(jobs, async (job) => {
-  const verdict = await run(job.testName, job.name, job.from, job.to);
+  const t0 = Date.now(), verdict = await run(how(job), job.name, job.from, job.to, Math.max(120_000, 3 * took[how(job)]));
   if (verdict !== 'killed') survived++;
-  console.log(`${job.name.padEnd(17)} ${job.label.padEnd(48)} ${verdict}`);
+  console.log(`${job.name.padEnd(17)} ${job.label.padEnd(48)} ${verdict} ${Math.round((Date.now() - t0) / 1000)} s`);
 });
 console.log(survived ? `${survived} of ${jobs.length} mutant(s) survived` : `all ${jobs.length} mutants killed`);
 process.exit(survived ? 1 : 0);

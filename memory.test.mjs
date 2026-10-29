@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
-import { tool, tempHome, storeFor } from './harness.mjs';
+import { tool, tempHome, storeFor, quick } from './harness.mjs';
 
 const CLI = tool('memory.mjs'), TIER = tool('memory-tier.mjs');
 const { home, env } = tempHome('memcli-');
@@ -106,6 +106,9 @@ unlinkSync(join(dir, 'brief-note.md'));
 tier();
 r = cli('status');
 ok(/deleted [^·\n]*brief-note/.test(r.stdout) && !/added [^·\n]*brief-note/.test(r.stdout), `a memory added and deleted this week is listed as deleted (got ${r.stdout})`);
+// The first snapshot took in what was there: none of it was "added" this week.
+// Asked here: the snapshots of 2020 made below end the week's log for the rest.
+ok(!/added [^·\n]*(a-long-log|release-checklist|mentions)/.test(r.stdout), `status does not call what the first snapshot found "added" (got ${r.stdout})`);
 // A name git would quote (not ASCII) is listed as it is.
 memory(dir, 'café-notes', 'notes from the café');
 tier();
@@ -176,8 +179,6 @@ unlinkSync(join(dir, 'hook-rule.md'));
 // Without git, history says so, not "spawnSync git ENOENT".
 r = spawnSync(process.execPath, [CLI, 'history', 'deploy-notes', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '' }, encoding: 'utf8' });
 ok(r.status === 1 && /git is not installed/.test(r.stdout), `history without git says git is not installed (got ${r.stdout.trim()})`);
-// The first snapshot took in what was there: none of it was "added" this week.
-ok(!/added [^·\n]*(release-checklist|mentions)/.test(cli('status').stdout), 'status does not call what the first snapshot found "added"');
 // No command (the skill run with no arguments) is status.
 r = cli('--session', 'nobody');
 ok(r.status === 0 && /index \d+ \/ 7000 B/.test(r.stdout), `no command, only --session: status (got ${r.stdout.slice(0, 200)})`);
@@ -240,13 +241,15 @@ r = cli('search', 'what did I do');
 ok(r.status === 0 && /^nothing to search for: "what did I do" has no word that says which memory$/m.test(r.stdout), `a query of short and stop words says so, not "nothing matches" (got ${r.stdout})`);
 
 // 4b. Promote and restore take the store's lock: one held by a hook is busy, and nothing moves.
-memory(dir, 'locked-out', 'a memory to move');
-mkdirSync(join(dir, '.lock'));
-r = cli('promote', 'locked-out');
-const r2 = cli('restore', 'mentions', '--force');
-rmSync(join(dir, '.lock'), { recursive: true });
-ok(r.status === 1 && /busy/.test(r.stdout) && existsSync(join(dir, 'locked-out.md')) && !existsSync(join(shared, 'locked-out.md')), 'promote waits out a held lock, then gives up with nothing moved');
-ok(r2.status === 1 && /busy/.test(r2.stdout), 'and so does restore');
+if (!quick) {
+  memory(dir, 'locked-out', 'a memory to move');
+  mkdirSync(join(dir, '.lock'));
+  r = cli('promote', 'locked-out');
+  const r2 = cli('restore', 'mentions', '--force');
+  rmSync(join(dir, '.lock'), { recursive: true });
+  ok(r.status === 1 && /busy/.test(r.stdout) && existsSync(join(dir, 'locked-out.md')) && !existsSync(join(shared, 'locked-out.md')), 'promote waits out a held lock, then gives up with nothing moved');
+  ok(r2.status === 1 && /busy/.test(r2.stdout), 'and so does restore');
+}
 
 // 4c. A line the ceiling evicted carries a mark in the archive: restored, the mark stays behind.
 const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
@@ -589,12 +592,24 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
 
 // Round 6. A huge index (300,000 lines naming no note) takes status a second
 // or so: read the folder once a line, it hung past a minute.
-{
+if (!quick) {
   const big = join(root, 'C--big16', 'memory'); mkdirSync(big, { recursive: true });
   writeFileSync(join(big, 'MEMORY.md'), Array.from({ length: 300000 }, (_, i) => `- [n](n${i}.md) — h`).join('\n') + '\n');
   const t16 = Date.now(), s16 = spawnSync(process.execPath, [CLI, 'status', '--store', big], { env, encoding: 'utf8', timeout: 25000 });
   ok(s16.status === 0 && Date.now() - t16 < 20000, `status on a 300,000-line index finishes (exit ${s16.status} in ${Date.now() - t16} ms)`);
   rmSync(join(root, 'C--big16'), { recursive: true, force: true });
+}
+// The folder listed once, not once a line, counted on 50 lines: what the
+// 300,000 time, a run under mutate.mjs (--mutant) sees too.
+{
+  const few = join(root, 'C--few16', 'memory'); mkdirSync(few, { recursive: true });
+  writeFileSync(join(few, 'MEMORY.md'), Array.from({ length: 50 }, (_, i) => `- [n](n${i}.md) — h`).join('\n') + '\n');
+  const lists = join(home, 'count-lists.mjs');
+  writeFileSync(lists, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst list = fs.readdirSync; let n = 0;\n" +
+    `fs.readdirSync = (p, ...a) => { if (String(p).endsWith(${JSON.stringify(join('C--few16', 'memory'))})) n++; return list(p, ...a); };\nsyncBuiltinESMExports();\nprocess.on('exit', () => process.stderr.write(String(n)));\n`);
+  const s = spawnSync(process.execPath, ['--import', pathToFileURL(lists).href, CLI, 'status', '--store', few], { env, encoding: 'utf8' });
+  ok(s.status === 0 && Number(s.stderr) > 0 && Number(s.stderr) < 5, `status lists the store's folder once, not once a line (got ${s.stderr} listings for 50 lines)`);
+  rmSync(join(root, 'C--few16'), { recursive: true, force: true });
 }
 
 // Round 6. The project folder, not its memory folder, linked outside the
@@ -680,7 +695,7 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   const t23 = Date.now();
   const s23 = spawnSync(process.execPath, [CLI, 'status', '--store', d23], { env, encoding: 'utf8' }).stdout;
   ok(/four\.md → \[\[ghosto\]\]/.test(s23) && /four\.md → \[\[ghostu\]\]/.test(s23) && !/ghostf/.test(s23), `a \`\`\`\` fence holding a \`\`\` one hides its links, one never closed hides none (got ${s23})`);
-  ok(Date.now() - t23 < 3000, `a long run of tildes does not slow status down (${Date.now() - t23} ms)`);
+  ok(quick || Date.now() - t23 < 3000, `a long run of tildes does not slow status down (${Date.now() - t23} ms)`);
   // The shared store has its own index: this one's, deleted, was not promoted.
   tier();
   const h23 = spawnSync(process.execPath, [CLI, 'history', 'MEMORY', '--store', d23], { env, encoding: 'utf8' });
@@ -853,20 +868,23 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   ok(/^2026-10-21 10:00  conversation c0ffee12 · branch main · project C--jr3  calibrate the lone telescope$/m.test(r.stdout) && /· project C--jr2  rotate the signing key$/m.test(r.stdout),
     `a date range under --all names each entry's project (got ${r.stdout})`);
 
-  // A year of journal, ~30 MB: one entry rendered once, each day written in one call.
+  // A year of journal, ~30 MB: one entry rendered once, each day written in one
+  // call. Under --mutant the same 5,111 entries, short (an ask still long
+  // enough to collapse): ~3 MB.
   const big = join(root, 'C--big', 'memory'), bcli = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', big], { env, encoding: 'utf8' });
-  const tpl = render(entry('2025-01-01 12:00', 'plan the lorem rollout '.repeat(90).slice(0, 2000), { answered: 'the lorem build passed '.repeat(131).slice(0, 3000),
-    changed: Array.from({ length: 20 }, (_, i) => `src/lorem/module${i}.mjs`), ran: Array.from({ length: 10 }, (_, i) => `npm run build -- --filter lorem${i}`) }));
+  const tpl = render(entry('2025-01-01 12:00', 'plan the lorem rollout '.repeat(quick ? 4 : 90).slice(0, 2000), { answered: 'the lorem build passed '.repeat(quick ? 1 : 131).slice(0, 3000),
+    changed: Array.from({ length: quick ? 1 : 20 }, (_, i) => `src/lorem/module${i}.mjs`), ran: Array.from({ length: quick ? 1 : 10 }, (_, i) => `npm run build -- --filter lorem${i}`) }));
   const year = Array.from({ length: 365 }, (_, i) => new Date(Date.UTC(2025, 0, 1 + i)).toISOString().slice(0, 10)), last = year.at(-1);
   mkdirSync(join(big, 'journal'), { recursive: true });
   for (const d of year) writeFileSync(join(big, 'journal', `${d}.md`), `# Journal ${d}\n\n${[...Array(14).fill(tpl.replaceAll('2025-01-01', d)),
     ...(d === last ? [render(entry(`${d} 18:00`, 'find the needle: the lorem rollout plan, its module filter, and the build passed'))] : [])].join('\n\n')}\n`);
-  // Eight terms: 1.0 s here alone, 1.3 s beside two other suites (2026-10-28,
-  // Windows); read once a term, 5.4 s.
-  const t0 = Date.now();
-  r = bcli('search', 'needle', 'lorem', 'rollout', 'build', 'passed', 'plan', 'module', 'filter');
-  const took = Date.now() - t0;
-  ok(took < 3000, `search over 30 MB of journal is fast (${took} ms)`);
+  // Eight terms read each day once, counted: read once a term took 5.4 s where
+  // 1.0 s was usual, and beside other suites the right search took 5.3 s too.
+  const reads = join(home, 'count-reads.mjs');
+  writeFileSync(reads, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst read = fs.readFileSync; let n = 0;\n" +
+    `fs.readFileSync = (p, ...a) => { if (String(p).includes(${JSON.stringify(join('C--big', 'memory', 'journal'))})) n++; return read(p, ...a); };\nsyncBuiltinESMExports();\nprocess.on('exit', () => process.stderr.write(\`\${n} day reads\`));\n`);
+  r = spawnSync(process.execPath, ['--import', pathToFileURL(reads).href, CLI, 'search', 'needle', 'lorem', 'rollout', 'build', 'passed', 'plan', 'module', 'filter', '--store', big], { env, encoding: 'utf8' });
+  ok(r.stderr === '365 day reads', `eight terms read each of a year's days once (got ${r.stderr})`);
   ok(r.status === 0 && new RegExp(`^ *\\d+  journal   ${last} 18:00 `).test(r.stdout), `the one entry asking for every term is first (got ${r.stdout.slice(0, 200)})`);
   ok(/^     5109 more like this, 2025-01-01\.\.2025-12-31: (k\d+, ){5}and 5104 more; --same takes them all$/m.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout) && r.stdout.length < 4000,
     `a request asked 5,110 times is one hit, and the output stays small (got ${r.stdout.length} chars: ${r.stdout.slice(-400)})`);
