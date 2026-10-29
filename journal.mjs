@@ -150,36 +150,29 @@ export const entries = (dirs, { since, until, failed = [] } = {}) => dirs.flatMa
     catch (e) { failed.push({ path, code: e.code || e.message }); return []; }
   }));
 
-// The day a conversation began: its transcript's first record time, from the
-// head alone (a transcript runs to 50 MB). '' when there is none to read.
-function began(transcriptPath) {
-  try {
-    const fd = openSync(transcriptPath, 'r'), buf = Buffer.alloc(65536);
-    const n = readSync(fd, buf, 0, buf.length, 0); closeSync(fd);
-    const at = Date.parse(/"timestamp":"([^"]{1,40})"/.exec(buf.toString('utf8', 0, n))?.[1]);
-    return at ? day(local(at)) : '';
-  } catch { return ''; }
-}
-
 // Day d without the entries `keep` refuses; its prose stays. Call under
 // withLock(dir). Returns the entries that went: none when the day changed
-// under each of three writes.
+// under each of three writes. A day left with nothing goes: kept as its
+// heading, every later status and briefing read it to find it empty.
 function drop(dir, d, keep) {
   const file = dayFile(dir, d);
   for (let i = 0; i < 3; i++) {
     const before = raw(file), { prose, entries } = parseDay(before ?? '');
     const kept = entries.filter(keep);
     if (kept.length === entries.length) return [];
-    if (replaceIfUnchanged(file, before, page(d, prose, kept)) !== 'conflict') return entries.filter((e) => !keep(e));
+    if (replaceIfUnchanged(file, before, page(d, prose, kept)) === 'conflict') continue;
+    if (!kept.length && !prose) try { unlinkSync(file); } catch {}
+    return entries.filter((e) => !keep(e));
   }
   return [];
 }
 
 // A conversation marked private takes back what it wrote: its entries go from
-// every day since it began. Call under withLock(dir). Returns how many went.
-export function sweep(dir, s, transcriptPath) {
-  const from = began(transcriptPath);
-  return days(dir).filter((x) => x >= from).reduce((n, d) => n + drop(dir, d, (e) => e.s !== s).length, 0);
+// every day. Not from the day it began on: worked out again after a time-zone
+// change, that was a day late, and its first day stayed. Once a conversation.
+// Call under withLock(dir). Returns how many went.
+export function sweep(dir, s) {
+  return days(dir).reduce((n, d) => n + drop(dir, d, (e) => e.s !== s).length, 0);
 }
 
 // The entries with every term (any case) in one of their fields, in the range,
@@ -219,7 +212,7 @@ function fault(dir, e, from = '') {
 // 2026-10-29). A private mark still sweeps it.
 function take(dir, transcriptPath, got, { quiet, hush }) {
   const s = tag(basename(transcriptPath, '.jsonl'));
-  if (quiet && hush) sweep(dir, s, transcriptPath);
+  if (quiet && hush) sweep(dir, s);
   else if (!quiet && !hushed(projectsRoot(), s, false, OFF)) record(dir, transcriptPath, got);
   else return false;
   return true;

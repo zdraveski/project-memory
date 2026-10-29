@@ -119,18 +119,17 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
 }
 
 // The sink: a conversation already private writes nothing; the Stop that marks
-// it takes back what it wrote, from the day it began on.
+// it takes back what it wrote, from every day.
 {
   write(dir, T, [turn({ at: '2026-10-31 09:00', id: 'q-1' })], { quiet: true, hush: false });
   ok(!days(dir).includes('2026-10-31'), 'a conversation already private writes no entry');
   const S = join(home, 'aaaaaaaa-0000-4000-8000-000000000000.jsonl'), O = '/x/projects/C--proj/bbbbbbbb.jsonl';
-  writeFileSync(S, JSON.stringify({ type: 'queue-operation', timestamp: new Date(2026, 10, 6, 12).toISOString() }) + '\n');
   record(dir, S, [turn({ at: '2026-11-05 10:00', id: 's-1' }), turn({ at: '2026-11-06 12:30', id: 's-2' })]);
   record(dir, O, [turn({ at: '2026-11-06 12:40', id: 'o-1' })]);
   const keys = (d) => parseDay(day(d)).entries.map((e) => e.key).join();
-  const n = sweep(dir, 'aaaaaaaa', S);
-  ok(n === 1 && keys('2026-11-06') === 'o-1' && keys('2026-11-05') === 's-1', `the sweep takes the conversation's entries from the day it began on, and opens no day before (got ${n}, ${keys('2026-11-06')}, ${keys('2026-11-05')})`);
-  ok(sweep(dir, 'aaaaaaaa') === 1 && keys('2026-11-05') === '', 'with no transcript to read, the sweep goes through every day');
+  const n = sweep(dir, 'aaaaaaaa');
+  ok(n === 2 && keys('2026-11-06') === 'o-1' && !existsSync(dayFile(dir, '2026-11-05')) && !days(dir).includes('2026-11-05'),
+    `the sweep takes the conversation's entries from every day, another's stay, and a day it leaves empty goes (got ${n}, ${keys('2026-11-06')}, ${days(dir)})`);
 }
 
 // --- the Stop hook, as Claude Code runs it -----------------------------------
@@ -192,6 +191,17 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
   say(B, '2026-10-28T10:12:00Z', '<private-session> from here on', 'understood');
   stop(B);
   ok(of(B).length === 0 && of(A).length === 2, `a private session writes nothing and removes what it wrote, and no other's (got ${of(B).length}, ${of(A).length})`);
+}
+{
+  // Begun in New York at 20:30, marked private once the laptop said Berlin:
+  // there the conversation began a day later, and its first day was kept.
+  const Z = sid('z'), zone = (tz, f) => { process.env.TZ = tz; try { return f(); } finally { delete process.env.TZ; } };
+  say(Z, '2026-10-29T00:30:00Z', 'the biopsy came back', 'next: a referral');
+  zone('America/New_York', () => stop(Z));
+  const was = of(Z).length;
+  say(Z, '2026-10-29T02:00:00Z', '<private-session> from here on', 'understood');
+  zone('Europe/Berlin', () => stop(Z));
+  ok(was === 1 && !of(Z).length, `a mark typed after a time-zone change takes back the conversation's first day too (got ${was}, ${JSON.stringify(of(Z))})`);
 }
 {
   const ts = '2026-11-02T12:00:00Z', f = dayFile(sdir, local(ts)), failed = join(sdir, 'journal', '.failed');
@@ -429,8 +439,11 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   ok(record(d, T, [turn({ at: '2026-10-20 09:00', id: 'f-1', ask: 'the Zebra eats mango' })]) === 0 && hits(['mango'], { until: '2026-10-20' }) === '',
     'a forgotten turn recorded again stays gone');
   forget(d, ['mango'], { apply: true });
+  ok(!existsSync(dayFile(d, '2026-10-21')) && days(d).join() === '2026-10-20', `a day forget leaves empty goes, one with a note stays (got ${days(d)})`);
   record(d, T, [turn({ at: '2026-10-20 09:00', id: 'f-1', ask: 'the Zebra eats mango' }), turn({ at: '2026-10-21 09:00', id: 'f-3', ask: 'mango again' })]);
   ok(hits(['mango']) === '', `a second forget keeps the first one's keys (got ${hits(['mango'])})`);
+  forget(d, ['zebra'], { apply: true });
+  ok(!hits(['zebra']) && readFileSync(f20, 'utf8').includes('My own note.'), 'a day left with only a note written by hand stays');
 }
 {
   // A day that changed under each of its three writes keeps its entries, and
