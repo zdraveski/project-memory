@@ -239,9 +239,24 @@ export function forget(dir, terms, { since, until, conversation, apply = false, 
 
 // A throw kept in .failed for `status` to report: swallowed, the journal would
 // stop and nothing say so. `from` names the writer when it is not the sink.
+// One line a writer, the newest first: each writes and clears its own only.
+// The next reply's write cleared a backfill that kept failing, and a failed
+// backfill overwrote the live write's failure: status said nothing of either.
+const FAILED = '.failed';
+const own = (text, backfill) => (text ?? '').split(/\r?\n/).filter((l) => l && l.includes('"error":"backfill: ') === backfill);
 function fault(dir, e, from = '') {
-  const failed = join(dir, JOURNAL, '.failed');
-  try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(failed, raw(failed), JSON.stringify({ at: new Date().toISOString(), error: from + String(e.message).split('\n')[0] })); } catch {}
+  const f = join(dir, JOURNAL, FAILED);
+  try {
+    mkdirSync(join(dir, JOURNAL), { recursive: true });
+    const before = raw(f), line = JSON.stringify({ at: new Date().toISOString(), error: from + String(e.message).split('\n')[0] });
+    replaceIfUnchanged(f, before, [line, ...own(before, !from)].join('\n') + '\n');
+  } catch {}
+}
+function clear(dir, backfill) {
+  const f = join(dir, JOURNAL, FAILED), before = raw(f), left = own(before, !backfill);
+  if (before == null) return;
+  if (left.length) replaceIfUnchanged(f, before, left.join('\n') + '\n');
+  else try { unlinkSync(f); } catch {}
 }
 
 // What a read of a conversation does to the journal, at its Stop or its
@@ -260,8 +275,7 @@ function take(dir, transcriptPath, got, { quiet, hush, when }) {
 
 // handoff()'s sink, called under its lock.
 export function write(dir, transcriptPath, got, opts) {
-  const failed = join(dir, JOURNAL, '.failed');
-  try { if (take(dir, transcriptPath, got, opts)) try { unlinkSync(failed); } catch {} }
+  try { if (take(dir, transcriptPath, got, opts)) clear(dir, false); }
   catch (e) { fault(dir, e); }
 }
 
@@ -318,7 +332,7 @@ function candidates(dir, skip) {
 // transcript's end, typed before the plugin kept marks, is not seen; read the
 // rest of a partial transcript for it if that turns up.
 export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {}) {
-  const t0 = Date.now(), f = join(dir, JOURNAL, IMPORTED), bad = join(dir, JOURNAL, '.failed');
+  const t0 = Date.now(), f = join(dir, JOURNAL, IMPORTED);
   // A look at the folders once in ACTIVE, the list's mtime the clock; between
   // looks a Stop reads nothing more. A stat is ~70 µs on Windows (5 ms a Stop
   // for a month's 68 transcripts), and the list was parsed whole every Stop.
@@ -348,17 +362,21 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {})
   // Kept in .failed as the sink's is; the next import that goes through clears
   // it, and only its own: a live write's failure is the live write's to clear.
   if (err) fault(dir, err, 'backfill: ');
-  else if (n && (raw(bad) ?? '').includes('"error":"backfill: ')) try { unlinkSync(bad); } catch {}
+  else if (n) clear(dir, true);
   // The next look: the next Stop while the budget left some, else in ACTIVE (a
   // failure too: retried every Stop, it would cost every Stop a look).
   try { const at = new Date(n < todo.length && !err ? t0 - ACTIVE : Date.now()); utimesSync(f, at, at); } catch {}
   return { imported: n, left: todo.length - n };
 }
 
-// The first day with an entry: a day a sweep or forget emptied is none. A few
-// reads at most, so the briefing can ask at every session start.
+// Whether a day holds an entry: a marker line, found in its bytes. Parsed,
+// a year of days (~30 MB) took status 0.6-1 s each time.
+const held = (dir, d) => readFileSync(dayFile(dir, d)).includes('\n<!-- j:');
+
+// The first day with an entry: a day a sweep or forget emptied is gone, so
+// this is one read, and the briefing can ask at every session start.
 export function firstDay(dir) {
-  for (const d of days(dir)) { try { if (parseDay(raw(dayFile(dir, d)) ?? '').entries.length) return d; } catch {} }
+  for (const d of days(dir)) { try { if (held(dir, d)) return d; } catch {} }
   return null;
 }
 
@@ -368,11 +386,11 @@ export function summary(dir) {
   let first = null, n = 0, bytes = 0, failed = null;
   for (const d of days(dir)) {
     try {
-      if (!parseDay(raw(dayFile(dir, d)) ?? '').entries.length) continue;
+      if (!held(dir, d)) continue;
       bytes += statSync(dayFile(dir, d)).size; n++; first ??= d;
     } catch {}
   }
-  try { failed = JSON.parse(raw(join(dir, JOURNAL, '.failed'))).error || null; } catch {}
+  try { failed = (raw(join(dir, JOURNAL, FAILED)) ?? '').split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l).error).join('; ') || null; } catch {}
   let left = 0; try { left = candidates(dir).filter((c) => c.mine).length; } catch {}
   return { first, days: n, bytes, left, failed };
 }

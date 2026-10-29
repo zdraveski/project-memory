@@ -8,7 +8,7 @@ import assert from 'node:assert';
 import { tempHome, storeFor, tool, slug } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, summary } = await import('./journal.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, summary, firstDay } = await import('./journal.mjs');
 const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 let checks = 0;
@@ -428,10 +428,23 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   let fl = null; try { fl = JSON.parse(readFileSync(failed, 'utf8')); } catch {}
   ok(got.imported === 0 && got.left === 1 && Date.parse(fl?.at) && fl.error.startsWith('backfill: '),
     `a backfill that throws is kept in .failed, the conversation left for later (got ${JSON.stringify(got)}, ${JSON.stringify(fl)})`);
+  // The live write and the backfill each clear and replace their own line only:
+  // the next reply cleared a backfill that kept failing, and status said nothing.
+  const lines = () => { try { return readFileSync(failed, 'utf8').split('\n').filter(Boolean); } catch { return []; } };
+  write(d, T, [turn({ at: '2026-10-28 09:00', id: 'live-1' })], { quiet: false, hush: false });
+  ok(lines().length === 1 && lines()[0].includes('"error":"backfill: '), `a live write that goes through keeps the backfill's failure (got ${lines()})`);
+  const day2 = dayFile(d, '2026-10-27');
+  mkdirSync(day2, { recursive: true });
+  write(d, T, [turn({ at: '2026-10-27 09:00', id: 'live-2' })], { quiet: false, hush: false });
+  ok(lines().length === 2 && !lines()[0].includes('backfill: ') && lines()[1].includes('"error":"backfill: ') && /^EISDIR.*; backfill: /.test(summary(d).failed),
+    `a live write's failure keeps the backfill's, newest first, and status names both (got ${lines()}; ${summary(d).failed})`);
   rmSync(day1, { recursive: true });
   ok(fill(d).imported === 0, 'a failed look waits for the next look, not the next Stop');
   due(d);
-  ok(fill(d).imported === 1 && !existsSync(failed) && asks(d).join() === 'imported at last', 'the next import that goes through clears it');
+  ok(fill(d).imported === 1 && lines().length === 1 && !lines()[0].includes('backfill: '), `the next import that goes through clears its own failure, not the live write's (got ${lines()})`);
+  rmSync(day2, { recursive: true });
+  write(d, T, [turn({ at: '2026-10-27 09:00', id: 'live-2' })], { quiet: false, hush: false });
+  ok(!existsSync(failed) && asks(d).join() === 'a question,a question,imported at last', `and the next live write that goes through clears the rest (got ${asks(d)})`);
   writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: 'the live write failed' }));
   old(r, sid('9'), 10, ['one more']);
   due(d);
@@ -480,6 +493,20 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   ok(of({ until: '2026-10-09' }) === `2026-10-09 failed ${dayFile(d, '2026-10-08')}`, `a day inside it that will not read is named, the rest kept (got ${of({ until: '2026-10-09' })})`);
   const e = entries([d], { since: '2026-10-12' })[0];
   ok(e.day === '2026-10-12' && e.path === dayFile(d, '2026-10-12') && e.dir === d && e.asked === 'a question', `an entry carries its day, file and store (got ${JSON.stringify(e)})`);
+}
+
+{
+  // status and the briefing tell a day with an entry by its marker line, not by
+  // parsing every day (status read a year of them, ~30 MB, each time): a day
+  // file of its heading alone, or of a note alone, is no day.
+  const d = storeFor(home, 'C:\\journal-summary');
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  writeFileSync(dayFile(d, '2026-10-01'), '# Journal 2026-10-01\n');
+  writeFileSync(dayFile(d, '2026-10-02'), '# Journal 2026-10-02\n\nOnly a note.\n');
+  record(d, T, [turn({ at: '2026-10-03 09:00', id: 's-1' }), turn({ at: '2026-10-03 10:00', id: 's-2' })]);
+  writeFileSync(dayFile(d, '2026-10-04'), readFileSync(dayFile(d, '2026-10-03'), 'utf8').replace(/\n/g, '\r\n').replaceAll('2026-10-03', '2026-10-04'));
+  const s = summary(d), size = statSync(dayFile(d, '2026-10-03')).size + statSync(dayFile(d, '2026-10-04')).size;
+  ok(s.first === '2026-10-03' && s.days === 2 && s.bytes === size && firstDay(d) === '2026-10-03', `only days with an entry count, a CRLF one too (got ${JSON.stringify(s)}, ${firstDay(d)})`);
 }
 
 // forget(): every term in one of an entry's fields, in any case, within the
