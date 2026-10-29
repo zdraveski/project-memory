@@ -222,33 +222,37 @@ function drop(dir, d, keep) {
 }
 
 // A conversation marked private takes back what it wrote: its entries go from
-// every day. Not from the day it began on: worked out again after a time-zone
-// change, that was a day late, and its first day stayed. Once a conversation.
-// Call under withLock(dir). Returns how many went.
-export function sweep(dir, s) {
-  let n = 0;
-  try { each(days(dir), (d) => { n += drop(dir, d, (e) => e.s !== s).length; }); }
-  catch (e) { owe(dir, s, true); throw e; }
-  owe(dir, s, false);
+// every day (`ds`: the days owed). Not from the day it began on: worked out
+// again after a time-zone change, that was a day late, and its first day
+// stayed. Once a conversation. Call under withLock(dir). Returns how many
+// went; throws, once the days it stopped short of are owed, an error marked `owed`.
+export function sweep(dir, s, ds = days(dir)) {
+  let n = 0, bad = null;
+  const left = ds.filter((d) => { try { n += drop(dir, d, (e) => e.s !== s).length; return false; } catch (e) { bad = e; return true; } });
+  owe(dir, s, ds, left);
+  if (bad) throw Object.assign(bad, { owed: true });
   return n;
 }
 
-// The conversations whose sweep stopped short (a day not in UTF-8), one tag a
-// line, swept again at every write and every look until it goes through: the
-// mark is read once, and a private conversation's entries stayed (R33).
+// The days a sweep stopped short of (not in UTF-8), `<tag> <day>` a line,
+// swept again at every write and every look until it goes through: the mark
+// is read once, and a private conversation's entries stayed (R33). Only those
+// days: an owed sweep of every day, at every Stop, took 1.4-1.7 s for three
+// on a year of journal (review, 2026-10-29).
 const SWEEPS = '.sweeps';
-function owe(dir, s, yes) {
+function owe(dir, s, ds, left) {
   const f = join(dir, JOURNAL, SWEEPS), before = raw(f);
-  if (before == null && !yes) return;
-  const rest = before == null ? [] : before.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && l !== s), next = yes ? [...rest, s] : rest;
+  if (before == null && !left.length) return;
+  const tried = new Set(ds.map((d) => `${s} ${d}`)), next = [...listOf(before).filter((l) => !tried.has(l)), ...left.map((d) => `${s} ${d}`)];
   if (next.length) replaceIfUnchanged(f, before, next.join('\n') + '\n');
   else try { unlinkSync(f); } catch {}
 }
-// The sweeps owed, each tried; throws while one still stops short. Returns how many.
+// The sweeps owed, each tried on its days; throws while one still stops short. Returns how many.
 function resweep(dir) {
-  const owed = (raw(join(dir, JOURNAL, SWEEPS)) ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  each(owed, (s) => sweep(dir, s));
-  return owed.length;
+  const owed = new Map();
+  for (const l of listOf(raw(join(dir, JOURNAL, SWEEPS)))) { const [s, d] = l.split(' '); owed.set(s, [...(owed.get(s) ?? []), d]); }
+  each(owed, ([s, ds]) => sweep(dir, s, ds));
+  return owed.size;
 }
 
 // The entries with every term (any case) in one of their fields, in the range,
@@ -314,12 +318,16 @@ function checked(dir, k) {
 // What a conversation private or held with auto memory off has in the journal
 // goes, from every day, and a private one's (`priv`) from handoff.md (first:
 // a sweep a day stops short of throws, and is owed). Once, ` swept` written
-// after it (a kill mid-sweep sweeps again); again when `again`.
+// after it (a kill mid-sweep sweeps again), and after one that stopped short:
+// its days owed are retried alone, and swept whole again, each of its Stops
+// read every day. Again when `again`.
 function takeBack(dir, k, s, again = false, priv = false) {
   if (!again && checked(dir, k)?.[4] === 'swept') return;
   if (priv) unsay(dir, s);
-  sweep(dir, s);
+  let owed = null;
+  try { sweep(dir, s); } catch (e) { if (!e.owed) throw e; owed = e; }
   mark(dir, [`${k} 0 swept`], null, CHECKED);
+  if (owed) throw owed;
 }
 
 // What a Stop's read of its conversation does to the journal (importOne does
@@ -575,7 +583,11 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
   if (!due(dir, t0)) return { imported: 0, left: 0 };
   let all = [], n = 0, done = 0, err = null, owed = 0;
   const other = [];
-  try { owed = resweep(dir); } catch (e) { err = e; }
+  // The sweeps owed are tried here too, their failure the live write's to
+  // report: it tries them first at every Stop. The look's own kept an import
+  // with work left to a look in half an hour, and its line in status after
+  // the day was fixed and a live write finished the sweep (review, 2026-10-29).
+  try { owed = resweep(dir); } catch {}
   try {
     all = candidates(dir, skip);
     for (const [i, c] of all.entries()) {

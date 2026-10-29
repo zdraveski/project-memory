@@ -190,12 +190,21 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   const d = storeFor(home, 'C:\\journal-owed'), f = dayFile(d, '2026-09-01'), failed = join(d, 'journal', '.failed'), owed = join(d, 'journal', '.sweeps');
   const P = '/x/projects/C--proj/aaaaaaaa.jsonl', Q = '/x/projects/C--proj/cccccccc.jsonl', note = Buffer.from('\nNote: caf\xE9\n', 'latin1');
   const holds = () => readFileSync(f, 'utf8').includes('my biopsy');
-  record(d, P, [turn({ at: '2026-09-01 10:00', id: 'p-1', ask: 'my biopsy result', raw: 'my biopsy result' })]);
+  record(d, P, [turn({ at: '2026-09-01 10:00', id: 'p-1', ask: 'my biopsy result', raw: 'my biopsy result' }), turn({ at: '2026-09-03 10:00', id: 'p-2' })]);
   appendFileSync(f, note);
   write(d, P, [], { quiet: true, hush: true });   // the Stop of the turn that typed the mark
   write(d, Q, [turn({ at: '2026-09-02 09:00', id: 'q-1' })], { quiet: false, hush: false });   // another conversation's
-  ok(holds() && summary(d).failed?.includes('not UTF-8') && readFileSync(owed, 'utf8').trim() === 'aaaaaaaa',
-    `until the day is fixed, every write tries the sweep again and says it failed (got ${summary(d).failed})`);
+  ok(holds() && !existsSync(dayFile(d, '2026-09-03')) && summary(d).failed?.includes('not UTF-8') && readFileSync(owed, 'utf8') === 'aaaaaaaa 2026-09-01\n',
+    `until the day is fixed, every write tries the sweep again and says it failed; the days after it are swept, and only it is owed (got ${summary(d).failed}; ${readFileSync(owed, 'utf8')})`);
+  // Only that day, at every write: each owed sweep read every day file at
+  // every Stop, 1.4-1.7 s for three on a year of journal; nor does the
+  // conversation's own next Stop sweep every day again (review, 2026-10-29).
+  const bad = dayFile(d, '2026-09-05');
+  mkdirSync(bad, { recursive: true });   // a day no sweep can read
+  write(d, P, [], { quiet: true, hush: false });
+  write(d, Q, [turn({ at: '2026-09-02 09:01', id: 'q-0' })], { quiet: false, hush: false });
+  ok(readFileSync(owed, 'utf8') === 'aaaaaaaa 2026-09-01\n', `an owed sweep reads its own day again, no other (got ${JSON.stringify(readFileSync(owed, 'utf8'))})`);
+  rmSync(bad, { recursive: true });
   // Fixed as an editor that took it for the code page does: saved whole as
   // UTF-8, every heading's `·` is `Â·`, and the entries' headings still read.
   writeFileSync(f, readFileSync(f, 'latin1'));
@@ -852,6 +861,29 @@ const small = { segment: 1024, budgetMs: 0 };
   const es = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries);
   ok(es.length === 12 && es.every((e) => e.answered.startsWith(`answer ${e.asked.split(' ')[1]} `)) && line() === `${slug(r)}/${Y} ${statSync(p).size}`,
     `look by look, every turn is imported whole, once (got ${es.length}; ${line()})`);
+}
+{
+  // A sweep owed (its day not in UTF-8) is the live write's to report, which
+  // tries it first at every Stop. Failed in a look too, it kept a first
+  // import with work left to a look in half an hour, not every Stop; and
+  // its line in status stayed after the day was fixed and a live write
+  // finished the sweep (review, 2026-10-29).
+  const [r, d] = repo('owedlook'), W = sid('w'), p = join(projects, slug(r), `${W}.jsonl`), f = dayFile(d, '2026-08-01'), failed = join(d, 'journal', '.failed');
+  const Q = '/x/projects/C--proj/cccccccc.jsonl';
+  record(d, T, [turn({ at: '2026-08-01 09:00', id: 'ow-1' })]);
+  appendFileSync(f, Buffer.from('\nNote: caf\xE9\n', 'latin1'));
+  write(d, T, [], { quiet: true, hush: true });
+  writeFileSync(p, Array.from({ length: 12 }, (_, i) => exchange(W, r, i)).join(''));
+  utimesSync(p, ago(2), ago(2));
+  const few = { turns: 5, budgetMs: 0 }, one = fill(d, few), two = fill(d, few);
+  ok(one.imported === 1 && one.left === 1 && two.imported === 1 && summary(d).failed?.includes('not UTF-8'),
+    `a sweep owed slows no import: the next Stop goes on with it, and status still names the day (got ${JSON.stringify(one)}, ${JSON.stringify(two)}, ${summary(d).failed})`);
+  for (let i = 0; i < 5 && fill(d, few).left; i++);
+  due(d); fill(d);   // a look with nothing to import, the sweep still owed
+  writeFileSync(f, readFileSync(f, 'latin1'));   // fixed
+  write(d, Q, [turn({ at: '2026-08-02 09:00', id: 'ow-q' })], { quiet: false, hush: false });
+  due(d); fill(d);
+  ok(!existsSync(failed) && !existsSync(join(d, 'journal', '.sweeps')), `once the sweep is done, status names no failure (got ${existsSync(failed) && readFileSync(failed, 'utf8')})`);
 }
 
 // entries(): the days in range, both bounds inclusive ("what did we do on the
