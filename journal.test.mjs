@@ -37,6 +37,12 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
 {
   const e = entryOf(turn({ raw: 'secret <private>x</private>', ask: 'secret', did: 'reply', changed: ['C:\\proj\\a'], ran: ['ls'] }), T);
   ok(e.answered === '[private]' && !e.changed.length && !e.ran.length, 'a private turn keeps no answer, files or commands');
+  // The turn that ran forget: its listing, saved as the reply, held what it removed.
+  const f = entryOf(turn({ ask: 'forget the zebra', did: 'these would go: the zebra policy', changed: ['C:\\proj\\a'],
+    ran: ['node "C:/p/memory.mjs" forget zebra --session x', ...Array.from({ length: 10 }, (_, i) => `ls ${i}`)] }), T);
+  ok(f.asked === '[private]' && f.answered === '[private]' && !f.changed.length && !f.ran.length,
+    `a turn that ran forget, even before its last 10 commands, keeps none of its words (got ${JSON.stringify(f)})`);
+  ok(entryOf(turn({ ran: ['node memory.mjs search zebra'] }), T).asked === 'a question', 'a turn that only searched is kept');
 }
 {
   const e = entryOf(turn({ changed: ['C:\\proj\\a.js', 'D:\\o\\b.js'], ran: ['ls', 'git status'] }), T);
@@ -284,6 +290,19 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   writeFileSync(join(d, '.private-sessions'), `${sid('a').slice(0, 8)}\n`);
   fill(d);
   ok(asks(d).join() === 'an open one', `backfill skips a private conversation, in the list or marked in its transcript (got ${asks(d)})`);
+}
+{
+  // A <private-session> typed while the plugin was off: the import that reads it
+  // marks the conversation and takes back what it wrote, as its Stop would have.
+  const [r, d] = repo('late'), L = sid('l'), p = old(r, L, 30, ['said before the mark']);
+  record(d, p, [turn({ at: '2026-09-01 12:00', id: 'l-live' })]);
+  appendFileSync(p, rec('user', L, '2026-09-01T10:05:00Z', '<private-session> from here on', r) + '\n');
+  utimesSync(p, ago(1), ago(1));
+  const before = asks(d).join();
+  fill(d);
+  let tags = ''; try { tags = readFileSync(join(d, '.private-sessions'), 'utf8'); } catch {}
+  ok(before === 'a question' && !asks(d).length && tags.split(/\r?\n/).includes(L.slice(0, 8)),
+    `a mark the backfill finds removes the conversation's earlier entries and marks it (got ${before}; ${asks(d)}; ${JSON.stringify(tags)})`);
 }
 {
   const [r, d] = repo('mine');

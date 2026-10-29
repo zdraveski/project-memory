@@ -30,15 +30,21 @@ const rel = (p, cwd) => {
   return c && p.length > c.length + 1 && /[\\/]/.test(p[c.length]) && p.slice(0, c.length).toLowerCase() === c.toLowerCase() ? p.slice(c.length + 1) : p;
 };
 
+// A turn that ran forget is kept like a private one: its listing, saved as the
+// reply and committed with the day, kept what it removed (review, 2026-10-29).
+const FORGETS = /memory\.mjs\b.*\bforget\b/s;
+
 export function entryOf(turn, transcriptPath) {
   const s = tag(basename(transcriptPath, '.jsonl'));
-  const quiet = PRIVATE.test(turn.raw ?? turn.ask);
+  // Every command, before the cap: a forget among a turn's first ones counts.
+  const forgets = turn.ran.some((c) => FORGETS.test(c));
+  const quiet = forgets || PRIVATE.test(turn.raw ?? turn.ask);
   return {
     key: turn.id || `${s} ${turn.at} ${hash(turn.raw ?? turn.ask).slice(0, 12)}`,
     at: turn.at, s,
     t: `${basename(dirname(transcriptPath))}/${basename(transcriptPath, '.jsonl')}`,
     branch: clip(turn.branch || '', 100),
-    asked: clip(turn.ask, J_ASK),
+    asked: forgets ? '[private]' : clip(turn.ask, J_ASK),
     answered: quiet ? '[private]' : clip(turn.did, J_ANSWER),
     changed: quiet ? [] : turn.changed.slice(-J_FILES).map((p) => clip(rel(p, turn.cwd), 300)),
     ran: quiet ? [] : turn.ran.slice(-J_RAN).map((c) => clip(c, J_CMD)),
@@ -196,15 +202,21 @@ function fault(dir, e, from = '') {
   try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(failed, raw(failed), JSON.stringify({ at: new Date().toISOString(), error: from + String(e.message).split('\n')[0] })); } catch {}
 }
 
+// What a read of a conversation does to the journal, at its Stop or its
+// import: the read that marks it private takes back what it wrote. Call under
+// withLock(dir). False when it was private already: nothing tried.
+function take(dir, transcriptPath, got, { quiet, hush }) {
+  if (quiet && hush) sweep(dir, tag(basename(transcriptPath, '.jsonl')), transcriptPath);
+  else if (!quiet) record(dir, transcriptPath, got);
+  else return false;
+  return true;
+}
+
 // handoff()'s sink, called under its lock.
-export function write(dir, transcriptPath, got, { quiet, hush }) {
+export function write(dir, transcriptPath, got, opts) {
   const failed = join(dir, JOURNAL, '.failed');
-  try {
-    if (quiet && hush) sweep(dir, tag(basename(transcriptPath, '.jsonl')), transcriptPath);
-    else if (!quiet) record(dir, transcriptPath, got);
-    else return;   // already private: nothing tried, so nothing to clear
-    try { unlinkSync(failed); } catch {}
-  } catch (e) { fault(dir, e); }
+  try { if (take(dir, transcriptPath, got, opts)) try { unlinkSync(failed); } catch {} }
+  catch (e) { fault(dir, e); }
 }
 
 // What the backfill has read: `<folder>/<session> <bytes>`, one line a
@@ -280,8 +292,10 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {})
         let whole = true;
         // Private, or held with auto memory off: none of it is kept.
         if (!hushed(dir, s) && !hushed(projectsRoot(), s, false, OFF)) {
-          const r = readTail(c.p, IMPORT_MAX_BYTES), got = turns(r.text);
-          if (!got.hush) record(dir, c.p, got);
+          const r = readTail(c.p, IMPORT_MAX_BYTES), got = turns(r.text), hush = got.hush === true;
+          // A mark typed while the plugin was off is taken as its Stop takes
+          // one: the conversation is marked, and what it wrote before goes.
+          take(dir, c.p, got, { quiet: hushed(dir, s, hush), hush });
           whole = r.whole;
         }
         mark(dir, [`${c.k} ${c.size}${whole ? '' : ' partial'}`]);
