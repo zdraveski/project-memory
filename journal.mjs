@@ -2,7 +2,7 @@
 // turn, kept apart from handoff.md so what was done last month is still
 // findable. Entries are capped and redacted here, the one place a turn's
 // files and commands (uncapped in turns()) are shortened.
-import { mkdirSync, readdirSync, statSync, utimesSync, openSync, readSync, closeSync, unlinkSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, statSync, utimesSync, openSync, readSync, closeSync, unlinkSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { clip, tag, PRIVATE, hash, turns, readTail, hushed, ACTIVE, OFF } from './handoff-log.mjs';
 import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, withLock } from './store.mjs';
@@ -22,7 +22,24 @@ export const IMPORT_MAX_BYTES = 64 * 1024 * 1024;
 
 const MARK = /^<!-- j:(.+) t:(.*) d:(\d{4}-\d\d-\d\d) -->$/;
 const HEAD = /^## (\d\d:\d\d) · conversation (\S*?)(?: · branch (.*))?$/;
+const TIME = /^\d{4}-\d\d-\d\d \d\d:\d\d$/;
 const day = (at) => at.slice(0, 10);
+
+// Before a day file is rewritten: one with a byte that is no UTF-8 (a note
+// added in the Windows code page, as PowerShell 5.1's Add-Content writes) was
+// read as U+FFFD and written back, its letters gone for good. It is left as
+// it is, and the write that needed it fails, so status says why.
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
+function whole(file, text) {
+  if (text?.includes('\uFFFD')) try { UTF8.decode(readFileSync(file)); } catch { throw Object.assign(new Error(`${file} is not UTF-8 text, so it was left as it is; save it as UTF-8`), { code: 'not UTF-8' }); }
+}
+// Each day's work, a day that throws (not UTF-8, a folder by its name) after
+// the rest: one bad file must not keep the others from a write or a sweep.
+function each(ds, fn) {
+  let bad = null;
+  for (const d of ds) try { fn(d); } catch (e) { bad = e; }
+  if (bad) throw bad;
+}
 
 // A path inside the turn's folder reads shorter relative to it.
 const rel = (p, cwd) => {
@@ -39,14 +56,16 @@ const rel = (p, cwd) => {
 // the next option too doubled the work per option (40 took 7 s).
 const FORGETS = /memory\.mjs["']?(?:\s+--[\w-]+(?:[= ](?:"[^"]*"|'[^']*'|[^\s"'-]\S*))?)*\s+forget\b/;
 
-export function entryOf(turn, transcriptPath) {
+// `when`: the time of a turn whose own won't parse (a transcript another tool
+// wrote): NaN-NaN-Na.md was its day file, which nothing lists or sweeps.
+export function entryOf(turn, transcriptPath, when = local()) {
   const s = tag(basename(transcriptPath, '.jsonl'));
   // Every command, before the cap: a forget among a turn's first ones counts.
   const forgets = turn.ran.some((c) => FORGETS.test(c));
   const quiet = forgets || PRIVATE.test(turn.raw ?? turn.ask);
   return {
     key: turn.id || `${s} ${turn.at} ${hash(turn.raw ?? turn.ask).slice(0, 12)}`,
-    at: turn.at, s,
+    at: TIME.test(turn.at) ? turn.at : when, s,
     t: `${basename(dirname(transcriptPath))}/${basename(transcriptPath, '.jsonl')}`,
     branch: clip(turn.branch || '', 100),
     asked: forgets ? '[private]' : clip(turn.ask, J_ASK),
@@ -101,16 +120,17 @@ const page = (d, prose, es) => `# Journal ${d}\n\n` + [prose, ...es.flatMap((e) 
 const FORGOTTEN = '.forgotten';
 
 // Call under withLock(dir). Returns how many entries were added or changed.
-export function record(dir, transcriptPath, turns) {
+// `when`: entryOf's, for a turn whose time won't parse.
+export function record(dir, transcriptPath, turns, when) {
   const byDay = new Map(), gone = new Set((raw(join(dir, JOURNAL, FORGOTTEN)) ?? '').split(/\r?\n/).map((l) => l.trim()));
   for (const t of turns) {
-    const e = entryOf(t, transcriptPath), d = day(e.at);
+    const e = entryOf(t, transcriptPath, when), d = day(e.at);
     if (gone.has(e.key)) continue;
     byDay.set(d, [...(byDay.get(d) || []), e]);
   }
   let n = 0;
-  for (const [d, fresh] of byDay) {
-    const file = dayFile(dir, d);
+  each(byDay.keys(), (d) => {
+    const file = dayFile(dir, d), fresh = byDay.get(d);
     mkdirSync(join(dir, JOURNAL), { recursive: true });
     for (let i = 0; i < 3; i++) {
       const before = raw(file);
@@ -123,10 +143,11 @@ export function record(dir, transcriptPath, turns) {
         have.set(e.key, was?.after ? { ...e, after: was.after } : e);
       }
       const all = [...have.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+      whole(file, before);
       const w = replaceIfUnchanged(file, before, page(d, prose, all));
       if (w !== 'conflict') { n += changed; break; }
     }
-  }
+  });
   pin(dir);
   return n;
 }
@@ -172,6 +193,7 @@ function drop(dir, d, keep) {
       else if (e.after) { const up = kept.at(-1); if (up) up.after = [up.after, e.after].filter(Boolean).join('\n\n'); else prose = [prose, e.after].filter(Boolean).join('\n\n'); }
     }
     if (kept.length === entries.length) return [];
+    whole(file, before);
     if (replaceIfUnchanged(file, before, page(d, prose, kept)) === 'conflict') continue;
     if (!kept.length && !prose) try { unlinkSync(file); } catch {}
     return entries.filter((e) => !keep(e));
@@ -184,7 +206,9 @@ function drop(dir, d, keep) {
 // change, that was a day late, and its first day stayed. Once a conversation.
 // Call under withLock(dir). Returns how many went.
 export function sweep(dir, s) {
-  return days(dir).reduce((n, d) => n + drop(dir, d, (e) => e.s !== s).length, 0);
+  let n = 0;
+  each(days(dir), (d) => { n += drop(dir, d, (e) => e.s !== s).length; });
+  return n;
 }
 
 // The entries with every term (any case) in one of their fields, in the range,
@@ -204,7 +228,11 @@ export function forget(dir, terms, { since, until, conversation, apply = false, 
       const before = raw(f);
       if (replaceIfUnchanged(f, before, [...(before ?? '').split(/\r?\n/).filter(Boolean), ...keys].join('\n') + '\n') !== 'conflict') break;
     }
-    const went = new Set([...new Set(matched.map((e) => e.day))].flatMap((d) => drop(dir, d, (e) => !keys.has(e.key)).map((e) => e.key)));
+    // A day that won't be written (not UTF-8) is named, the rest still go.
+    const went = new Set([...new Set(matched.map((e) => e.day))].flatMap((d) => {
+      try { return drop(dir, d, (e) => !keys.has(e.key)).map((e) => e.key); }
+      catch (e) { failed?.push({ path: dayFile(dir, d), code: e.code || e.message }); return []; }
+    }));
     return { matched, removed: matched.filter((e) => went.has(e.key)) };
   });
 }
@@ -222,10 +250,10 @@ function fault(dir, e, from = '') {
 // Held with auto memory off once, it is never recorded, live or imported:
 // resumed with memory on, its first Stop journaled every turn (review,
 // 2026-10-29). A private mark still sweeps it.
-function take(dir, transcriptPath, got, { quiet, hush }) {
+function take(dir, transcriptPath, got, { quiet, hush, when }) {
   const s = tag(basename(transcriptPath, '.jsonl'));
   if (quiet && hush) sweep(dir, s);
-  else if (!quiet && !hushed(projectsRoot(), s, false, OFF)) record(dir, transcriptPath, got);
+  else if (!quiet && !hushed(projectsRoot(), s, false, OFF)) record(dir, transcriptPath, got, when);
   else return false;
   return true;
 }
@@ -310,7 +338,8 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {})
         // off. A mark typed while the plugin was off is taken as its Stop takes
         // one: the conversation is marked, and what it wrote before goes.
         const r = readTail(c.p, IMPORT_MAX_BYTES), got = turns(r.text), hush = got.hush === true;
-        take(dir, c.p, got, { quiet: hushed(dir, tag(basename(c.p, '.jsonl')), hush), hush });
+        // A turn whose time won't parse: the transcript's, not the import's.
+        take(dir, c.p, got, { quiet: hushed(dir, tag(basename(c.p, '.jsonl')), hush), hush, when: local(c.m) });
         mark(dir, [`${c.k} ${c.size}${r.whole ? '' : ' partial'}`]);
         n++;
       } catch (e) { err = e; }   // left for a later Stop: one transcript that won't read must not hold up the rest

@@ -8,11 +8,12 @@ import assert from 'node:assert';
 import { tempHome, storeFor, tool, slug } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget } = await import('./journal.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, summary } = await import('./journal.mjs');
 const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
+const throws = (f) => { try { f(); return false; } catch { return true; } };
 
 const stripe = (kind, mode) => [kind, mode, '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
 const T = '/x/projects/C--proj/0123456789abcdef.jsonl';
@@ -149,6 +150,32 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   forget(dir, ['deploy n-1'], { apply: true });
   const u = readFileSync(f, 'utf8');
   ok(!u.includes('j:n-1 ') && u.indexOf('j:n-0 ') < u.indexOf('NOTE A') && u.indexOf('NOTE A') < u.indexOf('j:n-2 '), `a note whose entry goes stays, under the entry before (got ${u})`);
+}
+
+{
+  // A note added in the Windows code page (PowerShell 5.1's Add-Content): read
+  // as UTF-8 and written back, its accented letters were U+FFFD for good.
+  const d = storeFor(home, 'C:\\journal-ansi'), f = dayFile(d, '2026-11-12'), failed = join(d, 'journal', '.failed'), P = '/x/projects/C--proj/aaaaaaaa.jsonl';
+  record(d, T, [turn({ at: '2026-11-12 09:00', id: 'w-1', ask: 'the zebra', raw: 'the zebra' })]);
+  record(d, P, [turn({ at: '2026-11-12 09:30', id: 'a-1' })]);
+  appendFileSync(f, Buffer.from('\nNote: café supplier José confirmed\n', 'latin1'));
+  const bytes = readFileSync(f), others = () => days(d).filter((x) => x !== '2026-11-12').map((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries.map((e) => e.key).join()).join();
+  write(d, T, [turn({ at: '2026-11-11 10:00', id: 'w-0' }), turn({ at: '2026-11-12 10:00', id: 'w-2' }), turn({ at: '2026-11-13 10:00', id: 'w-3' })], { quiet: false, hush: false });
+  let fl = ''; try { fl = readFileSync(failed, 'utf8'); } catch {}
+  ok(readFileSync(f).equals(bytes) && others() === 'w-0,w-3' && fl.includes('2026-11-12.md') && summary(d).failed?.includes('not UTF-8'),
+    `a day file not in UTF-8 is left as it is, the other days are written, and status says why (got ${others()}; ${fl})`);
+  record(d, P, [turn({ at: '2026-11-11 11:00', id: 'w-4' })]);
+  ok(throws(() => sweep(d, 'aaaaaaaa')) && others() === 'w-0,w-3' && readFileSync(f).equals(bytes), 'a sweep leaves it too, after the other days, and says so');
+  const failedForget = [], r = forget(d, ['zebra'], { apply: true, failed: failedForget });
+  ok(r.matched.length === 1 && !r.removed.length && readFileSync(f).equals(bytes) && failedForget.some((x) => x.path === f), `forget leaves it, and names it (got ${JSON.stringify(failedForget)})`);
+}
+{
+  // A time that won't parse (a transcript another tool wrote) made the day file
+  // NaN-NaN-Na.md, which nothing lists: no search, forget or sweep reached it.
+  const d = storeFor(home, 'C:\\journal-nan'), now = local().slice(0, 10);
+  record(d, T, [turn({ at: 'NaN-NaN-NaN NaN:NaN', id: 'nan-1' }), turn({ at: '12026-10-29 10:00', id: 'nan-2' })]);
+  ok(days(d).join() === now && parseDay(readFileSync(dayFile(d, now), 'utf8')).entries.length === 2 && readFileSync(dayFile(d, now), 'utf8').includes(`d:${now} -->`),
+    `a turn whose time won't parse is journaled on the day it was read (got ${days(d)})`);
 }
 
 // The sink: a conversation already private writes nothing; the Stop that marks
@@ -409,6 +436,15 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   old(r, sid('9'), 10, ['one more']);
   due(d);
   ok(fill(d).imported === 1 && existsSync(failed), "an import clears its own failure only, never the live write's");
+}
+{
+  // Imported, a turn whose time won't parse takes its transcript's: the day it was last written.
+  const [r, d] = repo('nan'), p = join(projects, slug(r), `${sid('n')}.jsonl`);
+  writeFileSync(p, rec('user', sid('n'), '2026-10-29 garbage', 'asked at no time', r) + '\n' + rec('assistant', sid('n'), '2026-10-29 garbage', 'answered', r) + '\n');
+  utimesSync(p, ago(50), ago(50));
+  fill(d);
+  const was = local(Date.now() - 50 * 3600e3).slice(0, 10);
+  ok(days(d).join() === was && asks(d).join() === 'asked at no time', `an imported turn whose time won't parse is journaled on its transcript's day (got ${days(d)}, want ${was})`);
 }
 // The Stop, as Claude Code runs it, on a conversation with a 70 MB tool result.
 {
