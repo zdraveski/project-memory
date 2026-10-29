@@ -67,8 +67,12 @@ export const render = (e) => [
   ...(e.ran.length ? [`**Ran:** ${e.ran.join(' · ')}`] : []),
 ].join('\n');
 
-// An entry is its marker and the field lines under it, up to a blank line;
-// any other line (a note someone wrote, a marker that won't parse) is prose.
+// An entry is its marker and the field lines under it. A blank line keeps it
+// open: a Markdown formatter puts one after the marker and the heading, and
+// every entry of a day saved through one was read as prose. Any other line (a
+// note someone wrote, a marker that won't parse) is prose, kept with the entry
+// above it (`after`), or on top before the first: all of a day's notes went to
+// the top at its next write, apart from what each was about.
 export function parseDay(text) {
   const prose = [], entries = [];
   let e = null;
@@ -76,19 +80,21 @@ export function parseDay(text) {
   for (const line of text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').replace(/^# Journal \d{4}-\d\d-\d\d\n*/, '').split('\n')) {
     const m = MARK.exec(line);
     if (m) { e = { key: m[1], at: `${m[3]} 00:00`, s: '', t: m[2], branch: '', asked: '', answered: '', changed: [], ran: [] }; entries.push(e); continue; }
-    const f = e && line.trim() && [HEAD.exec(line), /^\*\*(Asked|Answered|Changed|Ran):\*\* ?(.*)$/.exec(line)];
+    if (e && !line.trim()) continue;
+    const f = e && [HEAD.exec(line), /^\*\*(Asked|Answered|Changed|Ran):\*\* ?(.*)$/.exec(line)];
     if (f?.[0]) { e.at = `${e.at.slice(0, 10)} ${f[0][1]}`; e.s = f[0][2]; e.branch = f[0][3] ?? ''; }
     else if (f?.[1]) {
       const [, k, v] = f[1];
       if (k === 'Asked') e.asked = v; else if (k === 'Answered') e.answered = v;
       else if (k === 'Changed') e.changed = v ? v.split(', ') : []; else e.ran = v ? v.split(' · ') : [];
-    } else { e = null; prose.push(line); }
+    } else { e = null; const up = entries.at(-1); (up ? (up.after ??= []) : prose).push(line); }
   }
+  for (const x of entries) if (x.after) x.after = x.after.join('\n').trim();
   return { prose: prose.join('\n').trim(), entries };
 }
 
 export const dayFile = (dir, at) => join(dir, JOURNAL, day(at) + '.md');
-const page = (d, prose, es) => `# Journal ${d}\n\n` + [prose, ...es.map(render)].filter(Boolean).join('\n\n') + '\n';
+const page = (d, prose, es) => `# Journal ${d}\n\n` + [prose, ...es.flatMap((e) => [render(e), e.after])].filter(Boolean).join('\n\n') + '\n';
 // The keys forget removed, one a line: a backfill reads a quiet conversation
 // again once it grows, and would bring a forgotten entry back. Read trimmed,
 // as hushed() reads its list: a key with a \r or space after it is still one.
@@ -112,8 +118,9 @@ export function record(dir, transcriptPath, turns) {
       const have = new Map(entries.map((e) => [e.key, e]));
       let changed = 0;
       for (const e of fresh) {
-        if (!have.has(e.key) || render(have.get(e.key)) !== render(e)) changed++;
-        have.set(e.key, e);
+        const was = have.get(e.key);
+        if (!was || render(was) !== render(e)) changed++;
+        have.set(e.key, was?.after ? { ...e, after: was.after } : e);
       }
       const all = [...have.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
       const w = replaceIfUnchanged(file, before, page(d, prose, all));
@@ -157,8 +164,13 @@ export const entries = (dirs, { since, until, failed = [] } = {}) => dirs.flatMa
 function drop(dir, d, keep) {
   const file = dayFile(dir, d);
   for (let i = 0; i < 3; i++) {
-    const before = raw(file), { prose, entries } = parseDay(before ?? '');
-    const kept = entries.filter(keep);
+    const before = raw(file), p = parseDay(before ?? ''), entries = p.entries, kept = [];
+    let prose = p.prose;
+    // A note goes up to the entry before when its own goes: it is the user's.
+    for (const e of entries) {
+      if (keep(e)) kept.push(e);
+      else if (e.after) { const up = kept.at(-1); if (up) up.after = [up.after, e.after].filter(Boolean).join('\n\n'); else prose = [prose, e.after].filter(Boolean).join('\n\n'); }
+    }
     if (kept.length === entries.length) return [];
     if (replaceIfUnchanged(file, before, page(d, prose, kept)) === 'conflict') continue;
     if (!kept.length && !prose) try { unlinkSync(file); } catch {}

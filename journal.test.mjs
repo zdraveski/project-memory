@@ -118,6 +118,39 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   writeFileSync(f, '');
 }
 
+{
+  // Saved through a Markdown formatter (Prettier, markdownlint --fix): a blank
+  // line after each marker and each heading. Read as prose, its words were out
+  // of reach of search, forget and a sweep, and the next Stop wrote them twice.
+  const f = dayFile(dir, '2026-11-10'), code = (t) => (t.match(/4417/g) || []).length;
+  record(dir, T, [turn({ at: '2026-11-10 09:00', id: 'p-1', ask: 'the door code is 4417', raw: 'the door code is 4417' }), turn({ at: '2026-11-10 09:30', id: 'p-2' })]);
+  writeFileSync(f, readFileSync(f, 'utf8').replace(/(-->\n)(## .*\n)/g, '$1\n$2\n'));
+  const p = parseDay(readFileSync(f, 'utf8'));
+  ok(p.prose === '' && p.entries.length === 2 && p.entries[0].asked === 'the door code is 4417' && p.entries[0].s === '01234567' && p.entries[1].answered === 'an answer',
+    `a formatted day file parses to its entries, whole, and no prose (got ${JSON.stringify(p)})`);
+  record(dir, T, [turn({ at: '2026-11-10 09:00', id: 'p-1', ask: 'the door code is 4417', raw: 'the door code is 4417' })]);
+  ok(code(readFileSync(f, 'utf8')) === 1, 'the next record adds no second copy');
+  forget(dir, ['4417'], { apply: true });
+  ok(code(readFileSync(f, 'utf8')) === 0, 'and forget reaches it');
+}
+{
+  // A note written under an entry stays under it, as the day is rewritten
+  // around it, and goes up to the entry before when its own entry goes.
+  const f = dayFile(dir, '2026-11-11'), put = (id, at, did) => turn({ id, at: `2026-11-11 ${at}`, ask: `deploy ${id}`, raw: `deploy ${id}`, did });
+  record(dir, T, [put('n-1', '09:00', 'deployed'), put('n-2', '10:00', 'deployed to prod')]);
+  writeFileSync(f, readFileSync(f, 'utf8').replace('# Journal 2026-11-11\n\n', '# Journal 2026-11-11\n\nOn top.\n\n')
+    .replace('**Answered:** deployed\n', '**Answered:** deployed\nNOTE A: staging broke an hour later.\n\nrolled back by hand\n')
+    .replace('**Answered:** deployed to prod', '**Answered:** deployed to prod\nNOTE B: this one was fine.'));
+  record(dir, T, [put('n-0', '08:00', 'ready'), put('n-3', '11:00', 'changelog written'), put('n-2', '10:00', 'deployed to prod, checked')]);
+  const t = readFileSync(f, 'utf8'), at = (s) => t.indexOf(s);
+  ok(at('On top.') < at('j:n-0 ') && at('j:n-0 ') < at('j:n-1 ') && at('j:n-1 ') < at('NOTE A') && at('NOTE A') < at('rolled back by hand') && at('rolled back by hand') < at('j:n-2 ')
+    && at('j:n-2 ') < at('NOTE B') && at('NOTE B') < at('j:n-3 ') && at('deployed to prod, checked') > 0, `each note stays under its entry (got ${t})`);
+  ok(record(dir, T, [put('n-1', '09:00', 'deployed')]) === 0 && readFileSync(f, 'utf8') === t, 'and reads back as it was written');
+  forget(dir, ['deploy n-1'], { apply: true });
+  const u = readFileSync(f, 'utf8');
+  ok(!u.includes('j:n-1 ') && u.indexOf('j:n-0 ') < u.indexOf('NOTE A') && u.indexOf('NOTE A') < u.indexOf('j:n-2 '), `a note whose entry goes stays, under the entry before (got ${u})`);
+}
+
 // The sink: a conversation already private writes nothing; the Stop that marks
 // it takes back what it wrote, from every day.
 {
@@ -249,7 +282,8 @@ const repo = (name) => {
 };
 const asks = (d) => days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries).map((e) => e.asked).sort();
 const listed = (d) => readFileSync(join(d, 'journal', '.imported'), 'utf8').split('\n').filter(Boolean);
-const fill = (d, o) => withLock(d, () => backfill(d, o));
+// Time enough for every import: under six suites at once, 150 ms took two of three.
+const fill = (d, o) => withLock(d, () => backfill(d, { budgetMs: 60e3, ...o }));
 // The store's transcripts are looked at once in half an hour, by the list's age.
 const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
 {
