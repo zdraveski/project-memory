@@ -902,6 +902,9 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   const page = (d, xs) => `# Journal ${d}\n\n${xs.map(render).join('\n\n')}\n`;
   const want = { '2025-10-20': page('2025-10-20', es.slice(0, 2)), '2025-10-21': page('2025-10-21', es.slice(2, 3)), [today]: page(today, es.slice(3)) };
   const reset = () => { rmSync(fj, { recursive: true, force: true }); mkdirSync(fj, { recursive: true }); for (const [d, t] of Object.entries(want)) writeFileSync(join(fj, `${d}.md`), t); };
+  // aaaa1111's transcript is on disk, bbbb2222's is gone: only a key that could come back is listed.
+  mkdirSync(fj, { recursive: true }); writeFileSync(join(root, 'C--fg', 'aaaa1111.jsonl'), '');
+  const listing = (xs) => xs.filter((e) => e.s === 'aaaa1111').map((e) => `${e.key}\t${e.t}\t${e.at}`).sort().join();
   const file = (d) => readFileSync(join(fj, `${d}.md`), 'utf8'), gone = (d) => !existsSync(join(fj, `${d}.md`)), kept = (...ds) => ds.every((d) => file(d) === want[d]);
 
   reset();
@@ -958,10 +961,14 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     `forget --conversation removes one conversation, a turn since the look too; today's day, not yet in the snapshots, needs no word on them (got ${r.stdout}${r.stderr})`);
   // What the refusal advises does forget the whole journal, every key listed so no backfill brings it back.
   reset();
+  // And handoff.md loses those exchanges, by conversation and time: the next
+  // startup's briefing printed what was forgotten (final review, R36).
+  const said = (at, s, ask) => `- **asked** ${at} [${s}]: ${ask}\n  **did:** done`;
+  writeFileSync(join(fd, 'handoff.md'), `---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written._\n\n${said(es[0].at, 'aaaa1111', es[0].asked)}\n${said(es[0].at, 'cccc3333', 'the walrus budget')}\n<!-- auto:end -->\n`);
   r = fcli('forget', '--since', '1970-01-01', '--yes');
-  const listed = readFileSync(join(fj, '.forgotten'), 'utf8').split('\n').filter(Boolean).sort().join();
-  ok(r.status === 0 && r.stdout.endsWith(`\nremoved 5 from ${fd}\n`) && Object.keys(want).every(gone) && listed === es.map((e) => e.key).sort().join(),
-    `--since 1970-01-01 --yes forgets the whole journal (got ${r.stdout}; ${listed})`);
+  const listed = readFileSync(join(fj, '.forgotten'), 'utf8').split('\n').filter(Boolean).sort().join(), hd = readFileSync(join(fd, 'handoff.md'), 'utf8');
+  ok(r.status === 0 && r.stdout.endsWith(`\nremoved 5 from ${fd}\n`) && Object.keys(want).every(gone) && listed === listing(es) && !hd.includes(es[0].asked) && hd.includes('[cccc3333]: the walrus budget'),
+    `--since 1970-01-01 --yes forgets the whole journal and its exchanges in handoff.md, and lists the keys a transcript on disk could bring back (got ${r.stdout}; ${listed}; ${hd})`);
   // With no history there is no old copy to delete: the snapshots go unmentioned.
   reset();
   renameSync(join(root, '.git'), join(root, '.git-away'));
@@ -1021,8 +1028,8 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     `a range alone shows its first 20 entries, the count, and its first and last day (got ${r.stdout.slice(-400)})`);
   r = fcli('forget', '--since', '1970-01-01', '--yes');
   const all250 = readFileSync(join(fj, '.forgotten'), 'utf8').split('\n').filter(Boolean).sort().join();
-  ok(r.status === 0 && r.stdout.endsWith(`\nremoved 250 from ${fd}\n`) && !/\(key /.test(r.stdout) && [...Object.keys(want), '2025-10-23'].every(gone) && all250 === [...es, ...herd].map((e) => e.key).sort().join(),
-    `--yes removes every entry of a range past 200, says the count, not each line, and lists every key (got ${r.stdout.slice(-400)})`);
+  ok(r.status === 0 && r.stdout.endsWith(`\nremoved 250 from ${fd}\n`) && !/\(key /.test(r.stdout) && [...Object.keys(want), '2025-10-23'].every(gone) && all250 === listing([...es, ...herd]),
+    `--yes removes every entry of a range past 200, says the count, not each line, and lists every key a transcript on disk could bring back (got ${r.stdout.slice(-400)})`);
   // A day that changed under each of its three writes keeps its entries: what
   // is listed and counted is what went, out of what matched. The other writer
   // is simulated in the CLI's own process, just before each write lands.

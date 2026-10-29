@@ -214,15 +214,23 @@ match. A list by words, keys or a conversation shows up to 200 entries;
 past that, narrow it, since `--yes` removes only what a list can show. A
 list by dates alone shows the first 20 and how many entries fall between
 the first and last day, and `--yes` removes them all, however many. Their
-keys are kept in `.forgotten`, so a later import never brings them back. To
+keys are kept in `.forgotten`, so a later import never brings them back,
+for as long as Claude Code keeps their conversation's file (once it's gone,
+nothing can bring them back, and the key is dropped). To
 forget the whole journal, use `forget --since 1970-01-01 --yes`. That
 removes only what the journal holds so far: check that `status` shows no
 conversations left to import, or run it again once they're in.
 
 - `forget` works on one project's journal at a time. If you name a key that
   project has no entry for, it says so.
-- `forget` clears the journal only. The record of where you left off
-  (`handoff.md`) and Claude Code's own conversation files are separate.
+- `forget` also takes the exchanges it removes out of the record of where
+  you left off (`handoff.md`), so the next conversation's briefing doesn't
+  show them, and a later reply in their conversation doesn't put them back.
+  It matches them there by conversation and minute, so another exchange of
+  that conversation in the same minute goes too. Claude Code's own
+  conversation files are separate.
+- A search hit or `show` of a private entry doesn't name its conversation
+  file, since that file still holds the private part.
 - An exchange in which Claude runs `forget` is kept without its words, files
   or commands, in the journal and in `handoff.md`, so its list of what goes
   isn't saved again. Claude finds the entries with `forget` itself for that

@@ -60,7 +60,7 @@ Windows device names such as `con` and `nul`.
 | `…/memory/journal.md` | the journal's note, so the index has a pinned line for it |
 | `…/memory/journal/.imported`, `.looked`, `.folders` | the transcripts imported and how far, the time of the last look for them, the worktree folders looked in too (see [The journal](#the-journal)) |
 | `…/memory/journal/.checked`, `.sweeps` | how far a Stop looked through each conversation for a mark, and those swept out; the tag and day of each sweep not yet done |
-| `…/memory/journal/.failed`, `.forgotten` | the last failure of the live write and of the import, one line each; the keys of forgotten entries |
+| `…/memory/journal/.failed`, `.forgotten` | the last failure of the live write and of the import, one line each; the keys of forgotten entries, each with its conversation and time |
 | `…/memory/.lock` | the store's lock, a folder that exists while a write is in progress |
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
 | `…/memory/.private-sessions` | the tags of conversations marked private (the newest 1,000) |
@@ -356,7 +356,8 @@ the sweeps listed in `.sweeps`. A conversation never imported:
   zero-width character is.
 
 Keys listed in `journal/.forgotten` are never written again, by an import or
-a live Stop.
+a live Stop, and the exchanges they name are never written to `handoff.md`
+again, by a Stop or the compaction gate.
 
 **In the history.** Today's file grows with every reply, so it stays out of
 the snapshots: committed, every version would stay in the history. The
@@ -548,7 +549,9 @@ reply, files and commands it shows only those that hold a search word, and
 of each only the stretches 80 characters either side of a match, 800
 characters in all a hit. Every field is redacted before it is cut, so a
 stretch never shows part of a secret. When the hit's transcript is still on
-disk, its path follows. A request of 80 characters or more asked again (a
+disk, its path follows, unless the entry is private (its reply is
+`[private]`): the transcript is where the private part still is. A request
+of 80 characters or more asked again (a
 prompt a script sends, a retry) is one hit: the best-ranked copy, then
 `N more like this, <first day>..<last day>` with up to 5 of the other
 copies' keys. `--limit` and the count are of these hits. A ranged search
@@ -556,8 +559,8 @@ also says how many notes match outside the range, since a note's date is
 its last change.
 
 `show <key…>` prints journal entries whole, by the key a hit printed: the
-heading, the key, every field, the day file and, when it's still on disk,
-the transcript. `--same` adds every entry whose request is the same, as a
+heading, the key, every field, the day file and, when it's still on disk
+and the entry isn't private, the transcript. `--same` adds every entry whose request is the same, as a
 hit's "more like this" counts them; `--all` and `--store` reach another
 project. A key no entry has is named, and the tool exits with 1.
 
@@ -586,13 +589,20 @@ store's lock, then lists what went (past 200, only how many). A key the
 store has no entry for is named, and the tool exits with 1. It works on one
 store: `--all` is refused, and `--store` picks another project's.
 
-The keys are added to `journal/.forgotten` first, so neither a killed
-`forget` nor a later import brings them back. A day whose file can't be
+The keys are added to `journal/.forgotten` first, each with its
+conversation and time, so neither a killed `forget` nor a later import
+brings them back. A key is listed only while its conversation's transcript
+is on disk: once that is gone, nothing can bring the entry back, and the
+next `forget` drops its line. A day whose file can't be
 written keeps its entries and is named (`could not write`), the other days
 still go, and the tool exits with 1. When the snapshot repository is
 project-memory's, it then names the days before today, which the snapshots
-already hold, and the folder to delete. It clears the journal only:
-`handoff.md` and Claude Code's transcripts are untouched. The turn that
+already hold, and the folder to delete. The same exchanges go from
+`handoff.md`, matched by conversation and minute (two exchanges of one
+minute go together), so the next startup's briefing doesn't show them; a
+`handoff.md` that can't be written is named the same way. A later Stop of
+that conversation, which reads them again, leaves out every exchange listed
+in `.forgotten`. Claude Code's transcripts are untouched. The turn that
 runs it is kept without its words, in the journal and in `handoff.md` (see
 [The journal](#the-journal)). `--since 1970-01-01 --yes` empties the
 journal of what it holds so far, however many entries; conversations

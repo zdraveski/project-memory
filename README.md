@@ -365,9 +365,9 @@ back.
   how).
 - To remove something from the journal, ask Claude, for example *"Forget the
   password I pasted yesterday."* Claude lists the entries that match, and
-  removes exactly the ones you confirm, in one project at a time. This
-  clears the journal only: the record of where you left off and Claude
-  Code's own conversation files are separate. The exchanges in which Claude
+  removes exactly the ones you confirm, in one project at a time. They go
+  from the record of where you left off too, so the next briefing doesn't
+  show them; Claude Code's own conversation files are separate. The exchanges in which Claude
   looks for what to forget and removes it are kept without their words, in
   the journal and in the record of where you left off, so what was removed
   isn't saved again. To empty the journal, ask Claude to forget everything

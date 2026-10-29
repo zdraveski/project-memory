@@ -462,7 +462,8 @@ function keep(all, me) {
 const FRONT = `---\nname: handoff\ndescription: "The rolling handoff"\nmetadata:\n  node_type: memory\n  type: project\n  tier: hot\n---\n\n`;
 
 // What handoff.md should say, from what it says now and this turn's entries:
-// the new text, 'unchanged', or null when there is nothing to write.
+// the new text, 'unchanged', or null when there is nothing to write. `drop`:
+// which of its entries go.
 function build(raw, fresh, drop = null, me = fresh[0]?.s, whole = false) {
   let doc = (raw ?? '').replace(/^\uFEFF/, '');
   // A file emptied by a failed edit has no `tier: hot`, so tiering would age
@@ -504,7 +505,7 @@ function build(raw, fresh, drop = null, me = fresh[0]?.s, whole = false) {
   const uniq = have.filter((t) => last.get(whole1(t)) === t), left = new Map(), gone = new Set();
   for (const f of fresh) left.set(key(f), (left.get(key(f)) ?? 0) + 1);
   for (const t of [...uniq].reverse()) { const n = left.get(key(t)); if (n) { gone.add(t); left.set(key(t), n - 1); } }
-  const kept = uniq.filter((t) => !gone.has(t) && !(t.s === '' && seenBare.has(bare(t))) && t.s !== drop && !fresh.some((f) => twin(f, t)));
+  const kept = uniq.filter((t) => !gone.has(t) && !(t.s === '' && seenBare.has(bare(t))) && !drop?.(t) && !fresh.some((f) => twin(f, t)));
   const merged = keep([...kept, ...fresh], me);
   if (!merged.length && !(drop && has)) return null;
   // An entry kept from the file is rendered once, for the comparison and the
@@ -638,14 +639,19 @@ export function handoff(input, sink = null) {
     if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush }); } catch {}
     // Or by the journal's look at the whole transcript, past this read.
     quiet ||= hushed(dir, s);
-    const w = put(dir, quiet ? [] : fresh, quiet ? s : null, s, got.whole);
+    // An exchange forget took out stays out: read again, the forget turn's own
+    // Stop put it back (R36). By its transcript and minute, as forget lists it.
+    let list = null; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch {}
+    const me = `${basename(dirname(input.transcript_path))}/${basename(input.transcript_path, '.jsonl')}`;
+    const out = new Set(forgotten(list).filter(([, t]) => t === me).map(([, , at]) => at));
+    const w = put(dir, quiet ? [] : fresh.filter((t) => !out.has(t.at)), quiet ? (t) => t.s === s : null, s, got.whole);
     return quiet ? 'private' : w;
   });
   return r ?? 'busy';
 }
 
-// handoff.md with these entries merged in, and without a private
-// conversation's (`drop`). Call under withLock(dir). True written,
+// handoff.md with these entries merged in, and without those `drop` takes (a
+// private conversation's). Call under withLock(dir). True written,
 // 'unchanged', false nothing to write.
 function put(dir, fresh, drop, me, whole) {
   const file = join(dir, 'handoff.md');
@@ -658,9 +664,15 @@ function put(dir, fresh, drop, me, whole) {
   }
   return false;
 }
-// A conversation the journal's import found marked private: its entries go
-// from handoff.md, as its own Stop's would have. Call under withLock(dir).
-export const unsay = (dir, s) => put(dir, [], s, s);
+// The entries `gone` takes go from handoff.md: a conversation the journal's
+// import found marked private, as its own Stop's would have, or the exchanges
+// forget took out. Call under withLock(dir).
+export const unsay = (dir, gone) => put(dir, [], gone);
+// The exchanges forget took out, `<key>\t<folder>/<session>\t<time>` a line
+// (journal.mjs writes it; an older line is its key alone). Trimmed: an
+// editor's CRLF, or a space left after a line, is still the line.
+export const FORGOTTEN = join('journal', '.forgotten');
+export const forgotten = (text) => (text ?? '').split(/\r?\n/).map((l) => l.trim().split('\t')).filter(([k]) => k);
 
 // Warnings only: the startup line costs every session, so it says nothing
 // here when all is well. The shared store's problems are every project's.

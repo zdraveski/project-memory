@@ -400,6 +400,20 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
   ok(!of(L).length && tags.split(/\r?\n/).includes(L.slice(0, 8)) && !hd.includes('hunter2'),
     `a mark typed after the first look, further back than the read, keeps the conversation out (got ${JSON.stringify(of(L))}; ${JSON.stringify(tags)})`);
 }
+{
+  // R36: forget takes the exchange out of handoff.md too (the next startup's
+  // briefing printed it), and the next Stop of its conversation, which reads
+  // it again, does not put it back (final review, 2026-10-29).
+  const J = sid('j'), hd = () => readFileSync(join(sdir, 'handoff.md'), 'utf8');
+  say(J, '2026-10-28T15:00:00Z', 'the walrus budget is 900', 'noted the walrus budget');
+  say(J, '2026-10-28T15:05:00Z', 'the seal plan', 'drafted the seal plan');
+  stop(J);
+  const had = hd().includes('walrus') && hd().includes('the seal plan'), r = forget(sdir, ['walrus'], { apply: true }), after = hd();
+  say(J, '2026-10-28T15:10:00Z', 'what next', 'the otter review');
+  stop(J);
+  ok(had && r.removed.length === 1 && !after.includes('walrus') && after.includes('the seal plan') && !hd().includes('walrus') && hd().includes('the otter review') && !of(J).some((e) => e.asked.includes('walrus')),
+    `forget takes the exchange out of handoff.md, and the next Stop of its conversation does not put it back (got ${had}, ${after}, ${hd()})`);
+}
 
 // --- backfill: the conversations still on disk, a few a Stop -----------------
 const projects = join(home, '.claude', 'projects');
@@ -920,6 +934,9 @@ const small = { segment: 1024, budgetMs: 0 };
 // forget(): every term in one of an entry's fields, in any case, within the
 // dates; nothing goes without apply. What went stays gone: recorded again, or
 // read again by a backfill, a forgotten entry is not brought back.
+// T's transcript is on disk, as a recorded turn's is: a key no transcript
+// could bring back is not listed.
+mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(projects, 'C--proj', '0123456789abcdef.jsonl'), '');
 {
   const d = storeFor(home, 'C:\\forget-selftest'), O = '/x/projects/C--proj/bbbbbbbb.jsonl', list = join(d, 'journal', '.forgotten');
   const put = (at, id, ask, t = T) => record(d, t, [turn({ at, id, ask, raw: ask })]);
@@ -975,6 +992,49 @@ const small = { segment: 1024, budgetMs: 0 };
   let r; try { r = forget(d, ['mango'], { apply: true, failed }); } finally { fs.renameSync = rename; syncBuiltinESMExports(); }
   ok(r.removed.map((e) => e.key).join() === 'r-1,r-3' && parseDay(readFileSync(f21, 'utf8')).entries.length === 1 && JSON.stringify(failed) === JSON.stringify([{ path: f21, code: 'EPERM', write: true }]),
     `a day that cannot be written keeps its entries and is named; the days after it still go (got ${JSON.stringify(r?.removed?.map((e) => e.key))}, ${JSON.stringify(failed)})`);
+}
+{
+  // R36: forget takes its matches out of handoff.md too, by conversation and
+  // minute: another conversation's exchange of that minute stays. A
+  // handoff.md the disk refuses is named, as a day is.
+  const d = storeFor(home, 'C:\\forget-handoff'), hf = join(d, 'handoff.md'), failed = [];
+  record(d, T, [turn({ at: '2026-10-20 09:00', id: 'h-1', ask: 'mango one' }), turn({ at: '2026-10-20 09:05', id: 'h-2', ask: 'kiwi two' })]);
+  const said = (at, ask, s = '01234567') => `- **asked** ${at} [${s}]: ${ask}\n  **did:** an answer`;
+  writeFileSync(hf, `---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written._\n\n${[said('2026-10-20 09:00', 'mango one'), said('2026-10-20 09:00', 'mango elsewhere', 'feedbeef'), said('2026-10-20 09:05', 'kiwi two')].join('\n')}\n<!-- auto:end -->\n`);
+  forget(d, ['mango'], { apply: true });
+  const hd = readFileSync(hf, 'utf8');
+  ok(!hd.includes('mango one') && hd.includes('[feedbeef]: mango elsewhere') && hd.includes('[01234567]: kiwi two'), `forget takes its matches out of handoff.md, and only them (got ${hd})`);
+  const rename = fs.renameSync;
+  fs.renameSync = (a, b) => { if (b === hf) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }); return rename(a, b); };
+  syncBuiltinESMExports();
+  let r; try { r = forget(d, ['kiwi'], { apply: true, failed }); } finally { fs.renameSync = rename; syncBuiltinESMExports(); }
+  ok(r.removed.map((e) => e.key).join() === 'h-2' && readFileSync(hf, 'utf8').includes('kiwi two') && JSON.stringify(failed) === JSON.stringify([{ path: hf, code: 'EPERM', write: true }]),
+    `a handoff.md that cannot be written is named, and the journal's entries still go (got ${JSON.stringify(r?.removed?.map((e) => e.key))}, ${JSON.stringify(failed)})`);
+}
+{
+  // .forgotten keeps only what could come back: a key whose transcript is
+  // gone is never read again, so it is not listed, and goes at the next
+  // forget. Forgetting everything listed every key, read at every Stop
+  // (final review). An older line, its key alone, stays.
+  const d = storeFor(home, 'C:\\forget-prune'), list = join(d, 'journal', '.forgotten'), gp = join(projects, 'C--prune', 'gone.jsonl'), hp = join(projects, 'C--prune', 'here.jsonl');
+  mkdirSync(dirname(hp), { recursive: true }); writeFileSync(hp, ''); writeFileSync(gp, '');
+  record(d, gp, [turn({ at: '2026-10-20 09:00', id: 'p-1', ask: 'mango gone' }), turn({ at: '2026-10-20 09:01', id: 'p-4', ask: 'kiwi gone' })]);
+  record(d, hp, [turn({ at: '2026-10-20 09:05', id: 'p-2', ask: 'mango here' }), turn({ at: '2026-10-20 09:10', id: 'p-3', ask: 'kiwi here' })]);
+  forget(d, ['mango'], { apply: true });
+  const first = readFileSync(list, 'utf8');
+  rmSync(gp); appendFileSync(list, 'p-old\n');
+  forget(d, ['kiwi'], { apply: true });
+  ok(first === 'p-1\tC--prune/gone\t2026-10-20 09:00\np-2\tC--prune/here\t2026-10-20 09:05\n' && readFileSync(list, 'utf8') === 'p-2\tC--prune/here\t2026-10-20 09:05\np-old\np-3\tC--prune/here\t2026-10-20 09:10\n',
+    `forget lists a key with its conversation and time while its transcript is on disk, and only then (got ${JSON.stringify(first)}, ${JSON.stringify(readFileSync(list, 'utf8'))})`);
+  ok(record(d, hp, [turn({ at: '2026-10-20 09:05', id: 'p-2', ask: 'mango here' })]) === 0, 'a listed key recorded again stays gone');
+  // A transcript whose stat fails but for its absence (held, no access) keeps its keys.
+  record(d, hp, [turn({ at: '2026-10-20 09:15', id: 'p-5', ask: 'plum here' })]);
+  const stat = fs.statSync;
+  fs.statSync = (p, ...a) => { if (String(p).endsWith('here.jsonl')) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }); return stat(p, ...a); };
+  syncBuiltinESMExports();
+  try { forget(d, ['plum'], { apply: true }); } finally { fs.statSync = stat; syncBuiltinESMExports(); }
+  ok(readFileSync(list, 'utf8') === 'p-2\tC--prune/here\t2026-10-20 09:05\np-old\np-3\tC--prune/here\t2026-10-20 09:10\np-5\tC--prune/here\t2026-10-20 09:15\n',
+    `a transcript that will not stat keeps its keys listed (got ${JSON.stringify(readFileSync(list, 'utf8'))})`);
 }
 {
   const [r, d] = repo('forget'), p = old(r, sid('a'), 30, ['the zebra eats mango', 'the zebra policy']);

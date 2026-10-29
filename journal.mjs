@@ -4,7 +4,7 @@
 // files and commands (uncapped in turns()) are shortened.
 import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
-import { clip, tag, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, ACTIVE, OFF, TAIL } from './handoff-log.mjs';
+import { clip, tag, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL } from './handoff-log.mjs';
 import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, withLock } from './store.mjs';
 
 export const JOURNAL = 'journal';
@@ -132,15 +132,14 @@ export function parseDay(text) {
 
 export const dayFile = (dir, at) => join(dir, JOURNAL, day(at) + '.md');
 const page = (d, prose, es) => `# Journal ${d}\n\n` + [prose, ...es.flatMap((e) => [render(e), e.after])].filter(Boolean).join('\n\n') + '\n';
-// The keys forget removed, one a line: a backfill reads a quiet conversation
-// again once it grows, and would bring a forgotten entry back. Read trimmed,
-// as hushed() reads its list: a key with a \r or space after it is still one.
-const FORGOTTEN = '.forgotten';
+// The keys forget removed (FORGOTTEN, handoff-log's, which keeps them out of
+// handoff.md too): a backfill reads a quiet conversation again once it grows,
+// and would bring a forgotten entry back.
 
 // Call under withLock(dir). Returns how many entries were added or changed.
 // `when`: entryOf's, for a turn whose time won't parse.
 export function record(dir, transcriptPath, turns, when) {
-  const byDay = new Map(), gone = new Set((raw(join(dir, JOURNAL, FORGOTTEN)) ?? '').split(/\r?\n/).map((l) => l.trim()));
+  const byDay = new Map(), gone = new Set(forgotten(raw(join(dir, FORGOTTEN))).map(([k]) => k));
   for (const t of turns) {
     const e = entryOf(t, transcriptPath, when), d = day(e.at);
     if (gone.has(e.key)) continue;
@@ -260,17 +259,24 @@ function resweep(dir) {
 // lock (null when it stayed busy); their keys are listed first, so a forget
 // killed half-way leaves entries no record brings back. `removed`: the matches
 // that went, fewer when a day kept changing under the write (its keys listed
-// all the same). `keys`: only those entries, the ones a search showed.
+// all the same). `keys`: only those entries, the ones a search showed. They go
+// from handoff.md too, which the next startup's briefing prints (R36).
 export function forget(dir, terms, { since, until, conversation, keys: only, apply = false, failed = [] } = {}) {
   const ts = terms.map((t) => t.toLowerCase());
   const matched = entries([dir], { since, until, failed }).filter((e) => (!conversation || e.s === conversation) && (!only || only.includes(e.key)) &&
     ts.every((t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.toLowerCase().includes(t))));
   if (!apply || !matched.length) return { matched, removed: [] };
-  const keys = new Set(matched.map((e) => e.key)), f = join(dir, JOURNAL, FORGOTTEN);
+  const keys = new Set(matched.map((e) => e.key)), f = join(dir, FORGOTTEN), seen = new Map();
+  // Listed only while its transcript is on disk: one gone is never read
+  // again, so nothing brings its entry back, and forgetting everything listed
+  // every key, read at every Stop (final review). A line with no transcript
+  // (older) stays; so does one whose stat fails but for its absence.
+  const there = (t) => { try { statSync(join(projectsRoot(), `${t}.jsonl`)); return true; } catch (e) { return e.code !== 'ENOENT'; } };
+  const live = ([, t]) => !t || (seen.has(t) ? seen.get(t) : seen.set(t, there(t)).get(t));
   return withLock(dir, () => {
     for (let i = 0; i < 3; i++) {
-      const before = raw(f);
-      if (replaceIfUnchanged(f, before, [...(before ?? '').split(/\r?\n/).filter(Boolean), ...keys].join('\n') + '\n') !== 'conflict') break;
+      const before = raw(f), lines = new Map([...forgotten(before), ...matched.map((e) => [e.key, e.t, e.at])].filter(live).map((l) => [l[0], l.join('\t')]));
+      if (replaceIfUnchanged(f, before, [...lines.values()].map((l) => l + '\n').join('')) !== 'conflict') break;
     }
     // A day that won't be written (not UTF-8, read-only, held open) keeps its
     // entries and is named: thrown, the days after it went untried.
@@ -278,6 +284,10 @@ export function forget(dir, terms, { since, until, conversation, keys: only, app
       try { return drop(dir, d, (e) => !keys.has(e.key)).map((e) => e.key); }
       catch (e) { failed.push({ path: dayFile(dir, d), code: e.code || e.message, write: true }); return []; }
     }));
+    // By conversation and minute, as handoff.md keeps them: two exchanges of
+    // one minute go together.
+    const at = new Set(matched.map((e) => `${e.s} ${e.at}`));
+    try { unsay(dir, (t) => at.has(`${t.s} ${t.at}`)); } catch (e) { failed.push({ path: join(dir, 'handoff.md'), code: e.code || e.message, write: true }); }
     return { matched, removed: matched.filter((e) => went.has(e.key)) };
   });
 }
@@ -324,7 +334,7 @@ function checked(dir, k) {
 // read every day. Again when `again`.
 function takeBack(dir, k, s, again = false, priv = false) {
   if (!again && checked(dir, k)?.[4] === 'swept') return;
-  if (priv) unsay(dir, s);
+  if (priv) unsay(dir, (t) => t.s === s);
   let owed = null;
   try { sweep(dir, s); } catch (e) { if (!e.owed) throw e; owed = e; }
   mark(dir, [`${k} 0 swept`], null, CHECKED);

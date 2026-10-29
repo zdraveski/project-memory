@@ -32,7 +32,9 @@
   its key, and after you confirm, removes exactly those
   (`--key <key> --yes`). It works on one project at a time and names the
   words no entry holds. A forget by dates alone is confirmed by its range,
-  so `forget --since 1970-01-01 --yes` empties the journal.
+  so `forget --since 1970-01-01 --yes` empties the journal. The same
+  exchanges go from the record of where you left off, so the next briefing
+  doesn't show them.
 - The journal isn't loaded when a conversation starts. The briefing gets one
   line saying it's there, and `status` shows its size, first day,
   conversations still to import and any failure.

@@ -896,8 +896,20 @@ ok(h === 'private' && !/merger/.test(fdoc()), `a mark the journal's sink finds k
 const tg = join(dirF, 'g.jsonl');
 writeFileSync(tg, [user('the release plan', { ts: '2026-10-29T09:20:00Z' }), asst('drafted', { ts: '2026-10-29T09:20:30Z' })].join('\n') + '\n');
 handoff({ cwd: cwdF, transcript_path: tg, session_id: 'gggggggg-1' });
-unsay(dirF, 'ffffffff');
+unsay(dirF, (t) => t.s === 'ffffffff');
 ok(!fdoc().includes('[ffffffff]') && fdoc().includes('[gggggggg]: the release plan'), `unsay takes one conversation's entries out of handoff.md (got ${fdoc()})`);
+// R36: an exchange forget took out (the journal's .forgotten lists it as
+// `<key>\t<folder>/<session>\t<time>`) stays out when a Stop of its
+// conversation reads it again: the forget turn's own Stop put it back. A line
+// saved CRLF, or with a space after it, still counts; an older key-only line is passed over.
+const { local } = await import('./store.mjs'), tk = join(dirF, 'k.jsonl');
+writeFileSync(tk, [user('the walrus budget', { ts: '2026-10-29T09:30:00Z' }), asst('noted the walrus', { ts: '2026-10-29T09:30:30Z' }),
+  user('the seal plan', { ts: '2026-10-29T09:40:00Z' }), asst('drafted the seal plan', { ts: '2026-10-29T09:40:30Z' })].join('\n') + '\n');
+mkdirSync(join(dirF, 'journal'), { recursive: true });
+writeFileSync(join(dirF, 'journal', '.forgotten'), `k-0\r\nk-1\tmemory/k\t${local('2026-10-29T09:30:00Z')} \r\nk-2\tmemory/other\t${local('2026-10-29T09:40:00Z')}\r\n`);
+handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
+ok(!/walrus/.test(fdoc()) && /\[kkkkkkkk\]: the seal plan/.test(fdoc()) && fdoc().includes('[gggggggg]: the release plan'),
+  `an exchange forget took out stays out of handoff.md when its conversation is read again, and only it (got ${fdoc()})`);
 }
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.
