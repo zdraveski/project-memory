@@ -9,10 +9,11 @@ import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, w
 
 export const JOURNAL = 'journal';
 export const J_ASK = 2000;     // chars of what was asked
-export const J_ANSWER = 3000;  // chars of the reply
+export const J_ANSWER = 6000;  // chars of the reply; a longer one keeps its start and its end
+export const J_TAIL = 2000;    // ...the end: a reply's end says what was done and why
 export const J_FILES = 20;     // files an entry names: the turn's last
-export const J_RAN = 10;       // commands an entry names: the turn's last
-export const J_CMD = 200;      // chars of one command
+export const J_RAN = 20;       // commands an entry names: the turn's last
+export const J_CMD = 400;      // chars of one command
 // A Stop imports old conversations for this long, holding the store's lock,
 // then leaves the rest to the next: a month of them can be a gigabyte.
 export const IMPORT_BUDGET_MS = 150;
@@ -56,6 +57,15 @@ const rel = (p, cwd) => {
 // the next option too doubled the work per option (40 took 7 s).
 const FORGETS = /memory\.mjs["']?(?:\s+--[\w-]+(?:[= ](?:"[^"]*"|'[^']*'|[^\s"'-]\S*))?)*\s+forget\b/;
 
+// A reply over the cap keeps its first J_ANSWER - J_TAIL characters and its
+// last J_TAIL. Redacted whole first, so no half of a key is left at either
+// cut; and no half of an emoji, which reads back as U+FFFD, matches nothing,
+// and was written again every Stop.
+const reply = (s) => {
+  const t = clip(s, Infinity);
+  return t.length > J_ANSWER ? `${t.slice(0, J_ANSWER - J_TAIL).replace(/[\uD800-\uDBFF]$/, '')} … ${t.slice(-J_TAIL).replace(/^[\uDC00-\uDFFF]/, '')}` : t;
+};
+
 // `when`: the time of a turn whose own won't parse (a transcript another tool
 // wrote): NaN-NaN-Na.md was its day file, which nothing lists or sweeps.
 export function entryOf(turn, transcriptPath, when = local()) {
@@ -69,7 +79,7 @@ export function entryOf(turn, transcriptPath, when = local()) {
     t: `${basename(dirname(transcriptPath))}/${basename(transcriptPath, '.jsonl')}`,
     branch: clip(turn.branch || '', 100),
     asked: forgets ? '[private]' : clip(turn.ask, J_ASK),
-    answered: quiet ? '[private]' : clip(turn.did, J_ANSWER),
+    answered: quiet ? '[private]' : reply(turn.did),
     changed: quiet ? [] : turn.changed.slice(-J_FILES).map((p) => clip(rel(p, turn.cwd), 300)),
     ran: quiet ? [] : turn.ran.slice(-J_RAN).map((c) => clip(c, J_CMD)),
   };

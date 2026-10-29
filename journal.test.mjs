@@ -21,14 +21,23 @@ const turn = (over) => ({ at: '2026-10-28 14:05', ask: 'a question', raw: 'a que
 const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
 
 {
-  const e = entryOf(turn({ ask: 'q'.repeat(5000), did: 'a'.repeat(9000),
-    changed: Array.from({ length: 30 }, (_, i) => `C:\\proj\\f${i}.js`), ran: Array.from({ length: 15 }, (_, i) => `cmd${i}`) }), T);
+  const e = entryOf(turn({ ask: 'q'.repeat(5000), did: 'h'.repeat(5000) + 't'.repeat(5000),
+    changed: Array.from({ length: 30 }, (_, i) => `C:\\proj\\f${i}.js`), ran: Array.from({ length: 25 }, (_, i) => `cmd${i}`) }), T);
   ok(e.asked.length === 2000 && e.asked.endsWith('…'), `ask capped at 2000 (got ${e.asked.length})`);
-  ok(e.answered.length === 3000, `reply capped at 3000 (got ${e.answered.length})`);
+  // A reply's end says what was done and why: a long one keeps both ends.
+  ok(e.answered === 'h'.repeat(4000) + ' … ' + 't'.repeat(2000), `a reply over 6000 keeps its first 4000 and its last 2000 (got ${e.answered.length}: ${e.answered.slice(3995, 4010)})`);
+  ok(entryOf(turn({ did: 'a'.repeat(6000) }), T).answered.length === 6000, 'a reply of 6000 is kept whole');
   ok(e.changed.length === 20 && e.changed[19] === 'f29.js' && e.changed[0] === 'f10.js', `last 20 files, relative to cwd (got ${e.changed[0]}..${e.changed[19]})`);
-  ok(e.ran.length === 10 && e.ran[0] === 'cmd5' && e.ran[9] === 'cmd14', `last 10 commands (got ${e.ran})`);
-  ok(entryOf(turn({ ran: ['x'.repeat(500)] }), T).ran[0].length === 200, 'a command capped at 200');
+  ok(e.ran.length === 20 && e.ran[0] === 'cmd5' && e.ran[19] === 'cmd24', `last 20 commands (got ${e.ran})`);
+  ok(entryOf(turn({ ran: ['x'.repeat(1000)] }), T).ran[0].length === 400, 'a command capped at 400');
   ok(e.s === '01234567' && e.t === 'C--proj/0123456789abcdef', `conversation tag and t from the path (got ${e.s} ${e.t})`);
+  // Redacted before the cut, so no half of a key is left at either end; and
+  // no half of an emoji, which reads back as U+FFFD and no longer matches.
+  const k = stripe('sk', 'live'), at = (n, tail) => entryOf(turn({ did: 'x'.repeat(n) + ` ${k} ` + 'y'.repeat(tail) }), T).answered;
+  for (const [n, tail] of [[3990, 5000], [5000, 1980]]) ok(![k.slice(0, 9), k.slice(-9)].some((p) => at(n, tail).includes(p)), `a key across a cut is redacted whole (got ${at(n, tail).slice(3985, 4030)})`);
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  const head = entryOf(turn({ did: 'a'.repeat(3999) + '😀'.repeat(2000) }), T).answered, tail = entryOf(turn({ did: 'a'.repeat(7001) + '😀' + 'b'.repeat(1999) }), T).answered;
+  ok(!lone.test(head) && !lone.test(tail), 'no half of an emoji at either cut');
 }
 {
   const k = stripe('sk', 'live');
@@ -41,9 +50,9 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   ok(e.answered === '[private]' && !e.changed.length && !e.ran.length, 'a private turn keeps no answer, files or commands');
   // The turn that ran forget: its listing, saved as the reply, held what it removed.
   const f = entryOf(turn({ ask: 'forget the zebra', did: 'these would go: the zebra policy', changed: ['C:\\proj\\a'],
-    ran: ['node "C:/p/memory.mjs" forget zebra --session x', ...Array.from({ length: 10 }, (_, i) => `ls ${i}`)] }), T);
+    ran: ['node "C:/p/memory.mjs" forget zebra --session x', ...Array.from({ length: 20 }, (_, i) => `ls ${i}`)] }), T);
   ok(f.asked === '[private]' && f.answered === '[private]' && !f.changed.length && !f.ran.length,
-    `a turn that ran forget, even before its last 10 commands, keeps none of its words (got ${JSON.stringify(f)})`);
+    `a turn that ran forget, even before its last 20 commands, keeps none of its words (got ${JSON.stringify(f)})`);
   // Options may come before the command, as the CLI takes them.
   for (const c of ['node memory.mjs forget zebra', "node '/p/memory.mjs' forget 'zebra' --yes", 'node "C:\\p\\memory.mjs" forget --since 1970-01-01 --yes',
     'node "C:/p/memory.mjs" --session abc forget password', 'node "C:/p/memory.mjs" --store C:/s forget password --yes',
