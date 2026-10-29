@@ -151,6 +151,19 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
 }
 
 {
+  // A note shaped like a field, written under an entry, was read as that field:
+  // it overwrote the entry's, and the next write lost the note. Only a field
+  // the entry has not had yet, in render order, is one.
+  const f = dayFile(dir, '2026-11-14'), t = turn({ at: '2026-11-14 10:00', id: 'fn-1', did: 'the cache key' });
+  record(dir, T, [t]);
+  appendFileSync(f, '\n**Answered:** CORRECTION by me: it was the DNS, not the cache\n**Asked:** and a second note\n');
+  const e = parseDay(readFileSync(f, 'utf8')).entries[0];
+  ok(e.answered === 'the cache key' && e.after === '**Answered:** CORRECTION by me: it was the DNS, not the cache\n**Asked:** and a second note',
+    `a field the entry had already is a note under it (got ${JSON.stringify(e)})`);
+  record(dir, T, [t, turn({ at: '2026-11-14 11:00', id: 'fn-2' })]);
+  ok(readFileSync(f, 'utf8').includes('CORRECTION by me') && readFileSync(f, 'utf8').includes('and a second note'), 'and the next write keeps it');
+}
+{
   // A note added in the Windows code page (PowerShell 5.1's Add-Content): read
   // as UTF-8 and written back, its accented letters were U+FFFD for good.
   const d = storeFor(home, 'C:\\journal-ansi'), f = dayFile(d, '2026-11-12'), failed = join(d, 'journal', '.failed'), P = '/x/projects/C--proj/aaaaaaaa.jsonl';
@@ -461,20 +474,24 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   ok(rest.imported === 0 && rest.left === 0 && listed(d).filter((l) => l.endsWith(' other')).length === 3 && asks(d).join() === 'ours', `which the next reads (got ${JSON.stringify(rest)}, ${listed(d)})`);
 }
 {
-  // A transcript that won't read (EACCES: one a `sudo claude` run left owned by
-  // root) is listed as failed, with its size, and read again only once it
-  // grows: retried at every look, it failed at every look.
-  const [r, d] = repo('unread'), p = old(r, sid('u'), 2, ['readable at last']), open = fs.openSync;
+  // A transcript that won't open (EACCES: one a `sudo claude` run left owned by
+  // root) is listed as failed, with its size and the time, and tried again
+  // once it grows or a day later: retried at every look, it failed at every
+  // look, and never retried, one held open for a moment (EBUSY) was never
+  // imported. Its failure stays in status while one is listed so.
+  const [r, d] = repo('unread'), p = old(r, sid('u'), 2, ['readable at last']), open = fs.openSync, list = join(d, 'journal', '.imported');
   const line = () => listed(d).find((l) => l.startsWith(`${slug(r)}/${sid('u')} `)) ?? '';
   fs.openSync = (q, ...a) => { if (q === p) throw Object.assign(new Error(`EACCES: permission denied, open '${q}'`), { code: 'EACCES' }); return open(q, ...a); };
   syncBuiltinESMExports();
   let first, again;
-  try { first = fill(d); due(d); again = fill(d); } finally { fs.openSync = open; syncBuiltinESMExports(); }
-  ok(first.imported === 0 && line() === `${slug(r)}/${sid('u')} ${statSync(p).size} failed`, `it is listed as failed, with its size (got ${JSON.stringify(first)}, ${line()})`);
-  ok(again.left === 0 && summary(d).left === 0 && summary(d).failed?.startsWith('backfill: EACCES'), `the next look leaves it, and status still names the failure (got ${JSON.stringify(again)}, ${summary(d).failed})`);
-  appendFileSync(p, rec('user', sid('u'), '2026-09-02T10:00:00Z', 'one more', r) + '\n' + rec('assistant', sid('u'), '2026-09-02T10:00:30Z', 'done', r) + '\n');
-  utimesSync(p, ago(2), ago(2)); due(d);
-  ok(fill(d).imported === 1 && asks(d).join() === 'one more,readable at last' && !line().endsWith(' failed'), `grown, it is read again (got ${asks(d)}, ${line()})`);
+  try { first = fill(d); old(r, sid('w'), 2, ['another one']); due(d); again = fill(d); } finally { fs.openSync = open; syncBuiltinESMExports(); }
+  ok(first.imported === 0 && new RegExp(`^${slug(r)}/${sid('u')} ${statSync(p).size} failed \\d+$`).test(line()), `it is listed as failed, with its size and the time (got ${JSON.stringify(first)}, ${line()})`);
+  ok(again.imported === 1 && again.left === 0 && summary(d).left === 0 && summary(d).failed?.startsWith('backfill: EACCES'),
+    `the next look leaves it and imports another, and status still names the failure (got ${JSON.stringify(again)}, ${summary(d).failed})`);
+  writeFileSync(list, readFileSync(list, 'utf8').replace(/ failed \d+$/m, ` failed ${Date.now() - 25 * 3600e3}`));
+  due(d);
+  ok(fill(d).imported === 1 && asks(d).join() === 'another one,readable at last' && !line().includes(' failed') && !summary(d).failed,
+    `a day later it is tried again, not grown: imported, and the failure cleared (got ${asks(d)}, ${line()}, ${summary(d).failed})`);
 }
 {
   const [r, d] = repo('hush');
@@ -610,11 +627,16 @@ const due = (d) => looked(d, Date.now() - 3600e3);
     + rec('user', H, '2026-09-03T10:03:00Z', 'after the flood', r) + '\n' + rec('assistant', H, '2026-09-03T10:03:30Z', 'calm', r) + '\n');
   utimesSync(p, ago(2), ago(2));
   writeFileSync(ps, rec('user', S, '2026-10-28T12:00:00Z', 'now', r) + '\n' + rec('assistant', S, '2026-10-28T12:00:30Z', 'ok', r) + '\n');
-  const t0 = Date.now();
-  const out = spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: r, transcript_path: ps, session_id: S, hook_event_name: 'Stop' }), encoding: 'utf8' });
-  const ms = Date.now() - t0, line = listed(d).find((l) => l.startsWith(`${slug(r)}/${H} `)) ?? '';
-  ok(ms < 3000 && out.stdout === '' && line === `${slug(r)}/${H} ${statSync(p).size}` && asks(d).includes('before the flood') && asks(d).includes('after the flood'),
-    `backfill keeps to its budget on a huge transcript: the Stop takes ${ms} ms, says nothing, passes over the 70 MB line unread and journals the turns before and after it (got ${line}; ${asks(d)}; ${out.stdout})`);
+  // A Stop or a few: the look for a mark keeps to the budget, a segment past it.
+  const whole = `${slug(r)}/${H} ${statSync(p).size}`, line = () => { try { return listed(d).find((l) => l.startsWith(`${slug(r)}/${H} `)) ?? ''; } catch { return ''; } };
+  let ms = 0, out = '';
+  for (let i = 0; i < 5 && line() !== whole; i++) {
+    const t0 = Date.now();
+    out += spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: r, transcript_path: ps, session_id: S, hook_event_name: 'Stop' }), encoding: 'utf8' }).stdout;
+    ms = Math.max(ms, Date.now() - t0);
+  }
+  ok(ms < 3000 && out === '' && line() === whole && asks(d).includes('before the flood') && asks(d).includes('after the flood'),
+    `backfill keeps to its budget on a huge transcript: no Stop takes over ${ms} ms, none says anything, and the 70 MB line is passed over unread, the turns before and after it journaled (got ${line()}; ${asks(d)}; ${out})`);
 }
 // A transcript of any size is read whole, not only its last 64 MB: in
 // segments (1 KB here for 64 MB), each cut at a prompt so no exchange is
@@ -632,11 +654,15 @@ const small = { segment: 1024, budgetMs: 0 };
   // Exchange 5 is longer than a segment: four commands, then its reply.
   writeFileSync(p, Array.from({ length: 12 }, (_, i) => i === 5 ? exchange(W, r, 5, 'a first look').replace(/\n$/, '\n' + [1, 2, 3, 4].map(tool).join('')) + rec('assistant', W, '2026-09-01T10:05:50Z', 'the final word', r) + '\n' : exchange(W, r, i)).join(''));
   utimesSync(p, ago(2), ago(2));
-  const line = () => listed(d).find((l) => l.startsWith(`${slug(r)}/${W} `)) ?? '';
-  const one = fill(d, small);
-  ok(one.imported === 1 && one.left === 1 && new RegExp(` ${statSync(p).size} at \\d+$`).test(line()) && asks(d)[0] === 'question 0' && asks(d).length < 12,
-    `out of time after a segment: its first exchange is journaled, and the list says where the next segment starts (got ${JSON.stringify(one)}, ${line()}, ${asks(d)})`);
-  for (let i = 0; i < 40 && fill(d, small).left; i++);
+  const line = () => listed(d).find((l) => l.startsWith(`${slug(r)}/${W} `)) ?? '', size = statSync(p).size;
+  // The look for a mark comes first, and keeps to the budget too: a segment a
+  // Stop, how far it got in the list, nothing recorded before it ends.
+  const one = fill(d, small), far = Number(/ (\d+) at 0$/.exec(line())?.[1]);
+  ok(one.imported === 1 && one.left === 1 && far > 0 && far < size && !asks(d).length,
+    `out of time after a segment looked at for a mark, nothing is recorded yet, and the list says how far the look got (got ${JSON.stringify(one)}, ${line()}, ${asks(d)})`);
+  const lines = [];
+  for (let i = 0; i < 60 && fill(d, small).left; i++) lines.push(line());
+  ok(lines.some((l) => new RegExp(` ${size} at [1-9]\\d*$`).test(l)), `then the import goes on a segment a Stop, from where the last stopped (got ${lines})`);
   const es = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries), five = es.find((e) => e.asked === 'question 5');
   ok(es.length === 12 && es.every((e) => e === five || e.answered.startsWith(`answer ${e.asked.split(' ')[1]} `)) && line() === `${slug(r)}/${W} ${statSync(p).size}`,
     `Stop by Stop, every exchange is journaled whole, and the list says the transcript is read (got ${es.map((e) => `${e.asked}: ${e.answered.slice(0, 9)}`)}; ${line()})`);
@@ -657,6 +683,33 @@ const small = { segment: 1024, budgetMs: 0 };
     let tags = ''; try { tags = readFileSync(join(d, '.private-sessions'), 'utf8'); } catch {}
     ok(!asks(d).length && tags.split(/\r?\n/).includes(M.slice(0, 8)), `a mark in the ${where} segment keeps the whole conversation out, and takes back what it wrote (got ${asks(d)})`);
   }
+}
+{
+  // The text search for a mark finds a quoted one too, and turns() tells: a tag
+  // in a tool's output or an agent's report is not the user's, and the
+  // conversation is imported. One typed full-width, or split by a zero-width
+  // space, is the user's, and keeps the conversation out.
+  const quoted = (id, r) => JSON.stringify({ type: 'user', uuid: `${id.slice(0, 4)}-tr`, sessionId: id, cwd: r, timestamp: '2026-09-01T10:00:40Z',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'grep found <private-session> in notes.md' }] } }) + '\n'
+    + rec('user', id, '2026-09-01T10:01:00Z', '<task-notification>the agent wrote <private-session> in its report</task-notification>', r) + '\n';
+  for (const [c, typed, how] of [['q', null, 'quoted'], ['f', '＜private-session＞ from here', 'full-width'], ['k', '<private​-session> from here', 'zero-width split']]) {
+    const [r, d] = repo(`tag-${c}`), Z = sid(c), p = join(projects, slug(r), `${Z}.jsonl`);
+    writeFileSync(p, exchange(Z, r, 0) + (typed ? rec('user', Z, '2026-09-01T10:01:00Z', typed, r) + '\n' : quoted(Z, r)) + exchange(Z, r, 2));
+    utimesSync(p, ago(2), ago(2));
+    fill(d);
+    ok(typed ? !asks(d).length : asks(d).join() === 'question 0,question 2', `a ${how} tag ${typed ? 'keeps the conversation out' : 'is no mark: the conversation is imported'} (got ${asks(d)})`);
+  }
+}
+{
+  // A look that read a transcript for a mark and then could not import it
+  // (here its day is a folder) keeps how far it looked: the next look reads
+  // it for a mark no more.
+  const [r, d] = repo('throws'), V = sid('v'), p = join(projects, slug(r), `${V}.jsonl`), day1 = dayFile(d, local('2026-09-01T10:00:00Z'));
+  writeFileSync(p, exchange(V, r, 0)); utimesSync(p, ago(2), ago(2));
+  mkdirSync(day1, { recursive: true });
+  fill(d);
+  ok(listed(d).includes(`${slug(r)}/${V} ${statSync(p).size} at 0`), `an import that throws keeps the look's end (got ${listed(d)})`);
+  rmSync(day1, { recursive: true });
 }
 {
   // R33 for a mark an import finds: the sweep a day not in UTF-8 stopped is

@@ -26,10 +26,13 @@ export const IMPORT_SEGMENT = 64 * 1024 * 1024;
 // segment of 49,053 short turns (a long /loop) held the lock 18 s, and a
 // parallel session's handoff was skipped (P1 hunt, 2026-10-29).
 export const IMPORT_TURNS = 500;
+// A transcript that would not open is tried again this long after, grown or not.
+const RETRY = 24 * 3600e3;
 
 const MARK = /^<!-- j:(.+) t:(.*) d:(\d{4}-\d\d-\d\d) -->$/;
 const HEAD = /^## (\d\d:\d\d) · conversation (\S*?)(?: · branch (.*))?$/;
 const TIME = /^\d{4}-\d\d-\d\d \d\d:\d\d$/;
+const FIELDS = ['Asked', 'Answered', 'Changed', 'Ran'];   // as render() writes them, after the heading
 const day = (at) => at.slice(0, 10);
 
 // Before a day file is rewritten: one with a byte that is no UTF-8 (a note
@@ -101,16 +104,20 @@ export const render = (e) => [
 // the top at its next write, apart from what each was about.
 export function parseDay(text) {
   const prose = [], entries = [];
-  let e = null;
+  let e = null, last = -1;
   // An editor saves CRLF or a BOM: handoff.md lost its entries to both.
   for (const line of text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').replace(/^# Journal \d{4}-\d\d-\d\d\n*/, '').split('\n')) {
     const m = MARK.exec(line);
-    if (m) { e = { key: m[1], at: `${m[3]} 00:00`, s: '', t: m[2], branch: '', asked: '', answered: '', changed: [], ran: [] }; entries.push(e); continue; }
+    if (m) { e = { key: m[1], at: `${m[3]} 00:00`, s: '', t: m[2], branch: '', asked: '', answered: '', changed: [], ran: [] }; last = -1; entries.push(e); continue; }
     if (e && !line.trim()) continue;
-    const f = e && [HEAD.exec(line), /^\*\*(Asked|Answered|Changed|Ran):\*\* ?(.*)$/.exec(line)];
-    if (f?.[0]) { e.at = `${e.at.slice(0, 10)} ${f[0][1]}`; e.s = f[0][2]; e.branch = f[0][3] ?? ''; }
-    else if (f?.[1]) {
-      const [, k, v] = f[1];
+    const h = e && HEAD.exec(line), f = e && !h && /^\*\*(Asked|Answered|Changed|Ran):\*\* ?(.*)$/.exec(line);
+    // In render order, each once: a note shaped like a field, written under an
+    // entry, was read as that field, and the next write lost the note.
+    const at = h ? 0 : f ? FIELDS.indexOf(f[1]) + 1 : -1;
+    if (at > last && h) { last = at; e.at = `${e.at.slice(0, 10)} ${h[1]}`; e.s = h[2]; e.branch = h[3] ?? ''; }
+    else if (at > last) {
+      last = at;
+      const [, k, v] = f;
       if (k === 'Asked') e.asked = v; else if (k === 'Answered') e.answered = v;
       else if (k === 'Changed') e.changed = v ? v.split(', ') : []; else e.ran = v ? v.split(' · ') : [];
     } else { e = null; const up = entries.at(-1); (up ? (up.after ??= []) : prose).push(line); }
@@ -321,7 +328,7 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
   if (got.whole === false && !was) {
     const fd = openSync(transcriptPath, 'r');
     let size, hit;
-    try { size = fstatSync(fd).size; hit = marked(fd, 0, IMPORT_SEGMENT, size); } finally { closeSync(fd); }
+    try { size = fstatSync(fd).size; hit = marked(fd, 0, IMPORT_SEGMENT, size).hit; } finally { closeSync(fd); }
     if (hit) { hushed(dir, s, true); sweep(dir, s); mark(dir, [`${k} ${size} swept`], null, CHECKED); return true; }
     mark(dir, [`${k} ${size}`], null, CHECKED);
   }
@@ -357,10 +364,11 @@ export function write(dir, transcriptPath, got, opts) {
 // What the backfill has read: `<folder>/<session> <bytes>`, one line a
 // transcript, its bytes all looked at for a mark; ` at <offset>` while it is
 // imported only up to there (the next segment's start), ` other` when it is
-// another store's, ` failed` when it won't open. `keep`: the transcripts still
-// on disk; any other line goes.
+// another store's, ` failed <ms>` when it won't open. `keep`: the transcripts
+// still on disk; any other line goes.
 const IMPORTED = '.imported', LOOKED = '.looked';
-const LINE = /^(.+?) (\d+)(?: at (\d+)| (\w+))?$/;
+const LINE = /^(.+?) (\d+)(?: at (\d+)| (\w+)(?: (\d+))?)?$/;
+const FAILING = / \d+ failed\b/;
 function mark(dir, lines, keep = null, list = IMPORTED) {
   const f = join(dir, JOURNAL, list), ks = new Set(lines.map((l) => LINE.exec(l)[1]));
   mkdirSync(join(dir, JOURNAL), { recursive: true });
@@ -387,8 +395,12 @@ function candidates(dir, skip) {
   // Another's or one that won't open: up to its size, from nothing read. One
   // ` partial` (before R24 only its last 64 MB was read): nothing read either,
   // or its start was never imported.
+  // One that failed to open a day ago or more is tried again, grown or not: a
+  // transcript held open a moment (EBUSY), or a look out of handles (EMFILE),
+  // was never imported.
   for (const m of (raw(join(dir, JOURNAL, IMPORTED)) ?? '').split(/\r?\n/).map((l) => LINE.exec(l))) {
-    if (m && m[4] !== 'partial') done.set(m[1], m[4] ? { upto: Number(m[2]), from: 0, looked: 0 } : { upto: Number(m[3] ?? m[2]), from: Number(m[3] ?? m[2]), looked: Number(m[2]) });
+    const retry = m?.[4] === 'failed' && !(Math.abs(Date.now() - Number(m[5])) < RETRY);
+    if (m && m[4] !== 'partial' && !retry) done.set(m[1], m[4] ? { upto: Number(m[2]), from: 0, looked: 0 } : { upto: Number(m[3] ?? m[2]), from: Number(m[3] ?? m[2]), looked: Number(m[2]) });
   }
   // A listing that fails leaves `seen` null, so nothing is pruned: read as
   // empty, it would drop the lines of every transcript in it.
@@ -466,41 +478,54 @@ function* segments(fd, at, seg, size, cap) {
   yield { got: [], next: size };
 }
 
-// Whether a typed <private-session> mark is in the bytes from `pos`: a text
-// search, turns() only for a segment it finds one in.
-function marked(fd, pos, seg, size) {
-  for (let b; (b = chunk(fd, pos, seg, size)); pos = b.pos + b.buf.length) {
+// Whether a typed <private-session> mark is in the bytes from `pos`, looked
+// for while `more()`: a text search, turns() only for a segment it finds one
+// in (a tag quoted in a tool's output is no mark). `pos`: where the look
+// stopped, the size when it got to the end.
+function marked(fd, pos, seg, size, more = () => true) {
+  for (let b; (b = chunk(fd, pos, seg, size)); ) {
     const t = b.buf.toString('utf8');
-    if (PRIVATE_SESSION.test(norm(t)) && turns(t).hush) return true;
+    if (PRIVATE_SESSION.test(norm(t)) && turns(t).hush) return { hit: true, pos: size };
+    pos = b.pos + b.buf.length;
+    if (pos < size && !more()) return { hit: false, pos };
   }
-  return false;
+  return { hit: false, pos: size };
 }
 
 // One transcript, from where the last look left it. First the
 // <private-session> mark, looked for in every byte not looked at yet: one
 // anywhere keeps the whole conversation out, so nothing of it may be recorded
-// before. Then its exchanges, a segment at a time while `more()`. Returns the
-// offset the import reached (its size when done) and the size looked at.
-// shortcut: the look for the mark is not cut by the budget (~0.35 s for 64 MB);
-// make it go on at the next Stop if transcripts of gigabytes turn up.
+// before. That look keeps to the budget, a segment past it, and the next look
+// goes on from where it stopped (a gigabyte held the lock ~5 s). Then its
+// exchanges, a segment at a time while `more()`. Returns the offset the
+// import reached (its size when done), the size, and how far the look got.
 function importOne(dir, c, fd, seg, cap, more) {
-  const s = tag(basename(c.p, '.jsonl')), size = fstatSync(fd).size, none = { at: size, size };
+  const s = tag(basename(c.p, '.jsonl')), size = fstatSync(fd).size, none = { at: size, size, looked: size };
   // Marked private already, its entries went then.
   if (hushed(dir, s)) return none;
   // A mark typed while the plugin was off is taken as its Stop takes one: the
   // conversation is marked, and what it wrote before goes, from the journal
   // and from handoff.md (first: a sweep a day stops short throws, and is owed).
-  if (marked(fd, c.looked, seg, size)) { hushed(dir, s, true); unsay(dir, s); sweep(dir, s); return none; }
+  const look = marked(fd, c.looked, seg, size, more);
+  if (look.hit) { hushed(dir, s, true); unsay(dir, s); sweep(dir, s); return none; }
+  if (look.pos < size) return { at: c.from, size, looked: look.pos };
   if (hushed(projectsRoot(), s, false, OFF)) return none;
   let at = c.from;
-  for (const { got, next } of segments(fd, at, seg, size, cap)) {
-    // A turn whose time won't parse: the transcript's, not the import's.
-    record(dir, c.p, got, local(c.m));
-    if (next == null) continue;
-    at = next;
-    if (at < size && !more()) break;
+  try {
+    for (const { got, next } of segments(fd, at, seg, size, cap)) {
+      // A turn whose time won't parse: the transcript's, not the import's.
+      record(dir, c.p, got, local(c.m));
+      if (next == null) continue;
+      at = next;
+      if (at < size && !more()) break;
+    }
+  } catch (e) {
+    // Its look for a mark kept: read again at every look, a transcript whose
+    // import kept failing cost every look its whole read.
+    mark(dir, [`${c.k} ${size} at ${at}`]);
+    throw e;
   }
-  return { at, size };
+  return { at, size, looked: size };
 }
 
 // Whether a look at the folders is due: none in ACTIVE; between looks a Stop
@@ -536,10 +561,10 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
       try {
         // One that won't open is listed as failed, read again once it grows:
         // retried at every look, it failed at every look.
-        let fd; try { fd = openSync(c.p, 'r'); } catch (e) { mark(dir, [`${c.k} ${c.size} failed`]); throw e; }
+        let fd; try { fd = openSync(c.p, 'r'); } catch (e) { mark(dir, [`${c.k} ${c.size} failed ${Date.now()}`]); throw e; }
         try {
-          const { at, size } = importOne(dir, c, fd, segment, cap, () => Date.now() - t0 < budgetMs);
-          mark(dir, [at < size ? `${c.k} ${size} at ${at}` : `${c.k} ${size}`]);
+          const { at, size, looked } = importOne(dir, c, fd, segment, cap, () => Date.now() - t0 < budgetMs);
+          mark(dir, [at < size ? `${c.k} ${looked} at ${at}` : `${c.k} ${size}`]);
           n++; if (at >= size) done++;
         } finally { closeSync(fd); }
       } catch (e) { err = e; }   // left for a later Stop: one transcript that won't read must not hold up the rest
@@ -552,8 +577,10 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
   const left = all.length - done - other.length;
   // Kept in .failed as the sink's is; the next import that goes through clears
   // it, and only its own: a live write's failure is the live write's to clear.
+  // Not while a transcript is listed as failing to open: cleared by another's
+  // import, it was skipped in silence.
   if (err) fault(dir, err, 'backfill: ');
-  else if (n || owed) clear(dir, true);
+  else if ((n || owed) && !FAILING.test(raw(join(dir, JOURNAL, IMPORTED)) ?? '')) clear(dir, true);
   // The next look: the next Stop while the budget left some, else in ACTIVE (a
   // failure too: retried every Stop, it would cost every Stop a look).
   try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(look, raw(look), String(left && !err ? t0 - ACTIVE : Date.now())); } catch {}
