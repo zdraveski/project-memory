@@ -673,3 +673,28 @@ one line that says what was left behind.
 
 The design documents, with the measurements behind these numbers, are in
 [`docs/specs/`](specs/).
+
+## When something seems wrong
+
+`memory.mjs doctor` (`/project-memory:memory doctor` in Claude Code) checks
+the setup. Most of its `PROBLEM` lines end with what to do. The ones people
+meet most:
+
+- **"not installed".** The plugin isn't installed and has never run. If it
+  was added on claude.ai rather than with `/plugin`, let Claude finish one
+  reply and run the check again. Otherwise install it again.
+- **"the Stop hook ran twice for one reply".** The hooks are set up twice, so
+  everything happens twice: they were also added to the Claude Code settings
+  by hand, or a second copy is installed under another name. Remove the hooks
+  from the settings, or uninstall the second copy, and keep the plugin.
+- **"Memory hooks look stopped"**, in the briefing. Another conversation in
+  this project finished a reply after the plugin last saved. After a pause
+  this goes away with the next reply; otherwise run `doctor`.
+- **"snapshots: off".** Git isn't installed, or the projects folder is a git
+  repository the user made. Everything works except bringing back an old
+  version of a note. Install Git, or move that repository out of the folder.
+- **"its Stop hook is not running".** Claude finished a reply, but the plugin
+  didn't save after it. Restart Claude Code; if the line stays after the next
+  reply, check that Node.js is installed and on the `PATH`.
+- **"node" is not found.** Install Node.js 20 or newer and restart Claude
+  Code.
