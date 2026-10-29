@@ -793,6 +793,73 @@ fs.readFileSync = (p, ...a) => { if (!raced && p === offList && existsSync(`${p}
 syncBuiltinESMExports();
 try { hushed(offDir, 'mine2222', true, OFF); } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
 ok(raced && readFileSync(offList, 'utf8') === 'first000\nother111\nmine2222\n', `a tag whose write lost the race is written again, beside the other's (got ${JSON.stringify(readFileSync(offList, 'utf8'))})`);
+// One that loses every race is not said to be written: memory-tier took the
+// word, and a lost tag was a conversation the backfill imported (P1 hunt, 2026-10-29).
+let n = 0;
+fs.readFileSync = (p, ...a) => { if (p === offList && existsSync(`${p}.tmp${process.pid}`)) writeFileSync(p, `${read(p, 'utf8')}race${n++}\n`); return read(p, ...a); };
+syncBuiltinESMExports();
+let lost; try { lost = hushed(offDir, 'lost3333', true, OFF); } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
+ok(lost === false && !readFileSync(offList, 'utf8').includes('lost3333'), `a tag that lost every race is reported unwritten (got ${lost})`);
+// Nor does a private mark that could not be kept let its turn be written.
+const tq = join(dirN, 'q.jsonl'), qList = join(dirN, '.private-sessions');
+writeFileSync(tq, [user('<private-session> the merger terms'), asst('noted the merger')].join('\n') + '\n');
+fs.readFileSync = (p, ...a) => { if (p === qList && existsSync(`${p}.tmp${process.pid}`)) writeFileSync(p, `${existsSync(p) ? read(p, 'utf8') : ''}race${n++}\n`); return read(p, ...a); };
+syncBuiltinESMExports();
+let q; try { q = handoff({ cwd: cwdN, transcript_path: tq, session_id: 'qqqqqqqq-1' }); } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
+ok(q === 'private' && !readFileSync(join(dirN, 'handoff.md'), 'utf8').includes('merger'), `a marked turn is kept out even when its mark could not be saved (got ${q})`);
+}
+
+// .memory-off: written under the projects' lock, by every SessionStart and Stop
+// while auto memory is off, and pruned by the transcripts still on disk.
+{
+const { off, OFF } = await import('./handoff-log.mjs');
+const root = join(home, '.claude', 'projects'), list = join(root, OFF);
+const tags = () => { try { return readFileSync(list, 'utf8').split(/\r?\n/).filter(Boolean); } catch { return []; } };
+mkdirSync(root, { recursive: true });
+// Another hook holds the lock: the tag waits for it, and is not said written.
+mkdirSync(join(root, '.lock'));
+let held; try { held = off({ session_id: 'heldlock-0000' }); } finally { rmSync(join(root, '.lock'), { recursive: true }); }
+ok(held === false && !tags().includes('heldlock'), `a tag waits for the projects' lock, and one it could not write is reported unwritten (got ${held}, ${tags()})`);
+// Every SessionStart while auto memory is off: no briefing, and the tag, so no
+// backfill imports a conversation whose first reply got no Stop (P1 hunt, 2026-10-29).
+const started = (source, session_id) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: 'C:\\off-start', session_id, source }), env }).toString();
+process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+let said = [];
+try { said = ['startup', 'resume', 'clear', 'compact'].map((source, i) => started(source, `start00${i}-0000`)); }
+finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`start00${i}`)), `every SessionStart with auto memory off prints nothing and keeps the tag (got ${JSON.stringify(said)}, ${tags()})`);
+// A resumed conversation, auto memory on: nothing printed (it was read as a compaction).
+ok(started('resume', 'nnnnnnnn-1') === '', 'a resumed conversation gets no briefing');
+// Twelve at once lose none.
+process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+try {
+  await Promise.all(Array.from({ length: 12 }, (_, i) => new Promise((done) => {
+    const c = spawn(process.execPath, [HOOK, '--print'], { env, stdio: ['pipe', 'ignore', 'ignore'] });
+    c.on('exit', done);
+    c.stdin.end(JSON.stringify({ session_id: `par${String(i).padStart(5, '0')}-0000`, source: 'startup' }));
+  })));
+} finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+const paired = Array.from({ length: 12 }, (_, i) => `par${String(i).padStart(5, '0')}`).filter((t) => !tags().includes(t));
+ok(!paired.length, `twelve memory-off starts at once lose no tag (lost ${paired})`);
+// Pruned by the transcripts on disk: one whose transcript is there stays
+// however many come after it (the newest 1,000 anywhere evicted it, and its
+// conversation was imported). One whose transcript is gone goes, past the
+// newest 100: a transcript is made with its first message, after its start
+// wrote the tag.
+const pk = join(root, 'C--off-prune');
+mkdirSync(pk, { recursive: true });
+writeFileSync(join(pk, 'ondisk00-0000.jsonl'), '');
+writeFileSync(list, ['ondisk00', ...Array.from({ length: 1200 }, (_, i) => `gone${String(i).padStart(4, '0')}`)].join('\n') + '\n');
+const pruned = off({ session_id: 'newone00-0000' }), now = tags();
+ok(pruned === true && now.includes('ondisk00') && now.includes('newone00') && now.includes('gone1100') && !now.includes('gone1099') && now.length === 102,
+  `memory-off tags are pruned by the transcripts on disk, the newest 100 kept (got ${pruned}, ${now.length}: ${now.slice(0, 3)})`);
+// A listing that fails prunes nothing, and the list is still capped.
+writeFileSync(list, Array.from({ length: 10_050 }, (_, i) => `many${String(i).padStart(5, '0')}`).join('\n') + '\n');
+const rd = fs.readdirSync;
+fs.readdirSync = (p, ...a) => { if (p === root) throw Object.assign(new Error(`EACCES: permission denied, scandir '${p}'`), { code: 'EACCES' }); return rd(p, ...a); };
+syncBuiltinESMExports();
+try { off({ session_id: 'capped00-0000' }); } finally { fs.readdirSync = rd; syncBuiltinESMExports(); }
+ok(tags().length === 10_001 && tags()[0] === 'many00050' && tags().at(-1) === 'capped00', `with no listing, the list keeps its newest 10,000 (got ${tags().length}, ${tags()[0]})`);
 }
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.

@@ -515,8 +515,8 @@ process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
 // conversation's tag, so no later Stop's backfill imports it (handoff-log OFF).
 if (stop && memoryOff()) {
   try {
-    const p = JSON.parse(readFileSync(0, 'utf8')), { hushed, tag, OFF } = await import(new URL('./handoff-log.mjs', import.meta.url));
-    hushed(projectsRoot(), tag(p.session_id || basename(String(p.transcript_path || ''), '.jsonl')), true, OFF);
+    const p = JSON.parse(readFileSync(0, 'utf8'));
+    (await import(new URL('./handoff-log.mjs', import.meta.url))).off(p);
   } catch {}
   process.exit(0);
 }

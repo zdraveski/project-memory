@@ -501,10 +501,12 @@ function build(raw, fresh, drop = null, me = fresh[0]?.s, whole = false) {
 // recorded again.
 const QUIET = '.private-sessions';
 // The conversations held with auto memory off, kept the same way beside the
-// projects (memory-tier's Stop, which makes no store for them): the journal's
-// backfill never imports them.
+// projects (off(), at their start and every Stop, which make no store for
+// them): the journal never records or imports them.
 export const OFF = '.memory-off';
-export function hushed(dir, s, mark = false, list = QUIET) {
+// `prune`: the tags kept beside a new one. False: not marked, or a mark that
+// lost every race, unwritten.
+export function hushed(dir, s, mark = false, list = QUIET, prune = (have) => have.slice(-999)) {
   const p = join(dir, list);
   if (!s) return false;
   for (let i = 0; i < 3; i++) {
@@ -514,11 +516,37 @@ export function hushed(dir, s, mark = false, list = QUIET) {
     const have = (before ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (!mark || have.includes(s)) return have.includes(s);
     // By rename: written in place, a hook killed mid-write forgot every mark.
-    // Again, from the text read, when another wrote first: two memory-off
-    // Stops at once (no lock there) kept one tag.
-    if (replaceIfUnchanged(p, before, [...have, s].slice(-1000).join('\n') + '\n') !== 'conflict') return true;
+    // Again, from the text read, when another wrote first.
+    if (replaceIfUnchanged(p, before, [...prune(have), s].join('\n') + '\n') !== 'conflict') return true;
   }
-  return true;
+  return false;
+}
+
+// The tags of the transcripts in every project folder; null when one won't list.
+function onDisk(root) {
+  const all = new Set();
+  try {
+    for (const f of readdirSync(root)) {
+      let ns = []; try { ns = readdirSync(join(root, f)); } catch (e) { if (e.code !== 'ENOTDIR') return null; }
+      for (const n of ns) if (n.endsWith('.jsonl')) all.add(tag(n));
+    }
+  } catch { return null; }
+  return all;
+}
+// A conversation held with auto memory off, into OFF. Under the projects'
+// lock: 24 memory-off Stops at once, with no lock, lost 46 tags of 96 (P1
+// hunt, 2026-10-29). Pruned by the transcripts still on disk, as the
+// journal's list is: the newest 1,000 anywhere evicted a quiet project's tags,
+// and its conversations were imported. The newest OFF_NEW stay whatever: a
+// transcript is made with its first message, after its start wrote the tag.
+// False when the tag is not there.
+const OFF_NEW = 100, OFF_MOST = 10_000;
+export function off(input) {
+  const root = projectsRoot(), s = tag(input.session_id || basename(String(input.transcript_path || ''), '.jsonl'));
+  return withLock(root, () => hushed(root, s, true, OFF, (have) => {
+    const live = onDisk(root);
+    return have.filter((t, i) => !live || live.has(t) || i >= have.length - OFF_NEW).slice(-OFF_MOST);
+  })) === true;
 }
 
 export function handoff(input, sink = null) {
@@ -570,7 +598,8 @@ export function handoff(input, sink = null) {
     // A conversation marked private writes nothing, and what it wrote before
     // the mark goes. The mark is kept in a file: only the turn that typed it
     // sees it in the transcript.
-    const quiet = hushed(dir, s, hush);
+    // Private by this read even when the mark could not be kept.
+    const quiet = hushed(dir, s, hush) || hush;
     // The journal (memory-tier's Stop passes its writer) takes this lock too,
     // not one of its own; whatever it throws is its own.
     if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush }); } catch {}
@@ -819,8 +848,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   (async () => {
     try {
       const input = JSON.parse(readFileSync(0, 'utf8'));
-      if (memoryOff()) {}   // auto memory off: no record, no briefing
-      else if (process.argv.includes('--print')) process.stdout.write(await print(input));
+      // Auto memory off: no record, no briefing; the tag at every start, so no
+      // backfill imports a conversation whose first reply got no Stop (P1 hunt,
+      // 2026-10-29). A resumed conversation has its history: no briefing.
+      if (memoryOff()) off(input);
+      else if (process.argv.includes('--print')) { if (input.source !== 'resume') process.stdout.write(await print(input)); }
       else handoff(input);
     } catch {
       // A hook that throws on every turn is worse than one that misses a turn.
