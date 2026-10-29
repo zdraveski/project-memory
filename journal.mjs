@@ -4,7 +4,7 @@
 // files and commands (uncapped in turns()) are shortened.
 import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
-import { clip, tag, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, ACTIVE, OFF } from './handoff-log.mjs';
+import { clip, tag, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, ACTIVE, OFF, TAIL } from './handoff-log.mjs';
 import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, withLock } from './store.mjs';
 
 export const JOURNAL = 'journal';
@@ -52,6 +52,8 @@ function each(ds, fn) {
   for (const d of ds) try { fn(d); } catch (e) { bad = e; }
   if (bad) throw bad;
 }
+// A list file's lines, trimmed (an editor's CRLF, a space left after one), none blank.
+const listOf = (text) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
 // A path inside the turn's folder reads shorter relative to it.
 const rel = (p, cwd) => {
@@ -324,7 +326,10 @@ function takeBack(dir, k, s, again = false, priv = false) {
 // the same for an import). Call under withLock(dir). False when nothing was
 // tried for this read's sake: a conversation private or memory-off already.
 function take(dir, transcriptPath, got, { quiet, hush }) {
-  const s = tag(basename(transcriptPath, '.jsonl')), k = keyOf(transcriptPath), was = checked(dir, k);
+  const s = tag(basename(transcriptPath, '.jsonl')), k = keyOf(transcriptPath), was = checked(dir, k), f = basename(dirname(transcriptPath));
+  // Its folder first, a quiet one's too: in a folder no look listed, its
+  // ` swept` line went at every look, and it was swept again at each.
+  if (!near(dir, f) && same(dirname(dirname(transcriptPath)), projectsRoot())) noteFolder(dir, f);
   // Private, or held with auto memory off once: never recorded, and what it
   // has in the journal goes at its first such Stop, not only at the one whose
   // read holds the mark. Marked by a writer with no sink (the compaction gate),
@@ -332,20 +337,21 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
   // (P1 hunt, 2026-10-29). Resumed with memory on, a memory-off conversation's
   // first Stop journaled every turn (review, 2026-10-29).
   if (quiet || hushed(projectsRoot(), s, false, OFF)) { takeBack(dir, k, s, hush); return hush; }
-  // A read short of the whole transcript: the rest is looked at for a mark,
-  // once a conversation. A mark typed in a turn that got no Stop, then 512 KB
-  // of a tool's output, was never read, and the conversation was journaled
-  // and committed (P1 hunt, 2026-10-29).
-  if (got.whole === false && !was) {
+  // A read short of the whole transcript: what no look has read is looked at
+  // for a mark, from where the last stopped, once more has come since than
+  // any Stop's read covers (TAIL). A mark typed in a turn that got no Stop,
+  // then 512 KB of a tool's output, was never read, and the conversation was
+  // journaled and committed (P1 hunt, 2026-10-29); looked at once only, so
+  // was a mark typed after the look (review, 2026-10-29).
+  const from = Number(was?.[2] ?? 0);
+  if (got.whole === false && !was?.[4] && statSync(transcriptPath).size - from > TAIL) {
     const fd = openSync(transcriptPath, 'r');
     let size, hit;
-    try { size = fstatSync(fd).size; hit = marked(fd, 0, IMPORT_SEGMENT, size).hit; } finally { closeSync(fd); }
+    try { size = fstatSync(fd).size; hit = marked(fd, from, IMPORT_SEGMENT, size).hit; } finally { closeSync(fd); }
     if (hit) { hushed(dir, s, true); takeBack(dir, k, s, true); return true; }
     mark(dir, [`${k} ${size}`], null, CHECKED);
   }
   record(dir, transcriptPath, got);
-  const f = basename(dirname(transcriptPath));
-  if (!near(dir, f) && same(dirname(dirname(transcriptPath)), projectsRoot())) noteFolder(dir, f);
   return true;
 }
 
@@ -355,15 +361,17 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
 // in one and never imported (R30).
 const FOLDERS = '.folders';
 const near = (dir, f) => { const me = pathKey(basename(dirname(dir))); return pathKey(f) === me || pathKey(f).startsWith(me + '-'); };
-const folders = (dir) => (raw(join(dir, JOURNAL, FOLDERS)) ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-function noteFolder(dir, f) {
+const folders = (dir) => listOf(raw(join(dir, JOURNAL, FOLDERS)));
+// The list as `edit` makes it of the one there; given back the same, no write.
+function refold(dir, edit) {
   const file = join(dir, JOURNAL, FOLDERS);
   mkdirSync(join(dir, JOURNAL), { recursive: true });
   for (let i = 0; i < 3; i++) {
-    const before = raw(file), have = folders(dir);
-    if (have.some((h) => pathKey(h) === pathKey(f)) || replaceIfUnchanged(file, before, [...have, f].join('\n') + '\n') !== 'conflict') return;
+    const before = raw(file), have = listOf(before), next = edit(have);
+    if (next === have || replaceIfUnchanged(file, before, next.map((f) => f + '\n').join('')) !== 'conflict') return;
   }
 }
+const noteFolder = (dir, f) => refold(dir, (have) => (have.some((h) => pathKey(h) === pathKey(f)) ? have : [...have, f]));
 
 // handoff()'s sink, called under its lock. A sweep still owed keeps its
 // failure until it goes through.
@@ -398,11 +406,12 @@ function mark(dir, lines, keep = null, list = IMPORTED) {
 // (turns a live write missed), from where it was read up to; one imported in
 // part goes on from there; a known one costs no read of its head. `from`:
 // where its import goes on; `looked`: the bytes looked at for a mark. `seen`:
-// every transcript the folders hold.
+// every transcript the folders hold; `mine`: the folders holding one not
+// listed as another store's.
 // shortcut: a worktree folder no live Stop has recorded in yet is not looked
 // in; scan every project folder's first cwd if one is ever missed.
 function candidates(dir, skip) {
-  const root = projectsRoot(), noted = new Set(folders(dir).map(pathKey)), done = new Map(), out = [];
+  const root = projectsRoot(), noted = new Set(folders(dir).map(pathKey)), done = new Map(), theirs = new Set(), out = [];
   // Another's or one that won't open: up to its size, from nothing read. One
   // ` partial` (before R24 only its last 64 MB was read): nothing read either,
   // or its start was never imported.
@@ -411,17 +420,19 @@ function candidates(dir, skip) {
   // was never imported.
   for (const m of (raw(join(dir, JOURNAL, IMPORTED)) ?? '').split(/\r?\n/).map((l) => LINE.exec(l))) {
     const retry = m?.[4] === 'failed' && !(Math.abs(Date.now() - Number(m[5])) < RETRY);
+    if (m?.[4] === 'other') theirs.add(m[1]);
     if (m && m[4] !== 'partial' && !retry) done.set(m[1], m[4] ? { upto: Number(m[2]), from: 0, looked: 0 } : { upto: Number(m[3] ?? m[2]), from: Number(m[3] ?? m[2]), looked: Number(m[2]) });
   }
   // A listing that fails leaves `seen` null, so nothing is pruned: read as
   // empty, it would drop the lines of every transcript in it.
-  out.seen = new Set();
+  out.seen = new Set(); out.mine = new Set();
   let looks = []; try { looks = readdirSync(root).filter((f) => f !== '_shared' && (near(dir, f) || noted.has(pathKey(f)))); } catch { out.seen = null; }
   for (const f of looks) {
     let names = []; try { names = readdirSync(join(root, f)).filter((n) => n.endsWith('.jsonl')); } catch { out.seen = null; }
     for (const n of names) {
       const p = join(root, f, n), k = `${f}/${n.slice(0, -6)}`;
       out.seen?.add(k);
+      if (!theirs.has(k)) out.mine.add(pathKey(f));
       if (typeof skip === 'string' && same(p, skip)) continue;
       let st; try { st = statSync(p); } catch { continue; }
       const was = done.get(k) ?? { upto: -1, from: 0, looked: 0 };
@@ -587,6 +598,9 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
     // gone from disk loses its line: the list holds a month, not every month.
     mark(dir, other, all.seen);
     if (raw(join(dir, JOURNAL, CHECKED)) != null) mark(dir, [], all.seen, CHECKED);
+    // So does a noted folder gone, or holding none of this store's: kept, it
+    // was listed at every look for good.
+    if (all.seen) refold(dir, (have) => { const keep = have.filter((h) => all.mine.has(pathKey(h))); return keep.length < have.length ? keep : have; });
   } catch (e) { err = e; }
   const left = all.length - done - other.length;
   // Kept in .failed as the sink's is; the next import that goes through clears

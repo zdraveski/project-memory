@@ -224,6 +224,12 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   ok(n === 2 && keys('2026-11-06') === 'o-1' && !existsSync(dayFile(dir, '2026-11-05')) && !days(dir).includes('2026-11-05'),
     `the sweep takes the conversation's entries from every day, another's stay, and a day it leaves empty goes (got ${n}, ${keys('2026-11-06')}, ${days(dir)})`);
 }
+{
+  // A transcript outside the projects folder names no folder for the import to look in.
+  const d = storeFor(home, 'C:\\journal-far');
+  write(d, T, [turn({ at: '2026-10-31 10:00', id: 'far-1' })], { quiet: false, hush: false });
+  ok(days(d).join() === '2026-10-31' && !existsSync(join(d, 'journal', '.folders')), `a live write of a transcript outside the projects folder notes no folder (got ${days(d)})`);
+}
 
 // --- the Stop hook, as Claude Code runs it -----------------------------------
 const TIER = tool('memory-tier.mjs');
@@ -358,6 +364,32 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
   stop(Q);
   ok(!existsSync(failed), `a conversation swept once is not swept at every Stop (got ${existsSync(failed) ? readFileSync(failed, 'utf8') : ''})`);
   rmSync(bad, { recursive: true });
+}
+{
+  // The look past the Stop's read goes on from where the last stopped, once
+  // more has been written than a Stop's read covers: looked at once, a mark
+  // typed later in a turn that got no Stop, with 600 KB after it, was missed
+  // when the read had no turn of handoff.md's to reach back to (review, 2026-10-29).
+  const L = sid('l'), list = join(sdir, 'journal', '.checked'), flood = (ts) => appendFileSync(tp(L), JSON.stringify({ type: 'user', uuid: `l-big-${ts}`, sessionId: L, cwd: scwd, timestamp: ts,
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'x'.repeat(600_000) }] } }) + '\n');
+  const line = () => readFileSync(list, 'utf8').split('\n').find((l) => l.startsWith(`${slug(scwd)}/${L} `));
+  say(L, '2026-10-28T14:00:00Z', 'the first question', 'the first answer');
+  flood('2026-10-28T14:00:30Z');
+  say(L, '2026-10-28T14:01:00Z', 'the second question', 'the second answer');
+  stop(L);
+  const first = line();
+  ok(first === `${slug(scwd)}/${L} ${statSync(tp(L)).size}` && of(L).length === 1, `a look that finds no mark says how far it read (got ${first}, ${of(L).length})`);
+  say(L, '2026-10-28T14:02:00Z', 'a third question', 'a third answer');
+  stop(L);
+  ok(line() === first && of(L).length === 2, `a Stop whose read covers what came since looks at nothing (got ${line()}, ${of(L).length})`);
+  say(L, '2026-10-28T14:03:00Z', '<private-session> from here on');
+  flood('2026-10-28T14:03:30Z');
+  say(L, '2026-10-28T14:04:00Z', 'so what is the vault passphrase', 'it is hunter2-staple');
+  rmSync(join(sdir, 'handoff.md'));   // a fourth session's turns pushed this one's out
+  stop(L);
+  let tags = '', hd = ''; try { tags = readFileSync(join(sdir, '.private-sessions'), 'utf8'); hd = readFileSync(join(sdir, 'handoff.md'), 'utf8'); } catch {}
+  ok(!of(L).length && tags.split(/\r?\n/).includes(L.slice(0, 8)) && !hd.includes('hunter2'),
+    `a mark typed after the first look, further back than the read, keeps the conversation out (got ${JSON.stringify(of(L))}; ${JSON.stringify(tags)})`);
 }
 
 // --- backfill: the conversations still on disk, a few a Stop -----------------
@@ -534,6 +566,33 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: w, transcript_path: live, session_id: V, hook_event_name: 'Stop' }) });
   due(d); fill(d);
   ok(before === '' && asks(d).join() === 'asked in the worktree,live in the worktree', `a worktree's folder is imported from once a live Stop records there (got ${before}; ${asks(d)})`);
+  appendFileSync(live, rec('user', V, '2026-10-28T09:05:00Z', 'again in the worktree', w) + '\n' + rec('assistant', V, '2026-10-28T09:05:30Z', 'ok', w) + '\n');
+  spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: w, transcript_path: live, session_id: V, hook_event_name: 'Stop' }) });
+  due(d); fill(d);
+  const noted = readFileSync(join(d, 'journal', '.folders'), 'utf8');
+  ok(noted === `${slug(w)}\n`, `a folder is noted once, and stays while it holds this store's conversations (got ${JSON.stringify(noted)})`);
+}
+{
+  // A private conversation's Stop in a worktree folder not yet noted notes it:
+  // no look listed the folder, so its ` swept` line went at every look and it
+  // was swept again at each. A noted folder gone from disk, or holding only
+  // another store's conversations, leaves the list (review, 2026-10-29).
+  const [r, d] = repo('wtquiet'), w = join(home, 'trees', 'quiet'), gd = join(r, '.git', 'worktrees', 'quiet'), K = sid('k');
+  mkdirSync(gd, { recursive: true }); mkdirSync(w, { recursive: true });
+  writeFileSync(join(w, '.git'), `gitdir: ${gd}\n`); writeFileSync(join(gd, 'commondir'), '../..\n'); writeFileSync(join(gd, 'gitdir'), join(w, '.git') + '\n');
+  const live = join(projects, slug(w), `${K}.jsonl`), list = join(d, 'journal', '.checked'), noted = join(d, 'journal', '.folders');
+  mkdirSync(dirname(live), { recursive: true });
+  writeFileSync(live, rec('user', K, '2026-10-28T09:00:00Z', '<private-session> in the worktree', w) + '\n' + rec('assistant', K, '2026-10-28T09:00:30Z', 'ok', w) + '\n');
+  spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: w, transcript_path: live, session_id: K, hook_event_name: 'Stop' }) });
+  due(d); fill(d);
+  let lines = ''; try { lines = readFileSync(list, 'utf8'); } catch {}
+  ok(lines.includes(`${slug(w)}/${K} 0 swept\n`), `a quiet conversation's swept line outlives a look (got ${JSON.stringify(lines)})`);
+  const far = join(home, 'work', 'far-noted');
+  old(far, sid('d'), 10, ['far']);
+  appendFileSync(noted, `${slug(far)}\n`);
+  rmSync(join(projects, slug(w)), { recursive: true });
+  due(d); fill(d); due(d); fill(d);
+  ok(readFileSync(noted, 'utf8').trim() === '', `a noted folder gone from disk, or of another store's conversations only, leaves the list (got ${JSON.stringify(readFileSync(noted, 'utf8'))})`);
 }
 {
   // The conversations a live Stop looked at whole lose their line once their
