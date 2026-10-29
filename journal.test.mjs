@@ -207,6 +207,12 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   record(d, T, [turn({ at: '2026-10-31 23:00', id: 'z-0', ask: 'an earlier turn' })]);
   ok(keys('2026-11-02') === 'z-1' && keys('2026-10-31') === 'z-0' && keys('2026-11-01') === '' && readFileSync(dayFile(d, '2026-11-01'), 'utf8').includes('My note on the zone turn.'),
     `a key recorded on a day leaves the days beside it, its note kept (got ${days(d).map((x) => `${x}: ${keys(x)}`)})`);
+  // That is only a clean-up: a day beside it that won't read (here a folder)
+  // fails nothing, so the Stop whose write landed reports no failure.
+  mkdirSync(dayFile(d, '2026-11-09'));
+  let threw = null;
+  try { record(d, T, [turn({ at: '2026-11-10 09:00', id: 'z-2', ask: 'beside a folder' })]); } catch (e) { threw = e.code || e.message; }
+  ok(threw === null && keys('2026-11-10') === 'z-2', `a day beside it that won't read fails no record (got ${threw}, ${keys('2026-11-10')})`);
 }
 {
   // A path is cut relative to the turn's folder in any case only where the

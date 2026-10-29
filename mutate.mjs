@@ -773,6 +773,7 @@ const suites = {
     'journal status says nothing of a day not in UTF-8': ["      if (!isUtf8(b)) unread.push(`${f}: not UTF-8`);\n", ''],
     'journal status says nothing of a day that will not read': ['} catch (e) { unread.push(`${f}: ${e.code || e.message}`); }', '} catch {}'],
     'journal a turn re-dated a day on stays in the day before': ['if (added?.size) for (const k of [-1, 1])', 'if (false) for (const k of [-1, 1])'],
+    "journal a day beside it that won't read fails the record": ['(e) => !added.has(e.key)); } catch {}', '(e) => !added.has(e.key)); } catch (e) { throw e; }'],
     'journal a turn re-dated a day back stays in the day after': ['for (const k of [-1, 1])', 'for (const k of [-1])'],
     'journal paths folded in case on Linux': ["const fold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);", 'const fold = (p) => p.toLowerCase();'],
     'journal paths not folded in case on macOS': ["process.platform === 'win32' || process.platform === 'darwin' ?", "process.platform === 'win32' ?"],

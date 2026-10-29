@@ -174,7 +174,11 @@ export function record(dir, transcriptPath, turns, when) {
     // A key new here leaves the days beside it: dated again after a time-zone
     // change (a backfill of a grown conversation), a turn was a day off, and
     // in both (final review). After the write: killed between, it is twice, not gone.
-    if (added?.size) for (const k of [-1, 1]) drop(dir, new Date(Date.parse(d) + k * 864e5).toISOString().slice(0, 10), (e) => !added.has(e.key));
+    // Only a clean-up: a day beside it that won't read (a folder, held open) keeps
+    // the copy; thrown, a Stop whose write landed showed "last write failed".
+    if (added?.size) for (const k of [-1, 1]) {
+      try { drop(dir, new Date(Date.parse(d) + k * 864e5).toISOString().slice(0, 10), (e) => !added.has(e.key)); } catch {}
+    }
   });
   pin(dir);
   return n;
