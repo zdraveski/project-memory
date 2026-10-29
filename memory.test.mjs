@@ -1,9 +1,10 @@
 // Self-check for memory.mjs, the memory CLI: ranked search, status, history
 // and restore from real snapshots, promote, doctor. A throwaway HOME holds a
 // project store and the shared store. Run: node memory.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync, readdirSync, chmodSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync, readdirSync, chmodSync, renameSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
 import { tool, tempHome, storeFor } from './harness.mjs';
 
@@ -725,6 +726,14 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   mkdirSync(other, { recursive: true }); writeFileSync(join(other, 'MEMORY.md'), '# Index\n');
   day(other, '2026-10-20', [entry('2026-10-20 10:00', 'rotate the signing key', { t: 'C--jr2/feed' })]);
   ok(!/signing key/.test(jcli('search', 'rotate', 'signing').stdout) && /^     Asked: rotate the signing key$/m.test(jcli('search', 'rotate', 'signing', '--all').stdout), "--all searches every project's journal");
+  // A project whose only memory is its journal has no MEMORY.md: --all passed
+  // it over. Reached by a second link too, it is searched once.
+  const lone = join(root, 'C--jr3', 'memory');
+  day(lone, '2026-10-21', [entry('2026-10-21 10:00', 'calibrate the lone telescope', { t: 'C--jr3/beef' })]);
+  mkdirSync(join(root, 'C--jr3-link'), { recursive: true });
+  symlinkSync(lone, join(root, 'C--jr3-link', 'memory'), process.platform === 'win32' ? 'junction' : 'dir');
+  r = jcli('search', 'lone', 'telescope', '--all');
+  ok(/^     Asked: calibrate the lone telescope$/m.test(r.stdout) && /^1 of 1 match\(es\)/m.test(r.stdout), `--all searches a journal with no MEMORY.md beside it, once (got ${r.stdout})`);
 
   // A year of journal, ~30 MB: one entry rendered once, each day written in one call.
   const big = join(root, 'C--big', 'memory'), bcli = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', big], { env, encoding: 'utf8' });
@@ -800,6 +809,21 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   const listed = readFileSync(join(fj, '.forgotten'), 'utf8').split('\n').filter(Boolean).sort().join();
   ok(r.status === 0 && /^removed 5$/m.test(r.stdout) && Object.keys(want).every((d) => file(d) === page(d, [])) && listed === es.map((e) => e.key).sort().join(),
     `--since 1970-01-01 --yes forgets the whole journal (got ${r.stdout}; ${listed})`);
+  // With no history there is no old copy to delete: the snapshots go unmentioned.
+  reset();
+  renameSync(join(root, '.git'), join(root, '.git-away'));
+  try { r = fcli('forget', 'Zebra', 'mango', '--yes'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
+  ok(r.status === 0 && r.stdout.endsWith('\nremoved 2\n'), `with no snapshots, forget --yes says nothing of them (got ${r.stdout}${r.stderr})`);
+  // A day that changed under each of its three writes keeps its entries: what
+  // is listed and counted is what went, out of what matched. The other writer
+  // is simulated in the CLI's own process, just before each write lands.
+  reset();
+  const busy = join(home, 'busy-day.mjs');
+  writeFileSync(busy, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst read = fs.readFileSync;\n" +
+    "fs.readFileSync = (p, ...a) => { if (String(p).endsWith('2025-10-21.md') && fs.existsSync(`${p}.tmp${process.pid}`)) fs.appendFileSync(p, '\\nanother writer'); return read(p, ...a); };\nsyncBuiltinESMExports();\n");
+  r = spawnSync(process.execPath, ['--import', pathToFileURL(busy).href, CLI, 'forget', 'Zebra', 'mango', '--yes', '--store', fd], { env, encoding: 'utf8' });
+  ok(/^2025-10-20 09:00  conversation aaaa1111  the zebra eats mango\nremoved 1 of 2\nthe snapshots still hold the journal of 2025-10-20: /.test(r.stdout) && file('2025-10-21').includes('mango, the zebra again'),
+    `a day the write never landed in keeps its entry, neither listed nor counted as removed (got ${r.stdout}${r.stderr})`);
 }
 
 // status and the journal: a line for a store that has one, what is left to

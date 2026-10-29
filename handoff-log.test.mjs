@@ -2,7 +2,8 @@
 // sits beyond the first tail window, records that must not become an "ask",
 // an existing section that must be merged, damaged files, and the two-hook
 // race. Run: node handoff-log.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, chmodSync, readdirSync, utimesSync, appendFileSync, existsSync, symlinkSync } from 'node:fs';
+import fs, { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, chmodSync, readdirSync, utimesSync, appendFileSync, existsSync, symlinkSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
@@ -780,6 +781,18 @@ ok(Date.now() - t0 < 1000, `reading a hostile message is linear (${Date.now() - 
 // and a resumed one was recorded again.
 for (let i = 0; i < 60; i++) hushed(dirN, `s${String(i).padStart(7, '0')}`, true);
 ok(hushed(dirN, 's0000000'), 'the private mark of a conversation 60 back still holds');
+// Two memory-off Stops at once write .memory-off under no lock: the one whose
+// write finds the other's just landed tries again, and both tags stay. The
+// other Stop is simulated here, just before this one's write lands.
+const { OFF } = await import('./handoff-log.mjs'), offDir = join(home, 'off-race'), offList = join(offDir, OFF);
+mkdirSync(offDir, { recursive: true });
+writeFileSync(offList, 'first000\n');
+const read = fs.readFileSync;
+let raced = false;
+fs.readFileSync = (p, ...a) => { if (!raced && p === offList && existsSync(`${p}.tmp${process.pid}`)) { raced = true; writeFileSync(p, 'first000\nother111\n'); } return read(p, ...a); };
+syncBuiltinESMExports();
+try { hushed(offDir, 'mine2222', true, OFF); } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
+ok(raced && readFileSync(offList, 'utf8') === 'first000\nother111\nmine2222\n', `a tag whose write lost the race is written again, beside the other's (got ${JSON.stringify(readFileSync(offList, 'utf8'))})`);
 }
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.

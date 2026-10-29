@@ -1,6 +1,7 @@
 // Self-check for journal.mjs: capped, redacted entries merged into one file
 // per day. Run: node journal.test.mjs
-import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, rmSync, statSync, utimesSync } from 'node:fs';
+import fs, { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, rmSync, statSync, utimesSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join, dirname } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import assert from 'node:assert';
@@ -42,11 +43,19 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
     ran: ['node "C:/p/memory.mjs" forget zebra --session x', ...Array.from({ length: 10 }, (_, i) => `ls ${i}`)] }), T);
   ok(f.asked === '[private]' && f.answered === '[private]' && !f.changed.length && !f.ran.length,
     `a turn that ran forget, even before its last 10 commands, keeps none of its words (got ${JSON.stringify(f)})`);
-  for (const c of ['node memory.mjs forget zebra', "node '/p/memory.mjs' forget 'zebra' --yes", 'node "C:\\p\\memory.mjs" forget --since 1970-01-01 --yes'])
+  // Options may come before the command, as the CLI takes them.
+  for (const c of ['node memory.mjs forget zebra', "node '/p/memory.mjs' forget 'zebra' --yes", 'node "C:\\p\\memory.mjs" forget --since 1970-01-01 --yes',
+    'node "C:/p/memory.mjs" --session abc forget password', 'node "C:/p/memory.mjs" --store C:/s forget password --yes',
+    'node memory.mjs --store "C:/my dir/memory" --yes forget x', "node memory.mjs --session=abc --store 'C:/a b' forget x"])
     ok(entryOf(turn({ ran: [c] }), T).asked === '[private]', `a forget run is seen: ${c}`);
   // Only memory.mjs's forget command: a word after it elsewhere is not one.
-  for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget', 'git add memory.mjs && git commit -m "fix forget"', 'grep x memory.mjs; grep forget y', 'node memory.mjs status\nforget'])
+  for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget', 'git add memory.mjs && git commit -m "fix forget"', 'grep x memory.mjs; grep forget y', 'node memory.mjs status\nforget',
+    'node memory.mjs --session abc search forget'])
     ok(entryOf(turn({ ran: [c] }), T).asked === 'a question', `a turn that ran no forget is kept: ${JSON.stringify(c)}`);
+  // Linear: an option read as the one before's value too doubled the work per option.
+  const t0 = Date.now();
+  entryOf(turn({ ran: ['node memory.mjs' + ' --a'.repeat(40) + ' x'] }), T);
+  ok(Date.now() - t0 < 1000, `a command of 40 options is read in linear time (${Date.now() - t0} ms)`);
 }
 {
   const e = entryOf(turn({ changed: ['C:\\proj\\a.js', 'D:\\o\\b.js'], ran: ['ls', 'git status'] }), T);
@@ -154,6 +163,17 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
   const es = parseDay(readFileSync(dayFile(sdir, local(ts)), 'utf8')).entries;
   ok(es.length === 1 && es[0].asked === 'first question' && es[0].answered === 'first answer' && es[0].branch === 'feat/journal',
     `a reply leaves one journal entry, with the request, the reply and the branch (got ${JSON.stringify(es)})`);
+}
+{
+  // Resumed with auto memory on, a conversation once held with it off is still
+  // not journaled: its first Stop with memory on journaled every turn of it.
+  const failed = join(sdir, 'journal', '.failed');
+  writeFileSync(failed, '{"at":"2026-10-28T09:00:00Z","error":"left alone"}');
+  say(X, '2026-10-28T10:01:00Z', 'asked with memory back on', 'answered');
+  stop(X);
+  ok(!of(X).length && readFileSync(failed, 'utf8').includes('left alone'),
+    `a conversation once held with auto memory off writes no entry once memory is on, and clears no failure (got ${JSON.stringify(of(X))})`);
+  rmSync(failed);
 }
 {
   say(A, '2026-10-28T10:05:00Z', 'second question');
@@ -404,7 +424,7 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   rmSync(join(d, '.lock'), { recursive: true });
   ok(busy === null && text() === before && !existsSync(list), `while another holds the store's lock, nothing goes (got ${JSON.stringify(busy)})`);
   const r = forget(d, ['mango'], { until: '2026-10-20', apply: true });
-  ok(r.removed === 1 && hits(['zebra']) === 'f-2' && readFileSync(f20, 'utf8').includes('My own note.'), `with apply the matches go, and a note written by hand stays (got ${r.removed}, ${hits(['zebra'])})`);
+  ok(r.removed.map((e) => e.key).join() === 'f-1' && hits(['zebra']) === 'f-2' && readFileSync(f20, 'utf8').includes('My own note.'), `with apply the matches go, and a note written by hand stays (got ${r.removed}, ${hits(['zebra'])})`);
   writeFileSync(list, readFileSync(list, 'utf8').replace(/\n/g, ' \r\n'));   // as an editor may save it: CRLF, a space left after the key
   ok(record(d, T, [turn({ at: '2026-10-20 09:00', id: 'f-1', ask: 'the Zebra eats mango' })]) === 0 && hits(['mango'], { until: '2026-10-20' }) === '',
     'a forgotten turn recorded again stays gone');
@@ -413,9 +433,22 @@ const due = (d) => utimesSync(join(d, 'journal', '.imported'), ago(1), ago(1));
   ok(hits(['mango']) === '', `a second forget keeps the first one's keys (got ${hits(['mango'])})`);
 }
 {
+  // A day that changed under each of its three writes keeps its entries, and
+  // forget says so: what it returns as removed is what went. The other writer
+  // is simulated here, just before each write of that day lands.
+  const d = storeFor(home, 'C:\\forget-busy'), f21 = dayFile(d, '2026-10-21');
+  record(d, T, [turn({ at: '2026-10-20 09:00', id: 'b-1', ask: 'mango one' }), turn({ at: '2026-10-21 09:00', id: 'b-2', ask: 'mango two' })]);
+  const read = fs.readFileSync;
+  fs.readFileSync = (p, ...a) => { if (p === f21 && existsSync(`${p}.tmp${process.pid}`)) appendFileSync(p, '\nanother writer'); return read(p, ...a); };
+  syncBuiltinESMExports();
+  let r; try { r = forget(d, ['mango'], { apply: true }); } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
+  ok(r.matched.length === 2 && r.removed.map((e) => e.key).join() === 'b-1' && parseDay(readFileSync(f21, 'utf8')).entries.length === 1 &&
+    readFileSync(join(d, 'journal', '.forgotten'), 'utf8').includes('b-2'), `what forget says went is what went (got ${JSON.stringify(r?.removed)})`);
+}
+{
   const [r, d] = repo('forget'), p = old(r, sid('a'), 30, ['the zebra eats mango', 'the zebra policy']);
   fill(d);
-  const gone = forget(d, ['mango'], { apply: true }).removed;
+  const gone = forget(d, ['mango'], { apply: true }).removed.length;
   appendFileSync(p, rec('user', sid('a'), '2026-09-02T10:00:00Z', 'one more', r) + '\n' + rec('assistant', sid('a'), '2026-09-02T10:00:30Z', 'one more: done', r) + '\n');
   utimesSync(p, ago(1), ago(1)); due(d);
   const again = fill(d);

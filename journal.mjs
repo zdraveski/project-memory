@@ -34,7 +34,10 @@ const rel = (p, cwd) => {
 // reply and committed with the day, kept what it removed (review, 2026-10-29).
 // The subcommand only: "memory.mjs" anywhere before the word took a commit
 // message or a search for "forget" for one, and dropped a whole turn.
-const FORGETS = /memory\.mjs["']?\s+forget\b/;
+// Options may come first (`--session X forget`, as the CLI takes them). A
+// value never starts with - or a quote it does not close: one that could be
+// the next option too doubled the work per option (40 took 7 s).
+const FORGETS = /memory\.mjs["']?(?:\s+--[\w-]+(?:[= ](?:"[^"]*"|'[^']*'|[^\s"'-]\S*))?)*\s+forget\b/;
 
 export function entryOf(turn, transcriptPath) {
   const s = tag(basename(transcriptPath, '.jsonl'));
@@ -159,41 +162,45 @@ function began(transcriptPath) {
 }
 
 // Day d without the entries `keep` refuses; its prose stays. Call under
-// withLock(dir). Returns how many went.
+// withLock(dir). Returns the entries that went: none when the day changed
+// under each of three writes.
 function drop(dir, d, keep) {
   const file = dayFile(dir, d);
   for (let i = 0; i < 3; i++) {
     const before = raw(file), { prose, entries } = parseDay(before ?? '');
     const kept = entries.filter(keep);
-    if (kept.length === entries.length) return 0;
-    if (replaceIfUnchanged(file, before, page(d, prose, kept)) !== 'conflict') return entries.length - kept.length;
+    if (kept.length === entries.length) return [];
+    if (replaceIfUnchanged(file, before, page(d, prose, kept)) !== 'conflict') return entries.filter((e) => !keep(e));
   }
-  return 0;
+  return [];
 }
 
 // A conversation marked private takes back what it wrote: its entries go from
 // every day since it began. Call under withLock(dir). Returns how many went.
 export function sweep(dir, s, transcriptPath) {
   const from = began(transcriptPath);
-  return days(dir).filter((x) => x >= from).reduce((n, d) => n + drop(dir, d, (e) => e.s !== s), 0);
+  return days(dir).filter((x) => x >= from).reduce((n, d) => n + drop(dir, d, (e) => e.s !== s).length, 0);
 }
 
 // The entries with every term (any case) in one of their fields, in the range,
 // of the conversation when one is given. With apply they go, under the store's
 // lock (null when it stayed busy); their keys are listed first, so a forget
-// killed half-way leaves entries no record brings back.
+// killed half-way leaves entries no record brings back. `removed`: the matches
+// that went, fewer when a day kept changing under the write (its keys listed
+// all the same).
 export function forget(dir, terms, { since, until, conversation, apply = false, failed } = {}) {
   const ts = terms.map((t) => t.toLowerCase());
   const matched = entries([dir], { since, until, failed }).filter((e) => (!conversation || e.s === conversation) &&
     ts.every((t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.toLowerCase().includes(t))));
-  if (!apply || !matched.length) return { matched, removed: 0 };
+  if (!apply || !matched.length) return { matched, removed: [] };
   const keys = new Set(matched.map((e) => e.key)), f = join(dir, JOURNAL, FORGOTTEN);
   return withLock(dir, () => {
     for (let i = 0; i < 3; i++) {
       const before = raw(f);
       if (replaceIfUnchanged(f, before, [...(before ?? '').split(/\r?\n/).filter(Boolean), ...keys].join('\n') + '\n') !== 'conflict') break;
     }
-    return { matched, removed: [...new Set(matched.map((e) => e.day))].reduce((n, d) => n + drop(dir, d, (e) => !keys.has(e.key)), 0) };
+    const went = new Set([...new Set(matched.map((e) => e.day))].flatMap((d) => drop(dir, d, (e) => !keys.has(e.key)).map((e) => e.key)));
+    return { matched, removed: matched.filter((e) => went.has(e.key)) };
   });
 }
 
@@ -207,9 +214,13 @@ function fault(dir, e, from = '') {
 // What a read of a conversation does to the journal, at its Stop or its
 // import: the read that marks it private takes back what it wrote. Call under
 // withLock(dir). False when it was private already: nothing tried.
+// Held with auto memory off once, it is never recorded, live or imported:
+// resumed with memory on, its first Stop journaled every turn (review,
+// 2026-10-29). A private mark still sweeps it.
 function take(dir, transcriptPath, got, { quiet, hush }) {
-  if (quiet && hush) sweep(dir, tag(basename(transcriptPath, '.jsonl')), transcriptPath);
-  else if (!quiet) record(dir, transcriptPath, got);
+  const s = tag(basename(transcriptPath, '.jsonl'));
+  if (quiet && hush) sweep(dir, s, transcriptPath);
+  else if (!quiet && !hushed(projectsRoot(), s, false, OFF)) record(dir, transcriptPath, got);
   else return false;
   return true;
 }
@@ -290,17 +301,12 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {})
     for (const [i, c] of todo.entries()) {
       if (i && Date.now() - t0 >= budgetMs) break;
       try {
-        const s = tag(basename(c.p, '.jsonl'));
-        let whole = true;
-        // Private, or held with auto memory off: none of it is kept.
-        if (!hushed(dir, s) && !hushed(projectsRoot(), s, false, OFF)) {
-          const r = readTail(c.p, IMPORT_MAX_BYTES), got = turns(r.text), hush = got.hush === true;
-          // A mark typed while the plugin was off is taken as its Stop takes
-          // one: the conversation is marked, and what it wrote before goes.
-          take(dir, c.p, got, { quiet: hushed(dir, s, hush), hush });
-          whole = r.whole;
-        }
-        mark(dir, [`${c.k} ${c.size}${whole ? '' : ' partial'}`]);
+        // take() keeps none of a private one, nor of one held with auto memory
+        // off. A mark typed while the plugin was off is taken as its Stop takes
+        // one: the conversation is marked, and what it wrote before goes.
+        const r = readTail(c.p, IMPORT_MAX_BYTES), got = turns(r.text), hush = got.hush === true;
+        take(dir, c.p, got, { quiet: hushed(dir, tag(basename(c.p, '.jsonl')), hush), hush });
+        mark(dir, [`${c.k} ${c.size}${r.whole ? '' : ' partial'}`]);
         n++;
       } catch (e) { err = e; }   // left for a later Stop: one transcript that won't read must not hold up the rest
     }

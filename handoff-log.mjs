@@ -22,7 +22,7 @@ import { readFileSync, writeFileSync, existsSync, openSync, readSync, closeSync,
 import { join, dirname, basename, resolve } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, raw } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff } from './store.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
@@ -495,13 +495,19 @@ const QUIET = '.private-sessions';
 export const OFF = '.memory-off';
 export function hushed(dir, s, mark = false, list = QUIET) {
   const p = join(dir, list);
-  // CRLF too: a tag with a \r left over matched no conversation, and a marked
-  // one was written again.
-  let have = []; try { have = readFileSync(p, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean); } catch {}
   if (!s) return false;
-  // By rename: written in place, a hook killed mid-write forgot every mark.
-  if (mark && !have.includes(s)) { have = [...have, s].slice(-1000); replaceIfUnchanged(p, raw(p), have.join('\n') + '\n'); }
-  return have.includes(s);
+  for (let i = 0; i < 3; i++) {
+    // CRLF too: a tag with a \r left over matched no conversation, and a marked
+    // one was written again.
+    let before = null; try { before = readFileSync(p, 'utf8'); } catch {}
+    const have = (before ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (!mark || have.includes(s)) return have.includes(s);
+    // By rename: written in place, a hook killed mid-write forgot every mark.
+    // Again, from the text read, when another wrote first: two memory-off
+    // Stops at once (no lock there) kept one tag.
+    if (replaceIfUnchanged(p, before, [...have, s].slice(-1000).join('\n') + '\n') !== 'conflict') return true;
+  }
+  return true;
 }
 
 export function handoff(input, sink = null) {

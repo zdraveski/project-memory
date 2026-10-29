@@ -34,7 +34,7 @@ try { ({ entries, forget, summary } = await import('./journal.mjs')); }
 catch (e) {
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: String(e.message).split('\n')[0] }); return []; };
   summary = () => null;
-  forget = (dir, terms, o) => ({ matched: entries([dir], o), removed: 0 });
+  forget = (dir, terms, o) => ({ matched: entries([dir], o), removed: [] });
 }
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
@@ -553,8 +553,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const range = { since: opt('--since'), until: opt('--until') }, failed = [];
   const span = [range.since && `since ${range.since}`, range.until && `until ${range.until}`].filter(Boolean).join(' ');
   const here = rest.includes('--shared') ? sharedStore() : store || sessionStore();
-  // --all includes the shared store before it has an index, as the default does.
-  const scope = rest.includes('--all') ? [...new Set([...allStores(), sharedStore()])] : isShared(here) ? [here] : [here, sharedStore()];
+  // --all includes the shared store before it has an index, as the default does,
+  // and a project whose only memory is its journal (allStores() wants a
+  // MEMORY.md). Each once, by its real path, as allStores() counts them.
+  const every = () => {
+    let ps = []; try { ps = readdirSync(projectsRoot()); } catch {}
+    const seen = new Set();
+    return [...allStores(), sharedStore(), ...ps.map((p) => join(projectsRoot(), p, 'memory')).filter((d) => existsSync(join(d, 'journal')))]
+      .filter((d) => { const k = pathKey(real(d)); return !seen.has(k) && seen.add(k); });
+  };
+  const scope = rest.includes('--all') ? every() : isShared(here) ? [here] : [here, sharedStore()];
   // A memory is named by its file, with or without `.md`; never by a path.
   const file = args[0] && basename(args[0]).replace(/(\.md)?$/, '.md');
   let r;
@@ -589,14 +597,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     // without them it rebuilds the journal from the transcripts, forgotten entries too.
     if (!terms.length && !range.since && !range.until && !conversation) r = no('forget needs words, a date range or --conversation; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)');
     else {
-      const got = forget(here, terms, { ...range, conversation, apply: yes, failed }), m = got?.matched ?? [];
-      // Under --yes too: what went, a turn recorded since the look included.
-      const shown = m.slice(0, 20).map((e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 120)}`);
-      // A day before today is in the snapshots already (memory-tier commits a day once it closes).
-      const old = [...new Set(m.filter((e) => e.day !== local().slice(0, 10)).map((e) => e.day))];
+      const got = forget(here, terms, { ...range, conversation, apply: yes, failed }), m = got?.matched ?? [], gone = got?.removed ?? [];
+      // Under --yes, what went, a turn recorded since the look included: a day
+      // that kept changing under the write keeps its entries, and listed with
+      // the rest they read as gone.
+      const shown = (yes ? gone : m).slice(0, 20).map((e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 120)}`);
+      // A day before today is in the snapshots already (memory-tier commits a
+      // day once it closes), when there are snapshots.
+      const old = existsSync(join(projectsRoot(), '.git')) ? [...new Set(gone.filter((e) => e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
       r = !got ? no(`${here} is busy (another hook holds it); try again`)
         : !yes ? { ok: true, lines: [...shown, `${m.length} entr${m.length === 1 ? 'y' : 'ies'} would go; run again with --yes to remove them`] }
-        : { ok: true, lines: [...shown, `removed ${got.removed}`, ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : [])] };
+        : { ok: true, lines: [...shown, `removed ${gone.length}${gone.length === m.length ? '' : ` of ${m.length}`}`, ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : [])] };
     }
   } else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
