@@ -1047,12 +1047,29 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   ['vault write auth/x --client-secret ' + k('cl1ent', 'Secret88'), 'cl1ent'], ['tool --token=' + k('t0ken', 'Value99') + ' --verbose', 't0ken'], ['tool --secret ' + k('s3cret', 'Value77'), 's3cret'],
   ['[Environment]::SetEnvironmentVariable("DB_PASSWORD", "' + k('hunter2', 'hunter2') + '", "User")', 'hunter2'],
   ['htpasswd -b .htpasswd admin ' + k('Adm1n', 'Pass99'), 'Adm1n'], ['htpasswd -cbB -C 10 /etc/nginx/.htpasswd admin ' + k('An0ther', 'Pass1'), 'An0ther'],
-  ['htpasswd -nb admin ' + k('Sh0wn', 'Pass2'), 'Sh0wn'], ['export STRIPE_KEY=' + k('rk9', 'abcdefghij'), 'rk9abc'], ['export signing_key="' + k('s1gn', 'ingValue') + '"', 's1gn']])
+  ['htpasswd -nb admin ' + k('Sh0wn', 'Pass2'), 'Sh0wn'], ['export STRIPE_KEY=' + k('rk9', 'abcdefghij'), 'rk9abc'], ['export signing_key="' + k('s1gn', 'ingValue') + '"', 's1gn'],
+  // -n prints, so a redirect usually follows (fix round 1, 2026-10-29).
+  ['htpasswd -nb admin ' + k('Sh0wn', 'Pass3') + ' > .htpasswd', 'Sh0wn'], ['htpasswd -nb admin ' + k('Sh0wn', 'Pass4') + ' >> /etc/nginx/.htpasswd', 'Sh0wn'],
+  ['htpasswd -nbB admin ' + k('Sh0wn', 'Pass5') + ' 2>/dev/null', 'Sh0wn'], ['htpasswd -b .htpasswd admin ' + k('Adm1n', 'Pass77') + ' > /dev/null', 'Adm1n'],
+  ['setx DB_PASSWORD ' + k('hunter3', 'hunter3'), 'hunter3'], ['gh secret set DEPLOY_KEY --body ' + k('b0dy', 'Secret7'), 'b0dy'], ['gh secret set X -b "' + k('b0dy', 'Secret8') + '"', 'b0dy'],
+  ['npm config set //registry.npmjs.org/:_authToken ' + k('ab12', 'cd34ef56gh78'), 'ab12'], ['echo "//registry.npmjs.org/:_authToken=' + k('ab12', 'cd34ef56gh79') + '" >> .npmrc', 'ab12'],
+  // Real-looking values where a reference, a path or a count would be kept.
+  ['node cli.mjs --token ' + k('ghx0', 'Real1Token2'), 'ghx0'], ['oc login -u me -p ' + k('0cP', 'ass9word') + ' server', '0cP'], ['export SSH_KEY=' + k('AAAAC3Nza', 'C1lZDI1NTE5'), 'AAAAC3'],
+  ['export MY_SECRET_TOKEN=' + k('t0k', 'enValue5'), 't0k'], ['[Environment]::SetEnvironmentVariable("API_KEY", "' + k('k3y', 'Value66') + '", "User")', 'k3y']])
   ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a secret passed to a command is redacted (got ${red(s)})`);
+// Over-redaction costs recall: the word after a command's flag is often its
+// point. A reference ($TOKEN, ${TOKEN}, $(cat pw)), a path or a number is no
+// secret; a name's word counts whole (KEYBOARD is no KEY) and not in a count
+// or a file's name (TOKEN_LIMIT, MAX_TOKEN, KEY_FILE); --no-x takes no value.
 const commands = ['mkdir -p build/out', 'git add -p', 'docker run -p 8080:80 -u 1000 img', 'ssh -p 2222 host', 'aws configure set region us-east-1',
   'aws configure get aws_secret_access_key', 'export TOKENIZERS_PARALLELISM=false', 'export KEYBOARD_LAYOUT=us', 'export API_KEY=$(cat ~/.key)',
   'export PUBLIC_KEY_PATH=~/.ssh/id.pub', '[Environment]::SetEnvironmentVariable("PATH", "C:\\tools", "User")', 'htpasswd -c .htpasswd admin',
-  'curl --token-file ./t https://x', 'cli --max-tokens 4096'];
+  'curl --token-file ./t https://x', 'cli --max-tokens 4096',
+  'psql --no-password mydb', 'node cli.mjs --token $TOKEN', 'node cli.mjs --token ${GH_TOKEN}', 'git commit -m "add --token flag support"', 'oc login -p $(cat pw) server',
+  'tool --password ./pw.txt', 'tool --secret certs/key.pem', 'export SSH_KEY=~/.ssh/id_ed25519', 'export KEY_FILE=key.pem', 'KEY_FILE=key.pem', 'export TOKEN_LIMIT=4096',
+  'TOKEN_LIMIT=4096', 'export MAX_TOKEN=8192', 'MAX_TOKEN=8192', '[Environment]::SetEnvironmentVariable("KEYBOARD", "us", "User")',
+  '[Environment]::SetEnvironmentVariable("MONKEY_HOME", "C:\\m", "User")', 'setx PATH "%PATH%;C:\\tools"', 'setx TOKEN_LIMIT 4096',
+  'gh secret set X --body "$VALUE"', 'npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}', 'export PASS_THRESHOLD=80', 'gh secret set X --body-file ./b.txt'];
 const cutCmd = commands.filter((s) => red(s) !== s);
 ok(!cutCmd.length, `commands that only look like they pass a secret are kept (cut: ${cutCmd.join(' | ')})`);
 const tExport = Date.now();
