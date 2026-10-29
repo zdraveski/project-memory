@@ -524,8 +524,50 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   const t0 = Date.now();
   const out = spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: r, transcript_path: ps, session_id: S, hook_event_name: 'Stop' }), encoding: 'utf8' });
   const ms = Date.now() - t0, line = listed(d).find((l) => l.startsWith(`${slug(r)}/${H} `)) ?? '';
-  ok(ms < 3000 && out.stdout === '' && line.endsWith(' partial') && asks(d).includes('after the flood'),
-    `backfill keeps to its budget on a huge transcript: the Stop takes ${ms} ms, says nothing, reads the last 64 MB and journals the turns after the output (got ${line}; ${out.stdout})`);
+  ok(ms < 3000 && out.stdout === '' && line === `${slug(r)}/${H} ${statSync(p).size}` && asks(d).includes('before the flood') && asks(d).includes('after the flood'),
+    `backfill keeps to its budget on a huge transcript: the Stop takes ${ms} ms, says nothing, passes over the 70 MB line unread and journals the turns before and after it (got ${line}; ${asks(d)}; ${out.stdout})`);
+}
+// A transcript of any size is read whole, not only its last 64 MB: in
+// segments (1 KB here for 64 MB), each cut at a prompt so no exchange is
+// split, a segment past the budget a Stop, the next look going on from where
+// the last stopped. An exchange longer than a segment is read in several.
+const exchange = (id, r, i, reply = `answer ${i} ${'z'.repeat(100)}`) => {
+  const at = (s) => `2026-09-01T10:${String(i).padStart(2, '0')}:${s}Z`;
+  return rec('user', id, at('00'), `question ${i}`, r) + '\n' + rec('assistant', id, at('30'), reply, r) + '\n';
+};
+const small = { segment: 1024, budgetMs: 0 };
+{
+  const [r, d] = repo('whole'), W = sid('w'), p = join(projects, slug(r), `${W}.jsonl`);
+  const tool = (c) => JSON.stringify({ type: 'assistant', uuid: `w-t${c}`, sessionId: W, cwd: r, timestamp: '2026-09-01T10:05:10Z',
+    message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: `ls ${c} ${'q'.repeat(150)}` } }] } }) + '\n';
+  // Exchange 5 is longer than a segment: four commands, then its reply.
+  writeFileSync(p, Array.from({ length: 12 }, (_, i) => i === 5 ? exchange(W, r, 5, 'a first look').replace(/\n$/, '\n' + [1, 2, 3, 4].map(tool).join('')) + rec('assistant', W, '2026-09-01T10:05:50Z', 'the final word', r) + '\n' : exchange(W, r, i)).join(''));
+  utimesSync(p, ago(2), ago(2));
+  const line = () => listed(d).find((l) => l.startsWith(`${slug(r)}/${W} `)) ?? '';
+  const one = fill(d, small);
+  ok(one.imported === 1 && one.left === 1 && new RegExp(` ${statSync(p).size} at \\d+$`).test(line()) && asks(d)[0] === 'question 0' && asks(d).length < 12,
+    `out of time after a segment: its first exchange is journaled, and the list says where the next segment starts (got ${JSON.stringify(one)}, ${line()}, ${asks(d)})`);
+  for (let i = 0; i < 40 && fill(d, small).left; i++);
+  const es = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries), five = es.find((e) => e.asked === 'question 5');
+  ok(es.length === 12 && es.every((e) => e === five || e.answered.startsWith(`answer ${e.asked.split(' ')[1]} `)) && line() === `${slug(r)}/${W} ${statSync(p).size}`,
+    `Stop by Stop, every exchange is journaled whole, and the list says the transcript is read (got ${es.map((e) => `${e.asked}: ${e.answered.slice(0, 9)}`)}; ${line()})`);
+  ok(five?.answered === 'the final word' && five.ran.length === 4 && five.ran.every((c, k) => c.startsWith(`ls ${k + 1} `)),
+    `an exchange longer than a segment keeps its last reply and every command, from every part (got ${JSON.stringify(five)})`);
+}
+{
+  // A <private-session> mark anywhere is found before anything of the
+  // conversation is recorded: in its first segment only (out of the last
+  // 64 MB, the tail read never saw it), or in its last, segments after the first.
+  for (const [where, c, at] of [['first', 'm', 1], ['last', 'n', 11]]) {
+    const [r, d] = repo(`mark-${where}`), M = sid(c), p = join(projects, slug(r), `${M}.jsonl`);
+    const xs = Array.from({ length: 12 }, (_, i) => exchange(M, r, i));
+    xs.splice(at, 0, rec('user', M, '2026-09-01T10:30:00Z', '<private-session> from here on', r) + '\n');
+    writeFileSync(p, xs.join('')); utimesSync(p, ago(2), ago(2));
+    record(d, p, [turn({ at: '2026-09-01 08:00', id: `${c}-live` })]);
+    for (let i = 0; i < 40 && fill(d, small).left; i++);
+    let tags = ''; try { tags = readFileSync(join(d, '.private-sessions'), 'utf8'); } catch {}
+    ok(!asks(d).length && tags.split(/\r?\n/).includes(M.slice(0, 8)), `a mark in the ${where} segment keeps the whole conversation out, and takes back what it wrote (got ${asks(d)})`);
+  }
 }
 
 // entries(): the days in range, both bounds inclusive ("what did we do on the

@@ -2,9 +2,9 @@
 // turn, kept apart from handoff.md so what was done last month is still
 // findable. Entries are capped and redacted here, the one place a turn's
 // files and commands (uncapped in turns()) are shortened.
-import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
-import { clip, tag, PRIVATE, hash, turns, readTail, hushed, ACTIVE, OFF } from './handoff-log.mjs';
+import { clip, tag, PRIVATE, PRIVATE_SESSION, norm, hash, turns, hushed, ACTIVE, OFF } from './handoff-log.mjs';
 import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, withLock } from './store.mjs';
 
 export const JOURNAL = 'journal';
@@ -17,9 +17,11 @@ export const J_CMD = 400;      // chars of one command
 // A Stop imports old conversations for this long, holding the store's lock,
 // then leaves the rest to the next: a month of them can be a gigabyte.
 export const IMPORT_BUDGET_MS = 150;
-// The most of one transcript an import reads, from its end: the lock is held
-// one transcript past the budget, and one tool result can be 70 MB.
-export const IMPORT_MAX_BYTES = 64 * 1024 * 1024;
+// The most of a transcript one read holds, and so the longest line read: the
+// lock is held a segment past the budget, and one tool result can be 70 MB.
+// A longer line (a tool's output: no prompt or reply is that long) is passed
+// over unread.
+export const IMPORT_SEGMENT = 64 * 1024 * 1024;
 
 const MARK = /^<!-- j:(.+) t:(.*) d:(\d{4}-\d\d-\d\d) -->$/;
 const HEAD = /^## (\d\d:\d\d) · conversation (\S*?)(?: · branch (.*))?$/;
@@ -269,16 +271,16 @@ function clear(dir, backfill) {
   else try { unlinkSync(f); } catch {}
 }
 
-// What a read of a conversation does to the journal, at its Stop or its
-// import: the read that marks it private takes back what it wrote. Call under
-// withLock(dir). False when it was private already: nothing tried.
-// Held with auto memory off once, it is never recorded, live or imported:
-// resumed with memory on, its first Stop journaled every turn (review,
-// 2026-10-29). A private mark still sweeps it.
-function take(dir, transcriptPath, got, { quiet, hush, when }) {
+// What a Stop's read of its conversation does to the journal (importOne does
+// the same for an import): the read that marks it private takes back what it
+// wrote. Call under withLock(dir). False when it was private already: nothing
+// tried. Held with auto memory off once, it is never recorded, live or
+// imported: resumed with memory on, its first Stop journaled every turn
+// (review, 2026-10-29). A private mark still sweeps it.
+function take(dir, transcriptPath, got, { quiet, hush }) {
   const s = tag(basename(transcriptPath, '.jsonl'));
   if (quiet && hush) sweep(dir, s);
-  else if (!quiet && !hushed(projectsRoot(), s, false, OFF)) record(dir, transcriptPath, got, when);
+  else if (!quiet && !hushed(projectsRoot(), s, false, OFF)) record(dir, transcriptPath, got);
   else return false;
   return true;
 }
@@ -290,10 +292,12 @@ export function write(dir, transcriptPath, got, opts) {
 }
 
 // What the backfill has read: `<folder>/<session> <bytes>`, one line a
-// transcript, ` partial` when only its tail was, ` other` when it is another
-// store's. `keep`: the transcripts still on disk; any other line goes.
+// transcript, its bytes all looked at for a mark; ` at <offset>` while it is
+// imported only up to there (the next segment's start), ` other` when it is
+// another store's, ` failed` when it won't open. `keep`: the transcripts still
+// on disk; any other line goes.
 const IMPORTED = '.imported', LOOKED = '.looked';
-const LINE = /^(.+) (\d+)(?: \w+)?$/;
+const LINE = /^(.+?) (\d+)(?: at (\d+)| (\w+))?$/;
 function mark(dir, lines, keep = null) {
   const f = join(dir, JOURNAL, IMPORTED), ks = new Set(lines.map((l) => LINE.exec(l)[1]));
   mkdirSync(join(dir, JOURNAL), { recursive: true });
@@ -308,14 +312,19 @@ function mark(dir, lines, keep = null) {
 // transcripts, read every Stop, would be hundreds of reads. Only quiet ones: a
 // conversation still running is its own Stop's to journal, and its last reply
 // may not be in its transcript yet. One listed is read again once it grew
-// (turns a live write missed); a known one costs no read of its head. `seen`:
+// (turns a live write missed), from where it was read up to; one imported in
+// part goes on from there; a known one costs no read of its head. `from`:
+// where its import goes on; `looked`: the bytes looked at for a mark. `seen`:
 // every transcript the folders hold.
 // shortcut: a worktree outside the repository's folder has another folder name
 // and is not backfilled (its live turns are still journaled); scan every
 // project folder's first cwd if one is ever missed.
 function candidates(dir, skip) {
   const root = projectsRoot(), me = pathKey(basename(dirname(dir))), done = new Map(), out = [];
-  for (const m of (raw(join(dir, JOURNAL, IMPORTED)) ?? '').split(/\r?\n/).map((l) => LINE.exec(l))) if (m) done.set(m[1], Number(m[2]));
+  // Another's or one that won't open: up to its size, from nothing read.
+  for (const m of (raw(join(dir, JOURNAL, IMPORTED)) ?? '').split(/\r?\n/).map((l) => LINE.exec(l))) {
+    if (m) done.set(m[1], m[4] ? { upto: Number(m[2]), from: 0, looked: 0 } : { upto: Number(m[3] ?? m[2]), from: Number(m[3] ?? m[2]), looked: Number(m[2]) });
+  }
   // A listing that fails leaves `seen` null, so nothing is pruned: read as
   // empty, it would drop the lines of every transcript in it.
   out.seen = new Set();
@@ -327,22 +336,100 @@ function candidates(dir, skip) {
       out.seen?.add(k);
       if (typeof skip === 'string' && same(p, skip)) continue;
       let st; try { st = statSync(p); } catch { continue; }
-      if (Math.abs(Date.now() - st.mtimeMs) < ACTIVE || (done.has(k) && st.size <= done.get(k))) continue;
-      out.push({ p, k, size: st.size, m: st.mtimeMs });
+      const was = done.get(k) ?? { upto: -1, from: 0, looked: 0 };
+      if (Math.abs(Date.now() - st.mtimeMs) < ACTIVE || st.size <= was.upto) continue;
+      out.push({ p, k, size: st.size, m: st.mtimeMs, from: was.from, looked: was.looked });
     }
   }
   return out.sort((a, b) => a.m - b.m);
 }
 const ours = (dir, p) => same(storeOf({ transcript_path: p }), dir);
 
+// Past the line that runs on at `pos`: its newline found in 1 MB reads, never decoded.
+function past(fd, pos, size) {
+  const buf = Buffer.allocUnsafe(1 << 20);
+  for (; pos < size; pos += buf.length) {
+    const i = buf.subarray(0, readSync(fd, buf, 0, Math.min(buf.length, size - pos), pos)).indexOf(10);
+    if (i !== -1) return pos + i + 1;
+  }
+  return size;
+}
+
+// The whole lines in the `seg` bytes from `pos`, and where they start (`pos`):
+// a line longer than `seg` is passed over unread. null at the end.
+function chunk(fd, pos, seg, size) {
+  while (pos < size) {
+    const buf = Buffer.allocUnsafe(Math.min(seg, size - pos)), n = readSync(fd, buf, 0, buf.length, pos);
+    if (!n) return null;
+    const nl = pos + n >= size ? n - 1 : buf.subarray(0, n).lastIndexOf(10);
+    if (nl !== -1) return { buf: buf.subarray(0, nl + 1), pos };
+    pos = past(fd, pos + n, size);
+  }
+  return null;
+}
+
+// A transcript's exchanges from `at` (a prompt's line), in segments of whole
+// lines, each cut where its last prompt starts, so turns() never splits an
+// exchange; `next`: where the next starts. An exchange longer than a segment
+// is read in several, `next` null until it ends: each part after its prompt's
+// line and a record of what it held so far (its last reply, its commands and
+// files), so turns() reads it on as one.
+// shortcut: the cut is found by the prompt record's uuid, which Claude Code
+// writes; in a transcript without one an exchange can be cut at a segment's
+// end (its rest unread), and only a transcript of 64 MB has two segments.
+const so = (t) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [
+  ...t.ran.map((command) => ({ type: 'tool_use', name: 'Bash', input: { command } })),
+  ...t.changed.map((file_path) => ({ type: 'tool_use', name: 'Edit', input: { file_path } })), { type: 'text', text: t.did }] } }) + '\n';
+function* segments(fd, at, seg, size) {
+  let prompt = '', head = '';
+  for (let b; (b = chunk(fd, at, seg, size)); ) {
+    const next = b.pos + b.buf.length, got = turns(head + b.buf.toString('utf8'));
+    if (next >= size) { yield { got, next: size }; return; }
+    const id = got.open?.id, i = id ? b.buf.lastIndexOf(`"uuid":"${id}"`) : -1, cut = i === -1 ? -1 : b.buf.lastIndexOf(10, i) + 1;
+    if (cut > 0 || (cut === 0 && prompt)) { prompt = head = ''; at = b.pos + cut; yield { got: got.filter((t) => t !== got.open), next: at }; continue; }
+    if (cut === 0) prompt = b.buf.subarray(0, b.buf.indexOf(10) + 1).toString('utf8');
+    if (prompt) head = prompt + so(got.open);
+    at = next;
+    yield { got, next: prompt ? null : at };
+  }
+}
+
+// One transcript, from where the last look left it. First the
+// <private-session> mark, looked for in every byte not looked at yet: one
+// anywhere keeps the whole conversation out, so nothing of it may be recorded
+// before. Then its exchanges, a segment at a time while `more()`. Returns the
+// offset the import reached (its size when done) and the size looked at.
+// shortcut: the look for the mark is not cut by the budget (~0.35 s for 64 MB);
+// make it go on at the next Stop if transcripts of gigabytes turn up.
+function importOne(dir, c, fd, seg, more) {
+  const s = tag(basename(c.p, '.jsonl')), size = fstatSync(fd).size, none = { at: size, size };
+  // Marked private already, its entries went then.
+  if (hushed(dir, s)) return none;
+  for (let b, pos = c.looked; (b = chunk(fd, pos, seg, size)); pos = b.pos + b.buf.length) {
+    // A text search: turns() reads only a segment it finds a mark in.
+    const t = b.buf.toString('utf8');
+    // A mark typed while the plugin was off is taken as its Stop takes one:
+    // the conversation is marked, and what it wrote before goes.
+    if (PRIVATE_SESSION.test(norm(t)) && turns(t).hush) { hushed(dir, s, true); sweep(dir, s); return none; }
+  }
+  if (hushed(projectsRoot(), s, false, OFF)) return none;
+  let at = c.from;
+  for (const { got, next } of segments(fd, at, seg, size)) {
+    // A turn whose time won't parse: the transcript's, not the import's.
+    record(dir, c.p, got, local(c.m));
+    if (next == null) continue;
+    at = next;
+    if (at < size && !more()) break;
+  }
+  return { at, size };
+}
+
 // The conversations still on disk, into the journal: a new install starts with
 // the last month, not empty. Call under withLock(dir). Each is recorded before
 // it is listed, so a Stop killed between the two only reads it again (entries
-// go by key). `skip`: the Stop's own transcript.
-// shortcut: a <private-session> mark more than IMPORT_MAX_BYTES before a
-// transcript's end, typed before the plugin kept marks, is not seen; read the
-// rest of a partial transcript for it if that turns up.
-export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {}) {
+// go by key). `skip`: the Stop's own transcript. `segment`: IMPORT_SEGMENT's,
+// lowered by a test.
+export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segment = IMPORT_SEGMENT } = {}) {
   const t0 = Date.now(), look = join(dir, JOURNAL, LOOKED);
   // A look at the folders once in ACTIVE; between looks a Stop reads nothing
   // more (the list was parsed whole every Stop). The clock is the time the
@@ -352,7 +439,7 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {})
   // import until real time caught up. A time that won't read is no look.
   let due = true; try { due = !(Math.abs(t0 - Number(raw(look))) < ACTIVE); } catch {}
   if (!due) return { imported: 0, left: 0 };
-  let all = [], n = 0, err = null;
+  let all = [], n = 0, done = 0, err = null;
   const other = [];
   try {
     all = candidates(dir, skip);
@@ -362,24 +449,21 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null } = {})
       // before the first import, a home folder's month took ~1 s.
       if (!ours(dir, c.p)) { other.push(`${c.k} ${c.size} other`); continue; }
       try {
-        // take() keeps none of a private one, nor of one held with auto memory
-        // off. A mark typed while the plugin was off is taken as its Stop takes
-        // one: the conversation is marked, and what it wrote before goes.
-        // One that won't read is listed as failed, read again once it grows:
+        // One that won't open is listed as failed, read again once it grows:
         // retried at every look, it failed at every look.
-        let r; try { r = readTail(c.p, IMPORT_MAX_BYTES); } catch (e) { mark(dir, [`${c.k} ${c.size} failed`]); throw e; }
-        const got = turns(r.text), hush = got.hush === true;
-        // A turn whose time won't parse: the transcript's, not the import's.
-        take(dir, c.p, got, { quiet: hushed(dir, tag(basename(c.p, '.jsonl')), hush), hush, when: local(c.m) });
-        mark(dir, [`${c.k} ${c.size}${r.whole ? '' : ' partial'}`]);
-        n++;
+        let fd; try { fd = openSync(c.p, 'r'); } catch (e) { mark(dir, [`${c.k} ${c.size} failed`]); throw e; }
+        try {
+          const { at, size } = importOne(dir, c, fd, segment, () => Date.now() - t0 < budgetMs);
+          mark(dir, [at < size ? `${c.k} ${size} at ${at}` : `${c.k} ${size}`]);
+          n++; if (at >= size) done++;
+        } finally { closeSync(fd); }
       } catch (e) { err = e; }   // left for a later Stop: one transcript that won't read must not hold up the rest
     }
     // Another store's are listed so no look opens them again, and a transcript
     // gone from disk loses its line: the list holds a month, not every month.
     mark(dir, other, all.seen);
   } catch (e) { err = e; }
-  const left = all.length - n - other.length;
+  const left = all.length - done - other.length;
   // Kept in .failed as the sink's is; the next import that goes through clears
   // it, and only its own: a live write's failure is the live write's to clear.
   if (err) fault(dir, err, 'backfill: ');
