@@ -8,10 +8,16 @@ project-memory is a free add-on (a "plugin") for Claude Code. Once it's
 installed, it works on its own in the background. You don't have to learn any
 commands to get the benefit.
 
+![The problem: every new conversation starts fresh. Close Claude Code today, and tomorrow you explain again where you were. On Monday Claude says the launch email is half written and pricing comes next. On Tuesday, asked to carry on, it says: "What were we working on?"](docs/problem.webp)
+
+![What project-memory does for you: it picks up where you left off, keeps old versions of your notes (needs Git), keeps long tasks on track, and shares what you teach it with all your projects. It works on its own after every reply, and it never goes online. It's free, needs no account or API key, and uses Claude Code's own notebook.](docs/what-you-get.webp)
+
 ![A short demo. On Monday Claude saves a pricing decision. On Tuesday a new conversation knows where things stopped. Later, a note deleted by mistake comes back.](docs/demo.gif)
 
 *The demo replays three real conversations in a sample project, with the
 messages shortened to fit.*
+
+![How it works: you work with Claude, and it writes down your decisions, preferences and corrections. After every reply, project-memory tidies the notes, records where you are and keeps old versions. Your next conversation starts already knowing where you stopped. It runs on its own, with no waiting you'd notice, and stays on your computer.](docs/how-it-works.webp)
 
 ## Quick start
 
@@ -34,8 +40,6 @@ Claude Code keeps a notebook for each project (it calls this *auto memory*),
 where Claude writes down your preferences, decisions and corrections.
 project-memory looks after that notebook.
 
-![What project-memory does for you: it picks up where you left off, keeps old versions of your notes (needs Git), keeps long tasks on track, and shares what you teach it with all your projects. It works on its own after every reply, and it never goes online.](docs/what-it-does.svg)
-
 | Without project-memory | With project-memory |
 |---|---|
 | You start a new conversation and explain again where you were. | Claude starts already knowing where the last conversation stopped. |
@@ -47,8 +51,6 @@ project-memory looks after that notebook.
 
 It runs on its own after every reply, with no waiting you'd notice, and what
 it saves stays on your computer.
-
-![How it works: you work with Claude, and it writes down your decisions, preferences and corrections. After every reply, project-memory tidies the notes, records where you are and keeps old versions. Your next conversation starts already knowing where you stopped.](docs/how-it-works.svg)
 
 ## Who it's for
 
@@ -97,7 +99,7 @@ for room before every step, so it can compact in the middle of a task. The
 summary may then lose the details of what you asked, what Claude had just
 said, or the notes it meant to write when it finished.
 
-![Long conversations, kept on track. Before: at 85% full, Claude is asked to write its notes while there's still room. During: if the conversation fills up in the middle of a task, project-memory asks Claude Code to wait until the step ends. With no room to wait, it writes the step down instead. After: once it's shortened to a summary, Claude is told what you asked, what it last said and what was still running.](docs/long-conversations.svg)
+![Long conversations, kept on track. Before: at 85% full, Claude is asked to write its notes while there's still room. During: if the conversation fills up in the middle of a task, project-memory asks Claude Code to wait until the step ends. With no room to wait, it writes the step down instead. After: once it's shortened to a summary, Claude is told what you asked, what it last said and what was still running.](docs/long-conversations.webp)
 
 project-memory protects your work before, during and after:
 
