@@ -1003,6 +1003,18 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   ok(r.status === 0 && r.stdout === `201 entries in ${fd} match; narrow it: a look lists 200 at most\n` && r2.status === 1 &&
     r2.stdout === `201 entries in ${fd} match; narrow it: a look lists 200 at most, and --yes removes only what a look can list: nothing removed\n` && file('2025-10-22').split('gnu').length === 202,
     `past 200, a look asks for a narrower one, and --yes removes nothing (got ${r.stdout}${r2.stdout})`);
+  // A date range alone is confirmed by its range: past 200 entries, "forget the
+  // whole journal" (the refusal's own advice) removed nothing.
+  reset();
+  const herd = Array.from({ length: 245 }, (_, i) => entry(`2025-10-23 ${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`, `wildebeest ${i}`));
+  writeFileSync(join(fj, '2025-10-23.md'), page('2025-10-23', herd));
+  r = fcli('forget', '--since', '1970-01-01');
+  ok(r.status === 0 && r.stdout === `${es.slice(0, 3).map(fl).join('')}${herd.slice(0, 17).map(fl).join('')}and 230 more\n250 entries in ${fd} from 2025-10-20 to ${today} would go; run again with --yes to remove them\n` && kept('2025-10-20', '2025-10-21', today),
+    `a range alone shows its first 20 entries, the count, and its first and last day (got ${r.stdout.slice(-400)})`);
+  r = fcli('forget', '--since', '1970-01-01', '--yes');
+  const all250 = readFileSync(join(fj, '.forgotten'), 'utf8').split('\n').filter(Boolean).sort().join();
+  ok(r.status === 0 && r.stdout.endsWith(`\nremoved 250 from ${fd}\n`) && !/\(key /.test(r.stdout) && [...Object.keys(want), '2025-10-23'].every(gone) && all250 === [...es, ...herd].map((e) => e.key).sort().join(),
+    `--yes removes every entry of a range past 200, says the count, not each line, and lists every key (got ${r.stdout.slice(-400)})`);
   // A day that changed under each of its three writes keeps its entries: what
   // is listed and counted is what went, out of what matched. The other writer
   // is simulated in the CLI's own process, just before each write lands.
