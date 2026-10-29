@@ -32,8 +32,6 @@ weeks. For a quick one-off question, you won't notice much difference.
 
 ![What project-memory does for you: it picks up where you left off, keeps old versions of your notes (needs Git), keeps long tasks on track, and shares what you teach it with all your projects. It works on its own after every reply, and it never goes online. It's free, needs no account or API key, and uses Claude Code's own notebook.](docs/what-you-get.webp)
 
-![A short demo. On Monday Claude saves a pricing decision. On Tuesday a new conversation knows where things stopped. Later, a note deleted by mistake comes back.](docs/demo.gif)
-
 ## Install
 
 You need Claude Code with its built-in memory on (it is, unless you turned it
