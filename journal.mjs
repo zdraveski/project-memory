@@ -303,9 +303,21 @@ function clear(dir, backfill) {
 // ` swept` after one swept. Pruned as .imported is.
 const CHECKED = '.checked';
 const keyOf = (p) => `${basename(dirname(p))}/${basename(p, '.jsonl')}`;
+// Its line: `swept` in [4], the bytes looked at in [2].
 function checked(dir, k) {
-  for (const l of (raw(join(dir, JOURNAL, CHECKED)) ?? '').split(/\r?\n/)) { const m = LINE.exec(l); if (m?.[1] === k) return m[4] || 'looked'; }
+  for (const l of (raw(join(dir, JOURNAL, CHECKED)) ?? '').split(/\r?\n/)) { const m = LINE.exec(l); if (m?.[1] === k) return m; }
   return null;
+}
+
+// What a conversation private or held with auto memory off has in the journal
+// goes, from every day, and a private one's (`priv`) from handoff.md (first:
+// a sweep a day stops short of throws, and is owed). Once, ` swept` written
+// after it (a kill mid-sweep sweeps again); again when `again`.
+function takeBack(dir, k, s, again = false, priv = false) {
+  if (!again && checked(dir, k)?.[4] === 'swept') return;
+  if (priv) unsay(dir, s);
+  sweep(dir, s);
+  mark(dir, [`${k} 0 swept`], null, CHECKED);
 }
 
 // What a Stop's read of its conversation does to the journal (importOne does
@@ -319,10 +331,7 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
   // it kept its entries, and so did one imported before its memory-off tag
   // (P1 hunt, 2026-10-29). Resumed with memory on, a memory-off conversation's
   // first Stop journaled every turn (review, 2026-10-29).
-  if (quiet || hushed(projectsRoot(), s, false, OFF)) {
-    if (hush || was !== 'swept') { sweep(dir, s); mark(dir, [`${k} 0 swept`], null, CHECKED); }
-    return hush;
-  }
+  if (quiet || hushed(projectsRoot(), s, false, OFF)) { takeBack(dir, k, s, hush); return hush; }
   // A read short of the whole transcript: the rest is looked at for a mark,
   // once a conversation. A mark typed in a turn that got no Stop, then 512 KB
   // of a tool's output, was never read, and the conversation was journaled
@@ -331,7 +340,7 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
     const fd = openSync(transcriptPath, 'r');
     let size, hit;
     try { size = fstatSync(fd).size; hit = marked(fd, 0, IMPORT_SEGMENT, size).hit; } finally { closeSync(fd); }
-    if (hit) { hushed(dir, s, true); sweep(dir, s); mark(dir, [`${k} ${size} swept`], null, CHECKED); return true; }
+    if (hit) { hushed(dir, s, true); takeBack(dir, k, s, true); return true; }
     mark(dir, [`${k} ${size}`], null, CHECKED);
   }
   record(dir, transcriptPath, got);
@@ -503,15 +512,18 @@ function marked(fd, pos, seg, size, more = () => true) {
 // import reached (its size when done), the size, and how far the look got.
 function importOne(dir, c, fd, seg, cap, more) {
   const s = tag(basename(c.p, '.jsonl')), size = fstatSync(fd).size, none = { at: size, size, looked: size };
-  // Marked private already, its entries went then.
-  if (hushed(dir, s)) return none;
+  // Marked private, or held with auto memory off: never imported, and what it
+  // has in the journal goes at the first look that meets it, as at its first
+  // such Stop. Tagged by a writer with no sink (a memory-off Stop, the
+  // compaction gate) and no Stop after, it kept its entries (review, 2026-10-29).
+  if (hushed(dir, s)) { takeBack(dir, c.k, s, false, true); return none; }
   // A mark typed while the plugin was off is taken as its Stop takes one: the
   // conversation is marked, and what it wrote before goes, from the journal
-  // and from handoff.md (first: a sweep a day stops short throws, and is owed).
+  // and from handoff.md.
   const look = marked(fd, c.looked, seg, size, more);
-  if (look.hit) { hushed(dir, s, true); unsay(dir, s); sweep(dir, s); return none; }
+  if (look.hit) { hushed(dir, s, true); takeBack(dir, c.k, s, true, true); return none; }
   if (look.pos < size) return { at: c.from, size, looked: look.pos };
-  if (hushed(projectsRoot(), s, false, OFF)) return none;
+  if (hushed(projectsRoot(), s, false, OFF)) { takeBack(dir, c.k, s); return none; }
   let at = c.from;
   try {
     for (const { got, next } of segments(fd, at, seg, size, cap)) {

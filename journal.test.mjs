@@ -557,6 +557,33 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   ok(was === 'my diagnosis came back' && !asks(d).length, `a late memory-off tag takes back what an import wrote (got ${was}; ${asks(d)})`);
 }
 {
+  // Tagged with no Stop of its own to follow (a memory-off Stop tags it and
+  // exits; the compaction gate's handoff marks it private and the user quits):
+  // the import that meets it takes back what it wrote, and a private one's
+  // lines in handoff.md, once. It listed the transcript as read (review, 2026-10-29).
+  for (const [c, how] of [['i', 'held with auto memory off'], ['j', 'marked private']]) {
+    const [r, d] = repo(`nostop-${c}`), id = sid(c), p = old(r, id, 30, ['said before the tag']), failed = join(d, 'journal', '.failed');
+    const more = (ask) => { appendFileSync(p, rec('user', id, '2026-09-02T10:00:00Z', ask, r) + '\n' + rec('assistant', id, '2026-09-02T10:00:30Z', 'ok', r) + '\n'); utimesSync(p, ago(1), ago(1)); due(d); };
+    fill(d);
+    const was = asks(d).join();
+    writeFileSync(join(d, 'handoff.md'), `---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** 2026-09-01 10:00 [${id.slice(0, 8)}]: said before the tag\n  **did:** noted\n`
+      + '- **asked** 2026-09-01 12:05 [kkkkkkkk]: another conversation\n  **did:** kept\n<!-- auto:end -->\n');
+    appendFileSync(c === 'i' ? join(projects, '.memory-off') : join(d, '.private-sessions'), `${id.slice(0, 8)}\n`);
+    more('the turn that tagged it');
+    fill(d);
+    const hd = readFileSync(join(d, 'handoff.md'), 'utf8');
+    ok(was === 'said before the tag' && !asks(d).length && hd.includes('another conversation') && (c === 'i' || !hd.includes('said before the tag')),
+      `a conversation ${how}, its tag followed by no Stop of its own, loses what an import wrote at the next look (got ${was}; ${asks(d)}; ${hd})`);
+    // Once: a later look reads no day for it (one that won't read would fail it).
+    const bad = dayFile(d, '2026-11-20');
+    mkdirSync(bad, { recursive: true });
+    more('and another');
+    fill(d);
+    ok(!existsSync(failed), `a conversation ${how} swept once is not swept at every look (got ${existsSync(failed) ? readFileSync(failed, 'utf8') : ''})`);
+    rmSync(bad, { recursive: true });
+  }
+}
+{
   const [r, d] = repo('mine');
   old(r, sid('a'), 30, ['ours']);
   // A folder named like a subfolder's, of a project beside this one; and one
