@@ -224,7 +224,7 @@ notebook has none. An entry, with a blank line between entries:
 - Writes go under the store's lock through the same unchanged-file check as
   every other write. Entries are kept in time order. Lines in a day file that
   aren't part of an entry are kept, above the entries. A day's file is
-  rewritten only to add an entry, by `forget`, and by a later
+  rewritten only to add or update an entry, by `forget`, and by a later
   `<private-session>`.
 - Every field goes through the redaction rules above, commands included. A
   `<private>` message's answer is `[private]`, with no files or commands. A
