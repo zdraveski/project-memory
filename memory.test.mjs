@@ -142,6 +142,15 @@ ok(r.status === 1 && /at HEAD~999: /.test(r.stdout), `an unknown commit is named
 // The command is the first word that is no option: an option before it worked.
 r = spawnSync(process.execPath, [CLI, '--store', dir, 'search', 'deploy'], { env, encoding: 'utf8' });
 ok(r.status === 0 && /match\(es\) in/.test(r.stdout), `an option before the command still runs it (got ${r.stdout.slice(0, 200)})`);
+// An option it does not know is refused: dropped, `--from 2026-10-27` searched for "2026", and `--after=` ignored the date.
+r = cli('search', 'deploy', '--from', '2026-10-27');
+const after = cli('search', 'deploy', '--after=2026-10-28');
+ok(r.status === 1 && r.stdout === 'unknown option --from\n' && after.status === 1 && after.stdout === 'unknown option --after=2026-10-28\n', `an unknown option is refused (got ${r.stdout}${after.stdout})`);
+// After `--` every word is a search word, one that looks like an option too.
+memory(dir, 'hook-rule', 'never commit with --no-verify');
+r = spawnSync(process.execPath, [CLI, 'search', '--store', dir, '--', '--no-verify', '--all'], { env, encoding: 'utf8' });
+ok(r.status === 0 && /[\\/]hook-rule\.md$/m.test(r.stdout) && /; --all searches every project$/m.test(r.stdout), `words after -- are searched, never read as options (got ${r.stdout})`);
+unlinkSync(join(dir, 'hook-rule.md'));
 // Without git, history says so, not "spawnSync git ENOENT".
 r = spawnSync(process.execPath, [CLI, 'history', 'deploy-notes', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '' }, encoding: 'utf8' });
 ok(r.status === 1 && /git is not installed/.test(r.stdout), `history without git says git is not installed (got ${r.stdout.trim()})`);
@@ -205,8 +214,8 @@ memory(dir, 'linky', 'a memory with many links', [1, 2, 3, 4, 5, 6, 7].map((i) =
 ok(!/the-plans-are-the-brand/.test(cli('search', 'how', 'the', 'deploy').stdout), '"the" and "how" score nothing, not even in a file name');
 ok(!/handoff\.md/.test(cli('search', 'rolling', 'handoff').stdout), 'the handoff is not a search hit');
 ok(/^ +links: l1, l2, l3, l4, l5, and 2 more$/m.test(cli('search', 'linky').stdout), 'a hit lists five links and counts the rest');
-r = cli('search', 'CI', 'a');
-ok(r.status === 0 && /no word of 3\+ letters/.test(r.stdout), 'a query of short words says so, not "nothing matches"');
+r = cli('search', 'what did I do');
+ok(r.status === 0 && /^nothing to search for: "what did I do" has no word that says which memory$/m.test(r.stdout), `a query of short and stop words says so, not "nothing matches" (got ${r.stdout})`);
 
 // 4b. Promote and restore take the store's lock: one held by a hook is busy, and nothing moves.
 memory(dir, 'locked-out', 'a memory to move');
@@ -672,10 +681,23 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   day(jd, '2026-10-02', [entry('2026-10-02 10:00', 'tidy the scripts', { changed: ['memory-tier.mjs'], ran: ['node bench.mjs --runs 5'] })]);
   // Written unredacted, as a hand edit or an entry from before a redaction rule could be.
   const key = ['sk', 'live', '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
-  day(jd, '2026-10-03', [entry('2026-10-03 10:00', `paste the token ${key} into the config`)]);
+  const pasted = entry('2026-10-03 10:00', `paste the token ${key} into the config`, { answered: `stored ${key} as the config token` });
+  day(jd, '2026-10-03', [pasted]);
+  // One request asked on three days, in other cases and spacing, and one like it.
+  day(jd, '2026-10-04', [entry('2026-10-04 10:00', 'Feed the  Wombat')]);
+  day(jd, '2026-10-05', [entry('2026-10-05 10:00', 'feed the wombat')]);
+  day(jd, '2026-10-06', [entry('2026-10-06 09:00', 'wombat feed schedule'), entry('2026-10-06 10:00', 'feed the wombat')]);
+  // An entry at every cap, its word all through it.
+  const huge = entry('2026-10-07 10:00', 'zeppelin plan '.repeat(150).slice(0, 2000), {
+    answered: 'the hangar crew waited all morning in the cold for the wind over the field to drop at last, and then the zeppelin landed. '.repeat(25).slice(0, 3000).trim(),
+    changed: Array.from({ length: 20 }, (_, i) => `src/zeppelin/part${i}.mjs`), ran: Array.from({ length: 10 }, (_, i) => `npm run zeppelin -- --part ${i} ${'x'.repeat(170)}`) });
+  day(jd, '2026-10-07', [huge]);
+  // Two letters are a word (CI, PR, DB), but only standing alone; a branch is searched too.
+  day(jd, '2026-10-08', [entry('2026-10-08 10:00', 'set up CI on GitHub Actions'), entry('2026-10-08 11:00', 'a decision about the logo'),
+    entry('2026-10-08 12:00', 'tidy the imports', { branch: 'payments-v2' })]);
   // A reply that says the words three times and files named for them: still below the request.
-  day(jd, '2026-10-15', [entry('2026-10-15 09:00', 'tidy the readme', { answered: 'the deploy error, the deploy error again, and the deploy error once more', changed: ['deploy-error.md'] }),
-    entry('2026-10-15 14:30', 'fix the deploy error')]);
+  const fix = entry('2026-10-15 14:30', 'fix the deploy error');
+  day(jd, '2026-10-15', [entry('2026-10-15 09:00', 'tidy the readme', { answered: 'the deploy error, the deploy error again, and the deploy error once more', changed: ['deploy-error.md'] }), fix]);
   day(jd, '2026-10-22', [entry('2026-10-22 09:00', 'plan the release')]);
   writeFileSync(join(jd, 'journal', '2026-10-23.md'), '# Journal 2026-10-23\n');   // a day a sweep emptied
   day(jd, '2026-10-25', [entry('2026-10-25 08:00', 'review the pull request'), entry('2026-10-25 16:10', 'write the changelog')]);
@@ -684,14 +706,40 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   memory(jd, 'journal', 'Every exchange in this project, one file per day in journal/');
 
   let r = jcli('search', 'deploy', 'error');
-  ok(r.status === 0 && /^ *\d+  journal   2026-10-15 14:30  conversation c0ffee12 · branch main  \(.*[\\/]journal[\\/]2026-10-15\.md\)\n     Asked: fix the deploy error\n/.test(r.stdout),
-    `search finds a journal entry by its request: first, labelled journal, with its date (got ${r.stdout})`);
+  ok(r.status === 0 && new RegExp(`^ *\\d+  journal   2026-10-15 14:30  conversation c0ffee12 · branch main\\n     key: ${fix.key}\\n     Asked: fix the deploy error\\n`).test(r.stdout),
+    `search finds a journal entry by its request: first, labelled journal, with its date and key (got ${r.stdout})`);
   ok(/^ *\d+ +\w+ +\d{4}-\d\d-\d\d +.*[\\/]deploy\.md$/m.test(r.stdout) && /^ *\d+  journal   2026-10-15 09:00 /m.test(r.stdout), `a note and an entry rank together (got ${r.stdout})`);
+  // A hit is its request, cut, and of the rest only what holds a search word.
+  const blocks = (out) => out.split(/\n(?= *\d+  )/), of = (out, asked) => blocks(out).find((b) => b.includes(`\n     Asked: ${asked}`)) ?? '';
+  ok(!/Answered/.test(of(r.stdout, 'fix the deploy error')) && /^     Answered: the deploy error, the deploy error again, and the deploy error once more$/m.test(of(r.stdout, 'tidy the readme')),
+    `a reply is printed only when it holds a search word (got ${r.stdout})`);
+  r = jcli('search', 'zeppelin');
+  const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
+  ok(z.length < 1500 && zask.length === 400 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
+    `an entry at every cap: its request cut to 400, the rest the stretches around the word, under 1.5 KB in all (got ${z.length}: ${z})`);
+  // show: the whole entry, by the key its hit printed, and its day file.
+  const zkey = z.match(/^     key: (.*)$/m)?.[1];
+  r = jcli('show', zkey);
+  ok(zkey === huge.key && r.status === 0 && r.stdout.includes(`\n     Asked: ${huge.asked}\n     Answered: ${huge.answered}\n     Changed: ${huge.changed.join(', ')}\n     Ran: ${huge.ran.join(' · ')}\n`) &&
+    r.stdout.includes(`\n     Day file: ${join(jd, 'journal', '2026-10-07.md')}`), `show prints an entry whole, by the key search printed, with its day file (got ${r.stdout})`);
+  r = jcli('show', fix.key, pasted.key);
+  ok(r.status === 0 && /^     Asked: fix the deploy error$/m.test(r.stdout) && /^     Answered: stored \[redacted\] as the config token$/m.test(r.stdout) && !r.stdout.includes(key), `show takes several keys, and redacts (got ${r.stdout})`);
+  r = jcli('show', 'no-such-key');
+  ok(r.status === 1 && /^no journal entry has the key no-such-key in .+; --all looks in every project$/m.test(r.stdout), `a key that is no entry's says so, and fails (got ${r.stdout})`);
+  // One request asked again and again is one hit, with its count and days.
+  r = jcli('search', 'wombat', 'feed');
+  ok((r.stdout.match(/^     Asked: feed the wombat$/gim) || []).length === 1 && /^     2 more like this, 2026-10-04\.\.2026-10-06$/m.test(r.stdout) && /^     Asked: wombat feed schedule$/m.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout),
+    `identical requests, in any case and spacing, print once with how many more and their days (got ${r.stdout})`);
+  r = jcli('search', 'wombat', 'feed', '--limit', '1');
+  ok(/^     2 more like this/m.test(r.stdout) && !/schedule/.test(r.stdout) && /^1 of 2 match\(es\) in .+; --limit N shows more/m.test(r.stdout), `--limit counts the requests, not their repeats (got ${r.stdout})`);
   ok(!/[\\/]journal\.md$/m.test(jcli('search', 'every', 'exchange').stdout), "journal.md is the journal's pointer, not a search hit");
   ok(/^     Asked: tidy the scripts$/m.test(jcli('search', 'memory-tier.mjs').stdout) && /^     Asked: tidy the scripts$/m.test(jcli('search', 'bench').stdout),
     'an entry is found by a file it changed, and by a command it ran, alone');
+  r = jcli('search', 'CI', '--since', '2026-10-08', '--until', '2026-10-08');
+  ok(/^     Asked: set up CI on GitHub Actions$/m.test(r.stdout) && !/decision/.test(r.stdout), `a two-letter word is searched, as a word of its own (got ${r.stdout})`);
+  ok(/^     Asked: tidy the imports$/m.test(jcli('search', 'payments').stdout), 'an entry is found by its branch');
   r = jcli('search', 'token', 'config');
-  ok(/^     Asked: paste the token \[redacted\] into the config$/m.test(r.stdout) && !r.stdout.includes(key), `a top hit printed whole is still redacted (got ${r.stdout})`);
+  ok(/^     Asked: paste the token \[redacted\] into the config$/m.test(r.stdout) && /^     Answered: stored \[redacted\] as the config token$/m.test(r.stdout) && !r.stdout.includes(key), `a hit is redacted, its reply too (got ${r.stdout})`);
   r = jcli('search', 'zzzqqq', '--since', '2026-10-10', '--until', '2026-10-20');
   ok(/^nothing matches "zzzqqq" in .+ since 2026-10-10 until 2026-10-20; --all searches every project$/m.test(r.stdout), `a ranged miss names its range (got ${r.stdout})`);
   // A note's day is its modified: date; both bounds are inclusive for notes too.
@@ -699,6 +747,11 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   r = jcli('search', 'quokka', '--since', '2026-10-10', '--until', '2026-10-20');
   const quokkas = [...r.stdout.matchAll(/[\\/](quokka-\w+)\.md$/gm)].map((m) => m[1]).sort().join();
   ok(quokkas === 'quokka-since,quokka-until', `a note dated on either bound is found, one a day outside is not (got ${quokkas})`);
+  // A note's date is its last change: one written in the range and edited since is out of it, and said.
+  const outside = (k) => `${k} notes match outside the range (a note's date is its last change); search without --since/--until`;
+  ok(r.stdout.includes(`\n${outside(2)}\n`) && /^2 of 2 match\(es\)/m.test(r.stdout.trim().split('\n').pop()), `a ranged search says how many notes match outside it, before the count (got ${r.stdout})`);
+  r = jcli('search', 'quokka', '--since', '2026-11-01');
+  ok(r.stdout.startsWith(`${outside(4)}\nnothing matches "quokka" in `), `a ranged miss says so too (got ${r.stdout})`);
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
@@ -714,8 +767,10 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   const dates = [...r.stdout.matchAll(/^ *\d+  journal   (\d{4}-\d\d-\d\d)/gm)].map((m) => m[1]);
   ok(r.status === 0 && dates.join() === '2026-10-15,2026-10-15' && !/deploy\.md$/m.test(r.stdout), `--since/--until narrow by day, notes by their date too (got ${r.stdout})`);
   r = jcli('search', '--since', '2026-10-21', '--until', '2026-10-27');
-  const asked = [...r.stdout.matchAll(/^\d{4}-\d\d-\d\d \d\d:\d\d  conversation c0ffee12  (.*)$/gm)].map((m) => m[1]);
+  const asked = [...r.stdout.matchAll(/^\d{4}-\d\d-\d\d \d\d:\d\d  conversation c0ffee12 · branch main  (.*)$/gm)].map((m) => m[1]);
   ok(r.status === 0 && asked.join('|') === 'write the changelog|review the pull request|plan the release', `a date range alone lists the work of those days, newest first (got ${r.stdout})`);
+  // Words that say nothing of which memory ("what did I do") with a range: the range alone.
+  ok(jcli('search', 'what', 'did', 'I', 'do', '--since', '2026-10-21', '--until', '2026-10-27').stdout === r.stdout, 'stop words with a range list the range');
   r = jcli('search', 'deploy', '--since', 'yesterday');
   const r2 = jcli('search', 'deploy', '--until=2026-10');
   ok(r.status === 1 && r.stdout.trim() === '--since takes a date like 2026-10-01' && r2.status === 1 && r2.stdout.trim() === '--until takes a date like 2026-10-01', `a bad date is refused (got ${r.stdout}${r2.stdout})`);
@@ -725,7 +780,9 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   ok(was && !named(), 'the full conversation is named while it exists');
   mkdirSync(other, { recursive: true }); writeFileSync(join(other, 'MEMORY.md'), '# Index\n');
   day(other, '2026-10-20', [entry('2026-10-20 10:00', 'rotate the signing key', { t: 'C--jr2/feed' })]);
-  ok(!/signing key/.test(jcli('search', 'rotate', 'signing').stdout) && /^     Asked: rotate the signing key$/m.test(jcli('search', 'rotate', 'signing', '--all').stdout), "--all searches every project's journal");
+  r = jcli('search', 'rotate', 'signing', '--all');
+  ok(!/signing key/.test(jcli('search', 'rotate', 'signing').stdout) && /^     Asked: rotate the signing key$/m.test(r.stdout) && /^ *\d+  journal   2026-10-20 10:00  conversation c0ffee12 · branch main · project C--jr2$/m.test(r.stdout),
+    `--all searches every project's journal, and a hit names its project (got ${r.stdout})`);
   // A project whose only memory is its journal has no MEMORY.md: --all passed
   // it over. Reached by a second link too, it is searched once.
   const lone = join(root, 'C--jr3', 'memory');
@@ -734,6 +791,9 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   symlinkSync(lone, join(root, 'C--jr3-link', 'memory'), process.platform === 'win32' ? 'junction' : 'dir');
   r = jcli('search', 'lone', 'telescope', '--all');
   ok(/^     Asked: calibrate the lone telescope$/m.test(r.stdout) && /^1 of 1 match\(es\)/m.test(r.stdout), `--all searches a journal with no MEMORY.md beside it, once (got ${r.stdout})`);
+  r = jcli('search', '--since', '2026-10-20', '--until', '2026-10-21', '--all');
+  ok(/^2026-10-21 10:00  conversation c0ffee12 · branch main · project C--jr3  calibrate the lone telescope$/m.test(r.stdout) && /· project C--jr2  rotate the signing key$/m.test(r.stdout),
+    `a date range under --all names each entry's project (got ${r.stdout})`);
 
   // A year of journal, ~30 MB: one entry rendered once, each day written in one call.
   const big = join(root, 'C--big', 'memory'), bcli = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', big], { env, encoding: 'utf8' });
@@ -747,18 +807,18 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   // Windows); read once a term, 5.4 s.
   const t0 = Date.now();
   r = bcli('search', 'needle', 'lorem', 'rollout', 'build', 'passed', 'plan', 'module', 'filter');
-  const took = Date.now() - t0, asks = [...r.stdout.matchAll(/^     Asked: (.*)$/gm)].map((m) => m[1].length);
+  const took = Date.now() - t0;
   ok(took < 3000, `search over 30 MB of journal is fast (${took} ms)`);
   ok(r.status === 0 && new RegExp(`^ *\\d+  journal   ${last} 18:00 `).test(r.stdout), `the one entry asking for every term is first (got ${r.stdout.slice(0, 200)})`);
-  ok(asks.length === 10 && asks[1] === 2000 && asks[2] === 2000 && asks.slice(3).every((a) => a <= 200) && r.stdout.length < 30000 && /^10 of 5111 match\(es\)/m.test(r.stdout),
-    `ten hits by default: the top 3 in full, the rest clipped (got ${asks}, ${r.stdout.length} chars)`);
+  ok(/^     5109 more like this, 2025-01-01\.\.2025-12-31$/m.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout) && r.stdout.length < 4000,
+    `a request asked 5,110 times is one hit, and the output stays small (got ${r.stdout.length} chars: ${r.stdout.slice(-400)})`);
   r = bcli('search', '--since', year[0]);
   ok((r.stdout.match(/^\d{4}-\d\d-\d\d \d\d:\d\d  conversation /gm) || []).length === 30 && /^30 of 5111 journal entries in .+; --limit N shows more$/m.test(r.stdout),
     `a date range alone lists 30 by default, and says how many it left out (got ${r.stdout.split('\n').length} lines, ending ${r.stdout.trim().split('\n').pop()})`);
   rmSync(join(big, 'journal', `${year[0]}.md`)); mkdirSync(join(big, 'journal', `${year[0]}.md`));
   r = bcli('search', 'needle');
-  ok(r.status === 0 && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && new RegExp(`^could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(r.stdout),
-    `a day that cannot be read is named, and the rest still found (got ${r.stdout.slice(-300)})`);
+  ok(r.status === 0 && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && new RegExp(`^could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(r.stdout) && /^1 of 1 match\(es\)/.test(r.stdout.trim().split('\n').pop()),
+    `a day that cannot be read is named, the rest still found, and the count is still the last line (got ${r.stdout.slice(-300)})`);
   r = bcli('search', 'needle', '--since', year.at(-7));
   ok(r.status === 0 && !r.stderr && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && !/could not read/.test(r.stdout), `with --since the last week, a day outside it is never opened (got ${r.stdout}${r.stderr})`);
 }
