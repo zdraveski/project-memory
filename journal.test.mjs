@@ -42,7 +42,11 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
     ran: ['node "C:/p/memory.mjs" forget zebra --session x', ...Array.from({ length: 10 }, (_, i) => `ls ${i}`)] }), T);
   ok(f.asked === '[private]' && f.answered === '[private]' && !f.changed.length && !f.ran.length,
     `a turn that ran forget, even before its last 10 commands, keeps none of its words (got ${JSON.stringify(f)})`);
-  ok(entryOf(turn({ ran: ['node memory.mjs search zebra'] }), T).asked === 'a question', 'a turn that only searched is kept');
+  for (const c of ['node memory.mjs forget zebra', "node '/p/memory.mjs' forget 'zebra' --yes", 'node "C:\\p\\memory.mjs" forget --since 1970-01-01 --yes'])
+    ok(entryOf(turn({ ran: [c] }), T).asked === '[private]', `a forget run is seen: ${c}`);
+  // Only memory.mjs's forget command: a word after it elsewhere is not one.
+  for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget', 'git add memory.mjs && git commit -m "fix forget"', 'grep x memory.mjs; grep forget y', 'node memory.mjs status\nforget'])
+    ok(entryOf(turn({ ran: [c] }), T).asked === 'a question', `a turn that ran no forget is kept: ${JSON.stringify(c)}`);
 }
 {
   const e = entryOf(turn({ changed: ['C:\\proj\\a.js', 'D:\\o\\b.js'], ran: ['ls', 'git status'] }), T);

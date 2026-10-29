@@ -32,7 +32,9 @@ const rel = (p, cwd) => {
 
 // A turn that ran forget is kept like a private one: its listing, saved as the
 // reply and committed with the day, kept what it removed (review, 2026-10-29).
-const FORGETS = /memory\.mjs\b.*\bforget\b/s;
+// The subcommand only: "memory.mjs" anywhere before the word took a commit
+// message or a search for "forget" for one, and dropped a whole turn.
+const FORGETS = /memory\.mjs["']?\s+forget\b/;
 
 export function entryOf(turn, transcriptPath) {
   const s = tag(basename(transcriptPath, '.jsonl'));
