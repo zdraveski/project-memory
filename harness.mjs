@@ -4,6 +4,19 @@ import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
+// mutate.mjs runs a suite with --mutant: its slow blocks (big fixtures, a held
+// lock waited out, races, timing) are skipped, and a mutant only they kill is
+// marked { full: true } there. CI and deploy run every block.
+export const quick = process.argv.includes('--mutant');
+// fn on a clock that runs 500 ms a call: a held lock is given up on in a few
+// looks, not after 2 s, so a check of it need not be skipped under --mutant.
+export function fastClock(fn) {
+  const clock = Date.now;
+  let t = clock();
+  Date.now = () => (t += 500);
+  try { return fn(); } finally { Date.now = clock; }
+}
+
 // Path of a sibling tool, as execFileSync wants it.
 export const tool = (name) => fileURLToPath(new URL(`./${name}`, import.meta.url));
 

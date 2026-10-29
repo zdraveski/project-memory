@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, u
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
-import { tool, tempDir, tempHome, pointers } from './harness.mjs';
+import { tool, tempDir, tempHome, pointers, quick } from './harness.mjs';
 
 const TOOL = tool('memory-tier.mjs');
 let checks = 0;
@@ -113,9 +113,11 @@ run();
 ok(statSync(join(dir, 'MEMORY.md')).mtimeMs === mt2, 'a pass that would only reorder lines leaves the index alone');
 
 // Another hook holding the store: this pass waits, then stands down.
-mkdirSync(join(dir, '.lock'));
-ok(/busy/.test(run()), 'a store another hook holds is left alone, and said so');
-rmdirSync(join(dir, '.lock'));
+if (!quick) {
+  mkdirSync(join(dir, '.lock'));
+  ok(/busy/.test(run()), 'a store another hook holds is left alone, and said so');
+  rmdirSync(join(dir, '.lock'));
+}
 
 // The model edits the index while a pass sits between reading and writing it:
 // the pass stands down and the edit survives. A duplicate line gives the pass
@@ -123,13 +125,15 @@ rmdirSync(join(dir, '.lock'));
 writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8') + moved + '\n');
 const added = memory('added-mid-pass', { days: 0 });
 // The child gets 1.5 s to start and read: a loaded 4-core box took 0.5 s.
-const paused = spawn(process.execPath, [TOOL, '--dir', dir, '--pause', '3000']);
-let pausedOut = ''; paused.stdout.on('data', (d) => { pausedOut += d; });
-await new Promise((res) => setTimeout(res, 1500));
-writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8') + added + '\n');
-await new Promise((res) => paused.on('close', res));
-ok(has(readFileSync(join(dir, 'MEMORY.md'), 'utf8'), added), 'an index edited during a pass keeps the edit');
-ok(/changed during the pass/.test(pausedOut), 'and the pass says it stood down');
+if (!quick) {
+  const paused = spawn(process.execPath, [TOOL, '--dir', dir, '--pause', '3000']);
+  let pausedOut = ''; paused.stdout.on('data', (d) => { pausedOut += d; });
+  await new Promise((res) => setTimeout(res, 1500));
+  writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8') + added + '\n');
+  await new Promise((res) => paused.on('close', res));
+  ok(has(readFileSync(join(dir, 'MEMORY.md'), 'utf8'), added), 'an index edited during a pass keeps the edit');
+  ok(/changed during the pass/.test(pausedOut), 'and the pass says it stood down');
+}
 run();
 ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').filter((l) => l === moved).length === 1, 'the next pass does the work it dropped');
 
@@ -653,12 +657,15 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   noteIn(back, 'pinned', '\n  tier: hot');
   writeFileSync(join(back, 'MEMORY.md'), '# Index\n');
   writeFileSync(join(back, 'MEMORY-archive.md'), '# Archive\n\n- [Pinned](pinned.md) — the hand-written hook\n');
-  const held = spawn(process.execPath, [TOOL, '--dir', back, '--pause', '2500'], { stdio: 'ignore' });
-  await new Promise((res) => setTimeout(res, 900));
-  writeFileSync(join(back, 'MEMORY.md'), '# Index\n\nWritten by the model during the pass.\n');
-  await new Promise((res) => held.on('exit', res));
-  const both = readFileSync(join(back, 'MEMORY.md'), 'utf8') + readFileSync(join(back, 'MEMORY-archive.md'), 'utf8');
-  ok(both.includes('- [Pinned](pinned.md) — the hand-written hook'), `a line coming back from the archive survives an index write that conflicts (got ${both})`);
+  if (!quick) {
+    // 1.5 s to start and read, as part one gives: 0.9 s was under 2x the 0.5 s a loaded box took.
+    const held = spawn(process.execPath, [TOOL, '--dir', back, '--pause', '3000'], { stdio: 'ignore' });
+    await new Promise((res) => setTimeout(res, 1500));
+    writeFileSync(join(back, 'MEMORY.md'), '# Index\n\nWritten by the model during the pass.\n');
+    await new Promise((res) => held.on('exit', res));
+    const both = readFileSync(join(back, 'MEMORY.md'), 'utf8') + readFileSync(join(back, 'MEMORY-archive.md'), 'utf8');
+    ok(both.includes('- [Pinned](pinned.md) — the hand-written hook'), `a line coming back from the archive survives an index write that conflicts (got ${both})`);
+  }
   tierOne(back);
   ok(readFileSync(join(back, 'MEMORY.md'), 'utf8').includes('- [Pinned](pinned.md) — the hand-written hook') && !readFileSync(join(back, 'MEMORY-archive.md'), 'utf8').includes('pinned.md'),
     'and the next pass moves it back, hook and all, out of the archive');

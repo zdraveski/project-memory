@@ -7,7 +7,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
-import { tool, tempHome } from './harness.mjs';
+import { tool, tempHome, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
 const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores } = await import('./store.mjs');
@@ -60,31 +60,40 @@ if (process.platform === 'win32') {
 }
 
 // 2. Six processes contend for one store: never two inside at once.
-const log = join(home, 'lock.log');
-writeFileSync(log, '');
-const child = `
+if (!quick) {
+  const log = join(home, 'lock.log');
+  writeFileSync(log, '');
+  const child = `
 import { withLock } from ${JSON.stringify(pathToFileURL(tool('store.mjs')).href)};
 import { appendFileSync } from 'node:fs';
 const [log, dir] = process.argv.slice(1);
 const r = withLock(dir, () => { appendFileSync(log, 'in\\n'); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 80); appendFileSync(log, 'out\\n'); return 'done'; });
 process.stdout.write(String(r));
 `;
-const outs = await Promise.all(Array.from({ length: 6 }, () => new Promise((res) => {
-  const p = spawn(process.execPath, ['--input-type=module', '-e', child, log, dir], { env });
-  let o = ''; p.stdout.on('data', (d) => { o += d; }); p.on('close', () => res(o));
-})));
-ok(outs.every((o) => o === 'done'), `every contender got the lock within its wait (got ${outs.join(',')})`);
-ok(readFileSync(log, 'utf8') === 'in\nout\n'.repeat(6), 'and no two were inside at once');
-ok(!existsSync(join(dir, '.lock')), 'the lock is gone when the last one leaves');
+  const outs = await Promise.all(Array.from({ length: 6 }, () => new Promise((res) => {
+    const p = spawn(process.execPath, ['--input-type=module', '-e', child, log, dir], { env });
+    let o = ''; p.stdout.on('data', (d) => { o += d; }); p.on('close', () => res(o));
+  })));
+  ok(outs.every((o) => o === 'done'), `every contender got the lock within its wait (got ${outs.join(',')})`);
+  ok(readFileSync(log, 'utf8') === 'in\nout\n'.repeat(6), 'and no two were inside at once');
+  ok(!existsSync(join(dir, '.lock')), 'the lock is gone when the last one leaves');
+}
 
 // 3. A lock a killed hook left behind is taken over; a live one is waited on, then given up.
 mkdirSync(join(dir, '.lock'));
 const old = new Date(Date.now() - 60_000);
 utimesSync(join(dir, '.lock'), old, old);
 ok(withLock(dir, () => 'got') === 'got' && !existsSync(join(dir, '.lock')), 'a lock older than 30 s is taken over');
+if (!quick) {
+  mkdirSync(join(dir, '.lock'));
+  const t0 = Date.now();
+  ok(withLock(dir, () => 'got') === null && Date.now() - t0 >= 1900, 'a held lock is given up on after about 2 s, with null');
+  rmdirSync(join(dir, '.lock'));
+}
+// The same wait on a fast clock, which a run under --mutant sees too.
 mkdirSync(join(dir, '.lock'));
-const t0 = Date.now();
-ok(withLock(dir, () => 'got') === null && Date.now() - t0 >= 1900, 'a held lock is given up on after about 2 s, with null');
+const gaveUp = fastClock(() => withLock(dir, () => 'got'));
+ok(gaveUp === null && existsSync(join(dir, '.lock')), `a held lock is given up on when the wait is up, and the holder's lock kept (got ${gaveUp})`);
 rmdirSync(join(dir, '.lock'));
 let threw = false;
 try { withLock(dir, () => { throw new Error('boom'); }); } catch { threw = true; }
@@ -104,21 +113,23 @@ ok(withLock(dir, () => 'got') === 'got', 'and one that is a folder with somethin
 // One that cannot be removed -- on Windows another process's working folder,
 // elsewhere one in a read-only folder -- throws once the wait is up, so the
 // pass that fails says so in .health. Busy every turn was silence.
-mkdirSync(join(dir, '.lock'));
-let holder = null;
-if (process.platform === 'win32') {
-  // It speaks once running: Windows opens a child's working folder during its
-  // start-up, after 'spawn', and until then the folder can still be deleted.
-  holder = spawn(process.execPath, ['-e', "process.stdout.write('up'); setTimeout(() => {}, 15000)"], { cwd: join(dir, '.lock') });
-  await new Promise((res) => holder.stdout.once('data', res));
-} else chmodSync(dir, 0o555);
-backdateLock();
-let wedged;
-try { wedged = `returned ${withLock(dir, () => 'got')}`; } catch (e) { wedged = e.code; }
-if (holder) { holder.kill(); await new Promise((res) => holder.on('close', res)); }
-else chmodSync(dir, 0o755);
-rmSync(join(dir, '.lock'), { recursive: true, force: true });
-ok(!/^returned/.test(wedged), `a dead lock that cannot be removed throws (got ${wedged})`);
+if (!quick) {
+  mkdirSync(join(dir, '.lock'));
+  let holder = null;
+  if (process.platform === 'win32') {
+    // It speaks once running: Windows opens a child's working folder during its
+    // start-up, after 'spawn', and until then the folder can still be deleted.
+    holder = spawn(process.execPath, ['-e', "process.stdout.write('up'); setTimeout(() => {}, 15000)"], { cwd: join(dir, '.lock') });
+    await new Promise((res) => holder.stdout.once('data', res));
+  } else chmodSync(dir, 0o555);
+  backdateLock();
+  let wedged;
+  try { wedged = `returned ${withLock(dir, () => 'got')}`; } catch (e) { wedged = e.code; }
+  if (holder) { holder.kill(); await new Promise((res) => holder.on('close', res)); }
+  else chmodSync(dir, 0o755);
+  rmSync(join(dir, '.lock'), { recursive: true, force: true });
+  ok(!/^returned/.test(wedged), `a dead lock that cannot be removed throws (got ${wedged})`);
+}
 
 // EACCES is one more way Windows says a path is settling -- a rename already
 // retries on it. On the lock it threw, and the turn's handoff was skipped.
@@ -135,11 +146,12 @@ fs.mkdirSync = realMkdir;
 syncBuiltinESMExports();
 ok(eacces === 'got' && refusals < 0, `an EACCES on the lock is waited out like EPERM (got ${eacces})`);
 
-// 4. A junction to the store is the same store: one lock between both names.
+// 4. A junction to the store is the same store: one lock between both names
+// (the inner wait on a fast clock under --mutant).
 const alias = join(root, 'C--some-project-alias');
 mkdirSync(alias);
 symlinkSync(dir, join(alias, 'memory'), 'junction');
-ok(withLock(join(alias, 'memory'), () => withLock(dir, () => 'inner')) === null, 'a lock taken through a junction holds the real path too');
+ok((quick ? fastClock : (f) => f())(() => withLock(join(alias, 'memory'), () => withLock(dir, () => 'inner'))) === null, 'a lock taken through a junction holds the real path too');
 
 // 5. Replace only what was read.
 const f = join(dir, 'x.md');

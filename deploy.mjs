@@ -6,7 +6,7 @@
 // manifest of their hashes; handoff-log's startup line names any live file that
 // no longer matches it.
 //
-// Run: node deploy.mjs [--tiering-change]   (from this repo; ~9 minutes)
+// Run: node deploy.mjs [--tiering-change]   (from this repo; ~70 minutes)
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSync, realpathSync } from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
@@ -89,7 +89,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // The manifest is checked with `claude plugin validate . --strict` before a
   // release (CONTRIBUTING.md), not here: the plugin runs no signed-in claude CLI,
   // which the plugin directory's security scan holds.
-  step('mutation check (~8 min)', () => node('mutate.mjs'));
+  step('mutation check (~65 min)', () => node('mutate.mjs'));
   step('soak', () => node('memory-tier.soak.mjs'));
   step('break harness', () => {
     const bad = node('memory-tier.break.mjs').split('\n').filter((l) => l.trim() && !l.includes(' ok ('));

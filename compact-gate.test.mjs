@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync,
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
-import { tool, tempHome, storeFor } from './harness.mjs';
+import { tool, tempHome, storeFor, quick } from './harness.mjs';
 
 const GATE = tool('compact-gate.mjs'), HOOK = tool('handoff-log.mjs');
 const { home, env } = tempHome('cg-test-');
@@ -182,12 +182,14 @@ ok(/f24\.py, and 5 earlier/.test(wide) && /[\s,]f5\.py/.test(wide) && !/[\s,]f4\
 
 // 8. Another hook holding the store past the lock wait is named as that, not as
 // a store with no handoff.md (final review, 2026-10-26).
-write(user('build it'), asst('running', 965_000, 'tool_use'));
-mkdirSync(join(dir, '.lock'));
-const heldGate = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8' });
-rmSync(join(dir, '.lock'), { recursive: true });
-ok(heldGate.status === 0 && /handoff: another hook held the store/.test(heldGate.stderr) && /note: another hook held the store/.test(heldGate.stderr),
-  `a held store is reported as held, and the compaction runs (got ${heldGate.status}: ${heldGate.stderr.trim()})`);
+if (!quick) {
+  write(user('build it'), asst('running', 965_000, 'tool_use'));
+  mkdirSync(join(dir, '.lock'));
+  const heldGate = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8' });
+  rmSync(join(dir, '.lock'), { recursive: true });
+  ok(heldGate.status === 0 && /handoff: another hook held the store/.test(heldGate.stderr) && /note: another hook held the store/.test(heldGate.stderr),
+    `a held store is reported as held, and the compaction runs (got ${heldGate.status}: ${heldGate.stderr.trim()})`);
+}
 
 // A conversation marked <private-session> gets no in-flight note: the note
 // holds its ask and its last words.
@@ -252,10 +254,12 @@ ok(stop('s9') === null && stop('s9') === null, 'a nudge that cannot be recorded 
 rmSync(nudgeDir, { force: true });
 // A tool result of launches with no output file each: every one read on to the
 // end, 9 s over 520 KB on every Stop.
-write(user('scan the logs'), result('agentId: abc\n'.repeat(40_000)), asst('', 300_000, 'tool_use'));
-const tLaunch = Date.now();
-execFileSync(process.execPath, [GATE, '--state', transcript], { env, stdio: 'ignore' });
-ok(Date.now() - tLaunch < 2000, `launches with no output file are read once each (${Date.now() - tLaunch} ms)`);
+if (!quick) {
+  write(user('scan the logs'), result('agentId: abc\n'.repeat(40_000)), asst('', 300_000, 'tool_use'));
+  const tLaunch = Date.now();
+  execFileSync(process.execPath, [GATE, '--state', transcript], { env, stdio: 'ignore' });
+  ok(Date.now() - tLaunch < 2000, `launches with no output file are read once each (${Date.now() - tLaunch} ms)`);
+}
 
 // Round 3 (2026-10-27).
 {

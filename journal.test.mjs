@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { join, dirname } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import assert from 'node:assert';
-import { tempHome, storeFor, tool, slug } from './harness.mjs';
+import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
 const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, summary, firstDay } = await import('./journal.mjs');
@@ -358,7 +358,7 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
   stop(A);
   ok(!existsSync(failed) && of(A).some((e) => e.asked === 'third question'), 'the next good write clears it');
 }
-{
+if (!quick) {
   for (let i = 0; i < 10; i++) {
     const ts = `2026-10-28T11:${String(i).padStart(2, '0')}:00Z`;
     for (const id of [C, D]) say(id, ts, `${id.slice(0, 1)} question ${i}`, `answer ${i}`);
@@ -761,7 +761,7 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   ok(days(d).join() === was && asks(d).join() === 'asked at no time', `an imported turn whose time won't parse is journaled on its transcript's day (got ${days(d)}, want ${was})`);
 }
 // The Stop, as Claude Code runs it, on a conversation with a 70 MB tool result.
-{
+if (!quick) {
   const [r, d] = repo('huge'), H = sid('h'), S = sid('s'), p = join(projects, slug(r), `${H}.jsonl`), ps = join(projects, slug(r), `${S}.jsonl`);
   const [pre, post] = JSON.stringify({ type: 'user', uuid: 'h-big', sessionId: H, cwd: r, timestamp: '2026-09-03T10:01:00Z',
     message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '@' }] } }).split('@');
@@ -987,8 +987,8 @@ mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(pr
   ok(hits([], { conversation: 'bbbbbbbb' }) === 'f-4', `--conversation alone matches that conversation's entries (got ${hits([], { conversation: 'bbbbbbbb' })})`);
   ok(hits([], { keys: ['f-2'] }) === 'f-2' && hits(['mango'], { keys: ['f-2', 'f-3'] }) === 'f-3', `keys pick those entries, with the other filters (got ${hits([], { keys: ['f-2'] })}; ${hits(['mango'], { keys: ['f-2', 'f-3'] })})`);
   ok(text() === before && !existsSync(list), 'without apply nothing goes');
-  mkdirSync(join(d, '.lock'));   // another hook's
-  const busy = forget(d, ['mango'], { apply: true });
+  mkdirSync(join(d, '.lock'));   // another hook's; waited out on a fast clock under --mutant
+  const busy = (quick ? fastClock : (f) => f())(() => forget(d, ['mango'], { apply: true }));
   rmSync(join(d, '.lock'), { recursive: true });
   ok(busy === null && text() === before && !existsSync(list), `while another holds the store's lock, nothing goes (got ${JSON.stringify(busy)})`);
   const r = forget(d, ['mango'], { until: '2026-10-20', apply: true });

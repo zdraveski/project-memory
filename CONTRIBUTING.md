@@ -26,7 +26,12 @@ Beyond the suites:
   must be killed. The mutants are in `mutate.mjs`, grouped by source file
   with the suite that must catch them; each is a label and a pair, the text
   to find and what to put in its place. A change to a line a mutant targets
-  needs the mutant updated too. The full run takes several minutes.
+  needs the mutant updated too. Each suite runs with `--mutant`, which skips
+  its slow blocks (a held lock waited out, a race, a big fixture, a clock;
+  `quick` in `harness.mjs`); a mutant only those blocks kill is marked
+  `{ full: true }` and runs its whole suite. The full run took 65 minutes on
+  a 4-core Windows machine (2026-10-29), half of it the ~200 mutants
+  `memory.test.mjs` checks.
 - `node memory-tier.soak.mjs [store]` copies a store (by default the largest
   on the machine) to a temp folder, then simulates a month of new notes and
   sessions ending at the same moment.
