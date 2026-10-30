@@ -1,32 +1,49 @@
 name: mutate
 
-# The full mutation check, split across 17 machines: GitHub Free runs 20 jobs
-# at once for an account, and past that they queue. 20 machines took 6 min 44 s
+# The mutation check, split across 17 machines: GitHub Free runs 20 jobs at
+# once for an account, and past that they queue. 20 machines took 6 min 44 s
 # beside a push's test run, three of them queued; six took about 10 minutes,
-# one 65. Started by hand (Actions > mutate > Run workflow, or `gh workflow
-# run mutate.yml -f machines=N`); deploy.mjs --mutants-checked-on-github then
-# skips its own run, on your word that this one passed for the commit.
+# one 65. On every push to master it runs the changed files' mutants (all of
+# them after a change to store.mjs, harness.mjs or mutate.mjs: plan-mutants.mjs);
+# started by hand (Actions > mutate > Run workflow, or `gh workflow run
+# mutate.yml -f machines=N`), every mutant. deploy.mjs
+# --mutants-checked-on-github then skips its own run, on your word that a run
+# covering the commit passed.
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
       machines:
         description: Machines to split the mutants across (GitHub Free runs 20 jobs at once)
         default: '17'
 
+# A newer push makes an older push's run moot; a run started by hand is never cut short.
+concurrency:
+  group: mutate-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 jobs:
   plan:
     runs-on: ubuntu-latest
     outputs:
       shards: ${{ steps.list.outputs.shards }}
+      changed: ${{ steps.list.outputs.changed }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - id: list
         env:
           MACHINES: ${{ inputs.machines }}
-        # A block: `{ length: n }` in a plain value is YAML's `key: value`.
-        run: |
-          node -e "const n = Math.min(256, Math.max(1, Math.floor(Number(process.env.MACHINES)) || 20)); console.log('shards=' + JSON.stringify(Array.from({ length: n }, (_, i) => i + 1)))" >> "$GITHUB_OUTPUT"
+          BEFORE: ${{ github.event.before }}
+        run: node .github/plan-mutants.mjs >> "$GITHUB_OUTPUT"
   mutate:
     needs: plan
+    if: needs.plan.outputs.shards != '[]'
     strategy:
       fail-fast: false
       matrix:
@@ -38,4 +55,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node mutate.mjs --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+      - shell: bash
+        env:
+          CHANGED: ${{ needs.plan.outputs.changed }}
+        run: node mutate.mjs --shard ${{ matrix.shard }}/${{ strategy.job-total }} ${CHANGED:+--changed "$CHANGED"}

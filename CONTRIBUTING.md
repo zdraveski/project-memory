@@ -46,11 +46,14 @@ Beyond the suites:
 - `node deploy.mjs` runs only the mutants of the files changed since the live
   copy's commit; every one when that commit is unknown, when `store.mjs`,
   `harness.mjs` or `mutate.mjs` changed, or under `--full`. Run it with
-  `--full` before a version release. To run every mutant faster, start the
-  `mutate` workflow on GitHub (17 machines by default, about 7 minutes;
-  GitHub Free runs 20 jobs at once); once it passes
-  for the commit, `node deploy.mjs --mutants-checked-on-github` skips the
-  local run. The deploy never asks GitHub itself: nothing here goes online.
+  `--full` before a version release.
+- The `mutate` workflow on GitHub splits the mutants across 17 machines
+  (GitHub Free runs 20 jobs at once). Every push to `master` runs the
+  changed files' mutants, by the deploy's rule; started by hand (Actions >
+  mutate > Run workflow), it runs all of them in about 7 minutes. Once a run
+  covering the commit passes, `node deploy.mjs --mutants-checked-on-github`
+  skips the local run. The deploy never asks GitHub itself: nothing here
+  goes online.
 - `node memory-tier.soak.mjs [store]` copies a store (by default the largest
   on the machine) to a temp folder, then simulates a month of new notes and
   sessions ending at the same moment.
