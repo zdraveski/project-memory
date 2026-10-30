@@ -653,6 +653,9 @@ const { own, hushed } = await import('./handoff-log.mjs');
 const printOf = (cwd, session_id, source) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd, session_id, source }), env }).toString();
 const cwdN = 'C:\\handoff-108', dirN = storeFor(home, cwdN), tn = join(dirN, 'n.jsonl');
 mkdirSync(dirN, { recursive: true });
+// Read in part, as a long conversation is: read whole, a Stop drops its own
+// leftover entries, and the matching rules checked below hold nothing.
+writeFileSync(tn, tool_(600_000) + '\n');
 const ns = (...lines) => writeFileSync(tn, lines.join('\n') + '\n', { flag: 'a' });
 const nrun = () => handoff({ cwd: cwdN, transcript_path: tn, session_id: 'nnnnnnnn-1' });
 const ndoc = () => readFileSync(join(dirN, 'handoff.md'), 'utf8');
@@ -1042,8 +1045,12 @@ section3(other + other.replace('<Header>', '&lt;Header>') + other);
 c = case3([user('next'), asst('done')]);
 ok((c.all.match(/\[oooooooo\]: fix the/g) || []).length === 1, `an entry a 1.0.7 window wrote again, raw, is kept once (got ${(c.all.match(/\[oooooooo\]: fix the/g) || []).length})`);
 const at4 = local('2026-09-11T07:00:00Z');
+// Read in part, as a long conversation is, with a turn of its own before the
+// entry: read whole, a Stop drops its own leftover entries, and the spelling
+// rules are not what keeps one.
+const part = (...lines) => [tool_(600_000), user('before it', { ts: '2026-09-11T06:59:00Z' }), asst('ok'), ...lines].join('\n') + '\n';
 section3(`- **asked** ${at4} [r3up0001]: deploy now &lt;system-reminder>Today's date is…\n  **did:** deployed\n`);
-writeFileSync(join(dir3, 'r3up0001.jsonl'), [user('deploy now'), asst('deployed')].join('\n') + '\n');
+writeFileSync(join(dir3, 'r3up0001.jsonl'), part(user('deploy now'), asst('deployed')));
 handoff({ cwd: cwd3, transcript_path: join(dir3, 'r3up0001.jsonl'), session_id: 'r3up0001' });
 ok((readFileSync(join(dir3, 'handoff.md'), 'utf8').match(/\[r3up0001\]: deploy now/g) || []).length === 1, 'an entry an older version wrote with the reminder after its ask is the same turn');
 
@@ -1180,10 +1187,10 @@ ok((c.all.match(/\[r3same01\]: continue/g) || []).length === 2, `"continue" aske
 // entry an older version wrote is not added again in another spelling.
 const at9 = local('2026-09-11T07:00:00Z');
 section3(`- **asked** ${at9} [r3cjk001]: 请修复（登录）问题，然后…\n  **did:** 好的\n`);
-writeFileSync(join(dir3, 'r3cjk001.jsonl'), [user('请修复（登录）问题，然后…'), asst('好的')].join('\n') + '\n');
+writeFileSync(join(dir3, 'r3cjk001.jsonl'), part(user('请修复（登录）问题，然后…'), asst('好的')));
 handoff({ cwd: cwd3, transcript_path: join(dir3, 'r3cjk001.jsonl'), session_id: 'r3cjk001' });
 const cjk = readFileSync(join(dir3, 'handoff.md'), 'utf8');
-ok((cjk.match(/\[r3cjk001\]/g) || []).length === 1 && cjk.includes('请修复（登录）问题，然后…'), `an ask keeps its own characters, and is not doubled (got ${cjk.split('[r3cjk001]').length - 1})`);
+ok((cjk.match(/\[r3cjk001\]: 请修复/g) || []).length === 1 && cjk.includes('请修复（登录）问题，然后…'), `an ask keeps its own characters, and is not doubled (got ${cjk.split('[r3cjk001]: 请修复').length - 1})`);
 
 // Third look. An ask with a plain <private> block and one in another spelling
 // keeps both out: normalized only when the raw text had no tag, the second leaked.
