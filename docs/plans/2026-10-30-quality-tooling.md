@@ -6,13 +6,13 @@
 
 **Architecture:** New tools beside the old ones, no dependencies: `automut.mjs` makes mutants that `mutate.mjs` and `check.mjs` run; `coverage.mjs` reads Node's own coverage files; `fuzz.mjs` splits a round into generated steps and their execution, so it can shrink a failure, and gains new kinds of step; `fuzz-faults.cjs` is a preload that fails file calls. `memory-tier.mjs` gets a `main()` like `memory.mjs`'s.
 
-**Tech Stack:** Node.js 20+ ES modules, `node:assert`, `node:child_process`, `NODE_V8_COVERAGE`; GitHub Actions; PowerShell on Windows for the real lock.
+**Tech Stack:** Node.js 22+ ES modules, `node:assert`, `node:child_process`, `NODE_V8_COVERAGE`; GitHub Actions; PowerShell on Windows for the real lock.
 
 **Spec:** `docs/specs/2026-10-30-quality-tooling-design.md`
 
 ## Global Constraints
 
-- Plain Node.js 20 and newer, no dependencies. Plugin code never goes online; workflows may use `gh` and GitHub's actions.
+- Plain Node.js 22 and newer (KIRE raised the floor from 20 on 2026-10-30), no dependencies. Plugin code never goes online; workflows may use `gh` and GitHub's actions.
 - No hook changes behavior, except to fix a bug a new check finds: then a test, a mutant and its own commit.
 - The six suites stay the suites; new tools carry an inline self-check (as `check.mjs` checks `changedLines`).
 - GitHub runs use 17 machines; the limit is 20 jobs at once, 5 of them macOS. Start runs without asking.
@@ -38,11 +38,13 @@
 
 ---
 
-### Task 1: CI on current Node versions, current actions, and the release review
+### Task 1: Node 22 as the floor, CI on current Node versions and actions, and the release review
 
 **Files:**
 - Modify: `.github/workflows/test.yml`, `.github/workflows/mutate.yml`, `.github/workflows/fuzz.yml`
-- Modify: `CONTRIBUTING.md` (line "CI runs all six ... Node 20 and 24", and Releasing step 3)
+- Modify: `CONTRIBUTING.md` (line 20 "CI runs all six ... Node 20 and 24", and Releasing step 3)
+- Modify: `README.md:38-41` ("Node.js 20 or newer", twice), `docs/how-it-works.md:665,671,699`
+- Modify: `CHANGELOG.md` (an `## Unreleased` entry at the top)
 
 **Interfaces:**
 - Produces: the newest major tags of `actions/checkout`, `actions/setup-node`, `actions/upload-artifact` (Task 15 uses the last).
@@ -54,11 +56,11 @@ Expected: three tags such as `v5.x.y`; use their major (`@v5`).
 
 - [ ] **Step 2: Change the matrix and the actions**
 
-`test.yml` matrix becomes an `include` list of seven: `ubuntu-latest` with 20, 24, 26; `windows-latest` and `macos-latest` with 24 and 26. Every workflow's `checkout` and `setup-node` use the majors from Step 1. `mutate.yml` and `fuzz.yml` stay on Node 24.
+`test.yml` matrix becomes an `include` list of seven: `ubuntu-latest` with 22, 24, 26; `windows-latest` and `macos-latest` with 24 and 26. Every workflow's `checkout` and `setup-node` use the majors from Step 1. `mutate.yml` and `fuzz.yml` stay on Node 24.
 
-- [ ] **Step 3: Update CONTRIBUTING**
+- [ ] **Step 3: Update the docs**
 
-The CI line names the seven jobs. Releasing step 3 adds: "Have every change since the last tag reviewed from its diff alone, by a reviewer who hasn't seen the work (a fresh agent will do), and fix what it confirms."
+README and `docs/how-it-works.md` say "Node.js 22 or newer" wherever they said 20 (the "Tested on" line names Node 22, 24 and 26). `CHANGELOG.md` gets, under `## Unreleased`: "project-memory now needs Node.js 22 or newer. Node 20 reached its end of life in April 2026 and gets no more security fixes; if `node --version` says v20, install the current LTS from nodejs.org." In CONTRIBUTING the CI line names the seven jobs, and Releasing step 3 adds: "Have every change since the last tag reviewed from its diff alone, by a reviewer who hasn't seen the work (a fresh agent will do), and fix what it confirms."
 
 - [ ] **Step 4: Verify on GitHub**
 
@@ -68,8 +70,8 @@ Expected: seven test jobs green; `gh run view <id> --log | grep -c "Node.js 20 i
 - [ ] **Step 5: Commit** (before Step 4's push)
 
 ```bash
-git add .github/workflows/test.yml .github/workflows/mutate.yml .github/workflows/fuzz.yml CONTRIBUTING.md
-git commit -m "CI: Node 20, 24 and 26 on Linux, 24 and 26 elsewhere; current actions; a review before each release"
+git add .github/workflows/test.yml .github/workflows/mutate.yml .github/workflows/fuzz.yml CONTRIBUTING.md README.md docs/how-it-works.md CHANGELOG.md
+git commit -m "Node 22 or newer; CI on 22, 24 and 26 on Linux, 24 and 26 elsewhere; current actions; a review before each release"
 ```
 
 ### Task 2: The real Windows lock, where locks work

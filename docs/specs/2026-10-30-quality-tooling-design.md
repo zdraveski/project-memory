@@ -80,7 +80,6 @@ when a note changed; startup 139 ms.
 - Running hooks inside the fuzz's own process to make it faster. In real use
   every hook is a fresh process; calls in one process can share state and
   hide a bug or invent one. The fuzz gets faster by using the right machines.
-- Raising the Node floor from 20 (an open decision for KIRE).
 - Any dependency: no c8, no Stryker, no acorn. Node's built-in coverage
   (`NODE_V8_COVERAGE`) and a small masker do the work.
 
@@ -108,8 +107,11 @@ when a note changed; startup 139 ms.
 
 ### A. CI and the release steps
 
-- `test.yml` runs Linux on Node 20, 24 and 26, and Windows and macOS on 24
-  and 26: seven jobs. 20 stays on Linux because the README promises Node 20.
+- **The floor is Node 22** (KIRE, 2026-10-30: Node 20 reached its end of
+  life). The README, `docs/how-it-works.md` and CONTRIBUTING say "Node.js 22
+  or newer", and the next release's changelog says the floor moved and why.
+- `test.yml` runs Linux on Node 22, 24 and 26, and Windows and macOS on 24
+  and 26: seven jobs. The floor is tested on Linux.
 - Every workflow uses the newest major release of `actions/checkout`,
   `actions/setup-node` and (new, for the fuzz) `actions/upload-artifact`,
   looked up when this is built. The run log no longer warns about Node 20.
@@ -317,7 +319,7 @@ program opened` and goes on.
 
 ## Constraints
 
-- Plain Node.js, no dependencies, Node 20 and newer. Plugin code never goes
+- Plain Node.js, no dependencies, Node 22 and newer. Plugin code never goes
   online; workflows may use `gh` and GitHub's actions.
 - The six suites stay the suites. New tools carry an inline self-check, the
   way `check.mjs` checks `changedLines`, and no new suite file is added.
@@ -336,7 +338,7 @@ program opened` and goes on.
 - Mutated files are checked with `node --check` before their suite runs.
 - The first automatic run reports, and gates only after the triage; the 60
   survivor checkpoint per file.
-- The CI matrix: Linux 20, 24 and 26; Windows and macOS 24 and 26.
+- The CI matrix: Linux 22, 24 and 26; Windows and macOS 24 and 26.
 - The fuzz's sizes, instants, fault codes and rates (15% of runs; 0.02, 0.1
   or 0.3), and kills (10% of Stops, after 5 to 300 ms).
 - Shrinking's limits: 200 replays or 120 seconds.
@@ -359,13 +361,16 @@ program opened` and goes on.
 - Which module-level state `memory-tier.mjs` keeps, and resetting it at the
   start of `main`.
 
+## Decided by KIRE
+
+- **The Node floor is 22** (2026-10-30), since Node 20 reached its end of
+  life in April 2026.
+
 ## Open decisions for KIRE
 
-1. **The Node floor.** Node 20 reached its end of life in April 2026. Raising
-   the floor to 22 would change the README and drop 20 from CI.
-2. **The startup briefing's size.** Up to ~9,500 characters (~2,400 tokens)
+1. **The startup briefing's size.** Up to ~9,500 characters (~2,400 tokens)
    at every start and after every compaction. Shorter costs recall.
-3. **New features.** What's missing or annoying in daily use.
+2. **New features.** What's missing or annoying in daily use.
 
 ## How we'll know it works
 
