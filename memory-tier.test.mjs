@@ -2,7 +2,7 @@
 // the tiering rules that would silently lose or duplicate a pointer. Part two
 // builds a throwaway HOME with two stores and breaks the git snapshot path and
 // the --stop gate. Run: node memory-tier.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, unlinkSync, utimesSync, rmdirSync, renameSync, symlinkSync, openSync, closeSync, copyFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, unlinkSync, utimesSync, rmdirSync, renameSync, symlinkSync, copyFileSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
@@ -541,14 +541,18 @@ stop('proj-five');                     // committed, so git need not read the fi
 note('proj-five', 'b');                // and a change, pointed at, so the next Stop runs a pass
 writeFileSync(join(five, 'MEMORY.md'), readFileSync(join(five, 'MEMORY.md'), 'utf8') + '- [b](b.md) — b\n');
 utimesSync(join(five, 'MEMORY.md'), tenMin, tenMin);   // an index this old reports a missing target at once
-const EXLOCK = 0x10000000;             // libuv's UV_FS_O_EXLOCK: Windows share mode 0, as an editor might hold it
-const held = openSync(join(five, 'a.md'), EXLOCK);
-// The hold is real, or the check below proves nothing: on Windows a second open
-// fails busy. Its mutant lived on GitHub's Node 24.22 (2026-10-30): asked here first.
-let holds = false; try { readFileSync(join(five, 'a.md')); } catch (e) { holds = ['EPERM', 'EBUSY', 'EACCES'].includes(e.code); }
-if (process.platform === 'win32') ok(holds, `a file opened with UV_FS_O_EXLOCK is held: another open fails busy (Node ${process.version})`);
+// Held by another program, as an editor holds it: PowerShell opens it sharing
+// nothing. libuv's UV_FS_O_EXLOCK in this process held on GitHub's test
+// machines but not on its mutate machines, and the mutant lived (2026-10-30).
+const held = join(five, 'a.md'), win = process.platform === 'win32';
+const holder = win && spawn('powershell', ['-NoProfile', '-Command', `$f = [IO.File]::Open('${held.replace(/'/g, "''")}', 'Open', 'Read', 'None'); 'held'; [Console]::In.ReadToEnd() | Out-Null; $f.Close()`], { stdio: ['pipe', 'pipe', 'ignore'] });
+const released = win && new Promise((res) => holder.on('close', res));
+if (win) await new Promise((res) => { holder.stdout.on('data', (b) => { if (String(b).includes('held')) res(); }); released.then(res); });
+// The hold is real, or the check below proves nothing: another open fails busy.
+let how = 'opened'; try { readFileSync(held); } catch (e) { how = e.code; }
+if (win) ok(['EPERM', 'EBUSY', 'EACCES'].includes(how), `a memory another program holds open is held: another open fails busy (got ${how}, Node ${process.version})`);
 stop('proj-five');
-closeSync(held);
+if (win) { holder.stdin.end(); await released; }
 stop('proj-five');
 ok(existsSync(stamp('proj-five')) && !existsSync(join(five, '.health')), 'a memory held open for one Stop leaves no lasting alarm');
 
