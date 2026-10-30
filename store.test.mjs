@@ -200,6 +200,13 @@ ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !r
   const inside = join(projectsRoot(), 'C--x', 'abc.jsonl');
   ok(inProjects(inside) && !inProjects(`${projectsRoot()}/../history.jsonl`), 'a transcript under the projects folder is in it; one reached by .. is not');
   ok(transcriptKey(inside) === 'C--x/abc', `a transcript's key is its folder and session (got ${transcriptKey(inside)})`);
+  // A relative transcript path (from the projects folder) still names an
+  // absolute store: left as given, the store was a path relative to the hook's cwd.
+  const was = process.cwd();
+  mkdirSync(join(projectsRoot(), 'C--rel'), { recursive: true });
+  process.chdir(projectsRoot());
+  let got; try { got = storeOf({ transcript_path: join('C--rel', 's.jsonl') }); } finally { process.chdir(was); }
+  ok(got === join(projectsRoot(), 'C--rel', 'memory'), `a relative transcript path names an absolute store (got ${got})`);
 }
 
 // A line made for a memory no index names reads back, and its hook ends whole.

@@ -448,6 +448,14 @@ g('checkout', '-q', 'master');
 appendFileSync(join(gated, 'store.mjs'), '// an edit\n');
 gate = spawnSync(process.execPath, [join(gated, 'deploy.mjs')], { env, encoding: 'utf8' });
 ok(gate.status === 1 && /uncommitted changes/.test(gate.stderr), `and uncommitted changes (got ${gate.stderr.trim()})`);
+// Its mutation check runs only the changed files' mutants; every one when the
+// live commit is unknown or what every suite stands on changed.
+{
+  const { changedScope } = await import('./deploy.mjs');
+  ok(changedScope(null) === null && changedScope(['README.md', 'journal.mjs'])?.join() === 'README.md,journal.mjs'
+    && changedScope(['journal.mjs', 'store.mjs']) === null && changedScope(['harness.mjs']) === null && changedScope(['mutate.mjs']) === null,
+  'a deploy checks the changed files\' mutants, and all of them after a change to the shared layer');
+}
 
 // 28. An answer's markdown marks carry no words: dropped before the 400 characters are counted.
 const cwdM = 'C:\\handoff-markdown';
@@ -1214,6 +1222,17 @@ ok(/\[r3tail02\]: second ask\n  \*\*did:\*\* second done/.test(readFileSync(join
   try { handoff({ cwd: cwd3, transcript_path: t7, session_id: 'r3forg01' }); } finally { fs.readSync = realRead; syncBuiltinESMExports(); }
   ok(read < 4_000_000 && /\[r3forg01\]: next ask/.test(readFileSync(join(dir3, 'handoff.md'), 'utf8')),
     `the Stop after a forget turn stops reading at that turn's entry (read ${read} bytes of a ${statSync(t7).size}-byte transcript)`);
+}
+// The journal is told to sweep a private conversation only by the Stop that
+// first marks it; the Stops after, their read still holding the mark, are not.
+{
+  const t8 = join(dir3, 'r3priv01.jsonl'), told = [];
+  const sink = (d, t, got, o) => told.push(o.hush);
+  writeFileSync(t8, [user('<private-session> from here on', { ts: '2026-09-11T11:00:00Z' }), asst('understood')].join('\n') + '\n');
+  handoff({ cwd: cwd3, transcript_path: t8, session_id: 'r3priv01' }, sink);
+  appendFileSync(t8, [user('still private', { ts: '2026-09-11T11:01:00Z' }), asst('ok')].join('\n') + '\n');
+  handoff({ cwd: cwd3, transcript_path: t8, session_id: 'r3priv01' }, sink);
+  ok(told.join() === 'true,false', `only the marking Stop tells the journal to sweep (got ${told.join()})`);
 }
 // An entry 1.0.4 wrote with its <private> ask raw loses its answer at once.
 section3(`- **asked** ${at4} [oldpriv2]: <private>pw Tr0ub4dor</private> log in\n  **did:** Logged in with Tr0ub4dor\n`);

@@ -6,7 +6,8 @@
 // manifest of their hashes; handoff-log's startup line names any live file that
 // no longer matches it.
 //
-// Run: node deploy.mjs [--tiering-change]   (from this repo; ~70 minutes)
+// Run: node deploy.mjs [--tiering-change] [--full] [--mutants-checked-on-github]
+// (from this repo; ~70 minutes with every mutant, less with only the changed files')
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSync, realpathSync } from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
@@ -14,6 +15,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { hash } from './handoff-log.mjs';
 import { BUSY, sleep } from './store.mjs';
 import { LIVE, installPath, pluginRoot, deployedCommit } from './memory.mjs';
+
+// The files whose change runs every mutant: what every suite stands on.
+// null: all; otherwise the changed files, whose groups mutate.mjs runs.
+const SHARED = ['store.mjs', 'harness.mjs', 'mutate.mjs'];
+export const changedScope = (changed) => (!changed || changed.some((f) => SHARED.includes(f)) ? null : changed);
 
 // The hooks, the CLI, and the plugin around them: the live copy is also the
 // project-memory plugin's root and its marketplace. Installed from there, the
@@ -91,7 +97,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // The manifest is checked with `claude plugin validate . --strict` before a
   // release (CONTRIBUTING.md), not here: the plugin runs no signed-in claude CLI,
   // which the plugin directory's security scan holds.
-  step('mutation check (~65 min)', () => node('mutate.mjs'));
+  // Only the changed files' mutants, measured from the live copy's commit;
+  // every one under --full, or when that commit is unknown here.
+  let changed = null;
+  if (!process.argv.includes('--full')) try { const was = deployedCommit(LIVE); if (was) changed = git('diff', '--name-only', `${was}..HEAD`).split('\n').filter(Boolean); } catch {}
+  const scope = changedScope(changed);
+  if (process.argv.includes('--mutants-checked-on-github')) console.log('mutation check ... skipped: run on GitHub (mutate.yml), on your word');
+  else step(scope ? `mutation check (${scope.length} changed file(s))` : 'mutation check (all, ~65 min)', () => node('mutate.mjs', ...(scope ? ['--changed', scope.join(',')] : [])));
   step('soak', () => node('memory-tier.soak.mjs'));
   step('break harness', () => {
     const bad = node('memory-tier.break.mjs').split('\n').filter((l) => l.trim() && !l.includes(' ok ('));

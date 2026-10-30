@@ -162,7 +162,8 @@ const suites = {
     "a second nudge keeps the first one's end": ["p.frozen = 'nudge'; p.ended = false;", "p.frozen = 'nudge';"],
     "the memory update taken from the Stop payload": ["if (open && !open.frozen && !open.reopened && input.hook_event_name", "if (open && !open.frozen && input.hook_event_name"],
     'journal sink never called': ['if (sink) try { sink(', 'if (false) try { sink('],
-    'journal sink throw breaks the handoff': ['if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush }); } catch {}', 'if (sink) sink(dir, input.transcript_path, got, { quiet, hush });'],
+    'journal sink throw breaks the handoff': ['if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush: hush && !was }); } catch {}', 'if (sink) sink(dir, input.transcript_path, got, { quiet, hush: hush && !was });'],
+    'a private conversation swept at every Stop': ['hush: hush && !was', 'hush'],
     "the nudge's hold never ends": ["else if (pending.ended && ((r.type === 'attachment'", "else if (false && ((r.type === 'attachment'"],
     "the hold ends before the memory update does": ["if (r.type === 'assistant' && r.message?.stop_reason === 'end_turn') pending.ended = true;", "if (r.type === 'assistant') pending.ended = true;"],
     "a nudge shortens a private hold": ["const hold = (p) => { if (p.frozen !== true) {", "const hold = (p) => { if (true) {"],
@@ -273,7 +274,7 @@ const suites = {
     "the mark forgotten after its turn": ["if (!mark || have.includes(s)) return have.includes(s);", "if (!mark || have.includes(s)) return mark;"],
     "a tag lost to a write that landed first": ["[...prune(have), s].join('\\n') + '\\n') !== 'conflict') return true;", "[...prune(have), s].join('\\n') + '\\n') !== 'never') return true;"],
     "a tag that lost every race reported written": ["    if (replaceIfUnchanged(p, before, [...prune(have), s].join('\\n') + '\\n') !== 'conflict') return true;\n  }\n  return false;", "    if (replaceIfUnchanged(p, before, [...prune(have), s].join('\\n') + '\\n') !== 'conflict') return true;\n  }\n  return true;"],
-    "a marked turn written when its mark could not be kept": ["let quiet = hushed(dir, s, hush) || hush;", "let quiet = hushed(dir, s, hush);"],
+    "a marked turn written when its mark could not be kept": ["let quiet = was || hushed(dir, s, hush) || hush;", "let quiet = was || hushed(dir, s, hush);"],
     "a memory-off tag written without the projects' lock": ["return withLock(root, () => hushed(root, s, true, OFF,", "return ((f) => f())(() => hushed(root, s, true, OFF,"],
     "memory-off tags kept by count": ["const live = onDisk(root);", "const live = new Set();"],
     "a memory-off tag dropped before its transcript is made": [" || i >= have.length - OFF_NEW", ""],
@@ -875,6 +876,8 @@ const suites = {
     "journal backfill prunes a folder that won't list": ["endsWith('.jsonl')); } catch { out.seen = null; }", "endsWith('.jsonl')); } catch {}"],
   }],
   'deploy.mjs': ['handoff-log.test.mjs', {
+    'a shared-layer change checks only its own mutants': ['changed.some((f) => SHARED.includes(f))', 'false'],
+    'an unknown live commit checks no mutant': ['(!changed || changed.some', '(changed.some'],
     'the plugin version not stamped': ["if (patch !== undefined && f === '.claude-plugin/plugin.json') {", 'if (false) {'],
     'the live plugin runs node from PATH': ["if (node && f === 'hooks/hooks.json') {", 'if (false) {'],
     'each copy written in place, its temp left': ['renameSync(join(to, `${f}.tmp`), join(to, f));', 'writeFileSync(join(to, f), readFileSync(join(to, `${f}.tmp`)));'],
@@ -888,16 +891,24 @@ const suites = {
 
 // Side by side, one per core but one: each mutant has its own folder and HOME,
 // and one after another the check took ~15 minutes of a 20-minute deploy.
-// `node mutate.mjs <text>` runs only the mutants whose label contains it.
+// `node mutate.mjs <text...>` runs only the mutants whose label contains one
+// of the texts: several run one pool (one at a time, each paid its own controls).
+// `--changed a,b`: only the groups whose source or suite is among the files a
+// deploy changed. `--shard i/n`: every n-th mutant from the i-th, one machine
+// of a GitHub matrix (.github/workflows/mutate.yml).
 // Every file is read once, here: an edit made while the check runs must not
 // reach half the mutants.
-const only = process.argv[2];
+const args = process.argv.slice(2), value = (n) => { const i = args.indexOf(n); return i === -1 ? undefined : args[i + 1]; };
+const changed = value('--changed')?.split(',').filter(Boolean), shard = value('--shard')?.match(/^(\d+)\/(\d+)$/);
+const only = args.filter((a, i) => !a.startsWith('--') && !['--changed', '--shard'].includes(args[i - 1]));
 const tests = [...new Set(Object.values(suites).map(([t]) => t))];
 const code = Object.fromEntries([...FILES, ...tests].filter((f) => existsSync(tool(f))).map((f) => [f, readFileSync(tool(f))]));
 const jobs = [];
 for (const [name, [testName, mutants]] of Object.entries(suites)) {
-  for (const [label, [from, to, opts]] of Object.entries(mutants)) if (!only || label.includes(only)) jobs.push({ name, testName, label, from, to, full: !!opts?.full });
+  if (changed && !changed.includes(name) && !changed.includes(testName)) continue;
+  for (const [label, [from, to, opts]] of Object.entries(mutants)) if (!only.length || only.some((o) => label.includes(o))) jobs.push({ name, testName, label, from, to, full: !!opts?.full });
 }
+if (shard) jobs.splice(0, jobs.length, ...jobs.filter((_, k) => k % Number(shard[2]) === Number(shard[1]) - 1));
 // --mutant skips a suite's slow blocks (harness.mjs `quick`): a lock waited
 // out, a race, a big fixture, paid again by each of ~750 mutants, and a clock
 // that beside the other mutants failed on the right code, a kill by the time,
@@ -940,11 +951,13 @@ await pool([...new Set(jobs.map(how))], async (t) => {
 // that hangs is cut off at three times its control: a whole memory.test.mjs
 // took 122 s beside other work, past the 120 s every mutant once had.
 jobs.sort((a, b) => took[how(b)] - took[how(a)]);
-let survived = 0;
+const survived = [];
 await pool(jobs, async (job) => {
   const t0 = Date.now(), verdict = await run(how(job), job.name, job.from, job.to, Math.max(120_000, 3 * took[how(job)]));
-  if (verdict !== 'killed') survived++;
+  if (verdict !== 'killed') survived.push(`${job.name} :: ${job.label} (${verdict})`);
   console.log(`${job.name.padEnd(17)} ${job.label.padEnd(48)} ${verdict} ${Math.round((Date.now() - t0) / 1000)} s`);
 });
-console.log(survived ? `${survived} of ${jobs.length} mutant(s) survived` : `all ${jobs.length} mutants killed`);
-process.exit(survived ? 1 : 0);
+// Named on the last line: deploy prints only the last few, and "2 survived"
+// sent a 65-minute run back to find which (2026-10-30).
+console.log(survived.length ? `${survived.length} of ${jobs.length} mutant(s) survived: ${survived.join('; ')}` : `all ${jobs.length} mutants killed`);
+process.exit(survived.length ? 1 : 0);

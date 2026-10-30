@@ -114,7 +114,8 @@ Everything it reads and saves, and how to delete it, is in the
 - **Your notes.** The first run may move older lines of the table of contents
   to an archive. No note is deleted, and Claude can still search them.
 - **Where.** Windows, macOS and Linux. Notes stay on the computer they were
-  made on, and don't sync.
+  made on, and don't sync. Don't sync the memory folder yourself (Dropbox,
+  OneDrive): each computer would undo the other's *"forget"*.
 - **Your files.** It writes only inside Claude Code's own folder, never in
   your project.
 

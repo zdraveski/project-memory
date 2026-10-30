@@ -647,10 +647,14 @@ export function handoff(input, sink = null) {
     // the mark goes. The mark is kept in a file: only the turn that typed it
     // sees it in the transcript.
     // Private by this read even when the mark could not be kept.
-    let quiet = hushed(dir, s, hush) || hush;
+    const was = hushed(dir, s);
+    let quiet = was || hushed(dir, s, hush) || hush;
     // The journal (memory-tier's Stop passes its writer) takes this lock too,
-    // not one of its own; whatever it throws is its own.
-    if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush }); } catch {}
+    // not one of its own; whatever it throws is its own. Swept anew only by the
+    // read that first marks it: while the mark stayed in the tail each Stop
+    // reads (~25 Stops of 20 KB turns), every one swept every journal day
+    // again, under the lock (1.5 s with three years of journal).
+    if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush: hush && !was }); } catch {}
     // Or by the journal's look at the whole transcript, past this read.
     quiet ||= hushed(dir, s);
     // An exchange forget took out stays out: read again, the forget turn's own

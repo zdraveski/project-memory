@@ -21,8 +21,8 @@ CI runs all six on Linux, macOS and Windows, with Node 20 and 24.
 
 Beyond the suites:
 
-- `node mutate.mjs [text]` breaks one rule at a time and expects a suite to
-  fail: all mutants, or those whose label contains the text. Every mutant
+- `node mutate.mjs [text...]` breaks one rule at a time and expects a suite to
+  fail: all mutants, or those whose label contains one of the texts. Every mutant
   must be killed. The mutants are in `mutate.mjs`, grouped by source file
   with the suite that must catch them; each is a label and a pair, the text
   to find and what to put in its place. A change to a line a mutant targets
@@ -31,7 +31,16 @@ Beyond the suites:
   `quick` in `harness.mjs`); a mutant only those blocks kill is marked
   `{ full: true }` and runs its whole suite. The full run took 65 minutes on
   a 4-core Windows machine (2026-10-29), half of it the ~200 mutants
-  `memory.test.mjs` checks.
+  `memory.test.mjs` checks. `--changed a,b` runs only the groups whose source
+  or suite is among those files; `--shard i/n` runs every n-th mutant from
+  the i-th. The last line names every mutant that survived.
+- `node deploy.mjs` runs only the mutants of the files changed since the live
+  copy's commit; every one when that commit is unknown, when `store.mjs`,
+  `harness.mjs` or `mutate.mjs` changed, or under `--full`. Run it with
+  `--full` before a version release. To run every mutant faster, start the
+  `mutate` workflow on GitHub (six machines, about 15 minutes); once it passes
+  for the commit, `node deploy.mjs --mutants-checked-on-github` skips the
+  local run. The deploy never asks GitHub itself: nothing here goes online.
 - `node memory-tier.soak.mjs [store]` copies a store (by default the largest
   on the machine) to a temp folder, then simulates a month of new notes and
   sessions ending at the same moment.

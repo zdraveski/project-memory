@@ -4,6 +4,7 @@ import fs, { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync,
 import { syncBuiltinESMExports } from 'node:module';
 import { join, dirname } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
 import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
@@ -340,6 +341,15 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
   say(B, '2026-10-28T10:12:00Z', '<private-session> from here on', 'understood');
   stop(B);
   ok(of(B).length === 0 && of(A).length === 2, `a private session writes nothing and removes what it wrote, and no other's (got ${of(B).length}, ${of(A).length})`);
+  // Swept once: the Stop after the marking one, its mark still in that Stop's
+  // read, reads no journal day again (each swept every day: 1.5 s a Stop with
+  // three years of journal).
+  say(B, '2026-10-28T10:14:00Z', 'still private', 'ok');
+  const counter = join(home, 'count-day-reads.mjs');
+  writeFileSync(counter, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst read = fs.readFileSync; let n = 0;\n" +
+    "fs.readFileSync = (p, ...a) => { if (/journal[\\\\/]\\d{4}-\\d\\d-\\d\\d\\.md$/.test(String(p))) n++; return read(p, ...a); };\nsyncBuiltinESMExports();\nprocess.on('exit', () => process.stderr.write(`${n} day reads`));\n");
+  const again = spawnSync(process.execPath, ['--import', pathToFileURL(counter).href, TIER, '--stop'], { env, input: payload(B), encoding: 'utf8' });
+  ok(again.stderr.endsWith('0 day reads'), `the Stop after a private mark sweeps no journal day again (got ${again.stderr.slice(-40)})`);
 }
 {
   // Begun in New York at 20:30, marked private once the laptop said Berlin:

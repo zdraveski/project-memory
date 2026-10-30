@@ -222,8 +222,10 @@ list by dates alone shows the first 20 and how many entries fall between
 the first and last day, and `--yes` removes them all, however many. Their
 keys are kept in `.forgotten`, so a later import never brings them back,
 for as long as Claude Code keeps their conversation's file (once it's gone,
-nothing can bring them back, and the key is dropped). To
-forget the whole journal, use `forget --since 1970-01-01 --yes`. That
+nothing can bring them back, and the key is dropped). Keep the memory folder
+on one computer: synced to another (Dropbox, OneDrive), each computer drops
+the keys of conversations it doesn't have, and an entry you forgot on one can
+come back on the other. To forget the whole journal, use `forget --since 1970-01-01 --yes`. That
 removes only what the journal holds so far: check that `status` shows no
 conversations left to import, or run it again once they're in.
 
