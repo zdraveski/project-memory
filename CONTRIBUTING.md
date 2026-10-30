@@ -21,6 +21,15 @@ CI runs all six on Linux, macOS and Windows, with Node 20 and 24.
 
 Beyond the suites:
 
+- `node check.mjs` is the quick check for every edit. Every file parses, no
+  file imports a name it never uses, and every mutant's find-text is in its
+  file once; then the suites of the files changed since the last commit run
+  in `--mutant` mode, in UTC and in New York time (GitHub's machines run in
+  UTC, where a test of local midnight once checked nothing), and the mutants
+  on the changed lines run. Last, it lists changed code lines no mutant
+  covers. Seconds for most files, a minute or two after a change to
+  `memory.mjs` or `store.mjs`. CI runs it on every push, where nothing has
+  changed and it takes a second.
 - `node mutate.mjs [text...]` breaks one rule at a time and expects a suite to
   fail: all mutants, or those whose label contains one of the texts. Every mutant
   must be killed. The mutants are in `mutate.mjs`, grouped by source file

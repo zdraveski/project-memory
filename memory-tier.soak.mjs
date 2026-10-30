@@ -6,7 +6,7 @@
 //   2. Steady state — the corpus grows ~6 memories a day. Simulate a month of
 //      that and see what the index costs on day 30, and what survives in it.
 // Run: node memory-tier.soak.mjs [store dir]   (default: this machine's largest store, copied)
-import { writeFileSync, readFileSync, readdirSync, rmSync, cpSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, readdirSync, rmSync, cpSync } from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';

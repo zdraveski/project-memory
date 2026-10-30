@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      # A fresh checkout has nothing changed: its parse, import and mutant-table checks, about a second.
+      - run: node check.mjs
       - run: node store.test.mjs
       - run: node compact-gate.test.mjs
       - run: node handoff-log.test.mjs

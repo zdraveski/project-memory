@@ -1,17 +1,18 @@
 // Mutation check for the six suites: break one rule of a tool at a time in a
 // copy and confirm its test fails. A mutant that survives is a rule the test
 // does not watch. Run: node mutate.mjs
-import { rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { availableParallelism } from 'node:os';
 import { join, dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { tool, tempDir } from './harness.mjs';
 
 // Every file a suite may import, copied beside the mutant.
 const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs',
   '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md'];
 
-const suites = {
+export const suites = {
   'store.mjs': ['store.test.mjs', {
     "the case key folds as JavaScript does": ["    if (names.has(t) || !low.has(t.toLowerCase())) return t;\n", "    return process.platform === 'win32' ? t.toLowerCase() : t;\n"],
     "the case key matches without asking the disk": ["try { if (id(n) === me) return n; } catch {}", "return n;"],
@@ -898,75 +899,78 @@ const suites = {
   }],
 };
 
-// Side by side, one per core but one: each mutant has its own folder and HOME,
-// and one after another the check took ~15 minutes of a 20-minute deploy.
-// `node mutate.mjs <text...>` runs only the mutants whose label contains one
-// of the texts: several run one pool (one at a time, each paid its own controls).
-// `--changed a,b`: only the groups whose source or suite is among the files a
-// deploy changed. `--shard i/n`: every n-th mutant from the i-th, one machine
-// of a GitHub matrix (.github/workflows/mutate.yml).
-// Every file is read once, here: an edit made while the check runs must not
-// reach half the mutants.
-const args = process.argv.slice(2), value = (n) => { const i = args.indexOf(n); return i === -1 ? undefined : args[i + 1]; };
-const changed = value('--changed')?.split(',').filter(Boolean), shard = value('--shard')?.match(/^(\d+)\/(\d+)$/);
-const only = args.filter((a, i) => !a.startsWith('--') && !['--changed', '--shard'].includes(args[i - 1]));
-const tests = [...new Set(Object.values(suites).map(([t]) => t))];
-const code = Object.fromEntries([...FILES, ...tests].filter((f) => existsSync(tool(f))).map((f) => [f, readFileSync(tool(f))]));
-const jobs = [];
-for (const [name, [testName, mutants]] of Object.entries(suites)) {
-  if (changed && !changed.includes(name) && !changed.includes(testName)) continue;
-  for (const [label, [from, to, opts]] of Object.entries(mutants)) if (!only.length || only.some((o) => label.includes(o))) jobs.push({ name, testName, label, from, to, full: !!opts?.full });
+// Run when executed, not when imported: check.mjs reads the table above.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  // Side by side, one per core but one: each mutant has its own folder and HOME,
+  // and one after another the check took ~15 minutes of a 20-minute deploy.
+  // `node mutate.mjs <text...>` runs only the mutants whose label contains one
+  // of the texts: several run one pool (one at a time, each paid its own controls).
+  // `--changed a,b`: only the groups whose source or suite is among the files a
+  // deploy changed. `--shard i/n`: every n-th mutant from the i-th, one machine
+  // of a GitHub matrix (.github/workflows/mutate.yml).
+  // Every file is read once, here: an edit made while the check runs must not
+  // reach half the mutants.
+  const args = process.argv.slice(2), value = (n) => { const i = args.indexOf(n); return i === -1 ? undefined : args[i + 1]; };
+  const changed = value('--changed')?.split(',').filter(Boolean), shard = value('--shard')?.match(/^(\d+)\/(\d+)$/);
+  const only = args.filter((a, i) => !a.startsWith('--') && !['--changed', '--shard'].includes(args[i - 1]));
+  const tests = [...new Set(Object.values(suites).map(([t]) => t))];
+  const code = Object.fromEntries([...FILES, ...tests].filter((f) => existsSync(tool(f))).map((f) => [f, readFileSync(tool(f))]));
+  const jobs = [];
+  for (const [name, [testName, mutants]] of Object.entries(suites)) {
+    if (changed && !changed.includes(name) && !changed.includes(testName)) continue;
+    for (const [label, [from, to, opts]] of Object.entries(mutants)) if (!only.length || only.some((o) => label.includes(o))) jobs.push({ name, testName, label, from, to, full: !!opts?.full });
+  }
+  if (shard) jobs.splice(0, jobs.length, ...jobs.filter((_, k) => k % Number(shard[2]) === Number(shard[1]) - 1));
+  // --mutant skips a suite's slow blocks (harness.mjs `quick`): a lock waited
+  // out, a race, a big fixture, paid again by each of ~750 mutants, and a clock
+  // that beside the other mutants failed on the right code, a kill by the time,
+  // not by the rule. A mutant only those blocks kill is marked { full: true }.
+  const how = (j) => (j.full ? j.testName : `${j.testName} --mutant`);
+  // A suite that fails unmutated kills every mutant, and the check then proves
+  // nothing: a missing file once passed 132 mutants in 6 seconds.
+  const run = (args, name, from, to, limit) => new Promise((done) => {
+    const src = name && code[name].toString('utf8');
+    if (name && !src.includes(from)) return done('MUTATION DID NOT APPLY');
+    // Found twice, only the first was ever broken: the redaction of a bare
+    // token's next-line value went unwatched behind a find-text that matched both rules.
+    if (name && src.split(from).length > 2) return done('FIND-TEXT NOT UNIQUE');
+    const dir = tempDir('mut-');
+    // A function, so a `$&` or `$'` in the mutant is text, not a pattern.
+    for (const [f, buf] of Object.entries(code)) { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), f === name ? src.replace(from, () => to) : buf); }
+    const [testName, ...flags] = args.split(' ');
+    const child = spawn(process.execPath, [join(dir, testName), ...flags], { stdio: 'ignore' });
+    // A suite cut off by the clock proved nothing: not a kill.
+    let late = false;
+    const timer = setTimeout(() => { late = true; child.kill(); }, limit);
+    // A child a killed suite left behind can still hold the folder: TEMP keeps it.
+    child.on('exit', (status) => { clearTimeout(timer); try { rmSync(dir, { recursive: true, force: true }); } catch {} done(late ? 'TIMED OUT' : status === 0 ? 'SURVIVED' : 'killed'); });
+  });
+  // Controls run as many at once as the mutants do: a suite that passes alone but
+  // fails under that load would kill mutants by timing, not by the rule.
+  const pool = async (items, fn) => {
+    let next = 0;
+    const worker = async () => { while (next < items.length) await fn(items[next++]); };
+    await Promise.all(Array.from({ length: Math.max(1, availableParallelism() - 1) }, worker));
+  };
+  const took = {};
+  await pool([...new Set(jobs.map(how))], async (t) => {
+    const t0 = Date.now();
+    if (await run(t, undefined, undefined, undefined, 600_000) !== 'SURVIVED') { console.log(`${t} fails unmutated: fix it before the mutants can say anything`); process.exit(1); }
+    took[t] = Date.now() - t0;
+  });
+  // Longest suites first, timed by their controls: in file order the last
+  // handoff-log mutants ran on alone while the other workers sat idle. A mutant
+  // that hangs is cut off at three times its control: a whole memory.test.mjs
+  // took 122 s beside other work, past the 120 s every mutant once had.
+  jobs.sort((a, b) => took[how(b)] - took[how(a)]);
+  const survived = [];
+  await pool(jobs, async (job) => {
+    const t0 = Date.now(), verdict = await run(how(job), job.name, job.from, job.to, Math.max(120_000, 3 * took[how(job)]));
+    if (verdict !== 'killed') survived.push(`${job.name} :: ${job.label} (${verdict})`);
+    console.log(`${job.name.padEnd(17)} ${job.label.padEnd(48)} ${verdict} ${Math.round((Date.now() - t0) / 1000)} s`);
+  });
+  // Named on the last line: deploy prints only the last few, and "2 survived"
+  // sent a 65-minute run back to find which (2026-10-30).
+  console.log(survived.length ? `${survived.length} of ${jobs.length} mutant(s) survived: ${survived.join('; ')}` : `all ${jobs.length} mutants killed`);
+  process.exit(survived.length ? 1 : 0);
 }
-if (shard) jobs.splice(0, jobs.length, ...jobs.filter((_, k) => k % Number(shard[2]) === Number(shard[1]) - 1));
-// --mutant skips a suite's slow blocks (harness.mjs `quick`): a lock waited
-// out, a race, a big fixture, paid again by each of ~750 mutants, and a clock
-// that beside the other mutants failed on the right code, a kill by the time,
-// not by the rule. A mutant only those blocks kill is marked { full: true }.
-const how = (j) => (j.full ? j.testName : `${j.testName} --mutant`);
-// A suite that fails unmutated kills every mutant, and the check then proves
-// nothing: a missing file once passed 132 mutants in 6 seconds.
-const run = (args, name, from, to, limit) => new Promise((done) => {
-  const src = name && code[name].toString('utf8');
-  if (name && !src.includes(from)) return done('MUTATION DID NOT APPLY');
-  // Found twice, only the first was ever broken: the redaction of a bare
-  // token's next-line value went unwatched behind a find-text that matched both rules.
-  if (name && src.split(from).length > 2) return done('FIND-TEXT NOT UNIQUE');
-  const dir = tempDir('mut-');
-  // A function, so a `$&` or `$'` in the mutant is text, not a pattern.
-  for (const [f, buf] of Object.entries(code)) { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), f === name ? src.replace(from, () => to) : buf); }
-  const [testName, ...flags] = args.split(' ');
-  const child = spawn(process.execPath, [join(dir, testName), ...flags], { stdio: 'ignore' });
-  // A suite cut off by the clock proved nothing: not a kill.
-  let late = false;
-  const timer = setTimeout(() => { late = true; child.kill(); }, limit);
-  // A child a killed suite left behind can still hold the folder: TEMP keeps it.
-  child.on('exit', (status) => { clearTimeout(timer); try { rmSync(dir, { recursive: true, force: true }); } catch {} done(late ? 'TIMED OUT' : status === 0 ? 'SURVIVED' : 'killed'); });
-});
-// Controls run as many at once as the mutants do: a suite that passes alone but
-// fails under that load would kill mutants by timing, not by the rule.
-const pool = async (items, fn) => {
-  let next = 0;
-  const worker = async () => { while (next < items.length) await fn(items[next++]); };
-  await Promise.all(Array.from({ length: Math.max(1, availableParallelism() - 1) }, worker));
-};
-const took = {};
-await pool([...new Set(jobs.map(how))], async (t) => {
-  const t0 = Date.now();
-  if (await run(t, undefined, undefined, undefined, 600_000) !== 'SURVIVED') { console.log(`${t} fails unmutated: fix it before the mutants can say anything`); process.exit(1); }
-  took[t] = Date.now() - t0;
-});
-// Longest suites first, timed by their controls: in file order the last
-// handoff-log mutants ran on alone while the other workers sat idle. A mutant
-// that hangs is cut off at three times its control: a whole memory.test.mjs
-// took 122 s beside other work, past the 120 s every mutant once had.
-jobs.sort((a, b) => took[how(b)] - took[how(a)]);
-const survived = [];
-await pool(jobs, async (job) => {
-  const t0 = Date.now(), verdict = await run(how(job), job.name, job.from, job.to, Math.max(120_000, 3 * took[how(job)]));
-  if (verdict !== 'killed') survived.push(`${job.name} :: ${job.label} (${verdict})`);
-  console.log(`${job.name.padEnd(17)} ${job.label.padEnd(48)} ${verdict} ${Math.round((Date.now() - t0) / 1000)} s`);
-});
-// Named on the last line: deploy prints only the last few, and "2 survived"
-// sent a 65-minute run back to find which (2026-10-30).
-console.log(survived.length ? `${survived.length} of ${jobs.length} mutant(s) survived: ${survived.join('; ')}` : `all ${jobs.length} mutants killed`);
-process.exit(survived.length ? 1 : 0);
