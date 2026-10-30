@@ -4,13 +4,13 @@
 import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { spawn, execFileSync } from 'node:child_process';
-import { join, isAbsolute } from 'node:path';
+import { join, isAbsolute, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
-import { tool, tempHome, quick, fastClock } from './harness.mjs';
+import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep } = await import('./store.mjs');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const root = join(home, '.claude', 'projects');
@@ -403,6 +403,121 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
     ['description: C# tips', 'desc', 'C# tips'], ['description: "keep # this"', 'desc', 'keep # this']];
   for (const [src, k, want] of cases6) ok(f6(src)[k] === want, `${JSON.stringify(src)} reads ${k} ${JSON.stringify(want)} (got ${JSON.stringify(f6(src)[k])})`);
   ok(f6('superseded-by: null\nmetadata:\n  tier: hot').tier === 'hot', 'a null superseded-by leaves a pin a pin');
+}
+
+// The automatic mutants that lived (store.mjs, Task 8).
+{
+  const patch = (name, make) => { const real = fs[name]; fs[name] = make(real); syncBuiltinESMExports(); return () => { fs[name] = real; syncBuiltinESMExports(); }; };
+  const err = (code) => Object.assign(new Error(code), { code });
+  const rep = (c, n) => Array(n).fill(c);
+  // Outside Windows another letter case is another folder.
+  const was = process.platform, setPlatform = (v) => Object.defineProperty(process, 'platform', { value: v, configurable: true });
+  setPlatform('linux');
+  try { ok(same(join(home, 'Aa'), join(home, 'Aa')) && !same(join(home, 'Aa'), join(home, 'aA')), 'two paths in another case are two folders off Windows'); } finally { setPlatform(was); }
+
+  // sleep() waits.
+  { const t0 = Date.now(); sleep(80); ok(Date.now() - t0 >= 60, `sleep(80) sleeps (${Date.now() - t0} ms)`); }
+
+  // The lock: mkdir of it fails with the given codes in turn, then works.
+  const lockDir = join(home, 'lockdir'), lockPath = join(lockDir, '.lock');
+  mkdirSync(lockDir, { recursive: true });
+  const lockRun = (codes) => {
+    let n = 0;
+    const undo = patch('mkdirSync', (real) => function (p, ...a) { if (String(p).endsWith('.lock') && n < codes.length) throw err(codes[n++]); return real.call(this, p, ...a); });
+    const t0 = Date.now(); let res;
+    try { res = withLock(lockDir, () => 'got'); } catch (e) { res = e.code; } finally { undo(); }
+    return { res, ms: Date.now() - t0 };
+  };
+  // A holder that lets go within the wait: tried again after a pause each time,
+  // and a lock that is gone is no refusal.
+  const waited = lockRun(rep('EEXIST', 9));
+  ok(waited.res === 'got' && waited.ms >= 150, `a held lock is tried again every 25 ms (got ${waited.res} after ${waited.ms} ms)`);
+  // Eight refusals in a row with no lock there are still a wait; the ninth is a folder that takes nothing.
+  ok(lockRun(rep('EACCES', 8)).res === 'got', 'eight refusals with no lock there are waited out');
+  ok(lockRun(rep('EACCES', 9)).res === 'EACCES', 'nine in a row throw');
+  ok(lockRun(['EEXIST', ...rep('EACCES', 8)]).res === 'got', 'a held lock between the refusals starts the count again');
+
+  // The clock: a lock is stale after 30 s (mtime + 30 s exactly is not), and the wait is 2 s.
+  const M = (Math.floor(Date.now() / 1000) - 1000) * 1000;
+  const clockRun = (script, rmErrors = [], vanish = false) => {
+    mkdirSync(lockPath); utimesSync(lockPath, M / 1000, M / 1000);
+    const realNow = Date.now; let i = 0, k = 0;
+    Date.now = () => M + script[Math.min(i++, script.length - 1)];
+    const undoRm = patch('rmSync', (real) => function (p, o) { if (String(p).endsWith('.lock') && k < rmErrors.length) throw rmErrors[k++]; return real.call(this, p, o); });
+    const undoStat = vanish ? patch('statSync', (real) => function (p, ...a) { const r = real.call(this, p, ...a); if (String(p).endsWith('.lock')) rmdirSync(p); return r; }) : () => {};
+    let res; try { res = withLock(lockDir, () => 'got'); } catch (e) { res = `threw ${e.message}`; } finally { Date.now = realNow; undoRm(); undoStat(); }
+    rmSync(lockPath, { recursive: true, force: true });
+    return res;
+  };
+  ok(clockRun([30000, 30000, 33000]) === null, 'a lock exactly 30 s old is not stale yet');
+  ok(clockRun([100000, 100000, 200000], [], true) === 'got', 'a stale lock someone else removed first is retaken at once');
+  ok(clockRun([100000, 100000, 101000, 200000], [err('E1')]) === null, 'a stale lock that will not go is waited on while the wait lasts');
+  ok(clockRun([100000, 100000, 102000, 102000, 100000, 200000], [err('E1'), err('E2')]) === 'threw E2', 'and given up on only once the wait is over, not at its last instant');
+
+  // The rename: Windows refuses it while another program holds the file, so it is tried
+  // again, three times, after 50 ms.
+  const g = join(dir, 'rn.md');
+  const renameRun = (codes) => {
+    writeFileSync(g, 'old'); let attempts = 0;
+    const undo = patch('renameSync', (real) => function (a, b) { if (attempts < codes.length) throw err(codes[attempts++]); attempts++; return real.call(this, a, b); });
+    const t0 = Date.now(); let res;
+    try { res = replaceIfUnchanged(g, 'old', 'new'); } catch (e) { res = e.code; } finally { undo(); }
+    return { res, attempts, ms: Date.now() - t0 };
+  };
+  const slow = renameRun(rep('EBUSY', 3));
+  ok(slow.res === true && readFileSync(g, 'utf8') === 'new' && slow.ms >= 100, `a rename refused three times is done on the fourth try, after pauses (got ${slow.res}, ${slow.ms} ms)`);
+  const stuck = renameRun(rep('EBUSY', 9));
+  ok(stuck.res === 'EBUSY' && stuck.attempts === 4, `and given up on after the fourth refusal (got ${stuck.res} after ${stuck.attempts})`);
+  const bad = renameRun(rep('EINVAL', 9));
+  ok(bad.res === 'EINVAL' && bad.attempts === 1, `any other refusal is thrown at once (got ${bad.res} after ${bad.attempts})`);
+
+  // A transcript whose first record is all there is, from its first byte to its last.
+  const rr = join(home, 'work75', 'r'), sb = join(rr, 'sub'), tp = join(root, 'C--w75', 's1.jsonl');
+  mkdirSync(join(rr, '.git'), { recursive: true }); mkdirSync(sb, { recursive: true }); mkdirSync(join(root, 'C--w75'), { recursive: true });
+  writeFileSync(tp, `"cwd":${JSON.stringify(sb)}`);
+  ok(storeOf({ transcript_path: tp }) === join(root, slug(rr), 'memory'), 'the folder a session started in is read from the whole of its head');
+
+  // A .git file is a worktree's only when every check passes; each alone fails it.
+  const mk = (name, { sub = 'worktrees', common = '../..', back = 'ok' } = {}) => {
+    const base = join(home, 'work59', name), r = join(base, 'repo'), w = join(base, 'wt'), gd = join(r, '.git', sub, 'wt1');
+    mkdirSync(gd, { recursive: true }); mkdirSync(w, { recursive: true });
+    writeFileSync(join(w, '.git'), `gitdir: ${gd}\n`);
+    writeFileSync(join(gd, 'commondir'), common);
+    writeFileSync(join(gd, 'gitdir'), back === 'ok' ? join(w, '.git') : back);
+    return [w, r];
+  };
+  const { repoRoot } = await import('./store.mjs');
+  const [wGood, rGood] = mk('good');
+  ok(repoRoot(wGood) === rGood, 'a worktree that checks out is its repository');
+  for (const [name, o] of [['nocommon', { common: '' }], ['noback', { back: '' }], ['notworktrees', { sub: 'other' }], ['elsewhere', { back: join(home, 'work59', 'elsewhere', '.git') }]]) {
+    const [w] = mk(name, o);
+    ok(repoRoot(w) === w, `a .git file with ${name} is its own repository (got ${repoRoot(w)})`);
+  }
+
+  // The listed name a line opens, by the disk's own ids (64 bits: 2^53 and 2^53 + 1 are two files).
+  {
+    const od = join(home, 'opener2'), big = 2n ** 53n;
+    mkdirSync(od, { recursive: true });
+    const inos = { 'KASE.md': big, 'kase.md': big + 1n, 'Kase.md': big + 1n, 'Foo.md': 7n, 'foo.md': 7n };
+    const undo = patch('statSync', (real) => function (p, o) {
+      const ino = inos[basename(String(p))];
+      return ino === undefined ? real.call(this, p, o) : o?.bigint ? { dev: 1n, ino } : { dev: 1, ino: Number(ino) };
+    });
+    let a, b;
+    try { a = opener(od, ['KASE.md', 'kase.md'])('Kase.md'); b = opener(od, ['Foo.md', 'foo.md'])('foo.md'); } finally { undo(); }
+    ok(a === 'kase.md', `ids are compared whole, not rounded to a double (got ${a})`);
+    ok(b === 'foo.md', `a name the folder lists is itself, though another case opens the same file (got ${b})`);
+  }
+
+  // A store whose link leads nowhere is none.
+  const gone = join(home, 'gone-target'), dang = join(root, 'C--dangling');
+  mkdirSync(gone); mkdirSync(dang); symlinkSync(gone, join(dang, 'memory'), 'junction'); rmdirSync(gone);
+  ok(!allStores().some((d) => d.includes('C--dangling')), 'allStores() skips a store whose link leads nowhere');
+
+  // The frontmatter ends at its closing line, empty or not, and an unclosed one is all there is.
+  ok(front('---\n---\ntier: archive\n').tier === '', 'an empty frontmatter ends at once: the body is no frontmatter');
+  ok(front('---\nname: abc').name === 'abc', 'an unclosed frontmatter is read to its last character');
+  ok(pointerLine('x.md', 'hello') === '- [x](x.md) — hello', 'a pointer line keeps the description from its first character');
 }
 
 console.log(`store: ${checks} checks passed`);
