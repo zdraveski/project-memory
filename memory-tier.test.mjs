@@ -124,13 +124,21 @@ if (!quick) {
 // something to write; --pause holds it open.
 writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8') + moved + '\n');
 const added = memory('added-mid-pass', { days: 0 });
-// The child gets 1.5 s to start and read: a loaded 4-core box took 0.5 s.
+// The edit lands when the pass says it holds the window open (or has ended
+// without, and the checks after say so): a fixed 1.5 s guessed how long a
+// loaded box takes to start. One second open is room for one write.
+const pause = (d) => {
+  const child = spawn(process.execPath, [TOOL, '--dir', d, '--pause', '1000']);
+  let out = ''; child.stdout.on('data', (b) => { out += b; });
+  const closed = new Promise((res) => child.on('close', () => res(out)));
+  const ready = new Promise((res) => { child.stderr.on('data', (b) => { if (String(b).includes('paused')) res(); }); closed.then(res); });
+  return { ready, closed };
+};
 if (!quick) {
-  const paused = spawn(process.execPath, [TOOL, '--dir', dir, '--pause', '3000']);
-  let pausedOut = ''; paused.stdout.on('data', (d) => { pausedOut += d; });
-  await new Promise((res) => setTimeout(res, 1500));
+  const paused = pause(dir);
+  await paused.ready;
   writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8') + added + '\n');
-  await new Promise((res) => paused.on('close', res));
+  const pausedOut = await paused.closed;
   ok(has(readFileSync(join(dir, 'MEMORY.md'), 'utf8'), added), 'an index edited during a pass keeps the edit');
   ok(/changed during the pass/.test(pausedOut), 'and the pass says it stood down');
 }
@@ -664,11 +672,10 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   writeFileSync(join(back, 'MEMORY.md'), '# Index\n');
   writeFileSync(join(back, 'MEMORY-archive.md'), '# Archive\n\n- [Pinned](pinned.md) — the hand-written hook\n');
   if (!quick) {
-    // 1.5 s to start and read, as part one gives: 0.9 s was under 2x the 0.5 s a loaded box took.
-    const held = spawn(process.execPath, [TOOL, '--dir', back, '--pause', '3000'], { stdio: 'ignore' });
-    await new Promise((res) => setTimeout(res, 1500));
+    const held = pause(back);
+    await held.ready;
     writeFileSync(join(back, 'MEMORY.md'), '# Index\n\nWritten by the model during the pass.\n');
-    await new Promise((res) => held.on('exit', res));
+    await held.closed;
     const both = readFileSync(join(back, 'MEMORY.md'), 'utf8') + readFileSync(join(back, 'MEMORY-archive.md'), 'utf8');
     ok(both.includes('- [Pinned](pinned.md) — the hand-written hook'), `a line coming back from the archive survives an index write that conflicts (got ${both})`);
   }

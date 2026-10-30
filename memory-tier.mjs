@@ -8,7 +8,7 @@
 // As the Stop hook (and before a manual /compact) it runs with `--stop`, the
 // payload on stdin, and tiers that session's own store; a manual run walks them all.
 
-import { readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
+import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -43,7 +43,9 @@ const LINES = 200;   // of MEMORY.md, all Claude Code loads at a session's start
 const DAY = 86400000;
 const dry = process.argv.includes('--dry-run');
 // `--pause <ms>` holds a pass open between computing and writing it, so a test
-// can land an edit in that window. Test-only, like `--now`.
+// can land an edit in that window, and says `paused` on stderr as it starts:
+// waited out instead, 1.5 s, the test guessed how long a loaded box takes to
+// start. Test-only, like `--now`.
 const pauseAt = process.argv.indexOf('--pause');
 const PAUSE = pauseAt === -1 ? 0 : Number(process.argv[pauseAt + 1]) || 0;
 
@@ -270,7 +272,8 @@ function tier(dir, now) {
   const before = Buffer.byteLength(mainText);
   const nextMain = render();
   const nextArc = [...arc.preamble, '', ...cold.map((p) => p.line)].join('\n') + '\n';
-  if (PAUSE) sleep(PAUSE);
+  // Written at once: the sleep blocks the loop an async write would wait on.
+  if (PAUSE) { writeSync(2, 'paused\n'); sleep(PAUSE); }
 
   // Archive first. If the second write fails, the worst case is a pointer in
   // both files -- which the dedupe above then heals. Writing main first and
