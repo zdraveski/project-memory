@@ -34,7 +34,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readTail, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile } from './handoff-log.mjs';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
 // A token count as Claude Code takes one: `800000`, `800k`, `1M`. NaN: none.
@@ -43,12 +43,11 @@ export const tokens = (v) => {
   const m = String(v ?? '').trim().match(/^(\d+(?:\.\d+)?)\s*([km]?)$/i);
   return m ? Math.round(Number(m[1]) * (m[2] ? (m[2].toLowerCase() === 'k' ? 1e3 : 1e6) : 1)) : NaN;
 };
-const on = (v) => /^(1|true|yes|on)$/i.test(v || '');
 // The model's own window: 1M for the models that run with it natively, unless
 // the user set another (CLAUDE_CODE_MAX_CONTEXT_TOKENS, read by its name) or
 // held them at 200K. Taken as 1M under a 400K window, the gate deferred a
 // compaction at 390k into the context-limit error it exists to avoid.
-export const MODEL_WINDOW = tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) || (on(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) ? 200_000 : 1_000_000);
+export const MODEL_WINDOW = tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) || (envOn(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) ? 200_000 : 1_000_000);
 // The window Claude Code compacts against, as the environment sets it; one
 // set with /autocompact or autoCompactWindow lives in settings, which the
 // plugin does not read (README says so). Never past the model's.

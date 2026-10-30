@@ -19,7 +19,9 @@ export const same = (a, b) => (process.platform === 'win32'
 // Auto memory turned off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): the hooks do
 // nothing. They recorded and briefed all the same. Off in settings
 // (autoMemoryEnabled) they cannot see: the plugin reads no settings file.
-export const memoryOff = () => /^(1|true|yes|on)$/i.test(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY || '');
+// A switch in the environment is on as Claude Code reads one: 1, true, yes, on.
+export const envOn = (v) => /^(1|true|yes|on)$/i.test(v || '');
+export const memoryOff = () => envOn(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY);
 
 const slugOf = (p) => String(p).replace(/[^A-Za-z0-9]/g, '-');
 
