@@ -74,7 +74,21 @@ Beyond the suites:
   a 4-core Windows machine (2026-10-29), half of it the ~200 mutants
   `memory.test.mjs` checks. `--changed a,b` runs only the groups whose source
   or suite is among those files; `--shard i/n` runs every n-th mutant from
-  the i-th. The last line names every mutant that survived.
+  the i-th. `--list` prints the selected labels and runs nothing. The last
+  line names every mutant that survived.
+  `--auto` adds the automatic mutants to the hand-written ones. `automut.mjs`
+  makes them from the code, with eight operators: equality, boundary, logic,
+  boolean, not, number 0-9, condition and statement. Each has an id, printed
+  as `[id]` on its result line. `--auto-lines <file>:<n>,<n>;<file>:<n>` runs
+  only the automatic mutants on those lines; an empty or missing value
+  selects none, and a malformed one exits 1. Label texts filter hand-written
+  and automatic labels alike, and so do `--changed` and `--shard`. A mutant
+  whose file does not parse is `STILLBORN`: counted apart, never a kill. One
+  whose id is in `automut-ignore.txt` is `IGNORED`; the file has a line
+  `<id> <reason>` for each, and `#` lines are comments. An id listed there
+  with no mutant prints `stale ignore: <id>`. The last line reads
+  `all M mutants killed; K stillborn, I ignored`, or `N of M mutant(s)
+  survived: ...; K stillborn, I ignored`. Only a survivor exits 1.
 - `node deploy.mjs` runs only the mutants of the files changed since the live
   copy's commit; every one when that commit is unknown, when `store.mjs`,
   `harness.mjs` or `mutate.mjs` changed, or under `--full`. Run it with
@@ -165,8 +179,10 @@ The maintainer's steps:
    last change. Have every change since the last tag reviewed from its diff
    alone, by a reviewer who hasn't seen the work (a fresh agent will do), and
    fix what it confirms.
-4. Push to `master`, start the `mutate` workflow by hand (every mutant), and
-   wait for it and CI to pass on every job.
+4. Push to `master`, start the `mutate` workflow by hand with `auto` on
+   (every hand-written and automatic mutant), and wait for it and CI to pass
+   on every job. A survivor must be killed by a test, or listed in
+   `automut-ignore.txt` with its reason, before a release.
 5. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release.
 
 ## The author's setup
