@@ -915,6 +915,14 @@ for (const c of ['node memory.mjs forget zebra', "node '/p/memory.mjs' forget 'z
 for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget', 'git add memory.mjs && git commit -m "fix forget"', 'grep x memory.mjs; grep forget y', 'node memory.mjs status\nforget',
   'node memory.mjs --session abc search forget', "node memory.mjs '--session' 'abc' 'search' 'forget'", 'node memory.mjs --limit -5 search forget'])
   ok(!FORGETS.test(c), `a command that ran no forget is none: ${JSON.stringify(c)}`);
+// Clipped twice as once: an entry is clipped again as it is written, and a
+// U+0085 left a run of spaces the turn read kept, so the turn never matched
+// its own entry and a moved clock went unseen (fuzz, 2026-10-30).
+{
+  const { clip } = await import('./handoff-log.mjs');
+  const s = 'plan \u0085 <system-reminder> x  \u0085y';
+  ok(clip(clip(s, 400), 400) === clip(s, 400) && !/ {2}/.test(clip(s, 400)), `a clip clipped again is the same (got ${JSON.stringify(clip(s, 400))})`);
+}
 // A <private> tag inside fullwidth reminder tags the user typed: normalized,
 // the reminder swallowed it from the typed text, but the ask kept it.
 {
@@ -1266,6 +1274,53 @@ ok(/\[r3tail02\]: second ask\n  \*\*did:\*\* second done/.test(readFileSync(join
   appendFileSync(t8, [user('still private', { ts: '2026-09-11T11:01:00Z' }), asst('ok')].join('\n') + '\n');
   handoff({ cwd: cwd3, transcript_path: t8, session_id: 'r3priv01' }, sink);
   ok(told.join() === 'true,false', `only the marking Stop tells the journal to sweep (got ${told.join()})`);
+}
+// A clock moved west on a transcript read in part: each turn listed once, the
+// newest kept. The read goes on to the whole file when the newest entry's
+// turn is found at another minute (fuzz, review, 2026-10-30).
+{
+  const was = process.env.TZ, t9 = join(dir3, 'r3west01.jsonl');
+  const at = (i, s = '00') => `2026-09-12T08:${String(i).padStart(2, '0')}:${s}Z`;
+  const turn = (i) => [user(`kudu ${i}`, { ts: at(i) }), asst(`fed kudu ${i}`, { ts: at(i, '30') })].join('\n') + '\n';
+  writeFileSync(t9, tool_(600_000) + '\n' + Array.from({ length: 10 }, (_, i) => turn(i)).join(''));
+  try {
+    process.env.TZ = 'Europe/Berlin';
+    handoff({ cwd: cwd3, transcript_path: t9, session_id: 'r3west01' });
+    appendFileSync(t9, turn(10));
+    process.env.TZ = 'America/Los_Angeles';
+    handoff({ cwd: cwd3, transcript_path: t9, session_id: 'r3west01' });
+  } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
+  const k = readFileSync(join(dir3, 'handoff.md'), 'utf8').match(/\[r3west01\]: kudu \d+/g) ?? [];
+  ok(k.length === 10 && new Set(k).size === 10 && k.includes('[r3west01]: kudu 10'), `after a time-zone change a long conversation's turns are listed once each, its newest kept (got ${k.join(', ')})`);
+}
+// Two identical exchanges are no moved clock: the Stop after them reads only
+// what the newest needs, not the whole file.
+{
+  const t10 = join(dir3, 'r3same02.jsonl');
+  writeFileSync(t10, [tool_(3_000_000), user('thanks', { ts: '2026-09-12T09:00:00Z' }), asst("You're welcome!", { ts: '2026-09-12T09:00:10Z' }),
+    user('thanks', { ts: '2026-09-12T09:05:00Z' }), asst("You're welcome!", { ts: '2026-09-12T09:05:10Z' })].join('\n') + '\n');
+  handoff({ cwd: cwd3, transcript_path: t10, session_id: 'r3same02' });
+  const realRead = fs.readSync;
+  let read = 0;
+  fs.readSync = function (...a) { const n = realRead.apply(this, a); read += n; return n; };
+  syncBuiltinESMExports();
+  try { handoff({ cwd: cwd3, transcript_path: t10, session_id: 'r3same02' }); } finally { fs.readSync = realRead; syncBuiltinESMExports(); }
+  ok(read < 1_500_000, `two identical exchanges are no moved clock (read ${read} bytes of a ${statSync(t10).size}-byte transcript)`);
+}
+// An exchange forget took out, listed under another minute (written in another
+// zone), goes by what it says when its turn is read again.
+{
+  const t11 = join(dir3, 'r3forg02.jsonl');
+  writeFileSync(t11, [tool_(600_000), user('the okapi key', { ts: '2026-09-12T10:00:00Z', uuid: 'okapi-1' }), asst('noted the okapi key', { ts: '2026-09-12T10:00:10Z' }),
+    user('the eland plan', { ts: '2026-09-12T10:10:00Z' }), asst('drafted the eland plan', { ts: '2026-09-12T10:10:10Z' })].join('\n') + '\n');
+  handoff({ cwd: cwd3, transcript_path: t11, session_id: 'r3forg02' });
+  const hd = readFileSync(join(dir3, 'handoff.md'), 'utf8');
+  writeFileSync(join(dir3, 'handoff.md'), hd.replace(/(- \*\*asked\*\* )\S+ \S+( \[r3forg02\]: the okapi key)/, '$12026-09-12 00:01$2'));
+  mkdirSync(join(dir3, 'journal'), { recursive: true });
+  appendFileSync(join(dir3, 'journal', '.forgotten'), 'okapi-1\tmemory/r3forg02\t2000-01-01 00:00\n');
+  handoff({ cwd: cwd3, transcript_path: t11, session_id: 'r3forg02' });
+  const after = readFileSync(join(dir3, 'handoff.md'), 'utf8');
+  ok(!/okapi/.test(after) && /\[r3forg02\]: the eland plan/.test(after), `a forgotten exchange listed under another minute goes when its turn is read again (got ${after.split('[r3forg02]').length - 1} entries)`);
 }
 // An entry 1.0.4 wrote with its <private> ask raw loses its answer at once.
 section3(`- **asked** ${at4} [oldpriv2]: <private>pw Tr0ub4dor</private> log in\n  **did:** Logged in with Tr0ub4dor\n`);

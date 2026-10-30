@@ -381,8 +381,11 @@ export const userText = (t) => `${t.raw ?? ''}\n${t.ask ?? ''}`;
 // entry read back no longer matched its turn, and the turn was added again every Stop.
 export const defuse = (s) => s.replace(/[<\uFF1C\uFE64](?=[\u200B-\u200D\u2060\uFEFF]*[A-Za-z/!?]|\s+\/)/g, '&lt;')
   .replace(/\r(?!\n)|[\u2028\u2029\u0085]/g, ' ');
+// U+0085 squeezed with the rest: not \s in JavaScript, defuse made it a space
+// after the squeeze, so a clip clipped again (as an entry is, written) lost a
+// space the turn read kept, and a moved clock went unseen (fuzz, 2026-10-30).
 export const clip = (s, n) => {
-  const one = defuse(redact(s).replace(/\s+/g, ' ')).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
+  const one = defuse(redact(s).replace(/[\s\u0085]+/g, ' ')).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
   return one.length > n ? one.slice(0, n - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : one;
 };
 
@@ -420,7 +423,15 @@ function latest(path, since = null) {
   for (let bytes = TAIL; ; bytes *= 4) {
     const { text: tail, whole } = readTail(path, bytes);
     const got = turns(tail);
-    const back = !since || got[0]?.at < since.at || got.some((t) => { if (t.at !== since.at) return false; const e = shown(t); return e.ask === since.ask && e.did === since.did; });
+    const same = (t) => { const e = shown(t); return e.ask === since.ask && e.did === since.did; };
+    const there = since && got.some((t) => t.at === since.at && same(t));
+    // The newest entry's turn read at another minute, and not at its own: the
+    // clock moved to another zone, and every entry of this conversation is in
+    // the old one. Read on to the whole file, where build() takes them all
+    // back: read in part, a long one listed each turn twice (fuzz, review,
+    // 2026-10-30). Not at its own minute too: two identical exchanges are no move.
+    const moved = since && !there && got.some(same);
+    const back = !moved && (!since || got[0]?.at < since.at || there);
     if ((got.length && back) || whole || bytes >= 32e6) { got.whole = whole; return got; }
   }
 }
@@ -677,7 +688,11 @@ export function handoff(input, sink = null) {
     let list = null; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch {}
     const me = pathKey(transcriptKey(input.transcript_path)), listed = forgotten(list);
     const keys = new Set(listed.map(([k]) => k)), out = new Set(listed.filter(([, t]) => t && pathKey(t) === me).map(([, , at]) => at));
-    const w = put(dir, quiet ? [] : fresh.filter((t) => !out.has(t.at) && !keys.has(t.id)), quiet ? (t) => t.s === s : null, s, got.whole);
+    // One already listed goes too, by what it says: forget took it out of
+    // handoff.md by minute, and one listed under another zone's minute stayed (fuzz, 2026-10-30).
+    const gone = fresh.filter((t) => out.has(t.at) || keys.has(t.id));
+    const drop = quiet ? (t) => t.s === s : gone.length ? (t) => t.s === s && gone.some((g) => g.ask === t.ask && g.did === t.did) : null;
+    const w = put(dir, quiet ? [] : fresh.filter((t) => !out.has(t.at) && !keys.has(t.id)), drop, s, got.whole);
     return quiet ? 'private' : w;
   });
   return r ?? 'busy';
