@@ -543,6 +543,10 @@ writeFileSync(join(five, 'MEMORY.md'), readFileSync(join(five, 'MEMORY.md'), 'ut
 utimesSync(join(five, 'MEMORY.md'), tenMin, tenMin);   // an index this old reports a missing target at once
 const EXLOCK = 0x10000000;             // libuv's UV_FS_O_EXLOCK: Windows share mode 0, as an editor might hold it
 const held = openSync(join(five, 'a.md'), EXLOCK);
+// The hold is real, or the check below proves nothing: on Windows a second open
+// fails busy. Its mutant lived on GitHub's Node 24.22 (2026-10-30): asked here first.
+let holds = false; try { readFileSync(join(five, 'a.md')); } catch (e) { holds = ['EPERM', 'EBUSY', 'EACCES'].includes(e.code); }
+if (process.platform === 'win32') ok(holds, `a file opened with UV_FS_O_EXLOCK is held: another open fails busy (Node ${process.version})`);
 stop('proj-five');
 closeSync(held);
 stop('proj-five');

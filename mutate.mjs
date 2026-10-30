@@ -260,7 +260,10 @@ export const suites = {
     "an image prompt is no ask": [" || (!s && image(r) ? '[image]' : '')", ""],
     "pasted text stripped as a harness tag": ["(?!private|pasted)", "(?!private)"],
     "a hostile tag name backtracks": ["[\\w-]{0,63})(?=[\\s>])[^>]{0,2000}>", "[\\w-]*)\\b[^>]*>"],
-    "reminders stripped by a backtracking regex": ["const unwrap = (s) => {\n", "const unwrap = (s) => s.replace(/<system-reminder>[\\s\\S]*?<\\/system-reminder>/g, ''); const unwrapLinear = (s) => {\n"],
+    // With a lookahead: V8 since Node 24.22 runs a plain lazy regex on its linear
+    // engine once it backtracks too far, and the mutant lived there; that engine
+    // takes no lookaround, so this one backtracks on every Node (2026-10-30).
+    "reminders stripped by a backtracking regex": ["const unwrap = (s) => {\n", "const unwrap = (s) => s.replace(/<system-reminder>(?=[\\s\\S]*?<\\/system-reminder>)[\\s\\S]*?<\\/system-reminder>/g, ''); const unwrapLinear = (s) => {\n"],
     "the ask keeps the tags around it": ["(asked(r, s) ? own(s) : '')", "(asked(r, s) ? s : '')"],
     "a slash command is no ask": ["command(s) || (asked", "(asked"],
     "a private message that is no ask has its answer saved": ["&& pending && /<\\s*private/i.test(typed || mine)) pending.frozen = true;", "&& pending && false) pending.frozen = true;"],
