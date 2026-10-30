@@ -906,10 +906,14 @@ for (const c of ['node memory.mjs forget zebra', "node '/p/memory.mjs' forget 'z
   'node "C:/p/memory.mjs" --session abc forget password', 'node "C:/p/memory.mjs" --store C:/s forget password --yes',
   'node memory.mjs --store "C:/my dir/memory" --yes forget x', "node memory.mjs --session=abc --store 'C:/a b' forget x",
   // As /memory runs it: each word typed in single quotes, the command's too.
-  "node \"C:/p/memory.mjs\" 'forget' 'elm' 'springfield' --session abc", 'node memory.mjs "forget" x'])
+  "node \"C:/p/memory.mjs\" 'forget' 'elm' 'springfield' --session abc", 'node memory.mjs "forget" x',
+  // An option typed first, quoted as /memory quotes it, or with a value that is a negative
+  // number or empty: each was journaled whole, secret and all (review, 2026-10-30).
+  "node \"C:/p/memory.mjs\" '--shared' 'forget' 'hunter2' --session abc", "node memory.mjs '--store' 'C:/my dir/memory' 'forget' x", "node memory.mjs '--store=C:/a' 'forget' x",
+  'node memory.mjs --limit -5 forget x', 'node memory.mjs --conversation= forget x'])
   ok(FORGETS.test(c), `a forget run is seen: ${c}`);
 for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget', 'git add memory.mjs && git commit -m "fix forget"', 'grep x memory.mjs; grep forget y', 'node memory.mjs status\nforget',
-  'node memory.mjs --session abc search forget'])
+  'node memory.mjs --session abc search forget', "node memory.mjs '--session' 'abc' 'search' 'forget'", 'node memory.mjs --limit -5 search forget'])
   ok(!FORGETS.test(c), `a command that ran no forget is none: ${JSON.stringify(c)}`);
 // A <private> tag inside fullwidth reminder tags the user typed: normalized,
 // the reminder swallowed it from the typed text, but the ask kept it.
@@ -922,7 +926,9 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
 // Linear: an option read as the one before's value too doubled the work per option.
 const tf0 = Date.now();
 FORGETS.test('node memory.mjs' + ' --a'.repeat(40) + ' x');
-ok(Date.now() - tf0 < 1000, `a command of 40 options is read in linear time (${Date.now() - tf0} ms)`);
+FORGETS.test('node memory.mjs' + " '--a' 'v'".repeat(40) + ' x');
+FORGETS.test('node memory.mjs' + " '--a'".repeat(40) + ' x');
+ok(Date.now() - tf0 < 1000, `a command of 40 options, quoted or not, is read in linear time (${Date.now() - tf0} ms)`);
 // A mark the journal's sink finds (its look at the whole transcript): the
 // turn stays out of handoff.md too.
 const th = join(dirF, 'h.jsonl');

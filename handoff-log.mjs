@@ -138,12 +138,16 @@ export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 // what it removed (review, 2026-10-29).
 // The subcommand only: "memory.mjs" anywhere before the word took a commit
 // message or a search for "forget" for one, and dropped a whole turn.
-// Options may come first (`--session X forget`, as the CLI takes them). A
-// value never starts with - or a quote it does not close: one that could be
-// the next option too doubled the work per option (40 took 7 s). The word
-// quoted too: /memory has Claude quote each word typed, the command's with
-// them, and a forget run from it was saved whole.
-export const FORGETS = /memory\.mjs["']?(?:\s+--[\w-]+(?:[= ](?:"[^"]*"|'[^']*'|[^\s"'-]\S*))?)*\s+(?:forget\b|'forget'|"forget")/;
+// Options may come first (`--session X forget`, as the CLI takes them),
+// quoted as /memory quotes every word typed, with a value that is a negative
+// number or none after `=`: each of those was journaled whole (review,
+// 2026-10-30). A value never starts with - (but a number), nor is a quoted
+// `--`: one that could be the next option too doubled the work per option
+// (40 took 7 s). The word quoted too: /memory has Claude quote each word
+// typed, the command's with them, and a forget run from it was saved whole.
+// A flag with no value can take the next word as one, so a search for
+// "forget" after `--shared` is read as a forget: hidden, the safe way to err.
+export const FORGETS = /memory\.mjs["']?(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?)*\s+(?:forget\b|'forget'|"forget")/;
 // Text read the same in any width and without hidden characters: a fullwidth
 // ＜private＞, or a zero-width space inside the tag, kept what it should hide.
 export const norm = (s) => s.normalize('NFKC').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
