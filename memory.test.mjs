@@ -61,6 +61,9 @@ ok(order(cli('search', 'deploy', '--limit', '-1').stdout).join() === order(cli('
 rmSync(join(dir, 'dated-quirk.md'));
 r = cli('search', 'windows');
 ok(order(r.stdout)[0] === 'crlf-note' && /^ +windows line ends$/m.test(r.stdout), 'a BOM and CRLF file is parsed: found, description read');
+// Its body starts after the frontmatter: behind the BOM, the whole file was the
+// body, and every key in the frontmatter matched a search.
+ok(!order(cli('search', 'metadata').stdout).includes('crlf-note'), 'the frontmatter of a BOM file is not searched as its body');
 r = cli('search', 'zzzqqq');
 ok(r.status === 0 && /nothing matches/.test(r.stdout), 'no hit says so');
 ok(cli('search').status === 1, 'search with no terms is a usage error');

@@ -4,7 +4,7 @@
 import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { spawn, execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock } from './harness.mjs';
@@ -202,11 +202,13 @@ ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !r
   ok(transcriptKey(inside) === 'C--x/abc', `a transcript's key is its folder and session (got ${transcriptKey(inside)})`);
   // A relative transcript path (from the projects folder) still names an
   // absolute store: left as given, the store was a path relative to the hook's cwd.
+  // Absolute is all that is asked: on macOS the cwd comes back as /private/var,
+  // not the /var the projects folder is named by, and the store is the cwd's.
   const was = process.cwd();
   mkdirSync(join(projectsRoot(), 'C--rel'), { recursive: true });
   process.chdir(projectsRoot());
   let got; try { got = storeOf({ transcript_path: join('C--rel', 's.jsonl') }); } finally { process.chdir(was); }
-  ok(got === join(projectsRoot(), 'C--rel', 'memory'), `a relative transcript path names an absolute store (got ${got})`);
+  ok(isAbsolute(got), `a relative transcript path names an absolute store (got ${got})`);
 }
 
 // A line made for a memory no index names reads back, and its hook ends whole.
@@ -225,8 +227,14 @@ ok(front('---\r\nname: crlf\r\ndescription: "quoted"\r\n---\r\n').desc === 'quot
 ok(POINTER.test('- [a](a.md) \u2014 x') && !POINTER.test('- [Repo](https://github.com/x/y) \u2014 the code') && !POINTER.test('- [x](../../big.bin) \u2014 x') && !POINTER.test('- [x](C:\\big.bin) \u2014 x'),
   'a pointer names a file in the store, never a link or a path');
 // A date alone is that day where the user is: read as UTC midnight, it printed
-// as the day before west of Greenwich.
-ok(local(front('---\nmodified: 2025-09-01\n---\n').modified).startsWith('2025-09-01 00:00'), 'a modified: date alone is that day, here');
+// as the day before west of Greenwich. Checked there: in UTC (GitHub's
+// machines) the two readings agree, and the check caught nothing.
+{
+  const tz = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+  try { ok(local(front('---\nmodified: 2025-09-01\n---\n').modified).startsWith('2025-09-01 00:00'), 'a modified: date alone is that day, here'); }
+  finally { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz; }
+}
 // A transcript path that is no string threw, and the Stop hook with it; one
 // that climbs out of the projects folder named a store outside it.
 ok(storeOf({ cwd: 'C:\\x', transcript_path: 42 }) === join(root, 'C--x', 'memory') && storeOf({ cwd: 'C:\\x', transcript_path: `${root}/../x.jsonl` }) === join(root, 'C--x', 'memory'),
