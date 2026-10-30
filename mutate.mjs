@@ -935,7 +935,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const args = process.argv.slice(2), value = (n) => { const i = args.indexOf(n); return i === -1 ? undefined : args[i + 1]; };
   const changed = value('--changed')?.split(',').filter(Boolean), shard = value('--shard')?.match(/^(\d+)\/(\d+)$/);
   const only = args.filter((a, i) => !a.startsWith('--') && !['--changed', '--shard', '--auto-lines'].includes(args[i - 1]));
-  const autoLines = value('--auto-lines'), auto = args.includes('--auto') || autoLines !== undefined, hand = !autoLines || args.includes('--auto');
+  // A missing or empty --auto-lines value selects nothing, never every hand mutant.
+  const wantsLines = args.includes('--auto-lines'), autoLines = wantsLines ? (value('--auto-lines') ?? '').replace(/^--.*/, '') : undefined;
+  if (autoLines && !/^[^:;]+:\d+(,\d+)*(;[^:;]+:\d+(,\d+)*)*$/.test(autoLines)) { console.error(`--auto-lines wants <file>:<n>,<n>;<file>:<n>, not "${autoLines}"`); process.exit(1); }
+  if (wantsLines && !autoLines && !args.includes('--auto')) { console.log('--auto-lines: no lines given, nothing selected'); process.exit(0); }
+  const auto = args.includes('--auto') || wantsLines, hand = !wantsLines || args.includes('--auto');
   const lineSets = new Map(autoLines?.split(';').filter(Boolean).map((p) => { const [f, ls = ''] = p.split(':'); return [f, new Set(ls.split(',').filter(Boolean).map(Number))]; }));
   const tests = [...new Set(Object.values(suites).map(([t]) => t))];
   const code = Object.fromEntries([...FILES, ...tests].filter((f) => existsSync(tool(f))).map((f) => [f, readFileSync(tool(f))]));
@@ -951,7 +955,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     let p = 0, q = 0;
     while (p < from.length && p < to.length && from[p] === to[p]) p++;
     while (q < from.length - p && q < to.length - p && from.at(-1 - q) === to.at(-1 - q)) q++;
-    return `${at + p} ${from.slice(p, from.length - q)} ${to.slice(p, to.length - q)}`;
+    return JSON.stringify([at + p, from.slice(p, from.length - q), to.slice(p, to.length - q)]);
   };
   const stale = [];
   let dropped = 0;
@@ -965,7 +969,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
       const every = mutants(name, src);
       every.forEach((m) => seen.add(m.id));
       if (changed && !changed.includes(name) && !changed.includes(testName)) continue;
-      for (const m of autoLines === undefined || args.includes('--auto') ? every : mutants(name, src, lineSets.get(name) ?? new Set())) {
+      for (const m of !wantsLines || args.includes('--auto') ? every : mutants(name, src, lineSets.get(name) ?? new Set())) {
         if (same.has(edit(m.at, m.from, m.to))) { dropped++; continue; }
         if (!only.length || only.some((o) => m.label.includes(o))) jobs.push({ name, testName, label: m.label, edit: m, id: m.id, auto: true, full: false });
       }
@@ -998,7 +1002,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     // A function, so a `$&` or `$'` in the mutant is text, not a pattern.
     for (const [f, buf] of Object.entries(code)) { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), f !== name ? buf : at === undefined ? src.replace(from, () => to) : src.slice(0, at) + to + src.slice(at + from.length)); }
     // A break that no longer parses proves nothing about the tests: not a survivor.
-    if (at !== undefined && spawnSync(process.execPath, ['--check', join(dir, name)], { stdio: 'ignore' }).status !== 0) { try { rmSync(dir, { recursive: true, force: true }); } catch {} return done('STILLBORN'); }
+    const parsed = at !== undefined && spawnSync(process.execPath, ['--check', join(dir, name)], { encoding: 'utf8' });
+    if (parsed && parsed.status !== 0) { try { rmSync(dir, { recursive: true, force: true }); } catch {} return done(`STILLBORN: ${(parsed.stderr.split('\n').find((l) => /Error/.test(l)) ?? '').trim()}`); }
     const [testName, ...flags] = args.split(' ');
     // A control (no mutant) keeps the end of its errors: "fails unmutated" with
     // no reason sent a GitHub run back blind (2026-10-30). A mutant's are its kill.
@@ -1037,12 +1042,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // took 122 s beside other work, past the 120 s every mutant once had.
   live.sort((a, b) => took[how(b)] - took[how(a)]);
   const survived = [], count = { STILLBORN: 0, IGNORED: jobs.length - live.length };
-  for (const j of jobs) if (ignore.has(j.id)) console.log(`${j.name.padEnd(17)} ${j.label.padEnd(48)} IGNORED: ${ignore.get(j.id)}`);
+  // The id is what automut-ignore.txt needs; a label can name two mutants.
+  const tag = (j) => `${j.label}${j.id ? ` [${j.id}]` : ''}`;
+  for (const j of jobs) if (ignore.has(j.id)) console.log(`${j.name.padEnd(17)} ${tag(j).padEnd(48)} IGNORED: ${ignore.get(j.id)}`);
   await pool(live, async (job) => {
     const t0 = Date.now(), verdict = await run(how(job), job.name, job.edit?.from ?? job.from, job.edit?.to ?? job.to, Math.max(120_000, 3 * took[how(job)]), job.edit?.at);
-    if (verdict === 'STILLBORN') count.STILLBORN++;
-    else if (verdict !== 'killed') survived.push(`${job.name} :: ${job.label} (${verdict})`);
-    console.log(`${job.name.padEnd(17)} ${job.label.padEnd(48)} ${verdict} ${Math.round((Date.now() - t0) / 1000)} s`);
+    if (verdict.startsWith('STILLBORN')) count.STILLBORN++;
+    else if (verdict !== 'killed') survived.push(`${job.name} :: ${tag(job)} (${verdict})`);
+    console.log(`${job.name.padEnd(17)} ${tag(job).padEnd(48)} ${verdict} ${Math.round((Date.now() - t0) / 1000)} s`);
   });
   // Named on the last line: deploy prints only the last few, and "2 survived"
   // sent a 65-minute run back to find which (2026-10-30).
