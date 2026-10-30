@@ -19,22 +19,24 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     outputs:
-      shards: ${{ steps.list.outputs.shards }}
+      machines: ${{ steps.list.outputs.machines }}
     steps:
       - id: list
         env:
           MACHINES: ${{ inputs.machines }}
-        # A block: `{ length: n }` in a plain value is YAML's `key: value`.
+        # Each machine and its system, one in three each: Windows, Linux,
+        # macOS. Here, not in the matrix: workflow expressions have no `%`,
+        # and GitHub refused the file that used one. A block: `{ length: n }`
+        # in a plain value is YAML's `key: value`.
         run: |
-          node -e "const n = Math.min(256, Math.max(1, Math.floor(Number(process.env.MACHINES)) || 17)); console.log('shards=' + JSON.stringify(Array.from({ length: n }, (_, i) => i + 1)))" >> "$GITHUB_OUTPUT"
+          node -e "const n = Math.min(256, Math.max(1, Math.floor(Number(process.env.MACHINES)) || 17)), os = ['windows-latest', 'ubuntu-latest', 'macos-latest']; console.log('machines=' + JSON.stringify(Array.from({ length: n }, (_, i) => ({ shard: i + 1, os: os[i % 3] }))))" >> "$GITHUB_OUTPUT"
   fuzz:
     needs: plan
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
-    # One system in three each: Windows, Linux, macOS.
-    runs-on: ${{ fromJSON('["windows-latest", "ubuntu-latest", "macos-latest"]')[matrix.shard % 3] }}
+        include: ${{ fromJSON(needs.plan.outputs.machines) }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
