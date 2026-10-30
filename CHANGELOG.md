@@ -1,5 +1,59 @@
 # Changelog
 
+## 1.2.1 (2026-10-30)
+
+Fixes from three reviews of the code, and a README that reads on a phone.
+
+**Privacy**
+- Asking Claude to forget something through the memory skill now keeps that
+  exchange out of the record. The skill puts quotes around the words you
+  type, and only a bare `forget` was recognised, so the exchange was saved
+  whole.
+- An exchange you had forgotten no longer comes back into the handoff after
+  your computer's time zone changes, or when Windows spells the project's
+  folder in another case.
+- The handoff, the journal and the compaction note now decide what is
+  private the same way. A `<private>` tag inside some reminder tags hid an
+  answer in one and kept it in another.
+- A conversation you mark with `<private-session>` is taken out of the
+  journal once. Before, it was swept again after each of the next 25 or so
+  replies, which took up to 1.5 seconds each with years of journal.
+- The README and the privacy policy now say to keep the memory folder on one
+  computer. Synced between two (Dropbox, OneDrive), an exchange you forgot on
+  one can come back on the other.
+
+**The handoff**
+- After a time-zone change, such as a flight, the last exchanges are listed
+  once each and the newest stays. Before, each was listed twice, and the
+  newest could drop out for hours.
+- The reply after one that ran `forget` no longer reads a long conversation
+  up to four times over.
+- The startup briefing names a journal that keeps failing to save, and gives
+  the last good snapshot in your local time.
+
+**Search and the memory tool**
+- Search no longer shows a broken character where it cut through an emoji.
+- `status` and `search` show the description of a note whose header was
+  never closed or starts with a BOM.
+- A note named like `[draft] plan.md` keeps a working line in the shared
+  index when you promote it.
+- A `forget` whose words match nothing, and one over a long date range, are
+  much faster.
+- A note with a very long run of blank lines in its header no longer slows
+  every reply (11 seconds for 50,000).
+- A disk that fills up mid-write no longer leaves half a copy of the handoff
+  or a journal day behind.
+- Clearer messages: `--limit ten` is refused with a reason instead of
+  ignored, a usage error says what was wrong first, an unknown option points
+  to help, `status` no longer lists journal days as notes, and `doctor`
+  allows for a reply finished before the install.
+
+**The README**
+- A third of the length, with the journal first. Its four pictures are
+  drawn to read on a phone, and the old ones and the demo animation are gone.
+- The privacy policy says which files to delete only once project-memory is
+  gone for good, and what uninstalling leaves behind.
+
 ## 1.2.0 "Bastet" (2026-10-29)
 
 **A journal of your work**
