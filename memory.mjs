@@ -576,27 +576,29 @@ export function doctor() {
   return { ok: !bad, lines };
 }
 
-// Node names the script by its real path: compared with the path it was
-// given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+// The command line, its words as given; returns the exit code. Callable in
+// the same process: memory.test runs it so, where a process a call was 0.2 s
+// of its 50 s, 256 times (2026-10-30). Each call starts with no session.
+export function main(given) {
+  session = '';
   // The command is the first word that is no option or an option's value, so
   // `--store X search foo` searches; none (the skill run with no arguments,
   // just `--session <id>`) is status.
   // `--store=X` as `--store X`: the equals form was dropped, and the command ran on the cwd's store.
   // After `--` every word is a term: `search -- --no-verify` printed the usage.
-  const given = process.argv.slice(2), cut = given.includes('--') ? given.indexOf('--') : given.length;
+  const cut = given.includes('--') ? given.indexOf('--') : given.length;
   const argv = given.slice(0, cut).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until|conversation|key))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
   const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation', '--key']);
   // One it does not know is refused: dropped, `--from 2026-10-27` searched for
   // "2026", and `--after=2026-10-28` listed what came before it.
   const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--help'].includes(a));
-  if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); process.exit(1); }
+  if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); return 1; }
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
   // A number, or refused: `--limit ten` was dropped unsaid, and the default
   // listed. One below 1 is still the default (a test holds it).
-  if (opt('--limit') !== undefined && !/^-?\d+$/.test(opt('--limit'))) { console.log(`--limit takes a number, not ${opt('--limit')}`); process.exit(1); }
+  if (opt('--limit') !== undefined && !/^-?\d+$/.test(opt('--limit'))) { console.log(`--limit takes a number, not ${opt('--limit')}`); return 1; }
   // A session id names a file: anything but an id's characters is ignored.
   if (/^[\w-]{1,100}$/.test(opt('--session') || '')) session = opt('--session');
   const args = [...rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1])), ...given.slice(cut + 1)];
@@ -605,10 +607,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const store = opt('--store') && resolve(opt('--store'));
   if (store && !(basename(store) === 'memory' && same(dirname(dirname(store)), projectsRoot()))) {
     console.log(`--store takes a memory folder in ${projectsRoot()} (search names them): not ${store}`);
-    process.exit(1);
+    return 1;
   }
   // Days compare as text: `--since yesterday` would match no day, and say nothing matched.
-  for (const o of ['--since', '--until']) if (rest.includes(o) && !/^\d{4}-\d\d-\d\d$/.test(opt(o) ?? '')) { console.log(`${o} takes a date like 2026-10-01`); process.exit(1); }
+  for (const o of ['--since', '--until']) if (rest.includes(o) && !/^\d{4}-\d\d-\d\d$/.test(opt(o) ?? '')) { console.log(`${o} takes a date like 2026-10-01`); return 1; }
   const range = { since: opt('--since'), until: opt('--until') }, failed = [];
   const span = [range.since && `since ${range.since}`, range.until && `until ${range.until}`].filter(Boolean).join(' ');
   const here = rest.includes('--shared') ? sharedStore() : store || sessionStore();
@@ -752,8 +754,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // which is its count, as the skill says. Once: a forget reads a day twice.
   r.lines.splice(cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
   console.log(r.lines.join('\n'));
-  // Not process.exit(): on macOS a pipe is written asynchronously, and exiting
-  // cut a 3-entry search at 8 KB (CI, 2026-10-29). A forget that failed
-  // anywhere fails: exit 0 read as all gone.
-  process.exitCode = r.ok && !(cmd === 'forget' && failed.length) ? 0 : 1;
+  // A forget that failed anywhere fails: exit 0 read as all gone.
+  return r.ok && !(cmd === 'forget' && failed.length) ? 0 : 1;
 }
+
+// Node names the script by its real path: compared with the path it was
+// given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
+// Not process.exit(): on macOS a pipe is written asynchronously, and exiting
+// cut a 3-entry search at 8 KB (CI, 2026-10-29).
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) process.exitCode = main(process.argv.slice(2));

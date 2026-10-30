@@ -15,7 +15,20 @@ const dir = join(root, 'C--mem-cli', 'memory'), shared = join(root, '_shared', '
 mkdirSync(dir, { recursive: true });
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
-const cli = (...args) => spawnSync(process.execPath, [CLI, ...args, ...(args.includes('--shared') ? [] : ['--store', dir])], { env, encoding: 'utf8' });
+// The CLI in this process: a process a call cost 0.2 s, and 256 calls were
+// nearly all of the suite's 50 s (2026-10-30). What needs a process of its
+// own (another cwd or PATH, a run through a symlink, a journal.mjs that will
+// not load) still spawns one. Imported after tempHome: it names the live copy
+// from HOME as it loads.
+const { main } = await import(pathToFileURL(CLI).href), { format } = await import('node:util');
+const run = (args) => {
+  const out = [], log = console.log;
+  console.log = (...a) => { out.push(format(...a)); };
+  let status, stderr = '';
+  try { status = main(args); } catch (e) { status = 1; stderr = String(e?.stack ?? e); } finally { console.log = log; }
+  return { status, stdout: out.map((l) => `${l}\n`).join(''), stderr };
+};
+const cli = (...args) => run([...args, ...(args.includes('--shared') ? [] : ['--store', dir])]);
 const tenMin = new Date(Date.now() - 10 * 60000);
 const memory = (d, name, desc, body = 'body', extra = '') => {
   writeFileSync(join(d, `${name}.md`), `---\nname: ${name}\ndescription: "${desc}"\nmetadata:\n  type: project\n${extra}---\n\n${body}\n`);
@@ -170,7 +183,7 @@ ok(r.status === 1 && /--rev takes a commit/.test(r.stdout) && readFileSync(join(
 r = cli('restore', 'deploy-notes', '--force', '--rev', 'HEAD~999');
 ok(r.status === 1 && /at HEAD~999: /.test(r.stdout), `an unknown commit is named as given (got ${r.stdout.trim()})`);
 // The command is the first word that is no option: an option before it worked.
-r = spawnSync(process.execPath, [CLI, '--store', dir, 'search', 'deploy'], { env, encoding: 'utf8' });
+r = run(['--store', dir, 'search', 'deploy']);
 ok(r.status === 0 && /match\(es\) in/.test(r.stdout), `an option before the command still runs it (got ${r.stdout.slice(0, 200)})`);
 // An option it does not know is refused: dropped, `--from 2026-10-27` searched for "2026", and `--after=` ignored the date.
 r = cli('search', 'deploy', '--from', '2026-10-27');
@@ -187,7 +200,7 @@ ok(typo.status === 1 && typo.stdout.startsWith('no command "serach"\nnode memory
   `a usage error says what was wrong first (got ${typo.stdout.slice(0, 60)} / ${bare.stdout.slice(0, 60)})`);
 // After `--` every word is a search word, one that looks like an option too.
 memory(dir, 'hook-rule', 'never commit with --no-verify');
-r = spawnSync(process.execPath, [CLI, 'search', '--store', dir, '--', '--no-verify', '--all'], { env, encoding: 'utf8' });
+r = run(['search', '--store', dir, '--', '--no-verify', '--all']);
 ok(r.status === 0 && /[\\/]hook-rule\.md$/m.test(r.stdout) && /; --all searches every project$/m.test(r.stdout), `words after -- are searched, never read as options (got ${r.stdout})`);
 unlinkSync(join(dir, 'hook-rule.md'));
 // Without git, history says so, not "spawnSync git ENOENT".
@@ -202,7 +215,7 @@ const outside = join(home, 'elsewhere', 'memory');
 mkdirSync(outside, { recursive: true });
 writeFileSync(join(outside, 'o.md'), '---\nname: o\ndescription: "o"\n---\nkeep me\n');
 writeFileSync(join(outside, 'MEMORY.md'), '- [o](o.md) — o\n');
-r = spawnSync(process.execPath, [CLI, 'promote', 'o', '--store', outside], { env, encoding: 'utf8' });
+r = run(['promote', 'o', '--store', outside]);
 ok(r.status === 1 && /--store takes a memory folder/.test(r.stdout) && existsSync(join(outside, 'o.md')) && !existsSync(join(shared, 'o.md')), '--store outside the projects folder is refused, and nothing there is touched');
 // Deleted, made again, changed, deleted again before any snapshot: the newest
 // snapshot has the newest version, not the one before the first deletion.
@@ -214,7 +227,7 @@ r = cli('restore', 'cycle');
 ok(r.status === 0 && readFileSync(join(dir, 'cycle.md'), 'utf8').includes('v2'), `restore takes the newest snapshot that has it (got ${readFileSync(join(dir, 'cycle.md'), 'utf8').trim().split('\n').pop()})`);
 // git's paths are case-sensitive; on Windows a store named in another case is the same store.
 if (process.platform === 'win32') {
-  r = spawnSync(process.execPath, [CLI, 'history', 'cycle', '--store', dir.toLowerCase()], { env, encoding: 'utf8' });
+  r = run(['history', 'cycle', '--store', dir.toLowerCase()]);
   ok(r.status === 0 && /added/.test(r.stdout), 'a store path in another letter case still finds its snapshots');
 }
 ok(cli('history', '../../C--other/memory/secret').status === 1 && cli('restore', '../../C--other/memory/secret').status === 1 && !existsSync(join(dir, 'secret.md')),
@@ -310,6 +323,10 @@ let viaEnv; try { viaEnv = spawnSync(process.execPath, [CLI, 'status'], { cwd: h
 ok(viaEnv.stdout.split('\n')[0] !== dir, `the session is not read from the environment (got ${viaEnv.stdout.split('\n')[0]})`);
 const viaPath = spawnSync(process.execPath, [CLI, 'status', '--session', '../C--mem-cli/sess-cli-1'], { env, cwd: home, encoding: 'utf8' });
 ok(viaPath.stdout.split('\n')[0] !== dir, `a --session that is a path is ignored (got ${viaPath.stdout.split('\n')[0]})`);
+// In one process, as this suite runs the CLI: a call's session is not the next one's.
+run(['status', '--session', 'sess-cli-1']);
+const nextCall = run(['status']).stdout.split('\n')[0];
+ok(nextCall !== dir, `a call's --session is not carried into the next call (got ${nextCall})`);
 const proj = join(home, 'proj'), deeper = join(proj, 'sub', 'deeper');
 mkdirSync(deeper, { recursive: true });
 // The cwd as the OS reports it, which is what a process sees: on macOS the
@@ -441,7 +458,7 @@ ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.te
   ].join('\n') + '\n');
   writeFileSync(join(root, '.stop-ran'), JSON.stringify({ at: minsAgo(20).toISOString(), s: 'zzzzzzzz', from: 'C:/x' }) + '\n');
   utimesSync(join(root, '.stop-ran'), minsAgo(20), minsAgo(20));
-  r = spawnSync(process.execPath, [CLI, 'doctor', '--session', 'stall-1'], { env, encoding: 'utf8' });
+  r = run(['doctor', '--session', 'stall-1']);
   ok(/^PROBLEM Memory hooks look stopped: [^\n]*clears after the next reply\.$/m.test(r.stdout), `doctor: hooks that look stopped are said, with no "run doctor" (got ${r.stdout})`);
   // The briefing judges the newest other window; doctor, judging only the
   // newest, said all ok from the window that saved while another did not.
@@ -451,7 +468,7 @@ ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.te
   ].join('\n') + '\n');
   said('other-22', 4);
   said('mine-2222', 25);
-  r = spawnSync(process.execPath, [CLI, 'doctor', '--session', 'mine-2222'], { env, encoding: 'utf8' });
+  r = run(['doctor', '--session', 'mine-2222']);
   ok(/^PROBLEM Memory hooks look stopped: \[other-22\]/m.test(r.stdout), `doctor: another window that stopped saving is said, as the briefing says it (got ${r.stdout})`);
 }
 // A promoted line goes in before the shared index's archive line, which
@@ -612,7 +629,7 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   writeFileSync(join(out14, 'MEMORY.md'), '- [Price](price.md) — p\n');
   symlinkSync(out14, at14, process.platform === 'win32' ? 'junction' : 'dir');
   tier();
-  const run14 = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', at14], { env, encoding: 'utf8' });
+  const run14 = (...a) => run([...a, '--store', at14]);
   if (/C--ext14\/memory\/price\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
     unlinkSync(join(out14, 'price.md'));
     const r14 = run14('restore', 'price');
@@ -657,7 +674,7 @@ if (!quick) {
   writeFileSync(join(out17, 'memory', 'MEMORY.md'), '- [Cost](cost.md) — c\n');
   symlinkSync(out17, at17, process.platform === 'win32' ? 'junction' : 'dir');
   tier();
-  const run17 = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', join(at17, 'memory')], { env, encoding: 'utf8' });
+  const run17 = (...a) => run([...a, '--store', join(at17, 'memory')]);
   ok(/links to no memory: cost\.md → \[\[ghost17\]\]/.test(run17('status').stdout), 'a link after an inline ``` in prose is read');
   if (/C--p17\/memory\/cost\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
     unlinkSync(join(out17, 'memory', 'cost.md'));
@@ -680,13 +697,13 @@ if (!quick) {
   tier();
   if (/C--a20\/memory\/rate\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
     unlinkSync(join(out20, 'rate.md'));
-    const r20 = spawnSync(process.execPath, [CLI, 'restore', 'rate', '--store', join(root, 'C--b20', 'memory')], { env, encoding: 'utf8' });
+    const r20 = run(['restore', 'rate', '--store', join(root, 'C--b20', 'memory')]);
     ok(r20.status === 0 && /VERSION-TWO/.test(readFileSync(join(out20, 'rate.md'), 'utf8')), `a note restored through a second link is the last snapshot's (got ${r20.stdout}${r20.stderr})`);
   }
   const d21 = join(root, 'C--fence21', 'memory'); mkdirSync(d21, { recursive: true });
   memory(d21, 'fenced', 'fences', '> ```\n> [[ghostq]]\n> ```\n- ```\n  [[ghostl]]\n  ```\n~~~\n[[ghostt]]\n~~~\n```x[[0]]``` is code, see [[ghostp]].\n```\ny = 2\n```\n');
   writeFileSync(join(d21, 'MEMORY.md'), '- [Fenced](fenced.md) — f\n');
-  const s21 = spawnSync(process.execPath, [CLI, 'status', '--store', d21], { env, encoding: 'utf8' }).stdout;
+  const s21 = run(['status', '--store', d21]).stdout;
   ok(/links to no memory: fenced\.md → \[\[ghostp\]\]\s*$/m.test(s21), `fences in a quote, a list or with ~~~ hide their links; a code span in prose does not hide the next (got ${s21})`);
 }
 
@@ -704,13 +721,13 @@ if (!quick) {
     unlinkSync(join(out22, 'gone.md')); memory(out22, 'other', 'other'); writeFileSync(join(out22, 'MEMORY.md'), '- [Other](other.md) — o\n');
     tier();
     link22('C--a22'); tier();
-    const r22 = spawnSync(process.execPath, [CLI, 'restore', 'gone', '--store', join(root, 'C--b22', 'memory')], { env, encoding: 'utf8' });
+    const r22 = run(['restore', 'gone', '--store', join(root, 'C--b22', 'memory')]);
     ok(r22.status === 0 && /GONE-V1/.test(readFileSync(join(out22, 'gone.md'), 'utf8')), `a note deleted before a link that sorts first was added comes back (got ${r22.stdout}${r22.stderr})`);
-    const h22 = spawnSync(process.execPath, [CLI, 'history', 'other', '--store', join(root, 'C--b22', 'memory')], { env, encoding: 'utf8' }).stdout;
+    const h22 = run(['history', 'other', '--store', join(root, 'C--b22', 'memory')]).stdout;
     ok((h22.match(/^  [0-9a-f]{7,} \d{4}-/gm) || []).length === 2, `history lists the snapshot that moved a note to a link that sorts first (got ${h22})`);
     // The index the restore gave a line, snapshotted under the first link only.
     tier(); unlinkSync(join(out22, 'MEMORY.md'));
-    const m22 = spawnSync(process.execPath, [CLI, 'restore', 'MEMORY', '--store', join(root, 'C--b22', 'memory')], { env, encoding: 'utf8' });
+    const m22 = run(['restore', 'MEMORY', '--store', join(root, 'C--b22', 'memory')]);
     ok(m22.status === 0 && /\(gone\.md\)/.test(readFileSync(join(out22, 'MEMORY.md'), 'utf8')), `a deleted index comes back through the second link as last snapshotted (got ${m22.stdout}${m22.stderr})`);
     // Both links tracked while the index was gone: the week's changes read
     // the kept path alone, or the second's untracking was every note deleted.
@@ -719,7 +736,7 @@ if (!quick) {
     for (const p of ['C--a24', 'C--b24']) { mkdirSync(join(root, p), { recursive: true }); symlinkSync(out24, join(root, p, 'memory'), process.platform === 'win32' ? 'junction' : 'dir'); }
     tier(); unlinkSync(join(out24, 'MEMORY.md')); tier();
     writeFileSync(join(out24, 'MEMORY.md'), '- [X](x24.md) — x\n'); tier();
-    const s24 = spawnSync(process.execPath, [CLI, 'status', '--store', join(root, 'C--a24', 'memory')], { env, encoding: 'utf8' }).stdout;
+    const s24 = run(['status', '--store', join(root, 'C--a24', 'memory')]).stdout;
     ok(/last 7 days: added x24/.test(s24), `a note on disk is not listed as deleted after a snapshot without the index (got ${s24})`);
   }
   // A fence never closed hides nothing; a long tilde run is read once.
@@ -728,15 +745,15 @@ if (!quick) {
   memory(d23, 'tilde', 'tildes', '~'.repeat(120000) + '`\n' + '~~~\r'.repeat(50000));
   writeFileSync(join(d23, 'MEMORY.md'), '- [Four](four.md) — f\n- [Tilde](tilde.md) — t\n');
   const t23 = Date.now();
-  const s23 = spawnSync(process.execPath, [CLI, 'status', '--store', d23], { env, encoding: 'utf8' }).stdout;
+  const s23 = run(['status', '--store', d23]).stdout;
   ok(/four\.md → \[\[ghosto\]\]/.test(s23) && /four\.md → \[\[ghostu\]\]/.test(s23) && !/ghostf/.test(s23), `a \`\`\`\` fence holding a \`\`\` one hides its links, one never closed hides none (got ${s23})`);
   ok(quick || Date.now() - t23 < 3000, `a long run of tildes does not slow status down (${Date.now() - t23} ms)`);
   // The shared store has its own index: this one's, deleted, was not promoted.
   tier();
-  const h23 = spawnSync(process.execPath, [CLI, 'history', 'MEMORY', '--store', d23], { env, encoding: 'utf8' });
+  const h23 = run(['history', 'MEMORY', '--store', d23]);
   ok(h23.status === 0 && !/promoted/.test(h23.stdout), `history does not call an index promoted (got ${h23.stdout}${h23.stderr})`);
   unlinkSync(join(d23, 'MEMORY.md'));
-  const m23 = spawnSync(process.execPath, [CLI, 'restore', 'MEMORY', '--store', d23], { env, encoding: 'utf8' });
+  const m23 = run(['restore', 'MEMORY', '--store', d23]);
   ok(existsSync(join(shared, 'MEMORY.md')) && m23.status === 0 && existsSync(join(d23, 'MEMORY.md')), `a deleted index comes back while the shared store has one (got ${m23.stdout}${m23.stderr})`);
 }
 
@@ -745,7 +762,7 @@ if (!quick) {
 {
   const { render } = await import('./journal.mjs');
   const jd = join(root, 'C--jr', 'memory'), other = join(root, 'C--jr2', 'memory');
-  const jcli = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', jd], { env, encoding: 'utf8' });
+  const jcli = (...a) => run([...a, '--store', jd]);
   let n = 0;
   const entry = (at, asked, over = {}) => ({ key: `k${n++}`, at, s: 'c0ffee12', t: 'C--jr/c0ffee12-full', branch: 'main', asked, answered: 'done', changed: [], ran: [], ...over });
   const day = (store, d, es) => { mkdirSync(join(store, 'journal'), { recursive: true }); writeFileSync(join(store, 'journal', `${d}.md`), `# Journal ${d}\n\n${es.map(render).join('\n\n')}\n`); };
@@ -901,7 +918,7 @@ if (!quick) {
   const rot = entry('2026-10-20 10:00', 'rotate the signing key', { t: 'C--jr2/feed' });
   day(other, '2026-10-20', [rot]);
   // show reaches another project's entry with --all, or with that project's --store.
-  r = spawnSync(process.execPath, [CLI, 'show', rot.key, '--store', other], { env, encoding: 'utf8' });
+  r = run(['show', rot.key, '--store', other]);
   ok(jcli('show', rot.key).status === 1 && /^2026-10-20 10:00  conversation c0ffee12 · branch main · project C--jr2$/m.test(jcli('show', rot.key, '--all').stdout) && /^     Asked: rotate the signing key$/m.test(r.stdout),
     `show finds another project's entry under --all or its --store (got ${r.stdout})`);
   r = jcli('search', 'rotate', 'signing', '--all');
@@ -922,7 +939,7 @@ if (!quick) {
   // A year of journal, ~30 MB: one entry rendered once, each day written in one
   // call. Under --mutant the same 5,111 entries, short (an ask still long
   // enough to collapse): ~3 MB.
-  const big = join(root, 'C--big', 'memory'), bcli = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', big], { env, encoding: 'utf8' });
+  const big = join(root, 'C--big', 'memory'), bcli = (...a) => run([...a, '--store', big]);
   const tpl = render(entry('2025-01-01 12:00', 'plan the lorem rollout '.repeat(quick ? 4 : 90).slice(0, 2000), { answered: 'the lorem build passed '.repeat(quick ? 1 : 131).slice(0, 3000),
     changed: Array.from({ length: quick ? 1 : 20 }, (_, i) => `src/lorem/module${i}.mjs`), ran: Array.from({ length: quick ? 1 : 10 }, (_, i) => `npm run build -- --filter lorem${i}`) }));
   const year = Array.from({ length: 365 }, (_, i) => new Date(Date.UTC(2025, 0, 1 + i)).toISOString().slice(0, 10)), last = year.at(-1);
@@ -963,7 +980,7 @@ if (!quick) {
 {
   const { render } = await import('./journal.mjs'), { local } = await import('./store.mjs');
   const fd = join(root, 'C--fg', 'memory'), fj = join(fd, 'journal'), today = local().slice(0, 10);
-  const fcli = (...a) => spawnSync(process.execPath, [CLI, ...a, '--store', fd], { env, encoding: 'utf8' });
+  const fcli = (...a) => run([...a, '--store', fd]);
   let n = 0;
   const entry = (at, asked, s = 'aaaa1111') => ({ key: `f${n++}`, at, s, t: `C--fg/${s}`, branch: '', asked, answered: 'done', changed: [], ran: [] });
   const es = [entry('2025-10-20 09:00', 'the zebra eats mango'), entry('2025-10-20 10:00', 'the zebra policy'), entry('2025-10-21 09:00', 'mango, the zebra again'),
@@ -1115,7 +1132,7 @@ if (!quick) {
 // import, and a write that failed.
 {
   const st = join(root, 'C--jst', 'memory');
-  const cli = () => spawnSync(process.execPath, [CLI, 'status', '--store', st], { env, encoding: 'utf8' }).stdout;
+  const cli = () => run(['status', '--store', st]).stdout;
   const day = (d, body = '') => { mkdirSync(join(st, 'journal'), { recursive: true }); writeFileSync(join(st, 'journal', `${d}.md`), `# Journal ${d}\n${body}`); };
   const one = (d, k) => `\n<!-- j:${k} t:C--jst/aaaaaaaa-1 d:${d} -->\n## 09:00 · conversation aaaaaaaa\n**Asked:** ${k}\n`;
   mkdirSync(st, { recursive: true });
@@ -1141,7 +1158,7 @@ if (!quick) {
   const lone = join(root, 'C--jonly', 'memory');
   mkdirSync(join(lone, 'journal'), { recursive: true });
   writeFileSync(join(lone, 'journal', '2026-10-05.md'), `# Journal 2026-10-05\n${one('2026-10-05', 'k9')}`);
-  out = spawnSync(process.execPath, [CLI, 'status', '--store', lone], { env, encoding: 'utf8' }).stdout;
+  out = run(['status', '--store', lone]).stdout;
   ok(!/no store here yet/.test(out) && /^  journal: 1 days? since 2026-10-05, /m.test(out), `a store whose only memory is its journal shows it (got ${out})`);
 }
 
