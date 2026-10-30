@@ -9,10 +9,11 @@
 //   4. the suites of the changed files, --mutant mode, in UTC and in New
 //      York: GitHub's machines run in UTC, where a test of local midnight
 //      once checked nothing;
-//   5. the mutants on the changed lines;
-//   6. changed code lines no mutant covers: a reminder, not a failure;
-//   7. after a change to a hook's code, 20 s of fuzz.mjs.
-// Run: node check.mjs   (from this repo)
+//   5. the hand-written mutants on the changed lines;
+//   6. the automatic mutants on the changed lines (--no-auto skips them);
+//   7. changed code lines no mutant covers: a reminder, not a failure;
+//   8. after a change to a hook's code, 20 s of fuzz.mjs.
+// Run: node check.mjs [--no-auto]  (from this repo)
 import { readFileSync, existsSync } from 'node:fs';
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { availableParallelism } from 'node:os';
@@ -37,6 +38,8 @@ export const changedLines = (diff) => {
   for (const m of diff.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm)) for (let i = 0; i < (m[2] === undefined ? 1 : Number(m[2])); i++) at.add(Number(m[1]) + i);
   return at;
 };
+// The --auto-lines value for mutate.mjs: file:n,n;file:n
+export const autoArg = (byFile) => [...byFile].map(([f, ls]) => `${f}:${[...ls].join(',')}`).join(';');
 // The 1-based lines a text's first occurrence of `find` spans.
 const span = (text, find) => {
   const i = text.indexOf(find);
@@ -49,6 +52,7 @@ assert.deepEqual(suitesFor(['journal.mjs', 'memory.test.mjs']), ['journal.test.m
 assert.equal(suitesFor(['harness.mjs']).length, ALL.length);
 assert.deepEqual([...changedLines('@@ -3 +3,2 @@\n@@ -9,0 +11 @@\n')], [3, 4, 11]);
 assert.deepEqual(span('a\nbb\nc', 'b\nc'), [2, 3]);
+assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11])]])), 'a.mjs:3,4;b.mjs:11');
 // mutate.mjs --list --auto-lines names the automatic mutants of a line, each once, running nothing.
 {
   const n = readFileSync(join(repo, 'store.mjs'), 'utf8').split('\n').findIndex((l) => l.includes(' === ')) + 1;
@@ -111,11 +115,12 @@ step(`the changed files' suites (${runs.length ? [...new Set(runs.map(([t]) => t
   execFile(process.execPath, [join(repo, t), '--mutant'], { env: { ...process.env, TZ: tz }, maxBuffer: 1 << 26 }, (e, out, err) => done(e ? `${t} (TZ=${tz}): ${why(err + out)}` : null))))).filter(Boolean));
 
 // 5 and 6. The mutants on the changed lines; the changed code lines none covers.
-const on = [], bare = [];
+const on = [], bare = [], autoLines = new Map();
 for (const [file, [, mutants]] of Object.entries(suites)) {
   if (!changed.includes(file) || !existsSync(join(repo, file))) continue;
   const text = readFileSync(join(repo, file), 'utf8'), lines = text.split('\n');
   const touched = changedLines(git('diff', '-U0', 'HEAD', '--', file)), covered = new Set();
+  if (touched.size && file.endsWith('.mjs')) autoLines.set(file, touched); // automut reads code, not hooks.json
   for (const [label, [from]] of Object.entries(mutants)) {
     const at = span(text, from);
     at.forEach((l) => covered.add(l));
@@ -128,6 +133,18 @@ if (on.length) {
   const r = spawnSync(process.execPath, [join(repo, 'mutate.mjs'), ...on], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
   step('the mutants on the changed lines', r.status === 0 ? [] : (r.stdout + r.stderr).split('\n').filter((l) => / (SURVIVED|TIMED OUT|MUTATION DID NOT APPLY|FIND-TEXT NOT UNIQUE)\b|fails unmutated/.test(l)));
 } else console.log('ok   the mutants on the changed lines (none there)');
+// 5b. The automatic mutants on the changed lines; --no-auto skips them.
+if (autoLines.size && !process.argv.includes('--no-auto')) {
+  const arg = autoArg(autoLines), run = (...a) => spawnSync(process.execPath, [join(repo, 'mutate.mjs'), ...a, '--auto-lines', arg], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const n = run('--list').stdout.split('\n').filter(Boolean).length;
+  console.log(`     ${n} automatic mutant(s) on the changed lines ...`);
+  if (n) {
+    const out = (r => r.stdout + r.stderr)(run()).split('\n');
+    const stillborn = out.filter((l) => / STILLBORN\b/.test(l));
+    step('the automatic mutants on the changed lines', out.filter((l) => / (SURVIVED|TIMED OUT|MUTATION DID NOT APPLY)\b/.test(l)));
+    if (stillborn.length) { console.log(`note ${stillborn.length} automatic mutant(s) stillborn (they do not compile):`); for (const s of stillborn.slice(0, 15)) console.log(`       ${s}`); }
+  }
+} else console.log('ok   the automatic mutants on the changed lines (none there or --no-auto)');
 if (bare.length) {
   console.log(`note ${bare.length} changed code line(s) no mutant covers: a rule there wants a test and a mutant (CONTRIBUTING)`);
   for (const b of bare.slice(0, 15)) console.log(`       ${b}`);
