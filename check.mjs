@@ -49,6 +49,13 @@ assert.deepEqual(suitesFor(['journal.mjs', 'memory.test.mjs']), ['journal.test.m
 assert.equal(suitesFor(['harness.mjs']).length, ALL.length);
 assert.deepEqual([...changedLines('@@ -3 +3,2 @@\n@@ -9,0 +11 @@\n')], [3, 4, 11]);
 assert.deepEqual(span('a\nbb\nc', 'b\nc'), [2, 3]);
+// mutate.mjs --list --auto-lines names the automatic mutants of a line, each once, running nothing.
+{
+  const n = readFileSync(join(repo, 'store.mjs'), 'utf8').split('\n').findIndex((l) => l.includes(' === ')) + 1;
+  const listed = spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--auto-lines', `store.mjs:${n}`], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+  assert.ok(listed.includes(`auto equality store.mjs:${n} === -> !==`), listed.join('\n'));
+  assert.equal(new Set(listed).size, listed.length);
+}
 
 const t0 = Date.now(), problems = [];
 const step = (name, found) => {
