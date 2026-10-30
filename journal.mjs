@@ -15,6 +15,8 @@ export const J_TAIL = 2000;    // ...the end: a reply's end says what was done a
 export const J_FILES = 20;     // files an entry names: the turn's last
 export const J_RAN = 20;       // commands an entry names: the turn's last
 export const J_CMD = 400;      // chars of one command
+export const J_BRANCH = 100;   // chars of a branch name: any real one whole, a pasted text in one cut
+export const J_PATH = 300;     // chars of one file path: Windows' 260-character limit fits whole
 // A Stop imports old conversations for this long, holding the store's lock,
 // then leaves the rest to the next: a month of them can be a gigabyte.
 export const IMPORT_BUDGET_MS = 150;
@@ -83,10 +85,10 @@ export function entryOf(turn, transcriptPath, when = local()) {
     key: turn.id || `${s} ${turn.at} ${hash(turn.raw ?? turn.ask).slice(0, 12)}`,
     at: TIME.test(turn.at) ? turn.at : when, s,
     t: transcriptKey(transcriptPath),
-    branch: clip(turn.branch || '', 100),
+    branch: clip(turn.branch || '', J_BRANCH),
     asked: forgets ? '[private]' : clip(turn.ask, J_ASK),
     answered: quiet ? '[private]' : reply(turn.did),
-    changed: quiet ? [] : turn.changed.slice(-J_FILES).map((p) => clip(rel(p, turn.cwd), 300)),
+    changed: quiet ? [] : turn.changed.slice(-J_FILES).map((p) => clip(rel(p, turn.cwd), J_PATH)),
     ran: quiet ? [] : turn.ran.slice(-J_RAN).map((c) => clip(c, J_CMD)),
   };
 }

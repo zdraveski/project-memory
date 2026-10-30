@@ -68,6 +68,10 @@ const CEILING = 0.90;
 // and the context-limit error Claude Code retries a compaction for would
 // surface instead. Under the floor a deferral can only be wrong.
 const FLOOR = 200_000;
+// The first read of the transcript's end, grown 4× until it holds what is
+// asked (state()). Half the handoff's 512 KB: the Stop nudge reads it every
+// turn and needs only the newest message's token count. Not measured: a
+// guess at a turn's worth, cheap to be wrong about either way.
 const TAIL = 256_000;
 const LIST_MAX = 20;      // running tasks and edited files a note names: the newest
 

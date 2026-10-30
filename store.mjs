@@ -258,7 +258,7 @@ export const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4
 
 const LOCK_WAIT = 2000;     // a hook that waits longer skips the turn; the next one redoes it
 export const LOCK_STALE = 30_000;  // nothing held under the lock takes this long: a lock this old is a killed hook's
-const STEP = 25;
+const STEP = 25;           // ms between tries for a held lock: a freed one is taken within 25 ms, 80 tries in LOCK_WAIT
 // The codes Windows gives while another program holds a path or a delete is still settling.
 export const BUSY = ['EPERM', 'EBUSY', 'EACCES'];
 

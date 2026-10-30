@@ -733,7 +733,7 @@ const suites = {
     'journal a forget turn kept whole': ['const forgets = turn.ran.some(', 'const forgets = false && turn.ran.some('],
     'journal a forget seen only in the last commands':['turn.ran.some((c) => FORGETS.test(c))', 'turn.ran.slice(-J_RAN).some((c) => FORGETS.test(c))'],
     'journal reply not redacted': ['const t = clip(s, Infinity);', 'const t = s;'],
-    'journal file not redacted': ['clip(rel(p, turn.cwd), 300)', 'rel(p, turn.cwd)'],
+    'journal file not redacted': ['clip(rel(p, turn.cwd), J_PATH)', 'rel(p, turn.cwd)'],
     'journal command not redacted': ['clip(c, J_CMD)', 'c'],
     'journal private answer kept': ["quiet ? '[private]' : reply(", 'reply('],
     'journal private files kept': ['changed: quiet ? [] : ', 'changed: '],
