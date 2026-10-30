@@ -541,25 +541,22 @@ stop('proj-five');                     // committed, so git need not read the fi
 note('proj-five', 'b');                // and a change, pointed at, so the next Stop runs a pass
 writeFileSync(join(five, 'MEMORY.md'), readFileSync(join(five, 'MEMORY.md'), 'utf8') + '- [b](b.md) — b\n');
 utimesSync(join(five, 'MEMORY.md'), tenMin, tenMin);   // an index this old reports a missing target at once
-// Held by another program, as an editor holds it: PowerShell opens it sharing
-// nothing. libuv's UV_FS_O_EXLOCK in this process held on GitHub's test
+// Held, its open fails busy: made so by a preload in that Stop, on every
+// system. A real lock, this process's or PowerShell's, held on GitHub's test
 // machines but not on its mutate machines, and the mutant lived (2026-10-30).
-const held = join(five, 'a.md'), win = process.platform === 'win32';
-// It says `held` only once the file is open, with whether its own second open
-// was refused and the drive's file system; or why it could not open it.
-const holder = win && spawn('powershell', ['-NoProfile', '-Command', [
-  `try { $f = [IO.File]::Open($env:HELD, 'Open', 'Read', 'None') } catch { 'failed ' + $_.Exception.Message; exit }`,
-  `$again = try { [IO.File]::Open($env:HELD, 'Open', 'Read', 'ReadWrite').Close(); 'reopened' } catch { 'refused' }`,
-  `'held ' + $again + ' ' + [IO.DriveInfo]::new([IO.Path]::GetPathRoot($env:HELD)).DriveFormat`,
-  '[Console]::In.ReadToEnd() | Out-Null; $f.Close()'].join('; ')], { stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, HELD: held } });
-let said = '';
-const released = win && new Promise((res) => holder.on('close', res));
-if (win) await new Promise((res) => { holder.stdout.on('data', (b) => { said += b; if (/held|failed/.test(said)) res(); }); released.then(res); });
-// The hold is real, or the check below proves nothing: another open fails busy.
-let how = 'opened'; try { readFileSync(held); } catch (e) { how = e.code; }
-if (win) ok(['EPERM', 'EBUSY', 'EACCES'].includes(how), `a memory another program holds open is held: another open fails busy (got ${how}; PowerShell: ${said.trim() || 'nothing'}; ${held}; Node ${process.version})`);
-stop('proj-five');
-if (win) { holder.stdin.end(); await released; }
+const busy = join(tempDir('memtier-busy-'), 'busy.cjs');
+writeFileSync(busy, `const fs = require('node:fs'), open = fs.openSync, hit = ${JSON.stringify(busy + '.hit')};
+fs.openSync = (p, ...a) => {
+  if (!String(p).endsWith(${JSON.stringify(join('proj-five', 'memory', 'a.md'))})) return open(p, ...a);
+  fs.writeFileSync(hit, '');
+  throw Object.assign(new Error('EBUSY: resource busy or locked, open'), { code: 'EBUSY' });
+};
+require('node:module').syncBuiltinESMExports();
+`);
+spawnSync(process.execPath, ['--require', busy, TOOL, '--stop'], { env, encoding: 'utf8',
+  input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, 'proj-five', 'session.jsonl'), session_id: 'tst' }) });
+// The Stop read it and found it busy, or the check below proves nothing.
+ok(existsSync(busy + '.hit'), 'a Stop reading a memory held open finds it busy');
 stop('proj-five');
 ok(existsSync(stamp('proj-five')) && !existsSync(join(five, '.health')), 'a memory held open for one Stop leaves no lasting alarm');
 
