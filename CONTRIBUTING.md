@@ -54,6 +54,12 @@ Beyond the suites:
   CI fuzzes a minute on every job. The `fuzz` workflow, by hand, fuzzes ten
   minutes on each of 17 machines across Windows, Linux and macOS: run it
   before a release.
+- `node coverage.mjs [--suites] [--fuzz <seconds>]` runs the six suites
+  and/or the fuzz under Node's own coverage and prints, for each of the six
+  plugin files, the share of its code that ran, the functions that never
+  ran and the first lines of the larger blocks that never ran: where the
+  fuzz cannot find a bug because it never goes. Nothing runs it
+  automatically.
 - `node mutate.mjs [text...]` breaks one rule at a time and expects a suite to
   fail: all mutants, or those whose label contains one of the texts. Every mutant
   must be killed. The mutants are in `mutate.mjs`, grouped by source file
