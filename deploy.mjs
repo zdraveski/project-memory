@@ -24,9 +24,11 @@ const HOOKS = ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs'
 
 // Each file by rename, so a hook starting mid-deploy reads a whole file. Every
 // temp is written first, where a full disk or a scanner fails, then the renames
-// run back to back: a failure no longer leaves new files beside the old manifest.
+// run back to back: a failed write no longer leaves new files beside the old manifest.
 // shortcut: not all at once -- a hook starting in the milliseconds between
-// renames can load one new file beside an old one; deploys are rare.
+// renames can load one new file beside an old one, and a rename still refused
+// after its retries leaves the files before it new; the startup line names
+// each one that no longer matches the manifest. Deploys are rare.
 // `patch` stamps the plugin's version: the same version is never re-copied.
 // `node` names the node that runs the live hooks, as the hook entries once
 // did: a Claude Code started without node on its PATH (the desktop app,

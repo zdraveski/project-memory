@@ -18,9 +18,9 @@
 //    files edited. It is the only writer of handoff.md on that event. A
 //    conversation marked <private-session> gets neither.
 //  * Stop: `nudge(payload)` -- when the context is past the trigger a
-//    compaction is a turn or two away, so the stop is blocked ONCE with the reason "write
-//    memory now"; the model writes it, stops again, and passes. Re-armed when
-//    the context drops (a compaction happened).
+//    compaction is a turn or two away, so the stop gets ONE piece of hook
+//    feedback, "write memory now"; the model writes it, stops again, and
+//    passes. Re-armed when the context drops (a compaction happened).
 //
 // Not relied on. On 2026-10-03 Claude Code compacted a session mid-turn at
 // 767k with a summary it had precomputed (71 ms), while this gate, replayed on
@@ -33,8 +33,8 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, prompt, handoff, hushed, tag, local, clip, answer, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText } from './handoff-log.mjs';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff } from './store.mjs';
+import { readTail, text, prompt, handoff, hushed, tag, clip, answer, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText } from './handoff-log.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
 // A token count as Claude Code takes one: `800000`, `800k`, `1M`. NaN: none.
@@ -252,7 +252,7 @@ export function gate(payload) {
   return { code: 0, why: `mid-turn at ${pct}%, over the ceiling: ` + (failed.length ? failed.join('; ') : 'handoff and in-flight note written') };
 }
 
-/** Stop: the one block per compaction cycle that gets memory written first. */
+/** Stop: the one nudge per compaction cycle that gets memory written first. */
 export function nudge(payload) {
   // Stop only. memory-tier.mjs --stop also runs as the PreCompact hook, and a
   // PreCompact hook that prints `decision: block` blocks the compaction: the
@@ -269,7 +269,7 @@ export function nudge(payload) {
   const mine = join(NUDGES(), id);
   let given = 0; try { given = Number(readFileSync(mine, 'utf8')) || 0; } catch {}
   // Whether the nudge is on record: one that could not be (`.nudge` a file, or
-  // read-only) would be given again on every Stop, each one a blocked stop.
+  // read-only) would be given again on every Stop, each one a turn spent on it.
   const arm = (ctx) => {
     try {
       mkdirSync(NUDGES(), { recursive: true });

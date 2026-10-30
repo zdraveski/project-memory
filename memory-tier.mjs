@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, appendFileSync, unlinkSync, readdirSync, e
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -41,10 +41,6 @@ const GIT_LOCK_STALE = 10 * 60000;  // an index.lock this old outlived the git t
 const RULE_SHARE = 0.5;
 const LINES = 200;   // of MEMORY.md, all Claude Code loads at a session's start
 const DAY = 86400000;
-// The archive line is matched by its target (store.mjs ARCHIVE), not its
-// title: renaming the line's text must not leave the old one behind as a
-// second archive pointer carrying a count that stopped being true.
-const ARCHIVE_TARGET = ARCHIVE;
 const dry = process.argv.includes('--dry-run');
 // `--pause <ms>` holds a pass open between computing and writing it, so a test
 // can land an edit in that window. Test-only, like `--now`.
@@ -119,7 +115,7 @@ function split(text) {
   // demotes the top memory to prose and orphans it.
   for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const m = line.match(POINTER);
-    if (m && m[1] === ARCHIVE_TARGET) continue;   // regenerated with a live count
+    if (m && m[1] === ARCHIVE) continue;   // by its target, not its title: regenerated with a live count
     if (m) pointers.push({ line, target: m[1] });
     else if (line.trim() || preamble[preamble.length - 1]?.trim()) preamble.push(line);
   }
@@ -129,7 +125,7 @@ function split(text) {
 
 function tier(dir, now) {
   const mainPath = join(dir, 'MEMORY.md'), shared = isShared(dir);
-  const arcPath = join(dir, ARCHIVE_TARGET);
+  const arcPath = join(dir, ARCHIVE);
   // What this pass is computed from. A write goes through only while the file
   // still holds it: the model may edit the index while the pass runs.
   const mainText = readFileSync(mainPath, 'utf8');
@@ -210,17 +206,15 @@ function tier(dir, now) {
     if ((`- [x](${f})`.match(POINTER) || [])[1] !== f) { odd.push(f); continue; }
     const facts = factsFor(dir, f);
     if (!facts) continue;
-    const title = f.replace(/\.md$/, '').replace(/-/g, ' ').replace(/[[\]]/g, '');
-    const hook = facts.desc.slice(0, 140) || 'recovered: no description';
     // Cold, except a pin -- which the archive would promote on the next run
     // anyway, leaving the store rewriting itself one session behind forever.
     // In the shared store hot unless archived: filed cold, a lesson whose pointer
     // was forgotten was printed nowhere, ever (review, 2026-10-27).
-    place({ line: `- [${title}](${f}) — ${hook}`, target: f, f: facts }, (shared ? facts.tier !== 'archive' : facts.tier === 'hot') ? hot : cold);
+    place({ line: pointerLine(f, facts.desc || 'recovered: no description'), target: f, f: facts }, (shared ? facts.tier !== 'archive' : facts.tier === 'hot') ? hot : cold);
     recovered.push(f);
   }
 
-  const archiveLine = (n) => `- [Archive](MEMORY-archive.md) — ${n} older pointers; grep it before assuming something was never learned`;
+  const archiveLine = (n) => `- [Archive](${ARCHIVE}) — ${n} older pointers; grep it before assuming something was never learned`;
   const render = () => [...main.preamble, ...hot.map((p) => p.line), archiveLine(cold.length)].join('\n') + '\n';
 
   // A ceiling, not a warning. The windows cap how many lines survive, not how
@@ -478,7 +472,7 @@ function snapshot() {
 function health(dir, problems) {
   const p = join(dir, '.health');
   const want = problems.length ? problems.join('\n') + '\n' : null;
-  const have = existsSync(p) ? readFileSync(p, 'utf8') : null;
+  const have = raw(p);
   if (want === have) return;
   if (want === null) unlinkSync(p); else writeFileSync(p, want);
 }
@@ -566,9 +560,9 @@ if (stop) {
     } catch {}
   } catch {}
   try {
-    // Past the compaction trigger, the next prompt compacts: block this stop
+    // Past the compaction trigger, the next prompt compacts: nudge this stop
     // once so memory is written first (compact-gate.mjs). Printed alone --
-    // a Stop decision is JSON on stdout, and the tiering lines below would
+    // a Stop hook's output is JSON on stdout, and the tiering lines below would
     // break it; tiering waits for the next turn, which redoes it anyway.
     const nudge = payload && (await import(new URL('./compact-gate.mjs', import.meta.url))).nudge(payload);
     // Exit once it is written: on macOS a pipe is written asynchronously, and

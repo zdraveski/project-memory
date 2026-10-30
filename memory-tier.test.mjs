@@ -210,6 +210,12 @@ ok(/over budget/.test(readFileSync(join(dir, '.health'), 'utf8')), 'an index ove
 for (let i = 0; i < 45; i++) memory(`pinned-many-${i}`, { tier: 'archive', days: 400 });
 run();
 ok(!existsSync(join(dir, '.health')), 'and .health goes once it fits');
+// A folder named like a note is none: read as one, every pass failed.
+mkdirSync(join(dir, 'drafts.md'));
+utimesSync(join(dir, 'drafts.md'), new Date(Date.now() - 10 * 60000), new Date(Date.now() - 10 * 60000));
+run();
+ok(!existsSync(join(dir, '.health')), `a folder named drafts.md leaves the pass whole (got ${existsSync(join(dir, '.health')) ? readFileSync(join(dir, '.health'), 'utf8') : ''})`);
+rmSync(join(dir, 'drafts.md'), { recursive: true });
 // A pointer the model wrote before its file is its writer's for two minutes,
 // like a file written before its pointer. It reached .health, and another
 // session's startup line, seconds before the file did (final review, 2026-10-26).

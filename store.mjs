@@ -124,6 +124,13 @@ export const budgetOf = (dir) => (isShared(dir) ? SHARED_BUDGET : BUDGET);
 // startup, and `../../big.bin` was read whole by every Stop.
 export const POINTER = /^- \[[^\]]*\]\(([^)/\\:]+)\)/;
 export const ARCHIVE = 'MEMORY-archive.md';
+// A line for a memory no index names, from its file name and description. One
+// builder for tiering and promote: promote's kept the brackets of
+// `[draft] plan.md`, and POINTER never read its line back. The hook is the
+// description's first 140 characters, each one billed at every session start,
+// and never half an emoji: a cut through one wrote U+FFFD into the index.
+export const pointerLine = (file, desc) =>
+  `- [${file.replace(/\.md$/, '').replace(/-/g, ' ').replace(/[[\]]/g, '')}](${file}) — ${desc.slice(0, 140).replace(/[\uD800-\uDBFF]$/, '')}`;
 
 // Every store once: one reached by two paths (a junction back to another
 // project's store) is one brain, tiered and reported once; a junction whose
@@ -267,8 +274,10 @@ export function replaceIfUnchanged(path, expected, next) {
   const read = () => raw(path);
   if (read() === next) return false;
   const tmp = `${path}.tmp${process.pid}`;
-  writeFileSync(tmp, next);
   try {
+    // Inside the try: a write cut short (a full disk) left its half-copy of
+    // the handoff or a journal day, where forget never reaches.
+    writeFileSync(tmp, next);
     for (let i = 0; ; i++) {
       // ponytail: the check and the rename are two calls; an edit landing in
       // the gap between them (well under a millisecond) is the race left.

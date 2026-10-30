@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER } = await import('./store.mjs');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const root = join(home, '.claude', 'projects');
@@ -135,16 +135,24 @@ if (!quick) {
 // retries on it. On the lock it threw, and the turn's handoff was skipped.
 const realMkdir = fs.mkdirSync;
 let refusals = 1;
-fs.mkdirSync = function (p, ...a) {
+const refuse = function (p, ...a) {
   if (String(p).endsWith('.lock') && refusals-- > 0) throw Object.assign(new Error('EACCES: permission denied, mkdir'), { code: 'EACCES' });
   return realMkdir.call(this, p, ...a);
 };
+fs.mkdirSync = refuse;
 syncBuiltinESMExports();
 let eacces;
 try { eacces = withLock(dir, () => 'got'); } catch (e) { eacces = e.code; }
 fs.mkdirSync = realMkdir;
 syncBuiltinESMExports();
 ok(eacces === 'got' && refusals < 0, `an EACCES on the lock is waited out like EPERM (got ${eacces})`);
+// Refused every time with no lock there: a folder that takes no new entries.
+// Read as busy, every turn waited 2 s and saved nothing, unseen.
+refusals = Infinity; fs.mkdirSync = refuse; syncBuiltinESMExports();
+let refusedAll;
+try { refusedAll = `returned ${withLock(dir, () => 'got')}`; } catch (e) { refusedAll = e.code; }
+fs.mkdirSync = realMkdir; syncBuiltinESMExports();
+ok(refusedAll === 'EACCES', `a folder that refuses every new entry throws, not busy (got ${refusedAll})`);
 
 // 4. A junction to the store is the same store: one lock between both names
 // (the inner wait on a fast clock under --mutant).
@@ -163,6 +171,23 @@ ok(replaceIfUnchanged(f, 'two', 'three') === 'conflict' && readFileSync(f, 'utf8
 ok(replaceIfUnchanged(join(dir, 'new.md'), null, 'fresh') === true && readFileSync(join(dir, 'new.md'), 'utf8') === 'fresh', 'a file that did not exist is created');
 ok(replaceIfUnchanged(join(dir, 'new.md'), null, 'again') === 'conflict', 'and one that appeared meanwhile is not overwritten');
 ok(!readdirSync(dir).some((x) => x.includes('.tmp')), 'no temp file is left behind');
+// Nor by a write the disk cut short: half a copy of the file, then ENOSPC.
+const realWrite = fs.writeFileSync;
+fs.writeFileSync = function (p, d, ...a) {
+  if (String(p).includes('.tmp')) { realWrite.call(this, p, String(d).slice(0, 2)); throw Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' }); }
+  return realWrite.call(this, p, d, ...a);
+};
+syncBuiltinESMExports();
+let full;
+try { full = replaceIfUnchanged(f, 'the model wrote this', 'four'); } catch (e) { full = e.code; }
+fs.writeFileSync = realWrite;
+syncBuiltinESMExports();
+ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !readdirSync(dir).some((x) => x.includes('.tmp')),
+  `a write the disk cut short leaves the file and no half copy (got ${full}, ${readdirSync(dir)})`);
+
+// A line made for a memory no index names reads back, and its hook ends whole.
+const made = pointerLine('[draft] plan.md', 'a'.repeat(139) + '\u{1F600} and more');
+ok(made.match(POINTER)?.[1] === '[draft] plan.md' && !/[\uD800-\uDFFF]$/.test(made), `a made line reads back and is cut whole (got ${made})`);
 
 // A value stays on its line, the body is no frontmatter, and CRLF keeps quotes off.
 const emptied = front('---\nname: a\nsuperseded-by:\nmetadata:\n  type: project\n---\nbody');
@@ -173,7 +198,6 @@ ok(front('---\r\nname: crlf\r\ndescription: "quoted"\r\n---\r\n').desc === 'quot
 // 1.1.0. A pointer names a file in the store, by its name: a web link was a
 // memory with no file at every startup, and `../../big.bin` was read whole by
 // every Stop.
-const { POINTER } = await import('./store.mjs');
 ok(POINTER.test('- [a](a.md) \u2014 x') && !POINTER.test('- [Repo](https://github.com/x/y) \u2014 the code') && !POINTER.test('- [x](../../big.bin) \u2014 x') && !POINTER.test('- [x](C:\\big.bin) \u2014 x'),
   'a pointer names a file in the store, never a link or a path');
 // A date alone is that day where the user is: read as UTC midnight, it printed

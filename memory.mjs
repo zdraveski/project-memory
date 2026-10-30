@@ -30,8 +30,8 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, pathKey, same, configDir, memoryOff } from './store.mjs';
-import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, local, clip, tag } from './handoff-log.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local } from './store.mjs';
+import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -136,8 +136,9 @@ export function memories(dir) {
     const text = read(path);
     if (text === null) return [];
     const end = text.startsWith('---') ? text.indexOf('\n---', 3) : -1;
-    const head = end === -1 ? '' : text.slice(0, end);
-    const { name, desc, type, modified: stamp, superseded } = front(head);
+    // As tiering reads it: cut here, an unclosed frontmatter was none, and a
+    // pinned rule showed in status and search with no description or type.
+    const { name, desc, type, modified: stamp, superseded } = front(text);
     let mtime = 0; try { mtime = statSync(path).mtimeMs; } catch {}
     return [{
       file, path, dir, name, desc, type, superseded,
@@ -188,7 +189,7 @@ function around(text, find, room) {
 // that mentions everything outranked the memory named for the thing ("deploy
 // checklist", 2026-10-27).
 // `outside`: the notes that match but are dated out of the range.
-export function search(dirs, query, limit = 8, { since, until, failed } = {}) {
+export function search(dirs, query, { since, until, failed } = {}) {
   const terms = words(query), hits = [];
   let outside = 0;
   for (const dir of terms.length ? dirs : []) for (const m of memories(dir)) {
@@ -224,7 +225,7 @@ export function search(dirs, query, limit = 8, { since, until, failed } = {}) {
     }
     if (score) hits.push({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')), score: score + (strong ? 5 : every ? 2 : 0) });
   }
-  return Object.assign(hits.sort((a, b) => b.score - a.score || b.modified - a.modified).slice(0, limit), { outside });
+  return Object.assign(hits.sort((a, b) => b.score - a.score || b.modified - a.modified), { outside });
 }
 
 // What a [[link]] may name: a memory's file name without `.md`, or its `name:`.
@@ -289,7 +290,7 @@ function recent(dir) {
 }
 
 function snapshots() {
-  let h = null; try { h = JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8')); } catch {}
+  const h = json(join(projectsRoot(), '.snapshot-health'));
   if (!h) return 'snapshots: none recorded yet';
   if (h.off) return `snapshots: off, ${h.off}: everything else works, but an old version of a note cannot be brought back`;
   return h.failures ? `snapshots: failing, ${h.failures} in a row (${h.error}); last ok ${h.lastOk ? local(h.lastOk) : 'never'}. ` +
@@ -470,7 +471,7 @@ export function promote(dir, file) {
       const t = raw(p), l = t?.split(/\r?\n/).find(its);
       if (l) { home = p; homeText = t; line = l.replace(OVERFLOW, ''); break; }
     }
-    line ??= `- [${file.replace(/\.md$/, '').replace(/-/g, ' ')}](${file}) — ${front(text).desc || 'promoted'}`;
+    line ??= pointerLine(file, front(text).desc || 'promoted');
     const wd = put(dst, null, text);
     if (failed(wd)) return `${dst} could not be written (${wd.slice(8)}); nothing moved`;
     if (wd === 'conflict') return `the shared store got a ${file} meanwhile; nothing moved`;
@@ -560,7 +561,7 @@ export function doctor() {
     // The newest conversation, and the newest other than this one, which is
     // the one the startup briefing judges: checked on the newest alone, the
     // two disagreed when this window saved and another did not.
-    const ts = transcripts(sessionStore(), '', session && transcriptOf(session)), s = [ts[0], ts.find((t) => t.s !== session.slice(0, 8))].flatMap((t) => stalled(t, false));
+    const ts = transcripts(sessionStore(), '', session && transcriptOf(session)), s = [ts[0], ts.find((t) => t.s !== tag(session))].flatMap((t) => stalled(t, false));
     say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`);
   }
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return Date.now() - statSync(l).mtimeMs > LOCK_STALE; } catch { return false; } });
@@ -634,7 +635,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const full = (e, conv = join(projectsRoot(), `${e.t}.jsonl`)) => (e.answered !== '[private]' && existsSync(conv) ? [`     Full conversation: ${conv}`] : []);
   // Words that say nothing of which memory ("what did I do") with a range: the range's listing.
   if (cmd === 'search' && args.length && (words(args.join(' ')).length || !(range.since || range.until))) {
-    const q = args.join(' '), terms = words(q), found = search(scope, q, Infinity, { ...range, failed });
+    const q = args.join(' '), terms = words(q), found = search(scope, q, { ...range, failed });
     const out = found.outside ? [`${found.outside} note${found.outside === 1 ? ' matches' : 's match'} outside the range (a note's date is its last change); search without --since/--until`] : [];
     // One long request asked again and again (a prompt a script sends, a retry)
     // is one hit with a count: its copies filled the list (recall test, 2026-10-29).
@@ -655,13 +656,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
         ...full(h),
         ...(also.length ? [`     ${also.length} more like this, ${ds[0]}..${ds.at(-1)}: ${more(also.map((x) => clip(x.key, Infinity)), 5)}; --same takes them all`] : [])];
     };
+    const wider = rest.includes('--all') ? '' : '; --all searches every project';
     r = { ok: true, lines: !words(q).length ? [`nothing to search for: "${q}" has no word that says which memory`]
       : shown.length ? [...shown.flatMap(([h, ...also]) => h.kind === 'journal' ? entry(h, also) : [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
         `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...out,
         // A hit's date, and what was not shown or not searched.
-        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${rest.includes('--all') ? '' : '; --all searches every project'}`]
-      : [...out, `nothing matches "${q}" in ${where}${span && ` ${span}`}${rest.includes('--all') ? '' : '; --all searches every project'}`] };
+        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}`]
+      : [...out, `nothing matches "${q}" in ${where}${span && ` ${span}`}${wider}`] };
   } else if (cmd === 'show' && args.length) {
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).

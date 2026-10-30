@@ -171,7 +171,6 @@ export const unquote = (s) => {
 };
 export { unwrap };
 
-export { local };
 // A session's short tag: enough to tell parallel sessions apart in one file.
 export const tag = (id) => String(id || '').slice(0, 8);
 
@@ -405,6 +404,8 @@ function latest(path, since = null) {
 // it: one written before 1.0.5 kept an answer that repeated the secret.
 const render = (t) => {
   // As shown: 1.0.4 wrote the ask raw, <private> and all.
+  // shortcut: a question that quotes `[private]` loses its answer too; an old
+  // entry's only mark is that text, and its answer repeats the secret.
   const ask = clip(t.ask, ASK), hid = ask.includes('[private]');
   return `- **asked** ${t.at}${t.s ? ` [${t.s}]` : ''}: ${ask}\n  **did:** ${hid ? '[private]' : clip(t.did, DID)}`
     + (t.changed && !hid ? `\n  **changed:** ${clip(t.changed, DID)}` : '');
@@ -524,8 +525,6 @@ function build(raw, fresh, drop = null, me = fresh[0]?.s, whole = false) {
     : doc.trimEnd() + `\n\n## Last ${TURNS} exchanges\n\n` + body + '\n';
 }
 
-// Exported so memory-tier.mjs can run it in the same process from the Stop
-// hook: a second Node start cost a median 200 ms a turn on this box.
 // The conversations marked private, by tag: the newest 1,000, one per line
 // (9 KB). The newest 50 let an older private conversation, resumed, be
 // recorded again.
@@ -579,6 +578,8 @@ export function off(input) {
   })) === true;
 }
 
+// Exported so memory-tier.mjs can run it in the same process from the Stop
+// hook: a second Node start cost a median 200 ms a turn on this box.
 export function handoff(input, sink = null) {
   const dir = storeOf(input);
   const file = join(dir, 'handoff.md');
@@ -603,7 +604,7 @@ export function handoff(input, sink = null) {
   const s = tag(input.session_id);
   // Read without the lock: a hint for how far back to read, nothing more.
   let since = null;
-  try { const d = readFileSync(file, 'utf8'), { a, b } = sectionOf(d); if (a !== -1) since = parse(d.slice(a, b)).filter((t) => t.s === s).sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0)).at(-1) ?? null; } catch {}
+  try { const d = readFileSync(file, 'utf8'), { a, b } = sectionOf(d); if (a !== -1) since = parse(d.slice(a, b)).filter((t) => t.s === s).sort(byAt).at(-1) ?? null; } catch {}
   const got = latest(input.transcript_path, since);
   // The transcript can lag the reply that ends it: on Stop, Claude Code passes
   // that reply itself (hooks docs). Not after a block: then it is the reply

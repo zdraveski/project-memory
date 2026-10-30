@@ -580,7 +580,7 @@ ok(!/alone here|\*\*asked\*\*/.test(readFileSync(join(dirO, 'handoff.md'), 'utf8
 const stripe = (kind, mode) => [kind, mode, '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
 const pgp = (end) => fake('-----', end, ' PGP PRIV', 'ATE KEY BLOCK-----');
 const shapes = [fake('DB_PASS', 'WORD=', 'hunter2hunter2'), fake('CLIENT_SEC', 'RET=', 's3cr3tvalue99'), fake('AWS_SEC', 'RET_ACCESS_KEY=', 'wJalr', 'XUtnFEMIK7MDENG'),
-  fake('MY_SERVICE_API', '_KEY=', 'abc123def456ghi'), stripe('sk', 'live'), stripe('pk', 'test'), stripe('rk', 'live'), fake('pass', 'word:\n  ', 'hunter2secret'),
+  fake('MY_SERVICE_API', '_KEY=', 'abc123def456ghi'), stripe('sk', 'live'), stripe('pk', 'test'), stripe('rk', 'live'), fake('pass', 'word:\n  ', 'hunter2secret'), fake('tok', 'en:\n  ', 'hunter2tok3n'),
   fake('authorization: bea', 'rer ', 'abcdefghijklmnopqrstuvwxyz0123'), fake(pgp('BEGIN'), '\nlQOYBF0abc\n', pgp('END'))];
 for (const l of shapes) ok(!/hunter2|s3cr3t|wJalr|abc123def|51Habc|lQOYBF|abcdefghijklmnop/.test(clip(l, 400)), `not written: ${JSON.stringify(l)} (got ${clip(l, 400)})`);
 ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 'sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6', 'ordinary text is left alone');

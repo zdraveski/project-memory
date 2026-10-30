@@ -136,12 +136,12 @@ export function parseDay(text) {
 
 export const dayFile = (dir, at) => join(dir, JOURNAL, day(at) + '.md');
 const page = (d, prose, es) => `# Journal ${d}\n\n` + [prose, ...es.flatMap((e) => [render(e), e.after])].filter(Boolean).join('\n\n') + '\n';
-// The keys forget removed (FORGOTTEN, handoff-log's, which keeps them out of
-// handoff.md too): a backfill reads a quiet conversation again once it grows,
-// and would bring a forgotten entry back.
 
 // Call under withLock(dir). Returns how many entries were added or changed.
-// `when`: entryOf's, for a turn whose time won't parse.
+// `when`: entryOf's, for a turn whose time won't parse. `gone`: the keys forget
+// removed (FORGOTTEN, handoff-log's, which keeps them out of handoff.md too):
+// a backfill reads a quiet conversation again once it grows, and would bring a
+// forgotten entry back.
 export function record(dir, transcriptPath, turns, when) {
   const byDay = new Map(), gone = new Set(forgotten(raw(join(dir, FORGOTTEN))).map(([k]) => k));
   for (const t of turns) {

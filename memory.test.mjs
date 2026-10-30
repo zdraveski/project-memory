@@ -229,6 +229,27 @@ writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\ndescription: "The ro
 ok(cli('promote', 'MEMORY').status === 1 && cli('promote', 'handoff').status === 1 && existsSync(join(dir, 'handoff.md')), 'an index or the handoff is not a memory to share');
 r = cli('promote', 'shared-rule', '--shared');
 ok(r.status === 1 && /in the shared store already/.test(r.stdout), 'nor is a memory already shared');
+// A name with brackets and no index line: the line made for it reads back.
+// Words no later search uses: a hit they added changed its count.
+memory(dir, '[draft] okapi', 'an okapi still in draft');
+r = cli('promote', '[draft] okapi');
+ok(r.status === 0 && /^- \[draft okapi\]\(\[draft\] okapi\.md\) — an okapi still in draft$/m.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8')),
+  `a promoted name with brackets gets a line POINTER reads (got ${r.stdout})`);
+// A copy that cannot be written moves nothing: the note stays in its project.
+{
+  const { promote } = await import(pathToFileURL(CLI).href);
+  memory(dir, 'stuck-note', 'cannot be copied');
+  mkdirSync(join(shared, `stuck-note.md.tmp${process.pid}`));
+  const stuck = promote(dir, 'stuck-note.md');
+  ok(stuck.ok === false && existsSync(join(dir, 'stuck-note.md')) && !existsSync(join(shared, 'stuck-note.md')), `a copy that fails moves nothing (got ${JSON.stringify(stuck)})`);
+  rmSync(join(shared, `stuck-note.md.tmp${process.pid}`), { recursive: true, force: true });
+  rmSync(join(dir, 'stuck-note.md'));
+}
+// Frontmatter never closed is all frontmatter, as tiering reads it.
+writeFileSync(join(dir, 'pangolin-rule.md'), '---\nname: pangolin-rule\ndescription: pangolin rule text\nmetadata:\n  type: feedback\n');
+r = cli('search', 'pangolin');
+ok(/^     pangolin rule text$/m.test(r.stdout), `a note whose frontmatter never closes keeps its description (got ${r.stdout})`);
+rmSync(join(dir, 'pangolin-rule.md'));
 
 // 4a. What a model types is a sentence: words that name no memory are skipped,
 // the handoff (a log the startup line prints) is no hit, and a hit stays short.

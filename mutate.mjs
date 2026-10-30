@@ -65,6 +65,10 @@ const suites = {
     'local time counts months from zero': ['pad(d.getMonth() + 1)', 'pad(d.getMonth())'],
     'local time unpadded': ["const pad = (n) => String(n).padStart(2, '0');", 'const pad = (n) => String(n);'],
     'temp file left behind': ['} finally { try { unlinkSync(tmp); } catch {} }', '} finally {}'],
+    'a write cut short leaves its half copy': ["  try {\n    // Inside the try: a write cut short", "  writeFileSync(tmp, next);\n  try {\n    // Inside the try: a write cut short"],
+    'a folder refusing every entry read as busy': ['if (refused > 8) throw e;', ''],
+    'a made line keeps its brackets': [".replace(/[[\\]]/g, '')}](${file})", "}](${file})"],
+    'a made line cut through an emoji': [".slice(0, 140).replace(/[\\uD800-\\uDBFF]$/, '')", ".slice(0, 140)"],
     "no git read as spawnSync ENOENT": ["(e.code === 'ENOENT' && String(e.syscall).startsWith('spawn') ? 'git is not installed'\n  : ", "("],
   }],
   'compact-gate.mjs': ['compact-gate.test.mjs', {
@@ -244,7 +248,8 @@ const suites = {
     "mysql -P read as a password": ["[^\\s]{2,}/g, '$1[redacted]'],", "[^\\s]{2,}/gi, '$1[redacted]'],"],
     "\"password is\" saved": ["(?:password|passwd|passphrase|api[ _-]?key|token|secret)(?:\\s{1,5}", "(?:NEVER)(?:\\s{1,5}"],
     "\"the password is hashed\" redacted": ["(?=\\S*[0-9!@#$%^&*_+=-])", ""],
-    "a value on the next line kept": ["[:=]\\s{0,20}[\"']?)", "[:=][ \\t]{0,20}[\"']?)"],
+    "a value on the next line kept": ["[:=]\\s{0,20}[\"']?)([^", "[:=][ \\t]{0,20}[\"']?)([^"],
+    "a bare token's value on the next line kept": ["tokens?[ \\t]{0,20}[:=]\\s{0,20}", "tokens?[ \\t]{0,20}[:=][ \\t]{0,20}"],
     "lowercase bearer kept": ["{20,}/gi, '$1 [redacted]']", "{20,}/g, '$1 [redacted]']"],
     "a name-and-value pattern backtracks": ["[A-Za-z0-9_]{0,40}", "[A-Za-z0-9_]*"],
     "an emoji cut in half": [".replace(/[\\uD800-\\uDBFF]$/, '')", ""],
@@ -408,12 +413,13 @@ const suites = {
     'stale window never closes': ['return now - f.modified < STALE_DAYS * DAY;', 'return true;'],
     'archive is not sticky': ["place(p, p.f && (p.f.tier === 'hot' || (overflow && isHot(p.f, now, shared))) ? hot : cold);", 'place(p, isHot(p.f, now, shared) ? hot : cold);'],
     "duplicates kept": ["if (was) { dupes.push(p.target); if (inIndex && was.inIndex) was.p.line = p.line; return; }", ""],
-    'orphans not recovered': ["place({ line: `- [${title}](${f}) — ${hook}`, target: f, f: facts }, (shared ? facts.tier !== 'archive' : facts.tier === 'hot') ? hot : cold);", ''],
+    'orphans not recovered': ["place({ line: pointerLine(f, facts.desc || 'recovered: no description'), target: f, f: facts }, (shared ? facts.tier !== 'archive' : facts.tier === 'hot') ? hot : cold);", ''],
     'pinned orphan recovered cold': ["target: f, f: facts }, (shared ? facts.tier !== 'archive' : facts.tier === 'hot') ? hot : cold);", 'target: f, f: facts }, (shared ? facts.tier !== \'archive\' : false) ? hot : cold);'],
     'a shared orphan filed cold': ["(shared ? facts.tier !== 'archive' : facts.tier === 'hot') ? hot : cold);", "facts.tier === 'hot' ? hot : cold);"],
     'an archived shared orphan recovered hot': ["shared ? facts.tier !== 'archive' : ", 'shared ? true : '],
     'prose dropped': ['const render = () => [...main.preamble, ...hot.map((p) => p.line),', 'const render = () => [...hot.map((p) => p.line),'],
-    'archive line duplicated': ['if (m && m[1] === ARCHIVE_TARGET) continue;', ''],
+    'archive line duplicated': ['if (m && m[1] === ARCHIVE) continue;', ''],
+    'a folder named like a note fails the pass': ["if (!facts) continue;", ""],
     "BOM not stripped": ["text.replace(/^\\uFEFF/, '')", "text"],
     'event logs not evicted first': ['.sort(byAge), ...work.filter((p) => p.f.eventDate === null).sort(byAge)]', ', ...work.filter((p) => p.f.eventDate === null)].sort(byAge)'],
     'an overflow victim never returns': ['(overflow && isHot(p.f, now, shared))', 'false'],
@@ -605,7 +611,10 @@ const suites = {
     'not installed gives no install': ["The user's fix: claude plugin marketplace add zdraveski/project-memory, then claude plugin install ${PLUGIN}", ''],
     'hits dated by now': ['${local(h.modified).slice(0, 10)}', '${local().slice(0, 10)}'],
     'the --limit hint with nothing left out': ["${groups.length > shown.length ? '; --limit N shows more' : ''}", '; --limit N shows more'],
-    'the --all hint under --all': ["${rest.includes('--all') ? '' : '; --all searches every project'}", '; --all searches every project'],
+    'the --all hint under --all': ["const wider = rest.includes('--all') ? '' : '; --all searches every project';", "const wider = '; --all searches every project';"],
+    'a failed copy reported as moved': ["if (failed(wd)) return", "if (false) return"],
+    'a promoted line keeps its brackets': ["line ??= pointerLine(file, front(text).desc || 'promoted');", "line ??= `- [${file}](${file}) — x`;"],
+    'unclosed frontmatter read as none': ["superseded } = front(text);", "superseded } = front(end === -1 ? '' : text.slice(0, end));"],
     'a negative --limit taken as is': ['groups.slice(0, n > 0 ? n : 10)', 'groups.slice(0, n || 10)'],
     'history suggests --all under --all': ["${everywhere ? '' : '; --all looks in every project'}", '; --all looks in every project'],
     'history gives no command': ['  a change: git -C', '  git -C'],
@@ -618,7 +627,7 @@ const suites = {
     'doctor: the reply to a block read as a second wiring': [' && !r.h === !p.h', ''],
     'doctor: replies four seconds apart read as twice': ['const TWICE = 2000;', 'const TWICE = 5000;'],
     'doctor tells the user to run doctor': ['.flatMap((t) => stalled(t, false))', '.flatMap((t) => stalled(t))'],
-    'doctor judges only the newest window': ['[ts[0], ts.find((t) => t.s !== session.slice(0, 8))]', '[ts[0]]'],
+    'doctor judges only the newest window': ['[ts[0], ts.find((t) => t.s !== tag(session))]', '[ts[0]]'],
     'a promoted line after the archive line': ['if (at === -1) ls.push(line); else ls.splice(at, 0, line);', 'ls.push(line);'],
     'doctor: no git called a problem': ["say(true, 'git is not installed:", "say(false, 'git is not installed:"],
     'failing snapshots without a fix': ["The user's fix: run git -C", 'Run git -C'],
@@ -883,8 +892,12 @@ const how = (j) => (j.full ? j.testName : `${j.testName} --mutant`);
 const run = (args, name, from, to, limit) => new Promise((done) => {
   const src = name && code[name].toString('utf8');
   if (name && !src.includes(from)) return done('MUTATION DID NOT APPLY');
+  // Found twice, only the first was ever broken: the redaction of a bare
+  // token's next-line value went unwatched behind a find-text that matched both rules.
+  if (name && src.split(from).length > 2) return done('FIND-TEXT NOT UNIQUE');
   const dir = tempDir('mut-');
-  for (const [f, buf] of Object.entries(code)) { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), f === name ? src.replace(from, to) : buf); }
+  // A function, so a `$&` or `$'` in the mutant is text, not a pattern.
+  for (const [f, buf] of Object.entries(code)) { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), f === name ? src.replace(from, () => to) : buf); }
   const [testName, ...flags] = args.split(' ');
   const child = spawn(process.execPath, [join(dir, testName), ...flags], { stdio: 'ignore' });
   // A suite cut off by the clock proved nothing: not a kill.
