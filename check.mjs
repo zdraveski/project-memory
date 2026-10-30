@@ -52,6 +52,20 @@ assert.deepEqual(suitesFor(['journal.mjs', 'memory.test.mjs']), ['journal.test.m
 assert.equal(suitesFor(['harness.mjs']).length, ALL.length);
 assert.deepEqual([...changedLines('@@ -3 +3,2 @@\n@@ -9,0 +11 @@\n')], [3, 4, 11]);
 assert.deepEqual(span('a\nbb\nc', 'b\nc'), [2, 3]);
+// Why a mutate.mjs run failed: its known failure lines; failing that (a crash, a spawn error, a timeout) the error or the output's tail, so a non-zero exit never reads as ok.
+export const failures = (r, known) => {
+  if (r.status === 0 && !r.error) return [];
+  const lines = ((r.stdout ?? '') + (r.stderr ?? '')).split('\n').filter((l) => l.trim());
+  const hit = lines.filter((l) => known.test(l));
+  return hit.length ? hit : [r.error ? String(r.error.message ?? r.error) : `exit ${r.status}`, ...lines.slice(-5)];
+};
+{
+  const k = / SURVIVED\b/;
+  assert.deepEqual(failures({ status: 0, stdout: 'x SURVIVED' }, k), []);
+  assert.deepEqual(failures({ status: 1, stdout: 'a\nb SURVIVED\n' }, k), ['b SURVIVED']);
+  assert.deepEqual(failures({ status: 1, stdout: '', stderr: 'boom\n' }, k), ['exit 1', 'boom']);
+  assert.deepEqual(failures({ status: null, error: new Error('spawn failed'), stdout: '', stderr: '' }, k), ['spawn failed']);
+}
 assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11])]])), 'a.mjs:3,4;b.mjs:11');
 // mutate.mjs --list --auto-lines names the automatic mutants of a line, each once, running nothing.
 {
@@ -131,20 +145,23 @@ for (const [file, [, mutants]] of Object.entries(suites)) {
 if (on.length) {
   console.log(`     ${on.length} mutant(s) on the changed lines ...`);
   const r = spawnSync(process.execPath, [join(repo, 'mutate.mjs'), ...on], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
-  step('the mutants on the changed lines', r.status === 0 ? [] : (r.stdout + r.stderr).split('\n').filter((l) => / (SURVIVED|TIMED OUT|MUTATION DID NOT APPLY|FIND-TEXT NOT UNIQUE)\b|fails unmutated/.test(l)));
+  step('the mutants on the changed lines', failures(r, / (SURVIVED|TIMED OUT|MUTATION DID NOT APPLY|FIND-TEXT NOT UNIQUE)\b|fails unmutated/));
 } else console.log('ok   the mutants on the changed lines (none there)');
 // 5b. The automatic mutants on the changed lines; --no-auto skips them.
-if (autoLines.size && !process.argv.includes('--no-auto')) {
+if (process.argv.includes('--no-auto')) console.log('ok   the automatic mutants on the changed lines: skipped (--no-auto)');
+else if (!autoLines.size) console.log('ok   the automatic mutants on the changed lines (none there)');
+else {
   const arg = autoArg(autoLines), run = (...a) => spawnSync(process.execPath, [join(repo, 'mutate.mjs'), ...a, '--auto-lines', arg], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
-  const n = run('--list').stdout.split('\n').filter(Boolean).length;
-  console.log(`     ${n} automatic mutant(s) on the changed lines ...`);
+  const l = run('--list'), listed = failures(l, /$^/);
+  if (listed.length) step('the automatic mutants on the changed lines (listing them)', listed);
+  const n = l.stdout.split('\n').filter(Boolean).length;
+  console.log(`     ${n} automatic mutant(s) on the changed lines (ignored ones included) ...`);
   if (n) {
-    const out = (r => r.stdout + r.stderr)(run()).split('\n');
-    const stillborn = out.filter((l) => / STILLBORN\b/.test(l));
-    step('the automatic mutants on the changed lines', out.filter((l) => / (SURVIVED|TIMED OUT|MUTATION DID NOT APPLY)\b/.test(l)));
-    if (stillborn.length) { console.log(`note ${stillborn.length} automatic mutant(s) stillborn (they do not compile):`); for (const s of stillborn.slice(0, 15)) console.log(`       ${s}`); }
-  }
-} else console.log('ok   the automatic mutants on the changed lines (none there or --no-auto)');
+    const r = run(), out = (r.stdout + r.stderr).split('\n'), stillborn = out.filter((x) => / STILLBORN\b/.test(x));
+    step('the automatic mutants on the changed lines', failures(r, / (SURVIVED|TIMED OUT|MUTATION DID NOT APPLY)\b|fails unmutated/));
+    if (stillborn.length) { console.log(`note ${stillborn.length} automatic mutant(s) stillborn (they do not compile):`); for (const x of stillborn.slice(0, 15)) console.log(`       ${x}`); }
+  } else console.log('ok   the automatic mutants on the changed lines (none selected)');
+}
 if (bare.length) {
   console.log(`note ${bare.length} changed code line(s) no mutant covers: a rule there wants a test and a mutant (CONTRIBUTING)`);
   for (const b of bare.slice(0, 15)) console.log(`       ${b}`);
