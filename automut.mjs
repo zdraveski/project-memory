@@ -135,11 +135,11 @@ export function mutants(file, src, lines) {
 }
 
 // automut-ignore.txt, `<id> <reason>` a line: the survivors no test could
-// tell from the real code. A line of another shape is an error, not an id
-// silently dropped.
+// tell from the real code. Blank and # lines are skipped; a line of another
+// shape is an error, not an id silently dropped.
 export function ignored(text) {
   const out = new Map();
-  for (const l of (text ?? '').split('\n').map((x) => x.trim()).filter(Boolean)) {
+  for (const l of (text ?? '').split('\n').map((x) => x.trim()).filter((x) => x && !x.startsWith('#'))) {
     const m = /^([0-9a-f]{12}) +(\S.*)$/.exec(l);
     if (!m) throw new Error(`automut-ignore.txt: not "<id> <reason>": ${l}`);
     out.set(m[1], m[2]);
@@ -158,6 +158,9 @@ assert.deepEqual(ops('const f = (a) => a >= 10 ?? true;\n'), ['boundary >=->>', 
 // an id survives an edit elsewhere
 const one = mutants('t.mjs', 'x = a === b;\n')[0].id, two = mutants('t.mjs', '// new\n\nx = a === b;\n')[0].id;
 assert.equal(one, two);
+// two copies of a line, and two matches on one line, are told apart
+assert.equal(new Set(mutants('t.mjs', 'f(x);\nf(x);\n').map((m) => m.id)).size, 2);
+assert.equal(new Set(mutants('t.mjs', 'x = a === b || c === d;\n').filter((m) => m.op === 'equality').map((m) => m.id)).size, 2);
 // the label
 assert.match(mutants('t.mjs', 'x = a === b;\n')[0].label, /^auto equality t\.mjs:1 === -> !==$/);
 // the masker: a hash-bang, ${} nested in a template, {} inside a ${}, a / after ` divides, a / in a class, a comment
@@ -165,4 +168,7 @@ assert.equal(mask("#!x\na = `t${b ? `u${c}` : {d}}v` / 2 + /[/]x/.test(e); // it
 // the ignore list
 assert.deepEqual([...ignored('0123456789ab a log line only\n\n')], [['0123456789ab', 'a log line only']]);
 assert.equal(ignored(null).size, 0);
+// a # header, blank lines and CRLF ends are skipped
+assert.equal(ignored('# header\n0123456789ab why\n').size, 1);
+assert.deepEqual([...ignored('0123456789ab why\r\n\r\n   \r\n')], [['0123456789ab', 'why']]);
 assert.throws(() => ignored('0123 too short\n'), /not "<id> <reason>"/);
