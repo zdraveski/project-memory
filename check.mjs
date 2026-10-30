@@ -52,8 +52,8 @@ assert.deepEqual(span('a\nbb\nc', 'b\nc'), [2, 3]);
 // mutate.mjs --list --auto-lines names the automatic mutants of a line, each once, running nothing.
 {
   const n = readFileSync(join(repo, 'store.mjs'), 'utf8').split('\n').findIndex((l) => l.includes(' === ')) + 1;
-  const listed = spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--auto-lines', `store.mjs:${n}`], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
-  assert.ok(listed.includes(`auto equality store.mjs:${n} === -> !==`), listed.join('\n'));
+  const r = spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--auto-lines', `store.mjs:${n}`], { encoding: 'utf8' }), listed = r.stdout.split('\n').filter(Boolean);
+  assert.ok(listed.includes(`auto equality store.mjs:${n} === -> !==`), `exit ${r.status}\n${listed.join('\n')}\n${r.stderr}`);
   assert.equal(new Set(listed).size, listed.length);
 }
 
