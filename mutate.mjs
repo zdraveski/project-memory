@@ -14,6 +14,7 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'journal.mjs', 'co
 
 export const suites = {
   'store.mjs': ['store.test.mjs', {
+    'a CRLF block read to its first line': ['\\\\S.*\\\\r?(?:\\\\n|$))+)`', '\\\\S.*(?:\\\\n|$))+)`'],
     "the case key folds as JavaScript does": ["    if (names.has(t) || !low.has(t.toLowerCase())) return t;\n", "    return process.platform === 'win32' ? t.toLowerCase() : t;\n"],
     "the case key matches without asking the disk": ["try { if (id(n) === me) return n; } catch {}", "return n;"],
     "a line in another case is not the note's": ["    for (const n of low.get(t.toLowerCase()) ?? []) {", "    for (const n of []) {"],

@@ -190,8 +190,9 @@ export function front(text) {
   // side below (`[ \t]+-?[ \t]*`, `[ \t]+#`), for the same reason.
   const get = (re) => ((head.match(re) || [])[1] || '').trim();
   // A YAML block value (`description: >-`, a list under `superseded-by:`):
-  // its indented lines. Read as the line itself, a hook said `>-`.
-  const block = (key) => (head.match(new RegExp(`^[ \\t]*${key}:(?:[ \\t]*(?:[>|][-+]?|[-+]))?[ \\t\\r]*\\n((?:[ \\t]+(?:-[ \\t]*)?\\S.*(?:\\n|$))+)`, 'm'))?.[1] ?? '')
+  // its indented lines. Read as the line itself, a hook said `>-`. CRLF too:
+  // `.` stops at the \r, and only the first line was read (review, 2026-10-30).
+  const block = (key) => (head.match(new RegExp(`^[ \\t]*${key}:(?:[ \\t]*(?:[>|][-+]?|[-+]))?[ \\t\\r]*\\n((?:[ \\t]+(?:-[ \\t]*)?\\S.*\\r?(?:\\n|$))+)`, 'm'))?.[1] ?? '')
     .split('\n').map((l) => l.trim().replace(/^-[ \t]*/, '')).filter(Boolean);
   // Valid YAML all: quoted either way, a `# comment` after it, any case
   // (`tier: "hot"`, `tier: Hot`). Read only bare, the pin aged out.

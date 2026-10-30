@@ -367,6 +367,9 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   const f6 = front('---\nsuperseded-by:\nname: next\n---\n');
   ok(f1.tier === 'hot' && f1.type === 'feedback' && f2.tier === 'hot' && f3.superseded === 'b.md' && f4.superseded === 'c.md' && f5.desc === 'folded line one and two' && f6.superseded === '' && f6.name === 'next',
     `frontmatter is read in every YAML spelling (got ${JSON.stringify([f1, f2, f3, f4, f5, f6].map((f) => [f.tier, f.type, f.superseded, f.desc]))})`);
+  // Saved CRLF, the block is every line still: its first alone was read (review, 2026-10-30).
+  const f7 = front('---\r\ndescription: >-\r\n  folded line one\r\n  and two\r\nname: n\r\n---\r\n');
+  ok(f7.desc === 'folded line one and two', `a folded description saved CRLF is read whole (got ${JSON.stringify(f7.desc)})`);
 }
 
 // Round 4. The snapshots keep line endings as written, whatever git is told
