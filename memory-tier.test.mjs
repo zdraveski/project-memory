@@ -559,6 +559,39 @@ spawnSync(process.execPath, ['--require', busy, TOOL, '--stop'], { env, encoding
 ok(existsSync(busy + '.hit'), 'a Stop reading a memory held open finds it busy');
 stop('proj-five');
 ok(existsSync(stamp('proj-five')) && !existsSync(join(five, '.health')), 'a memory held open for one Stop leaves no lasting alarm');
+// The same with a real lock, where the machine holds one: PowerShell opens the
+// file sharing nothing. GitHub's mutate machines do not hold it (2026-10-30),
+// so there it is skipped, and CI's Windows test jobs set REAL_LOCKS to require it.
+if (!quick && process.platform === 'win32') {
+  store('proj-six');
+  const six = join(root, 'proj-six', 'memory');
+  for (const f of ['a.md', 'MEMORY.md']) utimesSync(join(six, f), tenMin, tenMin);
+  writeFileSync(join(root, 'proj-six', 'session.jsonl'), '');
+  stop('proj-six');
+  note('proj-six', 'b');
+  writeFileSync(join(six, 'MEMORY.md'), readFileSync(join(six, 'MEMORY.md'), 'utf8') + '- [b](b.md) — b\n');
+  utimesSync(join(six, 'MEMORY.md'), tenMin, tenMin);
+  const heldSix = join(six, 'a.md');
+  const holder = spawn('powershell', ['-NoProfile', '-Command', [
+    `try { $f = [IO.File]::Open($env:HELD, 'Open', 'Read', 'None') } catch { 'failed ' + $_.Exception.Message; exit }`,
+    `$again = try { [IO.File]::Open($env:HELD, 'Open', 'Read', 'ReadWrite').Close(); 'reopened' } catch { 'refused' }`,
+    `'held ' + $again + ' ' + [IO.DriveInfo]::new([IO.Path]::GetPathRoot($env:HELD)).DriveFormat`,
+    '[Console]::In.ReadToEnd() | Out-Null; $f.Close()'].join('; ')], { stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, HELD: heldSix } });
+  let said = '';
+  const released = new Promise((res) => holder.on('close', res));
+  await new Promise((res) => { holder.stdout.on('data', (b) => { said += b; if (/held|failed/.test(said)) res(); }); released.then(res); });
+  let how = 'opened'; try { readFileSync(heldSix); } catch (e) { how = e.code; }
+  if (['EPERM', 'EBUSY', 'EACCES'].includes(how)) {
+    stop('proj-six');
+    holder.stdin.end(); await released;
+    stop('proj-six');
+    ok(existsSync(stamp('proj-six')) && !existsSync(join(six, '.health')), 'a memory another program really holds open for one Stop leaves no lasting alarm');
+  } else {
+    holder.stdin.end(); await released;
+    if (process.env.REAL_LOCKS === '1') ok(false, `a real lock was asked for and this machine does not hold one (PowerShell: ${said.trim() || 'nothing'})`);
+    else console.log('skip: this machine does not hold a file another program opened');
+  }
+}
 
 // The shared store: any project's Stop tiers it when it changed, under its own
 // smaller budget -- its index is printed into every session of every project.

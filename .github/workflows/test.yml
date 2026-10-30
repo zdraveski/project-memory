@@ -18,6 +18,9 @@ jobs:
           - { os: macos-latest, node: 24 }
           - { os: macos-latest, node: 26 }
     runs-on: ${{ matrix.os }}
+    # Windows holds a file another program opened here; the memory-tier test must prove it.
+    env:
+      REAL_LOCKS: "${{ matrix.os == 'windows-latest' && '1' || '' }}"
     # The six suites take ~3 minutes; a hang would otherwise hold a runner for 6 hours.
     timeout-minutes: 20
     steps:
