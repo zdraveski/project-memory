@@ -258,7 +258,7 @@ writeFileSync(join(root, 'proj-one', 'session.jsonl'), 'x'.repeat(50_000));   //
 const plain = () => spawnSync(process.execPath, [TOOL], { encoding: 'utf8' });
 // No git: an environment made of the throwaway home and an empty PATH, nothing
 // read from this process's.
-const noGit = () => spawnSync(process.execPath, [TOOL], { env: { HOME: home, USERPROFILE: home, PATH: '' }, encoding: 'utf8' });
+const noGit = () => spawnSync(process.execPath, [TOOL], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
 writeFileSync(join(root, 'proj-two', 'session.jsonl'), '');
 const stop = (proj = 'proj-one') => spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8',
   input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, proj, 'session.jsonl'), session_id: 'tst' }) });

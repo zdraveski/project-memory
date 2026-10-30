@@ -207,7 +207,7 @@ r = run(['search', '--store', dir, '--', '--no-verify', '--all']);
 ok(r.status === 0 && /[\\/]hook-rule\.md$/m.test(r.stdout) && /; --all searches every project$/m.test(r.stdout), `words after -- are searched, never read as options (got ${r.stdout})`);
 unlinkSync(join(dir, 'hook-rule.md'));
 // Without git, history says so, not "spawnSync git ENOENT".
-r = spawnSync(process.execPath, [CLI, 'history', 'deploy-notes', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '' }, encoding: 'utf8' });
+r = spawnSync(process.execPath, [CLI, 'history', 'deploy-notes', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
 ok(r.status === 1 && /git is not installed/.test(r.stdout), `history without git says git is not installed (got ${r.stdout.trim()})`);
 // No command (the skill run with no arguments) is status.
 r = cli('--session', 'nobody');
@@ -445,7 +445,7 @@ writeFileSync(join(packDir, 'pack-dead.idx'), 'x');
 ok(/^ok +1 pack index file\(s\) [^\n]*have no pack[^\n]*pack-dead\.idx$/m.test(cli('doctor').stdout), 'doctor: an index a repack left with no pack is named');
 // No git is a setup the README allows: said, not a problem. Snapshots off say
 // what is lost; failing ones come with what to do.
-r = spawnSync(process.execPath, [CLI, 'doctor'], { env: { HOME: home, USERPROFILE: home, PATH: '' }, encoding: 'utf8' });
+r = spawnSync(process.execPath, [CLI, 'doctor'], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
 ok(/^ok +git is not installed: everything works except/m.test(r.stdout), `doctor: no git is said, not a problem (got ${r.stdout})`);
 writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, failures: 0, off: 'git is not installed' }));
 ok(/^ok +snapshots: off, git is not installed: everything else works/m.test(cli('doctor').stdout), 'doctor: snapshots off are said, not a problem');
