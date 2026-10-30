@@ -30,7 +30,10 @@ Beyond the suites:
   covers, and after a change to a hook's code it fuzzes for 20 seconds.
   Seconds for most files, a minute or two after a change to `memory.mjs` or
   `store.mjs`. CI runs it on every push, where nothing has changed and it
-  takes a second.
+  takes a second. To run it before every commit of yours:
+  `printf '#!/bin/sh\nexec node check.mjs\n' > .git/hooks/pre-commit`.
+  TypeScript's checker (`tsc --checkJs`) was tried on the hooks: 49 reports
+  with strict mode off, 775 with it on, no bug among them, so it is not used.
 - `node fuzz.mjs [seconds]` sends random, hostile conversations and notes
   through the real hooks (a BOM, CRLF, half an emoji, a quoted `forget`,
   `<private>` text, a clock moving between time zones) and checks what must
@@ -91,14 +94,46 @@ they finish.
   `settings.json`, copy the whole environment, or connect to anything. The
   plugin directory's security scan holds a plugin that does, and it reads
   every file, tests included.
+- Write the test first and watch it fail on the old code; before changing
+  a rule, find every test and caller that uses it. One change a commit.
+
+### What bit before
+
+Read this before writing a rule or its test. Each line cost a bug or a
+false test here.
+
+- **Text.** A file may start with a BOM, and end its lines with CRLF, a lone
+  CR, U+2028 or U+0085. A cut can leave half an emoji: written, it is
+  U+FFFD, and it no longer matches what it was cut from. NTFS keeps the
+  Kelvin sign and `k` apart; a case fold does not.
+- **Paths.** Windows spells one folder in any case: compare through `same`
+  or `pathKey`. Resolve before comparing: `<projects>/../x` is not in the
+  projects folder. On macOS the cwd comes back as `/private/var` for
+  `/var`. A path given may be relative, or reached through a link.
+- **Time.** A day is the user's local day. GitHub's machines run in UTC,
+  where local midnight and UTC midnight agree: a test of the difference
+  sets `TZ` itself. The clock can move to another zone between two Stops,
+  and every minute read again moves with it.
+- **The user's words.** The skill quotes what is typed: `'forget'` and
+  `"forget"` are `forget`. `<private>` comes in capitals, with attributes,
+  or never closed; `<private-session>` marks the whole conversation.
+- **Tests.** A word or a date a fixture uses may be one a later check
+  searches for: pick one nothing else uses. A small transcript is read
+  whole, and a rule that matters only on a partial read needs 600 KB before
+  its turn. Output captured in-process skips the UTF-8 a pipe would apply.
+  Wait for the event, not a fixed time.
+- **Processes.** `process.exit()` can cut a pipe's output short on macOS:
+  set `process.exitCode`.
 
 ## Sending a change
 
-Open a pull request against `master`. Run the six suites first, and
-`node mutate.mjs` if you changed a rule; CI runs the suites on every platform.
-Leave the version number alone, and describe the change under an
-`## Unreleased` heading at the top of `CHANGELOG.md` (add the heading if it
-isn't there), in plain words for someone who uses the plugin.
+Open a pull request against `master`. Run `node check.mjs` first, and
+`node mutate.mjs` if you changed a rule; CI runs the suites and a minute of
+fuzz on every platform. Have the change reviewed from its diff alone, by
+someone (or an agent) who has not heard why you made it. Leave the version
+number alone, and describe the change under an `## Unreleased` heading at
+the top of `CHANGELOG.md` (add the heading if it isn't there), in plain
+words for someone who uses the plugin.
 
 ## Releasing
 
@@ -107,8 +142,11 @@ The maintainer's steps:
 1. Bump `version` in `.claude-plugin/plugin.json`, and turn `## Unreleased`
    in `CHANGELOG.md` into the version's heading.
 2. Run `claude plugin validate . --strict`. It should find nothing to report.
-3. Push to `master` and wait for CI to pass on every job.
-4. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release.
+3. Run `node fuzz.mjs 600`, and review the whole repository, not just the
+   last change.
+4. Push to `master`, start the `mutate` workflow by hand (every mutant), and
+   wait for it and CI to pass on every job.
+5. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release.
 
 ## The author's setup
 
