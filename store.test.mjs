@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER, inProjects, transcriptKey } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf } = await import('./store.mjs');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const root = join(home, '.claude', 'projects');
@@ -210,6 +210,11 @@ ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !r
   let got; try { got = storeOf({ transcript_path: join('C--rel', 's.jsonl') }); } finally { process.chdir(was); }
   ok(isAbsolute(got), `a relative transcript path names an absolute store (got ${got})`);
 }
+
+// A list file (private conversations, forgotten keys, a journal's folders) is
+// its lines as written: an editor's CRLF or a space left after one is still
+// the line, and a blank one is none.
+ok(listOf(' a1 \r\n\r\n\tb2\n  \n').join() === 'a1,b2' && listOf(null).length === 0, `a list file is its trimmed, non-blank lines (got ${JSON.stringify(listOf(' a1 \r\n\r\n\tb2\n  \n'))})`);
 
 // A line made for a memory no index names reads back, and its hook ends whole.
 const made = pointerLine('[draft] plan.md', 'a'.repeat(139) + '\u{1F600} and more');

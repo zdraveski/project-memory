@@ -225,6 +225,8 @@ export const gitWhy = (e) => (e.code === 'ENOENT' && String(e.syscall).startsWit
 
 // A file's text, or null when there is none: what replaceIfUnchanged compares.
 export const raw = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
+// A list file's lines, trimmed (an editor's CRLF, a space left after one), none blank.
+export const listOf = (text) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
 // Local time as `2026-10-27 01:07`, by hand: toLocaleString('sv-SE') loads
 // ICU's locale data on its first call, 26-34 ms of a ~135 ms Stop (profiled

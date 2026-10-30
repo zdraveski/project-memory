@@ -6,7 +6,7 @@ import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, f
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock } from './store.mjs';
+import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock } from './store.mjs';
 
 export const JOURNAL = 'journal';
 export const J_ASK = 2000;     // chars of what was asked
@@ -53,8 +53,6 @@ function each(ds, fn) {
   for (const d of ds) try { fn(d); } catch (e) { bad = e; }
   if (bad) throw bad;
 }
-// A list file's lines, trimmed (an editor's CRLF, a space left after one), none blank.
-const listOf = (text) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
 // A path inside the turn's folder reads shorter relative to it. In any case
 // only where the disk ignores case (Windows, macOS): on Linux /home/USER is

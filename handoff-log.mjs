@@ -22,7 +22,7 @@ import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, rea
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, pathKey, transcriptKey, raw, inProjects } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, pathKey, transcriptKey, raw, listOf, inProjects } from './store.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
@@ -563,7 +563,7 @@ export function hushed(dir, s, mark = false, list = QUIET, prune = (have) => hav
     // CRLF too: a tag with a \r left over matched no conversation, and a marked
     // one was written again.
     let before = null; try { before = readFileSync(p, 'utf8'); } catch {}
-    const have = (before ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const have = listOf(before);
     if (!mark || have.includes(s)) return have.includes(s);
     // By rename: written in place, a hook killed mid-write forgot every mark.
     // Again, from the text read, when another wrote first.
@@ -696,7 +696,7 @@ export const unsay = (dir, gone) => put(dir, [], gone);
 // (journal.mjs writes it; an older line is its key alone). Trimmed: an
 // editor's CRLF, or a space left after a line, is still the line.
 export const FORGOTTEN = join('journal', '.forgotten');
-export const forgotten = (text) => (text ?? '').split(/\r?\n/).map((l) => l.trim().split('\t')).filter(([k]) => k);
+export const forgotten = (text) => listOf(text).map((l) => l.split('\t'));
 
 // Warnings only: the startup line costs every session, so it says nothing
 // here when all is well. The shared store's problems are every project's.

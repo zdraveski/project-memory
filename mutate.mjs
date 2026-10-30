@@ -13,6 +13,8 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'journal.mjs', 'co
 
 const suites = {
   'store.mjs': ['store.test.mjs', {
+    'a list line kept with its spaces and CR': ['split(/\\r?\\n/).map((l) => l.trim()).filter(Boolean);', 'split(/\\r?\\n/).filter(Boolean);'],
+    'a blank list line kept': ['.map((l) => l.trim()).filter(Boolean);', '.map((l) => l.trim());'],
     "a null superseded-by is a replacement": ["return /^(?:null|Null|NULL|~|#(?:\\s.*)?)$/.test(p) ? '' : p;", "return p;"],
     "a comment with no space before it kept": ["v.replace(/(?:^|[ \\t])#.*$/, '')", "v.replace(/[ \\t]#.*$/, '')"],
     'a value before trailing blanks read lazily': ["get(/^name:[ \\t]*(.*)$/m)", "get(/^name:[ \\t]*(.*?)[ \\t\\r]*$/m)"],
@@ -232,7 +234,7 @@ const suites = {
     "an exported path redacted as a key": ["&& !arg(v) && !code(v) && !counted(a ?? b, v) ?", "&& !code(v) && !counted(a ?? b, v) ?"],
     "an exported name read as words backtracks": ["([A-Za-z_]\\w{0,100})=", "((?:[A-Za-z0-9]+_)*(?:key|secret|token|password|passwd)(?:_[A-Za-z0-9]+)*)="],
     "a password with no verb saved": ["[/\\b((?:password|passwd)\\s{1,3})", "[/\\b(NEVER(?:password|passwd)\\s{1,3})"],
-    "a CRLF list of private conversations misread": [".split(/\\r?\\n/).map((l) => l.trim())", ".split('\\n')"],
+    "a CRLF list of private conversations misread": ["const have = listOf(before);", "const have = (before ?? '').split('\\n').filter(Boolean);"],
     "an IDE note before the words keeps it from being an ask": ["\n  .replace(/^(?:\\s*<(?!private|pasted)(?=[A-Za-z]\\w{0,62}[_-])([A-Za-z][\\w-]{0,63})(?=[\\s>])[^>]{0,2000}>[\\s\\S]*?<\\/\\1>)+/i, '')", ""],
     "a plain element stripped as a harness tag": ["(?=[A-Za-z]\\w{0,62}[_-])", ""],
     "a capital PRIVATE-SESSION stripped as a harness tag": [")+/i, '').trim();", ")+/, '').trim();"],
@@ -372,7 +374,7 @@ const suites = {
     'private marks kept for 50': ['have.slice(-999)', 'have.slice(-49)'],
     "a BOM hides the first shared line": ["index.replace(/^\\uFEFF/, '')", "index"],
     'CRLF entries unparseable':['(.*?)\\r?\\n  \\*\\*did:\\*\\* (.*?)\\r?$', '(.*)\\n  \\*\\*did:\\*\\* (.*)$'],
-    'forget undone by a padded line': [".map((l) => l.trim().split('\\t'))", ".map((l) => l.split('\\t'))"],
+    'forget undone by a padded line': ["listOf(text).map((l) => l.split('\\t'))", "(text ?? '').split('\\n').filter(Boolean).map((l) => l.split('\\t'))"],
     'a forgotten exchange read again goes back into handoff.md': ['fresh.filter((t) => !out.has(t.at) && ', 'fresh.filter((t) => '],
     'a forgotten exchange back after a time-zone change': [' && !keys.has(t.id))', ')'],
     "a forgotten exchange kept out of another conversation's handoff": ['.filter(([, t]) => t && pathKey(t) === me)', ''],
