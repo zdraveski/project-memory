@@ -132,6 +132,26 @@ ok(/edited this turn:\*\* n\.ipynb/.test(doc2), 'a notebook edit is listed, from
 ok(/\*\*asked\*\* \S+ \S+(?: \[\w+\])?: second turn\n  \*\*did:\*\* cut here/.test(doc2) && doc2.indexOf('**asked**') < doc2.indexOf('cut mid-turn'),
   'the gate writes the handoff entry itself, before the note: one writer, no race');
 
+// A turn that ran forget, cut mid-turn: its note says nothing of it, as its
+// handoff entry and journal entry don't. Its last words quoted what forget
+// listed, into handoff.md and the note printed after the compaction (review,
+// 2026-10-30).
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+const forgetCall = (id, command) => ({ type: 'tool_use', id, name: 'Bash', input: { command } });
+const forgetTurn = [user('forget what I said about the walrus'), asst('', 950_000, 'tool_use', [forgetCall('b1', 'node "C:/p/memory.mjs" forget walrus')]),
+  rec('user', [{ type: 'tool_result', tool_use_id: 'b1', content: '1 match: the walrus vault code is 7741' }]),
+  asst('One entry matches: "the walrus vault code is 7741". Removing it.', 965_000, 'tool_use', [edit('C:\\repo\\walrus-vault.md')])];
+write(...forgetTurn);
+ok(gate().code === 0, 'over the ceiling, mid-turn, after a forget');
+const doc3 = readFileSync(join(dir, 'handoff.md'), 'utf8'), note3 = doc3.slice(doc3.indexOf('**cut mid-turn**'));
+ok(note3.includes('**cut mid-turn**') && !/walrus|7741/.test(note3), `a turn that ran forget is cut mid-turn without its ask, its last words or its files (got ${note3})`);
+// The next turn is its own again: its ask, its words and its files are shown.
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(...forgetTurn, asst('Removed.', 966_000, 'end_turn'), user('now draft the otter plan'), asst('drafting the otter plan', 967_000, 'tool_use', [edit('C:\\repo\\otter.md')]));
+ok(gate().code === 0, 'over the ceiling, mid-turn, the turn after a forget');
+const doc4 = readFileSync(join(dir, 'handoff.md'), 'utf8'), note4 = doc4.slice(doc4.indexOf('**cut mid-turn**'));
+ok(/: now draft the otter plan\n {2}\*\*last said:\*\* drafting the otter plan/.test(note4) && /edited this turn:\*\* otter\.md/.test(note4), `the turn after a forget is noted as itself (got ${note4})`);
+
 // A store whose handoff cannot be written still lets the compaction run, and says why.
 // Through a symlinked folder the gate still runs: --state prints what it sees.
 symlinkSync(dirname(GATE), join(home, 'linked-hooks'), 'junction');

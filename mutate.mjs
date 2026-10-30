@@ -82,6 +82,11 @@ export const suites = {
     "no git read as spawnSync ENOENT": ["(e.code === 'ENOENT' && String(e.syscall).startsWith('spawn') ? 'git is not installed'\n  : ", "("],
   }],
   'compact-gate.mjs': ['compact-gate.test.mjs', {
+    "a forget turn not seen by the gate": ["FORGETS.test(String(b.input?.command ?? ''))) s.forgot = true;", "false) s.forgot = true;"],
+    "a forget turn's cut note keeps its ask": ["${s.forgot ? '[private]' : clip(s.ask, 240)}", "${clip(s.ask, 240)}"],
+    "a forget turn's cut note keeps its last words": ["s.hidden || s.forgot ? '[private]' : answer(", "s.hidden ? '[private]' : answer("],
+    "a forget turn's cut note keeps its files": ['const quiet = s.hidden || s.forgot || PRIVATE', 'const quiet = s.hidden || PRIVATE'],
+    "a forget carried into the next turn's note": ['s.hidden = false; s.forgot = false;', 's.hidden = false;'],
     "a deferral with no reader exits 1": ["process.stderr.on('error', () => {});", ""],
     "a queued prompt in blocks read as a string in the note": ["const q = norm(queuedText(r));", "const q = norm(String(r.attachment.prompt ?? ''));"],
     "a file that opens with a summary shows its private turn": ["else if ((!r.isCompactSummary || !s.ask) && /<", "else if (!r.isCompactSummary && /<"],

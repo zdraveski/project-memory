@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile } from './handoff-log.mjs';
+import { readTail, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -103,7 +103,7 @@ function state(path, { ask = true } = {}) {
 }
 
 function walk(raw) {
-  const s = { ctx: 0, midTurn: false, ask: '', raw: '', said: '', hidden: false, at: '', running: new Map(), edited: new Set(), launchers: new Set() };
+  const s = { ctx: 0, midTurn: false, ask: '', raw: '', said: '', hidden: false, forgot: false, at: '', running: new Map(), edited: new Set(), launchers: new Set() };
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
@@ -126,7 +126,7 @@ function walk(raw) {
       // after a private ask it was shown under the next one.
       let ask = prompt(r, t);
       if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
-      if (ask) { s.ask = ask; s.raw = unwrap(norm(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
+      if (ask) { s.ask = ask; s.raw = unwrap(norm(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.forgot = false; s.edited.clear(); }
       // Not in what the harness quotes: an agent's report quoting the tag hid
       // the last words said. Nor in a compaction summary, a recap: one that
       // named the tag hid them, and the nudge, for the rest of the turn.
@@ -157,6 +157,8 @@ function walk(raw) {
       }
       for (const b of c) {
         if (b?.type === 'tool_use' && /^(Bash|Agent|Task)$/.test(b.name)) s.launchers.add(b.id);
+        // A turn that ran forget, as the handoff reads one (its Bash or PowerShell commands).
+        if (b?.type === 'tool_use' && /^(Bash|PowerShell)$/.test(b.name) && FORGETS.test(String(b.input?.command ?? ''))) s.forgot = true;
         const file = editedFile(b);
         // The name, not the path: the path names the user's folders, and the
         // project says where it is.
@@ -175,13 +177,15 @@ function note(payload, s) {
   // Each item clipped like an entry: a path can hold a key, a tag or a marker.
   const running = [...s.running].map(([id, p]) => `${clip(id, 40)} → ${clip(p, 200)}`).join('; ') || 'none';
   // A private turn's files are its own too: their names said what it was about.
-  const quiet = s.hidden || PRIVATE.test(userText(s));
+  // A turn that ran forget says nothing, as its handoff and journal entries
+  // don't: its last words quoted what forget listed (review, 2026-10-30).
+  const quiet = s.hidden || s.forgot || PRIVATE.test(userText(s));
   // Capped like the running tasks: a wide refactor turn listed tens of KB.
   const edited = quiet ? '[private]' : clip(newest([...s.edited], LIST_MAX, 'earlier'), 1200) || 'none';
   const t = tag(payload.session_id);
   // Tagged, so a parallel session's note is never taken for this one's.
-  return `- **cut mid-turn**${t ? ` [${t}]` : ''} ${local()} at ${Math.round(s.ctx / 1000)}k tokens, asked ${s.at}: ${clip(s.ask, 240)}\n` +
-    `  **last said:** ${s.hidden ? '[private]' : answer(userText(s), s.said, 400) || '(nothing yet: the turn was running tools)'}\n  **still running (each output file holds its result; a rerun repeats the work):** ${running}\n  **edited this turn:** ${edited}`;
+  return `- **cut mid-turn**${t ? ` [${t}]` : ''} ${local()} at ${Math.round(s.ctx / 1000)}k tokens, asked ${s.at}: ${s.forgot ? '[private]' : clip(s.ask, 240)}\n` +
+    `  **last said:** ${s.hidden || s.forgot ? '[private]' : answer(userText(s), s.said, 400) || '(nothing yet: the turn was running tools)'}\n  **still running (each output file holds its result; a rerun repeats the work):** ${running}\n  **edited this turn:** ${edited}`;
 }
 
 function inflight(payload, s) {
