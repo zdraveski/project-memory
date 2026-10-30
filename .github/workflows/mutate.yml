@@ -22,7 +22,9 @@ jobs:
       - id: list
         env:
           MACHINES: ${{ inputs.machines }}
-        run: node -e "const n = Math.min(256, Math.max(1, Math.floor(Number(process.env.MACHINES)) || 20)); console.log('shards=' + JSON.stringify(Array.from({ length: n }, (_, i) => i + 1)))" >> "$GITHUB_OUTPUT"
+        # A block: `{ length: n }` in a plain value is YAML's `key: value`.
+        run: |
+          node -e "const n = Math.min(256, Math.max(1, Math.floor(Number(process.env.MACHINES)) || 20)); console.log('shards=' + JSON.stringify(Array.from({ length: n }, (_, i) => i + 1)))" >> "$GITHUB_OUTPUT"
   mutate:
     needs: plan
     strategy:
