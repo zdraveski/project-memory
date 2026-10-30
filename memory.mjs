@@ -3,7 +3,7 @@
 // memory, see a store's state, take one back from the snapshots, share one with
 // every project, check the hooks are wired. The hooks write on their own; this
 // writes only when told to, under the same lock.
-const USAGE = `node memory.mjs <command> [--store <dir> | --shared]
+const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <id>]
   search <terms...> [--since D] [--until D] [--all] [--limit N]
                                           memories (name, description, then body; archive included)
                                           and the journal (asked, then changed and ran, then answered),
@@ -23,8 +23,9 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared]
   promote <memory>                        move it to the shared store, for every project
   doctor                                  wiring, live copy, Stop hook, locks, git
 The store is this session's own (outside a session: the cwd's project, or the nearest
-folder above it with one) unless --store or --shared says otherwise. After --, every
-word is a term, one that starts with -- too.`;
+folder above it with one) unless --store or --shared says otherwise. --session names
+the conversation asking (the skill passes it): its store is this session's, and doctor
+reads its transcript. After --, every word is a term, one that starts with -- too.`;
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, unlinkSync, realpathSync } from 'node:fs';
 import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
@@ -36,14 +37,15 @@ import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
 // (handoff-log's deploy gate test, 2026-10-28).
-let entries, forget, summary;
-try { ({ entries, forget, summary } = await import('./journal.mjs')); }
+let entries, forget, holds, summary;
+try { ({ entries, forget, holds, summary } = await import('./journal.mjs')); }
 catch (e) {
   const why = String(e.message).split('\n')[0];
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: why }); return []; };
   // Said by status too: silent, it read as a store with no journal.
   summary = () => ({ broken: why });
   forget = (dir, terms, o) => ({ matched: entries([dir], o), removed: [] });
+  holds = () => false;
 }
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
@@ -598,6 +600,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
+  // A number, or refused: `--limit ten` was dropped unsaid, and the default
+  // listed. One below 1 is still the default (a test holds it).
+  if (opt('--limit') !== undefined && !/^-?\d+$/.test(opt('--limit'))) { console.log(`--limit takes a number, not ${opt('--limit')}`); process.exit(1); }
   // A session id names a file: anything but an id's characters is ignored.
   if (/^[\w-]{1,100}$/.test(opt('--session') || '')) session = opt('--session');
   const args = [...rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1])), ...given.slice(cut + 1)];
@@ -709,8 +714,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
       else if (!m.length) {
         // The words of a sentence ("the password I pasted yesterday"): the ones no entry holds are why nothing matched.
         // Not when the keys left no entry to hold them: the words were blamed for a key of another store.
-        const left = !named.length || forget(here, [], { ...o, failed: [] }).matched.length > 0;
-        const none = left ? terms.filter((t) => !forget(here, [t], { ...o, failed: [] }).matched.length) : [];
+        // One read, each word tried on it: a look per word read the journal once a word.
+        const all = forget(here, [], { ...o, failed: [] }).matched, left = !named.length || all.length > 0;
+        const none = left ? terms.filter((t) => !all.some((e) => holds(e, t.toLowerCase()))) : [];
         const why = !terms.length || !left ? '' : `: no entry holds ${none.length ? none.map((t) => `"${t}"`).join(', ') : 'every word'}`;
         r = { ok: true, lines: [`nothing in ${here} matches${why}`] };
       } else if (!yes) {

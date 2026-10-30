@@ -399,11 +399,20 @@ export const plain = (s) => s.split('\n')
 // skipped while another hook held the store, then pushed out of the tail by a
 // long next turn, was never written. Bounded: about 32 MB (2 ** 25 let it grow
 // once more, to 128 MB).
+// A turn's ask and answer as handoff.md shows them: one rule for the writer
+// and for latest(), which looks for the last one written. Matched against the
+// turn as read, a turn that ran forget (shown [private]) was never found, and
+// the next Stop read up to four times the transcript, the last 32 MB.
+const shown = (t) => {
+  // A turn that ran forget says nothing, as a private one.
+  const gone = t.ran.some((c) => FORGETS.test(c));
+  return { ask: gone ? '[private]' : clip(t.ask, ASK), did: gone ? '[private]' : answer(userText(t), t.did, DID) };
+};
 function latest(path, since = null) {
   for (let bytes = TAIL; ; bytes *= 4) {
     const { text: tail, whole } = readTail(path, bytes);
     const got = turns(tail);
-    const back = !since || got[0]?.at < since.at || got.some((t) => t.at === since.at && clip(t.ask, ASK) === since.ask && answer(userText(t), t.did, DID) === since.did);
+    const back = !since || got[0]?.at < since.at || got.some((t) => { if (t.at !== since.at) return false; const e = shown(t); return e.ask === since.ask && e.did === since.did; });
     if ((got.length && back) || whole || bytes >= 32e6) { got.whole = whole; return got; }
   }
 }
@@ -623,15 +632,11 @@ export function handoff(input, sink = null) {
     open.did = last.trim();
     if (got.at(-1) !== open) got.push(open);
   }
-  // File names, not paths; none for a private message's turn. Private by what
-  // the user typed, not the ask made of it: a wrapper own() strips, or a
-  // command, hid the tag from the test.
-  const fresh = got.map((t) => {
-    // A turn that ran forget says nothing, as a private one.
-    const gone = t.ran.some((c) => FORGETS.test(c));
-    return { ...t, s, ask: gone ? '[private]' : clip(t.ask, ASK), did: gone ? '[private]' : answer(userText(t), t.did, DID),
-      changed: PRIVATE.test(userText(t)) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) };
-  });
+  // File names, not paths; none for a private message's turn, read by what the
+  // user typed as well as the ask made of it (userText): a wrapper own()
+  // strips, or a command, hid the tag from the ask.
+  const fresh = got.map((t) => ({ ...t, s, ...shown(t),
+    changed: PRIVATE.test(userText(t)) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) }));
   const hush = got.hush === true;
   // Sessions of one project write this file at once, so they take turns: 8 at
   // once lost 22 of 40 turns without the lock (2026-10-26). The model can still

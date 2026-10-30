@@ -1196,6 +1196,25 @@ handoff({ cwd: cwd3, transcript_path: t6, session_id: 'r3tail02' });
 appendFileSync(t6, [user('second ask', { ts: '2026-09-11T09:00:20Z' }), tool_(600_000), asst('second done'), user('third ask', { ts: '2026-09-11T09:00:40Z' }), asst('third done')].join('\n') + '\n');
 handoff({ cwd: cwd3, transcript_path: t6, session_id: 'r3tail02' });
 ok(/\[r3tail02\]: second ask\n  \*\*did:\*\* second done/.test(readFileSync(join(dir3, 'handoff.md'), 'utf8')), 'a skipped turn in the same minute as the last one recorded is still written');
+// The Stop after a turn that ran forget finds that turn's entry as it was
+// written ([private]) and reads no further: matched as read, it was never
+// found, and the read grew to the whole transcript.
+{
+  const t7 = join(dir3, 'r3forg01.jsonl');
+  writeFileSync(t7, [user('old work', { ts: '2026-09-11T10:00:00Z' }), tool_(9_000_000), asst('old done'),
+    user('forget the zebra notes', { ts: '2026-09-11T10:05:00Z' }),
+    rec('assistant', [{ type: 'tool_use', id: 'z1', name: 'Bash', input: { command: 'node "C:/p/memory.mjs" forget zebra --yes' } }], { ts: '2026-09-11T10:05:10Z' }),
+    tool_(600_000), asst('removed the zebra notes')].join('\n') + '\n');
+  handoff({ cwd: cwd3, transcript_path: t7, session_id: 'r3forg01' });
+  appendFileSync(t7, [user('next ask', { ts: '2026-09-11T10:10:00Z' }), asst('next done')].join('\n') + '\n');
+  const realRead = fs.readSync;
+  let read = 0;
+  fs.readSync = function (...a) { const n = realRead.apply(this, a); read += n; return n; };
+  syncBuiltinESMExports();
+  try { handoff({ cwd: cwd3, transcript_path: t7, session_id: 'r3forg01' }); } finally { fs.readSync = realRead; syncBuiltinESMExports(); }
+  ok(read < 4_000_000 && /\[r3forg01\]: next ask/.test(readFileSync(join(dir3, 'handoff.md'), 'utf8')),
+    `the Stop after a forget turn stops reading at that turn's entry (read ${read} bytes of a ${statSync(t7).size}-byte transcript)`);
+}
 // An entry 1.0.4 wrote with its <private> ask raw loses its answer at once.
 section3(`- **asked** ${at4} [oldpriv2]: <private>pw Tr0ub4dor</private> log in\n  **did:** Logged in with Tr0ub4dor\n`);
 c = case3([user('hi again'), asst('hello')]);

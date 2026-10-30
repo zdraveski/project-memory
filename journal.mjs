@@ -279,12 +279,14 @@ function resweep(dir) {
 // that went, fewer when a day kept changing under the write (its keys listed
 // all the same). `keys`: only those entries, the ones a search showed. They go
 // from handoff.md too, which the next startup's briefing prints (R36).
+// An entry holds a word (lower case) when any of its fields does, in any case.
+export const holds = (e, t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.toLowerCase().includes(t));
 export function forget(dir, terms, { since, until, conversation, keys: only, apply = false, failed = [] } = {}) {
   // The keys as a set: looked up in the list once an entry, a range forget of
   // 15,000 entries spent 5 s here.
   const ts = terms.map((t) => t.toLowerCase()), want = only && new Set(only);
   const matched = entries([dir], { since, until, failed }).filter((e) => (!conversation || e.s === conversation) && (!want || want.has(e.key)) &&
-    ts.every((t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.toLowerCase().includes(t))));
+    ts.every((t) => holds(e, t)));
   if (!apply || !matched.length) return { matched, removed: [] };
   const keys = new Set(matched.map((e) => e.key)), f = join(dir, FORGOTTEN), seen = new Map();
   // Listed only while its transcript is on disk: one gone is never read

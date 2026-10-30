@@ -174,6 +174,10 @@ r = cli('search', 'deploy', '--from', '2026-10-27');
 const after = cli('search', 'deploy', '--after=2026-10-28');
 ok(r.status === 1 && r.stdout === 'unknown option --from; help lists the options\n' && after.status === 1 && after.stdout === 'unknown option --after=2026-10-28; help lists the options\n', `an unknown option is refused (got ${r.stdout}${after.stdout})`);
 ok(['--help', '-h', 'help'].every((h) => { const u = cli(h); return u.status === 0 && u.stdout.startsWith('node memory.mjs <command>'); }), '--help and -h print the usage, as help does');
+// A count that is no number is refused, not dropped; the usage names --session.
+const ten = cli('search', 'deploy', '--limit', 'ten');
+ok(ten.status === 1 && ten.stdout === '--limit takes a number, not ten\n' && cli('search', 'deploy', '--limit', '3').status === 0 && /\[--session <id>\]/.test(cli('help').stdout),
+  `--limit ten is refused and the usage names --session (got ${ten.stdout})`);
 // The usage after why, not alone: a misspelt command, one with nothing after it.
 const typo = cli('serach', 'logo'), bare = cli('restore');
 ok(typo.status === 1 && typo.stdout.startsWith('no command "serach"\nnode memory.mjs <command>') && bare.status === 1 && bare.stdout.startsWith('restore needs a word after it\nnode memory.mjs <command>'),
