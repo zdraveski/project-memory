@@ -168,6 +168,8 @@ const suites = {
     "the memory update taken from the Stop payload": ["if (open && !open.frozen && !open.reopened && input.hook_event_name", "if (open && !open.frozen && input.hook_event_name"],
     'journal sink never called': ['if (sink) try { sink(', 'if (false) try { sink('],
     'journal sink throw breaks the handoff': ['if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush: hush && !was }); } catch {}', 'if (sink) sink(dir, input.transcript_path, got, { quiet, hush: hush && !was });'],
+    'a time-zone change lists each turn twice': ['!(whole && me && t.s === me) && ', ''],
+    'a writer with no session id drops the untagged': ['whole && me && t.s === me', 'whole && t.s === me', { full: true }],
     'a private conversation swept at every Stop': ['hush: hush && !was', 'hush'],
     "the nudge's hold never ends": ["else if (pending.ended && ((r.type === 'attachment'", "else if (false && ((r.type === 'attachment'"],
     "the hold ends before the memory update does": ["if (r.type === 'assistant' && r.message?.stop_reason === 'end_turn') pending.ended = true;", "if (r.type === 'assistant') pending.ended = true;"],

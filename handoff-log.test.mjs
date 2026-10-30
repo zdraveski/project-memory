@@ -957,6 +957,26 @@ if (process.platform === 'win32') {
   handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
   ok(!/heron/.test(fdoc()), `an exchange forget took out stays out whatever case its folder is spelt in (got ${fdoc()})`);
 }
+// A clock moved west gives every turn read again another minute. Read whole,
+// a conversation's entries are the ones read now: kept beside them, each turn
+// was listed twice, and the old zone's later-sorting minutes crowded out the
+// newest for hours (round 2's lifecycle audit).
+{
+  const was = process.env.TZ, tw = join(dirF, 'tz.jsonl'), id = 'tzwesttt-1';
+  const at = (i, s = '00') => `2026-10-29T08:${String(i).padStart(2, '0')}:${s}Z`;
+  const turn = (i) => [user(`tapir ${i}`, { ts: at(i) }), asst(`fed tapir ${i}`, { ts: at(i, '30') })].join('\n') + '\n';
+  writeFileSync(tw, Array.from({ length: 10 }, (_, i) => turn(i)).join(''));
+  try {
+    process.env.TZ = 'Europe/Berlin';
+    handoff({ cwd: cwdF, transcript_path: tw, session_id: id });
+    appendFileSync(tw, turn(10));
+    process.env.TZ = 'America/Los_Angeles';
+    handoff({ cwd: cwdF, transcript_path: tw, session_id: id });
+  } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
+  const asks = fdoc().match(/\[tzwesttt\]: tapir \d+/g) ?? [];
+  ok(asks.length === 10 && new Set(asks).size === 10 && asks.includes('[tzwesttt]: tapir 10'),
+    `after a time-zone change a conversation's turns are listed once each, its newest kept (got ${asks.join(', ')})`);
+}
 }
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.

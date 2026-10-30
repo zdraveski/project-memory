@@ -527,7 +527,12 @@ function build(before, fresh, drop = null, me = fresh[0]?.s, whole = false) {
   const uniq = have.filter((t) => last.get(whole1(t)) === t), left = new Map(), gone = new Set();
   for (const f of fresh) left.set(key(f), (left.get(key(f)) ?? 0) + 1);
   for (const t of [...uniq].reverse()) { const n = left.get(key(t)); if (n) { gone.add(t); left.set(key(t), n - 1); } }
-  const kept = uniq.filter((t) => !gone.has(t) && !(t.s === '' && seenBare.has(bare(t))) && !drop?.(t) && !fresh.some((f) => twin(f, t)));
+  // Read whole, the writer's turns are all fresh: an entry of its own left over
+  // is no turn now, as a clock moved to another time zone leaves every minute.
+  // Kept, each turn was listed twice, and the old zone's later-sorting minutes
+  // crowded out the newest (audit, 2026-10-30). Never the untagged: a writer
+  // with no session id is not every entry written before tags.
+  const kept = uniq.filter((t) => !(whole && me && t.s === me) && !gone.has(t) && !(t.s === '' && seenBare.has(bare(t))) && !drop?.(t) && !fresh.some((f) => twin(f, t)));
   const merged = keep([...kept, ...fresh], me);
   if (!merged.length && !(drop && has)) return null;
   // An entry kept from the file is rendered once, for the comparison and the
