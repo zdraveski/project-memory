@@ -954,13 +954,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     // A function, so a `$&` or `$'` in the mutant is text, not a pattern.
     for (const [f, buf] of Object.entries(code)) { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), f === name ? src.replace(from, () => to) : buf); }
     const [testName, ...flags] = args.split(' ');
-    const child = spawn(process.execPath, [join(dir, testName), ...flags], { stdio: 'ignore' });
+    // A control (no mutant) keeps the end of its errors: "fails unmutated" with
+    // no reason sent a GitHub run back blind (2026-10-30). A mutant's are its kill.
+    const child = spawn(process.execPath, [join(dir, testName), ...flags], { stdio: name ? 'ignore' : ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    child.stderr?.on('data', (b) => { err = (err + b).slice(-2000); });
     // A suite cut off by the clock proved nothing: not a kill.
     let late = false;
     const timer = setTimeout(() => { late = true; child.kill(); }, limit);
     // A child a killed suite left behind can still hold the folder: TEMP keeps it.
-    child.on('exit', (status) => { clearTimeout(timer); try { rmSync(dir, { recursive: true, force: true }); } catch {} done(late ? 'TIMED OUT' : status === 0 ? 'SURVIVED' : 'killed'); });
+    child.on('close', (status) => { clearTimeout(timer); try { rmSync(dir, { recursive: true, force: true }); } catch {} if (!name) why[args] = err; done(late ? 'TIMED OUT' : status === 0 ? 'SURVIVED' : 'killed'); });
   });
+  const why = {};
   // Controls run as many at once as the mutants do: a suite that passes alone but
   // fails under that load would kill mutants by timing, not by the rule.
   const pool = async (items, fn) => {
@@ -971,7 +976,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const took = {};
   await pool([...new Set(jobs.map(how))], async (t) => {
     const t0 = Date.now();
-    if (await run(t, undefined, undefined, undefined, 600_000) !== 'SURVIVED') { console.log(`${t} fails unmutated: fix it before the mutants can say anything`); process.exit(1); }
+    if (await run(t, undefined, undefined, undefined, 600_000) !== 'SURVIVED') {
+      const lines = (why[t] ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !/^at /.test(l) && !/^Node\.js v/.test(l));
+      console.log(`${t} fails unmutated: fix it before the mutants can say anything. ${lines.find((l) => /Error\b/.test(l)) ?? lines.at(-1) ?? ''}`.slice(0, 600));
+      process.exit(1);
+    }
     took[t] = Date.now() - t0;
   });
   // Longest suites first, timed by their controls: in file order the last
