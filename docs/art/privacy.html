@@ -1,50 +1,44 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Your privacy</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=block" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=block" rel="stylesheet">
 <link href="style.css" rel="stylesheet">
-<style>
-  .tiles { grid-template-columns: 1fr 1fr; }
-  .tile { display: grid; grid-template-columns: 52px 1fr; column-gap: 18px; align-items: start; }
-  .tile h2 { margin: 2px 0 6px; }
-  .tile .code { font-size: 16px; }
-</style>
 
-<div class="art">
-  <svg class="streaks" viewBox="0 0 1000 560" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
+<div class="art phone">
+  <svg class="streaks" viewBox="0 0 600 760" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
     <defs>
       <linearGradient id="sk" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity="0"/><stop offset=".55" stop-color="#38bdf8" stop-opacity=".6"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient>
       <filter id="bl" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
     </defs>
-    <path d="M560 -20 C 720 70, 860 40, 1020 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
-    <path d="M560 -20 C 720 70, 860 40, 1020 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
-    <path d="M640 -20 C 780 100, 900 90, 1020 30" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
+    <path d="M300 -20 C 420 70, 520 40, 620 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
+    <path d="M300 -20 C 420 70, 520 40, 620 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
+    <path d="M380 -20 C 480 100, 560 90, 620 30" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
   </svg>
   <i class="stars"></i>
   <i class="horizon"></i>
   <svg width="0" height="0" style="position:absolute"><linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></svg>
 
   <div class="eyebrow">Your privacy</div>
-  <h1>What it saves <span class="grad">stays on your computer.</span></h1>
+  <h1>Stays on <span class="grad">your computer.</span></h1>
 
-  <div class="tiles">
-    <div class="glass tile">
+  <div class="items">
+    <div class="glass item">
       <div class="ico"><svg viewBox="0 0 24 24"><path d="M22 12H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM6 16h.01M10 16h.01"/></svg></div>
-      <div><h2>It never goes online</h2><p>Everything it saves stays in Claude Code's own folder on your computer.</p></div>
+      <h2>Never goes online</h2>
     </div>
-    <div class="glass tile">
+    <div class="glass item">
       <div class="ico"><svg viewBox="0 0 24 24"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg></div>
-      <div><h2>Common secrets are blanked out</h2><p>Keys, tokens and passwords you paste become <span class="code">[redacted]</span> before anything is saved.</p></div>
+      <div><h2>Secrets are blanked out</h2><p>Keys and passwords become <span class="code">[redacted]</span></p></div>
     </div>
-    <div class="glass tile">
+    <div class="glass item">
       <div class="ico"><svg viewBox="0 0 24 24"><path d="M10.73 5.08a10.74 10.74 0 0 1 11.2 6.57 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-1.44 2.49"/><path d="M14.08 14.16a3 3 0 0 1-4.24-4.24"/><path d="M17.48 17.5a10.75 10.75 0 0 1-15.42-5.15 1 1 0 0 1 0-.7 10.75 10.75 0 0 1 4.45-5.14"/><path d="m2 2 20 20"/></svg></div>
-      <div><h2>Keep part of a message out</h2><p>Put it between <span class="code">&lt;private&gt;</span> and <span class="code">&lt;/private&gt;</span>, and it isn't saved.</p></div>
+      <div><h2>Keep text out</h2><p>Put it in <span class="code">&lt;private&gt;</span></p></div>
     </div>
-    <div class="glass tile">
+    <div class="glass item">
       <div class="ico"><svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
-      <div><h2>Keep a whole conversation out</h2><p>Type <span class="code">&lt;private-session&gt;</span> in any message, and the conversation stays out of the record.</p></div>
+      <div><h2>Keep a conversation out</h2><p>Type <span class="code">&lt;private-session&gt;</span></p></div>
     </div>
   </div>
 
-  <div class="aside"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>Claude still sees what you write, and your conversation goes to Anthropic as usual.</div>
+  <div class="aside"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>Anthropic still sees your conversation.</div>
 </div>

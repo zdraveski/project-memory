@@ -1,133 +1,52 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>What you get</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=block" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=block" rel="stylesheet">
 <link href="style.css" rel="stylesheet">
 <style>
-  .grid { margin-top: 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .card { display: grid; grid-template-columns: 1fr 138px; grid-template-areas: "ico ill" "txt txt"; padding: 24px 26px 26px; }
-  .card .ico { grid-area: ico; }
-  .card .txt { grid-area: txt; }
-  .card h2 { margin: 2px 0 6px; font: 700 21px/1.25 Inter, sans-serif; letter-spacing: -.01em; }
-  .card p { margin: 0; font-size: 16.5px; line-height: 1.5; color: var(--body); }
-  .note { color: var(--muted); white-space: nowrap; }
-  .ill { grid-area: ill; position: relative; height: 128px; margin: -6px -6px 6px 0; }
+  .note { color: var(--muted); font-weight: 600; }
   .foot { margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap; }
-
-  /* mini pictures: thin glass sheets with text lines */
-  .sheet { position: absolute; border-radius: 10px; padding: 12px 11px; box-sizing: border-box;
-    background: linear-gradient(180deg, rgba(80,125,255,.22), rgba(40,60,150,.12));
-    border: 1px solid rgba(130,170,255,.35); }
-  .sheet i { display: block; height: 5px; border-radius: 3px; margin-bottom: 8px;
-    background: linear-gradient(90deg, rgba(96,165,250,.85), rgba(96,165,250,.35)); }
-  .sheet.lit { border-color: rgba(34,211,238,.75); box-shadow: 0 0 22px rgba(34,211,238,.3), inset 0 0 14px rgba(34,211,238,.1); }
-  .badge { position: absolute; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
-    background: radial-gradient(circle, #0e7490, #0b1440 75%);
-    box-shadow: inset 0 0 0 1.5px var(--cyan), 0 0 18px rgba(34,211,238,.6); }
-  .badge svg { width: 18px; height: 18px; fill: none; stroke: #cffafe; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-
-  .meter { position: absolute; left: 4px; right: 4px; height: 12px; border-radius: 8px;
-    background: rgba(20,30,80,.9); box-shadow: inset 0 0 0 1px rgba(130,170,255,.3); }
-  .meter b { position: absolute; inset: 2px auto 2px 2px; border-radius: 6px;
-    background: linear-gradient(90deg, #22d3ee, #3b82f6 70%, #8b5cf6); box-shadow: 0 0 14px rgba(56,189,248,.7); }
-  .tick { position: absolute; font: 700 13px/1 var(--mono); color: #a5f3fc; }
-  .saved { position: absolute; left: 4px; display: inline-flex; gap: 7px; align-items: center;
-    padding: 7px 11px; border-radius: 99px; font: 700 12.5px/1 Inter, sans-serif; color: #cffafe;
-    background: rgba(34,211,238,.14); border: 1px solid rgba(34,211,238,.55); box-shadow: 0 0 14px rgba(34,211,238,.25); }
-  .saved svg { width: 13px; height: 13px; fill: none; stroke: var(--cyan); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-
-  .hub svg.lines { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .core { position: absolute; left: 44px; top: 39px; width: 50px; height: 50px; border-radius: 50%;
-    display: grid; place-items: center; background: radial-gradient(circle, rgba(34,211,238,.25), #0b1440 72%);
-    box-shadow: inset 0 0 0 1.5px rgba(34,211,238,.8), 0 0 24px rgba(34,211,238,.45); }
-  .core img { width: 34px; }
-  .proj { position: absolute; width: 34px; height: 26px; border-radius: 6px;
-    background: linear-gradient(180deg, rgba(139,92,246,.35), rgba(80,60,180,.2));
-    border: 1px solid rgba(196,181,253,.6); box-shadow: 0 0 12px rgba(139,92,246,.35); }
-  .proj::before { content: ""; position: absolute; left: 3px; top: -6px; width: 14px; height: 6px; border-radius: 3px 3px 0 0;
-    background: rgba(196,181,253,.6); }
 </style>
 
-<div class="art">
-  <svg class="streaks" viewBox="0 0 1000 640" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
+<div class="art phone">
+  <svg class="streaks" viewBox="0 0 600 760" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
     <defs>
       <linearGradient id="sk" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity="0"/><stop offset=".55" stop-color="#38bdf8" stop-opacity=".6"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient>
       <filter id="bl" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
     </defs>
-    <path d="M540 -20 C 700 80, 860 50, 1020 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
-    <path d="M540 -20 C 700 80, 860 50, 1020 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
-    <path d="M630 -20 C 770 110, 900 100, 1020 40" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
+    <path d="M300 -20 C 420 80, 520 50, 620 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
+    <path d="M300 -20 C 420 80, 520 50, 620 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
+    <path d="M380 -20 C 480 110, 560 100, 620 40" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
   </svg>
   <i class="stars"></i>
   <i class="horizon"></i>
   <svg width="0" height="0" style="position:absolute"><linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></svg>
 
   <div class="eyebrow">What you get</div>
-  <h1>What project-memory <span class="grad">does for you.</span></h1>
-  <p class="sub">It works on its own after every reply, and it never goes online.</p>
+  <h1>What it <span class="grad">does for you.</span></h1>
 
-  <div class="grid">
-    <div class="glass card">
+  <div class="items">
+    <div class="glass item">
       <div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/></svg></div>
-      <div class="txt">
-        <h2>Picks up where you left off</h2>
-        <p>A new conversation starts knowing where the last one stopped.</p>
-      </div>
-      <div class="ill">
-        <div class="sheet" style="left:6px;top:8px;width:112px;height:100px"><i style="width:80%"></i><i style="width:60%"></i><i style="width:88%"></i><i style="width:42%;background:linear-gradient(90deg,#22d3ee,#22d3ee);box-shadow:0 0 10px #22d3ee"></i></div>
-        <div class="badge" style="right:2px;bottom:4px"><svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></svg></div>
-      </div>
+      <h2>Picks up where you left off</h2>
     </div>
-
-    <div class="glass card">
+    <div class="glass item">
       <div class="ico"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></div>
-      <div class="txt">
-        <h2>Keeps old versions of your notes</h2>
-        <p>Ask Claude, and an earlier version comes back. <span class="note">(Needs Git.)</span></p>
-      </div>
-      <div class="ill">
-        <div class="sheet" style="left:34px;top:2px;width:92px;height:96px;opacity:.45"></div>
-        <div class="sheet" style="left:20px;top:14px;width:92px;height:96px;opacity:.7"></div>
-        <div class="sheet lit" style="left:6px;top:26px;width:92px;height:96px"><i style="width:80%"></i><i style="width:58%"></i><i style="width:90%"></i><i style="width:46%"></i></div>
-        <div class="badge" style="right:0;top:0"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></div>
-      </div>
+      <h2>Keeps old versions of notes <span class="note">(needs Git)</span></h2>
     </div>
-
-    <div class="glass card">
+    <div class="glass item">
       <div class="ico"><svg viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8M13 12h8M13 18h8"/></svg></div>
-      <div class="txt">
-        <h2>Keeps long tasks on track</h2>
-        <p>Notes are saved before a long conversation is shortened.</p>
-      </div>
-      <div class="ill">
-        <span class="tick" style="left:94px;top:22px">85%</span>
-        <div class="meter" style="top:44px"><b style="width:84%"></b></div>
-        <div class="saved" style="top:78px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Notes saved</div>
-      </div>
+      <h2>Keeps long tasks on track</h2>
     </div>
-
-    <div class="glass card">
+    <div class="glass item">
       <div class="ico"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg></div>
-      <div class="txt">
-        <h2>Shares what you teach it</h2>
-        <p>Lessons that apply everywhere reach every project.</p>
-      </div>
-      <div class="ill hub">
-        <svg class="lines" viewBox="0 0 138 128" aria-hidden="true">
-          <g stroke="rgba(167,139,250,.75)" stroke-width="1.5" stroke-dasharray="3 4"><path d="M69 64 L20 20"/><path d="M69 64 L120 26"/><path d="M69 64 L22 110"/><path d="M69 64 L118 106"/></g>
-        </svg>
-        <div class="proj" style="left:4px;top:8px"></div>
-        <div class="proj" style="left:102px;top:14px"></div>
-        <div class="proj" style="left:6px;top:96px"></div>
-        <div class="proj" style="left:100px;top:94px"></div>
-        <div class="core"><img src="brain.png" alt=""></div>
-      </div>
+      <h2>Shares lessons across projects</h2>
     </div>
   </div>
 
   <div class="foot">
     <span class="chip">Free</span>
-    <span class="chip">No account or API key</span>
-    <span class="chip">Uses Claude Code's own notebook</span>
+    <span class="chip">No account</span>
+    <span class="chip">Never goes online</span>
   </div>
 </div>

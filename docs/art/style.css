@@ -140,3 +140,25 @@ h1 {
 .aside { margin-top: 24px; display: flex; gap: 12px; align-items: center; font-size: 17px; color: var(--body); }
 .aside > svg { flex: none; width: 22px; height: 22px; fill: none; stroke: var(--muted); stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round; }
+
+/* The README's pictures, drawn for a phone first. A phone shows a picture
+   about 340 px wide: drawn 1000 wide, its 16 px text read at 5 px. Drawn
+   600 wide (the README shows it at 600 on a computer), the smallest text
+   here reads at about 13 px on a phone. */
+.art.phone { width: 600px; padding: 38px 34px 44px; font-size: 26px; }
+.phone .eyebrow { font-size: 21px; gap: 12px; }
+.phone .eyebrow::before { width: 32px; }
+.phone h1 { margin-top: 16px; font-size: 50px; line-height: 1.08; }
+.phone .ico { width: 64px; height: 64px; border-radius: 18px; }
+.phone .ico svg { width: 34px; height: 34px; }
+.phone .chip { padding: 10px 18px; font-size: 22px; gap: 10px; }
+.phone .chip::before { width: 9px; height: 9px; }
+.phone .code { font-size: 23px; padding: 2px 8px; }
+.phone .aside { margin-top: 26px; font-size: 23px; gap: 14px; }
+.phone .aside > svg { width: 28px; height: 28px; }
+
+/* items: an icon and a few words, one under another */
+.items { margin-top: 30px; display: grid; gap: 16px; }
+.item { display: flex; align-items: center; gap: 20px; padding: 20px 22px; }
+.item h2 { margin: 0; font: 700 29px/1.2 Inter, sans-serif; letter-spacing: -.01em; }
+.item p { margin: 6px 0 0; font-size: 24px; line-height: 1.35; color: var(--body); }

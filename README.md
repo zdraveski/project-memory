@@ -9,7 +9,7 @@ project-memory is a free add-on (a "plugin") for Claude Code. It works on its
 own after every reply, keeps everything on your computer, and needs no
 account or API key.
 
-![The problem: every new conversation starts fresh. Close Claude Code today, and tomorrow you explain again where you were. On Monday Claude says the launch email is half written and pricing comes next. On Tuesday, asked to carry on, it says: "What were we working on?"](docs/problem.webp)
+<img src="docs/problem.webp" width="600" alt="The problem: every new conversation starts fresh. On Monday you say: Let's stop here. Claude says: Pricing comes next. Then a new conversation. On Tuesday you say: Let's carry on. Claude says: Sure. What were we working on?">
 
 ## What you get
 
@@ -30,7 +30,7 @@ and lets two Claude windows on one project work without overwriting each
 other. It helps most when you come back to the same project over days or
 weeks. For a quick one-off question, you won't notice much difference.
 
-![What project-memory does for you: it picks up where you left off, keeps old versions of your notes (needs Git), keeps long tasks on track, and shares what you teach it with all your projects. It works on its own after every reply, and it never goes online. It's free, needs no account or API key, and uses Claude Code's own notebook.](docs/what-you-get.webp)
+<img src="docs/what-you-get.webp" width="600" alt="What it does for you: picks up where you left off, keeps old versions of notes (needs Git), keeps long tasks on track, and shares lessons across projects. Free, no account, never goes online.">
 
 ## Install
 
@@ -83,7 +83,7 @@ memory folder. The journal is its `journal` folder, one file per day.
 
 ## Your privacy
 
-![What it saves stays on your computer. It never goes online: everything it saves stays in Claude Code's own folder on your computer. Common secrets are blanked out: keys, tokens and passwords you paste become [redacted] before anything is saved. Keep part of a message out: put it between <private> and </private>, and it isn't saved. Keep a whole conversation out: type <private-session> in any message. Claude still sees what you write, and your conversation goes to Anthropic as usual.](docs/privacy.webp)
+<img src="docs/privacy.webp" width="600" alt="Your privacy: what it saves stays on your computer. It never goes online. Secrets are blanked out: keys and passwords become [redacted]. Keep text out: put it in &lt;private&gt;. Keep a conversation out: type &lt;private-session&gt;. Anthropic still sees your conversation.">
 
 - project-memory never goes online. What it saves stays in Claude Code's own
   folder (`.claude`, in your home folder). What Claude reads during a
@@ -128,7 +128,7 @@ but only if you set `CLAUDE_CODE_AUTO_COMPACT_WINDOW` below your model's
 window ([how](docs/how-it-works.md#compaction)); with the default settings
 there is no room left to wait.
 
-![Long conversations, kept on track. Before: at 85% full, Claude is asked to write its notes while there's still room. During: if the conversation fills up in the middle of a task, project-memory can ask Claude Code to wait until the step ends, with one setting. With no room to wait, it writes the step down instead. After: once it's shortened to a summary, Claude is told what you asked, what it last said and what was still running.](docs/long-conversations.webp)
+<img src="docs/long-conversations.webp" width="600" alt="Long conversations, kept on track. Before, at 85% full: Claude saves its notes. During, at 100%: the step in progress is written down. After, once shortened to a summary: Claude is told where it was.">
 
 **If your model holds 200,000 tokens,** the reminder to save notes never
 comes, because project-memory assumes 1,000,000. Ask Claude: *"Is my context
