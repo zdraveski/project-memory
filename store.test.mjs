@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER, inProjects, transcriptKey } = await import('./store.mjs');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const root = join(home, '.claude', 'projects');
@@ -184,6 +184,23 @@ fs.writeFileSync = realWrite;
 syncBuiltinESMExports();
 ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !readdirSync(dir).some((x) => x.includes('.tmp')),
   `a write the disk cut short leaves the file and no half copy (got ${full}, ${readdirSync(dir)})`);
+
+// Long runs of blanks in a value are read in linear time: 50,000 spaces took
+// 12 s, and every tier pass and search paid it.
+{
+  const blanks = ' '.repeat(50_000), t0 = Date.now();
+  const f = front(`---\nname: n${blanks}x\ndescription: d${blanks}\nsuperseded-by: ${blanks}#\ntype:\n ${blanks}\n---\n`);
+  ok(Date.now() - t0 < 1000 && f.desc === 'd' && f.superseded === '', `a value with 50,000 blanks is read in linear time (${Date.now() - t0} ms, ${JSON.stringify(f).slice(0, 80)})`);
+}
+
+// A transcript is in the projects folder by its resolved path: `<projects>/../x`
+// is not. Its key is `<folder>/<session>`.
+{
+  const { projectsRoot } = await import('./store.mjs');
+  const inside = join(projectsRoot(), 'C--x', 'abc.jsonl');
+  ok(inProjects(inside) && !inProjects(`${projectsRoot()}/../history.jsonl`), 'a transcript under the projects folder is in it; one reached by .. is not');
+  ok(transcriptKey(inside) === 'C--x/abc', `a transcript's key is its folder and session (got ${transcriptKey(inside)})`);
+}
 
 // A line made for a memory no index names reads back, and its hook ends whole.
 const made = pointerLine('[draft] plan.md', 'a'.repeat(139) + '\u{1F600} and more');

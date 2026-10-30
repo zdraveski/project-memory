@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, prompt, handoff, hushed, tag, clip, answer, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText } from './handoff-log.mjs';
+import { readTail, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -123,7 +123,7 @@ function walk(raw) {
       // after a private ask it was shown under the next one.
       let ask = prompt(r, t);
       if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
-      if (ask) { s.ask = ask; s.raw = norm(unwrap(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
+      if (ask) { s.ask = ask; s.raw = unwrap(norm(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.edited.clear(); }
       // Not in what the harness quotes: an agent's report quoting the tag hid
       // the last words said. Nor in a compaction summary, a recap: one that
       // named the tag hid them, and the nudge, for the rest of the turn.
@@ -173,13 +173,13 @@ function note(payload, s) {
   // Each item clipped like an entry: a path can hold a key, a tag or a marker.
   const running = [...s.running].map(([id, p]) => `${clip(id, 40)} → ${clip(p, 200)}`).join('; ') || 'none';
   // A private turn's files are its own too: their names said what it was about.
-  const quiet = s.hidden || PRIVATE.test(s.raw || s.ask);
+  const quiet = s.hidden || PRIVATE.test(userText(s));
   // Capped like the running tasks: a wide refactor turn listed tens of KB.
   const edited = quiet ? '[private]' : clip(newest([...s.edited], LIST_MAX, 'earlier'), 1200) || 'none';
   const t = tag(payload.session_id);
   // Tagged, so a parallel session's note is never taken for this one's.
   return `- **cut mid-turn**${t ? ` [${t}]` : ''} ${local()} at ${Math.round(s.ctx / 1000)}k tokens, asked ${s.at}: ${clip(s.ask, 240)}\n` +
-    `  **last said:** ${s.hidden ? '[private]' : answer(s.raw || s.ask, s.said, 400) || '(nothing yet: the turn was running tools)'}\n  **still running (each output file holds its result; a rerun repeats the work):** ${running}\n  **edited this turn:** ${edited}`;
+    `  **last said:** ${s.hidden ? '[private]' : answer(userText(s), s.said, 400) || '(nothing yet: the turn was running tools)'}\n  **still running (each output file holds its result; a rerun repeats the work):** ${running}\n  **edited this turn:** ${edited}`;
 }
 
 function inflight(payload, s) {
@@ -215,7 +215,7 @@ export function recover(input) {
 // A conversation marked private, or this turn's private ask: the gate, the
 // recovery note and the nudge leave it alone. The nudge told Claude to write
 // its work into handoff.md and the notes, which nothing then removed.
-const secret = (payload, s) => hushed(storeOf(payload), tag(payload.session_id)) || PRIVATE_SESSION.test(s.raw || s.ask) || PRIVATE.test(s.raw || s.ask);
+const secret = (payload, s) => hushed(storeOf(payload), tag(payload.session_id)) || PRIVATE_SESSION.test(userText(s)) || PRIVATE.test(userText(s));
 
 /** PreCompact: 0 lets the compaction run, 2 defers it. */
 export function gate(payload) {

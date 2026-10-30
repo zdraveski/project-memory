@@ -87,6 +87,8 @@ tier();
 const handLine = '- [Deploy notes](deploy-notes.md) — deploy notes';
 unlinkSync(join(dir, 'deploy-notes.md'));
 writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(handLine + '\n', ''));
+mkdirSync(join(dir, 'journal'), { recursive: true });
+writeFileSync(join(dir, 'journal', '2026-10-27.md'), '# Journal 2026-10-27\n');
 tier();
 r = cli('history', 'deploy-notes');
 ok(r.status === 0 && /  \S+ \S+ \S+  deleted\n  \S+ \S+ \S+  in the first snapshot$/m.test(r.stdout), `history lists the snapshots that changed it, newest first; the first snapshot is not called its writing (got ${r.stdout})`);
@@ -99,6 +101,7 @@ ok(r.status === 0 && existsSync(join(dir, 'deploy-notes.md')) && readFileSync(jo
 r = cli('status');
 ok(/changed in the last 7 days: [^\n]*deleted deploy-notes/.test(r.stdout) && !/added [^·\n]*deploy-notes/.test(r.stdout), `status names the week's changes (got ${r.stdout})`);
 ok(!/changed in the last 7 days:[^\n]*secret/.test(r.stdout), "another project's memory is not listed");
+ok(!/changed in the last 7 days:[^\n]*2026-10-27/.test(r.stdout), `a journal day is no memory to list (got ${r.stdout})`);
 // Added this week and deleted again: deleted, not added.
 memory(dir, 'brief-note', 'here and gone');
 tier();
@@ -169,8 +172,12 @@ ok(r.status === 0 && /match\(es\) in/.test(r.stdout), `an option before the comm
 // An option it does not know is refused: dropped, `--from 2026-10-27` searched for "2026", and `--after=` ignored the date.
 r = cli('search', 'deploy', '--from', '2026-10-27');
 const after = cli('search', 'deploy', '--after=2026-10-28');
-ok(r.status === 1 && r.stdout === 'unknown option --from\n' && after.status === 1 && after.stdout === 'unknown option --after=2026-10-28\n', `an unknown option is refused (got ${r.stdout}${after.stdout})`);
+ok(r.status === 1 && r.stdout === 'unknown option --from; help lists the options\n' && after.status === 1 && after.stdout === 'unknown option --after=2026-10-28; help lists the options\n', `an unknown option is refused (got ${r.stdout}${after.stdout})`);
 ok(['--help', '-h', 'help'].every((h) => { const u = cli(h); return u.status === 0 && u.stdout.startsWith('node memory.mjs <command>'); }), '--help and -h print the usage, as help does');
+// The usage after why, not alone: a misspelt command, one with nothing after it.
+const typo = cli('serach', 'logo'), bare = cli('restore');
+ok(typo.status === 1 && typo.stdout.startsWith('no command "serach"\nnode memory.mjs <command>') && bare.status === 1 && bare.stdout.startsWith('restore needs a word after it\nnode memory.mjs <command>'),
+  `a usage error says what was wrong first (got ${typo.stdout.slice(0, 60)} / ${bare.stdout.slice(0, 60)})`);
 // After `--` every word is a search word, one that looks like an option too.
 memory(dir, 'hook-rule', 'never commit with --no-verify');
 r = spawnSync(process.execPath, [CLI, 'search', '--store', dir, '--', '--no-verify', '--all'], { env, encoding: 'utf8' });

@@ -5,8 +5,8 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
-import { clip, tag, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, withLock } from './store.mjs';
+import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL } from './handoff-log.mjs';
+import { replaceIfUnchanged, raw, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock } from './store.mjs';
 
 export const JOURNAL = 'journal';
 export const J_ASK = 2000;     // chars of what was asked
@@ -80,11 +80,11 @@ export function entryOf(turn, transcriptPath, when = local()) {
   const s = tag(basename(transcriptPath, '.jsonl'));
   // Every command, before the cap: a forget among a turn's first ones counts.
   const forgets = turn.ran.some((c) => FORGETS.test(c));
-  const quiet = forgets || PRIVATE.test(turn.raw ?? turn.ask);
+  const quiet = forgets || PRIVATE.test(userText(turn));
   return {
     key: turn.id || `${s} ${turn.at} ${hash(turn.raw ?? turn.ask).slice(0, 12)}`,
     at: TIME.test(turn.at) ? turn.at : when, s,
-    t: `${basename(dirname(transcriptPath))}/${basename(transcriptPath, '.jsonl')}`,
+    t: transcriptKey(transcriptPath),
     branch: clip(turn.branch || '', 100),
     asked: forgets ? '[private]' : clip(turn.ask, J_ASK),
     answered: quiet ? '[private]' : reply(turn.did),
@@ -280,8 +280,10 @@ function resweep(dir) {
 // all the same). `keys`: only those entries, the ones a search showed. They go
 // from handoff.md too, which the next startup's briefing prints (R36).
 export function forget(dir, terms, { since, until, conversation, keys: only, apply = false, failed = [] } = {}) {
-  const ts = terms.map((t) => t.toLowerCase());
-  const matched = entries([dir], { since, until, failed }).filter((e) => (!conversation || e.s === conversation) && (!only || only.includes(e.key)) &&
+  // The keys as a set: looked up in the list once an entry, a range forget of
+  // 15,000 entries spent 5 s here.
+  const ts = terms.map((t) => t.toLowerCase()), want = only && new Set(only);
+  const matched = entries([dir], { since, until, failed }).filter((e) => (!conversation || e.s === conversation) && (!want || want.has(e.key)) &&
     ts.every((t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.toLowerCase().includes(t))));
   if (!apply || !matched.length) return { matched, removed: [] };
   const keys = new Set(matched.map((e) => e.key)), f = join(dir, FORGOTTEN), seen = new Map();
@@ -337,10 +339,9 @@ function clear(dir, backfill) {
 // out (private, or held with auto memory off), ` swept` after. Pruned as
 // .imported is.
 const CHECKED = '.checked';
-const keyOf = (p) => `${basename(dirname(p))}/${basename(p, '.jsonl')}`;
 // Its line: `swept` in [4], the bytes looked at in [2].
 function checked(dir, k) {
-  for (const l of (raw(join(dir, JOURNAL, CHECKED)) ?? '').split(/\r?\n/)) { const m = LINE.exec(l); if (m?.[1] === k) return m; }
+  for (const l of (raw(join(dir, JOURNAL, CHECKED)) ?? '').split(/\r?\n/)) { const m = LINE.exec(l); if (m && pathKey(m[1]) === pathKey(k)) return m; }
   return null;
 }
 
@@ -363,10 +364,10 @@ function takeBack(dir, k, s, again = false, priv = false) {
 // the same for an import). Call under withLock(dir). False when nothing was
 // tried for this read's sake: a conversation private or memory-off already.
 function take(dir, transcriptPath, got, { quiet, hush }) {
-  const s = tag(basename(transcriptPath, '.jsonl')), k = keyOf(transcriptPath), was = checked(dir, k), f = basename(dirname(transcriptPath));
+  const s = tag(basename(transcriptPath, '.jsonl')), k = transcriptKey(transcriptPath), was = checked(dir, k), f = basename(dirname(transcriptPath));
   // Its folder first, a quiet one's too: in a folder no look listed, its
   // ` swept` line went at every look, and it was swept again at each.
-  if (!near(dir, f) && same(dirname(dirname(transcriptPath)), projectsRoot())) noteFolder(dir, f);
+  if (!near(dir, f) && inProjects(transcriptPath)) noteFolder(dir, f);
   // Private, or held with auto memory off once: never recorded, and what it
   // has in the journal goes at its first such Stop, not only at the one whose
   // read holds the mark. Marked by a writer with no sink (the compaction gate),
@@ -425,11 +426,15 @@ export function write(dir, transcriptPath, got, opts) {
 const IMPORTED = '.imported', LOOKED = '.looked';
 const LINE = /^(.+?) (\d+)(?: at (\d+)| (\w+)(?: (\d+))?)?$/;
 const FAILING = / \d+ failed\b/;
+// By pathKey, as `keep` (a look's `seen`) holds them: a Stop's line spelt the
+// folder as its payload did, a look's listing as the disk does, and the look
+// dropped the Stop's ` swept`, so every look swept that conversation again.
 function mark(dir, lines, keep = null, list = IMPORTED) {
-  const f = join(dir, JOURNAL, list), ks = new Set(lines.map((l) => LINE.exec(l)[1]));
+  const key = (l) => { const k = LINE.exec(l)?.[1]; return k && pathKey(k); };
+  const f = join(dir, JOURNAL, list), ks = new Set(lines.map(key));
   mkdirSync(join(dir, JOURNAL), { recursive: true });
   for (let i = 0; i < 3; i++) {
-    const before = raw(f), kept = (before ?? '').split(/\r?\n/).filter((l) => { const k = LINE.exec(l)?.[1]; return l && !ks.has(k) && (!keep || keep.has(k)); });
+    const before = raw(f), kept = (before ?? '').split(/\r?\n/).filter((l) => { const k = key(l); return l && !ks.has(k) && (!keep || keep.has(k)); });
     if (replaceIfUnchanged(f, before, [...kept, ...lines].join('\n') + '\n') !== 'conflict') return;
   }
 }
@@ -467,8 +472,8 @@ function candidates(dir, skip) {
   for (const f of looks) {
     let names = []; try { names = readdirSync(join(root, f)).filter((n) => n.endsWith('.jsonl')); } catch { out.seen = null; }
     for (const n of names) {
-      const p = join(root, f, n), k = `${f}/${n.slice(0, -6)}`;
-      out.seen?.add(k);
+      const p = join(root, f, n), k = transcriptKey(p);
+      out.seen?.add(pathKey(k));
       if (!theirs.has(k)) out.mine.add(pathKey(f));
       if (typeof skip === 'string' && same(p, skip)) continue;
       let st; try { st = statSync(p); } catch { continue; }

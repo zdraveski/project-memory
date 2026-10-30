@@ -203,8 +203,12 @@ handoffAt(10);
 ok(bare(startup()) === '', 'and nothing about one ten days old');
 writeFileSync(join(dirL, '.health'), 'over budget: 9000B > 7000B\n');
 writeFileSync(join(home, '.claude', 'projects', '.snapshot-health'), JSON.stringify({ lastOk: '2026-10-01T00:00:00Z', failures: 3, error: 'git not found' }));
+mkdirSync(join(dirL, 'journal'), { recursive: true });
+writeFileSync(join(dirL, 'journal', '.failed'), [{ at: '2026-10-02T08:00:00Z', error: 'day file is not UTF-8 text' }, { at: '2026-10-02T08:00:00Z', error: 'backfill: EBUSY' }].map((x) => JSON.stringify(x)).join('\n') + '\n');
 const warn = startup();
-ok(/Memory store needs attention[^\n]*over budget/.test(warn) && /snapshots have failed 3 times/.test(warn), 'and warns when the store or the snapshots are failing');
+ok(/Memory store needs attention[^\n]*over budget/.test(warn) && /snapshots have failed 3 times in a row, last ok \d{4}-\d\d-\d\d \d\d:\d\d:/.test(warn), `and warns when the store or the snapshots are failing, in local time (got ${warn})`);
+ok(/the journal could not be written after the reply at \d{4}-\d\d-\d\d \d\d:\d\d: day file is not UTF-8 text/.test(warn) && !/EBUSY/.test(warn), `and when the journal is, not for a backfill retried later (got ${warn})`);
+rmSync(join(dirL, 'journal', '.failed'));
 writeFileSync(join(home, '.claude', 'projects', '.snapshot-health'), 'not json');
 writeFileSync(join(dirL, 'handoff.md'), 'no markers at all\n');
 ok(/Memory store needs attention/.test(startup()), 'a damaged handoff.md or health file is no crash');
@@ -889,11 +893,21 @@ ok(/\[ffffffff\]: \[private\]\n  \*\*did:\*\* \[private\]$/m.test(fdoc()) && !/z
 // memory.mjs's forget command only. Options may come first, as the CLI takes them.
 for (const c of ['node memory.mjs forget zebra', "node '/p/memory.mjs' forget 'zebra' --yes", 'node "C:\\p\\memory.mjs" forget --since 1970-01-01 --yes',
   'node "C:/p/memory.mjs" --session abc forget password', 'node "C:/p/memory.mjs" --store C:/s forget password --yes',
-  'node memory.mjs --store "C:/my dir/memory" --yes forget x', "node memory.mjs --session=abc --store 'C:/a b' forget x"])
+  'node memory.mjs --store "C:/my dir/memory" --yes forget x', "node memory.mjs --session=abc --store 'C:/a b' forget x",
+  // As /memory runs it: each word typed in single quotes, the command's too.
+  "node \"C:/p/memory.mjs\" 'forget' 'elm' 'springfield' --session abc", 'node memory.mjs "forget" x'])
   ok(FORGETS.test(c), `a forget run is seen: ${c}`);
 for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget', 'git add memory.mjs && git commit -m "fix forget"', 'grep x memory.mjs; grep forget y', 'node memory.mjs status\nforget',
   'node memory.mjs --session abc search forget'])
   ok(!FORGETS.test(c), `a command that ran no forget is none: ${JSON.stringify(c)}`);
+// A <private> tag inside fullwidth reminder tags the user typed: normalized,
+// the reminder swallowed it from the typed text, but the ask kept it.
+{
+  const { turns, userText, answer } = await import('./handoff-log.mjs');
+  const said = (type, text) => JSON.stringify({ type, timestamp: '2026-10-30T10:00:00Z', uuid: 'fw-1', message: { content: [{ type: 'text', text }], stop_reason: 'end_turn' } });
+  const [t] = turns([said('user', 'hello ＜system-reminder＞<private>pin 4417</private>＜/system-reminder＞ open the door'), said('assistant', 'Opened with 4417.')].join('\n') + '\n');
+  ok(answer(userText(t), t.did, 400) === '[private]', `a private tag the typed text lost but the ask kept still hides the answer (got ${JSON.stringify(t)})`);
+}
 // Linear: an option read as the one before's value too doubled the work per option.
 const tf0 = Date.now();
 FORGETS.test('node memory.mjs' + ' --a'.repeat(40) + ' x');
@@ -923,6 +937,18 @@ writeFileSync(join(dirF, 'journal', '.forgotten'), `k-0\r\nk-1\tmemory/k\t${loca
 handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
 ok(!/walrus/.test(fdoc()) && /\[kkkkkkkk\]: the seal plan/.test(fdoc()) && fdoc().includes('[gggggggg]: the release plan'),
   `an exchange forget took out stays out of handoff.md when its conversation is read again, and only it (got ${fdoc()})`);
+// By its key too: a clock moved to another time zone gives it another minute.
+appendFileSync(tk, [user('the otter memo', { ts: '2026-10-29T09:50:00Z', uuid: 'u-otter' }), asst('filed the otter memo', { ts: '2026-10-29T09:50:30Z' })].join('\n') + '\n');
+appendFileSync(join(dirF, 'journal', '.forgotten'), 'u-otter\tmemory/k\t2000-01-01 00:00\n');
+handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
+ok(!/otter/.test(fdoc()), `an exchange forget took out stays out by its key when its minute moved (got ${fdoc()})`);
+// Its transcript in either case: Windows names one folder c--x and C--x.
+if (process.platform === 'win32') {
+  appendFileSync(tk, [user('the heron note', { ts: '2026-10-29T10:00:00Z' }), asst('wrote the heron note', { ts: '2026-10-29T10:00:30Z' })].join('\n') + '\n');
+  appendFileSync(join(dirF, 'journal', '.forgotten'), `k-4\tMEMORY/K\t${local('2026-10-29T10:00:00Z')}\n`);
+  handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
+  ok(!/heron/.test(fdoc()), `an exchange forget took out stays out whatever case its folder is spelt in (got ${fdoc()})`);
+}
 }
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.

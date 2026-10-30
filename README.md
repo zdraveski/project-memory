@@ -97,7 +97,8 @@ memory folder. The journal is its `journal` folder, one file per day.
   else.
 - Put text between `<private>` and `</private>` to keep it out. Type
   `<private-session>` in any message to keep the whole conversation out; what
-  was saved of it before is removed.
+  was saved of it before is removed, except the history's copy of days that
+  are already over.
 - *"Forget …"* removes the journal entries you confirm. For days that are
   already over, a copy stays in the history until you delete the history.
 
@@ -121,10 +122,13 @@ Everything it reads and saves, and how to delete it, is in the
 
 When a conversation fills up, Claude Code shortens it to a summary, and the
 details of a task in progress can get lost. project-memory has Claude save
-its notes before that, asks Claude Code to let Claude finish the step it's
-on, and afterwards tells Claude what you asked and what it last said.
+its notes before that and afterwards tells Claude what you asked and what it
+last said. It can also ask Claude Code to let Claude finish the step it's on,
+but only if you set `CLAUDE_CODE_AUTO_COMPACT_WINDOW` below your model's
+window ([how](docs/how-it-works.md#compaction)); with the default settings
+there is no room left to wait.
 
-![Long conversations, kept on track. Before: at 85% full, Claude is asked to write its notes while there's still room. During: if the conversation fills up in the middle of a task, project-memory asks Claude Code to wait until the step ends. With no room to wait, it writes the step down instead. After: once it's shortened to a summary, Claude is told what you asked, what it last said and what was still running.](docs/long-conversations.webp)
+![Long conversations, kept on track. Before: at 85% full, Claude is asked to write its notes while there's still room. During: if the conversation fills up in the middle of a task, project-memory can ask Claude Code to wait until the step ends, with one setting. With no room to wait, it writes the step down instead. After: once it's shortened to a summary, Claude is told what you asked, what it last said and what was still running.](docs/long-conversations.webp)
 
 **If your model holds 200,000 tokens,** the reminder to save notes never
 comes, because project-memory assumes 1,000,000. Ask Claude: *"Is my context
@@ -151,7 +155,10 @@ terminal and restart Claude Code; `enable` turns it back on. To remove it,
 type `/plugin uninstall project-memory@project-memory` in Claude Code. If you
 added it from claude.ai, use `/plugin` in Claude Code for both.
 
-Your notes, the journal and the history stay either way. The privacy policy
+Your notes, the journal and the history stay either way, and so do the lines
+project-memory added to each `MEMORY.md`: the ones pointing at `handoff.md`
+and `journal.md` keep being loaded, so delete them when you remove it. The
+privacy policy
 lists what to delete by hand: [Deleting it](PRIVACY.md#deleting-it).
 
 ## If something seems wrong

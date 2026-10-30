@@ -10,6 +10,9 @@ import { homedir } from 'node:os';
 // (read by its fixed name). Under it, the hooks wrote nothing and said nothing.
 export const configDir = () => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 export const projectsRoot = () => join(configDir(), 'projects');
+// A transcript where Claude Code keeps them, `<projects>/<folder>/<id>.jsonl`.
+// Resolved: `<projects>/../history.jsonl` passed, and was read as a session's.
+export const inProjects = (t) => same(dirname(dirname(resolve(t))), projectsRoot());
 export const same = (a, b) => (process.platform === 'win32'
   ? resolve(a).toLowerCase() === resolve(b).toLowerCase()
   : resolve(a) === resolve(b));
@@ -95,7 +98,7 @@ export function storeOf(payload = {}) {
   // Not `_shared`: that is every project's store, not one project's.
   if (named && /^[A-Za-z0-9_-]{1,64}$/.test(named) && !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9]|_shared)$/i.test(named)) return join(projectsRoot(), named, 'memory');
   const t = typeof payload.transcript_path === 'string' && resolve(payload.transcript_path);
-  if (t && same(dirname(dirname(t)), projectsRoot())) {
+  if (t && inProjects(t)) {
     // No cwd recorded yet (a session just started, or just cleared): the
     // payload's, which is where it started. Read as the transcript's folder,
     // the startup briefing of a subfolder's session read another store.
@@ -137,6 +140,9 @@ export const pointerLine = (file, desc) =>
 // target is gone is none.
 // A real path as a key: Windows spells one folder in any case.
 export const pathKey = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+// A transcript as .forgotten, .imported and .checked name it: `<folder>/<session>`.
+// Compared through pathKey: a payload spelt the folder `c--x`, the disk `C--x`.
+export const transcriptKey = (p) => `${basename(dirname(p))}/${basename(p, '.jsonl')}`;
 export function allStores() {
   const root = projectsRoot(), seen = new Set();
   let all = []; try { all = readdirSync(root); } catch {}
@@ -159,11 +165,14 @@ export function front(text) {
   const end = t.startsWith('---') ? t.indexOf('\n---', 3) : 0;
   const head = end === -1 ? t : t.slice(0, end);
   // A value stays on its line: an emptied `superseded-by:` took the next line
-  // as its value. \r too, for a file saved CRLF.
+  // as its value. `.` stops before a \r, for a file saved CRLF, and get()
+  // trims: a lazy value before `[ \t\r]*$` was quadratic, and a description of
+  // 16,000 spaces cost every tier pass 1.4 s. Nor two runs of blanks side by
+  // side below (`[ \t]+-?[ \t]*`, `[ \t]+#`), for the same reason.
   const get = (re) => ((head.match(re) || [])[1] || '').trim();
   // A YAML block value (`description: >-`, a list under `superseded-by:`):
   // its indented lines. Read as the line itself, a hook said `>-`.
-  const block = (key) => (head.match(new RegExp(`^[ \\t]*${key}:[ \\t]*[>|]?[-+]?[ \\t\\r]*\\n((?:[ \\t]+-?[ \\t]*\\S.*(?:\\n|$))+)`, 'm'))?.[1] ?? '')
+  const block = (key) => (head.match(new RegExp(`^[ \\t]*${key}:(?:[ \\t]*(?:[>|][-+]?|[-+]))?[ \\t\\r]*\\n((?:[ \\t]+(?:-[ \\t]*)?\\S.*(?:\\n|$))+)`, 'm'))?.[1] ?? '')
     .split('\n').map((l) => l.trim().replace(/^-[ \t]*/, '')).filter(Boolean);
   // Valid YAML all: quoted either way, a `# comment` after it, any case
   // (`tier: "hot"`, `tier: Hot`). Read only bare, the pin aged out.
@@ -179,13 +188,13 @@ export function front(text) {
     let m;
     if ((m = v.match(/^"((?:[^"\\]|\\.)*)"(?:[ \t]+#.*)?$/))) return m[1].replace(/\\(["\\])/g, '$1');
     if ((m = v.match(/^'((?:[^']|'')*)'(?:[ \t]+#.*)?$/))) return m[1].replace(/''/g, "'");
-    const p = (cut ? v.replace(/(?:^|[ \t]+)#.*$/, '') : v).trim().replace(/^(["'])(?![\s\S]*\1)/, '');
+    const p = (cut ? v.replace(/(?:^|[ \t])#.*$/, '') : v).trim().replace(/^(["'])(?![\s\S]*\1)/, '');
     return /^(?:null|Null|NULL|~|#(?:\s.*)?)$/.test(p) ? '' : p;
   };
-  const superseded = scalar(get(/^[ \t]*superseded-by:[ \t]*(.*?)[ \t\r]*$/m), true) || block('superseded-by')[0] || '';
-  const desc = get(/^description:[ \t]*(.*?)[ \t\r]*$/m);
+  const superseded = scalar(get(/^[ \t]*superseded-by:[ \t]*(.*)$/m), true) || block('superseded-by')[0] || '';
+  const desc = get(/^description:[ \t]*(.*)$/m);
   return {
-    name: scalar(get(/^name:[ \t]*(.*?)[ \t\r]*$/m)),
+    name: scalar(get(/^name:[ \t]*(.*)$/m)),
     desc: /^[>|][-+]?$/.test(desc) ? block('description').join(' ') : scalar(desc),
     type: get(/^[ \t]*type:[ \t]*["']?(\w+)/m).toLowerCase(),
     tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)/m).toLowerCase(),

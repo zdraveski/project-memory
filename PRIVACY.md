@@ -192,7 +192,10 @@ Uninstalling the plugin leaves all of this in place. To delete:
   once. While project-memory is on and Git is installed, the next change to a
   note, or the next day, starts a new one.
 - the record of where you left off: `handoff.md` in a project's `memory`
-  folder.
+  folder, and the line that points to it in its `MEMORY.md`.
+- the archive: `MEMORY-archive.md` in a project's `memory` folder, and the
+  `Archive` line in its `MEMORY.md`. It holds the pointers to older notes:
+  move any you want loaded again back into `MEMORY.md` first.
 - the journal: the `journal` folder (with its bookkeeping files inside it)
   and `journal.md` in a project's `memory` folder, and the line that points
   to `journal.md` in its `MEMORY.md`. While
@@ -202,7 +205,10 @@ Uninstalling the plugin leaves all of this in place. To delete:
 - the bookkeeping files: in `~/.claude/projects`, `.gitignore`, `.stop-ran`,
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` file and the
   folder `.nudge`; in each project's `memory` folder, `.tiered`, `.health`
-  and `.private-sessions`.
+  and `.private-sessions`. Delete `.memory-off` and `.private-sessions` only
+  once project-memory is removed for good: they list the conversations it
+  must not record, and without them a conversation marked private, or held
+  with auto memory off, is recorded from its next reply.
 
 To remove only some journal entries, ask Claude (for example, "forget the
 password I pasted yesterday"), or run the memory tool's `forget` with words,

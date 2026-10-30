@@ -129,7 +129,7 @@ function tier(dir, now) {
   // What this pass is computed from. A write goes through only while the file
   // still holds it: the model may edit the index while the pass runs.
   const mainText = readFileSync(mainPath, 'utf8');
-  const arcText = existsSync(arcPath) ? readFileSync(arcPath, 'utf8') : null;
+  const arcText = raw(arcPath);
   // The mirror of a young orphan: a pointer the model wrote before its file.
   // Neither is a problem while the index is this fresh. Either one leaves the
   // store `waiting`: unstamped, so the next turn looks again -- a stamp would
@@ -616,7 +616,7 @@ for (const dir of todo) {
   if (r.odd.length) problems.push(`file names an index line cannot point at, so they are unlisted (rename them): ${r.odd.join(', ')}`);
   // Say so when the hooks have drifted back into being content.
   // With no line in it, it is the prose at the top: "InfinityB a line" said nothing.
-  if (r.after > r.budget) problems.push(`over budget: ${r.after}B > ${r.budget}B — ${r.hot ? `${Math.round(r.after / r.hot)}B a line; trim the hooks, not the count` : 'the text above the lines; shorten it'}`);
+  if (r.after > r.budget) problems.push(`over budget: ${r.after}B > ${r.budget}B — ${r.hot ? `${Math.round(r.after / r.hot)}B a line; shorten the text after each link rather than removing lines` : 'the text above the lines; shorten it'}`);
   // A file an editor or a scanner holds costs this turn's note, never the hook.
   if (!dry) try { health(dir, problems); } catch {}
   // The stamp is what this pass saw, taken before the snapshot: a memory

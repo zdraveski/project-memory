@@ -280,7 +280,8 @@ function recent(dir) {
     if (first) continue;
     const [st, p] = l.trim().split('\t');
     const f = p && p.split('/').pop();
-    if (!f || !f.endsWith('.md') || f === 'handoff.md' || f.startsWith('MEMORY')) continue;
+    // Nor a journal day: every finished one was listed as a memory added.
+    if (!f || !f.endsWith('.md') || f === 'handoff.md' || f.startsWith('MEMORY') || p.includes('/journal/')) continue;
     if (!last.has(f)) last.set(f, st);                 // git lists the newest first
     if (st === 'A') born.add(f);
   }
@@ -555,7 +556,7 @@ export function doctor() {
     // none to read, a dead hook said "waiting" forever.
     let end = NaN;
     try { const p = id ? transcriptOf(id) : transcripts(sessionStore(), '')[0]?.p; if (p) end = lastTurn(p).end; } catch {}
-    if (Date.now() - end > GRACE) say(false, `Claude finished a reply at ${local(end)}, but project-memory has not saved after any reply: its Stop hook is not running. The user's fix: restart Claude Code; if this line stays, check that Node.js is installed (node --version)`);
+    if (Date.now() - end > GRACE) say(false, `Claude finished a reply at ${local(end)}, but project-memory has not saved after any reply: its Stop hook is not running. The user's fix: restart Claude Code; if that reply came before project-memory was installed, finish one more and check again; if this line stays, check that Node.js is installed (node --version)`);
     else say(true, "waiting for Claude's first reply: project-memory saves each time Claude finishes one");
   } else {
     // The newest conversation, and the newest other than this one, which is
@@ -593,7 +594,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // One it does not know is refused: dropped, `--from 2026-10-27` searched for
   // "2026", and `--after=2026-10-28` listed what came before it.
   const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--help'].includes(a));
-  if (unknown) { console.log(`unknown option ${unknown}`); process.exit(1); }
+  if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); process.exit(1); }
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
@@ -743,7 +744,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   else if (cmd === 'restore' && file) r = restore(here, onDisk(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file));
   else if (cmd === 'doctor') r = doctor();
-  else r = { ok: !cmd || cmd === 'help', lines: [USAGE] };
+  // The usage, after why: a misspelt command, or one with no word after it,
+  // printed the usage alone.
+  else r = { ok: !cmd || cmd === 'help', lines: [...(cmd && cmd !== 'help' ? [/^(?:search|show|history|restore|promote)$/.test(cmd) ? `${cmd} needs a word after it` : `no command "${cmd}"`] : []), USAGE] };
   // A day that could not be read or written: what it holds is missing from, or
   // still in, the lines above. Before the last line of a search or a forget,
   // which is its count, as the skill says. Once: a forget reads a day twice.

@@ -668,6 +668,16 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   fill(d);
   ok(readFileSync(list, 'utf8') === `${slug(r)}/${sid('a')} 10\n`, `a look drops the line of a looked-at conversation gone from disk (got ${JSON.stringify(readFileSync(list, 'utf8'))})`);
 }
+if (process.platform === 'win32') {
+  // A Stop's line spelt as its payload spelt the folder (`c--x`, the disk
+  // `C--x`) is the same conversation's: dropped, every look swept it again.
+  const [r, d] = repo('casekey'), list = join(d, 'journal', '.checked'), line = `${slug(r).toUpperCase()}/${sid('a')} 10\n`;
+  old(r, sid('a'), 30, ['still here']);
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  writeFileSync(list, line);
+  fill(d);
+  ok(readFileSync(list, 'utf8') === line, `a look keeps a line whose folder is spelt in another case (got ${JSON.stringify(readFileSync(list, 'utf8'))})`);
+}
 {
   // Imported before its memory-off tag (a start the tag missed), a
   // conversation loses what was imported at its next Stop (P1 hunt, 2026-10-29).

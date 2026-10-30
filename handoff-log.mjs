@@ -18,11 +18,11 @@
 // secrets (SECRETS), the answer to a <private> message and the files its turn
 // changed (answer()), and every entry of a conversation marked
 // <private-session> (hushed()).
-import { readFileSync, writeFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync, mkdirSync } from 'node:fs';
-import { join, dirname, basename, resolve } from 'node:path';
+import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync, mkdirSync } from 'node:fs';
+import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, pathKey, transcriptKey, raw, inProjects } from './store.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
@@ -140,8 +140,10 @@ export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 // message or a search for "forget" for one, and dropped a whole turn.
 // Options may come first (`--session X forget`, as the CLI takes them). A
 // value never starts with - or a quote it does not close: one that could be
-// the next option too doubled the work per option (40 took 7 s).
-export const FORGETS = /memory\.mjs["']?(?:\s+--[\w-]+(?:[= ](?:"[^"]*"|'[^']*'|[^\s"'-]\S*))?)*\s+forget\b/;
+// the next option too doubled the work per option (40 took 7 s). The word
+// quoted too: /memory has Claude quote each word typed, the command's with
+// them, and a forget run from it was saved whole.
+export const FORGETS = /memory\.mjs["']?(?:\s+--[\w-]+(?:[= ](?:"[^"]*"|'[^']*'|[^\s"'-]\S*))?)*\s+(?:forget\b|'forget'|"forget")/;
 // Text read the same in any width and without hidden characters: a fullwidth
 // ＜private＞, or a zero-width space inside the tag, kept what it should hide.
 export const norm = (s) => s.normalize('NFKC').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
@@ -174,13 +176,13 @@ export { unwrap };
 // A session's short tag: enough to tell parallel sessions apart in one file.
 export const tag = (id) => String(id || '').slice(0, 8);
 
-export function turns(raw) {
+export function turns(tail) {
   const out = [];
   let pending = null;
   // A nudge holds the answer for its memory update only; a private message
   // (frozen: true) holds it to the next prompt.
   const hold = (p) => { if (p.frozen !== true) { p.frozen = 'nudge'; p.ended = false; } };
-  for (const line of raw.split('\n')) {
+  for (const line of tail.split('\n')) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
     let r; try { r = JSON.parse(line); } catch { continue; }
     // A turn's edits are tool calls with no text: taken before the text test skips them.
@@ -351,6 +353,12 @@ export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), 
 // The answer to a private message often repeats what it was told, so it is
 // withheld whole.
 export const answer = (ask, did, n) => (PRIVATE.test(ask) ? '[private]' : clip(plain(did), n));
+// What a turn's privacy is read from: what the user typed and the ask made of
+// it, together. Each can keep a tag the other lost -- own() strips a wrapper
+// from the ask, and a fullwidth reminder, normalized, swallows what it holds
+// -- and read as `raw ?? ask` here but `raw || ask` in the gate, one message
+// was private to one and not the other.
+export const userText = (t) => `${t.raw ?? ''}\n${t.ask ?? ''}`;
 
 // Marker text inside an ask or an answer would become the section boundary on
 // the next run and strand every entry before it as prose, and a tag printed at
@@ -393,9 +401,9 @@ export const plain = (s) => s.split('\n')
 // once more, to 128 MB).
 function latest(path, since = null) {
   for (let bytes = TAIL; ; bytes *= 4) {
-    const { text: raw, whole } = readTail(path, bytes);
-    const got = turns(raw);
-    const back = !since || got[0]?.at < since.at || got.some((t) => t.at === since.at && clip(t.ask, ASK) === since.ask && answer(t.raw ?? t.ask, t.did, DID) === since.did);
+    const { text: tail, whole } = readTail(path, bytes);
+    const got = turns(tail);
+    const back = !since || got[0]?.at < since.at || got.some((t) => t.at === since.at && clip(t.ask, ASK) === since.ask && answer(userText(t), t.did, DID) === since.did);
     if ((got.length && back) || whole || bytes >= 32e6) { got.whole = whole; return got; }
   }
 }
@@ -465,8 +473,8 @@ const FRONT = `---\nname: handoff\ndescription: "The rolling handoff"\nmetadata:
 // What handoff.md should say, from what it says now and this turn's entries:
 // the new text, 'unchanged', or null when there is nothing to write. `drop`:
 // which of its entries go.
-function build(raw, fresh, drop = null, me = fresh[0]?.s, whole = false) {
-  let doc = (raw ?? '').replace(/^\uFEFF/, '');
+function build(before, fresh, drop = null, me = fresh[0]?.s, whole = false) {
+  let doc = (before ?? '').replace(/^\uFEFF/, '');
   // A file emptied by a failed edit has no `tier: hot`, so tiering would age
   // the handoff out of the index a week later.
   if (!doc.startsWith('---')) doc = FRONT + doc;
@@ -597,7 +605,7 @@ export function handoff(input, sink = null) {
   // nothing until then (audit, 2026-10-28).
   // Recursive: two sessions starting in a new project at once both make it.
   if (!existsSync(dir)) {
-    if (!same(dirname(dirname(resolve(input.transcript_path))), projectsRoot())) return false;
+    if (!inProjects(input.transcript_path)) return false;
     mkdirSync(dir, { recursive: true });
   }
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
@@ -621,8 +629,8 @@ export function handoff(input, sink = null) {
   const fresh = got.map((t) => {
     // A turn that ran forget says nothing, as a private one.
     const gone = t.ran.some((c) => FORGETS.test(c));
-    return { ...t, s, ask: gone ? '[private]' : clip(t.ask, ASK), did: gone ? '[private]' : answer(t.raw ?? t.ask, t.did, DID),
-      changed: PRIVATE.test(t.raw ?? t.ask) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) };
+    return { ...t, s, ask: gone ? '[private]' : clip(t.ask, ASK), did: gone ? '[private]' : answer(userText(t), t.did, DID),
+      changed: PRIVATE.test(userText(t)) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) };
   });
   const hush = got.hush === true;
   // Sessions of one project write this file at once, so they take turns: 8 at
@@ -641,11 +649,13 @@ export function handoff(input, sink = null) {
     // Or by the journal's look at the whole transcript, past this read.
     quiet ||= hushed(dir, s);
     // An exchange forget took out stays out: read again, the forget turn's own
-    // Stop put it back (R36). By its transcript and minute, as forget lists it.
+    // Stop put it back (R36). By its transcript and minute, as forget lists it,
+    // and by its key, the prompt's id: a clock moved to another time zone gave
+    // it another minute, and it came back.
     let list = null; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch {}
-    const me = `${basename(dirname(input.transcript_path))}/${basename(input.transcript_path, '.jsonl')}`;
-    const out = new Set(forgotten(list).filter(([, t]) => t === me).map(([, , at]) => at));
-    const w = put(dir, quiet ? [] : fresh.filter((t) => !out.has(t.at)), quiet ? (t) => t.s === s : null, s, got.whole);
+    const me = pathKey(transcriptKey(input.transcript_path)), listed = forgotten(list);
+    const keys = new Set(listed.map(([k]) => k)), out = new Set(listed.filter(([, t]) => t && pathKey(t) === me).map(([, , at]) => at));
+    const w = put(dir, quiet ? [] : fresh.filter((t) => !out.has(t.at) && !keys.has(t.id)), quiet ? (t) => t.s === s : null, s, got.whole);
     return quiet ? 'private' : w;
   });
   return r ?? 'busy';
@@ -657,10 +667,10 @@ export function handoff(input, sink = null) {
 function put(dir, fresh, drop, me, whole) {
   const file = join(dir, 'handoff.md');
   for (let i = 0; i < 3; i++) {
-    const raw = existsSync(file) ? readFileSync(file, 'utf8') : null;
-    const next = build(raw, fresh, drop, me, whole);
+    const before = raw(file);
+    const next = build(before, fresh, drop, me, whole);
     if (next === null || next === 'unchanged') return next ?? false;
-    const w = replaceIfUnchanged(file, raw, next);
+    const w = replaceIfUnchanged(file, before, next);
     if (w !== 'conflict') return w || 'unchanged';
   }
   return false;
@@ -687,9 +697,17 @@ function health(dir) {
     const f = JSON.parse(readFileSync(join(projectsRoot(), `.handoff-failed-${basename(dirname(dir))}`), 'utf8'));
     out.push(`Memory store needs attention (${dir}): the record of where you left off could not be saved after the reply at ${local(f.at)}: ${f.error}`);
   } catch {}
+  // A journal write that failed after a reply (journal/.failed; not a backfill,
+  // which is retried): only status said so, and every reply went unrecorded.
+  try {
+    for (const l of readFileSync(join(dir, 'journal', '.failed'), 'utf8').split(/\r?\n/).filter(Boolean)) {
+      const f = JSON.parse(l);
+      if (!String(f.error).startsWith('backfill: ')) out.push(`Memory store needs attention (${dir}): the journal could not be written after the reply at ${local(f.at)}: ${f.error}`);
+    }
+  } catch {}
   try {
     const s = JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8'));
-    if (s.failures >= 3) out.push(`Memory snapshots have failed ${s.failures} times in a row, last ok ${s.lastOk || 'never'}: ${s.error}`);
+    if (s.failures >= 3) out.push(`Memory snapshots have failed ${s.failures} times in a row, last ok ${s.lastOk ? local(s.lastOk) : 'never'}: ${s.error}`);
     if (s.missed?.length) out.push(`Memory snapshots leave out ${s.missed.join(', ')}: ${MISSED}`);
   } catch {}
   return out;
@@ -703,7 +721,7 @@ function health(dir) {
 // scan every project folder's first cwd if that is ever wanted.
 export function transcripts(dir, me, t) {
   const folders = [dirname(dir)];
-  if (typeof t === 'string' && same(dirname(dirname(t)), projectsRoot()) && !same(dirname(t), folders[0])) folders.push(dirname(t));
+  if (typeof t === 'string' && inProjects(t) && !same(dirname(t), folders[0])) folders.push(dirname(t));
   const all = [];
   for (const project of folders) {
     try {
@@ -717,9 +735,9 @@ export function transcripts(dir, me, t) {
 // many of its last messages are model replies the hooks know, and whether a
 // turn is open in it: a prompt, or a reply that did not end the turn, last.
 export function lastTurn(p) {
-  const raw = readTail(p, TAIL).text;
+  const tail = readTail(p, TAIL).text;
   let end = NaN, seen = 0, known = 0, open = false;
-  for (const line of raw.split('\n')) {
+  for (const line of tail.split('\n')) {
     if (!line.startsWith('{')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
     // Messages only: a session's start-up records (attachments, modes, titles)

@@ -26,7 +26,7 @@ so check their pages before you choose.
 | How memories are made | Claude writes notes, and every exchange is saved to a journal after every reply | Automatically, from everything Claude does | Automatically, from your conversations | Automatically, from your conversations | Claude writes notes when asked | Automatically, from what happens in a session |
 | Search | By words | By words and by meaning | By meaning | By meaning | By words and by meaning, plus links between notes | By words |
 | Picks up where you left off | Yes | Yes | Brings back up to 5 memories at the start | Searches memory on every message | When Claude reads the notes | Yes |
-| Protects work when a conversation is compacted | Before, during and after | Not stated | Not stated | Not stated | Not stated | Yes |
+| Protects work when a conversation is compacted | Before and after; during too, with one setting | Not stated | Not stated | Not stated | Not stated | Yes |
 | Old versions kept, so you can undo | Yes, of notes and of each finished day of the journal | Not stated | Not stated | Not stated | Paid cloud only | No |
 | Lessons shared across your projects | Yes | Not stated | No, kept per repository | A personal profile | Yes, one knowledge base | Search across projects |
 | Shared with a team | No | Optional | Yes | Yes | Not stated | No |
