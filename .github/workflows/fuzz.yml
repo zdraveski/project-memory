@@ -1,0 +1,47 @@
+name: fuzz
+
+# Long fuzz runs, by hand: every machine its own random rounds, on Windows,
+# Linux and macOS (at most 5 at once on macOS), for a bug hunt or before a
+# release. A failing round prints its seed: `node fuzz.mjs --seed N` replays
+# it. Started from Actions > fuzz > Run workflow, or
+# `gh workflow run fuzz.yml --ref master -f machines=17 -f seconds=600`.
+on:
+  workflow_dispatch:
+    inputs:
+      machines:
+        description: Machines to fuzz on (GitHub Free runs 20 jobs at once)
+        default: '17'
+      seconds:
+        description: Seconds of fuzz on each machine
+        default: '600'
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.list.outputs.shards }}
+    steps:
+      - id: list
+        env:
+          MACHINES: ${{ inputs.machines }}
+        # A block: `{ length: n }` in a plain value is YAML's `key: value`.
+        run: |
+          node -e "const n = Math.min(256, Math.max(1, Math.floor(Number(process.env.MACHINES)) || 17)); console.log('shards=' + JSON.stringify(Array.from({ length: n }, (_, i) => i + 1)))" >> "$GITHUB_OUTPUT"
+  fuzz:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    # One system in three each: Windows, Linux, macOS.
+    runs-on: ${{ fromJSON('["windows-latest", "ubuntu-latest", "macos-latest"]')[matrix.shard % 3] }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - shell: bash
+        env:
+          SECONDS_EACH: ${{ inputs.seconds }}
+        run: node fuzz.mjs "${SECONDS_EACH:-600}" --keep-going

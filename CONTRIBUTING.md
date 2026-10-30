@@ -34,16 +34,25 @@ Beyond the suites:
   `printf '#!/bin/sh\nexec node check.mjs\n' > .git/hooks/pre-commit`.
   TypeScript's checker (`tsc --checkJs`) was tried on the hooks: 49 reports
   with strict mode off, 775 with it on, no bug among them, so it is not used.
-- `node fuzz.mjs [seconds]` sends random, hostile conversations and notes
-  through the real hooks (a BOM, CRLF, half an emoji, a quoted `forget`,
-  `<private>` text, a clock moving between time zones) and checks what must
-  hold whatever they hold: every hook exits cleanly, no private text is
-  written, a `<private-session>` conversation leaves nothing, every note
-  keeps its text and one index line, a second Stop with nothing new changes
-  nothing, and no turn is listed twice. With the time-zone fix and the
-  quoted-forget fix taken back out, it found each within two minutes. A
-  failing round prints its seed: `node fuzz.mjs --seed N` replays it, and it
-  becomes a test. CI fuzzes a minute on every job; run ten before a release.
+- `node fuzz.mjs [seconds] [--keep-going]` sends random, hostile
+  conversations and notes through the real hooks and the CLI: a BOM, CRLF,
+  half an emoji, `forget` in six spellings, `<private>` text, a clock moving
+  between time zones, transcripts read in part, a half-written last line, a
+  broken line, two conversations stopping at once, an older conversation for
+  the journal to take in, the compaction gate, `status`, `search`, `show`,
+  `forget` and `forget --key ... --yes`. It checks what must hold whatever
+  they hold: every hook and command exits as it should and records no
+  failure; no private or forgotten text is written, briefed or printed; a
+  `<private-session>` conversation leaves nothing; every other exchange is
+  in handoff.md once and in the journal once; every note keeps its text and
+  one index line; repeating the last Stop settles. It found the time-zone
+  duplicates of long conversations, a forgotten exchange still listed and
+  `clip()` not giving the same twice (2026-10-30), and each old bug put back.
+  A failing round prints its seed and what happened: `node fuzz.mjs --seed N`
+  replays it, `FUZZ_KEEP=<folder>` keeps its files, and it becomes a test.
+  CI fuzzes a minute on every job. The `fuzz` workflow, by hand, fuzzes ten
+  minutes on each of 17 machines across Windows, Linux and macOS: run it
+  before a release.
 - `node mutate.mjs [text...]` breaks one rule at a time and expects a suite to
   fail: all mutants, or those whose label contains one of the texts. Every mutant
   must be killed. The mutants are in `mutate.mjs`, grouped by source file
