@@ -545,12 +545,19 @@ utimesSync(join(five, 'MEMORY.md'), tenMin, tenMin);   // an index this old repo
 // nothing. libuv's UV_FS_O_EXLOCK in this process held on GitHub's test
 // machines but not on its mutate machines, and the mutant lived (2026-10-30).
 const held = join(five, 'a.md'), win = process.platform === 'win32';
-const holder = win && spawn('powershell', ['-NoProfile', '-Command', `$f = [IO.File]::Open('${held.replace(/'/g, "''")}', 'Open', 'Read', 'None'); 'held'; [Console]::In.ReadToEnd() | Out-Null; $f.Close()`], { stdio: ['pipe', 'pipe', 'ignore'] });
+// It says `held` only once the file is open, with whether its own second open
+// was refused and the drive's file system; or why it could not open it.
+const holder = win && spawn('powershell', ['-NoProfile', '-Command', [
+  `try { $f = [IO.File]::Open($env:HELD, 'Open', 'Read', 'None') } catch { 'failed ' + $_.Exception.Message; exit }`,
+  `$again = try { [IO.File]::Open($env:HELD, 'Open', 'Read', 'ReadWrite').Close(); 'reopened' } catch { 'refused' }`,
+  `'held ' + $again + ' ' + [IO.DriveInfo]::new([IO.Path]::GetPathRoot($env:HELD)).DriveFormat`,
+  '[Console]::In.ReadToEnd() | Out-Null; $f.Close()'].join('; ')], { stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, HELD: held } });
+let said = '';
 const released = win && new Promise((res) => holder.on('close', res));
-if (win) await new Promise((res) => { holder.stdout.on('data', (b) => { if (String(b).includes('held')) res(); }); released.then(res); });
+if (win) await new Promise((res) => { holder.stdout.on('data', (b) => { said += b; if (/held|failed/.test(said)) res(); }); released.then(res); });
 // The hold is real, or the check below proves nothing: another open fails busy.
 let how = 'opened'; try { readFileSync(held); } catch (e) { how = e.code; }
-if (win) ok(['EPERM', 'EBUSY', 'EACCES'].includes(how), `a memory another program holds open is held: another open fails busy (got ${how}, Node ${process.version})`);
+if (win) ok(['EPERM', 'EBUSY', 'EACCES'].includes(how), `a memory another program holds open is held: another open fails busy (got ${how}; PowerShell: ${said.trim() || 'nothing'}; ${held}; Node ${process.version})`);
 stop('proj-five');
 if (win) { holder.stdin.end(); await released; }
 stop('proj-five');
