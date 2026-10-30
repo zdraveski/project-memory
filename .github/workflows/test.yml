@@ -27,3 +27,5 @@ jobs:
       - run: node memory-tier.test.mjs
       - run: node memory.test.mjs
       - run: node journal.test.mjs
+      # Each job its own random rounds: six minutes of fuzz a push, on three systems.
+      - run: node fuzz.mjs 60

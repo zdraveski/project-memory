@@ -26,10 +26,21 @@ Beyond the suites:
   file once; then the suites of the files changed since the last commit run
   in `--mutant` mode, in UTC and in New York time (GitHub's machines run in
   UTC, where a test of local midnight once checked nothing), and the mutants
-  on the changed lines run. Last, it lists changed code lines no mutant
-  covers. Seconds for most files, a minute or two after a change to
-  `memory.mjs` or `store.mjs`. CI runs it on every push, where nothing has
-  changed and it takes a second.
+  on the changed lines run. Then it lists changed code lines no mutant
+  covers, and after a change to a hook's code it fuzzes for 20 seconds.
+  Seconds for most files, a minute or two after a change to `memory.mjs` or
+  `store.mjs`. CI runs it on every push, where nothing has changed and it
+  takes a second.
+- `node fuzz.mjs [seconds]` sends random, hostile conversations and notes
+  through the real hooks (a BOM, CRLF, half an emoji, a quoted `forget`,
+  `<private>` text, a clock moving between time zones) and checks what must
+  hold whatever they hold: every hook exits cleanly, no private text is
+  written, a `<private-session>` conversation leaves nothing, every note
+  keeps its text and one index line, a second Stop with nothing new changes
+  nothing, and no turn is listed twice. With the time-zone fix and the
+  quoted-forget fix taken back out, it found each within two minutes. A
+  failing round prints its seed: `node fuzz.mjs --seed N` replays it, and it
+  becomes a test. CI fuzzes a minute on every job; run ten before a release.
 - `node mutate.mjs [text...]` breaks one rule at a time and expects a suite to
   fail: all mutants, or those whose label contains one of the texts. Every mutant
   must be killed. The mutants are in `mutate.mjs`, grouped by source file

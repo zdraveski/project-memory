@@ -10,7 +10,8 @@
 //      York: GitHub's machines run in UTC, where a test of local midnight
 //      once checked nothing;
 //   5. the mutants on the changed lines;
-//   6. changed code lines no mutant covers: a reminder, not a failure.
+//   6. changed code lines no mutant covers: a reminder, not a failure;
+//   7. after a change to a hook's code, 20 s of fuzz.mjs.
 // Run: node check.mjs   (from this repo)
 import { readFileSync, existsSync } from 'node:fs';
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
@@ -124,5 +125,11 @@ if (bare.length) {
   console.log(`note ${bare.length} changed code line(s) no mutant covers: a rule there wants a test and a mutant (CONTRIBUTING)`);
   for (const b of bare.slice(0, 15)) console.log(`       ${b}`);
   if (bare.length > 15) console.log(`       and ${bare.length - 15} more`);
+}
+
+// 7. A hook's code changed: 20 s of fuzz, new rounds each time.
+if (changed.some((f) => ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'memory-tier.mjs', 'compact-gate.mjs'].includes(f))) {
+  const r = spawnSync(process.execPath, [join(repo, 'fuzz.mjs'), '20'], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
+  step('20 s of fuzz', r.status === 0 ? [] : r.stdout.trim().split('\n'));
 }
 finish();
