@@ -27,7 +27,9 @@ Beyond the suites:
   file once; then the suites of the files changed since the last commit run
   in `--mutant` mode, in UTC and in New York time (GitHub's machines run in
   UTC, where a test of local midnight once checked nothing), and the mutants
-  on the changed lines run. Then it lists changed code lines no mutant
+  on the changed lines run, hand-written first, then the automatic ones
+  (`--no-auto` skips those); a survivor fails the check, and so does a
+  `mutate.mjs` run that exits non-zero. Then it lists changed code lines no mutant
   covers, and after a change to a hook's code it fuzzes for 20 seconds.
   Seconds for most files, a minute or two after a change to `memory.mjs` or
   `store.mjs`. CI runs it on every push, where nothing has changed and it
@@ -80,7 +82,8 @@ Beyond the suites:
 - The `mutate` workflow on GitHub splits the mutants across 17 machines
   (GitHub Free runs 20 jobs at once). Every push to `master` runs the
   changed files' mutants, by the deploy's rule; started by hand (Actions >
-  mutate > Run workflow), it runs all of them in about 7 minutes. Once a run
+  mutate > Run workflow), it runs all the hand-written ones in about 7
+  minutes, and with `auto` on, the automatic ones too. Once a run
   covering the commit passes, `node deploy.mjs --mutants-checked-on-github`
   skips the local run. The deploy never asks GitHub itself: nothing here
   goes online.

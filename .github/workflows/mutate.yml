@@ -6,7 +6,8 @@ name: mutate
 # one 65. On every push to master it runs the changed files' mutants (all of
 # them after a change to store.mjs, harness.mjs or mutate.mjs: plan-mutants.mjs);
 # started by hand (Actions > mutate > Run workflow, or `gh workflow run
-# mutate.yml -f machines=N`), every mutant. deploy.mjs
+# mutate.yml -f machines=N`), every hand-written mutant, and with `-f auto=true`
+# the automatic ones too. deploy.mjs
 # --mutants-checked-on-github then skips its own run, on your word that a run
 # covering the commit passed.
 on:
@@ -17,6 +18,10 @@ on:
       machines:
         description: Machines to split the mutants across (GitHub Free runs 20 jobs at once)
         default: '17'
+      auto:
+        description: Also run the automatic mutants (automut.mjs), not only the hand-written ones
+        type: boolean
+        default: false
 
 # A newer push makes an older push's run moot; a run started by hand is never cut short.
 concurrency:
@@ -58,4 +63,5 @@ jobs:
       - shell: bash
         env:
           CHANGED: ${{ needs.plan.outputs.changed }}
-        run: node mutate.mjs --shard ${{ matrix.shard }}/${{ strategy.job-total }} ${CHANGED:+--changed "$CHANGED"}
+          AUTO: ${{ inputs.auto && '1' || '' }}
+        run: node mutate.mjs --shard ${{ matrix.shard }}/${{ strategy.job-total }} ${AUTO:+--auto} ${CHANGED:+--changed "$CHANGED"}
