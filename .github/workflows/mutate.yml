@@ -1,17 +1,17 @@
 name: mutate
 
-# The full mutation check, split across as many machines as are free: GitHub
-# Free runs 20 jobs at once for an account, and a push's test run takes 6, so
-# 14 beside a push and 20 alone. Six took about 10 minutes; 65 on one.
-# Started by hand (Actions > mutate > Run workflow, or `gh workflow run
-# mutate.yml -f machines=14`); deploy.mjs --mutants-checked-on-github then
+# The full mutation check, split across 17 machines: GitHub Free runs 20 jobs
+# at once for an account, and past that they queue. 20 machines took 6 min 44 s
+# beside a push's test run, three of them queued; six took about 10 minutes,
+# one 65. Started by hand (Actions > mutate > Run workflow, or `gh workflow
+# run mutate.yml -f machines=N`); deploy.mjs --mutants-checked-on-github then
 # skips its own run, on your word that this one passed for the commit.
 on:
   workflow_dispatch:
     inputs:
       machines:
         description: Machines to split the mutants across (GitHub Free runs 20 jobs at once)
-        default: '20'
+        default: '17'
 
 jobs:
   plan:

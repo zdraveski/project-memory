@@ -38,8 +38,8 @@ Beyond the suites:
   copy's commit; every one when that commit is unknown, when `store.mjs`,
   `harness.mjs` or `mutate.mjs` changed, or under `--full`. Run it with
   `--full` before a version release. To run every mutant faster, start the
-  `mutate` workflow on GitHub (20 machines by default, 14 beside a push's
-  test run: GitHub Free runs 20 jobs at once); once it passes
+  `mutate` workflow on GitHub (17 machines by default, about 7 minutes;
+  GitHub Free runs 20 jobs at once); once it passes
   for the commit, `node deploy.mjs --mutants-checked-on-github` skips the
   local run. The deploy never asks GitHub itself: nothing here goes online.
 - `node memory-tier.soak.mjs [store]` copies a store (by default the largest
