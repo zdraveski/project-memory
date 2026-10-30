@@ -662,13 +662,13 @@ one line that says what was left behind.
 
 ## Requirements and limits
 
-- Node.js 20 or newer. No other dependencies.
+- Node.js 22 or newer. No other dependencies.
 - Git, for snapshots.
 - Paths follow `CLAUDE_CONFIG_DIR`, and `CLAUDE_CODE_PROJECT_DIR_NAME` only
   when `CLAUDE_CONFIG_DIR` is set too (see [Where things live](#where-things-live)).
   The `autoMemoryDirectory` setting is not followed: the plugin reads no
   settings.
-- Tested on Linux, macOS and Windows, with Node 20 and 24.
+- Tested on Linux, macOS and Windows, with Node 22, 24 and 26.
 - The snapshot repository only grows.
 
 The design documents, with the measurements behind these numbers, are in
@@ -696,5 +696,5 @@ meet most:
 - **"its Stop hook is not running".** Claude finished a reply, but the plugin
   didn't save after it. Restart Claude Code; if the line stays after the next
   reply, check that Node.js is installed and on the `PATH`.
-- **"node" is not found.** Install Node.js 20 or newer and restart Claude
+- **"node" is not found.** Install Node.js 22 or newer and restart Claude
   Code.

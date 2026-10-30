@@ -17,7 +17,8 @@ node memory.test.mjs
 node journal.test.mjs
 ```
 
-CI runs all six on Linux, macOS and Windows, with Node 20 and 24.
+CI runs all six in seven jobs: Linux with Node 22, 24 and 26, and macOS and
+Windows with Node 24 and 26.
 
 Beyond the suites:
 
@@ -152,7 +153,9 @@ The maintainer's steps:
    in `CHANGELOG.md` into the version's heading.
 2. Run `claude plugin validate . --strict`. It should find nothing to report.
 3. Run `node fuzz.mjs 600`, and review the whole repository, not just the
-   last change.
+   last change. Have every change since the last tag reviewed from its diff
+   alone, by a reviewer who hasn't seen the work (a fresh agent will do), and
+   fix what it confirms.
 4. Push to `master`, start the `mutate` workflow by hand (every mutant), and
    wait for it and CI to pass on every job.
 5. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release.

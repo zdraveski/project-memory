@@ -35,10 +35,10 @@ weeks. For a quick one-off question, you won't notice much difference.
 ## Install
 
 You need Claude Code with its built-in memory on (it is, unless you turned it
-off) and [Node.js](https://nodejs.org) 20 or newer (choose the LTS version).
+off) and [Node.js](https://nodejs.org) 22 or newer (choose the LTS version).
 [Git](https://git-scm.com) is optional: without it, everything works except
 bringing back old versions of notes. Not sure? Ask Claude: *"Do I have
-Node.js 20 or newer, and Git?"*
+Node.js 22 or newer, and Git?"*
 
 1. In Claude Code, type these two lines. When the second one opens a menu,
    choose to install it for you (user scope), so it works in every project.
