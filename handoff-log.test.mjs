@@ -967,6 +967,13 @@ appendFileSync(tk, [user('the otter memo', { ts: '2026-10-29T09:50:00Z', uuid: '
 appendFileSync(join(dirF, 'journal', '.forgotten'), 'u-otter\tmemory/k\t2000-01-01 00:00\n');
 handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
 ok(!/otter/.test(fdoc()), `an exchange forget took out stays out by its key when its minute moved (got ${fdoc()})`);
+// And one with a key goes by its key alone: the minute it was listed under, in
+// another zone's clock, is another turn's minute here, and that turn went too (fuzz, 2026-10-30).
+appendFileSync(tk, [user('the ibis note', { ts: '2026-10-29T10:10:00Z', uuid: 'u-ibis' }), asst('wrote the ibis note', { ts: '2026-10-29T10:10:30Z' }),
+  user('the lynx note', { ts: '2026-10-29T10:20:00Z', uuid: 'u-lynx' }), asst('wrote the lynx note', { ts: '2026-10-29T10:20:30Z' })].join('\n') + '\n');
+appendFileSync(join(dirF, 'journal', '.forgotten'), `u-lynx\tmemory/k\t${local('2026-10-29T10:10:00Z')}\n`);
+handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
+ok(/the ibis note/.test(fdoc()) && !/lynx/.test(fdoc()), `a forgotten exchange listed under another zone's minute takes only itself (got ${fdoc()})`);
 // Its transcript in either case: Windows names one folder c--x and C--x.
 if (process.platform === 'win32') {
   appendFileSync(tk, [user('the heron note', { ts: '2026-10-29T10:00:00Z' }), asst('wrote the heron note', { ts: '2026-10-29T10:00:30Z' })].join('\n') + '\n');

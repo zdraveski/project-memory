@@ -688,11 +688,14 @@ export function handoff(input, sink = null) {
     let list = null; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch {}
     const me = pathKey(transcriptKey(input.transcript_path)), listed = forgotten(list);
     const keys = new Set(listed.map(([k]) => k)), out = new Set(listed.filter(([, t]) => t && pathKey(t) === me).map(([, , at]) => at));
+    // A turn with a key goes by it alone: the minute it was listed under, in
+    // another zone's clock, can be another turn's minute here (fuzz, 2026-10-30).
+    const forgot = (t) => (t.id ? keys.has(t.id) : out.has(t.at));
     // One already listed goes too, by what it says: forget took it out of
     // handoff.md by minute, and one listed under another zone's minute stayed (fuzz, 2026-10-30).
-    const gone = fresh.filter((t) => out.has(t.at) || keys.has(t.id));
+    const gone = fresh.filter(forgot);
     const drop = quiet ? (t) => t.s === s : gone.length ? (t) => t.s === s && gone.some((g) => g.ask === t.ask && g.did === t.did) : null;
-    const w = put(dir, quiet ? [] : fresh.filter((t) => !out.has(t.at) && !keys.has(t.id)), drop, s, got.whole);
+    const w = put(dir, quiet ? [] : fresh.filter((t) => !forgot(t)), drop, s, got.whole);
     return quiet ? 'private' : w;
   });
   return r ?? 'busy';
