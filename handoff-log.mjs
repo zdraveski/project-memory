@@ -176,6 +176,10 @@ export { unwrap };
 // A session's short tag: enough to tell parallel sessions apart in one file.
 export const tag = (id) => String(id || '').slice(0, 8);
 
+// The file a tool call edits, or '': the one list of the edit tools, for the
+// handoff and the compaction note alike. NotebookEdit names its file differently.
+export const editedFile = (b) => (b?.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path)) || '';
+
 export function turns(tail) {
   const out = [];
   let pending = null;
@@ -191,7 +195,7 @@ export function turns(tail) {
     if (r.type === 'assistant' && pending && !pending.frozen && Array.isArray(r.message?.content)) {
       for (const b of r.message.content) {
         if (b?.type === 'tool_use' && /^(Bash|PowerShell)$/.test(b.name) && b.input?.command) pending.ran.push(String(b.input.command));
-        const f = b?.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path);
+        const f = editedFile(b);
         if (!f) continue;
         // The newest edit last, and by path: two index.ts files are two, and
         // a file edited first and last is one of the turn's last.

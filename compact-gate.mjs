@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText } from './handoff-log.mjs';
+import { readTail, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -154,8 +154,7 @@ function walk(raw) {
       }
       for (const b of c) {
         if (b?.type === 'tool_use' && /^(Bash|Agent|Task)$/.test(b.name)) s.launchers.add(b.id);
-        if (b?.type !== 'tool_use' || !/^(Edit|Write|NotebookEdit)$/.test(b.name)) continue;
-        const file = b.input?.file_path || b.input?.notebook_path;   // NotebookEdit names its file differently
+        const file = editedFile(b);
         // The name, not the path: the path names the user's folders, and the
         // project says where it is.
         if (file) s.edited.add(String(file).split(/[\\/]/).pop());
