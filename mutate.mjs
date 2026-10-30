@@ -13,6 +13,9 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'journal.mjs', 'co
 
 const suites = {
   'store.mjs': ['store.test.mjs', {
+    "the case key folds as JavaScript does": ["    if (names.has(t) || !low.has(t.toLowerCase())) return t;\n", "    return process.platform === 'win32' ? t.toLowerCase() : t;\n"],
+    "the case key matches without asking the disk": ["try { if (id(n) === me) return n; } catch {}", "return n;"],
+    "a line in another case is not the note's": ["    for (const n of low.get(t.toLowerCase()) ?? []) {", "    for (const n of []) {"],
     'a list line kept with its spaces and CR': ['split(/\\r?\\n/).map((l) => l.trim()).filter(Boolean);', 'split(/\\r?\\n/).filter(Boolean);'],
     'a blank list line kept': ['.map((l) => l.trim()).filter(Boolean);', '.map((l) => l.trim());'],
     "a null superseded-by is a replacement": ["return /^(?:null|Null|NULL|~|#(?:\\s.*)?)$/.test(p) ? '' : p;", "return p;"],
@@ -392,15 +395,12 @@ const suites = {
     "a store git does follow said to be left out": ["try { return !git('ls-files', '--', ", "try { return true || !git('ls-files', '--', "],
     "a prose-only index divides by no lines": ["r.hot ? `${Math.round(r.after / r.hot)}B a line; shorten the text after each link rather than removing lines` : 'the text above the lines; shorten it'", "`${Math.round(r.after / r.hot)}B a line; shorten the text after each link rather than removing lines`"],
     "the front matter read from 1,200 bytes": ["Buffer.alloc(16384)", "Buffer.alloc(1200)"],
-    "the case key folds as JavaScript does": ["    if (names.has(t)) return t;\n", "    return process.platform === 'win32' ? t.toLowerCase() : t;\n"],
-    "the case key matches without asking the disk": ["try { if (id(t) === id(n)) return n; } catch {}", "return n;"],
     "a rebuilt index keeps what is now ignored tracked": ["        try { unlinkSync(applied); } catch {}\n", ""],
     "a damaged index left as it is": ["        try { unlinkSync(join(root, '.git', 'index')); } catch {}\n", ""],
     "a damaged index not recognised": ["if (/index file (?:smaller than expected|corrupt)|bad (?:signature|index file)/.test(why)) {", "if (false) {"],
     "a returning line loses its own trailing space": ["p.line.slice(0, -OVERFLOW.length).replace(/ $/, '')", "p.line.slice(0, -OVERFLOW.length).trimEnd()"],
     "no line ceiling": ["(size > budget || count > LINES) && q < queue.length", "size > budget && q < queue.length"],
     "the tidy-up before the first snapshot": ["if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot();\n", ""],
-    "a line in another case is not the note's": ["    for (const n of low.get(t.toLowerCase()) ?? []) {", "    for (const n of []) {"],
     "the first of two lines kept": ["if (inIndex && was.inIndex) was.p.line = p.line;", ""],
     "adopted before the sweep": ["    if (!ours) git('config', 'project-memory.snapshots', 'true');\n", ""],
     "a 7-= heading taken for a conflict": ["merged: /^<{7}(?:[ \\t].*)?\\r?$/m.test(mainText) && /^>{7}", "merged: /^(?:<{7}|={7})(?:[ \\t].*)?\\r?$/m.test(mainText) || /^>{7}"],

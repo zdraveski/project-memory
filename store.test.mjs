@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener } = await import('./store.mjs');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const root = join(home, '.claude', 'projects');
@@ -215,6 +215,22 @@ ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !r
 // its lines as written: an editor's CRLF or a space left after one is still
 // the line, and a blank one is none.
 ok(listOf(' a1 \r\n\r\n\tb2\n  \n').join() === 'a1,b2' && listOf(null).length === 0, `a list file is its trimmed, non-blank lines (got ${JSON.stringify(listOf(' a1 \r\n\r\n\tb2\n  \n'))})`);
+
+// An index line's file is the listed note the disk opens for it: (Kase.md) is
+// kase.md's where the disk folds case, a name no file has is itself, and the
+// Kelvin sign and k, two notes NTFS keeps apart, stay two. The Kelvin sign is
+// listed first: a fold that takes the first name it finds takes the wrong one.
+{
+  const od = join(home, 'opener'), K = String.fromCharCode(0x212A);
+  mkdirSync(od, { recursive: true });
+  for (const n of ['kase.md', 'kelvin.md', `${K}elvin.md`]) writeFileSync(join(od, n), n);
+  const ls = readdirSync(od), listed = [...ls.filter((n) => n.startsWith(K)), ...ls.filter((n) => !n.startsWith(K))], opens = opener(od, listed);
+  const folds = existsSync(join(od, 'KASE.md')), apart = listed.length === 3;
+  ok(opens('kase.md') === 'kase.md' && opens('Kase.md') === (folds ? 'kase.md' : 'Kase.md') && opens('gone.md') === 'gone.md',
+    `a line's file is the listed note it opens, and a name no file has is itself (got ${opens('Kase.md')}, ${opens('gone.md')})`);
+  ok(!apart || (opens(`${K}elvin.md`) === `${K}elvin.md` && opens('KELVIN.md') === (folds ? 'kelvin.md' : 'KELVIN.md')),
+    `two notes the disk keeps apart (the Kelvin sign and k) stay two, each found by the disk (got ${opens(`${K}elvin.md`)}, ${opens('KELVIN.md')})`);
+}
 
 // A line made for a memory no index names reads back, and its hook ends whole.
 const made = pointerLine('[draft] plan.md', 'a'.repeat(139) + '\u{1F600} and more');

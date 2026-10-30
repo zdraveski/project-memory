@@ -137,6 +137,23 @@ export const ARCHIVE = 'MEMORY-archive.md';
 export const pointerLine = (file, desc) =>
   `- [${file.replace(/\.md$/, '').replace(/-/g, ' ').replace(/[[\]]/g, '')}](${file}) — ${desc.slice(0, 140).replace(/[\uD800-\uDBFF]$/, '')}`;
 
+// The listed name an index line's file opens, from one listing of the store,
+// for tiering and the CLI alike: on Windows (Kase.md) is kase.md's. A name the
+// folder lists is itself; another is the listed name it folds to only when it
+// opens that very file: NTFS keeps the Kelvin sign and k apart, and a plain
+// fold let one note's line replace another's.
+export function opener(dir, listed) {
+  const names = new Set(listed), low = new Map();
+  for (const n of listed) low.set(n.toLowerCase(), [...(low.get(n.toLowerCase()) ?? []), n]);
+  const id = (t) => { const s = statSync(join(dir, t), { bigint: true }); return `${s.dev}:${s.ino}`; };
+  return (t) => {
+    if (names.has(t) || !low.has(t.toLowerCase())) return t;
+    let me; try { me = id(t); } catch { return t; }
+    for (const n of low.get(t.toLowerCase()) ?? []) { try { if (id(n) === me) return n; } catch {} }
+    return t;
+  };
+}
+
 // Every store once: one reached by two paths (a junction back to another
 // project's store) is one brain, tiered and reported once; a junction whose
 // target is gone is none.

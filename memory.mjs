@@ -31,7 +31,7 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local } from './store.mjs';
 import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
@@ -122,16 +122,9 @@ const withLine = (text, line) => {
 // index names it.
 export function memories(dir) {
   let files; try { files = readdirSync(dir); } catch { return []; }
-  // By the file each line opens, as tiering counts them: on Windows (Kase.md)
-  // is kase.md's. One listing for the store: read once a line, a 5 MB index
-  // hung status for good.
-  const listed = new Set(files), low = new Map();
-  for (const f of files) low.set(f.toLowerCase(), [...(low.get(f.toLowerCase()) ?? []), f]);
-  const id = (p) => { const s = statSync(p, { bigint: true }); return `${s.dev}:${s.ino}`; };
-  const opens = (t) => {
-    if (listed.has(t) || !low.has(t.toLowerCase())) return t;
-    try { const me = id(join(dir, t)); return low.get(t.toLowerCase()).find((n) => { try { return id(join(dir, n)) === me; } catch { return false; } }) ?? t; } catch { return t; }
-  };
+  // By the file each line opens, as tiering counts them (store.mjs `opener`).
+  // One listing for the store: read once a line, a 5 MB index hung status for good.
+  const opens = opener(dir, files);
   const hot = new Set([...new Set(targets(read(join(dir, 'MEMORY.md'))))].map(opens)), cold = new Set([...new Set(targets(read(join(dir, ARCHIVE))))].map(opens));
   return files.filter((f) => f.endsWith('.md') && !f.startsWith('MEMORY')).flatMap((file) => {
     const path = join(dir, file);
