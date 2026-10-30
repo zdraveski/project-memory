@@ -26,7 +26,10 @@ const run = (args) => {
   console.log = (...a) => { out.push(format(...a)); };
   let status, stderr = '';
   try { status = main(args); } catch (e) { status = 1; stderr = String(e?.stack ?? e); } finally { console.log = log; }
-  return { status, stdout: out.map((l) => `${l}\n`).join(''), stderr };
+  // Through UTF-8, as a process's output reaches the reader: half an emoji is
+  // U+FFFD there. Kept as the string, the emoji checks passed whatever the
+  // cut did (GitHub's mutate run, 2026-10-30).
+  return { status, stdout: Buffer.from(out.map((l) => `${l}\n`).join(''), 'utf8').toString('utf8'), stderr };
 };
 const cli = (...args) => run([...args, ...(args.includes('--shared') ? [] : ['--store', dir])]);
 const tenMin = new Date(Date.now() - 10 * 60000);
