@@ -174,15 +174,16 @@ const words = (q) => [...new Set(q.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter
 const alone = (t) => new RegExp(`(?<![\\p{L}\\p{N}])${t}(?![\\p{L}\\p{N}])`, 'gu');
 const count = (hay, t) => (t.length > 2 ? hay.split(t).length - 1 : (hay.match(alone(t)) ?? []).length);
 const has = (hay, t) => (t.length > 2 ? hay.includes(t) : alone(t).test(hay));
-// The stretches of `text` around each match of `find`, joined, `room` characters at most.
+// The stretches of `text` around each match of `find`, joined, `room` characters
+// at most; no cut leaves half an emoji, which prints as U+FFFD.
 function around(text, find, room) {
   const spans = [];
   for (const m of text.matchAll(find)) {
     const a = Math.max(0, m.index - HIT_SPAN), b = Math.min(text.length, m.index + m[0].length + HIT_SPAN);
     if (spans.length && a <= spans.at(-1)[1]) spans.at(-1)[1] = b; else spans.push([a, b]);
   }
-  const s = (spans[0][0] ? '…' : '') + spans.map(([a, b]) => text.slice(a, b)).join(' … ') + (spans.at(-1)[1] < text.length ? '…' : '');
-  return s.length > room ? s.slice(0, room - 1) + '…' : s;
+  const s = (spans[0][0] ? '…' : '') + spans.map(([a, b]) => text.slice(a, b).replace(/^[\uDC00-\uDFFF]/, '').replace(/[\uD800-\uDBFF]$/, '')).join(' … ') + (spans.at(-1)[1] < text.length ? '…' : '');
+  return s.length > room ? s.slice(0, room - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : s;
 }
 
 // Ranked, not grepped: a name says more than a description, a description more

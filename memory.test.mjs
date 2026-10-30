@@ -799,6 +799,14 @@ if (!quick) {
   const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
   ok(z.length < 1500 && zask.length === 400 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
     `an entry at every cap: its request cut to 400, the rest the stretches around the word, under 1.5 KB in all (got ${z.length}: ${z})`);
+  // A stretch never starts or ends on half an emoji, nor does the cap cut one:
+  // printed, half of one is U+FFFD. Each of the three cuts lands mid-emoji here.
+  const em = (n) => '\u{1F600}'.repeat(n);
+  day(jd, '2026-10-13', [entry('2026-10-13 09:00', 'feed the quetzal', { answered: `${em(60)} quetzal ${em(60)}` }),
+    entry('2026-10-13 10:00', 'weigh the quetzal', { answered: `quetzal ${em(20)}`.repeat(30) })]);
+  r = jcli('search', 'quetzal');
+  rmSync(join(jd, 'journal', '2026-10-13.md'));   // a day no other check uses
+  ok(r.status === 0 && (r.stdout.match(/^     Answered: /gm) ?? []).length === 2 && !r.stdout.includes('�'), `a stretch of a hit never cuts an emoji in half (got ${r.stdout})`);
   // show: the whole entry, by the key its hit printed, and its day file.
   const zkey = z.match(/^     key: (.*)$/m)?.[1];
   r = jcli('show', zkey);

@@ -479,6 +479,9 @@ const suites = {
     'rule share measured on the whole budget': ['Math.max(0, budget - pinnedBytes) * RULE_SHARE', 'budget * RULE_SHARE'],
   }],
   'memory.mjs': ['memory.test.mjs', {
+    'a hit stretch starts on half an emoji': [".slice(a, b).replace(/^[\\uDC00-\\uDFFF]/, '').replace(", ".slice(a, b).replace("],
+    'a hit stretch ends on half an emoji': [".replace(/[\\uD800-\\uDBFF]$/, '')).join(' … ')", ")).join(' … ')"],
+    'the hit cap cuts an emoji in half': ["s.slice(0, room - 1).replace(/[\\uD800-\\uDBFF]$/, '') + '…'", "s.slice(0, room - 1) + '…'"],
     "a linked store found by its resolved path": ["  if (!at.startsWith('..') && !isAbsolute(at)) return [relative(root, join(real(dir), file)).replace(/\\\\/g, '/')];", "  return [relative(root, join(real(dir), file)).replace(/\\\\/g, '/')];"],
     "a project folder linked outside named by its target": ["return (links.length ? links : [basename(dirname(dir))]).map((n) => `${n}/memory/${file}`);", "return [relative(root, join(real(dirname(dir)), basename(dir), file)).replace(/\\\\/g, '/')];"],
     "a store's second link named in the history": ["(links.length ? links : [basename(dirname(dir))])", "([basename(dirname(dir))])"],
