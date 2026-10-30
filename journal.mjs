@@ -43,7 +43,7 @@ const day = (at) => at.slice(0, 10);
 // read as U+FFFD and written back, its letters gone for good. It is left as
 // it is, and the write that needed it fails, so status says why.
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
-function whole(file, text) {
+function utf8Only(file, text) {
   if (text?.includes('\uFFFD')) try { UTF8.decode(readFileSync(file)); } catch { throw Object.assign(new Error(`${file} is not UTF-8 text, so it was left as it is; save it as UTF-8`), { code: 'not UTF-8' }); }
 }
 // Each day's work, a day that throws (not UTF-8, a folder by its name) after
@@ -167,7 +167,7 @@ export function record(dir, transcriptPath, turns, when) {
       // Nothing new: no write, so a day not in UTF-8 is no failure of this one.
       if (!changed) break;
       const all = [...have.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-      whole(file, before);
+      utf8Only(file, before);
       const w = replaceIfUnchanged(file, before, page(d, prose, all));
       if (w !== 'conflict') { n += changed; added = novel; break; }
     }
@@ -210,7 +210,7 @@ export const entries = (dirs, { since, until, failed = [] } = {}) => dirs.flatMa
     const path = dayFile(dir, d);
     try {
       const text = raw(path) ?? '';
-      try { whole(path, text); } catch (e) { failed.push({ path, code: e.code }); }
+      try { utf8Only(path, text); } catch (e) { failed.push({ path, code: e.code }); }
       return parseDay(text).entries.map((e) => ({ ...e, day: d, path, dir }));
     } catch (e) { failed.push({ path, code: e.code || e.message }); return []; }
   }));
@@ -230,7 +230,7 @@ function drop(dir, d, keep) {
       else if (e.after) { const up = kept.at(-1); if (up) up.after = [up.after, e.after].filter(Boolean).join('\n\n'); else prose = [prose, e.after].filter(Boolean).join('\n\n'); }
     }
     if (kept.length === entries.length) return [];
-    whole(file, before);
+    utf8Only(file, before);
     if (replaceIfUnchanged(file, before, page(d, prose, kept)) === 'conflict') continue;
     if (!kept.length && !prose) try { unlinkSync(file); } catch {}
     return entries.filter((e) => !keep(e));
