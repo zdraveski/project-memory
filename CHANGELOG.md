@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.2.2 (2026-10-30)
+
+Five fixes from a bug hunt: reviews of the code, and a new fuzz test that
+sends thousands of random, hostile conversations through the plugin.
+
+**Privacy**
+- If a conversation was compacted while Claude was carrying out a `forget`,
+  the compaction note quoted what was being forgotten, both in the handoff
+  and in the briefing after the compaction. It now says `[private]`.
+- `/memory --shared forget <words>` is now recognised as a forget. That
+  covers an option before `forget`, quoted the way the memory skill quotes
+  what you type. Before, the exchange was saved whole, the forgotten words
+  with it. A negative number after an option (`--limit -5`) no longer hides
+  a forget either.
+
+**The handoff**
+- After your computer's time zone changes, a long conversation lists each
+  exchange once, and the newest stays. Before, each was listed twice and the
+  newest could drop out.
+- An exchange you forgot, listed under another time zone's clock, now leaves
+  the handoff too.
+- After you forget an exchange and the time zone changes, another exchange
+  no longer disappears from the handoff just because its time reads the same
+  on the new clock.
+
+**Notes**
+- A note saved with Windows line endings keeps its whole description in
+  `status`, search and the index, not just its first line.
+
+For contributors: a quick check for every edit (`check.mjs`); a fuzz test
+with a 17-machine GitHub workflow; the mutation check on every push; and the
+CLI's tests run in-process, about 40% faster.
+
 ## 1.2.1 (2026-10-30)
 
 Fixes from three reviews of the code, and a README that reads on a phone.
