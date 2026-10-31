@@ -60,8 +60,12 @@ const RANGE_SHOWN = 20;
 // What a journal hit prints: its request to HIT_ASK characters, and of the
 // reply, files and commands only the stretches that hold a search word, HIT_SPAN
 // either side, HIT_MORE in all. The top 3 printed whole were 30 KB, and the line
-// that answered the question was lost in them (recall test, 2026-10-29).
-const HIT_ASK = 400, HIT_SPAN = 80, HIT_MORE = 800;
+// that answered the question was lost in them (recall test, 2026-10-29). A
+// headline, not the entry: ten hits at 400 and 800 were 7 KB a search, mostly
+// passages and transcript paths nobody read; `show` gives one whole (2026-10-31).
+// HIT_SPAN fits a third of HIT_MORE: at 80, three fields' stretches were all
+// lead-in, cut before the word.
+const HIT_ASK = 200, HIT_SPAN = 30, HIT_MORE = 240;
 // A request this long (normalized) asked again is one hit: a script's prompt,
 // a retry. A shorter one ("continue", "yes") is different work each time, and
 // collapsed, its reply could not be read (review, 2026-10-29).
@@ -659,7 +663,6 @@ export function main(given) {
       // copies' keys are named: a forget of the one shown left them (review).
       return [`${String(h.score).padStart(3)}  journal   ${head(h)}`, `     key: ${clip(h.key, Infinity)}`, `     Asked: ${clip(h.asked, HIT_ASK)}`,
         ...hold.map(([k, v]) => `     ${k}: ${around(clip(v, Infinity), find, Math.floor(HIT_MORE / hold.length))}`),
-        ...full(h),
         ...(also.length ? [`     ${also.length} more like this, ${ds[0]}..${ds.at(-1)}: ${more(also.map((x) => clip(x.key, Infinity)), 5)}; --same takes them all`] : [])];
     };
     const wider = rest.includes('--all') ? '' : '; --all searches every project';
@@ -668,7 +671,7 @@ export function main(given) {
         `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...out,
         // A hit's date, and what was not shown or not searched.
-        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}`]
+        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}${shown.some(([h]) => h.kind === 'journal') ? "; show '<key>' prints an entry whole" : ''}`]
       : [...out, `nothing matches "${q}" in ${where}${span && ` ${span}`}${wider}`] };
   } else if (cmd === 'show' && args.length) {
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read

@@ -550,12 +550,13 @@ scores show the newest first.
 
 It shows the top 10 (`--limit N` for more), then how many matched. A journal
 hit shows its day and time, conversation tag and branch (and its project,
-under `--all`), then its key and its request, cut to 400 characters. Of its
+under `--all`), then its key and its request, cut to 200 characters. Of its
 reply, files and commands it shows only those that hold a search word, and
-of each only the stretches 80 characters either side of a match, 800
+of each only the stretches 30 characters either side of a match, 240
 characters in all a hit. Every field is redacted before it is cut, so a
-stretch never shows part of a secret. When the hit's transcript is still on
-disk, its path follows, unless the entry is private (its reply is
+stretch never shows part of a secret. A hit is a headline: `show <key>`
+prints the entry whole, with its day file and, while it is still on disk,
+its transcript's path, unless the entry is private (its reply is
 `[private]`): the transcript is where the private part still is. A request
 of 80 characters or more asked again (a
 prompt a script sends, a retry) is one hit: the best-ranked copy, then

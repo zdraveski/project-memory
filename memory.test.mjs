@@ -818,8 +818,8 @@ if (!quick) {
     `a reply is printed only when it holds a search word (got ${r.stdout})`);
   r = await jcli('search', 'zeppelin');
   const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
-  ok(z.length < 1500 && zask.length === 400 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
-    `an entry at every cap: its request cut to 400, the rest the stretches around the word, under 1.5 KB in all (got ${z.length}: ${z})`);
+  ok(z.length < 700 && zask.length === 200 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
+    `an entry at every cap: a headline, its request cut to 200, the rest the stretches around the word, under 700 characters in all (got ${z.length}: ${z})`);
   // A stretch never starts or ends on half an emoji, nor does the cap cut one:
   // printed, half of one is U+FFFD. Each of the three cuts lands mid-emoji here.
   const em = (n) => '\u{1F600}'.repeat(n);
@@ -862,8 +862,9 @@ if (!quick) {
   r = await jcli('search', 'narwhal');
   ok(/conversation \[redacted\] · branch feat-\[redacted\]$/m.test(r.stdout) && !r.stdout.includes(tagKey) && !r.stdout.includes(brKey) && !r.stdout.includes(cutKey.slice(16)),
     `a secret in a tag, a branch or under a stretch's cut is never printed (got ${r.stdout})`);
-  // Matches near each other are one stretch, not the same text twice.
-  ok(!/^     Answered: [^\n]* … /m.test(z), `close matches merge into one stretch (got ${z})`);
+  // Matches farther apart than two windows (here 121 characters) are separate
+  // stretches; ones whose windows touch merge (the zeta check below).
+  ok(/^     Answered: …[^\n]*zeppelin[^\n]* … /m.test(z), `distant matches are separate stretches (got ${z})`);
   ok(!/[\\/]journal\.md$/m.test((await jcli('search', 'every', 'exchange')).stdout), "journal.md is the journal's pointer, not a search hit");
   ok(/^     Asked: tidy the scripts$/m.test((await jcli('search', 'memory-tier.mjs')).stdout) && /^     Asked: tidy the scripts$/m.test((await jcli('search', 'bench')).stdout),
     'an entry is found by a file it changed, and by a command it ran, alone');
@@ -908,10 +909,13 @@ if (!quick) {
   r = await jcli('search', 'deploy', '--since', 'yesterday');
   const r2 = await jcli('search', 'deploy', '--until=2026-10');
   ok(r.status === 1 && r.stdout.trim() === '--since takes a date like 2026-10-01' && r2.status === 1 && r2.stdout.trim() === '--until takes a date like 2026-10-01', `a bad date is refused (got ${r.stdout}${r2.stdout})`);
-  const conv = join(root, 'C--jr', 'c0ffee12-full.jsonl'), named = async () => /^     Full conversation: .*[\\/]C--jr[\\/]c0ffee12-full\.jsonl$/m.test((await jcli('search', 'fix', 'deploy', 'error')).stdout);
+  // The transcript is show's to name; a hit is a headline, and says how to get the rest.
+  const conv = join(root, 'C--jr', 'c0ffee12-full.jsonl'), named = async () => /^     Full conversation: .*[\\/]C--jr[\\/]c0ffee12-full\.jsonl$/m.test((await jcli('show', fix.key)).stdout);
   writeFileSync(conv, '{}\n');
-  const was = await named(); unlinkSync(conv);
-  ok(was && !await named(), 'the full conversation is named while it exists');
+  const was = await named(), hit = (await jcli('search', 'fix', 'deploy', 'error')).stdout; unlinkSync(conv);
+  ok(was && !await named(), 'show names the full conversation while it exists');
+  ok(!/Full conversation/.test(hit) && /; show '<key>' prints an entry whole$/m.test(hit), `a hit names no transcript, and its last line points at show (got ${hit})`);
+  ok(!/show '<key>'/.test((await jcli('search', 'how', 'we', 'ship')).stdout), 'a search with no journal hit does not point at show');
   // A private turn's only detail is the private part, which its transcript
   // still holds: neither a hit nor show points at it (final review, 2026-10-29).
   const pin = entry('2026-09-30 10:00', 'my quokka pin is [private]', { answered: '[private]' }), pinDay = join(jd, 'journal', '2026-09-30.md');
@@ -1256,16 +1260,21 @@ if (!quick) {
   ok(!/mn-beta/.test(r.stdout) && scoreOf(r.stdout, 'Asked: set up CI') === 8 && !/Answered:/.test(r.stdout), `a two-letter term is counted and shown only standing alone (got ${r.stdout})`);
   ok(/^ +links: l1, l2, l3, l4, l5$/m.test((await jcli('search', 'fivelinks')).stdout), 'exactly five links are listed with no "and 0 more"');
 
-  // A stretch: matches 164 apart are one stretch (the windows touch), and a
-  // stretch of exactly the room is not cut. The last match is 50 characters from
-  // the end, so the stretch ends there and the cap would replace its last letter.
+  // A stretch: matches 60 apart are one stretch (the 30-character windows
+  // touch): no " … " where the second window starts, and it is cut at the room (240).
   const fill = (k) => 'ab '.repeat(Math.ceil(k / 3)).slice(0, k);
-  const text = fill(100) + 'zeta' + [1, 2, 3, 4].map(() => fill(160) + 'zeta').join('') + fill(5) + 'zeta' + fill(50);
-  ok(text.length === 819, `the text is built to 819 characters (got ${text.length})`);
-  day(jm, '2026-10-22', [entry('2026-10-22 10:00', 'set up CI on the cluster', { answered: 'a decision on logos' }), entry('2026-10-22 11:00', 'zeta hunt', { answered: text })]);
+  const text = fill(100) + 'zeta' + [1, 2, 3, 4].map(() => fill(60) + 'zeta').join('') + fill(5) + 'zeta' + fill(50);
+  ok(text.length === 419, `the text is built to 419 characters (got ${text.length})`);
+  // And a stretch of exactly the room is not cut. The last match is 9
+  // characters from the end, so the stretch ends there and the cap would replace its last letter.
+  const exact = fill(100) + ['kappa', 'kappa', 'kappa', 'kappa'].join(fill(60)) + fill(8) + 'z';   // a stored reply loses a trailing space
+  day(jm, '2026-10-22', [entry('2026-10-22 10:00', 'set up CI on the cluster', { answered: 'a decision on logos' }), entry('2026-10-22 11:00', 'zeta hunt', { answered: text }),
+    entry('2026-10-22 12:00', 'kappa hunt', { answered: exact })]);
   r = await jcli('search', 'zeta');
   const stretch = r.stdout.split('\n').find((l) => l.startsWith('     Answered: '));
-  ok(stretch === `     Answered: …${text.slice(20)}` && stretch.length - '     Answered: '.length === 800, `matches 164 apart merge, and a stretch of 800 characters is kept whole (got ${stretch})`);
+  ok(stretch === `     Answered: …${text.slice(70, 308)}…` && stretch.length - '     Answered: '.length === 240, `matches 60 apart merge, cut at 240 (got ${stretch})`);
+  const whole = (await jcli('search', 'kappa')).stdout.split('\n').find((l) => l.startsWith('     Answered: '));
+  ok(whole === `     Answered: …${exact.slice(70)}` && whole.length - '     Answered: '.length === 240, `a stretch of exactly 240 characters is kept whole (got ${whole})`);
 
   // A range with no terms lists those days, newest first; equal minutes keep their order.
   day(jm, '2026-10-21', [entry('2026-10-21 10:00', 'tie alpha'), entry('2026-10-21 10:00', 'tie beta'), entry('2026-10-21 09:00', 'tie gamma')]);
@@ -1500,9 +1509,9 @@ if (!quick) {
   day(jm, '2026-10-25', [entry('2026-10-25 10:00', 'omega tail', { answered: tail }), entry('2026-10-25 10:01', 'omega cut', { answered: cutme }), entry('2026-10-25 10:02', 'plain request', { answered: 'a concatenated string' })]);
   r = await jcli('search', 'omega');
   const ans = (out, marker) => (blocks(out).find((b) => b.includes(marker))?.split('\n').find((l) => l.startsWith('     Answered: ')) ?? '').slice('     Answered: '.length);
-  ok(ans(r.stdout, 'Asked: omega tail') === `…${tail.slice(20, 185)}…`, `a stretch that stops before the end of the text ends with an ellipsis (got ${ans(r.stdout, 'Asked: omega tail')})`);
+  ok(ans(r.stdout, 'Asked: omega tail') === `…${tail.slice(70, 135)}…`, `a stretch that stops before the end of the text ends with an ellipsis (got ${ans(r.stdout, 'Asked: omega tail')})`);
   const cut = ans(r.stdout, 'Asked: omega cut');
-  ok(cut.length === 800 && cut.startsWith('…') && cut.endsWith('…'), `stretches past the room are cut to 800 characters, ellipsis included (got ${cut.length})`);
+  ok(cut.length === 240 && cut.startsWith('…') && cut.endsWith('…'), `stretches past the room are cut to 240 characters, ellipsis included (got ${cut.length})`);
   ok(ans((await jcli('search', 'cat')).stdout, 'Asked: plain request').includes('concatenated'), 'a three-letter term shows its stretch inside a longer word');
 
   // The first column: a score is right-aligned to 3, the kind padded to 9.
