@@ -23,20 +23,26 @@
 // ENOSPC) at a rate of 2, 10 or 30 % from a seeded stream; 10 % of Stops are killed
 // 5-300 ms in, and every .lock under the home is then dated back past LOCK_STALE (a
 // lock a refused unlock left is the same case). Before the settling Stops a journal
-// look is made due, as the wait of ACTIVE would. A kill, and two faulted Stops at
-// once, are races: a failing seed may need a few --seed replays.
-// The older conversation is dated three days back, as a real user's earlier session is, so the journal's import takes it in
-// (written now it was an active session's and was skipped); 25 % of them are ones it must leave alone (a <private-session>
-// typed in it, or its tag already in .memory-off or .private-sessions). 20 % of turns hold a message queued while Claude
-// works (a string or blocks; 30 % with a <private> secret); 25 % of plain turns hold secrets of five of the shapes redact()
-// knows (all of them are tried at start-up), built from pieces, and near-misses (process.env.API_KEY, user.password). 10 % of
-// conversations are held with auto memory off from some Stop on: a Stop with CLAUDE_CODE_DISABLE_AUTO_MEMORY set.
+// look is made due, as the wait of ACTIVE would, and a transcript listed as failing
+// to open is tried again, as RETRY would. A kill, and two faulted Stops at once,
+// are races: a failing seed may need a few --seed replays.
+// The older conversation is dated three days back, as a real user's earlier session
+// is, so the journal's import takes it in (written now it was an active session's and
+// was skipped); 25 % of them are ones it must leave alone (a <private-session> typed
+// in it, or its tag already in .memory-off or .private-sessions). 20 % of turns hold
+// a message queued while Claude works (a string or blocks; 30 % with a <private>
+// secret, which the answer and a command after it repeat, so a freeze that fails
+// leaks it). 25 % of plain turns hold secrets of five of the shapes redact() knows
+// (every shape is tried at start-up), built from pieces, and near-misses
+// (process.env.API_KEY, user.password). 10 % of conversations are held with auto
+// memory off from some Stop on: a Stop with CLAUDE_CODE_DISABLE_AUTO_MEMORY set.
 // What must hold: every hook and command exits as it should (the gate with 2
 // exactly for an automatic compaction mid-turn between the floor and the
 // ceiling); no private or forgotten text is written, briefed or printed, a gate's
 // note included; a private conversation leaves nothing; every other exchange is
-// in handoff.md once and in the journal once (an older conversation's: in the journal once; one held with auto memory off:
-// in the journal never); a gate over the ceiling leaves a
+// in handoff.md once and in the journal once (an older conversation's: in the
+// journal once; one held with auto memory off: in the journal never); a gate over
+// the ceiling leaves a
 // cut-turn note naming the launches not yet done and no ended one, gone after
 // the turn's Stop; the nudge comes once between dips under the trigger, never in
 // a private conversation, and at the first Stop of a plain turn past it; every
@@ -44,7 +50,8 @@
 // Under faults or a kill: a hook exits 0 (the gate 0 or 2, a command 0 or 1; not a killed
 // one), prints no stack trace (a frame line in stderr or stdout) and no private text, and
 // changes no note; after settling no .handoff-failed-* file and no journal/.failed (but a
-// store whose conversations are all private keeps its live-write failure: a Stop that
+// store whose conversations are all private or held with auto memory off keeps its
+// live-write failure: a Stop that
 // writes nothing clears none), and no *.tmp<digits> file is named in MEMORY.md or in
 // `status`. The nudge rules rest after a hurt Stop until the next dip under the trigger.
 // Time: a round's clock starts at one of INSTANTS: the default, the year's end
@@ -59,7 +66,7 @@
 import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, readdirSync, existsSync, utimesSync, cpSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
+import { tmpdir, availableParallelism } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tool, tempHome, storeFor } from './harness.mjs';
@@ -113,7 +120,7 @@ for (const { at, zone } of INSTANTS) {
 // a stream x. Each is [the text, the part that must never be written], or [the text] for a near-miss, which
 // redact may keep or cut and no rule follows. A token holds a letter and a digit (several patterns want both).
 const AL = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', SAFE = `${AL}_-`, HEX = '0123456789abcdef', UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-const PREFIXED = [['sk-ant-', SAFE, 30], ['sk_live_', AL, 26], ['rk_test_', AL, 26], ['pk_live_', AL, 24], ['ghp_', AL, 36], ['gho_', AL, 36], ['github_pat_', `${AL}_`, 50], ['xoxb-', `${AL}-`, 24], ['xapp-', `${AL}-`, 24],
+const PREFIXED = [['sk-ant-', SAFE, 30], ['sk_live_', AL, 26], ['rk_test_', AL, 26], ['pk_live_', AL, 24], ['ghp_', AL, 36], ['gho_', AL, 36], ['ghu_', AL, 36], ['ghs_', AL, 36], ['ghr_', AL, 36], ['xoxa-', `${AL}-`, 24], ['xoxp-', `${AL}-`, 24], ['xoxr-', `${AL}-`, 24], ['xoxs-', `${AL}-`, 24], ['shpca_', HEX, 32], ['shppa_', HEX, 32], ['github_pat_', `${AL}_`, 50], ['xoxb-', `${AL}-`, 24], ['xapp-', `${AL}-`, 24],
   ['AKIA', UPPER, 16], ['ASIA', UPPER, 16], ['AIza', SAFE, 35], ['glpat-', SAFE, 22], ['npm_', AL, 36], ['hf_', AL, 34], ['pypi-AgE', SAFE, 30], ['whsec_', AL, 28], ['GOCSPX-', SAFE, 28], ['ya29.', SAFE, 30],
   ['gsk_', AL, 30], ['xai-', AL, 30], ['shpat_', HEX, 32], ['shpss_', HEX, 32], ['dop_v1_', HEX, 64], ['ntn_', AL, 30], ['ATATT', SAFE, 30], ['hvs.', SAFE, 30], ['dckr_pat_', SAFE, 30], ['LS0tLS1CRUdJTi', AL, 30]];
 const shapesOf = (x) => {
@@ -128,9 +135,9 @@ const shapesOf = (x) => {
   const sg = `SG.${t(20, SAFE)}.${t(20, SAFE)}`;
   all.push([`jwt ${jwt}`, jwt], [`mail ${sg}`, sg]);
   const hook = `T${t(8)}/B${t(8)}/${t(24)}`; all.push([`webhook ${['https://hooks.', 'slack.com/services/'].join('')}${hook}`, hook]);
-  for (const [text, s] of [['Authorization: Bearer @@', t(30, `${AL}._~`)], ['postgres://admin:@@@db.example.com/app', v()], ['curl -u bob:@@ https://example.com', v()], ['deploy --password @@', v()], ['docker login -u me -p @@', v()],
+  for (const [text, s] of [['Authorization: Bearer @@', t(30, `${AL}._~`)], ['postgres://admin:@@@db.example.com/app', v()], ['curl -u bob:@@ https://example.com', v()], ['deploy --password @@', v()], ['deploy --token @@', v()], ['deploy --client-secret @@', v()], ['Authorization: Basic @@', t(30, `${AL}._~`)], ['Authorization: Token @@', t(30, `${AL}._~`)], ['az login -u me -p @@', v()], ['sshpass -p @@ ssh host', v()], ['twine upload -p @@ dist', v()], ['mysqldump -u root -p@@ app', v()], ['mariadb -u root -p@@ app', v()], ['passphrase: @@', v()], ['pwd=@@', v()], ['pass: @@', v()], ['docker login -u me -p @@', v()],
     ['aws configure set aws_secret_access_key @@', v()], ['[Environment]::SetEnvironmentVariable("MY_API_TOKEN", "@@", "User")', v()], ['htpasswd -b .htpasswd bob @@', v()], ['export MY_API_KEY=@@', v()], ['setx DB_PASSWORD @@', v()],
-    ['gh secret set DEPLOY --body @@', v()], ['//registry.npmjs.org/:_authToken=@@', v()], ['mysql -u root -p@@ app', v()], ['my password is @@', v()], ['the api key is @@', v()], ['password @@', v()],
+    ['gh secret set DEPLOY --body @@', v()], ['//registry.npmjs.org/:_authToken=@@', t(4)], ['mysql -u root -p@@ app', v()], ['my password is @@', v()], ['the api key is @@', v()], ['password @@', v()],
     ['DB_PASSWORD: @@', v()], ['clientSecret=@@', v()], ['client-key-data: @@', v()], ['token=@@', v()]]) all.push(sec(text, s));
   const near = [['api_key = process.env.API_KEY'], ['password: user.password'], ['secret = correct_horse_battery_staple'], ['token: this.apiKey'], ['password: string']];
   return { secrets: all, near };
@@ -140,12 +147,13 @@ const shapesOf = (x) => {
 // Disk faults (fuzz-faults.cjs) reach only the hook's own process, not the git it spawns.
 const FAULTS = fileURLToPath(new URL('./fuzz-faults.cjs', import.meta.url));
 // o.fault { seed, rate, root }: a preload that fails disk calls under root. o.kill: ms until child.kill().
-const run = (file, argv, input, tz, o = {}) => new Promise((done) => {
+const spawnHook = (file, argv, input, tz, o = {}) => new Promise((done) => {
   // `env` stays undefined, which is "inherit" (harness.mjs); the zone and the
   // faults are set on this process just before the spawn, which copies them at
   // that call (a spawn is synchronous up to there, so concurrent ones each get
   // their own). The date maths here is UTC and does not read them.
   process.env.TZ = tz;
+  if (o.home) process.env.HOME = process.env.USERPROFILE = o.home;   // the round's own, so rounds can overlap
   if (o.off) process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';   // as the user turns auto memory off
   if (o.fault) process.env.FUZZ_FAULTS = `${o.fault.seed}:${o.fault.rate}:${o.fault.root}`; else delete process.env.FUZZ_FAULTS;
   const c = spawn(process.execPath, o.fault ? ['--require', FAULTS, file, ...argv] : [file, ...argv]);
@@ -189,7 +197,7 @@ function generate(seed) {
     }
     // 25 %: a conversation the journal must not take in -- a <private-session> typed in it, or its tag already in .memory-off or in .private-sessions.
     // (A stream of its own, as the faults have: no other choice moves.)
-    const x = rng(seed ^ 0x01D0), how = x() < 0.25 ? ['mark', 'off', 'list'][Math.floor(x() * 3)] : null;
+    const ox = rng(seed ^ 0x01D0), how = ox() < 0.25 ? ['mark', 'off', 'list'][Math.floor(ox() * 3)] : null;
     if (how) st.how = how;
     if (how === 'mark') st.exchanges[0].ask = `<private-session> ${st.exchanges[0].ask}`;
     steps.push(st);
@@ -240,7 +248,11 @@ function generate(seed) {
     if (x() < 0.2) {
       const words = Array.from({ length: xint(1, 5) }, () => WORDS[Math.floor(x() * WORDS.length)]).join(' '), q = { blocks: x() < 0.5 };
       if (x() < 0.3) {
-        q.secret = `ZQXQ${u}${s.id[1]}n${i}`; q.text = `<private>${q.secret}</private> ${words}`; } else q.text = words;
+        // The reply to a private message is the leak to look for: the secret rides in the answer and in a command after the message, which the freeze keeps out (I1, R39).
+        q.secret = `ZQXQ${u}${s.id[1]}n${i}`; q.text = `<private>${q.secret}</private> ${words}`;
+        st.did = `${st.did} ${q.secret}`;
+        st.tool ??= { type: 'tool_use', id: `q${i}`, name: 'Bash', input: { command: `echo ${q.secret}` } };
+      } else q.text = words;
       st.queued = q;
     }
     if (kind >= 0.3 && x() < 0.25) {
@@ -301,12 +313,14 @@ function generate(seed) {
 // must hold. Any list of a round's steps is a whole round: a step whose
 // conversation no step opened opens it, and the end is no step, so a shrink
 // cannot cut it: every conversation's closing Stop, then the last Stops again.
-async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
+async function execute(steps, meta) {
+  const { u, cwd, tz: lastTz, briefing } = meta;
   // A home of the round's own, made afresh: a replay sees nothing an earlier
   // one left (the shared store included), and the paths it prints are the same.
-  const home = join(homes, `r${u}`);
+  const home = join(homes, meta.home ?? `r${u}`);
   rmSync(home, { recursive: true, force: true, maxRetries: 5 });
-  process.env.HOME = process.env.USERPROFILE = home;
+  // Every spawn names its home (process.env is shared by rounds that overlap).
+  const run = (file, argv, input, tz, o = {}) => spawnHook(file, argv, input, tz, { ...o, home });
   const dir = storeFor(home, cwd), proj = dirname(dir), problems = [], log = [];
   mkdirSync(dir, { recursive: true });
   const old = new Date(Date.now() - 3 * 86400_000);
@@ -344,7 +358,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
     if (s.ctx < TRIGGER * WINDOW) { s.nudges = 0; if (!hurt(o)) s.nudgeOff = false; }
     else {
       if (gave && s.private) problems.push(`the Stop of a <private-session> conversation (${s.id}) gave a nudge`);
-      if (s.nudgeOff || s.off) { /* a hurt Stop's record is unknown; a memory-off conversation is not this rule's */ }
+      if (s.nudgeOff) { /* a hurt Stop's record is unknown */ }
       else if (gave) {
         if (s.nudges > 0 && s.ctx >= s.givenAt) problems.push(`a second nudge for ${s.id} between dips under the trigger: at ${s.givenAt}, then at ${s.ctx} tokens`);
         s.nudges++; s.givenAt = s.ctx;
@@ -410,7 +424,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
       writeFileSync(f, exchanges.map(({ mark, ask, did, secret }, i) => {
         const ts = new Date(Date.UTC(2026, 9, 20, 9, i)).toISOString();
         if (secret) secrets.push(secret);
-        marks.set(mark, how ? { kind: 'old', s: { private: true } } : { kind: 'old' });
+        marks.set(mark, how ? { kind: 'old', s: { private: true, why: { mark: 'a <private-session> conversation', off: 'an older conversation tagged .memory-off', list: 'an older conversation tagged in .private-sessions' }[how] } } : { kind: 'old' });
         return `${rec({ id }, 'user', ts, ask, `uo-${u}-${i}`)}\n${rec({ id }, 'assistant', ts, [{ type: 'text', text: did }], `ao-${u}-${i}`)}`;
       }).join('\n') + '\n');
       utimesSync(f, old, old);
@@ -427,6 +441,9 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
       if (p.status !== 0) problems.push(`the Stop hook with auto memory off (${s}) exited ${p.status ?? p.signal}: ${p.err.trim().split('\n').slice(-2).join(' | ')}`);
       else if (p.out.trim() || STACK.test(p.err)) problems.push(`the Stop hook with auto memory off (${s}) printed: ${(p.out + p.err).trim().slice(0, 200)}`);
       for (const sec of secrets) if ((p.out + p.err).includes(sec)) problems.push(`the Stop with auto memory off printed private text ${sec}`);
+      // And at its start: handoff-log.mjs without --print tags the conversation the same way.
+      const b = await run(LOG, [], JSON.stringify({ cwd, transcript_path: c.t, session_id: s, source: 'startup', hook_event_name: 'SessionStart' }), tz, { off: true });
+      if (b.status !== 0 || b.out.trim() || STACK.test(b.err)) problems.push(`the start hook with auto memory off (${s}) exited ${b.status ?? b.signal} and printed: ${(b.out + b.err).trim().slice(0, 200)}`);
       c.off = true;
     },
     session: ({ id, big }) => {
@@ -538,6 +555,9 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   // A look at the journal is made once ACTIVE has passed, not at every Stop (journal.mjs): the wait is dated away, so an older
   // conversation a faulted or killed look left is taken in, and a failed one is retried.
   if (existsSync(join(dir, 'journal'))) writeFileSync(join(dir, 'journal', '.looked'), String(Date.now() - ACTIVE - 1000));
+  // A transcript a faulted look could not open is listed ` failed <ms>` and tried again after RETRY (journal.mjs, 24 h): that wait is dated away too (C1, R38).
+  const imported = join(dir, 'journal', '.imported');
+  if (existsSync(imported)) writeFileSync(imported, readFileSync(imported, 'utf8').replace(/ failed \d+/g, ` failed ${Date.now() - 25 * 3600e3}`));
   if (!sessions.size) session(briefing.session);
   for (const s of sessions.values()) if (s.turns > s.stopped) await stop(s, lastTz);
   let before = files(), settled = false;
@@ -573,7 +593,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   const count = (hay, w) => hay.split(w).length - 1;
   for (const sec of secrets) for (const [f, body] of places) if (body.includes(sec)) problems.push(`private text ${sec} is in ${f}`);
   for (const [mark, m] of marks) {
-    const gone = m.kind === 'forget' || m.s?.private || forgotten.has(mark), why = m.kind === 'forget' ? 'a turn that ran forget' : m.s?.private ? 'a <private-session> conversation' : 'an exchange forget --key removed';
+    const gone = m.kind === 'forget' || m.s?.private || forgotten.has(mark), why = m.kind === 'forget' ? 'a turn that ran forget' : m.s?.private ? (m.s.why ?? 'a <private-session> conversation') : 'an exchange forget --key removed';
     if (gone) { for (const [f, body] of places) if (body.includes(mark)) problems.push(`${why}: ${mark} is in ${f}`); }
     // Held with auto memory off, from a Stop on: never in the journal, even resumed with it on (PRIVACY.md). Its handoff.md lines
     // are not ruled: those of turns before the tag stay, as the docs do not say they go.
@@ -668,20 +688,26 @@ assert.deepEqual(generate(7), generate(7));
   assert.ok(TMP.test('MEMORY.md.tmp123') && TMP.test('- [x](C:\\s\\2026-10-31.md.tmp4242) y') && !TMP.test('MEMORY.md') && !TMP.test('a note about .tmp files'), 'the half-written-file rule misreads a name');
 }
 // Every list of a round's steps is a whole round: a lone turn, a lone note hold on correct code.
-const lone = generate(12345), alone = [], allShapes = shapesOf(rng(99));
+let nextLone = 0;
+const lone = generate(12345), allShapes = shapesOf(rng(99));
 const oldOne = (how) => ({ type: 'old', id: 'oabcdef0-1234', how, exchanges: [{ mark: `OLD${how ?? 'plain'}n0`, ask: `${how === 'mark' ? '<private-session> ' : ''}OLD${how ?? 'plain'}n0 first`, did: 'done first' }, { mark: `OLD${how ?? 'plain'}n1`, ask: `OLD${how ?? 'plain'}n1 second`, did: 'done second' }] });
 const plain = lone.steps.find((x) => x.type === 'turn' && x.kind === 'plain' && !x.ask.startsWith('<private-session>'));
 // A turn cut mid-way (past the ceiling, one launch), a turn past the trigger, and a gate alone or after the cut turn.
 const cutTurn = { ...plain, cut: true, size: SIZES[4], launches: [{ id: 'bgx0', done: false }] }, gate = { type: 'gate', s: plain.s, trigger: 'auto', tz: 'UTC' };
-for (const [name, xs] of [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'note')]], ['cut turn', [cutTurn]], ['turn past the trigger', [{ ...plain, size: SIZES[3] }]], ['gate', [gate]], ['turn that collides', [{ ...plain, collides: 'ASK1' }]], ['cut turn, gate', [cutTurn, gate]],
+const LONE = [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'note')]], ['cut turn', [cutTurn]], ['turn past the trigger', [{ ...plain, size: SIZES[3] }]], ['gate', [gate]], ['turn that collides', [{ ...plain, collides: 'ASK1' }]], ['cut turn, gate', [cutTurn, gate]],
   ['Stop with faults', [{ type: 'stop', s: plain.s, tz: 'UTC', fault: { seed: 3, rate: 0.3 } }]], ['Stop killed', [{ type: 'stop', s: plain.s, tz: 'UTC', kill: 40 }]],
   ['gate with faults', [{ ...gate, fault: { seed: 5, rate: 0.3 } }]], ['CLI with faults', [{ type: 'cli', args: ['status'], tz: 'UTC', fault: { seed: 7, rate: 0.3 } }]],
-  ['queued string', [{ ...plain, queued: { blocks: false, text: 'queued words' } }]], ['queued blocks, private', [{ ...plain, queued: { blocks: true, secret: 'ZQXQlone', text: '<private>ZQXQlone</private> words' } }]],
+  ['queued string', [{ ...plain, queued: { blocks: false, text: 'queued words' } }]], ['queued blocks, private', [{ ...plain, did: `${plain.did} ZQXQlone`, tool: { type: 'tool_use', id: 'qlone', name: 'Bash', input: { command: 'echo ZQXQlone' } }, queued: { blocks: true, secret: 'ZQXQlone', text: '<private>ZQXQlone</private> words' } }]],
   ['every secret shape', [{ ...plain, shapes: { text: [...allShapes.secrets.map(([t]) => t), ...allShapes.near.map(([t]) => t)].join('\n'), secrets: allShapes.secrets.map(([, s]) => s) } }]],
   ['auto memory off', [{ type: 'off', s: plain.s, tz: 'UTC' }]], ['turn, Stop, auto memory off', [plain, { type: 'stop', s: plain.s, tz: 'UTC' }, { type: 'off', s: plain.s, tz: 'UTC' }]],
-  ['older conversation', [oldOne()]], ...['mark', 'off', 'list'].map((how) => [`older conversation (${how})`, [oldOne(how)]])]) alone.push([name, (await execute(xs, lone.meta)).found]);
+  ['older conversation', [oldOne()]], ...['mark', 'off', 'list'].map((how) => [`older conversation (${how})`, [oldOne(how)]])];
+// Each in a home of its own, a few at a time: they wait on processes, not on each other.
+const alone = [];
+await Promise.all(Array.from({ length: Math.min(LONE.length, availableParallelism()) }, async () => {
+  for (let i; (i = nextLone++) < LONE.length; ) alone[i] = [LONE[i][0], (await execute(LONE[i][1], { ...lone.meta, home: `lone${i}` })).found];
+}));
 assert.deepEqual(alone.map(([n, f]) => [n, f.length]), alone.map(([n]) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
-assert.ok(alone.length >= 17, 'the lone-step list shrank');
+assert.equal(alone.length, 20, 'the lone-step list changed size');
 
 // --keep-going: every failing round named, not just the first (a bug hunt),
 // with its story, 60 lines at most. Otherwise the first failing round, shrunk
