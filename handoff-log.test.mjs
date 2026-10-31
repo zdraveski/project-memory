@@ -1082,6 +1082,18 @@ appendFileSync(tk, [user('the ibis note', { ts: '2026-10-29T10:10:00Z', uuid: 'u
 appendFileSync(join(dirF, 'journal', '.forgotten'), `u-lynx\tmemory/k\t${local('2026-10-29T10:10:00Z')}\n`);
 handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
 ok(/the ibis note/.test(fdoc()) && !/lynx/.test(fdoc()), `a forgotten exchange listed under another zone's minute takes only itself (got ${fdoc()})`);
+// An exchange whose ask is cut at 240 characters inside a code reference (`api_key = process.env.API_KEY`) is written once as it reads and
+// cut once more by render; forget must still find it among the entries as written (F15's twin, R36).
+{
+  const tc = join(dirF, 'cutf.jsonl'), cutAsk = 'quokka 1 ' + 'z'.repeat(214) + 'api_key = process.env.API_KEY';
+  // 600 KB first: read in part, so the file's entries are not all rebuilt.
+  writeFileSync(tc, JSON.stringify({ type: 'user', timestamp: '2026-10-29T10:59:00Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'y'.repeat(600_000) }] } }) + '\n' + [user(cutAsk, { ts: '2026-10-29T11:00:00Z', uuid: 'u-cutf' }), asst('filed the quokka', { ts: '2026-10-29T11:00:30Z' })].join('\n') + '\n');
+  handoff({ cwd: cwdF, transcript_path: tc, session_id: 'cutfffff-1' });
+  ok(/\[cutfffff\]: quokka 1/.test(fdoc()), 'the exchange with a cut ask is listed');
+  appendFileSync(join(dirF, 'journal', '.forgotten'), `u-cutf\tmemory/cutf\t${local('2026-10-29T11:00:00Z')}\n`);
+  handoff({ cwd: cwdF, transcript_path: tc, session_id: 'cutfffff-1' });
+  ok(!/quokka 1/.test(fdoc()), `a forgotten exchange with a cut ask leaves handoff.md (got ${fdoc().split('[cutfffff]')[1]?.slice(0, 60)})`);
+}
 // Its transcript in either case: Windows names one folder c--x and C--x.
 if (process.platform === 'win32') {
   appendFileSync(tk, [user('the heron note', { ts: '2026-10-29T10:00:00Z' }), asst('wrote the heron note', { ts: '2026-10-29T10:00:30Z' })].join('\n') + '\n');

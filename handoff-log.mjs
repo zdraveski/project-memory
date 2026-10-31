@@ -386,6 +386,12 @@ export const defuse = (s) => s.replace(/[<\uFF1C\uFE64](?=[\u200B-\u200D\u2060\u
 // after the squeeze, so a clip clipped again (as an entry is, written) lost a
 // space the turn read kept, and a moved clock went unseen (fuzz, 2026-10-30).
 export const clip = (s, n) => {
+  // A cut can leave a code reference (api_key = proces…) that reads as a secret: cut once more, so an entry as written (clipped again by
+  // render) is the turn as read, to latest() and to forget (F15, R36).
+  const out = cut(s, n);
+  return out.endsWith('…') ? cut(out, n) : out;
+};
+const cut = (s, n) => {
   const one = defuse(redact(s).replace(/[\s\u0085]+/g, ' ')).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
   return one.length > n ? one.slice(0, n - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : one;
 };
@@ -424,8 +430,7 @@ function latest(path, since = null) {
   for (let bytes = TAIL; ; bytes *= 4) {
     const { text: tail, whole } = readTail(path, bytes);
     const got = turns(tail);
-    // As written (clipped again by render): a cut ask's code reference reads as a secret the second time (F15).
-    const same = (t) => { const e = shown(t); return clip(e.ask, ASK) === since.ask && clip(e.did, DID) === since.did; };
+    const same = (t) => { const e = shown(t); return e.ask === since.ask && e.did === since.did; };
     const there = since && got.some((t) => t.at === since.at && same(t));
     // The newest entry's turn read at another minute, and not at its own: the
     // clock moved to another zone, and every entry of this conversation is in
