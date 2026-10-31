@@ -786,6 +786,7 @@ export const suites = {
     "journal a mark past the Stop's read never looked for": ['if (got.whole === false && statSync(transcriptPath).size - from > TAIL) {', 'if (false) {'],
     "journal a mark past the Stop's read looked for once only": ['if (got.whole === false && statSync', 'if (got.whole === false && !was && statSync'],
     "journal a swept conversation whose tag was lost not looked at past the read": ['if (got.whole === false && statSync', 'if (got.whole === false && !was?.[4] && statSync'],
+    'journal a swept conversation whose tag was lost imported past its mark': ["if (checked(dir, c.k)?.[4] === 'swept' && !hushed", 'if (false && !hushed'],
     'journal the look past the read runs at every Stop': ['statSync(transcriptPath).size - from > TAIL', 'true'],
     'journal the look past the read starts at its tail': ['marked(fd, from, IMPORT_SEGMENT, size)', 'marked(fd, Math.max(from, size - TAIL), IMPORT_SEGMENT, size)'],
     'journal how far a clean look read not kept': ['    mark(dir, [`${k} ${size}`], null, CHECKED);\n', ''],

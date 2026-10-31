@@ -1462,5 +1462,21 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   withLock(d, () => atClock(() => NOW + (days(d).length ? 100 : 0), () => backfill(d, { budgetMs: 100, segment: seg, turns: 1 })));
   ok(asks(d).join() === 'question A' && listed(d)[0].endsWith(` at ${aEnd}`), `the cap of turns holds when the turn before it came from a carried-over exchange (got ${asks(d)}, ${listed(d)}, want at ${aEnd})`);
 }
+{
+  // F6's import: a look found the mark and swept the conversation, its tag was then lost from .private-sessions
+  // (1,000 newer private conversations; here the list is emptied), and it grew with no live Stop (the plugin
+  // off). The next look goes on from where the last stopped, past the mark: its new turns stay out all the same.
+  const [r, d] = repo('lostimport'), W = sid('yc'), p = join(projects, slug(r), `${W}.jsonl`);
+  writeFileSync(p, exchange(W, r, 0) + rec('user', W, '2026-09-01T10:01:00Z', '<private-session> from here on', r) + '\n');
+  utimesSync(p, ago(2), ago(2));
+  fill(d);
+  const was = tagsOf(d).includes('yc'.repeat(4)) && !asks(d).length;
+  writeFileSync(join(d, '.private-sessions'), '');
+  appendFileSync(p, exchange(W, r, 2)); utimesSync(p, ago(1), ago(1)); due(d);
+  fill(d);
+  // Nor is it tagged memory-off on the way (mutant 178d36804841): its live Stops would skip the look that tags it private again.
+  let off = ''; try { off = readFileSync(join(projects, '.memory-off'), 'utf8'); } catch {}
+  ok(was && !asks(d).length && !off.includes('yc'.repeat(4)), `a swept conversation whose tag was lost keeps out what it grew by with no live Stop (got ${was}, ${asks(d)}, memory-off ${off.includes('yc'.repeat(4))})`);
+}
 
 console.log(`journal: ${checks} checks passed`);

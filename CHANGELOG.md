@@ -12,6 +12,8 @@ install the current LTS from nodejs.org.
   very long tool output, even once it has dropped off the list of private
   conversations (which keeps the newest 1,000). Before, each new exchange of
   it was saved.
+- The same now holds for what you add to such a conversation while
+  project-memory is disabled: the journal no longer takes it in later.
 
 ## 1.2.2 (2026-10-30)
 
