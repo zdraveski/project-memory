@@ -13,13 +13,19 @@
 // one or two conversations, a Stop after each turn in a random time zone,
 // sometimes two Stops at once; transcripts that open with 600 KB (read in
 // part), a last line half written, a broken line; <private> secrets, forget
-// turns in three spellings, <private-session> marks; the compaction gate; the
-// CLI's status, search, show and forget, and a `forget --key ... --yes`.
-// What must hold: every hook and command exits as it should; no private or
-// forgotten text is written, briefed or printed; a private conversation leaves
-// nothing; every other exchange is in handoff.md once and in the journal once;
-// every note keeps its text and one index line; repeating the last Stop
-// settles within four.
+// turns in three spellings, <private-session> marks; replies of growing sizes
+// (up to past the compaction ceiling) and turns cut mid-way, some with
+// background launches and their end notices; the compaction gate, after a cut
+// turn too; the CLI's status, search, show and forget, and a `forget --key ... --yes`.
+// What must hold: every hook and command exits as it should (the gate with 2
+// exactly for an automatic compaction mid-turn between the floor and the
+// ceiling); no private or forgotten text is written, briefed or printed, a gate's
+// note included; a private conversation leaves nothing; every other exchange is
+// in handoff.md once and in the journal once; a gate over the ceiling leaves a
+// cut-turn note naming the launches not yet done and no ended one, gone after
+// the turn's Stop; the nudge comes once between dips under the trigger, never in
+// a private conversation, and at the first Stop of a plain turn past it; every
+// note keeps its text and one index line; repeating the last Stop settles within four.
 // Run: node fuzz.mjs [seconds, default 60] [--seed N] [--keep-going] [--no-shrink]
 import assert from 'node:assert';
 import { mkdirSync, writeFileSync, readFileSync, appendFileSync, readdirSync, existsSync, utimesSync, cpSync, rmSync } from 'node:fs';
@@ -103,13 +109,15 @@ function generate(seed) {
   for (const s of sessions) steps.push({ type: 'session', id: s.id, big: r() < 0.25 });
   const marks = new Map(), top = SIZES.length - 1;
   let clock = Date.UTC(2026, 9, 30, 8, 0, 0);
-  // Returns the trigger of the gate that follows a turn cut mid-way, or null.
+  // Makes a turn and returns the gate step that follows it (a turn cut mid-way, 70 % of them), or null.
   const turn = (s) => {
     clock += int(1, 90) * 60_000;
     const i = s.n++, mark = `ASK${u}${s.id[1]}n${i}`, kind = r();
     // 20 % are cut mid-way; after one the gate runs 70 % of the time, over 90 % of the window in 40 % of those.
-    const cut = r() < 0.2, gated = cut && r() < 0.7, over = gated && r() < 0.4;
-    s.idx = over ? top : int(s.idx, s.fell ? 2 : gated ? Math.max(s.idx, top - 1) : top); s.fell = false;
+    const isCut = r() < 0.2, gated = isCut && r() < 0.7, over = gated && r() < 0.4;
+    // The size never falls, but for the first turn after a compaction; a gate not over 90 % is not given the top size.
+    const max = s.fell ? 2 : gated ? top - 1 : top;
+    s.idx = over ? top : int(s.idx, Math.max(s.idx, max)); s.fell = false;
     const st = { type: 'turn', s: s.id, at: clock, mark, uuid: `u-${u}-${s.id[1]}-${i}`, kind: 'plain', ask: `${mark} ${text(int(1, 12))}`, did: `done ${text(int(1, 30))}`, size: SIZES[s.idx] };
     if (kind < 0.15) { st.secret = `ZQXP${u}${s.id[1]}n${i}`; st.ask = `${pick(['<private>', '<PRIVATE>', '<private reason="x">'])}${st.secret}</private> ${st.ask}`; st.did = `${st.did} ${st.secret}`; }
     else if (kind < 0.25) { st.secret = `ZQXF${u}${s.id[1]}n${i}`; st.ask = `${st.ask} ${st.secret}`; st.did = `${st.did} ${st.secret}`; st.kind = 'forget'; st.tool = { type: 'tool_use', id: `f${i}`, name: 'Bash', input: { command: pick(FORGET) } }; }
@@ -117,25 +125,25 @@ function generate(seed) {
     marks.set(mark, { kind: st.kind, s, uuid: st.uuid });
     // The ask as a string or a text block; the answer half written when the Stop comes, or a broken line after it.
     st.block = r() >= 0.5;
-    st.half = !cut && r() < 0.1;
-    st.broken = !cut && !st.half && r() < 0.05;
+    st.half = !isCut && r() < 0.1;
+    st.broken = !isCut && !st.half && r() < 0.05;
     // Cut mid-way: half of those after a background launch (or two), and a launch's end may be noticed later.
-    if (cut) {
+    if (isCut) {
       st.cut = true;
       st.launches = r() < 0.5 ? Array.from({ length: int(1, 2) }, (_, j) => ({ id: `bg${u}${s.id[1]}n${i}x${j}`, done: r() < 0.5 })) : [];
     }
     steps.push(st);
     if (!gated) return null;
     const trigger = r() < 0.85 ? 'auto' : 'manual';
-    // A compaction that went through (a turn boundary, or past the ceiling or under the floor) brings the size down.
-    if (trigger === 'auto' && (s.idx === top || SIZES[s.idx] < 200_000)) { s.idx = 0; s.fell = true; }
+    // Any compaction that is not deferred (a manual one, or auto under the floor or over the ceiling) brings the size down.
+    if (trigger === 'manual' || s.idx === top || SIZES[s.idx] < 200_000) { s.idx = 0; s.fell = true; }
     return { type: 'gate', s: s.id, trigger };
   };
   for (let k = 0, n = int(1, 6); k < n; k++) {
     const tz = pick(ZONES);
     if (sessions.length === 2 && r() < 0.3) { const gs = sessions.map((s) => turn(s)).filter(Boolean); steps.push(...gs.map((g) => ({ ...g, tz }))); steps.push({ type: 'stops', ss: sessions.map((s) => s.id), tz }); }
     else { const s = pick(sessions), g = turn(s); if (g) steps.push({ ...g, tz }); steps.push({ type: 'stop', s: s.id, tz }); }
-    if (r() < 0.15) { const s = pick(sessions), trigger = pick(['auto', 'manual']); steps.push({ type: 'gate', s: s.id, trigger, tz }); if (trigger === 'auto') { s.idx = 0; s.fell = true; } }
+    if (r() < 0.15) { const s = pick(sessions), trigger = pick(['auto', 'manual']); steps.push({ type: 'gate', s: s.id, trigger, tz }); s.idx = 0; s.fell = true; }   // after a Stop: a turn boundary, never deferred, so the compaction goes through
   }
 
   // The CLI's status, search, show and forget; a forget by key and the conversation's next Stop.
@@ -159,19 +167,19 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   const dir = storeFor(home, cwd), proj = dirname(dir), problems = [], log = [];
   mkdirSync(dir, { recursive: true });
   const old = new Date(Date.now() - 3 * 86400_000);
-  const notes = new Map(), secrets = [], marks = new Map(), forgotten = new Set(), sessions = new Map();
+  const notes = new Map(), secrets = [], ended = new Set(), marks = new Map(), forgotten = new Set(), sessions = new Map();
   const rec = (s, type, ts, content, uuid, size = 1000, stop = 'end_turn') => JSON.stringify({ type, uuid, sessionId: s.id, cwd, timestamp: ts,
     message: type === 'user' ? { role: 'user', content } : { role: 'assistant', content, stop_reason: stop, usage: { input_tokens: size } } });
   // What the hooks will read of a conversation, kept as its lines are written:
   // ctx and mid are the size and stop_reason of the last whole assistant line;
-  // nudges, givenAt and unsure follow the nudge since the last dip under the trigger.
+  // nudges and givenAt follow the nudges given since the last dip under the trigger; open is a turn cut mid-way, not yet ended.
   const session = (id) => {
-    if (!sessions.has(id)) { sessions.set(id, { id, t: join(proj, `${id}.jsonl`), private: false, did: '', rest: '', restSize: 0, cut: null, ctx: 0, mid: false, nudges: 0, givenAt: 0, unsure: false, lastPlain: false, turns: 0, stopped: 0 }); writeFileSync(sessions.get(id).t, ''); }
+    if (!sessions.has(id)) { sessions.set(id, { id, t: join(proj, `${id}.jsonl`), private: false, did: '', rest: '', restSize: 0, open: null, ctx: 0, mid: false, nudges: 0, givenAt: 0, lastPlain: false, turns: 0, stopped: 0 }); writeFileSync(sessions.get(id).t, ''); }
     return sessions.get(id);
   };
   // A half-written answer is finished, and a turn cut mid-way ends, before the next turn or Stop.
   const flush = (s) => { if (s.rest) { appendFileSync(s.t, s.rest); s.rest = ''; s.ctx = s.restSize; s.mid = false; } };
-  const endCut = (s) => { if (s.cut) { appendFileSync(s.t, s.cut.rest); s.ctx = s.cut.size; s.mid = false; s.cut = null; } };
+  const endCut = (s) => { if (s.open) { appendFileSync(s.t, s.open.rest); s.mid = false; s.open = null; } };   // its answer has the cut reply's size: ctx stays
   const stop = async (s, tz, solo = true) => {
     endCut(s);
     log.push(`stop ${s.id} TZ=${tz}`);
@@ -182,15 +190,14 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
     // trigger (a size smaller than the last nudge's is a dip too), never in a
     // <private-session> conversation, and on the first Stop of a plain turn past it.
     const gave = p.out.split('\n').some((l) => { try { return JSON.parse(l).hookSpecificOutput?.additionalContext?.includes(NUDGE_TAG); } catch { return false; } });
-    if (s.ctx < TRIGGER * WINDOW) { s.nudges = 0; s.unsure = false; }
+    // The hook records a nudge only when it prints one: a Stop of a private turn that printed none spent none.
+    if (s.ctx < TRIGGER * WINDOW) s.nudges = 0;
     else {
       if (gave) {
         if (s.private) problems.push(`the Stop of a <private-session> conversation (${s.id}) gave a nudge`);
         if (s.nudges > 0 && s.ctx >= s.givenAt) problems.push(`a second nudge for ${s.id} between dips under the trigger: at ${s.givenAt}, then at ${s.ctx} tokens`);
         s.nudges++; s.givenAt = s.ctx;
-      } else if (s.nudges === 0 && !s.unsure && !s.private && s.lastPlain) problems.push(`no nudge on the first Stop of a plain turn past the trigger (${s.id}, ${s.ctx} tokens)`);
-      // A turn that may be private (a tag, forget) may or may not have spent the nudge.
-      if (!s.lastPlain) s.unsure = true;
+      } else if (s.nudges === 0 && !s.private && s.lastPlain) problems.push(`no nudge on the first Stop of a plain turn past the trigger (${s.id}, ${s.ctx} tokens)`);
     }
     // A turn that has ended and stopped leaves no cut-turn note (the Stop rebuilds the section); not two Stops at once, which can leave one to the other.
     if (solo && !s.rest && !s.private) {
@@ -261,11 +268,11 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
           lines.push(rec(s, 'user', ts(1000 * ++k), [{ type: 'tool_result', tool_use_id: `b${l.id}`, content: `Command running in background with ID: ${l.id}. Output is being written to: C:\\fuzz\\tasks\\${l.id}.output` }], id(`b${k}-`)));
           log.push(`  launch ${l.id}${l.done ? ', then its notice' : ''}`);
         }
-        for (const l of st.launches) if (l.done) lines.push(JSON.stringify({ type: 'attachment', uuid: id(`n${++k}-`), sessionId: s.id, cwd, timestamp: ts(1000 * k), attachment: { type: 'queued_command', prompt: `<task-notification><task-id>${l.id}</task-id></task-notification>` } }));
+        for (const l of st.launches) if (l.done) ended.add(l.id), lines.push(JSON.stringify({ type: 'attachment', uuid: id(`n${++k}-`), sessionId: s.id, cwd, timestamp: ts(1000 * k), attachment: { type: 'queued_command', prompt: `<task-notification><task-id>${l.id}</task-id></task-notification>` } }));
         lines.push(rec(s, 'assistant', ts(1000 * ++k), [last], id('c-'), size, 'tool_use'));
         appendFileSync(s.t, `${lines.join('\n')}\n`);
         s.ctx = size; s.mid = true;
-        s.cut = { st, size, rest: `${rec(s, 'user', ts(1000 * ++k), [{ type: 'tool_result', tool_use_id: last.id, content: 'removed 0' }], id('r-'))}\n${rec(s, 'assistant', ts(1000 * ++k), [{ type: 'text', text: st.did }], id('a-'), size)}\n` };
+        s.open = { st, rest: `${rec(s, 'user', ts(1000 * ++k), [{ type: 'tool_result', tool_use_id: last.id, content: 'removed 0' }], id('r-'))}\n${rec(s, 'assistant', ts(1000 * ++k), [{ type: 'text', text: st.did }], id('a-'), size)}\n` };
         return;
       }
       // As Claude Code writes a turn: a tool call and its result on lines of their
@@ -275,7 +282,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
           rec(s, 'user', ts(20_000), [{ type: 'tool_result', tool_use_id: st.tool.id, content: 'removed 0' }], id('r-'))] : [])].join('\n');
       const asst = rec(s, 'assistant', ts(30_000), [{ type: 'text', text: st.did }], id('a-'), size);
       // A Stop may come while the answer's line is half written; it is finished before the next turn.
-      if (st.half) { const cut = Math.floor(asst.length / 2); appendFileSync(s.t, `${user}\n${asst.slice(0, cut)}`); s.rest = `${asst.slice(cut)}\n`; s.restSize = size; if (st.tool) { s.ctx = size; s.mid = false; } }
+      if (st.half) { const at = Math.floor(asst.length / 2); appendFileSync(s.t, `${user}\n${asst.slice(0, at)}`); s.rest = `${asst.slice(at)}\n`; s.restSize = size; if (st.tool) { s.ctx = size; s.mid = false; } }
       else { appendFileSync(s.t, `${user}\n${asst}\n${st.broken ? '{"type":"user","message":\n' : ''}`); s.ctx = size; s.mid = false; }
     },
     stop: ({ s, tz }) => stop(session(s), tz),
@@ -295,12 +302,16 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
       for (const sec of secrets) if (h.includes(sec)) problems.push(`private text ${sec} is in handoff.md after the compaction gate`);
       for (const [mark, m] of marks) if (m.kind === 'forget' && h.includes(mark)) problems.push(`a turn that ran forget: ${mark} is in handoff.md after the compaction gate`);
       // A compaction let through over the ceiling, in a conversation that is not private, leaves a note
-      // that names each launch not yet done (and none that is) -- when the file had its section to put it in.
-      const cut = c.cut?.st;
-      if (trigger === 'auto' && c.mid && c.ctx >= 0.9 * MODEL_WINDOW && cut?.kind === 'plain' && !cut.secret && !c.private && marked) {
+      // that names each of the turn's launches not yet done, and none whose notice has come, from this turn or an
+      // earlier one (whether an earlier launch is named depends on how much of the file is read) -- when the file had its section to put it in.
+      const turnCut = c.open?.st;
+      if (trigger === 'auto' && c.mid && c.ctx >= 0.9 * MODEL_WINDOW && turnCut?.kind === 'plain' && !turnCut.secret && !c.private && marked) {
         const head = `**cut mid-turn** [${s.slice(0, 8)}]`, i = h.indexOf(head), note = i === -1 ? '' : h.slice(i, h.indexOf('**edited this turn:**', i));
         if (i === -1) problems.push(`no cut-turn note in handoff.md after the gate over 90% (${s}, ${c.ctx} tokens)`);
-        else for (const l of cut.launches) if (l.done === note.includes(l.id)) problems.push(`the cut-turn note ${l.done ? 'names' : 'does not name'} launch ${l.id}, ${l.done ? 'done' : 'not yet done'}`);
+        else {
+          for (const l of turnCut.launches) if (!l.done && !note.includes(l.id)) problems.push(`the cut-turn note does not name launch ${l.id}, not yet done`);
+          for (const id of ended) if (note.includes(id)) problems.push(`the cut-turn note names launch ${id}, done`);
+        }
       }
     },
     cli: (st) => { log.push(`memory.mjs ${st.args.join(' ')}`); return cli(st.tz, ...st.args); },
