@@ -1,7 +1,7 @@
 // Self-check for memory.mjs, the memory CLI: ranked search, status, history
 // and restore from real snapshots, promote, doctor. A throwaway HOME holds a
 // project store and the shared store. Run: node memory.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync, readdirSync, chmodSync, renameSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync, readdirSync, chmodSync, renameSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -1163,6 +1163,268 @@ if (!quick) {
   writeFileSync(join(lone, 'journal', '2026-10-05.md'), `# Journal 2026-10-05\n${one('2026-10-05', 'k9')}`);
   out = run(['status', '--store', lone]).stdout;
   ok(!/no store here yet/.test(out) && /^  journal: 1 days? since 2026-10-05, /m.test(out), `a store whose only memory is its journal shows it (got ${out})`);
+}
+
+// The edges the blocks above pass over (the automatic mutants of memory.mjs,
+// Task 8): scores, a stretch's exact length, the week's changes, restore and
+// promote at their limits, doctor's limits, forget's failures.
+{
+  const { history, restore, promote } = await import(pathToFileURL(CLI).href);
+  const { render } = await import('./journal.mjs');
+  const { budgetOf, LOCK_STALE } = await import('./store.mjs');
+  const { GRACE } = await import('./handoff-log.mjs');
+  const { default: fsm } = await import('node:fs'), { syncBuiltinESMExports } = await import('node:module');
+  const mdir = (name) => { const d = join(root, name, 'memory'); mkdirSync(d, { recursive: true }); return d; };
+  const bytes = (s) => Buffer.byteLength(s);
+  const iso = (ms) => new Date(ms).toISOString();
+  const link = process.platform === 'win32' ? 'junction' : 'dir';
+  const jm = mdir('C--mutA');
+  let n = 0;
+  const entry = (at, asked, over = {}) => ({ key: `ma${String(n++).padStart(3, '0')}`, at, s: 'c0ffee12', t: 'C--mutA/c0ffee12-full', branch: '', asked, answered: 'done', changed: [], ran: [], ...over });
+  const day = (store, d, es) => { mkdirSync(join(store, 'journal'), { recursive: true }); writeFileSync(join(store, 'journal', `${d}.md`), `# Journal ${d}\n\n${es.map(render).join('\n\n')}\n`); };
+  const jcli = (...a) => run([...a, '--store', jm]);
+  const blocks = (out) => out.split(/\n(?= *\d+  )/);
+  const scoreOf = (out, marker) => Number(blocks(out).find((b) => b.includes(marker))?.match(/^ *(\d+)/)?.[1]);
+
+  // A score is exact: the +5 for every term in the name or request, the +2 for
+  // every term somewhere, and none of either for a note or entry that lacks one.
+  memory(jm, 'mn-alpha', 'zork', 'quux');
+  memory(jm, 'mn-gamma', 'zork quux');
+  memory(jm, 'mn-beta', 'plain', 'decision decision');
+  memory(jm, 'mn-links', 'fivelinks note', [1, 2, 3, 4, 5].map((i) => `[[l${i}]]`).join(' '));
+  day(jm, '2026-10-20', [entry('2026-10-20 10:00', 'zork alone', { answered: 'quux once' }), entry('2026-10-20 10:01', 'zork again', { answered: 'zork too' }), entry('2026-10-20 10:02', 'zork quux both')]);
+  r = jcli('search', 'zork', 'quux');
+  ok([scoreOf(r.stdout, 'mn-alpha.md'), scoreOf(r.stdout, 'mn-gamma.md'), scoreOf(r.stdout, 'Asked: zork alone'), scoreOf(r.stdout, 'Asked: zork again'), scoreOf(r.stdout, 'Asked: zork quux both')].join() === '5,9,6,4,11',
+    `a term in the description and one in the body is every term (+2), both in the description is strong (+5), a missing term earns neither, for notes and for entries (got ${r.stdout})`);
+  // Two letters are a word of their own: `ci` is in "decision", whose body count and whose reply must not count.
+  day(jm, '2026-10-22', [entry('2026-10-22 10:00', 'set up CI on the cluster', { answered: 'a decision on logos' })]);
+  r = jcli('search', 'ci');
+  ok(!/mn-beta/.test(r.stdout) && scoreOf(r.stdout, 'Asked: set up CI') === 8 && !/Answered:/.test(r.stdout), `a two-letter term is counted and shown only standing alone (got ${r.stdout})`);
+  ok(/^ +links: l1, l2, l3, l4, l5$/m.test(jcli('search', 'fivelinks').stdout), 'exactly five links are listed with no "and 0 more"');
+
+  // A stretch: matches 164 apart are one stretch (the windows touch), and a
+  // stretch of exactly the room is not cut. The last match is 50 characters from
+  // the end, so the stretch ends there and the cap would replace its last letter.
+  const fill = (k) => 'ab '.repeat(Math.ceil(k / 3)).slice(0, k);
+  const text = fill(100) + 'zeta' + [1, 2, 3, 4].map(() => fill(160) + 'zeta').join('') + fill(5) + 'zeta' + fill(50);
+  ok(text.length === 819, `the text is built to 819 characters (got ${text.length})`);
+  day(jm, '2026-10-22', [entry('2026-10-22 10:00', 'set up CI on the cluster', { answered: 'a decision on logos' }), entry('2026-10-22 11:00', 'zeta hunt', { answered: text })]);
+  r = jcli('search', 'zeta');
+  const stretch = r.stdout.split('\n').find((l) => l.startsWith('     Answered: '));
+  ok(stretch === `     Answered: …${text.slice(20)}` && stretch.length - '     Answered: '.length === 800, `matches 164 apart merge, and a stretch of 800 characters is kept whole (got ${stretch})`);
+
+  // A range with no terms lists those days, newest first; equal minutes keep their order.
+  day(jm, '2026-10-21', [entry('2026-10-21 10:00', 'tie alpha'), entry('2026-10-21 10:00', 'tie beta'), entry('2026-10-21 09:00', 'tie gamma')]);
+  r = jcli('search', '--since', '2026-10-21', '--until', '2026-10-21', '--limit', '0');
+  ok(r.stdout.indexOf('tie alpha') !== -1 && r.stdout.indexOf('tie alpha') < r.stdout.indexOf('tie beta') && r.stdout.indexOf('tie beta') < r.stdout.indexOf('tie gamma') && /^3 of 3 journal entries in [^;\n]+$/m.test(r.stdout),
+    `--limit 0 is the default, all three are listed in order with no "shows more" (got ${r.stdout})`);
+  ok(/journal entries in/.test(jcli('search', 'what', 'did', 'I', 'do', '--since', '2026-10-21').stdout) && /^3 of 3 journal entries in/m.test(jcli('search', 'what', 'did', 'I', 'do', '--until', '2026-10-20').stdout),
+    'words that name nothing, with only --since or only --until, list the range');
+  ok(/^3 of 3 match\(es\)/m.test(jcli('search', 'zork', '--since', '2026-10-20', '--until', '2026-10-20').stdout), 'terms with a range search the range, ranked');
+  r = jcli('search', 'zzqqxx');
+  ok(/^nothing matches "zzqqxx" in [^\n]+ and [^\n]+; --all searches every project$/m.test(r.stdout) && !/2 stores/.test(r.stdout), `two stores are named, not counted (got ${r.stdout})`);
+  // A request of exactly SAME_MIN characters asked again is one hit; --limit 0 is the default.
+  const gnus = 'gnu '.repeat(19) + 'gnus';
+  ok(gnus.length === 80, 'the repeated request is 80 characters');
+  day(jm, '2026-10-23', [entry('2026-10-23 10:00', gnus)]);
+  day(jm, '2026-10-24', [entry('2026-10-24 10:00', gnus)]);
+  r = jcli('search', 'gnus', '--limit', '0');
+  ok(/^     1 more like this, 2026-10-23\.\.2026-10-24:/m.test(r.stdout) && /^1 of 1 match\(es\)/m.test(r.stdout), `an 80-character request asked twice is one hit; --limit 0 lists as the default (got ${r.stdout})`);
+  // show names an entry once however many times its key is given.
+  const k0 = r.stdout.match(/^     key: (\S+)$/m)[1];
+  ok((jcli('show', k0, k0).stdout.match(/^     key: /gm) || []).length === 1, 'show prints an entry once for a key given twice');
+  // forget: --key with no value is no key; the words of a sentence are blamed when the journal is empty.
+  r = run(['forget', '--store', jm, '--key']);
+  ok(r.status === 1 && /^forget needs words/.test(r.stdout) && !/undefined/.test(r.stdout), `--key with nothing after it is no key (got ${r.stdout})`);
+  const empty = join(root, 'C--mutA-empty', 'memory');
+  r = run(['forget', 'nosuchword', '--store', empty]);
+  ok(r.stdout.trim() === `nothing in ${empty} matches: no entry holds "nosuchword"`, `a miss in an empty journal blames the word (got ${r.stdout})`);
+  // A range forget removing exactly LOOK (200) entries lists them all.
+  const big = mdir('C--mutA-200');
+  day(big, '2026-09-05', Array.from({ length: 200 }, (_, i) => ({ ...entry('2026-09-05 10:00', `bulk ${i}`), key: `bk${i}` })));
+  r = run(['forget', '--since', '2026-09-05', '--until', '2026-09-05', '--yes', '--store', big]);
+  ok(r.status === 0 && (r.stdout.match(/\(key bk\d+\)/g) || []).length === 200 && /^removed 200 from /m.test(r.stdout), `a forget of 200 entries lists them (got ${r.stdout.length} bytes)`);
+  // A forget the disk refuses says where and why: the error's own path and code.
+  const ft = mdir('C--mutA-fail');
+  day(ft, '2026-09-06', [entry('2026-09-06 10:00', 'fragile secret')]);
+  const write = fsm.writeFileSync;
+  fsm.writeFileSync = (p, ...a) => { if (String(p).includes('.forgotten.tmp')) throw Object.assign(new Error('EPERM: operation not permitted, open'), { code: 'EPERM', path: String(p) }); return write(p, ...a); };
+  syncBuiltinESMExports();
+  try { r = run(['forget', 'fragile', '--yes', '--store', ft]); } finally { fsm.writeFileSync = write; syncBuiltinESMExports(); }
+  ok(r.status === 1 && r.stdout.includes(`could not write ${join(ft, 'journal', '.forgotten')}: EPERM\n`), `a forget that throws names the file and the error code (got ${r.stdout})`);
+
+  // Status: a store with nothing is said so; one with notes and no index is not; .health is shown only when it holds something.
+  const none = join(root, 'C--mutA-none', 'memory');
+  ok(run(['status', '--store', none]).stdout.startsWith(`${none}\n  no store here yet\n`), 'a store with nothing says so');
+  const noidx = mdir('C--mutA-noidx');
+  memory(noidx, 'loose', 'a note with no index');
+  r = run(['status', '--store', noidx]);
+  ok(!/no store here yet/.test(r.stdout) && /^  index 0 \/ 7000 B · 0 hot · 0 archived · 1 with no pointer yet$/m.test(r.stdout), `notes with no index are a store (got ${r.stdout})`);
+  const hs = mdir('C--mutA-health');
+  writeFileSync(join(hs, 'MEMORY.md'), '# Index\n');
+  writeFileSync(join(hs, '.health'), 'disk is full\nlocks stuck\n');
+  r = run(['status', '--store', hs]);
+  ok(/^  needs attention: disk is full\n  needs attention: locks stuck$/m.test(r.stdout) && (r.stdout.match(/needs attention/g) || []).length === 2 + (run(['status', '--store', none]).stdout.match(/needs attention/g) || []).length && (run(['status', '--store', jm]).stdout.match(/needs attention/g) || []).length === (run(['status', '--store', none]).stdout.match(/needs attention/g) || []).length,
+    `a .health file is listed line by line, and no file lists nothing (got ${r.stdout})`);
+
+  // The week's changes: added, edited (in the first snapshot, changed since), deleted; never the index, the handoff or a journal day.
+  mkdirSync(join(dir, 'journal'), { recursive: true });
+  writeFileSync(join(dir, 'mentions.md'), readFileSync(join(dir, 'mentions.md'), 'utf8') + '\nedited this week\n');
+  unlinkSync(join(dir, 'spam-log.md'));
+  memory(dir, 'zz-fresh', 'a fresh note');
+  writeFileSync(join(dir, 'handoff.md'), `---\nname: handoff\ndescription: "h"\n---\nweek ${Date.now()}\n`);
+  writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8') + '- [Fresh](zz-fresh.md) — fresh\n');
+  writeFileSync(join(dir, 'journal', '2026-10-27.md'), '# Journal 2026-10-27\nedited\n');
+  tier();
+  // The snapshots ignore the handoff, but a repository from before that rule holds it: forced in here.
+  for (const g of [['add', '-f', 'C--mem-cli/memory/handoff.md'], ['commit', '-m', 'handoff from an older version', '--', 'C--mem-cli/memory/handoff.md']]) spawnSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@t', ...g], { encoding: 'utf8' });
+  const week = cli('status').stdout.match(/changed in the last 7 days: (.*)/)?.[1] ?? '';
+  const part = (w) => week.split(' · ').find((p) => p.startsWith(`${w} `)) ?? '';
+  ok(/zz-fresh/.test(part('added')) && !/mentions|spam-log/.test(part('added')) && /mentions/.test(part('edited')) && !/zz-fresh|spam-log/.test(part('edited')) &&
+    /spam-log/.test(part('deleted')) && !/mentions|zz-fresh/.test(part('deleted')) && !/handoff|MEMORY|2026-10-27/.test(week), `the week is added, edited and deleted apart, and leaves out the index, the handoff and journal days (got ${week})`);
+
+  // History: the newest N, exactly N leaves no "older" line; --limit 0 is the default; a linked store names one path.
+  const rs = mdir('C--mutA-rs');
+  memory(rs, 'kept', 'kept note', 'v1');
+  memory(rs, 'hist-two', 'two snapshots', 'one');
+  writeFileSync(join(rs, 'MEMORY.md'), '# Index\n\n- [Kept](kept.md) — kept note\n- [Hist two](hist-two.md) — two snapshots\n');
+  tier();
+  writeFileSync(join(rs, 'hist-two.md'), readFileSync(join(rs, 'hist-two.md'), 'utf8') + 'two\n');
+  tier();
+  const rows = (out) => (out.match(/^  \S+ \S+ \S+  (?:added|changed)$/gm) || []).length;
+  ok(!/older/.test(run(['history', 'hist-two', '--limit', '2', '--store', rs]).stdout) && /^  and 1 older; --limit N shows more$/m.test(run(['history', 'hist-two', '--limit', '1', '--store', rs]).stdout) &&
+    rows(run(['history', 'hist-two', '--limit', '0', '--store', rs]).stdout) === 2, 'history: exactly the limit leaves no "older" line, one under it says 1, --limit 0 is the default');
+  const lk = join(root, 'zz-mutA-link');
+  symlinkSync(join(root, 'C--mutA-rs'), lk, link);
+  try { r = run(['history', 'hist-two', '--store', join(lk, 'memory')]); } finally { rmSync(lk, { recursive: true, force: true }); }
+  ok(/^  a change: git -C "[^"]+" --literal-pathspecs show <commit> -- "C--mutA-rs\/memory\/hist-two\.md"$/m.test(r.stdout), `a store linked from another folder is tracked by its one real path (got ${r.stdout})`);
+  ok(history([rs], 'ghost-xyz.md').lines[0].endsWith('; --all looks in every project') && !history([rs], 'ghost-xyz.md', true).lines[0].includes('--all looks'), 'history called alone hints --all');
+
+  // Restore: never over a newer memory unless told; into a store whose folder is gone; the index line it brings back.
+  writeFileSync(join(rs, 'kept.md'), 'a newer kept');
+  const kept = restore(rs, 'kept.md');
+  ok(kept.ok === false && /exists; restore --force replaces it/.test(kept.lines[0]) && readFileSync(join(rs, 'kept.md'), 'utf8') === 'a newer kept', `restore called alone does not replace a memory (got ${JSON.stringify(kept)})`);
+  unlinkSync(join(rs, 'kept.md'));
+  writeFileSync(join(rs, 'MEMORY.md'), '# Index\n');
+  const idxRs = join(rs, 'MEMORY.md'), readFile = fsm.readFileSync;
+  let fired = false;
+  fsm.readFileSync = (p, ...a) => { if (!fired && String(p) === idxRs && fsm.existsSync(`${p}.tmp${process.pid}`)) { fired = true; fsm.appendFileSync(p, '# written meanwhile\n'); } return readFile(p, ...a); };
+  syncBuiltinESMExports();
+  try { r = run(['restore', 'kept', '--store', rs]); } finally { fsm.readFileSync = readFile; syncBuiltinESMExports(); }
+  ok(fired && r.status === 0 && /^restored [^\n]*kept\.md from \w+; the index changed meanwhile, so the next turn's tiering gives it a line$/m.test(r.stdout), `an index written while restore adds its line is kept (got ${r.stdout})`);
+  rmSync(join(root, 'C--mutA-rs'), { recursive: true, force: true });
+  r = run(['restore', 'kept', '--store', rs]);
+  ok(r.status === 0 && readFileSync(join(rs, 'kept.md'), 'utf8').includes('v1') && r.stdout.includes('with its line: - [Kept](kept.md) — kept note'), `restore remakes a store whose folder is gone, with its line (got ${r.stdout}${r.stderr})`);
+
+  // Promote: the line goes before the archive's; a shared index exactly at its ceiling is not over it; a missing shared store is made.
+  const sharedWas = readFileSync(join(shared, 'MEMORY.md'), 'utf8');
+  const ps = mdir('C--mutA-ps'), cap = budgetOf(shared), arch ='- [Archive](MEMORY-archive.md) — 3 older pointers';
+  try {
+    const capped = (name, over) => {
+      const l = `- [${name}](${name}.md) — cap note`;
+      memory(ps, name, 'cap note');
+      writeFileSync(join(ps, 'MEMORY.md'), l + '\n');
+      writeFileSync(sharedIdx, `# Shared memory\n${'x'.repeat(cap + over - 2 - bytes(l) - bytes('# Shared memory\n') - 1 - bytes(arch))}\n${arch}\n`);
+      return [l, run(['promote', name, '--store', ps])];
+    };
+    const sharedIdx = join(shared, 'MEMORY.md');
+    let [l, p] = capped('capnote', 0);
+    let ls = readFileSync(sharedIdx, 'utf8').split('\n');
+    ok(p.status === 0 && bytes(readFileSync(sharedIdx, 'utf8')) === cap && /every project's sessions see its line/.test(p.stdout) && ls.indexOf(l) > 0 && ls.indexOf(l) === ls.indexOf(arch) - 1, `a promoted line goes before the archive's, and an index exactly at its ceiling is not over it (got ${p.stdout})`);
+    [l, p] = capped('capnote2', 1);
+    ok(p.status === 0 && /The shared index is now \d+ of its \d+ bytes/.test(p.stdout), `one byte over the ceiling is said (got ${p.stdout})`);
+    // A copy the disk refuses names the error's code, not its message.
+    memory(ps, 'stuck2', 'cannot be copied');
+    mkdirSync(join(shared, `stuck2.md.tmp${process.pid}`));
+    const stuck = promote(ps, 'stuck2.md');
+    rmSync(join(shared, `stuck2.md.tmp${process.pid}`), { recursive: true, force: true });
+    ok(stuck.ok === false && /could not be written \(E[A-Z]+\); nothing moved$/.test(stuck.lines[0]), `a refused copy says its code (got ${JSON.stringify(stuck)})`);
+    // With no shared store yet, promote makes it.
+    renameSync(join(root, '_shared'), join(root, '_shared.away'));
+    try {
+      memory(ps, 'capnote3', 'cap note');
+      p = run(['promote', 'capnote3', '--store', ps]);
+      ok(p.status === 0 && existsSync(join(shared, 'capnote3.md')), `promote makes the shared store when there is none (got ${p.stdout}${p.stderr})`);
+    } finally { rmSync(join(root, '_shared'), { recursive: true, force: true }); renameSync(join(root, '_shared.away'), join(root, '_shared')); }
+    // A name that opens a file by another spelling (case, on Windows and macOS) is that file, even past an entry stat cannot read.
+    const od = mdir('C--mutA-od'), gone = join(root, 'od-gone');
+    memory(od, 'alpha', 'cased');
+    if (existsSync(join(od, 'ALPHA.md'))) {
+      mkdirSync(gone);
+      symlinkSync(gone, join(od, 'aaa-dangling'), link);
+      rmSync(gone, { recursive: true });
+      p = run(['promote', 'ALPHA', '--store', od]);
+      ok(p.status === 0 && existsSync(join(shared, 'alpha.md')), `a name in other case moves the note it opens, past an unreadable entry (got ${p.stdout})`);
+    }
+  } finally {
+    writeFileSync(join(shared, 'MEMORY.md'), sharedWas);
+    for (const f of ['capnote', 'capnote2', 'capnote3', 'alpha']) rmSync(join(shared, `${f}.md`), { force: true });
+  }
+
+  // Doctor, healthy: every line ok and exit 0; each check's own line; its limits.
+  installed('project-memory@project-memory', gh, { source: 'github', repo: 'zdraveski/project-memory' });
+  rmSync(join(live, '.deployed.json'), { force: true });
+  writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: new Date().toISOString(), failures: 0 }));
+  ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
+  r = cli('doctor');
+  ok(r.status === 0 && !/^PROBLEM/m.test(r.stdout) && /^ok +installed as project-memory@project-memory$/m.test(r.stdout) && /^ok +git on PATH$/m.test(r.stdout) && !/locks a killed hook left/.test(r.stdout), `a healthy doctor says ok and exits 0 (got ${r.stdout})`);
+  process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+  try { r = cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  ok(r.status === 0 && /^ok +auto memory is off \(CLAUDE_CODE_DISABLE_AUTO_MEMORY\)/m.test(r.stdout), `auto memory off is said, and is no problem (got ${r.stdout})`);
+  writeFileSync(join(live, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: {} }));
+  r = cli('doctor');
+  ok(r.status === 0 && r.stdout.includes(`ok      ${live} matches what deploy.mjs checked\n`), `a live copy that matches its deploy says so (got ${r.stdout})`);
+  writeFileSync(join(live, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: { 'gone.mjs': '0' } }));
+  r = cli('doctor');
+  ok(r.status === 1 && /^PROBLEM Memory hooks changed outside deploy\.mjs, live and untested: gone\.mjs in /m.test(r.stdout), `a live copy edited since its deploy is a problem (got ${r.stdout})`);
+  rmSync(join(live, '.deployed.json'));
+  writeFileSync(join(home, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@project-memory': [{}] } }));
+  r = cli('doctor');
+  ok(r.status === 1 && /^PROBLEM project-memory@project-memory is listed as installed, but with no folder/m.test(r.stdout), `an install with no folder is a problem (got ${r.stdout})`);
+  installed('project-memory@project-memory', gh, { source: 'github', repo: 'zdraveski/project-memory' });
+  // Two runs exactly TWICE (2000 ms) apart are two replies; 1999 ms is one answered twice.
+  const base = Date.now() - 60_000;
+  ranLog({ at: iso(base), s: 'aaaaaaaa', from: 'C:/x' }, { at: iso(base + 2000), s: 'aaaaaaaa', from: 'C:/x' });
+  ok(!/ran twice/.test(cli('doctor').stdout), 'two runs 2000 ms apart are not hooks wired twice');
+  ranLog({ at: iso(base), s: 'aaaaaaaa', from: 'C:/x' }, { at: iso(base + 1999), s: 'aaaaaaaa', from: 'C:/x' });
+  ok(/ran twice/.test(cli('doctor').stdout), 'two runs 1999 ms apart are');
+  ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
+  // A lock is a killed hook's only past LOCK_STALE; a store with none is not listed.
+  const lock = join(dir, '.lock'), realNow = Date.now;
+  mkdirSync(lock);
+  try {
+    const old = new Date(realNow() - 3600_000);
+    utimesSync(lock, old, old);
+    const mt = statSync(lock).mtimeMs;
+    Date.now = () => mt + LOCK_STALE;
+    const edge = cli('doctor');
+    Date.now = () => mt + LOCK_STALE + 1;
+    const past = cli('doctor');
+    ok(!/locks a killed hook left/.test(edge.stdout) && past.status === 0 && new RegExp(`^ok +locks a killed hook left, taken over at the next write: ${lock.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}$`, 'm').test(past.stdout), `a lock exactly LOCK_STALE old is not stale, one ms more is (got ${edge.stdout} / ${past.stdout})`);
+  } finally { Date.now = realNow; rmSync(lock, { recursive: true, force: true }); }
+  // The reply that ended exactly GRACE ago is still waited for.
+  rmSync(join(root, '.stop-ran'), { force: true });
+  const T0 = realNow(), turn = (ms) => JSON.stringify({ type: 'assistant', timestamp: iso(ms), message: { usage: { input_tokens: 1 }, stop_reason: 'end_turn', content: [] } }) + '\n';
+  writeFileSync(join(dirname(dir), 'sess-g.jsonl'), turn(T0 - GRACE));
+  try {
+    Date.now = () => T0;
+    const waiting = run(['doctor', '--session', 'sess-g']);
+    Date.now = () => T0 + 1;
+    const dead = run(['doctor', '--session', 'sess-g']);
+    ok(/^ok +waiting for Claude's first reply/m.test(waiting.stdout) && /^PROBLEM Claude finished a reply at /m.test(dead.stdout), `a reply GRACE old is waited for, one ms more is a dead hook (got ${waiting.stdout} / ${dead.stdout})`);
+  } finally { Date.now = realNow; rmSync(join(dirname(dir), 'sess-g.jsonl')); }
+  // The session's own transcript decides which folder is read, not the folder doctor runs in.
+  const w1 = join(root, 'C--mutA-w1'), w2 = join(root, 'C--mutA-w2');
+  mkdirSync(w1, { recursive: true });
+  mkdirSync(w2, { recursive: true });
+  writeFileSync(join(w1, 'sess-w.jsonl'), turn(T0 - 11 * 60_000));
+  writeFileSync(join(w2, 'other-w.jsonl'), turn(T0 - 5 * 60_000));
+  ranLog({ at: ago(10 * 60_000), s: 'aaaaaaaa', from: 'C:/x' });
+  const longAgo = new Date(T0 - 10 * 60_000);
+  utimesSync(join(root, '.stop-ran'), longAgo, longAgo);
+  utimesSync(join(w1, 'sess-w.jsonl'), new Date(T0 - 12 * 60_000), new Date(T0 - 12 * 60_000));
+  const cwdRun = spawnSync(process.execPath, [CLI, 'doctor', '--session', 'sess-w'], { env: noSession, cwd: w2, encoding: 'utf8' });
+  ok(!/looks? stopped/.test(cwdRun.stdout) && /the Stop hook last ran/.test(cwdRun.stdout), `doctor reads the session's own project, whatever folder it runs in (got ${cwdRun.stdout}${cwdRun.stderr})`);
 }
 
 console.log(`memory: ${checks} checks passed`);
