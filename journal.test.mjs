@@ -527,6 +527,62 @@ if (!quick) {
   ok(had && r.removed.length === 1 && !after.includes('walrus') && after.includes('the seal plan') && !hd().includes('walrus') && hd().includes('the otter review') && !of(J).some((e) => e.asked.includes('walrus')),
     `forget takes the exchange out of handoff.md, and the next Stop of its conversation does not put it back (got ${had}, ${after}, ${hd()})`);
 }
+// F12: a Stop whose private or memory-off list won't read (EBUSY: a scan holding
+// it), made so by a preload. Read as no tags, a private conversation's turn was
+// saved; taken as tagged, a normal one's entries would be swept. The Stop does
+// nothing for it; the next does.
+const refuser = (names) => {
+  const f = join(home, `refuse${names.join('')}.mjs`);
+  writeFileSync(f, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst read = fs.readFileSync;\n" +
+    `fs.readFileSync = (p, ...a) => { if (${JSON.stringify(names)}.some((n) => String(p).endsWith(n))) throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }); return read(p, ...a); };\nsyncBuiltinESMExports();\n`);
+  return pathToFileURL(f).href;
+};
+const stopRefused = (id, names) => { const r = spawnSync(process.execPath, ['--import', refuser(names), TIER, '--stop'], { env, input: payload(id), encoding: 'utf8', timeout: 60e3 }); if (r.error?.code === 'ETIMEDOUT' || r.signal) throw hung(r.error?.code ?? r.signal); return r; };
+{
+  // Marked private by a writer that took nothing back (the compaction gate), its turns hold no mark.
+  const R = sid('ra'), r8 = R.slice(0, 8), list = join(sdir, '.private-sessions'), hf = join(sdir, 'handoff.md');
+  // Now, so a saved turn would be the briefing's last session (it names one of the last 7 days).
+  const now = new Date(Date.now() - 60e3).toISOString();
+  say(R, now, 'a plain question', 'a plain answer');
+  stop(R);
+  appendFileSync(list, `${r8}\n`);
+  say(R, now, 'so what is the vault code', 'it is heron-8812');
+  stopRefused(R, ['.private-sessions']);
+  const brief = () => spawnSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+    input: JSON.stringify({ cwd: scwd, session_id: sid('rb'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '';
+  const where = () => ['journal', 'handoff.md', 'briefing'].filter((_, i) => /heron/.test([days(sdir).map((d) => readFileSync(dayFile(sdir, d), 'utf8')).join(''), existsSync(hf) ? readFileSync(hf, 'utf8') : '', brief()][i]));
+  const refused = where();
+  stop(R);
+  ok(!refused.length && !where().length && !of(R).length && readFileSync(list, 'utf8').split(/\r?\n/).includes(r8),
+    `a private conversation whose list won't read at a Stop saves nothing, and the next clean Stop keeps it private (got leaked into ${refused}, then ${where()}, ${JSON.stringify(of(R))})`);
+}
+{
+  const M = sid('ma'), m8 = M.slice(0, 8), offf = join(home, '.claude', 'projects', '.memory-off');
+  say(M, '2026-10-28T17:00:00Z', 'asked with memory off', 'answered');
+  process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+  try { stop(M); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  say(M, '2026-10-28T17:01:00Z', 'what was the diagnosis', 'it is grebe-3141');
+  // Nor does a Stop that did nothing clear a failure.
+  const failed = join(sdir, 'journal', '.failed');
+  writeFileSync(failed, '{"at":"2026-10-28T09:00:00Z","error":"left alone"}\n');
+  stopRefused(M, ['.memory-off']);
+  const refused = of(M).map((e) => e.asked), kept = existsSync(failed);
+  stop(M);
+  ok(!refused.length && kept && !of(M).length && readFileSync(offf, 'utf8').split(/\r?\n/).includes(m8),
+    `a memory-off conversation whose list won't read at a Stop is not journaled and clears no failure, nor journaled at the next clean Stop (got ${refused}, failure kept ${kept}, then ${of(M).map((e) => e.asked)})`);
+  rmSync(failed, { force: true });
+}
+for (const [c, names] of [['na', ['.private-sessions']], ['nb', ['.memory-off']]]) {
+  const N = sid(c), hd = () => readFileSync(join(sdir, 'handoff.md'), 'utf8');
+  say(N, '2026-10-28T17:10:00Z', 'the first plain question', 'the first plain answer');
+  stop(N);
+  say(N, '2026-10-28T17:15:00Z', 'the second plain question', 'the second plain answer');
+  stopRefused(N, names);
+  const kept = of(N).map((e) => e.asked), keptHd = hd().includes('the first plain question');
+  stop(N);
+  ok(kept.includes('the first plain question') && keptHd && of(N).map((e) => e.asked).sort().join() === 'the first plain question,the second plain question' && hd().includes('the second plain question'),
+    `a normal conversation whose ${names} won't read at a Stop keeps its entries and lines, and the next clean Stop saves its new turn (got ${kept}, ${keptHd}, then ${of(N).map((e) => e.asked)})`);
+}
 
 // --- backfill: the conversations still on disk, a few a Stop -----------------
 const projects = join(home, '.claude', 'projects');
@@ -1564,6 +1620,38 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   ok(!existsSync(sweeps), `and swept once, not at every look after (got ${existsSync(sweeps) ? readFileSync(sweeps, 'utf8') : ''})`);
   rmSync(bad, { recursive: true });
   ok(!asks(d).length, `nor imported after (got ${asks(d)})`);
+}
+{
+  // F12 at a look: a list that won't read (EBUSY: a scan holding it) is unknown there too. Read as
+  // no tags, a conversation tagged private or memory-off was imported; taken as tagged, a normal one
+  // would be swept, or a memory-off one tagged private and taken out of handoff.md. Each is left for
+  // the next look, and not listed as read.
+  const [r, d] = repo('refusedlook'), offf = join(projects, '.memory-off'), [P, M, N, S] = ['fa', 'fb', 'fc', 'fd'].map(sid);
+  const at = (id) => join(projects, slug(r), `${id}.jsonl`), grow = (id, i) => { appendFileSync(at(id), exchange(id, r, i)); utimesSync(at(id), ago(2), ago(2)); };
+  const line = (id) => listed(d).find((l) => l.startsWith(`${slug(r)}/${id} `));
+  const refusing = (names, fn) => {
+    const read = fs.readFileSync;
+    fs.readFileSync = (p, ...a) => { if (names.some((n) => String(p).endsWith(n))) throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }); return read(p, ...a); };
+    syncBuiltinESMExports();
+    try { return fn(); } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
+  };
+  appendFileSync(offf, `${S.slice(0, 8)}\n`);
+  grow(N, 0); grow(S, 2);
+  fill(d);
+  appendFileSync(join(d, '.private-sessions'), `${P.slice(0, 8)}\n`);
+  appendFileSync(offf, `${M.slice(0, 8)}\n`);
+  grow(N, 1); grow(S, 3); grow(P, 4); grow(M, 5);
+  writeFileSync(join(d, 'handoff.md'), `---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** 2026-09-01 10:03 [${S.slice(0, 8)}]: handed off with memory on\n  **did:** noted\n<!-- auto:end -->\n`);
+  const before = line(N);
+  due(d); refusing(['.private-sessions'], () => fill(d));
+  const a = { asks: asks(d).join(), n: line(N) === before, p: !line(P) };
+  grow(S, 6);   // grown again: the next look meets it whether or not that one read it
+  due(d); refusing(['.memory-off'], () => fill(d));
+  const b = { asks: asks(d).join(), m: !line(M), s: !tagsOf(d).includes(S.slice(0, 8)) && readFileSync(join(d, 'handoff.md'), 'utf8').includes('handed off with memory on') };
+  due(d); fill(d);
+  ok(a.asks === 'question 0' && a.n && a.p, `a look whose private list won't read imports and sweeps nothing, and lists nothing as read (got ${JSON.stringify(a)})`);
+  ok(b.asks === 'question 0' && b.m && b.s, `nor one whose memory-off list won't read; a memory-off conversation swept before is not tagged private (got ${JSON.stringify(b)})`);
+  ok(asks(d).join() === 'question 0,question 1' && tagsOf(d).includes(P.slice(0, 8)), `the next clean look imports the normal conversation's new turn, and only that (got ${asks(d)})`);
 }
 
 console.log(`journal: ${checks} checks passed`);

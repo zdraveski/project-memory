@@ -18,6 +18,11 @@ install the current LTS from nodejs.org.
   the journal next meets it. A conversation held with auto memory off that
   has lost its tag is now treated the same way: it is tagged private, so it
   also leaves the handoff.
+- If the list of private conversations, or of those held with auto memory
+  off, couldn't be read after a reply (another program, such as a virus
+  scanner, had it open), that conversation was saved as if it were not
+  private. Now nothing is saved or removed for it until the list can be read
+  again, at a later reply.
 
 ## 1.2.2 (2026-10-30)
 

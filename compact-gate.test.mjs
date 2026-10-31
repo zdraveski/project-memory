@@ -330,6 +330,33 @@ ok(!/cut mid-turn|plan it/.test(rp), `a private conversation cut mid-turn gets n
 writeFileSync(tp, [user('plan it'), asst('planning', T + 90_000, 'end_turn')].join('\n') + '\n');
 nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'abcdefgh-0000-1111-2222-333344445555' });
 ok(existsSync(join(home, '.claude', 'projects', '.nudge', 'abcdefgh')) && !existsSync(join(home, '.claude', 'projects', '.nudge', 'abcdefgh-0000-1111-2222-333344445555')), "the nudge's file is named by the 8-character tag");
+// F12: a private list that won't read (EBUSY: a scan holding it) is taken as
+// private here, where nothing is swept: no nudge, no recovery note, no note
+// from the gate. Read as no tags, a private conversation got all three.
+{
+  const { default: fsm } = await import('node:fs'), { syncBuiltinESMExports } = await import('node:module'), { recover: recovered } = await import('./compact-gate.mjs');
+  const read = fsm.readFileSync;
+  const refused = (fn) => {
+    fsm.readFileSync = (p, ...a) => { if (String(p).endsWith('.private-sessions')) throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }); return read(p, ...a); };
+    syncBuiltinESMExports();
+    try { return fn(); } finally { fsm.readFileSync = read; syncBuiltinESMExports(); }
+  };
+  writeFileSync(tp, [user('plan the Initech takeover'), asst('planning', T + 80_000, 'end_turn')].join('\n') + '\n');
+  const n = refused(() => nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-1' }));
+  writeFileSync(tp, [user('plan the Initech takeover'), asst('planning', 700_000, 'tool_use')].join('\n') + '\n');
+  const note = refused(() => recovered({ cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-1' }));
+  ok(n === null && note === '', `a conversation whose private list won't read gets no nudge and no recovery note (got ${JSON.stringify(n)}, ${JSON.stringify(note)})`);
+  // The gate, through the hook: a preload refuses the list there.
+  const pre = join(tempDir('cg-refuse-'), 'refuse.cjs'), hp = join(dirP, 'handoff.md');
+  writeFileSync(pre, `const fs = require('node:fs'), read = fs.readFileSync;
+fs.readFileSync = (p, ...a) => { if (String(p).endsWith('.private-sessions')) throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }); return read(p, ...a); };
+require('node:module').syncBuiltinESMExports();
+`);
+  writeFileSync(hp, '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+  writeFileSync(tp, [user('plan the Initech takeover'), asst('working', 965_000, 'tool_use'), result('ok')].join('\n') + '\n');
+  const g = spawnSync(process.execPath, ['--require', pre, GATE], { input: JSON.stringify({ cwd: cwdP, transcript_path: tp, trigger: 'auto', session_id: 'pppppppp-1' }), env, encoding: 'utf8', timeout: 30_000 });
+  ok(g.status === 0 && !/cut mid-turn|Initech/.test(readFileSync(hp, 'utf8')), `nor a note from the gate, nor its turn (got ${g.status}: ${g.stderr.trim()}; ${readFileSync(hp, 'utf8')})`);
+}
 
 // A window as Claude Code takes one: a suffix, or none; and the model's own
 // window from the environment, which the trigger never passes.

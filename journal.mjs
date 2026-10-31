@@ -382,7 +382,10 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
   // it kept its entries, and so did one imported before its memory-off tag
   // (P1 hunt, 2026-10-29). Resumed with memory on, a memory-off conversation's
   // first Stop journaled every turn (review, 2026-10-29).
-  if (quiet || hushed(projectsRoot(), s, false, OFF)) { takeBack(dir, k, s, hush); return hush; }
+  const out = quiet || hushed(projectsRoot(), s, false, OFF);
+  // Unknown (the list won't read): neither recorded nor swept; the next Stop does it (F12).
+  if (out === null) return false;
+  if (out) { takeBack(dir, k, s, hush); return hush; }
   // A read short of the whole transcript: what no look has read is looked at
   // for a mark, from where the last stopped, once more has come since than
   // any Stop's read covers (TAIL). A mark typed in a turn that got no Stop,
@@ -578,18 +581,28 @@ function importOne(dir, c, fd, seg, cap, more) {
   // has in the journal goes at the first look that meets it, as at its first
   // such Stop. Tagged by a writer with no sink (a memory-off Stop, the
   // compaction gate) and no Stop after, it kept its entries (review, 2026-10-29).
-  if (hushed(dir, s)) { takeBack(dir, c.k, s, false, true); return none; }
+  // A list that won't read: unknown, so null, neither imported nor swept, and
+  // not listed as read; the next look takes it (F12).
+  const priv = hushed(dir, s);
+  if (priv === null) return null;
+  if (priv) { takeBack(dir, c.k, s, false, true); return none; }
   // Swept once and tagged as neither now: it lost its tag, and a look from
   // where the last stopped, past the mark, imported it (F6). Tagged private
   // again (memory-off too, R17), so it is swept once, of what was saved since.
-  if (checked(dir, c.k)?.[4] === 'swept' && !hushed(projectsRoot(), s, false, OFF)) { hushed(dir, s, true); takeBack(dir, c.k, s, true, true); return none; }
+  if (checked(dir, c.k)?.[4] === 'swept') {
+    const off = hushed(projectsRoot(), s, false, OFF);
+    if (off === null) return null;
+    if (!off) { hushed(dir, s, true); takeBack(dir, c.k, s, true, true); return none; }
+  }
   // A mark typed while the plugin was off is taken as its Stop takes one: the
   // conversation is marked, and what it wrote before goes, from the journal
   // and from handoff.md.
   const look = marked(fd, c.looked, seg, size, more);
   if (look.hit) { hushed(dir, s, true); takeBack(dir, c.k, s, true, true); return none; }
   if (look.pos < size) return { at: c.from, size, looked: look.pos };
-  if (hushed(projectsRoot(), s, false, OFF)) { takeBack(dir, c.k, s); return none; }
+  const held = hushed(projectsRoot(), s, false, OFF);
+  if (held === null) return null;
+  if (held) { takeBack(dir, c.k, s); return none; }
   let at = c.from;
   try {
     for (const { got, next } of segments(fd, at, seg, size, cap)) {
@@ -647,7 +660,9 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
         // retried at every look, it failed at every look.
         let fd; try { fd = openSync(c.p, 'r'); } catch (e) { mark(dir, [`${c.k} ${c.size} failed ${Date.now()}`]); throw e; }
         try {
-          const { at, size, looked } = importOne(dir, c, fd, segment, cap, () => Date.now() - t0 < budgetMs);
+          const r = importOne(dir, c, fd, segment, cap, () => Date.now() - t0 < budgetMs);
+          if (!r) continue;   // unknown whether it may be imported: left as it is
+          const { at, size, looked } = r;
           mark(dir, [at < size ? `${c.k} ${looked} at ${at}` : `${c.k} ${size}`]);
           n++; if (at >= size) done++;
         } finally { closeSync(fd); }

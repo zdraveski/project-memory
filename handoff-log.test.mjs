@@ -873,6 +873,65 @@ let q; try { q = handoff({ cwd: cwdN, transcript_path: tq, session_id: 'qqqqqqqq
 ok(q === 'private' && !readFileSync(join(dirN, 'handoff.md'), 'utf8').includes('merger'), `a marked turn is kept out even when its mark could not be saved (got ${q})`);
 }
 
+// F12: a private list that won't read (EBUSY: a scan holding it) is unknown,
+// not "no tags": read as none, a private conversation was written to
+// handoff.md. Nor is it taken as private there: that dropped a normal
+// conversation's lines. The Stop does nothing for it; the next one does.
+{
+const { hushed } = await import('./handoff-log.mjs');
+const cwdF = 'C:\\handoff-refused', dirF = storeFor(home, cwdF), list = join(dirF, '.private-sessions'), hf = join(dirF, 'handoff.md');
+mkdirSync(dirF, { recursive: true });
+const read = fs.readFileSync;
+let refuse = () => true;
+const refused = (fn) => {
+  fs.readFileSync = (p, ...a) => { if (String(p) === list && refuse()) throw Object.assign(new Error(`EBUSY: resource busy or locked, open '${p}'`), { code: 'EBUSY' }); return read(p, ...a); };
+  syncBuiltinESMExports();
+  try { return fn(); } finally { fs.readFileSync = read; syncBuiltinESMExports(); refuse = () => true; }
+};
+writeFileSync(list, 'tagged00\n');
+const caught = (f) => { try { return f(); } catch (e) { return e.code; } };
+const asked = refused(() => [hushed(dirF, 'tagged00'), hushed(dirF, 'other000'), caught(() => hushed(dirF, 'new00000', true))]);
+let reads = 0; refuse = () => reads++ === 0;
+const once = refused(() => hushed(dirF, 'tagged00'));
+ok(asked.every((x) => x === null) && readFileSync(list, 'utf8') === 'tagged00\n' && once === true && hushed(join(home, 'no-list-here'), 'tagged00') === false,
+  `a list that won't read answers unknown and is not written, one refused once is read again, and one that isn't there answers no (got ${asked}, ${once}, ${JSON.stringify(readFileSync(list, 'utf8'))})`);
+// Tagged by a writer that took nothing back (the compaction gate's handoff), its turns hold no mark.
+const tv = join(dirF, 'v.jsonl');
+writeFileSync(tv, [user('so the vault code is walrus-4417'), asst('noted walrus')].join('\n') + '\n');
+const hd = () => (existsSync(hf) ? readFileSync(hf, 'utf8') : '');
+// Nor handed to the journal (memory-tier's sink), which would record it as public.
+const told = [];
+const rv = refused(() => handoff({ cwd: cwdF, transcript_path: tv, session_id: 'tagged00-1' }, (d, t, g, o) => told.push(o)));
+const leakedV = hd().includes('walrus');
+const cleanV = handoff({ cwd: cwdF, transcript_path: tv, session_id: 'tagged00-1' });
+ok(rv === 'busy' && !leakedV && !told.length && cleanV === 'private' && !hd().includes('walrus') && readFileSync(list, 'utf8').includes('tagged00'),
+  `a private conversation whose list won't read is not written nor handed to the journal, and the next clean Stop keeps it private (got ${rv}, leaked ${leakedV}, told ${JSON.stringify(told)}, then ${cleanV})`);
+// A normal conversation: its lines stay, and the next clean Stop writes its new turn.
+const tn = join(dirF, 'n.jsonl');
+writeFileSync(tn, [user('the first plain ask', { ts: '2026-09-11T07:00:00Z' }), asst('the first plain answer', { ts: '2026-09-11T07:00:30Z' })].join('\n') + '\n');
+handoff({ cwd: cwdF, transcript_path: tn, session_id: 'normal00-1' });
+writeFileSync(tn, [user('the second plain ask', { ts: '2026-09-11T07:05:00Z' }), asst('the second plain answer', { ts: '2026-09-11T07:05:30Z' })].join('\n') + '\n', { flag: 'a' });
+const rn = refused(() => handoff({ cwd: cwdF, transcript_path: tn, session_id: 'normal00-1' }));
+const keptN = hd().includes('the first plain ask');
+handoff({ cwd: cwdF, transcript_path: tn, session_id: 'normal00-1' });
+ok(rn === 'busy' && keptN && /the first plain ask[\s\S]*the second plain ask/.test(hd()),
+  `a normal conversation whose list won't read keeps its lines, and the next clean Stop writes its new turn (got ${rn}, kept ${keptN})`);
+// Refused only after the journal's look (the sink) tagged it, or looked and
+// tagged nothing: neither written nor dropped.
+for (const [id, tags, want] of [['looked00', true, 'otter-5150'], ['looked01', false, 'the third plain ask']]) {
+  const t = join(dirF, `${id}.jsonl`);
+  writeFileSync(t, [user('an earlier ask', { ts: '2026-09-11T08:00:00Z' }), asst('an earlier answer', { ts: '2026-09-11T08:00:30Z' })].join('\n') + '\n');
+  if (!tags) handoff({ cwd: cwdF, transcript_path: t, session_id: `${id}-1` });
+  writeFileSync(t, [user(tags ? 'so the otter code is otter-5150' : 'the third plain ask', { ts: '2026-09-11T08:05:00Z' }), asst('noted', { ts: '2026-09-11T08:05:30Z' })].join('\n') + '\n', { flag: 'a' });
+  let looked = false;
+  const sink = (d) => { if (tags) hushed(d, id, true); looked = true; };
+  refuse = () => looked;
+  const r = refused(() => handoff({ cwd: cwdF, transcript_path: t, session_id: `${id}-1` }, sink)), doc = hd();
+  ok(r === 'busy' && !doc.includes(want) && (tags || doc.includes('an earlier ask')),
+    `a list that won't read after the journal's look leaves handoff.md as it was (${tags ? 'tagged' : 'not tagged'}: got ${r}, ${doc.includes(want)}, ${doc.includes('an earlier ask')})`);
+}
+}
+
 // .memory-off: written under the projects' lock, by every SessionStart and Stop
 // while auto memory is off, and pruned by the transcripts still on disk.
 {

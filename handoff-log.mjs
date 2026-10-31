@@ -575,21 +575,26 @@ const QUIET = '.private-sessions';
 // them): the journal never records or imports them.
 export const OFF = '.memory-off';
 // `prune`: the tags kept beside a new one. False: not marked, or a mark that
-// lost every race, unwritten.
+// lost every race, unwritten. Null: unknown, the list refused three reads.
 export function hushed(dir, s, mark = false, list = QUIET, prune = (have) => have.slice(-999)) {
   const p = join(dir, list);
   if (!s) return false;
+  let unread;
   for (let i = 0; i < 3; i++) {
     // CRLF too: a tag with a \r left over matched no conversation, and a marked
     // one was written again.
-    let before = null; try { before = readFileSync(p, 'utf8'); } catch {}
+    // A read refused (EBUSY: a scan holding the list) is no answer: read as no
+    // tags, a private conversation was saved as public (F12).
+    let before = null;
+    try { before = readFileSync(p, 'utf8'); unread = false; } catch (e) { unread = e.code !== 'ENOENT'; }
+    if (unread) continue;
     const have = listOf(before);
     if (!mark || have.includes(s)) return have.includes(s);
     // By rename: written in place, a hook killed mid-write forgot every mark.
     // Again, from the text read, when another wrote first.
     if (replaceIfUnchanged(p, before, [...prune(have), s].join('\n') + '\n') !== 'conflict') return true;
   }
-  return false;
+  return unread ? null : false;
 }
 
 // The tags of the transcripts in every project folder; null when one won't list.
@@ -672,6 +677,10 @@ export function handoff(input, sink = null) {
     // sees it in the transcript.
     // Private by this read even when the mark could not be kept.
     const was = hushed(dir, s);
+    // Unknown (the list won't read): nothing written, nothing swept, as when
+    // the lock stays busy; the next Stop does it. Taken as private, a normal
+    // conversation's lines and entries went (F12).
+    if (was === null) return null;
     let quiet = was || hushed(dir, s, hush) || hush;
     // The journal (memory-tier's Stop passes its writer) takes this lock too,
     // not one of its own; whatever it throws is its own. Swept anew only by the
@@ -681,6 +690,7 @@ export function handoff(input, sink = null) {
     if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush: hush && !was }); } catch {}
     // Or by the journal's look at the whole transcript, past this read.
     quiet ||= hushed(dir, s);
+    if (quiet === null) return null;
     // An exchange forget took out stays out: read again, the forget turn's own
     // Stop put it back (R36). By its transcript and minute, as forget lists it,
     // and by its key, the prompt's id: a clock moved to another time zone gave

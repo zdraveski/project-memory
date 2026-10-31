@@ -101,7 +101,10 @@ All of it stays in `~/.claude/projects` on your computer:
     takes in a conversation marked `<private-session>`, or one held while
     `CLAUDE_CODE_DISABLE_AUTO_MEMORY` was set: it knows them by their tags in
     `.private-sessions` and in `~/.claude/projects/.memory-off`, or by the
-    mark in the conversation. Finding a mark typed while the plugin was off,
+    mark in the conversation. When one of those lists can't be read (another
+    program, such as a virus scanner, has it open), nothing is saved or
+    removed for that conversation, and it is tried again after the next
+    reply. Finding a mark typed while the plugin was off,
     it tags the conversation and removes its earlier entries, from the
     journal and from `handoff.md`, as it does for one typed while it is on.
     A conversation held with auto memory off while this version wasn't

@@ -192,7 +192,8 @@ function inflight(payload, s) {
   const dir = storeOf(payload);
   const file = join(dir, 'handoff.md');
   if (!existsSync(file)) return false;
-  if (hushed(dir, tag(payload.session_id))) return 'private';
+  // Unknown (the list won't read) is private here: a note only adds (F12).
+  if (hushed(dir, tag(payload.session_id)) !== false) return 'private';
   const r = withLock(dir, () => {
     const doc = readFileSync(file, 'utf8');
     const { a, b } = sectionOf(doc);
@@ -220,8 +221,9 @@ export function recover(input) {
 
 // A conversation marked private, or this turn's private ask: the gate, the
 // recovery note and the nudge leave it alone. The nudge told Claude to write
-// its work into handoff.md and the notes, which nothing then removed.
-const secret = (payload, s) => hushed(storeOf(payload), tag(payload.session_id)) || PRIVATE_SESSION.test(userText(s)) || PRIVATE.test(userText(s));
+// its work into handoff.md and the notes, which nothing then removed. A list
+// that won't read (unknown) counts as marked: these only add (F12).
+const secret = (payload, s) => hushed(storeOf(payload), tag(payload.session_id)) !== false || PRIVATE_SESSION.test(userText(s)) || PRIVATE.test(userText(s));
 
 /** PreCompact: 0 lets the compaction run, 2 defers it. */
 export function gate(payload) {
@@ -268,7 +270,7 @@ export function nudge(payload) {
   if (payload.hook_event_name !== 'Stop' || payload.stop_hook_active || !payload.transcript_path || !existsSync(payload.transcript_path)) return null;
   // A conversation marked private, before any read: past the trigger, its
   // whole turn was read again at every Stop, for no nudge.
-  if (hushed(storeOf(payload), tag(payload.session_id))) return null;
+  if (hushed(storeOf(payload), tag(payload.session_id)) !== false) return null;
   const s = state(payload.transcript_path, { ask: false });
   // The conversation's tag, as everywhere else: its full id named a file.
   const id = tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''));
