@@ -43,9 +43,12 @@ const entries = () => (section().match(/\*\*asked\*\*/g) || []).length;
 // ever there, in the suite's first check: so a child with a watchdog asks, and
 // the suite fails in seconds instead of hanging until CI gives up.
 {
-  const probe = `import { sectionOf } from ${JSON.stringify(pathToFileURL(HOOK).href)};\nprocess.stdout.write(JSON.stringify(['prose with no marker', '', 'x\\n<!-- auto:end -->\\n'].map(sectionOf)));`;
+  // Text with no section: no marker, no START, a START (at the start, or later) with no END, a START or an END not alone on its line.
+  const S = '<!-- auto:start -->', E = '<!-- auto:end -->';
+  const docs = ['prose with no marker', '', ['x', E, ''].join('\n'), [S, 'no end'].join('\n'), ['x', S, 'no end', ''].join('\n'), ['x' + S, 'body', E, ''].join('\n'), [S, 'body', E + 'x'].join('\n')];
+  const probe = `import { sectionOf } from ${JSON.stringify(pathToFileURL(HOOK).href)};\nprocess.stdout.write(JSON.stringify(${JSON.stringify(docs)}.map(sectionOf)));`;
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8', timeout: 10000 });
-  ok(r.status === 0 && r.stdout === JSON.stringify(Array(3).fill({ a: -1, b: -1 })), `sectionOf of text with no start marker finds none, and returns (${r.status}${r.signal ? ', ' + r.signal : ''}${r.error ? ', ' + r.error.code : ''}, ${r.stdout}, ${String(r.stderr).slice(0, 300)})`);
+  ok(r.status === 0 && r.stdout === JSON.stringify(docs.map(() => ({ a: -1, b: -1 }))), `sectionOf of text with no section finds none, and returns (${r.status}${r.signal ? ', ' + r.signal : ''}${r.error ? ', ' + r.error.code : ''}, ${r.stdout}, ${String(r.stderr).slice(0, 300)})`);
 }
 
 // 1. One prompt, then 700 KB of tool output, then the answer: beyond a 512 KB tail.
