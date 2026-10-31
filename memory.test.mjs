@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
-import { tool, tempHome, storeFor, quick } from './harness.mjs';
+import { tool, tempHome, tempDir, storeFor, quick } from './harness.mjs';
 
 const CLI = tool('memory.mjs'), TIER = tool('memory-tier.mjs');
 const { home, env } = tempHome('memcli-');
@@ -430,6 +430,10 @@ writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), '{}')
 ok(/^PROBLEM the plugin runs aaa from [^\n]*, the last deploy is bbb\. The user's fix: claude plugin update/m.test(cli('doctor').stdout), 'doctor: a plugin copy older than the last deploy is named');
 writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: {} }));
 ok(/^ok +the plugin runs the last deploy, bbb/m.test(cli('doctor').stdout), 'doctor: and one that matches is fine');
+// A copy at the last deploy's commit with a file changed since is named by the file.
+writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: { 'gone.mjs': '0' } }));
+r = cli('doctor');
+ok(r.status === 1 && /^PROBLEM Memory hooks changed outside deploy\.mjs, live and untested: gone\.mjs in [^\n]*1\.0\.1\./m.test(r.stdout), `doctor: a plugin copy edited since its deploy is named by the file (got ${r.stdout})`);
 // Installed from a local folder (the live copy), Claude Code reads it in place:
 // a stale cache copy beside it is not what runs.
 writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'aaa', files: {} }));
@@ -1320,6 +1324,29 @@ if (!quick) {
   r = run(['restore', 'kept', '--store', rs]);
   ok(r.status === 0 && readFileSync(join(rs, 'kept.md'), 'utf8').includes('v1') && r.stdout.includes('with its line: - [Kept](kept.md) — kept note'), `restore remakes a store whose folder is gone, with its line (got ${r.stdout}${r.stderr})`);
 
+  // The disk refuses a write: the reply gives the disk's own code (a directory
+  // where the temp file goes, so the write fails the same way on every OS), the
+  // index line goes last when the index has no archive line, and a restore that
+  // fails writes nothing.
+  const refuse = (target) => { const t = `${target}.tmp${process.pid}`; mkdirSync(t); return t; };
+  const diskCode = (t) => { try { writeFileSync(t, 'x'); } catch (e) { return e.code; } return null; };
+  const rf = mdir('C--mutB-rf'), wline = '- [Wnote](wnote.md) — restore write refused';
+  memory(rf, 'wnote', 'restore write refused');
+  writeFileSync(join(rf, 'MEMORY.md'), `# Index\n\n${wline}\n`);
+  tier();
+  rmSync(join(rf, 'wnote.md'));
+  let tmpDir = refuse(join(rf, 'wnote.md')), code = diskCode(tmpDir);
+  try { r = run(['restore', 'wnote', '--store', rf]); } finally { rmSync(tmpDir, { recursive: true, force: true }); }
+  ok(code && r.status === 1 && r.stdout.includes(`wnote.md could not be written (${code}); nothing restored`) && !existsSync(join(rf, 'wnote.md')), `a restore the disk refuses names the disk's code and writes nothing (got ${r.stdout})`);
+  writeFileSync(join(rf, 'MEMORY.md'), '# Index\n');
+  tmpDir = refuse(join(rf, 'MEMORY.md'));
+  try { r = run(['restore', 'wnote', '--store', rf]); } finally { rmSync(tmpDir, { recursive: true, force: true }); }
+  ok(code && r.status === 0 && r.stdout.includes(`; its index line could not be written (${code}): the next turn's tiering gives it one`) && existsSync(join(rf, 'wnote.md')), `a restore whose index line the disk refuses says the disk's code, and keeps the note (got ${r.stdout})`);
+  rmSync(join(rf, 'wnote.md'));
+  writeFileSync(join(rf, 'MEMORY.md'), '# Index\n\n- [Other](other.md) — o\n');
+  r = run(['restore', 'wnote', '--store', rf]);
+  ok(r.status === 0 && readFileSync(join(rf, 'MEMORY.md'), 'utf8').trimEnd().split('\n').at(-1) === wline, `an index line with no archive line to go before goes last (got ${r.stdout}${readFileSync(join(rf, 'MEMORY.md'), 'utf8')})`);
+
   // Promote: the line goes before the archive's; a shared index exactly at its ceiling is not over it; a missing shared store is made.
   const sharedWas = readFileSync(join(shared, 'MEMORY.md'), 'utf8');
   const ps = mdir('C--mutA-ps'), cap = budgetOf(shared), arch ='- [Archive](MEMORY-archive.md) — 3 older pointers';
@@ -1343,6 +1370,16 @@ if (!quick) {
     const stuck = promote(ps, 'stuck2.md');
     rmSync(join(shared, `stuck2.md.tmp${process.pid}`), { recursive: true, force: true });
     ok(stuck.ok === false && /could not be written \(E[A-Z]+\); nothing moved$/.test(stuck.lines[0]), `a refused copy says its code (got ${JSON.stringify(stuck)})`);
+    // The shared index, then the project's, refuse their write: each says the disk's code, and the note is in both stores.
+    memory(ps, 'sh1', 'shared index refuses');
+    tmpDir = refuse(join(shared, 'MEMORY.md')); code = diskCode(tmpDir);
+    try { p = run(['promote', 'sh1', '--store', ps]); } finally { rmSync(tmpDir, { recursive: true, force: true }); rmSync(join(shared, 'sh1.md'), { force: true }); }
+    ok(code && p.status === 1 && p.stdout.includes(`the shared index could not be written (${code}): sh1.md is in both stores, not yet in the shared index`), `a shared index the disk refuses says the disk's code (got ${p.stdout})`);
+    memory(ps, 'sh2', 'project index refuses');
+    writeFileSync(join(ps, 'MEMORY.md'), '- [Sh2](sh2.md) — project index refuses\n');
+    tmpDir = refuse(join(ps, 'MEMORY.md'));
+    try { p = run(['promote', 'sh2', '--store', ps]); } finally { rmSync(tmpDir, { recursive: true, force: true }); rmSync(join(shared, 'sh2.md'), { force: true }); }
+    ok(code && p.status === 1 && p.stdout.includes(`the project index could not be written (${code}): sh2.md is in both stores; delete `), `a project index the disk refuses says the disk's code (got ${p.stdout})`);
     // With no shared store yet, promote makes it.
     renameSync(join(root, '_shared'), join(root, '_shared.away'));
     try {
@@ -1365,6 +1402,84 @@ if (!quick) {
     writeFileSync(join(shared, 'MEMORY.md'), sharedWas);
     for (const f of ['capnote', 'capnote2', 'capnote3', 'alpha']) rmSync(join(shared, `${f}.md`), { force: true });
   }
+
+  // Part B: the numbers. A note's body starts where its frontmatter ends, and a note with none is all body.
+  memory(jm, 'mn-aa', 'concatenated', 'x');
+  memory(jm, 'mn-bb', 'plain', 'concatenated');
+  writeFileSync(join(jm, 'mn-nofront.md'), 'quokka lives here\nsecond line\n');
+  writeFileSync(join(jm, 'mn-tight.md'), '---\nname: mn-tight\ndescription: "tight"\n---\nzebu starts the body\n');
+  r = jcli('search', 'cat');
+  ok(scoreOf(r.stdout, 'mn-aa.md') === 7 && scoreOf(r.stdout, 'mn-bb.md') === 3, `a three-letter term is found inside a longer word, in a description (+2, strong) and in a body (got ${r.stdout})`);
+  ok(/mn-nofront\.md/.test(jcli('search', 'quokka').stdout), 'a note with no frontmatter is searched from its first line');
+  ok(/mn-tight\.md/.test(jcli('search', 'zebu').stdout), 'a body that starts right after the closing --- is searched from its first character');
+  // A term in a file name counts 3 (and the +5 for every term), and a body's count is capped at 2 (+2 for every term).
+  memory(jm, 'mn-ostrich', 'plain', 'x');
+  memory(jm, 'mn-capped', 'plain', 'ostrich '.repeat(4));
+  r = jcli('search', 'ostrich');
+  ok(scoreOf(r.stdout, 'mn-ostrich.md') === 8 && scoreOf(r.stdout, 'mn-capped.md') === 4, `a term in the name scores 3, one repeated in the body at most 2 (got ${r.stdout})`);
+  // A term the note lacks earns nothing, and no bonus: the bonus is for every term.
+  r = jcli('search', 'ostrich', 'emu');
+  ok(scoreOf(r.stdout, 'mn-ostrich.md') === 3 && scoreOf(r.stdout, 'mn-capped.md') === 2, `a note with one of two terms scores only what that term earns (got ${r.stdout})`);
+
+  // A stretch that ends before the text does ends with an ellipsis; one past the room is cut to the room exactly; a three-letter term shows its stretch.
+  const tail = fill(100) + 'omega' + fill(300), cutme = fill(100) + 'omega' + [1, 2, 3, 4, 5].map(() => fill(400) + 'omega').join('');
+  day(jm, '2026-10-25', [entry('2026-10-25 10:00', 'omega tail', { answered: tail }), entry('2026-10-25 10:01', 'omega cut', { answered: cutme }), entry('2026-10-25 10:02', 'plain request', { answered: 'a concatenated string' })]);
+  r = jcli('search', 'omega');
+  const ans = (out, marker) => blocks(out).find((b) => b.includes(marker)).split('\n').find((l) => l.startsWith('     Answered: ')).slice('     Answered: '.length);
+  ok(ans(r.stdout, 'Asked: omega tail') === `…${tail.slice(20, 185)}…`, `a stretch that stops before the end of the text ends with an ellipsis (got ${ans(r.stdout, 'Asked: omega tail')})`);
+  const cut = ans(r.stdout, 'Asked: omega cut');
+  ok(cut.length === 800 && cut.startsWith('…') && cut.endsWith('…'), `stretches past the room are cut to 800 characters, ellipsis included (got ${cut.length})`);
+  ok(ans(jcli('search', 'cat').stdout, 'Asked: plain request').includes('concatenated'), 'a three-letter term shows its stretch inside a longer word');
+
+  // The first column: a score is right-aligned to 3, the kind padded to 9.
+  r = jcli('search', 'zork', 'quux');
+  ok(/^  6  journal   2026-10-20 10:00  conversation c0ffee12$/m.test(r.stdout) && /^  5  unindexed \d{4}-\d\d-\d\d  \S/m.test(r.stdout), `a hit's line is the score in 3 columns, the kind in 9 (got ${r.stdout})`);
+  r = cli('search', 'deploy');
+  ok(/^ +\d+  hot {7}\d{4}-\d\d-\d\d  /m.test(r.stdout) && /^ +\d+  archived {2}\d{4}-\d\d-\d\d  /m.test(r.stdout), `hot and archived hits are padded to 9 (got ${r.stdout})`);
+
+  // --limit 1 lists one; forget --key as the last word is a key; a key and a word that misses blame the word.
+  r = jcli('search', '--since', '2026-10-21', '--until', '2026-10-21', '--limit', '1');
+  ok(/^1 of 3 journal entries in [^;\n]+; --limit N shows more$/m.test(r.stdout), `--limit 1 lists one of the range (got ${r.stdout})`);
+  r = run(['forget', '--store', jm, '--key', 'ma000']);
+  ok(r.status === 0 && r.stdout.includes('(key ma000)') && /^1 entry in /m.test(r.stdout), `--key as the last word names its entry (got ${r.stdout})`);
+  r = run(['forget', 'zzzz', '--store', jm, '--key', 'ma000']);
+  ok(r.stdout.trim() === `nothing in ${jm} matches: no entry holds "zzzz"`, `a word that misses, with a key that exists, is blamed (got ${r.stdout})`);
+  // --help as an option's value is a value.
+  r = run(['status', '--conversation', '--help', '--store', jm]);
+  ok(r.status === 0 && r.stdout.startsWith(`${jm}\n`) && !/node memory\.mjs <command>/.test(r.stdout) && /node memory\.mjs <command>/.test(run(['status', '--help']).stdout), `--help after an option that takes a value is its value, not a request for the usage (got ${r.stdout})`);
+
+  // A range forget names its first and last day; the snapshots' days are listed six at a time.
+  const old7 = mdir('C--mutB-old'), days7 = [1, 2, 3, 4, 5, 6, 7].map((d) => `2025-02-0${d}`);
+  for (const d of days7) day(old7, d, [{ ...entry(`${d} 10:00`, `old ${d}`), key: `ob${d.slice(-1)}` }]);
+  r = run(['forget', '--since', days7[0], '--until', days7[6], '--store', old7]);
+  ok(r.status === 0 && r.stdout.includes(`7 entries in ${old7} from 2025-02-01 to 2025-02-07 would go; run again with --yes to remove them`), `a range forget says from which day to which (got ${r.stdout})`);
+  r = run(['forget', '--since', days7[0], '--until', days7[6], '--yes', '--store', old7]);
+  ok(r.status === 0 && r.stdout.includes('the snapshots still hold the journal of 2025-02-01, 2025-02-02, 2025-02-03, 2025-02-04, 2025-02-05, 2025-02-06, and 1 more: ') && r.stdout.includes(`removed 7 from ${old7}`), `seven days in the snapshots: six listed, and 1 more (got ${r.stdout})`);
+
+  // status: the handoff's exchanges, sessions and newest; the week's changes six at a time.
+  const ho = mdir('C--mutB-ho');
+  writeFileSync(join(ho, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written._\n\n- **asked** 2025-10-20 09:00 [aaaa1111]: first\n  **did:** done\n- **asked** 2025-10-21 09:00 [bbbb2222]: second\n  **did:** done\n<!-- auto:end -->\n');
+  r = run(['status', '--store', ho]);
+  ok(/^  handoff: 2 exchanges from 2 session\(s\), newest 2025-10-21 09:00$/m.test(r.stdout), `status names the newest exchange, the last one (got ${r.stdout})`);
+  const wk = mdir('C--mutB-wk');
+  for (const c of 'abcdefg') memory(wk, `wk-${c}`, `week note ${c}`);
+  writeFileSync(join(wk, 'MEMORY.md'), '# Index\n\n' + [...'abcdefg'].map((c) => `- [Wk ${c}](wk-${c}.md) — week note ${c}`).join('\n') + '\n');
+  tier();
+  r = run(['status', '--store', wk]);
+  ok(/changed in the last 7 days: added wk-a, wk-b, wk-c, wk-d, wk-e, wk-f, and 1 more$/m.test(r.stdout), `seven notes added this week: six named, and 1 more (got ${r.stdout})`);
+
+  // Spawned: no word at all is the status; three stores are counted, not named.
+  const bare = spawnSync(process.execPath, [CLI], { cwd: home, encoding: 'utf8' });
+  ok(bare.status === 0 && /no store here yet/.test(bare.stdout), `the CLI run with no arguments prints the status (got ${bare.stdout}${bare.stderr})`);
+  const h3 = { home: tempDir('mem3-') }, p3 = join(h3.home, '.claude', 'projects');
+  const was = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  try {
+    process.env.HOME = h3.home; process.env.USERPROFILE = h3.home;
+    for (const p of ['C--one', 'C--two']) { mkdirSync(join(p3, p, 'memory'), { recursive: true }); writeFileSync(join(p3, p, 'memory', 'MEMORY.md'), '# Index\n'); }
+    mkdirSync(join(p3, '_shared', 'memory'), { recursive: true });
+    r = spawnSync(process.execPath, [CLI, 'search', 'zzqqxx', '--all'], { cwd: h3.home, encoding: 'utf8' });
+  } finally { process.env.HOME = was.HOME; process.env.USERPROFILE = was.USERPROFILE; }
+  ok(r.stdout.trim() === 'nothing matches "zzqqxx" in 3 stores', `three stores are counted (got ${r.stdout}${r.stderr})`);
 
   // Doctor, healthy: every line ok and exit 0; each check's own line; its limits.
   installed('project-memory@project-memory', gh, { source: 'github', repo: 'zdraveski/project-memory' });
@@ -1430,6 +1545,15 @@ if (!quick) {
   utimesSync(join(w1, 'sess-w.jsonl'), new Date(T0 - 12 * 60_000), new Date(T0 - 12 * 60_000));
   const cwdRun = spawnSync(process.execPath, [CLI, 'doctor', '--session', 'sess-w'], { env: noSession, cwd: w2, encoding: 'utf8' });
   ok(!/looks? stopped/.test(cwdRun.stdout) && /the Stop hook last ran/.test(cwdRun.stdout), `doctor reads the session's own project, whatever folder it runs in (got ${cwdRun.stdout}${cwdRun.stderr})`);
+  // The newest conversation is judged itself, not only the newest other one: this session's reply is 11 minutes old and nothing saved since.
+  const mine = join(dirname(dir), 'aaaaaaaa-s.jsonl'), theirs = join(dirname(dir), 'bbbbbbbb-s.jsonl');
+  writeFileSync(mine, turn(T0 - 11 * 60_000));
+  writeFileSync(theirs, turn(T0 - 30 * 60_000));
+  ranLog({ at: ago(20 * 60_000), s: 'aaaaaaaa', from: 'C:/x' });
+  utimesSync(join(root, '.stop-ran'), new Date(T0 - 20 * 60_000), new Date(T0 - 20 * 60_000));
+  utimesSync(theirs, new Date(T0 - 5 * 60_000), new Date(T0 - 5 * 60_000));
+  try { r = run(['doctor', '--session', 'aaaaaaaa-s']); } finally { rmSync(mine, { force: true }); rmSync(theirs, { force: true }); }
+  ok(r.status === 1 && /^PROBLEM Memory hooks look stopped: \[aaaaaaaa\] finished a reply at /m.test(r.stdout), `doctor judges the newest conversation, this session's own, as well as the newest other (got ${r.stdout})`);
 }
 
 console.log(`memory: ${checks} checks passed`);
