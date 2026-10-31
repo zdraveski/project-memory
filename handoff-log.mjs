@@ -194,8 +194,8 @@ export function turns(tail) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
     let r; try { r = JSON.parse(line); } catch { continue; }
     // A turn's edits are tool calls with no text: taken before the text test skips them.
-    // Not once a nudge or a private message froze the turn: what follows is
-    // the memory update, or the private part.
+    // Once a nudge or a private message froze the turn, what follows is the
+    // memory update, or the private part: only a forget of it is kept, below.
     if (r.type === 'assistant' && pending && Array.isArray(r.message?.content)) {
       for (const b of r.message.content) {
         // Frozen: only a forget is kept, so a turn that ran one still says nothing (F14); a quiet turn lists no commands.

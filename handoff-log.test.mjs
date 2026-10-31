@@ -999,8 +999,8 @@ writeFileSync(tf, [user('forget the zebra policy', { ts: '2026-10-29T09:00:00Z' 
   asst('removed 2: the zebra policy notes', { ts: '2026-10-29T09:00:20Z' })].join('\n') + '\n');
 handoff({ cwd: cwdF, transcript_path: tf, session_id: 'ffffffff-1' });
 ok(/\[ffffffff\]: \[private\]\n  \*\*did:\*\* \[private\]$/m.test(fdoc()) && !/zebra/.test(fdoc()), `a turn that ran forget is written like a private one (got ${fdoc().split('[ffffffff]')[1]?.slice(0, 80)})`);
-// A forget run after a private message (queued while Claude worked) or in a nudge's memory update still hides its turn (F14, R32);
-// no other command after the freeze is listed.
+// A forget run after a private message (queued while Claude worked) still hides its turn (F14, R32); the nudge's memory update is
+// tested at turns() level below, with no other command after the freeze listed.
 {
 const tq = join(dirF, 'q.jsonl'), cmd = { type: 'tool_use', id: 'q1', name: 'Bash', input: { command: 'node "C:/p/memory.mjs" forget quokka --yes' } };
 writeFileSync(tq, [user('forget the quokka policy', { ts: '2026-10-29T10:00:00Z' }), JSON.stringify({ type: 'attachment', timestamp: '2026-10-29T10:00:05Z', attachment: { type: 'queued_command', prompt: '<private>x</private>' } }),
