@@ -749,6 +749,8 @@ export const suites = {
     'a resumed conversation left out of the matcher (memory off untagged)': ['"matcher": "startup|resume|clear|compact"', '"matcher": "startup|clear|compact"'],
   }],
   'journal.mjs': ['journal.test.mjs', {
+    "a segment's rebuilt turn loses a private freeze": ["prompt: '<private></private>' } }) + ", "prompt: 'x' } }) + "],
+    "a segment's rebuilt turn loses a nudge's hold": ["    : t.frozen === 'nudge' ? JSON.stringify({ type: 'user'", "    : false ? JSON.stringify({ type: 'user'"],
     "a journal failure names its temp file": ["error: from + reason(e) }", "error: from + String(e.message).split('\\n')[0] }"],
     'a look that could not list the folders clears the backfill failure': ['(n || (all.seen && !left && !stuck)) &&', '(n || (!left && !stuck)) &&'],
     'a look with a sweep still stuck clears the backfill failure': ['(n || (all.seen && !left && !stuck)) &&', '(n || !left) &&'],

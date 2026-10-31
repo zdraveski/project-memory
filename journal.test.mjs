@@ -10,7 +10,7 @@ import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs'
 
 const { home, env } = tempHome('jr-test-');
 const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, summary, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./journal.mjs');
-const { ACTIVE, TAIL } = await import('./handoff-log.mjs');
+const { ACTIVE, TAIL, NUDGE_TAG } = await import('./handoff-log.mjs');
 const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
@@ -1423,6 +1423,18 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   utimesSync(p, ago(2), ago(2));
   fill(d, { segment: seg });
   ok(asks(d).join() === 'question 0,question 2', `a line longer than a segment is passed over whole, and what comes after it is imported (got ${asks(d)})`);
+}
+// An exchange longer than a segment is read in several, rebuilt from what the earlier ones held: a private message queued meanwhile
+// (or a nudge's memory update) still freezes the answer, so the reply to it is not journaled (F17, R40).
+for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.stringify({ type: 'attachment', timestamp: '2026-09-01T10:00:40Z', attachment: { type: 'queued_command', prompt: '<private>ZQXSEG</private>' } }), 'p'],
+  ['a nudge', (id, r) => rec('user', id, '2026-09-01T10:00:40Z', `${NUDGE_TAG} update the memory`, r) + '\n' + JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'memory updated' }], stop_reason: 'end_turn' } }), 'q']]) {
+  const [r, d] = repo(`segfreeze${c}`), S = sid(c), p = join(projects, slug(r), `${S}.jsonl`);
+  const head = [rec('user', S, '2026-09-01T10:00:00Z', 'the question', r), rec('assistant', S, '2026-09-01T10:00:30Z', 'public answer', r), freeze(S, r),
+    JSON.stringify({ type: 'attachment', attachment: { type: 'hook_success', content: 'F'.repeat(20_000) } })].join('\n') + '\n';
+  writeFileSync(p, head + rec('assistant', S, '2026-09-01T10:01:00Z', 'PRIVREPLY ZQXSEG', r) + '\n'); utimesSync(p, ago(2), ago(2));
+  fill(d, { segment: Buffer.byteLength(head) + 50 });
+  const all = days(d).map((x) => readFileSync(dayFile(d, x), 'utf8')).join('');
+  ok(all.includes('public answer') && !all.includes('PRIVREPLY') && !all.includes('ZQXSEG'), `${name} freezes the answer across the import's segments (got ${JSON.stringify(all.slice(-200))})`);
 }
 {
   // The last line of a transcript counts without its newline: a reply, and a mark.

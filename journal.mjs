@@ -5,7 +5,7 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
-import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL } from './handoff-log.mjs';
+import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG } from './handoff-log.mjs';
 import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason } from './store.mjs';
 
 export const JOURNAL = 'journal';
@@ -533,7 +533,11 @@ function chunk(fd, pos, seg, size) {
 // end (its rest unread), and only a transcript of 64 MB has two segments.
 const so = (t) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [
   ...t.ran.map((command) => ({ type: 'tool_use', name: 'Bash', input: { command } })),
-  ...t.changed.map((file_path) => ({ type: 'tool_use', name: 'Edit', input: { file_path } })), { type: 'text', text: t.did }] } }) + '\n';
+  ...t.changed.map((file_path) => ({ type: 'tool_use', name: 'Edit', input: { file_path } })), { type: 'text', text: t.did }] } }) + '\n'
+  // Its freeze (a private message queued meanwhile, or a nudge's memory update) too, or the reply to it is journaled (F17, R40).
+  + (t.frozen === true ? JSON.stringify({ type: 'attachment', attachment: { type: 'queued_command', prompt: '<private></private>' } }) + '\n'
+    : t.frozen === 'nudge' ? JSON.stringify({ type: 'user', message: { role: 'user', content: NUDGE_TAG } }) + '\n'
+      + (t.ended ? JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [], stop_reason: 'end_turn' } }) + '\n' : '') : '');
 function* segments(fd, at, seg, size, cap) {
   let prompt = '', head = '';
   for (let b; (b = chunk(fd, at, seg, size)); ) {
