@@ -296,8 +296,9 @@ const rec = (type, id, ts, text, cwd = scwd) => JSON.stringify({ type, uuid: `${
   message: { role: type, content: type === 'user' ? text : [{ type: 'text', text }] } });
 const say = (id, ts, ask, reply) => appendFileSync(tp(id), [rec('user', id, ts, ask), ...(reply ? [rec('assistant', id, ts, reply)] : [])].join('\n') + '\n');
 const payload = (id, last) => JSON.stringify({ cwd: scwd, transcript_path: tp(id), session_id: id, hook_event_name: 'Stop', last_assistant_message: last });
-const stop = (id, last) => spawnSync(process.execPath, [TIER, '--stop'], { env, input: payload(id, last), encoding: 'utf8' });
-const stopNow = (id) => new Promise((done) => { const c = spawn(process.execPath, [TIER, '--stop'], { env, stdio: ['pipe', 'ignore', 'ignore'] }); c.on('exit', done); c.stdin.end(payload(id)); });
+// A Stop takes ~0.1 s; one that loops (a mutant's) is killed after a minute, and its test fails (R12).
+const stop = (id, last) => spawnSync(process.execPath, [TIER, '--stop'], { env, input: payload(id, last), encoding: 'utf8', timeout: 60e3 });
+const stopNow = (id) => new Promise((done) => { const c = spawn(process.execPath, [TIER, '--stop'], { env, stdio: ['pipe', 'ignore', 'ignore'], timeout: 60e3 }); c.on('exit', done); c.stdin.end(payload(id)); });
 const of = (id) => days(sdir).flatMap((d) => parseDay(readFileSync(dayFile(sdir, d), 'utf8')).entries).filter((e) => e.s === id.slice(0, 8));
 const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
 {
@@ -1306,6 +1307,107 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   writeFileSync(fl, 'C--refold-else\r\n');
   fill(d);
   ok(readFileSync(fl, 'utf8') === 'C--refold-else\r\n', `a look that drops no noted folder does not rewrite the list (got ${JSON.stringify(readFileSync(fl, 'utf8'))})`);
+}
+{
+  // Part B: the numbers. A file one letter past the folder and its separator is shortened; the key of
+  // a turn with no id is twelve characters of hash; a line straight under a marker is a note.
+  ok(entryOf(turn({ changed: ['C:\\proj\\a'], cwd: 'C:\\proj' }), T).changed[0] === 'a', 'a one-letter file in the folder is shortened to its name');
+  const key = entryOf(turn({ id: '' }), T).key;
+  ok(/^01234567 2026-10-28 14:05 [0-9a-f]{12}$/.test(key), `a turn with no id is keyed by twelve characters of hash (got ${key})`);
+  const under = parseDay('<!-- j:k1 t:t d:2026-10-28 -->\na note straight under the marker').entries[0];
+  ok(under.key === 'k1' && under.after === 'a note straight under the marker', `a line straight under a marker is its note (got ${JSON.stringify(under)})`);
+}
+{
+  // A transcript listed as another store's, or one that failed to open, that has grown is read from nothing:
+  // its first line (and the mark in it) too. A line ` partial` says nothing was read.
+  const [r, d] = repo('otherlines'), I = sid('xa'), Z = sid('xb'), k = (c) => `${slug(r)}/${c}`;
+  const p = join(projects, slug(r), `${I}.jsonl`), q = join(projects, slug(r), `${Z}.jsonl`);
+  writeFileSync(p, exchange(I, r, 0) + exchange(I, r, 1));
+  writeFileSync(q, rec('user', Z, '2026-09-01T10:00:00Z', '<private-session> from the start', r) + '\n' + exchange(Z, r, 0));
+  utimesSync(p, ago(2), ago(2)); utimesSync(q, ago(2), ago(2));
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  writeFileSync(join(d, 'journal', '.imported'), `${k(I)} 10 other\n${k(Z)} 10 other\n`);
+  fill(d);
+  ok(asks(d).join() === 'question 0,question 1', `a grown transcript once listed as another store's is imported from its first line (got ${asks(d)})`);
+  ok(tagsOf(d).includes('xb'.repeat(4)), 'and its mark, in the first line, is found');
+  const [r2, d2] = repo('partial-line'), P = sid('xc'), pp = old(r2, P, 30, ['x']);
+  mkdirSync(join(d2, 'journal'), { recursive: true });
+  writeFileSync(join(d2, 'journal', '.imported'), `${slug(r2)}/${P} ${statSync(pp).size} partial\n`);
+  fill(d2);
+  ok(asks(d2).join() === 'x', `a transcript listed ' partial' is read again, whatever its size (got ${asks(d2)})`);
+}
+{
+  // Segments cut where a segment ends. A transcript without uuids is cut at the end of the whole lines: the
+  // import goes on from there, exactly.
+  const [r, d] = repo('cleancut'), U = sid('xd'), p = join(projects, slug(r), `${U}.jsonl`);
+  const bare = (s) => s.split('\n').filter(Boolean).map((l) => { const o = JSON.parse(l); delete o.uuid; return JSON.stringify(o) + '\n'; }).join('');
+  const xs = [0, 1, 2, 3].map((i) => bare(exchange(U, r, i))), two = Buffer.byteLength(xs[0] + xs[1]);
+  writeFileSync(p, xs.join('')); utimesSync(p, ago(2), ago(2));
+  withLock(d, () => atClock(() => NOW + (days(d).length ? 100 : 0), () => backfill(d, { budgetMs: 100, segment: two + 1 })));
+  ok(asks(d).join() === 'question 0,question 1' && listed(d)[0].endsWith(` ${statSync(p).size} at ${two}`), `a segment of whole exchanges is read whole, and the next starts right after it (got ${asks(d)}, ${listed(d)})`);
+}
+{
+  // A blank line first in a segment, with the exchange after it longer than a segment: the exchange is still read whole.
+  const [r, d] = repo('blanklead'), B = sid('xe'), p = join(projects, slug(r), `${B}.jsonl`), seg = 1024;
+  const tool = (c) => JSON.stringify({ type: 'assistant', uuid: `b-t${c}`, sessionId: B, cwd: r, timestamp: '2026-09-01T10:00:10Z',
+    message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: `ls ${c} ${'q'.repeat(150)}` } }] } }) + '\n';
+  const long = exchange(B, r, 0, 'a first look').replace(/\n$/, '\n' + [1, 2, 3, 4].map(tool).join('')) + rec('assistant', B, '2026-09-01T10:00:50Z', 'the final word', r) + '\n';
+  writeFileSync(p, '\n' + long + exchange(B, r, 1)); utimesSync(p, ago(2), ago(2));
+  ok(Buffer.byteLength(long) > 2 * seg, 'the fixture: an exchange longer than two segments');
+  fill(d, { segment: seg, budgetMs: 4000 });
+  const es = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries);
+  ok(es.length === 2 && es.find((e) => e.asked === 'question 0')?.answered === 'the final word', `an exchange after a blank line at a segment's start keeps its last reply (got ${es.map((e) => `${e.asked}: ${e.answered.slice(0, 20)}`)})`);
+  // A segment that is a newline alone, the line after it longer than a segment: passed over, the import done (a hang spent the budget).
+  const [r2, d2] = repo('blankonly'), C = sid('xf'), q = join(projects, slug(r2), `${C}.jsonl`);
+  writeFileSync(q, '\n' + 'J'.repeat(seg + 5) + '\n' + exchange(C, r2, 0)); utimesSync(q, ago(2), ago(2));
+  fill(d2, { segment: seg, budgetMs: 4000 });
+  ok(asks(d2).join() === 'question 0' && listed(d2)[0].endsWith(` ${statSync(q).size}`), `a newline alone as a segment is passed, not read again for ever (got ${asks(d2)}, ${listed(d2)})`);
+}
+{
+  // An exchange that ends where a segment ends, the next one longer than a segment: the import stops, when out of
+  // time, at that next prompt -- not back at the start of the one it finished.
+  const [r, d] = repo('endsat'), A = sid('xg'), p = join(projects, slug(r), `${A}.jsonl`);
+  const line = (type, i, text, extra = {}) => JSON.stringify({ type, uuid: `e-${i}`, sessionId: A, cwd: r, timestamp: `2026-09-01T10:0${i % 10}:00Z`, ...extra,
+    message: { role: type, content: type === 'user' ? text : [{ type: 'text', text }] } }) + '\n';
+  const tool = (i) => JSON.stringify({ type: 'assistant', uuid: `e-${i}`, sessionId: A, cwd: r, timestamp: '2026-09-01T10:00:10Z',
+    message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: `ls ${i} ${'q'.repeat(150)}` } }] } }) + '\n';
+  const first = [line('user', 1, 'question first'), line('assistant', 2, 'a first look'), tool(3), line('assistant', 4, 'the final word')];
+  const second = [line('user', 5, 'question second'), line('assistant', 6, 'a first look'), tool(7), line('assistant', 8, 'the end')];
+  const sz = (...ls) => Buffer.byteLength(ls.join('')), seg = Math.max(sz(first[0], first[1]), sz(first[2], first[3]));
+  ok(seg < sz(...first.slice(0, 3)) && seg < sz(first[2], first[3], second[0]) && seg < sz(...second.slice(0, 3)), 'the fixture: segments end at the first exchange\'s second reply and at its end');
+  writeFileSync(p, [...first, ...second].join('')); utimesSync(p, ago(2), ago(2));
+  withLock(d, () => atClock(() => NOW + (days(d).length ? 100 : 0), () => backfill(d, { budgetMs: 100, segment: seg })));
+  ok(asks(d).join() === 'question first' && listed(d)[0].endsWith(` ${statSync(p).size} at ${sz(...first)}`), `out of time, the import goes on at the prompt after a finished exchange (got ${asks(d)}, ${listed(d)})`);
+}
+{
+  // A line passed over is found to its end in 1 MB reads: a line of exactly a segment, then its newline first in a
+  // read; and a line over several reads (here 16 bytes each) is not cut short.
+  const [r, d] = repo('pastbuf'), L = sid('xh'), p = join(projects, slug(r), `${L}.jsonl`), seg = 1024;
+  writeFileSync(p, exchange(L, r, 0) + 'J'.repeat(seg) + rec('user', L, '2026-09-01T10:01:00Z', 'inside the long line', r) + '\n' + rec('assistant', L, '2026-09-01T10:01:30Z', 'inside: done', r) + '\n' + 'J'.repeat(seg) + '\n' + exchange(L, r, 3));
+  utimesSync(p, ago(2), ago(2));
+  const alloc = Buffer.allocUnsafe, sizes = [];
+  Buffer.allocUnsafe = (n, ...a) => { sizes.push(n); return alloc.call(Buffer, n === 1 << 20 ? 16 : n, ...a); };
+  try { fill(d, { segment: seg, budgetMs: 4000 }); } finally { Buffer.allocUnsafe = alloc; }
+  ok(sizes.includes(1 << 20), `a line is passed over in 1 MB reads (got ${[...new Set(sizes)]})`);
+  ok(asks(d).join() === 'question 0,question 3', `a line passed over is passed to its end, the next one whole (got ${asks(d)})`);
+}
+{
+  // backfill's answers: nothing due says so; an owed sweep that still fails clears no failure of the import's.
+  const [r, d] = repo('notdue');
+  fill(d);
+  const again = fill(d);
+  ok(again.imported === 0 && again.left === 0 && Object.keys(again).length === 2, `a look that is not due imports nothing and leaves nothing (got ${JSON.stringify(again)})`);
+  const [r2, d2] = repo('owedkeep'), f = dayFile(d2, '2026-08-01'), failed = join(d2, 'journal', '.failed');
+  record(d2, T, [turn({ at: '2026-08-01 09:00', id: 'ok-1' })]);
+  appendFileSync(f, Buffer.from('\nNote: caf\xE9\n', 'latin1'));
+  write(d2, T, [], { quiet: true, hush: true });   // the sweep it owes fails: the day is not UTF-8
+  appendFileSync(failed, '{"at":"2026-08-01T09:00:00Z","error":"backfill: boom"}\n');
+  fill(d2);   // nothing to import
+  ok(readFileSync(failed, 'utf8').includes('backfill: boom'), `a look with nothing imported and a sweep still owed keeps the import's failure (got ${readFileSync(failed, 'utf8')})`);
+  // summary: transcripts left are none when the list of them cannot be read.
+  const [r3, d3] = repo('summ');
+  mkdirSync(join(d3, 'journal', '.imported'), { recursive: true });
+  ok(summary(d3).left === 0, `a list of transcripts that will not read leaves none (got ${summary(d3).left})`);
 }
 
 console.log(`journal: ${checks} checks passed`);
