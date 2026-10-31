@@ -386,11 +386,11 @@ gate();
   ok(!/123456789/.test(h6), `a file that opens with a summary quoting a private ask shows none of it (got ${h6})`);
 }
 
-// Task 8: the automatic mutants that lived.
+// Pins the edges of state(), gate() and nudge(): exact limits, missing inputs, the entry's exit paths.
 {
 // timeout: a read loop that never ends fails here (a watchdog on a call that takes ~100 ms), not at the job's limit.
 const st = () => JSON.parse(execFileSync(process.execPath, [GATE, '--state', transcript], { env, timeout: 30_000 }).toString());
-const blank = () => writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+const emptyHandoff = () => writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
 const said = () => spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
 const usage = (u) => rec('assistant', [{ type: 'text', text: 'x' }], { message: { stop_reason: 'tool_use', usage: u } });
 // A transcript with no message in it: nothing is open, hidden or forgotten.
@@ -419,7 +419,7 @@ write(asst('running', 965_000, 'tool_use'));   // no turn in it: the handoff add
 const gm = said();
 ok(gm.status === 0 && /note: no handoff\.md with markers/.test(gm.stderr) && readFileSync(join(dir, 'handoff.md'), 'utf8') === 'no markers here\n', `a handoff.md with no markers is left alone, and the gate says so (got ${gm.status}: ${gm.stderr})`);
 // With markers: the file keeps its start, and the gate reports the note written.
-blank();
+emptyHandoff();
 write(user('build it'), asst('running', 965_000, 'tool_use'));
 const gw = said();
 ok(/handoff and in-flight note written/.test(gw.stderr) && readFileSync(join(dir, 'handoff.md'), 'utf8').startsWith('---\nname: handoff'), `the note is written into the file whole, and reported (got ${gw.stderr})`);
@@ -434,11 +434,11 @@ ok(lost.status === 0 && /not an auto compaction/.test(lost.stderr), `a missing t
 // The floor and the ceiling are exact: 200,000 mid-turn is deferred, 900,000 is not.
 write(user('build it'), asst('running', 200_000, 'tool_use'));
 ok(gate().code === 2, 'mid-turn at exactly the floor is deferred');
-blank();
+emptyHandoff();
 write(user('build it'), asst('running', 900_000, 'tool_use'));
 ok(gate().code === 0, 'mid-turn at exactly the ceiling runs');
 
-// Fix round 1: TRIGGER from CLAUDE_AUTOCOMPACT_PCT_OVERRIDE. Only 1..95 moves it.
+// TRIGGER from CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: only 1 to 95 moves it.
 const triggerWith = (pct) => {
   process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = pct;
   try { return Number(execFileSync(process.execPath, ['--input-type=module', '-e', `import { TRIGGER } from ${JSON.stringify(new URL('./compact-gate.mjs', import.meta.url).href)}; console.log(TRIGGER)`], { env, timeout: 30_000 }).toString()); }
@@ -470,7 +470,6 @@ require('node:module').syncBuiltinESMExports();
   ok(threw.status === 0 && /gate failed, not deferred: EBUSY/.test(threw.stderr), `a gate that throws exits 0 and says so (got ${threw.status}: ${threw.stderr})`);
 }
 
-
 // nudge(): each way out before the read.
 write(user('q'), asst('a', T + 20_000, 'end_turn'));
 ok(stop('fx1', { stop_hook_active: true }) === null, 'stop_hook_active is never nudged, a fresh session too');
@@ -495,6 +494,12 @@ ok(!!stop('fx4')?.hookSpecificOutput?.additionalContext, 'a context exactly at t
   write(user('q'), asst('a', T + 20_000, 'end_turn')); stop('fx6');
   ok(!existsSync(mid), 'a nudge file seven and a half days old is pruned');
 }
+// A plain ask is kept as typed: only a private one is normalised (NFKC, zero-width characters dropped).
+emptyHandoff();
+write(user('open \uFF46\uFF49\uFF4C\uFF45 \uFB01le a\u200Bb'), asst('working', 965_000, 'tool_use'));
+gate();
+const noted = readFileSync(join(dir, 'handoff.md'), 'utf8');
+ok(noted.slice(noted.indexOf('**cut mid-turn**')).includes('open \uFF46\uFF49\uFF4C\uFF45 \uFB01le a\u200Bb'), 'a plain ask with fullwidth, ligature and zero-width characters is noted as typed in the in-flight note');
 }
 
 console.log(`compact-gate: ${checks} checks passed`);
