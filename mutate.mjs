@@ -151,6 +151,7 @@ export const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    "an ask that quotes [private] shown with its answer": ["did: gone || ask.includes('[private]') ? '[private]' :", "did: gone ? '[private]' :"],
     'a briefing with no reader exits 1': ["process.stdout.on('error', () => {}); ", ''],
     'a moved clock read in part': ['const back = !moved && (', 'const back = ('],
     'two identical exchanges read as a moved clock': ['const moved = since && !there && got.some(same);', 'const moved = since && got.some(same);'],

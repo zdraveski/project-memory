@@ -424,7 +424,9 @@ export const plain = (s) => s.split('\n')
 const shown = (t) => {
   // A turn that ran forget says nothing, as a private one.
   const gone = t.ran.some((c) => FORGETS.test(c));
-  return { ask: gone ? '[private]' : clip(t.ask, ASK), did: gone ? '[private]' : answer(userText(t), t.did, DID) };
+  const ask = gone ? '[private]' : clip(t.ask, ASK);
+  // As render writes it: an ask that quotes [private] has no answer either (I2, R36).
+  return { ask, did: gone || ask.includes('[private]') ? '[private]' : answer(userText(t), t.did, DID) };
 };
 function latest(path, since = null) {
   for (let bytes = TAIL; ; bytes *= 4) {

@@ -1138,6 +1138,25 @@ if (process.platform === 'win32') {
   const asks = fdoc().match(/\[tzcutttt\]: okapi \d+/g) ?? [];
   ok(asks.length === 3 && new Set(asks).size === 3, `after a time-zone change, turns whose ask is cut in a code reference are listed once each (got ${asks.join(', ')})`);
 }
+// An ask that quotes "[private]" is written with its answer as [private] (render), so the turn as read must be shown that way too: else
+// latest() never found its entry (6 entries for 3 turns after a zone change) and forget could not match it (I2, R36).
+{
+  const tw = join(dirF, 'tzquote.jsonl'), id = 'tzquoteq-1';
+  const at = (i, s = '00') => `2026-10-29T08:${String(i).padStart(2, '0')}:${s}Z`;
+  const turn = (i) => [user(`why does handoff.md say [private] for numbat ${i}`, { ts: at(i), uuid: `u-numbat${i}` }), asst(`it hides numbat ${i}`, { ts: at(i, '30') })].join('\n') + '\n';
+  writeFileSync(tw, JSON.stringify({ type: 'user', timestamp: at(0), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'y'.repeat(600_000) }] } }) + '\n' + Array.from({ length: 3 }, (_, i) => turn(i + 1)).join(''));
+  try {
+    process.env.TZ = 'Europe/Berlin';
+    handoff({ cwd: cwdF, transcript_path: tw, session_id: id });
+    process.env.TZ = 'America/Los_Angeles';
+    handoff({ cwd: cwdF, transcript_path: tw, session_id: id });
+  } finally { process.env.TZ = TZ0; }
+  const asks = fdoc().match(/\[tzquoteq\]: why does handoff.md say \[private\] for numbat \d+/g) ?? [];
+  ok(asks.length === 3 && new Set(asks).size === 3, `after a time-zone change, turns whose ask quotes [private] are listed once each (got ${asks.length})`);
+  appendFileSync(join(dirF, 'journal', '.forgotten'), `u-numbat2\tmemory/tzquote\t${local(at(2))}\n`);
+  handoff({ cwd: cwdF, transcript_path: tw, session_id: id });
+  ok(!/numbat 2/.test(fdoc()) && /numbat 3/.test(fdoc()), `a forgotten exchange whose ask quotes [private] leaves handoff.md (got ${(fdoc().match(/numbat \d/g) ?? []).join(', ')})`);
+}
 }
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.
