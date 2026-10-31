@@ -78,9 +78,10 @@ const args = process.argv.slice(2);
 const doFuzz = args.includes('--fuzz'), seconds = Number(args[args.indexOf('--fuzz') + 1]);
 if (doFuzz && !(seconds > 0)) { console.error('usage: node coverage.mjs [--suites] [--fuzz <seconds>]'); process.exit(2); }
 const cov = tempDir('cov-run-');
-// Each child writes its coverage into the one folder.
+// Each child writes its coverage into the one folder. Set on this process, which a child inherits: env stays undefined, as harness.mjs asks (R42).
+process.env.NODE_V8_COVERAGE = cov;
 const run = (name, ...a) => {
-  const r = spawnSync(process.execPath, [join(repo, name), ...a], { cwd: repo, env: { ...process.env, NODE_V8_COVERAGE: cov }, stdio: 'ignore' });
+  const r = spawnSync(process.execPath, [join(repo, name), ...a], { cwd: repo, stdio: 'ignore' });
   if (r.status !== 0) console.error(`${name} failed (${r.status === null ? r.error?.message ?? `signal ${r.signal}` : `exit ${r.status}`}); its coverage is partial`);
 };
 if (args.includes('--suites') || !doFuzz) for (const t of SUITES) run(t);
