@@ -1853,6 +1853,39 @@ require('node:module').syncBuiltinESMExports();
     ok(edited_(here)[0]?.includes('edit the hooks repo and run node deploy.mjs there'), 'and says the hooks repo when it names none');
   }
 
+  // A slash command with no arguments tag is the command alone, whatever a stray closer or the tag's text says.
+  {
+    const { prompt, fit: fit_ } = await import('./handoff-log.mjs');
+    ok(prompt({}, '<command-name>/exit</command-name>') === '/exit' && prompt({}, '<command-name>/exit</command-name> </command-args> x') === '/exit',
+      'a command with no <command-args> is its name alone, even beside a stray </command-args>');
+    ok(prompt({}, '<command-name>/exit</command-name><command-args> a b </command-args>') === '/exit a b', 'and its arguments follow, trimmed');
+
+    // A transcript with no prompt is read in windows of 512 KB growing four-fold: 512 KB, 2 MB, 8 MB, then the whole.
+    const dG = store('C:\\hl-B-grow'), trG = join(dG, 't.jsonl');
+    writeFileSync(trG, tool_(10_000_000));
+    const open = fs.openSync; let opens = 0;
+    fs.openSync = (p, ...a) => { if (String(p) === trG) opens++; return open(p, ...a); };
+    syncBuiltinESMExports();
+    try { handoff({ cwd: 'C:\\hl-B-grow', transcript_path: trG, session_id: 'growsess' }); } finally { fs.openSync = open; syncBuiltinESMExports(); }
+    ok(opens === 4, `the read grows four-fold: a 10 MB transcript with no prompt is read in 4 windows (${opens})`);
+
+    // Writing into a handoff.md that has its section keeps what comes before the section, front matter first.
+    const dK = store('C:\\hl-B-head'), trK = join(dK, 't.jsonl');
+    writeFileSync(join(dK, 'handoff.md'), docOf(entry('2026-09-12 07:01', 'headsess', 'an old ask', 'an old answer')));
+    writeFileSync(trK, lines(user('a new ask', { ts: '2026-09-12T08:00:00Z' }), asst('a new answer', { ts: '2026-09-12T08:00:30Z' })));
+    handoff({ cwd: 'C:\\hl-B-head', transcript_path: trK, session_id: 'newsess01' });
+    const kept = readFileSync(join(dK, 'handoff.md'), 'utf8');
+    ok(kept.startsWith('---\nname: handoff\n---\n\n<!-- auto:start -->') && /a new ask/.test(kept), `a write keeps the file from its first character (${JSON.stringify(kept.slice(0, 40))})`);
+
+    // Entry-looking lines with no section markers around them are not the section: the briefing names no last session.
+    const cwB = 'C:\\hl-B-nomark', dB = store(cwB), at = Date.UTC(2026, 9, 1, 10, 0);
+    writeFileSync(join(dB, 'handoff.md'), `---\nname: handoff\n---\n\nnotes by hand, no markers\n\n${entry('2026-10-01 10:00', 'zzzzzzzz', 'the last ask', 'the last answer')}\n`);
+    ok(!/Last session here ended/.test(print_(cwB, 'pppppppp-1', 'startup', at + 1000)), 'entries outside any section markers are not a last session');
+
+    // fit() cuts a line before a surrogate pair it would split, and exactly one character short.
+    ok(fit_('ab\u{1F600}cd', 3) === 'ab…' && fit_('abc\u{1F600}d', 4) === 'abc…' && fit_('abcdef', 4) === 'abcd…', 'fit does not split an emoji at a line limit');
+  }
+
   // Importing the hook runs nothing: only running it as a script does.
   {
     const importer = join(home, 'import-only.mjs');
