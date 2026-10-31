@@ -427,6 +427,9 @@ export const suites = {
   'memory-tier.mjs': ['memory-tier.test.mjs', {
     "a handoff failure names its temp file": ["error: reason(e) }))", "error: String(e.message).split('\\n')[0] }))"],
     'a nudge with no reader exits 1': ["process.stdout.on('error', () => {}); ", ''],
+    'a run through a symlink does nothing': ['pathToFileURL(realpathSync(process.argv[1])).href', 'pathToFileURL(process.argv[1]).href'],
+    "one run's --dry-run kept for the next": ["dry = argv.includes('--dry-run');", "dry ||= argv.includes('--dry-run');"],
+    "one run's missed stores kept for the next": ['  missed = [];\n', ''],
     'the backfill takes the lock when nothing is due': ['if (d && due(d) && (', 'if (d && (', { full: true }],
     "today's journal committed": ["`*/memory/journal/${today}.md`, ", ""],
     'journal.md waits out the grace': ["f !== 'handoff.md' && f !== 'journal.md' && ", "f !== 'handoff.md' && "],

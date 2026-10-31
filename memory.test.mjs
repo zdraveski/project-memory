@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
-import { tool, tempHome, tempDir, storeFor, quick } from './harness.mjs';
+import { tool, tempHome, tempDir, storeFor, quick, capture } from './harness.mjs';
 
 const CLI = tool('memory.mjs'), TIER = tool('memory-tier.mjs');
 const { home, env } = tempHome('memcli-');
@@ -19,17 +19,12 @@ const ok = (cond, msg) => { assert(cond, msg); checks++; };
 // nearly all of the suite's 50 s (2026-10-30). What needs a process of its
 // own (another cwd or PATH, a run through a symlink, a journal.mjs that will
 // not load) still spawns one. Imported after tempHome: it names the live copy
-// from HOME as it loads.
-const { main } = await import(pathToFileURL(CLI).href), { format } = await import('node:util');
-const run = (args) => {
-  const out = [], log = console.log;
-  console.log = (...a) => { out.push(format(...a)); };
-  let status, stderr = '';
-  try { status = main(args); } catch (e) { status = 1; stderr = String(e?.stack ?? e); } finally { console.log = log; }
-  // Through UTF-8, as a process's output reaches the reader: half an emoji is
-  // U+FFFD there. Kept as the string, the emoji checks passed whatever the
-  // cut did (GitHub's mutate run, 2026-10-30).
-  return { status, stdout: Buffer.from(out.map((l) => `${l}\n`).join(''), 'utf8').toString('utf8'), stderr };
+// from HOME as it loads. Its output through harness.mjs's capture(), which
+// sends it through UTF-8 as a process's reaches the reader.
+const { main } = await import(pathToFileURL(CLI).href);
+const run = async (args) => {
+  try { const { out, value } = await capture(() => main(args)); return { status: value, stdout: out, stderr: '' }; }
+  catch (e) { return { status: 1, stdout: '', stderr: String(e?.stack ?? e) }; }
 };
 const cli = (...args) => run([...args, ...(args.includes('--shared') ? [] : ['--store', dir])]);
 const tenMin = new Date(Date.now() - 10 * 60000);
@@ -56,36 +51,36 @@ memory(shared, 'shared-rule', 'stage files by name, never git add -A');
 writeFileSync(join(shared, 'MEMORY.md'), '- [Shared rule](shared-rule.md) — stage files by name\n');
 
 const order = (out) => [...out.matchAll(/^ *\d+ +(?:shared )?\w+ +\d{4}-\d\d-\d\d +\S*[\\/](\S+)\.md$/gm)].map((m) => m[1]);
-let r = cli('search', 'deploy');
+let r = await cli('search', 'deploy');
 ok(r.status === 0 && order(r.stdout)[0] === 'deploy-notes' && order(r.stdout).indexOf('deploy-notes') < order(r.stdout).indexOf('mentions'),
   `a memory named for the term outranks a passing mention (got ${order(r.stdout).join(', ')})`);
 ok(order(r.stdout).indexOf('spam-log') > order(r.stdout).indexOf('release-checklist'), 'and saying it twenty times in the body earns no more than twice');
-r = cli('search', 'deploy', 'steps');
+r = await cli('search', 'deploy', 'steps');
 ok(order(r.stdout)[0] === 'release-checklist', `every term in the description is the strong match (got ${order(r.stdout).join(', ')})`);
 ok(order(r.stdout).indexOf('deploy-notes') < order(r.stdout).indexOf('a-long-log'), 'and a log that mentions every term in passing does not outrank a named one');
-ok(/^ *\d+ +archived +\d{4}-\d\d-\d\d +\S*old-thing\.md$/m.test(cli('search', 'archived').stdout), 'an archived memory is found, and labelled with its date');
-ok(/^ *\d+ +shared hot +\d{4}-\d\d-\d\d +\S*shared-rule\.md$/m.test(cli('search', 'stage').stdout), 'the shared store is searched too, and labelled');
-r = cli('search', 'deploy', '--limit', '2');
+ok(/^ *\d+ +archived +\d{4}-\d\d-\d\d +\S*old-thing\.md$/m.test((await cli('search', 'archived')).stdout), 'an archived memory is found, and labelled with its date');
+ok(/^ *\d+ +shared hot +\d{4}-\d\d-\d\d +\S*shared-rule\.md$/m.test((await cli('search', 'stage')).stdout), 'the shared store is searched too, and labelled');
+r = await cli('search', 'deploy', '--limit', '2');
 ok(order(r.stdout).length === 2 && /^2 of [3-9] match\(es\) in [^\n]*; --limit N shows more; --all searches every project$/m.test(r.stdout), `--limit caps the results, and the count says how many it left out (got ${r.stdout.trim().split('\n').pop()})`);
 // A hit's date is its modified:, and a hint that would add nothing is not given.
 memory(dir, 'dated-quirk', 'a dated quirk', 'body', '  modified: 2026-01-02T12:00:00.000Z\n');
-r = cli('search', 'quirk');
+r = await cli('search', 'quirk');
 ok(/^ *\d+ +unindexed +2026-01-02 +\S*dated-quirk\.md$/m.test(r.stdout) && /^1 of 1 match\(es\) in [^;\n]+; --all searches every project$/m.test(r.stdout), `a hit carries its modified: date; all shown, no --limit hint (got ${r.stdout})`);
-r = cli('search', 'quirk', '--all');
+r = await cli('search', 'quirk', '--all');
 ok(/^1 of 1 match\(es\) in [^;\n]+$/m.test(r.stdout), `with --all, no --all hint (got ${r.stdout.trim().split('\n').pop()})`);
-ok(order(cli('search', 'deploy', '--limit', '-1').stdout).join() === order(cli('search', 'deploy').stdout).join() && order(cli('search', 'deploy').stdout).length > 2, 'a negative --limit is the default, not "nothing matches"');
+ok(order((await cli('search', 'deploy', '--limit', '-1')).stdout).join() === order((await cli('search', 'deploy')).stdout).join() && order((await cli('search', 'deploy')).stdout).length > 2, 'a negative --limit is the default, not "nothing matches"');
 rmSync(join(dir, 'dated-quirk.md'));
-r = cli('search', 'windows');
+r = await cli('search', 'windows');
 ok(order(r.stdout)[0] === 'crlf-note' && /^ +windows line ends$/m.test(r.stdout), 'a BOM and CRLF file is parsed: found, description read');
 // Its body starts after the frontmatter: behind the BOM, the whole file was the
 // body, and every key in the frontmatter matched a search.
-ok(!order(cli('search', 'metadata').stdout).includes('crlf-note'), 'the frontmatter of a BOM file is not searched as its body');
-r = cli('search', 'zzzqqq');
+ok(!order((await cli('search', 'metadata')).stdout).includes('crlf-note'), 'the frontmatter of a BOM file is not searched as its body');
+r = await cli('search', 'zzzqqq');
 ok(r.status === 0 && /nothing matches/.test(r.stdout), 'no hit says so');
-ok(cli('search').status === 1, 'search with no terms is a usage error');
+ok((await cli('search')).status === 1, 'search with no terms is a usage error');
 
 // 2. Status: sizes against the right budget, problems, dangling links.
-r = cli('status');
+r = await cli('status');
 ok(r.status === 0 && /index \d+ \/ 7000 B · 7 hot · 1 archived/.test(r.stdout), `status counts the store against its budget (got ${r.stdout.split('\n')[1]})`);
 ok(/links to no memory: crlf-note\.md → \[\[ghost\]\]$/m.test(r.stdout), 'a link to no memory is named; one the shared store resolves is not');
 ok(/frontmatter without a description or type: bare\.md/.test(r.stdout), 'a memory with no description is named');
@@ -93,7 +88,7 @@ ok(/_shared[\\/]memory  \(shared by every project\)\n  index \d+ \/ 3000 B/.test
 
 // A memory a newer one replaced says so where it is found.
 memory(dir, 'old-way', 'the old way to ship', 'ship it', '  superseded-by: new-way.md\n');
-r = cli('search', 'old way ship');
+r = await cli('search', 'old way ship');
 ok(/old-way\.md\n     the old way to ship\n     replaced by new-way\.md: read that one/.test(r.stdout), `a replaced memory names its replacement (got ${r.stdout})`);
 unlinkSync(join(dir, 'old-way.md'));
 
@@ -109,15 +104,15 @@ writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8
 mkdirSync(join(dir, 'journal'), { recursive: true });
 writeFileSync(join(dir, 'journal', '2026-10-27.md'), '# Journal 2026-10-27\n');
 tier();
-r = cli('history', 'deploy-notes');
+r = await cli('history', 'deploy-notes');
 ok(r.status === 0 && /  \S+ \S+ \S+  deleted\n  \S+ \S+ \S+  in the first snapshot$/m.test(r.stdout), `history lists the snapshots that changed it, newest first; the first snapshot is not called its writing (got ${r.stdout})`);
 // Its last line is a command that works as printed: the path git tracks, no `~`.
 const show = r.stdout.match(/^  a change: git -C "([^"]+)" --literal-pathspecs show <commit> -- "([^"]+)"$/m), first = r.stdout.match(/^  (\w+) .*in the first snapshot$/m);
 ok(show && first && /deploy notes/.test(spawnSync('git', ['-C', show[1], '--literal-pathspecs', 'show', first[1], '--', show[2]], { encoding: 'utf8' }).stdout), `history ends with the command that shows a change (got ${show && show[0]})`);
-r = cli('restore', 'deploy-notes');
+r = await cli('restore', 'deploy-notes');
 ok(r.status === 0 && existsSync(join(dir, 'deploy-notes.md')) && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes('deploy deploy'), 'restore brings a deleted memory back from before its deletion');
 // Status names what the snapshots saw change this week, in this store only.
-r = cli('status');
+r = await cli('status');
 ok(/changed in the last 7 days: [^\n]*deleted deploy-notes/.test(r.stdout) && !/added [^·\n]*deploy-notes/.test(r.stdout), `status names the week's changes (got ${r.stdout})`);
 ok(!/changed in the last 7 days:[^\n]*secret/.test(r.stdout), "another project's memory is not listed");
 ok(!/changed in the last 7 days:[^\n]*2026-10-27/.test(r.stdout), `a journal day is no memory to list (got ${r.stdout})`);
@@ -126,7 +121,7 @@ memory(dir, 'brief-note', 'here and gone');
 tier();
 unlinkSync(join(dir, 'brief-note.md'));
 tier();
-r = cli('status');
+r = await cli('status');
 ok(/deleted [^·\n]*brief-note/.test(r.stdout) && !/added [^·\n]*brief-note/.test(r.stdout), `a memory added and deleted this week is listed as deleted (got ${r.stdout})`);
 // The first snapshot took in what was there: none of it was "added" this week.
 // Asked here: the snapshots of 2020 made below end the week's log for the rest.
@@ -134,23 +129,23 @@ ok(!/added [^·\n]*(a-long-log|release-checklist|mentions)/.test(r.stdout), `sta
 // A name git would quote (not ASCII) is listed as it is.
 memory(dir, 'café-notes', 'notes from the café');
 tier();
-ok(/changed in the last 7 days: [^\n]*café-notes/.test(cli('status').stdout), 'a memory with an accented name is listed');
+ok(/changed in the last 7 days: [^\n]*café-notes/.test((await cli('status')).stdout), 'a memory with an accented name is listed');
 unlinkSync(join(dir, 'café-notes.md'));
 ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').includes(handLine), 'with its hand-written index line');
-r = cli('restore', 'deploy-notes');
+r = await cli('restore', 'deploy-notes');
 ok(r.status === 1 && /exists/.test(r.stdout), 'restore refuses to replace a memory that exists');
 writeFileSync(join(dir, 'deploy-notes.md'), 'scribbled over');
-r = cli('restore', 'deploy-notes', '--force');
+r = await cli('restore', 'deploy-notes', '--force');
 ok(r.status === 0 && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes('deploy deploy') && /still there/.test(r.stdout), '--force replaces it, and the line it has is kept');
 ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').filter((l) => l === handLine).length === 1, 'and no second line is added');
 const kept = r.stdout.match(/what it replaced is kept: git -C "([^"]+)" cat-file -p (\w+)/);
 ok(kept && spawnSync('git', ['-C', kept[1], 'cat-file', '-p', kept[2]], { encoding: 'utf8' }).stdout === 'scribbled over', `what --force replaced is kept in the repo, and said where (got ${r.stdout.trim()})`);
-r = cli('restore', 'deploy-notes', '--force');
+r = await cli('restore', 'deploy-notes', '--force');
 ok(r.status === 1 && /already matches/.test(r.stdout), `a restore that would change nothing says so, not "restored" (got ${r.stdout.trim()})`);
-ok(!/--all looks/.test(cli('history', 'never-was', '--all').stdout), 'history --all does not suggest --all');
-r = cli('history', 'never-was');
-ok(cli('restore', 'never-was').status === 1 && r.status === 1 && /search <words> finds a memory's name; --all looks in every project/.test(r.stdout), 'a memory no snapshot holds: restore and history fail, and history says how to find the name');
-ok(cli('restore', 'mentions', '--force', '--rev', 'nosuchrev').status === 1, 'an unknown revision fails');
+ok(!/--all looks/.test((await cli('history', 'never-was', '--all')).stdout), 'history --all does not suggest --all');
+r = await cli('history', 'never-was');
+ok((await cli('restore', 'never-was')).status === 1 && r.status === 1 && /search <words> finds a memory's name; --all looks in every project/.test(r.stdout), 'a memory no snapshot holds: restore and history fail, and history says how to find the name');
+ok((await cli('restore', 'mentions', '--force', '--rev', 'nosuchrev')).status === 1, 'an unknown revision fails');
 // A note edited every reply has thousands of snapshots (2,000 were 72 KB of
 // output): history shows the newest 30 and says how many it left out.
 {
@@ -165,52 +160,54 @@ ok(cli('restore', 'mentions', '--force', '--rev', 'nosuchrev').status === 1, 'an
   const made = spawnSync('git', ['-C', root, 'fast-import', '--quiet'], { input: stream, encoding: 'utf8' });
   writeFileSync(join(dir, 'busy-note.md'), 'version 34\n');
   const rows = (out) => out.split('\n').filter((l) => /^  \w+ \d{4}-\d\d-\d\d \d\d:\d\d  (added|changed)$/.test(l)).length;
-  r = cli('history', 'busy-note');
+  r = await cli('history', 'busy-note');
   ok(made.status === 0 && r.status === 0 && rows(r.stdout) === 30 && /^  and 5 older; --limit N shows more$/m.test(r.stdout) && /^  a change: git -C /.test(r.stdout.trim().split('\n').pop()),
     `history shows the newest 30 and how many are older, its command still last (got ${made.stderr}${r.stdout})`);
-  r = cli('history', 'busy-note', '--limit', '40');
+  r = await cli('history', 'busy-note', '--limit', '40');
   ok(rows(r.stdout) === 35 && !/^  and \d+ older/m.test(r.stdout), `--limit shows more (got ${rows(r.stdout)}: ${r.stdout})`);
   unlinkSync(join(dir, 'busy-note.md'));
 }
 // The commit history calls "deleted" no longer has the memory: --rev with it
 // failed. It brings back the version that commit deleted.
-const deletedAt = cli('history', 'deploy-notes').stdout.match(/^  (\w+) .*deleted$/m)?.[1];
+const deletedAt = (await cli('history', 'deploy-notes')).stdout.match(/^  (\w+) .*deleted$/m)?.[1];
 writeFileSync(join(dir, 'deploy-notes.md'), 'scribbled again');
-r = cli('restore', 'deploy-notes', '--rev', deletedAt, '--force');
+r = await cli('restore', 'deploy-notes', '--rev', deletedAt, '--force');
 ok(deletedAt && r.status === 0 && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes('deploy deploy'), `restore --rev with a "deleted" row brings back what it deleted (got ${r.stdout.trim()})`);
 // --rev is a commit, never an option: `--format=...` wrote git's output into the note.
-r = cli('restore', 'deploy-notes', '--force', '--rev', '--format=INJECTED %H');
+r = await cli('restore', 'deploy-notes', '--force', '--rev', '--format=INJECTED %H');
 ok(r.status === 1 && /--rev takes a commit/.test(r.stdout) && !/INJECTED/.test(readFileSync(join(dir, 'deploy-notes.md'), 'utf8')), '--rev that is no commit is refused');
-r = cli('restore', 'deploy-notes', '--force', '--rev', 'HEAD~1..HEAD');
+r = await cli('restore', 'deploy-notes', '--force', '--rev', 'HEAD~1..HEAD');
 ok(r.status === 1 && /--rev takes a commit/.test(r.stdout) && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes('deploy deploy'), 'a range is no commit: refused, never an empty note');
-r = cli('restore', 'deploy-notes', '--force', '--rev', 'HEAD~999');
+r = await cli('restore', 'deploy-notes', '--force', '--rev', 'HEAD~999');
 ok(r.status === 1 && /at HEAD~999: /.test(r.stdout), `an unknown commit is named as given (got ${r.stdout.trim()})`);
 // The command is the first word that is no option: an option before it worked.
-r = run(['--store', dir, 'search', 'deploy']);
+r = await run(['--store', dir, 'search', 'deploy']);
 ok(r.status === 0 && /match\(es\) in/.test(r.stdout), `an option before the command still runs it (got ${r.stdout.slice(0, 200)})`);
 // An option it does not know is refused: dropped, `--from 2026-10-27` searched for "2026", and `--after=` ignored the date.
-r = cli('search', 'deploy', '--from', '2026-10-27');
-const after = cli('search', 'deploy', '--after=2026-10-28');
+r = await cli('search', 'deploy', '--from', '2026-10-27');
+const after = await cli('search', 'deploy', '--after=2026-10-28');
 ok(r.status === 1 && r.stdout === 'unknown option --from; help lists the options\n' && after.status === 1 && after.stdout === 'unknown option --after=2026-10-28; help lists the options\n', `an unknown option is refused (got ${r.stdout}${after.stdout})`);
-ok(['--help', '-h', 'help'].every((h) => { const u = cli(h); return u.status === 0 && u.stdout.startsWith('node memory.mjs <command>'); }), '--help and -h print the usage, as help does');
+const helped = [];
+for (const h of ['--help', '-h', 'help']) helped.push(await cli(h));
+ok(helped.every((u) => u.status === 0 && u.stdout.startsWith('node memory.mjs <command>')), '--help and -h print the usage, as help does');
 // A count that is no number is refused, not dropped; the usage names --session.
-const ten = cli('search', 'deploy', '--limit', 'ten');
-ok(ten.status === 1 && ten.stdout === '--limit takes a number, not ten\n' && cli('search', 'deploy', '--limit', '3').status === 0 && /\[--session <id>\]/.test(cli('help').stdout),
+const ten = await cli('search', 'deploy', '--limit', 'ten');
+ok(ten.status === 1 && ten.stdout === '--limit takes a number, not ten\n' && (await cli('search', 'deploy', '--limit', '3')).status === 0 && /\[--session <id>\]/.test((await cli('help')).stdout),
   `--limit ten is refused and the usage names --session (got ${ten.stdout})`);
 // The usage after why, not alone: a misspelt command, one with nothing after it.
-const typo = cli('serach', 'logo'), bare = cli('restore');
+const typo = await cli('serach', 'logo'), bare = await cli('restore');
 ok(typo.status === 1 && typo.stdout.startsWith('no command "serach"\nnode memory.mjs <command>') && bare.status === 1 && bare.stdout.startsWith('restore needs a word after it\nnode memory.mjs <command>'),
   `a usage error says what was wrong first (got ${typo.stdout.slice(0, 60)} / ${bare.stdout.slice(0, 60)})`);
 // After `--` every word is a search word, one that looks like an option too.
 memory(dir, 'hook-rule', 'never commit with --no-verify');
-r = run(['search', '--store', dir, '--', '--no-verify', '--all']);
+r = await run(['search', '--store', dir, '--', '--no-verify', '--all']);
 ok(r.status === 0 && /[\\/]hook-rule\.md$/m.test(r.stdout) && /; --all searches every project$/m.test(r.stdout), `words after -- are searched, never read as options (got ${r.stdout})`);
 unlinkSync(join(dir, 'hook-rule.md'));
 // Without git, history says so, not "spawnSync git ENOENT".
 r = spawnSync(process.execPath, [CLI, 'history', 'deploy-notes', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
 ok(r.status === 1 && /git is not installed/.test(r.stdout), `history without git says git is not installed (got ${r.stdout.trim()})`);
 // No command (the skill run with no arguments) is status.
-r = cli('--session', 'nobody');
+r = await cli('--session', 'nobody');
 ok(r.status === 0 && /index \d+ \/ 7000 B/.test(r.stdout), `no command, only --session: status (got ${r.stdout.slice(0, 200)})`);
 // Another store is a memory folder under the projects root: promote deleted a
 // note from any folder it was pointed at.
@@ -218,7 +215,7 @@ const outside = join(home, 'elsewhere', 'memory');
 mkdirSync(outside, { recursive: true });
 writeFileSync(join(outside, 'o.md'), '---\nname: o\ndescription: "o"\n---\nkeep me\n');
 writeFileSync(join(outside, 'MEMORY.md'), '- [o](o.md) — o\n');
-r = run(['promote', 'o', '--store', outside]);
+r = await run(['promote', 'o', '--store', outside]);
 ok(r.status === 1 && /--store takes a memory folder/.test(r.stdout) && existsSync(join(outside, 'o.md')) && !existsSync(join(shared, 'o.md')), '--store outside the projects folder is refused, and nothing there is touched');
 // Deleted, made again, changed, deleted again before any snapshot: the newest
 // snapshot has the newest version, not the one before the first deletion.
@@ -226,43 +223,43 @@ memory(dir, 'cycle', 'v1', 'v1'); tier();
 unlinkSync(join(dir, 'cycle.md')); tier();
 memory(dir, 'cycle', 'v2', 'v2'); tier();
 unlinkSync(join(dir, 'cycle.md'));
-r = cli('restore', 'cycle');
+r = await cli('restore', 'cycle');
 ok(r.status === 0 && readFileSync(join(dir, 'cycle.md'), 'utf8').includes('v2'), `restore takes the newest snapshot that has it (got ${readFileSync(join(dir, 'cycle.md'), 'utf8').trim().split('\n').pop()})`);
 // git's paths are case-sensitive; on Windows a store named in another case is the same store.
 if (process.platform === 'win32') {
-  r = run(['history', 'cycle', '--store', dir.toLowerCase()]);
+  r = await run(['history', 'cycle', '--store', dir.toLowerCase()]);
   ok(r.status === 0 && /added/.test(r.stdout), 'a store path in another letter case still finds its snapshots');
 }
-ok(cli('history', '../../C--other/memory/secret').status === 1 && cli('restore', '../../C--other/memory/secret').status === 1 && !existsSync(join(dir, 'secret.md')),
+ok((await cli('history', '../../C--other/memory/secret')).status === 1 && (await cli('restore', '../../C--other/memory/secret')).status === 1 && !existsSync(join(dir, 'secret.md')),
   "a path is not a memory name: it cannot reach another project's store");
 
 // 4. Promote: into the shared store, line and all; never half-moved.
 const line = '- [Release checklist](release-checklist.md) — steps';
-r = cli('promote', 'release-checklist');
+r = await cli('promote', 'release-checklist');
 ok(r.status === 0 && existsSync(join(shared, 'release-checklist.md')) && !existsSync(join(dir, 'release-checklist.md')), 'promote moves the file to the shared store');
 ok(readFileSync(join(shared, 'MEMORY.md'), 'utf8').split('\n').includes(line) && !readFileSync(join(dir, 'MEMORY.md'), 'utf8').includes('release-checklist.md'),
   'and its own index line with it');
-r = cli('restore', 'release-checklist');
+r = await cli('restore', 'release-checklist');
 ok(r.status === 1 && /was promoted: it is in /.test(r.stdout) && !existsSync(join(dir, 'release-checklist.md')), 'a promoted memory is not restored into its old project unasked');
-ok(/^  promoted: it is in /m.test(cli('history', 'release-checklist').stdout), 'and its history there says where it went');
+ok(/^  promoted: it is in /m.test((await cli('history', 'release-checklist')).stdout), 'and its history there says where it went');
 // An index saved with a BOM: its first line is a pointer like any other.
 memory(dir, 'bom-first', 'a lesson listed first');
 writeFileSync(join(dir, 'MEMORY.md'), '\uFEFF- [Bom first](bom-first.md) — hand-written\n' + readFileSync(join(dir, 'MEMORY.md'), 'utf8'));
-r = cli('promote', 'bom-first');
+r = await cli('promote', 'bom-first');
 ok(r.status === 0 && !readFileSync(join(dir, 'MEMORY.md'), 'utf8').includes('bom-first.md') && readFileSync(join(shared, 'MEMORY.md'), 'utf8').includes('- [Bom first](bom-first.md) — hand-written'),
   'promote finds a first index line behind a BOM, and moves that line');
 memory(dir, 'shared-rule', 'a project copy');
 const before = readFileSync(join(shared, 'shared-rule.md'), 'utf8');
-r = cli('promote', 'shared-rule');
+r = await cli('promote', 'shared-rule');
 ok(r.status === 1 && existsSync(join(dir, 'shared-rule.md')) && readFileSync(join(shared, 'shared-rule.md'), 'utf8') === before, 'a name the shared store has already: refused, both stores unchanged');
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\ndescription: "The rolling handoff"\n---\n');
-ok(cli('promote', 'MEMORY').status === 1 && cli('promote', 'handoff').status === 1 && existsSync(join(dir, 'handoff.md')), 'an index or the handoff is not a memory to share');
-r = cli('promote', 'shared-rule', '--shared');
+ok((await cli('promote', 'MEMORY')).status === 1 && (await cli('promote', 'handoff')).status === 1 && existsSync(join(dir, 'handoff.md')), 'an index or the handoff is not a memory to share');
+r = await cli('promote', 'shared-rule', '--shared');
 ok(r.status === 1 && /in the shared store already/.test(r.stdout), 'nor is a memory already shared');
 // A name with brackets and no index line: the line made for it reads back.
 // Words no later search uses: a hit they added changed its count.
 memory(dir, '[draft] okapi', 'an okapi still in draft');
-r = cli('promote', '[draft] okapi');
+r = await cli('promote', '[draft] okapi');
 ok(r.status === 0 && /^- \[draft okapi\]\(\[draft\] okapi\.md\) — an okapi still in draft$/m.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8')),
   `a promoted name with brackets gets a line POINTER reads (got ${r.stdout})`);
 // A copy that cannot be written moves nothing: the note stays in its project.
@@ -277,7 +274,7 @@ ok(r.status === 0 && /^- \[draft okapi\]\(\[draft\] okapi\.md\) — an okapi sti
 }
 // Frontmatter never closed is all frontmatter, as tiering reads it.
 writeFileSync(join(dir, 'pangolin-rule.md'), '---\nname: pangolin-rule\ndescription: pangolin rule text\nmetadata:\n  type: feedback\n');
-r = cli('search', 'pangolin');
+r = await cli('search', 'pangolin');
 ok(/^     pangolin rule text$/m.test(r.stdout), `a note whose frontmatter never closes keeps its description (got ${r.stdout})`);
 rmSync(join(dir, 'pangolin-rule.md'));
 
@@ -285,18 +282,18 @@ rmSync(join(dir, 'pangolin-rule.md'));
 // the handoff (a log the startup line prints) is no hit, and a hit stays short.
 memory(dir, 'the-plans-are-the-brand', 'unrelated');
 memory(dir, 'linky', 'a memory with many links', [1, 2, 3, 4, 5, 6, 7].map((i) => `[[l${i}]]`).join(' '));
-ok(!/the-plans-are-the-brand/.test(cli('search', 'how', 'the', 'deploy').stdout), '"the" and "how" score nothing, not even in a file name');
-ok(!/handoff\.md/.test(cli('search', 'rolling', 'handoff').stdout), 'the handoff is not a search hit');
-ok(/^ +links: l1, l2, l3, l4, l5, and 2 more$/m.test(cli('search', 'linky').stdout), 'a hit lists five links and counts the rest');
-r = cli('search', 'what did I do');
+ok(!/the-plans-are-the-brand/.test((await cli('search', 'how', 'the', 'deploy')).stdout), '"the" and "how" score nothing, not even in a file name');
+ok(!/handoff\.md/.test((await cli('search', 'rolling', 'handoff')).stdout), 'the handoff is not a search hit');
+ok(/^ +links: l1, l2, l3, l4, l5, and 2 more$/m.test((await cli('search', 'linky')).stdout), 'a hit lists five links and counts the rest');
+r = await cli('search', 'what did I do');
 ok(r.status === 0 && /^nothing to search for: "what did I do" has no word that says which memory$/m.test(r.stdout), `a query of short and stop words says so, not "nothing matches" (got ${r.stdout})`);
 
 // 4b. Promote and restore take the store's lock: one held by a hook is busy, and nothing moves.
 if (!quick) {
   memory(dir, 'locked-out', 'a memory to move');
   mkdirSync(join(dir, '.lock'));
-  r = cli('promote', 'locked-out');
-  const r2 = cli('restore', 'mentions', '--force');
+  r = await cli('promote', 'locked-out');
+  const r2 = await cli('restore', 'mentions', '--force');
   rmSync(join(dir, '.lock'), { recursive: true });
   ok(r.status === 1 && /busy/.test(r.stdout) && existsSync(join(dir, 'locked-out.md')) && !existsSync(join(shared, 'locked-out.md')), 'promote waits out a held lock, then gives up with nothing moved');
   ok(r2.status === 1 && /busy/.test(r2.stdout), 'and so does restore');
@@ -311,7 +308,7 @@ writeFileSync(arcPath, arcBefore + '- [Evicted](evicted.md) — hand-written <!-
 commit('evicted, in the archive');
 unlinkSync(join(dir, 'evicted.md')); writeFileSync(arcPath, arcBefore);
 commit('evicted, deleted');
-r = cli('restore', 'evicted');
+r = await cli('restore', 'evicted');
 ok(r.status === 0 && readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').includes('- [Evicted](evicted.md) — hand-written'), 'a line restored from the archive comes back without its overflow mark');
 
 // 4d. The store is the session's, found as the hooks find it: by its transcript,
@@ -327,8 +324,8 @@ ok(viaEnv.stdout.split('\n')[0] !== dir, `the session is not read from the envir
 const viaPath = spawnSync(process.execPath, [CLI, 'status', '--session', '../C--mem-cli/sess-cli-1'], { env, cwd: home, encoding: 'utf8' });
 ok(viaPath.stdout.split('\n')[0] !== dir, `a --session that is a path is ignored (got ${viaPath.stdout.split('\n')[0]})`);
 // In one process, as this suite runs the CLI: a call's session is not the next one's.
-run(['status', '--session', 'sess-cli-1']);
-const nextCall = run(['status']).stdout.split('\n')[0];
+await run(['status', '--session', 'sess-cli-1']);
+const nextCall = (await run(['status'])).stdout.split('\n')[0];
 ok(nextCall !== dir, `a call's --session is not carried into the next call (got ${nextCall})`);
 const proj = join(home, 'proj'), deeper = join(proj, 'sub', 'deeper');
 mkdirSync(deeper, { recursive: true });
@@ -362,24 +359,24 @@ writeFileSync(join(home, '.claude', 'settings.json'), '{ not json: doctor never 
 const ranLog = (...runs) => writeFileSync(join(root, '.stop-ran'), runs.map((x) => JSON.stringify(x)).join('\n') + '\n');
 const ago = (ms) => new Date(Date.now() - ms).toISOString();
 rmSync(join(root, '.stop-ran'), { force: true });
-r = cli('doctor');
+r = await cli('doctor');
 ok(r.status === 1 && /^PROBLEM not installed[^\n]*claude plugin install project-memory@project-memory/m.test(r.stdout) && !/settings\.json (does not parse|wires)/.test(r.stdout),
   `doctor: not installed and never run is a problem, with the install; settings.json is not read (got ${r.stdout})`);
 ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
-ok(/^ok +the hooks run from C:\/x \(no install record: added from claude\.ai, or wired by hand\)/m.test(cli('doctor').stdout), 'doctor: hooks that run with no install record (a claude.ai install, @synced) are fine');
+ok(/^ok +the hooks run from C:\/x \(no install record: added from claude\.ai, or wired by hand\)/m.test((await cli('doctor')).stdout), 'doctor: hooks that run with no install record (a claude.ai install, @synced) are fine');
 ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(59_000), s: 'aaaaaaaa', from: 'C:/y' });
-r = cli('doctor');
+r = await cli('doctor');
 ok(r.status === 1 && /^PROBLEM the Stop hook ran twice for one reply[^\n]*The user's fix: remove the project-memory hooks added to settings.json by hand/m.test(r.stdout), 'doctor: two runs for one reply, seconds apart, are hooks wired twice');
 ranLog({ at: ago(120_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(59_000), s: 'bbbbbbbb', from: 'C:/x' });
-ok(!/ran twice/.test(cli('doctor').stdout), 'doctor: replies a minute apart, and two conversations at once, are not');
+ok(!/ran twice/.test((await cli('doctor')).stdout), 'doctor: replies a minute apart, and two conversations at once, are not');
 // A /compact typed right after a reply runs the same --stop as PreCompact, and
 // a reply to a blocked stop runs the Stop hook again: neither is a second wiring.
 ranLog({ at: ago(60_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' }, { at: ago(59_000), s: 'aaaaaaaa', e: 'PreCompact', from: 'C:/x' });
-ok(!/ran twice/.test(cli('doctor').stdout), 'doctor: a /compact right after a reply is not a second wiring');
+ok(!/ran twice/.test((await cli('doctor')).stdout), 'doctor: a /compact right after a reply is not a second wiring');
 ranLog({ at: ago(60_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' }, { at: ago(59_000), s: 'aaaaaaaa', e: 'Stop', h: 1, from: 'C:/x' });
-ok(!/ran twice/.test(cli('doctor').stdout), 'doctor: the reply to a blocked stop is not a second wiring');
+ok(!/ran twice/.test((await cli('doctor')).stdout), 'doctor: the reply to a blocked stop is not a second wiring');
 ranLog({ at: ago(60_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' }, { at: ago(56_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' });
-ok(!/ran twice/.test(cli('doctor').stdout), 'doctor: two replies four seconds apart are two replies');
+ok(!/ran twice/.test((await cli('doctor')).stdout), 'doctor: two replies four seconds apart are two replies');
 rmSync(join(root, '.stop-ran'), { force: true });
 // Before Claude's first reply nothing has saved: waiting, not a problem. A reply
 // this conversation finished over a minute ago, with nothing saved, is one.
@@ -417,44 +414,44 @@ const installed = (id, at, source) => {
   writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ [id.split('@')[1]]: { source } }));
 };
 installed('project-memory@project-memory', gh, { source: 'github', repo: 'zdraveski/project-memory' });
-r = cli('doctor');
+r = await cli('doctor');
 ok(/^ok +the plugin runs version 1\.0\.0 from [^\n]*1\.0\.0$/m.test(r.stdout) && !/PROBLEM[^\n]*plugin/.test(r.stdout), `doctor: a GitHub install runs its cached copy, and that is fine (got ${r.stdout})`);
 // From another marketplace, or a local clone: the same, by whatever name it was added under.
 installed('project-memory@my-plugins', join(home, 'clone'), { source: 'directory', path: join(home, 'clone') });
-ok(/^ok +the plugin runs version \(none\) from [^\n]*clone$/m.test(cli('doctor').stdout), 'doctor: a plugin from a local clone is found under any marketplace name');
+ok(/^ok +the plugin runs version \(none\) from [^\n]*clone$/m.test((await cli('doctor')).stdout), 'doctor: a plugin from a local clone is found under any marketplace name');
 // An installed plugin read from a cached copy reaches a deploy only by an update.
 const live = join(home, '.claude', 'hooks-live'), cache = join(home, '.claude', 'plugins', 'cache', 'pm', '1.0.1');
 for (const [d, commit] of [[live, 'bbb'], [cache, 'aaa']]) { mkdirSync(d, { recursive: true }); writeFileSync(join(d, '.deployed.json'), JSON.stringify({ commit, files: {} })); }
 writeFileSync(join(home, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@project-memory': [{ installPath: cache }] } }));
 writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), '{}');
-ok(/^PROBLEM the plugin runs aaa from [^\n]*, the last deploy is bbb\. The user's fix: claude plugin update/m.test(cli('doctor').stdout), 'doctor: a plugin copy older than the last deploy is named');
+ok(/^PROBLEM the plugin runs aaa from [^\n]*, the last deploy is bbb\. The user's fix: claude plugin update/m.test((await cli('doctor')).stdout), 'doctor: a plugin copy older than the last deploy is named');
 writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: {} }));
-ok(/^ok +the plugin runs the last deploy, bbb/m.test(cli('doctor').stdout), 'doctor: and one that matches is fine');
+ok(/^ok +the plugin runs the last deploy, bbb/m.test((await cli('doctor')).stdout), 'doctor: and one that matches is fine');
 // A copy at the last deploy's commit with a file changed since is named by the file.
 writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: { 'gone.mjs': '0' } }));
-r = cli('doctor');
+r = await cli('doctor');
 ok(r.status === 1 && /^PROBLEM Memory hooks changed outside deploy\.mjs, live and untested: gone\.mjs in [^\n]*1\.0\.1\./m.test(r.stdout), `doctor: a plugin copy edited since its deploy is named by the file (got ${r.stdout})`);
 // Installed from a local folder (the live copy), Claude Code reads it in place:
 // a stale cache copy beside it is not what runs.
 writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'aaa', files: {} }));
 writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'project-memory': { source: { source: 'directory', path: live } } }));
-r = cli('doctor');
+r = await cli('doctor');
 ok(/^ok +the plugin runs the last deploy, bbb, from [^\n]*hooks-live$/m.test(r.stdout), `doctor: a plugin read in place from the live copy runs the last deploy, whatever its cache holds (got ${r.stdout.split('\n').find((l) => /plugin runs/.test(l))})`);
 // Added from the repo instead, it runs untested edits: no update fixes that.
 writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), JSON.stringify({ 'project-memory': { source: { source: 'directory', path: join(home, 'repo') } } }));
-ok(/^PROBLEM the plugin is read from [^\n]*repo, not the live copy\. The user's fix: claude plugin marketplace remove project-memory,/m.test(cli('doctor').stdout), 'doctor: a plugin read from anywhere but the live copy is named, with the way back');
+ok(/^PROBLEM the plugin is read from [^\n]*repo, not the live copy\. The user's fix: claude plugin marketplace remove project-memory,/m.test((await cli('doctor')).stdout), 'doctor: a plugin read from anywhere but the live copy is named, with the way back');
 const packDir = join(root, '.git', 'objects', 'pack');
 mkdirSync(packDir, { recursive: true });
 writeFileSync(join(packDir, 'pack-dead.idx'), 'x');
-ok(/^ok +1 pack index file\(s\) [^\n]*have no pack[^\n]*pack-dead\.idx$/m.test(cli('doctor').stdout), 'doctor: an index a repack left with no pack is named');
+ok(/^ok +1 pack index file\(s\) [^\n]*have no pack[^\n]*pack-dead\.idx$/m.test((await cli('doctor')).stdout), 'doctor: an index a repack left with no pack is named');
 // No git is a setup the README allows: said, not a problem. Snapshots off say
 // what is lost; failing ones come with what to do.
 r = spawnSync(process.execPath, [CLI, 'doctor'], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
 ok(/^ok +git is not installed: everything works except/m.test(r.stdout), `doctor: no git is said, not a problem (got ${r.stdout})`);
 writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, failures: 0, off: 'git is not installed' }));
-ok(/^ok +snapshots: off, git is not installed: everything else works/m.test(cli('doctor').stdout), 'doctor: snapshots off are said, not a problem');
+ok(/^ok +snapshots: off, git is not installed: everything else works/m.test((await cli('doctor')).stdout), 'doctor: snapshots off are said, not a problem');
 writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, failures: 4, error: 'fatal: bad object HEAD' }));
-ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.test(cli('doctor').stdout), 'doctor: failing snapshots come with what to do');
+ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.test((await cli('doctor')).stdout), 'doctor: failing snapshots come with what to do');
 // Hooks that look stopped are said; doctor, which is the check, does not tell
 // the user to run itself.
 {
@@ -465,7 +462,7 @@ ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.te
   ].join('\n') + '\n');
   writeFileSync(join(root, '.stop-ran'), JSON.stringify({ at: minsAgo(20).toISOString(), s: 'zzzzzzzz', from: 'C:/x' }) + '\n');
   utimesSync(join(root, '.stop-ran'), minsAgo(20), minsAgo(20));
-  r = run(['doctor', '--session', 'stall-1']);
+  r = await run(['doctor', '--session', 'stall-1']);
   ok(/^PROBLEM Memory hooks look stopped: [^\n]*clears after the next reply\.$/m.test(r.stdout), `doctor: hooks that look stopped are said, with no "run doctor" (got ${r.stdout})`);
   // The briefing judges the newest other window; doctor, judging only the
   // newest, said all ok from the window that saved while another did not.
@@ -475,7 +472,7 @@ ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.te
   ].join('\n') + '\n');
   said('other-22', 4);
   said('mine-2222', 25);
-  r = run(['doctor', '--session', 'mine-2222']);
+  r = await run(['doctor', '--session', 'mine-2222']);
   ok(/^PROBLEM Memory hooks look stopped: \[other-22\]/m.test(r.stdout), `doctor: another window that stopped saving is said, as the briefing says it (got ${r.stdout})`);
 }
 // A promoted line goes in before the shared index's archive line, which
@@ -483,7 +480,7 @@ ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.te
 memory(dir, 'late-lesson', 'a lesson learned late');
 const sharedIdx = join(shared, 'MEMORY.md');
 if (!/\]\(MEMORY-archive\.md\)/.test(readFileSync(sharedIdx, 'utf8'))) writeFileSync(sharedIdx, readFileSync(sharedIdx, 'utf8').replace(/\n*$/, '\n') + '- [Archive](MEMORY-archive.md) — 0 older pointers\n');
-r = cli('promote', 'late-lesson');
+r = await cli('promote', 'late-lesson');
 ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.test(readFileSync(sharedIdx, 'utf8')), `a promoted line goes in before the archive line (got ${readFileSync(sharedIdx, 'utf8')})`);
 
 // Round 3 (2026-10-27).
@@ -493,12 +490,12 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   const sharedIdx3 = join(shared, 'MEMORY.md');
   writeFileSync(sharedIdx3, readFileSync(sharedIdx3, 'utf8').replace(/\n*$/, '\n') + Array.from({ length: 40 }, (_, i) => `- [Filler ${i}](filler-${i}.md) — ${'f'.repeat(80)}`).join('\n') + '\n');
   writeFileSync(join(dir, 'old-lesson.md'), '---\nname: old-lesson\ndescription: "an old lesson"\nmetadata:\n  type: feedback\n  modified: 2026-01-01\n---\nbody\n');
-  const full = cli('promote', 'old-lesson');
+  const full = await cli('promote', 'old-lesson');
   ok(full.status === 0 && /of its 3000 bytes/.test(full.stdout) && /tier: hot/.test(full.stdout) && !/every project's sessions see its line/.test(full.stdout),
     `promote into a full shared index says the line may be archived, and how to keep it (got ${full.stdout.trim()})`);
   // Auto memory turned off: doctor says so, and judges nothing that needs the hooks.
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
-  let offDoc; try { offDoc = cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  let offDoc; try { offDoc = await cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   ok(/auto memory is off/.test(offDoc.stdout) && !/Stop hook is not running|ran twice/.test(offDoc.stdout), `doctor says auto memory is off, and stops there (got ${offDoc.stdout.trim()})`);
 }
 
@@ -513,12 +510,12 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   tier();
   writeFileSync(join(dir, 'notes1.md'), readFileSync(join(dir, 'notes1.md'), 'utf8') + 'changed\n');
   tier();
-  r = cli('history', 'notes[1]');
+  r = await cli('history', 'notes[1]');
   ok(r.status === 0 && (r.stdout.match(/^  [0-9a-f]{4,} \d{4}-/gm) || []).length === 1, `history of notes[1] lists its own change, not notes1's (got ${r.stdout.trim()})`);
   unlinkSync(join(dir, 'notes[1].md'));
-  r = cli('restore', 'notes[1]');
+  r = await cli('restore', 'notes[1]');
   ok(r.status === 0 && readFileSync(join(dir, 'notes[1].md'), 'utf8').includes('the bracket body'), `a name with [ ] comes back with its own text, not an empty note (got ${r.stdout.trim()})`);
-  r = cli('restore', 'star*');
+  r = await cli('restore', 'star*');
   ok(r.status === 1 && /^no snapshot of /m.test(r.stdout) && !stack(r) && !(process.platform !== 'win32' && existsSync(join(dir, 'star*.md'))), `a name with * that no snapshot holds: no empty note, no stack trace (got ${r.stdout.trim()} ${r.stderr.trim()})`);
   // Typed in another case: where the disk opens casey.md by that name, the note
   // on disk is moved, and its own line with it; where it does not (Linux), it
@@ -526,7 +523,7 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   memory(dir, 'casey', 'a lesson about case');
   writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Casey](casey.md) — c\n');
   const caseBlind = existsSync(join(dir, 'CASEY.md'));
-  r = cli('promote', 'CASEY');
+  r = await cli('promote', 'CASEY');
   ok(caseBlind ? r.status === 0 && readdirSync(shared).includes('casey.md') && !/\(casey\.md\)/i.test(readFileSync(join(dir, 'MEMORY.md'), 'utf8')) && /\]\(casey\.md\)/.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8'))
     : r.status === 1 && existsSync(join(dir, 'casey.md')) && !existsSync(join(shared, 'casey.md')),
     `promote CASEY moves casey.md under its own name, and its line (got ${r.stdout.trim()})`);
@@ -536,7 +533,7 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   tier();
   writeFileSync(join(dir, 'locked.md'), 'v2\n');
   chmodSync(join(dir, 'locked.md'), 0o444);
-  try { r = cli('restore', 'locked', '--force'); } finally { chmodSync(join(dir, 'locked.md'), 0o666); }
+  try { r = await cli('restore', 'locked', '--force'); } finally { chmodSync(join(dir, 'locked.md'), 0o666); }
   ok(!stack(r) && (process.platform !== 'win32' || (r.status === 1 && /could not be written/.test(r.stdout))), `a note that cannot be replaced is said, not a stack trace (got ${r.stdout.trim()} ${r.stderr.trim().slice(0, 200)})`);
 }
 
@@ -551,7 +548,7 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   rmSync(join(dir, 'cs-probe.md'));
   // A version that never had the note: an error, not an empty note.
   const first = spawnSync('git', ['-C', root, 'rev-list', '--max-parents=0', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
-  r = cli('restore', 'notes[1]', '--rev', first, '--force');
+  r = await cli('restore', 'notes[1]', '--rev', first, '--force');
   ok(r.status === 1 && /^no snapshot of /m.test(r.stdout) && readFileSync(join(dir, 'notes[1].md'), 'utf8').includes('the bracket body'),
     `a version without notes[1] is an error, and the note is left as it was (got ${r.stdout.trim()})`);
   if (!folds) {
@@ -561,14 +558,14 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     tier();
     rmSync(join(dir, 'Alpha.md'));
     writeFileSync(join(dir, 'alpha.md'), 'an edit not yet snapshotted\n');
-    r = cli('restore', 'Alpha');
+    r = await cli('restore', 'Alpha');
     ok(r.status === 0 && readFileSync(join(dir, 'Alpha.md'), 'utf8').includes('the upper body') && readFileSync(join(dir, 'alpha.md'), 'utf8') === 'an edit not yet snapshotted\n',
       `on a case-sensitive disk, restore Alpha brings back Alpha.md and leaves alpha.md alone (got ${r.stdout.trim()})`);
   }
   // A short 8.3 name of an index is still an index.
   for (const short of ['MEMORY~1.MD', 'MEMORY~2.MD']) {
     if (!existsSync(join(dir, short))) continue;
-    r = cli('promote', short);
+    r = await cli('promote', short);
     ok(r.status === 1 && /only a memory is shared/.test(r.stdout) && existsSync(join(dir, 'MEMORY-archive.md')), `promote ${short} is refused: it names an index (got ${r.stdout.trim()})`);
   }
   if (win) {
@@ -579,19 +576,19 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     rmSync(join(dir, 'ro-index.md'));
     writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').filter((l) => !l.includes('(ro-index.md)')).join('\n'));
     chmodSync(join(dir, 'MEMORY.md'), 0o444);
-    try { r = cli('restore', 'ro-index'); } finally { chmodSync(join(dir, 'MEMORY.md'), 0o666); }
+    try { r = await cli('restore', 'ro-index'); } finally { chmodSync(join(dir, 'MEMORY.md'), 0o666); }
     ok(!stack(r) && existsSync(join(dir, 'ro-index.md')) && /index line could not be written/.test(r.stdout), `a read-only index: the note is restored and the reply says its line is not (got ${r.stdout.trim()} ${r.stderr.trim().slice(0, 200)})`);
     // The shared index cannot be written: the note is in both stores, and the reply says so.
     memory(dir, 'ro-share', 'a lesson to share');
     writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [RS](ro-share.md) — s\n');
     chmodSync(join(shared, 'MEMORY.md'), 0o444);
-    try { r = cli('promote', 'ro-share'); } finally { chmodSync(join(shared, 'MEMORY.md'), 0o666); }
+    try { r = await cli('promote', 'ro-share'); } finally { chmodSync(join(shared, 'MEMORY.md'), 0o666); }
     ok(!stack(r) && r.status === 1 && /shared index could not be written/.test(r.stdout) && existsSync(join(dir, 'ro-share.md')), `a read-only shared index: said, and the note stays in its project (got ${r.stdout.trim()} ${r.stderr.trim().slice(0, 200)})`);
     rmSync(join(shared, 'ro-share.md'), { force: true });
     // A hand-written line in another case is the note's own: it moves with it.
     memory(dir, 'casey2', 'a second case lesson');
     writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Casey two](Casey2.md) — the hand-written hook\n');
-    r = cli('promote', 'casey2');
+    r = await cli('promote', 'casey2');
     ok(r.status === 0 && !/casey2\.md/i.test(readFileSync(join(dir, 'MEMORY.md'), 'utf8')) && /the hand-written hook/.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8')),
       `a line written (Casey2.md) moves with casey2.md, hook and all (got ${r.stdout.trim()})`);
     // And restore finds a note's line written in another case: no second line.
@@ -599,7 +596,7 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Kase](Kase.md) — k\n');
     tier();
     rmSync(join(dir, 'kase.md'));
-    r = cli('restore', 'kase');
+    r = await cli('restore', 'kase');
     ok(r.status === 0 && /its index line is still there/.test(r.stdout) && (readFileSync(join(dir, 'MEMORY.md'), 'utf8').match(/\(kase\.md\)/gi) || []).length === 1, `restore finds the line written (Kase.md) (got ${r.stdout.trim()})`);
   }
   // CRLF as written, whatever git is told elsewhere (Git for Windows: autocrlf).
@@ -609,7 +606,7 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [CRLF kept](crlf-kept.md) — c\n');
   tier();
   rmSync(join(dir, 'crlf-kept.md'));
-  r = cli('restore', 'crlf-kept');
+  r = await cli('restore', 'crlf-kept');
   ok(r.status === 0 && readFileSync(join(dir, 'crlf-kept.md'), 'utf8').includes('line one\r\nline two\r\n'), `a CRLF note comes back with CRLF, autocrlf or not (got ${r.stdout.trim()})`);
   spawnSync('git', ['-C', root, 'config', '--unset', 'core.autocrlf']);
 }
@@ -639,12 +636,12 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   const run14 = (...a) => run([...a, '--store', at14]);
   if (/C--ext14\/memory\/price\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
     unlinkSync(join(out14, 'price.md'));
-    const r14 = run14('restore', 'price');
+    const r14 = await run14('restore', 'price');
     ok(r14.status === 0 && existsSync(join(out14, 'price.md')), `a note in a store linked outside the root comes back (got ${r14.stdout}${r14.stderr})`);
   }
   const sh14 = join(root, '.snapshot-health'), was14 = readFileSync(sh14, 'utf8');
   writeFileSync(sh14, JSON.stringify({ lastOk: new Date().toISOString(), failures: 0, missed: ['/x/C--y/memory'] }));
-  const d14 = run14('doctor');
+  const d14 = await run14('doctor');
   writeFileSync(sh14, was14);
   ok(d14.status === 1 && /PROBLEM\s+snapshots: ok, last [^\n]*but they leave out \/x\/C--y\/memory: it is reached through a link/.test(d14.stdout), `doctor names a store the snapshots leave out (got ${d14.stdout})`);
 }
@@ -682,10 +679,10 @@ if (!quick) {
   symlinkSync(out17, at17, process.platform === 'win32' ? 'junction' : 'dir');
   tier();
   const run17 = (...a) => run([...a, '--store', join(at17, 'memory')]);
-  ok(/links to no memory: cost\.md → \[\[ghost17\]\]/.test(run17('status').stdout), 'a link after an inline ``` in prose is read');
+  ok(/links to no memory: cost\.md → \[\[ghost17\]\]/.test((await run17('status')).stdout), 'a link after an inline ``` in prose is read');
   if (/C--p17\/memory\/cost\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
     unlinkSync(join(out17, 'memory', 'cost.md'));
-    const r17 = run17('restore', 'cost');
+    const r17 = await run17('restore', 'cost');
     ok(r17.status === 0 && existsSync(join(out17, 'memory', 'cost.md')), `a note under a project folder linked outside the root comes back (got ${r17.stdout}${r17.stderr})`);
   }
 }
@@ -704,13 +701,13 @@ if (!quick) {
   tier();
   if (/C--a20\/memory\/rate\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
     unlinkSync(join(out20, 'rate.md'));
-    const r20 = run(['restore', 'rate', '--store', join(root, 'C--b20', 'memory')]);
+    const r20 = await run(['restore', 'rate', '--store', join(root, 'C--b20', 'memory')]);
     ok(r20.status === 0 && /VERSION-TWO/.test(readFileSync(join(out20, 'rate.md'), 'utf8')), `a note restored through a second link is the last snapshot's (got ${r20.stdout}${r20.stderr})`);
   }
   const d21 = join(root, 'C--fence21', 'memory'); mkdirSync(d21, { recursive: true });
   memory(d21, 'fenced', 'fences', '> ```\n> [[ghostq]]\n> ```\n- ```\n  [[ghostl]]\n  ```\n~~~\n[[ghostt]]\n~~~\n```x[[0]]``` is code, see [[ghostp]].\n```\ny = 2\n```\n');
   writeFileSync(join(d21, 'MEMORY.md'), '- [Fenced](fenced.md) — f\n');
-  const s21 = run(['status', '--store', d21]).stdout;
+  const s21 = (await run(['status', '--store', d21])).stdout;
   ok(/links to no memory: fenced\.md → \[\[ghostp\]\]\s*$/m.test(s21), `fences in a quote, a list or with ~~~ hide their links; a code span in prose does not hide the next (got ${s21})`);
 }
 
@@ -728,13 +725,13 @@ if (!quick) {
     unlinkSync(join(out22, 'gone.md')); memory(out22, 'other', 'other'); writeFileSync(join(out22, 'MEMORY.md'), '- [Other](other.md) — o\n');
     tier();
     link22('C--a22'); tier();
-    const r22 = run(['restore', 'gone', '--store', join(root, 'C--b22', 'memory')]);
+    const r22 = await run(['restore', 'gone', '--store', join(root, 'C--b22', 'memory')]);
     ok(r22.status === 0 && /GONE-V1/.test(readFileSync(join(out22, 'gone.md'), 'utf8')), `a note deleted before a link that sorts first was added comes back (got ${r22.stdout}${r22.stderr})`);
-    const h22 = run(['history', 'other', '--store', join(root, 'C--b22', 'memory')]).stdout;
+    const h22 = (await run(['history', 'other', '--store', join(root, 'C--b22', 'memory')])).stdout;
     ok((h22.match(/^  [0-9a-f]{7,} \d{4}-/gm) || []).length === 2, `history lists the snapshot that moved a note to a link that sorts first (got ${h22})`);
     // The index the restore gave a line, snapshotted under the first link only.
     tier(); unlinkSync(join(out22, 'MEMORY.md'));
-    const m22 = run(['restore', 'MEMORY', '--store', join(root, 'C--b22', 'memory')]);
+    const m22 = await run(['restore', 'MEMORY', '--store', join(root, 'C--b22', 'memory')]);
     ok(m22.status === 0 && /\(gone\.md\)/.test(readFileSync(join(out22, 'MEMORY.md'), 'utf8')), `a deleted index comes back through the second link as last snapshotted (got ${m22.stdout}${m22.stderr})`);
     // Both links tracked while the index was gone: the week's changes read
     // the kept path alone, or the second's untracking was every note deleted.
@@ -743,7 +740,7 @@ if (!quick) {
     for (const p of ['C--a24', 'C--b24']) { mkdirSync(join(root, p), { recursive: true }); symlinkSync(out24, join(root, p, 'memory'), process.platform === 'win32' ? 'junction' : 'dir'); }
     tier(); unlinkSync(join(out24, 'MEMORY.md')); tier();
     writeFileSync(join(out24, 'MEMORY.md'), '- [X](x24.md) — x\n'); tier();
-    const s24 = run(['status', '--store', join(root, 'C--a24', 'memory')]).stdout;
+    const s24 = (await run(['status', '--store', join(root, 'C--a24', 'memory')])).stdout;
     ok(/last 7 days: added x24/.test(s24), `a note on disk is not listed as deleted after a snapshot without the index (got ${s24})`);
   }
   // A fence never closed hides nothing; a long tilde run is read once.
@@ -752,15 +749,15 @@ if (!quick) {
   memory(d23, 'tilde', 'tildes', '~'.repeat(120000) + '`\n' + '~~~\r'.repeat(50000));
   writeFileSync(join(d23, 'MEMORY.md'), '- [Four](four.md) — f\n- [Tilde](tilde.md) — t\n');
   const t23 = Date.now();
-  const s23 = run(['status', '--store', d23]).stdout;
+  const s23 = (await run(['status', '--store', d23])).stdout;
   ok(/four\.md → \[\[ghosto\]\]/.test(s23) && /four\.md → \[\[ghostu\]\]/.test(s23) && !/ghostf/.test(s23), `a \`\`\`\` fence holding a \`\`\` one hides its links, one never closed hides none (got ${s23})`);
   ok(quick || Date.now() - t23 < 3000, `a long run of tildes does not slow status down (${Date.now() - t23} ms)`);
   // The shared store has its own index: this one's, deleted, was not promoted.
   tier();
-  const h23 = run(['history', 'MEMORY', '--store', d23]);
+  const h23 = await run(['history', 'MEMORY', '--store', d23]);
   ok(h23.status === 0 && !/promoted/.test(h23.stdout), `history does not call an index promoted (got ${h23.stdout}${h23.stderr})`);
   unlinkSync(join(d23, 'MEMORY.md'));
-  const m23 = run(['restore', 'MEMORY', '--store', d23]);
+  const m23 = await run(['restore', 'MEMORY', '--store', d23]);
   ok(existsSync(join(shared, 'MEMORY.md')) && m23.status === 0 && existsSync(join(d23, 'MEMORY.md')), `a deleted index comes back while the shared store has one (got ${m23.stdout}${m23.stderr})`);
 }
 
@@ -811,7 +808,7 @@ if (!quick) {
   memory(jd, 'deploy', 'how we ship the site', 'if it shows an error, deploy again');
   memory(jd, 'journal', 'Every exchange in this project, one file per day in journal/');
 
-  let r = jcli('search', 'deploy', 'error');
+  let r = await jcli('search', 'deploy', 'error');
   ok(r.status === 0 && new RegExp(`^ *\\d+  journal   2026-10-15 14:30  conversation c0ffee12 · branch main\\n     key: ${fix.key}\\n     Asked: fix the deploy error\\n`).test(r.stdout),
     `search finds a journal entry by its request: first, labelled journal, with its date and key (got ${r.stdout})`);
   ok(/^ *\d+ +\w+ +\d{4}-\d\d-\d\d +.*[\\/]deploy\.md$/m.test(r.stdout) && /^ *\d+  journal   2026-10-15 09:00 /m.test(r.stdout), `a note and an entry rank together (got ${r.stdout})`);
@@ -819,7 +816,7 @@ if (!quick) {
   const blocks = (out) => out.split(/\n(?= *\d+  )/), of = (out, asked) => blocks(out).find((b) => b.includes(`\n     Asked: ${asked}`)) ?? '';
   ok(!/Answered/.test(of(r.stdout, 'fix the deploy error')) && /^     Answered: the deploy error, the deploy error again, and the deploy error once more$/m.test(of(r.stdout, 'tidy the readme')),
     `a reply is printed only when it holds a search word (got ${r.stdout})`);
-  r = jcli('search', 'zeppelin');
+  r = await jcli('search', 'zeppelin');
   const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
   ok(z.length < 1500 && zask.length === 400 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
     `an entry at every cap: its request cut to 400, the rest the stretches around the word, under 1.5 KB in all (got ${z.length}: ${z})`);
@@ -828,64 +825,64 @@ if (!quick) {
   const em = (n) => '\u{1F600}'.repeat(n);
   day(jd, '2026-10-13', [entry('2026-10-13 09:00', 'feed the quetzal', { answered: `${em(60)} quetzal ${em(60)}` }),
     entry('2026-10-13 10:00', 'weigh the quetzal', { answered: `quetzal ${em(20)}`.repeat(30) })]);
-  r = jcli('search', 'quetzal');
+  r = await jcli('search', 'quetzal');
   rmSync(join(jd, 'journal', '2026-10-13.md'));   // a day no other check uses
   ok(r.status === 0 && (r.stdout.match(/^     Answered: /gm) ?? []).length === 2 && !r.stdout.includes('�'), `a stretch of a hit never cuts an emoji in half (got ${r.stdout})`);
   // show: the whole entry, by the key its hit printed, and its day file.
   const zkey = z.match(/^     key: (.*)$/m)?.[1];
-  r = jcli('show', zkey);
+  r = await jcli('show', zkey);
   ok(zkey === huge.key && r.status === 0 && r.stdout.includes(`\n     Asked: ${huge.asked}\n     Answered: ${huge.answered}\n     Changed: ${huge.changed.join(', ')}\n     Ran: ${huge.ran.join(' · ')}\n`) &&
     r.stdout.includes(`\n     Day file: ${join(jd, 'journal', '2026-10-07.md')}`), `show prints an entry whole, by the key search printed, with its day file (got ${r.stdout})`);
-  r = jcli('show', fix.key, pasted.key);
+  r = await jcli('show', fix.key, pasted.key);
   ok(r.status === 0 && /^     Asked: fix the deploy error$/m.test(r.stdout) && /^     Answered: stored \[redacted\] as the config token$/m.test(r.stdout) && !r.stdout.includes(key), `show takes several keys, and redacts (got ${r.stdout})`);
-  r = jcli('show', 'no-such-key');
+  r = await jcli('show', 'no-such-key');
   ok(r.status === 1 && /^no journal entry has the key no-such-key in .+; --all looks in every project$/m.test(r.stdout), `a key that is no entry's says so, and fails (got ${r.stdout})`);
   // One long request asked again and again is one hit, with its count, days and the copies' keys.
-  r = jcli('search', 'wombat', 'feed');
+  r = await jcli('search', 'wombat', 'feed');
   ok((r.stdout.match(/^     Asked: feed the wombat its evening/gim) || []).length === 1 && r.stdout.includes(`\n     2 more like this, 2026-10-04..2026-10-06: ${w2.key}, ${w1.key}; --same takes them all\n`) &&
     /^     Asked: wombat feed schedule$/m.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout),
     `identical long requests, in any case and spacing, print once with how many more, their days and keys (got ${r.stdout})`);
-  r = jcli('search', 'wombat', 'feed', '--limit', '1');
+  r = await jcli('search', 'wombat', 'feed', '--limit', '1');
   ok(/^     2 more like this/m.test(r.stdout) && !/schedule/.test(r.stdout) && /^1 of 2 match\(es\) in .+; --limit N shows more/m.test(r.stdout), `--limit counts the requests, not their repeats (got ${r.stdout})`);
   // --same: show and forget take every copy of a request by one key.
-  r = jcli('show', w3.key, '--same');
+  r = await jcli('show', w3.key, '--same');
   ok(r.status === 0 && [w1, w2, w3].every((w) => r.stdout.includes(`\n     key: ${w.key}\n`)) && !/schedule/.test(r.stdout), `show --same prints every entry that asked the same (got ${r.stdout})`);
-  ok((jcli('show', w3.key).stdout.match(/^     key: /gm) || []).length === 1, 'show without --same prints the one entry');
-  r = jcli('forget', '--key', w3.key, '--same');
+  ok(((await jcli('show', w3.key)).stdout.match(/^     key: /gm) || []).length === 1, 'show without --same prints the one entry');
+  r = await jcli('forget', '--key', w3.key, '--same');
   ok([w1, w2, w3].every((w) => r.stdout.includes(`(key ${w.key})\n`)) && /^3 entries in .+ would go/m.test(r.stdout), `forget --key --same takes every copy (got ${r.stdout})`);
   // A short request ("continue", a short paste retried) is never collapsed: each copy and its key is shown.
-  r = jcli('search', 'kestrel');
+  r = await jcli('search', 'kestrel');
   ok((r.stdout.match(/^     Asked: continue$/gm) || []).length === 2 && !/more like this/.test(r.stdout), `two short requests with different work stay two hits (got ${r.stdout})`);
-  r = jcli('search', 'zorbix');
+  r = await jcli('search', 'zorbix');
   ok((r.stdout.match(/^     key: /gm) || []).length === 2 && !/more like this/.test(r.stdout), `a short request retried shows both copies and both keys (got ${r.stdout})`);
   // A word only the branch names ranks below one a command names.
-  r = jcli('search', 'ocelot');
+  r = await jcli('search', 'ocelot');
   ok(r.stdout.indexOf('Asked: tidy the docs') !== -1 && r.stdout.indexOf('Asked: tidy the docs') < r.stdout.indexOf('Asked: tidy the tests'), `a branch weighs less than a command (got ${r.stdout})`);
   // Header fields and stretches are redacted, and a stretch is cut from the redacted text.
-  r = jcli('search', 'narwhal');
+  r = await jcli('search', 'narwhal');
   ok(/conversation \[redacted\] · branch feat-\[redacted\]$/m.test(r.stdout) && !r.stdout.includes(tagKey) && !r.stdout.includes(brKey) && !r.stdout.includes(cutKey.slice(16)),
     `a secret in a tag, a branch or under a stretch's cut is never printed (got ${r.stdout})`);
   // Matches near each other are one stretch, not the same text twice.
   ok(!/^     Answered: [^\n]* … /m.test(z), `close matches merge into one stretch (got ${z})`);
-  ok(!/[\\/]journal\.md$/m.test(jcli('search', 'every', 'exchange').stdout), "journal.md is the journal's pointer, not a search hit");
-  ok(/^     Asked: tidy the scripts$/m.test(jcli('search', 'memory-tier.mjs').stdout) && /^     Asked: tidy the scripts$/m.test(jcli('search', 'bench').stdout),
+  ok(!/[\\/]journal\.md$/m.test((await jcli('search', 'every', 'exchange')).stdout), "journal.md is the journal's pointer, not a search hit");
+  ok(/^     Asked: tidy the scripts$/m.test((await jcli('search', 'memory-tier.mjs')).stdout) && /^     Asked: tidy the scripts$/m.test((await jcli('search', 'bench')).stdout),
     'an entry is found by a file it changed, and by a command it ran, alone');
-  r = jcli('search', 'CI', '--since', '2026-10-08', '--until', '2026-10-08');
+  r = await jcli('search', 'CI', '--since', '2026-10-08', '--until', '2026-10-08');
   ok(/^     Asked: set up CI on GitHub Actions$/m.test(r.stdout) && !/decision/.test(r.stdout), `a two-letter word is searched, as a word of its own (got ${r.stdout})`);
-  ok(/^     Asked: tidy the imports$/m.test(jcli('search', 'payments').stdout), 'an entry is found by its branch');
-  r = jcli('search', 'token', 'config');
+  ok(/^     Asked: tidy the imports$/m.test((await jcli('search', 'payments')).stdout), 'an entry is found by its branch');
+  r = await jcli('search', 'token', 'config');
   ok(/^     Asked: paste the token \[redacted\] into the config$/m.test(r.stdout) && /^     Answered: stored \[redacted\] as the config token$/m.test(r.stdout) && !r.stdout.includes(key), `a hit is redacted, its reply too (got ${r.stdout})`);
-  r = jcli('search', 'zzzqqq', '--since', '2026-10-10', '--until', '2026-10-20');
+  r = await jcli('search', 'zzzqqq', '--since', '2026-10-10', '--until', '2026-10-20');
   ok(/^nothing matches "zzzqqq" in .+ since 2026-10-10 until 2026-10-20; --all searches every project$/m.test(r.stdout), `a ranged miss names its range (got ${r.stdout})`);
   // A note's day is its modified: date; both bounds are inclusive for notes too.
   for (const [name, at] of [['quokka-before', '2026-10-09'], ['quokka-since', '2026-10-10'], ['quokka-until', '2026-10-20'], ['quokka-after', '2026-10-21']]) memory(jd, name, 'a quokka note', 'body', `  modified: ${at}\n`);
-  r = jcli('search', 'quokka', '--since', '2026-10-10', '--until', '2026-10-20');
+  r = await jcli('search', 'quokka', '--since', '2026-10-10', '--until', '2026-10-20');
   const quokkas = [...r.stdout.matchAll(/[\\/](quokka-\w+)\.md$/gm)].map((m) => m[1]).sort().join();
   ok(quokkas === 'quokka-since,quokka-until', `a note dated on either bound is found, one a day outside is not (got ${quokkas})`);
   // A note's date is its last change: one written in the range and edited since is out of it, and said.
   const outside = (k) => `${k} notes match outside the range (a note's date is its last change); search without --since/--until`;
   ok(r.stdout.includes(`\n${outside(2)}\n`) && /^2 of 2 match\(es\)/m.test(r.stdout.trim().split('\n').pop()), `a ranged search says how many notes match outside it, before the count (got ${r.stdout})`);
-  r = jcli('search', 'quokka', '--since', '2026-11-01');
+  r = await jcli('search', 'quokka', '--since', '2026-11-01');
   ok(r.stdout.startsWith(`${outside(4)}\nnothing matches "quokka" in `), `a ranged miss says so too (got ${r.stdout})`);
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
@@ -898,26 +895,26 @@ if (!quick) {
     `a journal.mjs that will not load: status runs and says so, search finds notes and says the journal was not read (got ${njs.stdout}${njs.stderr}${r.stdout}${r.stderr})`);
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'forget', 'deploy', '--store', jd], { env, encoding: 'utf8' });
   ok(r.status === 1 && /^could not read journal\.mjs: /m.test(r.stdout), `nor can forget: it says so, and fails (got ${r.stdout}${r.stderr})`);
-  r = jcli('search', 'deploy', 'error', '--since=2026-10-10', '--until', '2026-10-20');
+  r = await jcli('search', 'deploy', 'error', '--since=2026-10-10', '--until', '2026-10-20');
   const dates = [...r.stdout.matchAll(/^ *\d+  journal   (\d{4}-\d\d-\d\d)/gm)].map((m) => m[1]);
   ok(r.status === 0 && dates.join() === '2026-10-15,2026-10-15' && !/deploy\.md$/m.test(r.stdout), `--since/--until narrow by day, notes by their date too (got ${r.stdout})`);
-  r = jcli('search', '--since', '2026-10-21', '--until', '2026-10-27');
+  r = await jcli('search', '--since', '2026-10-21', '--until', '2026-10-27');
   const asked = [...r.stdout.matchAll(/^\d{4}-\d\d-\d\d \d\d:\d\d  conversation c0ffee12 · branch main  (.*)$/gm)].map((m) => m[1]);
   ok(r.status === 0 && asked.join('|') === 'write the changelog|review the pull request|plan the release', `a date range alone lists the work of those days, newest first (got ${r.stdout})`);
   // Words that say nothing of which memory ("what did I do") with a range: the range alone.
-  ok(jcli('search', 'what', 'did', 'I', 'do', '--since', '2026-10-21', '--until', '2026-10-27').stdout === r.stdout, 'stop words with a range list the range');
-  r = jcli('search', 'deploy', '--since', 'yesterday');
-  const r2 = jcli('search', 'deploy', '--until=2026-10');
+  ok((await jcli('search', 'what', 'did', 'I', 'do', '--since', '2026-10-21', '--until', '2026-10-27')).stdout === r.stdout, 'stop words with a range list the range');
+  r = await jcli('search', 'deploy', '--since', 'yesterday');
+  const r2 = await jcli('search', 'deploy', '--until=2026-10');
   ok(r.status === 1 && r.stdout.trim() === '--since takes a date like 2026-10-01' && r2.status === 1 && r2.stdout.trim() === '--until takes a date like 2026-10-01', `a bad date is refused (got ${r.stdout}${r2.stdout})`);
-  const conv = join(root, 'C--jr', 'c0ffee12-full.jsonl'), named = () => /^     Full conversation: .*[\\/]C--jr[\\/]c0ffee12-full\.jsonl$/m.test(jcli('search', 'fix', 'deploy', 'error').stdout);
+  const conv = join(root, 'C--jr', 'c0ffee12-full.jsonl'), named = async () => /^     Full conversation: .*[\\/]C--jr[\\/]c0ffee12-full\.jsonl$/m.test((await jcli('search', 'fix', 'deploy', 'error')).stdout);
   writeFileSync(conv, '{}\n');
-  const was = named(); unlinkSync(conv);
-  ok(was && !named(), 'the full conversation is named while it exists');
+  const was = await named(); unlinkSync(conv);
+  ok(was && !await named(), 'the full conversation is named while it exists');
   // A private turn's only detail is the private part, which its transcript
   // still holds: neither a hit nor show points at it (final review, 2026-10-29).
   const pin = entry('2026-09-30 10:00', 'my quokka pin is [private]', { answered: '[private]' }), pinDay = join(jd, 'journal', '2026-09-30.md');
   day(jd, '2026-09-30', [pin]); writeFileSync(conv, '{}\n');
-  const pinHit = jcli('search', 'quokka', 'pin').stdout, pinShow = jcli('show', pin.key).stdout;
+  const pinHit = (await jcli('search', 'quokka', 'pin')).stdout, pinShow = (await jcli('show', pin.key)).stdout;
   unlinkSync(conv); rmSync(pinDay);
   ok(/^     Asked: my quokka pin is \[private\]$/m.test(pinHit) && /^     Day file: /m.test(pinShow) && !/Full conversation/.test(pinHit + pinShow),
     `a private entry's hit and show name no transcript (got ${pinHit}${pinShow})`);
@@ -925,11 +922,11 @@ if (!quick) {
   const rot = entry('2026-10-20 10:00', 'rotate the signing key', { t: 'C--jr2/feed' });
   day(other, '2026-10-20', [rot]);
   // show reaches another project's entry with --all, or with that project's --store.
-  r = run(['show', rot.key, '--store', other]);
-  ok(jcli('show', rot.key).status === 1 && /^2026-10-20 10:00  conversation c0ffee12 · branch main · project C--jr2$/m.test(jcli('show', rot.key, '--all').stdout) && /^     Asked: rotate the signing key$/m.test(r.stdout),
+  r = await run(['show', rot.key, '--store', other]);
+  ok((await jcli('show', rot.key)).status === 1 && /^2026-10-20 10:00  conversation c0ffee12 · branch main · project C--jr2$/m.test((await jcli('show', rot.key, '--all')).stdout) && /^     Asked: rotate the signing key$/m.test(r.stdout),
     `show finds another project's entry under --all or its --store (got ${r.stdout})`);
-  r = jcli('search', 'rotate', 'signing', '--all');
-  ok(!/signing key/.test(jcli('search', 'rotate', 'signing').stdout) && /^     Asked: rotate the signing key$/m.test(r.stdout) && /^ *\d+  journal   2026-10-20 10:00  conversation c0ffee12 · branch main · project C--jr2$/m.test(r.stdout),
+  r = await jcli('search', 'rotate', 'signing', '--all');
+  ok(!/signing key/.test((await jcli('search', 'rotate', 'signing')).stdout) && /^     Asked: rotate the signing key$/m.test(r.stdout) && /^ *\d+  journal   2026-10-20 10:00  conversation c0ffee12 · branch main · project C--jr2$/m.test(r.stdout),
     `--all searches every project's journal, and a hit names its project (got ${r.stdout})`);
   // A project whose only memory is its journal has no MEMORY.md: --all passed
   // it over. Reached by a second link too, it is searched once.
@@ -937,9 +934,9 @@ if (!quick) {
   day(lone, '2026-10-21', [entry('2026-10-21 10:00', 'calibrate the lone telescope', { t: 'C--jr3/beef' })]);
   mkdirSync(join(root, 'C--jr3-link'), { recursive: true });
   symlinkSync(lone, join(root, 'C--jr3-link', 'memory'), process.platform === 'win32' ? 'junction' : 'dir');
-  r = jcli('search', 'lone', 'telescope', '--all');
+  r = await jcli('search', 'lone', 'telescope', '--all');
   ok(/^     Asked: calibrate the lone telescope$/m.test(r.stdout) && /^1 of 1 match\(es\)/m.test(r.stdout), `--all searches a journal with no MEMORY.md beside it, once (got ${r.stdout})`);
-  r = jcli('search', '--since', '2026-10-20', '--until', '2026-10-21', '--all');
+  r = await jcli('search', '--since', '2026-10-20', '--until', '2026-10-21', '--all');
   ok(/^2026-10-21 10:00  conversation c0ffee12 · branch main · project C--jr3  calibrate the lone telescope$/m.test(r.stdout) && /· project C--jr2  rotate the signing key$/m.test(r.stdout),
     `a date range under --all names each entry's project (got ${r.stdout})`);
 
@@ -963,21 +960,21 @@ if (!quick) {
   ok(r.status === 0 && new RegExp(`^ *\\d+  journal   ${last} 18:00 `).test(r.stdout), `the one entry asking for every term is first (got ${r.stdout.slice(0, 200)})`);
   ok(/^     5109 more like this, 2025-01-01\.\.2025-12-31: (k\d+, ){5}and 5104 more; --same takes them all$/m.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout) && r.stdout.length < 4000,
     `a request asked 5,110 times is one hit, and the output stays small (got ${r.stdout.length} chars: ${r.stdout.slice(-400)})`);
-  r = bcli('search', '--since', year[0]);
+  r = await bcli('search', '--since', year[0]);
   ok((r.stdout.match(/^\d{4}-\d\d-\d\d \d\d:\d\d  conversation /gm) || []).length === 30 && /^30 of 5111 journal entries in .+; --limit N shows more$/m.test(r.stdout),
     `a date range alone lists 30 by default, and says how many it left out (got ${r.stdout.split('\n').length} lines, ending ${r.stdout.trim().split('\n').pop()})`);
   rmSync(join(big, 'journal', `${year[0]}.md`)); mkdirSync(join(big, 'journal', `${year[0]}.md`));
-  r = bcli('search', 'needle');
+  r = await bcli('search', 'needle');
   ok(r.status === 0 && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && new RegExp(`^could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(r.stdout) && /^1 of 1 match\(es\)/.test(r.stdout.trim().split('\n').pop()),
     `a day that cannot be read is named, the rest still found, and the count is still the last line (got ${r.stdout.slice(-300)})`);
-  r = bcli('search', 'needle', '--since', year.at(-7));
+  r = await bcli('search', 'needle', '--since', year.at(-7));
   ok(r.status === 0 && !r.stderr && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && !/could not read/.test(r.stdout), `with --since the last week, a day outside it is never opened (got ${r.stdout}${r.stderr})`);
   // A day saved as UTF-16 (PowerShell 5.1's Out-File) read as a day with no
   // entry, named by neither: search and status name it, and status the
   // unreadable day too (final review, 2026-10-29).
   writeFileSync(join(big, 'journal', '2024-12-31.md'), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(`# Journal 2024-12-31\n\n${render(entry('2024-12-31 18:00', 'the needle in a wide day'))}\n`, 'utf16le')]));
-  r = bcli('search', 'needle');
-  const st = bcli('status').stdout, wide = String.raw`^%s.*[\\/]2024-12-31\.md: not UTF-8$`;
+  r = await bcli('search', 'needle');
+  const st = (await bcli('status')).stdout, wide = String.raw`^%s.*[\\/]2024-12-31\.md: not UTF-8$`;
   ok(new RegExp(wide.replace('%s', 'could not read '), 'm').test(r.stdout) && new RegExp(wide.replace('%s', '  journal: could not read '), 'm').test(st) &&
     new RegExp(`^  journal: could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(st), `a day not in UTF-8 is named by search and status (got ${r.stdout.slice(-300)}; ${st})`);
 }
@@ -1003,9 +1000,9 @@ if (!quick) {
   reset();
   // A look's line ends with the entry's key: the look is how the user's entries are found.
   const fl = (e) => `${e.at}  conversation ${e.s}  ${e.asked}  (key ${e.key})\n`, zm = fl(es[0]) + fl(es[2]);
-  let r = fcli('forget', 'Zebra', 'mango');
+  let r = await fcli('forget', 'Zebra', 'mango');
   ok(r.status === 0 && kept('2025-10-20', '2025-10-21', today) && r.stdout === `${zm}2 entries in ${fd} would go; run again with --yes to remove them\n`, `forget lists and keeps without --yes, and names the store (got ${r.stdout}${r.stderr})`);
-  r = fcli('forget', 'Zebra', 'mango', '--yes');
+  r = await fcli('forget', 'Zebra', 'mango', '--yes');
   ok(r.status === 0 && file('2025-10-20') === page('2025-10-20', [es[1]]) && gone('2025-10-21') && kept(today),
     `forget --yes removes only the matches, the rest byte for byte (got ${r.stdout}${r.stderr})`);
   ok(r.stdout.startsWith(zm) && r.stdout.endsWith(`\nremoved 2 from ${fd}\n`) && /^the snapshots still hold the journal of 2025-10-20, 2025-10-21: deleting .*[\\/]\.git removes /m.test(r.stdout),
@@ -1014,42 +1011,42 @@ if (!quick) {
   // A blank word is in every entry: taken as a filter, it removed the whole journal.
   const refused = 'forget needs words, a date range, --conversation or --key; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)';
   for (const blank of [[], [''], ['   ']]) {
-    r = fcli('forget', ...blank, '--yes');
+    r = await fcli('forget', ...blank, '--yes');
     ok(r.status === 1 && r.stdout.trim() === refused && kept('2025-10-20', '2025-10-21', today), `forget with nothing to match is refused, a blank word too (${JSON.stringify(blank)}: got ${r.stdout}${r.stderr})`);
   }
   const bb = fl(es[3]) + fl(es[4]);
-  r = fcli('forget', '--conversation=bbbb2222');
+  r = await fcli('forget', '--conversation=bbbb2222');
   ok(r.stdout === `${bb}2 entries in ${fd} would go; run again with --yes to remove them\n`, `--conversation=TAG lists that conversation (got ${r.stdout}${r.stderr})`);
-  ok(fcli('forget', '--conversation', 'bbbb2222-0000-4000-8000-00000000abcd').stdout === r.stdout, 'the full session id is that conversation too');
+  ok((await fcli('forget', '--conversation', 'bbbb2222-0000-4000-8000-00000000abcd')).stdout === r.stdout, 'the full session id is that conversation too');
   // The entries a search showed, by their keys, and nothing else.
-  r = fcli('forget', '--key', es[0].key, `--key=${es[3].key}`);
+  r = await fcli('forget', '--key', es[0].key, `--key=${es[3].key}`);
   ok(r.stdout === `${fl(es[0])}${fl(es[3])}2 entries in ${fd} would go; run again with --yes to remove them\n`,
     `--key lists the entries with those keys (got ${r.stdout}${r.stderr})`);
-  r = fcli('forget', 'zebra', '--key', es[0].key, '--key', es[4].key, '--yes');
+  r = await fcli('forget', 'zebra', '--key', es[0].key, '--key', es[4].key, '--yes');
   ok(r.status === 0 && file('2025-10-20') === page('2025-10-20', [es[1]]) && kept('2025-10-21', today) && r.stdout.endsWith(`\nremoved 1 from ${fd}\n`),
     `forget --key --yes removes exactly those that also hold the words (got ${r.stdout}${r.stderr})`);
   reset();
   // A key no entry here has (another project's) is named and fails the forget; the rest still go.
   const lost = `no entry in ${fd} has the key k-elsewhere; is it another project's? use --store with its memory folder\n`;
-  r = fcli('forget', '--key', 'k-elsewhere', '--key', es[0].key, '--yes');
+  r = await fcli('forget', '--key', 'k-elsewhere', '--key', es[0].key, '--yes');
   ok(r.status === 1 && r.stdout.endsWith(`${lost}removed 1 from ${fd}\n`) && file('2025-10-20') === page('2025-10-20', [es[1]]), `a key this store has no entry for is named, and fails the forget (got ${r.stdout})`);
   reset();
   // And the words are not blamed when the key left them nothing to match.
-  r = fcli('forget', 'zebra', '--key', 'k-elsewhere');
+  r = await fcli('forget', 'zebra', '--key', 'k-elsewhere');
   ok(r.status === 1 && r.stdout === `${lost}nothing in ${fd} matches\n`, `a key of another store is why nothing matched, not the words (got ${r.stdout})`);
   // Keys that match nothing never widen to "every entry", --same or not.
-  r = fcli('forget', 'zebra', '--key', 'k-elsewhere', '--same', '--yes');
+  r = await fcli('forget', 'zebra', '--key', 'k-elsewhere', '--same', '--yes');
   ok(r.status === 1 && kept('2025-10-20', '2025-10-21', today), `a --same of a key no entry has removes nothing (got ${r.stdout})`);
   // A plain-words forget that matches nothing says which words no entry holds.
-  r = fcli('forget', 'the', 'zebra', 'pasted', 'yesterday');
+  r = await fcli('forget', 'the', 'zebra', 'pasted', 'yesterday');
   ok(r.status === 0 && r.stdout === `nothing in ${fd} matches: no entry holds "pasted", "yesterday"\n`, `a forget that matches nothing names the words no entry holds (got ${r.stdout})`);
-  ok(fcli('forget', 'mango', 'policy').stdout === `nothing in ${fd} matches: no entry holds every word\n`, 'and when each word is somewhere, says no one entry holds them all');
+  ok((await fcli('forget', 'mango', 'policy')).stdout === `nothing in ${fd} matches: no entry holds every word\n`, 'and when each word is somewhere, says no one entry holds them all');
   // One store at a time: under --all it removed nothing, and said "removed 0" of an entry search had shown.
-  r = fcli('forget', 'zebra', '--all', '--yes');
+  r = await fcli('forget', 'zebra', '--all', '--yes');
   ok(r.status === 1 && /^forget works on one store: --store <folder>/.test(r.stdout) && kept('2025-10-20', '2025-10-21', today), `forget refuses --all (got ${r.stdout})`);
   // A turn of it recorded after the look goes too, and is listed with the rest.
   writeFileSync(join(fj, `${today}.md`), page(today, [...es.slice(3), lateTurn]));
-  r = fcli('forget', '--conversation', 'bbbb2222', '--yes');
+  r = await fcli('forget', '--conversation', 'bbbb2222', '--yes');
   ok(r.status === 0 && r.stdout === `${bb}${fl(lateTurn)}removed 3 from ${fd}\n` && gone(today) && kept('2025-10-20', '2025-10-21'),
     `forget --conversation removes one conversation, a turn since the look too; today's day, not yet in the snapshots, needs no word on them (got ${r.stdout}${r.stderr})`);
   // What the refusal advises does forget the whole journal, every key listed so no backfill brings it back.
@@ -1058,20 +1055,20 @@ if (!quick) {
   // startup's briefing printed what was forgotten (final review, R36).
   const said = (at, s, ask) => `- **asked** ${at} [${s}]: ${ask}\n  **did:** done`;
   writeFileSync(join(fd, 'handoff.md'), `---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written._\n\n${said(es[0].at, 'aaaa1111', es[0].asked)}\n${said(es[0].at, 'cccc3333', 'the walrus budget')}\n<!-- auto:end -->\n`);
-  r = fcli('forget', '--since', '1970-01-01', '--yes');
+  r = await fcli('forget', '--since', '1970-01-01', '--yes');
   const listed = readFileSync(join(fj, '.forgotten'), 'utf8').split('\n').filter(Boolean).sort().join(), hd = readFileSync(join(fd, 'handoff.md'), 'utf8');
   ok(r.status === 0 && r.stdout.endsWith(`\nremoved 5 from ${fd}\n`) && Object.keys(want).every(gone) && listed === listing(es) && !hd.includes(es[0].asked) && hd.includes('[cccc3333]: the walrus budget'),
     `--since 1970-01-01 --yes forgets the whole journal and its exchanges in handoff.md, and lists the keys a transcript on disk could bring back (got ${r.stdout}; ${listed}; ${hd})`);
   // With no history there is no old copy to delete: the snapshots go unmentioned.
   reset();
   renameSync(join(root, '.git'), join(root, '.git-away'));
-  try { r = fcli('forget', 'Zebra', 'mango', '--yes'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
+  try { r = await fcli('forget', 'Zebra', 'mango', '--yes'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
   ok(r.status === 0 && r.stdout === `${zm}removed 2 from ${fd}\n`, `with no snapshots, forget --yes says nothing of them (got ${r.stdout}${r.stderr})`);
   // Nor in a repository the user made there: the plugin commits nothing to it, and it is theirs to keep.
   reset();
   const cfg = join(root, '.git', 'config'), had = readFileSync(cfg, 'utf8');
   writeFileSync(cfg, had.replace(/^\[project-memory\][^[]*/m, ''));
-  try { r = fcli('forget', 'Zebra', 'mango', '--yes'); } finally { writeFileSync(cfg, had); }
+  try { r = await fcli('forget', 'Zebra', 'mango', '--yes'); } finally { writeFileSync(cfg, had); }
   ok(had.includes('[project-memory]') && r.status === 0 && r.stdout === `${zm}removed 2 from ${fd}\n`, `nor in a repository the user made (got ${r.stdout}${r.stderr})`);
   // A day the disk refuses keeps its entries and is named before the count, which says so; exit 1, never a stack trace.
   reset();
@@ -1086,7 +1083,7 @@ if (!quick) {
   // A day that cannot be read is named once (the look and the removal both read it), and fails the forget.
   reset();
   mkdirSync(join(fj, '2025-10-19.md'));
-  r = fcli('forget', 'Zebra', 'mango', '--yes');
+  r = await fcli('forget', 'Zebra', 'mango', '--yes');
   ok(r.status === 1 && r.stdout.split('could not read').length === 2 && r.stdout.endsWith(`\nremoved 2 from ${fd}\n`), `an unreadable day is said once, and the forget fails (got ${r.stdout})`);
   // The list of forgotten keys refused: nothing goes, since a backfill would bring it back.
   reset();
@@ -1115,10 +1112,10 @@ if (!quick) {
   // A look lists every match up to 200; past that it asks for a narrower one, and --yes removes nothing it could not list.
   reset();
   writeFileSync(join(fj, '2025-10-22.md'), page('2025-10-22', Array.from({ length: 201 }, (_, i) => entry(`2025-10-22 ${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`, i ? `gnu herd ${i}` : 'gnu alone'))));
-  r = fcli('forget', 'gnu', 'herd');
+  r = await fcli('forget', 'gnu', 'herd');
   ok(r.stdout.split('\n').filter((l) => / gnu herd \d+  \(key f\d+\)$/.test(l)).length === 200 && r.stdout.endsWith(`\n200 entries in ${fd} would go; run again with --yes to remove them\n`), `a look lists 200 matches (got ${r.stdout.slice(-300)})`);
-  r = fcli('forget', 'gnu');
-  const r2 = fcli('forget', 'gnu', '--yes');
+  r = await fcli('forget', 'gnu');
+  const r2 = await fcli('forget', 'gnu', '--yes');
   ok(r.status === 0 && r.stdout === `201 entries in ${fd} match; narrow it: a look lists 200 at most\n` && r2.status === 1 &&
     r2.stdout === `201 entries in ${fd} match; narrow it: a look lists 200 at most, and --yes removes only what a look can list: nothing removed\n` && file('2025-10-22').split('gnu').length === 202,
     `past 200, a look asks for a narrower one, and --yes removes nothing (got ${r.stdout}${r2.stdout})`);
@@ -1127,10 +1124,10 @@ if (!quick) {
   reset();
   const herd = Array.from({ length: 245 }, (_, i) => entry(`2025-10-23 ${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`, `wildebeest ${i}`));
   writeFileSync(join(fj, '2025-10-23.md'), page('2025-10-23', herd));
-  r = fcli('forget', '--since', '1970-01-01');
+  r = await fcli('forget', '--since', '1970-01-01');
   ok(r.status === 0 && r.stdout === `${es.slice(0, 3).map(fl).join('')}${herd.slice(0, 17).map(fl).join('')}and 230 more\n250 entries in ${fd} from 2025-10-20 to ${today} would go; run again with --yes to remove them\n` && kept('2025-10-20', '2025-10-21', today),
     `a range alone shows its first 20 entries, the count, and its first and last day (got ${r.stdout.slice(-400)})`);
-  r = fcli('forget', '--since', '1970-01-01', '--yes');
+  r = await fcli('forget', '--since', '1970-01-01', '--yes');
   const all250 = readFileSync(join(fj, '.forgotten'), 'utf8').split('\n').filter(Boolean).sort().join();
   ok(r.status === 0 && r.stdout.endsWith(`\nremoved 250 from ${fd}\n`) && !/\(key /.test(r.stdout) && [...Object.keys(want), '2025-10-23'].every(gone) && all250 === listing([...es, ...herd]),
     `--yes removes every entry of a range past 200, says the count, not each line, and lists every key a transcript on disk could bring back (got ${r.stdout.slice(-400)})`);
@@ -1150,33 +1147,33 @@ if (!quick) {
 // import, and a write that failed.
 {
   const st = join(root, 'C--jst', 'memory');
-  const cli = () => run(['status', '--store', st]).stdout;
+  const cli = async () => (await run(['status', '--store', st])).stdout;
   const day = (d, body = '') => { mkdirSync(join(st, 'journal'), { recursive: true }); writeFileSync(join(st, 'journal', `${d}.md`), `# Journal ${d}\n${body}`); };
   const one = (d, k) => `\n<!-- j:${k} t:C--jst/aaaaaaaa-1 d:${d} -->\n## 09:00 · conversation aaaaaaaa\n**Asked:** ${k}\n`;
   mkdirSync(st, { recursive: true });
   writeFileSync(join(st, 'MEMORY.md'), '# Memory\n');
-  ok(!/journal:/.test(cli()), 'status says nothing of a store with no journal');
+  ok(!/journal:/.test(await cli()), 'status says nothing of a store with no journal');
   day('2026-10-01');   // a day a sweep emptied is no day
-  ok(!/journal:/.test(cli()), 'status says nothing of a journal holding only an emptied day');
+  ok(!/journal:/.test(await cli()), 'status says nothing of a journal holding only an emptied day');
   day('2026-10-05', one('2026-10-05', 'k1'));
   day('2026-10-06', one('2026-10-06', 'k2'));
-  let out = cli();
+  let out = await cli();
   ok(/^  journal: 2 days since 2026-10-05, \d\.\d MB$/m.test(out), `status reports the journal (got ${out})`);
   const tp = join(root, 'C--jst', 'bbbbbbbb-2.jsonl');
   writeFileSync(tp, '{"type":"user"}\n');
   const old = new Date(Date.now() - 2 * 86400000); utimesSync(tp, old, old);
-  out = cli();
+  out = await cli();
   ok(/^  journal: 2 days since 2026-10-05, \d\.\d MB; importing 1 older conversations$/m.test(out), `status says an import is pending (got ${out})`);
   writeFileSync(join(st, 'journal', '.failed'), JSON.stringify({ at: '2026-10-06T09:00:00Z', error: 'disk full' }));
-  out = cli();
+  out = await cli();
   ok(/; last write failed: disk full$/m.test(out), `status says the last write failed (got ${out})`);
   for (const d of ['2026-10-05', '2026-10-06']) unlinkSync(join(st, 'journal', `${d}.md`));
-  ok(/^  journal: no days yet; importing 1 older conversations; last write failed: disk full$/m.test(cli()), 'a journal that failed from its first write still says so');
+  ok(/^  journal: no days yet; importing 1 older conversations; last write failed: disk full$/m.test(await cli()), 'a journal that failed from its first write still says so');
   // A store whose only memory is its journal (no index, no journal.md yet) is a store.
   const lone = join(root, 'C--jonly', 'memory');
   mkdirSync(join(lone, 'journal'), { recursive: true });
   writeFileSync(join(lone, 'journal', '2026-10-05.md'), `# Journal 2026-10-05\n${one('2026-10-05', 'k9')}`);
-  out = run(['status', '--store', lone]).stdout;
+  out = (await run(['status', '--store', lone])).stdout;
   ok(!/no store here yet/.test(out) && /^  journal: 1 days? since 2026-10-05, /m.test(out), `a store whose only memory is its journal shows it (got ${out})`);
 }
 
@@ -1208,14 +1205,14 @@ if (!quick) {
   memory(jm, 'mn-beta', 'plain', 'decision decision');
   memory(jm, 'mn-links', 'fivelinks note', [1, 2, 3, 4, 5].map((i) => `[[l${i}]]`).join(' '));
   day(jm, '2026-10-20', [entry('2026-10-20 10:00', 'zork alone', { answered: 'quux once' }), entry('2026-10-20 10:01', 'zork again', { answered: 'zork too' }), entry('2026-10-20 10:02', 'zork quux both')]);
-  r = jcli('search', 'zork', 'quux');
+  r = await jcli('search', 'zork', 'quux');
   ok([scoreOf(r.stdout, 'mn-alpha.md'), scoreOf(r.stdout, 'mn-gamma.md'), scoreOf(r.stdout, 'Asked: zork alone'), scoreOf(r.stdout, 'Asked: zork again'), scoreOf(r.stdout, 'Asked: zork quux both')].join() === '5,9,6,4,11',
     `a term in the description and one in the body is every term (+2), both in the description is strong (+5), a missing term earns neither, for notes and for entries (got ${r.stdout})`);
   // Two letters are a word of their own: `ci` is in "decision", whose body count and whose reply must not count.
   day(jm, '2026-10-22', [entry('2026-10-22 10:00', 'set up CI on the cluster', { answered: 'a decision on logos' })]);
-  r = jcli('search', 'ci');
+  r = await jcli('search', 'ci');
   ok(!/mn-beta/.test(r.stdout) && scoreOf(r.stdout, 'Asked: set up CI') === 8 && !/Answered:/.test(r.stdout), `a two-letter term is counted and shown only standing alone (got ${r.stdout})`);
-  ok(/^ +links: l1, l2, l3, l4, l5$/m.test(jcli('search', 'fivelinks').stdout), 'exactly five links are listed with no "and 0 more"');
+  ok(/^ +links: l1, l2, l3, l4, l5$/m.test((await jcli('search', 'fivelinks')).stdout), 'exactly five links are listed with no "and 0 more"');
 
   // A stretch: matches 164 apart are one stretch (the windows touch), and a
   // stretch of exactly the room is not cut. The last match is 50 characters from
@@ -1224,40 +1221,40 @@ if (!quick) {
   const text = fill(100) + 'zeta' + [1, 2, 3, 4].map(() => fill(160) + 'zeta').join('') + fill(5) + 'zeta' + fill(50);
   ok(text.length === 819, `the text is built to 819 characters (got ${text.length})`);
   day(jm, '2026-10-22', [entry('2026-10-22 10:00', 'set up CI on the cluster', { answered: 'a decision on logos' }), entry('2026-10-22 11:00', 'zeta hunt', { answered: text })]);
-  r = jcli('search', 'zeta');
+  r = await jcli('search', 'zeta');
   const stretch = r.stdout.split('\n').find((l) => l.startsWith('     Answered: '));
   ok(stretch === `     Answered: …${text.slice(20)}` && stretch.length - '     Answered: '.length === 800, `matches 164 apart merge, and a stretch of 800 characters is kept whole (got ${stretch})`);
 
   // A range with no terms lists those days, newest first; equal minutes keep their order.
   day(jm, '2026-10-21', [entry('2026-10-21 10:00', 'tie alpha'), entry('2026-10-21 10:00', 'tie beta'), entry('2026-10-21 09:00', 'tie gamma')]);
-  r = jcli('search', '--since', '2026-10-21', '--until', '2026-10-21', '--limit', '0');
+  r = await jcli('search', '--since', '2026-10-21', '--until', '2026-10-21', '--limit', '0');
   ok(r.stdout.indexOf('tie alpha') !== -1 && r.stdout.indexOf('tie alpha') < r.stdout.indexOf('tie beta') && r.stdout.indexOf('tie beta') < r.stdout.indexOf('tie gamma') && /^3 of 3 journal entries in [^;\n]+$/m.test(r.stdout),
     `--limit 0 is the default, all three are listed in order with no "shows more" (got ${r.stdout})`);
-  ok(/journal entries in/.test(jcli('search', 'what', 'did', 'I', 'do', '--since', '2026-10-21').stdout) && /^3 of 3 journal entries in/m.test(jcli('search', 'what', 'did', 'I', 'do', '--until', '2026-10-20').stdout),
+  ok(/journal entries in/.test((await jcli('search', 'what', 'did', 'I', 'do', '--since', '2026-10-21')).stdout) && /^3 of 3 journal entries in/m.test((await jcli('search', 'what', 'did', 'I', 'do', '--until', '2026-10-20')).stdout),
     'words that name nothing, with only --since or only --until, list the range');
-  ok(/^3 of 3 match\(es\)/m.test(jcli('search', 'zork', '--since', '2026-10-20', '--until', '2026-10-20').stdout), 'terms with a range search the range, ranked');
-  r = jcli('search', 'zzqqxx');
+  ok(/^3 of 3 match\(es\)/m.test((await jcli('search', 'zork', '--since', '2026-10-20', '--until', '2026-10-20')).stdout), 'terms with a range search the range, ranked');
+  r = await jcli('search', 'zzqqxx');
   ok(/^nothing matches "zzqqxx" in [^\n]+ and [^\n]+; --all searches every project$/m.test(r.stdout) && !/2 stores/.test(r.stdout), `two stores are named, not counted (got ${r.stdout})`);
   // A request of exactly SAME_MIN characters asked again is one hit; --limit 0 is the default.
   const gnus = 'gnu '.repeat(19) + 'gnus';
   ok(gnus.length === 80, 'the repeated request is 80 characters');
   day(jm, '2026-10-23', [entry('2026-10-23 10:00', gnus)]);
   day(jm, '2026-10-24', [entry('2026-10-24 10:00', gnus)]);
-  r = jcli('search', 'gnus', '--limit', '0');
+  r = await jcli('search', 'gnus', '--limit', '0');
   ok(/^     1 more like this, 2026-10-23\.\.2026-10-24:/m.test(r.stdout) && /^1 of 1 match\(es\)/m.test(r.stdout), `an 80-character request asked twice is one hit; --limit 0 lists as the default (got ${r.stdout})`);
   // show names an entry once however many times its key is given.
   const k0 = r.stdout.match(/^     key: (\S+)$/m)[1];
-  ok((jcli('show', k0, k0).stdout.match(/^     key: /gm) || []).length === 1, 'show prints an entry once for a key given twice');
+  ok(((await jcli('show', k0, k0)).stdout.match(/^     key: /gm) || []).length === 1, 'show prints an entry once for a key given twice');
   // forget: --key with no value is no key; the words of a sentence are blamed when the journal is empty.
-  r = run(['forget', '--store', jm, '--key']);
+  r = await run(['forget', '--store', jm, '--key']);
   ok(r.status === 1 && /^forget needs words/.test(r.stdout) && !/undefined/.test(r.stdout), `--key with nothing after it is no key (got ${r.stdout})`);
   const empty = join(root, 'C--mutA-empty', 'memory');
-  r = run(['forget', 'nosuchword', '--store', empty]);
+  r = await run(['forget', 'nosuchword', '--store', empty]);
   ok(r.stdout.trim() === `nothing in ${empty} matches: no entry holds "nosuchword"`, `a miss in an empty journal blames the word (got ${r.stdout})`);
   // A range forget removing exactly LOOK (200) entries lists them all.
   const big = mdir('C--mutA-200');
   day(big, '2026-09-05', Array.from({ length: 200 }, (_, i) => ({ ...entry('2026-09-05 10:00', `bulk ${i}`), key: `bk${i}` })));
-  r = run(['forget', '--since', '2026-09-05', '--until', '2026-09-05', '--yes', '--store', big]);
+  r = await run(['forget', '--since', '2026-09-05', '--until', '2026-09-05', '--yes', '--store', big]);
   ok(r.status === 0 && (r.stdout.match(/\(key bk\d+\)/g) || []).length === 200 && /^removed 200 from /m.test(r.stdout), `a forget of 200 entries lists them (got ${r.stdout.length} bytes)`);
   // A forget the disk refuses says where and why: the error's own path and code.
   const ft = mdir('C--mutA-fail');
@@ -1265,21 +1262,21 @@ if (!quick) {
   const write = fsm.writeFileSync;
   fsm.writeFileSync = (p, ...a) => { if (String(p).includes('.forgotten.tmp')) throw Object.assign(new Error('EPERM: operation not permitted, open'), { code: 'EPERM', path: String(p) }); return write(p, ...a); };
   syncBuiltinESMExports();
-  try { r = run(['forget', 'fragile', '--yes', '--store', ft]); } finally { fsm.writeFileSync = write; syncBuiltinESMExports(); }
+  try { r = await run(['forget', 'fragile', '--yes', '--store', ft]); } finally { fsm.writeFileSync = write; syncBuiltinESMExports(); }
   ok(r.status === 1 && r.stdout.includes(`could not write ${join(ft, 'journal', '.forgotten')}: EPERM\n`), `a forget that throws names the file and the error code (got ${r.stdout})`);
 
   // Status: a store with nothing is said so; one with notes and no index is not; .health is shown only when it holds something.
   const none = join(root, 'C--mutA-none', 'memory');
-  ok(run(['status', '--store', none]).stdout.startsWith(`${none}\n  no store here yet\n`), 'a store with nothing says so');
+  ok((await run(['status', '--store', none])).stdout.startsWith(`${none}\n  no store here yet\n`), 'a store with nothing says so');
   const noidx = mdir('C--mutA-noidx');
   memory(noidx, 'loose', 'a note with no index');
-  r = run(['status', '--store', noidx]);
+  r = await run(['status', '--store', noidx]);
   ok(!/no store here yet/.test(r.stdout) && /^  index 0 \/ 7000 B · 0 hot · 0 archived · 1 with no pointer yet$/m.test(r.stdout), `notes with no index are a store (got ${r.stdout})`);
   const hs = mdir('C--mutA-health');
   writeFileSync(join(hs, 'MEMORY.md'), '# Index\n');
   writeFileSync(join(hs, '.health'), 'disk is full\nlocks stuck\n');
-  r = run(['status', '--store', hs]);
-  ok(/^  needs attention: disk is full\n  needs attention: locks stuck$/m.test(r.stdout) && (r.stdout.match(/needs attention/g) || []).length === 2 + (run(['status', '--store', none]).stdout.match(/needs attention/g) || []).length && (run(['status', '--store', jm]).stdout.match(/needs attention/g) || []).length === (run(['status', '--store', none]).stdout.match(/needs attention/g) || []).length,
+  r = await run(['status', '--store', hs]);
+  ok(/^  needs attention: disk is full\n  needs attention: locks stuck$/m.test(r.stdout) && (r.stdout.match(/needs attention/g) || []).length === 2 + ((await run(['status', '--store', none])).stdout.match(/needs attention/g) || []).length && ((await run(['status', '--store', jm])).stdout.match(/needs attention/g) || []).length === ((await run(['status', '--store', none])).stdout.match(/needs attention/g) || []).length,
     `a .health file is listed line by line, and no file lists nothing (got ${r.stdout})`);
 
   // The week's changes: added, edited (in the first snapshot, changed since), deleted; never the index, the handoff or a journal day.
@@ -1296,7 +1293,7 @@ if (!quick) {
   const forced = [['add', '-f', 'C--mem-cli/memory/handoff.md'], ['commit', '-m', 'handoff from an older version', '--', 'C--mem-cli/memory/handoff.md']]
     .map((g) => spawnSync('git', gitArgs('-c', 'user.name=t', '-c', 'user.email=t@t', ...g), { encoding: 'utf8' }));
   ok(forced.every((f) => f.status === 0), `the handoff is forced into the history (got ${forced.map((f) => f.stderr).join('')})`);
-  const week = cli('status').stdout.match(/changed in the last 7 days: (.*)/)?.[1] ?? '';
+  const week = (await cli('status')).stdout.match(/changed in the last 7 days: (.*)/)?.[1] ?? '';
   const part = (w) => week.split(' · ').find((p) => p.startsWith(`${w} `)) ?? '';
   ok(/zz-fresh/.test(part('added')) && !/mentions|spam-log/.test(part('added')) && /mentions/.test(part('edited')) && !/zz-fresh|spam-log/.test(part('edited')) &&
     /spam-log/.test(part('deleted')) && !/mentions|zz-fresh/.test(part('deleted')) && !/handoff|MEMORY|2026-10-27/.test(week), `the week is added, edited and deleted apart, and leaves out the index, the handoff and journal days (got ${week})`);
@@ -1310,12 +1307,13 @@ if (!quick) {
   writeFileSync(join(rs, 'hist-two.md'), readFileSync(join(rs, 'hist-two.md'), 'utf8') + 'two\n');
   tier();
   const rows = (out) => (out.match(/^  \S+ \S+ \S+  (?:added|changed)$/gm) || []).length;
-  const h2 = ['2', '1', '0'].map((l) => run(['history', 'hist-two', '--limit', l, '--store', rs]).stdout);
+  const h2 = [];
+  for (const l of ['2', '1', '0']) h2.push((await run(['history', 'hist-two', '--limit', l, '--store', rs])).stdout);
   ok(!/^  and \d+ older/m.test(h2[0]) && /^  and 1 older; --limit N shows more$/m.test(h2[1]) && rows(h2[2]) === 2,
     `history: exactly the limit leaves no "older" line, one under it says 1, --limit 0 is the default (got ${h2.join(' / ')})`);
   const lk = join(root, 'zz-mutA-link');
   symlinkSync(join(root, 'C--mutA-rs'), lk, link);
-  try { r = run(['history', 'hist-two', '--store', join(lk, 'memory')]); } finally { rmSync(lk, { recursive: true, force: true }); }
+  try { r = await run(['history', 'hist-two', '--store', join(lk, 'memory')]); } finally { rmSync(lk, { recursive: true, force: true }); }
   ok(/^  a change: git -C "[^"]+" --literal-pathspecs show <commit> -- "C--mutA-rs\/memory\/hist-two\.md"$/m.test(r.stdout), `a store linked from another folder is tracked by its one real path (got ${r.stdout})`);
   ok(history([rs], 'ghost-xyz.md').lines[0].endsWith('; --all looks in every project') && !history([rs], 'ghost-xyz.md', true).lines[0].includes('--all looks'), 'history called alone hints --all');
 
@@ -1329,10 +1327,10 @@ if (!quick) {
   let fired = false;
   fsm.readFileSync = (p, ...a) => { if (!fired && String(p) === idxRs && fsm.existsSync(`${p}.tmp${process.pid}`)) { fired = true; fsm.appendFileSync(p, '# written meanwhile\n'); } return readFile(p, ...a); };
   syncBuiltinESMExports();
-  try { r = run(['restore', 'kept', '--store', rs]); } finally { fsm.readFileSync = readFile; syncBuiltinESMExports(); }
+  try { r = await run(['restore', 'kept', '--store', rs]); } finally { fsm.readFileSync = readFile; syncBuiltinESMExports(); }
   ok(fired && r.status === 0 && /^restored [^\n]*kept\.md from \w+; the index changed meanwhile, so the next turn's tiering gives it a line$/m.test(r.stdout), `an index written while restore adds its line is kept (got ${r.stdout})`);
   rmSync(join(root, 'C--mutA-rs'), { recursive: true, force: true });
-  r = run(['restore', 'kept', '--store', rs]);
+  r = await run(['restore', 'kept', '--store', rs]);
   ok(r.status === 0 && readFileSync(join(rs, 'kept.md'), 'utf8').includes('v1') && r.stdout.includes('with its line: - [Kept](kept.md) — kept note'), `restore remakes a store whose folder is gone, with its line (got ${r.stdout}${r.stderr})`);
 
   // The disk refuses a write: the reply gives the disk's own code (a directory
@@ -1347,33 +1345,33 @@ if (!quick) {
   ok(tier().status === 0, 'the snapshot of the restore fixture is made');
   rmSync(join(rf, 'wnote.md'));
   let tmpDir = refuse(join(rf, 'wnote.md')), code = diskCode(tmpDir);
-  try { r = run(['restore', 'wnote', '--store', rf]); } finally { rmSync(tmpDir, { recursive: true, force: true }); }
+  try { r = await run(['restore', 'wnote', '--store', rf]); } finally { rmSync(tmpDir, { recursive: true, force: true }); }
   ok(code && r.status === 1 && r.stdout.includes(`wnote.md could not be written (${code}); nothing restored`) && !existsSync(join(rf, 'wnote.md')), `a restore the disk refuses names the disk's code and writes nothing (got ${r.stdout})`);
   writeFileSync(join(rf, 'MEMORY.md'), '# Index\n');
   tmpDir = refuse(join(rf, 'MEMORY.md'));
-  try { r = run(['restore', 'wnote', '--store', rf]); } finally { rmSync(tmpDir, { recursive: true, force: true }); }
+  try { r = await run(['restore', 'wnote', '--store', rf]); } finally { rmSync(tmpDir, { recursive: true, force: true }); }
   ok(code && r.status === 0 && r.stdout.includes(`; its index line could not be written (${code}): the next turn's tiering gives it one`) && existsSync(join(rf, 'wnote.md')), `a restore whose index line the disk refuses says the disk's code, and keeps the note (got ${r.stdout})`);
   rmSync(join(rf, 'wnote.md'));
   writeFileSync(join(rf, 'MEMORY.md'), '# Index\n\n- [Other](other.md) — o\n');
-  r = run(['restore', 'wnote', '--store', rf]);
+  r = await run(['restore', 'wnote', '--store', rf]);
   ok(r.status === 0 && readFileSync(join(rf, 'MEMORY.md'), 'utf8').trimEnd().split('\n').at(-1) === wline, `an index line with no archive line to go before goes last (got ${r.stdout}${readFileSync(join(rf, 'MEMORY.md'), 'utf8')})`);
 
   // Promote: the line goes before the archive's; a shared index exactly at its ceiling is not over it; a missing shared store is made.
   const sharedWas = readFileSync(join(shared, 'MEMORY.md'), 'utf8');
   const ps = mdir('C--mutA-ps'), cap = budgetOf(shared), arch ='- [Archive](MEMORY-archive.md) — 3 older pointers';
   try {
-    const capped = (name, over) => {
+    const capped = async (name, over) => {
       const l = `- [${name}](${name}.md) — cap note`;
       memory(ps, name, 'cap note');
       writeFileSync(join(ps, 'MEMORY.md'), l + '\n');
       writeFileSync(sharedIdx, `# Shared memory\n${'x'.repeat(cap + over - 2 - bytes(l) - bytes('# Shared memory\n') - 1 - bytes(arch))}\n${arch}\n`);
-      return [l, run(['promote', name, '--store', ps])];
+      return [l, await run(['promote', name, '--store', ps])];
     };
     const sharedIdx = join(shared, 'MEMORY.md');
-    let [l, p] = capped('capnote', 0);
+    let [l, p] = await capped('capnote', 0);
     let ls = readFileSync(sharedIdx, 'utf8').split('\n');
     ok(p.status === 0 && bytes(readFileSync(sharedIdx, 'utf8')) === cap && /every project's sessions see its line/.test(p.stdout) && ls.indexOf(l) > 0 && ls.indexOf(l) === ls.indexOf(arch) - 1, `a promoted line goes before the archive's, and an index exactly at its ceiling is not over it (got ${p.stdout})`);
-    [l, p] = capped('capnote2', 1);
+    [l, p] = await capped('capnote2', 1);
     ok(p.status === 0 && /The shared index is now \d+ of its \d+ bytes/.test(p.stdout), `one byte over the ceiling is said (got ${p.stdout})`);
     // A copy the disk refuses names the error's code, not its message.
     memory(ps, 'stuck2', 'cannot be copied');
@@ -1384,18 +1382,18 @@ if (!quick) {
     // The shared index, then the project's, refuse their write: each says the disk's code, and the note is in both stores.
     memory(ps, 'sh1', 'shared index refuses');
     tmpDir = refuse(join(shared, 'MEMORY.md')); code = diskCode(tmpDir);
-    try { p = run(['promote', 'sh1', '--store', ps]); } finally { rmSync(tmpDir, { recursive: true, force: true }); rmSync(join(shared, 'sh1.md'), { force: true }); }
+    try { p = await run(['promote', 'sh1', '--store', ps]); } finally { rmSync(tmpDir, { recursive: true, force: true }); rmSync(join(shared, 'sh1.md'), { force: true }); }
     ok(code && p.status === 1 && p.stdout.includes(`the shared index could not be written (${code}): sh1.md is in both stores, not yet in the shared index`), `a shared index the disk refuses says the disk's code (got ${p.stdout})`);
     memory(ps, 'sh2', 'project index refuses');
     writeFileSync(join(ps, 'MEMORY.md'), '- [Sh2](sh2.md) — project index refuses\n');
     tmpDir = refuse(join(ps, 'MEMORY.md'));
-    try { p = run(['promote', 'sh2', '--store', ps]); } finally { rmSync(tmpDir, { recursive: true, force: true }); rmSync(join(shared, 'sh2.md'), { force: true }); }
+    try { p = await run(['promote', 'sh2', '--store', ps]); } finally { rmSync(tmpDir, { recursive: true, force: true }); rmSync(join(shared, 'sh2.md'), { force: true }); }
     ok(code && p.status === 1 && p.stdout.includes(`the project index could not be written (${code}): sh2.md is in both stores; delete `), `a project index the disk refuses says the disk's code (got ${p.stdout})`);
     // With no shared store yet, promote makes it.
     renameSync(join(root, '_shared'), join(root, '_shared.away'));
     try {
       memory(ps, 'capnote3', 'cap note');
-      p = run(['promote', 'capnote3', '--store', ps]);
+      p = await run(['promote', 'capnote3', '--store', ps]);
       ok(p.status === 0 && existsSync(join(shared, 'capnote3.md')), `promote makes the shared store when there is none (got ${p.stdout}${p.stderr})`);
     } finally { rmSync(join(root, '_shared'), { recursive: true, force: true }); renameSync(join(root, '_shared.away'), join(root, '_shared')); }
     // A name that opens a file by another spelling (case, on Windows and macOS) is that file, even past an entry stat cannot read.
@@ -1406,7 +1404,7 @@ if (!quick) {
       mkdirSync(gone);
       symlinkSync(gone, join(od, 'aaa-dangling'), link);
       rmSync(gone, { recursive: true });
-      p = run(['promote', 'ALPHA', '--store', od]);
+      p = await run(['promote', 'ALPHA', '--store', od]);
       ok(p.status === 0 && existsSync(join(shared, 'alpha.md')), `a name in other case moves the note it opens, past an unreadable entry (got ${p.stdout})`);
     }
   } finally {
@@ -1419,75 +1417,75 @@ if (!quick) {
   memory(jm, 'mn-bb', 'plain', 'concatenated');
   writeFileSync(join(jm, 'mn-nofront.md'), 'quokka lives here\nsecond line\n');
   writeFileSync(join(jm, 'mn-tight.md'), '---\nname: mn-tight\ndescription: "tight"\n---\nzebu starts the body\n');
-  r = jcli('search', 'cat');
+  r = await jcli('search', 'cat');
   ok(scoreOf(r.stdout, 'mn-aa.md') === 7 && scoreOf(r.stdout, 'mn-bb.md') === 3, `a three-letter term is found inside a longer word, in a description (+2, strong) and in a body (got ${r.stdout})`);
-  ok(/mn-nofront\.md/.test(jcli('search', 'quokka').stdout), 'a note with no frontmatter is searched from its first line');
-  ok(/mn-tight\.md/.test(jcli('search', 'zebu').stdout), 'a body that starts right after the closing --- is searched from its first character');
+  ok(/mn-nofront\.md/.test((await jcli('search', 'quokka')).stdout), 'a note with no frontmatter is searched from its first line');
+  ok(/mn-tight\.md/.test((await jcli('search', 'zebu')).stdout), 'a body that starts right after the closing --- is searched from its first character');
   // An empty frontmatter followed by a rule: the body is what follows the first fence, not what follows the rule.
   writeFileSync(join(jm, 'mn-hr.md'), '---\n---\nlemur is in the first part\n\n---\n\nthe second part\n');
-  ok(/mn-hr\.md/.test(jcli('search', 'lemur').stdout), 'a note with an empty frontmatter and a later rule is searched from after its frontmatter');
+  ok(/mn-hr\.md/.test((await jcli('search', 'lemur')).stdout), 'a note with an empty frontmatter and a later rule is searched from after its frontmatter');
   // A note whose stat fails has no date: it ranks below one stamped a millisecond after the epoch, whatever order the stores are read in.
   memory(jm, 'mn-nostat', 'pangolin');
   memory(shared, 'mn-stamped', 'pangolin', 'body', '  modified: 1970-01-01T00:00:00.001Z\n');
   const stat = fsm.statSync;
   fsm.statSync = (p, o) => { if (o === undefined && String(p).endsWith('mn-nostat.md')) throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' }); return stat(p, o); };
   syncBuiltinESMExports();
-  try { r = jcli('search', 'pangolin'); } finally { fsm.statSync = stat; syncBuiltinESMExports(); rmSync(join(shared, 'mn-stamped.md'), { force: true }); }
+  try { r = await jcli('search', 'pangolin'); } finally { fsm.statSync = stat; syncBuiltinESMExports(); rmSync(join(shared, 'mn-stamped.md'), { force: true }); }
   ok(r.stdout.indexOf('mn-stamped.md') !== -1 && r.stdout.indexOf('mn-stamped.md') < r.stdout.indexOf('mn-nostat.md'), `a note whose stat fails ranks below one stamped 1 ms after the epoch (got ${r.stdout})`);
   // A term in a file name counts 3 (and the +5 for every term), and a body's count is capped at 2 (+2 for every term).
   memory(jm, 'mn-ostrich', 'plain', 'x');
   memory(jm, 'mn-capped', 'plain', 'ostrich '.repeat(4));
-  r = jcli('search', 'ostrich');
+  r = await jcli('search', 'ostrich');
   ok(scoreOf(r.stdout, 'mn-ostrich.md') === 8 && scoreOf(r.stdout, 'mn-capped.md') === 4, `a term in the name scores 3, one repeated in the body at most 2 (got ${r.stdout})`);
   // A term the note lacks earns nothing, and no bonus: the bonus is for every term.
-  r = jcli('search', 'ostrich', 'emu');
+  r = await jcli('search', 'ostrich', 'emu');
   ok(scoreOf(r.stdout, 'mn-ostrich.md') === 3 && scoreOf(r.stdout, 'mn-capped.md') === 2, `a note with one of two terms scores only what that term earns (got ${r.stdout})`);
 
   // A stretch that ends before the text does ends with an ellipsis; one past the room is cut to the room exactly; a three-letter term shows its stretch.
   const tail = fill(100) + 'omega' + fill(300), cutme = fill(100) + 'omega' + [1, 2, 3, 4, 5].map(() => fill(400) + 'omega').join('');
   day(jm, '2026-10-25', [entry('2026-10-25 10:00', 'omega tail', { answered: tail }), entry('2026-10-25 10:01', 'omega cut', { answered: cutme }), entry('2026-10-25 10:02', 'plain request', { answered: 'a concatenated string' })]);
-  r = jcli('search', 'omega');
+  r = await jcli('search', 'omega');
   const ans = (out, marker) => (blocks(out).find((b) => b.includes(marker))?.split('\n').find((l) => l.startsWith('     Answered: ')) ?? '').slice('     Answered: '.length);
   ok(ans(r.stdout, 'Asked: omega tail') === `…${tail.slice(20, 185)}…`, `a stretch that stops before the end of the text ends with an ellipsis (got ${ans(r.stdout, 'Asked: omega tail')})`);
   const cut = ans(r.stdout, 'Asked: omega cut');
   ok(cut.length === 800 && cut.startsWith('…') && cut.endsWith('…'), `stretches past the room are cut to 800 characters, ellipsis included (got ${cut.length})`);
-  ok(ans(jcli('search', 'cat').stdout, 'Asked: plain request').includes('concatenated'), 'a three-letter term shows its stretch inside a longer word');
+  ok(ans((await jcli('search', 'cat')).stdout, 'Asked: plain request').includes('concatenated'), 'a three-letter term shows its stretch inside a longer word');
 
   // The first column: a score is right-aligned to 3, the kind padded to 9.
-  r = jcli('search', 'zork', 'quux');
+  r = await jcli('search', 'zork', 'quux');
   ok(/^  6  journal   2026-10-20 10:00  conversation c0ffee12$/m.test(r.stdout) && /^  5  unindexed \d{4}-\d\d-\d\d  \S/m.test(r.stdout), `a hit's line is the score in 3 columns, the kind in 9 (got ${r.stdout})`);
-  r = cli('search', 'deploy');
+  r = await cli('search', 'deploy');
   ok(/^ +\d+  hot {7}\d{4}-\d\d-\d\d  /m.test(r.stdout) && /^ +\d+  archived {2}\d{4}-\d\d-\d\d  /m.test(r.stdout), `hot and archived hits are padded to 9 (got ${r.stdout})`);
 
   // --limit 1 lists one; forget --key as the last word is a key; a key and a word that misses blame the word.
-  r = jcli('search', '--since', '2026-10-21', '--until', '2026-10-21', '--limit', '1');
+  r = await jcli('search', '--since', '2026-10-21', '--until', '2026-10-21', '--limit', '1');
   ok(/^1 of 3 journal entries in [^;\n]+; --limit N shows more$/m.test(r.stdout), `--limit 1 lists one of the range (got ${r.stdout})`);
-  r = run(['forget', '--store', jm, '--key', 'ma000']);
+  r = await run(['forget', '--store', jm, '--key', 'ma000']);
   ok(r.status === 0 && r.stdout.includes('(key ma000)') && /^1 entry in /m.test(r.stdout), `--key as the last word names its entry (got ${r.stdout})`);
-  r = run(['forget', 'zzzz', '--store', jm, '--key', 'ma000']);
+  r = await run(['forget', 'zzzz', '--store', jm, '--key', 'ma000']);
   ok(r.stdout.trim() === `nothing in ${jm} matches: no entry holds "zzzz"`, `a word that misses, with a key that exists, is blamed (got ${r.stdout})`);
   // --help as an option's value is a value.
-  r = run(['status', '--conversation', '--help', '--store', jm]);
-  ok(r.status === 0 && r.stdout.startsWith(`${jm}\n`) && !/node memory\.mjs <command>/.test(r.stdout) && /node memory\.mjs <command>/.test(run(['status', '--help']).stdout), `--help after an option that takes a value is its value, not a request for the usage (got ${r.stdout})`);
+  r = await run(['status', '--conversation', '--help', '--store', jm]);
+  ok(r.status === 0 && r.stdout.startsWith(`${jm}\n`) && !/node memory\.mjs <command>/.test(r.stdout) && /node memory\.mjs <command>/.test((await run(['status', '--help'])).stdout), `--help after an option that takes a value is its value, not a request for the usage (got ${r.stdout})`);
 
   // A range forget names its first and last day; the snapshots' days are listed six at a time.
   const old7 = mdir('C--mutB-old'), days7 = [1, 2, 3, 4, 5, 6, 7].map((d) => `2025-02-0${d}`);
   for (const d of days7) day(old7, d, [{ ...entry(`${d} 10:00`, `old ${d}`), key: `ob${d.slice(-1)}` }]);
-  r = run(['forget', '--since', days7[0], '--until', days7[6], '--store', old7]);
+  r = await run(['forget', '--since', days7[0], '--until', days7[6], '--store', old7]);
   ok(r.status === 0 && r.stdout.includes(`7 entries in ${old7} from 2025-02-01 to 2025-02-07 would go; run again with --yes to remove them`), `a range forget says from which day to which (got ${r.stdout})`);
-  r = run(['forget', '--since', days7[0], '--until', days7[6], '--yes', '--store', old7]);
+  r = await run(['forget', '--since', days7[0], '--until', days7[6], '--yes', '--store', old7]);
   ok(r.status === 0 && r.stdout.includes('the snapshots still hold the journal of 2025-02-01, 2025-02-02, 2025-02-03, 2025-02-04, 2025-02-05, 2025-02-06, and 1 more: ') && r.stdout.includes(`removed 7 from ${old7}`), `seven days in the snapshots: six listed, and 1 more (got ${r.stdout})`);
 
   // status: the handoff's exchanges, sessions and newest; the week's changes six at a time.
   const ho = mdir('C--mutB-ho');
   writeFileSync(join(ho, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written._\n\n- **asked** 2025-10-20 09:00 [aaaa1111]: first\n  **did:** done\n- **asked** 2025-10-21 09:00 [bbbb2222]: second\n  **did:** done\n<!-- auto:end -->\n');
-  r = run(['status', '--store', ho]);
+  r = await run(['status', '--store', ho]);
   ok(/^  handoff: 2 exchanges from 2 session\(s\), newest 2025-10-21 09:00$/m.test(r.stdout), `status names the newest exchange, the last one (got ${r.stdout})`);
   const wk = mdir('C--mutB-wk');
   for (const c of 'abcdefg') memory(wk, `wk-${c}`, `week note ${c}`);
   writeFileSync(join(wk, 'MEMORY.md'), '# Index\n\n' + [...'abcdefg'].map((c) => `- [Wk ${c}](wk-${c}.md) — week note ${c}`).join('\n') + '\n');
   ok(tier().status === 0, 'the snapshot of the week fixture is made');
-  r = run(['status', '--store', wk]);
+  r = await run(['status', '--store', wk]);
   ok(/changed in the last 7 days: added wk-a, wk-b, wk-c, wk-d, wk-e, wk-f, and 1 more$/m.test(r.stdout), `seven notes added this week: six named, and 1 more (got ${r.stdout})`);
 
   // Spawned: no word at all is the status; three stores are counted, not named.
@@ -1508,28 +1506,28 @@ if (!quick) {
   rmSync(join(live, '.deployed.json'), { force: true });
   writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: new Date().toISOString(), failures: 0 }));
   ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
-  r = cli('doctor');
+  r = await cli('doctor');
   ok(r.status === 0 && !/^PROBLEM/m.test(r.stdout) && /^ok +installed as project-memory@project-memory$/m.test(r.stdout) && /^ok +git on PATH$/m.test(r.stdout) && !/locks a killed hook left/.test(r.stdout), `a healthy doctor says ok and exits 0 (got ${r.stdout})`);
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
-  try { r = cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  try { r = await cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   ok(r.status === 0 && /^ok +auto memory is off \(CLAUDE_CODE_DISABLE_AUTO_MEMORY\)/m.test(r.stdout), `auto memory off is said, and is no problem (got ${r.stdout})`);
   writeFileSync(join(live, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: {} }));
-  r = cli('doctor');
+  r = await cli('doctor');
   ok(r.status === 0 && r.stdout.includes(`ok      ${live} matches what deploy.mjs checked\n`), `a live copy that matches its deploy says so (got ${r.stdout})`);
   writeFileSync(join(live, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: { 'gone.mjs': '0' } }));
-  r = cli('doctor');
+  r = await cli('doctor');
   ok(r.status === 1 && /^PROBLEM Memory hooks changed outside deploy\.mjs, live and untested: gone\.mjs in /m.test(r.stdout), `a live copy edited since its deploy is a problem (got ${r.stdout})`);
   rmSync(join(live, '.deployed.json'));
   writeFileSync(join(home, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@project-memory': [{}] } }));
-  r = cli('doctor');
+  r = await cli('doctor');
   ok(r.status === 1 && /^PROBLEM project-memory@project-memory is listed as installed, but with no folder/m.test(r.stdout), `an install with no folder is a problem (got ${r.stdout})`);
   installed('project-memory@project-memory', gh, { source: 'github', repo: 'zdraveski/project-memory' });
   // Two runs exactly TWICE (2000 ms) apart are two replies; 1999 ms is one answered twice.
   const base = Date.now() - 60_000;
   ranLog({ at: iso(base), s: 'aaaaaaaa', from: 'C:/x' }, { at: iso(base + 2000), s: 'aaaaaaaa', from: 'C:/x' });
-  ok(!/ran twice/.test(cli('doctor').stdout), 'two runs 2000 ms apart are not hooks wired twice');
+  ok(!/ran twice/.test((await cli('doctor')).stdout), 'two runs 2000 ms apart are not hooks wired twice');
   ranLog({ at: iso(base), s: 'aaaaaaaa', from: 'C:/x' }, { at: iso(base + 1999), s: 'aaaaaaaa', from: 'C:/x' });
-  ok(/ran twice/.test(cli('doctor').stdout), 'two runs 1999 ms apart are');
+  ok(/ran twice/.test((await cli('doctor')).stdout), 'two runs 1999 ms apart are');
   ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
   // A lock is a killed hook's only past LOCK_STALE; a store with none is not listed.
   const lock = join(dir, '.lock'), realNow = Date.now;
@@ -1539,9 +1537,9 @@ if (!quick) {
     utimesSync(lock, old, old);
     const mt = statSync(lock).mtimeMs;
     Date.now = () => mt + LOCK_STALE;
-    const edge = cli('doctor');
+    const edge = await cli('doctor');
     Date.now = () => mt + LOCK_STALE + 1;
-    const past = cli('doctor');
+    const past = await cli('doctor');
     ok(!/locks a killed hook left/.test(edge.stdout) && past.status === 0 && new RegExp(`^ok +locks a killed hook left, taken over at the next write: ${lock.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}$`, 'm').test(past.stdout), `a lock exactly LOCK_STALE old is not stale, one ms more is (got ${edge.stdout} / ${past.stdout})`);
   } finally { Date.now = realNow; rmSync(lock, { recursive: true, force: true }); }
   // The reply that ended exactly GRACE ago is still waited for.
@@ -1550,9 +1548,9 @@ if (!quick) {
   writeFileSync(join(dirname(dir), 'sess-g.jsonl'), turn(T0 - GRACE));
   try {
     Date.now = () => T0;
-    const waiting = run(['doctor', '--session', 'sess-g']);
+    const waiting = await run(['doctor', '--session', 'sess-g']);
     Date.now = () => T0 + 1;
-    const dead = run(['doctor', '--session', 'sess-g']);
+    const dead = await run(['doctor', '--session', 'sess-g']);
     ok(/^ok +waiting for Claude's first reply/m.test(waiting.stdout) && /^PROBLEM Claude finished a reply at /m.test(dead.stdout), `a reply GRACE old is waited for, one ms more is a dead hook (got ${waiting.stdout} / ${dead.stdout})`);
   } finally { Date.now = realNow; rmSync(join(dirname(dir), 'sess-g.jsonl')); }
   // The session's own transcript decides which folder is read, not the folder doctor runs in.
@@ -1574,7 +1572,7 @@ if (!quick) {
   ranLog({ at: ago(20 * 60_000), s: 'aaaaaaaa', from: 'C:/x' });
   utimesSync(join(root, '.stop-ran'), new Date(T0 - 20 * 60_000), new Date(T0 - 20 * 60_000));
   utimesSync(theirs, new Date(T0 - 5 * 60_000), new Date(T0 - 5 * 60_000));
-  try { r = run(['doctor', '--session', 'aaaaaaaa-s']); } finally { rmSync(mine, { force: true }); rmSync(theirs, { force: true }); }
+  try { r = await run(['doctor', '--session', 'aaaaaaaa-s']); } finally { rmSync(mine, { force: true }); rmSync(theirs, { force: true }); }
   ok(r.status === 1 && /^PROBLEM Memory hooks look stopped: \[aaaaaaaa\] finished a reply at /m.test(r.stdout), `doctor judges the newest conversation, this session's own, as well as the newest other (got ${r.stdout})`);
 }
 

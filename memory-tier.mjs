@@ -10,7 +10,7 @@
 
 import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason } from './store.mjs';
 
@@ -41,13 +41,15 @@ const GIT_LOCK_STALE = 10 * 60000;  // an index.lock this old outlived the git t
 const RULE_SHARE = 0.5;
 const LINES = 200;   // of MEMORY.md, all Claude Code loads at a session's start
 const DAY = 86400000;
-const dry = process.argv.includes('--dry-run');
+// Set from the arguments by main() at each start, before anything reads them:
+// the suite runs main() many times in one process, and one run's --dry-run
+// must not reach the next.
+let dry;
 // `--pause <ms>` holds a pass open between computing and writing it, so a test
 // can land an edit in that window, and says `paused` on stderr as it starts:
 // waited out instead, 1.5 s, the test guessed how long a loaded box takes to
 // start. Test-only, like `--now`.
-const pauseAt = process.argv.indexOf('--pause');
-const PAUSE = pauseAt === -1 ? 0 : Number(process.argv[pauseAt + 1]) || 0;
+let PAUSE;
 
 // A killed process must not leave a half-written index (temp + rename), and a
 // write must not land over an edit this pass did not see (store.mjs). Nothing
@@ -335,13 +337,14 @@ function gitignore() {
 // this tool made before it marked them.
 const IGNORE_HEAD = '*\n!*/\n!*/memory/*.md\n';
 
-let missed = [];   // stores the snapshot cannot reach: set by snapshot(), kept by snapshotHealth()
+let missed = [];   // stores the snapshot cannot reach: set by snapshot(), kept by snapshotHealth(), emptied by main()
 function snapshot() {
   const root = projectsRoot();
   // The C locale: "nothing to commit" is matched below, in git's English. (Git
   // for Windows here prints English whatever LC_ALL says, so no check sees it.)
-  // Set on this short-lived process, which git inherits: no copy of the
-  // environment is handed on.
+  // Set on this process, which git inherits: no copy of the environment is
+  // handed on. Put back at the end: main() may run in a test's process.
+  const lc = process.env.LC_ALL;
   process.env.LC_ALL = 'C';
   // A git that hangs (a prompt nobody sees) must not hold the Stop hook.
   const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 });
@@ -458,7 +461,7 @@ function snapshot() {
     // "Permission denied" are a history that can never commit, and busy hid it.
     if (/\.lock'?: File exists|cannot lock ref '[^']*': is at |reference already exists|could not lock config file .*: File exists|cannot copy .* File exists/.test(why)) return 'busy';
     return `snapshot failed: ${why}`;
-  }
+  } finally { if (lc === undefined) delete process.env.LC_ALL; else process.env.LC_ALL = lc; }
 }
 
 // The only route to the owner's eyes: Stop output is shown to nobody, and the
@@ -487,157 +490,181 @@ function snapshotHealth(s) {
   try { writeFileSync(p, JSON.stringify(next)); } catch {}
 }
 
-// `--now <ms>` exists so a month of use can be simulated in one run
-// (memory-tier.soak.mjs). Nothing else sets it.
-const nowAt = process.argv.indexOf('--now');
-const now = nowAt !== -1 ? Number(process.argv[nowAt + 1]) : Date.now();
+// A run: its arguments and, behind --stop, stdin's text; it returns the exit
+// code. The entry at the end calls it once, the suite many times in its own
+// process, as memory.test.mjs calls memory.mjs's: a process a check cost ~0.2 s.
+export async function main(argv, input) {
+  dry = argv.includes('--dry-run');
+  const pauseAt = argv.indexOf('--pause');
+  PAUSE = pauseAt === -1 ? 0 : Number(argv[pauseAt + 1]) || 0;
+  missed = [];
+  // `--now <ms>` exists so a month of use can be simulated in one run
+  // (memory-tier.soak.mjs). Nothing else sets it.
+  const nowAt = argv.indexOf('--now');
+  const now = nowAt !== -1 ? Number(argv[nowAt + 1]) : Date.now();
 
-// `--stop`: the Stop hook. The payload is on stdin (read only behind the flag,
-// so a manual run never blocks on a terminal). The handoff is written first, in
-// this process -- a second Node start cost a median 200 ms a turn on this box.
-const stop = process.argv.includes('--stop');
-// A reader gone before the nudge is written: its EPIPE, thrown with no
-// listener, exited the Stop 1 (P1 hunt, 2026-10-29).
-process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
-// Auto memory turned off: no record, no nudge, no tiering. Only the
-// conversation's tag, so no later Stop's backfill imports it (handoff-log OFF).
-if (stop && memoryOff()) {
-  try {
-    const p = JSON.parse(readFileSync(0, 'utf8'));
-    (await import(new URL('./handoff-log.mjs', import.meta.url))).off(p);
-  } catch {}
-  process.exit(0);
-}
-let payload = null;
-if (stop) {
-  try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch {}
-  // Two tries, not one: a handoff that fails to write (two sessions renaming
-  // over the same store at once) must not also skip the nudge -- that was
-  // the one Stop the nudge exists for.
-  try {
-    const { handoff } = await import(new URL('./handoff-log.mjs', import.meta.url));
-    // Proof of life for the startup line (handoff-log's stalled()), once the
-    // handoff has loaded: Stop output reaches nobody, so a hook that stopped
-    // running was silence.
-    // One line a run: when, which conversation, which copy. Two runs for one
-    // reply, seconds apart, are hooks wired twice (memory.mjs doctor, which
-    // reads this and never settings.json). Appended, so two copies running at
-    // once both land; cut back to the newest 20 past 8 KB.
+  // `--stop`: the Stop hook. The payload is `input`, stdin's text (the entry
+  // reads it only behind the flag, so a manual run never blocks on a
+  // terminal). The handoff is written first, in this process -- a second Node
+  // start cost a median 200 ms a turn on this box.
+  const stop = argv.includes('--stop');
+  // Auto memory turned off: no record, no nudge, no tiering. Only the
+  // conversation's tag, so no later Stop's backfill imports it (handoff-log OFF).
+  if (stop && memoryOff()) {
     try {
-      const ran = join(projectsRoot(), '.stop-ran');
-      // The event too, and whether a block sent it back: a /compact typed
-      // right after a reply, or a reply to the nudge, is a second run seconds
-      // later, not a second wiring.
-      // On a line of its own: before 1.0.7 the file was one time and no newline.
-      const prev = raw(ran);
-      appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
-      if (statSync(ran).size > 8192) writeFileSync(ran, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
+      const p = JSON.parse(input);
+      (await import(new URL('./handoff-log.mjs', import.meta.url))).off(p);
     } catch {}
-    // One that throws (a store folder that takes no new files) is kept in a
-    // file the next start reads: swallowed, nothing was saved, and nothing said.
-    // One per project, beside the projects, not in the store that refused it:
-    // shared, another project's next save cleared this one's.
-    const failed = join(projectsRoot(), `.handoff-failed-${basename(dirname(storeOf(payload || {})))}`);
-    // The journal in a try of its own: a journal.mjs that cannot load costs
-    // the journal, never the handoff.
-    let sink = null;
-    try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
-    try { if (payload) handoff(payload, sink); try { unlinkSync(failed); } catch {} }
-    catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); }
-    // Then a few of the conversations still on disk, into the journal, without
-    // a word; in a try of its own, so a failed import costs only the import.
-    // Not due, no lock taken: another hook holding the store cost the Stop a
-    // second wait to learn there was nothing to do.
+    return 0;
+  }
+  let payload = null;
+  if (stop) {
+    try { payload = JSON.parse(input); } catch {}
+    // Two tries, not one: a handoff that fails to write (two sessions renaming
+    // over the same store at once) must not also skip the nudge -- that was
+    // the one Stop the nudge exists for.
     try {
-      const { backfill, due, JOURNAL } = await import(new URL('./journal.mjs', import.meta.url)), d = payload && storeOf(payload);
-      if (d && due(d) && (existsSync(join(d, JOURNAL)) || readdirSync(dirname(d)).some((f) => f.endsWith('.jsonl')))) withLock(d, () => backfill(d, { skip: payload.transcript_path }));
+      const { handoff } = await import(new URL('./handoff-log.mjs', import.meta.url));
+      // Proof of life for the startup line (handoff-log's stalled()), once the
+      // handoff has loaded: Stop output reaches nobody, so a hook that stopped
+      // running was silence.
+      // One line a run: when, which conversation, which copy. Two runs for one
+      // reply, seconds apart, are hooks wired twice (memory.mjs doctor, which
+      // reads this and never settings.json). Appended, so two copies running at
+      // once both land; cut back to the newest 20 past 8 KB.
+      try {
+        const ran = join(projectsRoot(), '.stop-ran');
+        // The event too, and whether a block sent it back: a /compact typed
+        // right after a reply, or a reply to the nudge, is a second run seconds
+        // later, not a second wiring.
+        // On a line of its own: before 1.0.7 the file was one time and no newline.
+        const prev = raw(ran);
+        appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
+        if (statSync(ran).size > 8192) writeFileSync(ran, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
+      } catch {}
+      // One that throws (a store folder that takes no new files) is kept in a
+      // file the next start reads: swallowed, nothing was saved, and nothing said.
+      // One per project, beside the projects, not in the store that refused it:
+      // shared, another project's next save cleared this one's.
+      const failed = join(projectsRoot(), `.handoff-failed-${basename(dirname(storeOf(payload || {})))}`);
+      // The journal in a try of its own: a journal.mjs that cannot load costs
+      // the journal, never the handoff.
+      let sink = null;
+      try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
+      try { if (payload) handoff(payload, sink); try { unlinkSync(failed); } catch {} }
+      catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); }
+      // Then a few of the conversations still on disk, into the journal, without
+      // a word; in a try of its own, so a failed import costs only the import.
+      // Not due, no lock taken: another hook holding the store cost the Stop a
+      // second wait to learn there was nothing to do.
+      try {
+        const { backfill, due, JOURNAL } = await import(new URL('./journal.mjs', import.meta.url)), d = payload && storeOf(payload);
+        if (d && due(d) && (existsSync(join(d, JOURNAL)) || readdirSync(dirname(d)).some((f) => f.endsWith('.jsonl')))) withLock(d, () => backfill(d, { skip: payload.transcript_path }));
+      } catch {}
     } catch {}
-  } catch {}
-  try {
-    // Past the compaction trigger, the next prompt compacts: nudge this stop
-    // once so memory is written first (compact-gate.mjs). Printed alone --
-    // a Stop hook's output is JSON on stdout, and the tiering lines below would
-    // break it; tiering waits for the next turn, which redoes it anyway.
-    const nudge = payload && (await import(new URL('./compact-gate.mjs', import.meta.url))).nudge(payload);
-    // Exit once it is written: on macOS a pipe is written asynchronously, and
-    // an exit right after a write can cut it (handoff-log's --print, CI 2026-10-29).
-    if (nudge) { await new Promise((done) => process.stdout.write(JSON.stringify(nudge) + '\n', done)); process.exit(0); }
-  } catch {}
+    try {
+      // Past the compaction trigger, the next prompt compacts: nudge this stop
+      // once so memory is written first (compact-gate.mjs). Printed alone --
+      // a Stop hook's output is JSON on stdout, and the tiering lines below would
+      // break it; tiering waits for the next turn, which redoes it anyway.
+      const nudge = payload && (await import(new URL('./compact-gate.mjs', import.meta.url))).nudge(payload);
+      // Done once it is written: on macOS a pipe is written asynchronously, and
+      // an exit right after a write can cut it (handoff-log's --print, CI 2026-10-29).
+      if (nudge) { await new Promise((done) => process.stdout.write(JSON.stringify(nudge) + '\n', done)); return 0; }
+    } catch {}
+  }
+
+  const dirAt = argv.indexOf('--dir');
+  if (dirAt !== -1 && !argv[dirAt + 1]) { console.log('--dir needs a path'); return 1; }
+  // A Stop tiers its own session's store and no other. Every Stop once walked all
+  // sixteen: a session in one project rewrote another's index while that
+  // session's model was editing it -- 74 of 120 fresh pointers replaced by
+  // recovered machine lines in the race probe (2026-10-26). A manual run still
+  // walks them all. The shared store is every project's, so any Stop may tier it,
+  // under its own lock, when it changed.
+  const dirs = dirAt !== -1 ? [argv[dirAt + 1]]
+    : stop ? [(() => { try { return storeOf(payload || {}); } catch { return null; } })(), sharedStore()].filter((d) => d && existsSync(join(d, 'MEMORY.md')))
+    : allStores();
+
+  // Then only do the rest when a memory in the store changed. handoff.md changes
+  // every turn and is left out; every other file's name, size and mtime is the
+  // fingerprint. The pass plus git cost a median 600 ms under load, and on most
+  // turns nothing has changed. The date is part of it: the windows are
+  // time-based, so a quiet store is still re-tiered once a day. The stamp lives in
+  // its store, so sessions of different projects never share one.
+  const stampOf = (d) => join(d, '.tiered');
+  const fingerprint = (d) => new Date().toDateString() + JSON.stringify(readdirSync(d)
+    .filter((f) => f.endsWith('.md') && f !== 'handoff.md')
+    .map((f) => { const s = statSync(join(d, f)); return [f, s.size, s.mtimeMs]; }));
+  const gated = stop && !dry && dirAt === -1;
+  const todo = gated ? dirs.filter((d) => { try { return readFileSync(stampOf(d), 'utf8') !== fingerprint(d); } catch { return true; } }) : dirs;
+  if (gated && !todo.length) return 0;
+  // The first time, the notebook is kept as it was found before the tidy-up
+  // changes it: snapshotted after, the table of contents as the user had
+  // written it could never come back (docs review, 2026-10-28).
+  if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot();
+
+  const clean = [];
+  for (const dir of todo) {
+    // One unreadable store must not stop the others. This runs as a Stop hook,
+    // where a thrown error is a stack trace nobody reads.
+    let r;
+    try { r = withLock(dir, () => tier(dir, now)); }
+    catch (e) { console.log(`${dir}: skipped — ${reason(e)}`); if (!dry) try { health(dir, [`a pass failed: ${reason(e)}`]); } catch {} continue; }
+    if (r === null) { console.log(`${dir}: busy — another hook holds this store; the next turn redoes it`); continue; }
+    if (r.conflict) { console.log(`${dir}: changed during the pass — the edit wins; the next turn redoes it`); continue; }
+    const problems = [];
+    if (r.missing.length) problems.push(`pointers with no file: ${r.missing.join(', ')}`);
+    if (r.merged) problems.push('merge-conflict markers in MEMORY.md (<<<<<<< ======= >>>>>>>): every session loads them as they are; resolve them by hand');
+    if (r.odd.length) problems.push(`file names an index line cannot point at, so they are unlisted (rename them): ${r.odd.join(', ')}`);
+    // Say so when the hooks have drifted back into being content.
+    // With no line in it, it is the prose at the top: "InfinityB a line" said nothing.
+    if (r.after > r.budget) problems.push(`over budget: ${r.after}B > ${r.budget}B — ${r.hot ? `${Math.round(r.after / r.hot)}B a line; shorten the text after each link rather than removing lines` : 'the text above the lines; shorten it'}`);
+    // A file an editor or a scanner holds costs this turn's note, never the hook.
+    if (!dry) try { health(dir, problems); } catch {}
+    // The stamp is what this pass saw, taken before the snapshot: a memory
+    // another session writes while git runs differs from it, and the next turn
+    // takes it up. Taken after the snapshot, it skipped that memory for a day.
+    if (!r.waiting && gated) try { clean.push([dir, fingerprint(dir)]); } catch {}
+    if (!dry && !r.wrote && !r.recovered.length && !r.dupes.length && !r.missing.length) continue;
+    const saved = Math.round((r.before - r.after) / 4);
+    console.log(`${dry ? '[dry] ' : ''}${r.dir}: ${r.hot} hot / ${r.cold} archived, ` +
+      `MEMORY.md ${r.before}B -> ${r.after}B (~${saved} tokens/session)`);
+    if (r.recovered.length) console.log(`  pointers recovered: ${r.recovered.join(', ')}`);
+    if (r.dupes.length) console.log(`  duplicate pointers dropped: ${r.dupes.join(', ')}`);
+    for (const p of problems) console.log(`  ${p}`);
+  }
+
+  // After the stores are tiered, not before: the snapshot should record the
+  // state a session will actually start from.
+  let snapOk = true;
+  if (!dry && dirAt === -1) {
+    const s = snapshot();
+    if (s === 'busy') console.log('memory snapshot: busy — another session is committing; the next turn retries');
+    else if (s) console.log(`memory snapshot: ${s}`);
+    snapshotHealth(s);
+    snapOk = s !== 'busy' && !(s && s.startsWith('snapshot failed'));
+  }
+  // The tool's own writes are part of the stamp, so the next turn is quiet
+  // unless something else changed. None for a store that was skipped, busy,
+  // edited mid-pass or waiting on a writer, nor when the snapshot failed:
+  // without a stamp the next turn retries, with one it would skip for days.
+  if (gated && snapOk) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen); } catch {}
+  return 0;
 }
 
-const dirAt = process.argv.indexOf('--dir');
-if (dirAt !== -1 && !process.argv[dirAt + 1]) { console.log('--dir needs a path'); process.exit(1); }
-// A Stop tiers its own session's store and no other. Every Stop once walked all
-// sixteen: a session in one project rewrote another's index while that
-// session's model was editing it -- 74 of 120 fresh pointers replaced by
-// recovered machine lines in the race probe (2026-10-26). A manual run still
-// walks them all. The shared store is every project's, so any Stop may tier it,
-// under its own lock, when it changed.
-const dirs = dirAt !== -1 ? [process.argv[dirAt + 1]]
-  : stop ? [(() => { try { return storeOf(payload || {}); } catch { return null; } })(), sharedStore()].filter((d) => d && existsSync(join(d, 'MEMORY.md')))
-  : allStores();
-
-// Then only do the rest when a memory in the store changed. handoff.md changes
-// every turn and is left out; every other file's name, size and mtime is the
-// fingerprint. The pass plus git cost a median 600 ms under load, and on most
-// turns nothing has changed. The date is part of it: the windows are
-// time-based, so a quiet store is still re-tiered once a day. The stamp lives in
-// its store, so sessions of different projects never share one.
-const stampOf = (d) => join(d, '.tiered');
-const fingerprint = (d) => new Date().toDateString() + JSON.stringify(readdirSync(d)
-  .filter((f) => f.endsWith('.md') && f !== 'handoff.md')
-  .map((f) => { const s = statSync(join(d, f)); return [f, s.size, s.mtimeMs]; }));
-const gated = stop && !dry && dirAt === -1;
-const todo = gated ? dirs.filter((d) => { try { return readFileSync(stampOf(d), 'utf8') !== fingerprint(d); } catch { return true; } }) : dirs;
-if (gated && !todo.length) process.exit(0);
-// The first time, the notebook is kept as it was found before the tidy-up
-// changes it: snapshotted after, the table of contents as the user had
-// written it could never come back (docs review, 2026-10-28).
-if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot();
-
-const clean = [];
-for (const dir of todo) {
-  // One unreadable store must not stop the others. This runs as a Stop hook,
-  // where a thrown error is a stack trace nobody reads.
-  let r;
-  try { r = withLock(dir, () => tier(dir, now)); }
-  catch (e) { console.log(`${dir}: skipped — ${reason(e)}`); if (!dry) try { health(dir, [`a pass failed: ${reason(e)}`]); } catch {} continue; }
-  if (r === null) { console.log(`${dir}: busy — another hook holds this store; the next turn redoes it`); continue; }
-  if (r.conflict) { console.log(`${dir}: changed during the pass — the edit wins; the next turn redoes it`); continue; }
-  const problems = [];
-  if (r.missing.length) problems.push(`pointers with no file: ${r.missing.join(', ')}`);
-  if (r.merged) problems.push('merge-conflict markers in MEMORY.md (<<<<<<< ======= >>>>>>>): every session loads them as they are; resolve them by hand');
-  if (r.odd.length) problems.push(`file names an index line cannot point at, so they are unlisted (rename them): ${r.odd.join(', ')}`);
-  // Say so when the hooks have drifted back into being content.
-  // With no line in it, it is the prose at the top: "InfinityB a line" said nothing.
-  if (r.after > r.budget) problems.push(`over budget: ${r.after}B > ${r.budget}B — ${r.hot ? `${Math.round(r.after / r.hot)}B a line; shorten the text after each link rather than removing lines` : 'the text above the lines; shorten it'}`);
-  // A file an editor or a scanner holds costs this turn's note, never the hook.
-  if (!dry) try { health(dir, problems); } catch {}
-  // The stamp is what this pass saw, taken before the snapshot: a memory
-  // another session writes while git runs differs from it, and the next turn
-  // takes it up. Taken after the snapshot, it skipped that memory for a day.
-  if (!r.waiting && gated) try { clean.push([dir, fingerprint(dir)]); } catch {}
-  if (!dry && !r.wrote && !r.recovered.length && !r.dupes.length && !r.missing.length) continue;
-  const saved = Math.round((r.before - r.after) / 4);
-  console.log(`${dry ? '[dry] ' : ''}${r.dir}: ${r.hot} hot / ${r.cold} archived, ` +
-    `MEMORY.md ${r.before}B -> ${r.after}B (~${saved} tokens/session)`);
-  if (r.recovered.length) console.log(`  pointers recovered: ${r.recovered.join(', ')}`);
-  if (r.dupes.length) console.log(`  duplicate pointers dropped: ${r.dupes.join(', ')}`);
-  for (const p of problems) console.log(`  ${p}`);
+// Node names the script by its real path: compared with the path it was
+// given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
+// The code as exitCode, not process.exit(): on macOS a pipe is written
+// asynchronously, and an exit right after a write can cut it.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  // A reader gone before the nudge is written: its EPIPE, thrown with no
+  // listener, exited the Stop 1 (P1 hunt, 2026-10-29).
+  process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
+  const argv = process.argv.slice(2);
+  // stdin only behind --stop: a manual run never blocks on a terminal. One that
+  // cannot be read is no payload, as before.
+  let input;
+  if (argv.includes('--stop')) try { input = readFileSync(0, 'utf8'); } catch {}
+  process.exitCode = await main(argv, input);
 }
-
-// After the stores are tiered, not before: the snapshot should record the
-// state a session will actually start from.
-let snapOk = true;
-if (!dry && dirAt === -1) {
-  const s = snapshot();
-  if (s === 'busy') console.log('memory snapshot: busy — another session is committing; the next turn retries');
-  else if (s) console.log(`memory snapshot: ${s}`);
-  snapshotHealth(s);
-  snapOk = s !== 'busy' && !(s && s.startsWith('snapshot failed'));
-}
-// The tool's own writes are part of the stamp, so the next turn is quiet
-// unless something else changed. None for a store that was skipped, busy,
-// edited mid-pass or waiting on a writer, nor when the snapshot failed:
-// without a stamp the next turn retries, with one it would skip for days.
-if (gated && snapOk) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen); } catch {}

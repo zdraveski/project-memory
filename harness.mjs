@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, existsSync, rmSync, realpathSyn
 import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { format } from 'node:util';
 
 // mutate.mjs runs a suite with --mutant: its slow blocks (big fixtures, a held
 // lock waited out, races, timing) are skipped, and a mutant only they kill is
@@ -15,6 +16,20 @@ export function fastClock(fn) {
   let t = clock();
   Date.now = () => (t += 500);
   try { return fn(); } finally { Date.now = clock; }
+}
+
+// A tool's main() run in this process, its console.log lines as its stdout:
+// a process a call cost ~0.2 s. Through util.format, as console.log writes,
+// and then through UTF-8, as a process's output reaches the reader: half an
+// emoji is U+FFFD there (GitHub's mutate run, 2026-10-30). value is what fn
+// returned, awaited; a throw passes through. One at a time: two at once
+// would each put back the other's console.log.
+export async function capture(fn) {
+  const lines = [], log = console.log;
+  console.log = (...a) => { lines.push(format(...a)); };
+  let value;
+  try { value = await fn(); } finally { console.log = log; }
+  return { out: Buffer.from(lines.map((l) => `${l}\n`).join(''), 'utf8').toString('utf8'), value };
 }
 
 // Path of a sibling tool, as execFileSync wants it.
