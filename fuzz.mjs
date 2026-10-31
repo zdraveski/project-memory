@@ -381,7 +381,9 @@ async function execute(steps, meta) {
   const stop = async (s, tz, solo = true, o = {}) => {
     endCut(s);
     log.push(`stop ${s.id} TZ=${tz}${o.fault ? ` with faults (seed ${o.fault.seed}, rate ${o.fault.rate})` : ''}${o.kill ? `, killed after ${o.kill} ms` : ''}`);
-    if (!hurt(o)) s.stopped = s.turns; else s.nudgeOff = true;
+    // Nor is a turn a private message froze while its answer is half written: the Stop's reply is not taken for it, and nothing
+    // of it is saved until its line is whole (handoff-log.mjs, handoff()); a forget by its key then named a key never listed.
+    if (!hurt(o)) s.stopped = s.rest && s.held ? s.turns - 1 : s.turns; else s.nudgeOff = true;
     const p = await run(TIER, ['--stop'], JSON.stringify({ cwd, transcript_path: s.t, session_id: s.id, hook_event_name: 'Stop', last_assistant_message: s.did }), tz, { fault: faultOf(o), kill: o.kill });
     if (hurt(o)) hurtRules(p, `the Stop hook (${s.id})`, o);
     if (p.killed) return;
@@ -548,7 +550,7 @@ async function execute(steps, meta) {
           rec(s, 'user', ts(20_000), [{ type: 'tool_result', tool_use_id: st.tool.id, content: 'removed 0' }], id('r-'))] : [])].join('\n');
       const asst = rec(s, 'assistant', ts(30_000), [{ type: 'text', text: st.did }], id('a-'), size);
       // A Stop may come while the answer's line is half written; it is finished before the next turn.
-      if (st.half) { const at = Math.floor(asst.length / 2); appendFileSync(s.t, `${user}\n${asst.slice(0, at)}`); s.rest = `${asst.slice(at)}\n`; s.restSize = size; if (st.tool) { s.ctx = size; s.mid = false; } }
+      if (st.half) { const at = Math.floor(asst.length / 2); appendFileSync(s.t, `${user}\n${asst.slice(0, at)}`); s.rest = `${asst.slice(at)}\n`; s.restSize = size; s.held = !!q?.secret; if (st.tool) { s.ctx = size; s.mid = false; } }
       else { appendFileSync(s.t, `${user}\n${asst}\n${st.broken ? '{"type":"user","message":\n' : ''}`); s.ctx = size; s.mid = false; }
     },
     stop: async (st) => { await stop(session(st.s), st.tz, true, st); },
@@ -875,6 +877,8 @@ const LONE = [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'no
   ['turn, Stop, the fresh briefing names it', [plain, stopOf]], ['turn, Stop, the fresh briefing 12 days on', [plain, stopOf], { late: true }], ['a big store: both limits of the briefing', [plain, stopOf], { big: true }],
   ['note, edit, Stop, restore', [oneNote, { type: 'edit', name: oneNote.name, text: 'edited' }, plain, stopOf, { type: 'restore', name: oneNote.name, tz: 'UTC', rev: true, force: true, pick: 0 }, { type: 'history', name: oneNote.name, tz: 'UTC', all: false, limit: 1 }]],
   ['note, Stop, promote', [oneNote, plain, stopOf, { type: 'promote', name: oneNote.name, tz: 'UTC' }, { type: 'restore', name: oneNote.name, tz: 'UTC', rev: false, force: true, pick: 0 }]],
+  ['half answer a private message froze, then forget by key', [{ ...plain, half: true, did: `${plain.did} ZQXQhalf`, queued: { blocks: false, secret: 'ZQXQhalf', text: '<private>ZQXQhalf</private> words' } }, stopOf,
+    { type: 'forgetKey', mark: plain.mark, uuid: plain.uuid, s: plain.s, tz: 'UTC' }]],
   ['older conversation', [oldOne()]], ...['mark', 'off', 'list'].map((how) => [`older conversation (${how})`, [oldOne(how)]])];
 // Each in a home of its own, a few at a time: they wait on processes, not on each other.
 const alone = [];
@@ -882,7 +886,7 @@ await Promise.all(Array.from({ length: Math.min(LONE.length, availableParallelis
   for (let i; (i = nextLone++) < LONE.length; ) alone[i] = [LONE[i][0], (await execute(LONE[i][1], { ...lone.meta, big: false, late: false, ...LONE[i][2], home: `lone${i}` })).found];
 }));
 assert.deepEqual(alone.map(([n, f]) => [n, f.length]), alone.map(([n]) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
-assert.equal(alone.length, 30, 'the lone-step list changed size');
+assert.equal(alone.length, 31, 'the lone-step list changed size');
 
 // --keep-going: every failing round named, not just the first (a bug hunt),
 // with its story, 60 lines at most. Otherwise the first failing round, shrunk
