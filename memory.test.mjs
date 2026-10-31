@@ -1293,7 +1293,7 @@ if (!quick) {
   tier();
   const rows = (out) => (out.match(/^  \S+ \S+ \S+  (?:added|changed)$/gm) || []).length;
   ok(!/older/.test(run(['history', 'hist-two', '--limit', '2', '--store', rs]).stdout) && /^  and 1 older; --limit N shows more$/m.test(run(['history', 'hist-two', '--limit', '1', '--store', rs]).stdout) &&
-    rows(run(['history', 'hist-two', '--limit', '0', '--store', rs]).stdout) === 2, 'history: exactly the limit leaves no "older" line, one under it says 1, --limit 0 is the default');
+    rows(run(['history', 'hist-two', '--limit', '0', '--store', rs]).stdout) === 2, `history: exactly the limit leaves no "older" line, one under it says 1, --limit 0 is the default (got ${run(['history', 'hist-two', '--limit', '2', '--store', rs]).stdout} / ${run(['history', 'hist-two', '--limit', '1', '--store', rs]).stdout} / ${run(['history', 'hist-two', '--limit', '0', '--store', rs]).stdout})`);
   const lk = join(root, 'zz-mutA-link');
   symlinkSync(join(root, 'C--mutA-rs'), lk, link);
   try { r = run(['history', 'hist-two', '--store', join(lk, 'memory')]); } finally { rmSync(lk, { recursive: true, force: true }); }
