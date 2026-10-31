@@ -30,7 +30,7 @@ import { tool, tempHome, storeFor } from './harness.mjs';
 const args = process.argv.slice(2);
 const seconds = Number(args.find((a, i) => /^\d+$/.test(a) && args[i - 1] !== '--seed') ?? 60);
 const only = args.includes('--seed') ? Number(args[args.indexOf('--seed') + 1]) : null;
-const homes = tempHome('fuzz-').home;
+const homes = tempHome('fuzz-').home, kept = new Set();
 const TIER = tool('memory-tier.mjs'), LOG = tool('handoff-log.mjs'), GATE = tool('compact-gate.mjs'), CLI = tool('memory.mjs');
 
 // mulberry32: a seed replays its round exactly.
@@ -111,22 +111,23 @@ function generate(seed) {
     if (r() < 0.15) steps.push({ type: 'gate', s: pick(sessions).id, trigger: pick(['auto', 'manual']), tz });
   }
 
-  // The CLI's status, search, show and forget; a forget by key and the conversation's next Stop; the last Stops again.
+  // The CLI's status, search, show and forget; a forget by key and the conversation's next Stop.
   const tz = pick(ZONES), arg = () => text(int(1, 3)).replace(/[\uD800-\uDFFF\r\n\u2028\u0085\0]/g, ' ').trim() || 'x';
   for (const a of [['status'], ['search', pick(WORDS)], ['search', arg(), arg()], ['show', pick([...marks.values()].map((m) => m.uuid).concat('no-such-key'))], ['forget', arg()]]) steps.push({ type: 'cli', args: a, tz });
   const plain = [...marks].filter(([, m]) => m.kind === 'plain' && !m.s.private);
   if (plain.length && r() < 0.4) { const [mark, m] = pick(plain); steps.push({ type: 'forgetKey', mark, uuid: m.uuid, s: m.s.id, tz }); }
-  steps.push({ type: 'settle', tz });
-  return { steps, meta: { u, cwd, briefing: { session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']), tz } } };
+  return { steps, meta: { u, cwd, tz, briefing: { session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
 }
 
-// The steps through the real hooks and the CLI, then what must hold. Any list
-// of a round's steps runs: a step whose conversation no step opened opens it.
-async function execute(steps, { u, cwd, briefing }) {
+// The steps through the real hooks and the CLI, then the round's end, then what
+// must hold. Any list of a round's steps is a whole round: a step whose
+// conversation no step opened opens it, and the end is no step, so a shrink
+// cannot cut it: every conversation's closing Stop, then the last Stops again.
+async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   // A home of the round's own, made afresh: a replay sees nothing an earlier
   // one left (the shared store included), and the paths it prints are the same.
   const home = join(homes, `r${u}`);
-  rmSync(home, { recursive: true, force: true });
+  rmSync(home, { recursive: true, force: true, maxRetries: 5 });
   process.env.HOME = process.env.USERPROFILE = home;
   const dir = storeFor(home, cwd), proj = dirname(dir), problems = [], log = [];
   mkdirSync(dir, { recursive: true });
@@ -194,7 +195,7 @@ async function execute(steps, { u, cwd, briefing }) {
       if (st.secret) secrets.push(st.secret);
       if (st.ask.startsWith('<private-session>')) s.private = true;
       s.did = st.did;
-      marks.set(st.mark, { kind: st.kind, s, uuid: st.uuid, turn: ++s.turns });
+      marks.set(st.mark, { kind: st.kind, s, turn: ++s.turns });
       // As Claude Code writes a turn: a tool call and its result on lines of their
       // own, when it runs, before the answer; only the answer can be half written.
       const user = [rec(s, 'user', ts(0), st.block ? [{ type: 'text', text: st.ask }] : st.ask, st.uuid),
@@ -227,23 +228,29 @@ async function execute(steps, { u, cwd, briefing }) {
       forgotten.add(mark);
       await stop(session(s), tz);
     },
-    // The last Stops again, nothing new: the store settles.
-    settle: async ({ tz }) => {
-      let before = files(), settled = false;
-      for (let k = 0; k < 4 && !settled; k++) {
-        for (const s of sessions.values()) await stop(s, tz);
-        const after = files();
-        settled = after.size === before.size && [...after].every(([f, s]) => before.get(f) === s);
-        before = after;
-      }
-      if (!settled) problems.push('repeating the last Stop never settled: a file changed on each of four');
-    },
   };
+  // A store has its MEMORY.md (a Stop leaves a folder without one alone): with
+  // the index step cut, an empty one, as generate makes when it draws no line.
+  if (!steps.some((st) => st.type === 'index')) act.index({ lines: [] });
   for (const st of steps) {
     if (!['turn', 'stop', 'stops', 'gate'].includes(st.type)) finish();
     await act[st.type](st);
   }
   finish();
+  // The round's end. Each conversation's closing Stop, for a turn no Stop has
+  // seen (none in a whole round); with no conversation, one in a fresh one, as
+  // a Stop is what indexes the notes. Then the last Stops again, nothing new:
+  // the store settles.
+  if (!sessions.size) session(briefing.session);
+  for (const s of sessions.values()) if (s.turns > s.stopped) await stop(s, lastTz);
+  let before = files(), settled = false;
+  for (let k = 0; k < 4 && !settled; k++) {
+    for (const s of sessions.values()) await stop(s, lastTz);
+    const after = files();
+    settled = after.size === before.size && [...after].every(([f, s]) => before.get(f) === s);
+    before = after;
+  }
+  if (!settled) problems.push('repeating the last Stop never settled: a file changed on each of four');
 
   // A hook exits 0 whatever happens, and says what failed in a file: none may
   // be there. Not .health: it names what is wrong with the store (a hand-written
@@ -251,7 +258,7 @@ async function execute(steps, { u, cwd, briefing }) {
   for (const f of readdirSync(dirname(proj)).filter((n) => n.startsWith('.handoff-failed-'))) problems.push(`${f}: ${readFileSync(join(dirname(proj), f), 'utf8').trim().slice(0, 300)}`);
   if (existsSync(join(dir, 'journal', '.failed'))) problems.push(`journal/.failed: ${readFileSync(join(dir, 'journal', '.failed'), 'utf8').trim().slice(0, 300)}`);
   const after = files();
-  const brief = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), briefing.tz);
+  const brief = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), lastTz);
   if (brief.status !== 0) problems.push(`the startup briefing exited ${brief.status ?? brief.signal}`);
 
   // What was written: no secret, nothing forgotten, nothing of a private conversation.
@@ -279,10 +286,11 @@ async function execute(steps, { u, cwd, briefing }) {
     if (n !== 1) problems.push(`${f} has ${n} index lines`);
   }
   // What happened, for the one who replays it: every step, repeats too. With
-  // FUZZ_KEEP=<folder>, a failing round's project folder is kept there (the
-  // first run of it, the whole round; not a shrinking's replays).
+  // FUZZ_KEEP=<folder>, a failing round's project folder is kept there as
+  // round-<u>, an older copy replaced: its first failing run here, the whole
+  // round, not a shrink's replays.
   const found = [...new Set(problems)], keep = process.env.FUZZ_KEEP && join(process.env.FUZZ_KEEP, `round-${u}`);
-  if (found.length && keep && !existsSync(keep)) cpSync(proj, keep, { recursive: true });
+  if (found.length && keep && !kept.has(u)) { kept.add(u); rmSync(keep, { recursive: true, force: true, maxRetries: 5 }); cpSync(proj, keep, { recursive: true }); }
   return { found, story: ['--- the round:', ...log, '--- handoff.md entries:', ...handoff.split('\n').filter((l) => l.startsWith('- **asked**')).map((l) => l.slice(0, 120))] };
 }
 
@@ -290,10 +298,12 @@ async function execute(steps, { u, cwd, briefing }) {
 const kindOf = (problem) => problem.replace(/ASK\w+|OLD\w+|ZQX\w+|[0-9a-f]{6,}|\d+/g, '#');
 
 // The fewest steps found that still fail with a problem of the kind: runs of
-// half the steps taken out, then quarters, down to single steps, each cut kept
-// while what is left still fails (delta debugging). A cut is kept only when a
-// replay failed with it, so a failure that needs a race (two Stops at once)
-// keeps the steps whose cut it did not fail without: never too few.
+// half the steps taken out, then quarters, down to single steps, a cut kept
+// when a replay without those steps fails with the kind (delta debugging).
+// The kind leaves counts out, so what is left can fail another way (a turn
+// listed 0 times, not 3): the whole round's problems are printed first. A
+// failure that needs a race (two Stops at once) and does not come back on a
+// replay keeps steps it could lose: the list can be longer than it needs.
 async function shrinkWith(exec, steps, kind, { replays = 200, ms = 120_000 } = {}) {
   const end = Date.now() + ms, fails = async (xs) => (await exec(xs)).some((p) => kindOf(p) === kind);
   for (let size = Math.max(1, steps.length >> 1); replays > 0 && Date.now() < end;) {
@@ -311,11 +321,18 @@ const shrink = (steps, meta, kind, opts) => shrinkWith(async (xs) => (await exec
 
 // Self-checks, before any round.
 assert.equal(kindOf('ASK123f0n4 is in handoff.md 0 times'), '# is in handoff.md # times');
-// shrink keeps a step list only while the same kind fails (a fake executor: fails when steps 2 and 5 are both there)
-const fakeExec = async (xs) => (xs.includes(2) && xs.includes(5) ? ['boom'] : []);
-assert.deepEqual((await shrinkWith(fakeExec, [0, 1, 2, 3, 4, 5, 6], 'boom')).sort(), [2, 5]);
+// shrink keeps a step list only while the same kind fails (a fake executor: fails when steps 2 and 5 are both there,
+// another way with 2 alone), and stops once no single step can go.
+let calls = 0;
+const fakeExec = async (xs) => { calls++; return xs.includes(2) ? [xs.includes(5) ? 'boom 1' : 'bang 1'] : []; };
+assert.deepEqual((await shrinkWith(fakeExec, [0, 1, 2, 3, 4, 5, 6], 'boom #')).sort(), [2, 5]);
+assert.ok(calls <= 20, `shrinking 7 steps took ${calls} replays`);
 // All of a round's randomness is in generate: a seed gives the same steps twice.
 assert.deepEqual(generate(7), generate(7));
+// Every list of a round's steps is a whole round: a lone turn, a lone note hold on correct code.
+const lone = generate(12345), alone = [];
+for (const st of [lone.steps.find((x) => x.type === 'turn' && x.kind === 'plain' && !x.ask.startsWith('<private-session>')), lone.steps.find((x) => x.type === 'note')]) alone.push([st.type, (await execute([st], lone.meta)).found]);
+assert.deepEqual(alone, [['turn', []], ['note', []]], 'a lone step fails on correct code');
 
 // --keep-going: every failing round named, not just the first (a bug hunt),
 // with its story, 60 lines at most. Otherwise the first failing round, shrunk
