@@ -1304,7 +1304,7 @@ require('node:module').syncBuiltinESMExports();
     writeNote(s, 'b'); writeFileSync(join(s, 'MEMORY.md'), '- [a](a.md) — a\n- [b](b.md) — b\n');
     return { h, r, s };
   };
-  const gitPre = (name, hook, log) => preload(name, `const cp = require('node:child_process'), real = cp.execFileSync, fs = require('node:fs');
+  const gitPre = (name, hook, log = join(scratch, `${name}.log`)) => preload(name, `const cp = require('node:child_process'), real = cp.execFileSync, fs = require('node:fs');
 const hook = ${hook};
 cp.execFileSync = (f, a, ...r) => {
   if (f === 'git' && Array.isArray(a)) { fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(a) + '\\n'); const e = hook(a); if (e) throw e; }
@@ -1314,30 +1314,31 @@ require('node:module').syncBuiltinESMExports();
 `);
   const snapshotWith = (g, file) => asHome(g.h, () => spawnSync(process.execPath, ['--require', file, TOOL], { encoding: 'utf8' })).stdout;
   {
-    // The untrack lists what is ignored, one path each, never everything; and it is remembered.
+    // The untrack names each ignored path. Not user-visible in the result (a `git rm --cached -- '*'` followed by `add -A` commits the same), but it keeps
+    // the index from being emptied and the whole store rehashed on every untrack, so the git calls are logged and read.
     const g = gitHome(), log = join(scratch, 'rm.log');
     rmSync(join(g.r, '.git', 'project-memory-ignored'), { force: true });
     const out = snapshotWith(g, gitPre('log.cjs', '() => false', log));
     const rm = readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((a) => a.includes('rm'));
-    ok(rm.length >= 2 && rm.every((a) => a.at(-1) !== '*' && a.at(-1).startsWith('*/')) && rm.some((a) => a.at(-1) === '*/memory/handoff.md'), `the untrack names each ignored path, never all of them (got ${JSON.stringify(rm.map((a) => a.at(-1)))})`);
+    ok(rm.length >= 2 && rm.every((a) => a.at(-1) !== '*' && a.at(-1).startsWith('*/')) && rm.some((a) => a.at(-1) === '*/memory/handoff.md'), `the untrack names each ignored path (the index is not emptied and rehashed by a `*` pathspec) (got ${JSON.stringify(rm.map((a) => a.at(-1)))})`);
     ok(readOr(join(g.r, '.git', 'project-memory-ignored')) === readOr(join(g.r, '.gitignore')) && /committed/.test(out), 'and the run remembers it did it: what it untracked is what .gitignore says');
   }
   {
     // A note deleted between git's listing and its read: one more try, not a failure.
     const g = gitHome();
-    const out = snapshotWith(g, gitPre('gone.cjs', `(() => { let n = 0; return (a) => a.includes('add') && a.includes('-A') && n++ === 0 && Object.assign(new Error('Command failed: git add'), { status: 128, stdout: '', stderr: 'error: open("b.md"): No such file or directory\\nfatal: adding files failed\\n' }); })()`, join(scratch, 'gone.log')));
+    const out = snapshotWith(g, gitPre('gone.cjs', `(() => { let n = 0; return (a) => a.includes('add') && a.includes('-A') && n++ === 0 && Object.assign(new Error('Command failed: git add'), { status: 128, stdout: '', stderr: 'error: open("b.md"): No such file or directory\\nfatal: adding files failed\\n' }); })()`));
     ok(/memory snapshot: committed/.test(out), `a note that vanished under git's add gets one more try (got ${out.trim()})`);
   }
   {
     // Nothing staged but changes unstaged: another session took what this one staged. Busy, not a failure.
     const g = gitHome();
-    const out = snapshotWith(g, gitPre('nochange.cjs', `(a) => a.includes('commit') && Object.assign(new Error('Command failed: git commit'), { status: 1, stdout: 'no changes added to commit (use "git add" and/or "git commit -a")\\n', stderr: '' })`, join(scratch, 'nochange.log')));
+    const out = snapshotWith(g, gitPre('nochange.cjs', `(a) => a.includes('commit') && Object.assign(new Error('Command failed: git commit'), { status: 1, stdout: 'no changes added to commit (use "git add" and/or "git commit -a")\\n', stderr: '' })`));
     ok(/memory snapshot: busy/.test(out) && !/snapshot failed/.test(out), `a commit with nothing staged is busy (got ${out.trim()})`);
   }
   {
     // A missing file that is not git's spawn is a failure, never "git is not installed".
     const g = gitHome();
-    const out = snapshotWith(g, gitPre('enoent.cjs', `(a) => a.includes('commit') && Object.assign(new Error('ENOENT: no such file or directory, open'), { code: 'ENOENT', syscall: 'open' })`, join(scratch, 'enoent.log')));
+    const out = snapshotWith(g, gitPre('enoent.cjs', `(a) => a.includes('commit') && Object.assign(new Error('ENOENT: no such file or directory, open'), { code: 'ENOENT', syscall: 'open' })`));
     ok(/snapshot failed/.test(out) && !/not installed/.test(out), `an ENOENT from somewhere other than git's start is a failed snapshot (got ${out.trim()})`);
   }
   {
@@ -1345,6 +1346,7 @@ require('node:module').syncBuiltinESMExports();
     const g = gitHome(), T = Math.floor(Date.now() / 1000) * 1000, lock = join(g.r, '.git', 'index.lock');
     writeFileSync(lock, '');
     utimesSync(lock, new Date(T - 600000), new Date(T - 600000));
+    // Date.now frozen for the whole child: safe only because nothing in this run waits on the clock.
     const clock = preload('clock.cjs', `Date.now = () => ${T};\n`);
     const out = asHome(g.h, () => spawnSync(process.execPath, ['--require', clock, TOOL], { encoding: 'utf8' })).stdout;
     ok(!existsSync(lock) && !/busy/.test(out), `an index.lock ten minutes old to the millisecond is cleared, not waited for (got ${out.trim()})`);
@@ -1372,7 +1374,7 @@ require('node:module').syncBuiltinESMExports();
     writeNote(outside, 'p'); writeFileSync(join(outside, 'MEMORY.md'), '- [p](p.md) — p\n');
     mkdirSync(join(g.r, 'C--ext'));
     symlinkSync(outside, join(g.r, 'C--ext', 'memory'), process.platform === 'win32' ? 'junction' : 'dir');
-    snapshotWith(g, gitPre('lsfiles.cjs', `(a) => a.includes('ls-files') && Object.assign(new Error('Command failed: git ls-files'), { status: 128, stdout: '', stderr: 'fatal: boom' })`, join(scratch, 'ls.log')));
+    snapshotWith(g, gitPre('lsfiles.cjs', `(a) => a.includes('ls-files') && Object.assign(new Error('Command failed: git ls-files'), { status: 128, stdout: '', stderr: 'fatal: boom' })`));
     const missed = JSON.parse(readFileSync(join(g.r, '.snapshot-health'), 'utf8')).missed;
     ok(Array.isArray(missed) && missed.length === 1 && /C--ext/.test(missed[0]), `only the store outside the root is missed when git cannot list it (got ${JSON.stringify(missed)})`);
   }
@@ -1381,13 +1383,16 @@ require('node:module').syncBuiltinESMExports();
     const g = gitHome(), target = join('C--p', 'memory');
     const vanish = preload('realpath.cjs', `const cp = require('node:child_process'), fs = require('node:fs'), exec = cp.execFileSync, real = fs.realpathSync;
 let armed = false, n = 0;
+const marker = ${JSON.stringify(join(scratch, 'realpath.fired'))};
 cp.execFileSync = (f, a, ...r) => { if (f === 'git' && Array.isArray(a) && a.includes('add')) armed = true; return exec(f, a, ...r); };
-const rp = (p, ...a) => { if (armed && String(p).endsWith(${JSON.stringify(target)}) && ++n === 2) throw Object.assign(new Error('ENOENT: no such file or directory, realpath'), { code: 'ENOENT' }); return real(p, ...a); };
+const rp = (p, ...a) => { if (armed && String(p).endsWith(${JSON.stringify(target)}) && ++n >= 2) { fs.writeFileSync(marker, ''); throw Object.assign(new Error('ENOENT: no such file or directory, realpath'), { code: 'ENOENT' }); } return real(p, ...a); };
 rp.native = real.native; fs.realpathSync = rp;
 require('node:module').syncBuiltinESMExports();
 `);
     asHome(g.h, () => spawnSync(process.execPath, ['--require', vanish, TOOL], { encoding: 'utf8' }));
     const sh9 = JSON.parse(readFileSync(join(g.r, '.snapshot-health'), 'utf8'));
+    // The first call after the add is allStores()'s own (a throw there drops the store before the filter); the filter's later calls are the ones that must fail.
+    ok(existsSync(join(scratch, 'realpath.fired')), 'the realpath failure was injected');
     ok(!sh9.missed && sh9.failures === 0, `a store whose path cannot be resolved is not "missed" by the snapshot (got ${JSON.stringify(sh9)})`);
   }
 
