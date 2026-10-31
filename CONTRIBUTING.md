@@ -55,7 +55,14 @@ Beyond the suites:
   one index line; repeating the last Stop settles. It found the time-zone
   duplicates of long conversations, a forgotten exchange still listed and
   `clip()` not giving the same twice (2026-10-30), and each old bug put back.
-  A failing round prints its seed and what happened: `node fuzz.mjs --seed N`
+  It also sends replies of growing sizes and turns cut mid-way, clocks
+  set to the year's end or a daylight-saving change, turns that collide on
+  a minute after a move of zone, messages queued while Claude works,
+  conversations held with auto memory off, secrets in the shapes
+  `redact()` knows, more of the CLI (`history`, `restore`, `promote`,
+  `doctor`) and the startup briefing.
+  A failing round prints its seed and what happened, shrunk to the steps it
+  still fails with (`--no-shrink` skips that): `node fuzz.mjs --seed N`
   replays it, `FUZZ_KEEP=<folder>` keeps its files, and it becomes a test.
   Some Stops, gates and commands run under `fuzz-faults.cjs`, a preload (a
   dev tool, not deployed) that makes disk calls under the round's temp home
@@ -63,8 +70,10 @@ Beyond the suites:
   Stops are killed part way; the hooks must degrade safely. Faulted runs of
   two Stops at once, and kills, are races: replay a seed a few times.
   CI fuzzes a minute on every job. The `fuzz` workflow, by hand, fuzzes ten
-  minutes on each of 17 machines across Windows, Linux and macOS: run it
-  before a release.
+  minutes on each of 17 machines (12 Linux, 3 Windows, 2 macOS, so no macOS
+  job waits for one of the account's 5 slots), and a failing machine uploads
+  its kept files as the artifact `fuzz-kept-<machine>`: run it before a
+  release.
 - `node coverage.mjs [--suites] [--fuzz <seconds>]` runs the six suites
   and/or the fuzz under Node's own coverage and prints, for each of the six
   plugin files, the share of its code that ran, the functions that never

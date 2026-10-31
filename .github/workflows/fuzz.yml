@@ -24,12 +24,15 @@ jobs:
       - id: list
         env:
           MACHINES: ${{ inputs.machines }}
-        # Each machine and its system, one in three each: Windows, Linux,
-        # macOS. Here, not in the matrix: workflow expressions have no `%`,
-        # and GitHub refused the file that used one. A block: `{ length: n }`
-        # in a plain value is YAML's `key: value`.
+        # Each machine and its system: 2 on macOS (the account runs 5 at
+        # once; a job waiting for a slot wastes its time), one in six on
+        # Windows, the rest on Linux, the fastest. macOS and Windows come
+        # first, so they start first. Here, not in the matrix: workflow
+        # expressions have no `%`, and GitHub refused the file that used
+        # one. A block: `{ length: n }` in a plain value is YAML's
+        # `key: value`.
         run: |
-          node -e "const n = Math.min(256, Math.max(1, Math.floor(Number(process.env.MACHINES)) || 17)), os = ['windows-latest', 'ubuntu-latest', 'macos-latest']; console.log('machines=' + JSON.stringify(Array.from({ length: n }, (_, i) => ({ shard: i + 1, os: os[i % 3] }))))" >> "$GITHUB_OUTPUT"
+          node -e "const n = Math.min(256, Math.max(1, Math.floor(Number(process.env.MACHINES)) || 17)), mac = n >= 3 ? 2 : 0, win = Math.ceil(n / 6); console.log('machines=' + JSON.stringify(Array.from({ length: n }, (_, i) => ({ shard: i + 1, os: i < mac ? 'macos-latest' : i < mac + win ? 'windows-latest' : 'ubuntu-latest' }))))" >> "$GITHUB_OUTPUT"
   fuzz:
     needs: plan
     strategy:
@@ -46,4 +49,13 @@ jobs:
       - shell: bash
         env:
           SECONDS_EACH: ${{ inputs.seconds }}
+          FUZZ_KEEP: ${{ runner.temp }}/fuzz-kept
         run: node fuzz.mjs "${SECONDS_EACH:-600}" --keep-going
+      # A failing round's project folder, kept by fuzz.mjs as round-<n>;
+      # a run with no failure makes no folder and uploads nothing.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-kept-${{ matrix.shard }}
+          path: ${{ runner.temp }}/fuzz-kept
+          if-no-files-found: ignore
