@@ -15,7 +15,7 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'journal.mjs', 'co
 
 export const suites = {
   'store.mjs': ['store.test.mjs', {
-    'a refused write names its temp file in the reason': ["String(e.message).split('\\n')[0]).replace(/\\.tmp\\d+/g, '');", "String(e.message).split('\\n')[0]);"],
+    'a refused write names its temp file in the reason': [".split('\\n')[0].replace(/\\.tmp\\d+/g, '');", ".split('\\n')[0];"],
     'a CRLF block read to its first line': ['\\\\S.*\\\\r?(?:\\\\n|$))+)`', '\\\\S.*(?:\\\\n|$))+)`'],
     "the case key folds as JavaScript does": ["    if (names.has(t) || !low.has(t.toLowerCase())) return t;\n", "    return process.platform === 'win32' ? t.toLowerCase() : t;\n"],
     "the case key matches without asking the disk": ["try { if (id(n) === me) return n; } catch {}", "return n;"],
@@ -418,6 +418,7 @@ export const suites = {
     "a forgotten exchange back when its folder's case differs": ['t && pathKey(t) === me', 't === me'],
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
+    "a handoff failure names its temp file": ["error: reason(e) }))", "error: String(e.message).split('\\n')[0] }))"],
     'a nudge with no reader exits 1': ["process.stdout.on('error', () => {}); ", ''],
     'the backfill takes the lock when nothing is due': ['if (d && due(d) && (', 'if (d && (', { full: true }],
     "today's journal committed": ["`*/memory/journal/${today}.md`, ", ""],
@@ -747,6 +748,7 @@ export const suites = {
     'a resumed conversation left out of the matcher (memory off untagged)': ['"matcher": "startup|resume|clear|compact"', '"matcher": "startup|clear|compact"'],
   }],
   'journal.mjs': ['journal.test.mjs', {
+    "a journal failure names its temp file": ["error: from + reason(e) }", "error: from + String(e.message).split('\\n')[0] }"],
     'a look that could not list the folders clears the backfill failure': ['(n || (all.seen && !left && !stuck)) &&', '(n || (!left && !stuck)) &&'],
     'a look with a sweep still stuck clears the backfill failure': ['(n || (all.seen && !left && !stuck)) &&', '(n || !left) &&'],
     'a look with nothing left clears no backfill failure': ['else if ((n || (all.seen && !left && !stuck)) &&', 'else if (n &&'],

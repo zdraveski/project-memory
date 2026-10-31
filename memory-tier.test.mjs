@@ -813,6 +813,16 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   mkdirSync(join(broken, 'memory'));
   stopB();
   ok(!existsSync(join(root, '.handoff-failed-proj-broken')), 'and the next save that works clears it');
+  // The error's message may name a pid-numbered temp file (a folder named like one here): the file keeps no such name (F16).
+  const tmpName = join(root, 'proj-tmp.tmp4242');
+  mkdirSync(tmpName, { recursive: true });
+  writeFileSync(join(tmpName, 'memory'), 'not a folder');
+  const tt = join(tmpName, 's.jsonl');
+  writeFileSync(tt, readFileSync(tb, 'utf8'));
+  spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ transcript_path: tt, session_id: 'brkt' }) });
+  const tmpNote = existsSync(join(root, '.handoff-failed-proj-tmp.tmp4242')) ? readFileSync(join(root, '.handoff-failed-proj-tmp.tmp4242'), 'utf8') : '';
+  ok(tmpNote.includes('error') && !/\.tmp\d+/.test(JSON.parse(tmpNote).error), `a handoff failure's reason names no temp file (got ${tmpNote})`);
+  rmSync(join(root, '.handoff-failed-proj-tmp.tmp4242'), { force: true });
 
   // A history to adopt (its own .gitignore, no mark yet) with a stale
   // config.lock: swept first, then adopted. Adopted first, `git config` was

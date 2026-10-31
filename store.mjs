@@ -234,12 +234,15 @@ export function front(text) {
 export const gitArgs = (...a) => ['-C', projectsRoot(), '-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false',
   '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`, ...a];
 
+// A failure's reason, as stored for status and the briefing: the message's first line, with a refused write's `<path>.tmp<pid>` cut from
+// it (status printed it as a leftover file).
+export const reason = (e) => String(e?.message).split('\n')[0].replace(/\.tmp\d+/g, '');
 // git's reason for a failure: stderr's first line that is not a warning -- a
 // repack Windows could not finish leaves an .idx with no .pack, and git warns
 // of it on every command (2026-10-27) -- else the message's, which only says
-// which command failed. A refused write's `<path>.tmp<pid>` is cut from it: status printed it as a leftover file.
+// which command failed (reason()). The stderr line loses a temp file's name too.
 export const gitWhy = (e) => (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn') ? 'git is not installed'
-  : String(e.stderr || '').split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('warning:')) || String(e.message).split('\n')[0]).replace(/\.tmp\d+/g, '');
+  : String(e.stderr || '').split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('warning:')) || reason(e)).replace(/\.tmp\d+/g, '');
 
 // A file's text, or null when there is none: what replaceIfUnchanged compares.
 export const raw = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);

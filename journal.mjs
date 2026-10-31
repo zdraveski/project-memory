@@ -6,7 +6,7 @@ import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, f
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock } from './store.mjs';
+import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason } from './store.mjs';
 
 export const JOURNAL = 'journal';
 export const J_ASK = 2000;     // chars of what was asked
@@ -331,7 +331,7 @@ function fault(dir, e, from = '') {
   const f = join(dir, JOURNAL, FAILED);
   try {
     mkdirSync(join(dir, JOURNAL), { recursive: true });
-    const before = raw(f), line = JSON.stringify({ at: new Date().toISOString(), error: from + String(e.message).split('\n')[0] });
+    const before = raw(f), line = JSON.stringify({ at: new Date().toISOString(), error: from + reason(e) });
     replaceIfUnchanged(f, before, [line, ...own(before, !from)].join('\n') + '\n');
   } catch {}
 }

@@ -31,7 +31,7 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local } from './store.mjs';
 import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
@@ -40,7 +40,7 @@ import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited
 let entries, forget, holds, summary;
 try { ({ entries, forget, holds, summary } = await import('./journal.mjs')); }
 catch (e) {
-  const why = String(e.message).split('\n')[0];
+  const why = reason(e);
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: why }); return []; };
   // Said by status too: silent, it read as a store with no journal.
   summary = () => ({ broken: why });

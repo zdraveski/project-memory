@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, rea
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -543,7 +543,7 @@ if (stop) {
     let sink = null;
     try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
     try { if (payload) handoff(payload, sink); try { unlinkSync(failed); } catch {} }
-    catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\n')[0] })); }
+    catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); }
     // Then a few of the conversations still on disk, into the journal, without
     // a word; in a try of its own, so a failed import costs only the import.
     // Not due, no lock taken: another hook holding the store cost the Stop a
@@ -601,7 +601,7 @@ for (const dir of todo) {
   // where a thrown error is a stack trace nobody reads.
   let r;
   try { r = withLock(dir, () => tier(dir, now)); }
-  catch (e) { console.log(`${dir}: skipped — ${e.message}`); if (!dry) try { health(dir, [`a pass failed: ${e.message}`]); } catch {} continue; }
+  catch (e) { console.log(`${dir}: skipped — ${reason(e)}`); if (!dry) try { health(dir, [`a pass failed: ${reason(e)}`]); } catch {} continue; }
   if (r === null) { console.log(`${dir}: busy — another hook holds this store; the next turn redoes it`); continue; }
   if (r.conflict) { console.log(`${dir}: changed during the pass — the edit wins; the next turn redoes it`); continue; }
   const problems = [];

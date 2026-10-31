@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep } = await import('./store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -275,6 +275,7 @@ const { gitArgs } = await import('./store.mjs');
 const ga = gitArgs('status');
 ok(ga.includes('commit.gpgsign=false') && ga.includes('core.longpaths=true') && ga.some((a) => /^core\.hooksPath=.*no-hooks$/.test(a)) && ga.at(-1) === 'status',
   `the snapshot repo's git turns off signing and hooks, and on long paths (got ${ga.join(' ')})`);
+ok(reason({ message: "EPERM: x, rename '/p/.checked.tmp4242' -> '/p/.checked'\nmore" }) === "EPERM: x, rename '/p/.checked' -> '/p/.checked'" && reason(null) === 'undefined', "reason() is the message's first line without a temp file's name");
 ok(gitWhy({ code: 'ENOENT', syscall: 'spawnSync git', message: 'spawnSync git ENOENT' }) === 'git is not installed', 'no git is said in words, not as spawnSync git ENOENT');
 // A file gone between two calls is ENOENT too, and is no missing git.
 ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or directory, unlink 'x\\index.lock'" }) !== 'git is not installed', 'a vanished lock is not "git is not installed"');

@@ -1654,4 +1654,16 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   ok(asks(d).join() === 'question 0,question 1' && tagsOf(d).includes(P.slice(0, 8)), `the next clean look imports the normal conversation's new turn, and only that (got ${asks(d)})`);
 }
 
+// A failure's reason is stored in .failed and printed by status: it never names a temp file (the pid-numbered file of a refused
+// write), which status would show as a leftover (F16, seed 2009818178).
+{
+  const cwdT = 'C:/journal-tmpname', dT = storeFor(home, cwdT), pT = join(dirname(dT), 'tmpnamea-1.jsonl');
+  mkdirSync(dT, { recursive: true });
+  writeFileSync(pT, '');
+  const boom = new Proxy([], { get() { throw new Error("EPERM: operation not permitted, rename '/x/journal/.checked.tmp4242' -> '/x/journal/.checked'"); } });
+  write(dT, pT, boom, {});
+  const stored = readFileSync(join(dT, 'journal', '.failed'), 'utf8'), said = summary(dT).failed;
+  ok(stored.includes('EPERM') && !/\.tmp\d+/.test(stored) && !/\.tmp\d+/.test(said), "a journal failure's reason names no temp file, in .failed or in status (got " + stored.trim() + ')');
+}
+
 console.log(`journal: ${checks} checks passed`);
