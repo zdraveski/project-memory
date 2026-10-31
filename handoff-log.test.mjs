@@ -420,6 +420,30 @@ const stamped = JSON.parse(readFileSync(join(liveV, '.claude-plugin', 'plugin.js
 const liveHooks = JSON.parse(readFileSync(join(liveV, 'hooks', 'hooks.json'), 'utf8')).hooks;
 ok(Object.values(liveHooks).flat().flatMap((e) => e.hooks).every((x) => x.command === 'C:/Program Files/nodejs/node.exe'), "the live plugin runs the deploying node by its path, not whatever node is on PATH");
 ok(/^\d+\.\d+\.42$/.test(stamped) && edited(liveV).length === 0, `the live plugin's version carries the deploy's number, and the manifest hashes what was written (got ${stamped})`);
+// The manifests are written two-space indented and newline-ended, and the README says where to edit.
+for (const f of ['.claude-plugin/plugin.json', 'hooks/hooks.json']) {
+  const t = readFileSync(join(liveV, f), 'utf8');
+  ok(t === JSON.stringify(JSON.parse(t), null, 2) + '\n', `${f} is written two-space indented, newline-ended`);
+}
+ok(readFileSync(join(liveV, 'README.md'), 'utf8') === `Deployed by ${join(dirname(HOOK), 'deploy.mjs')} after the full check. Edit there and deploy; an edit here is live and untested, and the startup line will say so.\n`, 'the live folder says where to edit');
+// A scanner holding a fresh file refuses the rename for a moment: retried up to four times, and only for a busy file.
+{
+  const renamed = fs.renameSync;
+  const attempts = (code, fails) => {
+    const to = join(home, `hooks-rn-${code}-${fails}`), target = join(to, 'store.mjs');
+    let n = 0, err = null;
+    fs.renameSync = (a, b) => { if (b === target && n++ < fails) throw Object.assign(new Error(code), { code }); return renamed(a, b); };
+    syncBuiltinESMExports();
+    try { install(dirname(HOOK), to, 'test'); } catch (e) { err = e; } finally { fs.renameSync = renamed; syncBuiltinESMExports(); }
+    return { n, err, done: existsSync(target) };
+  };
+  let r = attempts('EBUSY', 3);
+  ok(r.n === 4 && !r.err && r.done, `a busy file is renamed on the fourth try (tries ${r.n}, ${r.err})`);
+  r = attempts('EBUSY', 99);
+  ok(r.n === 4 && r.err?.code === 'EBUSY', `a file still busy after four tries fails with its error (tries ${r.n})`);
+  r = attempts('ENOENT', 99);
+  ok(r.n === 1 && r.err?.code === 'ENOENT', `any other error is not retried (tries ${r.n})`);
+}
 // A file whose size and mtime are as deployed is not read: hashing every one
 // was most of a startup's own time. One whose stat moved is read, and named
 // only if its bytes changed.
@@ -455,6 +479,99 @@ ok(gate.status === 1 && /uncommitted changes/.test(gate.stderr), `and uncommitte
   ok(changedScope(null) === null && changedScope(['README.md', 'journal.mjs'])?.join() === 'README.md,journal.mjs'
     && changedScope(['journal.mjs', 'store.mjs']) === null && changedScope(['harness.mjs']) === null && changedScope(['mutate.mjs']) === null,
   'a deploy checks the changed files\' mutants, and all of them after a change to the shared layer');
+}
+
+// The whole run, in a repo of its own: the six suites, the mutants, the soak and the
+// break harness are stubs that obey a control file (what they print, whether they
+// fail, what they do to the repo), and HOME is the throwaway one, so nothing here
+// can reach the real hooks-live or the real repo.
+{
+  const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = dirname(HOOK);
+  const FILES_ = ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs',
+    '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'deploy.mjs'];
+  for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
+  const STUB = `import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { basename } from 'node:path';
+import { execFileSync } from 'node:child_process';
+const ctl = process.env.DEPLOY_CTL, c = JSON.parse(readFileSync(ctl, 'utf8'));
+const name = basename(process.argv[1]) + (process.argv[1].includes('hooks-live') ? '@live' : '');
+appendFileSync(ctl + '.log', name + ' ' + process.argv.slice(2).join(' ') + '\\n');
+const q = c[name] || [], s = (q.length > 1 ? q.shift() : q[0]) || {};
+if (q.length) writeFileSync(ctl, JSON.stringify(c));
+if (s.git) execFileSync('git', ['-C', process.cwd(), '-c', 'user.name=t', '-c', 'user.email=t@t', ...s.git]);
+if (s.write) writeFileSync(s.write[0], s.write[1]);
+if (s.err) process.stderr.write(s.err);
+if (s.out) process.stdout.write(s.out);
+process.exit(s.code || 0);
+`;
+  for (const f of ['store', 'handoff-log', 'journal', 'compact-gate', 'memory-tier', 'memory'].map((t) => `${t}.test.mjs`).concat(['mutate.mjs', 'memory-tier.soak.mjs', 'memory-tier.break.mjs', 'memory-tier.mjs'])) writeFileSync(join(dep, f), STUB);
+  const g2 = (...a) => execFileSync('git', ['-C', dep, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8' }).trim();
+  g2('init', '-q', '-b', 'master'); g2('add', '-A'); g2('commit', '-qm', 'base');
+  const deploy = (c, ...args) => {
+    writeFileSync(ctl, JSON.stringify(c)); rmSync(`${ctl}.log`, { force: true });
+    const r = spawnSync(process.execPath, [join(dep, 'deploy.mjs'), ...args], { encoding: 'utf8' });
+    // what the stubs were run with, minus the six suites
+    r.calls = (existsSync(`${ctl}.log`) ? readFileSync(`${ctl}.log`, 'utf8').trim().split('\n') : []).map((x) => x.trimEnd()).filter((x) => !x.includes('.test.mjs'));
+    return r;
+  };
+  const manifest = () => JSON.parse(readFileSync(join(liveD, '.deployed.json'), 'utf8'));
+  const plug = join(home, '.claude', 'plugins');
+  const installed = (path, marketplace) => {
+    mkdirSync(plug, { recursive: true });
+    writeFileSync(join(plug, 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@project-memory': [{ installPath: path }] } }));
+    writeFileSync(join(plug, 'known_marketplaces.json'), JSON.stringify({ 'project-memory': { source: marketplace } }));
+  };
+  const sum = (r) => `${r.status} ${JSON.stringify(r.stdout)} ${JSON.stringify(r.stderr)}`;
+  const ALL = 'the six suites ... ok\nmutation check (all, ~65 min) ... ok\n';
+  process.env.DEPLOY_CTL = ctl;
+  try {
+    // A failing suite stops the deploy, its last three lines named (stderr, then stdout).
+    let r = deploy({ 'store.test.mjs': [{ code: 1, err: 'e1\ne2\n', out: 'o1\no2\no3\n' }] });
+    ok(r.status === 1 && r.stdout === 'the six suites ... FAILED\n' && r.stderr === 'deploy: store.test: o1 | o2 | o3\n', `a failing suite stops the deploy (${sum(r)})`);
+    // A failing step: the last three lines of its stderr then stdout.
+    r = deploy({ 'memory-tier.soak.mjs': [{ code: 1, err: 'e1\ne2\ne3\n', out: 'o1\no2\n' }] });
+    ok(r.status === 1 && r.stdout === `${ALL}soak ... FAILED\n` && r.stderr === 'deploy: soak: e3 | o1 | o2\n' && !existsSync(liveD), `a failing soak stops the deploy, its last lines named (${sum(r)})`);
+    // The break harness fails on any line that is not an ok line (blank ones are ignored).
+    r = deploy({ 'memory-tier.break.mjs': [{ out: 'a ok (1)\n\nbad one\nb ok (2)\n' }] });
+    ok(r.status === 1 && r.stdout === `${ALL}soak ... ok\nbreak harness ... FAILED\n` && r.stderr === 'deploy: break harness: bad one\n', `a break harness line that is not ok stops the deploy (${sum(r)})`);
+    // The repo changed during the check, by an edit or by a commit: nothing is copied.
+    for (const [how, step] of [['edited', { write: [join(dep, 'junk.txt'), 'x'] }], ['committed', { git: ['commit', '--allow-empty', '-qm', 'during'] }]]) {
+      r = deploy({ 'memory-tier.break.mjs': [step] });
+      ok(r.status === 1 && r.stderr === 'deploy: the repo changed during the check: deploy again\n' && !existsSync(liveD), `a repo ${how} during the check is not deployed (${sum(r)})`);
+      rmSync(join(dep, 'junk.txt'), { force: true });
+    }
+    // The first deploy: no live copy, nothing installed: every mutant, no dry run.
+    let c = g2('rev-parse', '--short', 'HEAD');
+    r = deploy({ 'memory-tier.break.mjs': [{ out: ' x ok (1)\n\ny ok (2)\n' }] });
+    ok(r.status === 0 && r.stdout === `${ALL}soak ... ok\nbreak harness ... ok\ndeployed ${c} to ${liveD}\n` && r.stderr === '', `the first deploy (${sum(r)})`);
+    ok(r.calls.join('|') === 'mutate.mjs|memory-tier.soak.mjs|memory-tier.break.mjs', `mutants, soak and break harness run once each (${r.calls})`);
+    ok(manifest().commit === c && JSON.parse(readFileSync(join(liveD, '.claude-plugin', 'plugin.json'), 'utf8')).version.endsWith(`.${g2('rev-list', '--count', 'HEAD')}`)
+      && Object.values(JSON.parse(readFileSync(join(liveD, 'hooks', 'hooks.json'), 'utf8')).hooks).flat().flatMap((e) => e.hooks).every((x) => x.command === process.execPath.replace(/\\/g, '/')), 'the live copy names the commit, stamps its number and runs the deploying node');
+    // A change to a file that is not shared: its mutants only; the dry run agrees; the plugin runs this commit.
+    writeFileSync(join(dep, 'README.md'), 'x\n'); g2('add', 'README.md'); g2('commit', '-qm', 'readme');
+    c = g2('rev-parse', '--short', 'HEAD');
+    installed(join(home, 'cache-a'), { source: 'directory', path: liveD });
+    r = deploy({ 'memory-tier.mjs@live': [{ out: 'plan\n' }], 'memory-tier.mjs': [{ out: 'plan\n' }] });
+    ok(r.status === 0 && r.stdout === 'the six suites ... ok\nmutation check (1 changed file(s)) ... ok\nsoak ... ok\nbreak harness ... ok\ndry run same as live ... ok\n'
+      + `deployed ${c} to ${liveD}\nthe plugin runs ${c} from ${liveD}\n`, `a change to one file checks its mutants, the dry run agrees (${sum(r)})`);
+    ok(r.calls.join('|') === 'mutate.mjs --changed README.md|memory-tier.soak.mjs|memory-tier.break.mjs|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run', `only the changed file's mutants, one dry run each side (${r.calls})`);
+    // --full: every mutant although the live commit is known; --tiering-change: no dry run; an older plugin copy is named.
+    mkdirSync(join(home, 'cache-b'), { recursive: true });
+    writeFileSync(join(home, 'cache-b', '.deployed.json'), JSON.stringify({ commit: 'old1234' }));
+    installed(join(home, 'cache-b'), { source: 'github' });
+    r = deploy({}, '--full', '--tiering-change');
+    ok(r.status === 0 && r.stdout === `${ALL}soak ... ok\nbreak harness ... ok\ndeployed ${c} to ${liveD}\nwarning: the plugin runs old1234 from ${join(home, 'cache-b')}, not ${c}: node memory.mjs doctor says why\n`, `--full checks every mutant, --tiering-change skips the dry run, an older plugin copy is named (${sum(r)})`);
+    ok(r.calls.join('|') === 'mutate.mjs|memory-tier.soak.mjs|memory-tier.break.mjs', `no dry run, mutate.mjs without a scope (${r.calls})`);
+    // Mutants checked on GitHub; a dry run that differs once and agrees on the second look passes; a plugin copy with no manifest is unknown.
+    installed(join(home, 'cache-c'), { source: 'github' });
+    r = deploy({ 'memory-tier.mjs@live': [{ out: 'a' }, { out: 'b' }], 'memory-tier.mjs': [{ out: 'b' }] }, '--mutants-checked-on-github');
+    ok(r.status === 0 && r.stdout === 'the six suites ... ok\nmutation check ... skipped: run on GitHub (mutate.yml), on your word\nsoak ... ok\nbreak harness ... ok\ndry run same as live ... ok\n'
+      + `deployed ${c} to ${liveD}\nwarning: the plugin runs an unknown copy from ${join(home, 'cache-c')}, not ${c}: node memory.mjs doctor says why\n`, `mutants checked on GitHub are skipped; a dry run is repeated once (${sum(r)})`);
+    ok(r.calls.join('|') === 'memory-tier.soak.mjs|memory-tier.break.mjs|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run', `no mutate.mjs, the dry run looked at twice (${r.calls})`);
+    // A dry run that differs twice stops the deploy.
+    r = deploy({ 'memory-tier.mjs@live': [{ out: 'a' }], 'memory-tier.mjs': [{ out: 'b' }] }, '--mutants-checked-on-github');
+    ok(r.status === 1 && r.stdout.endsWith('dry run same as live ... FAILED\n') && r.stderr === 'deploy: dry run same as live: the dry run differs from live; rerun with --tiering-change if the change meant it\n', `a dry run that differs twice stops the deploy (${sum(r)})`);
+  } finally { delete process.env.DEPLOY_CTL; }
 }
 
 // 28. An answer's markdown marks carry no words: dropped before the 400 characters are counted.
