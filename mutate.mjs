@@ -304,6 +304,7 @@ export const suites = {
     "a private tag with attributes kept": ["export const PRIVATE = /<\\s*private(?![-_\\w])(?:[^>]*>|[^>]*$)/i;", "export const PRIVATE = /<private>/i;"],
     "an old marker entry listed twice": [".replace(/<!- -/g, '<!--')", ""],
     "a forget run after a freeze goes unseen": ["(!pending.frozen || FORGETS.test(String(b.input.command)))", "!pending.frozen"],
+    "the written entry compared with the turn as clipped once": ["return clip(e.ask, ASK) === since.ask && clip(e.did, DID) === since.did;", "return e.ask === since.ask && e.did === since.did;"],
     "the private-session mark ignored": ["if (PRIVATE_SESSION.test(typed)) out.hush = true;", ""],
     "a marked conversation keeps its entries": [" && !drop?.(t) && ", " && "],
     "the only marked conversation keeps its entries": ["if (!merged.length && !(drop && has)) return null;", "if (!merged.length) return null;"],

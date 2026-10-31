@@ -424,7 +424,8 @@ function latest(path, since = null) {
   for (let bytes = TAIL; ; bytes *= 4) {
     const { text: tail, whole } = readTail(path, bytes);
     const got = turns(tail);
-    const same = (t) => { const e = shown(t); return e.ask === since.ask && e.did === since.did; };
+    // As written (clipped again by render): a cut ask's code reference reads as a secret the second time (F15).
+    const same = (t) => { const e = shown(t); return clip(e.ask, ASK) === since.ask && clip(e.did, DID) === since.did; };
     const there = since && got.some((t) => t.at === since.at && same(t));
     // The newest entry's turn read at another minute, and not at its own: the
     // clock moved to another zone, and every entry of this conversation is in
