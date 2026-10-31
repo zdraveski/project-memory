@@ -15,6 +15,7 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'journal.mjs', 'co
 
 export const suites = {
   'store.mjs': ['store.test.mjs', {
+    'a refused write names its temp file in the reason': ["String(e.message).split('\\n')[0]).replace(/\\.tmp\\d+/g, '');", "String(e.message).split('\\n')[0]);"],
     'a CRLF block read to its first line': ['\\\\S.*\\\\r?(?:\\\\n|$))+)`', '\\\\S.*(?:\\\\n|$))+)`'],
     "the case key folds as JavaScript does": ["    if (names.has(t) || !low.has(t.toLowerCase())) return t;\n", "    return process.platform === 'win32' ? t.toLowerCase() : t;\n"],
     "the case key matches without asking the disk": ["try { if (id(n) === me) return n; } catch {}", "return n;"],

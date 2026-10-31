@@ -44,6 +44,8 @@ ok(front('---\nname: old\nmetadata:\n  tier: hot\n  superseded-by: "new.md"\n---
 // git's own reason, not a warning before it, nor the "Command failed" line.
 ok(gitWhy({ stderr: 'warning: no corresponding .pack: x.idx\nfatal: the real reason\n', message: 'Command failed: git add' }) === 'fatal: the real reason'
   && gitWhy({ stderr: '', message: 'Command failed: git x\nmore' }) === 'Command failed: git x', "gitWhy() is stderr's first line that is not a warning");
+// A write that failed names its temp file in the message (EPERM ... open '.gitignore.tmp4242'): the temp name is noise, as memory.mjs strips it from a failed path.
+ok(gitWhy({ message: String.raw`EPERM: operation not permitted, open 'C:\p\.gitignore.tmp4242'` }) === String.raw`EPERM: operation not permitted, open 'C:\p\.gitignore'`, "gitWhy() does not name a .tmp<pid> file");
 // Each store once: a project whose memory is a junction to another's is one store.
 const realStore = join(root, 'C--real', 'memory');
 mkdirSync(realStore, { recursive: true });
