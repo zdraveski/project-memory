@@ -1171,7 +1171,7 @@ if (!quick) {
 {
   const { history, restore, promote } = await import(pathToFileURL(CLI).href);
   const { render } = await import('./journal.mjs');
-  const { budgetOf, LOCK_STALE } = await import('./store.mjs');
+  const { budgetOf, LOCK_STALE, gitArgs } = await import('./store.mjs');
   const { GRACE } = await import('./handoff-log.mjs');
   const { default: fsm } = await import('node:fs'), { syncBuiltinESMExports } = await import('node:module');
   const mdir = (name) => { const d = join(root, name, 'memory'); mkdirSync(d, { recursive: true }); return d; };
@@ -1268,6 +1268,7 @@ if (!quick) {
     `a .health file is listed line by line, and no file lists nothing (got ${r.stdout})`);
 
   // The week's changes: added, edited (in the first snapshot, changed since), deleted; never the index, the handoff or a journal day.
+  // NOTE for a block appended after this one: this changes the shared `dir` fixture (mentions edited, spam-log deleted, zz-fresh added, handoff and index rewritten).
   mkdirSync(join(dir, 'journal'), { recursive: true });
   writeFileSync(join(dir, 'mentions.md'), readFileSync(join(dir, 'mentions.md'), 'utf8') + '\nedited this week\n');
   unlinkSync(join(dir, 'spam-log.md'));
@@ -1277,7 +1278,9 @@ if (!quick) {
   writeFileSync(join(dir, 'journal', '2026-10-27.md'), '# Journal 2026-10-27\nedited\n');
   tier();
   // The snapshots ignore the handoff, but a repository from before that rule holds it: forced in here.
-  for (const g of [['add', '-f', 'C--mem-cli/memory/handoff.md'], ['commit', '-m', 'handoff from an older version', '--', 'C--mem-cli/memory/handoff.md']]) spawnSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@t', ...g], { encoding: 'utf8' });
+  const forced = [['add', '-f', 'C--mem-cli/memory/handoff.md'], ['commit', '-m', 'handoff from an older version', '--', 'C--mem-cli/memory/handoff.md']]
+    .map((g) => spawnSync('git', gitArgs('-c', 'user.name=t', '-c', 'user.email=t@t', ...g), { encoding: 'utf8' }));
+  ok(forced.every((f) => f.status === 0), `the handoff is forced into the history (got ${forced.map((f) => f.stderr).join('')})`);
   const week = cli('status').stdout.match(/changed in the last 7 days: (.*)/)?.[1] ?? '';
   const part = (w) => week.split(' · ').find((p) => p.startsWith(`${w} `)) ?? '';
   ok(/zz-fresh/.test(part('added')) && !/mentions|spam-log/.test(part('added')) && /mentions/.test(part('edited')) && !/zz-fresh|spam-log/.test(part('edited')) &&
@@ -1292,8 +1295,9 @@ if (!quick) {
   writeFileSync(join(rs, 'hist-two.md'), readFileSync(join(rs, 'hist-two.md'), 'utf8') + 'two\n');
   tier();
   const rows = (out) => (out.match(/^  \S+ \S+ \S+  (?:added|changed)$/gm) || []).length;
-  ok(!/and d+ older/.test(run(['history', 'hist-two', '--limit', '2', '--store', rs]).stdout) && /^  and 1 older; --limit N shows more$/m.test(run(['history', 'hist-two', '--limit', '1', '--store', rs]).stdout) &&
-    rows(run(['history', 'hist-two', '--limit', '0', '--store', rs]).stdout) === 2, `history: exactly the limit leaves no "older" line, one under it says 1, --limit 0 is the default (got ${run(['history', 'hist-two', '--limit', '2', '--store', rs]).stdout} / ${run(['history', 'hist-two', '--limit', '1', '--store', rs]).stdout} / ${run(['history', 'hist-two', '--limit', '0', '--store', rs]).stdout})`);
+  const h2 = ['2', '1', '0'].map((l) => run(['history', 'hist-two', '--limit', l, '--store', rs]).stdout);
+  ok(!/^  and \d+ older/m.test(h2[0]) && /^  and 1 older; --limit N shows more$/m.test(h2[1]) && rows(h2[2]) === 2,
+    `history: exactly the limit leaves no "older" line, one under it says 1, --limit 0 is the default (got ${h2.join(' / ')})`);
   const lk = join(root, 'zz-mutA-link');
   symlinkSync(join(root, 'C--mutA-rs'), lk, link);
   try { r = run(['history', 'hist-two', '--store', join(lk, 'memory')]); } finally { rmSync(lk, { recursive: true, force: true }); }
@@ -1349,6 +1353,7 @@ if (!quick) {
     // A name that opens a file by another spelling (case, on Windows and macOS) is that file, even past an entry stat cannot read.
     const od = mdir('C--mutA-od'), gone = join(root, 'od-gone');
     memory(od, 'alpha', 'cased');
+    // On a case-sensitive disk the other-case name opens nothing, so there is nothing to test; windows-latest (the gate) runs it.
     if (existsSync(join(od, 'ALPHA.md'))) {
       mkdirSync(gone);
       symlinkSync(gone, join(od, 'aaa-dangling'), link);
