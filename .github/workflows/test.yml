@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
-      # A fresh checkout has nothing changed: its parse, import and mutant-table checks, about a second.
+      # A fresh checkout has nothing changed: its parse (.mjs and .json), import and mutant-table checks, about a second.
       - run: node check.mjs
       - run: node store.test.mjs
       - run: node compact-gate.test.mjs
@@ -38,3 +38,18 @@ jobs:
       - run: node journal.test.mjs
       # Each job its own random rounds: six minutes of fuzz a push, on three systems.
       - run: node fuzz.mjs 60
+
+  # The workflow files themselves, before GitHub reads them: it once refused fuzz.yml over a %.
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # A pinned release, checked against its published sha256; shellcheck on the runner checks the run: scripts too.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.7.12 -R rhysd/actionlint -p actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint_1.7.12_linux_amd64.tar.gz" | sha256sum -c -
+          tar xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
+          ./actionlint -color

@@ -22,7 +22,7 @@ Windows with Node 24 and 26.
 
 Beyond the suites:
 
-- `node check.mjs` is the quick check for every edit. Every file parses, no
+- `node check.mjs` is the quick check for every edit. Every `.mjs` and `.json` file parses, no
   file imports a name it never uses, and every mutant's find-text is in its
   file once; then the suites of the files changed since the last commit run
   in `--mutant` mode, in UTC and in New York time (GitHub's machines run in
@@ -37,6 +37,10 @@ Beyond the suites:
   `printf '#!/bin/sh\nexec node check.mjs\n' > .git/hooks/pre-commit`.
   TypeScript's checker (`tsc --checkJs`) was tried on the hooks: 49 reports
   with strict mode off, 775 with it on, no bug among them, so it is not used.
+- CI's `actionlint` job checks the workflow files themselves (and their
+  `run:` scripts, through shellcheck) with a pinned, checksum-checked
+  release. To run it here: download actionlint from its GitHub releases and
+  run `actionlint` in the repo.
 - `node fuzz.mjs [seconds] [--keep-going]` sends random, hostile
   conversations and notes through the real hooks and the CLI: a BOM, CRLF,
   half an emoji, `forget` in six spellings, `<private>` text, a clock moving

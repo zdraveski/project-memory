@@ -3,7 +3,7 @@
 // mutate workflow) would say about the files changed since the last commit,
 // in seconds to a minute or two instead of the hour the mutation check took
 // (2026-10-30). In order, each step stopping the check when it fails:
-//   1. every .mjs parses;
+//   1. every .mjs and every .json parses;
 //   2. no file imports a name it never uses;
 //   3. every mutant's find-text is in its file exactly once, no label twice;
 //   4. the suites of the changed files, --mutant mode, in UTC and in New
@@ -98,6 +98,10 @@ console.log(`changed since the last commit: ${changed.length ? changed.join(', '
 
 // 1. Every file parses.
 step('every .mjs parses', (await pool(files, (f) => new Promise((done) => execFile(process.execPath, ['--check', join(repo, f)], (e, _o, err) => done(e ? `${f}: ${String(err).trim().split('\n').slice(0, 4).join(' | ')}` : null))))).filter(Boolean));
+// 1b. Every .json parses: a broken hooks.json turns the plugin off without a word.
+step('every .json parses', git('ls-files', '-co', '--exclude-standard', '*.json').split('\n').filter(Boolean).flatMap((f) => {
+  try { JSON.parse(readFileSync(join(repo, f), 'utf8')); return []; } catch (e) { return [`${f}: ${e.message}`]; }
+}));
 
 // 2. No name imported and never used.
 const unused = [];
