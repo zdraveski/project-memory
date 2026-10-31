@@ -457,6 +457,36 @@ if (!quick) {
     `a mark typed after the first look, further back than the read, keeps the conversation out (got ${JSON.stringify(of(L))}; ${JSON.stringify(tags)})`);
 }
 {
+  // F6: marked private and swept, its tag then lost from .private-sessions (1,000 newer private conversations
+  // push it out; here the list is rewritten without it, as 1,000 marks take 3.5 s), then resumed with more than
+  // a Stop's read between the mark and a new turn. Its ` swept` line skipped the look past the read, and the
+  // turn went into the journal, handoff.md and the next startup briefing.
+  const Y = sid('ya'), y = Y.slice(0, 8), list = join(sdir, '.private-sessions'), hf = join(sdir, 'handoff.md');
+  const tags = () => (existsSync(list) ? readFileSync(list, 'utf8') : '').split(/\r?\n/);
+  say(Y, '2026-10-28T16:00:00Z', 'a normal question', 'a normal answer');
+  stop(Y);
+  say(Y, '2026-10-28T16:01:00Z', '<private-session> from here on', 'understood');
+  stop(Y);
+  const swept = readFileSync(join(sdir, 'journal', '.checked'), 'utf8').split(/\r?\n/).includes(`${slug(scwd)}/${Y} 0 swept`), was = tags().includes(y);
+  writeFileSync(list, tags().filter((t) => t && t !== y).join('\n') + '\n');
+  // An entry recorded after the sweep, by a Stop before this fix, goes too (mutant bce69c577aa4).
+  record(sdir, tp(Y), [turn({ at: '2026-10-28 16:01', id: 'ya-leaked', ask: 'leaked before the fix' })]);
+  // Now, so a leaked turn would be the briefing's last session (it names one of the last 7 days).
+  const now = new Date(Date.now() - 60e3).toISOString();
+  appendFileSync(tp(Y), JSON.stringify({ type: 'user', uuid: 'ya-big', sessionId: Y, cwd: scwd, timestamp: now,
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'x'.repeat(TAIL + 100_000) }] } }) + '\n');
+  say(Y, now, 'so what is the vault code', 'it is walrus-4417');
+  rmSync(hf);   // other sessions' turns, newer than this one's
+  stop(Y);
+  const journal = days(sdir).map((d) => readFileSync(dayFile(sdir, d), 'utf8')).join(''), hd = existsSync(hf) ? readFileSync(hf, 'utf8') : '';
+  const brief = spawnSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+    input: JSON.stringify({ cwd: scwd, session_id: sid('yb'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '';
+  const leaked = ['journal', 'handoff.md', 'briefing'].filter((_, i) => /vault code|walrus/.test([journal, hd, brief][i]));
+  ok(swept && was && !leaked.length && tags().includes(y),
+    `a private conversation whose tag was lost, resumed past a Stop's read, stays out and is tagged again (got swept ${swept}, tagged ${was}, leaked into ${leaked}, tagged again ${tags().includes(y)})`);
+  ok(!of(Y).length, `and what was recorded of it after its sweep goes (got ${of(Y).map((e) => e.asked)})`);
+}
+{
   // R36: forget takes the exchange out of handoff.md too (the next startup's
   // briefing printed it), and the next Stop of its conversation, which reads
   // it again, does not put it back (final review, 2026-10-29).

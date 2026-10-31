@@ -383,8 +383,9 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
   // then 512 KB of a tool's output, was never read, and the conversation was
   // journaled and committed (P1 hunt, 2026-10-29); looked at once only, so
   // was a mark typed after the look (review, 2026-10-29).
+  // One swept is looked at too: its tag lost from the list, its mark past the read was missed (F6).
   const from = Number(was?.[2] ?? 0);
-  if (got.whole === false && !was?.[4] && statSync(transcriptPath).size - from > TAIL) {
+  if (got.whole === false && statSync(transcriptPath).size - from > TAIL) {
     const fd = openSync(transcriptPath, 'r');
     let size, hit;
     try { size = fstatSync(fd).size; hit = marked(fd, from, IMPORT_SEGMENT, size).hit; } finally { closeSync(fd); }

@@ -6,6 +6,13 @@ project-memory now needs Node.js 22 or newer. Node 20 reached its end of life
 in April 2026 and gets no more security fixes; if `node --version` says v20,
 install the current LTS from nodejs.org.
 
+**Privacy**
+- A conversation you marked `<private-session>` now stays out of the journal,
+  the handoff and the next session's briefing when you go back to it after a
+  very long tool output, even once it has dropped off the list of private
+  conversations (which keeps the newest 1,000). Before, each new exchange of
+  it was saved.
+
 ## 1.2.2 (2026-10-30)
 
 Five fixes from a bug hunt: reviews of the code, and a new fuzz test that
