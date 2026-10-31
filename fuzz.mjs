@@ -36,11 +36,14 @@
 // such a turn and runs its Stops in the colliding turn's zone.
 // Run: node fuzz.mjs [seconds, default 60] [--seed N] [--keep-going] [--no-shrink]
 import assert from 'node:assert';
-import { mkdirSync, writeFileSync, readFileSync, appendFileSync, readdirSync, existsSync, utimesSync, cpSync, rmSync } from 'node:fs';
-import { spawn } from 'node:child_process';
-import { join, dirname } from 'node:path';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, readdirSync, existsSync, utimesSync, cpSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join, dirname, basename } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tool, tempHome, storeFor } from './harness.mjs';
-import { NUDGE_TAG } from './handoff-log.mjs';
+import { LOCK_STALE } from './store.mjs';
+import { NUDGE_TAG, ACTIVE } from './handoff-log.mjs';
 
 const args = process.argv.slice(2);
 const seconds = Number(args.find((a, i) => /^\d+$/.test(a) && args[i - 1] !== '--seed') ?? 60);
@@ -84,17 +87,25 @@ for (const { at, zone } of INSTANTS) {
 }
 
 // A process, as Claude Code runs a hook: its input on stdin, cut off at 30 s.
-const run = (file, argv, input, tz) => new Promise((done) => {
-  // `env` stays undefined, which is "inherit" (harness.mjs); the zone is set on
-  // this process just before the spawn, which copies it at that call. The date
-  // maths here is UTC and does not read it.
+// Disk faults (fuzz-faults.cjs) reach only the hook's own process, not the git it spawns.
+const FAULTS = fileURLToPath(new URL('./fuzz-faults.cjs', import.meta.url));
+// o.fault { seed, rate, root }: a preload that fails disk calls under root. o.kill: ms until child.kill().
+const run = (file, argv, input, tz, o = {}) => new Promise((done) => {
+  // `env` stays undefined, which is "inherit" (harness.mjs); the zone and the
+  // faults are set on this process just before the spawn, which copies them at
+  // that call (a spawn is synchronous up to there, so concurrent ones each get
+  // their own). The date maths here is UTC and does not read them.
   process.env.TZ = tz;
-  const c = spawn(process.execPath, [file, ...argv]);
+  if (o.fault) process.env.FUZZ_FAULTS = `${o.fault.seed}:${o.fault.rate}:${o.fault.root}`; else delete process.env.FUZZ_FAULTS;
+  const c = spawn(process.execPath, o.fault ? ['--require', FAULTS, file, ...argv] : [file, ...argv]);
+  delete process.env.FUZZ_FAULTS;
+  let killed = false;
+  const killer = o.kill && setTimeout(() => { killed = true; c.kill(); }, o.kill);
   let out = '', err = '';
   c.stdout.on('data', (b) => { out += b; });
   c.stderr.on('data', (b) => { err += b; });
   const timer = setTimeout(() => c.kill(), 30000);
-  c.on('close', (status, signal) => { clearTimeout(timer); done({ status, signal, out, err }); });
+  c.on('close', (status, signal) => { clearTimeout(timer); clearTimeout(killer); done({ status, signal, out, err, killed }); });
   c.stdin.on('error', () => {});
   c.stdin.end(input ?? '');
 });
@@ -201,6 +212,14 @@ function generate(seed) {
     if (hit.has(mark) && r() < HIT_ZONE) { steps.push({ type: 'stop', s: m.s.id, tz: hit.get(mark).zone }); tz = hit.get(mark).tz; }
     steps.push({ type: 'forgetKey', mark, uuid: m.uuid, s: m.s.id, tz });
   }
+  // Disk faults on 15 % of Stop, gate and CLI runs (never the forget by key, nor the settling Stops, which are no steps);
+  // 10 % of Stops are killed after 5-300 ms. A stream of its own: no other choice moves.
+  const fr = rng(seed ^ 0x5EED5), rate = [0.02, 0.1, 0.3];
+  for (const st of steps) {
+    if (!['stop', 'stops', 'gate', 'cli'].includes(st.type)) continue;
+    if (fr() < 0.15) st.fault = { seed: Math.floor(fr() * 2 ** 31), rate: rate[Math.floor(fr() * 3)] };
+    if ((st.type === 'stop' || st.type === 'stops') && fr() < 0.1) st.kill = 5 + Math.floor(fr() * 296);
+  }
   return { steps, meta: { u, cwd, tz, briefing: { session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
 }
 
@@ -230,11 +249,17 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   // A half-written answer is finished, and a turn cut mid-way ends, before the next turn or Stop.
   const flush = (s) => { if (s.rest) { appendFileSync(s.t, s.rest); s.rest = ''; s.ctx = s.restSize; s.mid = false; } };
   const endCut = (s) => { if (s.open) { appendFileSync(s.t, s.open.rest); s.mid = false; s.open = null; } };   // its answer has the cut reply's size: ctx stays
-  const stop = async (s, tz, solo = true) => {
+  // o.fault / o.kill: this Stop is run with disk faults, or killed after o.kill ms. A faulted or killed Stop may save nothing:
+  // it is not counted as seen, and the nudge rules (which follow what the hook recorded) stop for that conversation.
+  const faultOf = (o) => (o.fault ? { ...o.fault, root: home } : undefined);
+  const hurt = (o) => o.fault || o.kill;
+  const stop = async (s, tz, solo = true, o = {}) => {
     endCut(s);
-    log.push(`stop ${s.id} TZ=${tz}`);
-    s.stopped = s.turns;
-    const p = await run(TIER, ['--stop'], JSON.stringify({ cwd, transcript_path: s.t, session_id: s.id, hook_event_name: 'Stop', last_assistant_message: s.did }), tz);
+    log.push(`stop ${s.id} TZ=${tz}${o.fault ? ` with faults (seed ${o.fault.seed}, rate ${o.fault.rate})` : ''}${o.kill ? `, killed after ${o.kill} ms` : ''}`);
+    if (!hurt(o)) s.stopped = s.turns; else s.nudgeOff = true;
+    const p = await run(TIER, ['--stop'], JSON.stringify({ cwd, transcript_path: s.t, session_id: s.id, hook_event_name: 'Stop', last_assistant_message: s.did }), tz, { fault: faultOf(o), kill: o.kill });
+    if (hurt(o)) hurtRules(p, `the Stop hook (${s.id})`, o);
+    if (p.killed) return;
     if (p.status !== 0) { problems.push(`the Stop hook (${s.id}, TZ=${tz}) exited ${p.status ?? p.signal}: ${p.err.trim().split('\n').slice(-2).join(' | ')}`); return; }
     // The nudge: its tag in a line of stdout. At most once between dips under the
     // trigger (a size smaller than the last nudge's is a dip too), never in a
@@ -243,21 +268,23 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
     // The hook records a nudge only when it prints one: a Stop of a private turn that printed none spent none.
     if (s.ctx < TRIGGER * WINDOW) s.nudges = 0;
     else {
-      if (gave) {
-        if (s.private) problems.push(`the Stop of a <private-session> conversation (${s.id}) gave a nudge`);
+      if (gave && s.private) problems.push(`the Stop of a <private-session> conversation (${s.id}) gave a nudge`);
+      if (s.nudgeOff) { /* a hurt Stop's record is unknown */ }
+      else if (gave) {
         if (s.nudges > 0 && s.ctx >= s.givenAt) problems.push(`a second nudge for ${s.id} between dips under the trigger: at ${s.givenAt}, then at ${s.ctx} tokens`);
         s.nudges++; s.givenAt = s.ctx;
       } else if (s.nudges === 0 && !s.private && s.lastPlain) problems.push(`no nudge on the first Stop of a plain turn past the trigger (${s.id}, ${s.ctx} tokens)`);
     }
     // A turn that has ended and stopped leaves no cut-turn note (the Stop rebuilds the section); not two Stops at once, which can leave one to the other.
-    if (solo && !s.rest && !s.private) {
+    if (solo && !s.rest && !s.private && !hurt(o)) {
       const h = existsSync(join(dir, 'handoff.md')) ? readFileSync(join(dir, 'handoff.md'), 'utf8') : '';
       if (h.includes(`**cut mid-turn** [${s.id.slice(0, 8)}]`)) problems.push(`handoff.md still has the cut-turn note of ${s.id} after its turn ended and stopped`);
     }
   };
   // The CLI: every command exits 0 or 1, prints no stack and no private text.
-  const cli = async (tz, ...a) => {
-    const c = await run(CLI, [...a, '--store', dir], '', tz);
+  const cli = async (tz, a, o = {}) => {
+    const c = await run(CLI, [...a, '--store', dir], '', tz, { fault: faultOf(o) });
+    if (o.fault) hurtRules(c, `memory.mjs ${a.join(' ')}`, o);
     if (c.status !== 0 && c.status !== 1) problems.push(`memory.mjs ${a.join(' ')} exited ${c.status ?? c.signal}: ${c.err.trim().split('\n').slice(-1)}`);
     else if (/\n\s+at /.test(c.err)) problems.push(`memory.mjs ${a.join(' ')} threw: ${c.err.trim().split('\n')[0]}`);
     for (const sec of secrets) if (c.out.includes(sec)) problems.push(`memory.mjs ${a[0]} printed private text ${sec}`);
@@ -268,6 +295,20 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
     for (const f of readdirSync(dir)) if (f.endsWith('.md')) out.set(f, readFileSync(join(dir, f), 'utf8'));
     if (existsSync(join(dir, 'journal'))) for (const f of readdirSync(join(dir, 'journal'))) if (f.endsWith('.md')) out.set(`journal/${f}`, readFileSync(join(dir, 'journal', f), 'utf8'));
     return out;
+  };
+  // What a faulted or killed run must still hold: no stack trace (a frame line, `    at f (file:1:2)` or `    at file:1:2`,
+  // in stderr or stdout), no private text in its output, and no note changed. (Its exit code is the caller's rule.)
+  const STACK = /^s+at (?:.+ (.+:d+:d+)|S+:d+:d+)$/m;
+  const hurtRules = (p, what, o) => {
+    const how = o.fault ? 'with faults' : 'killed';
+    if (STACK.test(p.err) || STACK.test(p.out)) problems.push(`${what}, ${how}, printed a stack trace: ${(STACK.exec(p.err) ?? STACK.exec(p.out))[0].trim()}`);
+    for (const sec of secrets) if ((p.out + p.err).includes(sec)) problems.push(`${what}, ${how}, printed private text ${sec}`);
+    for (const [f, body] of notes) { let now = null; try { now = readFileSync(join(dir, f), 'utf8'); } catch {} if (now !== body) problems.push(`${f} changed by ${what}, ${how}`); }
+  };
+  // A killed Stop's lock is its own and outlives it: dated back past LOCK_STALE, as the time that stale lock would take to pass.
+  const ageLocks = () => {
+    const t = new Date(Date.now() - LOCK_STALE - 1000);
+    for (const f of readdirSync(home, { recursive: true })) if (basename(f).endsWith('.lock')) try { utimesSync(join(home, f), t, t); } catch {}
   };
   const finish = () => { for (const s of sessions.values()) flush(s); };
 
@@ -335,17 +376,19 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
       if (st.half) { const at = Math.floor(asst.length / 2); appendFileSync(s.t, `${user}\n${asst.slice(0, at)}`); s.rest = `${asst.slice(at)}\n`; s.restSize = size; if (st.tool) { s.ctx = size; s.mid = false; } }
       else { appendFileSync(s.t, `${user}\n${asst}\n${st.broken ? '{"type":"user","message":\n' : ''}`); s.ctx = size; s.mid = false; }
     },
-    stop: ({ s, tz }) => stop(session(s), tz),
-    stops: async ({ ss, tz }) => { log.push('both Stops at once:'); await Promise.all(ss.map((id) => stop(session(id), tz, false))); },
-    gate: async ({ s, trigger, tz }) => {
+    stop: async (st) => { await stop(session(st.s), st.tz, true, st); },
+    // Concurrent: each spawn takes the fault setting of its own call. A kill falls on the first only.
+    stops: async (st) => { log.push('both Stops at once:'); await Promise.all(st.ss.map((id, i) => stop(session(id), st.tz, false, { fault: st.fault, kill: i ? 0 : st.kill }))); },
+    gate: async ({ s, trigger, tz, fault }) => {
       const c = session(s), file = join(dir, 'handoff.md');
       log.push(`the compaction gate (${trigger}) for ${s} TZ=${tz}, at ${c.ctx} tokens${c.mid ? ' mid-turn' : ''}`);
       const marked = existsSync(file) && readFileSync(file, 'utf8').includes('<!-- auto:start -->');
-      const g = await run(GATE, [], JSON.stringify({ cwd, transcript_path: c.t, session_id: s, hook_event_name: 'PreCompact', trigger }), tz);
+      const g = await run(GATE, [], JSON.stringify({ cwd, transcript_path: c.t, session_id: s, hook_event_name: 'PreCompact', trigger }), tz, { fault: faultOf({ fault }) });
+      if (fault) hurtRules(g, 'the compaction gate', { fault });
       // 2 exactly for an automatic compaction in the middle of a turn, from the floor to the ceiling.
       const want = trigger === 'auto' && c.mid && c.ctx >= 200_000 && c.ctx < 0.9 * MODEL_WINDOW ? 2 : 0;
       if (g.status !== 0 && g.status !== 2) problems.push(`the compaction gate exited ${g.status ?? g.signal}: ${g.err.trim().split('\n').slice(-1)}`);
-      else if (g.status !== want) problems.push(`the compaction gate exited ${g.status}, not ${want} (${trigger}, ${c.mid ? 'mid-turn' : 'at a turn boundary'}, ${c.ctx} tokens)`);
+      else if (g.status !== want && !fault) problems.push(`the compaction gate exited ${g.status}, not ${want} (${trigger}, ${c.mid ? 'mid-turn' : 'at a turn boundary'}, ${c.ctx} tokens)`);
       for (const sec of secrets) if ((g.out + g.err).includes(sec)) problems.push(`the compaction gate printed private text ${sec}`);
       // What it wrote, read now: the next Stop takes the note out again.
       const h = existsSync(file) ? readFileSync(file, 'utf8') : '';
@@ -355,7 +398,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
       // that names each of the turn's launches not yet done, and none whose notice has come, from this turn or an
       // earlier one (whether an earlier launch is named depends on how much of the file is read) -- when the file had its section to put it in.
       const turnCut = c.open?.st;
-      if (trigger === 'auto' && c.mid && c.ctx >= 0.9 * MODEL_WINDOW && turnCut?.kind === 'plain' && !turnCut.secret && !c.private && marked) {
+      if (trigger === 'auto' && c.mid && c.ctx >= 0.9 * MODEL_WINDOW && turnCut?.kind === 'plain' && !turnCut.secret && !c.private && marked && !fault) {
         const head = `**cut mid-turn** [${s.slice(0, 8)}]`, i = h.indexOf(head), note = i === -1 ? '' : h.slice(i, h.indexOf('**edited this turn:**', i));
         if (i === -1) problems.push(`no cut-turn note in handoff.md after the gate over 90% (${s}, ${c.ctx} tokens)`);
         else {
@@ -364,7 +407,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
         }
       }
     },
-    cli: (st) => { log.push(`memory.mjs ${st.args.join(' ')}`); return cli(st.tz, ...st.args); },
+    cli: async (st) => { log.push(`memory.mjs ${st.args.join(' ')}${st.fault ? ` with faults (seed ${st.fault.seed}, rate ${st.fault.rate})` : ''}`); await cli(st.tz, st.args, st); },
     // A forget by key, then the conversation's next Stop: the exchange stays out.
     // Only of an exchange a Stop has seen, as in a whole round: a shrunk one can
     // lose the turn or its Stop, and a key not yet saved is no forget.
@@ -372,7 +415,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
       const m = marks.get(mark);
       if (!m || m.turn > m.s.stopped) { log.push(`forget --key ${uuid}: not run, no Stop has seen ${mark}`); return; }
       log.push(`forget --key ${uuid} --yes (${mark})`);
-      const c = await cli(tz, 'forget', '--key', uuid, '--yes');
+      const c = await cli(tz, ['forget', '--key', uuid, '--yes']);
       if (c.status !== 0) problems.push(`forget --key ${uuid} --yes exited ${c.status}: ${c.out.trim().split('\n').slice(-1)}`);
       forgotten.add(mark);
       await stop(session(s), tz);
@@ -384,12 +427,15 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   for (const st of steps) {
     if (!['turn', 'stop', 'stops', 'gate'].includes(st.type)) finish();
     await act[st.type](st);
+    if (st.fault || st.kill) ageLocks();   // a lock a refused unlock left is a killed hook's: the designed LOCK_STALE case
   }
   finish();
   // The round's end. Each conversation's closing Stop, for a turn no Stop has
   // seen (none in a whole round); with no conversation, one in a fresh one, as
   // a Stop is what indexes the notes. Then the last Stops again, nothing new:
   // the store settles.
+  // A failed look at the journal is retried once ACTIVE has passed, not at every Stop (journal.mjs): the wait is dated away.
+  if (existsSync(join(dir, 'journal', '.failed'))) writeFileSync(join(dir, 'journal', '.looked'), String(Date.now() - ACTIVE - 1000));
   if (!sessions.size) session(briefing.session);
   for (const s of sessions.values()) if (s.turns > s.stopped) await stop(s, lastTz);
   let before = files(), settled = false;
@@ -405,11 +451,17 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   // be there. Not .health: it names what is wrong with the store (a hand-written
   // line pointing at no file), which hostile notes are meant to make.
   for (const f of readdirSync(dirname(proj)).filter((n) => n.startsWith('.handoff-failed-'))) problems.push(`${f}: ${readFileSync(join(dirname(proj), f), 'utf8').trim().slice(0, 300)}`);
-  if (existsSync(join(dir, 'journal', '.failed'))) problems.push(`journal/.failed: ${readFileSync(join(dir, 'journal', '.failed'), 'utf8').trim().slice(0, 300)}`);
+  // A store whose every conversation is private writes nothing, and a Stop that writes nothing clears no failure (journal.test.mjs:324-330, "clears no failure"), so a failure it left stays: not a rule there.
+  if (existsSync(join(dir, 'journal', '.failed')) && ![...sessions.values()].every((c) => c.private)) problems.push(`journal/.failed: ${readFileSync(join(dir, 'journal', '.failed'), 'utf8').trim().slice(0, 300)}`);
   const after = files();
   const brief = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), lastTz);
   if (brief.status !== 0) problems.push(`the startup briefing exited ${brief.status ?? brief.signal}`);
 
+  // A round with faults or kills: no half-written *.tmp<digits> file is named in the index or in `status`.
+  if (steps.some((st) => st.fault || st.kill)) {
+    const st = await run(CLI, ['status', '--store', dir], '', lastTz);
+    for (const [where, text] of [['MEMORY.md', after.get('MEMORY.md') ?? ''], ['the output of status', st.out]]) { const m = /S*.tmpd+S*/.exec(text); if (m) problems.push(`a half-written file, ${m[0]}, is named in ${where}`); }
+  }
   // What was written: no secret, nothing forgotten, nothing of a private conversation.
   const handoff = after.get('handoff.md') ?? '', journal = [...after].filter(([f]) => f.startsWith('journal/')).map(([, s]) => s).join('\n');
   const places = [...[...after].filter(([f]) => f === 'handoff.md' || f.startsWith('journal/') || f.startsWith('MEMORY')), ['the briefing', brief.out]];
@@ -478,13 +530,32 @@ assert.deepEqual((await shrinkWith(fakeExec, [0, 1, 2, 3, 4, 5, 6], 'boom #')).s
 assert.ok(calls <= 20, `shrinking 7 steps took ${calls} replays`);
 // All of a round's randomness is in generate: a seed gives the same steps twice.
 assert.deepEqual(generate(7), generate(7));
+// Faults stay under their root: the preload, at rate 1, fails a write under it with one of four codes, and nothing else (a folder
+// beside it with the same start, a file descriptor, a file outside), and the plugin's modules still import.
+{
+  const root = mkdtempSync(join(tmpdir(), 'fuzz-root-')), outside = mkdtempSync(join(tmpdir(), 'fuzz-out-')), beside = `${root}x`;
+  mkdirSync(beside);
+  const script = `const fs = require('node:fs'), path = require('node:path'), [root, out, beside, store] = process.argv.slice(1);
+    const t = (f) => { try { f(); return 'ok'; } catch (e) { return e.code; } };
+    (async () => { const fd = fs.openSync(path.join(out, 'fd'), 'w');
+      console.log(JSON.stringify({ under: t(() => fs.writeFileSync(path.join(root, 'a'), 'x')), outside: t(() => fs.writeFileSync(path.join(out, 'b'), 'x')),
+        beside: t(() => fs.writeFileSync(path.join(beside, 'c'), 'x')), fd: t(() => fs.writeFileSync(fd, 'x')), imported: typeof (await import(store)).LOCK_STALE })); })();`;
+  process.env.FUZZ_FAULTS = `1:1:${root}`;
+  const r = spawnSync(process.execPath, ['--require', FAULTS, '-e', script, root, outside, beside, pathToFileURL(join(dirname(FAULTS), 'store.mjs')).href], { encoding: 'utf8' });
+  delete process.env.FUZZ_FAULTS;
+  const got = r.stdout.trim() ? JSON.parse(r.stdout.trim()) : r.stderr.trim().split('\n').slice(-3).join(' | ');
+  for (const d of [root, outside, beside]) rmSync(d, { recursive: true, force: true });
+  assert.ok(got.under && ['EBUSY', 'EPERM', 'EACCES', 'ENOSPC'].includes(got.under) && got.outside === 'ok' && got.beside === 'ok' && got.fd === 'ok' && got.imported === 'number', `the fault preload: ${JSON.stringify(got)}`);
+}
 // Every list of a round's steps is a whole round: a lone turn, a lone note hold on correct code.
 const lone = generate(12345), alone = [];
 const plain = lone.steps.find((x) => x.type === 'turn' && x.kind === 'plain' && !x.ask.startsWith('<private-session>'));
 // A turn cut mid-way (past the ceiling, one launch), a turn past the trigger, and a gate alone or after the cut turn.
 const cutTurn = { ...plain, cut: true, size: SIZES[4], launches: [{ id: 'bgx0', done: false }] }, gate = { type: 'gate', s: plain.s, trigger: 'auto', tz: 'UTC' };
-for (const [name, xs] of [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'note')]], ['cut turn', [cutTurn]], ['turn past the trigger', [{ ...plain, size: SIZES[3] }]], ['gate', [gate]], ['turn that collides', [{ ...plain, collides: 'ASK1' }]], ['cut turn, gate', [cutTurn, gate]]]) alone.push([name, (await execute(xs, lone.meta)).found]);
-assert.deepEqual(alone.map(([n, f]) => [n, f.length]), ['turn', 'note', 'cut turn', 'turn past the trigger', 'gate', 'turn that collides', 'cut turn, gate'].map((n) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
+for (const [name, xs] of [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'note')]], ['cut turn', [cutTurn]], ['turn past the trigger', [{ ...plain, size: SIZES[3] }]], ['gate', [gate]], ['turn that collides', [{ ...plain, collides: 'ASK1' }]], ['cut turn, gate', [cutTurn, gate]],
+  ['Stop with faults', [{ type: 'stop', s: plain.s, tz: 'UTC', fault: { seed: 3, rate: 0.3 } }]], ['Stop killed', [{ type: 'stop', s: plain.s, tz: 'UTC', kill: 40 }]],
+  ['gate with faults', [{ ...gate, fault: { seed: 5, rate: 0.3 } }]]]) alone.push([name, (await execute(xs, lone.meta)).found]);
+assert.deepEqual(alone.map(([n, f]) => [n, f.length]), ['turn', 'note', 'cut turn', 'turn past the trigger', 'gate', 'turn that collides', 'cut turn, gate', 'Stop with faults', 'Stop killed', 'gate with faults'].map((n) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
 
 // --keep-going: every failing round named, not just the first (a bug hunt),
 // with its story, 60 lines at most. Otherwise the first failing round, shrunk

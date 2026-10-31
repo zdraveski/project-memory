@@ -57,6 +57,11 @@ Beyond the suites:
   `clip()` not giving the same twice (2026-10-30), and each old bug put back.
   A failing round prints its seed and what happened: `node fuzz.mjs --seed N`
   replays it, `FUZZ_KEEP=<folder>` keeps its files, and it becomes a test.
+  Some Stops, gates and commands run under `fuzz-faults.cjs`, a preload (a
+  dev tool, not deployed) that makes disk calls under the round's temp home
+  fail with EBUSY, EPERM, EACCES or ENOSPC from a seeded stream, and some
+  Stops are killed part way; the hooks must degrade safely. Faulted runs of
+  two Stops at once, and kills, are races: replay a seed a few times.
   CI fuzzes a minute on every job. The `fuzz` workflow, by hand, fuzzes ten
   minutes on each of 17 machines across Windows, Linux and macOS: run it
   before a release.
