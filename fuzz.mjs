@@ -54,6 +54,15 @@
 // live-write failure: a Stop that
 // writes nothing clears none), and no *.tmp<digits> file is named in MEMORY.md or in
 // `status`. The nudge rules rest after a hurt Stop until the next dip under the trigger.
+// More of the CLI: a note is edited before some Stops (its texts are recorded); then, each with a
+// 40 % chance, history, restore (a commit from the history, forced), promote and doctor. After a
+// restore the note is one of the texts it had, and one that fails or is not forced changes nothing;
+// a promoted note is in _shared/memory once, with one index line, and none is left in the project;
+// doctor's lines are ok or PROBLEM, its exit 1 exactly when one is, and none names the user's own
+// ~/.claude. The startup briefing (handoff-log.mjs --print) is within 9,500 characters, a line of a
+// startup or a /clear within 1,000, and a startup of a new conversation names the ask of the newest
+// plain exchange of the conversation handoff.md lists last (`[private]` when the last entry is a
+// turn that ran forget, as PRIVACY.md saves it), when that is under a week old.
 // Time: a round's clock starts at one of INSTANTS: the default, the year's end
 // (2026-12-31 23:20 UTC), or 40 minutes before a daylight-saving change in Berlin,
 // Los Angeles or Chatham, so turns and Stops straddle the change. Some turns are
@@ -66,16 +75,18 @@
 import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, readdirSync, existsSync, utimesSync, cpSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
-import { tmpdir, availableParallelism } from 'node:os';
+import { tmpdir, availableParallelism, homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tool, tempHome, storeFor } from './harness.mjs';
 import { LOCK_STALE } from './store.mjs';
-import { NUDGE_TAG, ACTIVE, tag } from './handoff-log.mjs';
+import { NUDGE_TAG, ACTIVE, tag, parse, sectionOf } from './handoff-log.mjs';
 
 const args = process.argv.slice(2);
 const seconds = Number(args.find((a, i) => /^\d+$/.test(a) && args[i - 1] !== '--seed') ?? 60);
 const only = args.includes('--seed') ? Number(args[args.indexOf('--seed') + 1]) : null;
+const REAL = join(homedir(), '.claude').replaceAll('\\', '/').toLowerCase();   // the user's own folder, read before tempHome moves HOME: no command may name it
+const OWN = new RegExp(`${dirname(fileURLToPath(import.meta.url)).replaceAll('\\', '/').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`, 'g');
 const homes = tempHome('fuzz-').home, kept = new Set();
 // The hooks and this file must read the same numbers: the four variables that
 // set the windows are gone from this process (the hooks inherit that) before
@@ -306,7 +317,19 @@ function generate(seed) {
     if (fr() < 0.15) st.fault = { seed: Math.floor(fr() * 2 ** 31), rate: rate[Math.floor(fr() * 3)] };
     if ((st.type === 'stop' || st.type === 'stops') && fr() < 0.1) st.kill = 5 + Math.floor(fr() * 296);
   }
-  return { steps, meta: { u, cwd, tz, briefing: { session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
+  // The rest of the CLI, from a stream of its own (no other choice moves): a note edited before 25 % of the Stops (the snapshots
+  // keep each text), then history, restore, promote and doctor, each once at the round's end with a 40 % chance, on a note of the
+  // round (one in ten names a note that does not exist).
+  const cx = rng(seed ^ 0xC11E5), cpick = (xs) => xs[Math.floor(cx() * xs.length)], names = steps.filter((st) => st.type === 'note').map((st) => st.name);
+  const aim = () => (!names.length || cx() < 0.1 ? 'no-such-note' : cpick(names));
+  if (names.length) for (let i = steps.length - 1; i >= 0; i--) {
+    if (['stop', 'stops'].includes(steps[i].type) && cx() < 0.25) steps.splice(i, 0, { type: 'edit', name: cpick(names), text: Array.from({ length: 1 + Math.floor(cx() * 6) }, () => (cx() < 0.7 ? cpick(WORDS) : cpick(PIECES))).join(cx() < 0.5 ? ' ' : '') });
+  }
+  if (cx() < 0.4) steps.push({ type: 'history', name: aim(), tz: cpick(ZONES), all: cx() < 0.3, limit: cx() < 0.5 ? 1 + Math.floor(cx() * 3) : 0 });
+  if (cx() < 0.4) steps.push({ type: 'restore', name: aim(), tz: cpick(ZONES), rev: cx() < 0.5, force: cx() < 0.7, pick: cx() });
+  if (cx() < 0.4) steps.push({ type: 'promote', name: aim(), tz: cpick(ZONES) });
+  if (cx() < 0.4) steps.push({ type: 'doctor', tz: cpick(ZONES) });
+  return { steps, meta: { u, cwd, tz, briefing:{ session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
 }
 
 // The steps through the real hooks and the CLI, then the round's end, then what
@@ -324,6 +347,8 @@ async function execute(steps, meta) {
   const dir = storeFor(home, cwd), proj = dirname(dir), problems = [], log = [];
   mkdirSync(dir, { recursive: true });
   const old = new Date(Date.now() - 3 * 86400_000);
+  // texts: every text a note has had (restore may bring back any); promoted: a note moved to the shared store, and the text it moved with.
+  const texts = new Map(), promoted = new Map();
   const notes = new Map(), secrets = [], ended = new Set(), marks = new Map(), forgotten = new Set(), sessions = new Map();
   const rec = (s, type, ts, content, uuid, size = 1000, stop = 'end_turn') => JSON.stringify({ type, uuid, sessionId: s.id, cwd, timestamp: ts,
     message: type === 'user' ? { role: 'user', content } : { role: 'assistant', content, stop_reason: stop, usage: { input_tokens: size } } });
@@ -408,6 +433,18 @@ async function execute(steps, meta) {
       utimesSync(f, old, old);
       // As the disk holds it: half an emoji is written as U+FFFD.
       notes.set(`${name}.md`, readFileSync(f, 'utf8'));
+      texts.set(`${name}.md`, new Set([notes.get(`${name}.md`)]));
+    },
+    // A note edited by hand between Stops (as the model's Edit does): the snapshot at the next Stop keeps the text.
+    edit: ({ name, text }) => {
+      const f = `${name}.md`, cur = notes.get(f);
+      if (cur === undefined) { log.push(`edit ${f}: not run, no such note`); return; }
+      log.push(`edit ${f}`);
+      const eol = cur.includes('\r\n') ? '\r\n' : '\n';
+      writeFileSync(join(dir, f), `${cur}${text}${eol}`);
+      utimesSync(join(dir, f), old, old);   // as the note step: a fresher note is left to its writer to index, for ORPHAN_GRACE (2 min)
+      notes.set(f, readFileSync(join(dir, f), 'utf8'));
+      texts.get(f).add(notes.get(f));
     },
     index: ({ lines }) => {
       log.push(`MEMORY.md, ${lines.length} line(s)`);
@@ -538,6 +575,61 @@ async function execute(steps, meta) {
       forgotten.add(mark);
       await stop(session(s), tz);
     },
+    // The snapshots of a note: no more lines than --limit (30 without), and nothing of the user's real folder.
+    history: async ({ name, tz, all, limit }) => {
+      const a = ['history', name, ...(all ? ['--all'] : []), ...(limit ? ['--limit', String(limit)] : [])];
+      log.push(`memory.mjs ${a.join(' ')}`);
+      const c = await cli(tz, a);
+      if (c.out.split('\n').filter((l) => /^ {2}[0-9a-f]{7,40} /.test(l)).length > (limit || 30)) problems.push(`memory.mjs ${a.join(' ')} listed more than ${limit || 30} snapshots`);
+      realFolder(c, a);
+    },
+    // A note back from the snapshots (a commit from its history in half the runs): it is then one of the texts it has had, and a
+    // restore that fails (exit 1), or that is not forced over a note there, changes nothing. A note promoted is not brought back
+    // (no --force: that would make a second copy).
+    restore: async ({ name, tz, rev, force, pick }) => {
+      const f = `${name}.md`, mine = notes.has(f), p = join(dir, f);
+      let from = [];
+      if (rev) {
+        const hs = [...(await cli(tz, ['history', name, '--limit', '100'])).out.matchAll(/^ {2}([0-9a-f]{7,40}) /gm)].map((m) => m[1]);
+        if (hs.length) from = ['--rev', hs[Math.floor(pick * hs.length)]];
+      }
+      const a = ['restore', name, ...from, ...(force && mine ? ['--force'] : []), '--yes'];
+      log.push(`memory.mjs ${a.join(' ')}`);
+      const was = mine ? notes.get(f) : null;
+      const c = await cli(tz, a);
+      realFolder(c, a);
+      let now = null; try { now = readFileSync(p, 'utf8'); } catch {}
+      if (!mine) { if (now !== null) problems.push(`restore ${name}, which the round does not hold (promoted or never made), wrote ${p}`); return; }
+      if (now === null) { problems.push(`${f} is gone after restore`); return; }
+      if (!texts.get(f).has(now)) problems.push(`restore left ${f} with a text the round never gave it: ${JSON.stringify(now.slice(0, 120))}`);
+      else if ((c.status !== 0 || !force) && now !== was) problems.push(`restore ${a.slice(1).join(' ')} exited ${c.status}${force ? '' : ' without --force'} and changed ${f}`);
+      notes.set(f, now);
+    },
+    // A note moved to the shared store, once, with one index line there and none in the project.
+    promote: async ({ name, tz }) => {
+      const f = `${name}.md`, text = notes.get(f), shared = join(home, '.claude', 'projects', '_shared', 'memory');
+      log.push(`memory.mjs promote ${name} --yes`);
+      const c = await cli(tz, ['promote', name, '--yes']);
+      realFolder(c, ['promote', name]);
+      if (c.status !== 0) { if (text !== undefined && existsSync(join(dir, f)) && readFileSync(join(dir, f), 'utf8') !== text) problems.push(`promote ${name} exited ${c.status} and changed ${f}`); return; }
+      if (text === undefined) { problems.push(`promote ${name}, which the round does not hold, exited 0`); return; }
+      promoted.set(f, { text, shared }); notes.delete(f);
+    },
+    // Every line says ok or PROBLEM, the exit is 1 exactly when one says PROBLEM, and none names the user's own folder.
+    doctor: async ({ tz }) => {
+      log.push('memory.mjs doctor');
+      const c = await cli(tz, ['doctor']);
+      realFolder(c, ['doctor']);
+      const lines = c.out.split('\n').filter(Boolean);
+      if (lines.some((l) => !/^(ok {5}|PROBLEM) /.test(l))) problems.push(`doctor printed a line that is neither ok nor PROBLEM: ${lines.find((l) => !/^(ok {5}|PROBLEM) /.test(l)).slice(0, 160)}`);
+      else if ((c.status === 0) === lines.some((l) => l.startsWith('PROBLEM'))) problems.push(`doctor exited ${c.status} with ${lines.filter((l) => l.startsWith('PROBLEM')).length} PROBLEM line(s)`);
+    },
+  };
+  // A command run in the round's temp home reads that home: the user's own ~/.claude is named in none of its output.
+  // (The folder these files are in may be under it, and the Stop hook logs where it runs from: that path is not the home's.)
+  const realFolder = (c, a) => {
+    const l = (c.out + c.err).split('\n').find((x) => x.replaceAll('\\', '/').toLowerCase().replace(OWN, '').includes(REAL));
+    if (l) problems.push(`memory.mjs ${a[0]} named the user's own ${REAL}: ${l.slice(0, 200)}`);
   };
   // A store has its MEMORY.md (a Stop leaves a folder without one alone): with
   // the index step cut, an empty one, as generate makes when it draws no line.
@@ -581,6 +673,34 @@ async function execute(steps, meta) {
   const after = files();
   const brief = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), lastTz);
   if (brief.status !== 0) problems.push(`the startup briefing exited ${brief.status ?? brief.signal}`);
+  // The briefing's limit as the code defines it (handoff-log.mjs fit()): 9,500 characters in all, whatever the source, and at a
+  // startup or a /clear no line over 1,000 (and the ellipsis a cut line ends with).
+  const SAY = 9500, LINE = 1001;
+  if (brief.out.length > SAY) problems.push(`the ${briefing.source} briefing is ${brief.out.length} characters, over ${SAY}`);
+  if (['startup', 'clear'].includes(briefing.source) && brief.out.split('\n').some((l) => l.length > LINE)) problems.push(`a line of the ${briefing.source} briefing is over ${LINE} characters`);
+  // A startup of a conversation the round does not hold: the briefing names where the last session ended, the ask of the
+  // newest exchange of the conversation handoff.md lists last -- when that is under a week old and no other session is working.
+  const fresh = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: 'zzbrief0-1', source: 'startup' }), lastTz);
+  if (fresh.status !== 0) problems.push(`the startup briefing of a new conversation exited ${fresh.status ?? fresh.signal}`);
+  if (fresh.out.length > SAY) problems.push(`the startup briefing of a new conversation is ${fresh.out.length} characters, over ${SAY}`);
+  if (fresh.out.split('\n').some((l) => l.length > LINE)) problems.push(`a line of the startup briefing of a new conversation is over ${LINE} characters`);
+  {
+    const doc = existsSync(join(dir, 'handoff.md')) ? readFileSync(join(dir, 'handoff.md'), 'utf8') : '', { a, b } = sectionOf(doc);
+    const listed = a === -1 ? [] : parse(doc.slice(a + '<!-- auto:start -->'.length, b)), last = listed.at(-1);
+    const days = last && (Date.now() - Date.parse(`${last.at.replace(' ', 'T')}:00Z`)) / 86400_000;
+    // The clock gap between a zone and UTC is a day at most: under 5 days it is under 7, over 9 it is over.
+    const due = last && days < 5, notDue = !last || days > 9;
+    // The newest plain exchange of that conversation that handoff.md holds: the highest turn, not forgotten, not private.
+    let want = null;
+    for (const [mark, m] of marks) if (m.kind === 'plain' && m.s && tag(m.s.id) === last?.s && !m.s.private && !forgotten.has(mark) && doc.includes(mark) && (!want || m.turn > want.turn)) want = { mark, turn: m.turn };
+    const said = /^Last session here ended .*$/m.exec(fresh.out)?.[0];
+    if (!fresh.out.includes('Another session is working') && fresh.status === 0) {
+      // A turn that ran forget is saved as `[private]` (PRIVACY.md) and is the last entry: the briefing names that, as the code does.
+      if (due && last.ask === '[private]') { if (!said?.includes('on: [private] (log:')) problems.push(`the startup briefing does not name the last entry, [private]: ${(said ?? fresh.out).slice(0, 200)}`); }
+      else if (due && want && !said?.includes(want.mark)) problems.push(`the startup briefing does not name ${want.mark}, the newest plain exchange of the conversation handoff.md lists last (${last.s}): ${(said ?? fresh.out).slice(0, 200)}`);
+      else if (notDue && said) problems.push(`the startup briefing names a last session that handoff.md ${last ? `lists ${Math.round(days)} days old` : 'does not list'}: ${said.slice(0, 200)}`);
+    }
+  }
 
   // A round with faults or kills: no half-written *.tmp<digits> file is named in the index or in `status`.
   if (steps.some((st) => st.fault || st.kill)) {
@@ -589,7 +709,7 @@ async function execute(steps, meta) {
   }
   // What was written: no secret, nothing forgotten, nothing of a private conversation.
   const handoff = after.get('handoff.md') ?? '', journal = [...after].filter(([f]) => f.startsWith('journal/')).map(([, s]) => s).join('\n');
-  const places = [...[...after].filter(([f]) => f === 'handoff.md' || f.startsWith('journal/') || f.startsWith('MEMORY')), ['the briefing', brief.out]];
+  const places = [...[...after].filter(([f]) => f === 'handoff.md' || f.startsWith('journal/') || f.startsWith('MEMORY')), ['the briefing', brief.out], ['the briefing of a new conversation', fresh.out]];
   const count = (hay, w) => hay.split(w).length - 1;
   for (const sec of secrets) for (const [f, body] of places) if (body.includes(sec)) problems.push(`private text ${sec} is in ${f}`);
   for (const [mark, m] of marks) {
@@ -613,6 +733,15 @@ async function execute(steps, meta) {
     if (now !== body) problems.push(`${f} was rewritten, from character ${k}: ${JSON.stringify(body.slice(Math.max(0, k - 20), k + 40))} -> ${JSON.stringify(now.slice(Math.max(0, k - 20), k + 40))}`);
     const n = lines.split('\n').filter((l) => l.includes(`](${f})`)).length;
     if (n !== 1) problems.push(`${f} has ${n} index lines`);
+  }
+  // A promoted note: in the shared store once, as it was, with one index line there; gone from the project, with no line left.
+  for (const [f, { text, shared }] of promoted) {
+    const at = (n) => { try { return readFileSync(join(shared, n), 'utf8'); } catch { return ''; } };
+    if (at(f) !== text) problems.push(`promoted ${f} is not in the shared store as it was`);
+    const k = (t) => t.split('\n').filter((l) => l.includes(`](${f})`)).length, n = k(at('MEMORY.md')) + k(at('MEMORY-archive.md'));
+    if (n !== 1) problems.push(`promoted ${f} has ${n} index lines in the shared store`);
+    if (existsSync(join(dir, f))) problems.push(`promoted ${f} is still in the project`);
+    if (k(lines)) problems.push(`promoted ${f} still has ${k(lines)} index line(s) in the project`);
   }
   // What happened, for the one who replays it: every step, repeats too. With
   // FUZZ_KEEP=<folder>, a failing round's project folder is kept there as
@@ -694,12 +823,17 @@ const oldOne = (how) => ({ type: 'old', id: 'oabcdef0-1234', how, exchanges: [{ 
 const plain = lone.steps.find((x) => x.type === 'turn' && x.kind === 'plain' && !x.ask.startsWith('<private-session>'));
 // A turn cut mid-way (past the ceiling, one launch), a turn past the trigger, and a gate alone or after the cut turn.
 const cutTurn = { ...plain, cut: true, size: SIZES[4], launches: [{ id: 'bgx0', done: false }] }, gate = { type: 'gate', s: plain.s, trigger: 'auto', tz: 'UTC' };
+const oneNote = lone.steps.find((x) => x.type === 'note'), stopOf = { type: 'stop', s: plain.s, tz: 'UTC' };
 const LONE = [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'note')]], ['cut turn', [cutTurn]], ['turn past the trigger', [{ ...plain, size: SIZES[3] }]], ['gate', [gate]], ['turn that collides', [{ ...plain, collides: 'ASK1' }]], ['cut turn, gate', [cutTurn, gate]],
   ['Stop with faults', [{ type: 'stop', s: plain.s, tz: 'UTC', fault: { seed: 3, rate: 0.3 } }]], ['Stop killed', [{ type: 'stop', s: plain.s, tz: 'UTC', kill: 40 }]],
   ['gate with faults', [{ ...gate, fault: { seed: 5, rate: 0.3 } }]], ['CLI with faults', [{ type: 'cli', args: ['status'], tz: 'UTC', fault: { seed: 7, rate: 0.3 } }]],
   ['queued string', [{ ...plain, queued: { blocks: false, text: 'queued words' } }]], ['queued blocks, private', [{ ...plain, did: `${plain.did} ZQXQlone`, tool: { type: 'tool_use', id: 'qlone', name: 'Bash', input: { command: 'echo ZQXQlone' } }, queued: { blocks: true, secret: 'ZQXQlone', text: '<private>ZQXQlone</private> words' } }]],
   ['every secret shape', [{ ...plain, shapes: { text: [...allShapes.secrets.map(([t]) => t), ...allShapes.near.map(([t]) => t)].join('\n'), secrets: allShapes.secrets.map(([, s]) => s) } }]],
   ['auto memory off', [{ type: 'off', s: plain.s, tz: 'UTC' }]], ['turn, Stop, auto memory off', [plain, { type: 'stop', s: plain.s, tz: 'UTC' }, { type: 'off', s: plain.s, tz: 'UTC' }]],
+  ['history', [{ type: 'history', name: 'no-such-note', tz: 'UTC', all: true, limit: 2 }]], ['restore', [{ type: 'restore', name: 'no-such-note', tz: 'UTC', rev: true, force: true, pick: 0.5 }]],
+  ['promote', [{ type: 'promote', name: 'no-such-note', tz: 'UTC' }]], ['doctor', [{ type: 'doctor', tz: 'UTC' }]],
+  ['note, edit, Stop, restore', [oneNote, { type: 'edit', name: oneNote.name, text: 'edited' }, plain, stopOf, { type: 'restore', name: oneNote.name, tz: 'UTC', rev: true, force: true, pick: 0 }, { type: 'history', name: oneNote.name, tz: 'UTC', all: false, limit: 1 }]],
+  ['note, Stop, promote', [oneNote, plain, stopOf, { type: 'promote', name: oneNote.name, tz: 'UTC' }, { type: 'restore', name: oneNote.name, tz: 'UTC', rev: false, force: true, pick: 0 }]],
   ['older conversation', [oldOne()]], ...['mark', 'off', 'list'].map((how) => [`older conversation (${how})`, [oldOne(how)]])];
 // Each in a home of its own, a few at a time: they wait on processes, not on each other.
 const alone = [];
@@ -707,7 +841,7 @@ await Promise.all(Array.from({ length: Math.min(LONE.length, availableParallelis
   for (let i; (i = nextLone++) < LONE.length; ) alone[i] = [LONE[i][0], (await execute(LONE[i][1], { ...lone.meta, home: `lone${i}` })).found];
 }));
 assert.deepEqual(alone.map(([n, f]) => [n, f.length]), alone.map(([n]) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
-assert.equal(alone.length, 20, 'the lone-step list changed size');
+assert.equal(alone.length, 26, 'the lone-step list changed size');
 
 // --keep-going: every failing round named, not just the first (a bug hunt),
 // with its story, 60 lines at most. Otherwise the first failing round, shrunk
