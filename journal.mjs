@@ -622,13 +622,13 @@ export function due(dir, t0 = Date.now()) {
 export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segment = IMPORT_SEGMENT, turns: cap = IMPORT_TURNS } = {}) {
   const t0 = Date.now(), look = join(dir, JOURNAL, LOOKED);
   if (!due(dir, t0)) return { imported: 0, left: 0 };
-  let all = [], n = 0, done = 0, err = null, owed = 0;
+  let all = [], n = 0, done = 0, err = null, stuck = false;
   const other = [];
   // The sweeps owed are tried here too, their failure the live write's to
   // report: it tries them first at every Stop. The look's own kept an import
   // with work left to a look in half an hour, and its line in status after
   // the day was fixed and a live write finished the sweep (review, 2026-10-29).
-  try { owed = resweep(dir); } catch {}
+  try { resweep(dir); } catch { stuck = true; }
   try {
     all = candidates(dir, skip);
     for (const [i, c] of all.entries()) {
@@ -656,12 +656,13 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
     if (all.seen) refold(dir, (have) => { const keep = have.filter((h) => all.mine.has(pathKey(h))); return keep.length < have.length ? keep : have; });
   } catch (e) { err = e; }
   const left = all.length - done - other.length;
-  // Kept in .failed as the sink's is; the next import that goes through clears
-  // it, and only its own: a live write's failure is the live write's to clear.
+  // Kept in .failed as the sink's is; the next look that goes through clears it
+  // (one that imported, or left nothing to do with no sweep stuck, has shown the backfill works),
+  // and only its own: a live write's failure is the live write's to clear.
   // Not while a transcript is listed as failing to open: cleared by another's
   // import, it was skipped in silence.
   if (err) fault(dir, err, 'backfill: ');
-  else if ((n || owed) && !FAILING.test(raw(join(dir, JOURNAL, IMPORTED)) ?? '')) clear(dir, true);
+  else if ((n || (!left && !stuck)) && !FAILING.test(raw(join(dir, JOURNAL, IMPORTED)) ?? '')) clear(dir, true);
   // The next look: the next Stop while the budget left some, else in ACTIVE (a
   // failure too: retried every Stop, it would cost every Stop a look).
   try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(look, raw(look), String(left && !err ? t0 - ACTIVE : Date.now())); } catch {}

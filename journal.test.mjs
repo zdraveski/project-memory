@@ -651,6 +651,28 @@ const due = (d) => looked(d, Date.now() - 3600e3);
     `a day later it is tried again, not grown: imported, and the failure cleared (got ${asks(d)}, ${line()}, ${summary(d).failed})`);
 }
 {
+  // A look that fails (the journal folder refused) keeps its failure; the next look that ends without error and has nothing left
+  // to import has proved the backfill healthy and clears it (F11) -- not while a transcript is listed as failing to open.
+  const [r, d] = repo('healed'), failed = join(d, 'journal', '.failed');
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  writeFileSync(failed, '{"at":"2026-08-01T09:00:00Z","error":"backfill: EBUSY: busy"}\n');   // as a look the disk refused leaves it
+  due(d); const clean = fill(d);
+  ok(clean.imported === 0 && clean.left === 0 && !existsSync(failed) && !summary(d).failed, `the next look, clean, with nothing to import, clears it (got ${JSON.stringify(clean)}, ${summary(d).failed})`);
+  // The guard: a transcript listed as failing to open keeps the failure through a clean look.
+  const p = old(r, sid('g'), 2, ['unreadable']), open = fs.openSync;
+  fs.openSync = (q, ...a) => { if (q === p) throw Object.assign(new Error('EACCES: denied'), { code: 'EACCES' }); return open(q, ...a); };
+  syncBuiltinESMExports();
+  try { due(d); fill(d); appendFileSync(failed, '{"at":"2026-08-01T09:00:00Z","error":"backfill: boom"}\n'); due(d); fill(d); } finally { fs.openSync = open; syncBuiltinESMExports(); }
+  ok(existsSync(failed) && readFileSync(failed, 'utf8').includes('backfill: boom'), `a clean look while a transcript is listed as failing keeps the failure (got ${existsSync(failed) && readFileSync(failed, 'utf8')})`);
+  // An import that went through clears it though more is left for the next look.
+  const [r2, d2] = repo('healed2'), failed2 = join(d2, 'journal', '.failed');
+  old(r2, sid('a'), 50, ['a1']); old(r2, sid('b'), 40, ['b1']);
+  mkdirSync(join(d2, 'journal'), { recursive: true });
+  writeFileSync(failed2, '{"at":"2026-08-01T09:00:00Z","error":"backfill: EBUSY: busy"}\n');
+  const some = fill(d2, { budgetMs: 0 });
+  ok(some.imported === 1 && some.left === 1 && !existsSync(failed2), `a look that imports one and leaves one clears the failure (got ${JSON.stringify(some)}, ${existsSync(failed2)})`);
+}
+{
   const [r, d] = repo('hush');
   old(r, sid('a'), 30, ['marked private']); old(r, sid('b'), 20, ['<private-session> from here on']); old(r, sid('c'), 10, ['an open one']);
   writeFileSync(join(d, '.private-sessions'), `${sid('a').slice(0, 8)}\n`);
