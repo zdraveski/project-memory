@@ -26,6 +26,14 @@
 // the turn's Stop; the nudge comes once between dips under the trigger, never in
 // a private conversation, and at the first Stop of a plain turn past it; every
 // note keeps its text and one index line; repeating the last Stop settles within four.
+// Time: a round's clock starts at one of INSTANTS: the default, the year's end
+// (2026-12-31 23:20 UTC), or 40 minutes before a daylight-saving change in Berlin,
+// Los Angeles or Chatham, so turns and Stops straddle the change. Some turns are
+// placed (searched minute by minute, in generate) so their local minute in their
+// Stop's zone equals an earlier turn's in that turn's zone: a forget by key lists
+// an exchange by key and minute, and must not take out another turn that reads as
+// that minute after a move to another zone (F5, c59deeb). A forget by key often picks
+// such a turn and runs its Stops in the colliding turn's zone.
 // Run: node fuzz.mjs [seconds, default 60] [--seed N] [--keep-going] [--no-shrink]
 import assert from 'node:assert';
 import { mkdirSync, writeFileSync, readFileSync, appendFileSync, readdirSync, existsSync, utimesSync, cpSync, rmSync } from 'node:fs';
@@ -57,6 +65,7 @@ const ZONES = ['UTC', 'Europe/Berlin', 'America/Los_Angeles', 'Asia/Kolkata', 'P
 const FORGET = ["node memory.mjs forget x", "node \"C:/x/memory.mjs\" 'forget' 'x'", 'node memory.mjs --store "C:/s" "forget" x',
   "node \"C:/x/memory.mjs\" '--shared' 'forget' 'x' --session y", 'node memory.mjs --limit -5 forget x', 'node memory.mjs --conversation= forget x'];
 const LINE_ENDS = /[\r\n\u2028\u0085]/g;
+// shortcut: hooks read the real clock, so replaying a seed on another day may differ in those two messages ("another session is working", "hooks look stopped"); upgrade if a failure ever depends on them.
 // Where a round's clock starts. A `zone` marks a daylight-saving change in it 40
 // minutes after `at`; the first is the default, the last the year's end.
 const INSTANTS = [{ at: '2026-10-30T08:00:00Z' }, { at: '2026-10-25T00:20:00Z', zone: 'Europe/Berlin' }, { at: '2026-11-01T08:20:00Z', zone: 'America/Los_Angeles' },
@@ -64,6 +73,7 @@ const INSTANTS = [{ at: '2026-10-30T08:00:00Z' }, { at: '2026-10-25T00:20:00Z', 
   { at: '2026-09-26T13:20:00Z', zone: 'Pacific/Chatham' }, { at: '2026-12-31T23:20:00Z' }];
 // A zone's offset and the local minute (`2026-10-27 01:07`, as store.mjs local() reads it) at an instant, by Intl: this
 // file's own TZ stays as it is (R20).
+const COLLIDE = 0.3, FORGET_KEY = 0.5, PICK_HIT = 0.8, HIT_ZONE = 0.8;   // the chances: a turn placed to collide; a forget by key; it picks a collided turn; the Stops after it use the colliding zone
 const fmtCache = new Map();
 const fmt = (zone, opts) => { const k = zone + JSON.stringify(opts); if (!fmtCache.has(k)) fmtCache.set(k, new Intl.DateTimeFormat('sv-SE', { timeZone: zone, ...opts })); return fmtCache.get(k); };
 const offsetAt = (zone, ms) => fmt(zone, { timeZoneName: 'longOffset' }).formatToParts(ms).find((p) => p.type === 'timeZoneName').value;
@@ -130,24 +140,26 @@ function generate(seed) {
   // Makes a turn whose Stop is in zone tz and returns the gate step that follows it (a turn cut mid-way, 70 % of them), or null.
   const turn = (s, tz) => {
     clock += int(1, inst === INSTANTS[0] ? 90 : 40) * 60_000;
-    // 20 %: the time is searched, a minute at a time up to 24 hours ahead, for one whose local minute in tz is an earlier
-    // turn's in that turn's Stop's zone (another zone first, then the same conversation's).
+    // Only a plain turn takes part (kind >= 0.3: no secret, no forget, not private), or a collision proves nothing.
+    // COLLIDE %: the time is searched, a minute at a time up to 24 hours ahead, for one whose local minute in tz is an earlier
+    // turn's in that turn's Stop's zone (another zone first; then the same conversation's: only a forget of a turn in the colliding turn's own transcript can lose it, F5).
     let collides = null;
-    if (r() < 0.2 && seen.length) {
+    const kind = r();
+    if (kind >= 0.3 && r() < COLLIDE && seen.length) {
       const mins = Array.from({ length: 1440 }, (_, m) => minuteIn(clock + (m + 1) * 60_000, tz));
       const order = seen.map((e) => [(e.zone === tz ? 2 : 0) + (e.s === s.id ? 0 : 1) + r() / 2, e]).sort((a, b) => a[0] - b[0]);
       for (const [, e] of order) {
         const m = mins.indexOf(minuteIn(e.at, e.zone));
-        if (m !== -1) { clock += (m + 1) * 60_000; collides = e.mark; hit.set(e.mark, tz); break; }
+        if (m !== -1) { clock += (m + 1) * 60_000; collides = e.mark; if (e.s === s.id) hit.set(e.mark, { tz, zone: e.zone }); break; }
       }
     }
-    const i = s.n++, mark = `ASK${u}${s.id[1]}n${i}`, kind = r();
+    const i = s.n++, mark = `ASK${u}${s.id[1]}n${i}`;
     // 20 % are cut mid-way; after one the gate runs 70 % of the time, over 90 % of the window in 40 % of those.
     const isCut = r() < 0.2, gated = isCut && r() < 0.7, over = gated && r() < 0.4;
     // The size never falls, but for the first turn after a compaction; a gate not over 90 % is not given the top size.
     const max = s.fell ? 2 : gated ? top - 1 : top;
     s.idx = over ? top : int(s.idx, Math.max(s.idx, max)); s.fell = false;
-    seen.push({ mark, at: clock, zone: tz, s: s.id });
+    if (kind >= 0.3) seen.push({ mark, at: clock, zone: tz, s: s.id });
     const st = { type: 'turn', s: s.id, at: clock, mark, uuid: `u-${u}-${s.id[1]}-${i}`, kind: 'plain', ask: `${mark} ${text(int(1, 12))}`, did: `done ${text(int(1, 30))}`, size: SIZES[s.idx] };
     if (collides) st.collides = collides;
     if (kind < 0.15) { st.secret = `ZQXP${u}${s.id[1]}n${i}`; st.ask = `${pick(['<private>', '<PRIVATE>', '<private reason="x">'])}${st.secret}</private> ${st.ask}`; st.did = `${st.did} ${st.secret}`; }
@@ -182,10 +194,11 @@ function generate(seed) {
   const arg = () => text(int(1, 3)).replace(/[\uD800-\uDFFF\r\n\u2028\u0085\0]/g, ' ').trim() || 'x';
   for (const a of [['status'], ['search', pick(WORDS)], ['search', arg(), arg()], ['show', pick([...marks.values()].map((m) => m.uuid).concat('no-such-key'))], ['forget', arg()]]) steps.push({ type: 'cli', args: a, tz });
   const plain = [...marks].filter(([, m]) => m.kind === 'plain' && !m.s.private);
-  if (plain.length && r() < 0.4) {
+  if (plain.length && r() < FORGET_KEY) {
     // Half the time a turn another collides with, and the Stops after it in the colliding turn's zone: coincidences are the point.
-    const hits = plain.filter(([mark]) => hit.has(mark)), [mark, m] = hits.length && r() < 0.5 ? pick(hits) : pick(plain);
-    if (hit.has(mark) && r() < 0.5) tz = hit.get(mark);
+    const hits = plain.filter(([mark]) => hit.has(mark)), [mark, m] = hits.length && r() < PICK_HIT ? pick(hits) : pick(plain);
+    // A Stop in the target's zone first, so its minute is read there (a Stop dates the entries it writes in its own zone).
+    if (hit.has(mark) && r() < HIT_ZONE) { steps.push({ type: 'stop', s: m.s.id, tz: hit.get(mark).zone }); tz = hit.get(mark).tz; }
     steps.push({ type: 'forgetKey', mark, uuid: m.uuid, s: m.s.id, tz });
   }
   return { steps, meta: { u, cwd, tz, briefing: { session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
@@ -483,7 +496,7 @@ for (let seed = first; only === null ? Date.now() - start < seconds * 1000 : rou
   const { steps, meta } = generate(seed), { found, story } = await execute(steps, meta);
   if (!found.length) continue;
   failed++;
-  console.log(`fuzz: round ${seed} failed (replay: node fuzz.mjs --seed ${seed}):`);
+  console.log(`fuzz: round ${seed} failed (round number ${rounds} of this run; replay: node fuzz.mjs --seed ${seed}):`);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `- seed ${seed}: ${found[0].replace(/\n/g, ' ')}\n`);
   if (keepGoing) { for (const p of [...found, ...story].slice(0, 60)) console.log(`  ${p}`); continue; }
   for (const p of noShrink ? [...found, ...story] : found) console.log(`  ${p}`);
