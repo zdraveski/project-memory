@@ -196,10 +196,11 @@ export function turns(tail) {
     // A turn's edits are tool calls with no text: taken before the text test skips them.
     // Not once a nudge or a private message froze the turn: what follows is
     // the memory update, or the private part.
-    if (r.type === 'assistant' && pending && !pending.frozen && Array.isArray(r.message?.content)) {
+    if (r.type === 'assistant' && pending && Array.isArray(r.message?.content)) {
       for (const b of r.message.content) {
-        if (b?.type === 'tool_use' && /^(Bash|PowerShell)$/.test(b.name) && b.input?.command) pending.ran.push(String(b.input.command));
-        const f = editedFile(b);
+        // Frozen: only a forget is kept, so a turn that ran one still says nothing (F14); a quiet turn lists no commands.
+        if (b?.type === 'tool_use' && /^(Bash|PowerShell)$/.test(b.name) && b.input?.command && (!pending.frozen || FORGETS.test(String(b.input.command)))) pending.ran.push(String(b.input.command));
+        const f = pending.frozen ? null : editedFile(b);
         if (!f) continue;
         // The newest edit last, and by path: two index.ts files are two, and
         // a file edited first and last is one of the turn's last.

@@ -999,6 +999,16 @@ writeFileSync(tf, [user('forget the zebra policy', { ts: '2026-10-29T09:00:00Z' 
   asst('removed 2: the zebra policy notes', { ts: '2026-10-29T09:00:20Z' })].join('\n') + '\n');
 handoff({ cwd: cwdF, transcript_path: tf, session_id: 'ffffffff-1' });
 ok(/\[ffffffff\]: \[private\]\n  \*\*did:\*\* \[private\]$/m.test(fdoc()) && !/zebra/.test(fdoc()), `a turn that ran forget is written like a private one (got ${fdoc().split('[ffffffff]')[1]?.slice(0, 80)})`);
+// A forget run after a private message (queued while Claude worked) or in a nudge's memory update still hides its turn (F14, R32);
+// no other command after the freeze is listed.
+{
+const tq = join(dirF, 'q.jsonl'), cmd = { type: 'tool_use', id: 'q1', name: 'Bash', input: { command: 'node "C:/p/memory.mjs" forget quokka --yes' } };
+writeFileSync(tq, [user('forget the quokka policy', { ts: '2026-10-29T10:00:00Z' }), JSON.stringify({ type: 'attachment', timestamp: '2026-10-29T10:00:05Z', attachment: { type: 'queued_command', prompt: '<private>x</private>' } }),
+  rec('assistant', [cmd, { type: 'tool_use', id: 'q2', name: 'Bash', input: { command: 'ls after' } }], { ts: '2026-10-29T10:00:10Z' }),
+  asst('removed 2: the quokka policy notes', { ts: '2026-10-29T10:00:20Z' })].join('\n') + '\n');
+handoff({ cwd: cwdF, transcript_path: tq, session_id: 'eeeeeeee-1' });
+ok(/\[eeeeeeee\]: \[private\]\n  \*\*did:\*\* \[private\]$/m.test(fdoc()) && !/quokka/.test(fdoc()), `a forget run after a queued private message hides its turn (got ${fdoc().split('[eeeeeeee]')[1]?.slice(0, 80)})`);
+}
 // memory.mjs's forget command only. Options may come first, as the CLI takes them.
 for (const c of ['node memory.mjs forget zebra', "node '/p/memory.mjs' forget 'zebra' --yes", 'node "C:\\p\\memory.mjs" forget --since 1970-01-01 --yes',
   'node "C:/p/memory.mjs" --session abc forget password', 'node "C:/p/memory.mjs" --store C:/s forget password --yes',
@@ -1714,6 +1724,10 @@ require('node:module').syncBuiltinESMExports();
   const frozen = turns(lines(user('go'), asst('answer'), att({ type: 'queued_command', prompt: '<private>secret</private>' }),
     rec('assistant', [{ type: 'tool_use', name: 'Edit', input: { file_path: 'C:\\x\\after-private.txt' } }, { type: 'tool_use', name: 'Bash', input: { command: 'ls after' } }, { type: 'text', text: 'private reply' }])))[0];
   ok(frozen.changed.length === 0 && frozen.ran.length === 0 && frozen.did === 'answer', 'a file edited or a command run after a private message is not the turn\'s');
+  // A forget run after a freeze still counts (F14, R32).
+  const fg = { type: 'tool_use', name: 'Bash', input: { command: 'node "C:/p/memory.mjs" forget quokka --yes' } };
+  ok(JSON.stringify(turns(lines(user('go'), asst('a'), user(`${NUDGE_TAG} update the memory`), rec('assistant', [fg, { type: 'tool_use', name: 'Bash', input: { command: 'ls after' } }]), endTurn('done')))[0].ran) === JSON.stringify([fg.input.command]),
+  'a forget run in a nudge\'s memory update is the turn\'s, and no other command after it');
   // A tool call among a user record's blocks is no edit by Claude.
   ok(turns(lines(user('go'), rec('user', [{ type: 'tool_use', name: 'Edit', input: { file_path: 'C:\\x\\in-user.txt' } }]), asst('done')))[0].changed.length === 0, 'a user record is not read for edits');
 
