@@ -438,6 +438,18 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(lockRun(rep('EACCES', 9)).res === 'EACCES', 'nine in a row throw');
   ok(lockRun(['EEXIST', ...rep('EACCES', 8)]).res === 'got', 'a held lock between the refusals starts the count again');
 
+  // The unlock: refused for a moment (EBUSY), it is tried again; ENOENT is not retried.
+  for (const [code, n, gone] of [['EBUSY', 1, true], ['EPERM', 2, true], ['EBUSY', 3, false]]) {
+    let k = 0;
+    const undo = patch('rmdirSync', (real) => function (p, ...a) { if (String(p).endsWith('.lock') && k++ < n) throw err(code); return real.call(this, p, ...a); });
+    try { withLock(lockDir, () => 'got'); } finally { undo(); }
+    ok(existsSync(lockPath) !== gone && k === Math.min(n + 1, 3), `an unlock refused ${n} time(s) with ${code}: ${gone ? 'tried again and gone' : 'given up after three tries'} (${k} calls)`);
+    rmSync(lockPath, { recursive: true, force: true });
+  }
+  { let k = 0; const undo = patch('rmdirSync', (real) => function (p, ...a) { if (String(p).endsWith('.lock')) { k++; throw err('ENOENT'); } return real.call(this, p, ...a); });
+    try { withLock(lockDir, () => 'got'); } finally { undo(); }
+    ok(k === 1, `an unlock that finds no lock is not tried again (${k} calls)`); rmSync(lockPath, { recursive: true, force: true }); }
+
   // The clock: a lock is stale after 30 s (mtime + 30 s exactly is not), and the wait is 2 s.
   const M = (Math.floor(Date.now() / 1000) - 1000) * 1000;
   const clockRun = (script, rmErrors = [], vanish = false) => {

@@ -294,7 +294,8 @@ export function withLock(dir, fn) {
       sleep(STEP);
     }
   }
-  try { return fn(); } finally { try { rmdirSync(lock); } catch {} }
+  // The disk may refuse the unlock for a moment (the codes a rename retries): a lock left behind stops every hook for LOCK_STALE.
+  try { return fn(); } finally { for (let i = 0; i < 3; i++) { try { rmdirSync(lock); break; } catch (e) { if (!BUSY.includes(e.code)) break; sleep(STEP); } } }
 }
 
 // Write `next` over `path` only while the file still holds `expected`, the text
