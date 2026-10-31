@@ -228,7 +228,7 @@ function generate(seed) {
   const x = rng(seed ^ 0x0FF5E7), xint = (a, b) => a + Math.floor(x() * (b - a + 1));
   for (const s of sessions) s.off = x() < 0.1;   // 10 %: held with auto memory off from some Stop on
   // Which shapes get two blanks or a tab before their value: a stream of its own too.
-  const bx = rng(seed ^ 0xB1A4C5);
+  const wx = rng(seed ^ 0xB1A4C5);
   const marks = new Map(), top = SIZES.length - 1;
   const inst = pick(INSTANTS), zones = inst.zone ? [...ZONES, inst.zone, inst.zone] : ZONES;
   let clock = Date.parse(inst.at);
@@ -276,7 +276,7 @@ function generate(seed) {
     }
     if (kind >= 0.3 && x() < 0.25) {
       const { secrets, near } = shapesOf(x), drawn = Array.from({ length: 5 }, () => secrets[Math.floor(x() * secrets.length)]), nm = near[Math.floor(x() * near.length)][0];
-      const few = drawn.map((sh) => (bx() < 0.4 ? widen(sh, bx() < 0.5 ? '  ' : '\t') : sh));
+      const few = drawn.map((sh) => (wx() < 0.4 ? widen(sh, wx() < 0.5 ? '  ' : '\t') : sh));
       st.shapes = { text: [...few.map(([t]) => t), nm].join('\n'), secrets: few.map(([, sc]) => sc) };
     }
     marks.set(mark, { kind: st.kind, s, uuid: st.uuid });
