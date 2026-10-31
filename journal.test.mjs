@@ -1192,7 +1192,7 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
 }
 {
   // A conversation held with auto memory off is swept once: what an earlier look swept stays swept.
-  const [r, d] = repo('offtwice'), id = sid('t'), p = old(r, id, 30, ['said before']);
+  const [r, d] = repo('offtwice'), id = sid('r'), p = old(r, id, 30, ['said before']);
   appendFileSync(join(projects, '.memory-off'), `${id.slice(0, 8)}\n`);
   const hf = join(d, 'handoff.md');
   writeFileSync(hf, `---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** 2026-09-01 10:00 [${id.slice(0, 8)}]: said before\n  **did:** noted\n<!-- auto:end -->\n`);
@@ -1227,21 +1227,29 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   ok(!existsSync(failed), 'a Stop that took a conversation back has written all it had to: an earlier failure is cleared');
 }
 {
-  // A mark further on than one segment of the look (64 MB) is found at a Stop too.
+  // A mark in the second read of the look is found at a Stop too. The look's segment is 64 MB; here
+  // each read returns at most 4 KB, as a disk may, and the file is over TAIL of short blank lines before the mark.
   const [r, d] = repo('bigmark'), id = sid('g'), p = join(projects, slug(r), `${id}.jsonl`);
-  const fd = fs.openSync(p, 'w');
-  try {
-    fs.writeSync(fd, rec('user', id, '2026-10-28T15:00:00Z', 'hello there', r) + '\n');
-    fs.writeSync(fd, Buffer.alloc(IMPORT_SEGMENT + 10));   // a line longer than a segment, passed over unread
-    fs.writeSync(fd, '\n' + rec('user', id, '2026-10-28T15:01:00Z', '<private-session> after the gap', r) + '\n');
-  } finally { fs.closeSync(fd); }
-  write(d, p, Object.assign([turn({ at: '2026-10-28 15:00', id: 'bg-1', ask: 'hello there' })], { whole: false }), { quiet: false, hush: false });
-  ok(!asks(d).length && tagsOf(d).includes('g'.repeat(8)), `a mark in the second segment of the look keeps the conversation out (got ${asks(d)}; ${tagsOf(d)})`);
+  writeFileSync(p, rec('user', id, '2026-10-28T15:00:00Z', 'hello there', r) + '\n' + (' '.repeat(99) + String.fromCharCode(10)).repeat(TAIL / 100 + 100) + '\n' + rec('user', id, '2026-10-28T15:01:00Z', '<private-session> after the gap', r) + '\n');
+  const read = fs.readSync;
+  fs.readSync = (fd, buf, off, len, pos) => read(fd, buf, off, len > 4096 ? 4096 : len, pos);
+  syncBuiltinESMExports();
+  try { write(d, p, Object.assign([turn({ at: '2026-10-28 15:00', id: 'bg-1', ask: 'hello there' })], { whole: false }), { quiet: false, hush: false }); }
+  finally { fs.readSync = read; syncBuiltinESMExports(); }
+  ok(!asks(d).length && tagsOf(d).includes('g'.repeat(8)), `a mark in the second read of the look keeps the conversation out (got ${asks(d)}; ${tagsOf(d)})`);
   rmSync(p);
 }
 {
+  // A junk line holding a later prompt's uuid is no cut point: the import goes on, it does not read the same segment again.
+  const [r, d] = repo('junkuuid'), U = sid('j'), p = join(projects, slug(r), `${U}.jsonl`), xs = [0, 1, 2, 3].map((i) => exchange(U, r, i));
+  const id = JSON.parse(xs[3].split('\n')[0]).uuid;
+  writeFileSync(p, `"uuid":"${id}"\n` + xs.join('')); utimesSync(p, ago(2), ago(2));
+  fill(d, { turns: 3, budgetMs: 300 });
+  ok(asks(d).length === 4 && listed(d)[0].endsWith(` ${statSync(p).size}`), `a junk line with a later prompt's uuid does not stall the import (got ${asks(d)}, ${listed(d)})`);
+}
+{
   // Imports that hang on a clock: a failed transcript is tried again a day after, one still being written is left alone for ACTIVE.
-  const [r, d] = repo('retry'), id = sid('y'), p = old(r, id, 30, ['x']), S = statSync(p).size, DAY = 24 * 3600e3;
+  const [r, d] = repo('retry'), id = sid('y'), p = old(r, id, 30, ['x']), S = statSync(p).size, DAY = 24 * 3600e3;   // journal.mjs's RETRY (not exported)
   mkdirSync(join(d, 'journal'), { recursive: true });
   const left = () => atClock(NOW, () => summary(d).left), failedAt = (ms) => writeFileSync(join(d, 'journal', '.imported'), `${slug(r)}/${id} ${S} failed ${ms}\n`);
   failedAt(NOW - DAY + 1); const soon = left();
@@ -1256,11 +1264,11 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   // The budget is spent when the time passed is the budget: no further transcript, no further segment. The clock moves once an entry is written.
   const [r, d] = repo('budget'), clock = (dd) => () => NOW + (days(dd).length ? 100 : 0);
   old(r, sid('a'), 50, ['ba']); old(r, sid('b'), 40, ['bb']);
-  atClock(clock(d), () => withLock(d, () => backfill(d, { budgetMs: 100 })));
+  withLock(d, () => atClock(clock(d), () => backfill(d, { budgetMs: 100 })));
   ok(asks(d).join() === 'ba', `a second transcript is not started once the budget is spent (got ${asks(d)})`);
   const [r2, d2] = repo('segbudget'), B = sid('c'), p = join(projects, slug(r2), `${B}.jsonl`);
   writeFileSync(p, Array.from({ length: 12 }, (_, i) => exchange(B, r2, i)).join('')); utimesSync(p, ago(2), ago(2));
-  atClock(clock(d2), () => withLock(d2, () => backfill(d2, { budgetMs: 100, segment: 1024 })));
+  withLock(d2, () => atClock(clock(d2), () => backfill(d2, { budgetMs: 100, segment: 1024 })));
   ok(asks(d2).length > 0 && asks(d2).length < 12 && / at \d+$/.test(listed(d2)[0]), `the next segment is not read once the budget is spent (got ${asks(d2).length}, ${listed(d2)})`);
 }
 {
