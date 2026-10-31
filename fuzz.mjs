@@ -88,7 +88,7 @@ const args = process.argv.slice(2);
 const seconds = Number(args.find((a, i) => /^\d+$/.test(a) && args[i - 1] !== '--seed') ?? 60);
 const only = args.includes('--seed') ? Number(args[args.indexOf('--seed') + 1]) : null;
 const REAL = join(homedir(), '.claude').replaceAll('\\', '/').toLowerCase();   // the user's own folder, read before tempHome moves HOME: no command may name it
-const OWN = new RegExp(`${dirname(fileURLToPath(import.meta.url)).replaceAll('\\', '/').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[/\\s]|$)`, 'g');   // the hooks folder itself (then a slash, a space or the end: not hooks-live, not hooks.bak)
+const OWN = new RegExp(`${dirname(fileURLToPath(import.meta.url)).replaceAll('\\', '/').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[/\\s)'",:;]|$)`, 'g');   // the hooks folder itself (then a slash, a blank, a bracket, a quote, , : ; or the end: not hooks-live, not hooks.bak)
 const homes = tempHome('fuzz-').home, kept = new Set();
 // The hooks and this file must read the same numbers: the four variables that
 // set the windows are gone from this process (the hooks inherit that) before
@@ -338,10 +338,10 @@ function generate(seed) {
   if (cx() < 0.4) steps.push({ type: 'restore', name: aim(), tz: cpick(ZONES), rev: cx() < 0.5, force: cx() < 0.7, pick: cx() });
   if (cx() < 0.4) steps.push({ type: 'promote', name: aim(), tz: cpick(ZONES) });
   if (cx() < 0.4) steps.push({ type: 'doctor', tz: cpick(ZONES) });
-  // big (10 %): a store with so many long failure lines that the briefing meets both limits; late (30 %): the fresh startup is judged
-  // 12 days after the last entry, not 2. Streams of their own.
-  const bx = rng(seed ^ 0xB16B);
-  return { steps, meta: { u, cwd, tz, big: bx() < 0.1, late: bx() < 0.3, briefing: { session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
+  // big (10 %): a store whose health lines are so long and many that the briefing meets both limits (never late: the "last session"
+  // line is part of its size); late (30 %): the fresh startup is judged 12 days after the last entry, not 2. Streams of their own.
+  const bx = rng(seed ^ 0xB16B), big = bx() < 0.1, late = bx() < 0.3 && !big;
+  return { steps, meta: { u, cwd, tz, big, late, briefing: { session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
 }
 
 // The steps through the real hooks and the CLI, then the round's end, then what
@@ -685,12 +685,25 @@ async function execute(steps, meta) {
   const stale = [...sessions.values()].every((c) => c.private || c.off) ? failedLines.filter((l) => l.includes('"error":"backfill: ')) : failedLines;
   if (stale.length) problems.push(`journal/.failed: ${stale.join(' ').slice(0, 300)}`);
   const after = files();
-  // A big store (meta.big, 10 % of rounds): the journal's failure lines, one briefing line each, long and many, written after the
-  // settle (a Stop would clear them), so the startup briefing meets both limits: a line over 1,000 and a total over 9,500.
+  // A big store (meta.big, 10 % of rounds), in states the plugin writes, after the settle (a Stop would clear them): the project's
+  // and the shared store's .health with one line naming 400 files (memory-tier.mjs health(); `fit`'s own example), the snapshot
+  // health (failures, and 400 names left out), a failed handoff record, one live-write line in journal/.failed (fault() keeps
+  // one per kind), and a shared index filled to its 3,000 B ceiling. Each is a line of the startup briefing, so it meets both
+  // limits: a line over 1,000 characters, and a total over 9,500.
   if (meta.big) {
-    mkdirSync(join(dir, 'journal'), { recursive: true });
-    writeFileSync(join(dir, 'journal', '.failed'), Array.from({ length: 14 }, (_, i) => JSON.stringify({ at: new Date().toISOString(), error: `disk ${i} full `.repeat(120) })).join('\n') + '\n');
-    log.push('a big store: 14 long failure lines in journal/.failed');
+    const root = dirname(proj), shared = join(root, '_shared', 'memory'), names = Array.from({ length: 400 }, (_, i) => `note-${i}.md`).join(', ');
+    mkdirSync(join(dir, 'journal'), { recursive: true }); mkdirSync(shared, { recursive: true });
+    for (const d of [dir, shared]) writeFileSync(join(d, '.health'), `pointers with no file: ${names}\n`);
+    writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ failures: 5, lastOk: Date.now(), error: 'disk full '.repeat(120), missed: names.split(', ') }));
+    writeFileSync(join(root, `.handoff-failed-${basename(proj)}`), JSON.stringify({ at: Date.now(), error: 'disk full '.repeat(120) }));
+    writeFileSync(join(dir, 'journal', '.failed'), JSON.stringify({ at: new Date().toISOString(), error: 'disk full '.repeat(120) }) + '\n');
+    writeFileSync(join(shared, 'MEMORY.md'), `# Shared memory\n\n${Array.from({ length: 12 }, (_, i) => `- [lesson-${i}](lesson-${i}.md) - ${'a lesson that holds in every project '.repeat(8)}`.slice(0, 249)).join('\n')}\n`);   // 12 lines of 250 B: the 3,000 B ceiling to the byte
+    // And an entry in handoff.md (a round whose conversations are all private has none), so the "last session" line is in the briefing.
+    {
+      const hf = join(dir, 'handoff.md'), doc0 = existsSync(hf) ? readFileSync(hf, 'utf8') : '', { b: end } = sectionOf(doc0), entry = '- **asked** 2026-10-30 09:00 [bigbig00]: a long ask\n  **did:** done\n';
+      writeFileSync(hf, end === -1 ? `${doc0}\n<!-- auto:start -->\n${entry}<!-- auto:end -->\n` : `${doc0.slice(0, end)}${entry}${doc0.slice(end)}`);
+    }
+    log.push('a big store: long health lines in both stores, the snapshot health, a failed record, a failed journal write, a full shared index');
   }
   const brief = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), lastTz);
   if (brief.status !== 0) problems.push(`the startup briefing exited ${brief.status ?? brief.signal}`);
