@@ -48,7 +48,7 @@ const entries = () => (section().match(/\*\*asked\*\*/g) || []).length;
   const docs = ['prose with no marker', '', ['x', E, ''].join('\n'), [S, 'no end'].join('\n'), ['x', S, 'no end', ''].join('\n'), ['x' + S, 'body', E, ''].join('\n'), [S, 'body', E + 'x'].join('\n')];
   const probe = `import { sectionOf } from ${JSON.stringify(pathToFileURL(HOOK).href)};\nprocess.stdout.write(JSON.stringify(${JSON.stringify(docs)}.map(sectionOf)));`;
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8', timeout: 10000 });
-  ok(r.status === 0 && r.stdout === JSON.stringify(docs.map(() => ({ a: -1, b: -1 }))), `sectionOf of text with no section finds none, and returns (${r.status}${r.signal ? ', ' + r.signal : ''}${r.error ? ', ' + r.error.code : ''}, ${r.stdout}, ${String(r.stderr).slice(0, 300)})`);
+  ok(r.status === 0 && r.stdout === JSON.stringify(docs.map(() => ({ a: -1, b: -1 }))), `sectionOf of text with no section finds none${r.error?.code === 'ETIMEDOUT' || r.signal ? ' (timed out after 10 s)' : ''}, and returns (${r.status}${r.signal ? ', ' + r.signal : ''}${r.error ? ', ' + r.error.code : ''}, ${r.stdout}, ${String(r.stderr).slice(0, 300)})`);
 }
 
 // 1. One prompt, then 700 KB of tool output, then the answer: beyond a 512 KB tail.
@@ -1700,7 +1700,7 @@ require('node:module').syncBuiltinESMExports();
     writeFileSync(join(dU, 'handoff.md'), docOf(entry('2026-09-12 07:01', 'unsayses', 'an ask', 'an answer')));
     ok(unsay(dU, () => false) === 'unchanged', 'unsay that takes nothing out says unchanged');
     // Three tries against a file that keeps changing, and then false. reads() counts
-    // store.mjs replaceIfUnchanged's two reads per try: the only way to see the retry count.
+    // put()'s raw() read plus store.mjs replaceIfUnchanged's two reads: three per try, 3 x 3 = 9, the only way to see the retry count.
     const [r, reads] = conflicting(join(dU, 'handoff.md'), () => unsay(dU, () => true));
     ok(r === false && reads() === 9, `unsay tries three times against a file that keeps changing, then gives up (${r}, ${reads()} reads)`);
     const [h, hreads] = conflicting(join(dU, '.private-sessions'), () => { writeFileSync(join(dU, '.private-sessions'), 'old00001\n'); return hushed(dU, 'new00002', true); });
@@ -1858,21 +1858,26 @@ require('node:module').syncBuiltinESMExports();
 
   // A slash command with no arguments tag is the command alone, whatever a stray closer or the tag's text says.
   {
-    const { prompt, fit: fit_ } = await import('./handoff-log.mjs');
+    const { prompt } = await import('./handoff-log.mjs');
     ok(prompt({}, '<command-name>/exit</command-name>') === '/exit' && prompt({}, '<command-name>/exit</command-name> </command-args> x') === '/exit',
       'a command with no <command-args> is its name alone, even beside a stray </command-args>');
     ok(prompt({}, '<command-name>/exit</command-name><command-args> a b </command-args>') === '/exit a b', 'and its arguments follow, trimmed');
 
-    // A transcript with no prompt is read in windows of 512 KB growing four-fold: 512 KB, 2 MB, 8 MB, then the whole.
+    }
+
+  // A transcript with no prompt is read in windows of 512 KB growing four-fold: 512 KB, 2.048 MB, 8.192 MB, then the whole (a five-fold growth would reach 2.56 MB, then the whole).
+  {
     const dG = store('C:\\hl-B-grow'), trG = join(dG, 't.jsonl');
-    writeFileSync(trG, tool_(10_000_000));
+    writeFileSync(trG, tool_(2_300_000));
     const open = fs.openSync; let opens = 0;
     fs.openSync = (p, ...a) => { if (String(p) === trG) opens++; return open(p, ...a); };
     syncBuiltinESMExports();
     try { handoff({ cwd: 'C:\\hl-B-grow', transcript_path: trG, session_id: 'growsess' }); } finally { fs.openSync = open; syncBuiltinESMExports(); }
-    ok(opens === 4, `the read grows four-fold: a 10 MB transcript with no prompt is read in 4 windows (${opens})`);
+    ok(opens === 3, `the read grows four-fold: a 2.3 MB transcript with no prompt is read in 3 windows (${opens})`);
+  }
 
-    // Writing into a handoff.md that has its section keeps what comes before the section, front matter first.
+  // Writing into a handoff.md that has its section keeps what comes before the section, front matter first.
+  {
     const dK = store('C:\\hl-B-head'), trK = join(dK, 't.jsonl');
     writeFileSync(join(dK, 'handoff.md'), docOf(entry('2026-09-12 07:01', 'headsess', 'an old ask', 'an old answer')));
     writeFileSync(trK, lines(user('a new ask', { ts: '2026-09-12T08:00:00Z' }), asst('a new answer', { ts: '2026-09-12T08:00:30Z' })));
@@ -1880,13 +1885,19 @@ require('node:module').syncBuiltinESMExports();
     const kept = readFileSync(join(dK, 'handoff.md'), 'utf8');
     ok(kept.startsWith('---\nname: handoff\n---\n\n<!-- auto:start -->') && /a new ask/.test(kept), `a write keeps the file from its first character (${JSON.stringify(kept.slice(0, 40))})`);
 
-    // Entry-looking lines with no section markers around them are not the section: the briefing names no last session.
+    }
+
+  // Entry-looking lines with no section markers around them are not the section: the briefing names no last session.
+  {
     const cwB = 'C:\\hl-B-nomark', dB = store(cwB), at = Date.UTC(2026, 9, 1, 10, 0);
     writeFileSync(join(dB, 'handoff.md'), `---\nname: handoff\n---\n\nnotes by hand, no markers\n\n${entry('2026-10-01 10:00', 'zzzzzzzz', 'the last ask', 'the last answer')}\n`);
     ok(!/Last session here ended/.test(print_(cwB, 'pppppppp-1', 'startup', at + 1000)), 'entries outside any section markers are not a last session');
 
-    // fit() cuts a line before a surrogate pair it would split, and exactly one character short.
-    ok(fit_('ab\u{1F600}cd', 3) === 'ab…' && fit_('abc\u{1F600}d', 4) === 'abc…' && fit_('abcdef', 4) === 'abcd…', 'fit does not split an emoji at a line limit');
+  }
+
+  // fit() cuts a line before a surrogate pair it would split, and exactly one character short.
+  {
+    ok(fit('ab\u{1F600}cd', 3) === 'ab…' && fit('abc\u{1F600}d', 4) === 'abc…' && fit('abcdef', 4) === 'abcd…', 'fit does not split an emoji at a line limit');
   }
 
   // Importing the hook runs nothing: only running it as a script does.
