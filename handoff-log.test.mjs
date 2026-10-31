@@ -5,7 +5,8 @@
 import fs, { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, chmodSync, readdirSync, utimesSync, appendFileSync, existsSync, symlinkSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
 import { tool, tempHome, storeFor, quick, fastClock } from './harness.mjs';
 
@@ -35,6 +36,15 @@ const section = () => { const d = doc(); return d.slice(d.lastIndexOf('<!-- auto
 // session gets while nothing is shared yet (section 27 checks that line).
 const bare = (s) => s.replace(/^Shared memory: lessons that hold in every project[^\n]*\n/m, '');
 const entries = () => (section().match(/\*\*asked\*\*/g) || []).length;
+
+// sectionOf of text with no marker returns at once. A mutant of it looped for
+// ever there, in the suite's first check: so a child with a watchdog asks, and
+// the suite fails in seconds instead of hanging until CI gives up.
+{
+  const probe = `import { sectionOf } from ${JSON.stringify(pathToFileURL(HOOK).href)};\nprocess.stdout.write(JSON.stringify(['prose with no marker', '', 'x\\n<!-- auto:end -->\\n'].map(sectionOf)));`;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8', timeout: 10000 });
+  ok(r.status === 0 && r.stdout === JSON.stringify(Array(3).fill({ a: -1, b: -1 })), `sectionOf of text with no start marker finds none, and returns (${r.status}, ${r.stdout}, ${String(r.stderr).slice(0, 300)})`);
+}
 
 // 1. One prompt, then 700 KB of tool output, then the answer: beyond a 512 KB tail.
 writeFileSync(transcript, '');
@@ -1585,6 +1595,268 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   ok(/since 2026-09-03 is in its journal/.test(brief('clear')), 'and so does the clear briefing');
 }
 
+
+// The first full mutation run's survivors in turns(), the section markers, the
+// write loops, the briefing and the entry point: each rule below is one a
+// mutant broke without a check noticing.
+{
+  const { turns, unwrap, unquote, asked, newest, sectionOf, unsay, hushed, lastTurn, stalled, transcripts, edited: edited_, fit, off, OFF, NUDGE_TAG, ACTIVE, GRACE, FORGOTTEN } = await import('./handoff-log.mjs');
+  const T0 = '2026-09-11T07:00:00Z';
+  const store = (cwd_) => { const d = storeFor(home, cwd_); mkdirSync(d, { recursive: true }); return d; };
+  const lines = (...l) => l.join('\n') + '\n';
+  const sectionOfFile = (d) => { const s = readFileSync(join(d, 'handoff.md'), 'utf8'); return s.slice(s.indexOf('<!-- auto:start -->'), s.lastIndexOf('<!-- auto:end -->')); };
+  const root_ = join(home, '.claude', 'projects');
+  const att = (a, extra = {}) => JSON.stringify({ type: 'attachment', timestamp: T0, attachment: a, ...extra });
+  const endTurn = (s) => JSON.stringify({ type: 'assistant', timestamp: T0, message: { content: [{ type: 'text', text: s }], stop_reason: 'end_turn' } });
+  const mk = (len) => { const s = 'w '.repeat(len).slice(0, len); return s.endsWith(' ') ? `${s.slice(0, -1)}z` : s; };
+  // The briefing, as a child prints it, in UTC (an entry's time is local); with `now`, on a clock that stands still there.
+  const nowJs = join(home, 'now.cjs');
+  writeFileSync(nowJs, 'Date.now = () => Number(process.env.HL_NOW);\n');
+  // A transcript that cannot be opened (held by another program: made so by a preload, on every system), for the briefing child.
+  const busyJs = join(home, 'unopenable.cjs');
+  writeFileSync(busyJs, `const fs = require('node:fs'), open = fs.openSync;
+fs.openSync = (p, ...a) => { if (String(p).endsWith('unopenable-1.jsonl')) throw Object.assign(new Error('EBUSY: resource busy or locked, open'), { code: 'EBUSY' }); return open(p, ...a); };
+require('node:module').syncBuiltinESMExports();
+`);
+  const print_ = (cwd_, session_id, source, now, ...pre) => execFileSync(process.execPath, [...(now === undefined ? [] : ['--require', nowJs]), ...pre.flatMap((p) => ['--require', p]), HOOK, '--print'],
+    { input: JSON.stringify({ cwd: cwd_, session_id, source }), env: { ...process.env, HL_NOW: String(now), TZ: 'UTC' } }).toString();
+  const entry = (at, s, ask, did) => `- **asked** ${at} [${s}]: ${ask}\n  **did:** ${did}`;
+  const docOf = (...es) => `---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written by hand._\n\n${es.join('\n')}\n<!-- auto:end -->\n`;
+  // fn with every read of `target` returning text that differs from the last read: a file someone else keeps writing.
+  const conflicting = (target, fn) => {
+    const read = fs.readFileSync; let reads = 0;
+    fs.readFileSync = (p, ...a) => { const v = read(p, ...a); return String(p) === target ? `${v}\n<!-- read ${++reads} -->` : v; };
+    syncBuiltinESMExports();
+    try { return [fn(), () => reads]; } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
+  };
+
+  // The text a user sends is read as typed: a command's own words are no ask.
+  ok(asked({}, '<command-name>/clear</command-name> then some words') === false && asked({}, 'plain words') === true, 'a slash command with words after it is no ask');
+  // A system-reminder is taken out only where there is one.
+  ok(unwrap('a<system-reminder>x</system-reminder>b') === 'ab' && unwrap('no reminder') === 'no reminder' && unwrap('stray </system-reminder> closer') === 'stray </system-reminder> closer',
+    'unwrap takes out a reminder, and leaves text with none or with a stray closer whole');
+  // Fifty quoted blocks are taken out and no more: the rest is left as it is.
+  const quoted = '<task-notification>a</task-notification>';
+  ok(unquote(quoted.repeat(51)) === quoted && unquote(`x${quoted}y`) === 'xy', 'unquote stops after fifty blocks');
+  ok(clip('abc', 3) === 'abc' && clip('abcd', 3) === 'ab…', 'a text exactly as long as the limit is not clipped');
+  ok(newest(['a', 'b'], 2) === 'a, b' && newest(['a', 'b', 'c'], 2) === 'b, c, and 1 more', 'newest names every one of a list as long as its limit');
+
+  // Only the Bash and PowerShell commands a turn ran are kept: forget is looked for in them.
+  const ranBy = turns(lines(user('go'),
+    rec('assistant', [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }, { type: 'tool_use', name: 'Read', input: { command: 'not a shell command' } },
+      { type: 'tool_use', name: 'Bash', input: {} }, { type: 'text', name: 'Bash', input: { command: 'a text block' }, text: 'x' }, { type: 'tool_use', name: 'PowerShell', input: { command: 'dir' } }]),
+    asst('done')))[0];
+  ok(JSON.stringify(ranBy.ran) === '["ls","dir"]', `a turn keeps a Bash or PowerShell tool call with a command, and nothing else (${JSON.stringify(ranBy.ran)})`);
+  // Nothing a private or nudged turn does afterwards is its own: no file it edits is listed.
+  const frozen = turns(lines(user('go'), asst('answer'), att({ type: 'queued_command', prompt: '<private>secret</private>' }),
+    rec('assistant', [{ type: 'tool_use', name: 'Edit', input: { file_path: 'C:\\x\\after-private.txt' } }, { type: 'tool_use', name: 'Bash', input: { command: 'ls after' } }, { type: 'text', text: 'private reply' }])))[0];
+  ok(frozen.changed.length === 0 && frozen.ran.length === 0 && frozen.did === 'answer', 'a file edited or a command run after a private message is not the turn\'s');
+  // A tool call among a user record's blocks is no edit by Claude.
+  ok(turns(lines(user('go'), rec('user', [{ type: 'tool_use', name: 'Edit', input: { file_path: 'C:\\x\\in-user.txt' } }]), asst('done')))[0].changed.length === 0, 'a user record is not read for edits');
+
+  // <private-session> is typed by the user, in a prompt or one queued meanwhile: a record of another kind that carries the words is not.
+  ok(turns(lines(user('go'), att({ type: 'queued_command', prompt: '<private-session>' }), asst('x'))).hush === true, 'a queued prompt can mark the conversation private');
+  ok(turns(lines(user('go'), att({ type: 'hook_success', prompt: '<private-session>' }), asst('x'))).hush !== true, 'an attachment that is no queued prompt cannot');
+  // After a nudge the turn stays held until a prompt-like record follows the memory update's own turn.
+  const held = (...probe) => turns(lines(user('do it'), asst('real answer'), user(`${NUDGE_TAG} update the memory`), endTurn('memory updated'), ...probe, asst('later work')))[0].did;
+  ok(held() === 'real answer', 'a reply after the memory update is not the turn\'s answer');
+  ok(held(att({ type: 'todo_reminder' })) === 'real answer', 'an attachment of another kind does not end the hold');
+  ok(held(tool_(5)) === 'real answer', 'a tool result does not end the hold');
+  ok(held(user('<task-notification>done</task-notification>')) === 'later work' && held(att({ type: 'queued_command', prompt: 'more' })) === 'later work', 'a task\'s end or a queued prompt does');
+
+  // The section's markers count on a line of their own, both sides.
+  ok(sectionOf('<!-- auto:start -->\nx\n<!-- auto:end -->\n').a === 0, 'a section is found');
+  ok(sectionOf('<!-- auto:start --> words\nx\n<!-- auto:end -->\n').a === -1 && sectionOf('<!-- auto:start -->\nx\n<!-- auto:end --> words\n').a === -1
+    && sectionOf('see <!-- auto:start -->\nx\n<!-- auto:end -->\n').a === -1, 'a marker with words after or before it on its line is no marker');
+
+  // The merged list keeps the order two entries of one minute were read in.
+  {
+    const dT = store('C:\\hl-A-tie'), tr = join(dT, 't.jsonl');
+    writeFileSync(tr, lines(user('continue', { ts: '2026-09-12T07:01:00Z' }), asst('first answer'), user('continue', { ts: '2026-09-12T07:01:00Z' }), asst('second answer')));
+    handoff({ cwd: 'C:\\hl-A-tie', transcript_path: tr, session_id: 'tiesess1' });
+    const s = sectionOfFile(dT);
+    ok(s.includes('first answer') && s.indexOf('first answer') < s.indexOf('second answer'), 'two exchanges of one session in one minute stay in the order they happened');
+  }
+
+  // A transcript read whole with no prompt in it is read once.
+  {
+    const dO = store('C:\\hl-A-once'), tr = join(dO, 't.jsonl');
+    writeFileSync(tr, asst('a reply, and no prompt'));
+    const open = fs.openSync; let opens = 0;
+    fs.openSync = (p, ...a) => { if (String(p) === tr) opens++; return open(p, ...a); };
+    syncBuiltinESMExports();
+    try { handoff({ cwd: 'C:\\hl-A-once', transcript_path: tr, session_id: 'oncesess' }); } finally { fs.openSync = open; syncBuiltinESMExports(); }
+    ok(opens === 1, `a transcript that is read whole is not read again, larger and larger (${opens} reads)`);
+  }
+
+  // Nothing to take out of nothing: unsay says so with false, never 'unchanged' or true.
+  {
+    const dU = store('C:\\hl-A-unsay');
+    ok(unsay(dU, () => true) === false, 'unsay on a store with no handoff.md writes nothing and says false');
+    writeFileSync(join(dU, 'handoff.md'), docOf(entry('2026-09-12 07:01', 'unsayses', 'an ask', 'an answer')));
+    ok(unsay(dU, () => false) === 'unchanged', 'unsay that takes nothing out says unchanged');
+    // Three tries against a file that keeps changing, and then false.
+    const [r, reads] = conflicting(join(dU, 'handoff.md'), () => unsay(dU, () => true));
+    ok(r === false && reads() === 9, `unsay tries three times against a file that keeps changing, then gives up (${r}, ${reads()} reads)`);
+    const [h, hreads] = conflicting(join(dU, '.private-sessions'), () => { writeFileSync(join(dU, '.private-sessions'), 'old00001\n'); return hushed(dU, 'new00002', true); });
+    ok(h === false && hreads() === 9, `a private mark is tried three times against a list that keeps changing, then not made (${h}, ${hreads()} reads)`);
+  }
+
+  // A conversation held with memory off is tagged by its transcript's name when the payload names no session.
+  mkdirSync(root_, { recursive: true });
+  ok(off({ transcript_path: join(root_, 'proj-A', 'abcdef12-3456.jsonl') }) === true && /^abcdef12$/m.test(readFileSync(join(root_, OFF), 'utf8')), 'a memory-off conversation is tagged by its transcript');
+
+  // A transcript that is not there is no turn to record.
+  {
+    const dM = store('C:\\hl-A-missing');
+    ok(handoff({ cwd: 'C:\\hl-A-missing', transcript_path: join(dM, 'nope.jsonl') }) === false && handoff({ cwd: 'C:\\hl-A-missing' }) === false
+      && handoff({ cwd: 'C:\\hl-A-missing', transcript_path: 42 }) === false, 'a transcript that is missing, or no path, is recorded as nothing');
+  }
+
+  // The reply Stop passes: added when the transcript lacks the turn, and not twice when it has it.
+  {
+    const dS = store('C:\\hl-A-stop1'), tr = join(dS, 't.jsonl');
+    writeFileSync(tr, lines(user('an open ask', { ts: '2026-09-12T08:00:00Z' })));
+    handoff({ cwd: 'C:\\hl-A-stop1', transcript_path: tr, session_id: 'stopses1', hook_event_name: 'Stop', last_assistant_message: 'the reply Stop passed' });
+    ok(/an open ask\n  \*\*did:\*\* the reply Stop passed/.test(sectionOfFile(dS)), 'a turn the transcript has no reply to yet is written with the reply Stop passed');
+    const dS2 = store('C:\\hl-A-stop2'), tr2 = join(dS2, 't.jsonl');
+    writeFileSync(tr2, lines(user('a closed ask', { ts: '2026-09-12T08:00:00Z' }), asst('the older text')));
+    handoff({ cwd: 'C:\\hl-A-stop2', transcript_path: tr2, session_id: 'stopses2', hook_event_name: 'Stop', last_assistant_message: 'the newer text' });
+    const s2 = sectionOfFile(dS2);
+    ok((s2.match(/\*\*asked\*\*/g) || []).length === 1 && s2.includes('the newer text') && !s2.includes('the older text'), 'a turn with a reply already is written once, with the reply Stop passed');
+  }
+
+  // Forget takes out the exchange it names from this session's entries, and only that one.
+  {
+    const cw = 'C:\\hl-A-forget', dF = store(cw), tS = join(dF, 's.jsonl'), tO = join(dF, 'o.jsonl');
+    const inS = { cwd: cw, transcript_path: tS, session_id: 'sessSSSS-1' }, inO = { cwd: cw, transcript_path: tO, session_id: 'sessOOOO-1' };
+    writeFileSync(tS, lines(user('continue', { ts: '2026-09-12T07:01:00Z' }), asst('ans-old'), user('different ask', { ts: '2026-09-12T07:02:00Z' }), asst('ans1')));
+    writeFileSync(tO, lines(user('continue', { ts: '2026-09-12T07:05:00Z' }), asst('ans1')));
+    handoff(inS); handoff(inO);
+    appendFileSync(tS, lines(tool_(700_000), user('continue', { ts: '2026-09-12T07:05:00Z', uuid: 'uuid-T' }), asst('ans1')));
+    handoff(inS);
+    const before = sectionOfFile(dF);
+    ok(/\[sessSSSS\]: continue\n  \*\*did:\*\* ans1/.test(before) && /\[sessSSSS\]: continue\n  \*\*did:\*\* ans-old/.test(before) && /\[sessOOOO\]: continue\n  \*\*did:\*\* ans1/.test(before), 'forget setup: the exchanges are written');
+    mkdirSync(join(dF, dirname(FORGOTTEN)), { recursive: true });
+    writeFileSync(join(dF, FORGOTTEN), 'uuid-T\n');
+    handoff(inS);
+    const after = sectionOfFile(dF);
+    ok(!/\[sessSSSS\]: continue\n  \*\*did:\*\* ans1/.test(after), 'the forgotten exchange is out of the file');
+    ok(/\[sessSSSS\]: continue\n  \*\*did:\*\* ans-old/.test(after) && /\[sessSSSS\]: different ask\n  \*\*did:\*\* ans1/.test(after),
+      "and another exchange of the session, with the same ask or the same answer, stays");
+    ok(/\[sessOOOO\]: continue\n  \*\*did:\*\* ans1/.test(after), "and another session's exchange with the same words stays");
+  }
+
+  // The briefing: what failed after the last reply, a stalled session, the clock's edges, the shared index's ceiling.
+  {
+    const cw = 'C:\\hl-A-print', dP = store(cw), folderP = dirname(dP);
+    writeFileSync(join(root_, `.handoff-failed-${basename(folderP)}`), JSON.stringify({ at: Date.parse('2026-10-01T10:00:00Z'), error: 'disk full' }));
+    ok(/^Memory store needs attention \([^)]*\): the record of where you left off could not be saved after the reply at \d{4}-\d\d-\d\d \d\d:\d\d: disk full$/m.test(print_(cw, 'pppppppp-1', 'startup')), 'a handoff that failed to save is said at startup');
+    rmSync(join(root_, `.handoff-failed-${basename(folderP)}`));
+
+    // A transcript that cannot be read is not a session working.
+    writeFileSync(join(folderP, 'unopenable-1.jsonl'), lines(user('an open prompt')));
+    ok(!/Another session is working/.test(print_(cw, 'pppppppp-1', 'startup', undefined, busyJs)), 'a transcript that cannot be read is not working');
+    ok(/Another session is working in this project: .*\[unopenab\]/.test(print_(cw, 'pppppppp-1', 'startup')), 'one that can is');
+    rmSync(join(folderP, 'unopenable-1.jsonl'));
+
+    // Working is judged on a clock that stands still: a transcript exactly ACTIVE old is not.
+    const M = Date.parse('2026-10-01T10:00:00Z'), tw = join(folderP, 'oooooooo-1.jsonl');
+    writeFileSync(tw, lines(user('an open prompt', { ts: '2026-10-01T10:00:00Z' })));
+    utimesSync(tw, new Date(M), new Date(M));
+    ok(/^Another session is working in this project: .*\[oooooooo\]/m.test(print_(cw, 'pppppppp-1', 'startup', M + ACTIVE - 1)), 'a transcript changed just under ACTIVE ago, with a turn open, is working');
+    ok(!/Another session is working/.test(print_(cw, 'pppppppp-1', 'startup', M + ACTIVE)), 'one changed exactly ACTIVE ago is not');
+    rmSync(tw);
+
+    // The last session's line is for a week, not a week and a moment.
+    const cw2 = 'C:\\hl-A-print2', dP2 = store(cw2), at = Date.UTC(2026, 9, 1, 10, 0);
+    writeFileSync(join(dP2, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'zzzzzzzz', 'the last ask', 'the last answer')));
+    ok(/Last session here ended 2026-10-01 10:00 on: the last ask/.test(print_(cw2, 'pppppppp-1', 'startup', at + 7 * 86400000 - 1)), `a session that ended just under a week ago is named (${print_(cw2, 'pppppppp-1', 'startup', at + 7 * 86400000 - 1).slice(0, 300)})`);
+    ok(!/Last session here ended/.test(print_(cw2, 'pppppppp-1', 'startup', at + 7 * 86400000)), 'one that ended exactly a week ago is not');
+
+    // The shared index is held to 3000 B: a set of lines that fills it exactly is printed whole.
+    const shared = join(root_, '_shared', 'memory', 'MEMORY.md'), had = existsSync(shared) ? readFileSync(shared) : null;
+    mkdirSync(dirname(shared), { recursive: true });
+    const pad = (i) => `- [Pad ${String(i).padStart(2, '0')}](pad-${String(i).padStart(2, '0')}.md) - ${'filler words '.repeat(10)}`.slice(0, 98) + 'z';
+    try {
+      writeFileSync(shared, Array.from({ length: 30 }, (_, i) => pad(i)).join('\n') + '\n');
+      const full = print_(cw2, 'pppppppp-1', 'startup');
+      ok(full.split('\n').filter((l) => l.startsWith('- [Pad')).length === 30 && !/more shared line/.test(full), 'shared lines that add up to exactly the ceiling are all printed');
+
+      // A compaction: the oldest exchanges go only while the briefing is longer than 9500 characters.
+      const cw3 = 'C:\\hl-A-compact', dP3 = store(cw3);
+      const compact = (last) => {
+        writeFileSync(join(dP3, 'handoff.md'), docOf(...Array.from({ length: 10 }, (_, i) => entry(`2026-10-01 10:${String(i).padStart(2, '0')}`, 'cccccccc', `ask-${i} ${mk(170)}`, i === 9 ? mk(last) : mk(399)))));
+        return print_(cw3, 'cccccccc-1', 'compact');
+      };
+      const L1 = compact(1).length, exact = compact(1 + 9500 - L1);
+      ok(exact.length === 9500 && exact.includes('ask-0 '), `a compaction briefing of exactly 9500 characters keeps every exchange (${L1} -> ${exact.length})`);
+      ok(!compact(1 + 9500 - L1 + 1).includes('ask-0 '), 'one character more, and the oldest exchange goes');
+    } finally { if (had) writeFileSync(shared, had); else rmSync(shared, { force: true }); }
+  }
+
+  // fit(): a line exactly as long as the limit stays whole, and so does a text exactly SAY long.
+  ok(fit('word word.', 10) === 'word word.' && fit('word word.', 9) === 'word word…', 'fit keeps a line as long as its limit');
+  const big = 'word '.repeat(2000);
+  ok(fit(big.slice(0, 9500)) === big.slice(0, 9500) && fit(big.slice(0, 9501)).endsWith("(the rest cut to fit Claude Code's startup limit)\n"), 'fit keeps a text of exactly 9500 characters, and cuts one character more');
+
+  // Sessions of the project, from the folder of the store and the folder of a session started elsewhere.
+  {
+    const fA = join(root_, 'hl-A-p1'), fB = join(root_, 'hl-A-p2');
+    mkdirSync(join(fA, 'memory'), { recursive: true }); mkdirSync(fB, { recursive: true });
+    writeFileSync(join(fA, 'aaaaaaaa-1.jsonl'), ''); writeFileSync(join(fB, 'bbbbbbbb-1.jsonl'), '');
+    const names = (t) => transcripts(join(fA, 'memory'), 'me000000', t).map((x) => x.s).sort().join();
+    ok(names(join(fB, 'cccccccc-9.jsonl')) === 'aaaaaaaa,bbbbbbbb', "a session started in another folder is looked for there too");
+    ok(names(join(fA, 'cccccccc-9.jsonl')) === 'aaaaaaaa', "and the store's own folder is not read twice");
+  }
+
+  // A transcript with no message in it has no turn open; one of 50 messages the hooks do not know is a changed format.
+  {
+    const f = join(home, 'lt.jsonl');
+    writeFileSync(f, lines(JSON.stringify({ type: 'summary' })));
+    ok(lastTurn(f).open === false, 'a transcript with no message has no turn open');
+    const p50 = (n) => { writeFileSync(f, lines(...Array.from({ length: n }, (_, i) => user(`question ${i}`)))); return stalled({ s: 'abcd1234', p: f }); };
+    ok(/cannot read \[abcd1234\]'s transcript: none of its last 50 messages/.test(p50(50)[0] ?? ''), 'fifty messages the hooks do not know are said');
+    ok(!/cannot read/.test(p50(49)[0] ?? ''), 'forty-nine are not');
+
+    // A hook that last ran GRACE before a turn ended, and a turn that ended GRACE ago, have not stopped.
+    const ran = join(root_, '.stop-ran'), hadRan = existsSync(ran) ? [readFileSync(ran), statSync(ran).mtime] : null;
+    const R = Date.parse('2026-09-11T06:58:00Z'), end = R + 2 * GRACE, realNow = Date.now;
+    writeFileSync(f, lines(user('q', { ts: '2026-09-11T06:59:00Z' }), JSON.stringify({ type: 'assistant', timestamp: new Date(end).toISOString(), message: { content: [{ type: 'text', text: 'done' }], usage: {}, stop_reason: 'end_turn' } })));
+    const at = (ms) => { writeFileSync(ran, 'x'); utimesSync(ran, new Date(ms), new Date(ms)); };
+    try {
+      at(end - GRACE);
+      ok(stalled({ s: 'abcd1234', p: f }).length === 0, 'a hook that ran exactly GRACE before the turn ended has not stopped');
+      at(end - GRACE - 1000);
+      ok(/look stopped/.test(stalled({ s: 'abcd1234', p: f })[0] ?? ''), 'one that ran longer before it has');
+      Date.now = () => end + GRACE;
+      ok(stalled({ s: 'abcd1234', p: f }).length === 0, 'a turn that ended exactly GRACE ago is not yet a missed Stop');
+      Date.now = () => end + GRACE + 1;
+      ok(/look stopped/.test(stalled({ s: 'abcd1234', p: f })[0] ?? ''), 'one that ended longer ago is');
+    } finally {
+      Date.now = realNow;
+      if (hadRan) { writeFileSync(ran, hadRan[0]); utimesSync(ran, hadRan[1], hadRan[1]); } else rmSync(ran, { force: true });
+    }
+  }
+
+  // The hooks' own files changed outside deploy: the message names the repo from the manifest.
+  {
+    const here = join(home, 'edited-here');
+    mkdirSync(here, { recursive: true });
+    writeFileSync(join(here, '.deployed.json'), JSON.stringify({ files: { 'gone.mjs': 'abc' }, repo: 'C:\\my repo' }));
+    ok(edited_(here)[0]?.includes('edit C:\\my repo and run node deploy.mjs there'), 'the message names the repo the manifest names');
+    writeFileSync(join(here, '.deployed.json'), JSON.stringify({ files: { 'gone.mjs': 'abc' } }));
+    ok(edited_(here)[0]?.includes('edit the hooks repo and run node deploy.mjs there'), 'and says the hooks repo when it names none');
+  }
+
+  // Importing the hook runs nothing: only running it as a script does.
+  {
+    const importer = join(home, 'import-only.mjs');
+    writeFileSync(importer, `await import(${JSON.stringify(pathToFileURL(HOOK).href)});\n`);
+    const r = spawnSync(process.execPath, [importer, '--print'], { input: JSON.stringify({ cwd: 'C:\\hl-A-import', session_id: 'importse', source: 'startup' }), encoding: 'utf8', timeout: 20000 });
+    ok(r.status === 0 && r.stdout === '', `importing the hook prints nothing (${r.status}, ${JSON.stringify(r.stdout).slice(0, 80)})`);
+  }
+}
 
 // The whole run, in a repo of its own: the six suites, the mutants, the soak and the
 // break harness are stubs that obey a control file (what they print, whether they
