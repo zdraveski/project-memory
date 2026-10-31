@@ -201,7 +201,8 @@ function pin(dir) {
   } catch {}
 }
 
-// `strict`: a listing that fails (not just no folder yet) throws, for a sweep, which an empty answer would mark done with nothing taken out (F18).
+// `strict`: a listing that fails (not just no folder yet) throws, for a sweep, which an empty answer would mark done with nothing taken out (F18),
+// and for a forget, which found nothing to match and said so (F20).
 export function days(dir, strict = false) {
   try { return readdirSync(join(dir, JOURNAL)).filter((f) => /^\d{4}-\d\d-\d\d\.md$/.test(f)).map((f) => f.slice(0, 10)).sort(); }
   catch (e) { if (strict && e.code !== 'ENOENT') throw e; return []; }
@@ -211,8 +212,10 @@ export function days(dir, strict = false) {
 // those days' files are opened: a year of journal is ~30 MB. A day that will
 // not read goes in `failed`: passed over in silence, its work read as never done.
 // So does one not in UTF-8: saved as UTF-16 (PowerShell 5.1's Out-File), it
-// parsed as a day with no entry (final review).
-export const entries = (dirs, { since, until, failed = [] } = {}) => dirs.flatMap((dir) => days(dir).filter((d) => (!since || d >= since) && (!until || d <= until))
+// parsed as a day with no entry (final review). `strict`: the days listed as
+// days() lists them strictly, for forget (R45); search and status show what
+// they find, and stay lenient.
+export const entries = (dirs, { since, until, failed = [], strict = false } = {}) => dirs.flatMap((dir) => days(dir, strict).filter((d) => (!since || d >= since) && (!until || d <= until))
   .flatMap((d) => {
     const path = dayFile(dir, d);
     try {
@@ -292,7 +295,7 @@ export function forget(dir, terms, { since, until, conversation, keys: only, app
   // The keys as a set: looked up in the list once an entry, a range forget of
   // 15,000 entries spent 5 s here.
   const ts = terms.map((t) => t.toLowerCase()), want = only && new Set(only);
-  const matched = entries([dir], { since, until, failed }).filter((e) => (!conversation || e.s === conversation) && (!want || want.has(e.key)) &&
+  const matched = entries([dir], { since, until, failed, strict: true }).filter((e) => (!conversation || e.s === conversation) && (!want || want.has(e.key)) &&
     ts.every((t) => holds(e, t)));
   if (!apply || !matched.length) return { matched, removed: [] };
   const keys = new Set(matched.map((e) => e.key)), f = join(dir, FORGOTTEN), seen = new Map();

@@ -287,6 +287,15 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   try { listed = days(dir); } catch { listed = 'threw'; } finally { fs.readdirSync = readdir; syncBuiltinESMExports(); }
   ok(threw && keys('2026-11-07') === 's-3' && Array.isArray(listed) && !listed.length, `a sweep whose listing of the days fails throws, and the entries stay to be swept again; days() itself gives an empty list (got ${threw}, ${keys('2026-11-07')}, ${listed})`);
   ok(sweep(dir, 'aaaaaaaa') === 1 && !days(dir).includes('2026-11-07'), 'and the next sweep takes them');
+  // Nor is it for a forget: read as an empty journal, it found nothing to match, and memory.mjs said "nothing matches" with exit 0 while
+  // the entry stayed (F20, R45). It throws; entries(), as search lists them, still finds none.
+  record(dir, S, [turn({ at: '2026-11-08 10:00', id: 'f-1', ask: 'the quokka plan', raw: 'the quokka plan' })]);
+  fs.readdirSync = (q, ...a) => { if (String(q) === join(dir, 'journal')) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }); return readdir(q, ...a); };
+  syncBuiltinESMExports();
+  let refused = null, found = null;
+  try { forget(dir, ['quokka'], { apply: true }); } catch (e) { refused = e.code; }
+  try { found = entries([dir]).length; } finally { fs.readdirSync = readdir; syncBuiltinESMExports(); }
+  ok(refused === 'EPERM' && found === 0 && keys('2026-11-08') === 'f-1', `a forget whose listing of the days fails throws, and the entry stays (got ${refused}, ${found}, ${keys('2026-11-08')})`);
 }
 {
   // A time-zone change moves an exchange to the next day; the clean-up of the day it left is refused (a disk

@@ -1093,6 +1093,17 @@ if (!quick) {
   r = refusing('.forgotten');
   ok(r.status === 1 && !r.stderr && r.stdout === `could not write ${join(fj, '.forgotten')}: EPERM\nremoved 0 of 2 from ${fd}\n` && kept('2025-10-20', '2025-10-21', today),
     `a forget whose list cannot be written removes nothing, and says so (got ${r.stdout}${r.stderr})`);
+  // A journal folder the disk will not list is no empty journal: forget said "nothing matches" with exit 0 (by --key, that the key was
+  // another project's), and the entries stayed. It names the code, removes nothing and fails, as a refused restore does (F20, R45).
+  reset();
+  const unlist = join(home, 'unlist-journal.mjs');
+  writeFileSync(unlist, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst readdir = fs.readdirSync;\n" +
+    `fs.readdirSync = (p, ...a) => { if (String(p) === ${JSON.stringify(fj)}) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM', syscall: 'scandir', path: p }); return readdir(p, ...a); };\nsyncBuiltinESMExports();\n`);
+  for (const how of [['Zebra', 'mango'], ['--key', es[0].key]]) {
+    r = spawnSync(process.execPath, ['--import', pathToFileURL(unlist).href, CLI, 'forget', ...how, '--yes', '--store', fd], { env, encoding: 'utf8' });
+    ok(r.status === 1 && !r.stderr && r.stdout === `${fj} could not be listed (EPERM); nothing removed\n` && kept('2025-10-20', '2025-10-21', today),
+      `a forget over a journal that will not list names the code, removes nothing and fails: ${how.join(' ')} (got ${r.status}: ${r.stdout}${r.stderr})`);
+  }
   // A turn recorded between the look and the removal stays: --yes removes only what a look lists.
   reset();
   const late = join(home, 'late-turn.mjs');

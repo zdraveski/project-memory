@@ -531,6 +531,8 @@ const cut = (s, n) => {
     'rule share measured on the whole budget': ['Math.max(0, budget - pinnedBytes) * RULE_SHARE', 'budget * RULE_SHARE'],
   }],
   'memory.mjs': ['memory.test.mjs', {
+    'a forget over a journal that will not list crashes': ["} catch (e) { if (!e.code) throw e; r = no(`${join(here, 'journal')} could not be listed", "} catch (e) { throw e; r = no(`${join(here, 'journal')} could not be listed"],
+    "a forget over a journal that will not list says the key is another project's": ["; nothing removed`); }", "; nothing removed`); if (lost.length) { r.lines.splice(-1, 0, ...lost); } }"],
     'a hit stretch starts on half an emoji': [".slice(a, b).replace(/^[\\uDC00-\\uDFFF]/, '').replace(", ".slice(a, b).replace("],
     'a hit stretch ends on half an emoji': [".replace(/[\\uD800-\\uDBFF]$/, '')).join(' … ')", ")).join(' … ')"],
     'the hit cap cuts an emoji in half': ["s.slice(0, room - 1).replace(/[\\uD800-\\uDBFF]$/, '') + '…'", "s.slice(0, room - 1) + '…'"],
@@ -763,6 +765,8 @@ const cut = (s, n) => {
   }],
   'journal.mjs': ['journal.test.mjs', {
     "a sweep with no listing of the days is done": ["export function sweep(dir, s, ds = days(dir, true)) {", "export function sweep(dir, s, ds = days(dir)) {"],
+    "a forget over a journal that will not list finds nothing": ["entries([dir], { since, until, failed, strict: true })", "entries([dir], { since, until, failed })"],
+    "a strict listing of the entries is lenient": ["dirs.flatMap((dir) => days(dir, strict).filter(", "dirs.flatMap((dir) => days(dir).filter("],
     "a segment's rebuilt turn loses a private freeze": ["prompt: '<private></private>' } }) + ", "prompt: 'x' } }) + "],
     "a segment's rebuilt turn loses a nudge's hold": ["    : t.frozen === 'nudge' ? JSON.stringify({ type: 'user'", "    : false ? JSON.stringify({ type: 'user'"],
     "a journal failure names its temp file": ["error: from + reason(e) }", "error: from + String(e.message).split('\\n')[0] }"],
@@ -842,7 +846,7 @@ const cut = (s, n) => {
     'journal .checked never pruned': ['    if (raw(join(dir, JOURNAL, CHECKED)) != null) mark(dir, [], all.seen, CHECKED);\n', ''],
     'journal sweep removes nothing': ['drop(dir, d, (e) => e.s !== s)', 'drop(dir, d, () => true)'],
     'forget matches any term': ['ts.every((t) =>', 'ts.some((t) =>'],
-    'forget ignores the range': ['entries([dir], { since, until, failed })', 'entries([dir], { failed })'],
+    'forget ignores the range': ['entries([dir], { since, until, failed, strict: true })', 'entries([dir], { failed, strict: true })'],
     'forget removes without apply': ['if (!apply || !matched.length)', 'if (!matched.length)'],
     'forget counts what matched as removed': ['removed: matched.filter((e) => went.has(e.key))', 'removed: matched'],
     'forget removes without the lock': ['return withLock(dir, () => {', 'return ((f) => f())(() => {'],
