@@ -440,10 +440,12 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
 
   // The unlock: refused for a moment (EBUSY), it is tried again; ENOENT is not retried.
   for (const [code, n, gone] of [['EBUSY', 1, true], ['EPERM', 2, true], ['EBUSY', 3, false]]) {
-    let k = 0;
+    let k = 0, waits = 0;
     const undo = patch('rmdirSync', (real) => function (p, ...a) { if (String(p).endsWith('.lock') && k++ < n) throw err(code); return real.call(this, p, ...a); });
-    try { withLock(lockDir, () => 'got'); } finally { undo(); }
+    const wait = Atomics.wait; Atomics.wait = (...a) => { waits++; return wait(...a); };
+    try { withLock(lockDir, () => 'got'); } finally { undo(); Atomics.wait = wait; }
     ok(existsSync(lockPath) !== gone && k === Math.min(n + 1, 3), `an unlock refused ${n} time(s) with ${code}: ${gone ? 'tried again and gone' : 'given up after three tries'} (${k} calls)`);
+    ok(waits === Math.min(n, 2), `a pause between tries, none after the last (${waits} for ${n} refusals)`);
     rmSync(lockPath, { recursive: true, force: true });
   }
   { let k = 0; const undo = patch('rmdirSync', (real) => function (p, ...a) { if (String(p).endsWith('.lock')) { k++; throw err('ENOENT'); } return real.call(this, p, ...a); });
