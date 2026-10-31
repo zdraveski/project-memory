@@ -2121,6 +2121,25 @@ require('node:module').syncBuiltinESMExports();
       const L1 = compact(1).length, exact = compact(1 + 9500 - L1);
       ok(exact.length === 9500 && exact.includes('ask-0 '), `a compaction briefing of exactly 9500 characters keeps every exchange (${L1} -> ${exact.length})`);
       ok(!compact(1 + 9500 - L1 + 1).includes('ask-0 '), 'one character more, and the oldest exchange goes');
+
+      // At startup: the last session's own exchanges, oldest first; the oldest
+      // go until the briefing fits, and the shared lessons are never cut.
+      const cw4 = 'C:\\hl-A-start', dP4 = store(cw4), at4 = Date.UTC(2026, 9, 1, 10, 30);
+      const startup = (n, size) => {
+        writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 09:00', 'yyyyyyyy', 'another session ask', 'theirs'),
+          ...Array.from({ length: n }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(size)}`))));
+        return print_(cw4, 'pppppppp-1', 'startup', at4);
+      };
+      const few = startup(3, 50);
+      ok(/Last session here ended 2026-10-01 10:02 on: ask-2 here[^\n]*\nIts last exchanges, oldest first:\n- \*\*asked\*\* 2026-10-01 10:00 \[ssssssss\]: ask-0 here\n {2}\*\*did:\*\* did-0 /.test(few)
+        && few.indexOf('ask-1 here') < few.indexOf('ask-2 here\n') && !few.includes('another session ask'), `startup prints the last session's exchanges, oldest first, none of another's (${few.slice(0, 700)})`);
+      const many = startup(10, 899), kept = many.split('\n').filter((l) => /^- \*\*asked\*\*/.test(l)).length;
+      ok(many.length <= 9500 && !many.includes('the rest cut to fit') && many.split('\n').filter((l) => l.startsWith('- [Pad')).length === 30
+        && many.includes('ask-9 here') && !many.includes('ask-0 here') && kept >= 3 && kept < 10, `a long session's oldest exchanges go, its newest and every shared lesson stay (${kept} kept, ${many.length} characters)`);
+      ok(/^ {2}\*\*did:\*\* did-9 .{890,}$/m.test(many), 'an exchange keeps up to 900 characters of its answer');
+      writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'ssssssss', `long-ask ${mk(700)}`, 'done')));
+      const asked = print_(cw4, 'pppppppp-1', 'startup', at4).match(/^- \*\*asked\*\* \S+ \S+ \[ssssssss\]: (long-ask .*)$/m)?.[1] ?? '';
+      ok(asked.length === 500 && asked.endsWith('…'), `an exchange keeps 500 characters of its request (got ${asked.length})`);
     } finally { if (had) writeFileSync(shared, had); else rmSync(shared, { force: true }); }
   }
 

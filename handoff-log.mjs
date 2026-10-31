@@ -26,8 +26,10 @@ import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARE
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
-const ASK = 240;          // chars kept of what was asked
-const DID = 400;          // chars kept of the answer
+// The startup briefing prints these exchanges whole, a line each under fit()'s
+// 1,000 at startup: detail over tokens (KIRE, 2026-10-31; were 240 and 400).
+const ASK = 500;          // chars kept of what was asked
+const DID = 900;          // chars kept of the answer
 const CHANGED = 8;        // files an entry names: the turn's last
 export const TAIL = 512_000;     // first read; grown 4× until it reaches the latest prompt
 export const ACTIVE = 30 * 60000;    // a transcript this recently changed: its session is still working
@@ -930,7 +932,7 @@ function shared() {
 
 // Claude Code passes a hook's text whole up to 10,000 characters; past that,
 // a preview and a file, and the shared lessons at the end were what was cut.
-const SAY = 9500;
+const SAY = 9500, CUT = "(the rest cut to fit Claude Code's startup limit)\n";
 // Defused, then held to SAY at a line's end, on both paths: the startup's
 // health lists and the compaction note's task lists had no bound, and `<`
 // grows fourfold as `&lt;`. What is cut is cut from the end, the shared
@@ -944,7 +946,7 @@ export const fit = (s, line = Infinity) => {
   // end of what it is given, and one shared lesson about the tags hid every
   // lesson after it.
   const d = defuse(s.split('\n').map(redact).join('\n')).split('\n').map((l) => (l.length <= line ? l : `${l.slice(0, /[\uD800-\uDBFF]/.test(l[line - 1]) ? line - 1 : line)}…`)).join('\n');
-  return d.length <= SAY ? d : `${d.slice(0, SAY - 60).replace(/[^\n]*$/, '')}(the rest cut to fit Claude Code's startup limit)\n`;
+  return d.length <= SAY ? d : `${d.slice(0, SAY - 60).replace(/[^\n]*$/, '')}${CUT}`;
 };
 
 // The SessionStart hook. After a compaction (source "compact"): the note on a
@@ -990,9 +992,16 @@ async function print(input) {
     // A broken journal.mjs costs the line, never the briefing. Loaded here:
     // journal.mjs imports this module.
     let first = null; try { first = (await import(new URL('./journal.mjs', import.meta.url))).firstDay(dir); } catch {}
-    if (first) lines.push(`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`);
-    lines.push(...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared());
-    return fit(lines.join('\n') + '\n', 1000);
+    // Where it stopped in its own words: its last exchanges, oldest first, the
+    // oldest dropped until the whole briefing fits, so the shared lessons at
+    // its end are never what is cut (2026-10-31).
+    const theirs = lines.length && last && !others.length ? all.filter((t) => t.s === last.s).map(render) : [];
+    const rest = [...(first ? [`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`] : []),
+      ...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];
+    const say = () => fit([...lines, ...(theirs.length ? ['Its last exchanges, oldest first:', ...theirs] : []), ...rest].join('\n') + '\n', 1000);
+    let out = say();
+    while (theirs.length && out.endsWith(CUT)) { theirs.shift(); out = say(); }
+    return out;
   }
   let note = '';
   try { note = (await import(new URL('./compact-gate.mjs', import.meta.url))).recover(input); } catch {}

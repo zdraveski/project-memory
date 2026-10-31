@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+**More detail kept**
+- The journal now keeps every exchange whole: your whole message, Claude's
+  whole reply, every file it changed and every command it ran, each in full.
+  It used to cut the message at 2,000 characters, the reply at 6,000, and
+  keep the last 20 commands at 400 characters each. Entries written before
+  this update stay as they were.
+- A new conversation now starts with the last conversation's own exchanges
+  (what you asked, what Claude did, the files changed), not only one line
+  saying where it stopped. The oldest are left out until the briefing fits
+  Claude Code's 10,000-character limit; the shared lessons are never cut for
+  them. `handoff.md` keeps more of each exchange for this: 500 characters of
+  your message (was 240) and 900 of the reply (was 400).
+
 **Search**
 - A journal hit is now a headline: the request cut at 200 characters (was
   400), a `Result:` line with the first sentence of the reply, so the outcome

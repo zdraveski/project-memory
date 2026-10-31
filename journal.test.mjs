@@ -27,21 +27,20 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
 {
   const e = entryOf(turn({ ask: 'q'.repeat(5000), did: 'h'.repeat(5000) + 't'.repeat(5000),
     changed: Array.from({ length: 30 }, (_, i) => `C:\\proj\\f${i}.js`), ran: Array.from({ length: 25 }, (_, i) => `cmd${i}`) }), T);
-  ok(e.asked.length === 2000 && e.asked.endsWith('…'), `ask capped at 2000 (got ${e.asked.length})`);
-  // A reply's end says what was done and why: a long one keeps both ends.
-  ok(e.answered === 'h'.repeat(4000) + ' … ' + 't'.repeat(2000), `a reply over 6000 keeps its first 4000 and its last 2000 (got ${e.answered.length}: ${e.answered.slice(3995, 4010)})`);
-  ok(entryOf(turn({ did: 'a'.repeat(6000) }), T).answered.length === 6000, 'a reply of 6000 is kept whole');
-  ok(e.changed.length === 20 && e.changed[19] === 'f29.js' && e.changed[0] === 'f10.js', `last 20 files, relative to cwd (got ${e.changed[0]}..${e.changed[19]})`);
-  ok(e.ran.length === 20 && e.ran[0] === 'cmd5' && e.ran[19] === 'cmd24', `last 20 commands (got ${e.ran})`);
-  ok(entryOf(turn({ ran: ['x'.repeat(1000)] }), T).ran[0].length === 400, 'a command capped at 400');
+  // Whole: the request, the reply, every file and every command, each command whole.
+  ok(e.asked === 'q'.repeat(5000), `a request is kept whole (got ${e.asked.length})`);
+  ok(e.answered === 'h'.repeat(5000) + 't'.repeat(5000), `a reply is kept whole (got ${e.answered.length})`);
+  ok(e.changed.length === 30 && e.changed[0] === 'f0.js' && e.changed[29] === 'f29.js', `every file, relative to cwd (got ${e.changed[0]}..${e.changed.at(-1)} of ${e.changed.length})`);
+  ok(e.ran.length === 25 && e.ran[0] === 'cmd0' && e.ran[24] === 'cmd24', `every command (got ${e.ran})`);
+  ok(entryOf(turn({ ran: ['x'.repeat(5000)] }), T).ran[0].length === 5000, 'a command is kept whole');
+  ok(entryOf(turn({ ran: ['echo one\n\n  echo two\r\necho three'] }), T).ran[0] === 'echo one echo two echo three', 'a command over several lines is one line');
   ok(e.s === '01234567' && e.t === 'C--proj/0123456789abcdef', `conversation tag and t from the path (got ${e.s} ${e.t})`);
-  // Redacted before the cut, so no half of a key is left at either end; and
-  // no half of an emoji, which reads back as U+FFFD and no longer matches.
-  const k = stripe('sk', 'live'), at = (n, tail) => entryOf(turn({ did: 'x'.repeat(n) + ` ${k} ` + 'y'.repeat(tail) }), T).answered;
-  for (const [n, tail] of [[3990, 5000], [5000, 1980]]) ok(![k.slice(0, 9), k.slice(-9)].some((p) => at(n, tail).includes(p)), `a key across a cut is redacted whole (got ${at(n, tail).slice(3985, 4030)})`);
+  // A key deep in a long reply is still redacted, and an emoji is kept whole
+  // (half of one reads back as U+FFFD and no longer matches).
+  const k = stripe('sk', 'live'), long = entryOf(turn({ did: 'x'.repeat(9000) + ` ${k} ` + 'y'.repeat(9000) }), T).answered;
+  ok(!long.includes(k.slice(0, 9)) && !long.includes(k.slice(-9)) && long.includes('[redacted]') && long.length > 18000, `a key deep in a long reply is redacted (got ${long.length})`);
   const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
-  const head = entryOf(turn({ did: 'a'.repeat(3999) + '😀'.repeat(2000) }), T).answered, tail = entryOf(turn({ did: 'a'.repeat(7001) + '😀' + 'b'.repeat(1999) }), T).answered;
-  ok(!lone.test(head) && !lone.test(tail), 'no half of an emoji at either cut');
+  ok(!lone.test(entryOf(turn({ did: 'a'.repeat(3999) + '😀'.repeat(4000) }), T).answered), 'a long reply of emoji keeps every one whole');
 }
 {
   const k = stripe('sk', 'live');
@@ -56,7 +55,7 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   const f = entryOf(turn({ ask: 'forget the zebra', did: 'these would go: the zebra policy', changed: ['C:\\proj\\a'],
     ran: ['node "C:/p/memory.mjs" forget zebra --session x', ...Array.from({ length: 20 }, (_, i) => `ls ${i}`)] }), T);
   ok(f.asked === '[private]' && f.answered === '[private]' && !f.changed.length && !f.ran.length,
-    `a turn that ran forget, even before its last 20 commands, keeps none of its words (got ${JSON.stringify(f)})`);
+    `a turn that ran forget, even as its first of 21 commands, keeps none of its words (got ${JSON.stringify(f)})`);
   // Which commands are a forget: handoff-log's FORGETS, checked in its suite.
   ok(entryOf(turn({ ran: ['node memory.mjs search forget'] }), T).asked === 'a question', 'a turn that ran no forget is kept');
 }

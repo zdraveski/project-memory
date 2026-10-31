@@ -39,7 +39,7 @@ This page says what it reads, what it saves, and how to remove it.
 All of it stays in `~/.claude/projects` on your computer:
 
 - A record of where you left off (`handoff.md`): the start of your latest
-  messages (up to 240 characters each) and of Claude's replies (up to 400),
+  messages (up to 500 characters each) and of Claude's replies (up to 900),
   and the names of the files Claude changed, for the last 10 exchanges of each
   of your 3 most recent conversations. Older entries are replaced as you go,
   and the record is not part of the history below.
@@ -74,12 +74,11 @@ All of it stays in `~/.claude/projects` on your computer:
     Claude writes about it is kept in the history like any other note.
 - A journal of every exchange, one file per day in a project's `memory`
   folder (`journal/YYYY-MM-DD.md`), with a file `journal.md` beside it that
-  tells Claude the journal is there. Each entry holds your message (up to
-  2,000 characters), Claude's reply (up to 6,000: of a longer one, its first
-  4,000 and its last 2,000), the paths of up to 20 files Claude changed, and
-  the last 20 commands it ran (up to 400 characters each), with the time,
-  the conversation's short tag and the git branch. An entry is at most about
-  22,000 characters. Measured on the author's computer, half are under 3 KB.
+  tells Claude the journal is there. Each entry holds your message and
+  Claude's reply whole, the paths of every file Claude changed, and every
+  command it ran, whole, with the time, the conversation's short tag and
+  the git branch. An entry has no size limit, so a long pasted text or a
+  long command is kept in full; secrets in it are still replaced.
   - The rules above apply to it too: secrets are replaced with `[redacted]`,
     commands included, a `<private>` message's reply is saved as `[private]`
     with no files or commands, and a conversation marked `<private-session>`

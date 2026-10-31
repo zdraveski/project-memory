@@ -122,8 +122,8 @@ memory folder. The journal is its `journal` folder, one file per day.
   folder (`.claude`, in your home folder). What Claude reads during a
   conversation goes to Anthropic with the rest of it, as with Claude Code's
   own memory.
-- The journal keeps each exchange: your message, Claude's reply (up to 6,000
-  characters), the files it changed and the commands it ran. It stays until
+- The journal keeps each exchange whole: your message, Claude's reply, every
+  file it changed and every command it ran. It stays until
   you delete it or ask Claude to forget part of it.
 - Keys, tokens and passwords are replaced with `[redacted]` before anything
   is saved. No tool catches every secret, so use the tags below for anything
