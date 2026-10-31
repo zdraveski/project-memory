@@ -81,7 +81,7 @@ import { tmpdir, availableParallelism, homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tool, tempHome, storeFor } from './harness.mjs';
-import { LOCK_STALE } from './store.mjs';
+import { LOCK_STALE, SHARED_BUDGET, POINTER } from './store.mjs';
 import { NUDGE_TAG, ACTIVE, tag, parse, sectionOf } from './handoff-log.mjs';
 
 const args = process.argv.slice(2);
@@ -690,7 +690,7 @@ async function execute(steps, meta) {
   // A big store (meta.big, 10 % of rounds), in states the plugin writes, after the settle (a Stop would clear them): the project's
   // and the shared store's .health with one line naming 400 files (memory-tier.mjs health(); `fit`'s own example), the snapshot
   // health (failures, and 400 names left out), a failed handoff record, one live-write line in journal/.failed (fault() keeps
-  // one per kind), and a shared index filled to its 3,000 B ceiling. Each is a line of the startup briefing, so it meets both
+  // one per kind), and a shared index filled, around its own lines, to its 3,000 B ceiling. Each is a line of the startup briefing, so it meets both
   // limits: a line over 1,000 characters, and a total over 9,500.
   if (meta.big) {
     const root = dirname(proj), shared = join(root, '_shared', 'memory'), names = Array.from({ length: 400 }, (_, i) => `note-${i}.md`).join(', ');
@@ -699,7 +699,12 @@ async function execute(steps, meta) {
     writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ failures: 5, lastOk: Date.now(), error: 'disk full '.repeat(120), missed: names.split(', ') }));
     writeFileSync(join(root, `.handoff-failed-${basename(proj)}`), JSON.stringify({ at: Date.now(), error: 'disk full '.repeat(120) }));
     writeFileSync(join(dir, 'journal', '.failed'), JSON.stringify({ at: new Date().toISOString(), error: 'disk full '.repeat(120) }) + '\n');
-    writeFileSync(join(shared, 'MEMORY.md'), `# Shared memory\n\n${Array.from({ length: 12 }, (_, i) => `- [lesson-${i}](lesson-${i}.md) - ${'a lesson that holds in every project '.repeat(8)}`.slice(0, 249)).join('\n')}\n`);   // 12 lines of 250 B: the 3,000 B ceiling to the byte
+    // Filled around the lines already there, never over them: replaced, the line of a note promoted this round was gone (CI
+    // seeds 2008212739, 641748427). Lines of 250 B, the last one shorter, to the ceiling the briefing holds the index to, to the byte.
+    const si = join(shared, 'MEMORY.md'), had = existsSync(si) ? readFileSync(si, 'utf8') : '# Shared memory\n\n', fill = [];
+    let room = SHARED_BUDGET - had.split(/\r?\n/).filter((l) => POINTER.test(l)).reduce((n, l) => n + Buffer.byteLength(l) + 1, 0);
+    for (let i = 0; room >= 40; i++) { const n = Math.min(250, room); fill.push(`- [lesson-${i}](lesson-${i}.md) - ${'a lesson that holds in every project '.repeat(8)}`.slice(0, n - 1)); room -= n; }
+    writeFileSync(si, `${had}${had.endsWith('\n') ? '' : '\n'}${fill.join('\n')}\n`);
     // And an entry in handoff.md (a round whose conversations are all private has none), so the "last session" line is in the briefing.
     {
       const hf = join(dir, 'handoff.md'), doc0 = existsSync(hf) ? readFileSync(hf, 'utf8') : '', { b: end } = sectionOf(doc0), entry = '- **asked** 2026-10-30 09:00 [bigbig00]: a long ask\n  **did:** done\n';
