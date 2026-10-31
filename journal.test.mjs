@@ -12,6 +12,8 @@ const { home, env } = tempHome('jr-test-');
 const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, summary, firstDay } = await import('./journal.mjs');
 const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
+// A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
+const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const throws = (f) => { try { f(); return false; } catch { return true; } };
@@ -354,7 +356,7 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
 {
   // Begun in New York at 20:30, marked private once the laptop said Berlin:
   // there the conversation began a day later, and its first day was kept.
-  const Z = sid('z'), zone = (tz, f) => { process.env.TZ = tz; try { return f(); } finally { delete process.env.TZ; } };
+  const Z = sid('z'), zone = (tz, f) => { process.env.TZ = tz; try { return f(); } finally { process.env.TZ = TZ0; } };
   say(Z, '2026-10-29T00:30:00Z', 'the biopsy came back', 'next: a referral');
   zone('America/New_York', () => stop(Z));
   const was = of(Z).length;
