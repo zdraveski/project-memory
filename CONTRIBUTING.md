@@ -58,7 +58,8 @@ Beyond the suites:
   It also sends replies of growing sizes and turns cut mid-way, clocks
   set to the year's end or a daylight-saving change, turns that collide on
   a minute after a move of zone, messages queued while Claude works,
-  conversations held with auto memory off, secrets in the shapes
+  conversations held with auto memory off, an older conversation the
+  journal takes in, secrets in the shapes
   `redact()` knows, more of the CLI (`history`, `restore`, `promote`,
   `doctor`) and the startup briefing.
   A failing round prints its seed and what happened, shrunk to the steps it
