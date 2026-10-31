@@ -11,6 +11,8 @@ import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
 const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep } = await import('./store.mjs');
+// A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
+const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const root = join(home, '.claude', 'projects');
@@ -251,10 +253,9 @@ ok(POINTER.test('- [a](a.md) \u2014 x') && !POINTER.test('- [Repo](https://githu
 // as the day before west of Greenwich. Checked there: in UTC (GitHub's
 // machines) the two readings agree, and the check caught nothing.
 {
-  const tz = process.env.TZ;
   process.env.TZ = 'America/New_York';
   try { ok(local(front('---\nmodified: 2025-09-01\n---\n').modified).startsWith('2025-09-01 00:00'), 'a modified: date alone is that day, here'); }
-  finally { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz; }
+  finally { process.env.TZ = TZ0; }
 }
 // A transcript path that is no string threw, and the Stop hook with it; one
 // that climbs out of the projects folder named a store outside it.
