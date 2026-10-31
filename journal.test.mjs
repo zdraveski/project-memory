@@ -9,7 +9,8 @@ import assert from 'node:assert';
 import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, summary, firstDay } = await import('./journal.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, summary, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./journal.mjs');
+const { ACTIVE, TAIL } = await import('./handoff-log.mjs');
 const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
@@ -1108,6 +1109,195 @@ mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(pr
   const again = fill(d);
   ok(gone === 1 && again.imported === 1 && asks(d).join() === 'one more,the zebra policy',
     `a backfill reading the conversation again brings no forgotten entry back (got ${gone}, ${JSON.stringify(again)}, ${asks(d)})`);
+}
+
+// --- edges of journal.mjs: what the automatic mutants of its comparisons and retries change -----
+const tagsOf = (d) => { try { return readFileSync(join(d, '.private-sessions'), 'utf8').split(/\r?\n/); } catch { return []; } };
+// A second writer, simulated: each time (up to `times`) our copy of `file` is about to be renamed
+// over it, a line is appended to it, so the write loses. Returns how many copies were written.
+const racing = (file, times, fn) => {
+  const read = fs.readFileSync, write = fs.writeFileSync, tmp = `${file}.tmp${process.pid}`;
+  let writes = 0, hit = 0;
+  fs.writeFileSync = (p, ...a) => { if (p === tmp) writes++; return write(p, ...a); };
+  fs.readFileSync = (p, ...a) => { if (p === file && hit < times && existsSync(tmp)) { hit++; appendFileSync(file, 'another writer\n'); } return read(p, ...a); };
+  syncBuiltinESMExports();
+  try { fn(); } finally { fs.readFileSync = read; fs.writeFileSync = write; syncBuiltinESMExports(); }
+  return writes;
+};
+// fn with Date.now() returning `now` (a number, or a function of the moment).
+const atClock = (now, fn) => { const was = Date.now; Date.now = typeof now === 'function' ? now : () => now; try { return fn(); } finally { Date.now = was; } };
+const NOW = Math.floor(Date.now() / 1000) * 1000;
+{
+  // A path that is the turn's folder and its separator alone stays as it is.
+  const ch = entryOf(turn({ changed: ['C:\\proj\\', 'C:\\proj\\a.js'], cwd: 'C:\\proj' }), T).changed;
+  ok(ch.join('|') === 'C:\\proj\\|a.js', `only a path with a name after the folder is shortened (got ${ch})`);
+  // A second heading under an entry is prose, not the entry's heading again.
+  const two = parseDay('<!-- j:k1 t:t d:2026-10-28 -->\n## 09:00 · conversation aaaa · branch b1\n## 10:00 · conversation bbbb\n**Asked:** q').entries[0];
+  ok(two.s === 'aaaa' && two.at === '2026-10-28 09:00' && two.branch === 'b1' && two.after?.includes('conversation bbbb'), `a second heading is a note, not the heading (got ${JSON.stringify(two)})`);
+  // Entries of one minute go by key, whichever way they came.
+  for (const ids of [['k-b', 'k-a'], ['k-a', 'k-b']]) {
+    const o = storeFor(home, `C:\\order-${ids[0]}`);
+    record(o, T, ids.map((id) => turn({ at: '2026-10-20 09:00', id })));
+    const got = parseDay(readFileSync(dayFile(o, '2026-10-20'), 'utf8')).entries.map((e) => e.key).join();
+    ok(got === 'k-a,k-b', `entries of one minute are in key order, from ${ids} (got ${got})`);
+  }
+  // due: the look is due exactly ACTIVE after the last one, in either direction; a time that will not read is no look.
+  const dl = storeFor(home, 'C:\\due-edge'), lk = join(dl, 'journal', '.looked');
+  mkdirSync(join(dl, 'journal'), { recursive: true }); writeFileSync(lk, '5000000');
+  ok(isDue(dl, 5000000 + ACTIVE) && !isDue(dl, 5000000 + ACTIVE - 1) && isDue(dl, 5000000 - ACTIVE) && !isDue(dl, 5000000 - ACTIVE + 1), 'a look is due exactly ACTIVE after the last, and not a millisecond before');
+  rmSync(lk); mkdirSync(lk);
+  ok(isDue(dl) === true, 'a look time that will not read is no look: one is due');
+  // A day that will not read is named with its error code.
+  const dz = storeFor(home, 'C:\\entries-dir'), fl = [];
+  mkdirSync(dayFile(dz, '2026-10-20'), { recursive: true });
+  entries([dz], { failed: fl });
+  ok(fl.length === 1 && fl[0].code === 'EISDIR', `a day that is a folder is named by its code (got ${JSON.stringify(fl)})`);
+}
+{
+  // A write that loses to another writer is tried again, three times in all, and no more.
+  const [, d] = repo('racing'), f20 = dayFile(d, '2026-10-20'), hp = join(projects, 'C--racing', 'here.jsonl'), list = join(d, 'journal', '.forgotten');
+  mkdirSync(dirname(hp), { recursive: true }); writeFileSync(hp, '');
+  const hs = entryOf(turn(), hp).s;
+  record(d, hp, [turn({ at: '2026-10-20 09:00', id: 'rc-0', ask: 'mango zero' })]);
+  ok(racing(f20, Infinity, () => record(d, hp, [turn({ at: '2026-10-20 09:05', id: 'rc-1' })])) === 3, 'record gives a day up after three writes that lost');
+  writeFileSync(list, 'old-key\n');
+  ok(racing(list, Infinity, () => forget(d, ['mango'], { apply: true })) === 3, 'forget gives the list of forgotten keys up after three writes that lost');
+  // Once, though: the retry lists the key, or a Stop would put the entry back.
+  record(d, hp, [turn({ at: '2026-10-21 09:00', id: 'rc-2', ask: 'kiwi two' })]);
+  racing(list, 1, () => forget(d, ['kiwi'], { apply: true }));
+  ok(readFileSync(list, 'utf8').split('\n').includes('rc-2\tC--racing/here\t2026-10-21 09:00'), `a forgotten key is listed although the first write lost (got ${JSON.stringify(readFileSync(list, 'utf8'))})`);
+  record(d, hp, [turn({ at: '2026-10-20 09:10', id: 'rc-3' })]);
+  ok(racing(f20, Infinity, () => sweep(d, hs)) === 3, 'a sweep gives a day up after three writes that lost');
+}
+{
+  // The same for the lists a Stop keeps: the folders noted, and the conversations looked at.
+  const [r, d] = repo('racing-lists'), fl = join(d, 'journal', '.folders'), ck = join(d, 'journal', '.checked');
+  mkdirSync(join(d, 'journal'), { recursive: true }); writeFileSync(fl, 'C--elsewhere\n'); writeFileSync(ck, 'zz/yy 5\n');
+  const out = (n) => { const p = join(projects, `C--racing-out-${n}`, `${n.repeat(8)}-0000.jsonl`); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, ''); return p; };
+  const live = { quiet: false, hush: false };
+  ok(racing(fl, Infinity, () => write(d, out('a'), [], live)) === 3, 'noting a folder is given up after three writes that lost');
+  racing(fl, 1, () => write(d, out('b'), [], live));
+  ok(readFileSync(fl, 'utf8').split('\n').includes('C--racing-out-b'), `a folder is noted although the first write lost (got ${JSON.stringify(readFileSync(fl, 'utf8'))})`);
+  const mine = (n) => join(projects, slug(r), `${n.repeat(8)}-0000.jsonl`);
+  ok(racing(ck, Infinity, () => write(d, mine('c'), [], { quiet: true, hush: true })) === 3, 'a sweep is listed as done after three writes that lost, and no more');
+  racing(ck, 1, () => write(d, mine('e'), [], { quiet: true, hush: true }));
+  ok(readFileSync(ck, 'utf8').includes(`${slug(r)}/${'e'.repeat(8)}-0000 0 swept`), `a sweep is listed although the first write lost (got ${JSON.stringify(readFileSync(ck, 'utf8'))})`);
+}
+{
+  // A failure is kept even in a store that has no journal folder yet.
+  const d = storeFor(home, 'C:\\fault-nodir'), p = join(projects, slug('C:\\fault-nodir'), 'gone.jsonl');
+  write(d, p, Object.assign([], { whole: false }), { quiet: false, hush: false });
+  let f = ''; try { f = readFileSync(join(d, 'journal', '.failed'), 'utf8'); } catch {}
+  ok(f.includes('ENOENT'), `a failed write is kept in a store with no journal folder (got ${JSON.stringify(f)})`);
+}
+{
+  // A conversation held with auto memory off is swept once: what an earlier look swept stays swept.
+  const [r, d] = repo('offtwice'), id = sid('t'), p = old(r, id, 30, ['said before']);
+  appendFileSync(join(projects, '.memory-off'), `${id.slice(0, 8)}\n`);
+  const hf = join(d, 'handoff.md');
+  writeFileSync(hf, `---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** 2026-09-01 10:00 [${id.slice(0, 8)}]: said before\n  **did:** noted\n<!-- auto:end -->\n`);
+  fill(d);
+  // Only a private conversation takes its lines out of handoff.md; one held with memory off keeps them.
+  ok(readFileSync(hf, 'utf8').includes('said before') && !asks(d).length, 'a sweep for auto memory off leaves handoff.md alone');
+  record(d, p, [turn({ at: '2026-09-02 10:00', id: 'ot-live', ask: 'journaled since' })]);
+  appendFileSync(p, rec('user', id, '2026-09-02T10:00:00Z', 'more', r) + '\n' + rec('assistant', id, '2026-09-02T10:00:30Z', 'ok', r) + '\n');
+  utimesSync(p, ago(1), ago(1)); due(d);
+  fill(d);
+  ok(asks(d).join() === 'journaled since', `a conversation swept for auto memory off is not swept again at the next look (got ${asks(d)})`);
+  // ...unless a mark is typed after: swept again, whatever was swept before, and its lines leave handoff.md too.
+  appendFileSync(p, rec('user', id, '2026-09-03T10:00:00Z', '<private-session> from here', r) + '\n');
+  utimesSync(p, ago(1), ago(1)); due(d);
+  fill(d);
+  ok(!asks(d).length && !readFileSync(hf, 'utf8').includes('said before'), `a mark typed after a sweep for auto memory off sweeps again (got ${asks(d)}; ${readFileSync(hf, 'utf8')})`);
+}
+{
+  // A Stop whose read stopped short looks for a mark in the rest only when more than TAIL bytes came since: exactly TAIL, its read covered them.
+  const [r, d] = repo('tail');
+  const stopAt = (c, size) => {
+    const id = sid(c), p = join(projects, slug(r), `${id}.jsonl`), head = rec('user', id, '2026-10-28T14:05:00Z', '<private-session> x', r) + '\n';
+    writeFileSync(p, head + ' '.repeat(size - head.length - 1) + '\n');
+    write(d, p, Object.assign([turn({ at: '2026-10-28 14:05', id: `tl-${c}`, ask: `ask ${c}` })], { whole: false }), { quiet: false, hush: false });
+    return statSync(p).size;
+  };
+  ok(stopAt('a', TAIL) === TAIL && asks(d).join() === 'ask a' && !tagsOf(d).includes('a'.repeat(8)), `exactly TAIL bytes since the last look are no reason to look again (got ${asks(d)})`);
+  const failed = join(d, 'journal', '.failed');
+  writeFileSync(failed, '{"at":"2026-10-28T09:00:00Z","error":"left over"}\n');
+  stopAt('b', TAIL + 1);
+  ok(asks(d).join() === 'ask a' && tagsOf(d).includes('b'.repeat(8)), `one byte more: the mark is found, the conversation is tagged private and journals nothing (got ${asks(d)}; ${tagsOf(d)})`);
+  ok(!existsSync(failed), 'a Stop that took a conversation back has written all it had to: an earlier failure is cleared');
+}
+{
+  // A mark further on than one segment of the look (64 MB) is found at a Stop too.
+  const [r, d] = repo('bigmark'), id = sid('g'), p = join(projects, slug(r), `${id}.jsonl`);
+  const fd = fs.openSync(p, 'w');
+  try {
+    fs.writeSync(fd, rec('user', id, '2026-10-28T15:00:00Z', 'hello there', r) + '\n');
+    fs.writeSync(fd, Buffer.alloc(IMPORT_SEGMENT + 10));   // a line longer than a segment, passed over unread
+    fs.writeSync(fd, '\n' + rec('user', id, '2026-10-28T15:01:00Z', '<private-session> after the gap', r) + '\n');
+  } finally { fs.closeSync(fd); }
+  write(d, p, Object.assign([turn({ at: '2026-10-28 15:00', id: 'bg-1', ask: 'hello there' })], { whole: false }), { quiet: false, hush: false });
+  ok(!asks(d).length && tagsOf(d).includes('g'.repeat(8)), `a mark in the second segment of the look keeps the conversation out (got ${asks(d)}; ${tagsOf(d)})`);
+  rmSync(p);
+}
+{
+  // Imports that hang on a clock: a failed transcript is tried again a day after, one still being written is left alone for ACTIVE.
+  const [r, d] = repo('retry'), id = sid('y'), p = old(r, id, 30, ['x']), S = statSync(p).size, DAY = 24 * 3600e3;
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  const left = () => atClock(NOW, () => summary(d).left), failedAt = (ms) => writeFileSync(join(d, 'journal', '.imported'), `${slug(r)}/${id} ${S} failed ${ms}\n`);
+  failedAt(NOW - DAY + 1); const soon = left();
+  failedAt(NOW - DAY); const day = left();
+  ok(soon === 0 && day === 1, `a transcript that failed to open is tried again a day after, not a millisecond before (got ${soon}, ${day})`);
+  const [r2, d2] = repo('active'), p2 = old(r2, sid('v'), 30, ['x']);
+  const edge = (ms) => { const s = (NOW - ms) / 1000; utimesSync(p2, s, s); return atClock(NOW, () => summary(d2).left); };
+  const young = edge(ACTIVE - 1000), exact = edge(ACTIVE);
+  ok(young === 0 && exact === 1, `a transcript is left alone while it changed less than ACTIVE ago, not at ACTIVE (got ${young}, ${exact})`);
+}
+{
+  // The budget is spent when the time passed is the budget: no further transcript, no further segment. The clock moves once an entry is written.
+  const [r, d] = repo('budget'), clock = (dd) => () => NOW + (days(dd).length ? 100 : 0);
+  old(r, sid('a'), 50, ['ba']); old(r, sid('b'), 40, ['bb']);
+  atClock(clock(d), () => withLock(d, () => backfill(d, { budgetMs: 100 })));
+  ok(asks(d).join() === 'ba', `a second transcript is not started once the budget is spent (got ${asks(d)})`);
+  const [r2, d2] = repo('segbudget'), B = sid('c'), p = join(projects, slug(r2), `${B}.jsonl`);
+  writeFileSync(p, Array.from({ length: 12 }, (_, i) => exchange(B, r2, i)).join('')); utimesSync(p, ago(2), ago(2));
+  atClock(clock(d2), () => withLock(d2, () => backfill(d2, { budgetMs: 100, segment: 1024 })));
+  ok(asks(d2).length > 0 && asks(d2).length < 12 && / at \d+$/.test(listed(d2)[0]), `the next segment is not read once the budget is spent (got ${asks(d2).length}, ${listed(d2)})`);
+}
+{
+  // A line longer than a segment is passed over, to its end: what follows it is read.
+  const [r, d] = repo('longline'), L = sid('l'), p = join(projects, slug(r), `${L}.jsonl`), seg = 1024;
+  writeFileSync(p, exchange(L, r, 0) + 'J'.repeat(seg) + rec('user', L, '2026-09-01T10:01:00Z', 'inside the long line', r) + '\n' + exchange(L, r, 2));
+  utimesSync(p, ago(2), ago(2));
+  fill(d, { segment: seg });
+  ok(asks(d).join() === 'question 0,question 2', `a line longer than a segment is passed over whole, and what comes after it is imported (got ${asks(d)})`);
+}
+{
+  // The last line of a transcript counts without its newline: a reply, and a mark.
+  const [r, d] = repo('nonl'), N = sid('n'), p = old(r, N, 30, ['first']);
+  appendFileSync(p, rec('user', N, '2026-09-02T10:00:00Z', 'second', r) + '\n' + rec('assistant', N, '2026-09-02T10:00:30Z', 'second: done', r)); utimesSync(p, ago(2), ago(2));
+  fill(d);
+  const second = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries).find((e) => e.asked === 'second');
+  ok(second?.answered === 'second: done', `a reply on a last line with no newline is imported (got ${JSON.stringify(second)})`);
+  const [r2, d2] = repo('nonl-mark'), M = sid('m'), p2 = old(r2, M, 30, ['before the mark']);
+  appendFileSync(p2, rec('user', M, '2026-09-02T10:00:00Z', '<private-session> from here', r2)); utimesSync(p2, ago(2), ago(2));
+  fill(d2);
+  ok(!asks(d2).length && tagsOf(d2).includes('m'.repeat(8)), `a mark on a last line with no newline keeps the conversation out (got ${asks(d2)})`);
+}
+{
+  // A transcript of exactly as many turns as the cap is imported whole.
+  const [r, d] = repo('capexact'), C = sid('x'), p = join(projects, slug(r), `${C}.jsonl`);
+  writeFileSync(p, [0, 1, 2].map((i) => exchange(C, r, i)).join('')); utimesSync(p, ago(2), ago(2));
+  fill(d, { turns: 3 });
+  ok(asks(d).join() === 'question 0,question 1,question 2' && !existsSync(join(d, 'journal', '.failed')), `as many turns as the cap are imported, with no failure (got ${asks(d)})`);
+}
+{
+  // A noted folder that a look keeps whole is not rewritten (a CRLF list stays as the user left it).
+  const [r, d] = repo('refold'), fl = join(d, 'journal', '.folders');
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  const p = join(projects, 'C--refold-else', 'abcd.jsonl'); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, rec('user', 'abcd', '2026-09-01T10:00:00Z', 'x', r) + '\n');
+  writeFileSync(fl, 'C--refold-else\r\n');
+  fill(d);
+  ok(readFileSync(fl, 'utf8') === 'C--refold-else\r\n', `a look that drops no noted folder does not rewrite the list (got ${JSON.stringify(readFileSync(fl, 'utf8'))})`);
 }
 
 console.log(`journal: ${checks} checks passed`);
