@@ -17,6 +17,14 @@
 // (up to past the compaction ceiling) and turns cut mid-way, some with
 // background launches and their end notices; the compaction gate, after a cut
 // turn too; the CLI's status, search, show and forget, and a `forget --key ... --yes`.
+// Disk faults and kills: 15 % of the Stops, gates and CLI runs (never the forget by key,
+// nor the settling Stops that end a round) run under fuzz-faults.cjs, a preload that
+// fails the hook's own disk calls under the round's temp home (EBUSY, EPERM, EACCES,
+// ENOSPC) at a rate of 2, 10 or 30 % from a seeded stream; 10 % of Stops are killed
+// 5-300 ms in, and every .lock under the home is then dated back past LOCK_STALE (a
+// lock a refused unlock left is the same case). Before the settling Stops a journal
+// look is made due, as the wait of ACTIVE would. A kill, and two faulted Stops at
+// once, are races: a failing seed may need a few --seed replays.
 // What must hold: every hook and command exits as it should (the gate with 2
 // exactly for an automatic compaction mid-turn between the floor and the
 // ceiling); no private or forgotten text is written, briefed or printed, a gate's
@@ -26,6 +34,12 @@
 // the turn's Stop; the nudge comes once between dips under the trigger, never in
 // a private conversation, and at the first Stop of a plain turn past it; every
 // note keeps its text and one index line; repeating the last Stop settles within four.
+// Under faults or a kill: a hook exits 0 (the gate 0 or 2, a command 0 or 1; not a killed
+// one), prints no stack trace (a frame line in stderr or stdout) and no private text, and
+// changes no note; after settling no .handoff-failed-* file and no journal/.failed (but a
+// store whose conversations are all private keeps its live-write failure: a Stop that
+// writes nothing clears none), and no *.tmp<digits> file is named in MEMORY.md or in
+// `status`. The nudge rules rest after a hurt Stop until the next dip under the trigger.
 // Time: a round's clock starts at one of INSTANTS: the default, the year's end
 // (2026-12-31 23:20 UTC), or 40 minutes before a daylight-saving change in Berlin,
 // Los Angeles or Chatham, so turns and Stops straddle the change. Some turns are
@@ -68,6 +82,8 @@ const ZONES = ['UTC', 'Europe/Berlin', 'America/Los_Angeles', 'Asia/Kolkata', 'P
 const FORGET = ["node memory.mjs forget x", "node \"C:/x/memory.mjs\" 'forget' 'x'", 'node memory.mjs --store "C:/s" "forget" x',
   "node \"C:/x/memory.mjs\" '--shared' 'forget' 'x' --session y", 'node memory.mjs --limit -5 forget x', 'node memory.mjs --conversation= forget x'];
 const LINE_ENDS = /[\r\n\u2028\u0085]/g;
+// A stack trace's frame line (`    at f (file:1:2)` or `    at file:1:2`), and a half-written file's name (`MEMORY.md.tmp123`).
+const STACK = /^\s+at (?:.+ \(.+:\d+:\d+\)|\S+:\d+:\d+)$/m, TMP = /\S*\.tmp\d+\S*/;
 // shortcut: hooks read the real clock, so replaying a seed on another day may differ in those two messages ("another session is working", "hooks look stopped"); upgrade if a failure ever depends on them.
 // Where a round's clock starts. A `zone` marks a daylight-saving change in it 40
 // minutes after `at`; the first is the default, the last the year's end.
@@ -266,7 +282,8 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
     // <private-session> conversation, and on the first Stop of a plain turn past it.
     const gave = p.out.split('\n').some((l) => { try { return JSON.parse(l).hookSpecificOutput?.additionalContext?.includes(NUDGE_TAG); } catch { return false; } });
     // The hook records a nudge only when it prints one: a Stop of a private turn that printed none spent none.
-    if (s.ctx < TRIGGER * WINDOW) s.nudges = 0;
+    // A dip under the trigger, seen by a Stop that ran whole, restarts the hook's count and the rules (a hurt Stop may have left its record as it was).
+    if (s.ctx < TRIGGER * WINDOW) { s.nudges = 0; if (!hurt(o)) s.nudgeOff = false; }
     else {
       if (gave && s.private) problems.push(`the Stop of a <private-session> conversation (${s.id}) gave a nudge`);
       if (s.nudgeOff) { /* a hurt Stop's record is unknown */ }
@@ -298,7 +315,6 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   };
   // What a faulted or killed run must still hold: no stack trace (a frame line, `    at f (file:1:2)` or `    at file:1:2`,
   // in stderr or stdout), no private text in its output, and no note changed. (Its exit code is the caller's rule.)
-  const STACK = /^s+at (?:.+ (.+:d+:d+)|S+:d+:d+)$/m;
   const hurtRules = (p, what, o) => {
     const how = o.fault ? 'with faults' : 'killed';
     if (STACK.test(p.err) || STACK.test(p.out)) problems.push(`${what}, ${how}, printed a stack trace: ${(STACK.exec(p.err) ?? STACK.exec(p.out))[0].trim()}`);
@@ -452,7 +468,10 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   // line pointing at no file), which hostile notes are meant to make.
   for (const f of readdirSync(dirname(proj)).filter((n) => n.startsWith('.handoff-failed-'))) problems.push(`${f}: ${readFileSync(join(dirname(proj), f), 'utf8').trim().slice(0, 300)}`);
   // A store whose every conversation is private writes nothing, and a Stop that writes nothing clears no failure (journal.test.mjs:324-330, "clears no failure"), so a failure it left stays: not a rule there.
-  if (existsSync(join(dir, 'journal', '.failed')) && ![...sessions.values()].every((c) => c.private)) problems.push(`journal/.failed: ${readFileSync(join(dir, 'journal', '.failed'), 'utf8').trim().slice(0, 300)}`);
+  // Only its live-write lines: a backfill's line (`"error":"backfill: `) is cleared by the look the settle phase makes due, private conversations or not.
+  const failedLines = existsSync(join(dir, 'journal', '.failed')) ? readFileSync(join(dir, 'journal', '.failed'), 'utf8').split(/\r?\n/).filter(Boolean) : [];
+  const stale = [...sessions.values()].every((c) => c.private) ? failedLines.filter((l) => l.includes('"error":"backfill: ')) : failedLines;
+  if (stale.length) problems.push(`journal/.failed: ${stale.join(' ').slice(0, 300)}`);
   const after = files();
   const brief = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), lastTz);
   if (brief.status !== 0) problems.push(`the startup briefing exited ${brief.status ?? brief.signal}`);
@@ -460,7 +479,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   // A round with faults or kills: no half-written *.tmp<digits> file is named in the index or in `status`.
   if (steps.some((st) => st.fault || st.kill)) {
     const st = await run(CLI, ['status', '--store', dir], '', lastTz);
-    for (const [where, text] of [['MEMORY.md', after.get('MEMORY.md') ?? ''], ['the output of status', st.out]]) { const m = /S*.tmpd+S*/.exec(text); if (m) problems.push(`a half-written file, ${m[0]}, is named in ${where}`); }
+    for (const [where, text] of [['MEMORY.md', after.get('MEMORY.md') ?? ''], ['the output of status', st.out]]) { const m = TMP.exec(text); if (m) problems.push(`a half-written file, ${m[0]}, is named in ${where}`); }
   }
   // What was written: no secret, nothing forgotten, nothing of a private conversation.
   const handoff = after.get('handoff.md') ?? '', journal = [...after].filter(([f]) => f.startsWith('journal/')).map(([, s]) => s).join('\n');
@@ -535,17 +554,29 @@ assert.deepEqual(generate(7), generate(7));
 {
   const root = mkdtempSync(join(tmpdir(), 'fuzz-root-')), outside = mkdtempSync(join(tmpdir(), 'fuzz-out-')), beside = `${root}x`;
   mkdirSync(beside);
-  const script = `const fs = require('node:fs'), path = require('node:path'), [root, out, beside, store] = process.argv.slice(1);
+  // fs.promises is not wrapped: its handle is an fd whose file is under the root, which a wrapped call must let through.
+  const script = `const fs = require('node:fs'), path = require('node:path'), { pathToFileURL } = require('node:url'), [root, out, beside, store] = process.argv.slice(1);
     const t = (f) => { try { f(); return 'ok'; } catch (e) { return e.code; } };
-    (async () => { const fd = fs.openSync(path.join(out, 'fd'), 'w');
+    (async () => { const h = await fs.promises.open(path.join(root, 'fd'), 'w');
       console.log(JSON.stringify({ under: t(() => fs.writeFileSync(path.join(root, 'a'), 'x')), outside: t(() => fs.writeFileSync(path.join(out, 'b'), 'x')),
-        beside: t(() => fs.writeFileSync(path.join(beside, 'c'), 'x')), fd: t(() => fs.writeFileSync(fd, 'x')), imported: typeof (await import(store)).LOCK_STALE })); })();`;
+        beside: t(() => fs.writeFileSync(path.join(beside, 'c'), 'x')), fd: t(() => fs.writeFileSync(h.fd, 'x')),
+        url: t(() => fs.writeFileSync(pathToFileURL(path.join(root, 'u')), 'x')), buffer: t(() => fs.writeFileSync(Buffer.from(path.join(root, 'b')), 'x')),
+        folded: process.platform === 'win32' ? t(() => fs.writeFileSync(path.join(root.toUpperCase(), 'f'), 'x')) : 'skip', dotted: t(() => fs.writeFileSync(path.join(root, '..x'), 'x')),
+        imported: typeof (await import(store)).LOCK_STALE })); })();`;
   process.env.FUZZ_FAULTS = `1:1:${root}`;
   const r = spawnSync(process.execPath, ['--require', FAULTS, '-e', script, root, outside, beside, pathToFileURL(join(dirname(FAULTS), 'store.mjs')).href], { encoding: 'utf8' });
   delete process.env.FUZZ_FAULTS;
   const got = r.stdout.trim() ? JSON.parse(r.stdout.trim()) : r.stderr.trim().split('\n').slice(-3).join(' | ');
   for (const d of [root, outside, beside]) rmSync(d, { recursive: true, force: true });
-  assert.ok(got.under && ['EBUSY', 'EPERM', 'EACCES', 'ENOSPC'].includes(got.under) && got.outside === 'ok' && got.beside === 'ok' && got.fd === 'ok' && got.imported === 'number', `the fault preload: ${JSON.stringify(got)}`);
+  const four = (c) => ['EBUSY', 'EPERM', 'EACCES', 'ENOSPC'].includes(c);
+  assert.ok(four(got.under) && four(got.dotted) && (got.folded === 'skip' || four(got.folded)) && got.outside === 'ok' && got.beside === 'ok' && got.fd === 'ok' && got.url === 'ok' && got.buffer === 'ok' && got.imported === 'number', `the fault preload: ${JSON.stringify(got)}`);
+}
+// The two rules that read a process's output read what Node really prints, and a half-written file's name, and not an ordinary line.
+{
+  const real = new Error('boom').stack.replace(/^Error: boom\n/, '');
+  assert.ok(STACK.test(real) && STACK.test('    at file:///C:/x/y.mjs:3:9') && STACK.test('Error: x\r\n    at f (C:\\x\\y.mjs:1:2)\r\n'), `the stack-trace rule misses a real stack: ${real}`);
+  assert.ok(!STACK.test('memory: 3 notes, last at 10:30') && !STACK.test('it stopped at the gate'), 'the stack-trace rule fires on an ordinary line');
+  assert.ok(TMP.test('MEMORY.md.tmp123') && TMP.test('- [x](C:\\s\\2026-10-31.md.tmp4242) y') && !TMP.test('MEMORY.md') && !TMP.test('a note about .tmp files'), 'the half-written-file rule misreads a name');
 }
 // Every list of a round's steps is a whole round: a lone turn, a lone note hold on correct code.
 const lone = generate(12345), alone = [];
@@ -554,8 +585,8 @@ const plain = lone.steps.find((x) => x.type === 'turn' && x.kind === 'plain' && 
 const cutTurn = { ...plain, cut: true, size: SIZES[4], launches: [{ id: 'bgx0', done: false }] }, gate = { type: 'gate', s: plain.s, trigger: 'auto', tz: 'UTC' };
 for (const [name, xs] of [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'note')]], ['cut turn', [cutTurn]], ['turn past the trigger', [{ ...plain, size: SIZES[3] }]], ['gate', [gate]], ['turn that collides', [{ ...plain, collides: 'ASK1' }]], ['cut turn, gate', [cutTurn, gate]],
   ['Stop with faults', [{ type: 'stop', s: plain.s, tz: 'UTC', fault: { seed: 3, rate: 0.3 } }]], ['Stop killed', [{ type: 'stop', s: plain.s, tz: 'UTC', kill: 40 }]],
-  ['gate with faults', [{ ...gate, fault: { seed: 5, rate: 0.3 } }]]]) alone.push([name, (await execute(xs, lone.meta)).found]);
-assert.deepEqual(alone.map(([n, f]) => [n, f.length]), ['turn', 'note', 'cut turn', 'turn past the trigger', 'gate', 'turn that collides', 'cut turn, gate', 'Stop with faults', 'Stop killed', 'gate with faults'].map((n) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
+  ['gate with faults', [{ ...gate, fault: { seed: 5, rate: 0.3 } }]], ['CLI with faults', [{ type: 'cli', args: ['status'], tz: 'UTC', fault: { seed: 7, rate: 0.3 } }]]]) alone.push([name, (await execute(xs, lone.meta)).found]);
+assert.deepEqual(alone.map(([n, f]) => [n, f.length]), ['turn', 'note', 'cut turn', 'turn past the trigger', 'gate', 'turn that collides', 'cut turn, gate', 'Stop with faults', 'Stop killed', 'gate with faults', 'CLI with faults'].map((n) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
 
 // --keep-going: every failing round named, not just the first (a bug hunt),
 // with its story, 60 lines at most. Otherwise the first failing round, shrunk

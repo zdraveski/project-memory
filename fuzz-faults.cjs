@@ -1,8 +1,9 @@
 // Dev tool of fuzz.mjs, not shipped: a preload (`node --require fuzz-faults.cjs hook.mjs`) that makes
 // disk calls fail the way a busy or full disk does. FUZZ_FAULTS=<seed>:<rate>:<root>. A synchronous
 // call of node:fs whose first argument is a path under <root> (the fuzz round's own temp home, and
-// nothing else) fails with probability <rate>, drawn from a seeded stream (mulberry32), one draw per
-// such call, so the same run injects the same faults. File descriptors, URLs and Buffers pass through.
+// nothing else) fails with probability <rate>, drawn from a seeded stream (mulberry32): one draw per
+// such call to decide, and a second for the code of a call that fails (calls elsewhere draw nothing), so
+// the same run injects the same faults. File descriptors, URLs and Buffers pass through.
 // It reaches only the process it is loaded into, not the git or node children that process spawns.
 'use strict';
 const fs = require('node:fs'), path = require('node:path');
@@ -18,16 +19,18 @@ if (m) {
   const under = (p) => {
     if (typeof p !== 'string') return false;   // a descriptor, a URL, a Buffer: not ours to fault
     const rel = path.relative(root, norm(path.resolve(p)));
-    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    return rel === '' || (rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel));   // a child named `..x` is inside
   };
   const READS = ['EBUSY', 'EPERM', 'EACCES'], WRITES = [...READS, 'ENOSPC'];
-  // openSync can write too: only its flags say.
+  // openSync can write too: only its flags say (letters, or the numeric O_ flags).
   const writes = { writeFileSync: 1, appendFileSync: 1 };
+  const { O_WRONLY, O_RDWR, O_CREAT, O_APPEND, O_TRUNC } = fs.constants;
+  const opensForWrite = (f) => (typeof f === 'number' ? (f & (O_WRONLY | O_RDWR | O_CREAT | O_APPEND | O_TRUNC)) !== 0 : /[wa+]/.test(String(f)));
   for (const name of ['openSync', 'readFileSync', 'writeFileSync', 'appendFileSync', 'renameSync', 'unlinkSync', 'mkdirSync', 'rmdirSync', 'rmSync', 'readdirSync']) {
     const real = fs[name];
     fs[name] = function (...a) {
       if (under(a[0]) && next() < rate) {
-        const codes = writes[name] || (name === 'openSync' && /[wa+]/.test(String(a[1]))) ? WRITES : READS;
+        const codes = writes[name] || (name === 'openSync' && opensForWrite(a[1])) ? WRITES : READS;
         const code = codes[Math.floor(next() * codes.length)];
         const e = new Error(`${code}: injected fault, ${name} '${a[0]}'`);
         throw Object.assign(e, { code, errno: -1, syscall: name.replace(/Sync$/, ''), path: a[0] });
