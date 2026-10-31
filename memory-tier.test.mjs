@@ -317,14 +317,14 @@ ok(r.status === 0 && tracked().includes('proj-three/memory/MEMORY.md'), 'a store
 // store is stamped, or every reply redid the whole pass.
 r = noGit();
 const sh = () => JSON.parse(readFileSync(join(root, '.snapshot-health'), 'utf8'));
-ok(r.status === 0 && /memory snapshot: off: git is not installed/.test(r.stdout) && sh().failures === 0 && sh().off, `git missing from PATH: exit 0, snapshots off, no failure counted (got ${r.stdout.trim()})`);
+ok(r.status === 0 && /memory snapshot: off: git is not installed/.test(r.stdout) && sh().failures === 0 && sh().off && typeof sh().lastOk === 'string', `git missing from PATH: exit 0, snapshots off, no failure counted (got ${r.stdout.trim()})`);
 r = plain();
 ok(sh().failures === 0 && sh().lastOk && !sh().off, 'and with git back, snapshots are on again');
 // A repository that cannot be read is a failure, counted for the startup line.
 renameSync(join(root, '.git'), join(root, '.gitaside'));
 writeFileSync(join(root, '.git'), `gitdir: ${join(root, 'no-such-repo').replace(/\\/g, '/')}\n`);
 note('proj-one', 'counted'); plain(); plain();
-ok(sh().failures === 2 && sh().error, `failed snapshots are counted for the startup line (got ${JSON.stringify(sh())})`);
+ok(sh().failures === 2 && sh().error && typeof sh().lastOk === 'string', `failed snapshots are counted for the startup line (got ${JSON.stringify(sh())})`);
 unlinkSync(join(root, '.git'));
 renameSync(join(root, '.gitaside'), join(root, '.git'));
 r = plain();
@@ -786,11 +786,12 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   const before = runLines().length, po = join(root, 'proj-off');
   mkdirSync(po); writeFileSync(join(po, 'offline1-0000.jsonl'), '');
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
-  try { spawnSync(process.execPath, [TOOL, '--stop'], { env, input: JSON.stringify({ transcript_path: join(po, 'offline1-0000.jsonl'), session_id: 'offline1-0000' }) }); }
+  let offRun;
+  try { offRun = spawnSync(process.execPath, [TOOL, '--stop'], { env, input: JSON.stringify({ transcript_path: join(po, 'offline1-0000.jsonl'), session_id: 'offline1-0000' }) }); }
   finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   let off = ''; try { off = readFileSync(join(root, '.memory-off'), 'utf8'); } catch {}
-  ok(runLines().length === before && !existsSync(join(po, 'memory')) && off.split(/\r?\n/).includes('offline1'),
-    `with auto memory off the Stop hook keeps only the conversation's tag (got ${JSON.stringify(off)})`);
+  ok(offRun.status === 0 && runLines().length === before && !existsSync(join(po, 'memory')) && off.split(/\r?\n/).includes('offline1'),
+    `with auto memory off the Stop hook keeps only the conversation's tag and exits 0 (got ${offRun.status}, ${JSON.stringify(off)})`);
 
   // A record of where you left off that cannot be saved (here the store's
   // folder is a file, so its lock cannot be taken) is said at the next start,
@@ -805,6 +806,9 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   stopB();
   const said = execFileSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: tb, session_id: 'other', source: 'startup' }), env }).toString();
   ok(existsSync(join(root, '.handoff-failed-proj-broken')) && /could not be saved/.test(said), `a handoff that cannot be saved is said at the next start (got ${said.slice(0, 200)})`);
+  // The failure file keeps the error's first line, whole, for the startup line to quote.
+  const failedNote = JSON.parse(readFileSync(join(root, '.handoff-failed-proj-broken'), 'utf8'));
+  ok(typeof failedNote.error === 'string' && failedNote.error.length > 0 && !failedNote.error.includes('\n'), `the failure file holds the error's first line (got ${JSON.stringify(failedNote)})`);
   rmSync(join(broken, 'memory'));
   mkdirSync(join(broken, 'memory'));
   stopB();
@@ -1114,6 +1118,324 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
     c.stdin.end(JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: te, session_id: 'epipe002', hook_event_name: 'Stop' }));
   });
   ok(/compaction gate/.test(nudged.stdout) && code === 0, `a Stop whose nudge has no reader left exits 0 (got ${code}; ${nudged.stdout.slice(0, 60)})`);
+}
+
+// --- the automatic mutants: edges, exact sizes and failures made on purpose -----
+// Each check below sits on one line's boundary or one failing call, where the
+// real code and its one-character break give the same answer almost everywhere.
+{
+  const DAY = 86400000;
+  const bytesOf = (s) => Buffer.byteLength(s);
+  const readOr = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '');
+  const asHome = (h, fn) => {
+    const was = [process.env.HOME, process.env.USERPROFILE];
+    process.env.HOME = h; process.env.USERPROFILE = h;
+    try { return fn(); } finally { process.env.HOME = was[0]; process.env.USERPROFILE = was[1]; }
+  };
+  const tierDir = (d, ...a) => spawnSync(process.execPath, [TOOL, '--dir', d, ...a], { encoding: 'utf8' });
+  const writeNote = (d, name, { type = 'project', tier, modified, when = tenMin } = {}) => {
+    writeFileSync(join(d, `${name}.md`), `---\nname: ${name}\ndescription: "${name}"\nmetadata:\n  type: ${type}${tier ? `\n  tier: ${tier}` : ''}${modified ? `\n  modified: ${modified}` : ''}\n---\n\nbody\n`);
+    utimesSync(join(d, `${name}.md`), when, when);
+  };
+  const scratch = tempDir('memtier-edges-');
+  const preload = (name, src) => { const f = join(scratch, name); writeFileSync(f, src); return f; };
+  const withPreload = (f, args) => spawnSync(process.execPath, ['--require', f, TOOL, ...args], { encoding: 'utf8' });
+
+  // The windows are exact, and --now is the clock: an event log is hot for three
+  // days, any other note for seven since its stamp, a pointer or a memory is the
+  // writer's for two minutes. One millisecond inside keeps, the edge itself does not.
+  const hotAt = (note, nowMs) => {
+    const d = tempDir('memtier-edge-');
+    writeNote(d, note.name, note);
+    writeFileSync(join(d, 'MEMORY.md'), `- [${note.name}](${note.name}.md) — hook\n`);
+    tierDir(d, '--now', String(nowMs));
+    return readOr(join(d, 'MEMORY.md')).includes(`(${note.name}.md)`);
+  };
+  const logDay = Date.parse('2026-01-10'), stamped = '2026-02-01T00:00:00.000Z';
+  ok(hotAt({ name: 'log-2026-01-10' }, logDay + 3 * DAY - 1), 'an event log is still hot a millisecond before its third day is out');
+  ok(!hotAt({ name: 'log-2026-01-10' }, logDay + 3 * DAY), 'and archived when the third day is out');
+  ok(hotAt({ name: 'seen', modified: stamped }, Date.parse(stamped) + 7 * DAY - 1), 'a note is still hot a millisecond before its seventh day is out');
+  ok(!hotAt({ name: 'seen', modified: stamped }, Date.parse(stamped) + 7 * DAY), 'and archived when the seventh day is out');
+
+  const whole = Math.floor(Date.now() / 1000) * 1000 - 600000, wholeAt = new Date(whole);   // to the second: the mtime is read back exact
+  const ghost = (nowMs) => {
+    const d = tempDir('memtier-ghost-');
+    writeFileSync(join(d, 'MEMORY.md'), '- [Ghost](ghost.md) — gone\n');
+    utimesSync(join(d, 'MEMORY.md'), wholeAt, wholeAt);
+    tierDir(d, '--now', String(nowMs));
+    return readOr(join(d, '.health'));
+  };
+  ok(!/ghost\.md/.test(ghost(whole + 119999)), 'a pointer with no file, in an index a millisecond short of two minutes old, is its writer\'s');
+  ok(/pointers with no file: ghost\.md/.test(ghost(whole + 120000)), 'and a problem when the index is two minutes old');
+  const orphaned = (nowMs) => {
+    const d = tempDir('memtier-orphan-');
+    writeFileSync(join(d, 'MEMORY.md'), '# Index\n');
+    utimesSync(join(d, 'MEMORY.md'), wholeAt, wholeAt);
+    writeNote(d, 'orphan', { when: wholeAt });
+    const r = tierDir(d, '--now', String(nowMs));
+    return { out: r.stdout, arc: readOr(join(d, 'MEMORY-archive.md')) };
+  };
+  const young = orphaned(whole + 119999), old = orphaned(whole + 120000);
+  ok(!/orphan\.md/.test(young.out + young.arc), 'a memory with no pointer, a millisecond short of two minutes old, is left for its writer');
+  ok(/pointers recovered: orphan\.md/.test(old.out) && /\]\(orphan\.md\)/.test(old.arc), 'and recovered, and said so, at two minutes');
+
+  // Prose is kept as written: one blank line stays, a run of them is one.
+  {
+    const d = tempDir('memtier-prose2-');
+    writeNote(d, 'a');
+    writeFileSync(join(d, 'MEMORY.md'), '# Index\n\nSome prose\n\n\n- [a](a.md) — a\n');
+    tierDir(d);
+    ok(readFileSync(join(d, 'MEMORY.md'), 'utf8').startsWith('# Index\n\nSome prose\n- [a](a.md)'), 'the blank line under a heading survives, and a run of blank lines is one');
+  }
+
+  // --pause <ms> holds a pass open and says so on stderr: only when asked, and only with a number.
+  {
+    const d = tempDir('memtier-pause-');
+    writeNote(d, 'a'); writeFileSync(join(d, 'MEMORY.md'), '- [a](a.md) — a\n');
+    ok(/paused/.test(tierDir(d, '--pause', '1').stderr), '--pause 1 holds the pass open and says paused on stderr');
+    ok(!/paused/.test(tierDir(d).stderr), 'a pass with no --pause never pauses');
+    ok(!/paused/.test(tierDir(d, '--pause', 'soon').stderr), 'and --pause with no number does not either');
+  }
+
+  // An edit landing while a pass is held open (made deterministic: the preload
+  // writes it when the pass says paused). The pass stands down, the edit wins.
+  const editing = (target, text) => preload(`edit-${bytesOf(target)}-${bytesOf(text)}.cjs`, `const fs = require('node:fs'), write = fs.writeSync;
+fs.writeSync = (fd, ...a) => {
+  if (fd === 2 && String(a[0]).startsWith('paused')) fs.appendFileSync(${JSON.stringify(target)}, ${JSON.stringify(text)});
+  return write(fd, ...a);
+};
+require('node:module').syncBuiltinESMExports();
+`);
+  {
+    const d = tempDir('memtier-conflict-');
+    writeNote(d, 'stale-one', { modified: iso(90) }); writeNote(d, 'fresh-one', { modified: iso(1) });
+    writeFileSync(join(d, 'MEMORY.md'), '- [stale](stale-one.md) — old\n- [fresh](fresh-one.md) — new\n');
+    const r = withPreload(editing(join(d, 'MEMORY.md'), '- [added](added.md) — by the model\n'), ['--dir', d, '--pause', '1']);
+    ok(/changed during the pass/.test(r.stdout) && readFileSync(join(d, 'MEMORY.md'), 'utf8').includes('by the model'), `an index edited during a pass wins, and the pass says it stood down (got ${r.stdout.trim()})`);
+  }
+  {
+    const d = tempDir('memtier-back-');
+    writeNote(d, 'pinned', { tier: 'hot' });
+    writeFileSync(join(d, 'MEMORY.md'), '# Index\n');
+    writeFileSync(join(d, 'MEMORY-archive.md'), '# Archive\n\n- [Pinned](pinned.md) — the hand-written hook\n');
+    withPreload(editing(join(d, 'MEMORY.md'), '\nWritten by the model during the pass.\n'), ['--dir', d, '--pause', '1']);
+    ok((readOr(join(d, 'MEMORY.md')) + readOr(join(d, 'MEMORY-archive.md'))).includes('- [Pinned](pinned.md) — the hand-written hook'), 'a line coming back from the archive is in one file or the other when the index write conflicts');
+  }
+  // A pass that changed only the index (the archive already as it would be) still says what it did.
+  {
+    const d = tempDir('memtier-wrote-');
+    writeNote(d, 'only');
+    writeFileSync(join(d, 'MEMORY.md'), '- [only](only.md) — hook\n- [Archive](MEMORY-archive.md) — 0 older pointers\n');
+    writeFileSync(join(d, 'MEMORY-archive.md'), '# Archive\n');
+    const r = tierDir(d);
+    ok(/1 hot \/ 0 archived/.test(r.stdout), `a pass that rewrote only the index says so (got ${r.stdout.trim()})`);
+  }
+  // Conflict markers need both ends: one alone is a line of text.
+  for (const [what, body] of [['an opening', '<<<<<<< HEAD'], ['a closing', '>>>>>>> laptop']]) {
+    const d = tempDir('memtier-marker-');
+    writeNote(d, 'a');
+    writeFileSync(join(d, 'MEMORY.md'), `# Index\n${body}\n- [a](a.md) — a\n`);
+    tierDir(d);
+    ok(!/merge-conflict/.test(readOr(join(d, '.health'))), `${what} marker alone is not an unresolved merge`);
+  }
+
+  // The ceiling to the byte. A store of one hundred-byte lines, the last padded so the
+  // index is exactly 7000 B plus `over`; `cold` pointers already in the archive.
+  const AL = (n) => `- [Archive](MEMORY-archive.md) — ${n} older pointers; grep it before assuming something was never learned`;
+  const lineFor = (name, len) => { const head = `- [${name}](${name}.md) — `; return head + 'x'.repeat(len - bytesOf(head)); };
+  const settle = (specs, { cold = 0 } = {}) => {
+    const d = tempDir('memtier-fit-');
+    const ls = specs.map((s) => { writeNote(d, s.name, { type: s.type, tier: s.tier, modified: new Date(Date.now() - s.days * DAY).toISOString() }); return lineFor(s.name, s.len); });
+    writeFileSync(join(d, 'MEMORY.md'), [...ls, AL(cold)].join('\n') + '\n');
+    if (cold) writeFileSync(join(d, 'MEMORY-archive.md'), ['# Archive', '', ...Array.from({ length: cold }, (_, i) => `- [Old ${i}](old${i}.md) — o`)].join('\n') + '\n');
+    const out = tierDir(d).stdout;
+    return { d, ls, out, main: readOr(join(d, 'MEMORY.md')), arc: readOr(join(d, 'MEMORY-archive.md')) };
+  };
+  const fit = (over, cold) => {
+    const want = 7000 + over, n = Math.floor((want - bytesOf(AL(cold)) - 1) / 101);
+    const total = n * 101 + bytesOf(AL(cold)) + 1;
+    const specs = Array.from({ length: n }, (_, i) => ({ name: `c${String(i).padStart(2, '0')}`, days: 3 + (n - i) * 0.001, len: 100 + (i === n - 1 ? want - total : 0) }));
+    const s = settle(specs, { cold });
+    return { ...s, evicted: (s.arc.match(/<!-- overflow -->/g) || []).length, bytes: bytesOf(s.main) };
+  };
+  const exact = fit(0, 0);
+  ok(exact.bytes === 7000 && exact.evicted === 0 && !existsSync(join(exact.d, '.health')), `an index of exactly 7000 B is within its ceiling: nothing evicted, nothing reported (got ${exact.bytes} B, ${exact.evicted} evicted)`);
+  const two = fit(102, 0);
+  ok(two.evicted === 2 && two.bytes <= 7000, `a store 102 B over, in lines of 101, loses two (got ${two.evicted}, ${two.bytes} B)`);
+  const [was, now2, saved] = /MEMORY\.md (\d+)B -> (\d+)B \(~(-?\d+) tokens/.exec(two.out).slice(1).map(Number);
+  ok(was - now2 >= 100 && saved === Math.round((was - now2) / 4), `the tokens saved are a quarter of the bytes (got ${was} -> ${now2}, ~${saved})`);
+  const digits = fit(101, 8);
+  ok(digits.evicted === 1 && digits.bytes <= 7000, `with eight pointers already archived, 101 B over loses one line, the count's width unchanged (got ${digits.evicted})`);
+
+  // Claude Code loads 200 lines: 198 of prose and a note make exactly 200 with the archive line.
+  {
+    const d = tempDir('memtier-200-');
+    writeNote(d, 'only');
+    writeFileSync(join(d, 'MEMORY.md'), Array.from({ length: 198 }, (_, i) => `Line ${i}`).join('\n') + '\n- [only](only.md) — hook\n');
+    tierDir(d);
+    ok(readFileSync(join(d, 'MEMORY.md'), 'utf8').split('\n').filter(Boolean).length === 200 && !/overflow/.test(readOr(join(d, 'MEMORY-archive.md'))), 'exactly 200 lines is within what Claude Code loads: nothing is evicted');
+  }
+
+  // The rule share, to the byte: B = 7000, P = the pinned lines + 1 each, R = the rules'.
+  // A rule is evicted ahead of recent work only when R exceeds (B - P) / 2.
+  const shared3 = (pinLen, workCount) => {
+    const specs = [{ name: 'pin', tier: 'hot', days: 400, len: pinLen },
+      ...[0, 1, 2].map((i) => ({ name: `rule-${i}`, type: 'feedback', days: 300 - i * 10, len: 499 })),
+      ...Array.from({ length: workCount }, (_, i) => ({ name: `work-${i}`, days: 3 - i * 0.01, len: 499 }))];
+    return settle(specs);
+  };
+  {
+    // P = 4000, R = 1500 = (7000 - 4000) / 2: the rules fit their share exactly, and the work goes.
+    const s = shared3(3999, 6);
+    ok(s.ls.slice(0, 4).every((l) => has(s.main, l)) && bytesOf(s.main) <= 7000 && s.ls.slice(4).some((l) => !has(s.main, l)),
+      'rules exactly at their share are kept while older work is evicted, and the pinned line is never counted twice or short');
+    // P = 5002: the share is 999 and the rules are 1500: two go (the oldest), the third (1000 > 999 after the first) too.
+    const t = shared3(5001, 3);
+    ok(has(t.main, t.ls[0]) && !has(t.main, t.ls[1]) && !has(t.main, t.ls[2]) && has(t.main, t.ls[3]),
+      `rules over their share go oldest first until the rest fit it, one byte over included (got ${t.main.split('\n').map((l) => l.slice(0, 12)).join('|')})`);
+  }
+
+  // --- the snapshot, with a git that fails on purpose ---
+  const gitHome = () => {
+    const h = tempDir('memtier-gh-'), r = join(h, '.claude', 'projects'), s = join(r, 'C--p', 'memory');
+    mkdirSync(s, { recursive: true });
+    writeNote(s, 'a'); writeFileSync(join(s, 'MEMORY.md'), '- [a](a.md) — a\n');
+    asHome(h, () => spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }));
+    writeNote(s, 'b'); writeFileSync(join(s, 'MEMORY.md'), '- [a](a.md) — a\n- [b](b.md) — b\n');
+    return { h, r, s };
+  };
+  const gitPre = (name, hook, log) => preload(name, `const cp = require('node:child_process'), real = cp.execFileSync, fs = require('node:fs');
+const hook = ${hook};
+cp.execFileSync = (f, a, ...r) => {
+  if (f === 'git' && Array.isArray(a)) { fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(a) + '\\n'); const e = hook(a); if (e) throw e; }
+  return real(f, a, ...r);
+};
+require('node:module').syncBuiltinESMExports();
+`);
+  const snapshotWith = (g, file) => asHome(g.h, () => spawnSync(process.execPath, ['--require', file, TOOL], { encoding: 'utf8' })).stdout;
+  {
+    // The untrack lists what is ignored, one path each, never everything; and it is remembered.
+    const g = gitHome(), log = join(scratch, 'rm.log');
+    rmSync(join(g.r, '.git', 'project-memory-ignored'), { force: true });
+    const out = snapshotWith(g, gitPre('log.cjs', '() => false', log));
+    const rm = readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((a) => a.includes('rm'));
+    ok(rm.length >= 2 && rm.every((a) => a.at(-1) !== '*' && a.at(-1).startsWith('*/')) && rm.some((a) => a.at(-1) === '*/memory/handoff.md'), `the untrack names each ignored path, never all of them (got ${JSON.stringify(rm.map((a) => a.at(-1)))})`);
+    ok(readOr(join(g.r, '.git', 'project-memory-ignored')) === readOr(join(g.r, '.gitignore')) && /committed/.test(out), 'and the run remembers it did it: what it untracked is what .gitignore says');
+  }
+  {
+    // A note deleted between git's listing and its read: one more try, not a failure.
+    const g = gitHome();
+    const out = snapshotWith(g, gitPre('gone.cjs', `(() => { let n = 0; return (a) => a.includes('add') && a.includes('-A') && n++ === 0 && Object.assign(new Error('Command failed: git add'), { status: 128, stdout: '', stderr: 'error: open("b.md"): No such file or directory\\nfatal: adding files failed\\n' }); })()`, join(scratch, 'gone.log')));
+    ok(/memory snapshot: committed/.test(out), `a note that vanished under git's add gets one more try (got ${out.trim()})`);
+  }
+  {
+    // Nothing staged but changes unstaged: another session took what this one staged. Busy, not a failure.
+    const g = gitHome();
+    const out = snapshotWith(g, gitPre('nochange.cjs', `(a) => a.includes('commit') && Object.assign(new Error('Command failed: git commit'), { status: 1, stdout: 'no changes added to commit (use "git add" and/or "git commit -a")\\n', stderr: '' })`, join(scratch, 'nochange.log')));
+    ok(/memory snapshot: busy/.test(out) && !/snapshot failed/.test(out), `a commit with nothing staged is busy (got ${out.trim()})`);
+  }
+  {
+    // A missing file that is not git's spawn is a failure, never "git is not installed".
+    const g = gitHome();
+    const out = snapshotWith(g, gitPre('enoent.cjs', `(a) => a.includes('commit') && Object.assign(new Error('ENOENT: no such file or directory, open'), { code: 'ENOENT', syscall: 'open' })`, join(scratch, 'enoent.log')));
+    ok(/snapshot failed/.test(out) && !/not installed/.test(out), `an ENOENT from somewhere other than git's start is a failed snapshot (got ${out.trim()})`);
+  }
+  {
+    // A lock exactly ten minutes old is dead (the clock held still so "exactly" can be said).
+    const g = gitHome(), T = Math.floor(Date.now() / 1000) * 1000, lock = join(g.r, '.git', 'index.lock');
+    writeFileSync(lock, '');
+    utimesSync(lock, new Date(T - 600000), new Date(T - 600000));
+    const clock = preload('clock.cjs', `Date.now = () => ${T};\n`);
+    const out = asHome(g.h, () => spawnSync(process.execPath, ['--require', clock, TOOL], { encoding: 'utf8' })).stdout;
+    ok(!existsSync(lock) && !/busy/.test(out), `an index.lock ten minutes old to the millisecond is cleared, not waited for (got ${out.trim()})`);
+  }
+  {
+    // A stale lock gone by the time it is unlinked is gone: carry on. Any other failure is not.
+    const g = gitHome(), lock = join(g.r, '.git', 'index.lock');
+    writeFileSync(lock, '');
+    utimesSync(lock, new Date(Date.now() - 3600000), new Date(Date.now() - 3600000));
+    const vanish = preload('vanish.cjs', `const fs = require('node:fs'), unlink = fs.unlinkSync;
+fs.unlinkSync = (p, ...a) => {
+  if (String(p).endsWith('index.lock')) { unlink(p, ...a); throw Object.assign(new Error('ENOENT: no such file or directory, unlink'), { code: 'ENOENT' }); }
+  return unlink(p, ...a);
+};
+require('node:module').syncBuiltinESMExports();
+`);
+    const out = asHome(g.h, () => spawnSync(process.execPath, ['--require', vanish, TOOL], { encoding: 'utf8' })).stdout;
+    ok(/memory snapshot: committed/.test(out), `a stale lock that vanishes before it is removed does not stop the snapshot (got ${out.trim()})`);
+  }
+  {
+    // What git cannot reach is said: a store linked from outside the root, with git unable to list it.
+    // Stores inside the root are never "missed", and a failed listing counts as missed.
+    const g = gitHome(), outside = join(g.h, 'Synced', 'memory');
+    mkdirSync(outside, { recursive: true });
+    writeNote(outside, 'p'); writeFileSync(join(outside, 'MEMORY.md'), '- [p](p.md) — p\n');
+    mkdirSync(join(g.r, 'C--ext'));
+    symlinkSync(outside, join(g.r, 'C--ext', 'memory'), process.platform === 'win32' ? 'junction' : 'dir');
+    snapshotWith(g, gitPre('lsfiles.cjs', `(a) => a.includes('ls-files') && Object.assign(new Error('Command failed: git ls-files'), { status: 128, stdout: '', stderr: 'fatal: boom' })`, join(scratch, 'ls.log')));
+    const missed = JSON.parse(readFileSync(join(g.r, '.snapshot-health'), 'utf8')).missed;
+    ok(Array.isArray(missed) && missed.length === 1 && /C--ext/.test(missed[0]), `only the store outside the root is missed when git cannot list it (got ${JSON.stringify(missed)})`);
+  }
+  {
+    // A store whose real path cannot be read at that moment is not one git missed.
+    const g = gitHome(), target = join('C--p', 'memory');
+    const vanish = preload('realpath.cjs', `const cp = require('node:child_process'), fs = require('node:fs'), exec = cp.execFileSync, real = fs.realpathSync;
+let armed = false, n = 0;
+cp.execFileSync = (f, a, ...r) => { if (f === 'git' && Array.isArray(a) && a.includes('add')) armed = true; return exec(f, a, ...r); };
+const rp = (p, ...a) => { if (armed && String(p).endsWith(${JSON.stringify(target)}) && ++n === 2) throw Object.assign(new Error('ENOENT: no such file or directory, realpath'), { code: 'ENOENT' }); return real(p, ...a); };
+rp.native = real.native; fs.realpathSync = rp;
+require('node:module').syncBuiltinESMExports();
+`);
+    asHome(g.h, () => spawnSync(process.execPath, ['--require', vanish, TOOL], { encoding: 'utf8' }));
+    const sh9 = JSON.parse(readFileSync(join(g.r, '.snapshot-health'), 'utf8'));
+    ok(!sh9.missed && sh9.failures === 0, `a store whose path cannot be resolved is not "missed" by the snapshot (got ${JSON.stringify(sh9)})`);
+  }
+
+  // Where a run writes outside its stores: a dry run, and one on a single --dir, never start a history.
+  {
+    const h = tempDir('memtier-nohist-'), r = join(h, '.claude', 'projects'), s = join(r, 'C--q', 'memory');
+    mkdirSync(s, { recursive: true });
+    writeNote(s, 'a'); writeFileSync(join(s, 'MEMORY.md'), '- [a](a.md) — a\n');
+    asHome(h, () => spawnSync(process.execPath, [TOOL, '--dry-run'], { encoding: 'utf8' }));
+    ok(!existsSync(join(r, '.git')), 'a dry run starts no history');
+    asHome(h, () => spawnSync(process.execPath, [TOOL, '--dir', s], { encoding: 'utf8' }));
+    ok(!existsSync(join(r, '.git')), 'a run on one --dir starts no history');
+    asHome(h, () => spawnSync(process.execPath, [TOOL], { encoding: 'utf8' }));
+    ok(existsSync(join(r, '.git')), 'a run over every store does');
+  }
+
+  // --dir with no path says so and fails.
+  {
+    const r = spawnSync(process.execPath, [TOOL, '--dir'], { encoding: 'utf8' });
+    ok(r.status === 1 && /--dir needs a path/.test(r.stdout), `--dir with no path exits 1 and says what it needs (got ${r.status}: ${r.stdout.trim()})`);
+  }
+
+  // The Stop's gate fingerprints notes, not the handoff: a handoff rewritten alone is no change to look at.
+  {
+    const d = store('proj-gate'), gateStamp = () => readOr(join(d, '.tiered'));
+    for (const f of ['a.md', 'MEMORY.md']) utimesSync(join(d, f), tenMin, tenMin);
+    writeFileSync(join(root, 'proj-gate', 'session.jsonl'), '');
+    let last = null;
+    for (let i = 0; i < 5 && gateStamp() !== last; i++) { last = gateStamp(); stop('proj-gate'); }
+    const settled = gateStamp();
+    writeFileSync(join(d, 'handoff.md'), `---\nname: handoff\n---\nrewritten alone ${Date.now()}\n`);
+    stop('proj-gate');
+    ok(settled !== '' && gateStamp() === settled, '--stop: a store whose only change is its handoff is not tiered again');
+  }
+
+  // The run log: the conversation is named by its first eight characters, and the log is
+  // trimmed only past 8 KB (8192 B itself stays).
+  {
+    const ran = join(root, '.stop-ran'), payload = { transcript_path: join(root, 'proj-one', 'session.jsonl'), session_id: 'abcdefghijkl', hook_event_name: 'Stop', stop_hook_active: true };
+    const stopRan = () => spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify(payload) });
+    stopRan();
+    const lineBytes = bytesOf(runLines().at(-1)) + 1;
+    ok(JSON.parse(runLines().at(-1)).s === 'abcdefgh', `--stop: the run log names a conversation by its first eight characters (got ${runLines().at(-1)})`);
+    const fill = 8192 - lineBytes, whole100 = Math.floor(fill / 100) - 1, rest = fill - whole100 * 100;
+    writeFileSync(ran, ('j'.repeat(99) + '\n').repeat(whole100) + 'j'.repeat(rest - 1) + '\n');
+    stopRan();
+    ok(statSync(ran).size === 8192, `--stop: a run log of exactly 8192 B is not trimmed (got ${statSync(ran).size} B)`);
+  }
 }
 
 rmSync(home, { recursive: true, force: true });
