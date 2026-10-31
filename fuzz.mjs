@@ -690,14 +690,14 @@ async function execute(steps, meta) {
     const days = last && (Date.now() - Date.parse(`${last.at.replace(' ', 'T')}:00Z`)) / 86400_000;
     // The clock gap between a zone and UTC is a day at most: under 5 days it is under 7, over 9 it is over.
     const due = last && days < 5, notDue = !last || days > 9;
-    // The newest plain exchange of that conversation that handoff.md holds: the highest turn, not forgotten, not private.
-    let want = null;
-    for (const [mark, m] of marks) if (m.kind === 'plain' && m.s && tag(m.s.id) === last?.s && !m.s.private && !forgotten.has(mark) && doc.includes(mark) && (!want || m.turn > want.turn)) want = { mark, turn: m.turn };
+    // The newest plain exchange of that conversation, as handoff.md lists it: the last entry. Entries carry the local minute only and are
+    // ordered by it (byAt), so in the hour a clock goes back the real newest can be listed before an older one: the briefing follows the list.
+    const mk = /ASK\d+n\d+/.exec(last?.ask ?? '')?.[0], want = mk && marks.get(mk)?.kind === 'plain' && !forgotten.has(mk) ? { mark: mk } : null;
     const said = /^Last session here ended .*$/m.exec(fresh.out)?.[0];
     if (!fresh.out.includes('Another session is working') && fresh.status === 0) {
       // A turn that ran forget is saved as `[private]` (PRIVACY.md) and is the last entry: the briefing names that, as the code does.
       if (due && last.ask === '[private]') { if (!said?.includes('on: [private] (log:')) problems.push(`the startup briefing does not name the last entry, [private]: ${(said ?? fresh.out).slice(0, 200)}`); }
-      else if (due && want && !said?.includes(want.mark)) problems.push(`the startup briefing does not name ${want.mark}, the newest plain exchange of the conversation handoff.md lists last (${last.s}): ${(said ?? fresh.out).slice(0, 200)}`);
+      else if (due && want && !said?.includes(want.mark)) problems.push(`the startup briefing does not name ${want.mark}, the last plain exchange handoff.md lists (${last.s}): ${(said ?? fresh.out).slice(0, 200)}`);
       else if (notDue && said) problems.push(`the startup briefing names a last session that handoff.md ${last ? `lists ${Math.round(days)} days old` : 'does not list'}: ${said.slice(0, 200)}`);
     }
   }
