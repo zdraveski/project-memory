@@ -1333,7 +1333,7 @@ if (!quick) {
   const rf = mdir('C--mutB-rf'), wline = '- [Wnote](wnote.md) — restore write refused';
   memory(rf, 'wnote', 'restore write refused');
   writeFileSync(join(rf, 'MEMORY.md'), `# Index\n\n${wline}\n`);
-  tier();
+  ok(tier().status === 0, 'the snapshot of the restore fixture is made');
   rmSync(join(rf, 'wnote.md'));
   let tmpDir = refuse(join(rf, 'wnote.md')), code = diskCode(tmpDir);
   try { r = run(['restore', 'wnote', '--store', rf]); } finally { rmSync(tmpDir, { recursive: true, force: true }); }
@@ -1412,6 +1412,17 @@ if (!quick) {
   ok(scoreOf(r.stdout, 'mn-aa.md') === 7 && scoreOf(r.stdout, 'mn-bb.md') === 3, `a three-letter term is found inside a longer word, in a description (+2, strong) and in a body (got ${r.stdout})`);
   ok(/mn-nofront\.md/.test(jcli('search', 'quokka').stdout), 'a note with no frontmatter is searched from its first line');
   ok(/mn-tight\.md/.test(jcli('search', 'zebu').stdout), 'a body that starts right after the closing --- is searched from its first character');
+  // An empty frontmatter followed by a rule: the body is what follows the first fence, not what follows the rule.
+  writeFileSync(join(jm, 'mn-hr.md'), '---\n---\nlemur is in the first part\n\n---\n\nthe second part\n');
+  ok(/mn-hr\.md/.test(jcli('search', 'lemur').stdout), 'a note with an empty frontmatter and a later rule is searched from after its frontmatter');
+  // A note whose stat fails has no date: it ranks below one stamped a millisecond after the epoch, whatever order the stores are read in.
+  memory(jm, 'mn-nostat', 'pangolin');
+  memory(shared, 'mn-stamped', 'pangolin', 'body', '  modified: 1970-01-01T00:00:00.001Z\n');
+  const stat = fsm.statSync;
+  fsm.statSync = (p, o) => { if (o === undefined && String(p).endsWith('mn-nostat.md')) throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' }); return stat(p, o); };
+  syncBuiltinESMExports();
+  try { r = jcli('search', 'pangolin'); } finally { fsm.statSync = stat; syncBuiltinESMExports(); rmSync(join(shared, 'mn-stamped.md'), { force: true }); }
+  ok(r.stdout.indexOf('mn-stamped.md') !== -1 && r.stdout.indexOf('mn-stamped.md') < r.stdout.indexOf('mn-nostat.md'), `a note whose stat fails ranks below one stamped 1 ms after the epoch (got ${r.stdout})`);
   // A term in a file name counts 3 (and the +5 for every term), and a body's count is capped at 2 (+2 for every term).
   memory(jm, 'mn-ostrich', 'plain', 'x');
   memory(jm, 'mn-capped', 'plain', 'ostrich '.repeat(4));
@@ -1425,7 +1436,7 @@ if (!quick) {
   const tail = fill(100) + 'omega' + fill(300), cutme = fill(100) + 'omega' + [1, 2, 3, 4, 5].map(() => fill(400) + 'omega').join('');
   day(jm, '2026-10-25', [entry('2026-10-25 10:00', 'omega tail', { answered: tail }), entry('2026-10-25 10:01', 'omega cut', { answered: cutme }), entry('2026-10-25 10:02', 'plain request', { answered: 'a concatenated string' })]);
   r = jcli('search', 'omega');
-  const ans = (out, marker) => blocks(out).find((b) => b.includes(marker)).split('\n').find((l) => l.startsWith('     Answered: ')).slice('     Answered: '.length);
+  const ans = (out, marker) => (blocks(out).find((b) => b.includes(marker))?.split('\n').find((l) => l.startsWith('     Answered: ')) ?? '').slice('     Answered: '.length);
   ok(ans(r.stdout, 'Asked: omega tail') === `…${tail.slice(20, 185)}…`, `a stretch that stops before the end of the text ends with an ellipsis (got ${ans(r.stdout, 'Asked: omega tail')})`);
   const cut = ans(r.stdout, 'Asked: omega cut');
   ok(cut.length === 800 && cut.startsWith('…') && cut.endsWith('…'), `stretches past the room are cut to 800 characters, ellipsis included (got ${cut.length})`);
@@ -1464,7 +1475,7 @@ if (!quick) {
   const wk = mdir('C--mutB-wk');
   for (const c of 'abcdefg') memory(wk, `wk-${c}`, `week note ${c}`);
   writeFileSync(join(wk, 'MEMORY.md'), '# Index\n\n' + [...'abcdefg'].map((c) => `- [Wk ${c}](wk-${c}.md) — week note ${c}`).join('\n') + '\n');
-  tier();
+  ok(tier().status === 0, 'the snapshot of the week fixture is made');
   r = run(['status', '--store', wk]);
   ok(/changed in the last 7 days: added wk-a, wk-b, wk-c, wk-d, wk-e, wk-f, and 1 more$/m.test(r.stdout), `seven notes added this week: six named, and 1 more (got ${r.stdout})`);
 
