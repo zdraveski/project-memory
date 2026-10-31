@@ -20,6 +20,8 @@ const cwd = 'C:\\handoff-log-selftest';
 const dir = storeFor(home, cwd);
 const transcript = join(dir, 'transcript.jsonl');
 mkdirSync(dir, { recursive: true });
+// A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
+const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 
@@ -43,7 +45,7 @@ const entries = () => (section().match(/\*\*asked\*\*/g) || []).length;
 {
   const probe = `import { sectionOf } from ${JSON.stringify(pathToFileURL(HOOK).href)};\nprocess.stdout.write(JSON.stringify(['prose with no marker', '', 'x\\n<!-- auto:end -->\\n'].map(sectionOf)));`;
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8', timeout: 10000 });
-  ok(r.status === 0 && r.stdout === JSON.stringify(Array(3).fill({ a: -1, b: -1 })), `sectionOf of text with no start marker finds none, and returns (${r.status}, ${r.stdout}, ${String(r.stderr).slice(0, 300)})`);
+  ok(r.status === 0 && r.stdout === JSON.stringify(Array(3).fill({ a: -1, b: -1 })), `sectionOf of text with no start marker finds none, and returns (${r.status}${r.signal ? ', ' + r.signal : ''}${r.error ? ', ' + r.error.code : ''}, ${r.stdout}, ${String(r.stderr).slice(0, 300)})`);
 }
 
 // 1. One prompt, then 700 KB of tool output, then the answer: beyond a 512 KB tail.
@@ -1020,7 +1022,7 @@ if (process.platform === 'win32') {
 // was listed twice, and the old zone's later-sorting minutes crowded out the
 // newest for hours (round 2's lifecycle audit).
 {
-  const was = process.env.TZ, tw = join(dirF, 'tz.jsonl'), id = 'tzwesttt-1';
+  const tw = join(dirF, 'tz.jsonl'), id = 'tzwesttt-1';
   const at = (i, s = '00') => `2026-10-29T08:${String(i).padStart(2, '0')}:${s}Z`;
   const turn = (i) => [user(`tapir ${i}`, { ts: at(i) }), asst(`fed tapir ${i}`, { ts: at(i, '30') })].join('\n') + '\n';
   writeFileSync(tw, Array.from({ length: 10 }, (_, i) => turn(i)).join(''));
@@ -1030,7 +1032,7 @@ if (process.platform === 'win32') {
     appendFileSync(tw, turn(10));
     process.env.TZ = 'America/Los_Angeles';
     handoff({ cwd: cwdF, transcript_path: tw, session_id: id });
-  } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
+  } finally { process.env.TZ = TZ0; }
   const asks = fdoc().match(/\[tzwesttt\]: tapir \d+/g) ?? [];
   ok(asks.length === 10 && new Set(asks).size === 10 && asks.includes('[tzwesttt]: tapir 10'),
     `after a time-zone change a conversation's turns are listed once each, its newest kept (got ${asks.join(', ')})`);
@@ -1320,7 +1322,7 @@ ok(/\[r3tail02\]: second ask\n  \*\*did:\*\* second done/.test(readFileSync(join
 // newest kept. The read goes on to the whole file when the newest entry's
 // turn is found at another minute (fuzz, review, 2026-10-30).
 {
-  const was = process.env.TZ, t9 = join(dir3, 'r3west01.jsonl');
+  const t9 = join(dir3, 'r3west01.jsonl');
   const at = (i, s = '00') => `2026-09-12T08:${String(i).padStart(2, '0')}:${s}Z`;
   const turn = (i) => [user(`kudu ${i}`, { ts: at(i) }), asst(`fed kudu ${i}`, { ts: at(i, '30') })].join('\n') + '\n';
   writeFileSync(t9, tool_(600_000) + '\n' + Array.from({ length: 10 }, (_, i) => turn(i)).join(''));
@@ -1330,7 +1332,7 @@ ok(/\[r3tail02\]: second ask\n  \*\*did:\*\* second done/.test(readFileSync(join
     appendFileSync(t9, turn(10));
     process.env.TZ = 'America/Los_Angeles';
     handoff({ cwd: cwd3, transcript_path: t9, session_id: 'r3west01' });
-  } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
+  } finally { process.env.TZ = TZ0; }
   const k = readFileSync(join(dir3, 'handoff.md'), 'utf8').match(/\[r3west01\]: kudu \d+/g) ?? [];
   ok(k.length === 10 && new Set(k).size === 10 && k.includes('[r3west01]: kudu 10'), `after a time-zone change a long conversation's turns are listed once each, its newest kept (got ${k.join(', ')})`);
 }
@@ -1596,9 +1598,8 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
 }
 
 
-// The first full mutation run's survivors in turns(), the section markers, the
-// write loops, the briefing and the entry point: each rule below is one a
-// mutant broke without a check noticing.
+// Edge rules of turns(), the section markers, the write loops, the briefing
+// and the entry point, each stated at its check.
 {
   const { turns, unwrap, unquote, asked, newest, sectionOf, unsay, hushed, lastTurn, stalled, transcripts, edited: edited_, fit, off, OFF, NUDGE_TAG, ACTIVE, GRACE, FORGOTTEN } = await import('./handoff-log.mjs');
   const T0 = '2026-09-11T07:00:00Z';
@@ -1692,10 +1693,11 @@ require('node:module').syncBuiltinESMExports();
   // Nothing to take out of nothing: unsay says so with false, never 'unchanged' or true.
   {
     const dU = store('C:\\hl-A-unsay');
-    ok(unsay(dU, () => true) === false, 'unsay on a store with no handoff.md writes nothing and says false');
+    ok(unsay(dU, () => true) === false && !existsSync(join(dU, 'handoff.md')), 'unsay on a store with no handoff.md writes nothing and says false');
     writeFileSync(join(dU, 'handoff.md'), docOf(entry('2026-09-12 07:01', 'unsayses', 'an ask', 'an answer')));
     ok(unsay(dU, () => false) === 'unchanged', 'unsay that takes nothing out says unchanged');
-    // Three tries against a file that keeps changing, and then false.
+    // Three tries against a file that keeps changing, and then false. reads() counts
+    // store.mjs replaceIfUnchanged's two reads per try: the only way to see the retry count.
     const [r, reads] = conflicting(join(dU, 'handoff.md'), () => unsay(dU, () => true));
     ok(r === false && reads() === 9, `unsay tries three times against a file that keeps changing, then gives up (${r}, ${reads()} reads)`);
     const [h, hreads] = conflicting(join(dU, '.private-sessions'), () => { writeFileSync(join(dU, '.private-sessions'), 'old00001\n'); return hushed(dU, 'new00002', true); });
@@ -1705,12 +1707,13 @@ require('node:module').syncBuiltinESMExports();
   // A conversation held with memory off is tagged by its transcript's name when the payload names no session.
   mkdirSync(root_, { recursive: true });
   ok(off({ transcript_path: join(root_, 'proj-A', 'abcdef12-3456.jsonl') }) === true && /^abcdef12$/m.test(readFileSync(join(root_, OFF), 'utf8')), 'a memory-off conversation is tagged by its transcript');
+  writeFileSync(join(root_, OFF), readFileSync(join(root_, OFF), 'utf8').replace(/^abcdef12\n/m, ''));
 
   // A transcript that is not there is no turn to record.
   {
     const dM = store('C:\\hl-A-missing');
-    ok(handoff({ cwd: 'C:\\hl-A-missing', transcript_path: join(dM, 'nope.jsonl') }) === false && handoff({ cwd: 'C:\\hl-A-missing' }) === false
-      && handoff({ cwd: 'C:\\hl-A-missing', transcript_path: 42 }) === false, 'a transcript that is missing, or no path, is recorded as nothing');
+    let got; try { got = [handoff({ cwd: 'C:\\hl-A-missing', transcript_path: join(dM, 'nope.jsonl') }), handoff({ cwd: 'C:\\hl-A-missing' }), handoff({ cwd: 'C:\\hl-A-missing', transcript_path: 42 })]; } catch (e) { got = [String(e.code || e)]; }
+    ok(got.length === 3 && got.every((x) => x === false), `a transcript that is missing, or no path, is recorded as nothing (${got})`);
   }
 
   // The reply Stop passes: added when the transcript lacks the turn, and not twice when it has it.
@@ -1808,6 +1811,7 @@ require('node:module').syncBuiltinESMExports();
     const names = (t) => transcripts(join(fA, 'memory'), 'me000000', t).map((x) => x.s).sort().join();
     ok(names(join(fB, 'cccccccc-9.jsonl')) === 'aaaaaaaa,bbbbbbbb', "a session started in another folder is looked for there too");
     ok(names(join(fA, 'cccccccc-9.jsonl')) === 'aaaaaaaa', "and the store's own folder is not read twice");
+    rmSync(fA, { recursive: true, force: true }); rmSync(fB, { recursive: true, force: true });
   }
 
   // A transcript with no message in it has no turn open; one of 50 messages the hooks do not know is a changed format.
