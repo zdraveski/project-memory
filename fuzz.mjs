@@ -25,11 +25,18 @@
 // lock a refused unlock left is the same case). Before the settling Stops a journal
 // look is made due, as the wait of ACTIVE would. A kill, and two faulted Stops at
 // once, are races: a failing seed may need a few --seed replays.
+// The older conversation is dated three days back, as a real user's earlier session is, so the journal's import takes it in
+// (written now it was an active session's and was skipped); 25 % of them are ones it must leave alone (a <private-session>
+// typed in it, or its tag already in .memory-off or .private-sessions). 20 % of turns hold a message queued while Claude
+// works (a string or blocks; 30 % with a <private> secret); 25 % of plain turns hold secrets of five of the shapes redact()
+// knows (all of them are tried at start-up), built from pieces, and near-misses (process.env.API_KEY, user.password). 10 % of
+// conversations are held with auto memory off from some Stop on: a Stop with CLAUDE_CODE_DISABLE_AUTO_MEMORY set.
 // What must hold: every hook and command exits as it should (the gate with 2
 // exactly for an automatic compaction mid-turn between the floor and the
 // ceiling); no private or forgotten text is written, briefed or printed, a gate's
 // note included; a private conversation leaves nothing; every other exchange is
-// in handoff.md once and in the journal once; a gate over the ceiling leaves a
+// in handoff.md once and in the journal once (an older conversation's: in the journal once; one held with auto memory off:
+// in the journal never); a gate over the ceiling leaves a
 // cut-turn note naming the launches not yet done and no ended one, gone after
 // the turn's Stop; the nudge comes once between dips under the trigger, never in
 // a private conversation, and at the first Stop of a plain turn past it; every
@@ -57,7 +64,7 @@ import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tool, tempHome, storeFor } from './harness.mjs';
 import { LOCK_STALE } from './store.mjs';
-import { NUDGE_TAG, ACTIVE } from './handoff-log.mjs';
+import { NUDGE_TAG, ACTIVE, tag } from './handoff-log.mjs';
 
 const args = process.argv.slice(2);
 const seconds = Number(args.find((a, i) => /^\d+$/.test(a) && args[i - 1] !== '--seed') ?? 60);
@@ -102,6 +109,33 @@ for (const { at, zone } of INSTANTS) {
   if (zone && offsetAt(zone, t + 39 * 60_000) === offsetAt(zone, t + 41 * 60_000)) { console.error(`fuzz: ${at} is no daylight-saving change in ${zone}: the instant list is wrong`); process.exit(1); }
 }
 
+// Secrets of every shape handoff-log.mjs's redact() knows, built here from pieces (no source line is one) with
+// a stream x. Each is [the text, the part that must never be written], or [the text] for a near-miss, which
+// redact may keep or cut and no rule follows. A token holds a letter and a digit (several patterns want both).
+const AL = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', SAFE = `${AL}_-`, HEX = '0123456789abcdef', UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const PREFIXED = [['sk-ant-', SAFE, 30], ['sk_live_', AL, 26], ['rk_test_', AL, 26], ['pk_live_', AL, 24], ['ghp_', AL, 36], ['gho_', AL, 36], ['github_pat_', `${AL}_`, 50], ['xoxb-', `${AL}-`, 24], ['xapp-', `${AL}-`, 24],
+  ['AKIA', UPPER, 16], ['ASIA', UPPER, 16], ['AIza', SAFE, 35], ['glpat-', SAFE, 22], ['npm_', AL, 36], ['hf_', AL, 34], ['pypi-AgE', SAFE, 30], ['whsec_', AL, 28], ['GOCSPX-', SAFE, 28], ['ya29.', SAFE, 30],
+  ['gsk_', AL, 30], ['xai-', AL, 30], ['shpat_', HEX, 32], ['shpss_', HEX, 32], ['dop_v1_', HEX, 64], ['ntn_', AL, 30], ['ATATT', SAFE, 30], ['hvs.', SAFE, 30], ['dckr_pat_', SAFE, 30], ['LS0tLS1CRUdJTi', AL, 30]];
+const shapesOf = (x) => {
+  const t = (n, set = AL) => {
+    const letters = [...set].filter((c) => /[A-Za-z]/.test(c));   // the first two characters are in the set too: a letter, then a digit
+    return `${letters[Math.floor(x() * letters.length)]}${1 + Math.floor(x() * 9)}${Array.from({ length: n - 2 }, () => set[Math.floor(x() * set.length)]).join('')}`;
+  };
+  const key = t(64), v = () => t(14), sec = (text, s) => [text.replace('@@', s), s];
+  const all = PREFIXED.map(([p, set, n]) => { const s = p + t(n, set); return [`key ${s}`, s]; });
+  all.push([`${['-----BEGIN ', 'RSA PRIVATE', ' KEY-----'].join('')}\n${key}\n${['-----END ', 'RSA PRIVATE', ' KEY-----'].join('')}`, key]);
+  const jwt = ['ey', 'J'].join('') + [t(12, SAFE), t(12, SAFE), t(12, SAFE)].join('.');
+  const sg = `SG.${t(20, SAFE)}.${t(20, SAFE)}`;
+  all.push([`jwt ${jwt}`, jwt], [`mail ${sg}`, sg]);
+  const hook = `T${t(8)}/B${t(8)}/${t(24)}`; all.push([`webhook ${['https://hooks.', 'slack.com/services/'].join('')}${hook}`, hook]);
+  for (const [text, s] of [['Authorization: Bearer @@', t(30, `${AL}._~`)], ['postgres://admin:@@@db.example.com/app', v()], ['curl -u bob:@@ https://example.com', v()], ['deploy --password @@', v()], ['docker login -u me -p @@', v()],
+    ['aws configure set aws_secret_access_key @@', v()], ['[Environment]::SetEnvironmentVariable("MY_API_TOKEN", "@@", "User")', v()], ['htpasswd -b .htpasswd bob @@', v()], ['export MY_API_KEY=@@', v()], ['setx DB_PASSWORD @@', v()],
+    ['gh secret set DEPLOY --body @@', v()], ['//registry.npmjs.org/:_authToken=@@', v()], ['mysql -u root -p@@ app', v()], ['my password is @@', v()], ['the api key is @@', v()], ['password @@', v()],
+    ['DB_PASSWORD: @@', v()], ['clientSecret=@@', v()], ['client-key-data: @@', v()], ['token=@@', v()]]) all.push(sec(text, s));
+  const near = [['api_key = process.env.API_KEY'], ['password: user.password'], ['secret = correct_horse_battery_staple'], ['token: this.apiKey'], ['password: string']];
+  return { secrets: all, near };
+};
+
 // A process, as Claude Code runs a hook: its input on stdin, cut off at 30 s.
 // Disk faults (fuzz-faults.cjs) reach only the hook's own process, not the git it spawns.
 const FAULTS = fileURLToPath(new URL('./fuzz-faults.cjs', import.meta.url));
@@ -112,9 +146,10 @@ const run = (file, argv, input, tz, o = {}) => new Promise((done) => {
   // that call (a spawn is synchronous up to there, so concurrent ones each get
   // their own). The date maths here is UTC and does not read them.
   process.env.TZ = tz;
+  if (o.off) process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';   // as the user turns auto memory off
   if (o.fault) process.env.FUZZ_FAULTS = `${o.fault.seed}:${o.fault.rate}:${o.fault.root}`; else delete process.env.FUZZ_FAULTS;
   const c = spawn(process.execPath, o.fault ? ['--require', FAULTS, file, ...argv] : [file, ...argv]);
-  delete process.env.FUZZ_FAULTS;
+  delete process.env.FUZZ_FAULTS; delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY;
   let killed = false;
   const killer = o.kill && setTimeout(() => { killed = true; c.kill(); }, o.kill);
   let out = '', err = '';
@@ -152,6 +187,11 @@ function generate(seed) {
       if (r() < 0.4) { x.secret = `ZQXO${u}n${i}`; x.ask = `<private>${x.secret}</private> ${x.ask}`; x.did = `${x.did} ${x.secret}`; }
       st.exchanges.push(x);
     }
+    // 25 %: a conversation the journal must not take in -- a <private-session> typed in it, or its tag already in .memory-off or in .private-sessions.
+    // (A stream of its own, as the faults have: no other choice moves.)
+    const x = rng(seed ^ 0x01D0), how = x() < 0.25 ? ['mark', 'off', 'list'][Math.floor(x() * 3)] : null;
+    if (how) st.how = how;
+    if (how === 'mark') st.exchanges[0].ask = `<private-session> ${st.exchanges[0].ask}`;
     steps.push(st);
   }
 
@@ -159,6 +199,9 @@ function generate(seed) {
   // idx: the size of its last reply, in SIZES; sizes only grow until a compaction lets through and they fall back (fell).
   const sessions = Array.from({ length: int(1, 2) }, (_, k) => ({ id: `f${k}${hex}-${int(1000, 9999)}`, private: false, n: 0, idx: 0, fell: false }));
   for (const s of sessions) steps.push({ type: 'session', id: s.id, big: r() < 0.25 });
+  // The queued messages, secret shapes and memory-off marks draw from a stream of their own: no other choice moves.
+  const x = rng(seed ^ 0x0FF5E7), xint = (a, b) => a + Math.floor(x() * (b - a + 1));
+  for (const s of sessions) s.off = x() < 0.1;   // 10 %: held with auto memory off from some Stop on
   const marks = new Map(), top = SIZES.length - 1;
   const inst = pick(INSTANTS), zones = inst.zone ? [...ZONES, inst.zone, inst.zone] : ZONES;
   let clock = Date.parse(inst.at);
@@ -192,6 +235,18 @@ function generate(seed) {
     if (kind < 0.15) { st.secret = `ZQXP${u}${s.id[1]}n${i}`; st.ask = `${pick(['<private>', '<PRIVATE>', '<private reason="x">'])}${st.secret}</private> ${st.ask}`; st.did = `${st.did} ${st.secret}`; }
     else if (kind < 0.25) { st.secret = `ZQXF${u}${s.id[1]}n${i}`; st.ask = `${st.ask} ${st.secret}`; st.did = `${st.did} ${st.secret}`; st.kind = 'forget'; st.tool = { type: 'tool_use', id: `f${i}`, name: 'Bash', input: { command: pick(FORGET) } }; }
     else if (kind < 0.3) { st.ask = `<private-session> ${st.ask}`; s.private = true; }
+    // 20 %: a message queued while Claude works, a string or blocks (text beside an image); 30 % of those hold a <private> secret.
+    // A plain turn (25 %) also holds secrets of five shapes and the near-misses, in its ask, its answer and a Bash command.
+    if (x() < 0.2) {
+      const words = Array.from({ length: xint(1, 5) }, () => WORDS[Math.floor(x() * WORDS.length)]).join(' '), q = { blocks: x() < 0.5 };
+      if (x() < 0.3) {
+        q.secret = `ZQXQ${u}${s.id[1]}n${i}`; q.text = `<private>${q.secret}</private> ${words}`; } else q.text = words;
+      st.queued = q;
+    }
+    if (kind >= 0.3 && x() < 0.25) {
+      const { secrets, near } = shapesOf(x), few = Array.from({ length: 5 }, () => secrets[Math.floor(x() * secrets.length)]), nm = near[Math.floor(x() * near.length)][0];
+      st.shapes = { text: [...few.map(([t]) => t), nm].join('\n'), secrets: few.map(([, sc]) => sc) };
+    }
     marks.set(mark, { kind: st.kind, s, uuid: st.uuid });
     // The ask as a string or a text block; the answer half written when the Stop comes, or a broken line after it.
     st.block = r() >= 0.5;
@@ -214,13 +269,16 @@ function generate(seed) {
     if (sessions.length === 2 && r() < 0.3) { const gs = sessions.map((s) => turn(s, tz)).filter(Boolean); steps.push(...gs.map((g) => ({ ...g, tz }))); steps.push({ type: 'stops', ss: sessions.map((s) => s.id), tz }); }
     else { const s = pick(sessions), g = turn(s, tz); if (g) steps.push({ ...g, tz }); steps.push({ type: 'stop', s: s.id, tz }); }
     if (r() < 0.15) { const s = pick(sessions), trigger = pick(['auto', 'manual']); steps.push({ type: 'gate', s: s.id, trigger, tz }); s.idx = 0; s.fell = true; }   // after a Stop: a turn boundary, never deferred, so the compaction goes through
+    // Memory off from here on, for a conversation chosen to be (its Stop with the variable set tags it; a SessionStart would too).
+    for (const s of sessions) if (s.off && !s.offDone && x() < 0.5) { s.offDone = true; steps.push({ type: 'off', s: s.id, tz }); }
   }
+  for (const s of sessions) if (s.off && !s.offDone) steps.push({ type: 'off', s: s.id, tz: 'UTC' });
 
   // The CLI's status, search, show and forget; a forget by key and the conversation's next Stop.
   let tz = pick(zones);
   const arg = () => text(int(1, 3)).replace(/[\uD800-\uDFFF\r\n\u2028\u0085\0]/g, ' ').trim() || 'x';
   for (const a of [['status'], ['search', pick(WORDS)], ['search', arg(), arg()], ['show', pick([...marks.values()].map((m) => m.uuid).concat('no-such-key'))], ['forget', arg()]]) steps.push({ type: 'cli', args: a, tz });
-  const plain = [...marks].filter(([, m]) => m.kind === 'plain' && !m.s.private);
+  const plain = [...marks].filter(([, m]) => m.kind === 'plain' && !m.s.private && !m.s.off);   // an off conversation's exchanges are not in the journal: no key of theirs was ever listed
   if (plain.length && r() < FORGET_KEY) {
     // Half the time a turn another collides with, and the Stops after it in the colliding turn's zone: coincidences are the point.
     const hits = plain.filter(([mark]) => hit.has(mark)), [mark, m] = hits.length && r() < PICK_HIT ? pick(hits) : pick(plain);
@@ -286,7 +344,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
     if (s.ctx < TRIGGER * WINDOW) { s.nudges = 0; if (!hurt(o)) s.nudgeOff = false; }
     else {
       if (gave && s.private) problems.push(`the Stop of a <private-session> conversation (${s.id}) gave a nudge`);
-      if (s.nudgeOff) { /* a hurt Stop's record is unknown */ }
+      if (s.nudgeOff || s.off) { /* a hurt Stop's record is unknown; a memory-off conversation is not this rule's */ }
       else if (gave) {
         if (s.nudges > 0 && s.ctx >= s.givenAt) problems.push(`a second nudge for ${s.id} between dips under the trigger: at ${s.givenAt}, then at ${s.ctx} tokens`);
         s.nudges++; s.givenAt = s.ctx;
@@ -342,34 +400,61 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
       writeFileSync(join(dir, 'MEMORY.md'), ['# Index', '', ...lines].join('\n') + '\n');
       utimesSync(join(dir, 'MEMORY.md'), old, old);
     },
-    old: ({ id, exchanges }) => {
-      log.push(`an older conversation ${id}: ${exchanges.map((x) => x.mark).join(' ')}`);
-      writeFileSync(join(proj, `${id}.jsonl`), exchanges.map(({ mark, ask, did, secret }, i) => {
+    // The journal's import takes in a transcript quiet for ACTIVE, at the first look (which a Stop makes): the file is
+    // dated three days back, as one a real user's earlier session left. Written now, it was an active session's, and
+    // importOne never ran. `how`: a conversation it must leave alone, tagged before (.memory-off beside the projects,
+    // .private-sessions in the store) or by a <private-session> typed in it.
+    old: ({ id, exchanges, how }) => {
+      log.push(`an older conversation ${id}${how ? ` (${how})` : ''}: ${exchanges.map((x) => x.mark).join(' ')}`);
+      const f = join(proj, `${id}.jsonl`);
+      writeFileSync(f, exchanges.map(({ mark, ask, did, secret }, i) => {
         const ts = new Date(Date.UTC(2026, 9, 20, 9, i)).toISOString();
         if (secret) secrets.push(secret);
-        marks.set(mark, { kind: 'old' });
+        marks.set(mark, how ? { kind: 'old', s: { private: true } } : { kind: 'old' });
         return `${rec({ id }, 'user', ts, ask, `uo-${u}-${i}`)}\n${rec({ id }, 'assistant', ts, [{ type: 'text', text: did }], `ao-${u}-${i}`)}`;
       }).join('\n') + '\n');
+      utimesSync(f, old, old);
+      if (how === 'off') appendFileSync(join(dirname(proj), '.memory-off'), `${tag(id)}\n`);
+      if (how === 'list') appendFileSync(join(dir, '.private-sessions'), `${tag(id)}\n`);
+    },
+    // Auto memory off: a Stop with the variable set, which tags the conversation and records nothing; the Stops after
+    // it (the variable gone) keep it out of the journal, and take out what the journal had of it (PRIVACY.md).
+    off: async ({ s, tz }) => {
+      const c = session(s);
+      endCut(c);
+      log.push(`auto memory off: a Stop of ${s} TZ=${tz}`);
+      const p = await run(TIER, ['--stop'], JSON.stringify({ cwd, transcript_path: c.t, session_id: s, hook_event_name: 'Stop', last_assistant_message: c.did }), tz, { off: true });
+      if (p.status !== 0) problems.push(`the Stop hook with auto memory off (${s}) exited ${p.status ?? p.signal}: ${p.err.trim().split('\n').slice(-2).join(' | ')}`);
+      else if (p.out.trim() || STACK.test(p.err)) problems.push(`the Stop hook with auto memory off (${s}) printed: ${(p.out + p.err).trim().slice(0, 200)}`);
+      for (const sec of secrets) if ((p.out + p.err).includes(sec)) problems.push(`the Stop with auto memory off printed private text ${sec}`);
+      c.off = true;
     },
     session: ({ id, big }) => {
       log.push(`${id}${big ? ': opens with 600 KB' : ''}`);
       writeFileSync(session(id).t, big ? JSON.stringify({ type: 'user', sessionId: id, cwd, timestamp: new Date(Date.UTC(2026, 9, 30, 8, 0, 0)).toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'y'.repeat(600_000) }] } }) + '\n' : '');
     },
-    turn: (st) => {
+    turn: (st0) => {
+      // The secret shapes ride in the ask, the answer and a Bash command (the journal's Ran field).
+      const st = st0.shapes && !st0.tool ? { ...st0, ask: `${st0.ask}\n${st0.shapes.text}`, did: `${st0.did}\n${st0.shapes.text}`, tool: { type: 'tool_use', id: `s${st0.uuid}`, name: 'Bash', input: { command: st0.shapes.text.replace(/\n/g, ' ; ') } } } : st0;
       const s = session(st.s), ts = (ms) => new Date(st.at + ms).toISOString(), size = st.size ?? 1000, id = (p) => st.uuid.replace('u-', p);
       endCut(s); flush(s);
       if (st.secret) secrets.push(st.secret);
+      if (st.queued?.secret) secrets.push(st.queued.secret);
+      if (st.shapes) secrets.push(...st.shapes.secrets.filter(Boolean));
       if (st.ask.startsWith('<private-session>')) s.private = true;
       s.did = st.did;
-      s.lastPlain = st.kind === 'plain' && !st.secret && !st.ask.startsWith('<private-session>');
+      s.lastPlain = st.kind === 'plain' && !st.secret && !st.queued?.secret && !st.ask.startsWith('<private-session>');
       marks.set(st.mark, { kind: st.kind, s, turn: ++s.turns });
       const askLine = rec(s, 'user', ts(0), st.block ? [{ type: 'text', text: st.ask }] : st.ask, st.uuid);
-      log.push(`turn ${st.mark} ${st.kind}${st.ask.startsWith('<private-session>') ? ' <private-session>' : ''} at ${ts(0)}, ${size} tokens${st.collides ? `, collides with ${st.collides}` : ''}${st.cut ? ', cut mid-way' : ''}${st.half ? ', answer half written' : ''}${st.broken ? ', then a broken line' : ''}`);
+      // A message queued while Claude works: an attachment record whose prompt is a string, or blocks (text, an image).
+      const q = st.queued, queued = q ? [JSON.stringify({ type: 'attachment', uuid: id('q-'), sessionId: s.id, cwd, timestamp: ts(5000),
+        attachment: { type: 'queued_command', prompt: q.blocks ? [{ type: 'text', text: q.text }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo' } }] : q.text } })] : [];
+      log.push(`turn ${st.mark} ${st.kind}${st.ask.startsWith('<private-session>') ? ' <private-session>' : ''}${q ? `, a queued message (${q.blocks ? 'blocks' : 'string'}${q.secret ? ', private' : ''})` : ''}${st.shapes ? ', with secret shapes' : ''} at ${ts(0)}, ${size} tokens${st.collides ? `, collides with ${st.collides}` : ''}${st.cut ? ', cut mid-way' : ''}${st.half ? ', answer half written' : ''}${st.broken ? ', then a broken line' : ''}`);
       if (st.cut) {
         // Cut mid-way: background launches (and the notices of some that ended),
         // then a tool call with no result and no answer yet. The turn ends at the next Stop.
         let k = 0;
-        const lines = [askLine], last = st.tool ?? { type: 'tool_use', id: `c${st.uuid}`, name: 'Read', input: { file_path: 'C:\\fuzz\\a.txt' } };
+        const lines = [askLine, ...queued], last = st.tool ?? { type: 'tool_use', id: `c${st.uuid}`, name: 'Read', input: { file_path: 'C:\\fuzz\\a.txt' } };
         for (const l of st.launches) {
           lines.push(rec(s, 'assistant', ts(1000 * ++k), [{ type: 'tool_use', id: `b${l.id}`, name: 'Bash', input: { command: 'npm test' } }], id(`b${k}-`), size, 'tool_use'));
           lines.push(rec(s, 'user', ts(1000 * ++k), [{ type: 'tool_result', tool_use_id: `b${l.id}`, content: `Command running in background with ID: ${l.id}. Output is being written to: C:\\fuzz\\tasks\\${l.id}.output` }], id(`b${k}-`)));
@@ -384,7 +469,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
       }
       // As Claude Code writes a turn: a tool call and its result on lines of their
       // own, when it runs, before the answer; only the answer can be half written.
-      const user = [askLine,
+      const user = [askLine, ...queued,
         ...(st.tool ? [rec(s, 'assistant', ts(10_000), [st.tool], id('t-'), size),
           rec(s, 'user', ts(20_000), [{ type: 'tool_result', tool_use_id: st.tool.id, content: 'removed 0' }], id('r-'))] : [])].join('\n');
       const asst = rec(s, 'assistant', ts(30_000), [{ type: 'text', text: st.did }], id('a-'), size);
@@ -414,7 +499,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
       // that names each of the turn's launches not yet done, and none whose notice has come, from this turn or an
       // earlier one (whether an earlier launch is named depends on how much of the file is read) -- when the file had its section to put it in.
       const turnCut = c.open?.st;
-      if (trigger === 'auto' && c.mid && c.ctx >= 0.9 * MODEL_WINDOW && turnCut?.kind === 'plain' && !turnCut.secret && !c.private && marked && !fault) {
+      if (trigger === 'auto' && c.mid && c.ctx >= 0.9 * MODEL_WINDOW && turnCut?.kind === 'plain' && !turnCut.secret && !turnCut.queued?.secret && !c.private && marked && !fault) {
         const head = `**cut mid-turn** [${s.slice(0, 8)}]`, i = h.indexOf(head), note = i === -1 ? '' : h.slice(i, h.indexOf('**edited this turn:**', i));
         if (i === -1) problems.push(`no cut-turn note in handoff.md after the gate over 90% (${s}, ${c.ctx} tokens)`);
         else {
@@ -450,8 +535,9 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   // seen (none in a whole round); with no conversation, one in a fresh one, as
   // a Stop is what indexes the notes. Then the last Stops again, nothing new:
   // the store settles.
-  // A failed look at the journal is retried once ACTIVE has passed, not at every Stop (journal.mjs): the wait is dated away.
-  if (existsSync(join(dir, 'journal', '.failed'))) writeFileSync(join(dir, 'journal', '.looked'), String(Date.now() - ACTIVE - 1000));
+  // A look at the journal is made once ACTIVE has passed, not at every Stop (journal.mjs): the wait is dated away, so an older
+  // conversation a faulted or killed look left is taken in, and a failed one is retried.
+  if (existsSync(join(dir, 'journal'))) writeFileSync(join(dir, 'journal', '.looked'), String(Date.now() - ACTIVE - 1000));
   if (!sessions.size) session(briefing.session);
   for (const s of sessions.values()) if (s.turns > s.stopped) await stop(s, lastTz);
   let before = files(), settled = false;
@@ -489,7 +575,10 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   for (const [mark, m] of marks) {
     const gone = m.kind === 'forget' || m.s?.private || forgotten.has(mark), why = m.kind === 'forget' ? 'a turn that ran forget' : m.s?.private ? 'a <private-session> conversation' : 'an exchange forget --key removed';
     if (gone) { for (const [f, body] of places) if (body.includes(mark)) problems.push(`${why}: ${mark} is in ${f}`); }
-    else if (m.kind === 'old') { if (count(journal, mark) > 1) problems.push(`${mark} is in the journal ${count(journal, mark)} times`); }
+    // Held with auto memory off, from a Stop on: never in the journal, even resumed with it on (PRIVACY.md). Its handoff.md lines
+    // are not ruled: those of turns before the tag stay, as the docs do not say they go.
+    else if (m.s?.off) { if (count(journal, mark) !== 0) problems.push(`a conversation held with auto memory off: ${mark} is in the journal ${count(journal, mark)} times`); }
+    else if (m.kind === 'old') { if (count(journal, mark) !== 1) problems.push(`${mark} is in the journal ${count(journal, mark)} times`); }
     else {
       if (count(handoff, mark) !== 1) problems.push(`${mark} is in handoff.md ${count(handoff, mark)} times`);
       if (count(journal, mark) !== 1) problems.push(`${mark} is in the journal ${count(journal, mark)} times`);
@@ -579,14 +668,20 @@ assert.deepEqual(generate(7), generate(7));
   assert.ok(TMP.test('MEMORY.md.tmp123') && TMP.test('- [x](C:\\s\\2026-10-31.md.tmp4242) y') && !TMP.test('MEMORY.md') && !TMP.test('a note about .tmp files'), 'the half-written-file rule misreads a name');
 }
 // Every list of a round's steps is a whole round: a lone turn, a lone note hold on correct code.
-const lone = generate(12345), alone = [];
+const lone = generate(12345), alone = [], allShapes = shapesOf(rng(99));
+const oldOne = (how) => ({ type: 'old', id: 'oabcdef0-1234', how, exchanges: [{ mark: `OLD${how ?? 'plain'}n0`, ask: `${how === 'mark' ? '<private-session> ' : ''}OLD${how ?? 'plain'}n0 first`, did: 'done first' }, { mark: `OLD${how ?? 'plain'}n1`, ask: `OLD${how ?? 'plain'}n1 second`, did: 'done second' }] });
 const plain = lone.steps.find((x) => x.type === 'turn' && x.kind === 'plain' && !x.ask.startsWith('<private-session>'));
 // A turn cut mid-way (past the ceiling, one launch), a turn past the trigger, and a gate alone or after the cut turn.
 const cutTurn = { ...plain, cut: true, size: SIZES[4], launches: [{ id: 'bgx0', done: false }] }, gate = { type: 'gate', s: plain.s, trigger: 'auto', tz: 'UTC' };
 for (const [name, xs] of [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'note')]], ['cut turn', [cutTurn]], ['turn past the trigger', [{ ...plain, size: SIZES[3] }]], ['gate', [gate]], ['turn that collides', [{ ...plain, collides: 'ASK1' }]], ['cut turn, gate', [cutTurn, gate]],
   ['Stop with faults', [{ type: 'stop', s: plain.s, tz: 'UTC', fault: { seed: 3, rate: 0.3 } }]], ['Stop killed', [{ type: 'stop', s: plain.s, tz: 'UTC', kill: 40 }]],
-  ['gate with faults', [{ ...gate, fault: { seed: 5, rate: 0.3 } }]], ['CLI with faults', [{ type: 'cli', args: ['status'], tz: 'UTC', fault: { seed: 7, rate: 0.3 } }]]]) alone.push([name, (await execute(xs, lone.meta)).found]);
-assert.deepEqual(alone.map(([n, f]) => [n, f.length]), ['turn', 'note', 'cut turn', 'turn past the trigger', 'gate', 'turn that collides', 'cut turn, gate', 'Stop with faults', 'Stop killed', 'gate with faults', 'CLI with faults'].map((n) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
+  ['gate with faults', [{ ...gate, fault: { seed: 5, rate: 0.3 } }]], ['CLI with faults', [{ type: 'cli', args: ['status'], tz: 'UTC', fault: { seed: 7, rate: 0.3 } }]],
+  ['queued string', [{ ...plain, queued: { blocks: false, text: 'queued words' } }]], ['queued blocks, private', [{ ...plain, queued: { blocks: true, secret: 'ZQXQlone', text: '<private>ZQXQlone</private> words' } }]],
+  ['every secret shape', [{ ...plain, shapes: { text: [...allShapes.secrets.map(([t]) => t), ...allShapes.near.map(([t]) => t)].join('\n'), secrets: allShapes.secrets.map(([, s]) => s) } }]],
+  ['auto memory off', [{ type: 'off', s: plain.s, tz: 'UTC' }]], ['turn, Stop, auto memory off', [plain, { type: 'stop', s: plain.s, tz: 'UTC' }, { type: 'off', s: plain.s, tz: 'UTC' }]],
+  ['older conversation', [oldOne()]], ...['mark', 'off', 'list'].map((how) => [`older conversation (${how})`, [oldOne(how)]])]) alone.push([name, (await execute(xs, lone.meta)).found]);
+assert.deepEqual(alone.map(([n, f]) => [n, f.length]), alone.map(([n]) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
+assert.ok(alone.length >= 17, 'the lone-step list shrank');
 
 // --keep-going: every failing round named, not just the first (a bug hunt),
 // with its story, 60 lines at most. Otherwise the first failing round, shrunk
