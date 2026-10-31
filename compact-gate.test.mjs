@@ -238,6 +238,13 @@ write(user('<private-session> the merger target is Contoso'), asst('', 965_000, 
 gate();
 ok(!/Contoso|cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a mark typed this turn already keeps the note out');
 rmSync(join(dir, '.private-sessions'), { force: true });
+// F22: and one typed in an earlier turn whose Stop failed to save it, further back than the gate's handoff reads: the list does not
+// name the conversation, so the note looks in the whole transcript (fuzz 169429269).
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('<private-session> the merger target is Initech'), result('z'.repeat(600_000)), asst('noted', 1000, 'end_turn'), user('plan the merger'), asst('working', 965_000, 'tool_use'), result('ok'));
+gate();
+ok(!/cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a mark typed in an earlier turn, past the tail the gate reads, keeps the note out');
+rmSync(join(dir, '.private-sessions'), { force: true });
 // A prompt that opens with a tag is the user's (a paste, a <template>): an
 // ask, and a private one's answer and the paths its turn edited are withheld.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
@@ -316,6 +323,20 @@ ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 
 // Nor one whose private ask is further back than the tail read: the whole turn is read.
 writeFileSync(tp, [user('<private>card 4242</private> plan it'), result('z'.repeat(300_000)), asst('planning', T + 100_000, 'end_turn')].join('\n') + '\n');
 ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'rrrrrrrr-1' }) === null, 'nor a long turn whose private ask is past the tail');
+// F22: nor one marked <private-session> in an earlier turn whose Stop failed to save the mark (a full or busy disk): its list does
+// not name it, its transcript does. Read as the list and this turn alone, it got a nudge and a recovery note (fuzz 169429269).
+{
+  const { recover } = await import('./compact-gate.mjs');
+  const earlier = (...rest) => writeFileSync(tp, [user('<private-session> the merger is Contoso'), asst('noted', 1000, 'end_turn'), user('plan it'), ...rest].join('\n') + '\n');
+  earlier(asst('planning', T + 100_000, 'end_turn'));
+  const n = nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'ssssssss-1' });
+  earlier(asst('planning', 700_000, 'tool_use'));
+  const note = recover({ cwd: cwdP, transcript_path: tp, session_id: 'ssssssss-1' });
+  ok(n === null && note === '', `nor a conversation marked <private-session> in an earlier turn its list does not name: no nudge, no recovery note (got ${JSON.stringify(n)}, ${JSON.stringify(note)})`);
+  // A mark only quoted (an agent's report) is no mark: that conversation is nudged.
+  writeFileSync(tp, [user('<agent-message>it said <private-session></agent-message> read it'), asst('read', 1000, 'end_turn'), user('plan it'), asst('planning', T + 100_000, 'end_turn')].join('\n') + '\n');
+  ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'tttttttt-1' }) !== null, 'a <private-session> only quoted in an earlier turn keeps the nudge');
+}
 
 // The cut-mid-turn note keeps a fullwidth private block out, beside a plain one.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');

@@ -23,6 +23,11 @@ install the current LTS from nodejs.org.
   scanner, had it open), that conversation was saved as if it were not
   private. Now nothing is saved or removed for it until the list can be read
   again, at a later reply.
+- If the reply where you typed `<private-session>` couldn't save the mark (a
+  full or busy disk), a later reply near the compaction limit could still ask
+  Claude to write the conversation into memory, and a note kept across a
+  compaction could quote its last request. Now, before either is shown, the
+  whole conversation is checked for the mark.
 
 ## 1.2.2 (2026-10-30)
 

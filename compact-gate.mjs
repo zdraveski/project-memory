@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS } from './handoff-log.mjs';
+import { readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -193,7 +193,7 @@ function inflight(payload, s) {
   const file = join(dir, 'handoff.md');
   if (!existsSync(file)) return false;
   // Unknown (the list won't read) is private here: a note only adds (F12).
-  if (hushed(dir, tag(payload.session_id)) !== false) return 'private';
+  if (marked(payload)) return 'private';
   const r = withLock(dir, () => {
     const doc = readFileSync(file, 'utf8');
     const { a, b } = sectionOf(doc);
@@ -223,7 +223,18 @@ export function recover(input) {
 // recovery note and the nudge leave it alone. The nudge told Claude to write
 // its work into handoff.md and the notes, which nothing then removed. A list
 // that won't read (unknown) counts as marked: these only add (F12).
-const secret = (payload, s) => hushed(storeOf(payload), tag(payload.session_id)) !== false || PRIVATE_SESSION.test(userText(s)) || PRIVATE.test(userText(s));
+const secret = (payload, s) => PRIVATE_SESSION.test(userText(s)) || PRIVATE.test(userText(s)) || marked(payload);
+// The conversation marked private: by its list, or, when the list does not name it, by a <private-session> typed anywhere in it,
+// read as every writer reads one (turns(): a mark only quoted is none). The list holds the marks a Stop saved, and a Stop a full or
+// busy disk failed saved none: a mark typed in an earlier turn went unseen, and the nudge and both notes spoke of the conversation
+// (F22, fuzz 169429269). The whole transcript, so only on a path about to print.
+// shortcut: one read of the whole file; one too big for a string throws, and the caller prints nothing; read it in segments, as the
+// journal's look does, if a transcript that size ever needs its nudge.
+const marked = (payload) => {
+  if (hushed(storeOf(payload), tag(payload.session_id)) !== false) return true;
+  const all = readTail(payload.transcript_path, Infinity).text;
+  return PRIVATE_SESSION.test(norm(all)) && turns(all).hush === true;
+};
 
 /** PreCompact: 0 lets the compaction run, 2 defers it. */
 export function gate(payload) {
@@ -302,9 +313,9 @@ export function nudge(payload) {
   if (given && s.ctx >= given) return null;
   // Private, read whole and only now: from the tail alone, a <private> ask at
   // the start of a long turn was missed, and so was a private message queued
-  // during it.
+  // during it; and a <private-session> in an earlier turn, by marked().
   const full = state(payload.transcript_path);
-  if (secret(payload, full) || full.hidden) return null;
+  if (full.hidden || secret(payload, full)) return null;
   if (!arm(s.ctx)) return null;
   const pct = Math.round(100 * s.ctx / WINDOW);
   // Feedback, not a block: the conversation goes on so Claude can act on it,
