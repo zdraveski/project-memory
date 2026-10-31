@@ -61,7 +61,10 @@
 // ~/.claude. The startup briefing (handoff-log.mjs --print) is within 9,500 characters, a line of a
 // startup or a /clear within 1,000, and a startup of a new conversation names the ask of the newest
 // plain exchange of the conversation handoff.md lists last (`[private]` when the last entry is a
-// turn that ran forget, as PRIVACY.md saves it), when that is under a week old.
+// turn that ran forget, as PRIVACY.md saves it), when that is under a week old by the hook's own
+// clock, which the fuzz sets (Date.now injected) 2 days after the entry (12 in 30 % of rounds: no
+// such line), so the rule runs on any date. 10 % of rounds write 14 long failure lines into the
+// journal after the settle, so the briefing meets both limits.
 // Time: a round's clock starts at one of INSTANTS: the default, the year's end
 // (2026-12-31 23:20 UTC), or 40 minutes before a daylight-saving change in Berlin,
 // Los Angeles or Chatham, so turns and Stops straddle the change. Some turns are
@@ -85,7 +88,7 @@ const args = process.argv.slice(2);
 const seconds = Number(args.find((a, i) => /^\d+$/.test(a) && args[i - 1] !== '--seed') ?? 60);
 const only = args.includes('--seed') ? Number(args[args.indexOf('--seed') + 1]) : null;
 const REAL = join(homedir(), '.claude').replaceAll('\\', '/').toLowerCase();   // the user's own folder, read before tempHome moves HOME: no command may name it
-const OWN = new RegExp(`${dirname(fileURLToPath(import.meta.url)).replaceAll('\\', '/').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`, 'g');
+const OWN = new RegExp(`${dirname(fileURLToPath(import.meta.url)).replaceAll('\\', '/').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[/\\s]|$)`, 'g');   // the hooks folder itself (then a slash, a space or the end: not hooks-live, not hooks.bak)
 const homes = tempHome('fuzz-').home, kept = new Set();
 // The hooks and this file must read the same numbers: the four variables that
 // set the windows are gone from this process (the hooks inherit that) before
@@ -169,7 +172,8 @@ const spawnHook = (file, argv, input, tz, o = {}) => new Promise((done) => {
   if (o.home) process.env.HOME = process.env.USERPROFILE = o.home;   // the round's own, so rounds can overlap
   if (o.off) process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';   // as the user turns auto memory off
   if (o.fault) process.env.FUZZ_FAULTS = `${o.fault.seed}:${o.fault.rate}:${o.fault.root}`; else delete process.env.FUZZ_FAULTS;
-  const c = spawn(process.execPath, o.fault ? ['--require', FAULTS, file, ...argv] : [file, ...argv]);
+  // o.now: the hook's Date.now is this instant (a preload as a data: URL, so no file is added): for a rule that reads the hook's age of a handoff entry.
+  const c = spawn(process.execPath, [...(o.fault ? ['--require', FAULTS] : []), ...(o.now ? ['--import', `data:text/javascript,Date.now=()=>${o.now}`] : []), file, ...argv]);
   delete process.env.FUZZ_FAULTS; delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY;
   let killed = false;
   const killer = o.kill && setTimeout(() => { killed = true; c.kill(); }, o.kill);
@@ -334,7 +338,10 @@ function generate(seed) {
   if (cx() < 0.4) steps.push({ type: 'restore', name: aim(), tz: cpick(ZONES), rev: cx() < 0.5, force: cx() < 0.7, pick: cx() });
   if (cx() < 0.4) steps.push({ type: 'promote', name: aim(), tz: cpick(ZONES) });
   if (cx() < 0.4) steps.push({ type: 'doctor', tz: cpick(ZONES) });
-  return { steps, meta: { u, cwd, tz, briefing:{ session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
+  // big (10 %): a store with so many long failure lines that the briefing meets both limits; late (30 %): the fresh startup is judged
+  // 12 days after the last entry, not 2. Streams of their own.
+  const bx = rng(seed ^ 0xB16B);
+  return { steps, meta: { u, cwd, tz, big: bx() < 0.1, late: bx() < 0.3, briefing: { session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
 }
 
 // The steps through the real hooks and the CLI, then the round's end, then what
@@ -429,6 +436,14 @@ async function execute(steps, meta) {
     for (const f of readdirSync(home, { recursive: true })) if (basename(f).endsWith('.lock')) try { utimesSync(join(home, f), t, t); } catch {}
   };
   const finish = () => { for (const s of sessions.values()) flush(s); };
+
+  // A command run in the round's temp home reads that home: the user's own ~/.claude (only that folder: the temp home may sit
+  // under the real home, so the home itself cannot be ruled) is named in none of its output.
+  // (The folder these files are in may be under it, and the Stop hook logs where it runs from: that path is not the home's.)
+  const realFolder = (c, a) => {
+    const l = (c.out + c.err).split('\n').find((x) => x.replaceAll('\\', '/').toLowerCase().replace(OWN, '').includes(REAL));
+    if (l) problems.push(`memory.mjs ${a[0]} named the user's own ${REAL}: ${l.slice(0, 200)}`);
+  };
 
   const act = {
     note: ({ name, body }) => {
@@ -630,12 +645,6 @@ async function execute(steps, meta) {
       else if ((c.status === 0) === lines.some((l) => l.startsWith('PROBLEM'))) problems.push(`doctor exited ${c.status} with ${lines.filter((l) => l.startsWith('PROBLEM')).length} PROBLEM line(s)`);
     },
   };
-  // A command run in the round's temp home reads that home: the user's own ~/.claude is named in none of its output.
-  // (The folder these files are in may be under it, and the Stop hook logs where it runs from: that path is not the home's.)
-  const realFolder = (c, a) => {
-    const l = (c.out + c.err).split('\n').find((x) => x.replaceAll('\\', '/').toLowerCase().replace(OWN, '').includes(REAL));
-    if (l) problems.push(`memory.mjs ${a[0]} named the user's own ${REAL}: ${l.slice(0, 200)}`);
-  };
   // A store has its MEMORY.md (a Stop leaves a folder without one alone): with
   // the index step cut, an empty one, as generate makes when it draws no line.
   if (!steps.some((st) => st.type === 'index')) act.index({ lines: [] });
@@ -676,34 +685,46 @@ async function execute(steps, meta) {
   const stale = [...sessions.values()].every((c) => c.private || c.off) ? failedLines.filter((l) => l.includes('"error":"backfill: ')) : failedLines;
   if (stale.length) problems.push(`journal/.failed: ${stale.join(' ').slice(0, 300)}`);
   const after = files();
+  // A big store (meta.big, 10 % of rounds): the journal's failure lines, one briefing line each, long and many, written after the
+  // settle (a Stop would clear them), so the startup briefing meets both limits: a line over 1,000 and a total over 9,500.
+  if (meta.big) {
+    mkdirSync(join(dir, 'journal'), { recursive: true });
+    writeFileSync(join(dir, 'journal', '.failed'), Array.from({ length: 14 }, (_, i) => JSON.stringify({ at: new Date().toISOString(), error: `disk ${i} full `.repeat(120) })).join('\n') + '\n');
+    log.push('a big store: 14 long failure lines in journal/.failed');
+  }
   const brief = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), lastTz);
   if (brief.status !== 0) problems.push(`the startup briefing exited ${brief.status ?? brief.signal}`);
   // The briefing's limit as the code defines it (handoff-log.mjs fit()): 9,500 characters in all, whatever the source, and at a
-  // startup or a /clear no line over 1,000 (and the ellipsis a cut line ends with).
+  // startup or a /clear no line over 1,000 plus the ellipsis a cut line ends with (so 1,001). Copies of SAY (handoff-log.mjs, not
+  // exported) and of the `fit(.., 1000)` call; a drift is caught by the big rounds, which meet both limits (the mutants with no cap
+  // and no line cut fail them).
   const SAY = 9500, LINE = 1001;
   if (brief.out.length > SAY) problems.push(`the ${briefing.source} briefing is ${brief.out.length} characters, over ${SAY}`);
   if (['startup', 'clear'].includes(briefing.source) && brief.out.split('\n').some((l) => l.length > LINE)) problems.push(`a line of the ${briefing.source} briefing is over ${LINE} characters`);
   // A startup of a conversation the round does not hold: the briefing names where the last session ended, the ask of the
-  // newest exchange of the conversation handoff.md lists last -- when that is under a week old and no other session is working.
-  const fresh = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: 'zzbrief0-1', source: 'startup' }), lastTz);
+  // newest exchange of the conversation handoff.md lists last -- when that is under a week old (RECENT, by the hook's own Date.now).
+  // The rule must not expire with the calendar, and the round's clock is fixed in 2026: so the hook is given a Date.now of the
+  // round's own (o.now), 2 days after the last entry (30 % of rounds, meta.late: 12 days, when no line is due). Local minutes
+  // are off UTC by at most 14 h, so the age it judges is 1.4-2.6 days, or 11.4-12.6, whatever day this runs. (The other option,
+  // INSTANTS relative to the real clock, would move every round's daylight-saving shape.)
+  const doc = existsSync(join(dir, 'handoff.md')) ? readFileSync(join(dir, 'handoff.md'), 'utf8') : '', { a, b } = sectionOf(doc);
+  const listed = a === -1 ? [] : parse(doc.slice(a + '<!-- auto:start -->'.length, b)), last = listed.at(-1);
+  const now = last && Date.parse(`${last.at.replace(' ', 'T')}:00Z`) + (meta.late ? 12 : 2) * 86400_000;
+  const fresh = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: 'zzbrief0-1', source: 'startup' }), lastTz, { now });
   if (fresh.status !== 0) problems.push(`the startup briefing of a new conversation exited ${fresh.status ?? fresh.signal}`);
   if (fresh.out.length > SAY) problems.push(`the startup briefing of a new conversation is ${fresh.out.length} characters, over ${SAY}`);
   if (fresh.out.split('\n').some((l) => l.length > LINE)) problems.push(`a line of the startup briefing of a new conversation is over ${LINE} characters`);
   {
-    const doc = existsSync(join(dir, 'handoff.md')) ? readFileSync(join(dir, 'handoff.md'), 'utf8') : '', { a, b } = sectionOf(doc);
-    const listed = a === -1 ? [] : parse(doc.slice(a + '<!-- auto:start -->'.length, b)), last = listed.at(-1);
-    const days = last && (Date.now() - Date.parse(`${last.at.replace(' ', 'T')}:00Z`)) / 86400_000;
-    // The clock gap between a zone and UTC is a day at most: under 5 days it is under 7, over 9 it is over.
-    const due = last && days < 5, notDue = !last || days > 9;
+    const due = last && !meta.late, notDue = !last || meta.late;
     // The newest plain exchange of that conversation, as handoff.md lists it: the last entry. Entries carry the local minute only and are
     // ordered by it (byAt), so in the hour a clock goes back the real newest can be listed before an older one: the briefing follows the list.
-    const mk = /ASK\d+n\d+/.exec(last?.ask ?? '')?.[0], want = mk && marks.get(mk)?.kind === 'plain' && !forgotten.has(mk) ? { mark: mk } : null;
+    const mk = /ASK\d+n\d+/.exec(last?.ask ?? '')?.[0], want = mk && marks.get(mk)?.kind === 'plain' && !forgotten.has(mk) ? mk : null;
     const said = /^Last session here ended .*$/m.exec(fresh.out)?.[0];
-    if (!fresh.out.includes('Another session is working') && fresh.status === 0) {
+    if (fresh.status === 0) {
       // A turn that ran forget is saved as `[private]` (PRIVACY.md) and is the last entry: the briefing names that, as the code does.
       if (due && last.ask === '[private]') { if (!said?.includes('on: [private] (log:')) problems.push(`the startup briefing does not name the last entry, [private]: ${(said ?? fresh.out).slice(0, 200)}`); }
-      else if (due && want && !said?.includes(want.mark)) problems.push(`the startup briefing does not name ${want.mark}, the last plain exchange handoff.md lists (${last.s}): ${(said ?? fresh.out).slice(0, 200)}`);
-      else if (notDue && said) problems.push(`the startup briefing names a last session that handoff.md ${last ? `lists ${Math.round(days)} days old` : 'does not list'}: ${said.slice(0, 200)}`);
+      else if (due && want && !said?.includes(want)) problems.push(`the startup briefing does not name ${want}, the last plain exchange handoff.md lists (${last.s}): ${(said ?? fresh.out).slice(0, 200)}`);
+      else if (notDue && said) problems.push(`the startup briefing names a last session that handoff.md ${last ? 'lists 12 days old' : 'does not list'}:${said.slice(0, 200)}`);
     }
   }
 
@@ -836,18 +857,19 @@ const LONE = [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'no
   ['every secret shape', [{ ...plain, shapes: { text: [...allShapes.secrets.map(([t]) => t), ...allShapes.near.map(([t]) => t)].join('\n'), secrets: allShapes.secrets.map(([, s]) => s) } }]],
   ['every secret shape, two blanks or a tab before its value', [{ ...plain, shapes: { text: allShapes.secrets.map((sh, k) => widen(sh, k % 2 ? '\t' : '  ')[0]).join('\n'), secrets: allShapes.secrets.map(([, s]) => s) } }]],
   ['auto memory off', [{ type: 'off', s: plain.s, tz: 'UTC' }]], ['turn, Stop, auto memory off', [plain, { type: 'stop', s: plain.s, tz: 'UTC' }, { type: 'off', s: plain.s, tz: 'UTC' }]],
-  ['history', [{ type: 'history', name: 'no-such-note', tz: 'UTC', all: true, limit: 2 }]], ['restore', [{ type: 'restore', name: 'no-such-note', tz: 'UTC', rev: true, force: true, pick: 0.5 }]],
-  ['promote', [{ type: 'promote', name: 'no-such-note', tz: 'UTC' }]], ['doctor', [{ type: 'doctor', tz: 'UTC' }]],
+  ['history (no such note: a failure path)', [{ type: 'history', name: 'no-such-note', tz: 'UTC', all: true, limit: 2 }]], ['restore (no such note)', [{ type: 'restore', name: 'no-such-note', tz: 'UTC', rev: true, force: true, pick: 0.5 }]],
+  ['promote (no such note)', [{ type: 'promote', name: 'no-such-note', tz: 'UTC' }]], ['doctor', [{ type: 'doctor', tz: 'UTC' }]],
+  ['turn, Stop, the fresh briefing names it', [plain, stopOf]], ['turn, Stop, the fresh briefing 12 days on', [plain, stopOf], { late: true }], ['a big store: both limits of the briefing', [plain, stopOf], { big: true }],
   ['note, edit, Stop, restore', [oneNote, { type: 'edit', name: oneNote.name, text: 'edited' }, plain, stopOf, { type: 'restore', name: oneNote.name, tz: 'UTC', rev: true, force: true, pick: 0 }, { type: 'history', name: oneNote.name, tz: 'UTC', all: false, limit: 1 }]],
   ['note, Stop, promote', [oneNote, plain, stopOf, { type: 'promote', name: oneNote.name, tz: 'UTC' }, { type: 'restore', name: oneNote.name, tz: 'UTC', rev: false, force: true, pick: 0 }]],
   ['older conversation', [oldOne()]], ...['mark', 'off', 'list'].map((how) => [`older conversation (${how})`, [oldOne(how)]])];
 // Each in a home of its own, a few at a time: they wait on processes, not on each other.
 const alone = [];
 await Promise.all(Array.from({ length: Math.min(LONE.length, availableParallelism()) }, async () => {
-  for (let i; (i = nextLone++) < LONE.length; ) alone[i] = [LONE[i][0], (await execute(LONE[i][1], { ...lone.meta, home: `lone${i}` })).found];
+  for (let i; (i = nextLone++) < LONE.length; ) alone[i] = [LONE[i][0], (await execute(LONE[i][1], { ...lone.meta, big: false, late: false, ...LONE[i][2], home: `lone${i}` })).found];
 }));
 assert.deepEqual(alone.map(([n, f]) => [n, f.length]), alone.map(([n]) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
-assert.equal(alone.length, 27, 'the lone-step list changed size');
+assert.equal(alone.length, 30, 'the lone-step list changed size');
 
 // --keep-going: every failing round named, not just the first (a bug hunt),
 // with its story, 60 lines at most. Otherwise the first failing round, shrunk
