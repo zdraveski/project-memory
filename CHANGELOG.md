@@ -4,10 +4,11 @@
 
 **Search**
 - A journal hit is now a headline: the request cut at 200 characters (was
-  400), and short stretches around the search words, 240 characters in all
-  (was 800). The transcript's path moved to `show <key>`, and the last line
-  says so. Ten hits went from about 7 KB to about 4 KB, which is less for
-  Claude to read every time it searches.
+  400), a `Result:` line with the first sentence of the reply, so the outcome
+  shows even when the search words sit further in, and short stretches
+  around the search words, 240 characters in all (was 800). The transcript's
+  path moved to `show <key>`, and the last line says so. Ten hits are about
+  a third smaller, which is less for Claude to read every time it searches.
 
 ## 1.2.4 (2026-11-01)
 

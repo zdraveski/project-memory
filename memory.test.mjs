@@ -816,10 +816,23 @@ if (!quick) {
   const blocks = (out) => out.split(/\n(?= *\d+  )/), of = (out, asked) => blocks(out).find((b) => b.includes(`\n     Asked: ${asked}`)) ?? '';
   ok(!/Answered/.test(of(r.stdout, 'fix the deploy error')) && /^     Answered: the deploy error, the deploy error again, and the deploy error once more$/m.test(of(r.stdout, 'tidy the readme')),
     `a reply is printed only when it holds a search word (got ${r.stdout})`);
+  // Every hit says what came of it: the reply's first sentence, unless its stretch already starts there.
+  ok(/^     Asked: fix the deploy error\n     Result: done$/m.test(of(r.stdout, 'fix the deploy error')) && !/Result:/.test(of(r.stdout, 'tidy the readme')),
+    `a hit leads with its reply's start, not twice (got ${r.stdout})`);
+  day(jd, '2026-10-12', [entry('2026-10-12 09:00', 'tune the tapir cache', { answered: 'Done. The cache now holds a day of pages, measured twice. Then the tapir rest, which a hit leaves out.' }),
+    entry('2026-10-12 10:00', 'size the tapir pool', { answered: `the pool ${'grows and shrinks '.repeat(12)}and settles` }),
+    // The word at exactly HIT_SPAN (30): its stretch starts at the reply's start, so no Result.
+    entry('2026-10-12 11:00', 'count the tapir herd', { answered: `${'ab '.repeat(10)}tapir herd counted at noon, nine of them.` })]);
+  r = await jcli('search', 'tapir');
+  rmSync(join(jd, 'journal', '2026-10-12.md'));   // a day no other check uses
+  const lead = (asked) => of(r.stdout, asked).match(/^     Result: (.*)$/m)?.[1];
+  ok(lead('tune the tapir cache') === 'Done. The cache now holds a day of pages, measured twice.' && lead('size the tapir pool')?.length === 140 && lead('size the tapir pool').endsWith('…'),
+    `a Result is the first sentence of 20 characters or more, else the reply cut at 140 (got ${r.stdout})`);
+  ok(lead('count the tapir herd') === undefined && /^     Answered: ab ab/m.test(of(r.stdout, 'count the tapir herd')), `a word 30 characters in: the stretch starts the reply, no Result (got ${r.stdout})`);
   r = await jcli('search', 'zeppelin');
   const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
-  ok(z.length < 700 && zask.length === 200 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
-    `an entry at every cap: a headline, its request cut to 200, the rest the stretches around the word, under 700 characters in all (got ${z.length}: ${z})`);
+  ok(z.length < 800 && zask.length === 200 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
+    `an entry at every cap: a headline, its request cut to 200, its result, the rest the stretches around the word, under 800 characters in all (got ${z.length}: ${z})`);
   // A stretch never starts or ends on half an emoji, nor does the cap cut one:
   // printed, half of one is U+FFFD. Each of the three cuts lands mid-emoji here.
   const em = (n) => '\u{1F600}'.repeat(n);

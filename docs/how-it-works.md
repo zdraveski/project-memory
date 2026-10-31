@@ -550,7 +550,9 @@ scores show the newest first.
 
 It shows the top 10 (`--limit N` for more), then how many matched. A journal
 hit shows its day and time, conversation tag and branch (and its project,
-under `--all`), then its key and its request, cut to 200 characters. Of its
+under `--all`), then its key and its request, cut to 200 characters, then
+`Result:`, the first sentence of its reply (140 characters at most; left out
+when the reply's own stretch below starts there). Of its
 reply, files and commands it shows only those that hold a search word, and
 of each only the stretches 30 characters either side of a match, 240
 characters in all a hit. Every field is redacted before it is cut, so a

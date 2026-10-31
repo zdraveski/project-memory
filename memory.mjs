@@ -64,8 +64,12 @@ const RANGE_SHOWN = 20;
 // headline, not the entry: ten hits at 400 and 800 were 7 KB a search, mostly
 // passages and transcript paths nobody read; `show` gives one whole (2026-10-31).
 // HIT_SPAN fits a third of HIT_MORE: at 80, three fields' stretches were all
-// lead-in, cut before the word.
-const HIT_ASK = 200, HIT_SPAN = 30, HIT_MORE = 240;
+// lead-in, cut before the word. HIT_HEAD: the reply's first sentence, what
+// came of it, which a stretch from the middle never says (2026-10-31).
+const HIT_ASK = 200, HIT_SPAN = 30, HIT_MORE = 240, HIT_HEAD = 140;
+// The first sentence of a reply, HIT_HEAD at most: one of 20 characters or
+// more, so a lone "Done." or "**Yes.**" is not taken for the whole outcome.
+const result = (a) => { const t = clip(a, HIT_HEAD); return /^.{20,}?[.!?](?=\s|$)/u.exec(t)?.[0] ?? t; };
 // A request this long (normalized) asked again is one hit: a script's prompt,
 // a retry. A shorter one ("continue", "yes") is different work each time, and
 // collapsed, its reply could not be read (review, 2026-10-29).
@@ -658,10 +662,12 @@ export function main(given) {
     const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (t.length > 2 ? t : alone(t).source)).join('|'), 'giu');
     const entry = (h, also) => {
       const hold = [['Answered', h.answered], ['Changed', h.changed.join(', ')], ['Ran', h.ran.join(' · ')]].filter(([, v]) => clip(v, Infinity).search(find) !== -1);
-      const ds = [h, ...also].map((x) => x.day).sort();
+      const ds = [h, ...also].map((x) => x.day).sort(), at = clip(h.answered, Infinity).search(find);
       // Redacted before it is cut: a stretch must not cut a secret in two. The
       // copies' keys are named: a forget of the one shown left them (review).
+      // No Result when the reply's stretch already starts at its start.
       return [`${String(h.score).padStart(3)}  journal   ${head(h)}`, `     key: ${clip(h.key, Infinity)}`, `     Asked: ${clip(h.asked, HIT_ASK)}`,
+        ...(h.answered && !(at !== -1 && at <= HIT_SPAN) ? [`     Result: ${result(h.answered)}`] : []),
         ...hold.map(([k, v]) => `     ${k}: ${around(clip(v, Infinity), find, Math.floor(HIT_MORE / hold.length))}`),
         ...(also.length ? [`     ${also.length} more like this, ${ds[0]}..${ds.at(-1)}: ${more(also.map((x) => clip(x.key, Infinity)), 5)}; --same takes them all`] : [])];
     };
