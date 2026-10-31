@@ -43,17 +43,15 @@
 // note included; a private conversation leaves nothing; every other exchange is
 // in handoff.md once and in the journal once (an older conversation's: in the
 // journal once; one held with auto memory off: in the journal never); a gate over
-// the ceiling leaves a
-// cut-turn note naming the launches not yet done and no ended one, gone after
-// the turn's Stop; the nudge comes once between dips under the trigger, never in
+// the ceiling leaves a cut-turn note naming the launches not yet done and no
+// ended one, gone after the turn's Stop; the nudge comes once between dips under the trigger, never in
 // a private conversation, and at the first Stop of a plain turn past it; every
 // note keeps its text and one index line; repeating the last Stop settles within four.
 // Under faults or a kill: a hook exits 0 (the gate 0 or 2, a command 0 or 1; not a killed
 // one), prints no stack trace (a frame line in stderr or stdout) and no private text, and
 // changes no note; after settling no .handoff-failed-* file and no journal/.failed (but a
 // store whose conversations are all private or held with auto memory off keeps its
-// live-write failure: a Stop that
-// writes nothing clears none), and no *.tmp<digits> file is named in MEMORY.md or in
+// live-write failure: a Stop that writes nothing clears none), and no *.tmp<digits> file is named in MEMORY.md or in
 // `status`. The nudge rules rest after a hurt Stop until the next dip under the trigger.
 // More of the CLI: a note is edited before some Stops (its texts are recorded); then, each with a
 // 40 % chance, history, restore (a commit from the history, forced), promote and doctor. After a
