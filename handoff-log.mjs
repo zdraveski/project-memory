@@ -382,17 +382,19 @@ export const userText = (t) => `${t.raw ?? ''}\n${t.ask ?? ''}`;
 // entry read back no longer matched its turn, and the turn was added again every Stop.
 export const defuse = (s) => s.replace(/[<\uFF1C\uFE64](?=[\u200B-\u200D\u2060\uFEFF]*[A-Za-z/!?]|\s+\/)/g, '&lt;')
   .replace(/\r(?!\n)|[\u2028\u2029\u0085]/g, ' ');
-// U+0085 squeezed with the rest: not \s in JavaScript, defuse made it a space
-// after the squeeze, so a clip clipped again (as an entry is, written) lost a
-// space the turn read kept, and a moved clock went unseen (fuzz, 2026-10-30).
+// Cut until a cut changes nothing, so an entry as written (clipped again by render) is the turn as read, to latest() and to forget, and
+// what the journal stores (clipped once) is what handoff.md shows (F15, F19, R36, R44). One more cut was not enough: a cut can leave a
+// code reference (api_key = proces…) that reads as a secret, defuse's `&lt;` gives a value the symbol a password has, and a value one
+// pattern keeps as a path is half redacted by a later one, which the first then takes. Bounded: none of 600,000 built strings took over 4.
 export const clip = (s, n) => {
-  // A cut can leave a code reference (api_key = proces…) that reads as a secret: cut once more, so an entry as written (clipped again by
-  // render) is the turn as read, to latest() and to forget (F15, R36).
-  const out = cut(s, n);
-  return out.endsWith('…') ? cut(out, n) : out;
+  let out = cut(s, n);
+  for (let i = 0; i < 4; i++) { const again = cut(out, n); if (again === out) break; out = again; }
+  return out;
 };
 const cut = (s, n) => {
-  const one = defuse(redact(s).replace(/[\s\u0085]+/g, ' ')).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
+  // Squeezed first, U+0085 with the rest (it is not \s in JavaScript): a secret after two blanks, a tab or a U+0085 was redacted only
+  // when the entry was clipped again (F19, R44).
+  const one = defuse(redact(s.replace(/[\s\u0085]+/g, ' '))).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
   return one.length > n ? one.slice(0, n - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : one;
 };
 

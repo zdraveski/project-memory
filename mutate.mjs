@@ -156,7 +156,20 @@ export const suites = {
     'a moved clock read in part': ['const back = !moved && (', 'const back = ('],
     'two identical exchanges read as a moved clock': ['const moved = since && !there && got.some(same);', 'const moved = since && got.some(same);'],
     'a forgotten exchange listed under another minute stays': [' : gone.length ? (t) => t.s === s && gone.some(', ' : false ? (t) => t.s === s && gone.some('],
-    'a clip clipped again differs': [String.raw`redact(s).replace(/[\s\u0085]+/g, ' ')`, String.raw`redact(s).replace(/\s+/g, ' ')`],
+    'a U+0085 inside a value to redaction': [String.raw`redact(s.replace(/[\s\u0085]+/g, ' '))`, String.raw`redact(s.replace(/\s+/g, ' '))`],
+    'a secret after two blanks stored whole': [String.raw`  let out = cut(s, n);
+  for (let i = 0; i < 4; i++) { const again = cut(out, n); if (again === out) break; out = again; }
+  return out;
+};
+const cut = (s, n) => {
+  // Squeezed first, U+0085 with the rest (it is not \s in JavaScript): a secret after two blanks, a tab or a U+0085 was redacted only
+  // when the entry was clipped again (F19, R44).
+  const one = defuse(redact(s.replace(/[\s\u0085]+/g, ' ')))`, String.raw`  const out = cut(s, n);
+  return out.endsWith('…') ? cut(out, n) : out;
+};
+const cut = (s, n) => {
+  const one = defuse(redact(s).replace(/[\s\u0085]+/g, ' '))`],
+    'a clip cut again only after a cut': ["for (let i = 0; i < 4; i++) { const again = cut(out, n); if (again === out) break; out = again; }", "if (out.endsWith('…')) out = cut(out, n);"],
     'a forget seen in any memory.mjs command': [String.raw`/memory\.mjs["']?(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?)*\s+(?:forget\b|'forget'|"forget")/`, String.raw`/memory\.mjs\b.*\bforget\b/s`],
     'a quoted option before forget missed': [String.raw`(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1`, String.raw`(?:\s+()--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1`],
     'a negative option value before forget missed': [String.raw`|-\d+(?!\S)|[^\s"'-]\S*))?)*\s+(?:forget`, String.raw`|[^\s"'-]\S*))?)*\s+(?:forget`],
@@ -305,7 +318,7 @@ export const suites = {
     "a private tag with attributes kept": ["export const PRIVATE = /<\\s*private(?![-_\\w])(?:[^>]*>|[^>]*$)/i;", "export const PRIVATE = /<private>/i;"],
     "an old marker entry listed twice": [".replace(/<!- -/g, '<!--')", ""],
     "a forget run after a freeze goes unseen": ["(!pending.frozen || FORGETS.test(String(b.input.command)))", "!pending.frozen"],
-    "a cut ask is not cut again until it is stable": ["return out.endsWith('…') ? cut(out, n) : out;", "return out;"],
+    "a cut ask is not cut again until it is stable": [" out = again; }", " }"],
     "the private-session mark ignored": ["if (PRIVATE_SESSION.test(typed)) out.hush = true;", ""],
     "a marked conversation keeps its entries": [" && !drop?.(t) && ", " && "],
     "the only marked conversation keeps its entries": ["if (!merged.length && !(drop && has)) return null;", "if (!merged.length) return null;"],
@@ -325,7 +338,7 @@ export const suites = {
     "an API key saved": ["  [/\\b(?:sk|rk|pk)(?:-|_(?:live|test)_)[A-Za-z0-9_-]{20,}/g, '[redacted]'],", ""],
     "a GitHub token saved": ["  [/\\bgh[pousr]_[A-Za-z0-9]{30,}|\\bgithub_pat_[A-Za-z0-9_]{40,}/g, '[redacted]'],", ""],
     "a password saved": ["(?:password|passwd|passphrase|secret|(?:access", "(?:passwd|passphrase|secret|(?:access"],
-    "secrets redacted after clipping": ["defuse(redact(s).replace(", "defuse(s.replace("],
+    "secrets redacted after clipping": ["defuse(redact(s.replace(", "defuse((s.replace("],
     "a lone surrogate written": [".replace(/[\\uD800-\\uDBFF](?![\\uDC00-\\uDFFF])|(?<![\\uD800-\\uDBFF])[\\uDC00-\\uDFFF]/g, '\\uFFFD')", ""],
     "changed files dropped": ["+ (t.changed && !hid ? ", "+ (false ? "],
     "the changed line unread": ["(?:\\n  \\*\\*changed:\\*\\* (.*?)\\r?$)?/gm;", "/gm;"],

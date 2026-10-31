@@ -33,7 +33,8 @@
 // a message queued while Claude works (a string or blocks; 30 % with a <private>
 // secret, which the answer and a command after it repeat, so a freeze that fails
 // leaks it). 25 % of plain turns hold secrets of five of the shapes redact() knows
-// (every shape is tried at start-up), built from pieces, and near-misses
+// (every shape is tried at start-up, and again with two blanks or a tab before its
+// value), built from pieces, 40 % of them with that wider blank, and near-misses
 // (process.env.API_KEY, user.password). 10 % of conversations are held with auto
 // memory off from some Stop on: a Stop with CLAUDE_CODE_DISABLE_AUTO_MEMORY set.
 // What must hold: every hook and command exits as it should (the gate with 2
@@ -153,6 +154,9 @@ const shapesOf = (x) => {
   const near = [['api_key = process.env.API_KEY'], ['password: user.password'], ['secret = correct_horse_battery_staple'], ['token: this.apiKey'], ['password: string']];
   return { secrets: all, near };
 };
+// A shape with the blank before its value made sep (two spaces, a tab): redacted before the blanks were squeezed, such a value was
+// stored whole in the journal (F19). A shape with no blank there is left as it is.
+const widen = ([text, s], sep) => [text.replace(` ${s}`, () => `${sep}${s}`), s];
 
 // A process, as Claude Code runs a hook: its input on stdin, cut off at 30 s.
 // Disk faults (fuzz-faults.cjs) reach only the hook's own process, not the git it spawns.
@@ -221,6 +225,8 @@ function generate(seed) {
   // The queued messages, secret shapes and memory-off marks draw from a stream of their own: no other choice moves.
   const x = rng(seed ^ 0x0FF5E7), xint = (a, b) => a + Math.floor(x() * (b - a + 1));
   for (const s of sessions) s.off = x() < 0.1;   // 10 %: held with auto memory off from some Stop on
+  // Which shapes get two blanks or a tab before their value: a stream of its own too.
+  const bx = rng(seed ^ 0xB1A4C5);
   const marks = new Map(), top = SIZES.length - 1;
   const inst = pick(INSTANTS), zones = inst.zone ? [...ZONES, inst.zone, inst.zone] : ZONES;
   let clock = Date.parse(inst.at);
@@ -267,7 +273,8 @@ function generate(seed) {
       st.queued = q;
     }
     if (kind >= 0.3 && x() < 0.25) {
-      const { secrets, near } = shapesOf(x), few = Array.from({ length: 5 }, () => secrets[Math.floor(x() * secrets.length)]), nm = near[Math.floor(x() * near.length)][0];
+      const { secrets, near } = shapesOf(x), drawn = Array.from({ length: 5 }, () => secrets[Math.floor(x() * secrets.length)]), nm = near[Math.floor(x() * near.length)][0];
+      const few = drawn.map((sh) => (bx() < 0.4 ? widen(sh, bx() < 0.5 ? '  ' : '\t') : sh));
       st.shapes = { text: [...few.map(([t]) => t), nm].join('\n'), secrets: few.map(([, sc]) => sc) };
     }
     marks.set(mark, { kind: st.kind, s, uuid: st.uuid });
@@ -829,6 +836,7 @@ const LONE = [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'no
   ['gate with faults', [{ ...gate, fault: { seed: 5, rate: 0.3 } }]], ['CLI with faults', [{ type: 'cli', args: ['status'], tz: 'UTC', fault: { seed: 7, rate: 0.3 } }]],
   ['queued string', [{ ...plain, queued: { blocks: false, text: 'queued words' } }]], ['queued blocks, private', [{ ...plain, did: `${plain.did} ZQXQlone`, tool: { type: 'tool_use', id: 'qlone', name: 'Bash', input: { command: 'echo ZQXQlone' } }, queued: { blocks: true, secret: 'ZQXQlone', text: '<private>ZQXQlone</private> words' } }]],
   ['every secret shape', [{ ...plain, shapes: { text: [...allShapes.secrets.map(([t]) => t), ...allShapes.near.map(([t]) => t)].join('\n'), secrets: allShapes.secrets.map(([, s]) => s) } }]],
+  ['every secret shape, two blanks or a tab before its value', [{ ...plain, shapes: { text: allShapes.secrets.map((sh, k) => widen(sh, k % 2 ? '\t' : '  ')[0]).join('\n'), secrets: allShapes.secrets.map(([, s]) => s) } }]],
   ['auto memory off', [{ type: 'off', s: plain.s, tz: 'UTC' }]], ['turn, Stop, auto memory off', [plain, { type: 'stop', s: plain.s, tz: 'UTC' }, { type: 'off', s: plain.s, tz: 'UTC' }]],
   ['history', [{ type: 'history', name: 'no-such-note', tz: 'UTC', all: true, limit: 2 }]], ['restore', [{ type: 'restore', name: 'no-such-note', tz: 'UTC', rev: true, force: true, pick: 0.5 }]],
   ['promote', [{ type: 'promote', name: 'no-such-note', tz: 'UTC' }]], ['doctor', [{ type: 'doctor', tz: 'UTC' }]],
@@ -841,7 +849,7 @@ await Promise.all(Array.from({ length: Math.min(LONE.length, availableParallelis
   for (let i; (i = nextLone++) < LONE.length; ) alone[i] = [LONE[i][0], (await execute(LONE[i][1], { ...lone.meta, home: `lone${i}` })).found];
 }));
 assert.deepEqual(alone.map(([n, f]) => [n, f.length]), alone.map(([n]) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
-assert.equal(alone.length, 26, 'the lone-step list changed size');
+assert.equal(alone.length, 27, 'the lone-step list changed size');
 
 // --keep-going: every failing round named, not just the first (a bug hunt),
 // with its story, 60 lines at most. Otherwise the first failing round, shrunk

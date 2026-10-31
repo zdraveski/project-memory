@@ -1031,6 +1031,35 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
   const s = 'plan \u0085 <system-reminder> x  \u0085y';
   ok(clip(clip(s, 400), 400) === clip(s, 400) && !/ {2}/.test(clip(s, 400)), `a clip clipped again is the same (got ${JSON.stringify(clip(s, 400))})`);
 }
+// And for every input. Each of these was clipped again into something else: a secret after two blanks, a tab, a U+0085 or a line break was
+// redacted only once they were squeezed, so the journal, which clips once, kept it whole (F19, R44); a cut can leave a code reference that reads
+// as a secret (F15); defuse's `&lt;` gives a value the symbol a password has; and a value one pattern keeps as a path is half redacted by a
+// later one, which the first then takes: three cuts.
+{
+  const { clip } = await import('./handoff-log.mjs');
+  const ch = String.fromCharCode, flag = ['--', 'token'].join(''), v = ['Qz7k', 'Lm9X', 'p4w'].join('');
+  for (const [s, n, gone] of [[`deploy ${flag}  ${v}`, Infinity, v], [`deploy ${flag}\t${v}`, 400, v], [`deploy ${flag}${ch(0x85)}${v}`, 400, v],
+    [`deploy ${flag}\n${v}`, 400, v], [`Bearer  ${v}${v}`, 400, v], [`npm config set //r/:_authToken  ${v}`, 400, v], [`say <private>x</private> and ${flag}  ${v}`, 240, v],
+    ['quokka ' + 'z'.repeat(216) + 'api_key = process.env.API_KEY', 240], ['the api key is x<y', 400], [`${flag}=~/k</x>`, 400]]) {
+    const once = clip(s, n);
+    ok(clip(once, n) === once && !(gone && once.includes(gone)), `a clip clipped again is the same, and keeps no secret: ${JSON.stringify(s)} (got ${JSON.stringify(once)}, then ${JSON.stringify(clip(once, n))})`);
+  }
+  // A U+0085 splits a value as a line break does: read as part of a word, `abc` and `defgh` were one password of 9 characters.
+  const nel = clip(`password: abc${ch(0x85)}defgh`, 400);
+  ok(nel === 'password: abc defgh', `a U+0085 is a blank to redaction too (got ${JSON.stringify(nel)})`);
+  // Built from those pieces at random, with a fixed seed so a failure replays.
+  const P = [' ', '  ', '\t', '\n', '\r', ch(0x85), ch(0x2028), '<', 'private', '>', '</private>', '[private]', flag, '--password', '=', ':', 'Bearer ', ':_authToken', ' is ',
+    'api_key', 'password', 'token', v, '~/k', 'a/b.txt', 'process.env.X', '$X', '"', ';', '|', ch(0x2026), 'x', '.', '/', ' -p', 'docker login', 'export KEY_A=', 'mysql',
+    ch(0xff1c), ch(0x200b), ch(0xd83d), 'z'.repeat(20), 'https://u:', '@h', '-u ', '1000:1000'];
+  let seed = 7;
+  const rnd = (k) => { seed = (seed * 48271) % 2147483647; return seed % k; };
+  const differ = [];
+  for (let i = 0; i < 3000; i++) {
+    const s = Array.from({ length: 1 + rnd(25) }, () => P[rnd(P.length)]).join(''), n = rnd(3) ? 5 + rnd(100) : Infinity, once = clip(s, n);
+    if (clip(once, n) !== once) differ.push([s, n]);
+  }
+  ok(!differ.length, `clip(clip(x)) is clip(x) for 3,000 built strings (${differ.length} differ, the first ${JSON.stringify(differ[0])})`);
+}
 // A <private> tag inside fullwidth reminder tags the user typed: normalized,
 // the reminder swallowed it from the typed text, but the ask kept it.
 {
@@ -1157,6 +1186,41 @@ if (process.platform === 'win32') {
   handoff({ cwd: cwdF, transcript_path: tw, session_id: id });
   ok(!/numbat 2/.test(fdoc()) && /numbat 3/.test(fdoc()), `a forgotten exchange whose ask quotes [private] leaves handoff.md (got ${(fdoc().match(/numbat \d/g) ?? []).join(', ')})`);
 }
+// An ask with a secret after two blanks: redacted only when render clipped it again, the entry as written was not the turn as read, so
+// latest() never found it (6 entries for 3 turns after a zone change) and forget could not match it (N1, F19, R44).
+{
+  const tw = join(dirF, 'tzblank.jsonl'), id = 'tzblankk-1', flag = ['--', 'token'].join('');
+  const at = (i, s = '00') => `2026-10-29T08:${String(i).padStart(2, '0')}:${s}Z`;
+  const turn = (i) => [user(`run deploy ${flag}  ${['Abc123', 'def45', i].join('')} on staging ${i}`, { ts: at(i), uuid: `u-blank${i}` }), asst(`deployed staging ${i}`, { ts: at(i, '30') })].join('\n') + '\n';
+  writeFileSync(tw, JSON.stringify({ type: 'user', timestamp: at(0), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'y'.repeat(600_000) }] } }) + '\n' + Array.from({ length: 3 }, (_, i) => turn(i + 1)).join(''));
+  try {
+    process.env.TZ = 'Europe/Berlin';
+    handoff({ cwd: cwdF, transcript_path: tw, session_id: id });
+    process.env.TZ = 'America/Los_Angeles';
+    handoff({ cwd: cwdF, transcript_path: tw, session_id: id });
+  } finally { process.env.TZ = TZ0; }
+  const asks = fdoc().match(/\[tzblankk\]: run deploy --token \[redacted\] on staging \d/g) ?? [];
+  ok(asks.length === 3 && new Set(asks).size === 3, `after a time-zone change, turns whose ask holds a secret after two blanks are listed once each (got ${asks.length})`);
+  appendFileSync(join(dirF, 'journal', '.forgotten'), `u-blank2\tmemory/tzblank\t${local(at(2))}\n`);
+  handoff({ cwd: cwdF, transcript_path: tw, session_id: id });
+  ok(!/staging 2/.test(fdoc()) && /staging 3/.test(fdoc()), `a forgotten exchange whose ask holds a secret after two blanks leaves handoff.md (got ${(fdoc().match(/staging \d/g) ?? []).join(', ')})`);
+}
+}
+// A secret after two blanks or a tab, in an ask and in a command its turn ran, is in neither the journal nor handoff.md: redacted before the
+// blanks were squeezed, it reached the journal whole, as the ask and as a command, and the journal is committed to the snapshots (O1, F19, R44).
+{
+  const { write } = await import('./journal.mjs');
+  const cwdB = 'C:\\handoff-blanks', dirB = storeFor(home, cwdB), tb = join(dirB, 'b.jsonl');
+  const flag = ['--', 'token'].join(''), v = (i) => ['Qz7k', 'Lm9X', `p4w${i}`].join('');
+  const bash = (c, ts) => rec('assistant', [{ type: 'tool_use', id: 'b', name: 'Bash', input: { command: c } }], { ts });
+  mkdirSync(dirB, { recursive: true });
+  writeFileSync(tb, [user(`run deploy ${flag}  ${v(1)} on staging`, { ts: '2026-10-29T12:00:00Z' }), bash(`deploy ${flag}\t${v(2)}`, '2026-10-29T12:00:10Z'), asst('deployed staging', { ts: '2026-10-29T12:00:30Z' }),
+    user(`run deploy ${flag}\t${v(3)} on prod`, { ts: '2026-10-29T12:10:00Z' }), bash(`deploy ${flag}  ${v(4)}`, '2026-10-29T12:10:10Z'), asst('deployed prod', { ts: '2026-10-29T12:10:30Z' })].join('\n') + '\n');
+  handoff({ cwd: cwdB, transcript_path: tb, session_id: 'bbbbbbbb-1' }, write);
+  const jd = join(dirB, 'journal'), kept = readdirSync(jd).filter((f) => f.endsWith('.md')).map((f) => readFileSync(join(jd, f), 'utf8')).join('');
+  const hd = readFileSync(join(dirB, 'handoff.md'), 'utf8');
+  ok(/deploy --token \[redacted\] on prod/.test(kept) && kept.includes('deploy --token [redacted]') && /on staging/.test(hd), `both turns are in the journal and in handoff.md (journal ${kept}; handoff.md ${hd})`);
+  for (const i of [1, 2, 3, 4]) ok(!kept.includes(v(i)) && !hd.includes(v(i)), `a secret after two blanks or a tab is in neither the journal nor handoff.md: ${i} (journal ${kept}; handoff.md ${hd})`);
 }
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.
