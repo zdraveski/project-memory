@@ -57,6 +57,21 @@ const ZONES = ['UTC', 'Europe/Berlin', 'America/Los_Angeles', 'Asia/Kolkata', 'P
 const FORGET = ["node memory.mjs forget x", "node \"C:/x/memory.mjs\" 'forget' 'x'", 'node memory.mjs --store "C:/s" "forget" x',
   "node \"C:/x/memory.mjs\" '--shared' 'forget' 'x' --session y", 'node memory.mjs --limit -5 forget x', 'node memory.mjs --conversation= forget x'];
 const LINE_ENDS = /[\r\n\u2028\u0085]/g;
+// Where a round's clock starts. A `zone` marks a daylight-saving change in it 40
+// minutes after `at`; the first is the default, the last the year's end.
+const INSTANTS = [{ at: '2026-10-30T08:00:00Z' }, { at: '2026-10-25T00:20:00Z', zone: 'Europe/Berlin' }, { at: '2026-11-01T08:20:00Z', zone: 'America/Los_Angeles' },
+  { at: '2026-03-29T00:20:00Z', zone: 'Europe/Berlin' }, { at: '2026-03-08T09:20:00Z', zone: 'America/Los_Angeles' }, { at: '2026-04-04T13:20:00Z', zone: 'Pacific/Chatham' },
+  { at: '2026-09-26T13:20:00Z', zone: 'Pacific/Chatham' }, { at: '2026-12-31T23:20:00Z' }];
+// A zone's offset and the local minute (`2026-10-27 01:07`, as store.mjs local() reads it) at an instant, by Intl: this
+// file's own TZ stays as it is (R20).
+const fmtCache = new Map();
+const fmt = (zone, opts) => { const k = zone + JSON.stringify(opts); if (!fmtCache.has(k)) fmtCache.set(k, new Intl.DateTimeFormat('sv-SE', { timeZone: zone, ...opts })); return fmtCache.get(k); };
+const offsetAt = (zone, ms) => fmt(zone, { timeZoneName: 'longOffset' }).formatToParts(ms).find((p) => p.type === 'timeZoneName').value;
+const minuteIn = (ms, zone) => fmt(zone, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms);
+for (const { at, zone } of INSTANTS) {
+  const t = Date.parse(at);
+  if (zone && offsetAt(zone, t + 39 * 60_000) === offsetAt(zone, t + 41 * 60_000)) { console.error(`fuzz: ${at} is no daylight-saving change in ${zone}: the instant list is wrong`); process.exit(1); }
+}
 
 // A process, as Claude Code runs a hook: its input on stdin, cut off at 30 s.
 const run = (file, argv, input, tz) => new Promise((done) => {
@@ -108,17 +123,33 @@ function generate(seed) {
   const sessions = Array.from({ length: int(1, 2) }, (_, k) => ({ id: `f${k}${hex}-${int(1000, 9999)}`, private: false, n: 0, idx: 0, fell: false }));
   for (const s of sessions) steps.push({ type: 'session', id: s.id, big: r() < 0.25 });
   const marks = new Map(), top = SIZES.length - 1;
-  let clock = Date.UTC(2026, 9, 30, 8, 0, 0);
-  // Makes a turn and returns the gate step that follows it (a turn cut mid-way, 70 % of them), or null.
-  const turn = (s) => {
-    clock += int(1, 90) * 60_000;
+  const inst = pick(INSTANTS), zones = inst.zone ? [...ZONES, inst.zone, inst.zone] : ZONES;
+  let clock = Date.parse(inst.at);
+  // hit: a turn another collides with (by local minute) and the zone of the last that does; seen: turns so far.
+  const hit = new Map(), seen = [];
+  // Makes a turn whose Stop is in zone tz and returns the gate step that follows it (a turn cut mid-way, 70 % of them), or null.
+  const turn = (s, tz) => {
+    clock += int(1, inst === INSTANTS[0] ? 90 : 40) * 60_000;
+    // 20 %: the time is searched, a minute at a time up to 24 hours ahead, for one whose local minute in tz is an earlier
+    // turn's in that turn's Stop's zone (another zone first, then the same conversation's).
+    let collides = null;
+    if (r() < 0.2 && seen.length) {
+      const mins = Array.from({ length: 1440 }, (_, m) => minuteIn(clock + (m + 1) * 60_000, tz));
+      const order = seen.map((e) => [(e.zone === tz ? 2 : 0) + (e.s === s.id ? 0 : 1) + r() / 2, e]).sort((a, b) => a[0] - b[0]);
+      for (const [, e] of order) {
+        const m = mins.indexOf(minuteIn(e.at, e.zone));
+        if (m !== -1) { clock += (m + 1) * 60_000; collides = e.mark; hit.set(e.mark, tz); break; }
+      }
+    }
     const i = s.n++, mark = `ASK${u}${s.id[1]}n${i}`, kind = r();
     // 20 % are cut mid-way; after one the gate runs 70 % of the time, over 90 % of the window in 40 % of those.
     const isCut = r() < 0.2, gated = isCut && r() < 0.7, over = gated && r() < 0.4;
     // The size never falls, but for the first turn after a compaction; a gate not over 90 % is not given the top size.
     const max = s.fell ? 2 : gated ? top - 1 : top;
     s.idx = over ? top : int(s.idx, Math.max(s.idx, max)); s.fell = false;
+    seen.push({ mark, at: clock, zone: tz, s: s.id });
     const st = { type: 'turn', s: s.id, at: clock, mark, uuid: `u-${u}-${s.id[1]}-${i}`, kind: 'plain', ask: `${mark} ${text(int(1, 12))}`, did: `done ${text(int(1, 30))}`, size: SIZES[s.idx] };
+    if (collides) st.collides = collides;
     if (kind < 0.15) { st.secret = `ZQXP${u}${s.id[1]}n${i}`; st.ask = `${pick(['<private>', '<PRIVATE>', '<private reason="x">'])}${st.secret}</private> ${st.ask}`; st.did = `${st.did} ${st.secret}`; }
     else if (kind < 0.25) { st.secret = `ZQXF${u}${s.id[1]}n${i}`; st.ask = `${st.ask} ${st.secret}`; st.did = `${st.did} ${st.secret}`; st.kind = 'forget'; st.tool = { type: 'tool_use', id: `f${i}`, name: 'Bash', input: { command: pick(FORGET) } }; }
     else if (kind < 0.3) { st.ask = `<private-session> ${st.ask}`; s.private = true; }
@@ -140,17 +171,23 @@ function generate(seed) {
     return { type: 'gate', s: s.id, trigger };
   };
   for (let k = 0, n = int(1, 6); k < n; k++) {
-    const tz = pick(ZONES);
-    if (sessions.length === 2 && r() < 0.3) { const gs = sessions.map((s) => turn(s)).filter(Boolean); steps.push(...gs.map((g) => ({ ...g, tz }))); steps.push({ type: 'stops', ss: sessions.map((s) => s.id), tz }); }
-    else { const s = pick(sessions), g = turn(s); if (g) steps.push({ ...g, tz }); steps.push({ type: 'stop', s: s.id, tz }); }
+    const tz = pick(zones);
+    if (sessions.length === 2 && r() < 0.3) { const gs = sessions.map((s) => turn(s, tz)).filter(Boolean); steps.push(...gs.map((g) => ({ ...g, tz }))); steps.push({ type: 'stops', ss: sessions.map((s) => s.id), tz }); }
+    else { const s = pick(sessions), g = turn(s, tz); if (g) steps.push({ ...g, tz }); steps.push({ type: 'stop', s: s.id, tz }); }
     if (r() < 0.15) { const s = pick(sessions), trigger = pick(['auto', 'manual']); steps.push({ type: 'gate', s: s.id, trigger, tz }); s.idx = 0; s.fell = true; }   // after a Stop: a turn boundary, never deferred, so the compaction goes through
   }
 
   // The CLI's status, search, show and forget; a forget by key and the conversation's next Stop.
-  const tz = pick(ZONES), arg = () => text(int(1, 3)).replace(/[\uD800-\uDFFF\r\n\u2028\u0085\0]/g, ' ').trim() || 'x';
+  let tz = pick(zones);
+  const arg = () => text(int(1, 3)).replace(/[\uD800-\uDFFF\r\n\u2028\u0085\0]/g, ' ').trim() || 'x';
   for (const a of [['status'], ['search', pick(WORDS)], ['search', arg(), arg()], ['show', pick([...marks.values()].map((m) => m.uuid).concat('no-such-key'))], ['forget', arg()]]) steps.push({ type: 'cli', args: a, tz });
   const plain = [...marks].filter(([, m]) => m.kind === 'plain' && !m.s.private);
-  if (plain.length && r() < 0.4) { const [mark, m] = pick(plain); steps.push({ type: 'forgetKey', mark, uuid: m.uuid, s: m.s.id, tz }); }
+  if (plain.length && r() < 0.4) {
+    // Half the time a turn another collides with, and the Stops after it in the colliding turn's zone: coincidences are the point.
+    const hits = plain.filter(([mark]) => hit.has(mark)), [mark, m] = hits.length && r() < 0.5 ? pick(hits) : pick(plain);
+    if (hit.has(mark) && r() < 0.5) tz = hit.get(mark);
+    steps.push({ type: 'forgetKey', mark, uuid: m.uuid, s: m.s.id, tz });
+  }
   return { steps, meta: { u, cwd, tz, briefing: { session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
 }
 
@@ -257,7 +294,7 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
       s.lastPlain = st.kind === 'plain' && !st.secret && !st.ask.startsWith('<private-session>');
       marks.set(st.mark, { kind: st.kind, s, turn: ++s.turns });
       const askLine = rec(s, 'user', ts(0), st.block ? [{ type: 'text', text: st.ask }] : st.ask, st.uuid);
-      log.push(`turn ${st.mark} ${st.kind}${st.ask.startsWith('<private-session>') ? ' <private-session>' : ''} at ${ts(0)}, ${size} tokens${st.cut ? ', cut mid-way' : ''}${st.half ? ', answer half written' : ''}${st.broken ? ', then a broken line' : ''}`);
+      log.push(`turn ${st.mark} ${st.kind}${st.ask.startsWith('<private-session>') ? ' <private-session>' : ''} at ${ts(0)}, ${size} tokens${st.collides ? `, collides with ${st.collides}` : ''}${st.cut ? ', cut mid-way' : ''}${st.half ? ', answer half written' : ''}${st.broken ? ', then a broken line' : ''}`);
       if (st.cut) {
         // Cut mid-way: background launches (and the notices of some that ended),
         // then a tool call with no result and no answer yet. The turn ends at the next Stop.
@@ -433,8 +470,8 @@ const lone = generate(12345), alone = [];
 const plain = lone.steps.find((x) => x.type === 'turn' && x.kind === 'plain' && !x.ask.startsWith('<private-session>'));
 // A turn cut mid-way (past the ceiling, one launch), a turn past the trigger, and a gate alone or after the cut turn.
 const cutTurn = { ...plain, cut: true, size: SIZES[4], launches: [{ id: 'bgx0', done: false }] }, gate = { type: 'gate', s: plain.s, trigger: 'auto', tz: 'UTC' };
-for (const [name, xs] of [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'note')]], ['cut turn', [cutTurn]], ['turn past the trigger', [{ ...plain, size: SIZES[3] }]], ['gate', [gate]], ['cut turn, gate', [cutTurn, gate]]]) alone.push([name, (await execute(xs, lone.meta)).found]);
-assert.deepEqual(alone.map(([n, f]) => [n, f.length]), ['turn', 'note', 'cut turn', 'turn past the trigger', 'gate', 'cut turn, gate'].map((n) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
+for (const [name, xs] of [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'note')]], ['cut turn', [cutTurn]], ['turn past the trigger', [{ ...plain, size: SIZES[3] }]], ['gate', [gate]], ['turn that collides', [{ ...plain, collides: 'ASK1' }]], ['cut turn, gate', [cutTurn, gate]]]) alone.push([name, (await execute(xs, lone.meta)).found]);
+assert.deepEqual(alone.map(([n, f]) => [n, f.length]), ['turn', 'note', 'cut turn', 'turn past the trigger', 'gate', 'turn that collides', 'cut turn, gate'].map((n) => [n, 0]), `a lone step fails on correct code: ${JSON.stringify(alone.filter(([, f]) => f.length))}`);
 
 // --keep-going: every failing round named, not just the first (a bug hunt),
 // with its story, 60 lines at most. Otherwise the first failing round, shrunk
