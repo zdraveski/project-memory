@@ -152,12 +152,12 @@ export function record(dir, transcriptPath, turns, when) {
   let n = 0;
   each(byDay.keys(), (d) => {
     const file = dayFile(dir, d), fresh = byDay.get(d);
-    let added = null;
+    const mine = new Set(fresh.map((e) => e.key));
     mkdirSync(join(dir, JOURNAL), { recursive: true });
     for (let i = 0; i < 3; i++) {
       const before = raw(file);
       const { prose, entries } = parseDay(before ?? '');
-      const have = new Map(entries.map((e) => [e.key, e])), novel = new Set(fresh.filter((e) => !have.has(e.key)).map((e) => e.key));
+      const have = new Map(entries.map((e) => [e.key, e]));
       let changed = 0;
       for (const e of fresh) {
         const was = have.get(e.key);
@@ -169,15 +169,15 @@ export function record(dir, transcriptPath, turns, when) {
       const all = [...have.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
       utf8Only(file, before);
       const w = replaceIfUnchanged(file, before, page(d, prose, all));
-      if (w !== 'conflict') { n += changed; added = novel; break; }
+      if (w !== 'conflict') { n += changed; break; }
     }
-    // A key new here leaves the days beside it: dated again after a time-zone
+    // A key written here leaves the days beside it, new to this day or not (a copy a failed clean-up left is removed by the next Stop): dated again after a time-zone
     // change (a backfill of a grown conversation), a turn was a day off, and
     // in both (final review). After the write: killed between, it is twice, not gone.
     // Only a clean-up: a day beside it that won't read (a folder, held open) keeps
     // the copy; thrown, a Stop whose write landed showed "last write failed".
-    if (added?.size) for (const k of [-1, 1]) {
-      try { drop(dir, new Date(Date.parse(d) + k * 864e5).toISOString().slice(0, 10), (e) => !added.has(e.key)); } catch {}
+    for (const k of [-1, 1]) {
+      try { drop(dir, new Date(Date.parse(d) + k * 864e5).toISOString().slice(0, 10), (e) => !mine.has(e.key)); } catch {}
     }
   });
   pin(dir);

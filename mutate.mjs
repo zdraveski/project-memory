@@ -736,6 +736,7 @@ export const suites = {
     'a resumed conversation left out of the matcher (memory off untagged)': ['"matcher": "startup|resume|clear|compact"', '"matcher": "startup|clear|compact"'],
   }],
   'journal.mjs': ['journal.test.mjs', {
+    'a copy beside cleared only by the Stop that wrote the entry': ['    for (const k of [-1, 1]) {\n      try { drop(', '    for (const k of n ? [-1, 1] : []) {\n      try { drop('],
     'a day on --since left out': ['d >= since', 'd > since'],
     "a Stop's line dropped when its folder's case differs": ['const key = (l) => { const k = LINE.exec(l)?.[1]; return k && pathKey(k); };', 'const key = (l) => LINE.exec(l)?.[1];'],
     'a day on --until left out': ['d <= until', 'd < until'],
@@ -831,8 +832,8 @@ export const suites = {
     'journal a day not in UTF-8 read as an empty day': ['      try { utf8Only(path, text); } catch (e) { failed.push({ path, code: e.code }); }\n', ''],
     'journal status says nothing of a day not in UTF-8': ["      if (!isUtf8(b)) unread.push(`${f}: not UTF-8`);\n", ''],
     'journal status says nothing of a day that will not read': ['} catch (e) { unread.push(`${f}: ${e.code || e.message}`); }', '} catch {}'],
-    'journal a turn re-dated a day on stays in the day before': ['if (added?.size) for (const k of [-1, 1])', 'if (false) for (const k of [-1, 1])'],
-    "journal a day beside it that won't read fails the record": ['(e) => !added.has(e.key)); } catch {}', '(e) => !added.has(e.key)); } catch (e) { throw e; }'],
+    'journal a turn re-dated a day on stays in the day before': ['for (const k of [-1, 1]) {', 'for (const k of []) {'],
+    "journal a day beside it that won't read fails the record": ['(e) => !mine.has(e.key)); } catch {}', '(e) => !mine.has(e.key)); } catch (e) { throw e; }'],
     'journal a turn re-dated a day back stays in the day after': ['for (const k of [-1, 1])', 'for (const k of [-1])'],
     'journal paths folded in case on Linux': ["const fold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);", 'const fold = (p) => p.toLowerCase();'],
     'journal paths not folded in case on macOS': ["process.platform === 'win32' || process.platform === 'darwin' ?", "process.platform === 'win32' ?"],

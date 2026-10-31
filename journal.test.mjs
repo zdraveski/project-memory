@@ -279,6 +279,21 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
     `the sweep takes the conversation's entries from every day, another's stay, and a day it leaves empty goes (got ${n}, ${keys('2026-11-06')}, ${days(dir)})`);
 }
 {
+  // A time-zone change moves an exchange to the next day; the clean-up of the day it left is refused (a disk
+  // that will not rename). The next Stop that records it removes the stray copy: it was never removed (F10).
+  const d = storeFor(home, 'C:\journal-strays'), P = '/x/projects/C--strays/0123456789abcdef.jsonl', one = (at) => [turn({ at, id: 'stray-1' })];
+  const rename = fs.renameSync, left = dayFile(d, '2026-11-05');
+  record(d, P, one('2026-11-05 23:30'));
+  let refused = 0;
+  fs.renameSync = (from, to, ...r) => { if (to === left && ++refused) throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' }); return rename(from, to, ...r); };
+  syncBuiltinESMExports();
+  try { record(d, P, one('2026-11-06 00:30')); } finally { fs.renameSync = rename; syncBuiltinESMExports(); }
+  const copies = () => days(d).filter((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries.some((e) => e.key === 'stray-1')).join();
+  ok(refused > 0 && copies() === '2026-11-05,2026-11-06', `a refused clean-up leaves the exchange on two days (got ${copies()}, refused ${refused})`);
+  record(d, P, one('2026-11-06 00:30'));
+  ok(copies() === '2026-11-06', `the next Stop that records it removes the copy on the day beside (got ${copies()})`);
+}
+{
   // A transcript outside the projects folder names no folder for the import to look in.
   const d = storeFor(home, 'C:\\journal-far');
   write(d, T, [turn({ at: '2026-10-31 10:00', id: 'far-1' })], { quiet: false, hush: false });
