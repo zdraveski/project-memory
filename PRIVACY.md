@@ -207,8 +207,13 @@ Uninstalling the plugin leaves all of this in place. To delete:
   folder `.nudge`; in each project's `memory` folder, `.tiered`, `.health`
   and `.private-sessions`. Delete `.memory-off` and `.private-sessions` only
   once project-memory is removed for good: they list the conversations it
-  must not record, and without them a conversation marked private, or held
-  with auto memory off, is recorded from its next reply.
+  must not record. Without them, a conversation held with auto memory off is
+  recorded from its next reply; one marked private is tagged again at its
+  next reply, which finds its mark. When the journal's look for
+  conversations to take in meets one it took out before and that has lost
+  its tag (once it has grown), it tags it private, even one held with auto
+  memory off, so it leaves the handoff too, and removes what the journal
+  holds of it, entries an earlier version saved included.
 
 To remove only some journal entries, ask Claude (for example, "forget the
 password I pasted yesterday"), or run the memory tool's `forget` with words,

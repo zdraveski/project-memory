@@ -383,7 +383,7 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
   // then 512 KB of a tool's output, was never read, and the conversation was
   // journaled and committed (P1 hunt, 2026-10-29); looked at once only, so
   // was a mark typed after the look (review, 2026-10-29).
-  // One swept is looked at too: its tag lost from the list, its mark past the read was missed (F6).
+  // Also when already swept: a private conversation that lost its tag is found again here (F6).
   const from = Number(was?.[2] ?? 0);
   if (got.whole === false && statSync(transcriptPath).size - from > TAIL) {
     const fd = openSync(transcriptPath, 'r');
@@ -573,10 +573,10 @@ function importOne(dir, c, fd, seg, cap, more) {
   // such Stop. Tagged by a writer with no sink (a memory-off Stop, the
   // compaction gate) and no Stop after, it kept its entries (review, 2026-10-29).
   if (hushed(dir, s)) { takeBack(dir, c.k, s, false, true); return none; }
-  // Swept, and not memory-off (whose look still finds a later mark): its
-  // private tag was lost, and a look from where the last stopped, past the
-  // mark, imported what it grew by (F6).
-  if (checked(dir, c.k)?.[4] === 'swept' && !hushed(projectsRoot(), s, false, OFF)) return none;
+  // Swept once and tagged as neither now: it lost its tag, and a look from
+  // where the last stopped, past the mark, imported it (F6). Tagged private
+  // again (memory-off too, R17), so it is swept once, of what was saved since.
+  if (checked(dir, c.k)?.[4] === 'swept' && !hushed(projectsRoot(), s, false, OFF)) { hushed(dir, s, true); takeBack(dir, c.k, s, true, true); return none; }
   // A mark typed while the plugin was off is taken as its Stop takes one: the
   // conversation is marked, and what it wrote before goes, from the journal
   // and from handoff.md.

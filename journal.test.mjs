@@ -1472,11 +1472,41 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   fill(d);
   const was = tagsOf(d).includes('yc'.repeat(4)) && !asks(d).length;
   writeFileSync(join(d, '.private-sessions'), '');
+  // What an earlier version's Stop saved of it once the tag was lost (R17).
+  record(d, p, [turn({ at: '2026-09-01 10:02', id: 'yc-leaked', ask: 'leaked before the fix', cwd: r })]);
   appendFileSync(p, exchange(W, r, 2)); utimesSync(p, ago(1), ago(1)); due(d);
   fill(d);
   // Nor is it tagged memory-off on the way (mutant 178d36804841): its live Stops would skip the look that tags it private again.
   let off = ''; try { off = readFileSync(join(projects, '.memory-off'), 'utf8'); } catch {}
-  ok(was && !asks(d).length && !off.includes('yc'.repeat(4)), `a swept conversation whose tag was lost keeps out what it grew by with no live Stop (got ${was}, ${asks(d)}, memory-off ${off.includes('yc'.repeat(4))})`);
+  ok(was && !asks(d).includes('question 2') && !off.includes('yc'.repeat(4)), `a swept conversation whose tag was lost keeps out what it grew by with no live Stop (got ${was}, ${asks(d)}, memory-off ${off.includes('yc'.repeat(4))})`);
+  ok(!asks(d).length && tagsOf(d).includes('yc'.repeat(4)), `and what an earlier version saved of it goes, the conversation tagged private again (got ${asks(d)}, ${tagsOf(d).includes('yc'.repeat(4))})`);
+}
+{
+  // R17: a memory-off conversation the journal took out, its memory-off tag then lost (.memory-off deleted, or
+  // past its 10,000), is tagged private when an import next meets it, and swept then: what a reply saved of it
+  // since goes. Swept that once, not at every look after (a day that won't read would fail the sweep).
+  const [r, d] = repo('offlost'), W = sid('yd'), w = W.slice(0, 8), p = join(projects, slug(r), `${W}.jsonl`), offf = join(projects, '.memory-off');
+  const offs = () => (existsSync(offf) ? readFileSync(offf, 'utf8') : '').split(/\r?\n/).filter(Boolean);
+  writeFileSync(offf, [...offs(), w].join('\n') + '\n');
+  writeFileSync(p, exchange(W, r, 0)); utimesSync(p, ago(3), ago(3));
+  fill(d);
+  const swept = readFileSync(join(d, 'journal', '.checked'), 'utf8').includes(`${slug(r)}/${W} 0 swept`) && !asks(d).length;
+  writeFileSync(offf, offs().filter((t) => t !== w).join('\n') + '\n');
+  record(d, p, [turn({ at: '2026-09-01 10:01', id: 'yd-saved', ask: 'saved by a reply after the tag was lost', cwd: r })]);
+  writeFileSync(join(d, 'handoff.md'), `---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** 2026-09-01 10:01 [${w}]: handed off after the tag was lost\n  **did:** noted\n`
+    + '- **asked** 2026-09-01 10:05 [kkkkkkkk]: another conversation\n  **did:** kept\n<!-- auto:end -->\n');
+  appendFileSync(p, exchange(W, r, 2)); utimesSync(p, ago(2), ago(2)); due(d);
+  fill(d);
+  const hd = readFileSync(join(d, 'handoff.md'), 'utf8');
+  ok(swept && !asks(d).length && tagsOf(d).includes(w) && !hd.includes('handed off after') && hd.includes('another conversation'),
+    `a memory-off conversation that lost its tag is tagged private and swept, from handoff.md too, when an import meets it (got ${swept}, ${asks(d)}, ${tagsOf(d).includes(w)}, ${hd})`);
+  const bad = dayFile(d, '2026-11-20'), sweeps = join(d, 'journal', '.sweeps');
+  mkdirSync(bad, { recursive: true });
+  appendFileSync(p, exchange(W, r, 3)); utimesSync(p, ago(1), ago(1)); due(d);
+  fill(d);
+  ok(!existsSync(sweeps), `and swept once, not at every look after (got ${existsSync(sweeps) ? readFileSync(sweeps, 'utf8') : ''})`);
+  rmSync(bad, { recursive: true });
+  ok(!asks(d).length, `nor imported after (got ${asks(d)})`);
 }
 
 console.log(`journal: ${checks} checks passed`);

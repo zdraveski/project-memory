@@ -14,6 +14,10 @@ install the current LTS from nodejs.org.
   it was saved.
 - The same now holds for what you add to such a conversation while
   project-memory is disabled: the journal no longer takes it in later.
+  Entries an earlier version saved from such a conversation are removed when
+  the journal next meets it. A conversation held with auto memory off that
+  has lost its tag is now treated the same way: it is tagged private, so it
+  also leaves the handoff.
 
 ## 1.2.2 (2026-10-30)
 
