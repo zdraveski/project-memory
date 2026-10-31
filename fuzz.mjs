@@ -553,10 +553,10 @@ async function execute(steps, { u, cwd, tz: lastTz, briefing }) {
   // be there. Not .health: it names what is wrong with the store (a hand-written
   // line pointing at no file), which hostile notes are meant to make.
   for (const f of readdirSync(dirname(proj)).filter((n) => n.startsWith('.handoff-failed-'))) problems.push(`${f}: ${readFileSync(join(dirname(proj), f), 'utf8').trim().slice(0, 300)}`);
-  // A store whose every conversation is private writes nothing, and a Stop that writes nothing clears no failure (journal.test.mjs:324-330, "clears no failure"), so a failure it left stays: not a rule there.
+  // A store whose every conversation is private or held with auto memory off writes nothing, and a Stop that writes nothing clears no failure (a memory-off sweep returns hush=false, journal.mjs take(); seed 705302203) (journal.test.mjs:324-330, "clears no failure"), so a failure it left stays: not a rule there.
   // Only its live-write lines: a backfill's line (`"error":"backfill: `) is cleared by the look the settle phase makes due, private conversations or not.
   const failedLines = existsSync(join(dir, 'journal', '.failed')) ? readFileSync(join(dir, 'journal', '.failed'), 'utf8').split(/\r?\n/).filter(Boolean) : [];
-  const stale = [...sessions.values()].every((c) => c.private) ? failedLines.filter((l) => l.includes('"error":"backfill: ')) : failedLines;
+  const stale = [...sessions.values()].every((c) => c.private || c.off) ? failedLines.filter((l) => l.includes('"error":"backfill: ')) : failedLines;
   if (stale.length) problems.push(`journal/.failed: ${stale.join(' ').slice(0, 300)}`);
   const after = files();
   const brief = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), lastTz);
