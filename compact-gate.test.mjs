@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync,
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import assert from 'node:assert';
-import { tool, tempHome, storeFor, quick } from './harness.mjs';
+import { tool, tempHome, tempDir, storeFor, quick } from './harness.mjs';
 
 const GATE = tool('compact-gate.mjs'), HOOK = tool('handoff-log.mjs');
 const { home, env } = tempHome('cg-test-');
@@ -457,11 +457,19 @@ ok(stateRun.status === 0 && stateRun.stdout.startsWith('{\n "ctx"') && stateRun.
 // A payload it cannot read, or a gate that throws, lets the compaction run (exit 0), and says why.
 const garbage = spawnSync(process.execPath, [GATE], { input: 'not json', env, encoding: 'utf8', timeout: 30_000 });
 ok(garbage.status === 0 && /no payload/.test(garbage.stderr), `an unreadable payload exits 0 (got ${garbage.status}: ${garbage.stderr})`);
-// Reading a folder throws on POSIX only (Windows reads it as empty).
-if (process.platform !== 'win32') {
-  const threw = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: dir, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
-  ok(threw.status === 0 && /gate failed, not deferred/.test(threw.stderr), `a gate that throws exits 0 and says so (got ${threw.status}: ${threw.stderr})`);
+// A transcript that cannot be opened makes the gate throw: made so by a preload, on every system
+// (a folder reads as empty on Windows).
+{
+  const bad = join(dir, 'unreadable.jsonl'); writeFileSync(bad, '{}\n');
+  const pre = join(tempDir('cg-throw-'), 'throw.cjs');
+  writeFileSync(pre, `const fs = require('node:fs'), open = fs.openSync;
+fs.openSync = (p, ...a) => { if (String(p) === ${JSON.stringify(bad)}) throw new Error('EBUSY: simulated'); return open(p, ...a); };
+require('node:module').syncBuiltinESMExports();
+`);
+  const threw = spawnSync(process.execPath, ['--require', pre, GATE], { input: JSON.stringify({ cwd, transcript_path: bad, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
+  ok(threw.status === 0 && /gate failed, not deferred: EBUSY/.test(threw.stderr), `a gate that throws exits 0 and says so (got ${threw.status}: ${threw.stderr})`);
 }
+
 
 // nudge(): each way out before the read.
 write(user('q'), asst('a', T + 20_000, 'end_turn'));
