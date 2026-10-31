@@ -154,6 +154,7 @@ export function record(dir, transcriptPath, turns, when) {
     const file = dayFile(dir, d), fresh = byDay.get(d);
     const mine = new Set(fresh.map((e) => e.key));
     mkdirSync(join(dir, JOURNAL), { recursive: true });
+    let landed = false;
     for (let i = 0; i < 3; i++) {
       const before = raw(file);
       const { prose, entries } = parseDay(before ?? '');
@@ -165,19 +166,24 @@ export function record(dir, transcriptPath, turns, when) {
         have.set(e.key, was?.after ? { ...e, after: was.after } : e);
       }
       // Nothing new: no write, so a day not in UTF-8 is no failure of this one.
-      if (!changed) break;
+      if (!changed) { landed = true; break; }
       const all = [...have.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
       utf8Only(file, before);
       const w = replaceIfUnchanged(file, before, page(d, prose, all));
-      if (w !== 'conflict') { n += changed; break; }
+      if (w !== 'conflict') { n += changed; landed = true; break; }
     }
     // A key written here leaves the days beside it, new to this day or not (a copy a failed clean-up left is removed by the next Stop): dated again after a time-zone
     // change (a backfill of a grown conversation), a turn was a day off, and
     // in both (final review). After the write: killed between, it is twice, not gone.
     // Only a clean-up: a day beside it that won't read (a folder, held open) keeps
     // the copy; thrown, a Stop whose write landed showed "last write failed".
-    for (const k of [-1, 1]) {
-      try { drop(dir, new Date(Date.parse(d) + k * 864e5).toISOString().slice(0, 10), (e) => !mine.has(e.key)); } catch {}
+    // Only once this day holds the keys (a write that lost all three tries leaves the other copy the only one), and
+    // only a day whose bytes name one of them: parsing every neighbour at every Stop cost 3x on a busy day.
+    if (landed) for (const k of [-1, 1]) {
+      try {
+        const nd = new Date(Date.parse(d) + k * 864e5).toISOString().slice(0, 10), bytes = raw(dayFile(dir, nd)) ?? '';
+        if ([...mine].some((key) => bytes.includes(`<!-- j:${key} `))) drop(dir, nd, (e) => !mine.has(e.key));
+      } catch {}
     }
   });
   pin(dir);

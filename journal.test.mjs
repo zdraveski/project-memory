@@ -281,7 +281,7 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
 {
   // A time-zone change moves an exchange to the next day; the clean-up of the day it left is refused (a disk
   // that will not rename). The next Stop that records it removes the stray copy: it was never removed (F10).
-  const d = storeFor(home, 'C:\journal-strays'), P = '/x/projects/C--strays/0123456789abcdef.jsonl', one = (at) => [turn({ at, id: 'stray-1' })];
+  const d = storeFor(home, 'C:\\journal-strays'), P = '/x/projects/C--strays/0123456789abcdef.jsonl', one = (at) => [turn({ at, id: 'stray-1' })];
   const rename = fs.renameSync, left = dayFile(d, '2026-11-05');
   record(d, P, one('2026-11-05 23:30'));
   let refused = 0;
@@ -292,6 +292,18 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   ok(refused > 0 && copies() === '2026-11-05,2026-11-06', `a refused clean-up leaves the exchange on two days (got ${copies()}, refused ${refused})`);
   record(d, P, one('2026-11-06 00:30'));
   ok(copies() === '2026-11-06', `the next Stop that records it removes the copy on the day beside (got ${copies()})`);
+}
+{
+  // A write that meets a change under it three times lands nothing: the copy on the day beside is then the only one, and stays.
+  const d = storeFor(home, 'C:\\journal-lost'), P = '/x/projects/C--lost/0123456789abcdef.jsonl', one = (at) => [turn({ at, id: 'lost-1' })];
+  const to = dayFile(d, '2026-11-06'), write0 = fs.writeFileSync;
+  record(d, P, one('2026-11-05 23:30'));
+  let met = 0;
+  fs.writeFileSync = (f, ...r) => { const res = write0(f, ...r); if (/\.tmp\d+$/.test(String(f)) && String(f).startsWith(to)) write0(to, `# Journal 2026-11-06\n\nnote ${++met}\n`); return res; };
+  syncBuiltinESMExports();
+  try { record(d, P, one('2026-11-06 00:30')); } finally { fs.writeFileSync = write0; syncBuiltinESMExports(); }
+  const holding = () => days(d).filter((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries.some((e) => e.key === 'lost-1')).join();
+  ok(met === 3 && holding() === '2026-11-05', `three conflicting writes land nothing and the other day's copy stays (got ${holding()}, conflicts ${met})`);
 }
 {
   // A transcript outside the projects folder names no folder for the import to look in.
