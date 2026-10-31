@@ -297,8 +297,9 @@ const rec = (type, id, ts, text, cwd = scwd) => JSON.stringify({ type, uuid: `${
 const say = (id, ts, ask, reply) => appendFileSync(tp(id), [rec('user', id, ts, ask), ...(reply ? [rec('assistant', id, ts, reply)] : [])].join('\n') + '\n');
 const payload = (id, last) => JSON.stringify({ cwd: scwd, transcript_path: tp(id), session_id: id, hook_event_name: 'Stop', last_assistant_message: last });
 // A Stop takes ~0.1 s; one that loops (a mutant's) is killed after a minute, and its test fails (R12).
-const stop = (id, last) => spawnSync(process.execPath, [TIER, '--stop'], { env, input: payload(id, last), encoding: 'utf8', timeout: 60e3 });
-const stopNow = (id) => new Promise((done) => { const c = spawn(process.execPath, [TIER, '--stop'], { env, stdio: ['pipe', 'ignore', 'ignore'], timeout: 60e3 }); c.on('exit', done); c.stdin.end(payload(id)); });
+const hung = (what) => new Error(`a Stop did not finish in 60 s (${what}): it loops`);
+const stop = (id, last) => { const r = spawnSync(process.execPath, [TIER, '--stop'], { env, input: payload(id, last), encoding: 'utf8', timeout: 60e3 }); if (r.error?.code === 'ETIMEDOUT' || r.signal) throw hung(r.error?.code ?? r.signal); return r; };
+const stopNow = (id) => new Promise((done) => { const c = spawn(process.execPath, [TIER, '--stop'], { env, stdio: ['pipe', 'ignore', 'ignore'], timeout: 60e3 }); c.on('exit', (code, signal) => { if (signal) throw hung(signal); done(code); }); c.stdin.end(payload(id)); });
 const of = (id) => days(sdir).flatMap((d) => parseDay(readFileSync(dayFile(sdir, d), 'utf8')).entries).filter((e) => e.s === id.slice(0, 8));
 const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
 {
@@ -1354,13 +1355,13 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   const long = exchange(B, r, 0, 'a first look').replace(/\n$/, '\n' + [1, 2, 3, 4].map(tool).join('')) + rec('assistant', B, '2026-09-01T10:00:50Z', 'the final word', r) + '\n';
   writeFileSync(p, '\n' + long + exchange(B, r, 1)); utimesSync(p, ago(2), ago(2));
   ok(Buffer.byteLength(long) > 2 * seg, 'the fixture: an exchange longer than two segments');
-  fill(d, { segment: seg, budgetMs: 4000 });
+  fill(d, { segment: seg, budgetMs: 4000 /* a bound, ~1000x the real cost; a loop spends all of it */ });
   const es = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries);
   ok(es.length === 2 && es.find((e) => e.asked === 'question 0')?.answered === 'the final word', `an exchange after a blank line at a segment's start keeps its last reply (got ${es.map((e) => `${e.asked}: ${e.answered.slice(0, 20)}`)})`);
   // A segment that is a newline alone, the line after it longer than a segment: passed over, the import done (a hang spent the budget).
   const [r2, d2] = repo('blankonly'), C = sid('xf'), q = join(projects, slug(r2), `${C}.jsonl`);
   writeFileSync(q, '\n' + 'J'.repeat(seg + 5) + '\n' + exchange(C, r2, 0)); utimesSync(q, ago(2), ago(2));
-  fill(d2, { segment: seg, budgetMs: 4000 });
+  fill(d2, { segment: seg, budgetMs: 4000 /* a bound, ~1000x the real cost; a loop spends all of it */ });
   ok(asks(d2).join() === 'question 0' && listed(d2)[0].endsWith(` ${statSync(q).size}`), `a newline alone as a segment is passed, not read again for ever (got ${asks(d2)}, ${listed(d2)})`);
 }
 {
@@ -1387,7 +1388,8 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   utimesSync(p, ago(2), ago(2));
   const alloc = Buffer.allocUnsafe, sizes = [];
   Buffer.allocUnsafe = (n, ...a) => { sizes.push(n); return alloc.call(Buffer, n === 1 << 20 ? 16 : n, ...a); };
-  try { fill(d, { segment: seg, budgetMs: 4000 }); } finally { Buffer.allocUnsafe = alloc; }
+  try { fill(d, { segment: seg, budgetMs: 4000 /* a bound, ~1000x the real cost; a loop spends all of it */ }); } finally { Buffer.allocUnsafe = alloc; }
+  // The only observable for the buffer's size (mutant 0f3146e9b153): update with the constant in past().
   ok(sizes.includes(1 << 20), `a line is passed over in 1 MB reads (got ${[...new Set(sizes)]})`);
   ok(asks(d).join() === 'question 0,question 3', `a line passed over is passed to its end, the next one whole (got ${asks(d)})`);
 }
@@ -1408,6 +1410,27 @@ const NOW = Math.floor(Date.now() / 1000) * 1000;
   const [r3, d3] = repo('summ');
   mkdirSync(join(d3, 'journal', '.imported'), { recursive: true });
   ok(summary(d3).left === 0, `a list of transcripts that will not read leaves none (got ${summary(d3).left})`);
+}
+{
+  // The turns before the cap-th can come from `head` (an exchange longer than a segment, carried over): that exchange
+  // ending exactly where a segment ends, then a prompt whose first key is "uuid" (offset 1), with turns: 1. The cap holds.
+  const [r, d] = repo('over1'), S = sid('xi'), p = join(projects, slug(r), `${S}.jsonl`);
+  const msg = (type, text) => ({ role: type, content: type === 'user' ? text : [{ type: 'text', text }] });
+  const line = (type, uuid, ts, text) => JSON.stringify({ type, uuid, sessionId: S, cwd: r, timestamp: ts, message: msg(type, text) }) + '\n';
+  const first = (type, uuid, ts, text) => JSON.stringify({ uuid, type, sessionId: S, cwd: r, timestamp: ts, message: msg(type, text) }) + '\n';
+  const tool = (i) => JSON.stringify({ type: 'assistant', uuid: `a-t${i}`, sessionId: S, cwd: r, timestamp: '2026-09-01T10:00:10Z',
+    message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: `ls ${i} ${'q'.repeat(150)}` } }] } }) + '\n';
+  const A = [line('user', 'a-1', '2026-09-01T10:00:00Z', 'question A'), tool(1), tool(2), tool(3), tool(4), line('assistant', 'a-9', '2026-09-01T10:00:50Z', 'answer A')];
+  const rest = [first('user', 'b-1', '2026-09-01T10:01:00Z', 'question B'), line('assistant', 'b-2', '2026-09-01T10:01:30Z', 'answer B'),
+    line('user', 'c-1', '2026-09-01T10:02:00Z', 'question C'), line('assistant', 'c-2', '2026-09-01T10:02:30Z', 'answer C'),
+    line('user', 'd-1', '2026-09-01T10:03:00Z', 'question D'), line('assistant', 'd-2', '2026-09-01T10:03:30Z', 'answer D ' + 'z'.repeat(2000))];
+  const ls = [...A, ...rest], ends = ls.map((_, i) => Buffer.byteLength(ls.slice(0, i + 1).join(''))), size = ends.at(-1), aEnd = ends[A.length - 1];
+  const cut = (pos, s) => ends.filter((e) => e <= pos + s && e > pos).at(-1);
+  const seg = Array.from({ length: 3000 }, (_, i) => i + 100).find((s) => { const e1 = cut(0, s); return e1 && e1 < aEnd && cut(e1, s) === aEnd && aEnd + s < size; });
+  ok(seg, 'the fixture: a segment size whose second segment ends exactly at the first exchange end');
+  writeFileSync(p, ls.join('')); utimesSync(p, ago(2), ago(2));
+  withLock(d, () => atClock(() => NOW + (days(d).length ? 100 : 0), () => backfill(d, { budgetMs: 100, segment: seg, turns: 1 })));
+  ok(asks(d).join() === 'question A' && listed(d)[0].endsWith(` at ${aEnd}`), `the cap of turns holds when the turn before it came from a carried-over exchange (got ${asks(d)}, ${listed(d)}, want at ${aEnd})`);
 }
 
 console.log(`journal: ${checks} checks passed`);
