@@ -437,6 +437,56 @@ ok(gate().code === 2, 'mid-turn at exactly the floor is deferred');
 blank();
 write(user('build it'), asst('running', 900_000, 'tool_use'));
 ok(gate().code === 0, 'mid-turn at exactly the ceiling runs');
+
+// Fix round 1: TRIGGER from CLAUDE_AUTOCOMPACT_PCT_OVERRIDE. Only 1..95 moves it.
+const triggerWith = (pct) => {
+  process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = pct;
+  try { return Number(execFileSync(process.execPath, ['--input-type=module', '-e', `import { TRIGGER } from ${JSON.stringify(new URL('./compact-gate.mjs', import.meta.url).href)}; console.log(TRIGGER)`], { env, timeout: 30_000 }).toString()); }
+  finally { delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE; }
+};
+ok(triggerWith('48') === 0.85 * 48 / 96 && triggerWith('1') === 0.85 / 96 && triggerWith('0') === 0.85 && triggerWith('100') === 0.85 && triggerWith('-5') === 0.85,
+  'the trigger follows an override of 1 to 95 percent and ignores 0, a negative and one over 95');
+
+// The first read grows 4x: a prompt 600 KB from the end is held by the second read (1,024,000 bytes),
+// which does not reach the task launched at the start of a 1.1 MB file.
+write(result(launch('far')), result('f'.repeat(600_000)), user('the ask'), result('g'.repeat(500_000)), asst('', 300_000, 'tool_use'));
+ok(st().running.length === 0, 'the tail grows 4x, not more: a task launched before the second read is not listed');
+// --state prints the state indented by one space, and does not go on to read a payload.
+const stateRun = spawnSync(process.execPath, [GATE, '--state', transcript], { env, encoding: 'utf8', timeout: 30_000 });
+ok(stateRun.status === 0 && stateRun.stdout.startsWith('{\n "ctx"') && stateRun.stderr === '', `--state prints and exits (got ${stateRun.status}: ${JSON.stringify(stateRun.stderr)})`);
+// A payload it cannot read, or a gate that throws, lets the compaction run (exit 0), and says why.
+const garbage = spawnSync(process.execPath, [GATE], { input: 'not json', env, encoding: 'utf8', timeout: 30_000 });
+ok(garbage.status === 0 && /no payload/.test(garbage.stderr), `an unreadable payload exits 0 (got ${garbage.status}: ${garbage.stderr})`);
+// Reading a folder throws on POSIX only (Windows reads it as empty).
+if (process.platform !== 'win32') {
+  const threw = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: dir, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
+  ok(threw.status === 0 && /gate failed, not deferred/.test(threw.stderr), `a gate that throws exits 0 and says so (got ${threw.status}: ${threw.stderr})`);
+}
+
+// nudge(): each way out before the read.
+write(user('q'), asst('a', T + 20_000, 'end_turn'));
+ok(stop('fx1', { stop_hook_active: true }) === null, 'stop_hook_active is never nudged, a fresh session too');
+ok(stop('fx2', { transcript_path: join(dir, 'gone.jsonl') }) === null, 'a missing transcript is never nudged');
+ok(stop('fx3', { transcript_path: undefined }) === null, 'a payload with no transcript is never nudged');
+// Exactly at the trigger is over it.
+write(user('q'), asst('a', T, 'end_turn'));
+ok(!!stop('fx4')?.hookSpecificOutput?.additionalContext, 'a context exactly at the trigger is nudged');
+// A file older than a week is pruned, one of exactly a week is not (the clock is held for the one call).
+{
+  const old = join(nudgeDir, 'wk-old'), edge = join(nudgeDir, 'wk-edge');
+  const t0 = Math.floor(Date.now() / 1000) - 10 * 86400;
+  writeFileSync(old, '5'); writeFileSync(edge, '5');
+  utimesSync(old, t0 - 1, t0 - 1);   // a week and a second before "now" below
+  utimesSync(edge, t0, t0);
+  const real = Date.now;
+  Date.now = () => t0 * 1000 + 7 * 86400000;
+  try { write(user('q'), asst('a', T + 20_000, 'end_turn')); stop('fx5'); } finally { Date.now = real; }
+  ok(!existsSync(old) && existsSync(edge), 'a nudge file is pruned after a week, not at exactly a week');
+  const mid = join(nudgeDir, 'wk-mid'), t1 = Math.floor(Date.now() / 1000) - Math.round(7.5 * 86400);
+  writeFileSync(mid, '5'); utimesSync(mid, t1, t1);
+  write(user('q'), asst('a', T + 20_000, 'end_turn')); stop('fx6');
+  ok(!existsSync(mid), 'a nudge file seven and a half days old is pruned');
+}
 }
 
 console.log(`compact-gate: ${checks} checks passed`);
