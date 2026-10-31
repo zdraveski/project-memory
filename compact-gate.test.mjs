@@ -32,7 +32,7 @@ const launch = (id) => `Command running in background with ID: ${id}. Output is 
 const agentLaunch = (id) => `Async agent launched successfully.\nagentId: ${id} (internal ID - do not mention to user. ${'x'.repeat(420)})\noutput_file: C:\\Temp\\tasks\\${id}.output`;
 
 const gate = (trigger = 'auto') => {
-  try { execFileSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger, session_id: 's1' }), env, stdio: ['pipe', 'pipe', 'pipe'] }); return { code: 0, err: '' }; }
+  try { execFileSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger, session_id: 's1' }), env, stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000 }); return { code: 0, err: '' }; }
   catch (e) { return { code: e.status, err: String(e.stderr) }; }
 };
 // The nudge runs inside memory-tier.mjs's Stop path; call it in-process here,
@@ -384,6 +384,59 @@ gate();
   gate();
   h6 = readFileSync(join(dir, 'handoff.md'), 'utf8');
   ok(!/123456789/.test(h6), `a file that opens with a summary quoting a private ask shows none of it (got ${h6})`);
+}
+
+// Task 8: the automatic mutants that lived.
+{
+// timeout: a read loop that never ends fails here (a watchdog on a call that takes ~100 ms), not at the job's limit.
+const st = () => JSON.parse(execFileSync(process.execPath, [GATE, '--state', transcript], { env, timeout: 30_000 }).toString());
+const blank = () => writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+const said = () => spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
+const usage = (u) => rec('assistant', [{ type: 'text', text: 'x' }], { message: { stop_reason: 'tool_use', usage: u } });
+// A transcript with no message in it: nothing is open, hidden or forgotten.
+write(JSON.stringify({ type: 'summary', summary: 'x' }));
+const s0 = st();
+ok(s0.ctx === 0 && s0.midTurn === false && s0.hidden === false && s0.forgot === false, `an empty transcript has size 0 and no turn open (got ${JSON.stringify(s0)})`);
+// The size is the sum of the three counters; a counter that is missing is 0.
+write(user('q'), usage({ input_tokens: 1000, cache_read_input_tokens: 20000, cache_creation_input_tokens: 300 }));
+ok(st().ctx === 21300, 'the context size adds input, cache read and cache creation tokens');
+write(user('q'), usage({ output_tokens: 5 }));
+ok(st().ctx === 0, 'a usage with no input counters is size 0');
+// A tool result's content as blocks: the launch in its text block is found.
+write(user('q'), rec('assistant', [{ type: 'tool_use', id: 'x', name: 'Bash', input: {} }]),
+  rec('user', [{ type: 'tool_result', tool_use_id: 'x', content: [{ type: 'text', text: launch('ba1') }] }]), asst('', 300_000, 'tool_use'));
+ok(st().running.map(([id]) => id).join() === 'ba1', 'a launch in a tool result held as text blocks is a running task');
+// The newest twenty running tasks are kept: twenty are all kept.
+write(user('q'), ...Array.from({ length: 20 }, (_, i) => result(launch(`l${i}`))), asst('', 300_000, 'tool_use'));
+ok(st().running.length === 20, 'twenty running tasks are all listed');
+// An attachment that is no queued message: its words hide nothing.
+write(user('keep going'), JSON.stringify({ type: 'attachment', timestamp: '2026-09-13T13:00:30Z', attachment: { type: 'hook_context', prompt: '<private>pin 1</private>' } }), asst('Pin noted.', 300_000, 'tool_use'));
+ok(st().hidden === false, 'an attachment of another kind with a private tag hides nothing');
+
+// Over the ceiling with a handoff.md that has no markers and no turn to log: the note is not written and the gate says so.
+writeFileSync(join(dir, 'handoff.md'), 'no markers here\n');
+write(asst('running', 965_000, 'tool_use'));   // no turn in it: the handoff adds no section
+const gm = said();
+ok(gm.status === 0 && /note: no handoff\.md with markers/.test(gm.stderr) && readFileSync(join(dir, 'handoff.md'), 'utf8') === 'no markers here\n', `a handoff.md with no markers is left alone, and the gate says so (got ${gm.status}: ${gm.stderr})`);
+// With markers: the file keeps its start, and the gate reports the note written.
+blank();
+write(user('build it'), asst('running', 965_000, 'tool_use'));
+const gw = said();
+ok(/handoff and in-flight note written/.test(gw.stderr) && readFileSync(join(dir, 'handoff.md'), 'utf8').startsWith('---\nname: handoff'), `the note is written into the file whole, and reported (got ${gw.stderr})`);
+
+// A transcript that is gone: nothing to read, nothing deferred, said as such.
+const { recover } = await import('./compact-gate.mjs');
+const gone2 = join(dir, 'gone.jsonl');
+ok(recover({ transcript_path: gone2, session_id: 's1' }) === '' && recover({}) === '', 'no recovery note when the transcript is missing');
+const lost = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: gone2, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
+ok(lost.status === 0 && /not an auto compaction/.test(lost.stderr), `a missing transcript lets the compaction run, said plainly (got ${lost.status}: ${lost.stderr.trim()})`);
+
+// The floor and the ceiling are exact: 200,000 mid-turn is deferred, 900,000 is not.
+write(user('build it'), asst('running', 200_000, 'tool_use'));
+ok(gate().code === 2, 'mid-turn at exactly the floor is deferred');
+blank();
+write(user('build it'), asst('running', 900_000, 'tool_use'));
+ok(gate().code === 0, 'mid-turn at exactly the ceiling runs');
 }
 
 console.log(`compact-gate: ${checks} checks passed`);
