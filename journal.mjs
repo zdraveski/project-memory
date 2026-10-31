@@ -201,9 +201,10 @@ function pin(dir) {
   } catch {}
 }
 
-export function days(dir) {
+// `strict`: a listing that fails (not just no folder yet) throws, for a sweep, which an empty answer would mark done with nothing taken out (F18).
+export function days(dir, strict = false) {
   try { return readdirSync(join(dir, JOURNAL)).filter((f) => /^\d{4}-\d\d-\d\d\.md$/.test(f)).map((f) => f.slice(0, 10)).sort(); }
-  catch { return []; }
+  catch (e) { if (strict && e.code !== 'ENOENT') throw e; return []; }
 }
 
 // The entries of the days in range (bounds inclusive, either optional). Only
@@ -249,7 +250,7 @@ function drop(dir, d, keep) {
 // again after a time-zone change, that was a day late, and its first day
 // stayed. Once a conversation. Call under withLock(dir). Returns how many
 // went; throws, once the days it stopped short of are owed, an error marked `owed`.
-export function sweep(dir, s, ds = days(dir)) {
+export function sweep(dir, s, ds = days(dir, true)) {
   let n = 0, bad = null;
   const left = ds.filter((d) => { try { n += drop(dir, d, (e) => e.s !== s).length; return false; } catch (e) { bad = e; return true; } });
   owe(dir, s, ds, left);

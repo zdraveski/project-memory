@@ -277,6 +277,16 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   const n = sweep(dir, 'aaaaaaaa');
   ok(n === 2 && keys('2026-11-06') === 'o-1' && !existsSync(dayFile(dir, '2026-11-05')) && !days(dir).includes('2026-11-05'),
     `the sweep takes the conversation's entries from every day, another's stay, and a day it leaves empty goes (got ${n}, ${keys('2026-11-06')}, ${days(dir)})`);
+  // A listing of the days that fails is no empty journal: the sweep says so (and is not marked done), or the entries stay for good (F18).
+  record(dir, S, [turn({ at: '2026-11-07 10:00', id: 's-3' })]);
+  const readdir = fs.readdirSync;
+  fs.readdirSync = (q, ...a) => { if (String(q) === join(dir, 'journal')) throw Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' }); return readdir(q, ...a); };
+  syncBuiltinESMExports();
+  let threw = false, listed = null;
+  try { sweep(dir, 'aaaaaaaa'); } catch { threw = true; }
+  try { listed = days(dir); } catch { listed = 'threw'; } finally { fs.readdirSync = readdir; syncBuiltinESMExports(); }
+  ok(threw && keys('2026-11-07') === 's-3' && Array.isArray(listed) && !listed.length, `a sweep whose listing of the days fails throws, and the entries stay to be swept again; days() itself gives an empty list (got ${threw}, ${keys('2026-11-07')}, ${listed})`);
+  ok(sweep(dir, 'aaaaaaaa') === 1 && !days(dir).includes('2026-11-07'), 'and the next sweep takes them');
 }
 {
   // A time-zone change moves an exchange to the next day; the clean-up of the day it left is refused (a disk
