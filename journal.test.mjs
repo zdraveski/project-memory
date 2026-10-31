@@ -683,6 +683,14 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   writeFileSync(failed2, '{"at":"2026-08-01T09:00:00Z","error":"backfill: EBUSY: busy"}\n');
   const some = fill(d2, { budgetMs: 0 });
   ok(some.imported === 1 && some.left === 1 && !existsSync(failed2), `a look that imports one and leaves one clears the failure (got ${JSON.stringify(some)}, ${existsSync(failed2)})`);
+  // A look that could not list the projects folder saw nothing: "nothing left" proves nothing, and the failure stays.
+  const [r3, d3] = repo('healed3'), failed3 = join(d3, 'journal', '.failed'), readdir = fs.readdirSync;
+  mkdirSync(join(d3, 'journal'), { recursive: true });
+  writeFileSync(failed3, '{"at":"2026-08-01T09:00:00Z","error":"backfill: EBUSY: busy"}\n');
+  fs.readdirSync = (q, ...a) => { if (String(q) === projects) throw Object.assign(new Error('EACCES: denied'), { code: 'EACCES' }); return readdir(q, ...a); };
+  syncBuiltinESMExports();
+  try { due(d3); fill(d3); } finally { fs.readdirSync = readdir; syncBuiltinESMExports(); }
+  ok(existsSync(failed3), `a look that could not list the folders clears no failure (got ${existsSync(failed3)})`);
 }
 {
   const [r, d] = repo('hush');

@@ -668,7 +668,7 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
   // Not while a transcript is listed as failing to open: cleared by another's
   // import, it was skipped in silence.
   if (err) fault(dir, err, 'backfill: ');
-  else if ((n || (!left && !stuck)) && !FAILING.test(raw(join(dir, JOURNAL, IMPORTED)) ?? '')) clear(dir, true);
+  else if ((n || (all.seen && !left && !stuck)) && !FAILING.test(raw(join(dir, JOURNAL, IMPORTED)) ?? '')) clear(dir, true);
   // The next look: the next Stop while the budget left some, else in ACTIVE (a
   // failure too: retried every Stop, it would cost every Stop a look).
   try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(look, raw(look), String(left && !err ? t0 - ACTIVE : Date.now())); } catch {}
