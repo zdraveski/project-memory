@@ -138,6 +138,20 @@ memory folder. The journal is its `journal` folder, one file per day.
 Everything it reads and saves, and how to delete it, is in the
 [privacy policy](PRIVACY.md).
 
+## Security and trust
+
+- **Every change is checked.** It reaches the code only as a pull request
+  that passes the tests on Windows, macOS and Linux, GitHub's CodeQL scan,
+  and a sign-off check. Before a release, more than 3,000 planted bugs must
+  all be caught, and a ten-minute fuzz run on 17 machines must find nothing.
+- **Releases can be verified.** From 1.2.4, each release carries its files,
+  their checksums and a GitHub-signed record of where they were built:
+  [Verifying a release](SECURITY.md#verifying-a-release).
+- **The risks are written down.** What could go wrong, and what guards
+  against it: [Security assessment](docs/security-assessment.md).
+- **A security or privacy problem?** Report it privately, as
+  [SECURITY.md](SECURITY.md) says. You get an answer within a week.
+
 ## Good to know
 
 - **Room.** Each conversation starts with a short briefing for Claude, usually
@@ -183,7 +197,9 @@ claude plugin marketplace update project-memory
 claude plugin update project-memory@project-memory
 ```
 
-What changed in each version is in the [changelog](CHANGELOG.md).
+What changed in each version is in the [changelog](CHANGELOG.md). Only the
+newest version gets fixes, so update when a new one comes out
+([Supported versions](SECURITY.md#supported-versions)).
 
 ## Pausing or removing it
 
@@ -231,6 +247,11 @@ context-mode and two more is in [Comparison](docs/comparison.md).
 - [Changelog](CHANGELOG.md): what changed in each version.
 - [Privacy policy](PRIVACY.md): what it reads and saves, in full.
 - [Contributing](CONTRIBUTING.md): running the tests and changing the code.
+  Changes come as pull requests, and each commit is signed off
+  (`git commit -s`).
+- [Governance](GOVERNANCE.md): who maintains it and how decisions are made.
+- [Security assessment](docs/security-assessment.md): the threats, and what
+  guards against them.
 - A question: ask in
   [Discussions](https://github.com/zdraveski/project-memory/discussions).
   A problem: [open an issue](https://github.com/zdraveski/project-memory/issues).
