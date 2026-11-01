@@ -1,0 +1,48 @@
+name: dco
+
+# The Developer Certificate of Origin (CONTRIBUTING.md): every commit a pull
+# request adds must have a `Signed-off-by:` line with its author's name and
+# email, as `git commit -s` writes it. Plain git, no third-party action. On
+# pull_request only, never pull_request_target: a fork's commits are read,
+# never run, and the token can only read.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # The event's SHAs come in through env, never into the script's text, and
+      # must be SHAs. A merge commit (the "Update branch" button's) needs no
+      # sign-off. The names and emails are compared in any letter case.
+      # shortcut: a base SHA older than a master merged into the branch also
+      # checks those master commits, and the ones from before the DCO fail;
+      # if that happens, exclude the merge commit's first parent (HEAD^1) too.
+      - env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if ! [[ $BASE_SHA =~ ^[0-9a-f]{40}$ && $HEAD_SHA =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the pull request's base or head is not a commit SHA"
+            exit 1
+          fi
+          commits=$(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA")
+          bad=0
+          for c in $commits; do
+            author=$(git log -1 --format='%an <%ae>' "$c")
+            if git log -1 --format='%(trailers:key=Signed-off-by,valueonly)' "$c" | grep -qixF -- "$author"; then
+              echo "signed off: $c"
+            else
+              echo "::error::commit $c has no line 'Signed-off-by: $author'. Sign it off with git commit -s (CONTRIBUTING.md#developer-certificate-of-origin)"
+              bad=1
+            fi
+          done
+          exit "$bad"
