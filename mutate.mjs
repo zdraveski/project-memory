@@ -647,6 +647,7 @@ export const suites = {
     'a hit names its transcript': ["...(also.length ? [`     ${also.length} more like this", "...full(h), ...(also.length ? [`     ${also.length} more like this"],
     'a hit without its result': ["[`     Result: ${result(h.answered)}`]", '[]'],
     'a result printed beside a stretch from the start': ['!(at !== -1 && at <= HIT_SPAN)', 'true'],
+    "a result never finds the reply's first match": ['at = clip(h.answered, Infinity).search(find);', 'at = -1;'],
     'a result is the whole reply': ['const t = clip(a, HIT_HEAD);', 'const t = clip(a, Infinity);'],
     'a lone "Done." is the result': ['/^.{20,}?[.!?](?=\\s|$)/u', '/^.{1,}?[.!?](?=\\s|$)/u'],
     'a result cut before it is redacted': ['const t = clip(a, HIT_HEAD);', 'const t = a.slice(0, HIT_HEAD);'],
