@@ -18,7 +18,7 @@
 // secrets (SECRETS), the answer to a <private> message and the files its turn
 // changed (answer()), and every entry of a conversation marked
 // <private-session> (hushed()).
-import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, statfsSync, realpathSync, mkdirSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -872,6 +872,13 @@ export function stalled(t, hint = true) {
   // No file is not knowing (just installed, or cleaned away), not "never ran".
   let ran; try { ran = statSync(join(projectsRoot(), '.stop-ran')).mtimeMs; } catch { return []; }
   if (end - ran > GRACE && Date.now() - end > GRACE) {
+    // A full disk, or a folder that takes no writes, stops the proof of life too: said as hooks stopped or turned off, the
+    // failed write was never named (audit H-F5). The file opened for writing, not written: a full disk opens it all the same.
+    const root = projectsRoot();
+    let refused = '';
+    try { const s = statfsSync(root); if (s.bavail * s.bsize < 1048576) refused = `the disk holding ${root} is full`; } catch {}
+    if (!refused) try { closeSync(openSync(join(root, '.stop-ran'), 'r+')); } catch (e) { if (e.code !== 'ENOENT') refused = `${root} refuses writes (${e.code})`; }
+    if (refused) return [`Memory could not be saved after [${t.s}]'s reply at ${local(end)}: ${refused}. project-memory saves again once it can write there.`];
     return [`Memory hooks look stopped: [${t.s}] finished a reply at ${local(end)}, but project-memory last saved after one at ${local(ran)}. ` +
       `If project-memory was turned off meanwhile, this clears after the next reply.` +
       (hint ? ` If not: node "${join(dirname(fileURLToPath(import.meta.url)), 'memory.mjs')}" doctor` : '')];

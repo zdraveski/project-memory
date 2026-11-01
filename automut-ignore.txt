@@ -63,3 +63,4 @@ a673a2b9a80e memory-tier.mjs snapshotHealth's busy `> GIT_LOCK_STALE` -> `>=`: t
 eec8d7f19028 store.mjs withLock's `Math.max(0, ...)` -> `Math.max(1, ...)`: a spent wait leaves 1 ms instead of none, so the next held lock may get one more 25 ms look; a run's wait stays about 2 s, and a free lock is taken either way
 853e8b62bdfa store.mjs sweepTemps' `process.kill(pid, 0)` -> `process.kill(pid, 1)`: not to be run, not harmless: signal 1 is SIGHUP, sent for real to whatever process holds that pid off Windows (Windows refuses it, ENOSYS, and the copy is kept); the hand-written mutant "a dead writer's temp copy kept" takes the whole ask out and is killed
 d3b01fb5763f store.mjs sweepTemps' age `> LOCK_STALE` -> `>=`: they differ only for a temp copy exactly 30 s old to the millisecond, swept one look sooner
+ebcef2c6f978 handoff-log.mjs stalled()'s full disk `< 1048576` -> `<=`: they differ only for exactly 1 MB free to the byte, said as full one byte sooner

@@ -2256,6 +2256,14 @@ require('node:module').syncBuiltinESMExports();
       ok(stalled({ s: 'abcd1234', p: f }).length === 0, 'a turn that ended exactly GRACE ago is not yet a missed Stop');
       Date.now = () => end + GRACE + 1;
       ok(/look stopped/.test(stalled({ s: 'abcd1234', p: f })[0] ?? ''), 'one that ended longer ago is');
+      // A full disk, or a projects folder that takes no writes, stops the proof of life too: said as a write that failed, not
+      // as hooks stopped or turned off (audit H-F5).
+      const swapFs = (name, make, fn) => { const real = fs[name]; fs[name] = make(real); syncBuiltinESMExports(); try { return fn(); } finally { fs[name] = real; syncBuiltinESMExports(); } };
+      const full = swapFs('statfsSync', () => () => ({ bavail: 3, bsize: 4096 }), () => stalled({ s: 'abcd1234', p: f })[0] ?? '');
+      ok(/^Memory could not be saved after \[abcd1234\]'s reply at \d{4}-\d\d-\d\d \d\d:\d\d: the disk holding [^\n]* is full\./.test(full) && !/look stopped/.test(full), `a full disk is said as one (got ${full})`);
+      const refused = swapFs('openSync', (real) => function (p, flags, ...a) { if (String(p) === ran && flags === 'r+') throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); return real.call(this, p, flags, ...a); },
+        () => stalled({ s: 'abcd1234', p: f })[0] ?? '');
+      ok(/^Memory could not be saved after \[abcd1234\]'s reply at \d{4}-\d\d-\d\d \d\d:\d\d: [^\n]* refuses writes \(EACCES\)\./.test(refused), `a folder that refuses writes is said as one (got ${refused})`);
     } finally {
       Date.now = realNow;
       if (hadRan) { writeFileSync(ran, hadRan[0]); utimesSync(ran, hadRan[1], hadRan[1]); } else rmSync(ran, { force: true });

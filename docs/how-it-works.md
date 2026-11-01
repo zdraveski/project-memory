@@ -753,6 +753,12 @@ meet most:
 - **"Memory hooks look stopped"**, in the briefing. Another conversation in
   this project finished a reply after the plugin last saved. After a pause
   this goes away with the next reply; otherwise run `doctor`.
+- **"Memory could not be saved after … reply"**, in the briefing or from
+  `doctor`. The same, but the disk holding `~/.claude/projects` is full (less
+  than 1 MB free), or that folder refuses writes (the code says why: a
+  permission, another program holding a file). Free some space or fix the
+  folder's permissions; the plugin saves again at the next reply, and the
+  journal takes in what was missed from Claude Code's own conversation files.
 - **"snapshots: off".** Git isn't installed, or the projects folder is a git
   repository the user made. Everything works except bringing back an old
   version of a note. Install Git, or move that repository out of the folder.

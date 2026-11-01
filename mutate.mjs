@@ -160,6 +160,9 @@ export const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    'a full disk said as hooks stopped': ['if (s.bavail * s.bsize < 1048576) refused =', 'if (false) refused ='],
+    'a folder that takes no writes said as hooks stopped': ["if (e.code !== 'ENOENT') refused = `${root} refuses writes", 'if (false) refused = `${root} refuses writes'],
+    'a failed write never said': ['    if (refused) return [`Memory could not be saved', '    if (false) return [`Memory could not be saved'],
     'the briefing reads no journal failure kept aside': [", join(projectsRoot(), `${JOURNAL_FAILED}${basename(dirname(dir))}`)]) {", ']) {'],
     "an ask that quotes [private] shown with its answer": ["did: gone || ask.includes('[private]') ? '[private]' :", "did: gone ? '[private]' :"],
     'a briefing with no reader exits 1': ["process.stdout.on('error', () => {}); ", ''],

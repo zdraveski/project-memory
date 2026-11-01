@@ -52,6 +52,10 @@
   folder. It is now kept beside the projects folder
   (`.journal-failed-<project folder>`) when the journal won't take it, and
   the startup briefing and `status` say it.
+- A full disk, or a projects folder that refused writes, was reported as
+  "Memory hooks look stopped … if project-memory was turned off
+  meanwhile". The briefing and `doctor` now say the save failed, and why:
+  the disk is full, or the folder refuses writes (with the code).
 
 **Snapshots**
 - On a large store (about 5,000 files on Windows), the history never
