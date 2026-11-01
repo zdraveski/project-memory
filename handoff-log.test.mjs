@@ -1905,7 +1905,11 @@ require('node:module').syncBuiltinESMExports();
     try {
       return execFileSync(process.execPath, [...(now === undefined ? [] : ['--require', nowJs]), ...pre.flatMap((p) => ['--require', p]), HOOK, '--print'],
         { input: JSON.stringify({ cwd: cwd_, session_id, source }) }).toString();
-    } finally { for (const [k, v] of Object.entries(was)) if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    } finally {
+      if (was.HL_NOW === undefined) delete process.env.HL_NOW; else process.env.HL_NOW = was.HL_NOW;
+      // Assigned, never deleted, as TZ0's comment says: deleting it left this process on UTC (Node 24 on Windows).
+      process.env.TZ = was.TZ ?? TZ0;
+    }
   };
   const entry = (at, s, ask, did) => `- **asked** ${at} [${s}]: ${ask}\n  **did:** ${did}`;
   const docOf = (...es) => `---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written by hand._\n\n${es.join('\n')}\n<!-- auto:end -->\n`;

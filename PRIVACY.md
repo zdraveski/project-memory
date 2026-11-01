@@ -104,10 +104,12 @@ All of it stays in `~/.claude/projects` on your computer:
     mark in the conversation. When one of those lists can't be read (another
     program, such as a virus scanner, has it open), nothing is saved or
     removed for that conversation, and it is tried again after the next
-    reply. Each time, the next briefing and `status` say the store needs
-    attention and name the list, so a list that stays unreadable is
-    reported, not silently left to stop the saving. The warning goes once a
-    reply is saved again. Finding a mark typed while the plugin was off,
+    reply. Each time, the next briefing says the store needs attention and
+    names the list, and `status` names it too (for `.memory-off`, in its
+    journal line), so a list that stays unreadable is reported, not
+    silently left to stop the saving. The warning goes at the next reply
+    that reads the list again; for `.memory-off`, at the next reply the
+    journal records. Finding a mark typed while the plugin was off,
     it tags the conversation and removes its earlier entries, from the
     journal and from `handoff.md`, as it does for one typed while it is on.
     A conversation held with auto memory off while this version wasn't

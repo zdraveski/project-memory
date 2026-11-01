@@ -26,8 +26,10 @@ install the current LTS from nodejs.org.
 - If such a list stayed unreadable (a folder in its place, or a permission
   taken away), nothing more was saved, as above, but nothing said so, and an
   earlier warning that the handoff couldn't be saved was cleared. Now the
-  next briefing and `status` say the store needs attention and name the
-  list, until a reply is saved again.
+  next briefing says the store needs attention and names the list, and
+  `status` names it too (for the memory-off list, in its journal line). The
+  warning goes at the next reply that reads the list again; for the
+  memory-off list, at the next reply the journal records.
 - With auto memory off, if the list of conversations held that way couldn't
   be written after a reply, nothing said so, and a conversation whose tag
   was never written could later be taken into the journal. Now the next
