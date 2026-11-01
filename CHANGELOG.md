@@ -23,11 +23,51 @@ install the current LTS from nodejs.org.
   scanner, had it open), that conversation was saved as if it were not
   private. Now nothing is saved or removed for it until the list can be read
   again, at a later reply.
+- If such a list stayed unreadable (a folder in its place, or a permission
+  taken away), nothing more was saved, as above, but nothing said so, and an
+  earlier warning that the handoff couldn't be saved was cleared. Now the
+  next briefing and `status` say the store needs attention and name the
+  list, until a reply is saved again.
 - If the reply where you typed `<private-session>` couldn't save the mark (a
   full or busy disk), a later reply near the compaction limit could still ask
   Claude to write the conversation into memory, and a note kept across a
   compaction could quote its last request. Now, before either is shown, the
   whole conversation is checked for the mark.
+- A password or token written after two spaces, a tab or a line break,
+  instead of one space (`--token`, two spaces, then the token), was saved
+  whole in the journal, and so in its snapshots. It is now replaced by
+  `[redacted]`, as it was after one space.
+- If a turn ran `forget` after a `<private>` message you sent while Claude
+  was still working, the forget went unnoticed: the turn's request was saved
+  in the handoff and the journal, and search could show it. Now a turn that
+  runs `forget` saves none of its words, wherever the private message sits.
+- The journal reads a long conversation it takes in later 64 MB at a time.
+  If a part ended between a `<private>` message you sent while Claude was
+  working and the reply to it, the reply was saved. It now stays out.
+- If the journal folder couldn't be listed just when a conversation was
+  marked private or held with auto memory off, its earlier entries stayed,
+  and the clean-up was taken as done, so they stayed for good. The clean-up
+  is now tried again at the next reply until it goes through.
+- `forget` said "nothing matches" when it couldn't list the journal folder,
+  and the exchange stayed. It now says the folder could not be listed, with
+  the disk's reason, removes nothing and fails, so you can run it again.
+
+**Fixes**
+- When the disk briefly refused to remove a store's lock after a write, the
+  lock stayed for 30 seconds, and the replies in that time were neither
+  saved nor cleaned up. Removing the lock is now retried.
+- If removing a copy of an entry from the day next to it failed (the copy a
+  time-zone change leaves), the duplicate stayed in the journal for good.
+  The next reply that saves that exchange now removes it.
+- A warning in `status` that taking in older conversations had failed
+  (`backfill: …`) stayed after a later look went through with nothing left
+  to take in. It now clears then.
+- `status` and the briefing could name a temporary file (`….tmp1234`) in the
+  reason a write failed. They now leave that name out.
+- Two more ways the handoff listed every exchange twice after a time-zone
+  change are closed: a request cut off in the middle of something shaped
+  like a secret (`api_key = process.env…`), and a moment when another
+  program held `handoff.md` and it couldn't be read.
 
 ## 1.2.2 (2026-10-30)
 
