@@ -57,8 +57,17 @@ All of it stays in `~/.claude/projects` on your computer:
     path are kept. A number is kept only under a name that counts something,
     such as `TOKEN_LIMIT=4096`; after a password or token option, or under a
     secret's name, it is replaced, since it can be a PIN. A value in quotes
-    is replaced whole, blanks and all; one with blanks and no quotes, such
-    as `password: p@ss w0rd`, is not. No tool recognizes every secret.
+    is replaced whole, blanks and all. Not found:
+    - a value with blanks and no quotes, past its first word (in
+      `password: p@ss w0rd` nothing is replaced, since `p@ss` is under 6
+      characters);
+    - a JSON object more than one level under a secret's key
+      (`"secrets": {"db": {"main": …}}`);
+    - a variable set mid-command whose name says no password or token,
+      such as `docker run -e SIGNING_KEY=…`.
+
+    No tool recognizes every secret, so put such text between `<private>`
+    tags.
   - Anything you write between `<private>` and `</private>` is left out, and
     so are Claude's reply to that message and the names of the files changed
     in that turn.

@@ -238,8 +238,9 @@ Before any of it is written, these are taken out:
   (`github: …`). So a sibling after the key, a name (`type: apiKey`), a
   setting (`hash_algorithm: bcrypt`), a colour or a count stays. The same
   for each string in a JSON object under such a key (`"secrets": {"db":
-  "…"}`), one level deep. Not read: a deeper JSON object, and a variable
-  set mid-command, such as `docker run -e NAME=…`.
+  "…"}`), one level deep. Not read: a deeper JSON object
+  (`"secrets": {"db": {"main": "…"}}`), and a variable set mid-command whose
+  name no rule above reads, such as `docker run -e SIGNING_KEY=…`.
 
 No list of patterns finds every secret: anything these rules miss belongs
 between `<private>` tags. The same rules apply to everything the startup
