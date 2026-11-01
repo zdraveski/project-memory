@@ -1,0 +1,42 @@
+name: codeql
+
+# GitHub's code scanner, on the hooks' JavaScript and on these workflow files.
+# Its findings are under Security > Code scanning. Weekly too: new queries
+# come out between pushes. If CodeQL's "default setup" is ever turned on in
+# the repo's settings, delete this file: the two can't run side by side.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: '23 4 * * 1'
+
+# Read the code, nothing more; only the job below may write its findings.
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+      # Pinned to full commits, as Scorecard asks; Dependabot moves the pins.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Plain Node.js with no build step, so nothing to build.
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:${{ matrix.language }}
