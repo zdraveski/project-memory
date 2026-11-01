@@ -22,7 +22,7 @@ import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, rea
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, pathKey, transcriptKey, raw, listOf, inProjects } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP } from './store.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
@@ -610,9 +610,10 @@ export function hushed(dir, s, mark = false, list = QUIET, prune = (have) => hav
     // CRLF too: a tag with a \r left over matched no conversation, and a marked
     // one was written again.
     // A read refused (EBUSY: a scan holding the list) is no answer: read as no
-    // tags, a private conversation was saved as public (F12).
+    // tags, a private conversation was saved as public (F12). Held for a moment, it is read again after a pause, as the store's other
+    // retries do: three reads in the same instant all met the hold (release review). None after the last, none for a folder.
     let before = null;
-    try { before = readFileSync(p, 'utf8'); unread = false; } catch (e) { unread = e.code !== 'ENOENT'; }
+    try { before = readFileSync(p, 'utf8'); unread = false; } catch (e) { unread = e.code !== 'ENOENT'; if (i < 2 && BUSY.includes(e.code)) sleep(STEP); }
     if (unread) continue;
     const have = listOf(before);
     if (!mark || have.includes(s)) return have.includes(s);

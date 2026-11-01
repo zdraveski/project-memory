@@ -934,6 +934,24 @@ for (const [id, tags, want] of [['looked00', true, 'otter-5150'], ['looked01', f
   ok(unread(r) && !doc.includes(want) && (tags || doc.includes('an earlier ask')),
     `a list that won't read after the journal's look leaves handoff.md as it was (${tags ? 'tagged' : 'not tagged'}: got ${r}, ${doc.includes(want)}, ${doc.includes('an earlier ask')})`);
 }
+// Held for a moment (a scan): three reads in the same instant all met the hold, and the reply never reached handoff.md (release
+// review). Refused with a code that may pass, the list is read again after a pause; none after the last try, none for a folder.
+{
+  const wait = Atomics.wait, paused = [];
+  Atomics.wait = (...a) => { paused.push(a[3]); return wait(...a); };
+  try {
+    const th = join(dirF, 'held.jsonl');
+    writeFileSync(th, [user('the held ask', { ts: '2026-09-11T09:00:00Z' }), asst('the held answer', { ts: '2026-09-11T09:00:30Z' })].join('\n') + '\n');
+    refuse = () => !paused.length;
+    const rh = refused(() => said(() => handoff({ cwd: cwdF, transcript_path: th, session_id: 'held0000-1' }))), pausedH = paused.splice(0);
+    const lasting = refused(() => hushed(dirF, 'tagged00')), pausedL = paused.splice(0);
+    const dirG = join(home, 'list-a-folder');
+    mkdirSync(join(dirG, '.private-sessions'), { recursive: true });
+    const folder = hushed(dirG, 'tagged00'), pausedG = paused.splice(0);
+    ok(rh === true && hd().includes('the held ask') && pausedH.join() === '25' && lasting === null && pausedL.join() === '25,25' && folder === null && !pausedG.length,
+      `a list held for a moment is read after a pause, and the handoff goes through; a lasting refusal pauses between tries only, a folder not at all (got ${rh}, ${pausedH}; ${lasting}, ${pausedL}; ${folder}, ${pausedG})`);
+  } finally { Atomics.wait = wait; }
+}
 }
 
 // .memory-off: written under the projects' lock, by every SessionStart and Stop
