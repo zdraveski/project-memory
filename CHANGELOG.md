@@ -41,6 +41,21 @@
   again. They now leave it out. When the list of forgotten entries can't be
   read, they show none of that project's journal, and say so.
 
+**Snapshots**
+- On a large store (about 5,000 files on Windows), the history never
+  started: the first snapshot's `git add` ran past its 30 seconds, was
+  stopped, and left git's lock behind. Every later try then found the lock
+  and gave up as "busy", which was never counted, so `doctor` said "none
+  recorded yet" and the startup briefing said nothing; and since the tidy-up
+  was only marked done after a snapshot, every reply redid it (14 s at
+  6,000 notes). The first snapshot is now taken in parts, 1,000 files a
+  reply, the indexes first; a git command stopped at its time limit makes
+  the next replies go on in parts; the tidy-up is marked done whatever the
+  snapshot did, and a snapshot that didn't go through is tried again alone
+  after the next reply. Waiting on another git for more than 10 minutes
+  counts as a failure, and `doctor` says when the first snapshot is still
+  being taken or none has been taken yet.
+
 **Speed**
 - After a reply that changed a note, the Stop hook read the top of every
   note to tidy the index, about a second at 1,000 notes on Windows. It now

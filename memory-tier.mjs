@@ -29,6 +29,8 @@ const OVERFLOW = '<!-- overflow -->';
 // add one (the model writes the file, then edits the index, seconds apart).
 const ORPHAN_GRACE = 2 * 60000;
 const GIT_LOCK_STALE = 10 * 60000;  // an index.lock this old outlived the git that made it
+const GIT_TIMEOUT = 30_000;         // a git that hangs (a prompt nobody sees) must not hold the Stop hook
+const BATCH = 1000;                 // files a part of a first snapshot adds: ~6 s at Windows' ~6 ms a file, well inside GIT_TIMEOUT
 
 // The byte ceilings of an index, project and shared, are in store.mjs: the
 // memory CLI reports them too.
@@ -50,6 +52,8 @@ let dry;
 // waited out instead, 1.5 s, the test guessed how long a loaded box takes to
 // start. Test-only, like `--now`.
 let PAUSE;
+// `--batch <files>` and `--git-timeout <ms>`, test-only too: a part of a first snapshot, and git's timeout, made small.
+let batch, gitWait;
 
 // A killed process must not leave a half-written index (temp + rename), and a
 // write must not land over an edit this pass did not see (store.mjs). Nothing
@@ -364,8 +368,11 @@ function snapshot() {
   // handed on. Put back at the end: main() may run in a test's process.
   const lc = process.env.LC_ALL;
   process.env.LC_ALL = 'C';
-  // A git that hangs (a prompt nobody sees) must not hold the Stop hook.
-  const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 });
+  // A git that hangs (a prompt nobody sees) must not hold the Stop hook. `input`: stdin's text.
+  const gitIn = (input, ...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], timeout: gitWait });
+  const git = (...a) => gitIn('', ...a);
+  // A first snapshot taken in parts: the rest is still to add.
+  const parts = join(root, '.git', 'project-memory-parts');
   // git's lock files a commit takes: the index, HEAD, the branch's, config.
   const locks = () => {
     const g = join(root, '.git'), heads = join(g, 'refs', 'heads');
@@ -417,7 +424,22 @@ function snapshot() {
         for (const l of want.split('\n').filter((x) => x && x !== '*' && !x.startsWith('!'))) git('rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', l);
         writeFileSync(applied, want);
       }
+      // A history's first add, of every note at once, was killed at GIT_TIMEOUT on a large store (~6 ms a file on Windows,
+      // 5,000 files): it left index.lock, and no snapshot ever started (audit H-F1). With no index yet, or after an add that
+      // timed out, it goes in parts of `batch` files, a part a run, the indexes first so the first commit holds them as the
+      // user wrote them. update-index, not `add --pathspec-from-file`: any git has it. Returns the files still to add.
+      if (!existsSync(join(root, '.git', 'index')) || existsSync(parts)) {
+        const todo = git('ls-files', '-z', '-o', '-m', '--exclude-standard').split('\0').filter(Boolean)
+          .sort((a, b) => /(^|\/)MEMORY[^/]*$/.test(b) - /(^|\/)MEMORY[^/]*$/.test(a));
+        if (todo.length > batch) {
+          gitIn(todo.slice(0, batch).join('\0'), 'update-index', '--add', '--remove', '-z', '--stdin');
+          writeFileSync(parts, '');
+          return todo.length - batch;
+        }
+        try { unlinkSync(parts); } catch {}
+      }
       git('add', '-A');
+      return 0;
     };
     // A damaged index (a crash or a full disk while git wrote it) failed every
     // snapshot after it, for good. It is only git's copy of the last commit
@@ -425,7 +447,8 @@ function snapshot() {
     // A note another window deleted between git's listing and its read is one
     // more try: read as busy, a cause that never goes away (a link to nothing)
     // would have hidden a history that never commits.
-    try { stage(); } catch (e) {
+    let rest;
+    try { rest = stage(); } catch (e) {
       const why = gitWhy(e);
       if (/index file (?:smaller than expected|corrupt)|bad (?:signature|index file)/.test(why)) {
         try { unlinkSync(join(root, '.git', 'index')); } catch {}
@@ -435,7 +458,7 @@ function snapshot() {
         // `add -A` updated it, handoff.md and all.
         try { unlinkSync(applied); } catch {}
       } else if (!/^error: open\("[^"]*"\): No such file or directory/.test(why)) throw e;
-      stage();
+      rest = stage();
     }
     // A store linked to a folder outside the root is in the history only if git
     // follows the link: Git for Windows follows a junction, git elsewhere keeps a
@@ -461,12 +484,15 @@ function snapshot() {
       if (/no changes added to commit/.test(String(e.stdout))) return 'busy';
       throw e;
     }
-    return fresh ? 'initialised' : 'committed';
+    return rest ? `in parts: ${rest} file(s) still to add; each reply adds more` : fresh ? 'initialised' : 'committed';
   } catch (e) {
     // No git is a setup, not a failure: everything but the history works.
     // Only git's own start: a lock that vanished between two calls is ENOENT
     // too, and was recorded as "git is not installed".
     if (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn')) return 'off: git is not installed';
+    // Killed at its timeout: from the next run the history is taken in parts. Its lock stays, for GIT_LOCK_STALE: a git
+    // that outlived the kill (a wrapper's child) may still hold it. No note is touched: git only reads them.
+    if (e.code === 'ETIMEDOUT') { try { writeFileSync(parts, ''); } catch {} return `snapshot failed: git took longer than ${gitWait / 1000} s; the next replies take the history in parts`; }
     const why = gitWhy(e);   // git's reason, not a warning before it, nor 'Command failed'
     // This session runs two or three git commands, and another session's commit can
     // take a lock in a gap between them, or move HEAD under this one's: busy,
@@ -494,19 +520,27 @@ function health(dir, problems) {
 
 // ponytail: two sessions updating this counter at once can miscount by one;
 // it only decides whether a warning shows.
+// `pending`: a snapshot still owed (busy, failed, or in parts), which the next Stop retries though no note changed: the
+// tidy-up is stamped whatever the snapshot did, or one that never went through redid the whole pass every Stop.
 function snapshotHealth(s) {
-  if (s === 'busy') return;
   const p = join(projectsRoot(), '.snapshot-health');
   let h = {}; try { h = JSON.parse(readFileSync(p, 'utf8')); } catch {}
   const failed = typeof s === 'string' && s.startsWith('snapshot failed');
   const off = typeof s === 'string' && s.startsWith('off: ');
-  const next = failed
-    ? { lastOk: h.lastOk || null, failures: (h.failures || 0) + 1, error: s.slice('snapshot failed: '.length) }
+  const rest = typeof s === 'string' && s.startsWith('in parts: ') ? parseInt(s.slice('in parts: '.length), 10) : 0;
+  // Busy is another commit in flight, until it lasts longer than any commit takes (GIT_LOCK_STALE): then it is counted.
+  // Never counted, a lock renewed again and again (a git killed at its timeout each time) stopped every snapshot, unsaid.
+  const since = h.busySince || new Date().toISOString(), stuck = s === 'busy' && Date.now() - Date.parse(since) > GIT_LOCK_STALE;
+  const next = s === 'busy'
+    ? { ...h, busySince: since, pending: true, ...(stuck && { failures: (h.failures ?? 0) + 1, error: `busy since ${local(since)}: another git holds the repository's lock` }) }
+    : failed
+    ? { lastOk: h.lastOk || null, failures: (h.failures || 0) + 1, error: s.slice('snapshot failed: '.length), pending: true }
     : off ? { lastOk: h.lastOk || null, failures: 0, off: s.slice('off: '.length) }
-    : { lastOk: new Date().toISOString(), failures: 0 };
+    : { lastOk: new Date().toISOString(), failures: 0, ...(rest && { partial: rest, pending: true }) };
   if (missed.length) next.missed = missed;
   try { writeFileSync(p, JSON.stringify(next)); } catch {}
 }
+const owed = () => { try { return JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8')).pending === true; } catch { return false; } };
 
 // A run: its arguments and, behind --stop, stdin's text; it returns the exit
 // code. The entry at the end calls it once, the suite many times in its own
@@ -515,6 +549,8 @@ export async function main(argv, input) {
   dry = argv.includes('--dry-run');
   const pauseAt = argv.indexOf('--pause');
   PAUSE = pauseAt === -1 ? 0 : Number(argv[pauseAt + 1]) || 0;
+  const arg = (flag, or) => (argv.includes(flag) ? Number(argv[argv.indexOf(flag) + 1]) || or : or);
+  batch = arg('--batch', BATCH); gitWait = arg('--git-timeout', GIT_TIMEOUT);
   missed = [];
   // `--now <ms>` exists so a month of use can be simulated in one run
   // (memory-tier.soak.mjs). Nothing else sets it.
@@ -632,7 +668,8 @@ export async function main(argv, input) {
   };
   const gated = stop && !dry && dirAt === -1;
   const todo = gated ? dirs.filter((d) => { try { seen.set(d, scan(d)); return readFileSync(stampOf(d), 'utf8') !== fingerprint(seen.get(d)); } catch { return true; } }) : dirs;
-  if (gated && !todo.length) return 0;
+  // Nothing to tidy: done, unless a snapshot is owed, which runs alone.
+  if (gated && !todo.length && !owed()) return 0;
   // The first time, the notebook is kept as it was found before the tidy-up
   // changes it: snapshotted after, the table of contents as the user had
   // written it could never come back (docs review, 2026-10-28).
@@ -671,19 +708,18 @@ export async function main(argv, input) {
 
   // After the stores are tiered, not before: the snapshot should record the
   // state a session will actually start from.
-  let snapOk = true;
   if (!dry && dirAt === -1) {
     const s = snapshot();
     if (s === 'busy') console.log('memory snapshot: busy — another session is committing; the next turn retries');
     else if (s) console.log(`memory snapshot: ${s}`);
     snapshotHealth(s);
-    snapOk = s !== 'busy' && !(s && s.startsWith('snapshot failed'));
   }
   // The tool's own writes are part of the stamp, so the next turn is quiet
   // unless something else changed. None for a store that was skipped, busy,
-  // edited mid-pass or waiting on a writer, nor when the snapshot failed:
-  // without a stamp the next turn retries, with one it would skip for days.
-  if (gated && snapOk) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen); } catch {}
+  // edited mid-pass or waiting on a writer: without a stamp the next turn
+  // retries. A snapshot that did not go through is owed (snapshotHealth), and
+  // retried alone: left unstamped for it, every Stop redid the whole pass.
+  if (gated) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen); } catch {}
   return 0;
 }
 

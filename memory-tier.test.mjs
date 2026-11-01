@@ -502,16 +502,35 @@ const r2 = await stop('proj-two');
 ok(r.status === 0 && /skipped/.test(r.stdout) && /skipped/.test(r2.stdout), '--stop: a store that throws is reported again next turn');
 rmSync(join(root, 'proj-two', 'memory', 'MEMORY.md'), { recursive: true });
 writeFileSync(join(root, 'proj-two', 'memory', 'MEMORY.md'), '# Index\n\n- [a](a.md) — a\n');
-// Another session's commit in flight: busy, no stamp, and the next turn commits.
+// Another session's commit in flight: busy, and the next turn commits. The tidy-up is stamped all the same: unstamped,
+// a snapshot that never went through redid the whole pass every Stop, 14 s at 6,000 notes (audit H-F1). The snapshot
+// is owed instead, and the next turn retries it alone, no note changed.
 note('proj-two', 'f');
 writeFileSync(join(root, '.git', 'index.lock'), '');
 r = await stop('proj-two');
 ok(r.status === 0 && /memory snapshot: busy/.test(r.stdout) && !tracked().includes('proj-two/memory/f.md'), '--stop: a fresh index.lock is busy');
 const stampBusy = existsSync(stamp('proj-two')) ? readFileSync(stamp('proj-two'), 'utf8') : '';
-ok(!stampBusy.includes('"f.md"'), '--stop: and a busy snapshot stamps nothing');
+ok(stampBusy.includes('"f.md"') && sh().pending === true, `--stop: a busy snapshot still stamps the tidy-up, and is owed (got ${JSON.stringify(sh())})`);
 unlinkSync(join(root, '.git', 'index.lock'));
 r = await stop('proj-two');
-ok(r.status === 0 && tracked().includes('proj-two/memory/f.md'), '--stop: next turn retries and commits');
+ok(r.status === 0 && tracked().includes('proj-two/memory/f.md') && !sh().pending, '--stop: next turn retries and commits');
+// Busy for longer than any commit takes is no commit in flight: counted as a failure, for the startup line. A lock a git
+// killed at its timeout left was busy every turn, never counted, and no snapshot was ever taken, unsaid (audit H-F1).
+note('proj-two', 'f2');
+writeFileSync(join(root, '.git', 'index.lock'), '');
+writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: sh().lastOk, busySince: new Date(Date.now() - 11 * 60000).toISOString(), pending: true }));
+r = await stop('proj-two');
+ok(/busy/.test(r.stdout) && sh().failures === 1 && /busy since/.test(sh().error), `--stop: busy for over ten minutes is a failure, the first counted as one (got ${JSON.stringify(sh())})`);
+writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ ...sh(), busySince: new Date(Date.now() - 60000).toISOString() }));
+r = await stop('proj-two');
+ok(sh().failures === 1 && sh().busySince, `--stop: busy for a minute is not (got ${JSON.stringify(sh())})`);
+unlinkSync(join(root, '.git', 'index.lock'));
+r = await stop('proj-two');
+ok(tracked().includes('proj-two/memory/f2.md') && sh().failures === 0 && !sh().busySince, `--stop: and once it goes through, all is well again (got ${JSON.stringify(sh())})`);
+// No snapshot is owed with no record of one: a quiet Stop runs no git.
+rmSync(join(root, '.snapshot-health'));
+r = await stop('proj-two');
+ok(!existsSync(join(root, '.snapshot-health')), '--stop: a quiet Stop with no snapshot record owes none, and runs no git');
 // An index.lock a dead git left behind would refuse every commit from now on.
 note('proj-two', 'g');
 writeFileSync(join(root, '.git', 'index.lock'), '');
@@ -1616,6 +1635,41 @@ if (!quick) {
   await stop('proj-mid');
   const both = readFileSync(join(d, 'MEMORY.md'), 'utf8') + (existsSync(join(d, 'MEMORY-archive.md')) ? readFileSync(join(d, 'MEMORY-archive.md'), 'utf8') : '');
   ok(/\(mid\.md\)/.test(both), `--stop: a note written while a pass ran is taken up by the next turn (got ${both})`);
+}
+
+// A history's first snapshot, taken in parts: one `git add` of every note at once was killed at its 30 s on a large store
+// (~6 ms a file on Windows, 5,000 files), it left index.lock, and no snapshot ever started (audit H-F1). The indexes go
+// first, so the first part holds them as the user wrote them. `--batch 3`, test-only, makes a part three files.
+{
+  const h1 = tempDir('memtier-parts-'), r1 = join(h1, '.claude', 'projects'), d1 = join(r1, 'proj-big', 'memory');
+  mkdirSync(d1, { recursive: true });
+  // Named to sort before MEMORY.md, as git lists them: the index goes first by choice, not by name.
+  for (let i = 0; i < 7; i++) { writeFileSync(join(d1, `Big${i}.md`), `---\nname: big${i}\ndescription: "big ${i}"\nmetadata:\n  type: project\n---\nbody\n`); utimesSync(join(d1, `Big${i}.md`), tenMin, tenMin); }
+  const asFound = '# Big\n\n' + Array.from({ length: 7 }, (_, i) => `- [big${i}](Big${i}.md) — big ${i}`).join('\n') + '\n';
+  writeFileSync(join(d1, 'MEMORY.md'), asFound); utimesSync(join(d1, 'MEMORY.md'), tenMin, tenMin);
+  writeFileSync(join(r1, 'proj-big', 'session.jsonl'), '');
+  const g1 = (...a) => execFileSync('git', ['-C', r1, ...a], { encoding: 'utf8' }).trim();
+  const health1 = () => JSON.parse(readFileSync(join(r1, '.snapshot-health'), 'utf8'));
+  const stop1 = (...more) => call(['--stop', '--batch', '3', ...more], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(r1, 'proj-big', 'session.jsonl'), session_id: 'big' }));
+  process.env.HOME = h1; process.env.USERPROFILE = h1;
+  try {
+    let s = await stop1();
+    ok(/in parts/.test(s.stdout) && health1().partial > 0 && health1().pending && !existsSync(join(r1, '.git', 'index.lock')), `a first snapshot too big for one run is taken in parts, and says so (got ${s.stdout.trim()}; ${JSON.stringify(health1())})`);
+    ok(g1('show', `${g1('rev-list', '--max-parents=0', 'HEAD')}:proj-big/memory/MEMORY.md`) === asFound.trim(), 'and its first part holds the index as the user wrote it');
+    for (let i = 0; i < 10 && health1().partial; i++) s = await stop1();
+    const files = g1('ls-files').split('\n');
+    ok(Array.from({ length: 7 }, (_, i) => `proj-big/memory/Big${i}.md`).every((f) => files.includes(f)) && !health1().pending && health1().failures === 0 && !g1('status', '--porcelain'),
+      `and the replies after it, no note changed, add the rest (got ${JSON.stringify(health1())}, ${g1('status', '--porcelain')})`);
+    // A git killed at its timeout (here 1 ms, test-only) leaves every note as it was; from the next run, the history is taken in parts.
+    for (let i = 7; i < 12; i++) { writeFileSync(join(d1, `Big${i}.md`), `---\nname: big${i}\ndescription: "big ${i}"\n---\nbody\n`); utimesSync(join(d1, `Big${i}.md`), tenMin, tenMin); }
+    const notes = () => readdirSync(d1).filter((f) => /^Big\d+\.md$/.test(f)).map((f) => f + readFileSync(join(d1, f), 'utf8')).join('\n');
+    const before = notes();
+    s = await stop1('--git-timeout', '1');
+    ok(/longer than/.test(s.stdout) && notes() === before && health1().pending && existsSync(join(r1, '.git', 'project-memory-parts')), `a git killed at its timeout leaves the notes as they were, and the next run takes the history in parts (got ${s.stdout.trim()})`);
+    rmSync(join(r1, '.git', 'index.lock'), { force: true });   // what a killed git left: cleared after ten minutes
+    for (let i = 0; i < 10 && health1().pending; i++) s = await stop1();
+    ok(g1('ls-files').split('\n').includes('proj-big/memory/Big11.md') && !existsSync(join(r1, '.git', 'project-memory-parts')), `and the runs after it add them (got ${JSON.stringify(health1())})`);
+  } finally { process.env.HOME = home; process.env.USERPROFILE = home; }
 }
 
 rmSync(home, { recursive: true, force: true });

@@ -67,7 +67,7 @@ Windows device names such as `con` and `nul`.
 | `…/memory/.private-sessions` | the tags of conversations marked private (the newest 1,000) |
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
 | `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
-| `~/.claude/projects/.git/project-memory-ignored` | bookkeeping for the snapshot's ignore list |
+| `~/.claude/projects/.git/project-memory-ignored`, `project-memory-parts` | bookkeeping for the snapshot's ignore list; a first snapshot still being taken in parts |
 | `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran, the snapshot's state, the reminder's state per conversation tag |
 | `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, or with auto memory off a conversation's tag that could not be written (`off`), and why (a list that won't read is named there); read at the next start and by `status` |
 | `~/.claude/projects/.memory-off` | the tags of conversations held with auto memory off, which the journal never imports: kept while the transcript is on disk, and the newest 100 in any case, 10,000 at most |
@@ -495,7 +495,18 @@ make, it commits nothing there, and `doctor` says snapshots are off. A
 repository at `~/.claude` itself (a dotfiles repository) doesn't count:
 project-memory still makes its own in `~/.claude/projects`.
 The first time, with no repository there yet, it takes a snapshot of every
-notebook as it finds it before its first tidy-up, then tidies.
+notebook as it finds it before its first tidy-up, then tidies. On a large
+store that first snapshot is taken in parts of 1,000 files, the `MEMORY.md`
+files first: two parts at the first reply (before and after its tidy-up),
+then one a reply, so no git command runs past its 30 seconds; `doctor` says
+how many files are still to add. A git command that
+does run past them is stopped, and the next replies go on in parts.
+
+A snapshot that doesn't go through (another window's git is committing, or
+git fails) is tried again after the next reply, even when no note changed;
+the tidy-up itself isn't redone. Waiting on another window's git counts as a
+failure once it has lasted more than 10 minutes, and the startup briefing
+names snapshots that failed three times in a row.
 
 - `history <note>` lists the commits that changed a note, the newest 30
   (`--limit N` for more).

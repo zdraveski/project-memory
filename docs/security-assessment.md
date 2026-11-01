@@ -187,6 +187,9 @@ Likely, from a bug or a full disk. Impact: a blocked or slow session.
 - A hook that fails exits 0 and reports the problem in the next briefing.
   git calls time out (30 seconds in the hooks), and busy stores are waited
   on for 2 seconds at most in all, however many locks a hook takes.
+- A history's first snapshot is taken in parts of 1,000 files, so it fits
+  that time on a large store. A git stopped at its timeout touches no note
+  (git only reads them), and the next replies go on in parts.
 
 ### The plugin's supply chain
 

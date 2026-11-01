@@ -452,6 +452,12 @@ writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, fai
 ok(/^ok +snapshots: off, git is not installed: everything else works/m.test((await cli('doctor')).stdout), 'doctor: snapshots off are said, not a problem');
 writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, failures: 4, error: 'fatal: bad object HEAD' }));
 ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.test((await cli('doctor')).stdout), 'doctor: failing snapshots come with what to do');
+// A first snapshot taken in parts, or one waiting on another git, is said as it is: doctor said "none recorded yet" while a
+// history never started, and "ok, last <now>" of one that had none (audit H-F1).
+writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, failures: 0, partial: 120, pending: true }));
+ok(/^ok +snapshots: the first is being taken in parts, 120 file\(s\) still to add/m.test((await cli('doctor')).stdout), 'doctor: a first snapshot in parts is said, with what is left');
+writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, failures: 0, busySince: '2026-10-30T08:00:00.000Z', pending: true }));
+ok(/^ok +snapshots: none taken yet; waiting since [^\n]* for another git to let go of the repository/m.test((await cli('doctor')).stdout), 'doctor: no snapshot yet, waiting on another git, is said as that');
 // Hooks that look stopped are said; doctor, which is the check, does not tell
 // the user to run itself.
 {
