@@ -195,7 +195,7 @@ function around(text, find, room) {
 const told = (dirs, o) => {
   const gone = new Set(), open = dirs.filter((d) => {
     const p = join(d, FORGOTTEN);
-    try { for (const [k] of forgotten(readFileSync(p, 'utf8').replace(/^﻿/, ''))) gone.add(k); return true; }
+    try { for (const [k] of forgotten(readFileSync(p, 'utf8'))) gone.add(k); return true; }
     catch (e) { if (e.code === 'ENOENT') return true; o.failed?.push({ path: p, code: e.code || e.message }); return false; }
   });
   return entries(open, o).filter((e) => !gone.has(e.key));

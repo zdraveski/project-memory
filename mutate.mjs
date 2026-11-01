@@ -658,6 +658,7 @@ export const suites = {
     'a lone "Done." is the result': ['/^.{20,}?[.!?](?=\\s|$)/u', '/^.{1,}?[.!?](?=\\s|$)/u'],
     'a result cut before it is redacted': ['const t = clip(a, HIT_HEAD);', 'const t = a.slice(0, HIT_HEAD);'],
     'a forgotten entry shown': ['return entries(open, o).filter((e) => !gone.has(e.key));', 'return entries(open, o);'],
+    'a forgotten list never read in search': ["try { for (const [k] of forgotten(readFileSync(p, 'utf8'))) gone.add(k); return true; }", 'try { return true; }'],
     "a forgotten list that won't read shows its store": ["catch (e) { if (e.code === 'ENOENT') return true; o.failed?.push({ path: p, code: e.code || e.message }); return false; }", 'catch { return true; }'],
     "a forgotten list that won't read unnamed": ['o.failed?.push({ path: p, code: e.code || e.message }); return false;', 'return false;'],
     'a missing forgotten list shuts its store': ["if (e.code === 'ENOENT') return true; o.failed", 'o.failed'],
