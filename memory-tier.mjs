@@ -702,7 +702,8 @@ export async function main(argv, input) {
     if (!dry && !r.wrote && !r.recovered.length && !r.dupes.length && !r.missing.length) continue;
     const saved = Math.round((r.before - r.after) / 4);
     console.log(`${dry ? '[dry] ' : ''}${r.dir}: ${r.hot} hot / ${r.cold} archived, ` +
-      `MEMORY.md ${r.before}B -> ${r.after}B (~${saved} tokens/session)`);
+      // A growth (pointer lines added) said as one: "~-26 tokens/session" read as a saving (audit I-F3).
+      `MEMORY.md ${r.before}B -> ${r.after}B (${saved < 0 ? `grew ~${-saved}` : `~${saved}`} tokens/session)`);
     if (r.recovered.length) console.log(`  pointers recovered: ${r.recovered.join(', ')}`);
     if (r.dupes.length) console.log(`  duplicate pointers dropped: ${r.dupes.join(', ')}`);
     for (const p of problems) console.log(`  ${p}`);

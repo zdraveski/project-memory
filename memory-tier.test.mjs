@@ -1584,14 +1584,17 @@ require('node:module').syncBuiltinESMExports();
   put('kept', `\n  modified: ${new Date(Date.now() - 86400000).toISOString()}`, 43200);
   writeFileSync(join(d, 'MEMORY.md'), '# Index\n\n- [a](a.md) — a\n- [kept](kept.md) — kept\n' + Array.from({ length: 12 }, (_, i) => `- [n${i}](n${i}.md) — n${i}`).join('\n') + '\n');
   utimesSync(join(d, 'MEMORY.md'), at(10), at(10)); utimesSync(join(d, 'a.md'), at(10), at(10));
-  await stop('proj-facts');
+  // An index the pass made longer (its Archive line) says it grew: "~-7 tokens/session" read as a saving (audit I-F3).
+  const grew = (await stop('proj-facts')).stdout;
+  ok(/MEMORY\.md (\d+)B -> (\d+)B \(grew ~\d+ tokens\/session\)/.test(grew) && !/~-/.test(grew), `--stop: an index that grew says so, with no negative saving (got ${grew})`);
   // That pass wrote the index and made the archive; its stamp holds both as it left them, so the next turn is quiet.
   const stamped = statSync(join(d, '.tiered')).mtimeMs;
   await stop('proj-facts');
   ok(existsSync(join(d, 'MEMORY-archive.md')) && statSync(join(d, '.tiered')).mtimeMs === stamped, '--stop: after a pass that wrote the index and made the archive, the next turn is quiet');
   put('n0', '\n  tier: archive', 9);
   const opened = [];
-  await swap('node:fs', 'openSync', (real) => function (p, ...a) { if (/proj-facts[\\/]memory[\\/]n\d+\.md$/.test(String(p))) opened.push(String(p).split(/[\\/]/).pop()); return real.call(this, p, ...a); }, () => stop('proj-facts'));
+  const shrank = (await swap('node:fs', 'openSync', (real) => function (p, ...a) { if (/proj-facts[\\/]memory[\\/]n\d+\.md$/.test(String(p))) opened.push(String(p).split(/[\\/]/).pop()); return real.call(this, p, ...a); }, () => stop('proj-facts'))).stdout;
+  ok(/MEMORY\.md \d+B -> \d+B \(~\d+ tokens\/session\)/.test(shrank), `--stop: and one that shrank, its saving (got ${shrank})`);
   const index = readFileSync(join(d, 'MEMORY.md'), 'utf8');
   ok(opened.join() === 'n0.md', `--stop: a pass after one note changed reads that note's head, not every note's (read ${opened.join(', ')})`);
   ok(!/\(n0\.md\)/.test(index) && /\(n1\.md\)/.test(index) && /\(kept\.md\)/.test(index), `and what the changed note says now counts, the others' kept facts too: n0 archived, n1 and kept kept (got ${index})`);
@@ -1675,7 +1678,8 @@ if (!quick) {
     const notes = () => readdirSync(d1).filter((f) => /^Big\d+\.md$/.test(f)).map((f) => f + readFileSync(join(d1, f), 'utf8')).join('\n');
     const before = notes();
     s = await stop1('--git-timeout', '1');
-    ok(/longer than/.test(s.stdout) && notes() === before && health1().pending && existsSync(join(r1, '.git', 'project-memory-parts')), `a git killed at its timeout leaves the notes as they were, and the next run takes the history in parts (got ${s.stdout.trim()})`);
+    // (Its pass filed the new notes in the archive: the index is the same size, and saves nothing, not "grew ~0".)
+    ok(/(\d+)B -> \1B \(~0 tokens\/session\)/.test(s.stdout) && /longer than/.test(s.stdout) && notes() === before && health1().pending && existsSync(join(r1, '.git', 'project-memory-parts')), `a git killed at its timeout leaves the notes as they were, and the next run takes the history in parts (got ${s.stdout.trim()})`);
     rmSync(join(r1, '.git', 'index.lock'), { force: true });   // what a killed git left: cleared after ten minutes
     for (let i = 0; i < 10 && health1().pending; i++) s = await stop1();
     ok(g1('ls-files').split('\n').includes('proj-big/memory/Big11.md') && !existsSync(join(r1, '.git', 'project-memory-parts')), `and the runs after it add them (got ${JSON.stringify(health1())})`);

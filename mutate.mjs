@@ -541,6 +541,8 @@ export const suites = {
     'an overflow victim never returns': ['(overflow && isHot(p.f, now, shared))', 'false'],
     'overflow victims unmarked': ["victim.line += ' ' + OVERFLOW;", ''],
     'recovered pointer carries its filename as facts': ['target: f, f: facts }', 'target: f, f }'],
+    'a grown index said as a negative saving': ['(${saved < 0 ? `grew ~${-saved}` : `~${saved}`} tokens/session)', '(~${saved} tokens/session)'],
+    'an index the same size said to grow': ['${saved < 0 ? `grew', '${saved <= 0 ? `grew'],
     'the Stop sweeps no temp copy': ['      if (payload) try { sweepTemps(storeOf(payload)); } catch {}\n', ''],
     'a snapshot not through leaves the tidy-up unstamped': ['if (gated) for (const [d, seen] of clean)', 'if (false) for (const [d, seen] of clean)'],
     'a snapshot owed is never retried': ['if (gated && !todo.length && !owed()) return 0;', 'if (gated && !todo.length) return 0;'],

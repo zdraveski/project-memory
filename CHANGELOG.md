@@ -96,6 +96,11 @@
   for each of its locks: 6.4 seconds, 8.5 with the shared notebook. The 2
   seconds are now for the whole Stop, as documented: 2.4 and 2.5 seconds.
 
+**Small fixes**
+- The tidy-up's line (printed by a manual run, and on the Stop's own output,
+  which nobody sees) showed an index that grew as a negative saving,
+  `(~-26 tokens/session)`. It now says `(grew ~26 tokens/session)`.
+
 ## 1.2.4 (2026-11-01)
 
 **Privacy**
