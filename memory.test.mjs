@@ -1061,6 +1061,10 @@ if (!quick) {
     r = await fcli('forget', '--key', 'f-late', ...yes);
     ok(r.status === 0 && r.stdout === again && readFileSync(join(fj, '.forgotten'), 'utf8') === listed1, `a key forgotten before is said to be, and nothing goes (${yes.join('') || 'a look'}: got ${r.stdout})`);
   }
+  // Said before the count, the last line, as a failure is.
+  r = await fcli('forget', '--key', 'f-late', '--key', es[0].key);
+  ok(r.status === 0 && r.stdout === `${fl(es[0])}key f-late is already forgotten; nothing to remove\n1 entry in ${fd} would go; run again with --yes to remove them\n`,
+    `with another key's entry, the line comes before the count (got ${r.stdout})`);
   rmSync(lateT);
   {
     // A store with no journal folder yet (a new project whose first Stop was busy) where it can't be made: the folder is named
