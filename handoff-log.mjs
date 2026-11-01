@@ -169,21 +169,29 @@ export const queuedText = (r) => {
   return typeof p === 'string' ? p : Array.isArray(p) ? p.map((b) => (typeof b === 'string' ? b : b?.type === 'text' ? String(b.text ?? '') : '')).join(' ') : '';
 };
 // What the user typed into a tool call's result: the answer to Claude's question (the result of an AskUserQuestion call, by the
-// call's id, kept as the calls go by) or the words given with a rejected call (an error result in the harness's own words). A tag
-// typed there was ignored, and the reply that repeated it was saved (e2e audit, 2026-11-01). No other tool's output: a file read
-// that quotes <private-session> is no mark. One reader a pass: `heard(r)` for every record in order, '' for all but those results.
+// call's id, kept as the calls go by) or the words given with a rejected call. A tag typed there was ignored, and the reply that
+// repeated it was saved (e2e audit, 2026-11-01). The answers alone (toolUseResult.answers): the result's words quote Claude's
+// question too, and a question that named <private-session> marked the conversation (review, 2026-11-01); the words only for a
+// record without them. A rejection by Claude Code's own mark on the record (toolUseResult), not by its words, which an MCP
+// server's error can spell out, and only what follows "the user said:". No other tool's output: a file read that quotes
+// <private-session> is no mark. One reader a pass: `heard(r)` for every record in order, '' for all but those results.
 // shortcut: a question asked before the text read starts (an import's next segment, a look's next chunk) is not known, so its
 // answer is not read; carry the ids across if a question and its answer are ever found apart.
-const REJECTED = "The user doesn't want to ";
+const SAID = 'the user said:';
 const resultText = (b) => (typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => (x?.type === 'text' ? String(x.text ?? '') : '')).join(' ') : '');
+const answersOf = (r) => { const a = r.toolUseResult?.answers; return a && typeof a === 'object' ? Object.values(a).map(String).join('\n') : null; };
 export const toolAnswers = () => {
   const asks = new Set();
   return (r) => {
     const c = Array.isArray(r?.message?.content) ? r.message.content : [];
     if (r.type === 'assistant') for (const b of c) if (b?.type === 'tool_use' && b.name === 'AskUserQuestion') asks.add(b.id);
     if (r.type !== 'user') return '';
-    return c.filter((b) => b?.type === 'tool_result').map((b) => { const s = resultText(b); return asks.has(b.tool_use_id) || (b.is_error === true && s.startsWith(REJECTED)) ? s : ''; })
-      .filter(Boolean).join('\n');
+    return c.filter((b) => b?.type === 'tool_result').map((b) => {
+      if (asks.has(b.tool_use_id)) return answersOf(r) ?? resultText(b);
+      if (r.toolUseResult !== 'User rejected tool use') return '';
+      const s = resultText(b), i = s.indexOf(SAID);
+      return i === -1 ? '' : s.slice(i + SAID.length);
+    }).filter(Boolean).join('\n');
   };
 };
 export const unquote = (s) => {

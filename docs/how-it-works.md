@@ -250,9 +250,11 @@ nothing: a zero-width space, a soft hyphen, a left-to-right or
 right-to-left mark, a bidi control, a variation selector), and as
 `private_session`; in a
 message typed while Claude works (a queued record); inside another tag; in
-the answer to Claude's question (the result of its `AskUserQuestion` call,
-found by the call's id); and in the words given with a rejected tool call
-(an error result in Claude Code's own wording). From there on, the turn's
+the answer to Claude's question (the answers in the result of its
+`AskUserQuestion` call, found by the call's id; not the question, which the
+result quotes too); and in the words given with a rejected tool call (what
+follows "the user said:" in a result Claude Code marks as rejected, not one
+that only reads like it). From there on, the turn's
 reply and the files it changes are not saved. The tags inside what Claude
 Code quotes, such as an agent's report or a task's result, are not the
 user's and mark nothing, and neither do they in any other tool's output (a

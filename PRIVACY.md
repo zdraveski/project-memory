@@ -70,11 +70,11 @@ All of it stays in `~/.claude/projects` on your computer:
     no file names.
   - Both tags work in any letter case, with invisible characters inside
     them, in a message typed while Claude is still working, in your answer
-    to a question Claude asks you, and in what
-    you type when you turn down something Claude was about to do. A tag that
-    only appears in a file Claude reads or in a command's output counts for
-    nothing. A later reply that repeats something private is saved like any
-    other reply.
+    to a question Claude asks you, and in what you type when you turn down
+    something Claude was about to do. A tag that only appears in a file
+    Claude reads, in a command's output or in Claude's own question counts
+    for nothing. A later reply that repeats something private is saved like
+    any other reply.
   - The tags keep text out of project-memory's own files only. Claude still
     sees it, Claude Code keeps it in its own conversation files, and a note
     Claude writes about it is kept in the history like any other note.

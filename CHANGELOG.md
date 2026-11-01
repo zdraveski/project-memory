@@ -62,8 +62,8 @@
   turn down something it was about to do. Before, they were ignored there:
   Claude's reply, which could repeat the private text, and the names of the
   files it then changed were saved, and `<private-session>` marked nothing.
-  A tag that only appears in a file Claude reads or in a command's output
-  still counts for nothing.
+  A tag that only appears in a file Claude reads, in a command's output or
+  in Claude's own question still counts for nothing.
 - A conversation held with auto memory off now stays out of the record of
   where you left off (`handoff.md`) too when you go on with it after turning
   auto memory back on, as it already stayed out of the journal. Before, the

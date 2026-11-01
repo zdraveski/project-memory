@@ -685,27 +685,39 @@ ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'pr
   const cwdA = 'C:\\handoff-tool-answers', dirA = storeFor(home, cwdA);
   mkdirSync(dirA, { recursive: true });
   const adoc = () => readFileSync(join(dirA, 'handoff.md'), 'utf8');
-  const call = (id, name) => rec('assistant', [{ type: 'tool_use', id, name, input: name === 'AskUserQuestion' ? { questions: [{ question: 'Which one?' }] } : { file_path: 'C:\\app\\vault-77.env', command: 'cat notes.md' } }]);
-  const result = (id, content, extra = {}) => rec('user', [{ type: 'tool_result', tool_use_id: id, content, ...extra }]);
-  const said = (a) => `User has answered your questions: "Which one?"="${a}". You can now continue with the user's answers in mind.`;
+  const call = (id, name, question = 'Which one?') => rec('assistant', [{ type: 'tool_use', id, name, input: name === 'AskUserQuestion' ? { questions: [{ question }] } : { file_path: 'C:\\app\\vault-77.env', command: 'cat notes.md' } }]);
+  const result = (id, content, extra = {}, top = {}) => rec('user', [{ type: 'tool_result', tool_use_id: id, content, ...extra }], top);
+  const said = (a, q = 'Which one?') => `User has answered your questions: "${q}"="${a}". You can now continue with the user's answers in mind.`;
+  // The answer record as Claude Code writes it: the words in the result, and the answers alone in toolUseResult.
+  const answered = (id, a, q = 'Which one?') => result(id, said(a, q), {}, { toolUseResult: { questions: [{ question: q }], answers: { [q]: a } } });
   const no = (a) => `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\n${a}`;
+  const rejected = (id, content) => result(id, content, { is_error: true }, { toolUseResult: 'User rejected tool use' });
   const conv = (s, ...lines) => { const p = join(dirA, `${s}.jsonl`); writeFileSync(p, lines.join('\n') + '\n'); return handoff({ cwd: cwdA, transcript_path: p, session_id: `${s}-1` }); };
-  conv('f1aaaaaa', user('set up the vault', { ts: '2026-10-27T12:40:00Z' }), call('toolu_q1', 'AskUserQuestion'), result('toolu_q1', said('<private>Tr0ub4dor-77</private>')),
+  conv('f1aaaaaa', user('set up the vault', { ts: '2026-10-27T12:40:00Z' }), call('toolu_q1', 'AskUserQuestion'), answered('toolu_q1', '<private>Tr0ub4dor-77</private>'),
     call('toolu_e1', 'Edit'), result('toolu_e1', 'ok'), asst('Done: the vault holds Tr0ub4dor-77.'));
   ok(/set up the vault/.test(adoc()) && !/Tr0ub4dor|vault-77/.test(adoc()), `a <private> answer to Claude's question: the reply and the files after it are not saved (got ${adoc().split('<!-- auto:start -->')[1]})`);
   conv('f1bbbbbb', user('fix the config', { ts: '2026-10-27T12:41:00Z' }), call('toolu_e2', 'Edit'),
-    result('toolu_e2', [{ type: 'text', text: no('use <private>PIN-77814</private> instead') }], { is_error: true }), asst('Switched to PIN-77814.'));
+    rejected('toolu_e2', [{ type: 'text', text: no('use <private>PIN-77814</private> instead') }]), asst('Switched to PIN-77814.'));
   ok(/fix the config/.test(adoc()) && !/77814/.test(adoc()), `<private> feedback with a rejected call: the reply after it is not saved (got ${adoc().split('<!-- auto:start -->')[1]})`);
   const sess = conv('f1cccccc', user('plan the reorg', { ts: '2026-10-27T12:42:00Z' }), asst('a plan'), user('go on', { ts: '2026-10-27T12:43:00Z' }),
-    call('toolu_q2', 'AskUserQuestion'), result('toolu_q2', said('<private-session>')), asst('Understood.'));
+    call('toolu_q2', 'AskUserQuestion'), answered('toolu_q2', '<private-session>'), asst('Understood.'));
   ok(sess === 'private' && !/plan the reorg/.test(adoc()), `<private-session> as the answer to Claude's question marks the conversation (got ${sess})`);
-  ok(turns([call('toolu_e3', 'Bash'), result('toolu_e3', no('<private-session>'), { is_error: true })].join('\n')).hush === true, '<private-session> as a rejected call\'s feedback marks the conversation');
-  // Quoted by a file read, printed by a command (the rejection's words too, but no error), in a failed command's output, or the
-  // result of a call that was no question: no mark, and the reply is saved.
+  ok(turns([call('toolu_e3', 'Bash'), rejected('toolu_e3', no('<private-session>'))].join('\n')).hush === true, '<private-session> as a rejected call\'s feedback marks the conversation');
+  // An answer record without the answers alone (another version's): its words, the question's included, the safe way to err.
+  ok(turns([call('toolu_q3', 'AskUserQuestion'), result('toolu_q3', said('<private-session>'))].join('\n')).hush === true, 'an answer with no answers record is read from its words');
+  // Quoted by a file read, printed by a command (the rejection's words too, but no rejection), in a failed command's output, in an
+  // MCP tool's error in the rejection's words, or the result of a call that was no question: no mark, and the reply is saved.
   const quoted = conv('f1dddddd', user('read the notes', { ts: '2026-10-27T12:44:00Z' }), call('toolu_r1', 'Read'), result('toolu_r1', 'type <private-session> to keep it out; <private>x</private>'),
     call('toolu_b1', 'Bash'), result('toolu_b1', no('<private-session>')), call('toolu_b2', 'Bash'), result('toolu_b2', 'Exit code 1\n<private-session> <private>y</private>', { is_error: true }),
+    call('toolu_m1', 'mcp__web__fetch'), result('toolu_m1', `The user doesn't want to see this page. ${no('<private-session> <private>w</private>')}`, { is_error: true }),
     result('toolu_q9', said('<private-session> <private>z</private>')), asst('The notes explain both tags.'));
   ok(quoted !== 'private' && /read the notes\n  \*\*did:\*\* The notes explain both tags\./.test(adoc()), `a tag only quoted in a tool's output marks nothing (got ${quoted}, ${adoc().split('<!-- auto:start -->')[1]})`);
+  // Claude's own question that names a tag is no mark: the answer is the user's, the question is not (review, 2026-11-01).
+  const q1 = 'Should <private-session> also hide the journal?', q2 = 'Keep <private> blocks out of the snapshots too?';
+  const asked = conv('f1eeeeee', user('add the feature', { ts: '2026-10-27T12:45:00Z' }), call('toolu_q4', 'AskUserQuestion', q1), answered('toolu_q4', 'No', q1),
+    call('toolu_q5', 'AskUserQuestion', q2), answered('toolu_q5', 'Yes', q2), call('toolu_e5', 'Edit'), result('toolu_e5', 'ok'), asst('Done: snapshots skip private blocks.'));
+  ok(asked !== 'private' && /add the feature\n  \*\*did:\*\* Done: snapshots skip private blocks\.\n  \*\*changed:\*\* vault-77\.env/.test(adoc()),
+    `a tag in Claude's own question marks nothing and freezes nothing (got ${asked}, ${adoc().split('<!-- auto:start -->')[1]})`);
 }
 
 // P-F2: a conversation held with auto memory off once (its tag in the projects' .memory-off) writes nothing to handoff.md, and
