@@ -30,7 +30,7 @@ and lets two Claude windows on one project work without overwriting each
 other. It helps most when you come back to the same project over days or
 weeks. For a quick one-off question, you won't notice much difference.
 
-<img src="docs/what-you-get.webp" width="600" alt="What it does for you: picks up where you left off, keeps old versions of notes (needs Git), keeps long tasks on track, and shares lessons across projects. Free, no account, never goes online.">
+<img src="docs/what-you-get.webp" width="600" alt="What it does for you: keeps a journal of your work, picks up where you left off, keeps old versions of notes (needs Git), keeps long tasks on track, and shares lessons across projects. Free, no account, never goes online.">
 
 ## Install
 
