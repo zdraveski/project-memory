@@ -7,6 +7,7 @@
 [![License: MIT](https://img.shields.io/github/license/zdraveski/project-memory?label=license)](LICENSE)
 [![Node.js 22 or newer](https://img.shields.io/badge/node-%E2%89%A5%2022-3c873a)](#install)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/zdraveski/project-memory/badge)](https://scorecard.dev/viewer/?uri=github.com/zdraveski/project-memory)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16158/badge)](https://www.bestpractices.dev/projects/16158)
 
 **Claude remembers your work: where you left off, and anything you did
 before.**
