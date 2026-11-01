@@ -218,6 +218,49 @@
   .ask { color: #fff; background: linear-gradient(transparent 62%, rgb(244 114 182 / .35) 62%); }
   .knows { color: #fff; background: linear-gradient(transparent 62%, rgb(34 211 238 / .3) 62%); }
 
+  /* Why context memory matters: the window fills, is shortened, starts empty; then what carries across */
+  .ctx { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; margin: 0; padding: 0; list-style: none; }
+  .ctx > li { min-width: 0; }
+  .ctx h3 { display: flex; align-items: center; gap: 0.65rem; margin: 1.25rem 0 0.4rem; }
+  .ctx .num { width: 2rem; height: 2rem; font-size: 0.95rem; }
+  .ctx p { margin: 0; color: var(--body); }
+  .win { overflow: hidden; background: var(--solid); }
+  .win .term-bar i { display: none; }
+  .win .term-bar b { margin: 0; }
+  .win-body { height: 8.8rem; padding: 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.45rem; }
+  .m { display: block; flex: none; height: 0.6rem; width: var(--w); border-radius: 99px; background: rgb(219 231 255 / .5); }
+  .m.c { margin-left: 0.9rem; background: linear-gradient(90deg, #22D3EE, #3B82F6); }
+  .m.f { margin-left: 0.9rem; background: linear-gradient(90deg, #8B5CF6, #A78BFA); }
+  .m.lost { background: none; border: 1px dashed rgb(244 114 182 / .75); }
+  .m.lost:nth-child(odd) { transform: translateX(0.8rem) rotate(2deg); }
+  .sum, .nb { display: flex; align-items: center; gap: 0.5rem; border-radius: 0.55rem; font: 600 0.8rem/1 var(--mono); }
+  .sum { padding: 0.6rem 0.7rem; color: #DBE7FF; background: linear-gradient(90deg, rgb(34 211 238 / .22), rgb(139 92 246 / .2)); border: 1px solid rgb(34 211 238 / .5); }
+  .nb { align-self: flex-start; padding: 0.4rem 0.6rem; color: #DDD6FE; background: rgb(139 92 246 / .16); border: 1px solid rgb(167 139 250 / .5); }
+  .nb.lit { color: #A5F3FC; background: rgb(34 211 238 / .12); border-color: rgb(34 211 238 / .55); }
+  .sum .pi, .nb .pi { width: 1.05rem; height: 1.05rem; }
+  .empty { flex: 1; border: 1px dashed rgb(130 170 255 / .22); border-radius: 0.55rem; }
+  .gauge { position: relative; height: 0.6rem; border-radius: 99px; background: rgb(20 30 80 / .9); box-shadow: inset 0 0 0 1px rgb(130 170 255 / .3); }
+  .gauge b { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(var(--w) - 4px); border-radius: 99px; background: linear-gradient(90deg, #22D3EE, #3B82F6 70%, #8B5CF6); }
+  .gauge.full b { background: linear-gradient(90deg, #3B82F6, #8B5CF6 60%, #F472B6); }
+  .win .gauge { margin: 0 1rem 1rem; }
+  .sub { font-size: 1.35rem; margin: 3.5rem 0 1.1rem; }
+  .costs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
+  .cost { display: flex; align-items: flex-start; gap: 1rem; padding: 1.25rem; }
+  .cost .ico { width: 2.75rem; height: 2.75rem; border-radius: 0.8rem; }
+  .cost .ico .pi { width: 1.45rem; height: 1.45rem; }
+  .cost strong { display: block; margin: 0 0 0.25rem; }
+  .cost p { margin: 0; color: var(--body); font-size: 0.97rem; }
+  /* The bridge: the ended window, what project-memory keeps, the new window; a line of light joins them */
+  .carry { isolation: isolate; margin: 1rem 0 0; padding: 1.75rem; display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.6fr) minmax(0, 0.8fr); align-items: center; gap: 2rem; }
+  .carry .win-body { height: 6.4rem; }
+  .carry .old .m { opacity: 0.55; }
+  .carry ul { position: relative; list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
+  .carry ul::before { content: ""; position: absolute; z-index: -1; left: -2rem; right: -2rem; top: 50%; height: 2px; background: linear-gradient(90deg, #F472B6, #22D3EE 30%, #60A5FA 70%, #A78BFA); box-shadow: 0 0 12px rgb(34 211 238 / .6); }
+  .carry li { display: flex; align-items: flex-start; gap: 0.85rem; padding: 0.85rem 1rem; border-radius: 0.85rem; background: #0A1438; border: 1px solid rgb(34 211 238 / .35); }
+  .carry li .pi { margin-top: 0.1rem; }
+  .carry li b { margin-right: 0.35rem; }
+  .carry li p { margin: 0.25rem 0 0; color: var(--body); font-size: 0.95rem; }
+
   /* How it works: four moments joined by a line of light */
   .flow { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem; margin: 0; padding: 0; list-style: none; }
   .flow::before { content: ""; position: absolute; left: 12.5%; right: 12.5%; top: 2.4rem; height: 2px; border-radius: 2px;
@@ -251,6 +294,41 @@
   .search li time { font: 600 0.78rem/1.6 var(--mono); color: var(--cyan); }
   .search li span { color: #DBE7FF; }
   .search li:first-child { border-color: rgb(34 211 238 / .45); background: rgb(34 211 238 / .08); }
+  .search .found { margin: 1rem 0 0.2rem; font-size: 0.9rem; line-height: 1.55; }
+  /* Each smaller tile opens with a small picture of how it works */
+  .mini { position: relative; isolation: isolate; display: grid; gap: 0.45rem; align-content: center; min-height: 7.6rem; padding: 0.85rem 0.95rem; border-radius: 0.85rem; background: rgb(6 11 36 / .7); border: 1px solid rgb(130 170 255 / .18); font: 500 0.78rem/1.3 var(--mono); color: #C9D6F5; }
+  .mini .pi { width: 1.1rem; height: 1.1rem; }
+  .pick { justify-items: start; padding-left: 2rem; }
+  .pick::before { content: ""; position: absolute; z-index: -1; left: 1rem; top: 1.4rem; bottom: 1.4rem; width: 2px; border-radius: 2px; background: linear-gradient(#F472B6, #60A5FA 50%, #22D3EE); }
+  .said { padding: 0.35rem 0.6rem; border-radius: 0.5rem; background: rgb(80 125 255 / .1); border: 1px solid rgb(130 170 255 / .22); font: 500 0.85rem/1.3 var(--sans); color: #DBE7FF; }
+  .said em { font: 700 0.75rem/1 var(--mono); font-style: normal; color: var(--cyan); margin-right: 0.45rem; }
+  .said.past { color: var(--body); border-style: dashed; }
+  .said.past em { color: #F9A8D4; }
+  .tl { grid-template-columns: repeat(4, minmax(0, 1fr)); align-content: start; row-gap: 0.75rem; padding-top: 1.1rem; text-align: center; }
+  .tl::before { content: ""; position: absolute; z-index: -1; left: calc(0.95rem + (100% - 1.9rem) / 8); right: calc(0.95rem + (100% - 1.9rem) / 8); top: calc(1.5rem - 1px); height: 2px; background: linear-gradient(90deg, #22D3EE, #A78BFA 70%, #F472B6); }
+  .v { display: grid; justify-items: center; gap: 0.3rem; color: #DBE7FF; }
+  .v i { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+  .v small { font-size: 0.75rem; color: var(--muted); }
+  .v.gone i { background: #0A1030; border: 2px solid var(--pink); box-shadow: 0 0 10px rgb(244 114 182 / .6); }
+  .v.gone small { color: #F9A8D4; }
+  .back { grid-column: 1 / -1; justify-self: center; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.65rem; border-radius: 99px; color: #A5F3FC; background: rgb(34 211 238 / .1); border: 1px solid rgb(34 211 238 / .4); }
+  .lt { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); align-items: center; gap: 0.7rem; }
+  .lt.hot { color: #F9A8D4; }
+  .lt.lit { color: #A5F3FC; }
+  .sh { justify-items: center; gap: 0; }
+  .sh-note { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.7rem; border-radius: 0.55rem; color: #DBE7FF; background: rgb(34 211 238 / .1); border: 1px solid rgb(34 211 238 / .45); font: 600 0.82rem/1.25 var(--sans); }
+  .sh-note small { display: block; font: 500 0.75rem/1.3 var(--mono); color: #A5F3FC; }
+  .sh-lines { display: block; width: 100%; height: 1.7rem; }
+  .sh-row { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); justify-items: center; }
+  .sh-row span { padding: 0.3rem 0.6rem; border-radius: 0.45rem; color: #DBE7FF; background: #0C1640; border: 1px solid rgb(130 170 255 / .3); }
+  .tw { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 0.6rem; text-align: center; }
+  .tw::before { content: ""; position: absolute; z-index: -1; left: 2rem; right: 2rem; top: 50%; height: 2px; background: linear-gradient(90deg, #22D3EE, #A78BFA 50%, rgb(130 170 255 / .35)); }
+  .tw .w { display: grid; gap: 0.25rem; padding: 0.6rem 0.25rem; border-radius: 0.6rem; color: #DBE7FF; background: #0C1640; border: 1px solid rgb(130 170 255 / .25); font: 600 0.82rem/1.2 var(--sans); }
+  .tw .w.on { border-color: rgb(34 211 238 / .6); box-shadow: 0 0 16px rgb(34 211 238 / .2); }
+  .tw small { font: 500 0.75rem/1.2 var(--mono); color: var(--muted); }
+  .tw .on small { color: #A5F3FC; }
+  .lockbox { display: grid; justify-items: center; gap: 0.25rem; padding: 0.5rem 0.6rem; border-radius: 0.7rem; color: #DDD6FE; background: #0A1030; border: 1px solid rgb(167 139 250 / .55); }
+  .mini .lockbox .pi { width: 1.5rem; height: 1.5rem; }
 
   /* Kept on track */
   .track-wrap { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
@@ -284,7 +362,6 @@
   .tree .pi { width: 1.25rem; height: 1.25rem; }
   .tree em { font-style: normal; color: var(--cyan); }
   .tree .path { min-width: 0; overflow-wrap: anywhere; }
-  @media (max-width: 1100px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .offline { display: flex; align-items: center; gap: 0.85rem; margin: 0.9rem 1.3rem 1.3rem; padding: 0.8rem 0.95rem; border-radius: 0.8rem; border: 1px dashed rgb(244 114 182 / .55); color: #F9A8D4; font-weight: 600; background: rgb(244 114 182 / .06); }
   .offline .pi { width: 1.7rem; height: 1.7rem; }
   .items { display: grid; gap: 0.9rem; margin: 0; padding: 0; list-style: none; }
@@ -293,26 +370,62 @@
   .aside { display: flex; gap: 0.75rem; align-items: flex-start; color: var(--body); max-width: 52rem; margin: 2rem 0 1.75rem; }
   .aside .pi { width: 1.4rem; height: 1.4rem; margin-top: 0.15rem; }
 
-  /* Built with care: four numbers */
-  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
-  .stats li { padding: 1.5rem; }
-  .stats .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin: 0 0 0.6rem; }
-  .stats .big { font: 800 clamp(2.4rem, 4vw, 3.2rem)/1 var(--sans); letter-spacing: -0.03em; }
-  .stats .ico { width: 2.75rem; height: 2.75rem; border-radius: 0.8rem; }
-  .stats .ico .pi { width: 1.5rem; height: 1.5rem; }
-  .stats h3 { font-size: 1.05rem; margin: 0 0 0.35rem; }
-  .stats p { margin: 0; color: var(--body); font-size: 0.95rem; }
+  /* Built with care: each check, a picture of it, and why it protects your notes */
+  .care { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
+  .check { display: grid; grid-template-columns: 13.5rem minmax(0, 1fr); align-items: center; gap: 1.5rem; padding: 1.5rem; }
+  .check > * { min-width: 0; }
+  .check h3 { font-size: 1.05rem; margin: 0 0 0.4rem; }
+  .check .big { display: block; margin: 0 0 0.45rem; font: 800 clamp(2.3rem, 3.6vw, 2.9rem)/1 var(--sans); letter-spacing: -0.03em; }
+  .check p { margin: 0; color: var(--body); font-size: 0.95rem; }
+  .check .why { display: flex; gap: 0.55rem; margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--line); color: #DBE7FF; }
+  .why .pi { width: 1.15rem; height: 1.15rem; margin-top: 0.2rem; }
+  .art { display: grid; align-content: center; gap: 0.45rem; min-height: 10rem; padding: 0.9rem; border-radius: 0.9rem; background: rgb(6 11 36 / .7); border: 1px solid rgb(130 170 255 / .18); font: 600 0.75rem/1.2 var(--mono); color: #C9D6F5; }
+  .matrix { grid-template-columns: auto repeat(3, minmax(0, 1fr)); align-items: center; justify-items: center; gap: 0.45rem 0.4rem; }
+  .matrix .os { justify-self: start; color: #DBE7FF; }
+  .matrix .h { color: var(--cyan); }
+  .matrix .ok, .matrix .off { width: 100%; max-width: 2rem; aspect-ratio: 1; border-radius: 0.45rem; display: grid; place-items: center; }
+  .matrix .ok { background: linear-gradient(160deg, #67E8F9, #3B82F6); box-shadow: 0 0 12px rgb(34 211 238 / .45); }
+  .matrix .ok::after { content: ""; width: 0.55rem; height: 0.3rem; margin-top: -0.12rem; border: solid #04121F; border-width: 0 0 2px 2px; transform: rotate(-45deg); }
+  .matrix .off { border: 1px dashed rgb(130 170 255 / .3); }
+  .ln { display: flex; align-items: center; gap: 0.45rem; min-height: 1.2rem; }
+  .ln::before { content: ""; order: 1; flex: 0 1 var(--w); height: 0.45rem; border-radius: 99px; background: rgb(219 231 255 / .28); }
+  .ln:not(.bug) { padding-left: 1.5rem; }
+  .ln.bug::before { background: rgb(244 114 182 / .55); }
+  .ln .pi { width: 1.05rem; height: 1.05rem; }
+  .ln b { order: 2; margin-left: auto; padding: 0.15rem 0.45rem; border-radius: 99px; color: #04121F; background: linear-gradient(135deg, #67E8F9, #3B82F6); }
+  .ins { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .ins span { padding: 0.2rem 0.45rem; border-radius: 0.4rem; color: #F9A8D4; background: rgb(244 114 182 / .1); border: 1px solid rgb(244 114 182 / .4); }
+  .fleet { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 0.3rem; max-width: 17rem; margin-top: 0.35rem; }
+  .fleet i { aspect-ratio: 1; border-radius: 0.3rem; border: 1px solid rgb(34 211 238 / .45); background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), #67E8F9 0 16%, transparent 22%), rgb(34 211 238 / .1); }
+  .fleet i:nth-child(3n) { --x: 30%; --y: 68%; }
+  .fleet i:nth-child(3n+1) { --x: 70%; --y: 32%; }
+  .fleet i:nth-child(4n) { --x: 34%; --y: 30%; }
+  .art .cap { color: var(--muted); }
+  .deps { justify-items: center; gap: 0.6rem; }
+  .badge { display: inline-flex; border-radius: 0.45rem; overflow: hidden; border: 1px solid rgb(34 211 238 / .4); }
+  .badge span { padding: 0.32rem 0.55rem; color: #DBE7FF; background: rgb(20 30 80 / .9); }
+  .badge b { padding: 0.32rem 0.55rem; color: #04121F; background: linear-gradient(135deg, #67E8F9, #3B82F6); }
+  @media (max-width: 1100px) { .check { grid-template-columns: 1fr; align-items: start; } .art { min-height: 8.5rem; } }
 
-  /* Comparison */
-  .compare-box { padding: 0.5rem 1.5rem; overflow: hidden; }
-  .compare { width: 100%; border-collapse: collapse; }
-  .compare th, .compare td { text-align: left; vertical-align: top; padding: 1.05rem 1rem; border-bottom: 1px solid var(--line); }
-  .compare tr:last-child td { border-bottom: 0; }
-  .compare thead th { font-size: 0.82rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
-  .compare thead th.us { color: var(--cyan); }
-  .compare td:first-child { color: var(--muted); width: 50%; }
-  .compare td.us { color: var(--ink); }
-  .compare td.us::before { content: ""; display: inline-block; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); margin-right: 0.6rem; vertical-align: 0.12em; }
+  /* Compared: one row per need, a mark on each side */
+  .vs-box { padding: 0.25rem 0; overflow: hidden; }
+  .vs { width: 100%; border-collapse: collapse; }
+  .vs th, .vs td { text-align: left; vertical-align: top; padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); }
+  .vs tbody tr:last-child > * { border-bottom: 0; }
+  .vs thead th { font: 700 0.8rem/1.3 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); vertical-align: bottom; }
+  .vs thead .us span { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--cyan); }
+  .vs thead img { width: 1.6rem; height: auto; filter: drop-shadow(0 0 6px rgb(34 211 238 / .5)); }
+  .vs tbody th { width: 20%; color: var(--ink); white-space: nowrap; }
+  .vs td { width: 40%; color: var(--body); }
+  .vs .us { color: var(--ink); background: rgb(34 211 238 / .06); }
+  .vs .need, .vs .cell { display: flex; align-items: flex-start; gap: 0.7rem; }
+  .vs .need .pi { width: 1.35rem; height: 1.35rem; margin-top: 0.1rem; }
+  .mk { width: 1.35rem; height: 1.35rem; margin-top: 0.12rem; }
+  .pi.half { fill: #C4B5FD; filter: none; }
+  .limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin: 0; padding: 0; list-style: none; }
+  .limits li { display: flex; align-items: center; gap: 0.75rem; padding: 0.9rem 1.1rem; border-radius: 0.9rem; color: #DBE7FF; background: rgb(139 92 246 / .06); border: 1px dashed rgb(167 139 250 / .45); font-size: 0.97rem; }
+  .limits .pi { width: 1.35rem; height: 1.35rem; }
+  .vs-box + .sub { margin-top: 2.25rem; }
   .more { margin: 1.5rem 0 0; color: var(--body); }
 
   /* Install */
@@ -366,11 +479,19 @@
     .hero { gap: 3.5rem; padding-top: 2.5rem; }
     .float.a { right: 0; }
     .float.b { left: 0; }
-    .bento, .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .tile.big { grid-column: span 2; grid-row: auto; }
+    .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tile.big, .bento > :last-child { grid-column: span 2; grid-row: auto; }
     .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 2.5rem; }
     .flow::before, .flow::after { display: none; }
-    .track-wrap { grid-template-columns: 1fr; }
+    .track-wrap, .costs, .limits { grid-template-columns: 1fr; }
+    .ctx { grid-template-columns: 1fr; }
+    .ctx > li { display: grid; grid-template-columns: 15rem minmax(0, 1fr); column-gap: 1.5rem; align-items: center; }
+    .ctx .win { grid-row: span 2; }
+    .ctx h3 { margin-top: 0; align-self: end; }
+    .ctx p { align-self: start; }
+    .carry { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+    .carry ul { grid-column: 1 / -1; order: 3; }
+    .carry ul::before { display: none; }
   }
   @media (max-width: 680px) {
     body { font-size: 1rem; }
@@ -379,22 +500,29 @@
     .bar nav a.gh span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     .bar nav a.gh { min-width: 2.75rem; justify-content: center; padding: 0; }
     .part { padding: 4.25rem 0; }
-    .bento, .stats, .flow { grid-template-columns: 1fr; }
+    .bento, .care, .flow { grid-template-columns: 1fr; }
     .tile.big { grid-column: auto; grid-template-columns: 1fr; }
+    .bento > :last-child { grid-column: auto; }
+    .ctx > li { display: block; }
+    .ctx h3 { margin-top: 1.1rem; }
+    .carry { padding: 1.25rem; }
+    .carry .win-body { height: 4.6rem; }
     .story { grid-template-columns: 1fr; row-gap: 1.5rem; }
     .fork { display: none; }
     .demo .panel { min-height: 0; font-size: 0.86rem; }
     .orbit, .float { display: none; }
     .demo { padding-top: 0; }
-    .compare-box { padding: 0.25rem 1.1rem; }
-    .compare thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-    .compare tr { display: block; padding: 1rem 0; border-bottom: 1px solid var(--line); }
-    .compare tr:last-child { border-bottom: 0; }
-    .compare td { display: block; width: auto !important; padding: 0; border: 0; }
-    .compare td + td { padding-top: 0.4rem; }
-    .compare td.us::before { display: none; }
-    .compare td:first-child::before { content: "Claude Code alone: "; font-weight: 700; color: var(--ink); }
-    .compare td + td::before { content: "With project-memory: "; font-weight: 700; color: var(--cyan); }
+    /* On a phone each need becomes a card; the hidden header still names the columns for screen readers. */
+    .vs-box { padding: 0 1.1rem; }
+    .vs thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .vs tr { display: block; padding: 1.1rem 0; border-bottom: 1px solid var(--line); }
+    .vs tbody tr:last-child { border-bottom: 0; }
+    .vs th, .vs td { display: block; width: auto; padding: 0; border: 0; }
+    .vs tbody th { width: auto; margin: 0 0 0.7rem; }
+    .vs td { background: none; }
+    .vs td::before { content: "Claude Code alone" / ""; display: block; margin: 0 0 0.3rem; font: 700 0.75rem/1.2 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+    .vs td.us { margin-top: 0.7rem; padding: 0.75rem 0.85rem; border-radius: 0.75rem; background: rgb(34 211 238 / .06); box-shadow: inset 0 0 0 1px rgb(34 211 238 / .3); }
+    .vs td.us::before { content: "With project-memory" / ""; color: var(--cyan); }
     .code { padding: 3.6rem 1rem 1rem; }
     .code code { font-size: 0.82rem; }
   }
@@ -413,6 +541,8 @@
   </defs>
   <symbol id="gh-mark" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
   <!--PHOSPHOR-->
+  <symbol id="p-arrow-counter-clockwise" viewBox="0 0 256 256"><path d="M216,128a88,88,0,1,1-88-88A88,88,0,0,1,216,128Z" opacity="0.2"/><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></symbol>
+  <symbol id="p-arrows-in-line-vertical" viewBox="0 0 256 256"><path d="M216,32V224a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V32A16,16,0,0,1,56,16H200A16,16,0,0,1,216,32Z" opacity="0.2"/><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM122.34,101.66a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32L136,76.69V16a8,8,0,0,0-16,0V76.69L101.66,58.34A8,8,0,0,0,90.34,69.66Zm11.32,52.68a8,8,0,0,0-11.32,0l-32,32a8,8,0,0,0,11.32,11.32L120,179.31V240a8,8,0,0,0,16,0V179.31l18.34,18.35a8,8,0,0,0,11.32-11.32Z"/></symbol>
   <symbol id="p-brain" viewBox="0 0 256 256"><path d="M240,124a48,48,0,0,1-32,45.27h0V176a40,40,0,0,1-80,0,40,40,0,0,1-80,0v-6.73h0a48,48,0,0,1,0-90.54V72a40,40,0,0,1,80,0,40,40,0,0,1,80,0v6.73A48,48,0,0,1,240,124Z" opacity="0.2"/><path d="M248,124a56.11,56.11,0,0,0-32-50.61V72a48,48,0,0,0-88-26.49A48,48,0,0,0,40,72v1.39a56,56,0,0,0,0,101.2V176a48,48,0,0,0,88,26.49A48,48,0,0,0,216,176v-1.41A56.09,56.09,0,0,0,248,124ZM88,208a32,32,0,0,1-31.81-28.56A55.87,55.87,0,0,0,64,180h8a8,8,0,0,0,0-16H64A40,40,0,0,1,50.67,86.27,8,8,0,0,0,56,78.73V72a32,32,0,0,1,64,0v68.26A47.8,47.8,0,0,0,88,128a8,8,0,0,0,0,16,32,32,0,0,1,0,64Zm104-44h-8a8,8,0,0,0,0,16h8a55.87,55.87,0,0,0,7.81-.56A32,32,0,1,1,168,144a8,8,0,0,0,0-16,47.8,47.8,0,0,0-32,12.26V72a32,32,0,0,1,64,0v6.73a8,8,0,0,0,5.33,7.54A40,40,0,0,1,192,164Zm16-52a8,8,0,0,1-8,8h-4a36,36,0,0,1-36-36V80a8,8,0,0,1,16,0v4a20,20,0,0,0,20,20h4A8,8,0,0,1,208,112ZM60,120H56a8,8,0,0,1,0-16h4A20,20,0,0,0,80,84V80a8,8,0,0,1,16,0v4A36,36,0,0,1,60,120Z"/></symbol>
   <symbol id="p-browsers" viewBox="0 0 256 256"><path d="M224,56V168a8,8,0,0,1-8,8H192V88a8,8,0,0,0-8-8H64V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z" opacity="0.2"/><path d="M216,40H72A16,16,0,0,0,56,56V72H40A16,16,0,0,0,24,88V200a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V184h16a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,88H184v16H40ZM184,200H40V120H184v80Zm32-32H200V88a16,16,0,0,0-16-16H72V56H216Z"/></symbol>
   <symbol id="p-bug" viewBox="0 0 256 256"><path d="M208,128v16a80,80,0,0,1-160,0V128Z" opacity="0.2"/><path d="M144,92a12,12,0,1,1,12,12A12,12,0,0,1,144,92ZM100,80a12,12,0,1,0,12,12A12,12,0,0,0,100,80Zm116,64A87.76,87.76,0,0,1,213,167l22.24,9.72A8,8,0,0,1,232,192a7.89,7.89,0,0,1-3.2-.67L207.38,182a88,88,0,0,1-158.76,0L27.2,191.33A7.89,7.89,0,0,1,24,192a8,8,0,0,1-3.2-15.33L43,167A87.76,87.76,0,0,1,40,144v-8H16a8,8,0,0,1,0-16H40v-8a87.76,87.76,0,0,1,3-23L20.8,79.33a8,8,0,1,1,6.4-14.66L48.62,74a88,88,0,0,1,158.76,0l21.42-9.36a8,8,0,0,1,6.4,14.66L213,89.05a87.76,87.76,0,0,1,3,23v8h24a8,8,0,0,1,0,16H216ZM56,120H200v-8a72,72,0,0,0-144,0Zm64,95.54V136H56v8A72.08,72.08,0,0,0,120,215.54ZM200,144v-8H136v79.54A72.08,72.08,0,0,0,200,144Z"/></symbol>
@@ -433,14 +563,16 @@
   <symbol id="p-list-checks" viewBox="0 0 256 256"><path d="M216,64V192H128V64Z" opacity="0.2"/><path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/></symbol>
   <symbol id="p-lock-key" viewBox="0 0 256 256"><path d="M208,88H48a8,8,0,0,0-8,8V208a8,8,0,0,0,8,8H208a8,8,0,0,0,8-8V96A8,8,0,0,0,208,88Zm-80,72a20,20,0,1,1,20-20A20,20,0,0,1,128,160Z" opacity="0.2"/><path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Zm-80-96a28,28,0,0,0-8,54.83V184a8,8,0,0,0,16,0V166.83A28,28,0,0,0,128,112Zm0,40a12,12,0,1,1,12-12A12,12,0,0,1,128,152Z"/></symbol>
   <symbol id="p-magnifying-glass" viewBox="0 0 256 256"><path d="M192,112a80,80,0,1,1-80-80A80,80,0,0,1,192,112Z" opacity="0.2"/><path d="M229.66,218.34,179.6,168.28a88.21,88.21,0,1,0-11.32,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></symbol>
+  <symbol id="p-minus-circle" viewBox="0 0 256 256"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" opacity="0.2"/><path d="M176,128a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,128Zm56,0A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></symbol>
   <symbol id="p-notebook" viewBox="0 0 256 256"><path d="M80,40V216H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8Z" opacity="0.2"/><path d="M184,112a8,8,0,0,1-8,8H112a8,8,0,0,1,0-16h64A8,8,0,0,1,184,112Zm-8,24H112a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16Zm48-88V208a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H72V48H48Zm160,0V48H88V208H208Z"/></symbol>
   <symbol id="p-package" viewBox="0 0 256 256"><path d="M128,129.09V232a8,8,0,0,1-3.84-1l-88-48.18a8,8,0,0,1-4.16-7V80.18a8,8,0,0,1,.7-3.25Z" opacity="0.2"/><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,32l80.34,44-29.77,16.3-80.35-44ZM128,120,47.66,76l33.9-18.56,80.34,44ZM40,90l80,43.78v85.79L40,175.82Zm176,85.78h0l-80,43.79V133.82l32-17.51V152a8,8,0,0,0,16,0V107.55L216,90v85.77Z"/></symbol>
   <symbol id="p-play-circle" viewBox="0 0 256 256"><path d="M128,32a96,96,0,1,0,96,96A96,96,0,0,0,128,32ZM108,168V88l64,40Z" opacity="0.2"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48.24-94.78-64-40A8,8,0,0,0,100,88v80a8,8,0,0,0,12.24,6.78l64-40a8,8,0,0,0,0-13.56ZM116,153.57V102.43L156.91,128Z"/></symbol>
   <symbol id="p-plus" viewBox="0 0 256 256"><path d="M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z" opacity="0.2"/><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></symbol>
+  <symbol id="p-question" viewBox="0 0 256 256"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" opacity="0.2"/><path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></symbol>
   <symbol id="p-share-network" viewBox="0 0 256 256"><path d="M208,200a32,32,0,1,1-32-32A32,32,0,0,1,208,200ZM176,88a32,32,0,1,0-32-32A32,32,0,0,0,176,88Z" opacity="0.2"/><path d="M176,160a39.89,39.89,0,0,0-28.62,12.09l-46.1-29.63a39.8,39.8,0,0,0,0-28.92l46.1-29.63a40,40,0,1,0-8.66-13.45l-46.1,29.63a40,40,0,1,0,0,55.82l46.1,29.63A40,40,0,1,0,176,160Zm0-128a24,24,0,1,1-24,24A24,24,0,0,1,176,32ZM64,152a24,24,0,1,1,24-24A24,24,0,0,1,64,152Zm112,72a24,24,0,1,1,24-24A24,24,0,0,1,176,224Z"/></symbol>
   <symbol id="p-shield-check" viewBox="0 0 256 256"><path d="M216,56v56c0,96-88,120-88,120S40,208,40,112V56a8,8,0,0,1,8-8H208A8,8,0,0,1,216,56Z" opacity="0.2"/><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/></symbol>
-  <symbol id="p-shuffle" viewBox="0 0 256 256"><path d="M107.14,98.8,128,128l-20.86,29.2A64,64,0,0,1,55.06,184H32V72H55.06A64,64,0,0,1,107.14,98.8ZM200.94,72a64,64,0,0,0-52.08,26.8L128,128l20.86,29.2A64,64,0,0,0,200.94,184H232V72Z" opacity="0.2"/><path d="M237.66,178.34a8,8,0,0,1,0,11.32l-24,24a8,8,0,0,1-11.32-11.32L212.69,192H200.94a72.12,72.12,0,0,1-58.59-30.15l-41.72-58.4A56.1,56.1,0,0,0,55.06,80H32a8,8,0,0,1,0-16H55.06a72.12,72.12,0,0,1,58.59,30.15l41.72,58.4A56.1,56.1,0,0,0,200.94,176h11.75l-10.35-10.34a8,8,0,0,1,11.32-11.32ZM143,107a8,8,0,0,0,11.16-1.86l1.2-1.67A56.1,56.1,0,0,1,200.94,80h11.75L202.34,90.34a8,8,0,0,0,11.32,11.32l24-24a8,8,0,0,0,0-11.32l-24-24a8,8,0,0,0-11.32,11.32L212.69,64H200.94a72.12,72.12,0,0,0-58.59,30.15l-1.2,1.67A8,8,0,0,0,143,107Zm-30,42a8,8,0,0,0-11.16,1.86l-1.2,1.67A56.1,56.1,0,0,1,55.06,176H32a8,8,0,0,0,0,16H55.06a72.12,72.12,0,0,0,58.59-30.15l1.2-1.67A8,8,0,0,0,113,149Z"/></symbol>
   <symbol id="p-sun-horizon" viewBox="0 0 256 256"><path d="M192,144a64.33,64.33,0,0,1-2,16H66a64,64,0,1,1,126-16Z" opacity="0.2"/><path d="M240,152H199.55a73.54,73.54,0,0,0,.45-8,72,72,0,0,0-144,0,73.54,73.54,0,0,0,.45,8H16a8,8,0,0,0,0,16H240a8,8,0,0,0,0-16ZM72,144a56,56,0,1,1,111.41,8H72.59A56.13,56.13,0,0,1,72,144Zm144,56a8,8,0,0,1-8,8H48a8,8,0,0,1,0-16H208A8,8,0,0,1,216,200ZM72.84,43.58a8,8,0,0,1,14.32-7.16l8,16a8,8,0,0,1-14.32,7.16Zm-56,48.84a8,8,0,0,1,10.74-3.57l16,8a8,8,0,0,1-7.16,14.31l-16-8A8,8,0,0,1,16.84,92.42Zm192,15.16a8,8,0,0,1,3.58-10.73l16-8a8,8,0,1,1,7.16,14.31l-16,8a8,8,0,0,1-10.74-3.58Zm-48-55.16,8-16a8,8,0,0,1,14.32,7.16l-8,16a8,8,0,1,1-14.32-7.16Z"/></symbol>
+  <symbol id="p-x-circle" viewBox="0 0 256 256"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" opacity="0.2"/><path d="M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></symbol>
   <!--/PHOSPHOR-->
 </svg>
 
@@ -568,6 +700,68 @@
     </div>
   </section>
 
+  <section class="part" id="context" aria-labelledby="context-h">
+    <div class="wrap">
+      <p class="eyebrow">Why context memory matters</p>
+      <h2 id="context-h">Claude sees only <span class="grad">what fits in its window.</span></h2>
+      <p class="intro">Claude doesn't remember the way you do. In a conversation it works from its <strong>context window</strong>: everything it can see right now, from your messages and its replies to the files it has read. The window has a budget, counted in tokens, small pieces of words.</p>
+      <ol class="ctx">
+        <li>
+          <div class="glass win" aria-hidden="true">
+            <div class="term-bar"><b>Conversation</b><span>nearly full</span></div>
+            <div class="win-body"><i class="m" style="--w:55%"></i><i class="m c" style="--w:78%"></i><i class="m f" style="--w:62%"></i><i class="m" style="--w:40%"></i><i class="m c" style="--w:84%"></i><i class="m f" style="--w:70%"></i><i class="m c" style="--w:58%"></i></div>
+            <div class="gauge full"><b style="--w:92%"></b></div>
+          </div>
+          <h3><span class="num" aria-hidden="true">1</span>It fills up</h3>
+          <p>Every message, every reply and every file Claude reads takes room. A long conversation fills the window.</p>
+        </li>
+        <li>
+          <div class="glass hot win" aria-hidden="true">
+            <div class="term-bar"><b>Conversation</b><span>a summary</span></div>
+            <div class="win-body"><span class="sum"><svg class="pi"><use href="#p-arrows-in-line-vertical"/></svg>summary</span><i class="m lost" style="--w:70%"></i><i class="m lost" style="--w:52%"></i><i class="m lost" style="--w:64%"></i></div>
+            <div class="gauge"><b style="--w:24%"></b></div>
+          </div>
+          <h3><span class="num" aria-hidden="true">2</span>It's shortened to a summary</h3>
+          <p>Claude Code then shortens the conversation to a summary. It reloads your notes afterwards, but the details of a task in progress can get lost.</p>
+        </li>
+        <li>
+          <div class="glass win" aria-hidden="true">
+            <div class="term-bar"><b>New conversation</b><span>empty</span></div>
+            <div class="win-body"><span class="nb"><svg class="pi"><use href="#p-notebook"/></svg>MEMORY.md</span><span class="empty"></span></div>
+            <div class="gauge"><b style="--w:8%"></b></div>
+          </div>
+          <h3><span class="num" aria-hidden="true">3</span>The next one starts empty</h3>
+          <p>A new conversation starts with an empty window. Claude Code's own memory brings along only the notes Claude chose to write in its notebook, <span class="tok">MEMORY.md</span>.</p>
+        </li>
+      </ol>
+
+      <h3 class="sub">Why it matters</h3>
+      <ul class="costs">
+        <li class="glass hot cost"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-chat-teardrop-text"/></svg></span><div><strong>You explain it again</strong><p>A new conversation asks what you were working on, and you go over the project once more.</p></div></li>
+        <li class="glass hot cost"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-question"/></svg></span><div><strong>Decisions get lost</strong><p>What you decided, and why, leaves with the old conversation, unless Claude wrote a note about it.</p></div></li>
+        <li class="glass hot cost"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-arrow-counter-clockwise"/></svg></span><div><strong>A task starts over</strong><p>A long task cut down to a summary can lose the details of where it was, and may start again from the top.</p></div></li>
+      </ul>
+
+      <h3 class="sub">What project-memory carries across</h3>
+      <div class="glass lit carry">
+        <div class="glass win old" aria-hidden="true">
+          <div class="term-bar"><b>Monday</b><span>ended</span></div>
+          <div class="win-body"><i class="m" style="--w:55%"></i><i class="m c" style="--w:80%"></i><i class="m f" style="--w:62%"></i><i class="m c" style="--w:66%"></i></div>
+        </div>
+        <ul>
+          <li><svg class="pi" aria-hidden="true"><use href="#p-file-text"/></svg><div><b>The handoff</b><span class="tok">handoff.md</span><p>After every reply, a record of the latest exchanges: where you stopped.</p></div></li>
+          <li><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg><div><b>The journal</b><span class="tok">journal/</span><p>Every exchange, one file per day. It isn't loaded, only searched when you ask about earlier work.</p></div></li>
+          <li><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg><div><b>The briefing</b><p>A new conversation starts with a short note of where the last one stopped, usually under 1,000 tokens. After a summary, Claude is told what you asked and what it last said.</p></div></li>
+        </ul>
+        <div class="glass lit win" aria-hidden="true">
+          <div class="term-bar"><b>Tuesday</b><span>new</span></div>
+          <div class="win-body"><span class="nb lit"><svg class="pi"><use href="#p-sun-horizon"/></svg>briefing</span><span class="empty"></span></div>
+        </div>
+      </div>
+      <p class="footnote">Claude is reminded to save its notes when the window is 85% full. project-memory assumes a window of 1,000,000 tokens; if your model holds 200,000, the reminder needs <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">one setting</a>.</p>
+    </div>
+  </section>
+
   <section class="part" id="how" aria-labelledby="how-h">
     <div class="wrap">
       <p class="eyebrow">How it works</p>
@@ -601,13 +795,51 @@
               <li><time>11 Sep</time><span>Green version hard to read, dropped</span></li>
               <li><time>9 Sep</time><span>First logo sketches, three colours</span></li>
             </ul>
+            <p class="cl found">On 12 September we kept the brain with the code mark, and <b>dropped the green version because it was hard to read.</b></p>
           </div>
         </div>
-        <div class="glass tile"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-play-circle"/></svg></span><div><h3>Picks up where you left off</h3><p>A new conversation starts already knowing where the last one stopped.</p></div></div>
-        <div class="glass tile"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-clock-counter-clockwise"/></svg></span><div><h3>Keeps old versions of notes <span class="note">(needs Git)</span></h3><p>A note deleted or overwritten by mistake comes back when you ask.</p></div></div>
-        <div class="glass tile"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-list-checks"/></svg></span><div><h3>Keeps long tasks on track</h3><p>Before a long conversation is shortened, Claude saves its notes, and afterwards it's told where it was.</p></div></div>
-        <div class="glass tile"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-share-network"/></svg></span><div><h3>Shares lessons across projects</h3><p>Teach Claude a habit once, and every project knows it.</p></div></div>
-        <div class="glass tile"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-browsers"/></svg></span><div><h3>Two windows, no clashes</h3><p>Two Claude windows on one project don't overwrite each other.</p></div></div>
+        <div class="glass tile">
+          <div class="mini pick" aria-hidden="true">
+            <span class="said past"><em>Mon</em>Let's stop here.</span>
+            <span class="tok">handoff.md</span>
+            <span class="said"><em>Tue</em>We stopped before pricing.</span>
+          </div>
+          <div><h3>Picks up where you left off</h3><p>After every reply it notes where you stopped, and the next conversation starts from there.</p></div>
+        </div>
+        <div class="glass tile">
+          <div class="mini tl" aria-hidden="true">
+            <span class="v"><i></i>Mon<small>saved</small></span>
+            <span class="v"><i></i>Tue<small>edited</small></span>
+            <span class="v"><i></i>Wed<small>edited</small></span>
+            <span class="v gone"><i></i>Thu<small>deleted</small></span>
+            <span class="back"><svg class="pi"><use href="#p-clock-counter-clockwise"/></svg>Wed's version is back</span>
+          </div>
+          <div><h3>Keeps old versions of notes <span class="note">(needs Git)</span></h3><p>Every version of a note is kept on your computer. Ask, and an old one comes back.</p></div>
+        </div>
+        <div class="glass tile">
+          <div class="mini" aria-hidden="true">
+            <span class="lt"><span class="gauge"><b style="--w:85%"></b></span>85%: notes saved</span>
+            <span class="lt hot"><span class="gauge full"><b style="--w:100%"></b></span>full: a summary</span>
+            <span class="lt lit"><span class="gauge"><b style="--w:22%"></b></span>told where it was</span>
+          </div>
+          <div><h3>Keeps long tasks on track</h3><p>Before a long conversation is shortened, Claude saves its notes, and afterwards it's told where it was.</p></div>
+        </div>
+        <div class="glass tile">
+          <div class="mini sh" aria-hidden="true">
+            <span class="sh-note"><svg class="pi"><use href="#p-notebook"/></svg><span>Shared notebook<small>"I like plain language."</small></span></span>
+            <svg class="sh-lines" viewBox="0 0 300 30" preserveAspectRatio="none"><path d="M150 0 C 150 18, 50 12, 50 30 M150 0 V 30 M150 0 C 150 18, 250 12, 250 30" fill="none" stroke="#60A5FA" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+            <span class="sh-row"><span>shop</span><span>blog</span><span>app</span></span>
+          </div>
+          <div><h3>Shares lessons across projects</h3><p>Ask Claude to remember something for all your projects, and it goes in a shared notebook every project reads.</p></div>
+        </div>
+        <div class="glass tile">
+          <div class="mini tw" aria-hidden="true">
+            <span class="w on">Window 1<small>writing</small></span>
+            <span class="lockbox"><svg class="pi"><use href="#p-lock-key"/></svg>notes</span>
+            <span class="w">Window 2<small>waits its turn</small></span>
+          </div>
+          <div><h3>Two windows, no clashes</h3><p>Only one window writes the notes at a time, and each is told what the other is working on.</p></div>
+        </div>
       </div>
     </div>
   </section>
@@ -671,11 +903,59 @@
       <p class="eyebrow">Built with care</p>
       <h2 id="care-h">It runs on your notes, <span class="grad">so it has to be right.</span></h2>
       <p class="intro">These checks run on every change, and the biggest before every release.</p>
-      <ul class="stats">
-        <li class="glass"><div class="head"><span class="big grad">3</span><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-desktop"/></svg></span></div><h3>systems, every change</h3><p>Windows, macOS and Linux on Node.js 24 and 26, and Linux on 22 too.</p></li>
-        <li class="glass"><div class="head"><span class="big grad">3,000+</span><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-bug"/></svg></span></div><h3>planted bugs, all caught</h3><p>Before a release, small bugs are planted in the code on purpose, and the tests must catch every one.</p></li>
-        <li class="glass"><div class="head"><span class="big grad">17</span><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-shuffle"/></svg></span></div><h3>machines at once</h3><p>Before a release, ten minutes of random conversations, time-zone changes, disk errors and interrupted runs.</p></li>
-        <li class="glass"><div class="head"><span class="big grad">0</span><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-package"/></svg></span></div><h3>dependencies</h3><p>Nothing extra to download, and the code is open for anyone to read. MIT licence.</p></li>
+      <ul class="care">
+        <li class="glass check">
+          <div class="art matrix" aria-hidden="true">
+            <span class="cap">Node.js</span><span class="h">22</span><span class="h">24</span><span class="h">26</span>
+            <span class="os">Windows</span><span class="off"></span><span class="ok"></span><span class="ok"></span>
+            <span class="os">macOS</span><span class="off"></span><span class="ok"></span><span class="ok"></span>
+            <span class="os">Linux</span><span class="ok"></span><span class="ok"></span><span class="ok"></span>
+          </div>
+          <div>
+            <h3><span class="big grad">3</span> systems, on every change</h3>
+            <p>The tests run on Windows, macOS and Linux with Node.js 24 and 26, and on Linux with 22 too.</p>
+            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>Each system handles files and times its own way. A mistake that shows on only one of them turns up in the tests before it reaches you.</span></p>
+          </div>
+        </li>
+        <li class="glass check">
+          <div class="art mut" aria-hidden="true">
+            <span class="ln" style="--w:80%"></span>
+            <span class="ln bug" style="--w:56%"><svg class="pi warn"><use href="#p-bug"/></svg><b>caught</b></span>
+            <span class="ln" style="--w:68%"></span>
+            <span class="ln" style="--w:48%"></span>
+            <span class="ln bug" style="--w:62%"><svg class="pi warn"><use href="#p-bug"/></svg><b>caught</b></span>
+            <span class="ln" style="--w:72%"></span>
+          </div>
+          <div>
+            <h3><span class="big grad">3,000+</span> planted bugs, all caught</h3>
+            <p>Before a release, more than 3,000 small bugs are planted in the code, one at a time, and the tests must catch every one.</p>
+            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>It shows the tests notice when the code stops doing its job, before that job is looking after your notes.</span></p>
+          </div>
+        </li>
+        <li class="glass check">
+          <div class="art fuzz" aria-hidden="true">
+            <span class="ins"><span>random chats</span><span>time zones</span><span>disk errors</span><span>cut-off runs</span></span>
+            <span class="fleet"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+            <span class="cap">17 machines, 10 minutes each</span>
+          </div>
+          <div>
+            <h3><span class="big grad">17</span> machines at once</h3>
+            <p>Before a release, ten minutes of random conversations, time-zone changes, disk errors and interrupted runs, sent through the real code.</p>
+            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>Every run checks that each note keeps its text and that nothing private is written down.</span></p>
+          </div>
+        </li>
+        <li class="glass check">
+          <div class="art deps" aria-hidden="true">
+            <span class="ico"><svg class="pi"><use href="#p-package"/></svg></span>
+            <span class="badge"><span>dependencies</span><b>0</b></span>
+            <span class="badge"><span>licence</span><b>MIT</b></span>
+          </div>
+          <div>
+            <h3><span class="big grad">0</span> dependencies</h3>
+            <p>Nothing extra to download, and the code is open for anyone to read. MIT licence.</p>
+            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>No packages from other people come with it, so a change in one of them can't break it or reach your notes.</span></p>
+          </div>
+        </li>
       </ul>
     </div>
   </section>
@@ -685,20 +965,56 @@
       <p class="eyebrow">Compared</p>
       <h2 id="cmp-h">Claude Code, <span class="grad">with and without it.</span></h2>
       <p class="intro">Claude Code's own memory keeps getting better. project-memory adds what it still doesn't do.</p>
-      <div class="glass compare-box">
-        <table class="compare" role="table">
-          <caption class="hidden">Claude Code alone, and with project-memory</caption>
-          <thead><tr role="row"><th role="columnheader" scope="col">Claude Code alone</th><th role="columnheader" scope="col" class="us">With project-memory</th></tr></thead>
+      <div class="glass vs-box">
+        <table class="vs" role="table">
+          <caption class="hidden">For each need: what Claude Code does alone, and with project-memory</caption>
+          <thead><tr role="row"><th role="columnheader" scope="col">Need</th><th role="columnheader" scope="col">Claude Code alone</th><th role="columnheader" scope="col" class="us"><span><img src="brain.png" alt="" width="148" height="136">With project-memory</span></th></tr></thead>
           <tbody>
-            <tr role="row"><td role="cell">Each new conversation starts from zero.</td><td role="cell" class="us">Claude starts already knowing where the last conversation stopped.</td></tr>
-            <tr role="row"><td role="cell">Work from a few weeks ago is hard to find again.</td><td role="cell" class="us">Every exchange is kept in a journal, and Claude finds it when you ask.</td></tr>
-            <tr role="row"><td role="cell">A note deleted or overwritten by mistake is gone.</td><td role="cell" class="us">Every change to your notes is kept, and Claude brings an old one back.</td></tr>
-            <tr role="row"><td role="cell">A long conversation is cut down to a summary, and the task in progress can get lost.</td><td role="cell" class="us">Claude saves its notes first, and afterwards it's told what you asked and what it last said.</td></tr>
-            <tr role="row"><td role="cell">You teach Claude your habits again in every project.</td><td role="cell" class="us">Lessons that apply everywhere are shared with all your projects.</td></tr>
+            <tr role="row">
+              <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-play-circle"/></svg>Picking up</span></th>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>Each new conversation starts from zero.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Claude starts already knowing where the last conversation stopped.</span></span></td>
+            </tr>
+            <tr role="row">
+              <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>Finding past work</span></th>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>There's no journal, so work from a few weeks ago is hard to find again.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Every exchange is kept in a journal, and Claude finds it when you ask, with the date.</span></span></td>
+            </tr>
+            <tr role="row">
+              <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-clock-counter-clockwise"/></svg>Undoing mistakes</span></th>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>A note deleted or overwritten by mistake is gone.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Every version of your notes is kept, and Claude brings an old one back. Needs Git.</span></span></td>
+            </tr>
+            <tr role="row">
+              <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-list-checks"/></svg>Long tasks</span></th>
+              <td role="cell"><span class="cell"><svg class="pi half mk" aria-hidden="true"><use href="#p-minus-circle"/></svg><span><span class="hidden">Partly. </span>Cut down to a summary. Your notes and recent files are reloaded, but the task in progress can get lost.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Claude saves its notes first, and afterwards it's told what you asked and what it last said.</span></span></td>
+            </tr>
+            <tr role="row">
+              <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-share-network"/></svg>Many projects</span></th>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>You teach Claude your habits again in every project.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Lessons that apply everywhere are shared with all your projects.</span></span></td>
+            </tr>
+            <tr role="row">
+              <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-browsers"/></svg>Two windows</span></th>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>Nothing keeps two windows on one project from overwriting each other.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Safe with several windows open, and each window is told about the others.</span></span></td>
+            </tr>
+            <tr role="row">
+              <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-hard-drives"/></svg>Privacy</span></th>
+              <td role="cell"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Its notebook stays on your computer.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>The journal and the history stay there too, with no account. Either way, Anthropic sees the conversation.</span></span></td>
+            </tr>
           </tbody>
         </table>
       </div>
-      <p class="more">It searches by words, not by meaning, and works in Claude Code only. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/comparison.md">See how it compares with claude-mem, Mem0, Supermemory and other tools</a>.</p>
+      <h3 class="sub">What it doesn't do</h3>
+      <ul class="limits">
+        <li><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>It searches by words, not by meaning.</li>
+        <li><svg class="pi" aria-hidden="true"><use href="#p-desktop"/></svg>It works in Claude Code only.</li>
+        <li><svg class="pi" aria-hidden="true"><use href="#p-cloud-slash"/></svg>It doesn't sync between computers or teammates.</li>
+      </ul>
+      <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/docs/comparison.md">See how it compares with claude-mem, Mem0, Supermemory and other tools</a>.</p>
     </div>
   </section>
 
