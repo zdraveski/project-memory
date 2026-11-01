@@ -224,7 +224,11 @@ conversation: its entries are removed from `handoff.md`, later turns write
 none, the compaction gate writes no recovery note for it, and Claude gets
 no reminder to write notes. A mark the Stop's read missed, found later by
 the journal (its import, or its look at the whole transcript), takes the
-entries out of `handoff.md` too.
+entries out of `handoff.md` too. So does a conversation held with auto
+memory off (its tag in `.memory-off`), as the journal keeps it out: its
+first Stop with auto memory on writes none of its turns and removes what it
+had written before the tag. A `.memory-off` that won't read is unknown, as
+`.private-sessions` is: the Stop writes nothing and records why.
 Other conversations' briefings name it as working, without its messages.
 Both tags are read in any case, with spaces or attributes, self-closed,
 fullwidth, with hidden zero-width characters, and as `private_session`; in a

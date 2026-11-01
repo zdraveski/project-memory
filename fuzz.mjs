@@ -42,7 +42,7 @@
 // ceiling); no private or forgotten text is written, briefed or printed, a gate's
 // note included; a private conversation leaves nothing; every other exchange is
 // in handoff.md once and in the journal once (an older conversation's: in the
-// journal once; one held with auto memory off: in the journal never); a gate over
+// journal once; one held with auto memory off: in neither, nor briefed); a gate over
 // the ceiling leaves a cut-turn note naming the launches not yet done and no
 // ended one, gone after the turn's Stop; the nudge comes once between dips under the trigger, never in
 // a private conversation, and at the first Stop of a plain turn past it; every
@@ -767,9 +767,9 @@ async function execute(steps, meta) {
   for (const [mark, m] of marks) {
     const gone = m.kind === 'forget' || m.s?.private || forgotten.has(mark), why = m.kind === 'forget' ? 'a turn that ran forget' : m.s?.private ? (m.s.why ?? 'a <private-session> conversation') : 'an exchange forget --key removed';
     if (gone) { for (const [f, body] of places) if (body.includes(mark)) problems.push(`${why}: ${mark} is in ${f}`); }
-    // Held with auto memory off, from a Stop on: never in the journal, even resumed with it on (PRIVACY.md). Its handoff.md lines
-    // are not ruled: those of turns before the tag stay, as the docs do not say they go.
-    else if (m.s?.off) { if (count(journal, mark) !== 0) problems.push(`a conversation held with auto memory off: ${mark} is in the journal ${count(journal, mark)} times`); }
+    // Held with auto memory off, from a Stop on: never in the journal nor in handoff.md, even resumed with it on (PRIVACY.md); the
+    // closing Stops, with it on, take out what its turns before the tag wrote, as from the journal (P-F2).
+    else if (m.s?.off) { for (const [f, body] of places) if (body.includes(mark)) problems.push(`a conversation held with auto memory off: ${mark} is in ${f}`); }
     else if (m.kind === 'old') { if (count(journal, mark) !== 1) problems.push(`${mark} is in the journal ${count(journal, mark)} times`); }
     else {
       if (count(handoff, mark) !== 1) problems.push(`${mark} is in handoff.md ${count(handoff, mark)} times`);

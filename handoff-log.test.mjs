@@ -708,6 +708,33 @@ ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'pr
   ok(quoted !== 'private' && /read the notes\n  \*\*did:\*\* The notes explain both tags\./.test(adoc()), `a tag only quoted in a tool's output marks nothing (got ${quoted}, ${adoc().split('<!-- auto:start -->')[1]})`);
 }
 
+// P-F2: a conversation held with auto memory off once (its tag in the projects' .memory-off) writes nothing to handoff.md, and
+// what it wrote there before goes, as the journal keeps it out: what was typed while auto memory was off reached handoff.md at the
+// first Stop with it back on (e2e audit, 2026-11-01). A list that won't read is unknown: nothing written, and the Stop says so.
+{
+  const { OFF } = await import('./handoff-log.mjs');
+  const cwdM = 'C:\\handoff-memory-off', dirM = storeFor(home, cwdM), offList = join(home, '.claude', 'projects', OFF);
+  mkdirSync(dirM, { recursive: true });
+  const mdoc = () => readFileSync(join(dirM, 'handoff.md'), 'utf8');
+  const conv = (s, ...lines) => { const p = join(dirM, `${s}.jsonl`); writeFileSync(p, lines.join('\n') + '\n', { flag: 'a' }); return () => handoff({ cwd: cwdM, transcript_path: p, session_id: `${s}-1` }); };
+  conv('f2on0000', user('plain work goes on', { ts: '2026-10-27T13:00:00Z' }), asst('it went on'))();
+  // Written by an earlier version, before the tag.
+  conv('f2off000', user('the offer to Acme is 2.1M', { ts: '2026-10-27T13:01:00Z' }), asst('noted the 2.1M offer'))();
+  appendFileSync(offList, 'f2off000\n');
+  const r = conv('f2off000', user('ok, now something else', { ts: '2026-10-27T13:02:00Z' }), asst('sure, something else'))();
+  ok(r === 'private' && !/2\.1M|something else/.test(mdoc()) && /plain work goes on/.test(mdoc()),
+    `a conversation held with auto memory off writes nothing, and its entries go; another's stay (got ${r}, ${mdoc().split('<!-- auto:start -->')[1]})`);
+  const read = fs.readFileSync;
+  fs.readFileSync = (p, ...a) => { if (String(p) === offList) throw Object.assign(new Error(`EACCES: permission denied, open '${p}'`), { code: 'EACCES' }); return read(p, ...a); };
+  syncBuiltinESMExports();
+  let refused;
+  const next = conv('f2on0000', user('a turn while the list is refused', { ts: '2026-10-27T13:03:00Z' }), asst('done meanwhile'));
+  try { refused = next(); } catch (e) { refused = e.message; } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
+  ok(String(refused).endsWith(`${OFF} could not be read`) && !/while the list is refused/.test(mdoc()) && /plain work goes on/.test(mdoc()),
+    `a memory-off list that won't read: nothing written or taken out, and the Stop says why (got ${refused})`);
+  ok(next() === true && /while the list is refused/.test(mdoc()), 'the next Stop, with the list read, writes the turn');
+}
+
 // 37. A note the compaction gate left for a conversation marked since goes at
 // its next Stop, though no entry changed.
 writeFileSync(join(dirI, 'handoff.md'), idoc().replace('<!-- auto:end -->', '- **cut mid-turn** [mmmmmmmm] 2026-10-27 12:12 at 965k tokens, asked 2026-10-27 12:11: the Contoso plan\n  **last said:** x\n  **still running (read their output files, do not rerun):** none\n  **edited this turn:** none\n<!-- auto:end -->'));

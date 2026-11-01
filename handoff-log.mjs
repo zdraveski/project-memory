@@ -773,7 +773,11 @@ export function handoff(input, sink = null) {
     // went (F12). Thrown, so the Stop records it: a list that never read again
     // stopped the store in silence (R64).
     if (was === null) throw unreadable(dir, QUIET);
-    let quiet = was || hushed(dir, s, hush) || hush;
+    let quiet = was || hushed(dir, s, hush) || hush || hushed(projectsRoot(), s, false, OFF);
+    // Held with auto memory off once (OFF): kept out as the journal keeps it out (take()), what it wrote before included. Read by
+    // the journal alone, what was typed while auto memory was off reached handoff.md at the first Stop with it back on (e2e audit,
+    // 2026-11-01). A list that won't read is unknown here too: nothing written or swept (F12).
+    if (quiet === null) throw unreadable(projectsRoot(), OFF);
     // The journal (memory-tier's Stop passes its writer) takes this lock too,
     // not one of its own; whatever it throws is its own. Swept anew only by the
     // read that first marks it: while the mark stayed in the tail each Stop

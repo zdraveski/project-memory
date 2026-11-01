@@ -107,11 +107,11 @@ All of it stays in `~/.claude/projects` on your computer:
     program, such as a virus scanner, has it open), nothing is saved or
     removed for that conversation, and it is tried again after the next
     reply. Each time, the next briefing says the store needs attention and
-    names the list, and `status` names it too (for `.memory-off`, in its
-    journal line), so a list that stays unreadable is reported, not
-    silently left to stop the saving. The warning goes at the next reply
-    that reads the list again; for `.memory-off`, at the next reply the
-    journal records. Finding a mark typed while the plugin was off,
+    names the list, and `status` names it too, so a list that stays
+    unreadable is reported, not silently left to stop the saving. The
+    warning goes at the next reply that reads the list again. Either list
+    unreadable after a reply keeps that reply out of the record of where you
+    left off too. Finding a mark typed while the plugin was off,
     it tags the conversation and removes its earlier entries, from the
     journal and from `handoff.md`, as it does for one typed while it is on.
     A conversation held with auto memory off while this version wasn't
@@ -159,8 +159,10 @@ If auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (set to
 `1`, `true`, `yes` or `on`), project-memory reads and saves nothing on its
 own, except the conversation's short tag in `~/.claude/projects/.memory-off`
 when it starts and after every reply, so the journal never takes that
-conversation in later. It stays out of the journal even if you go on with
-it after turning auto memory back on. A tag is kept while Claude Code keeps
+conversation in later. It stays out of the journal and out of the record
+of where you left off even if you go on with it after turning auto memory
+back on: its first reply with auto memory on removes what that record held
+of it from before, and saves nothing new. A tag is kept while Claude Code keeps
 that conversation (the newest 100 always, 10,000 at most). If that list
 can't be written after a reply of such a conversation, the next briefing
 with auto memory on says the store needs attention and names `.memory-off`,

@@ -659,14 +659,16 @@ for (const [c, names] of [['na', ['.private-sessions']], ['nb', ['.memory-off']]
 // A list that stays unreadable (a folder where it goes: every read EISDIR) is reported. The Stop still exits 0 and saves nothing
 // for the conversation, but the failure is recorded, and the briefing and status say the store needs attention and name the list.
 // Silent, the store stopped recording and nothing said so (final review I1, R64). The next clean Stop saves the turn and clears it.
-for (const [c, name, at, where] of [['ua', '.private-sessions', sdir, ['journal', 'handoff.md']], ['ub', '.memory-off', join(home, '.claude', 'projects'), ['journal']]]) {
-  const U = sid(c), list = join(at, name), had = existsSync(list) ? readFileSync(list) : null, hf = join(sdir, 'handoff.md');
-  const failed = name === '.memory-off' ? join(sdir, 'journal', '.failed') : join(dirname(proj), `.handoff-failed-${slug(scwd)}`);
-  const saved = () => where.filter((w) => (w === 'journal' ? of(U).length > 0 : existsSync(hf) && readFileSync(hf, 'utf8').includes('asked while the list is a folder')));
+// Either list keeps handoff.md too: the memory-off one, read by the journal alone, let a conversation held with auto memory off
+// into handoff.md (P-F2).
+for (const [c, name, at] of [['ua', '.private-sessions', sdir], ['ub', '.memory-off', join(home, '.claude', 'projects')]]) {
+  const U = sid(c), list = join(at, name), had = existsSync(list) ? readFileSync(list) : null, hf = join(sdir, 'handoff.md'), where = ['journal', 'handoff.md'];
+  const failed = join(dirname(proj), `.handoff-failed-${slug(scwd)}`);
+  const saved = () => where.filter((w) => (w === 'journal' ? of(U).length > 0 : existsSync(hf) && readFileSync(hf, 'utf8').includes(`asked while ${name} is a folder`)));
   const said = () => [spawnSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
     input: JSON.stringify({ cwd: scwd, session_id: sid('uz'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '',
   spawnSync(process.execPath, [tool('memory.mjs'), 'status', '--store', sdir], { env, encoding: 'utf8', timeout: 60e3 }).stdout ?? ''];
-  say(U, new Date(Date.now() - 60e3).toISOString(), 'asked while the list is a folder', 'answered');
+  say(U, new Date(Date.now() - 60e3).toISOString(), `asked while ${name} is a folder`, 'answered');
   rmSync(list, { force: true }); mkdirSync(list);
   const r = stop(U), during = saved(), recorded = existsSync(failed), [brief, status] = said();
   rmSync(list, { recursive: true, force: true }); if (had) writeFileSync(list, had);

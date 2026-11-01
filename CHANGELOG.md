@@ -64,6 +64,13 @@
   files it then changed were saved, and `<private-session>` marked nothing.
   A tag that only appears in a file Claude reads or in a command's output
   still counts for nothing.
+- A conversation held with auto memory off now stays out of the record of
+  where you left off (`handoff.md`) too when you go on with it after turning
+  auto memory back on, as it already stayed out of the journal. Before, the
+  first reply with auto memory on saved its last exchanges there, including
+  those typed while auto memory was off, and the next briefing could show
+  them. If the list of such conversations can't be read after a reply,
+  nothing is saved for that reply, and the next briefing says so.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in

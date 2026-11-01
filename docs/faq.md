@@ -77,8 +77,9 @@ under env in my Claude Code settings,"* then restart Claude Code.
 ## What happens when auto memory is turned off?
 
 project-memory then reads and saves nothing on its own, except a short tag
-for the conversation, so the journal won't take that conversation in later,
-even if you go on with it after turning auto memory back on. If that tag
+for the conversation, so neither the journal nor the record of where you
+left off takes that conversation in later, even if you go on with it after
+turning auto memory back on. If that tag
 can't be written, the next briefing with auto memory on says so, and until
 it is written the journal may take that conversation in.
 [Privacy policy](../PRIVACY.md).
