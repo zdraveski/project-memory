@@ -1588,6 +1588,10 @@ const nested = [['secret:\n  password: ', k('Zq8', 'hunter33')], ['secrets:\n  d
   ['passwords:\r\n  admin: ' + k('First', '11xyz') + '\r\n  nested:\n    root: ', k('Sibling', '99xyz')]];
 const keptNested = nested.filter(([p, v]) => red(p + v).includes(v) || clip(p + v, 400).includes(v)).map(([p, v]) => JSON.stringify(p + v));
 ok(!keptNested.length && !red(nested.at(-1).join('')).includes('First11'), `every value under a parent key that names a secret is redacted (kept: ${keptNested.join(' | ')})`);
+// A secret that itself ends in `:` is a value, not a key: only a name, a colon and a blank or the end is one (review, 2026-11-01).
+const colonEnd = [['password: "', k('Tr0ub4dor', '&3:'), '"'], ['"password": "', k('abc', '123:'), '"'], ['token: "', k('tok9', 'enValue:'), '"']];
+const colonKept = colonEnd.filter(([p, v, q]) => red(p + v + q).includes(v.slice(0, -1))).map((x) => x.join(''));
+ok(!colonKept.length, `a secret ending in a colon is redacted (kept: ${colonKept.join(' | ')})`);
 const yamlKept = ['secret:\n  password: string', 'tokens:\n  input: 863324\n  output: 1234', 'secretKeyRef:\n  name: db-credentials\n  key: password', 'secretName: db\nport: 5432', 'passwords:\n  - admin'];
 const yamlCut = yamlKept.filter((s) => red(s) !== s || clip(s, 400) !== s.replace(/\s+/g, ' '));
 ok(!yamlCut.length, `code, counts, a secret's name and a list under a secret's key are kept, and no child's key is cut (cut: ${yamlCut.map((s) => JSON.stringify(red(s))).join(' | ')})`);
