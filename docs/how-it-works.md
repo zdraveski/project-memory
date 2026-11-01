@@ -299,13 +299,15 @@ journal is the detailed record, and `search` reads headlines of it.
 - A failure is kept in `journal/.failed` for `status`, one line for the live
   write and one for the import, each cleared by its own next success.
 
-An entry has no size limit. With the limits it had until 1.2.2 (2,000
+An entry has no size limit. With the limits it had until 1.2.4 (2,000
 characters of the request, 6,000 of the reply, 20 commands of 400), measured
 on 2026-10-29 by importing the 293 transcripts on the author's computer (362
 entries): half the entries were under 2,660 bytes, nine in ten under 6,723,
 and the largest 14,546. The busiest project wrote 74 entries in 3 days, 115
-KB a day: about 40 MB in a year of daily use; whole entries are larger by
-whatever was cut. The memory suite's year of entries, 14 a day, is 30 MB,
+KB a day: about 40 MB in a year of daily use. Kept whole, measured again on
+2026-11-01 from real transcripts: half the entries are under 4.6 KB, 64 % are
+over 3 KB, one in a hundred is over 59 KB, and a busy project writes about
+110 MB a year. The memory suite's year of entries, 14 a day, is 30 MB,
 which `search` reads in about a second.
 
 **Importing other conversations.** Every Stop also imports some of the
@@ -387,13 +389,18 @@ At the start of a conversation, and after `/clear`, Claude is told:
   keeps them), as many as fit (see below). After `/clear` neither, since the conversation
   just cleared is the newest. It names at most two, and only conversations
   started in the project's folder or in the folder this one started in.
-  A conversation marked `<private-session>` is never named or shown, even
-  when `handoff.md` still holds it because removing it failed: the last
-  conversation is then the one before it, and when the list of private
-  conversations can't be read, none is named. Its exchanges never include
-  one `forget` took out (listed in `journal/.forgotten`, matched by
-  conversation and minute as `forget` matches them), for the same reason;
-  the "where it stopped" line still names the newest entry;
+  A conversation marked `<private-session>` is never named as the last one
+  or shown, even when `handoff.md` still holds it because removing it
+  failed: the last conversation is then the one before it, and when the
+  list of private conversations can't be read, none is named. One that is
+  working is named without its words (`(no handoff entry)`). The exchanges
+  listed never include one `forget` took out (listed in
+  `journal/.forgotten`, matched by conversation and minute as `forget`
+  matches them), for the same reason, and none is listed when that list
+  can't be read. A conversation held with auto memory off has none of its
+  exchanges listed: what was typed while memory was off reaches
+  `handoff.md` when a later reply with memory on reads the turn back. In
+  both cases the "where it stopped" line still names the newest entry;
 - when the project's journal has an entry, one line: "Earlier work in this
   project since <first day> is in its journal: when asked about the past,
   search it with the memory skill before saying you don't know." The
@@ -416,7 +423,7 @@ the one it got when it started.
 The briefing stays under 9,500 characters, inside the 10,000 Claude Code
 passes on whole. After a compaction, the oldest exchanges are left out first,
 until it fits. At the start of a conversation, the last conversation's
-exchanges fill the briefing up to 4,000 characters (about 1,000 tokens), the
+exchanges fill the briefing up to 3,500 characters (under 1,000 tokens), the
 oldest left out first, and never past that: with a full shared index (3,000
 bytes) there is often room for none, and the briefing is what it was
 without them. Each line is cut to 1,000 characters, then the end is cut, so
@@ -588,7 +595,9 @@ project. A key no entry has is named, and the tool exits with 1.
 
 `search`, `show` and a day's listing never show an entry whose key is in
 `journal/.forgotten`: when `forget` couldn't rewrite its day file, the entry
-is still there until `forget` runs again, but nothing prints it.
+is still there until `forget` runs again, but nothing prints it. When that
+list can't be read, they show none of that project's entries, and name the
+list (`could not read …`).
 
 `--since` and `--until` take a date, `YYYY-MM-DD`, and keep only the days
 from one to the other, both included: a note by the day of its `modified:`
