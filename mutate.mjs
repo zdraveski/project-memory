@@ -943,6 +943,8 @@ export const suites = {
     'C-5 the 30th of February taken': [' && t.getUTCDate() === d; };', '; };'],
     'C-7 an option taken for a value': ["(i + 1 >= argv.length || argv[i + 1].startsWith('--'))", '(i + 1 >= argv.length)'],
     'C-7 a last valued option dropped': ["(i + 1 >= argv.length || argv[i + 1].startsWith('--'))", "(argv[i + 1]?.startsWith('--'))"],
+    "C-6 forget says nothing of Claude Code's conversation files": ["...(gone.length ? [`Claude Code still keeps", "...(false ? [`Claude Code still keeps"],
+    "C-6 a forget that removed nothing speaks of them": ["...(gone.length ? [`Claude Code still keeps", "...(true ? [`Claude Code still keeps"],
     'a look by words takes no unwritten turn': ['terms.length && !named.length ? unwritten(here, [], terms)', 'false ? unwritten(here, [], terms)'],
     'a look by words finds a forgotten turn again': ['unwritten(here, [], terms).filter((e) => !already.has(e.key))', 'unwritten(here, [], terms)'],
     "R73 a key of a day that won't read named as another project's": ['(unread.length ? `no day of ', '(false ? `no day of '],

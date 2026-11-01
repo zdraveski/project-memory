@@ -301,7 +301,8 @@ conversations left to import, or run it again once they're in.
   show them, and a later reply in their conversation doesn't put them back.
   It matches them there by conversation and minute, so another exchange of
   that conversation in the same minute goes too. Claude Code's own
-  conversation files are separate.
+  conversation files are separate: they still hold the exchanges, and
+  `forget` says so after removing them.
 - A search hit never names a conversation file. `show` of a private entry
   doesn't either, since that file still holds the private part. `show` of
   another exchange in the same conversation still names that file: it is

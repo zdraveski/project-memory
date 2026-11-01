@@ -1036,6 +1036,7 @@ if (!quick) {
   const { render } = await import('./journal.mjs'), { local } = await import('./store.mjs');
   const fd = join(root, 'C--fg', 'memory'), fj = join(fd, 'journal'), today = local().slice(0, 10);
   const fcli = (...a) => run([...a, '--store', fd]);
+  const cc = `Claude Code still keeps these exchanges in its own conversation files (the .jsonl files in ${root}): forget does not change them\n`;
   let n = 0;
   const entry = (at, asked, s = 'aaaa1111') => ({ key: `f${n++}`, at, s, t: `C--fg/${s}`, branch: '', asked, answered: 'done', changed: [], ran: [] });
   const es = [entry('2025-10-20 09:00', 'the zebra eats mango'), entry('2025-10-20 10:00', 'the zebra policy'), entry('2025-10-21 09:00', 'mango, the zebra again'),
@@ -1058,6 +1059,8 @@ if (!quick) {
     `forget --yes removes only the matches, the rest byte for byte (got ${r.stdout}${r.stderr})`);
   ok(r.stdout.startsWith(zm) && r.stdout.endsWith(`\nremoved 2 from ${fd}\n`) && /^the snapshots still hold the journal of 2025-10-20, 2025-10-21: deleting .*[\\/]\.git removes /m.test(r.stdout),
     `and lists what went, says the snapshots still hold the days before today, and ends with the count (got ${r.stdout})`);
+  // And that Claude Code's own conversation files still hold them, as PRIVACY.md says: unsaid, it read as gone everywhere (audit C-6).
+  ok(r.stdout.endsWith(`\n${cc}removed 2 from ${fd}\n`), `forget --yes says Claude Code's conversation files still hold what it removed (got ${r.stdout})`);
   reset();
   // A blank word is in every entry: taken as a filter, it removed the whole journal.
   const refused = 'forget needs words, a date range, --conversation or --key; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)';
@@ -1102,7 +1105,7 @@ if (!quick) {
   r = await fcli('forget', '--key', 'f-late-a');
   ok(r.status === 1 && r.stdout.startsWith(`no entry in ${fd} has the key f-late-a;`), `a reply's id is no exchange's key (got ${r.stdout})`);
   r = await fcli('forget', '--key', 'f-late', '--yes');
-  ok(r.status === 0 && r.stdout === `${unsaid}removed 1 from ${fd}\n` && readFileSync(join(fj, '.forgotten'), 'utf8').includes(`f-late\tC--fg/dddd4444\t${lateAt}\n`) && kept('2025-10-20', '2025-10-21', today),
+  ok(r.status === 0 && r.stdout === `${unsaid}${cc}removed 1 from ${fd}\n` && readFileSync(join(fj, '.forgotten'), 'utf8').includes(`f-late\tC--fg/dddd4444\t${lateAt}\n`) && kept('2025-10-20', '2025-10-21', today),
     `forget --key --yes keeps it out: its key listed, no day touched, no snapshot named (got ${r.stdout}${r.stderr})`);
   // Forgotten, it is in no day and still in its conversation: found there again, a second forget said it removed it (review).
   const listed1 = readFileSync(join(fj, '.forgotten'), 'utf8'), again = `key f-late is already forgotten; nothing to remove\nnothing in ${fd} matches\n`;
@@ -1161,7 +1164,7 @@ if (!quick) {
   // A turn of it recorded after the look goes too, and is listed with the rest.
   writeFileSync(join(fj, `${today}.md`), page(today, [...es.slice(3), lateTurn]));
   r = await fcli('forget', '--conversation', 'bbbb2222', '--yes');
-  ok(r.status === 0 && r.stdout === `${bb}${fl(lateTurn)}removed 3 from ${fd}\n` && gone(today) && kept('2025-10-20', '2025-10-21'),
+  ok(r.status === 0 && r.stdout === `${bb}${fl(lateTurn)}${cc}removed 3 from ${fd}\n` && gone(today) && kept('2025-10-20', '2025-10-21'),
     `forget --conversation removes one conversation, a turn since the look too; today's day, not yet in the snapshots, needs no word on them (got ${r.stdout}${r.stderr})`);
   // What the refusal advises does forget the whole journal, every key listed so no backfill brings it back.
   reset();
@@ -1177,13 +1180,13 @@ if (!quick) {
   reset();
   renameSync(join(root, '.git'), join(root, '.git-away'));
   try { r = await fcli('forget', 'Zebra', 'mango', '--yes'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
-  ok(r.status === 0 && r.stdout === `${zm}removed 2 from ${fd}\n`, `with no snapshots, forget --yes says nothing of them (got ${r.stdout}${r.stderr})`);
+  ok(r.status === 0 && r.stdout === `${zm}${cc}removed 2 from ${fd}\n`, `with no snapshots, forget --yes says nothing of them (got ${r.stdout}${r.stderr})`);
   // Nor in a repository the user made there: the plugin commits nothing to it, and it is theirs to keep.
   reset();
   const cfg = join(root, '.git', 'config'), had = readFileSync(cfg, 'utf8');
   writeFileSync(cfg, had.replace(/^\[project-memory\][^[]*/m, ''));
   try { r = await fcli('forget', 'Zebra', 'mango', '--yes'); } finally { writeFileSync(cfg, had); }
-  ok(had.includes('[project-memory]') && r.status === 0 && r.stdout === `${zm}removed 2 from ${fd}\n`, `nor in a repository the user made (got ${r.stdout}${r.stderr})`);
+  ok(had.includes('[project-memory]') && r.status === 0 && r.stdout === `${zm}${cc}removed 2 from ${fd}\n`, `nor in a repository the user made (got ${r.stdout}${r.stderr})`);
   // A day the disk refuses keeps its entries and is named before the count, which says so; exit 1, never a stack trace.
   reset();
   const refuse = join(home, 'refuse-day.mjs'), refusing = (end) => {
@@ -1265,7 +1268,7 @@ if (!quick) {
   writeFileSync(busy, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst read = fs.readFileSync;\n" +
     "fs.readFileSync = (p, ...a) => { if (String(p).endsWith('2025-10-21.md') && fs.existsSync(`${p}.tmp${process.pid}`)) fs.appendFileSync(p, '\\nanother writer'); return read(p, ...a); };\nsyncBuiltinESMExports();\n");
   r = spawnSync(process.execPath, ['--import', pathToFileURL(busy).href, CLI, 'forget', 'Zebra', 'mango', '--yes', '--store', fd], { env, encoding: 'utf8' });
-  ok(/^2025-10-20 09:00  conversation aaaa1111  the zebra eats mango  \(key f0\)\nthe snapshots still hold the journal of 2025-10-20: [^\n]*\nremoved 1 of 2 from /.test(r.stdout) && file('2025-10-21').includes('mango, the zebra again'),
+  ok(/^2025-10-20 09:00  conversation aaaa1111  the zebra eats mango  \(key f0\)\nthe snapshots still hold the journal of 2025-10-20: [^\n]*\nClaude Code still keeps these exchanges in [^\n]*\nremoved 1 of 2 from /.test(r.stdout) && file('2025-10-21').includes('mango, the zebra again'),
     `a day the write never landed in keeps its entry, neither listed nor counted as removed (got ${r.stdout}${r.stderr})`);
 }
 

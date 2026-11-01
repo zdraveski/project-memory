@@ -94,7 +94,7 @@ There's nothing to learn. Ask in your own words:
 | *"Where did we leave off?"* | Claude already knows: each new conversation starts with the last one's latest exchanges, as many as keep the briefing under 1,000 tokens. For more, it reads the record of your last conversation. |
 | *"Remember that I prefer short answers."* | Claude saves a note. |
 | *"I deleted the note about pricing by mistake. Bring it back."* | Claude restores it from the history. |
-| *"Forget the password I pasted yesterday."* | Claude lists the journal entries that match, and removes the ones you confirm. |
+| *"Forget the password I pasted yesterday."* | Claude lists the journal entries that match, and removes the ones you confirm from project-memory's files. Claude Code's own conversation files still hold them. |
 | *"Remember for all my projects that I like plain language."* | Claude saves it to the shared notebook. |
 
 If you'd rather type a command, start with `/project-memory:memory`:
@@ -103,7 +103,7 @@ If you'd rather type a command, start with `/project-memory:memory`:
 |---|---|
 | `search logo colors` | Finds notes and journal entries about "logo colors". An entry shows as a short headline: what you asked, how it ended, and the lines with your words |
 | `show 'key'` | Shows one journal entry in full, by the key `search` printed |
-| `forget password` | Lists the journal entries that mention "password" and removes the ones you confirm |
+| `forget password` | Lists the journal entries that mention "password" and removes the ones you confirm (Claude Code's own conversation files still hold them) |
 | `history pricing` / `restore pricing` | Shows when the note "pricing" changed / brings it back |
 | `promote pricing` | Moves the note "pricing" to the shared notebook |
 | `status` / `doctor` | A health check of this project's notes / of project-memory itself |

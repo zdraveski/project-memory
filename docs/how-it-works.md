@@ -724,7 +724,9 @@ none and asks for a narrower one, and `--yes` removes nothing. A look by
 `--since` or `--until` alone is confirmed by its range: it lists the first
 20, says how many more, and names the first and last day of what would go.
 With `--yes`, it looks again and removes what that look found, under the
-store's lock, then lists what went (past 200, only how many). A key the
+store's lock, then lists what went (past 200, only how many), and says that
+Claude Code's own conversation files still hold those exchanges: `forget`
+changes only project-memory's files. A key the
 store has no entry for is named, and the tool exits with 1, unless it is the
 key of an exchange in one of the project's conversations (the folders the
 import reads) that no day holds yet: a reply whose Stop met the lock, which
