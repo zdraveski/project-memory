@@ -705,6 +705,10 @@ ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'pr
   ok(turns([call('toolu_e3', 'Bash'), rejected('toolu_e3', no('<private-session>'))].join('\n')).hush === true, '<private-session> as a rejected call\'s feedback marks the conversation');
   // An answer record without the answers alone (another version's): its words, the question's included, the safe way to err.
   ok(turns([call('toolu_q3', 'AskUserQuestion'), result('toolu_q3', said('<private-session>'))].join('\n')).hush === true, 'an answer with no answers record is read from its words');
+  ok(turns([call('toolu_q6', 'AskUserQuestion'), result('toolu_q6', said('<private-session>'), {}, { toolUseResult: { answers: null } })].join('\n')).hush === true, 'so is one whose answers are no object');
+  // A rejection with no words of the user's ("the user said:") gives nothing, whatever follows in the harness's text.
+  ok(turns([call('toolu_e6', 'Edit'), rejected('toolu_e6', "The user doesn't want to proceed with this tool use. STOP what you are doing. <private-session>")].join('\n')).hush !== true,
+    'a rejection with no words of the user\'s marks nothing');
   // Quoted by a file read, printed by a command (the rejection's words too, but no rejection), in a failed command's output, in an
   // MCP tool's error in the rejection's words, or the result of a call that was no question: no mark, and the reply is saved.
   const quoted = conv('f1dddddd', user('read the notes', { ts: '2026-10-27T12:44:00Z' }), call('toolu_r1', 'Read'), result('toolu_r1', 'type <private-session> to keep it out; <private>x</private>'),
@@ -1585,7 +1589,7 @@ ok(Date.now() - tExport < 1000, `an exported name of 20,000 words is read in lin
 // on its line: the parent's rule took the child's key for its value, and the child's real value was kept (e2e audit, 2026-11-01).
 const nested = [['secret:\n  password: ', k('Zq8', 'hunter33')], ['secrets:\n  db_password: ', k('Kx9', 'stapler44')], ['passwords:\n  admin: ', k('Nest', 'Pw55xyz')],
   ['tokens:\n  github: ', k('Nest', 'Tk66xyz0123abcd')], ['secret: password: ', k('Inline', '77xyz')], ['api_key:\n  prod: ', k('Prod', 'Key88xyz')],
-  ['  passwords:\n    admin: ', k('P@ss', 'word!')], ['passwords:\n  atm: ', k('482', '913')],
+  ['  passwords:\n    admin: ', k('P@ss', 'word!')], ['passwords:\n  atm: ', k('482', '913')], ['tokens:\n  gitlab: ', k('Nest', 'Tk66xyz0123a')],
   ['passwords:\r\n  admin: ' + k('First', '11xyz') + '\r\n  nested:\n    root: ', k('Sibling', '99xyz')]];
 const keptNested = nested.filter(([p, v]) => red(p + v).includes(v) || clip(p + v, 400).includes(v)).map(([p, v]) => JSON.stringify(p + v));
 ok(!keptNested.length && !red(nested.at(-1).join('')).includes('First11'), `every value under a parent key that names a secret is redacted (kept: ${keptNested.join(' | ')})`);
