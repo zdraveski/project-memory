@@ -2130,16 +2130,60 @@ require('node:module').syncBuiltinESMExports();
           ...Array.from({ length: n }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(size)}`))));
         return print_(cw4, 'pppppppp-1', 'startup', at4);
       };
+      // Within about 1,000 tokens (4,000 characters): the shared index at its
+      // 3,000 B ceiling leaves no room for an exchange of 900, and every lesson stays.
+      const crowded = startup(10, 899);
+      ok(!/^- \*\*asked\*\*/m.test(crowded) && !crowded.includes('Its last exchanges') && crowded.split('\n').filter((l) => l.startsWith('- [Pad')).length === 30
+        && /Last session here ended 2026-10-01 10:09 on: ask-9 here/.test(crowded), `with the shared index full, no exchange fits, and every shared lesson stays (${crowded.length} characters)`);
+      writeFileSync(shared, '');
       const few = startup(3, 50);
       ok(/Last session here ended 2026-10-01 10:02 on: ask-2 here[^\n]*\nIts last exchanges, oldest first:\n- \*\*asked\*\* 2026-10-01 10:00 \[ssssssss\]: ask-0 here\n {2}\*\*did:\*\* did-0 /.test(few)
         && few.indexOf('ask-1 here') < few.indexOf('ask-2 here\n') && !few.includes('another session ask'), `startup prints the last session's exchanges, oldest first, none of another's (${few.slice(0, 700)})`);
       const many = startup(10, 899), kept = many.split('\n').filter((l) => /^- \*\*asked\*\*/.test(l)).length;
-      ok(many.length <= 9500 && !many.includes('the rest cut to fit') && many.split('\n').filter((l) => l.startsWith('- [Pad')).length === 30
-        && many.includes('ask-9 here') && !many.includes('ask-0 here') && kept >= 3 && kept < 10, `a long session's oldest exchanges go, its newest and every shared lesson stay (${kept} kept, ${many.length} characters)`);
+      ok(many.length <= 4000 && many.includes('ask-9 here') && !many.includes('ask-0 here') && kept >= 2 && kept < 10,
+        `a long session's oldest exchanges go until the briefing is within 4,000 characters, its newest stay (${kept} kept, ${many.length} characters)`);
       ok(/^ {2}\*\*did:\*\* did-9 .{890,}$/m.test(many), 'an exchange keeps up to 900 characters of its answer');
+      // Exactly 4,000 characters keeps the oldest exchange; one more, and it goes.
+      const edge = (last) => {
+        writeFileSync(join(dP4, 'handoff.md'), docOf(...Array.from({ length: 5 }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(i === 4 ? last : 700)}`))));
+        return print_(cw4, 'pppppppp-1', 'startup', at4);
+      };
+      const E1 = edge(1).length, need = 1 + 4000 - E1, brim = edge(need);
+      ok(need > 1 && need <= 894 && brim.length === 4000 && brim.includes('ask-0 here'), `a startup briefing of exactly 4,000 characters keeps every exchange (${E1} -> ${brim.length})`);
+      ok(!edge(need + 1).includes('ask-0 here'), 'one character more, and the oldest exchange goes');
       writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'ssssssss', `long-ask ${mk(700)}`, 'done')));
       const asked = print_(cw4, 'pppppppp-1', 'startup', at4).match(/^- \*\*asked\*\* \S+ \S+ \[ssssssss\]: (long-ask .*)$/m)?.[1] ?? '';
       ok(asked.length === 500 && asked.endsWith('…'), `an exchange keeps 500 characters of its request (got ${asked.length})`);
+
+      // Never an exchange forget took out, nor a conversation marked private,
+      // though handoff.md still holds it (a sweep that failed, tried again at
+      // the next reply); a secret is [redacted].
+      const brief = () => print_(cw4, 'pppppppp-1', 'startup', at4), sk = stripe('sk', 'live');
+      writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 09:00', 'oooooooo', 'older plain ask', 'older answer'),
+        entry('2026-10-01 10:00', 'ssssssss', 'kept-ask here', `kept answer with ${sk}`), entry('2026-10-01 10:01', 'ssssssss', 'gone-ask here', 'gone answer'),
+        entry('2026-10-01 10:02', 'ssssssss', 'my pin is [private]', 'the pin is 4321')));
+      mkdirSync(join(dP4, 'journal'), { recursive: true });
+      // An older line is its key alone, with no conversation to match.
+      writeFileSync(join(dP4, FORGOTTEN), 'k-older\nk-gone\tC--hl-A-start/ssssssss-1\t2026-10-01 10:01\n');
+      let b = brief();
+      ok(/^ {2}\*\*did:\*\* kept answer with \[redacted\]$/m.test(b) && !b.includes(sk.slice(-12)), `a secret in an exchange is briefed as [redacted] (${b.slice(0, 700)})`);
+      ok(b.includes('kept-ask here') && !b.includes('gone-ask') && !b.includes('gone answer'), `an exchange forget took out is not briefed, though handoff.md still holds it (${b.slice(0, 700)})`);
+      ok(/my pin is \[private\]\n {2}\*\*did:\*\* \[private\]$/m.test(b) && !b.includes('4321'), `a private request's answer is not briefed (${b.slice(0, 700)})`);
+      writeFileSync(join(dP4, '.private-sessions'), 'ssssssss\n');
+      b = brief();
+      ok(!/\[ssssssss\]|kept-ask|my pin/.test(b) && /Last session here ended 2026-10-01 09:00 on: older plain ask/.test(b), `a conversation marked private is not briefed; the one before it is (${b.slice(0, 700)})`);
+      rmSync(join(dP4, '.private-sessions')); mkdirSync(join(dP4, '.private-sessions'));
+      b = brief();
+      ok(!/Last session here ended|\*\*asked\*\*/.test(b), `with the list of private conversations unreadable, no exchange is briefed (${b.slice(0, 700)})`);
+      rmSync(join(dP4, '.private-sessions'), { recursive: true });
+      // Auto memory off: nothing at all (and the start tags this conversation in the memory-off list, put back after).
+      const offList = join(root_, OFF), offHad = existsSync(offList) ? readFileSync(offList) : null;
+      try {
+        process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+        try { b = brief(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+        ok(b === '', `with auto memory off, nothing is briefed (got ${b.slice(0, 200)})`);
+      } finally { if (offHad) writeFileSync(offList, offHad); else rmSync(offList, { force: true }); }
+      rmSync(join(dP4, 'journal'), { recursive: true });
     } finally { if (had) writeFileSync(shared, had); else rmSync(shared, { force: true }); }
   }
 

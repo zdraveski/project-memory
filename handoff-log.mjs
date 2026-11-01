@@ -387,9 +387,9 @@ export const defuse = (s) => s.replace(/[<\uFF1C\uFE64](?=[\u200B-\u200D\u2060\u
 // Cut until a cut changes nothing, so an entry as written (clipped again by render) is the turn as read, to latest() and to forget, and
 // what the journal stores (clipped once) is what handoff.md shows (F15, F19, R36, R44). One more cut was not enough: a cut can leave a
 // code reference (api_key = proces…) that reads as a secret, defuse's `&lt;` gives a value the symbol a password has, and a value one
-// pattern keeps as a path is half redacted by a later one, which the first then takes. Bounded at 7 cuts, what the widest clip a writer
-// makes (the journal's 2,000) can need: a `-u` value is redacted 200 characters a pass, so a longer run clipped at Infinity (a journal
-// reply, a search's display) can stop short of stable (B3). Nothing else the tests build takes more than 2.
+// pattern keeps as a path is half redacted by a later one, which the first then takes. Bounded at 7 cuts, what a clip of 2,000 can
+// need: a `-u` value is redacted 200 characters a pass, so a run of over about 1,300 clipped at Infinity (a journal entry, kept
+// whole, or a search's display) can stop short of stable (B3). Nothing else the tests build takes more than 2.
 // Kept for the process, by length and text: a Stop clips each turn of its read several times (latest(), the fresh entries, the
 // journal's), and each clip is four passes of every secret pattern or more (release review). clip is pure: redact(),
 // defuse() and cut() read no state and no environment, so a clip kept is the clip again, whatever store the run is for.
@@ -932,7 +932,12 @@ function shared() {
 
 // Claude Code passes a hook's text whole up to 10,000 characters; past that,
 // a preview and a file, and the shared lessons at the end were what was cut.
-const SAY = 9500, CUT = "(the rest cut to fit Claude Code's startup limit)\n";
+const SAY = 9500;
+// About 1,000 tokens at four characters a token, the "usually under 1,000
+// tokens" the README promises: the last session's exchanges fill the startup
+// briefing up to it, the oldest left out first, and never past it. What is
+// there without them (the shared index alone can be 3,000 B) is as before.
+const BRIEF = 4000;
 // Defused, then held to SAY at a line's end, on both paths: the startup's
 // health lists and the compaction note's task lists had no bound, and `<`
 // grows fourfold as `&lt;`. What is cut is cut from the end, the shared
@@ -946,7 +951,7 @@ export const fit = (s, line = Infinity) => {
   // end of what it is given, and one shared lesson about the tags hid every
   // lesson after it.
   const d = defuse(s.split('\n').map(redact).join('\n')).split('\n').map((l) => (l.length <= line ? l : `${l.slice(0, /[\uD800-\uDBFF]/.test(l[line - 1]) ? line - 1 : line)}…`)).join('\n');
-  return d.length <= SAY ? d : `${d.slice(0, SAY - 60).replace(/[^\n]*$/, '')}${CUT}`;
+  return d.length <= SAY ? d : `${d.slice(0, SAY - 60).replace(/[^\n]*$/, '')}(the rest cut to fit Claude Code's startup limit)\n`;
 };
 
 // The SessionStart hook. After a compaction (source "compact"): the note on a
@@ -981,7 +986,12 @@ async function print(input) {
     return `Another session is working in this project: ${e ? `${e.at} [${t.s}] ${clip(e.ask, 120)}` : `${local(t.m)} [${t.s}] (no handoff entry)`}`;
   });
   if (input.source === 'startup' || input.source === 'clear') {
-    const last = all.filter((t) => t.s !== me).at(-1);
+    // Never a conversation marked private, though handoff.md still holds it (a
+    // sweep that failed waits for the next reply): the mark is kept apart. A
+    // list that won't read hides them all.
+    const hid = new Map(), quiet = (s) => hid.get(s) ?? hid.set(s, hushed(dir, s) !== false).get(s);
+    const told = all.filter((t) => !quiet(t.s));
+    const last = told.filter((t) => t.s !== me).at(-1);
     // After /clear the conversation just cleared is the newest transcript and
     // the last entry: named, it brought back the ask the user had cleared away.
     const lines = input.source === 'clear' ? [] : others.length ? others
@@ -993,15 +1003,22 @@ async function print(input) {
     // journal.mjs imports this module.
     let first = null; try { first = (await import(new URL('./journal.mjs', import.meta.url))).firstDay(dir); } catch {}
     // Where it stopped in its own words: its last exchanges, oldest first, the
-    // oldest dropped until the whole briefing fits, so the shared lessons at
-    // its end are never what is cut (2026-10-31).
-    const theirs = lines.length && last && !others.length ? all.filter((t) => t.s === last.s).map(render) : [];
+    // oldest dropped until the whole briefing is within BRIEF, so they never
+    // cost the shared lessons at its end (2026-10-31). None forget listed, by
+    // conversation and minute as its sweep matches them: a sweep that failed
+    // waits for that conversation's next reply. The line above still names the
+    // newest entry: that reply puts back another exchange of a swept minute.
+    let list = null; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch {}
+    const gone = new Set(forgotten(list).filter(([, t]) => t).map(([, t, at]) => `${tag(basename(t))} ${at}`));
+    const theirs = lines.length && last && !others.length ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).map(render) : [];
     const rest = [...(first ? [`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`] : []),
       ...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];
-    const say = () => fit([...lines, ...(theirs.length ? ['Its last exchanges, oldest first:', ...theirs] : []), ...rest].join('\n') + '\n', 1000);
-    let out = say();
-    while (theirs.length && out.endsWith(CUT)) { theirs.shift(); out = say(); }
-    return out;
+    const say = (ex) => fit([...lines, ...(ex.length ? ['Its last exchanges, oldest first:', ...ex] : []), ...rest].join('\n') + '\n', 1000);
+    // The most that fit, from the newest back; none when not even it does.
+    // Found, not looped: a while on the length, its && made ||, never ended
+    // when the rest alone was over BRIEF, and no test could fail it (a mutant).
+    const from = theirs.findIndex((_, i) => say(theirs.slice(i)).length <= BRIEF);
+    return say(from === -1 ? [] : theirs.slice(from));
   }
   let note = '';
   try { note = (await import(new URL('./compact-gate.mjs', import.meta.url))).recover(input); } catch {}
