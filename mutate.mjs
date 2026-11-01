@@ -15,6 +15,8 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'journal.mjs', 'co
 
 export const suites = {
   'store.mjs': ['store.test.mjs', {
+    'a repository named past 200 characters followed under its long name': ['slugOf(repo).length > CC_NAME ? dirname(t) : ', ''],
+    'a repository named exactly 200 characters not followed': ['slugOf(repo).length > CC_NAME ?', 'slugOf(repo).length >= CC_NAME ?'],
     'a refused write names its temp file in the reason': [".split('\\n')[0].replace(/\\.tmp\\d+/g, '');", ".split('\\n')[0];"],
     'a CRLF block read to its first line': ['\\\\S.*\\\\r?(?:\\\\n|$))+)`', '\\\\S.*(?:\\\\n|$))+)`'],
     "the case key folds as JavaScript does": ["    if (names.has(t) || !low.has(t.toLowerCase())) return t;\n", "    return process.platform === 'win32' ? t.toLowerCase() : t;\n"],
@@ -38,7 +40,7 @@ export const suites = {
     "a bare repository's worktree is its own": ["? dirname(main) : main;\n", "? dirname(main) : null;\n"],
     "the project folder name slugged": ["return join(projectsRoot(), named, 'memory');", "return join(projectsRoot(), slugOf(named), 'memory');"],
     "no payload cwd at a session's start": ["startCwd(t) || (typeof payload.cwd === 'string' && payload.cwd) || null", "startCwd(t)"],
-    "a subfolder's session keeps its own folder": ["return repo && !same(repo, cwd) ? join(projectsRoot(), slugOf(repo), 'memory') : join(dirname(t), 'memory');", "return join(dirname(t), 'memory');"],
+    "a subfolder's session keeps its own folder": ["return repo && !same(repo, cwd) ? repoFolder(repo, t) : join(dirname(t), 'memory');", "return join(dirname(t), 'memory');"],
     "a worktree is its own repository": ["    return basename(main) === '.git' ? dirname(main) : main;\n", "    return null;\n"],
     "CLAUDE_CONFIG_DIR ignored": ["process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')", "join(homedir(), '.claude')"],
     "auto memory never off": ["export const memoryOff = () => envOn(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY);", "export const memoryOff = () => false;"],

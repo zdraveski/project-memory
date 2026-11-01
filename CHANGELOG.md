@@ -32,6 +32,11 @@
   replies: not to `handoff.md`, and to the journal only once another
   conversation took it in, half an hour later. The request is now found
   further back, up to 256 MB, and the turn is written at once.
+- A conversation started in a subfolder of a repository with a very long
+  path (a folder name past 200 characters, which Claude Code shortens) saved
+  nothing and said nothing: its handoff went to a folder name too long for
+  the disk. It is now kept in the conversation's own folder, as the docs
+  say.
 
 **Privacy**
 - The start of a conversation never shows the words of a conversation

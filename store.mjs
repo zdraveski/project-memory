@@ -96,8 +96,15 @@ function startCwd(t) {
 // handoff. A transcript anywhere else (a test, a payload without one) falls
 // back to the cwd. Resolved: `<projects>/../x.jsonl` passed the check and
 // named a store outside it. A path that is no string threw, and the hook with it.
-// shortcut: a repository path long enough for Claude Code to shorten its
-// folder name with a hash gets the long name here; build that if one turns up.
+// A repository whose name is past 200 characters is not followed: Claude Code
+// names its folder by the first 200 and a hash of the path, its runtime's, not
+// one to make here, and every subfolder's folder starts with the same 200. The
+// conversation's own folder, which Claude Code made, holds its handoff and
+// journal. Under the whole long name, past the 255 characters a folder name
+// can have, a session in a subfolder saved nothing, and the record of that
+// failure, named after it, failed too (audit H-F11).
+const CC_NAME = 200;
+const repoFolder = (repo, t) => join(slugOf(repo).length > CC_NAME ? dirname(t) : join(projectsRoot(), slugOf(repo)), 'memory');
 export function storeOf(payload = {}) {
   // As Claude Code takes it: a plain name of up to 64 letters, digits, - and
   // _, used as it is; any other is ignored. Slugged, `my_proj` named a folder
@@ -111,7 +118,7 @@ export function storeOf(payload = {}) {
     // payload's, which is where it started. Read as the transcript's folder,
     // the startup briefing of a subfolder's session read another store.
     const cwd = startCwd(t) || (typeof payload.cwd === 'string' && payload.cwd) || null, repo = cwd && repoRoot(cwd);
-    return repo && !same(repo, cwd) ? join(projectsRoot(), slugOf(repo), 'memory') : join(dirname(t), 'memory');
+    return repo && !same(repo, cwd) ? repoFolder(repo, t) : join(dirname(t), 'memory');
   }
   const cwd = String(payload.cwd || process.cwd());
   return join(projectsRoot(), slugOf(repoRoot(cwd) || cwd), 'memory');

@@ -40,10 +40,11 @@ subfolder or a worktree uses the repository's folder, though its transcript
 sits in the folder named for where it started. project-memory finds the
 repository the same way, from the folder the conversation started in. It
 follows a worktree's `.git` file only when the main repository's worktree
-record names it back, as Claude Code does. A repository whose path is so long
-that Claude Code shortens its folder name with a hash is not followed: a
-conversation started in a subfolder of it writes its handoff under the long
-name.
+record names it back, as Claude Code does. A repository whose folder name
+would pass 200 characters, which Claude Code shortens with a hash of its own,
+is not followed: a conversation started in a subfolder of it keeps its
+handoff and journal in the folder Claude Code made for that conversation,
+and the startup briefing there shows them.
 
 With `CLAUDE_CONFIG_DIR` set, all of this is under that folder instead of
 `~/.claude`, and a plain name in `CLAUDE_CODE_PROJECT_DIR_NAME` (up to 64

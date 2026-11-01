@@ -4,7 +4,7 @@
 import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
-import { join, isAbsolute, basename } from 'node:path';
+import { join, isAbsolute, basename, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
@@ -557,6 +557,26 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(pointerLine('x.md', 'hello') === '- [x](x.md) — hello', 'a pointer line keeps the description from its first character');
 }
 
+// A repository whose folder name Claude Code shortens (past 200 characters, with a hash of its own) is not followed: a
+// conversation in its subfolder keeps its handoff in its own folder. Under the whole long name, past the 255 characters a
+// folder name can have, it saved nothing, and the failure's record failed too (audit H-F11). One of 200 is followed.
+{
+  // Six names: past 255 characters whatever the home's length (/tmp/... on Linux is short).
+  const long = join(home, 'r', ...Array.from({ length: 6 }, (_, i) => `a-rather-long-repository-folder-name-number-${i}`));
+  const at200 = join(home, 'q', 'x'.repeat(200 - slug(join(home, 'q')).length - 1));
+  for (const repo of [long, at200]) { mkdirSync(join(repo, '.git'), { recursive: true }); mkdirSync(join(repo, 'web'), { recursive: true }); }
+  const t = (repo) => {
+    const f = join(root, `${slug(join(repo, 'web')).slice(0, 200)}-1a2b3c`), p = join(f, `${basename(repo)}.jsonl`);
+    mkdirSync(f, { recursive: true });
+    writeFileSync(p, JSON.stringify({ type: 'user', cwd: join(repo, 'web'), message: { content: 'q' } }) + '\n');
+    return p;
+  };
+  const tl = t(long), t2 = t(at200);
+  ok(slug(long).length > 255 && storeOf({ transcript_path: tl }) === join(dirname(tl), 'memory'), `a repository named past 200 characters is not followed: the conversation's own folder (got ${storeOf({ transcript_path: tl })})`);
+  ok(slug(at200).length === 200 && storeOf({ transcript_path: t2 }) === join(root, slug(at200), 'memory'), `one of exactly 200 is (got ${storeOf({ transcript_path: t2 })})`);
+  for (const p of [tl, t2]) rmSync(dirname(p), { recursive: true, force: true });
+  rmSync(join(home, 'r'), { recursive: true, force: true }); rmSync(join(home, 'q'), { recursive: true, force: true });
+}
 // A temp copy a killed hook left (`<file>.tmp<pid>`) goes: its writer is gone, or it is older than a held lock can be. It
 // can hold text forget then removed (audit H-F3). One a live writer may still rename stays.
 {
