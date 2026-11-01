@@ -403,7 +403,9 @@ const ever = (dir) => {
 // to") read as a fault, and without git, restore offered to replace a note "with the snapshot" (audit C-3, C-4).
 const unsnapped = () => {
   try { execFileSync('git', ['--version'], { stdio: 'ignore' }); } catch { return 'git is not installed, so there are no snapshots: everything else works. Installing Git (git-scm.com) turns them on'; }
-  return existsSync(join(projectsRoot(), '.git')) ? '' : 'no snapshots yet: project-memory takes the first at the end of a reply';
+  // Nor a repository with no commit yet: a large first snapshot is taken in parts, over several replies.
+  let head = false; try { head = existsSync(join(projectsRoot(), '.git')) && !!git('rev-parse', '--verify', '-q', 'HEAD'); } catch {}
+  return head ? '' : 'no snapshots yet: project-memory takes the first at the end of a reply';
 };
 // git saying a snapshot does not hold a path, or there is no such commit.
 const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
@@ -801,7 +803,7 @@ export function main(given) {
       // still go from handoff.md, by the conversation and minute the list keeps. Said "already forgotten" alone, they stayed (R73).
       if (yes && before.length) {
         const at = new Set(listed.filter(([k, t, m]) => t && m && before.includes(k)).map(([, t, m]) => `${tag(basename(t))} ${m}`));
-        try { if (withLock(here, () => { unsay(here, (t) => at.has(`${t.s} ${t.at}`)); return true; }) === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true }); }
+        try { if (withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`))) === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true }); }
         catch (e) { failed.push({ path: join(here, 'handoff.md'), code: e.code || e.message, write: true }); }
       }
       const m = forget(here, terms, o).matched, byRange = !terms.length && !named.length && !conversation;

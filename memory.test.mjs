@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
-import { tool, tempHome, tempDir, storeFor, quick, capture } from './harness.mjs';
+import { tool, tempHome, tempDir, storeFor, quick, capture, fastClock } from './harness.mjs';
 
 const CLI = tool('memory.mjs'), TIER = tool('memory-tier.mjs');
 const { home, env } = tempHome('memcli-');
@@ -1211,14 +1211,21 @@ if (!quick) {
   // remove, and "already forgotten" left the exchange in handoff.md for the next briefing (R73). It goes, by the line's minute.
   reset();
   const hf = join(fd, 'handoff.md');
-  writeFileSync(hf, `---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written._\n\n${said(es[0].at, 'aaaa1111', es[0].asked)}\n${said(es[0].at, 'cccc3333', 'the walrus budget')}\n<!-- auto:end -->\n`);
+  writeFileSync(hf, `---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written._\n\n${said(es[0].at, 'aaaa1111', es[0].asked)}\n${said(es[2].at, 'aaaa1111', es[2].asked)}\n${said(es[0].at, 'cccc3333', 'the walrus budget')}\n<!-- auto:end -->\n`);
   r = refusing('handoff.md');
   ok(r.status === 1 && r.stdout.includes(`could not write ${hf}: EPERM`) && readFileSync(hf, 'utf8').includes(es[0].asked), `a handoff.md that refuses the write keeps the exchange, and is named (got ${r.stdout}${r.stderr})`);
   r = await fcli('forget', '--key', es[0].key);
   ok(r.stdout === `key ${es[0].key} is already forgotten; nothing to remove\nnothing in ${fd} matches\n` && readFileSync(hf, 'utf8').includes(es[0].asked), `a look at it changes nothing (got ${r.stdout})`);
+  // A retry the disk refuses again, or that finds the store's lock held, says so and fails.
+  r = spawnSync(process.execPath, ['--import', pathToFileURL(refuse).href, CLI, 'forget', '--key', es[0].key, '--yes', '--store', fd], { env, encoding: 'utf8' });
+  ok(r.status === 1 && r.stdout.includes(`could not write ${hf}: EPERM\n`) && readFileSync(hf, 'utf8').includes(es[0].asked), `a retry the disk refuses is named and fails (got ${r.stdout}${r.stderr})`);
+  mkdirSync(join(fd, '.lock'));
+  try { r = await capture(() => fastClock(() => main(['forget', '--key', es[0].key, '--yes', '--store', fd]))); } finally { rmSync(join(fd, '.lock'), { recursive: true, force: true }); }
+  ok(r.value === 1 && r.out.includes(`could not write ${hf}: busy\n`) && readFileSync(hf, 'utf8').includes(es[0].asked), `a retry that meets the lock is named and fails (got ${r.out})`);
   r = await fcli('forget', '--key', es[0].key, '--yes');
-  ok(r.status === 0 && r.stdout === `key ${es[0].key} is already forgotten; nothing to remove\nnothing in ${fd} matches\n` && !readFileSync(hf, 'utf8').includes(es[0].asked) && readFileSync(hf, 'utf8').includes('the walrus budget'),
-    `the retry takes it out of handoff.md, and only it (got ${r.stdout}; ${readFileSync(hf, 'utf8')})`);
+  const hd2 = readFileSync(hf, 'utf8');
+  ok(r.status === 0 && r.stdout === `key ${es[0].key} is already forgotten; nothing to remove\nnothing in ${fd} matches\n` && !hd2.includes(es[0].asked) && hd2.includes('the walrus budget') && hd2.includes(es[2].asked),
+    `the retry takes it out of handoff.md, and only it: not another conversation's of that minute, nor another forgotten key's (got ${r.stdout}; ${hd2})`);
   // A journal folder the disk will not list is no empty journal: forget said "nothing matches" with exit 0 (by --key, that the key was
   // another project's), and the entries stayed. It names the code, removes nothing and fails, as a refused restore does (F20, R45).
   reset();
@@ -1762,10 +1769,32 @@ if (!quick) {
   let h, s; try { h = await cli('history', 'c4-note'); s = await cli('restore', 'c4-note'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
   ok(h.status === 1 && s.status === 1 && h.stdout === s.stdout && /^no snapshots yet: project-memory takes the first at the end of a reply\n$/.test(h.stdout),
     `before the first snapshot, history and restore say so plainly (got ${h.stdout}${s.stdout})`);
+  // Nor while the first is still being taken (a repository with no commit yet), nor from a repository in a folder above the
+  // projects folder (a dotfiles ~/.claude): git found that one, and its history was read as the snapshots'.
+  {
+    const above = join(home, '.claude'), g = (...a) => spawnSync('git', a, { encoding: 'utf8' });
+    renameSync(join(root, '.git'), join(root, '.git-away'));
+    try {
+      g('init', '-q', root);
+      h = await cli('history', 'c4-note');
+      rmSync(join(root, '.git'), { recursive: true, force: true });
+      g('init', '-q', above); g('-C', above, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'dotfiles');
+      s = await cli('history', 'c4-note');
+    } finally { rmSync(join(above, '.git'), { recursive: true, force: true }); rmSync(join(root, '.git'), { recursive: true, force: true }); renameSync(join(root, '.git-away'), join(root, '.git')); }
+    ok(/^no snapshots yet: /.test(h.stdout) && /^no snapshots yet: /.test(s.stdout), `a repository with no commit, or one above the projects folder, is no snapshot yet (got ${h.stdout}${s.stdout})`);
+  }
   r = await cli('restore', 'never-was');
   ok(r.status === 1 && r.stdout === `no snapshot of never-was.md (looked in ${dir}): search <words> finds a memory's name\n`, `a note no snapshot holds is said plainly (got ${r.stdout})`);
   r = await cli('restore', 'c4-note', '--force', '--rev', 'deadbeef');
   ok(r.status === 1 && r.stdout === 'no snapshot of c4-note.md at deadbeef: history c4-note lists the ones that hold it\n', `and a commit that doesn't hold it (got ${r.stdout})`);
+  // Any other failure of git is still git's own line, named at the commit it read (HEAD when none was given).
+  {
+    const failLog = join(home, 'fail-log.mjs');
+    writeFileSync(failLog, "import cp from 'node:child_process'; import { syncBuiltinESMExports } from 'node:module';\nconst run = cp.execFileSync;\n" +
+      "cp.execFileSync = (f, a, ...o) => { if (Array.isArray(a) && a.includes('--diff-filter=D')) throw Object.assign(new Error('Command failed'), { stderr: 'fatal: a simulated failure\\n' }); return run(f, a, ...o); };\nsyncBuiltinESMExports();\n");
+    r = spawnSync(process.execPath, ['--import', pathToFileURL(failLog).href, CLI, 'restore', 'never-was', '--store', dir], { env, encoding: 'utf8' });
+    ok(r.status === 1 && r.stdout === 'no snapshot of C--mem-cli/memory/never-was.md at HEAD: fatal: a simulated failure\n', `another git failure is git's line, at HEAD (got ${r.stdout}${r.stderr})`);
+  }
   // C-4. Without git, restore of a note that exists offered to replace it "with the snapshot", as though there were one.
   r = spawnSync(process.execPath, [CLI, 'restore', 'c4-note', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
   ok(r.status === 1 && /^git is not installed, so there are no snapshots/.test(r.stdout) && !/restore --force replaces it/.test(r.stdout), `without git, restore says there are no snapshots (got ${r.stdout}${r.stderr})`);
@@ -1816,13 +1845,18 @@ if (!quick) {
     // for straße, which NTFS keeps apart.
     const g = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' }).stdout.trim();
     const branch = g('symbolic-ref', 'HEAD'), from = g('rev-parse', 'HEAD'), msg = 'memory: alike\n';
-    const alike = ['Twin', 'twin', 'dual-é-é', 'dual-é-é', 'straße'];
+    const alike = ['Twin', 'twin', 'dual-é-é', 'dual-é-é', 'straße', 'solo-é'];
     // Case kept: on Windows, git's core.ignorecase made the two one.
     const made = spawnSync('git', ['-C', root, '-c', 'core.ignorecase=false', 'fast-import', '--quiet'], { encoding: 'utf8', input: `commit ${branch}\ncommitter memory <memory@localhost> 1600000000 +0000\ndata ${Buffer.byteLength(msg)}\n${msg}from ${from}\n` +
       alike.map((n) => `M 100644 inline C--mem-cli/memory/${n}.md\ndata ${Buffer.byteLength(n) + 1}\n${n}\n`).join('') + '\n' });
     const miss = async (typed) => (await cli('history', typed)).stdout.startsWith(`no snapshot holds ${typed}.md `);
     ok(made.status === 0 && await miss('TWIN') && await miss('dual-é-é') && await miss('STRASSE') && !(await miss('Twin')),
       `a name two snapshot names read alike, or only a fold that NTFS does not make, is no name (got ${made.stderr}${(await cli('history', 'TWIN')).stdout})`);
+    // A file on disk by the very name typed is that note, though no snapshot holds it yet: never the one the snapshots had
+    // under the other Unicode form, a different file on Windows and Linux.
+    writeFileSync(join(dir, 'solo-é.md'), 'a note not yet snapshotted\n');
+    ok(await miss('solo-é'), `a name on disk as typed is not taken for another form the snapshots had (got ${(await cli('history', 'solo-é')).stdout})`);
+    rmSync(join(dir, 'solo-é.md'));
   }
   // C-9. Under --all, a hit named its project by its folder (`C--work-api-server`), no name a person reads: now by the folder its
   // conversations started in, then the folder --store needs. A project with no conversation on disk keeps the folder alone.
