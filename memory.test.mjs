@@ -1114,14 +1114,27 @@ if (!quick) {
   r = await fcli('forget', '--key', 'f-late', '--key', es[0].key);
   ok(r.status === 0 && r.stdout === `${fl(es[0])}key f-late is already forgotten; nothing to remove\n1 entry in ${fd} would go; run again with --yes to remove them\n`,
     `with another key's entry, the line comes before the count (got ${r.stdout})`);
+  // By its words too: a look by words found no turn a day did not hold yet, and the next reply wrote it (1.2.5). Listed as by
+  // its key, kept out by --yes, and not found again once forgotten.
+  reset();
+  r = await fcli('forget', 'OKAPI', 'plan');
+  ok(r.status === 0 && r.stdout === `${unsaid}1 entry in ${fd} would go; run again with --yes to remove them\n`, `a look by words lists a turn no day holds yet (got ${r.stdout})`);
+  r = await fcli('forget', 'okapi', '--yes');
+  ok(r.status === 0 && r.stdout.startsWith(unsaid) && r.stdout.endsWith(`removed 1 from ${fd}\n`) && /^f-late\t/m.test(readFileSync(join(fj, '.forgotten'), 'utf8')) && kept('2025-10-20', '2025-10-21', today),
+    `and --yes by words keeps it out by its key (got ${r.stdout})`);
+  r = await fcli('forget', 'okapi');
+  ok(r.status === 0 && r.stdout === `nothing in ${fd} matches: no entry holds "okapi"\n`, `once forgotten, a look by words finds it no more (got ${r.stdout})`);
   // A key whose day won't read (a folder by its name here) is no turn "not in the journal yet": found in its conversation, it was
   // said removed while that day still held it (R73). Named as in no day that could be read, nothing removed, and the forget fails.
+  // By words, it is not listed at all.
   reset();
   mkdirSync(join(fj, '2025-10-22.md'));
   for (const yes of [[], ['--yes']]) {
     r = await fcli('forget', '--key', 'f-late', ...yes);
     ok(r.status === 1 && new RegExp(`^no day of [^\\n]+ that could be read has the key f-late: it may be in one that could not, so nothing was removed for it\\ncould not read [^\\n]*2025-10-22\\.md: \\w+\\nnothing in [^\\n]+ matches\\n$`).test(r.stdout) &&
       !existsSync(join(fj, '.forgotten')), `a key whose day won't read is named so, never said removed (${yes.join('') || 'a look'}: got ${r.stdout})`);
+    r = await fcli('forget', 'okapi', ...yes);
+    ok(r.status === 1 && !/okapi|not in the journal yet|removed 1/.test(r.stdout.replace(/"okapi"/, '')) && !existsSync(join(fj, '.forgotten')), `nor is a turn found by its words (${yes.join('') || 'a look'}: got ${r.stdout})`);
   }
   rmSync(join(fj, '2025-10-22.md'), { recursive: true });
   rmSync(lateT);

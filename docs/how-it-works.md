@@ -733,9 +733,16 @@ without its words (its conversation may be one the journal never takes), and
 for an entry. It is found by the id of its prompt record: a turn whose
 record has none (rare: Claude Code gives every record one) is keyed by a
 hash, as above, and can't be found until the journal holds it. `--same` with
-such a key adds only the copies the journal already holds. A key already
+such a key adds only the copies the journal already holds. A look by words
+alone (no `--key`) finds such exchanges too, those that hold every word,
+listed the same way: it reads every conversation of the project for them.
+While a day file can't be read, neither looks for them: the exchange may be
+in that day, and a key of it is named as in no day that could be read,
+nothing is removed for it, and the tool exits with 1. A key already
 listed in `.forgotten` is named as already forgotten, nothing is removed,
-and the tool exits with 0. It works on one
+and the tool exits with 0; with `--yes`, its exchange still goes from
+`handoff.md`, by the conversation and minute its line keeps, in case an
+earlier `forget` couldn't write that file. It works on one
 store: `--all` is refused, and `--store` picks another project's.
 
 The keys are added to `journal/.forgotten` first, each with its

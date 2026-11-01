@@ -724,7 +724,8 @@ export function main(given) {
     // Not one forgotten before: in no day, and still in its conversation, it was found again and said removed (review).
     // Nor while a day won't read: a key of that day, found in its conversation, was said removed while the day still held it (R73).
     const listed = forgotten(read(join(here, FORGOTTEN))), already = new Set(listed.map(([k]) => k)), none = (k) => !stored.some((e) => e.key === k);
-    const late = unread.length ? [] : unwritten(here, named.filter((k) => none(k) && !already.has(k)));
+    // By words alone, every such turn holding them: a look by words missed one, and the next reply wrote it (1.2.5).
+    const late = unread.length ? [] : terms.length && !named.length ? unwritten(here, [], terms).filter((e) => !already.has(e.key)) : unwritten(here, named.filter((k) => none(k) && !already.has(k)));
     stored.push(...late);
     const before = named.filter((k) => none(k) && already.has(k)), again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
     const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => (unread.length ? `no day of ${here} that could be read has the key ${k}: it may be in one that could not, so nothing was removed for it`
