@@ -184,8 +184,8 @@ Before any of it is written, these are taken out:
   `aws configure set` of a secret, key or token; the password of
   `htpasswd -b` or `-nb`, before any redirect; `gh secret set … --body`; an
   npm `:_authToken`; and `export NAME=…`, `setx NAME …`,
-  `SetEnvironmentVariable("NAME", …)`, PowerShell's `$env:NAME = …` (in any
-  case) and a `.env` line `NAME=…` (at a line's start)
+  `SetEnvironmentVariable("NAME", …)` and PowerShell's `$env:NAME = …` (in
+  any case)
   when a `_`-separated part of `NAME` is `KEY`, `SECRET`, `TOKEN`,
   `PASSWORD`, `PASSWD`, `PASS` or `PWD` and its last part isn't `FILE`,
   `PATH`, `DIR`, `NAME` or `ID`. Kept, so a search still finds the command:
@@ -195,6 +195,11 @@ Before any of it is written, these are taken out:
   `TIMEOUT` or `PORT` (`TOKEN_LIMIT=4096`). A number after a password or
   token option, or under a secret's name (`export TOKEN=12345678`), goes:
   it can be a PIN;
+- a `.env` line, `NAME=…` at a line's start with an upper-case name, no
+  blank before `=` and a last `_`-part of `KEY`, `SECRET`, `TOKEN`,
+  `PASSWORD`, `PASSWD`, `PASS` or `PWD` (`SIGNING_KEY=…`, not
+  `KEY_ALGORITHM=RS256` or `TOKEN_URL=…`, nor code such as `key = x`), with
+  the same exceptions;
 - "password is …", "the password for the server is …" and "the api key is …",
   when the value has a digit or a symbol in it ("my password is sunshine"
   stays, since "the password is hashed" is prose);

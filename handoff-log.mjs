@@ -325,6 +325,9 @@ const named = (n) => {
 // A number under a count's name (TOKEN_LIMIT, MAX_TOKEN, SECRET_PORT): no
 // secret, as only a count-like whole part says (R34).
 const counted = (n, v) => /^\d+$/.test(v) && n.toUpperCase().split('_').some((p) => /^(?:LIMIT|MAX|MIN|SIZE|COUNT|LEN|TTL|TIMEOUT|BYTES|PORT)$/.test(p));
+// A .env name that holds a secret: its last `_`-part is the word (SIGNING_KEY, DB_PASSWORD). One whose word comes first names
+// something else (KEY_ALGORITHM, TOKEN_URL, SECRET_BACKEND); a name with SECRET or PASSWORD anywhere the setting rule reads anyway.
+const envNamed = (n) => /(?:^|_)(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|PASS|PWD)$/.test(n);
 // A YAML child's value under a secret's key, whose own name says nothing: a secret has a digit or a symbol, a PIN too (not a
 // name such as `apiKey`, `tls-cert` or `production`); under `tokens:` a token's length too, 16 or more with a letter and a digit
 // (not a colour, `blue-500`, a model's name or a count).
@@ -379,8 +382,10 @@ const SECRETS = [
   // The name read whole, then judged: as words in one pattern, KEY_ repeated
   // took 28 s. PowerShell's `$env:NAME = …` too, in any case, as export's is (e2e audit, 2026-11-01).
   [/((?:\b(?:export\s+([A-Za-z_]\w{0,100})=|setx[ \t]+([A-Za-z_]\w{0,100})[ \t]+)|\$env:([A-Za-z_]\w{0,100})[ \t]*=[ \t]*)["']?)([^\s"';|&]+)/gi, (m, pre, a, b, c, v) => (named(a ?? b ?? c) && !arg(v) && !code(v) && !counted(a ?? b ?? c, v) ? `${pre}[redacted]` : m)],
-  // A .env line, `NAME=value` at a line's start, judged the same (e2e audit, 2026-11-01).
-  [/^([ \t]*([A-Za-z_]\w{0,100})[ \t]*=[ \t]*["']?)([^\s"';|&]+)/gm, (m, pre, n, v) => (named(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
+  // A .env line at a line's start (e2e audit, 2026-11-01): only its own shape, an upper-case name with no blank before `=`, whose
+  // last part is the secret's word (envNamed). Any `name = value` was read as one, and Python's `key = item.name`, `CACHE_KEY =
+  // "x"` and `TOKEN_URL=https://…` were cut (review, 2026-11-01).
+  [/^([ \t]*(?:export[ \t]+)?([A-Z][A-Z0-9_]{0,100})=["']?)([^\s"';|&]+)/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
   [/(\bgh\s+secret\s+set\b[^\n|;&]{0,200}?\s(?:--body|-b)[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   [/(:_authToken[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.

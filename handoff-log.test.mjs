@@ -1623,11 +1623,15 @@ ok(!quotedCut.length, `a quoted reference, path, prose word or user:group is kep
 // P-F7: PowerShell's `$env:NAME = "…"`, a .env line `NAME=…` and an Azure connection string's SharedAccessKey, judged by the name
 // as `export NAME=` is: a name whose part is KEY kept its value in each (e2e audit, 2026-11-01).
 for (const [s, gone] of [['$env:SIGNING_KEY = "' + k('Sg2', 'R7value') + '"', 'Sg2'], ["$Env:DEPLOY_KEY='" + k('Dk3', 'R7value') + "'", 'Dk3'],
-  ['SIGNING_KEY=' + k('Sg3', 'R7value'), 'Sg3'], ['# .env\nAPP_NAME=demo\n  STRIPE_KEY = "' + k('St4', 'R7value') + '"\n', 'St4'],
+  ['SIGNING_KEY=' + k('Sg3', 'R7value'), 'Sg3'], ['# .env\nAPP_NAME=demo\n  STRIPE_KEY="' + k('St4', 'R7value') + '"\n', 'St4'],
   ['Endpoint=sb://ns.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=' + k('Az4R7', 'valueXyz='), 'Az4R7']])
   for (const f of [red, (x) => clip(x, 2000)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a secret set in PowerShell, a .env line or an Azure key is redacted (got ${f(s)})`);
 const envKept = ['$env:PATH = "C:\\tools;" + $env:PATH', '$env:API_TOKEN = $null', '$env:TOKEN_LIMIT = 4096', 'NODE_ENV=production', 'KEY_FILE=./key.pem', 'API_KEY=${API_KEY}',
-  'SharedAccessKeyName=RootManageSharedAccessKey'];
+  'SharedAccessKeyName=RootManageSharedAccessKey',
+  // Only the dotenv shape (an upper-case name whose last part is the secret's word, no blank before `=`): code and other names
+  // were cut (review, 2026-11-01).
+  'for item in items:\n    key = item.name\n    value = item.value', 'key = sorted_keys[0]\nKEY = "production"', 'CACHE_KEY = "user_profile"',
+  'TOKEN_URL=https://login.example.com/oauth/token', 'AZURE_KEY_VAULT_URL=https://myvault.vault.azure.net/', 'KEY_ALGORITHM=RS256', 'SECRET_BACKEND=vault'];
 const envCut = envKept.filter((s) => red(s) !== s);
 ok(!envCut.length, `a path, a reference, a count, an ordinary name and an Azure key's name are kept (cut: ${envCut.map(red).join(' | ')})`);
 const tNest = Date.now(); red('secret:'.repeat(30_000)); red('secret: ' + 'a: '.repeat(30_000)); red('secrets:\n' + '  a: b  c: d e:'.repeat(5_000)); red('secrets:\n' + '  a:\n'.repeat(30_000));
