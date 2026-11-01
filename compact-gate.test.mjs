@@ -230,6 +230,11 @@ write(user('the Acme offer is 2.1M'), asst('drafting the 2.1M offer', 965_000, '
   ok(g.code === 0 && !/cut mid-turn|2\.1M/.test(noted) && rec2 === '', `a conversation held with auto memory off gets no in-flight note and no recovery note (got ${noted.split('<!-- auto:start -->')[1]}, ${JSON.stringify(rec2)})`);
 }
 rmSync(offList);
+// A memory-off list that won't read (a folder where it goes) is unknown, and a note only adds: none (F12).
+mkdirSync(offList);
+gate();
+ok(!/cut mid-turn|2\.1M/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a memory-off list that will not read writes no in-flight note');
+rmSync(offList, { recursive: true });
 // A private message's answer is withheld from the note, as from the handoff.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
 write(user('<private>pin 4321</private> unlock it'), asst('Unlocking with 4321', 965_000, 'tool_use'), result('ok'));

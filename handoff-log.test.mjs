@@ -1617,7 +1617,14 @@ for (const [s, gone] of [['deploy --password "' + k('Pw1', 'Quoted') + '"', 'Pw1
   ["curl --user 'admin:" + k('Cu6', 'Quoted') + "' https://api.example.com", 'Cu6'], ['aws configure set aws_secret_access_key "' + k('Aw6', 'QuotedSecretKey') + '"', 'Aw6'],
   ['tool --client-secret "correct ' + k('hor', 'se') + ' battery staple"', 'horse']])
   for (const f of [red, (x) => clip(x, 2000)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a quoted secret passed to a command is redacted (got ${f(s)})`);
-const quotedKept = ['tool --token "$TOKEN"', "tool --password '${DB_PASS}'", 'tool --password "./pw.txt"', 'the --token "flag" is new', 'docker run -u "1000:1000" img', 'deploy --password ""'];
+// A quoted value with blanks goes whole in the other rules too, and a quoted one may start with `-` (review, 2026-11-01).
+for (const [s, gone] of [['curl -u "bob:my ' + k('sec', 'ret') + ' pass" https://x', 'secret'], ["curl --user 'bob:my " + k('sec', 'ret') + " pass' x", 'secret'],
+  ['aws configure set aws_secret_access_key "abc ' + k('de', 'f9') + ' ghi"', 'def9'], ['SIGNING_KEY="abc ' + k('de', 'f9') + ' ghi"', 'def9'],
+  ['$env:SIGNING_KEY = "abc ' + k('de', 'f9') + ' ghi"', 'def9'], ['export SIGNING_KEY="abc ' + k('de', 'f9') + ' ghi"', 'def9'], ["setx DB_PASSWORD 'abc " + k('de', 'f9') + " ghi'", 'def9'],
+  ['deploy --password "-' + k('Xy9', 'secret') + '"', 'Xy9']])
+  for (const f of [red, (x) => clip(x, 2000)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a quoted value with blanks, or one starting with -, is redacted whole (got ${f(s)})`);
+const quotedKept = ['tool --token "$TOKEN"', "tool --password '${DB_PASS}'", 'tool --password "./pw.txt"', 'the --token "flag" is new', 'docker run -u "1000:1000" img', 'deploy --password ""',
+  'tool --password --verbose'];
 const quotedCut = quotedKept.filter((s) => red(s) !== s);
 ok(!quotedCut.length, `a quoted reference, path, prose word or user:group is kept (cut: ${quotedCut.map(red).join(' | ')})`);
 // P-F7: PowerShell's `$env:NAME = "…"`, a .env line `NAME=…` and an Azure connection string's SharedAccessKey, judged by the name
