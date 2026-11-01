@@ -93,6 +93,10 @@
   right-to-left keyboard or a paste can add, and the like. Before, only
   zero-width spaces and joiners were looked past, and a tag with one of the
   others kept nothing private.
+- More secret shapes are replaced with `[redacted]`: PowerShell's
+  `$env:NAME = "…"` and a `.env` file's `NAME=…` line, where the name says
+  key, secret, token or password (as `export NAME=…` already was), and an
+  Azure connection string's `SharedAccessKey=…`.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in

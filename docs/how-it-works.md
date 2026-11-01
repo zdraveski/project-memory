@@ -181,10 +181,11 @@ Before any of it is written, these are taken out:
   such as `flag` or `option` after one in prose; in quotes, the whole value
   to the closing quote, blanks and all (`--password "a b c"`, `-p '…'`; a
   quoted `curl -u` or `aws configure set` value to its first blank);
-  `aws configure set` of a
-  secret, key or token; the password of `htpasswd -b` or `-nb`, before any
-  redirect; `gh secret set … --body`; an npm `:_authToken`; and
-  `export NAME=…`, `setx NAME …` and `SetEnvironmentVariable("NAME", …)`
+  `aws configure set` of a secret, key or token; the password of
+  `htpasswd -b` or `-nb`, before any redirect; `gh secret set … --body`; an
+  npm `:_authToken`; and `export NAME=…`, `setx NAME …`,
+  `SetEnvironmentVariable("NAME", …)`, PowerShell's `$env:NAME = …` (in any
+  case) and a `.env` line `NAME=…` (at a line's start)
   when a `_`-separated part of `NAME` is `KEY`, `SECRET`, `TOKEN`,
   `PASSWORD`, `PASSWD`, `PASS` or `PWD` and its last part isn't `FILE`,
   `PATH`, `DIR`, `NAME` or `ID`. Kept, so a search still finds the command:
@@ -200,7 +201,8 @@ Before any of it is written, these are taken out:
 - a value of 6 characters or more after `:` or `=` following `password`,
   `passwd`, `pass`, `passphrase`, `secret`, `access_token`, `auth_token`,
   `refresh_token`, `session_token`, `api_token`, `api_key`, `account_key`,
-  `private_key`, `key-data` or `pwd`, also inside a longer name
+  `private_key`, Azure's `SharedAccessKey` (not `SharedAccessKeyName`),
+  `key-data` or `pwd`, also inside a longer name
   (`DB_PASSWORD=`, `DB_PASS=`, `PGPASSWORD=`, `dbPassword`, `clientSecret`)
   and with the value on the next line. A key is never taken for the value:
   in `secret:` with `password: …` under it, or on its line, the value after

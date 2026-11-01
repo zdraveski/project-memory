@@ -362,8 +362,10 @@ const SECRETS = [
   [/(SetEnvironmentVariable\(\s*["']([^"'\n]{1,100})["']\s*,\s*["'])([^"'\n]+)/gi, (m, pre, name, v) => (named(name) && !arg(v) && !counted(name, v) ? `${pre}[redacted]` : m)],
   [/(\bhtpasswd(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+(?:[^\s<>-]\S*\s+)?[^\s<>]+\s+)(?!\d*>)[^\s;|&<>]+/g, '$1[redacted]'],
   // The name read whole, then judged: as words in one pattern, KEY_ repeated
-  // took 28 s.
-  [/(\b(?:export\s+([A-Za-z_]\w{0,100})=|setx[ \t]+([A-Za-z_]\w{0,100})[ \t]+)["']?)([^\s"';|&]+)/g, (m, pre, a, b, v) => (named(a ?? b) && !arg(v) && !code(v) && !counted(a ?? b, v) ? `${pre}[redacted]` : m)],
+  // took 28 s. PowerShell's `$env:NAME = …` too, in any case, as export's is (e2e audit, 2026-11-01).
+  [/((?:\b(?:export\s+([A-Za-z_]\w{0,100})=|setx[ \t]+([A-Za-z_]\w{0,100})[ \t]+)|\$env:([A-Za-z_]\w{0,100})[ \t]*=[ \t]*)["']?)([^\s"';|&]+)/gi, (m, pre, a, b, c, v) => (named(a ?? b ?? c) && !arg(v) && !code(v) && !counted(a ?? b ?? c, v) ? `${pre}[redacted]` : m)],
+  // A .env line, `NAME=value` at a line's start, judged the same (e2e audit, 2026-11-01).
+  [/^([ \t]*([A-Za-z_]\w{0,100})[ \t]*=[ \t]*["']?)([^\s"';|&]+)/gm, (m, pre, n, v) => (named(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
   [/(\bgh\s+secret\s+set\b[^\n|;&]{0,200}?\s(?:--body|-b)[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   [/(:_authToken[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
@@ -389,7 +391,8 @@ const SECRETS = [
     (m, head, tok, block) => head + block.replace(/^([ \t]+[\w.-]{1,40}[ \t]*:[ \t]*["']?)([^\s"',;]{6,})/gm, (x, pre, v) => (code(v) || (tok && !/[A-Za-z]/.test(v)) ? x : `${pre}[redacted]`))],
   // A value is never a key (one that ends in `:`): taken for the parent's value, the child after it was kept (`secret:\n
   // password: X`, `secret: password: X`; e2e audit, 2026-11-01).
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)(?![^\s"',;]{0,200}:(?![^\s"',;]))([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)(?![^\s"',;]{0,200}:(?![^\s"',;]))([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
   [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?![^\s"',;]{0,200}:(?![^\s"',;]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
 ];

@@ -812,7 +812,7 @@ const leaks = [[fake('postgres://app:', 'S3cretPass', '@db.example.com/prod'), '
   [fake('AccountName=x;Account', 'Key=', 'abc123def456=='), 'abc123def456'], [fake('my pass', 'word is ', 'tulip-garden-9'), 'tulip-garden-9'],
   [fake('mysql -u root -p', 'Sup3rS3cret', ' prod'), 'Sup3rS3cret'], [fake('PGPASS', 'WORD=', 'hunter2hunter2'), 'hunter2hunter2'],
   [fake('db', 'Password = "', 'Zx9vQ2mL7"'), 'Zx9vQ2mL7'], [fake('client', 'Secret: ', 'abcdef123456'), 'abcdef123456'], [fake('MY_API', '_KEY=', 'abcdef123456'), 'abcdef123456'],
-  [fake('stripeApi', 'Key = "', 'abcdef123456"'), 'abcdef123456'], [fake('DB_', 'PWD=', 'abcdef123456'), 'abcdef123456'], [fake('tok', 'en=', 'abc123def456'), 'abc123def456']];
+  [fake('stripeApi', 'Key = "', 'abcdef123456"'), 'abcdef123456'], [fake('DB_', 'PWD=', 'abcdef123456'), 'abcdef123456'], [fake('docker run -e DB_', 'PWD=', 'abcdef123457'), 'abcdef123457'],[fake('tok', 'en=', 'abc123def456'), 'abc123def456']];
 const leaked = leaks.filter(([s, secret]) => redact(s).includes(secret)).map(([s]) => s);
 ok(!leaked.length, `URL passwords, GitLab, npm, Hugging Face and Slack secrets, Azure keys, "password is", mysql -p and glued names are redacted (leaked: ${leaked.join(' | ')})`);
 ok(redact('input_tokens: 863324') === 'input_tokens: 863324' && redact('monkey=bananas123') === 'monkey=bananas123' && redact('mysql -u root -p prod') === 'mysql -u root -p prod',
@@ -1579,6 +1579,16 @@ for (const [s, gone] of [['deploy --password "' + k('Pw1', 'Quoted') + '"', 'Pw1
 const quotedKept = ['tool --token "$TOKEN"', "tool --password '${DB_PASS}'", 'tool --password "./pw.txt"', 'the --token "flag" is new', 'docker run -u "1000:1000" img', 'deploy --password ""'];
 const quotedCut = quotedKept.filter((s) => red(s) !== s);
 ok(!quotedCut.length, `a quoted reference, path, prose word or user:group is kept (cut: ${quotedCut.map(red).join(' | ')})`);
+// P-F7: PowerShell's `$env:NAME = "…"`, a .env line `NAME=…` and an Azure connection string's SharedAccessKey, judged by the name
+// as `export NAME=` is: a name whose part is KEY kept its value in each (e2e audit, 2026-11-01).
+for (const [s, gone] of [['$env:SIGNING_KEY = "' + k('Sg2', 'R7value') + '"', 'Sg2'], ["$Env:DEPLOY_KEY='" + k('Dk3', 'R7value') + "'", 'Dk3'],
+  ['SIGNING_KEY=' + k('Sg3', 'R7value'), 'Sg3'], ['# .env\nAPP_NAME=demo\n  STRIPE_KEY = "' + k('St4', 'R7value') + '"\n', 'St4'],
+  ['Endpoint=sb://ns.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=' + k('Az4R7', 'valueXyz='), 'Az4R7']])
+  for (const f of [red, (x) => clip(x, 2000)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a secret set in PowerShell, a .env line or an Azure key is redacted (got ${f(s)})`);
+const envKept = ['$env:PATH = "C:\\tools;" + $env:PATH', '$env:API_TOKEN = $null', '$env:TOKEN_LIMIT = 4096', 'NODE_ENV=production', 'KEY_FILE=./key.pem', 'API_KEY=${API_KEY}',
+  'SharedAccessKeyName=RootManageSharedAccessKey'];
+const envCut = envKept.filter((s) => red(s) !== s);
+ok(!envCut.length, `a path, a reference, a count, an ordinary name and an Azure key's name are kept (cut: ${envCut.map(red).join(' | ')})`);
 const tNest = Date.now(); red('secret:'.repeat(30_000)); red('secret: ' + 'a: '.repeat(30_000)); red('secrets:\n' + '  a: b  c: d e:'.repeat(5_000)); red('secrets:\n' + '  a:\n'.repeat(30_000));
 ok(Date.now() - tNest < 1000, `a parent key repeated, or a block of 30,000 children, is read in linear time (${Date.now() - tNest} ms)`);
 
