@@ -634,6 +634,8 @@ const shapes = [fake('DB_PASS', 'WORD=', 'hunter2hunter2'), fake('CLIENT_SEC', '
   fake('MY_SERVICE_API', '_KEY=', 'abc123def456ghi'), stripe('sk', 'live'), stripe('pk', 'test'), stripe('rk', 'live'), fake('pass', 'word:\n  ', 'hunter2secret'), fake('tok', 'en:\n  ', 'hunter2tok3n'),
   fake('authorization: bea', 'rer ', 'abcdefghijklmnopqrstuvwxyz0123'), fake(pgp('BEGIN'), '\nlQOYBF0abc\n', pgp('END'))];
 for (const l of shapes) ok(!/hunter2|s3cr3t|wJalr|abc123def|51Habc|lQOYBF|abcdefghijklmnop/.test(clip(l, 400)), `not written: ${JSON.stringify(l)} (got ${clip(l, 400)})`);
+// redact() on its own too: clip's second pass, after the blanks are squeezed, takes a next-line value even when the first missed it (F23).
+for (const l of [fake('pass', 'word:\n  ', 'hunter2secret'), fake('tok', 'en:\n  ', 'hunter2tok3n')]) ok(!/hunter2/.test(redact(l)), `redact alone takes a value on the next line: ${JSON.stringify(redact(l))}`);
 ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 'sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6', 'ordinary text is left alone');
 const t34 = Date.now(); redact('_secret'.repeat(20_000)); redact('password' + ' '.repeat(100_000));
 ok(Date.now() - t34 < 1000, 'a name-and-value pattern cannot be made to backtrack');
