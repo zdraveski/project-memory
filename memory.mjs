@@ -483,7 +483,8 @@ export function restore(dir, file, { rev, force = false } = {}) {
 export function promote(dir, file) {
   const to = sharedStore(), src = join(dir, file), dst = join(to, file);
   if (isShared(dir)) return no(`${file} is in the shared store already`);
-  if (file.startsWith('MEMORY') || file === 'handoff.md') return no('only a memory is shared, not an index or the handoff');
+  // Nor the journal's pointer: promoted, the next Stop wrote it again, and it was in both stores (audit C-1).
+  if (file.startsWith('MEMORY') || file === 'handoff.md' || file === 'journal.md') return no('only a memory is shared, not an index, the handoff or the journal');
   if (!existsSync(src)) return no(`no ${src}`);
   if (existsSync(dst)) return no(`the shared store has a ${file} already: rename one, or merge them by hand`);
   mkdirSync(to, { recursive: true });
@@ -654,8 +655,9 @@ export function main(given) {
       .filter((d) => { const k = pathKey(real(d)); return !seen.has(k) && seen.add(k); });
   };
   const scope = rest.includes('--all') ? every() : isShared(here) ? [here] : [here, sharedStore()];
-  // A memory is named by its file, with or without `.md`; never by a path.
-  const file = args[0] && basename(args[0]).replace(/(\.md)?$/, '.md');
+  // A memory is named by its file, with or without `.md`; never by a path. Every word of it: typed without quotes, `restore my
+  // note` answered about my.md (audit C-2).
+  const file = args[0] && basename(args.join(' ')).replace(/(\.md)?$/, '.md');
   let r;
   // What the model reads back: a hit's lines stay short (a 13-link hit was a
   // quarter of its output), and a miss says where it looked in one line.

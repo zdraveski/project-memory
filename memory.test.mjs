@@ -1719,4 +1719,24 @@ if (!quick) {
   ok(r.status === 1 && /^PROBLEM Memory hooks look stopped: \[aaaaaaaa\] finished a reply at /m.test(r.stdout), `doctor judges the newest conversation, this session's own, as well as the newest other (got ${r.stdout})`);
 }
 
+// The end-to-end audit of 1.2.4's commands (C-1 to C-10).
+{
+  // C-1. journal.md is the plugin's pointer to the journal, as handoff.md is its record: promoted, the next Stop wrote it
+  // again, it was in both stores, and every project's startup listed "Every exchange in this project".
+  const had = existsSync(join(dir, 'journal.md'));
+  if (!had) writeFileSync(join(dir, 'journal.md'), '---\nname: journal\ndescription: "Every exchange in this project"\n---\n\nbody\n');
+  r = await cli('promote', 'journal');
+  ok(r.status === 1 && /^only a memory is shared, not an index, the handoff or the journal$/m.test(r.stdout) && existsSync(join(dir, 'journal.md')) && !existsSync(join(shared, 'journal.md')),
+    `promote journal is refused, as promote handoff is (got ${r.stdout})`);
+  if (!had) rmSync(join(dir, 'journal.md'));
+  // C-2. A name of several words, typed without quotes, was cut to its first: `restore my note` answered about my.md.
+  memory(dir, 'two words', 'a note named in two words', 'the two words body');
+  tier();
+  r = await cli('history', 'two', 'words');
+  ok(r.status === 0 && r.stdout.startsWith(join(dir, 'two words.md')), `history takes every word of a name (got ${r.stdout})`);
+  rmSync(join(dir, 'two words.md'));
+  r = await cli('restore', 'two', 'words');
+  ok(r.status === 0 && readFileSync(join(dir, 'two words.md'), 'utf8').includes('the two words body'), `and so does restore (got ${r.stdout})`);
+}
+
 console.log(`memory: ${checks} checks passed`);

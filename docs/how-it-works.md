@@ -632,8 +632,9 @@ the index, no longer shows them; `tier: hot` keeps a lesson in view.
 `promote <note>` moves a note there: it copies the file, adds the line to the
 shared index, then removes both from the project. If anything fails part-way,
 the note is in both places, never in neither. When the shared index is
-already full, `promote` says so and suggests `tier: hot`. The skill tells
-Claude to ask you before promoting.
+already full, `promote` says so and suggests `tier: hot`. It refuses an
+index, `handoff.md` and `journal.md`, which are project-memory's own. The
+skill tells Claude to ask you before promoting.
 
 ## Several conversations at once
 
@@ -804,7 +805,8 @@ refused. Every word after `--` is a search word, one that starts with `--`
 too, so options go before it. The tool exits with 1 when a command is
 refused or fails.
 
-`restore` and `promote` take a note's name as the disk resolves it: on Windows
+A note's name may be several words, quoted or not: `restore my note` is
+`my note.md`. `restore` and `promote` take a note's name as the disk resolves it: on Windows
 and on macOS by default in any letter case (on Windows, a short name such as
 `memory~1` too), on Linux only as written. git reads the name literally, so a
 name with `[`, `*` or `?` in it works. A write the disk refuses is reported in

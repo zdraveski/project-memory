@@ -932,6 +932,8 @@ export const suites = {
     "a private entry's hit names its transcript": ["e.answered !== '[private]' && existsSync(conv)", 'existsSync(conv)'],
     'status names no unreadable journal day': ["  lines.push(...(j?.unread ?? []).map((u) => `  journal: could not read ${u}`));\n", ''],
     "R73 a key of a day that won't read said removed": ['const late = unread.length ? [] : ', 'const late = '],
+    'C-1 the journal pointer promoted': [" || file === 'journal.md') return no(", ') return no('],
+    'C-2 a name of several words cut to its first': ['basename(args.join(\' \'))', 'basename(args[0])'],
     'a look by words takes no unwritten turn': ['terms.length && !named.length ? unwritten(here, [], terms)', 'false ? unwritten(here, [], terms)'],
     'a look by words finds a forgotten turn again': ['unwritten(here, [], terms).filter((e) => !already.has(e.key))', 'unwritten(here, [], terms)'],
     "R73 a key of a day that won't read named as another project's": ['(unread.length ? `no day of ', '(false ? `no day of '],
