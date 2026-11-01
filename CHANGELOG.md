@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.4 (2026-11-01)
 
 **Privacy**
 - A reply that comes while another window holds the project's memory folder
@@ -26,6 +26,15 @@
 - Changes now reach `master` only through pull requests that pass the
   tests, and every commit in one must be signed off
   ([CONTRIBUTING.md](CONTRIBUTING.md#developer-certificate-of-origin)).
+
+**Project**
+- GitHub's CodeQL scan and the OpenSSF Scorecard run on every change. The
+  project holds the OpenSSF Best Practices passing badge and Baseline level
+  2; the answers and their evidence are in `.bestpractices.json`.
+- New: [GOVERNANCE.md](GOVERNANCE.md), [SUPPORT.md](SUPPORT.md) and a
+  [security assessment](docs/security-assessment.md). The README has a
+  "Security and trust" section, and its pictures now come in a phone
+  version too.
 
 ## 1.2.3 (2026-11-01)
 
