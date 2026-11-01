@@ -678,7 +678,7 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
         let fd; try { fd = openSync(c.p, 'r'); } catch (e) { mark(dir, [`${c.k} ${c.size} failed ${Date.now()}`]); throw e; }
         try {
           const r = importOne(dir, c, fd, segment, cap, () => Date.now() - t0 < budgetMs);
-          if (!r) continue;   // unknown whether it may be imported: left as it is
+          if (!r) break;   // unknown whether it may be imported: left as it is; every conversation reads the same list, and each read pauses (R70)
           const { at, size, looked } = r;
           mark(dir, [at < size ? `${c.k} ${looked} at ${at}` : `${c.k} ${size}`]);
           n++; if (at >= size) done++;

@@ -771,6 +771,7 @@ export const suites = {
     'a resumed conversation left out of the matcher (memory off untagged)': ['"matcher": "startup|resume|clear|compact"', '"matcher": "startup|clear|compact"'],
   }],
   'journal.mjs': ['journal.test.mjs', {
+    'R70 a look reads a list it cannot read once per conversation': ['if (!r) break;   // unknown whether', 'if (!r) continue;   // unknown whether'],
     "a sweep with no listing of the days is done": ["export function sweep(dir, s, ds = days(dir, true)) {", "export function sweep(dir, s, ds = days(dir)) {"],
     "a forget over a journal that will not list finds nothing": ["entries([dir], { since, until, failed, strict: true })", "entries([dir], { since, until, failed })"],
     "a strict listing of the entries is lenient": ["dirs.flatMap((dir) => days(dir, strict).filter(", "dirs.flatMap((dir) => days(dir).filter("],

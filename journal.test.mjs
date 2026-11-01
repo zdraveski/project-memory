@@ -772,6 +772,18 @@ const due = (d) => looked(d, Date.now() - 3600e3);
     `a day later it is tried again, not grown: imported, and the failure cleared (got ${asks(d)}, ${line()}, ${summary(d).failed})`);
 }
 {
+  // R70: a list refused for good (EACCES) is read by a look until the first null, not once per conversation: each
+  // call pauses on a BUSY code, so a look spent its whole budget pausing, under the lock, at every Stop.
+  const [r, d] = repo('refusedlist'), read = fs.readFileSync;
+  for (const n of ['a', 'b', 'c', 'd', 'e']) old(r, sid(`r${n}`), 2, [`ask ${n}`]);
+  let reads = 0, res;
+  fs.readFileSync = (q, ...a) => { if (String(q).endsWith('.private-sessions')) { reads++; throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); } return read(q, ...a); };
+  syncBuiltinESMExports();
+  try { res = fill(d); } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
+  ok(reads === 3 && res.imported === 0 && res.left === 5,
+    `a look stops at the first private list it can't read: one call (3 reads), not one per conversation (got ${reads} reads, ${JSON.stringify(res)})`);
+}
+{
   // A look that fails (the journal folder refused) keeps its failure; the next look that ends without error and has nothing left
   // to import has proved the backfill healthy and clears it (F11) -- not while a transcript is listed as failing to open.
   const [r, d] = repo('healed'), failed = join(d, 'journal', '.failed');
