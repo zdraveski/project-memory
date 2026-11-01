@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, rea
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
+import { storeOf, withLock, lockBudget, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -70,25 +70,36 @@ const write = (path, read, next) => (read !== null && sameLines(read, next) ? fa
 // store once -- the same store twice doubled every number reported about it.
 const stores = (root) => readdirSync(root).map((p) => join(root, p, 'memory')).filter((d) => existsSync(join(d, 'MEMORY.md')));
 
+// What factsFor read of each note, by name, with the size and mtime it had: read again only when one of them changed. Reading
+// every note's head cost a Stop that tidied ~1 ms a note on Windows, a second at 1,000 (audit H-F2). The Stop's gate already
+// trusts size and mtime to say a note changed. No text in it: a type, a tier and a date a note.
+const FACTS = '.facts';
+
 // `modified:` in the frontmatter beats mtime: a checkout or a copy resets mtime,
 // and the memory's own stamp is what the writer meant.
-function factsFor(dir, file) {
+function factsFor(dir, file, memo = null) {
   const path = join(dir, file);
   // A target that is missing or is no file (a directory) is treated as missing
   // rather than aborting the whole store. One another program holds fails the
   // pass instead: read as missing, its alarm was stamped and stayed a day.
   // The head only: the frontmatter is at the top, and a 1.5 GB file read whole
   // cost seconds of every Stop. 1,200 characters, as before: up to 4 bytes each.
-  let head, st;
+  let head, st, k, was;
   try {
-    st = statSync(path);
+    // As the Stop's gate saw it, when it did: a note changed since is read anew next pass, its size or time no longer the key.
+    st = memo?.seen?.get(file) ?? statSync(path);
     if (!st.isFile()) return null;
-    // 16 KB: the first 1,200 characters missed a pin set after a long folded
-    // description, and the note was archived for good (audit, 2026-10-28).
-    const fd = openSync(path, 'r'), buf = Buffer.alloc(16384);
-    try { head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)); } finally { closeSync(fd); }
+    k = `${st.size} ${st.mtimeMs}`; was = memo?.was[file];
+    if (!Array.isArray(was) || was[0] !== k) {
+      was = null;
+      // 16 KB: the first 1,200 characters missed a pin set after a long folded
+      // description, and the note was archived for good (audit, 2026-10-28).
+      const fd = openSync(path, 'r'), buf = Buffer.alloc(16384);
+      try { head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)); } finally { closeSync(fd); }
+    }
   } catch (e) { if (BUSY.includes(e.code)) throw e; return null; }
-  const { type, tier, desc, modified: stamp } = front(head);
+  const { type, tier, desc, modified: stamp } = was ? { type: was[1], tier: was[2], modified: was[3] ?? NaN } : front(head);
+  if (memo) memo.now[file] = [k, type, tier, Number.isNaN(stamp) ? null : stamp];
   const modified = Number.isNaN(stamp) ? st.mtimeMs : stamp;
   const named = (file.match(/(\d{4})-(\d{2})-(\d{2})/) || [])[0];
   const eventDate = named ? Date.parse(named) : null;
@@ -127,7 +138,8 @@ function split(text) {
   return { preamble, pointers };
 }
 
-function tier(dir, now) {
+// `seen`: the Stop's stat of each note, by name (main()); none, each is stat'ed here.
+function tier(dir, now, seen = null) {
   const mainPath = join(dir, 'MEMORY.md'), shared = isShared(dir);
   const arcPath = join(dir, ARCHIVE);
   // What this pass is computed from. A write goes through only while the file
@@ -157,6 +169,9 @@ function tier(dir, now) {
   // second, machine-written one.
   let listed = []; try { listed = readdirSync(dir); } catch {}
   const key = opener(dir, listed);
+  // A cache: one that does not parse is none.
+  const memo = { was: {}, now: {}, seen };
+  try { memo.was = JSON.parse(raw(join(dir, FACTS))) ?? {}; } catch {}
   const placed = new Map();
   const place = (p, where, inIndex = false) => {
     const was = placed.get(key(p.target));
@@ -165,7 +180,7 @@ function tier(dir, now) {
     where.push(p);
   };
   for (const p of main.pointers) {
-    p.f = factsFor(dir, p.target);
+    p.f = factsFor(dir, p.target, memo);
     if (!p.f) missing.push(p.target);
     place(p, isHot(p.f, now, shared) ? hot : cold, true);
   }
@@ -177,7 +192,7 @@ function tier(dir, now) {
   // One whose file is gone stays, unreported: the archive is history, and a
   // note deleted after its line was archived warned at every startup, for good.
   for (const p of arc.pointers) {
-    p.f = factsFor(dir, p.target);
+    p.f = factsFor(dir, p.target, memo);
     const overflow = p.line.endsWith(OVERFLOW);
     p.was = p.line;   // as the archive holds it, mark and all
     // The one space the mark was added with: a trailing one the line had is its own.
@@ -286,6 +301,9 @@ function tier(dir, now) {
     const b = back.length && a !== 'conflict' && m !== 'conflict' ? write(arcPath, a === true ? first : arcText, nextArc) : false;
     conflict = a === 'conflict' || m === 'conflict' || b === 'conflict';
     wrote = a === true || m === true || b === true;
+    // Whole, so a note deleted leaves it too; under the store's lock, and a cache: a write that fails costs the next pass a read.
+    const facts = JSON.stringify(memo.now);
+    if (facts !== JSON.stringify(memo.was)) try { writeFileSync(join(dir, FACTS), facts); } catch {}
   }
 
   return { dir, budget, before, after: Buffer.byteLength(nextMain), hot: hot.length, cold: cold.length,
@@ -508,6 +526,8 @@ export async function main(argv, input) {
   // terminal). The handoff is written first, in this process -- a second Node
   // start cost a median 200 ms a turn on this box.
   const stop = argv.includes('--stop');
+  // Its locks wait 2 s in all, not 2 s each (store.mjs).
+  lockBudget(stop);
   // Auto memory turned off: no record, no nudge, no tiering. Only the
   // conversation's tag, so no later Stop's backfill imports it (handoff-log OFF).
   if (stop && memoryOff()) {
@@ -598,11 +618,20 @@ export async function main(argv, input) {
   // time-based, so a quiet store is still re-tiered once a day. The stamp lives in
   // its store, so sessions of different projects never share one.
   const stampOf = (d) => join(d, '.tiered');
-  const fingerprint = (d) => new Date().toDateString() + JSON.stringify(readdirSync(d)
-    .filter((f) => f.endsWith('.md') && f !== 'handoff.md')
-    .map((f) => { const s = statSync(join(d, f)); return [f, s.size, s.mtimeMs]; }));
+  // Each note is stat'ed once a Stop: the gate, the pass and its stamp each did it, three stats of every note (audit H-F2).
+  const scan = (d) => new Map(readdirSync(d).filter((f) => f.endsWith('.md') && f !== 'handoff.md').map((f) => [f, statSync(join(d, f))]));
+  const fingerprint = (s) => new Date().toDateString() + JSON.stringify([...s].map(([f, st]) => [f, st.size, st.mtimeMs]));
+  const seen = new Map();
+  // The stamp: what the pass saw, with the index and archive as it left them. A note written while it ran is not in it, and
+  // the next turn takes it up. An archive it made is a new name: the folder listed again, in its own order.
+  const stampAfter = (d) => {
+    const s = new Map(seen.get(d));
+    if (!s.has('MEMORY.md') || !s.has(ARCHIVE)) return fingerprint(scan(d));
+    for (const f of ['MEMORY.md', ARCHIVE]) s.set(f, statSync(join(d, f)));
+    return fingerprint(s);
+  };
   const gated = stop && !dry && dirAt === -1;
-  const todo = gated ? dirs.filter((d) => { try { return readFileSync(stampOf(d), 'utf8') !== fingerprint(d); } catch { return true; } }) : dirs;
+  const todo = gated ? dirs.filter((d) => { try { seen.set(d, scan(d)); return readFileSync(stampOf(d), 'utf8') !== fingerprint(seen.get(d)); } catch { return true; } }) : dirs;
   if (gated && !todo.length) return 0;
   // The first time, the notebook is kept as it was found before the tidy-up
   // changes it: snapshotted after, the table of contents as the user had
@@ -614,7 +643,7 @@ export async function main(argv, input) {
     // One unreadable store must not stop the others. This runs as a Stop hook,
     // where a thrown error is a stack trace nobody reads.
     let r;
-    try { r = withLock(dir, () => tier(dir, now)); }
+    try { r = withLock(dir, () => tier(dir, now, seen.get(dir))); }
     catch (e) { console.log(`${dir}: skipped — ${reason(e)}`); if (!dry) try { health(dir, [`a pass failed: ${reason(e)}`]); } catch {} continue; }
     if (r === null) { console.log(`${dir}: busy — another hook holds this store; the next turn redoes it`); continue; }
     if (r.conflict) { console.log(`${dir}: changed during the pass — the edit wins; the next turn redoes it`); continue; }
@@ -630,7 +659,7 @@ export async function main(argv, input) {
     // The stamp is what this pass saw, taken before the snapshot: a memory
     // another session writes while git runs differs from it, and the next turn
     // takes it up. Taken after the snapshot, it skipped that memory for a day.
-    if (!r.waiting && gated) try { clean.push([dir, fingerprint(dir)]); } catch {}
+    if (!r.waiting && gated) try { clean.push([dir, stampAfter(dir)]); } catch {}
     if (!dry && !r.wrote && !r.recovered.length && !r.dupes.length && !r.missing.length) continue;
     const saved = Math.round((r.before - r.after) / 4);
     console.log(`${dry ? '[dry] ' : ''}${r.dir}: ${r.hot} hot / ${r.cold} archived, ` +

@@ -268,16 +268,21 @@ export const LOCK_STALE = 30_000;  // nothing held under the lock takes this lon
 export const STEP = 25;    // ms between tries for a held lock: a freed one is taken within 25 ms, 80 tries in LOCK_WAIT
 // The codes Windows gives while another program holds a path or a delete is still settling.
 export const BUSY = ['EPERM', 'EBUSY', 'EACCES'];
+// What one hook run may still wait for locks, in all; null: each lock waits LOCK_WAIT of its own. A Stop takes up to four (its
+// handoff, the journal's import, its store's tidy-up, the shared one's), and with another hook holding them it waited 8 s, not
+// the 2 s documented (audit H-F2). A free lock is taken however little is left.
+let left = null;
+export const lockBudget = (on) => { left = on ? LOCK_WAIT : null; };
 
 // Run fn holding the store's lock: `mkdir` either creates the folder or fails,
 // on NTFS as anywhere. Returns fn's result, or null when the lock stayed busy.
 // ponytail: two hooks that both find a dead lock can both take it over in the
 // same instant; that needs a killed hook first, and costs one merged write.
 export function withLock(dir, fn) {
-  const lock = join(dir, '.lock');
-  let refused = 0;
-  for (const until = Date.now() + LOCK_WAIT; ;) {
-    try { mkdirSync(lock); break; }
+  const lock = join(dir, '.lock'), t0 = Date.now();
+  let refused = 0, held = false;
+  for (const until = t0 + Math.min(LOCK_WAIT, left ?? LOCK_WAIT); ;) {
+    try { mkdirSync(lock); held = true; break; }
     catch (e) {
       // The last holder's rmdir still settling: the same codes a rename retries.
       if (e.code !== 'EEXIST' && !BUSY.includes(e.code)) throw e;
@@ -296,10 +301,12 @@ export function withLock(dir, fn) {
         try { rmSync(lock, { recursive: true, force: true }); continue; }
         catch (err) { if (Date.now() > until) throw err; }
       }
-      if (Date.now() > until) return null;
+      if (Date.now() > until) break;
       sleep(STEP);
     }
   }
+  if (left !== null) left = Math.max(0, left - (Date.now() - t0));
+  if (!held) return null;
   // The disk may refuse the unlock for a moment (the codes a rename retries): a lock left behind stops every hook for LOCK_STALE.
   try { return fn(); } finally { for (let i = 0; ; i++) { try { rmdirSync(lock); break; } catch (e) { if (!BUSY.includes(e.code) || i === 2) break; sleep(STEP); } } }
 }

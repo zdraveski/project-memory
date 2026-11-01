@@ -148,7 +148,9 @@ All of it stays in `~/.claude/projects` on your computer:
   it last looked for them (`.looked`), the last failure of the journal's
   write and of its import (`.failed`), the conversations and days whose
   entries are still to be removed (`.sweeps`), and which entries you had it
-  forget (`.forgotten`).
+  forget (`.forgotten`); and, in each `memory` folder, each note's type,
+  `tier:` and date as last read, with its size and time (`.facts`), so a
+  note is read again only once it changes.
 
 If auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (set to
 `1`, `true`, `yes` or `on`), project-memory reads and saves nothing on its
@@ -222,8 +224,8 @@ Uninstalling the plugin leaves all of this in place. To delete:
   instead, use `forget` as below.
 - the bookkeeping files: in `~/.claude/projects`, `.gitignore`, `.stop-ran`,
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` file and the
-  folder `.nudge`; in each project's `memory` folder, `.tiered`, `.health`
-  and `.private-sessions`. Delete `.memory-off` and `.private-sessions` only
+  folder `.nudge`; in each project's `memory` folder, `.tiered`, `.facts`,
+  `.health` and `.private-sessions`. Delete `.memory-off` and `.private-sessions` only
   once project-memory is removed for good: they list the conversations it
   must not record. Without them, a conversation held with auto memory off is
   recorded from its next reply; one marked private is tagged again at its

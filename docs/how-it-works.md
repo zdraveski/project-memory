@@ -63,6 +63,7 @@ Windows device names such as `con` and `nul`.
 | `…/memory/journal/.failed`, `.forgotten` | the last failure of the live write and of the import, one line each; the keys of forgotten entries, each with its conversation and time |
 | `…/memory/.lock` | the store's lock, a folder that exists while a write is in progress |
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
+| `…/memory/.facts` | what the tidy-up read at the top of each note (its type, its `tier:` and its date), with the note's size and time, so a note is read again only once it changes |
 | `…/memory/.private-sessions` | the tags of conversations marked private (the newest 1,000) |
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
 | `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
@@ -544,8 +545,10 @@ Claude to ask you before promoting.
 ## Several conversations at once
 
 Each store has a lock, a `.lock` folder that only one process can create. A
-hook waits up to 2 seconds for it. If the store is still busy, the hook skips
-this reply and catches up after the next one. A lock left by a process that
+hook waits up to 2 seconds for its locks, in all: a Stop takes up to four
+(its handoff, the journal's import, its notebook's tidy-up and the shared
+one's), and the wait is shared among them. If a store is still busy, the
+hook skips that part for this reply and catches up after the next one. A lock left by a process that
 was killed is taken over after 30 seconds.
 
 Every write first checks that the file still holds what was read. When Claude

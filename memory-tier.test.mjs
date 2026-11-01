@@ -589,10 +589,11 @@ utimesSync(join(five, 'MEMORY.md'), tenMin, tenMin);   // an index this old repo
 // Held, its open fails busy: made so by a preload in that Stop, on every
 // system. A real lock, this process's or PowerShell's, held on GitHub's test
 // machines but not on its mutate machines, and the mutant lived (2026-10-30).
+// The new note: one the pass before read is not read again (.facts).
 const busy = join(tempDir('memtier-busy-'), 'busy.cjs');
 writeFileSync(busy, `const fs = require('node:fs'), open = fs.openSync, hit = ${JSON.stringify(busy + '.hit')};
 fs.openSync = (p, ...a) => {
-  if (!String(p).endsWith(${JSON.stringify(join('proj-five', 'memory', 'a.md'))})) return open(p, ...a);
+  if (!String(p).endsWith(${JSON.stringify(join('proj-five', 'memory', 'b.md'))})) return open(p, ...a);
   fs.writeFileSync(hit, '');
   throw Object.assign(new Error('EBUSY: resource busy or locked, open'), { code: 'EBUSY' });
 };
@@ -617,7 +618,7 @@ if (!quick && process.platform === 'win32') {
   note('proj-lock', 'b');
   writeFileSync(join(lockd, 'MEMORY.md'), readFileSync(join(lockd, 'MEMORY.md'), 'utf8') + '- [b](b.md) — b\n');
   utimesSync(join(lockd, 'MEMORY.md'), tenMin, tenMin);
-  const heldLock = join(lockd, 'a.md');
+  const heldLock = join(lockd, 'b.md');
   process.env.HELD = heldLock;   // inherited: the holder is never handed a copy of the whole environment
   const holder = spawn('powershell', ['-NoProfile', '-Command', [
     `try { $f = [IO.File]::Open($env:HELD, 'Open', 'Read', 'None') } catch { 'failed ' + $_.Exception.Message; exit }`,
@@ -1552,6 +1553,69 @@ require('node:module').syncBuiltinESMExports();
     await stopRan();
     ok(statSync(ran).size === 8192, `--stop: a run log of exactly 8192 B is not trimmed (got ${statSync(ran).size} B)`);
   }
+}
+
+// A Stop's tidy-up reads a note's head again only when its size or time changed since the pass before: reading every one cost a
+// Stop ~1 ms a note on Windows, a second at 1,000 notes (audit H-F2). A changed note is read, and what it says now counts.
+{
+  const d = store('proj-facts'), at = (m) => new Date(Date.now() - m * 60000);
+  const put = (n, extra, m) => { writeFileSync(join(d, `${n}.md`), `---\nname: ${n}\ndescription: "${n}"\nmetadata:\n  type: project${extra}\n---\nbody\n`); utimesSync(join(d, `${n}.md`), at(m), at(m)); };
+  for (let i = 0; i < 12; i++) put(`n${i}`, '', 10);
+  // Hot by its `modified:`, though its file is a month old: the date kept is the note's, not its mtime.
+  put('kept', `\n  modified: ${new Date(Date.now() - 86400000).toISOString()}`, 43200);
+  writeFileSync(join(d, 'MEMORY.md'), '# Index\n\n- [a](a.md) — a\n- [kept](kept.md) — kept\n' + Array.from({ length: 12 }, (_, i) => `- [n${i}](n${i}.md) — n${i}`).join('\n') + '\n');
+  utimesSync(join(d, 'MEMORY.md'), at(10), at(10)); utimesSync(join(d, 'a.md'), at(10), at(10));
+  await stop('proj-facts');
+  // That pass wrote the index and made the archive; its stamp holds both as it left them, so the next turn is quiet.
+  const stamped = statSync(join(d, '.tiered')).mtimeMs;
+  await stop('proj-facts');
+  ok(existsSync(join(d, 'MEMORY-archive.md')) && statSync(join(d, '.tiered')).mtimeMs === stamped, '--stop: after a pass that wrote the index and made the archive, the next turn is quiet');
+  put('n0', '\n  tier: archive', 9);
+  const opened = [];
+  await swap('node:fs', 'openSync', (real) => function (p, ...a) { if (/proj-facts[\\/]memory[\\/]n\d+\.md$/.test(String(p))) opened.push(String(p).split(/[\\/]/).pop()); return real.call(this, p, ...a); }, () => stop('proj-facts'));
+  const index = readFileSync(join(d, 'MEMORY.md'), 'utf8');
+  ok(opened.join() === 'n0.md', `--stop: a pass after one note changed reads that note's head, not every note's (read ${opened.join(', ')})`);
+  ok(!/\(n0\.md\)/.test(index) && /\(n1\.md\)/.test(index) && /\(kept\.md\)/.test(index), `and what the changed note says now counts, the others' kept facts too: n0 archived, n1 and kept kept (got ${index})`);
+  const restamped = statSync(join(d, '.tiered')).mtimeMs;
+  await stop('proj-facts');
+  ok(statSync(join(d, '.tiered')).mtimeMs === restamped, '--stop: and after a pass that rewrote an index and archive it found, the next turn is quiet too');
+  // What is kept is a cache: one that does not parse is no cache, and the pass reads every note.
+  writeFileSync(join(d, '.facts'), '{"n1.md": [');
+  put('n2', '\n  tier: archive', 8);
+  await stop('proj-facts');
+  ok(!/\(n2\.md\)/.test(readFileSync(join(d, 'MEMORY.md'), 'utf8')) && JSON.parse(readFileSync(join(d, '.facts'), 'utf8'))['n1.md'], '--stop: a .facts that does not parse is read as none, and written anew');
+}
+// A Stop waits 2 s for its locks in all, not 2 s for each: with another hook holding its store's and the shared one's, it
+// waited for its handoff, the journal's import and both tidy-ups, 8 s (audit H-F2). Slow: the wait is real.
+if (!quick) {
+  const d = store('proj-wait');
+  writeFileSync(join(root, 'proj-wait', 'session.jsonl'), '');
+  writeFileSync(join(shared, 'wait.md'), '---\nname: wait\ndescription: "wait"\n---\nbody\n');
+  mkdirSync(join(d, '.lock')); mkdirSync(join(shared, '.lock'));
+  const t0 = Date.now();
+  let ms; try { await stop('proj-wait'); ms = Date.now() - t0; } finally { rmdirSync(join(d, '.lock')); rmdirSync(join(shared, '.lock')); }
+  ok(ms < 3500, `--stop: with its locks held it waits about 2 s in all (took ${ms} ms)`);
+  rmSync(join(shared, 'wait.md'));
+}
+// A note written while a pass runs is not in that pass's stamp, so the next turn takes it up: stamped from a look after the
+// pass, it waited for the next change or the next day. --pause holds the pass open, which only a process does.
+if (!quick) {
+  const d = store('proj-mid');
+  for (const f of ['a.md', 'MEMORY.md']) utimesSync(join(d, f), tenMin, tenMin);
+  writeFileSync(join(root, 'proj-mid', 'session.jsonl'), '');
+  await stop('proj-mid');
+  note('proj-mid', 'b');
+  writeFileSync(join(d, 'MEMORY.md'), readFileSync(join(d, 'MEMORY.md'), 'utf8') + '- [b](b.md) — b\n');
+  utimesSync(join(d, 'MEMORY.md'), tenMin, tenMin);
+  const child = spawn(process.execPath, [TOOL, '--stop', '--pause', '1000'], { env });
+  child.stdin.end(stopInput('proj-mid'));
+  const closed = new Promise((res) => child.on('close', res));
+  await new Promise((res) => { child.stderr.on('data', (b) => { if (String(b).includes('paused')) res(); }); closed.then(res); });
+  note('proj-mid', 'mid');
+  await closed;
+  await stop('proj-mid');
+  const both = readFileSync(join(d, 'MEMORY.md'), 'utf8') + (existsSync(join(d, 'MEMORY-archive.md')) ? readFileSync(join(d, 'MEMORY-archive.md'), 'utf8') : '');
+  ok(/\(mid\.md\)/.test(both), `--stop: a note written while a pass ran is taken up by the next turn (got ${both})`);
 }
 
 rmSync(home, { recursive: true, force: true });

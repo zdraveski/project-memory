@@ -41,6 +41,18 @@
   again. They now leave it out. When the list of forgotten entries can't be
   read, they show none of that project's journal, and say so.
 
+**Speed**
+- After a reply that changed a note, the Stop hook read the top of every
+  note to tidy the index, about a second at 1,000 notes on Windows. It now
+  keeps what it read of each note (its type, `tier:` and date, in `.facts`)
+  and reads a note again only once it changes, and it looks at each note's
+  size and time once a reply instead of three times. On Windows, such a
+  Stop took 0.45 s at 100 notes, 1.1 s at 500 and 1.3 s at 1,000; it now
+  takes 0.32 s, 0.40 s and 0.46 s.
+- While another window held the notebook, one Stop waited up to 2 seconds
+  for each of its locks: 6.4 seconds, 8.5 with the shared notebook. The 2
+  seconds are now for the whole Stop, as documented: 2.4 and 2.5 seconds.
+
 ## 1.2.4 (2026-11-01)
 
 **Privacy**

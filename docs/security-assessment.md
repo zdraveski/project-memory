@@ -129,7 +129,8 @@ Likely: two windows on one project, and Claude editing a note while a hook
 runs. Impact: a note or the journal loses lines.
 
 - Each store has a lock that only one process can take; a hook waits up to
-  2 seconds, then skips this reply and catches up after the next. A lock
+  2 seconds for its locks in all, then skips this reply and catches up
+  after the next. A lock
   left by a killed process is taken over after 30 seconds.
 - Every write goes through `replaceIfUnchanged` (`store.mjs`): it checks the
   file still holds what was read, so Claude's edit is kept and the hook tries
@@ -184,8 +185,8 @@ without asking.
 Likely, from a bug or a full disk. Impact: a blocked or slow session.
 
 - A hook that fails exits 0 and reports the problem in the next briefing.
-  git calls time out (30 seconds in the hooks), and a busy store is waited
-  on for 2 seconds at most.
+  git calls time out (30 seconds in the hooks), and busy stores are waited
+  on for 2 seconds at most in all, however many locks a hook takes.
 
 ### The plugin's supply chain
 

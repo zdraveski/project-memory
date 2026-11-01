@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget } = await import('./store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -98,6 +98,25 @@ if (!quick) {
 mkdirSync(join(dir, '.lock'));
 const gaveUp = fastClock(() => withLock(dir, () => 'got'));
 ok(gaveUp === null && existsSync(join(dir, '.lock')), `a held lock is given up on when the wait is up, and the holder's lock kept (got ${gaveUp})`);
+// One wait for a whole hook run (lockBudget): a Stop takes up to four locks, and with another hook holding them each waited 2 s
+// of its own, 8 s in all (audit H-F2). Spent on the first, a second held lock is tried once; a free one is still taken.
+{
+  const other = join(proj, 'other');
+  mkdirSync(join(other, '.lock'), { recursive: true });
+  const tries = (on) => {
+    let n = 0; const real = fs.mkdirSync;
+    fs.mkdirSync = function (p, ...a) { if (String(p) === join(other, '.lock')) n++; return real.call(this, p, ...a); }; syncBuiltinESMExports();
+    lockBudget(on);
+    try { fastClock(() => { withLock(dir, () => 'got'); withLock(other, () => 'got'); }); } finally { lockBudget(false); fs.mkdirSync = real; syncBuiltinESMExports(); }
+    return n;
+  };
+  const alone = tries(false), shared = tries(true);
+  ok(shared === 1 && alone > 1, `a hook's second held lock, its wait spent on the first, is tried once (${shared}; ${alone} with a wait of its own)`);
+  rmdirSync(join(other, '.lock'));
+  lockBudget(true);
+  try { fastClock(() => withLock(dir, () => 'got')); ok(fastClock(() => withLock(other, () => 'got')) === 'got', 'and a free lock is taken with no wait left'); } finally { lockBudget(false); }
+  rmSync(other, { recursive: true, force: true });
+}
 rmdirSync(join(dir, '.lock'));
 let threw = false;
 try { withLock(dir, () => { throw new Error('boom'); }); } catch { threw = true; }
