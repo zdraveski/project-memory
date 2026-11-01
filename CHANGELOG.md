@@ -83,8 +83,10 @@
   with `[redacted]` too: `--password "…"`, `--token '…'`, `-p "…"` after
   `docker login` or `sshpass`, `curl -u "user:…"` and
   `aws configure set … "…"`. Before, only unquoted ones were. A quoted
-  value goes whole, spaces and all, here and in `export`, `setx`, `$env:`
-  and `.env` lines.
+  value goes whole, spaces and all, here, in `export`, `setx`, `$env:` and
+  `.env` lines, and in a setting such as `api_key: "…"` or
+  `password = '…'`, where only a first word of 6 characters or more went
+  before.
 - The FAQ said project-memory saves nothing when auto memory is turned off.
   It follows only the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` environment
   variable: turning auto memory off in Claude Code with `/memory` or its

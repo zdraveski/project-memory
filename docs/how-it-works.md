@@ -219,10 +219,13 @@ Before any of it is written, these are taken out:
   line, the value after `password:` goes; a password that itself ends in
   `:`, before a blank or at its line's end, is still a value. Such a value
   goes even with no digit (`correct_horse_battery_staple`), unless it is
-  plainly code: a type
-  (`password: string`), a reference (`${…}`, `$(…)`, `process.env.X`,
-  `user.password`), or, with no digit in it, a call, an index or a path of two
-  parts or more (`jwt.sign(…`, `request.form[…`, `/etc/app/secret`);
+  plainly code: a type (`password: string`), a reference (`${…}`, `$(…)`,
+  `process.env.X`, `user.password`), or, with no digit in it, a call, an
+  index or a path of two parts or more (`jwt.sign(…`, `request.form[…`,
+  `/etc/app/secret`). In quotes, the whole value goes, blanks and all
+  (`api_key: "my secret value 1"`). Not in quotes, a value ends at its first
+  blank: in `password: p@ss w0rd` the first word is too short to go and the
+  second is not read;
 - a value after `token` alone, only when it has a letter in it
   (`token: abc123def`), so a count like `input_tokens: 863324` stays;
 - under a YAML key of its own line that names a secret (`passwords:`,

@@ -1614,6 +1614,16 @@ const colonKept = colonEnd.filter(([p, v, q]) => red(p + v + q).includes(v.slice
 ok(!colonKept.length, `a secret ending in a colon is redacted (kept: ${colonKept.join(' | ')})`);
 ok(!/X1234|X5678|X9012/.test(red('secret: password: X12345678') + red('secret:\n  password: X56785678') + red('secret:\n  password:\n    X90129012')),
   'a key with a value after it, on its line or indented under it, is still no value');
+// A quoted value goes whole in the setting form too, blanks and all (`key: "…"`, `key = "…"`), as in a command and an env line;
+// a quoted value is never a key (review round 2, 2026-11-01).
+for (const [s, gone] of [['api_key: "my ' + k('sec', 'ret') + ' value here 1"', 'secret value'], ["password = 'correct horse " + k('batt', 'ery') + " 9'", 'battery'],
+  ['"password": "abc def ' + k('gh', 'i1') + '"', 'ghi1'], ['password: "abc: def ' + k('gh', 'i2') + '"', 'ghi2'], ["secret: 'abc: def " + k('gh', 'i3') + "'", 'ghi3']])
+  for (const f of [red, (x) => clip(x, 400)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a quoted setting value with blanks is redacted whole (got ${f(s)})`);
+// Kept: a quoted sentence under a key that names no secret, a quoted reference, and a short quoted word (`"secret": "false"`),
+// under the same 6-character floor as an unquoted value.
+const quotedSettingKept = ['description: "my secret value here 1"', 'title = "the password field is required"', 'name: "a token of thanks"',
+  'password: "${{ secrets.DB_PASSWORD }}"', '"secret": "false"', "pass: 'none'", 'password: "a b"'];
+ok(quotedSettingKept.every((s) => red(s) === s), `a quoted sentence under a key that names no secret is kept (got ${quotedSettingKept.map(red).join(' | ')})`);
 const yamlKept = ['secret:\n  password: string', 'tokens:\n  input: 863324\n  output: 1234', 'secretKeyRef:\n  name: db-credentials\n  key: password', 'secretName: db\nport: 5432', 'passwords:\n  - admin'];
 const yamlCut = yamlKept.filter((s) => red(s) !== s || clip(s, 400) !== s.replace(/\s+/g, ' '));
 ok(!yamlCut.length, `code, counts, a secret's name and a list under a secret's key are kept, and no child's key is cut (cut: ${yamlCut.map((s) => JSON.stringify(red(s))).join(' | ')})`);

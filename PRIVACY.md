@@ -56,8 +56,9 @@ All of it stays in `~/.claude/projects` on your computer:
     `SharedAccessKey`. A reference to one, such as `$API_TOKEN`, and a file's
     path are kept. A number is kept only under a name that counts something,
     such as `TOKEN_LIMIT=4096`; after a password or token option, or under a
-    secret's name, it is replaced, since it can be a PIN. No tool recognizes
-    every secret.
+    secret's name, it is replaced, since it can be a PIN. A value in quotes
+    is replaced whole, blanks and all; one with blanks and no quotes, such
+    as `password: p@ss w0rd`, is not. No tool recognizes every secret.
   - Anything you write between `<private>` and `</private>` is left out, and
     so are Claude's reply to that message and the names of the files changed
     in that turn.
