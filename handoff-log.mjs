@@ -631,14 +631,20 @@ function onDisk(root) {
 // journal's list is: the newest 1,000 anywhere evicted a quiet project's tags,
 // and its conversations were imported. The newest OFF_NEW stay whatever: a
 // transcript is made with its first message, after its start wrote the tag.
-// False when the tag is not there.
+// False when the tag is not there. A list that won't read throws, after
+// writing nothing, so the Stop records it: swallowed, the conversation stayed
+// untagged, nothing said so, and once the list read the journal took it in (R67).
 const OFF_NEW = 100, OFF_MOST = 10_000;
 export function off(input) {
   const root = projectsRoot(), s = tag(input.session_id || basename(String(input.transcript_path || ''), '.jsonl'));
-  return withLock(root, () => hushed(root, s, true, OFF, (have) => {
-    const live = onDisk(root);
-    return have.filter((t, i) => !live || live.has(t) || i >= have.length - OFF_NEW).slice(-OFF_MOST);
-  })) === true;
+  return withLock(root, () => {
+    const r = hushed(root, s, true, OFF, (have) => {
+      const live = onDisk(root);
+      return have.filter((t, i) => !live || live.has(t) || i >= have.length - OFF_NEW).slice(-OFF_MOST);
+    });
+    if (r === null) throw unreadable(root, OFF);
+    return r;
+  }) === true;
 }
 
 // Exported so memory-tier.mjs can run it in the same process from the Stop

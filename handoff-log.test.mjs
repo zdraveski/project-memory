@@ -1998,6 +1998,12 @@ require('node:module').syncBuiltinESMExports();
   mkdirSync(root_, { recursive: true });
   ok(off({ transcript_path: join(root_, 'proj-A', 'abcdef12-3456.jsonl') }) === true && /^abcdef12$/m.test(readFileSync(join(root_, OFF), 'utf8')), 'a memory-off conversation is tagged by its transcript');
   writeFileSync(join(root_, OFF), readFileSync(join(root_, OFF), 'utf8').replace(/^abcdef12\n/m, ''));
+  // A list that won't read (a folder in its place) is said, not swallowed: untagged and unsaid, the journal took the conversation in once it read (R67).
+  const offWas = readFileSync(join(root_, OFF));
+  rmSync(join(root_, OFF)); mkdirSync(join(root_, OFF));
+  let offErr = ''; try { off({ transcript_path: join(root_, 'proj-A', 'abcdef13-3456.jsonl') }); } catch (e) { offErr = e.message; }
+  rmSync(join(root_, OFF), { recursive: true }); writeFileSync(join(root_, OFF), offWas);
+  ok(offErr.endsWith(`${OFF} could not be read`), `a memory-off list that won't read throws its name (got ${JSON.stringify(offErr)})`);
 
   // A transcript that is not there is no turn to record.
   {

@@ -511,10 +511,14 @@ export async function main(argv, input) {
   // Auto memory turned off: no record, no nudge, no tiering. Only the
   // conversation's tag, so no later Stop's backfill imports it (handoff-log OFF).
   if (stop && memoryOff()) {
+    let p = null;
     try {
-      const p = JSON.parse(input);
+      p = JSON.parse(input);
       (await import(new URL('./handoff-log.mjs', import.meta.url))).off(p);
-    } catch {}
+    } catch (e) {
+      // A tag that could not be kept is said at the next start with memory on, as a handoff that could not be saved is (R67).
+      if (p) try { writeFileSync(join(projectsRoot(), `.handoff-failed-${basename(dirname(storeOf(p)))}`), JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); } catch {}
+    }
     return 0;
   }
   let payload = null;

@@ -843,6 +843,19 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   let off = ''; try { off = readFileSync(join(root, '.memory-off'), 'utf8'); } catch {}
   ok(offRun.status === 0 && runLines().length === before && !existsSync(join(po, 'memory')) && off.split(/\r?\n/).includes('offline1'),
     `with auto memory off the Stop hook keeps only the conversation's tag and exits 0 (got ${offRun.status}, ${JSON.stringify(off)})`);
+  // A tag that can't be kept (the list a folder here: every read EISDIR) is said at the next start with memory on. Unsaid, the
+  // conversation stayed untagged, and once the list read again the journal took it in (R67). The Stop still exits 0 and saves nothing.
+  const offList = join(root, '.memory-off'), hadOff = readFileSync(offList), offFailed = join(root, '.handoff-failed-proj-off'), to2 = join(po, 'offline2-0000.jsonl');
+  rmSync(offList); mkdirSync(offList); writeFileSync(to2, '');
+  process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+  let offBad;
+  try { offBad = await call(['--stop'], JSON.stringify({ transcript_path: to2, session_id: 'offline2-0000' })); }
+  finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  const offSaid = execFileSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: to2, session_id: 'other', source: 'startup' }), env }).toString();
+  rmSync(offList, { recursive: true }); writeFileSync(offList, hadOff);
+  ok(offBad.status === 0 && !existsSync(join(po, 'memory')) && existsSync(offFailed) && offSaid.split('\n').some((l) => /needs attention/.test(l) && l.includes('.memory-off could not be read')),
+    `a memory-off Stop whose list won't read exits 0, saves nothing, and the next start with memory on says so (got ${offBad.status}, record ${existsSync(offFailed)}; ${offSaid.slice(0, 300)})`);
+  rmSync(offFailed, { force: true });
 
   // A record of where you left off that cannot be saved (here the store's
   // folder is a file, so its lock cannot be taken) is said at the next start,

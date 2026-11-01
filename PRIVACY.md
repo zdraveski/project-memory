@@ -155,8 +155,13 @@ own, except the conversation's short tag in `~/.claude/projects/.memory-off`
 when it starts and after every reply, so the journal never takes that
 conversation in later. It stays out of the journal even if you go on with
 it after turning auto memory back on. A tag is kept while Claude Code keeps
-that conversation (the newest 100 always, 10,000 at most). The memory skill
-still reads or changes your notes when you ask it to.
+that conversation (the newest 100 always, 10,000 at most). If that list
+can't be written after a reply of such a conversation, the next briefing
+with auto memory on says the store needs attention and names `.memory-off`,
+until the handoff of a later reply in that project, with auto memory on,
+goes through. If it can't be written after any of that conversation's
+replies, the conversation has no tag, and the journal may take it in later.
+The memory skill still reads or changes your notes when you ask it to.
 
 ## What it sends
 
