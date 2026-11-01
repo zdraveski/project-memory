@@ -9,7 +9,7 @@ import assert from 'node:assert';
 import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, summary, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./journal.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, summary, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./journal.mjs');
 const { ACTIVE, TAIL, NUDGE_TAG } = await import('./handoff-log.mjs');
 const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
@@ -558,6 +558,22 @@ if (!quick) {
   stop(J);
   ok(had && r.removed.length === 1 && !after.includes('walrus') && after.includes('the seal plan') && !hd().includes('walrus') && hd().includes('the otter review') && !of(J).some((e) => e.asked.includes('walrus')),
     `forget takes the exchange out of handoff.md, and the next Stop of its conversation does not put it back (got ${had}, ${after}, ${hd()})`);
+}
+{
+  // A Stop that met the store's lock held (by another hook, or left by a Stop killed inside it) skips its turn, and the next
+  // reply writes it. A forget by that turn's key meanwhile found no entry, said "nothing matches", kept no key, and the next
+  // Stop wrote the exchange into the journal and handoff.md (fuzz seed 1729835215, Windows, 2026-11-01).
+  const N = sid('n'), hf = join(sdir, 'handoff.md'), hd = () => (existsSync(hf) ? readFileSync(hf, 'utf8') : ''), lock = join(sdir, '.lock');
+  say(N, '2026-10-28T17:00:00Z', 'the narwhal budget is 300', 'noted the narwhal budget');
+  const key = `${N.slice(0, 8)}-${uuid - 1}`;
+  // The busy Stop waits the lock out (2 s, then the import's): it writes nothing, the state the rest starts from, so --mutant skips only it.
+  mkdirSync(lock);
+  try { if (!quick) stop(N); } finally { rmSync(lock, { recursive: true }); }
+  const skipped = !of(N).length && !hd().includes('narwhal');
+  const r = spawnSync(process.execPath, [tool('memory.mjs'), 'forget', '--key', key, '--yes', '--store', sdir], { env, encoding: 'utf8', timeout: 60e3 });
+  stop(N);
+  ok(skipped && r.status === 0 && !of(N).length && !hd().includes('narwhal'),
+    `a forget by the key of a turn a busy Stop skipped keeps it out of the journal and handoff.md (got skipped ${skipped}, exit ${r.status}: ${r.stdout}; then ${JSON.stringify(of(N))}, ${hd().includes('narwhal')})`);
 }
 // F12: a Stop whose private or memory-off list won't read (EBUSY: a scan holding
 // it), made so by a preload. Read as no tags, a private conversation's turn was
@@ -1241,6 +1257,31 @@ mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(pr
   ok(hits(['mango']) === '', `a second forget keeps the first one's keys (got ${hits(['mango'])})`);
   forget(d, ['zebra'], { apply: true });
   ok(!hits(['zebra']) && readFileSync(f20, 'utf8').includes('My own note.'), 'a day left with only a note written by hand stays');
+}
+{
+  // unwritten(): the turn of a key no day holds yet, in one of the store's conversations (a Stop that met the lock skipped it),
+  // as an entry forget keeps out, even in a store with no journal folder yet (a new project whose first Stop was busy). Not a
+  // reply's id, not a conversation of another store in a folder named like a subfolder's, not a key no conversation has.
+  const d = storeFor(home, 'C:\\unwritten-selftest'), own = dirname(d), web = join(projects, 'C--unwritten-selftest-web'), list = join(d, 'journal', '.forgotten');
+  mkdirSync(d, { recursive: true }); mkdirSync(web, { recursive: true });
+  const rec = (type, uuid, ts, text, cwd = 'C:\\unwritten-selftest') => JSON.stringify({ type, uuid, cwd, timestamp: ts, message: { role: type, content: type === 'user' ? text : [{ type: 'text', text }] } });
+  const tw = join(own, 'uwuwuwuw-1.jsonl');
+  writeFileSync(tw, [rec('user', 'uw-0', '2026-10-27T09:00:00Z', 'an earlier question'), rec('assistant', 'uw-0a', '2026-10-27T09:00:30Z', 'an earlier answer'),
+    rec('user', 'uw-1', '2026-10-27T10:00:00Z', 'the ibex plan'), rec('assistant', 'uw-1a', '2026-10-27T10:00:30Z', 'drafted the ibex plan')].join('\n') + '\n');
+  writeFileSync(join(web, 'wwwwwwww-2.jsonl'), [rec('user', 'uw-web', '2026-10-27T11:00:00Z', 'the web question', 'C:\\unwritten-selftest\\web'), rec('assistant', 'uw-weba', '2026-10-27T11:00:30Z', 'the web answer', 'C:\\unwritten-selftest\\web')].join('\n') + '\n');
+  const found = unwritten(d, ['uw-1', 'uw-1a', 'uw-web', 'uw-none']), e = found[0];
+  ok(found.length === 1 && e.key === 'uw-1' && e.asked === 'the ibex plan' && e.t === 'C--unwritten-selftest/uwuwuwuw-1' && e.day === local(Date.parse('2026-10-27T10:00:00Z')).slice(0, 10) && e.unsaid === true,
+    `unwritten() finds the turn of a key in the store's conversations, and nothing else (got ${JSON.stringify(found)})`);
+  const n = (o) => forget(d, [], { keys: ['uw-1'], more: found, ...o }).matched.length;
+  ok(n({ since: e.day, until: e.day }) === 1 && n({ since: '2099-01-01' }) === 0 && n({ until: '2000-01-01' }) === 0, 'forget takes it by its day for a range');
+  const r = forget(d, [], { keys: ['uw-1'], more: found, apply: true });
+  ok(r.removed.length === 1 && existsSync(list) && readFileSync(list, 'utf8') === `uw-1\tC--unwritten-selftest/uwuwuwuw-1\t${e.at}\n`,
+    `forget keeps it out by its key, in a store with no journal folder before (got ${JSON.stringify(r.removed)}, ${existsSync(list) && readFileSync(list, 'utf8')})`);
+  // Written by a Stop since the look: the day's entry is the one forget takes.
+  const [e0] = unwritten(d, ['uw-0']);
+  record(d, tw, [turn({ at: e0.at, id: 'uw-0', ask: 'an earlier question' })]);
+  const m = forget(d, [], { keys: ['uw-0'], more: [e0] }).matched;
+  ok(m.length === 1 && !m[0].unsaid, `a turn a day holds by now is taken from the day, once (got ${JSON.stringify(m)})`);
 }
 {
   // A day that changed under each of its three writes keeps its entries, and

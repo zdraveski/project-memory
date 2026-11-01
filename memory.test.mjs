@@ -893,8 +893,10 @@ if (!quick) {
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
   ok(njs.status === 0 && /^  journal: could not read journal\.mjs: /m.test(njs.stdout) && r.status === 0 && /[\\/]deploy\.md$/m.test(r.stdout) && /^could not read journal\.mjs: /m.test(r.stdout),
     `a journal.mjs that will not load: status runs and says so, search finds notes and says the journal was not read (got ${njs.stdout}${njs.stderr}${r.stdout}${r.stderr})`);
-  r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'forget', 'deploy', '--store', jd], { env, encoding: 'utf8' });
-  ok(r.status === 1 && /^could not read journal\.mjs: /m.test(r.stdout), `nor can forget: it says so, and fails (got ${r.stdout}${r.stderr})`);
+  for (const how of [['deploy'], ['--key', 'k-any']]) {
+    r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'forget', ...how, '--store', jd], { env, encoding: 'utf8' });
+    ok(r.status === 1 && /^could not read journal\.mjs: /m.test(r.stdout) && !r.stderr, `nor can forget: it says so, and fails (${how.join(' ')}: got ${r.stdout}${r.stderr})`);
+  }
   r = await jcli('search', 'deploy', 'error', '--since=2026-10-10', '--until', '2026-10-20');
   const dates = [...r.stdout.matchAll(/^ *\d+  journal   (\d{4}-\d\d-\d\d)/gm)].map((m) => m[1]);
   ok(r.status === 0 && dates.join() === '2026-10-15,2026-10-15' && !/deploy\.md$/m.test(r.stdout), `--since/--until narrow by day, notes by their date too (got ${r.stdout})`);
@@ -1037,6 +1039,23 @@ if (!quick) {
   // Keys that match nothing never widen to "every entry", --same or not.
   r = await fcli('forget', 'zebra', '--key', 'k-elsewhere', '--same', '--yes');
   ok(r.status === 1 && kept('2025-10-20', '2025-10-21', today), `a --same of a key no entry has removes nothing (got ${r.stdout})`);
+  // A key no day holds yet, of a turn in this project's conversation (a Stop that met the store's lock writes it after the next
+  // reply): named as another project's, it was kept by no key, and the next Stop wrote it back (fuzz seed 1729835215). Listed
+  // without its words (its conversation may be private), kept out by --yes, and no snapshot is said to hold it.
+  const lateT = join(root, 'C--fg', 'dddd4444.jsonl'), lateAt = local(Date.parse('2025-10-22T09:00:00Z'));
+  writeFileSync(lateT, [{ type: 'user', uuid: 'f-late', sessionId: 'dddd4444', cwd: 'C:\\fg', timestamp: '2025-10-22T09:00:00Z', message: { role: 'user', content: 'the okapi plan' } },
+    { type: 'assistant', uuid: 'f-late-a', sessionId: 'dddd4444', cwd: 'C:\\fg', timestamp: '2025-10-22T09:00:30Z', message: { role: 'assistant', content: [{ type: 'text', text: 'drafted the okapi plan' }] } }].map((x) => JSON.stringify(x)).join('\n') + '\n');
+  const unsaid = `${lateAt}  conversation dddd4444  [not in the journal yet]  (key f-late)\n`;
+  r = await fcli('forget', '--key', 'f-late');
+  ok(r.status === 0 && r.stdout === `${unsaid}1 entry in ${fd} would go; run again with --yes to remove them\n`, `a key of a turn no day holds yet is listed, without its words (got ${r.stdout})`);
+  r = await fcli('forget', 'zebra', '--key', 'f-late');
+  ok(r.status === 0 && r.stdout === `nothing in ${fd} matches: no entry holds "zebra"\n`, `and the words still filter it (got ${r.stdout})`);
+  r = await fcli('forget', '--key', 'f-late-a');
+  ok(r.status === 1 && r.stdout.startsWith(`no entry in ${fd} has the key f-late-a;`), `a reply's id is no exchange's key (got ${r.stdout})`);
+  r = await fcli('forget', '--key', 'f-late', '--yes');
+  ok(r.status === 0 && r.stdout === `${unsaid}removed 1 from ${fd}\n` && readFileSync(join(fj, '.forgotten'), 'utf8').includes(`f-late\tC--fg/dddd4444\t${lateAt}\n`) && kept('2025-10-20', '2025-10-21', today),
+    `forget --key --yes keeps it out: its key listed, no day touched, no snapshot named (got ${r.stdout}${r.stderr})`);
+  rmSync(lateT);
   // A plain-words forget that matches nothing says which words no entry holds.
   r = await fcli('forget', 'the', 'zebra', 'pasted', 'yesterday');
   ok(r.status === 0 && r.stdout === `nothing in ${fd} matches: no entry holds "pasted", "yesterday"\n`, `a forget that matches nothing names the words no entry holds (got ${r.stdout})`);

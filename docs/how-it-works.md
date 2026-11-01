@@ -592,8 +592,14 @@ none and asks for a narrower one, and `--yes` removes nothing. A look by
 20, says how many more, and names the first and last day of what would go.
 With `--yes`, it looks again and removes what that look found, under the
 store's lock, then lists what went (past 200, only how many). A key the
-store has no entry for is named, and the tool exits with 1. It works on one
-store: `--all` is refused, and `--store` picks another project's.
+store has no entry for is named, and the tool exits with 1, unless it is the
+key of an exchange in one of the project's conversations (the folders the
+import reads) that no day holds yet: a reply whose Stop met the lock, which
+the next reply writes. That exchange is listed as `[not in the journal yet]`,
+without its words (its conversation may be one the journal never takes), and
+`--yes` lists its key in `.forgotten` and takes it out of `handoff.md`, as
+for an entry. It works on one store: `--all` is refused, and `--store` picks
+another project's.
 
 The keys are added to `journal/.forgotten` first, each with its
 conversation and time, so neither a killed `forget` nor a later import

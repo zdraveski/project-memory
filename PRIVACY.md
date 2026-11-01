@@ -248,7 +248,10 @@ removes only what the journal holds so far: check that `status` shows no
 conversations left to import, or run it again once they're in.
 
 - `forget` works on one project's journal at a time. If you name a key that
-  project has no entry for, it says so.
+  project has no entry for, it says so. A key of an exchange that isn't in
+  the journal yet (its reply came while another window held the project's
+  memory folder, and is saved at the next reply) is kept out all the same:
+  the list shows it as not in the journal yet, without its words.
 - `forget` also takes the exchanges it removes out of the record of where
   you left off (`handoff.md`), so the next conversation's briefing doesn't
   show them, and a later reply in their conversation doesn't put them back.

@@ -37,8 +37,8 @@ import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
 // (handoff-log's deploy gate test, 2026-10-28).
-let entries, forget, holds, summary;
-try { ({ entries, forget, holds, summary } = await import('./journal.mjs')); }
+let entries, forget, holds, summary, unwritten;
+try { ({ entries, forget, holds, summary, unwritten } = await import('./journal.mjs')); }
 catch (e) {
   const why = reason(e);
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: why }); return []; };
@@ -46,6 +46,7 @@ catch (e) {
   summary = () => ({ broken: why });
   forget = (dir, terms, o) => ({ matched: entries([dir], o), removed: [] });
   holds = () => false;
+  unwritten = () => [];
 }
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
@@ -691,15 +692,20 @@ export function main(given) {
     // A key no entry here has is named, never skipped: a confirmed key of another
     // project's entry went unsaid, with exit 0 (review, 2026-10-29).
     const stored = named.length ? entries([here], { failed: [] }) : [];
+    // Nor one of a turn no day holds yet, in this store's conversations: a Stop that met the lock writes it after the next
+    // reply, and named as another project's, it was kept out by no key and came back (fuzz seed 1729835215).
+    const late = unwritten(here, named.filter((k) => !stored.some((e) => e.key === k)));
+    stored.push(...late);
     const lost = named.filter((k) => !stored.some((e) => e.key === k)).map((k) => `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`);
     // --same: every entry asking what a keyed one asked, the copies a hit counts.
     const asks = new Set(stored.filter((e) => named.includes(e.key)).map((e) => norm(e.asked)));
     const keys = rest.includes('--same') ? stored.filter((e) => asks.has(norm(e.asked))).map((e) => e.key) : named;
     // By the tag, from the full session id too: the skill has the id, an entry the tag.
     // Keys given filter even when none is left: no key is never "every entry".
-    const o = { ...range, conversation: conversation && tag(conversation), keys: named.length ? keys : undefined, failed };
-    // With its key: the look is how the user's entries are found, and --key removes them.
-    const line = (e) => `${e.at}  conversation ${e.s}  ${clip(e.asked, 120)}  (key ${clip(e.key, Infinity)})`;
+    const o = { ...range, conversation: conversation && tag(conversation), keys: named.length ? keys : undefined, more: late, failed };
+    // With its key: the look is how the user's entries are found, and --key removes them. Not an unwritten turn's words: its
+    // conversation may be one the journal never takes (private, or held with auto memory off).
+    const line = (e) => `${e.at}  conversation ${e.s}  ${e.unsaid ? '[not in the journal yet]' : clip(e.asked, 120)}  (key ${clip(e.key, Infinity)})`;
     // One store: under --all it ran on this one alone, and said "removed 0" of
     // an entry search had just shown in another.
     if (rest.includes('--all')) r = no(`forget works on one store: --store <folder>, the memory folder of the project a search hit names (${join(projectsRoot(), '<project>', 'memory')})`);
@@ -736,7 +742,8 @@ export function main(given) {
         // day once it closes), when they are the plugin's: a repository the user
         // made there holds no journal, and deleting it would lose their history.
         const ours = /^\[project-memory\]/m.test(read(join(projectsRoot(), '.git', 'config')) ?? '');
-        const old = ours ? [...new Set(gone.filter((e) => e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
+        // Not an unwritten turn's day: no snapshot holds what no day did.
+        const old = ours ? [...new Set(gone.filter((e) => !e.unsaid && e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
         r = !got ? no(`${here} is busy (another hook holds it); try again`)
           // Past LOOK (a range's), the count, not every line.
           : { ok: true, lines: [...(gone.length > LOOK ? [] : gone.map(line)), ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : []),

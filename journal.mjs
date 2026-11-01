@@ -285,6 +285,35 @@ function resweep(dir) {
   return owed.size;
 }
 
+// The turns with these keys in the store's conversations, as entries (`unsaid`: no day holds them), for forget's `more`. A key
+// no day holds yet can be a turn a Stop skipped while the store's lock was held, written after the next reply: forgotten as no
+// entry's, no key kept it out, and it came back then (fuzz seed 1729835215). Found by the prompt record's uuid, as segments() cuts.
+// shortcut: a key no conversation has (a typo, another project's) reads all of them, and one that won't read is passed over
+// (the key is then named as no entry's, and the forget fails); upgrade if that is ever slow or wrong.
+export function unwritten(dir, keys) {
+  return keys.flatMap((k) => {
+    let fs = []; try { fs = looked(dir); } catch {}
+    for (const f of fs) {
+      let ns = []; try { ns = readdirSync(join(projectsRoot(), f)).filter((n) => n.endsWith('.jsonl')); } catch {}
+      for (const n of ns) {
+        const p = join(projectsRoot(), f, n);
+        try {
+          const fd = openSync(p, 'r');
+          try {
+            const size = fstatSync(fd).size;
+            for (let b, pos = 0; (b = chunk(fd, pos, IMPORT_SEGMENT, size)); pos = b.pos + b.buf.length) {
+              if (!b.buf.includes(`"uuid":${JSON.stringify(k)}`)) continue;
+              const got = turns(b.buf.toString('utf8')), t = [...got, got.open].find((x) => x?.id === k);
+              if (t && ours(dir, p)) { const e = entryOf(t, p); return [{ ...e, day: day(e.at), dir, unsaid: true }]; }
+            }
+          } finally { closeSync(fd); }
+        } catch {}
+      }
+    }
+    return [];
+  });
+}
+
 // The entries with every term (any case) in one of their fields, in the range,
 // of the conversation when one is given. With apply they go, under the store's
 // lock (null when it stayed busy); their keys are listed first, so a forget
@@ -294,11 +323,13 @@ function resweep(dir) {
 // from handoff.md too, which the next startup's briefing prints (R36).
 // An entry holds a word (lower case) when any of its fields does, in any case.
 export const holds = (e, t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.toLowerCase().includes(t));
-export function forget(dir, terms, { since, until, conversation, keys: only, apply = false, failed = [] } = {}) {
+export function forget(dir, terms, { since, until, conversation, keys: only, more = [], apply = false, failed = [] } = {}) {
   // The keys as a set: looked up in the list once an entry, a range forget of
   // 15,000 entries spent 5 s here.
   const ts = terms.map((t) => t.toLowerCase()), want = only && new Set(only);
-  const matched = entries([dir], { since, until, failed, strict: true }).filter((e) => (!conversation || e.s === conversation) && (!want || want.has(e.key)) &&
+  // `more`, unwritten()'s: by their day for the range, and not once a day holds them.
+  const have = entries([dir], { since, until, failed, strict: true }), held = new Set(have.map((e) => e.key));
+  const matched = [...have, ...more.filter((e) => !held.has(e.key) && (!since || e.day >= since) && (!until || e.day <= until))].filter((e) => (!conversation || e.s === conversation) && (!want || want.has(e.key)) &&
     ts.every((t) => holds(e, t)));
   if (!apply || !matched.length) return { matched, removed: [] };
   const keys = new Set(matched.map((e) => e.key)), f = join(dir, FORGOTTEN), seen = new Map();
@@ -309,6 +340,8 @@ export function forget(dir, terms, { since, until, conversation, keys: only, app
   const there = (t) => { try { statSync(join(projectsRoot(), `${t}.jsonl`)); return true; } catch (e) { return e.code !== 'ENOENT'; } };
   const live = ([, t]) => !t || (seen.has(t) ? seen.get(t) : seen.set(t, there(t)).get(t));
   return withLock(dir, () => {
+    // An unwritten turn's store may have no journal folder yet: a new project whose first Stop was busy.
+    mkdirSync(join(dir, JOURNAL), { recursive: true });
     for (let i = 0; i < 3; i++) {
       const before = raw(f), lines = new Map([...forgotten(before), ...matched.map((e) => [e.key, e.t, e.at])].filter(live).map((l) => [l[0], l.join('\t')]));
       if (replaceIfUnchanged(f, before, [...lines.values()].map((l) => l + '\n').join('')) !== 'conflict') break;
@@ -323,7 +356,7 @@ export function forget(dir, terms, { since, until, conversation, keys: only, app
     // one minute go together.
     const at = new Set(matched.map((e) => `${e.s} ${e.at}`));
     try { unsay(dir, (t) => at.has(`${t.s} ${t.at}`)); } catch (e) { failed.push({ path: join(dir, 'handoff.md'), code: e.code || e.message, write: true }); }
-    return { matched, removed: matched.filter((e) => went.has(e.key)) };
+    return { matched, removed: matched.filter((e) => went.has(e.key) || e.unsaid) };
   });
 }
 
@@ -420,6 +453,8 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
 const FOLDERS = '.folders';
 const near = (dir, f) => { const me = pathKey(basename(dirname(dir))); return pathKey(f) === me || pathKey(f).startsWith(me + '-'); };
 const folders = (dir) => listOf(raw(join(dir, JOURNAL, FOLDERS)));
+// The project folders that may hold the store's conversations: its own, its subfolders' and those noted. Throws when the projects folder won't list.
+const looked = (dir) => { const noted = new Set(folders(dir).map(pathKey)); return readdirSync(projectsRoot()).filter((f) => f !== '_shared' && (near(dir, f) || noted.has(pathKey(f)))); };
 // The list as `edit` makes it of the one there; given back the same, no write.
 function refold(dir, edit) {
   const file = join(dir, JOURNAL, FOLDERS);
@@ -478,7 +513,7 @@ function mark(dir, lines, keep = null, list = IMPORTED) {
 // shortcut: a worktree folder no live Stop has recorded in yet is not looked
 // in; scan every project folder's first cwd if one is ever missed.
 function candidates(dir, skip) {
-  const root = projectsRoot(), noted = new Set(folders(dir).map(pathKey)), done = new Map(), theirs = new Set(), out = [];
+  const root = projectsRoot(), done = new Map(), theirs = new Set(), out = [];
   // Another's or one that won't open: up to its size, from nothing read. One
   // ` partial` (before R24 only its last 64 MB was read): nothing read either,
   // or its start was never imported.
@@ -493,7 +528,7 @@ function candidates(dir, skip) {
   // A listing that fails leaves `seen` null, so nothing is pruned: read as
   // empty, it would drop the lines of every transcript in it.
   out.seen = new Set(); out.mine = new Set();
-  let looks = []; try { looks = readdirSync(root).filter((f) => f !== '_shared' && (near(dir, f) || noted.has(pathKey(f)))); } catch { out.seen = null; }
+  let looks = []; try { looks = looked(dir); } catch { out.seen = null; }
   for (const f of looks) {
     let names = []; try { names = readdirSync(join(root, f)).filter((n) => n.endsWith('.jsonl')); } catch { out.seen = null; }
     for (const n of names) {
