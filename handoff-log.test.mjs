@@ -1606,10 +1606,14 @@ const yamlFp = ['jobs:\n  call:\n    uses: ./.github/workflows/deploy.yml\n    s
   'secrets:\n  db: process.env.DB_PASS2'];
 const yamlFpCut = yamlFp.filter((s) => red(s) !== s);
 ok(!yamlFpCut.length, `a YAML key's siblings, and names and settings under it, are kept (cut: ${yamlFpCut.map((s) => JSON.stringify(red(s))).join(' | ')})`);
-// A secret that itself ends in `:` is a value, not a key: only a name, a colon and a blank or the end is one (review, 2026-11-01).
-const colonEnd = [['password: "', k('Tr0ub4dor', '&3:'), '"'], ['"password": "', k('abc', '123:'), '"'], ['token: "', k('tok9', 'enValue:'), '"']];
-const colonKept = colonEnd.filter(([p, v, q]) => red(p + v + q).includes(v.slice(0, -1))).map((x) => x.join(''));
+// A secret that itself ends in `:` is a value, not a key: a key is a name and a colon with more after it, a value on its line or an
+// indented child on the next; never one at the end of its line or the text (review rounds 1 and 2, 2026-11-01).
+const colonEnd = [['password: "', k('Tr0ub4dor', '&3:'), '"'], ['"password": "', k('abc', '123:'), '"'], ['token: "', k('tok9', 'enValue:'), '"'],
+  ['password: ', k('Tr0ub4', 'dor3:'), ''], ['password: ', k('Tr0ub4', 'dor3:'), '\nnext'], ['password=', k('Abcdef', '12345:'), ''], ['token: ', k('tok9', 'enValue:'), '\r\n']];
+const colonKept = colonEnd.filter(([p, v, q]) => red(p + v + q).includes(v.slice(0, -1)) || clip(p + v + q, 400).includes(v.slice(0, -1))).map((x) => JSON.stringify(x.join('')));
 ok(!colonKept.length, `a secret ending in a colon is redacted (kept: ${colonKept.join(' | ')})`);
+ok(!/X1234|X5678|X9012/.test(red('secret: password: X12345678') + red('secret:\n  password: X56785678') + red('secret:\n  password:\n    X90129012')),
+  'a key with a value after it, on its line or indented under it, is still no value');
 const yamlKept = ['secret:\n  password: string', 'tokens:\n  input: 863324\n  output: 1234', 'secretKeyRef:\n  name: db-credentials\n  key: password', 'secretName: db\nport: 5432', 'passwords:\n  - admin'];
 const yamlCut = yamlKept.filter((s) => red(s) !== s || clip(s, 400) !== s.replace(/\s+/g, ' '));
 ok(!yamlCut.length, `code, counts, a secret's name and a list under a secret's key are kept, and no child's key is cut (cut: ${yamlCut.map((s) => JSON.stringify(red(s))).join(' | ')})`);

@@ -421,13 +421,14 @@ const SECRETS = [
   // is (review, 2026-11-01). An object of one level only, read to its first `}`, bounded.
   [/("(?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?"[ \t]*:[ \t]*\{)([^{}]{0,2000})\}/gi,
     (m, head, tok, body) => `${head}${body.replace(/("[\w.-]{1,40}"[ \t]*:[ \t]*")([^"\n]{6,200})(?=")/g, (x, pre, v) => (yamlSecret(v, tok) && !code(v) && !arg(v) ? `${pre}[redacted]` : x))}}`],
-  // A value is never a key (a name, a colon, then a blank or the line's end): taken for the parent's value, the child after it was
-  // kept (`secret:\n  password: X`, `secret: password: X`; e2e audit, 2026-11-01). Only that shape: any value ending in `:` was
-  // taken for a key, and a password such as `"Tr0ub4dor&3:"` was kept (review, 2026-11-01).
+  // A value is never a key (a name and a colon with more after it: blanks then a value on its line, or a line break then an
+  // indented child): taken for the parent's value, the child after it was kept (`secret:\n  password: X`, `secret: password: X`;
+  // e2e audit, 2026-11-01). Only that shape: a value ending in `:` before a blank or at its line's end was taken for a key, and
+  // a password such as `"Tr0ub4dor&3:"` or `Tr0ub4dor3:` was kept (review rounds 1 and 2, 2026-11-01).
   // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]|\r?\n|$))([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
-  [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]|\r?\n|$))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
 ];
 export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
 // The answer to a private message often repeats what it was told, so it is

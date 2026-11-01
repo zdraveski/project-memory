@@ -213,11 +213,13 @@ Before any of it is written, these are taken out:
   `private_key`, Azure's `SharedAccessKey` (not `SharedAccessKeyName`),
   `key-data` or `pwd`, also inside a longer name
   (`DB_PASSWORD=`, `DB_PASS=`, `PGPASSWORD=`, `dbPassword`, `clientSecret`)
-  and with the value on the next line. A key (a name, a colon, then a blank
-  or the line's end) is never taken for the value: in `secret:` with
-  `password: …` under it, or on its line, the value after `password:` goes;
-  a password that itself ends in `:` is still a value. Such a value goes even with no digit
-  (`correct_horse_battery_staple`), unless it is plainly code: a type
+  and with the value on the next line. A key (a name and a colon with a
+  value after it on its line, or an indented child on the next) is never
+  taken for the value: in `secret:` with `password: …` under it, or on its
+  line, the value after `password:` goes; a password that itself ends in
+  `:`, before a blank or at its line's end, is still a value. Such a value
+  goes even with no digit (`correct_horse_battery_staple`), unless it is
+  plainly code: a type
   (`password: string`), a reference (`${…}`, `$(…)`, `process.env.X`,
   `user.password`), or, with no digit in it, a call, an index or a path of two
   parts or more (`jwt.sign(…`, `request.form[…`, `/etc/app/secret`);
