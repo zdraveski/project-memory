@@ -3,70 +3,102 @@
 <title>The problem</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=block" rel="stylesheet">
 <link href="style.css" rel="stylesheet">
+<script src="icons.js"></script>
 <style>
-  .chat { margin-top: 30px; }
-  .term { border-radius: 18px; overflow: hidden; }
-  .term.past { opacity: .85; }
-  .term.now { border-color: rgba(244, 114, 182, .55);
-    box-shadow: 0 0 0 1px rgba(244, 114, 182, .2), 0 0 36px rgba(244, 114, 182, .18), 0 22px 44px -18px rgba(0,0,0,.7); }
-  .bar { display: flex; align-items: center; gap: 9px; padding: 14px 20px;
-    border-bottom: 1px solid var(--line); background: rgba(10, 18, 50, .55);
-    font: 600 21px/1 Inter, sans-serif; color: var(--muted); }
-  .bar i { width: 12px; height: 12px; border-radius: 50%; background: #2a3763; }
-  .bar b { margin-left: 8px; color: #dbe7ff; font-weight: 700; }
-  .bar span { margin-left: auto; font: 500 20px/1 var(--mono); }
-  .log { padding: 20px 24px 24px; font: 500 25px/1.5 var(--mono); color: #d7e3ff; }
-  .you { color: #fff; }
-  .you::before { content: "> "; color: var(--cyan); font-weight: 700; }
-  .cl { margin-top: 12px; padding-left: 30px; position: relative; color: var(--body); }
-  .cl::before { content: "●"; position: absolute; left: 0; color: #9fb4e6; }
-  .ask { color: #fff; background: linear-gradient(transparent 62%, rgba(244, 114, 182, .35) 62%); }
-  .now .cl::before { color: var(--pink); text-shadow: 0 0 8px var(--pink); }
-  .gap { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 22px 0; }
-  .gap .ico { border-radius: 50%;
-    background: radial-gradient(circle, rgba(244,114,182,.28), rgba(30,20,70,.9) 70%);
-    box-shadow: inset 0 0 0 1px rgba(244,114,182,.6), 0 0 30px rgba(244,114,182,.35); }
-  .gap .ico svg { stroke: #f9a8d4; filter: drop-shadow(0 0 6px rgba(244,114,182,.9)); }
-  .gap p { margin: 0; font: 700 21px/1.2 Inter, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: #f9a8d4; }
+  /* One Monday, then two Tuesdays: Claude Code alone, and with project-memory. */
+  .node { padding: .6em .8em .7em; display: grid; gap: .3em; }
+  .lane { display: flex; align-items: center; gap: .45em; font-weight: 700; }
+  .alone .lane { color: var(--pink-ink); }
+  .with .lane { color: var(--cyan-ink); }
+  .day { margin-left: auto; font: 500 1em/1 var(--mono); color: var(--muted); }
+  .what { color: var(--body); }
+  .entry { margin-top: .15em; padding: .25em 0 .25em .6em; border-left: 2px solid var(--cyan); font: 500 1em/1.45 var(--mono); color: #c9d6f5; }
+
+  /* wide: Monday | the fork | overnight | Tuesday, the two lanes one above the other */
+  .wide { padding: 24px 30px; }
+  .wide .story { display: grid; grid-template-columns: 222px 24px 262px 22px 1fr; grid-template-rows: 1fr 1fr; row-gap: 16px; align-items: center; }
+  .wide .mon { grid-row: 1 / 3; }
+  .wide .term-bar { font-size: 15px; }
+  .wide .panel { font-size: 15px; }
+  .wide .node { font-size: 16px; }
+  .wide .what, .wide .entry { font-size: 15px; }
+  /* the fork: a stub from Monday to the middle, then up to the first lane and down to the second */
+  .fork { position: relative; align-self: stretch; }
+  .fork::after { content: ""; position: absolute; left: 50%; right: 0; border: 0 solid; filter: drop-shadow(0 0 4px currentColor); }
+  .fork.up { color: var(--pink); }
+  .fork.up::before { content: ""; position: absolute; left: 0; width: 52%; bottom: -9px; height: 2px; background: #60a5fa; box-shadow: 0 0 6px #60a5fa; }
+  .fork.up::after { top: 50%; bottom: -8px; border-left-width: 2px; border-top-width: 2px; border-top-left-radius: 12px; }
+  .fork.down { color: var(--cyan); }
+  .fork.down::after { top: -8px; bottom: 50%; border-left-width: 2px; border-bottom-width: 2px; border-bottom-left-radius: 12px; }
+  .link { height: 0; border-top: 2px solid var(--cyan); filter: drop-shadow(0 0 4px var(--cyan)); }
+  .link.broken { border-top: 2px dashed var(--pink); filter: drop-shadow(0 0 4px var(--pink)); }
+
+  /* narrow: Monday on top, a rail down the left that branches into each lane */
+  .narrow { padding: 22px; }
+  .narrow .lanes { display: grid; gap: 16px; margin-top: 16px; padding-left: 26px; }
+  .narrow .node { gap: .2em; padding: .5em .6em .55em; }
+  .narrow .panel { letter-spacing: -.02em; }
+  .narrow .node .panel { padding: .25em 0 0; }
+  .narrow .cl { padding-left: 1.2em; }
+  .narrow .entry { line-height: 1.34; }
+  .narrow .lane .pi { width: 1.1em; height: 1.1em; }
+  .narrow .node::before { content: ""; position: absolute; left: -20px; width: 19px; top: -17px; height: calc(50% + 17px);
+    border: 0 solid; border-left-width: 3px; border-bottom-width: 3px; border-bottom-left-radius: 16px; filter: drop-shadow(0 0 5px currentColor); }
+  .narrow .alone::before { color: var(--pink); }
+  .narrow .alone::after { content: ""; position: absolute; left: -20px; width: 3px; top: -17px; bottom: -17px; background: #60a5fa; box-shadow: 0 0 6px #60a5fa; }
+  .narrow .with::before { color: var(--cyan); }
 </style>
 
-<div class="art phone">
-  <svg class="streaks" viewBox="0 0 600 700" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
-    <defs>
-      <linearGradient id="sk" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity="0"/><stop offset=".55" stop-color="#38bdf8" stop-opacity=".6"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient>
-      <filter id="bl" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
-    </defs>
-    <path d="M300 -20 C 420 70, 520 40, 620 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
-    <path d="M300 -20 C 420 70, 520 40, 620 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
-    <path d="M380 -20 C 480 100, 560 90, 620 30" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
-  </svg>
+<div class="art wide">
   <i class="stars"></i>
-  <i class="horizon warm"></i>
-  <svg width="0" height="0" style="position:absolute"><linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></svg>
-
-  <div class="eyebrow warn">The problem</div>
-  <h1>Every new conversation <span class="grad warn">starts fresh.</span></h1>
-
-  <div class="chat">
-    <div class="glass term past">
-      <div class="bar"><i></i><i></i><i></i><b>Monday</b><span>18:40</span></div>
-      <div class="log">
-        <div class="you">Let's stop here.</div>
-        <div class="cl">Pricing comes next.</div>
-      </div>
+  <div class="story">
+    <div class="glass term past mon">
+      <div class="term-bar"><i></i><i></i><i></i><b>Monday</b><span>18:40</span></div>
+      <div class="panel"><p class="you">Let's stop here.</p><p class="cl">Pricing comes next.</p></div>
     </div>
 
-    <div class="gap">
-      <div class="ico"><svg viewBox="0 0 24 24"><path d="m18.84 12.25 1.72-1.71h-.02a5 5 0 0 0-.12-7.07 5 5 0 0 0-6.95 0l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 .12 7.07 5 5 0 0 0 6.95 0l1.71-1.71"/><path d="M8 2v3M2 8h3M16 19v3M19 16h3"/></svg></div>
-      <p>New conversation</p>
+    <i class="fork up"></i>
+    <div class="glass hot node alone">
+      <p class="lane"><svg class="pi warn"><use href="#p-link-break"/></svg>Claude Code alone</p>
+      <p class="what">Nothing carries over.</p>
+    </div>
+    <i class="link broken"></i>
+    <div class="glass hot term">
+      <div class="term-bar"><i></i><i></i><i></i><b>Tuesday</b><span>09:15</span></div>
+      <div class="panel"><p class="you">Let's carry on.</p><p class="cl">Sure. <span class="ask">What were we working on?</span></p></div>
     </div>
 
-    <div class="glass term now">
-      <div class="bar"><i></i><i></i><i></i><b>Tuesday</b><span>09:15</span></div>
-      <div class="log">
-        <div class="you">Let's carry on.</div>
-        <div class="cl">Sure. <span class="ask">What were we working on?</span></div>
-      </div>
+    <i class="fork down"></i>
+    <div class="glass lit node with">
+      <p class="lane"><svg class="pi"><use href="#p-link"/></svg>With project-memory</p>
+      <p class="what">Saved after Monday's last reply:</p>
+      <div class="entry"><p>asked: Let's stop here.</p><p>did: Pricing comes next.</p></div>
+    </div>
+    <i class="link"></i>
+    <div class="glass lit term">
+      <div class="term-bar"><i></i><i></i><i></i><b>Tuesday</b><span>09:15</span></div>
+      <div class="panel"><p class="you">Let's carry on.</p><p class="cl">We stopped before pricing. <span class="knows">Starting on it now.</span></p></div>
+    </div>
+  </div>
+</div>
+
+<div class="art narrow">
+  <i class="stars"></i>
+  <div class="glass term past mon">
+    <div class="term-bar"><i></i><i></i><i></i><b>Monday</b><span>18:40</span></div>
+    <div class="panel"><p class="you">Let's stop here.</p><p class="cl">Pricing comes next.</p></div>
+  </div>
+  <div class="lanes">
+    <div class="glass hot node alone">
+      <p class="lane"><svg class="pi warn"><use href="#p-link-break"/></svg>Claude Code alone<span class="day">Tuesday</span></p>
+      <p class="what">Nothing carries over.</p>
+      <div class="panel"><p class="you">Let's carry on.</p><p class="cl">Sure. <span class="ask">What were we working on?</span></p></div>
+    </div>
+    <div class="glass lit node with">
+      <p class="lane"><svg class="pi"><use href="#p-link"/></svg>With project-memory<span class="day">Tuesday</span></p>
+      <p class="what">Saved after Monday's last reply:</p>
+      <div class="entry"><p>asked: Let's stop here.</p><p>did: Pricing comes next.</p></div>
+      <div class="panel"><p class="you">Let's carry on.</p><p class="cl">We stopped before pricing. <span class="knows">Starting on it now.</span></p></div>
     </div>
   </div>
 </div>

@@ -1,4 +1,7 @@
-![project-memory: Give Claude Code a memory. Remember, restore, continue.](docs/banner.png)
+<p><picture>
+  <source media="(max-width: 700px)" srcset="docs/banner-narrow.webp">
+  <img src="docs/banner.png" width="880" alt="project-memory: Give Claude Code a memory. Remember, restore, continue.">
+</picture></p>
 
 # project-memory
 
@@ -30,7 +33,10 @@ needs Node.js 22 or newer; the full steps are under [Install](#install).
 [Questions](docs/faq.md) ·
 [Project page](https://zdraveski.github.io/project-memory/)
 
-<img src="docs/problem.webp" width="600" alt="The problem: every new conversation starts fresh. On Monday you say: Let's stop here. Claude says: Pricing comes next. Then a new conversation. On Tuesday you say: Let's carry on. Claude says: Sure. What were we working on?">
+<p><picture>
+  <source media="(max-width: 700px)" srcset="docs/problem-narrow.webp">
+  <img src="docs/problem.webp" width="880" alt="On Monday you say: Let's stop here. Claude says: Pricing comes next. On Tuesday you say: Let's carry on. With Claude Code alone, nothing carries over, and Claude asks: What were we working on? With project-memory, Monday's last exchange was saved, and Claude says: We stopped before pricing. Starting on it now.">
+</picture></p>
 
 ## What you get
 
@@ -51,7 +57,10 @@ and lets two Claude windows on one project work without overwriting each
 other. It helps most when you come back to the same project over days or
 weeks. For a quick one-off question, you won't notice much difference.
 
-<img src="docs/what-you-get.webp" width="600" alt="What it does for you: keeps a journal of your work, picks up where you left off, keeps old versions of notes (needs Git), keeps long tasks on track, and shares lessons across projects. Free, no account, never goes online.">
+<p><picture>
+  <source media="(max-width: 700px)" srcset="docs/what-you-get-narrow.webp">
+  <img src="docs/what-you-get.webp" width="880" alt="Six tiles, each with a small diagram: a journal you can ask, picks up where you left off, old versions come back (needs Git), long tasks stay on track, lessons shared across projects, and two windows with no clashes.">
+</picture></p>
 
 ## Install
 
@@ -104,7 +113,10 @@ memory folder. The journal is its `journal` folder, one file per day.
 
 ## Your privacy
 
-<img src="docs/privacy.webp" width="600" alt="Your privacy: what it saves stays on your computer. It never goes online. Secrets are blanked out: keys and passwords become [redacted]. Keep text out: put it in &lt;private&gt;. Keep a conversation out: type &lt;private-session&gt;. Anthropic still sees your conversation.">
+<p><picture>
+  <source media="(max-width: 700px)" srcset="docs/privacy-narrow.webp">
+  <img src="docs/privacy.webp" width="880" alt="Your computer: the memory folder under ~/.claude/projects holds the journal, handoff.md, MEMORY.md and your notes. Nothing is sent anywhere. It never goes online, secrets become [redacted], &lt;private&gt; keeps text out and &lt;private-session&gt; keeps a conversation out.">
+</picture></p>
 
 - project-memory never goes online. What it saves stays in Claude Code's own
   folder (`.claude`, in your home folder). What Claude reads during a
@@ -150,7 +162,10 @@ but only if you set `CLAUDE_CODE_AUTO_COMPACT_WINDOW` below your model's
 window ([how](docs/how-it-works.md#compaction)); with the default settings
 there is no room left to wait.
 
-<img src="docs/long-conversations.webp" width="600" alt="Long conversations, kept on track. Before, at 85% full: Claude saves its notes. During, at 100%: the step in progress is written down. After, once shortened to a summary: Claude is told where it was.">
+<p><picture>
+  <source media="(max-width: 700px)" srcset="docs/long-conversations-narrow.webp">
+  <img src="docs/long-conversations.webp" width="880" alt="Three steps. Before, at 85% full: Claude saves its notes. During, at 100%: the step in progress is written down. After the summary: Claude is told what you asked and what it last said.">
+</picture></p>
 
 **If your model holds 200,000 tokens,** the reminder to save notes never
 comes, because project-memory assumes 1,000,000. Ask Claude: *"Is my context
