@@ -1055,6 +1055,12 @@ if (!quick) {
   r = await fcli('forget', '--key', 'f-late', '--yes');
   ok(r.status === 0 && r.stdout === `${unsaid}removed 1 from ${fd}\n` && readFileSync(join(fj, '.forgotten'), 'utf8').includes(`f-late\tC--fg/dddd4444\t${lateAt}\n`) && kept('2025-10-20', '2025-10-21', today),
     `forget --key --yes keeps it out: its key listed, no day touched, no snapshot named (got ${r.stdout}${r.stderr})`);
+  // Forgotten, it is in no day and still in its conversation: found there again, a second forget said it removed it (review).
+  const listed1 = readFileSync(join(fj, '.forgotten'), 'utf8'), again = `key f-late is already forgotten; nothing to remove\nnothing in ${fd} matches\n`;
+  for (const yes of [[], ['--yes']]) {
+    r = await fcli('forget', '--key', 'f-late', ...yes);
+    ok(r.status === 0 && r.stdout === again && readFileSync(join(fj, '.forgotten'), 'utf8') === listed1, `a key forgotten before is said to be, and nothing goes (${yes.join('') || 'a look'}: got ${r.stdout})`);
+  }
   rmSync(lateT);
   // A plain-words forget that matches nothing says which words no entry holds.
   r = await fcli('forget', 'the', 'zebra', 'pasted', 'yesterday');

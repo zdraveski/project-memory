@@ -251,7 +251,9 @@ conversations left to import, or run it again once they're in.
   project has no entry for, it says so. A key of an exchange that isn't in
   the journal yet (its reply came while another window held the project's
   memory folder, and is saved at the next reply) is kept out all the same:
-  the list shows it as not in the journal yet, without its words.
+  the list shows it as not in the journal yet, without its words. A key you
+  had it forget before is named as already forgotten, and nothing more is
+  removed.
 - `forget` also takes the exchanges it removes out of the record of where
   you left off (`handoff.md`), so the next conversation's briefing doesn't
   show them, and a later reply in their conversation doesn't put them back.

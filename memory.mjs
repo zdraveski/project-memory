@@ -32,7 +32,7 @@ import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED } from './store.mjs';
-import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved } from './handoff-log.mjs';
+import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -694,9 +694,12 @@ export function main(given) {
     const stored = named.length ? entries([here], { failed: [] }) : [];
     // Nor one of a turn no day holds yet, in this store's conversations: a Stop that met the lock writes it after the next
     // reply, and named as another project's, it was kept out by no key and came back (fuzz seed 1729835215).
-    const late = unwritten(here, named.filter((k) => !stored.some((e) => e.key === k)));
+    // Not one forgotten before: in no day, and still in its conversation, it was found again and said removed (review).
+    const already = new Set(forgotten(read(join(here, FORGOTTEN))).map(([k]) => k)), none = (k) => !stored.some((e) => e.key === k);
+    const late = unwritten(here, named.filter((k) => none(k) && !already.has(k)));
     stored.push(...late);
-    const lost = named.filter((k) => !stored.some((e) => e.key === k)).map((k) => `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`);
+    const again = named.filter((k) => none(k) && already.has(k)).map((k) => `key ${k} is already forgotten; nothing to remove`);
+    const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`);
     // --same: every entry asking what a keyed one asked, the copies a hit counts.
     const asks = new Set(stored.filter((e) => named.includes(e.key)).map((e) => norm(e.asked)));
     const keys = rest.includes('--same') ? stored.filter((e) => asks.has(norm(e.asked))).map((e) => e.key) : named;
@@ -749,6 +752,7 @@ export function main(given) {
           : { ok: true, lines: [...(gone.length > LOOK ? [] : gone.map(line)), ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : []),
             `removed ${gone.length}${gone.length === tried.length ? '' : ` of ${tried.length}`} from ${here}`] };
       }
+      r.lines.splice(-1, 0, ...again);
       if (lost.length) { r.lines.splice(-1, 0, ...lost); r.ok = false; }
     } catch (e) { if (!e.code) throw e; r = no(`${join(here, 'journal')} could not be listed (${e.code}); nothing removed`); }
   } else if (cmd === 'status') {

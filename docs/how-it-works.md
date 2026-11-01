@@ -598,8 +598,9 @@ import reads) that no day holds yet: a reply whose Stop met the lock, which
 the next reply writes. That exchange is listed as `[not in the journal yet]`,
 without its words (its conversation may be one the journal never takes), and
 `--yes` lists its key in `.forgotten` and takes it out of `handoff.md`, as
-for an entry. It works on one store: `--all` is refused, and `--store` picks
-another project's.
+for an entry. A key already listed in `.forgotten` is named as already
+forgotten, nothing is removed, and the tool exits with 0. It works on one
+store: `--all` is refused, and `--store` picks another project's.
 
 The keys are added to `journal/.forgotten` first, each with its
 conversation and time, so neither a killed `forget` nor a later import
