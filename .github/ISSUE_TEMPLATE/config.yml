@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A question
+    url: https://github.com/zdraveski/project-memory/discussions
+    about: How to do something, or whether it should work this way. Ask in Discussions.
+  - name: A security or privacy problem
+    url: https://github.com/zdraveski/project-memory/security/advisories/new
+    about: A secret saved, a private conversation recorded, a write outside Claude Code's folder. Report it privately.

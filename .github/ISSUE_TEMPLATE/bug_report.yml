@@ -1,0 +1,45 @@
+name: Something doesn't work
+description: project-memory did something wrong, or didn't do what it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting it. Please don't paste keys, passwords or text from a private conversation: issues are public.
+        A security or privacy problem (a secret saved, a private conversation recorded) goes in a [private report](https://github.com/zdraveski/project-memory/security/advisories/new) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, and what project-memory did.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: The check's output
+      description: Type `/project-memory:memory doctor` in Claude Code and paste what it prints.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`claude plugin list` shows it, for example 1.2.3."
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Computer
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
