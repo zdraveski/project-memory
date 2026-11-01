@@ -1320,7 +1320,8 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
     writeNote(d, 'a');
     writeFileSync(join(d, 'MEMORY.md'), '# Index\n\nSome prose\n\n\n- [a](a.md) — a\n');
     await tierDir(d);
-    ok(readFileSync(join(d, 'MEMORY.md'), 'utf8').startsWith('# Index\n\nSome prose\n- [a](a.md)'), 'the blank line under a heading survives, and a run of blank lines is one');
+    // Before the lines too (audit I-F4): it was dropped there.
+    ok(readFileSync(join(d, 'MEMORY.md'), 'utf8').startsWith('# Index\n\nSome prose\n\n- [a](a.md)'), 'the blank line under a heading survives, and a run of blank lines is one, before the lines too');
   }
 
   // --pause <ms> holds a pass open and says so on stderr: only when asked, and only with a number.
@@ -1401,6 +1402,16 @@ require('node:module').syncBuiltinESMExports();
   ok(was - now2 >= 100 && saved === Math.round((was - now2) / 4), `the tokens saved are a quarter of the bytes (got ${was} -> ${now2}, ~${saved})`);
   const digits = await fit(101, 8);
   ok(digits.evicted === 1 && digits.bytes <= 7000, `with eight pointers already archived, 101 B over loses one line, the count's width unchanged (got ${digits.evicted})`);
+  // An index kept in CRLF: a line's ending is two bytes, so 203 B over, in lines of 102, loses two lines, not three.
+  {
+    const d = tempDir('memtier-crlf-fit-'), want = 7203, n = Math.floor((want - bytesOf(AL(0)) - 2) / 102);
+    const ls = Array.from({ length: n }, (_, i) => { const name = `r${String(i).padStart(2, '0')}`; writeNote(d, name, { modified: new Date(Date.now() - (3 + (n - i) * 0.001) * DAY).toISOString() }); return lineFor(name, 100); });
+    ls[n - 1] += 'x'.repeat(want - (n * 102 + bytesOf(AL(0)) + 2));
+    writeFileSync(join(d, 'MEMORY.md'), [...ls, AL(0)].join('\r\n') + '\r\n');
+    await tierDir(d);
+    const main = readOr(join(d, 'MEMORY.md')), lost = (readOr(join(d, 'MEMORY-archive.md')).match(/<!-- overflow -->/g) || []).length;
+    ok(lost === 2 && bytesOf(main) <= 7000 && !/(^|[^\r])\n/.test(main), `a CRLF index 203 B over, in lines of 102 B, loses two lines and stays CRLF (got ${lost}, ${bytesOf(main)} B)`);
+  }
 
   // Claude Code loads 200 lines: 198 of prose and a note make exactly 200 with the archive line.
   {
@@ -1409,6 +1420,10 @@ require('node:module').syncBuiltinESMExports();
     writeFileSync(join(d, 'MEMORY.md'), Array.from({ length: 198 }, (_, i) => `Line ${i}`).join('\n') + '\n- [only](only.md) — hook\n');
     await tierDir(d);
     ok(readFileSync(join(d, 'MEMORY.md'), 'utf8').split('\n').filter(Boolean).length === 200 && !/overflow/.test(readOr(join(d, 'MEMORY-archive.md'))), 'exactly 200 lines is within what Claude Code loads: nothing is evicted');
+    // The blank kept under the prose is a line too: with it, 201.
+    writeFileSync(join(d, 'MEMORY.md'), Array.from({ length: 198 }, (_, i) => `Line ${i}`).join('\n') + '\n\n- [only](only.md) — hook\n');
+    await tierDir(d);
+    ok(/overflow/.test(readOr(join(d, 'MEMORY-archive.md'))), 'and with a blank line before the note, 201: the note is evicted');
   }
 
   // The rule share, to the byte: B = 7000, P = the pinned lines + 1 each, R = the rules'.
@@ -1650,6 +1665,25 @@ if (!quick) {
   ok(/\(mid\.md\)/.test(both), `--stop: a note written while a pass ran is taken up by the next turn (got ${both})`);
 }
 
+// An index saved with CRLF keeps CRLF, and the blank line under its heading: a pass that added its lines wrote it back LF
+// with the heading's blank dropped (audit I-F4). A new archive takes the index's endings; an LF index keeps its blank too.
+{
+  const run = async (name, text) => {
+    const d = store(name);
+    writeFileSync(join(d, 'MEMORY.md'), text);
+    for (const f of ['a.md', 'MEMORY.md']) utimesSync(join(d, f), tenMin, tenMin);
+    note(name, 'b');   // no line for it: the pass gives it one
+    await stop(name);
+    return [readFileSync(join(d, 'MEMORY.md'), 'utf8'), readFileSync(join(d, 'MEMORY-archive.md'), 'utf8')];
+  };
+  const lf = /(^|[^\r])\n/;
+  const [idx, arc] = await run('proj-crlf', '# Memory Index\r\n\r\n- [a](a.md) — a\r\n');
+  ok(idx.startsWith('# Memory Index\r\n\r\n- [a](a.md)') && /\(b\.md\)/.test(arc) && !lf.test(idx) && !lf.test(arc), `a CRLF index keeps CRLF and the blank under its heading, and its new archive is CRLF (got ${JSON.stringify(idx)} ${JSON.stringify(arc)})`);
+  const [idx2] = await run('proj-lfgap', '# Memory Index\n\n- [a](a.md) — a\n');
+  ok(idx2.startsWith('# Memory Index\n\n- [a](a.md)') && !idx2.includes('\r'), `an LF index keeps LF and its blank (got ${JSON.stringify(idx2)})`);
+  const [idx3] = await run('proj-nogap', '# Memory Index\n- [a](a.md) — a\n\n- [b](b.md) — b\n');
+  ok(idx3.startsWith('# Memory Index\n- [a](a.md)'), `and one with none under its prose gets none, whatever blank sits between its lines (got ${JSON.stringify(idx3)})`);
+}
 // A history's first snapshot, taken in parts: one `git add` of every note at once was killed at its 30 s on a large store
 // (~6 ms a file on Windows, 5,000 files), it left index.lock, and no snapshot ever started (audit H-F1). The indexes go
 // first, so the first part holds them as the user wrote them. `--batch 3`, test-only, makes a part three files.

@@ -130,17 +130,22 @@ function isHot(f, now, shared) {
 function split(text) {
   const pointers = [];
   const preamble = [];
+  // `gap`: a blank line between the prose and the first pointer, kept: dropped, a `# Memory Index` heading lost the line
+  // under it at the first pass (audit I-F4).
+  let gap = false;
   // A BOM binds to the first line and stops it matching POINTER, which quietly
   // demotes the top memory to prose and orphans it.
   for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const m = line.match(POINTER);
     if (m && m[1] === ARCHIVE) continue;   // by its target, not its title: regenerated with a live count
-    if (m) pointers.push({ line, target: m[1] });
+    if (m) { gap ||= !pointers.length && preamble.at(-1)?.trim() === ''; pointers.push({ line, target: m[1] }); }
     else if (line.trim() || preamble[preamble.length - 1]?.trim()) preamble.push(line);
   }
   while (preamble.length && preamble[preamble.length - 1].trim() === '') preamble.pop();
-  return { preamble, pointers };
+  return { preamble, pointers, gap };
 }
+// A file's line ending, as its first line has it: a CRLF index was written back LF (audit I-F4).
+const eolOf = (text) => (/^[^\n]*\r\n/.test(text) ? '\r\n' : '\n');
 
 // `seen`: the Stop's stat of each note, by name (main()); none, each is stat'ed here.
 function tier(dir, now, seen = null) {
@@ -229,7 +234,9 @@ function tier(dir, now, seen = null) {
   }
 
   const archiveLine = (n) => `- [Archive](${ARCHIVE}) — ${n} older pointers; grep it before assuming something was never learned`;
-  const render = () => [...main.preamble, ...hot.map((p) => p.line), archiveLine(cold.length)].join('\n') + '\n';
+  // Each file in its own line endings (a new archive in the index's), the blank under the prose kept.
+  const eol = eolOf(mainText), arcEol = arcText !== null ? eolOf(arcText) : eol;
+  const render = () => [...main.preamble, ...(main.gap ? [''] : []), ...hot.map((p) => p.line), archiveLine(cold.length)].join(eol) + eol;
 
   // A ceiling, not a warning. The windows cap how many lines survive, not how
   // long they are, so a corpus that writes six memories a day outgrows any
@@ -269,12 +276,12 @@ function tier(dir, now, seen = null) {
   const bytes = (s) => Buffer.byteLength(s);
   let size = bytes(render());
   // And lines: Claude Code loads the first 200, and 7 KB of short lines is more.
-  let count = main.preamble.length + hot.length + 1;
+  let count = main.preamble.length + Number(main.gap) + hot.length + 1;
   const evicted = new Set();
   for (let q = 0; (size > budget || count > LINES) && q < queue.length; q++) {
     const victim = queue[q];
     count--;
-    size -= bytes(victim.line) + 1 + bytes(archiveLine(cold.length)) - bytes(archiveLine(cold.length + 1));
+    size -= bytes(victim.line) + eol.length + bytes(archiveLine(cold.length)) - bytes(archiveLine(cold.length + 1));
     evicted.add(victim);
     victim.line += ' ' + OVERFLOW;        // so the archive loop knows it may come back
     cold.push(victim);
@@ -283,7 +290,7 @@ function tier(dir, now, seen = null) {
 
   const before = Buffer.byteLength(mainText);
   const nextMain = render();
-  const nextArc = [...arc.preamble, '', ...cold.map((p) => p.line)].join('\n') + '\n';
+  const nextArc = [...arc.preamble, '', ...cold.map((p) => p.line)].join(arcEol) + arcEol;
   // Written at once: the sleep blocks the loop an async write would wait on.
   if (PAUSE) { writeSync(2, 'paused\n'); sleep(PAUSE); }
 
@@ -299,7 +306,7 @@ function tier(dir, now, seen = null) {
   let wrote = false, conflict = false;
   if (!dry) {
     const back = arc.pointers.filter((p) => hot.includes(p));
-    const first = back.length ? [...arc.preamble, '', ...cold.map((p) => p.line), ...back.map((p) => p.was)].join('\n') + '\n' : nextArc;
+    const first = back.length ? [...arc.preamble, '', ...cold.map((p) => p.line), ...back.map((p) => p.was)].join(arcEol) + arcEol : nextArc;
     const a = write(arcPath, arcText, first);
     const m = a === 'conflict' ? 'conflict' : write(mainPath, mainText, nextMain);
     const b = back.length && a !== 'conflict' && m !== 'conflict' ? write(arcPath, a === true ? first : arcText, nextArc) : false;

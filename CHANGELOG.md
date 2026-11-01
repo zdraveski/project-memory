@@ -100,6 +100,10 @@
 - The tidy-up's line (printed by a manual run, and on the Stop's own output,
   which nobody sees) showed an index that grew as a negative saving,
   `(~-26 tokens/session)`. It now says `(grew ~26 tokens/session)`.
+- A `MEMORY.md` saved with Windows line endings (CRLF) was rewritten with
+  LF ones, and the blank line under its heading was dropped, when the
+  plugin added its lines. It now keeps the file's line endings, and the
+  blank line.
 
 ## 1.2.4 (2026-11-01)
 

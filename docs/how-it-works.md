@@ -89,7 +89,9 @@ limits; past 7,000 bytes, the startup briefing says the index is over budget.
 Every `MEMORY.md` ends with an Archive line that counts the archived lines,
 and a project's also gets a line for `handoff.md` and, once it has a journal,
 one for `journal.md`; both are pinned. Prose and headings anywhere in it
-are gathered at the top, above the lines.
+are gathered at the top, above the lines, with a blank line between if the
+file had one there. The file keeps its line endings: a `MEMORY.md` saved
+with CRLF stays CRLF, and a new archive takes the index's.
 
 After each reply it decides which lines stay in `MEMORY.md` and which move to
 `MEMORY-archive.md`:
