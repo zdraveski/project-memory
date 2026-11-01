@@ -1,0 +1,53 @@
+name: release
+
+# A published release gets its source as project-memory-<tag>.tar.gz and
+# .zip (git archive of the tag), a SHA256SUMS file for both, and GitHub's
+# signed build-provenance attestation of all three, which says this workflow
+# made them from the tag's commit. How to check them:
+# SECURITY.md#verifying-a-release.
+on:
+  release:
+    types: [published]
+
+# Read the code, nothing more; only the job below may write.
+permissions:
+  contents: read
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # gh release upload.
+      contents: write
+      # The OIDC token Sigstore's short-lived signing certificate is issued for.
+      id-token: write
+      # Storing the attestation with the repository.
+      attestations: write
+    steps:
+      # A release event checks out its tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The tag comes in through env, and must be a version.
+      - env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if ! [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::the release's tag is not a version such as v1.2.4"
+            exit 1
+          fi
+          mkdir dist
+          git archive --format=tar.gz --prefix="project-memory-$TAG/" -o "dist/project-memory-$TAG.tar.gz" HEAD
+          git archive --format=zip --prefix="project-memory-$TAG/" -o "dist/project-memory-$TAG.zip" HEAD
+          cd dist
+          sha256sum "project-memory-$TAG.tar.gz" "project-memory-$TAG.zip" > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      # --clobber: a rerun replaces the files, attested again above.
+      - env:
+          TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
