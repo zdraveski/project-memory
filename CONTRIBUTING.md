@@ -2,11 +2,39 @@
 
 project-memory is plain Node.js with no dependencies. Start with
 [How it works](docs/how-it-works.md), then the design documents in
-[`docs/specs/`](docs/specs/).
+[`docs/specs/`](docs/specs/). Who decides what goes in is in
+[GOVERNANCE.md](GOVERNANCE.md).
+
+## Running from source
+
+There is nothing to build. The hooks and the memory tool are JavaScript
+files that Node.js runs as they are: no compiler, no bundler, no package
+manager and no install step. You need:
+
+- [Node.js](https://nodejs.org) 22 or newer. Nothing from npm.
+- [Git](https://git-scm.com), to get the code and to run the tests, which
+  check the snapshots. The plugin itself runs without it, with snapshots
+  off.
+
+To get the code and check it works:
+
+```
+git clone https://github.com/zdraveski/project-memory.git
+cd project-memory
+node check.mjs
+```
+
+then the six suites below. To try your copy in Claude Code, first remove
+the plugin and its marketplace if you installed them from GitHub (both are
+named `project-memory`), then add your folder as the marketplace:
+`/plugin marketplace add <folder>`, then
+`/plugin install project-memory@project-memory`.
 
 ## Tests
 
-Each suite builds a throwaway home folder and never touches your `~/.claude`:
+Each suite tests the file it is named after (`store.test.mjs` tests
+`store.mjs`), builds a throwaway home folder and never touches your
+`~/.claude`:
 
 ```
 node store.test.mjs
@@ -17,8 +45,15 @@ node memory.test.mjs
 node journal.test.mjs
 ```
 
-CI runs all six in seven jobs: Linux with Node 22, 24 and 26, and macOS and
-Windows with Node 24 and 26.
+A suite that passes ends with one line, `<suite>: <n> checks passed`. One
+that fails stops at the first failed check, prints that check's message
+(what it checks, and often what it got), and exits non-zero.
+
+CI ([`test.yml`](.github/workflows/test.yml)) runs `node check.mjs`, all
+six suites and a minute of fuzz on every push to any branch and on every
+pull request, in seven jobs: Linux with Node 22, 24 and 26, and macOS and
+Windows with Node 24 and 26. A pull request can't merge until every job
+passes. Each job's log on GitHub shows the same lines as a run here.
 
 Beyond the suites:
 
@@ -146,7 +181,8 @@ they finish.
   straight to a file another process may be editing.
 - Keep the numbers at the top of each file; the comments say why each is
   what it is.
-- Add a test with the change, and a mutant for any new rule.
+- Add or update a test with every change to what the plugin does, however
+  small, and a mutant for any new rule. A change without one isn't merged.
 - Don't run the `claude` command, read a credential or Claude Code's
   `settings.json`, copy the whole environment, or connect to anything. The
   plugin directory's security scan holds a plugin that does, and it reads
@@ -184,14 +220,37 @@ false test here.
 
 ## Sending a change
 
-Open a pull request against `master`. Run `node check.mjs` first, and
+Open a pull request against `master`: nobody, the maintainer included, can
+push to it directly. Sign off every commit
+([below](#developer-certificate-of-origin)). Run `node check.mjs` first, and
 `node mutate.mjs` if you changed a rule; CI runs the suites and a minute of
-fuzz on every platform. Have the change reviewed from its diff alone, by
-someone (or an agent) who has not heard why you made it. Leave the version
-number alone, and describe the change under an `## Unreleased` heading at
-the top of `CHANGELOG.md` (add the heading if it isn't there), in plain
-words for someone who uses the plugin. A change that saves, reads or sends
-anything new updates `PRIVACY.md` in the same pull request.
+fuzz on every platform. The pull request merges only when its required
+checks pass: the seven test jobs, actionlint, the sign-off check (`dco`),
+dependency review and CodeQL. Have the change reviewed from its diff alone,
+by someone (or an agent) who has not heard why you made it. Leave the
+version number alone, and describe the change under an `## Unreleased`
+heading at the top of `CHANGELOG.md` (add the heading if it isn't there), in
+plain words for someone who uses the plugin. A change that saves, reads or
+sends anything new updates `PRIVACY.md` and the
+[security assessment](docs/security-assessment.md) in the same pull request.
+
+## Developer Certificate of Origin
+
+Every commit in a pull request must be signed off. By signing off, you
+certify the [Developer Certificate of Origin](https://developercertificate.org):
+that you wrote the change, or otherwise have the right to submit it under
+this project's license (MIT). The sign-off is a line at the end of the
+commit message, with your name and the email of the commit's author:
+
+```
+Signed-off-by: Your Name <you@example.com>
+```
+
+`git commit -s` adds it. To sign off commits you already made,
+`git rebase --signoff master`, then force-push your branch. The `dco` check
+([`dco.yml`](.github/workflows/dco.yml)) fails a pull request that has a
+commit without a sign-off matching its author; merge commits don't need
+one.
 
 ## Releasing
 
@@ -204,11 +263,18 @@ The maintainer's steps:
    last change. Have every change since the last tag reviewed from its diff
    alone, by a reviewer who hasn't seen the work (a fresh agent will do), and
    fix what it confirms.
-4. Push to `master`, start the `mutate` workflow by hand with `auto` on
-   (every hand-written and automatic mutant), and wait for it and CI to pass
-   on every job. A survivor must be killed by a test, or listed in
-   `automut-ignore.txt` with its reason, before a release.
-5. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release.
+4. Merge it into `master` through a pull request, start the `mutate`
+   workflow by hand with `auto` on (every hand-written and automatic
+   mutant), and wait for it and CI to pass on every job. A survivor must be
+   killed by a test, or listed in `automut-ignore.txt` with its reason,
+   before a release.
+5. Check **Security** on GitHub: no high or critical code scanning alert
+   and no Dependabot alert is open. Each is fixed, or dismissed with a
+   written reason ([SECURITY.md](SECURITY.md#checks-on-every-change)).
+6. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release with
+   the version's changelog. The `release` workflow then attaches the
+   `.tar.gz`, the `.zip` and `SHA256SUMS`, and signs their attestation:
+   check that it passed and the three files are on the release.
 
 ## The author's setup
 
