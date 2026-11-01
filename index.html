@@ -3,17 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>project-memory: Claude Code remembers your work</title>
+<title>project-memory: give Claude Code a memory</title>
 <meta name="description" content="A free plugin for Claude Code. It keeps a journal of your work and a record of where you stopped, so the next conversation starts where the last one ended. Everything stays on your computer.">
-<meta name="theme-color" content="#12152A">
+<meta name="theme-color" content="#050A23">
 <meta name="color-scheme" content="dark">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="brain.png" type="image/png">
 <link rel="canonical" href="https://zdraveski.github.io/project-memory/">
-<link rel="preload" href="fonts/plex-sans.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="fonts/plex-serif-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <meta property="og:type" content="website">
-<meta property="og:title" content="project-memory: Claude Code remembers your work">
-<meta property="og:description" content="A journal of your work, a record of where you stopped, every change to your notes kept. Free, no account, never goes online.">
+<meta property="og:title" content="project-memory: give Claude Code a memory">
+<meta property="og:description" content="Remember, restore, continue. A journal of your work, a record of where you stopped, every change to your notes kept. Free, no account, never goes online.">
 <meta property="og:url" content="https://zdraveski.github.io/project-memory/">
 <meta property="og:image" content="https://zdraveski.github.io/project-memory/banner.png">
 <meta property="og:image:width" content="1177">
@@ -22,255 +21,334 @@
 <meta name="twitter:card" content="summary_large_image">
 <script>document.documentElement.classList.add('js');</script>
 <style>
-  /* IBM Plex, served from this site (SIL Open Font License, fonts/OFL.txt). */
-  @font-face { font-family: "Plex Sans"; src: url(fonts/plex-sans.woff2) format("woff2"); font-weight: 100 700; font-display: swap; }
-  @font-face { font-family: "Plex Serif"; src: url(fonts/plex-serif-600.woff2) format("woff2"); font-weight: 600; font-display: swap; }
-  @font-face { font-family: "Plex Mono"; src: url(fonts/plex-mono-400.woff2) format("woff2"); font-weight: 400; font-display: swap; }
-  @font-face { font-family: "Plex Mono"; src: url(fonts/plex-mono-600.woff2) format("woff2"); font-weight: 600; font-display: swap; }
+  /* Inter and JetBrains Mono, served from this site (SIL Open Font License, fonts/*-OFL.txt). */
+  @font-face { font-family: "Inter"; src: url(fonts/inter.woff2) format("woff2"); font-weight: 400 800; font-display: swap; }
+  @font-face { font-family: "JetBrains Mono"; src: url(fonts/jetbrains-mono.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
 
+  /* The README pictures' palette (docs/art/style.css): deep navy, a cyan-to-violet glow, pink for the problem. */
   :root {
-    --bg: #12152A;
-    --surface: #1B1F36;
-    --surface-2: #232845;
-    --border: #333A5E;
-    --fg: #F3F4FA;
-    --muted: #AEB3CF;
-    --amber: #F5B544;
-    --on-amber: #14172A;
-    --paper: #F4F1EA;
-    --paper-fg: #2B2F45;
-    --paper-muted: #6B6558;
-    --paper-line: #DDD8CC;
-    --green: #8EDDB0;
-    --sans: "Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --serif: "Plex Serif", Georgia, serif;
-    --mono: "Plex Mono", ui-monospace, Consolas, monospace;
+    --ink: #F4F8FF;
+    --body: #B9C6E4;
+    --muted: #94A3C8;
+    --cyan: #22D3EE;
+    --blue: #3B82F6;
+    --sky: #60A5FA;
+    --violet: #8B5CF6;
+    --lilac: #A78BFA;
+    --pink: #F472B6;
+    --line: rgb(130 170 255 / 0.26);
+    --glass: linear-gradient(180deg, rgb(80 125 255 / 0.15), rgb(40 60 150 / 0.07));
+    --glow: linear-gradient(90deg, #22D3EE 0%, #60A5FA 55%, #A78BFA 100%);
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
     --wrap: 72rem;
-    --fast: 160ms;
+    --fast: 180ms;
   }
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 5rem; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 5rem; background: #040719; }
   @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
-  body { margin: 0; font: 400 1.0625rem/1.65 var(--sans); color: var(--fg); background: var(--bg); }
+  body { margin: 0; font: 400 1.0625rem/1.65 var(--sans); color: var(--ink);
+    background:
+      radial-gradient(70rem 40rem at 0% -10%, rgb(37 99 235 / 0.38), transparent 60%),
+      radial-gradient(60rem 36rem at 105% 30%, rgb(124 58 237 / 0.26), transparent 62%),
+      linear-gradient(180deg, #081133 0%, #050A23 22%, #040719 100%); }
   a { color: inherit; text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
   a:hover { text-decoration-thickness: 2px; }
-  :focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
-  .paper :focus-visible { outline-color: var(--paper-fg); }
-  code { font-family: var(--mono); font-size: 0.9em; }
-  svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 1.5rem; }
+  :focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; border-radius: 6px; }
+  code { font-family: var(--mono); font-size: 0.88em; }
+  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 1.5rem; position: relative; }
   .hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .skip { position: absolute; left: -999px; top: 0.75rem; z-index: 20; background: var(--amber); color: var(--on-amber); padding: 0.6rem 1rem; border-radius: 0.4rem; font-weight: 600; }
+  .skip { position: absolute; left: -999px; top: 0.75rem; z-index: 30; background: var(--cyan); color: #04121F; padding: 0.6rem 1rem; border-radius: 0.5rem; font-weight: 700; }
   .skip:focus { left: 0.75rem; }
+  .grad { background: var(--glow); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .grad.warn { background-image: linear-gradient(90deg, #F472B6, #A78BFA); }
+
+  /* The space around everything: stars, a fading grid, light streaks, a planet's edge */
+  .stars { position: absolute; z-index: -1; width: 2px; height: 2px; border-radius: 50%; top: 0; left: 0; pointer-events: none;
+    box-shadow:
+      8vw 60px rgb(255 255 255 / .55), 21vw 180px rgb(255 255 255 / .35), 38vw 40px rgb(255 255 255 / .45),
+      52vw 130px rgb(186 230 253 / .5), 64vw 30px rgb(255 255 255 / .35), 73vw 210px rgb(255 255 255 / .3),
+      86vw 80px rgb(186 230 253 / .6), 94vw 280px rgb(255 255 255 / .35), 3vw 390px rgb(255 255 255 / .3),
+      46vw 300px rgb(255 255 255 / .25), 89vw 480px rgb(196 181 253 / .45), 12vw 610px rgb(255 255 255 / .25),
+      60vw 560px rgb(255 255 255 / .2), 97vw 700px rgb(255 255 255 / .3), 30vw 780px rgb(186 230 253 / .3),
+      77vw 860px rgb(255 255 255 / .25), 5vw 960px rgb(196 181 253 / .35), 68vw 1020px rgb(255 255 255 / .2); }
+  .grid-bg { position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background-image: linear-gradient(rgb(120 160 255 / .06) 1px, transparent 1px), linear-gradient(90deg, rgb(120 160 255 / .06) 1px, transparent 1px);
+    background-size: 44px 44px; -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 80%); mask-image: linear-gradient(180deg, #000 0%, transparent 80%); }
+  .streaks { position: absolute; top: 0; right: 0; width: min(60rem, 100%); height: 26rem; z-index: -1; pointer-events: none; }
+  .horizon { position: absolute; z-index: -1; left: -20%; right: -20%; bottom: -24rem; height: 25rem; border-radius: 50%; pointer-events: none;
+    border-top: 1.5px solid rgb(125 211 252 / .55);
+    background: radial-gradient(ellipse at 50% 0%, rgb(56 189 248 / .30), rgb(37 99 235 / .10) 35%, transparent 60%);
+    box-shadow: 0 -14px 50px rgb(56 189 248 / .30);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 25%, #000 75%, transparent); mask-image: linear-gradient(90deg, transparent, #000 25%, #000 75%, transparent); }
+  .horizon.warm { border-top-color: rgb(216 180 254 / .45); box-shadow: 0 -14px 50px rgb(167 139 250 / .28);
+    background: radial-gradient(ellipse at 50% 0%, rgb(167 139 250 / .26), rgb(124 58 237 / .08) 35%, transparent 60%); }
+
+  /* Glass panels and glowing icons, as in the README pictures */
+  .glass { position: relative; border-radius: 1.1rem; background: var(--glass); border: 1px solid var(--line);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .08), 0 22px 44px -18px rgb(0 0 0 / .7); }
+  .glass.lit { border-color: rgb(34 211 238 / .6); box-shadow: 0 0 0 1px rgb(34 211 238 / .25), 0 0 34px rgb(34 211 238 / .22), inset 0 0 30px rgb(34 211 238 / .07), inset 0 1px 0 rgb(255 255 255 / .1); }
+  .glass.hot { border-color: rgb(244 114 182 / .5); box-shadow: 0 0 0 1px rgb(244 114 182 / .18), 0 0 34px rgb(244 114 182 / .16), 0 22px 44px -18px rgb(0 0 0 / .7); }
+  .ico { flex: none; width: 3.25rem; height: 3.25rem; border-radius: 0.95rem; display: grid; place-items: center;
+    background: linear-gradient(160deg, rgb(34 211 238 / .2), rgb(139 92 246 / .16));
+    box-shadow: inset 0 0 0 1px rgb(34 211 238 / .38), 0 0 24px rgb(34 211 238 / .2); }
+  .ico svg { width: 1.75rem; height: 1.75rem; fill: none; stroke: url(#ig); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 5px rgb(34 211 238 / .7)); }
+  .ico.warn { background: radial-gradient(circle, rgb(244 114 182 / .28), rgb(30 20 70 / .9) 70%); box-shadow: inset 0 0 0 1px rgb(244 114 182 / .6), 0 0 30px rgb(244 114 182 / .35); border-radius: 50%; }
+  .ico.warn svg { stroke: #F9A8D4; filter: drop-shadow(0 0 6px rgb(244 114 182 / .9)); }
+  .eyebrow { display: inline-flex; align-items: center; gap: 0.65rem; font: 700 0.85rem/1 var(--sans); letter-spacing: 0.18em; text-transform: uppercase; color: var(--cyan); margin: 0 0 1rem; }
+  .eyebrow::before { content: ""; width: 1.6rem; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--cyan)); box-shadow: 0 0 10px var(--cyan); }
+  .eyebrow.warn { color: var(--pink); }
+  .eyebrow.warn::before { background: linear-gradient(90deg, transparent, var(--pink)); box-shadow: 0 0 10px var(--pink); }
+  .chip { display: inline-flex; align-items: center; gap: 0.55rem; padding: 0.5rem 0.95rem; border-radius: 99px; font: 600 0.95rem/1 var(--sans); color: #DBE7FF; background: rgb(59 130 246 / .12); border: 1px solid rgb(96 165 250 / .3); }
+  .chip::before { content: ""; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+  .tok { font: 500 0.9em/1.4 var(--mono); color: #A5F3FC; background: rgb(8 14 40 / .75); border: 1px solid rgb(34 211 238 / .3); border-radius: 0.45rem; padding: 0.1em 0.45em; white-space: nowrap; }
 
   /* Header */
-  .bar { position: sticky; top: 0; z-index: 10; background: rgb(18 21 42 / 0.86); backdrop-filter: blur(10px); border-bottom: 1px solid transparent; transition: border-color var(--fast); }
-  .bar.scrolled { border-bottom-color: var(--border); }
-  .bar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 4rem; }
-  .brand { display: flex; align-items: center; gap: 0.65rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
-  .brand img { width: 2rem; height: 2rem; }
-  .bar nav { display: flex; align-items: center; gap: 0.25rem; }
-  .bar nav a { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.75rem; padding: 0 0.8rem; border-radius: 0.45rem; color: var(--muted); text-decoration: none; font-size: 0.97rem; transition: color var(--fast), background-color var(--fast); }
-  .bar nav a:hover { color: var(--fg); background: var(--surface); }
-  .bar nav a.gh { color: var(--fg); box-shadow: inset 0 0 0 1px var(--border); }
+  .bar { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid transparent; transition: background-color var(--fast), border-color var(--fast); }
+  .bar.scrolled { background: rgb(5 10 35 / .82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom-color: var(--line); }
+  .bar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 4.25rem; }
+  .brand { display: flex; align-items: center; min-height: 2.75rem; gap: 0.6rem; font-weight: 800; font-size: 1.15rem; letter-spacing: -0.02em; text-decoration: none; white-space: nowrap; }
+  .brand img { width: 2.1rem; height: auto; filter: drop-shadow(0 0 8px rgb(34 211 238 / .45)); }
+  .bar nav { display: flex; align-items: center; gap: 0.2rem; }
+  .bar nav a { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.75rem; padding: 0 0.85rem; border-radius: 0.6rem; color: var(--body); text-decoration: none; font-size: 0.97rem; font-weight: 500; transition: color var(--fast), background-color var(--fast); }
+  .bar nav a:hover { color: var(--ink); background: rgb(80 125 255 / .12); }
+  .bar nav a.gh { color: var(--ink); background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); }
   .bar nav a.gh svg { width: 1.1rem; height: 1.1rem; fill: currentColor; }
 
   /* Buttons */
-  .button { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; min-height: 3rem; padding: 0 1.35rem; border-radius: 0.55rem; font-weight: 600; text-decoration: none; cursor: pointer; transition: background-color var(--fast), box-shadow var(--fast), transform var(--fast); }
-  .button.primary { background: var(--amber); color: var(--on-amber); }
-  .button.primary:hover { background: #FFC75F; }
-  .button.quiet { color: var(--fg); box-shadow: inset 0 0 0 1.5px var(--border); }
-  .button.quiet:hover { box-shadow: inset 0 0 0 1.5px var(--muted); }
+  .button { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; min-height: 3.1rem; padding: 0 1.45rem; border-radius: 0.75rem; font-weight: 700; text-decoration: none; cursor: pointer; transition: box-shadow var(--fast), transform var(--fast), background-color var(--fast); }
+  .button.primary { color: #04121F; background: linear-gradient(135deg, #67E8F9, #3B82F6); box-shadow: 0 0 0 1px rgb(103 232 249 / .4), 0 10px 30px -8px rgb(34 211 238 / .6); }
+  .button.primary:hover { box-shadow: 0 0 0 1px rgb(103 232 249 / .7), 0 12px 38px -6px rgb(34 211 238 / .8); }
+  .button.quiet { color: var(--ink); background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); }
+  .button.quiet:hover { box-shadow: inset 0 0 0 1px rgb(130 170 255 / .6); }
   .button svg.gh { width: 1.15rem; height: 1.15rem; fill: currentColor; }
   .button:active { transform: translateY(1px); }
 
-  /* Opening */
-  .hero { display: grid; grid-template-columns: 1fr 1.08fr; gap: 3.5rem; align-items: center; padding: 4.5rem 0 5rem; }
-  h1, h2 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.015em; text-wrap: balance; }
-  h1 { font-size: clamp(2.6rem, 5.4vw, 4.3rem); line-height: 1.05; margin: 0 0 1.4rem; }
-  .lede { font-size: 1.22rem; line-height: 1.6; color: #D9DCEC; max-width: 31rem; margin: 0 0 2rem; }
+  /* Opening, after the banner */
+  .top { position: relative; isolation: isolate; overflow: hidden; padding-bottom: 6rem; }
+  .hero { display: grid; grid-template-columns: 1fr 1.05fr; gap: 3.5rem; align-items: center; padding: 4rem 0 2rem; }
+  .hero > * { min-width: 0; }
+  .logo { width: 5.5rem; height: auto; margin: 0 0 1.4rem; filter: drop-shadow(0 0 18px rgb(34 211 238 / .55)); }
+  h1, h2 { font-weight: 800; letter-spacing: -0.025em; text-wrap: balance; }
+  h1 { font-size: clamp(2.7rem, 5.6vw, 4.6rem); line-height: 1.04; margin: 0 0 1.3rem; }
+  .lede { font-size: 1.22rem; line-height: 1.6; color: var(--body); max-width: 32rem; margin: 0 0 1.5rem; }
+  .motto { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1.1rem; margin: 0 0 2rem; padding: 0; list-style: none; color: #DBE7FF; font-size: 1.08rem; font-weight: 500; }
+  .motto li + li::before { content: ""; display: inline-block; width: 0.42rem; height: 0.42rem; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); margin-right: 1.1rem; vertical-align: 0.15em; }
   .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
-  .promises { display: flex; flex-wrap: wrap; gap: 0.6rem 1.4rem; margin: 2rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.95rem; }
-  .promises li { display: flex; align-items: center; gap: 0.5rem; }
-  .promises svg { color: var(--amber); width: 1.1rem; height: 1.1rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 2rem 0 0; padding: 0; list-style: none; }
 
-  /* The demo: Claude Code in a terminal, with a journal page behind it */
-  .demo { position: relative; isolation: isolate; padding-top: 3.4rem; }
-  /* Yesterday's journal page, peeking out above the terminal's right corner */
-  .sheet { position: absolute; z-index: -1; right: -0.8rem; top: 0; width: 58%; height: 9rem; overflow: hidden; background: var(--paper); color: var(--paper-fg); border-radius: 0.6rem; padding: 0.8rem 1.1rem; transform: rotate(3.5deg); box-shadow: 0 20px 40px -20px #000a; font-size: 0.8rem; line-height: 1.45; }
-  .sheet .file { font-family: var(--mono); color: var(--paper-muted); margin: 0 0 0.4rem; font-size: 0.74rem; }
-  .sheet p { margin: 0 0 0.3rem; }
-  .tabs { display: flex; gap: 0.35rem; margin: 0.9rem 0 0; flex-wrap: wrap; justify-content: center; }
-  .tab { font: 600 0.9rem var(--sans); color: var(--muted); background: transparent; border: 0; border-radius: 0.45rem; min-height: 2.75rem; padding: 0 0.85rem; cursor: pointer; transition: color var(--fast), background-color var(--fast); }
-  .tab:hover { color: var(--fg); background: var(--surface); }
-  .tab[aria-selected="true"] { color: var(--on-amber); background: var(--amber); }
-  .term { background: #0D0F1F; border: 1px solid var(--border); border-radius: 0.75rem; box-shadow: 0 30px 60px -30px #000; overflow: hidden; }
-  .term-top { display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 1rem; border-bottom: 1px solid #262B4A; font: 400 0.8rem var(--mono); color: var(--muted); }
-  .term-top img { width: 1rem; height: 1rem; }
-  .panel { padding: 1.25rem 1.25rem 1.4rem; font: 400 0.93rem/1.6 var(--mono); min-height: 13.5rem; }
-  .panel p { margin: 0 0 0.9rem; }
+  /* The demo: a glass terminal inside the banner's orbit */
+  .demo { position: relative; isolation: isolate; }
+  .orbit { position: absolute; z-index: -1; left: -8%; right: -8%; top: 12%; bottom: 8%; pointer-events: none; }
+  .orbit svg { width: 100%; height: 100%; overflow: visible; }
+  .term { overflow: hidden; }
+  .term-bar { display: flex; align-items: center; gap: 0.55rem; padding: 0.8rem 1.1rem; border-bottom: 1px solid var(--line); background: rgb(10 18 50 / .55); font: 600 0.88rem/1 var(--sans); color: var(--muted); }
+  .term-bar i { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #2A3763; }
+  .term-bar b { margin-left: 0.4rem; color: #DBE7FF; font-weight: 700; }
+  .term-bar span { margin-left: auto; font: 500 0.82rem/1 var(--mono); }
+  .panel { padding: 1.3rem 1.4rem 1.5rem; font: 500 0.95rem/1.6 var(--mono); color: #D7E3FF; }
+  .demo .panel { min-height: 13rem; }
+  .panel p { margin: 0 0 0.85rem; }
   .panel p:last-child { margin-bottom: 0; }
-  .you { color: #C9CDE2; }
-  .you::before { content: ">"; color: var(--muted); margin-right: 0.6rem; }
-  .claude { display: flex; gap: 0.6rem; color: var(--fg); }
-  .claude::before { content: "\23FA"; color: var(--amber); flex: none; }
-  .note { color: var(--muted); font-size: 0.84rem; }
-  /* Without scripts every scene shows, one under another, and the tabs stay away. */
-  .tabs { display: none; }
+  .you { color: #fff; }
+  .you::before { content: "> " / ""; color: var(--cyan); font-weight: 700; }
+  .cl { position: relative; padding-left: 1.6rem; color: var(--body); }
+  .cl::before { content: "\25CF" / ""; position: absolute; left: 0; color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+  .cl b { color: #fff; font-weight: 500; }
+  .aside-note { color: var(--muted); font: 400 0.82rem/1.5 var(--sans); }
+  .tabs { display: none; gap: 0.35rem; margin: 1rem 0 0; flex-wrap: wrap; justify-content: center; }
   .js .tabs { display: flex; }
-  .js .panel:not(.show) { display: none; }
-  .panel + .panel { border-top: 1px solid #262B4A; }
+  .js .demo .panel:not(.show) { display: none; }
+  .demo .panel + .panel { border-top: 1px solid var(--line); }
+  .tab { font: 600 0.9rem var(--sans); color: var(--body); background: transparent; border: 0; border-radius: 99px; min-height: 2.75rem; padding: 0 1rem; cursor: pointer; transition: color var(--fast), background-color var(--fast), box-shadow var(--fast); }
+  .tab:hover { color: var(--ink); background: rgb(80 125 255 / .12); }
+  .tab[aria-selected="true"] { color: #DBE7FF; background: rgb(59 130 246 / .18); box-shadow: inset 0 0 0 1px rgb(34 211 238 / .55), 0 0 18px rgb(34 211 238 / .25); }
   @media (prefers-reduced-motion: no-preference) {
-    .js .panel.show > * { animation: line 0.35s ease-out both; }
-    .js .panel.show > :nth-child(2) { animation-delay: 0.35s; }
-    .js .panel.show > :nth-child(3) { animation-delay: 0.7s; }
-    .js .panel.show > :nth-child(4) { animation-delay: 1.05s; }
-    .js .panel.show > :nth-child(5) { animation-delay: 1.4s; }
+    .js .demo .panel.show > * { animation: line 0.35s ease-out both; }
+    .js .demo .panel.show > :nth-child(2) { animation-delay: 0.35s; }
+    .js .demo .panel.show > :nth-child(3) { animation-delay: 0.7s; }
+    .js .demo .panel.show > :nth-child(4) { animation-delay: 1.05s; }
   }
   @keyframes line { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 
   /* Parts */
-  .part { padding: 5.5rem 0; }
-  .part.alt { background: var(--surface); }
-  h2 { font-size: clamp(2rem, 3.6vw, 2.75rem); line-height: 1.12; margin: 0 0 1rem; }
-  .intro { max-width: 38rem; color: var(--muted); font-size: 1.12rem; margin: 0 0 3rem; }
-  h3 { font-size: 1.15rem; font-weight: 600; margin: 0 0 0.4rem; }
+  .part { position: relative; isolation: isolate; padding: 6rem 0; }
+  .part.closing { overflow: hidden; padding-bottom: 9rem; }
+  h2 { font-size: clamp(2.1rem, 4vw, 3.1rem); line-height: 1.08; margin: 0 0 1rem; }
+  .intro { max-width: 40rem; color: var(--body); font-size: 1.12rem; margin: 0 0 3rem; }
+  h3 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 0.35rem; }
 
-  /* How it works: four moments, in order */
-  .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem; margin: 0; padding: 0; list-style: none; counter-reset: step; position: relative; }
-  .flow::before { content: ""; position: absolute; left: 1.4rem; right: 1.4rem; top: 1.4rem; height: 2px; background: linear-gradient(90deg, var(--amber), #F5B54433); }
-  .flow li { position: relative; counter-increment: step; }
-  .flow .dot { position: relative; width: 2.8rem; height: 2.8rem; border-radius: 50%; display: grid; place-items: center; background: var(--bg); border: 2px solid var(--amber); color: var(--amber); margin: 0 0 1.1rem; }
-  .flow p { margin: 0; color: var(--muted); }
+  /* The problem, and the same morning with project-memory */
+  .days { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+  .days > * { min-width: 0; }
+  .days h3 { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 1rem; font-size: 1.05rem; color: var(--body); }
+  .days h3.with { color: var(--cyan); }
+  .gap { display: flex; align-items: center; gap: 0.9rem; padding: 1rem 0 1rem 1rem; }
+  .gap .ico { width: 2.75rem; height: 2.75rem; }
+  .gap .ico svg { width: 1.35rem; height: 1.35rem; }
+  .gap p { margin: 0; font: 700 0.82rem/1.2 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: #F9A8D4; }
+  .gap.ok p { color: #A5F3FC; }
+  .past { opacity: 0.85; }
+  .hot .cl::before { color: var(--pink); text-shadow: 0 0 8px var(--pink); }
+  .ask { color: #fff; background: linear-gradient(transparent 62%, rgb(244 114 182 / .35) 62%); }
+  .knows { color: #fff; background: linear-gradient(transparent 62%, rgb(34 211 238 / .3) 62%); }
 
-  /* What you get: one large journal tile, five smaller ones */
-  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-  .tile { background: var(--bg); border: 1px solid var(--border); border-radius: 0.9rem; padding: 1.5rem; }
-  .tile .icon { width: 2.6rem; height: 2.6rem; border-radius: 0.6rem; display: grid; place-items: center; background: #F5B5441F; color: var(--amber); margin: 0 0 1rem; }
-  .tile p { margin: 0; color: var(--muted); }
-  .tile.big { grid-column: span 2; grid-row: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; }
-  .search { background: #0D0F1F; border: 1px solid #262B4A; border-radius: 0.6rem; padding: 1rem 1.1rem; font: 400 0.84rem/1.55 var(--mono); color: #C9CDE2; }
-  .search .hit { display: block; margin: 0.7rem 0 0; padding: 0.6rem 0.7rem; background: var(--surface); border-radius: 0.45rem; color: var(--fg); }
-  .search .hit span { color: var(--amber); }
+  /* What it does for you */
+  .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+  .tile { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; transition: border-color var(--fast), box-shadow var(--fast); }
+  .tile:hover { border-color: rgb(34 211 238 / .45); }
+  .tile p { margin: 0; color: var(--body); }
+  .tile .note { color: var(--muted); font-weight: 600; }
 
-  /* Comparison */
-  .compare { width: 100%; border-collapse: collapse; font-size: 1rem; }
-  .compare th, .compare td { text-align: left; vertical-align: top; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
-  .compare thead th { font-size: 0.95rem; color: var(--muted); font-weight: 600; border-bottom: 1.5px solid var(--muted); }
-  .compare thead th.us { color: var(--amber); }
-  .compare td:first-child { color: var(--muted); width: 50%; }
-  .compare td.us { color: var(--fg); }
-  .more { margin: 1.5rem 0 0; color: var(--muted); }
+  /* Kept on track */
+  .track-wrap { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+  .step { padding: 1.4rem 1.5rem 1.5rem; }
+  .step-top { display: flex; align-items: center; gap: 0.85rem; }
+  .num { width: 2.6rem; height: 2.6rem; border-radius: 50%; display: grid; place-items: center; flex: none; font: 800 1.15rem/1 var(--sans); color: #04121F; background: linear-gradient(160deg, #67E8F9, #3B82F6); box-shadow: 0 0 18px rgb(34 211 238 / .6); }
+  .step-top b { font: 800 1.35rem/1 var(--sans); letter-spacing: -0.01em; }
+  .step-top span:last-child { margin-left: auto; font: 700 0.95rem/1 var(--mono); color: #A5F3FC; }
+  .track { margin-top: 1.1rem; position: relative; height: 0.9rem; border-radius: 0.5rem; background: rgb(20 30 80 / .9); box-shadow: inset 0 0 0 1px rgb(130 170 255 / .3); }
+  .track b { position: absolute; top: 3px; bottom: 3px; left: 3px; width: var(--w); border-radius: 0.35rem; background: linear-gradient(90deg, #22D3EE, #3B82F6 70%, #8B5CF6); box-shadow: 0 0 14px rgb(56 189 248 / .7); }
+  .track.full b { background: linear-gradient(90deg, #3B82F6, #8B5CF6 60%, #F472B6); box-shadow: 0 0 16px rgb(244 114 182 / .7); }
+  .step p { margin: 1rem 0 0; color: var(--body); }
+  .step.hot .num { background: linear-gradient(160deg, #F9A8D4, #8B5CF6); box-shadow: 0 0 18px rgb(244 114 182 / .6); }
+  .step.hot .step-top span:last-child { color: #F9A8D4; }
+  @media (prefers-reduced-motion: no-preference) {
+    .js .track b { transform-origin: left; transform: scaleX(0); transition: transform 1.1s cubic-bezier(.2, .7, .2, 1); }
+    .js .track-wrap.seen .track b { transform: none; }
+    .js .track-wrap.seen .step:nth-child(2) .track b { transition-delay: 0.25s; }
+    .js .track-wrap.seen .step:nth-child(3) .track b { transition-delay: 0.5s; }
+  }
+  .footnote { margin: 1.5rem 0 0; color: var(--muted); font-size: 0.95rem; max-width: 46rem; }
 
-  /* Privacy: written on paper */
-  .paper { background: var(--paper); color: var(--paper-fg); }
-  .paper .intro { color: #4A4E66; }
-  .promise-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem 3rem; margin: 0 0 2.5rem; padding: 0; list-style: none; }
-  .promise-list li { display: grid; grid-template-columns: auto 1fr; gap: 0 1rem; }
-  .promise-list .icon { width: 2.6rem; height: 2.6rem; border-radius: 50%; display: grid; place-items: center; background: var(--paper-fg); color: var(--amber); grid-row: span 2; }
-  .promise-list p { margin: 0; color: #4A4E66; }
-  .promise-list code { background: #E6E1D4; color: var(--paper-fg); padding: 0.1em 0.35em; border-radius: 0.25rem; }
-  .paper .honest { max-width: 44rem; color: #4A4E66; border-left: 3px solid var(--amber); padding: 0.2rem 0 0.2rem 1rem; margin: 0 0 1.5rem; }
-  .paper .button.quiet { color: var(--paper-fg); box-shadow: inset 0 0 0 1.5px #B9B2A3; }
-  .paper .button.quiet:hover { box-shadow: inset 0 0 0 1.5px var(--paper-fg); }
+  /* Privacy */
+  .items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 0 0 1.75rem; padding: 0; list-style: none; }
+  .item { display: flex; align-items: center; gap: 1.2rem; padding: 1.3rem 1.4rem; }
+  .item p { margin: 0.3rem 0 0; color: var(--body); }
+  .aside { display: flex; gap: 0.75rem; align-items: flex-start; color: var(--body); max-width: 50rem; margin: 0 0 1.75rem; }
+  .aside svg { flex: none; width: 1.4rem; height: 1.4rem; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-top: 0.15rem; }
 
   /* Built with care */
-  .care { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem 3rem; margin: 0; padding: 0; list-style: none; }
-  .care li { display: grid; grid-template-columns: auto 1fr; gap: 0 1rem; }
-  .care svg { color: var(--green); width: 1.5rem; height: 1.5rem; margin-top: 0.2rem; grid-row: span 2; }
-  .care p { margin: 0; color: var(--muted); }
+  .care { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
+  .care li { padding: 1.4rem; }
+  .care p { margin: 0.35rem 0 0; color: var(--body); font-size: 0.97rem; }
+  .care .ico { margin: 0 0 1rem; width: 2.75rem; height: 2.75rem; }
+  .care .ico svg { width: 1.4rem; height: 1.4rem; }
+
+  /* Comparison */
+  .compare-box { padding: 0.5rem 1.5rem; overflow: hidden; }
+  .compare { width: 100%; border-collapse: collapse; }
+  .compare th, .compare td { text-align: left; vertical-align: top; padding: 1.05rem 1rem; border-bottom: 1px solid var(--line); }
+  .compare tr:last-child td { border-bottom: 0; }
+  .compare thead th { font-size: 0.82rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .compare thead th.us { color: var(--cyan); }
+  .compare td:first-child { color: var(--muted); width: 50%; }
+  .compare td.us { color: var(--ink); }
+  .more { margin: 1.5rem 0 0; color: var(--body); }
 
   /* Install */
-  .install { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 3rem; align-items: start; }
-  /* A long command scrolls inside its box instead of widening the page. */
-  .install > *, .hero > * { min-width: 0; }
+  .install { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 2.5rem; align-items: start; }
+  .install > * { min-width: 0; }
   .steps { list-style: none; margin: 0; padding: 0; counter-reset: s; }
-  .steps > li { counter-increment: s; position: relative; padding: 0 0 2rem 3.4rem; }
-  .steps > li::before { content: counter(s); position: absolute; left: 0; top: -0.1rem; width: 2.3rem; height: 2.3rem; border-radius: 50%; background: var(--amber); color: var(--on-amber); font: 600 1rem var(--serif); display: grid; place-items: center; }
+  .steps > li { counter-increment: s; position: relative; padding: 0 0 2rem 3.6rem; }
+  .steps > li::before { content: counter(s); position: absolute; left: 0; top: -0.15rem; width: 2.5rem; height: 2.5rem; border-radius: 50%; display: grid; place-items: center; font: 800 1.1rem var(--sans); color: #04121F; background: linear-gradient(160deg, #67E8F9, #3B82F6); box-shadow: 0 0 18px rgb(34 211 238 / .5); }
   .steps p { margin: 0 0 0.75rem; }
-  .steps .aside { color: var(--muted); font-size: 0.95rem; }
+  .steps .small { color: var(--muted); font-size: 0.95rem; }
   .cmd { position: relative; margin: 0 0 0.75rem; }
-  .code { background: #0D0F1F; color: #E8EAF4; border: 1px solid #262B4A; border-radius: 0.55rem; padding: 1rem 6.5rem 1rem 1.1rem; margin: 0; overflow-x: auto; }
+  .code { background: rgb(8 14 40 / .85); color: #A5F3FC; border: 1px solid rgb(34 211 238 / .3); border-radius: 0.75rem; padding: 1rem 6.5rem 1rem 1.1rem; margin: 0; overflow-x: auto; box-shadow: inset 0 0 30px rgb(34 211 238 / .05); }
   .code code { font-size: 0.9rem; line-height: 1.75; }
-  .copy { position: absolute; top: 0.4rem; right: 0.4rem; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.75rem; padding: 0 0.85rem; font: 600 0.88rem var(--sans); background: var(--surface-2); color: var(--fg); border: 0; border-radius: 0.4rem; cursor: pointer; transition: background-color var(--fast); }
-  .copy:hover { background: #2E3456; }
-  .copy svg { width: 1rem; height: 1rem; }
-  .needs { background: var(--surface); border: 1px solid var(--border); border-radius: 0.9rem; padding: 1.5rem; }
-  .needs h3 { margin-bottom: 0.9rem; }
+  .copy { position: absolute; top: 0.4rem; right: 0.4rem; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.75rem; padding: 0 0.9rem; font: 600 0.88rem var(--sans); color: #DBE7FF; background: rgb(59 130 246 / .18); border: 1px solid rgb(96 165 250 / .35); border-radius: 0.55rem; cursor: pointer; transition: background-color var(--fast); }
+  .copy:hover { background: rgb(59 130 246 / .3); }
+  .copy svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .needs { padding: 1.5rem; }
+  .needs h3 { margin-bottom: 1rem; }
   .needs ul { margin: 0; padding: 0; list-style: none; }
-  .needs li { display: flex; gap: 0.7rem; padding: 0.55rem 0; border-top: 1px solid var(--border); color: var(--muted); }
+  .needs li { display: flex; gap: 0.75rem; padding: 0.65rem 0; border-top: 1px solid var(--line); color: var(--body); }
   .needs li:first-child { border-top: 0; padding-top: 0; }
-  .needs li svg { color: var(--green); margin-top: 0.2rem; }
-  .needs strong { color: var(--fg); font-weight: 600; }
+  .needs li svg { flex: none; width: 1.2rem; height: 1.2rem; fill: none; stroke: url(#ig); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; margin-top: 0.2rem; }
+  .needs strong { color: var(--ink); font-weight: 600; }
 
   /* Questions */
-  .faq { max-width: 50rem; }
-  .faq details { border-bottom: 1px solid var(--border); }
-  .faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 3.5rem; padding: 0.9rem 0; font-weight: 600; font-size: 1.08rem; }
+  .faq { max-width: 52rem; display: grid; gap: 0.75rem; }
+  .faq details { padding: 0 1.4rem; }
+  .faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 3.75rem; padding: 0.9rem 0; font-weight: 600; font-size: 1.05rem; }
   .faq summary::-webkit-details-marker { display: none; }
-  .faq summary svg { transition: transform var(--fast); color: var(--amber); }
+  .faq summary svg { flex: none; width: 1.2rem; height: 1.2rem; fill: none; stroke: var(--cyan); stroke-width: 2.2; stroke-linecap: round; transition: transform var(--fast); }
+  .faq details[open] { border-color: rgb(34 211 238 / .45); }
   .faq details[open] summary svg { transform: rotate(45deg); }
-  .faq .answer { padding: 0 0 1.3rem; color: var(--muted); max-width: 44rem; }
+  .faq .answer { padding: 0 0 1.3rem; color: var(--body); }
   .faq .answer p { margin: 0; }
 
-  /* Last call */
-  .end { text-align: center; padding: 6rem 0; background: radial-gradient(60rem 22rem at 50% 0%, #F5B5441A, transparent 70%), var(--bg); border-top: 1px solid var(--border); }
-  .end img { width: 4rem; height: 4rem; margin: 0 0 1.25rem; }
-  .end h2 { margin-bottom: 0.75rem; }
-  .end p { color: var(--muted); margin: 0 auto 2rem; max-width: 32rem; }
-  .end .actions { justify-content: center; }
+  /* Closing */
+  .closing { text-align: center; }
+  .closing .logo { width: 7rem; margin: 0 auto 1.5rem; display: block; }
+  .closing p { color: var(--body); margin: 0 auto 2rem; max-width: 34rem; font-size: 1.12rem; }
+  .closing .actions { justify-content: center; }
 
-  footer { background: #0D0F1F; color: var(--muted); padding: 2.5rem 0; font-size: 0.95rem; }
+  footer { border-top: 1px solid var(--line); background: #03051A; color: var(--muted); padding: 2.25rem 0; font-size: 0.95rem; }
   footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem 3rem; }
   footer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; }
-  footer a { display: inline-flex; align-items: center; min-height: 2.75rem; color: var(--fg); text-decoration: none; }
-  footer a:hover { text-decoration: underline; }
+  footer a { display: inline-flex; align-items: center; min-height: 2.75rem; color: var(--body); text-decoration: none; }
+  footer a:hover { color: var(--ink); text-decoration: underline; }
   footer p { margin: 0; align-self: center; }
 
   @media (max-width: 1000px) {
-    .hero, .install { grid-template-columns: 1fr; }
-    .hero { padding-top: 3rem; gap: 4rem; }
-    .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.5rem 1.5rem; }
-    .flow::before { display: none; }
-    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .tile.big { grid-column: span 2; grid-row: auto; }
+    .hero, .install, .days { grid-template-columns: 1fr; }
+    .hero { gap: 3.5rem; padding-top: 2.5rem; }
+    .tiles, .care { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .track-wrap { grid-template-columns: 1fr; }
   }
   @media (max-width: 680px) {
     body { font-size: 1rem; }
     .bar nav a.wide { display: none; }
-    .part { padding: 4rem 0; }
-    .flow, .grid, .care, .promise-list { grid-template-columns: 1fr; }
-    .tile.big { grid-column: auto; grid-template-columns: 1fr; }
-    .sheet { display: none; }
+    /* On a phone the GitHub link keeps its name for screen readers and shows only the mark. */
+    .bar nav a.gh span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .bar nav a.gh { min-width: 2.75rem; justify-content: center; padding: 0; }
+    .part { padding: 4.25rem 0; }
+    .tiles, .care, .items { grid-template-columns: 1fr; }
     .panel { min-height: 0; font-size: 0.86rem; }
+    .orbit { display: none; }
+    .compare-box { padding: 0.25rem 1.1rem; }
     .compare thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-    .compare tr { display: block; padding: 1rem 0; border-bottom: 1px solid var(--border); }
+    .compare tr { display: block; padding: 1rem 0; border-bottom: 1px solid var(--line); }
+    .compare tr:last-child { border-bottom: 0; }
     .compare td { display: block; width: auto !important; padding: 0; border: 0; }
     .compare td + td { padding-top: 0.4rem; }
-    .compare td::before { font-weight: 600; color: var(--fg); }
+    .compare td::before { font-weight: 700; color: var(--ink); }
     .compare td:first-child::before { content: "Claude Code alone: "; }
-    .compare td + td::before { content: "With project-memory: "; color: var(--amber); }
+    .compare td + td::before { content: "With project-memory: "; color: var(--cyan); }
     .code { padding: 3.6rem 1rem 1rem; }
     .code code { font-size: 0.82rem; }
   }
 </style>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
-  <symbol id="i-noaccount" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.6 3.1-5.5 7-5.5s7 1.9 7 5.5"/><path d="M3 3l18 18"/></symbol>
-  <symbol id="i-code" viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></symbol>
-  <symbol id="i-reply" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
-  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
-  <symbol id="i-shorten" viewBox="0 0 24 24"><path d="M4 6h16M4 12h11M4 18h6"/><path d="M18 15l3 3-3 3"/></symbol>
-  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
-  <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z"/><path d="M9 9h6M9 13h6"/></symbol>
-  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.9l7.6-3.8M8.2 13.1l7.6 3.8"/></symbol>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#A78BFA"/></linearGradient>
+    <linearGradient id="sk" x1="0" x2="1"><stop offset="0" stop-color="#22D3EE" stop-opacity="0"/><stop offset=".55" stop-color="#38BDF8" stop-opacity=".6"/><stop offset="1" stop-color="#A78BFA" stop-opacity="0"/></linearGradient>
+    <linearGradient id="ring" x1="0" x2="1"><stop offset="0" stop-color="#22D3EE" stop-opacity="0"/><stop offset=".3" stop-color="#38BDF8"/><stop offset=".7" stop-color="#60A5FA"/><stop offset="1" stop-color="#A78BFA" stop-opacity="0"/></linearGradient>
+    <filter id="bl" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+  <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+  <symbol id="i-checks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8M13 12h8M13 18h8"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></symbol>
+  <symbol id="i-drive" viewBox="0 0 24 24"><path d="M22 12H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM6 16h.01M10 16h.01"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></symbol>
+  <symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M10.73 5.08a10.74 10.74 0 0 1 11.2 6.57 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-1.44 2.49"/><path d="M14.08 14.16a3 3 0 0 1-4.24-4.24"/><path d="M17.48 17.5a10.75 10.75 0 0 1-15.42-5.15 1 1 0 0 1 0-.7 10.75 10.75 0 0 1 4.45-5.14"/><path d="m2 2 20 20"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-unlink" viewBox="0 0 24 24"><path d="m18.84 12.25 1.72-1.71h-.02a5 5 0 0 0-.12-7.07 5 5 0 0 0-6.95 0l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 .12 7.07 5 5 0 0 0 6.95 0l1.71-1.71"/><path d="M8 2v3M2 8h3M16 19v3M19 16h3"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
   <symbol id="i-windows" viewBox="0 0 24 24"><rect x="3" y="4" width="11" height="9" rx="1.5"/><rect x="10" y="11" width="11" height="9" rx="1.5"/></symbol>
   <symbol id="i-erase" viewBox="0 0 24 24"><path d="M8 20h12"/><path d="M5 15l9-9 5 5-8 8H8z"/></symbol>
-  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
-  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></symbol>
-  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-bug" viewBox="0 0 24 24"><path d="M8 2l1.9 1.9M16 2l-1.9 1.9"/><path d="M9 7.1V6a3 3 0 0 1 6 0v1.1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6z"/><path d="M12 20v-9M6 13H2M22 13h-4M6.5 17.5 3 20M17.5 17.5 21 20"/></symbol>
+  <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/></symbol>
+  <symbol id="i-package" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
   <symbol id="i-github" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
@@ -280,9 +358,9 @@
 
 <header class="bar">
   <div class="wrap">
-    <a class="brand" href="./"><img src="icon.svg" alt="" width="32" height="32">project-memory</a>
+    <a class="brand" href="./"><img src="brain.png" alt="" width="148" height="136"><span>project-<span class="grad">memory</span></span></a>
     <nav aria-label="Main">
-      <a class="wide" href="#how">How it works</a>
+      <a class="wide" href="#problem">Why</a>
       <a class="wide" href="#privacy">Privacy</a>
       <a href="#install">Install</a>
       <a class="gh" href="https://github.com/zdraveski/project-memory"><svg aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span></a>
@@ -291,175 +369,229 @@
 </header>
 
 <main id="main">
-  <div class="wrap">
-    <div class="hero">
-      <div>
-        <h1>Claude remembers where you left off.</h1>
-        <p class="lede">project-memory is a free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, so the next conversation starts where the last one ended.</p>
-        <div class="actions">
-          <a class="button primary" href="#install">Install in a minute</a>
-          <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="gh" aria-hidden="true"><use href="#i-github"/></svg>View on GitHub</a>
+  <div class="top">
+    <div class="grid-bg" aria-hidden="true"></div>
+    <i class="stars" aria-hidden="true"></i>
+    <svg class="streaks" viewBox="0 0 600 260" preserveAspectRatio="xMaxYMin slice" aria-hidden="true">
+      <path d="M220 -20 C 360 90, 480 60, 620 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
+      <path d="M220 -20 C 360 90, 480 60, 620 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
+      <path d="M330 -20 C 450 120, 540 110, 620 40" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
+    </svg>
+    <div class="wrap">
+      <div class="hero">
+        <div>
+          <img class="logo" src="brain.png" alt="" width="148" height="136">
+          <h1>Give Claude Code <span class="grad">a memory.</span></h1>
+          <p class="lede">project-memory is a free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, so the next conversation starts where the last one ended.</p>
+          <ul class="motto" aria-label="What it does">
+            <li>Remember</li><li>Restore</li><li>Continue</li>
+          </ul>
+          <div class="actions">
+            <a class="button primary" href="#install">Install in a minute</a>
+            <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="gh" aria-hidden="true"><use href="#i-github"/></svg>View on GitHub</a>
+          </div>
+          <ul class="chips" aria-label="In short">
+            <li class="chip">Free</li><li class="chip">No account</li><li class="chip">Never goes online</li>
+          </ul>
         </div>
-        <ul class="promises" aria-label="In short">
-          <li><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg>Never goes online</li>
-          <li><svg class="i" aria-hidden="true"><use href="#i-noaccount"/></svg>No account or API key</li>
-          <li><svg class="i" aria-hidden="true"><use href="#i-code"/></svg>Free and open source</li>
-        </ul>
-      </div>
 
-      <div class="demo">
-        <div class="sheet" aria-hidden="true">
-          <p class="file">journal/2026-10-27.md</p>
-          <p><b>asked</b> Make the pricing table match the three new plans.</p>
-          <p><b>did:</b> Rewrote pricing.md with monthly and yearly prices.</p>
-          <p><b>asked</b> Let's stop here for today.</p>
-        </div>
-        <div class="term">
-          <div class="term-top" aria-hidden="true"><img src="icon.svg" alt="">~/shop &nbsp;claude</div>
-          <div class="panel show" role="tabpanel" id="p-pick" aria-labelledby="t-pick" tabindex="0">
-            <p class="note">The next morning, a new conversation.</p>
-            <p class="you">Let's carry on.</p>
-            <p class="claude"><span>Yesterday we finished the pricing table. The checkout copy is next, so I'll start there.</span></p>
+        <div class="demo">
+          <div class="orbit" aria-hidden="true">
+            <svg viewBox="0 0 600 400" preserveAspectRatio="none">
+              <ellipse cx="300" cy="230" rx="310" ry="120" fill="none" stroke="url(#ring)" stroke-width="6" filter="url(#bl)" opacity=".7" transform="rotate(-12 300 230)"/>
+              <ellipse cx="300" cy="230" rx="310" ry="120" fill="none" stroke="url(#ring)" stroke-width="1.6" transform="rotate(-12 300 230)"/>
+            </svg>
           </div>
-          <div class="panel" role="tabpanel" id="p-find" aria-labelledby="t-find" tabindex="0">
-            <p class="you">What did we decide about the logo in September?</p>
-            <p class="claude"><span>On 12 September we kept the amber circle on navy and dropped the green version, because it was hard to read on white.</span></p>
-            <p class="note">Found in your journal, with the date.</p>
+          <div class="glass lit term">
+            <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>Claude Code</b><span>~/shop</span></div>
+            <div class="panel show" role="tabpanel" id="p-pick" aria-labelledby="t-pick" tabindex="0">
+              <p class="aside-note">The next morning, a new conversation.</p>
+              <p class="you">Let's carry on.</p>
+              <p class="cl">Yesterday we finished the pricing table. <b>The checkout copy is next, so I'll start there.</b></p>
+            </div>
+            <div class="panel" role="tabpanel" id="p-find" aria-labelledby="t-find" tabindex="0">
+              <p class="you">What did we decide about the logo in September?</p>
+              <p class="cl">On 12 September we kept the brain with the code mark, and <b>dropped the green version because it was hard to read.</b></p>
+              <p class="aside-note">Found in your journal, with the date.</p>
+            </div>
+            <div class="panel" role="tabpanel" id="p-undo" aria-labelledby="t-undo" tabindex="0">
+              <p class="you">I deleted the note about pricing by mistake. Bring it back.</p>
+              <p class="cl"><b>Restored pricing.md</b> as it was before you deleted it.</p>
+              <p class="aside-note">Every change to your notes is kept, so an old version can come back. Needs Git.</p>
+            </div>
+            <div class="panel" role="tabpanel" id="p-forget" aria-labelledby="t-forget" tabindex="0">
+              <p class="you">Forget the password I pasted this morning.</p>
+              <p class="cl">Two journal entries from today mention it. Remove both?</p>
+              <p class="you">Yes.</p>
+              <p class="cl"><b>Removed from the journal.</b></p>
+            </div>
           </div>
-          <div class="panel" role="tabpanel" id="p-undo" aria-labelledby="t-undo" tabindex="0">
-            <p class="you">I deleted the note about pricing by mistake. Bring it back.</p>
-            <p class="claude"><span>Restored pricing.md as it was before you deleted it.</span></p>
-            <p class="note">Every change to your notes is kept, so an old version can come back.</p>
+          <div class="tabs" role="tablist" aria-label="What it looks like in Claude Code">
+            <button class="tab" role="tab" id="t-pick" aria-controls="p-pick" aria-selected="true">Continue</button>
+            <button class="tab" role="tab" id="t-find" aria-controls="p-find" aria-selected="false" tabindex="-1">Remember</button>
+            <button class="tab" role="tab" id="t-undo" aria-controls="p-undo" aria-selected="false" tabindex="-1">Restore</button>
+            <button class="tab" role="tab" id="t-forget" aria-controls="p-forget" aria-selected="false" tabindex="-1">Forget</button>
           </div>
-          <div class="panel" role="tabpanel" id="p-forget" aria-labelledby="t-forget" tabindex="0">
-            <p class="you">Forget the password I pasted yesterday.</p>
-            <p class="claude"><span>Two journal entries from yesterday mention it. Remove both?</span></p>
-            <p class="you">Yes.</p>
-            <p class="claude"><span>Removed.</span></p>
-          </div>
-        </div>
-        <div class="tabs" role="tablist" aria-label="What it looks like in Claude Code">
-          <button class="tab" role="tab" id="t-pick" aria-controls="p-pick" aria-selected="true">Pick up</button>
-          <button class="tab" role="tab" id="t-find" aria-controls="p-find" aria-selected="false" tabindex="-1">Find past work</button>
-          <button class="tab" role="tab" id="t-undo" aria-controls="p-undo" aria-selected="false" tabindex="-1">Undo a mistake</button>
-          <button class="tab" role="tab" id="t-forget" aria-controls="p-forget" aria-selected="false" tabindex="-1">Forget</button>
         </div>
       </div>
     </div>
+    <i class="horizon" aria-hidden="true"></i>
   </div>
 
-  <section class="part alt" id="how" aria-labelledby="how-h">
+  <section class="part" id="problem" aria-labelledby="problem-h">
     <div class="wrap">
-      <h2 id="how-h">How it works</h2>
-      <p class="intro">You keep working as you do now. Claude Code keeps a notebook of notes for each project; project-memory looks after it and does four things for you.</p>
-      <ol class="flow">
-        <li><div class="dot"><svg class="i" aria-hidden="true"><use href="#i-reply"/></svg></div><h3>After every reply</h3><p>The exchange goes into a journal on your computer, with a note of where you stopped.</p></li>
-        <li><div class="dot"><svg class="i" aria-hidden="true"><use href="#i-sun"/></svg></div><h3>The next conversation</h3><p>Claude starts with a short briefing, usually under 1,000 tokens, so it knows where things stand.</p></li>
-        <li><div class="dot"><svg class="i" aria-hidden="true"><use href="#i-shorten"/></svg></div><h3>When it gets long</h3><p>Before Claude Code shortens a conversation, Claude saves its notes. Afterwards it's told what you asked and what it last said.</p></li>
-        <li><div class="dot"><svg class="i" aria-hidden="true"><use href="#i-history"/></svg></div><h3>When something goes wrong</h3><p>A version of your notes is saved after each reply that changes them, so a lost note can come back.</p></li>
-      </ol>
-    </div>
-  </section>
-
-  <section class="part" aria-labelledby="get-h">
-    <div class="wrap">
-      <h2 id="get-h">What you get</h2>
-      <p class="intro">It helps most when you come back to the same project over days or weeks. For a quick one-off question, you won't notice much difference.</p>
-      <div class="grid">
-        <div class="tile big">
-          <div>
-            <div class="icon"><svg class="i" aria-hidden="true"><use href="#i-book"/></svg></div>
-            <h3>A journal you can ask</h3>
-            <p>Every exchange is kept, one file per day. Ask about earlier work in your own words, and Claude searches the journal and your notes, and tells you when it happened. The journal isn't loaded into the conversation; it's only searched when you ask.</p>
+      <p class="eyebrow warn">The problem</p>
+      <h2 id="problem-h">Every new conversation <span class="grad warn">starts fresh.</span></h2>
+      <p class="intro">Claude Code forgets the conversation when it ends. Its notebook keeps what Claude chose to write down, not what you were in the middle of.</p>
+      <div class="days">
+        <div>
+          <h3>Claude Code alone</h3>
+          <div class="glass term past">
+            <div class="term-bar"><i></i><i></i><i></i><b>Monday</b><span>18:40</span></div>
+            <div class="panel"><p class="you">Let's stop here.</p><p class="cl">Pricing comes next.</p></div>
           </div>
-          <div class="search" aria-label="An example search">
-            <div>&gt; What did I work on last week?</div>
-            <span class="hit"><span>Mon</span> the pricing table, three plans</span>
-            <span class="hit"><span>Tue</span> checkout copy, first draft</span>
-            <span class="hit"><span>Thu</span> logo colours, kept amber</span>
+          <div class="gap"><span class="ico warn" aria-hidden="true"><svg><use href="#i-unlink"/></svg></span><p>New conversation</p></div>
+          <div class="glass hot term">
+            <div class="term-bar"><i></i><i></i><i></i><b>Tuesday</b><span>09:15</span></div>
+            <div class="panel"><p class="you">Let's carry on.</p><p class="cl">Sure. <span class="ask">What were we working on?</span></p></div>
           </div>
         </div>
-        <div class="tile"><div class="icon"><svg class="i" aria-hidden="true"><use href="#i-history"/></svg></div><h3>Every change kept</h3><p>A note deleted or overwritten by mistake comes back when you ask. Needs Git.</p></div>
-        <div class="tile"><div class="icon"><svg class="i" aria-hidden="true"><use href="#i-shorten"/></svg></div><h3>Long tasks stay on track</h3><p>When a long conversation is cut down to a summary, the task in progress isn't lost.</p></div>
-        <div class="tile"><div class="icon"><svg class="i" aria-hidden="true"><use href="#i-share"/></svg></div><h3>Lessons shared</h3><p>Teach Claude a habit once, and every project knows it.</p></div>
-        <div class="tile"><div class="icon"><svg class="i" aria-hidden="true"><use href="#i-windows"/></svg></div><h3>Two windows, no clashes</h3><p>Two Claude windows on one project don't overwrite each other.</p></div>
-        <div class="tile"><div class="icon"><svg class="i" aria-hidden="true"><use href="#i-erase"/></svg></div><h3>Forget on request</h3><p>Claude lists the journal entries that match, and removes the ones you confirm.</p></div>
+        <div>
+          <h3 class="with">With project-memory</h3>
+          <div class="glass term past">
+            <div class="term-bar"><i></i><i></i><i></i><b>Monday</b><span>18:40</span></div>
+            <div class="panel"><p class="you">Let's stop here.</p><p class="cl">Pricing comes next.</p></div>
+          </div>
+          <div class="gap ok"><span class="ico" aria-hidden="true"><svg><use href="#i-link"/></svg></span><p>Where you stopped is saved</p></div>
+          <div class="glass lit term">
+            <div class="term-bar"><i></i><i></i><i></i><b>Tuesday</b><span>09:15</span></div>
+            <div class="panel"><p class="you">Let's carry on.</p><p class="cl">We stopped before pricing. <span class="knows">Starting on it now.</span></p></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
-  <section class="part alt" aria-labelledby="cmp-h">
+  <section class="part" id="get" aria-labelledby="get-h">
     <div class="wrap">
-      <h2 id="cmp-h">Claude Code, with and without it</h2>
-      <p class="intro">Claude Code's own memory keeps getting better. project-memory adds what it still doesn't do.</p>
-      <table class="compare">
-        <caption class="hidden">Claude Code alone, and with project-memory</caption>
-        <thead><tr><th scope="col">Claude Code alone</th><th scope="col" class="us">With project-memory</th></tr></thead>
-        <tbody>
-          <tr><td>Each new conversation starts from zero.</td><td class="us">Claude starts already knowing where the last conversation stopped.</td></tr>
-          <tr><td>Work from a few weeks ago is hard to find again.</td><td class="us">Every exchange is kept in a journal, and Claude finds it when you ask.</td></tr>
-          <tr><td>A note deleted or overwritten by mistake is gone.</td><td class="us">Every change to your notes is kept, and Claude brings an old one back.</td></tr>
-          <tr><td>A long conversation is cut down to a summary, and the task in progress can get lost.</td><td class="us">Claude saves its notes first, and afterwards it's told what you asked and what it last said.</td></tr>
-          <tr><td>You teach Claude your habits again in every project.</td><td class="us">Lessons that apply everywhere are shared with all your projects.</td></tr>
-        </tbody>
-      </table>
-      <p class="more">It searches by words, not by meaning, and works in Claude Code only. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/comparison.md">See how it compares with claude-mem, Mem0, Supermemory and other tools</a>.</p>
+      <p class="eyebrow">What you get</p>
+      <h2 id="get-h">What it <span class="grad">does for you.</span></h2>
+      <p class="intro">It looks after the notebook Claude Code keeps for each project, and adds a journal of everything you did. It helps most when you come back to the same project over days or weeks.</p>
+      <div class="tiles">
+        <div class="glass tile"><span class="ico" aria-hidden="true"><svg><use href="#i-play"/></svg></span><div><h3>Picks up where you left off</h3><p>A new conversation starts already knowing where the last one stopped.</p></div></div>
+        <div class="glass tile"><span class="ico" aria-hidden="true"><svg><use href="#i-search"/></svg></span><div><h3>A journal you can ask</h3><p>Every exchange is kept. Ask about earlier work in your own words, and Claude tells you when it happened.</p></div></div>
+        <div class="glass tile"><span class="ico" aria-hidden="true"><svg><use href="#i-history"/></svg></span><div><h3>Keeps old versions of notes <span class="note">(needs Git)</span></h3><p>A note deleted or overwritten by mistake comes back when you ask.</p></div></div>
+        <div class="glass tile"><span class="ico" aria-hidden="true"><svg><use href="#i-checks"/></svg></span><div><h3>Keeps long tasks on track</h3><p>Before a long conversation is shortened to a summary, Claude saves its notes, and afterwards it's told where it was.</p></div></div>
+        <div class="glass tile"><span class="ico" aria-hidden="true"><svg><use href="#i-share"/></svg></span><div><h3>Shares lessons across projects</h3><p>Teach Claude a habit once, and every project knows it.</p></div></div>
+        <div class="glass tile"><span class="ico" aria-hidden="true"><svg><use href="#i-windows"/></svg></span><div><h3>Two windows, no clashes</h3><p>Two Claude windows on one project don't overwrite each other.</p></div></div>
+      </div>
     </div>
   </section>
 
-  <section class="part paper" id="privacy" aria-labelledby="privacy-h">
+  <section class="part" id="long" aria-labelledby="long-h">
     <div class="wrap">
-      <h2 id="privacy-h">Your work stays on your computer</h2>
-      <p class="intro">project-memory makes no internet connections. What it saves stays in Claude Code's own folder in your home folder, and it never writes in your projects.</p>
-      <ul class="promise-list">
-        <li><span class="icon"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg></span><h3>Secrets are blanked out</h3><p>Keys, tokens and passwords become <code>[redacted]</code> before anything is saved.</p></li>
-        <li><span class="icon"><svg class="i" aria-hidden="true"><use href="#i-tag"/></svg></span><h3>Keep a part out</h3><p>Put text between <code>&lt;private&gt;</code> and <code>&lt;/private&gt;</code>, and it isn't saved.</p></li>
-        <li><span class="icon"><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg></span><h3>Keep a conversation out</h3><p>Type <code>&lt;private-session&gt;</code> in any message. What was saved of it before is removed, except the history's copy of days that are already over.</p></li>
-        <li><span class="icon"><svg class="i" aria-hidden="true"><use href="#i-erase"/></svg></span><h3>Forget on request</h3><p>Claude removes the journal entries you confirm. For days already over, a copy stays in the history until you delete it.</p></li>
+      <p class="eyebrow">Long conversations</p>
+      <h2 id="long-h">Kept <span class="grad">on track.</span></h2>
+      <p class="intro">When a conversation fills up, Claude Code shortens it to a summary, and the details of a task in progress can get lost.</p>
+      <div class="track-wrap">
+        <div class="glass step">
+          <div class="step-top"><span class="num" aria-hidden="true">1</span><b>Before</b><span>85% full</span></div>
+          <div class="track" aria-hidden="true"><b style="--w: calc(85% - 6px)"></b></div>
+          <p>Claude saves its notes.</p>
+        </div>
+        <div class="glass step hot">
+          <div class="step-top"><span class="num" aria-hidden="true">2</span><b>During</b><span>100%</span></div>
+          <div class="track full" aria-hidden="true"><b style="--w: calc(100% - 6px)"></b></div>
+          <p>Claude Code is asked to let the step finish. With no room to wait, the step is written down.</p>
+        </div>
+        <div class="glass step lit">
+          <div class="step-top"><span class="num" aria-hidden="true">3</span><b>After</b><span>summary</span></div>
+          <div class="track" aria-hidden="true"><b style="--w: 22%"></b></div>
+          <p>Claude is told what you asked and what it last said.</p>
+        </div>
+      </div>
+      <p class="footnote">Room to wait needs one setting, <span class="tok">CLAUDE_CODE_AUTO_COMPACT_WINDOW</span>; with the default settings there is none. Claude Code doesn't always wait when asked. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">How it works</a>.</p>
+    </div>
+  </section>
+
+  <section class="part" id="privacy" aria-labelledby="privacy-h">
+    <div class="wrap">
+      <p class="eyebrow">Your privacy</p>
+      <h2 id="privacy-h">Stays on <span class="grad">your computer.</span></h2>
+      <p class="intro">It makes no internet connections. What it saves stays in Claude Code's own folder, in your home folder.</p>
+      <ul class="items">
+        <li class="glass item"><span class="ico" aria-hidden="true"><svg><use href="#i-drive"/></svg></span><div><h3>Never goes online</h3><p>No account, no API key, no servers.</p></div></li>
+        <li class="glass item"><span class="ico" aria-hidden="true"><svg><use href="#i-key"/></svg></span><div><h3>Secrets are blanked out</h3><p>Common kinds of keys and passwords become <span class="tok">[redacted]</span> before anything is saved.</p></div></li>
+        <li class="glass item"><span class="ico" aria-hidden="true"><svg><use href="#i-eyeoff"/></svg></span><div><h3>Keep text out</h3><p>Put it in <span class="tok">&lt;private&gt;</span> and <span class="tok">&lt;/private&gt;</span>.</p></div></li>
+        <li class="glass item"><span class="ico" aria-hidden="true"><svg><use href="#i-lock"/></svg></span><div><h3>Keep a conversation out</h3><p>Type <span class="tok">&lt;private-session&gt;</span>. What was saved before is removed, except the history's copy of days already over.</p></div></li>
       </ul>
-      <p class="honest">No tool catches every secret, so use the tags for anything sensitive. And what Claude reads during a conversation goes to Anthropic with the rest of it, as with Claude Code's own memory.</p>
+      <p class="aside"><svg aria-hidden="true"><use href="#i-info"/></svg><span>Anthropic still sees your conversation, as with Claude Code's own memory. No tool catches every secret, so use the tags for anything sensitive. Ask Claude to forget something, and it removes the journal entries you confirm.</span></p>
       <a class="button quiet" href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md">Read the privacy policy</a>
     </div>
   </section>
 
   <section class="part" aria-labelledby="care-h">
     <div class="wrap">
-      <h2 id="care-h">Built with care</h2>
-      <p class="intro">It runs after every reply, on your notes, so it has to be right. These checks run on every change, and the biggest before every release.</p>
+      <p class="eyebrow">Built with care</p>
+      <h2 id="care-h">It runs on your notes, <span class="grad">so it has to be right.</span></h2>
+      <p class="intro">These checks run on every change, and the biggest before every release.</p>
       <ul class="care">
-        <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><h3>Tested on every system</h3><p>Windows, macOS and Linux on Node.js 24 and 26, and Linux on 22 too, on every change.</p></li>
-        <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><h3>Its tests are tested</h3><p>Before a release, more than 3,000 small bugs are planted in the code on purpose, and the tests must catch every one.</p></li>
-        <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><h3>Thrown at the hard cases</h3><p>Before a release, ten minutes of random conversations, time-zone changes, disk errors and interrupted runs, on 17 machines at once.</p></li>
-        <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><h3>Nothing extra installed</h3><p>No dependencies to download, and the code is open for anyone to read. MIT licence.</p></li>
+        <li class="glass"><span class="ico" aria-hidden="true"><svg><use href="#i-monitor"/></svg></span><h3>Every system</h3><p>Windows, macOS and Linux on Node.js 24 and 26, and Linux on 22 too, on every change.</p></li>
+        <li class="glass"><span class="ico" aria-hidden="true"><svg><use href="#i-bug"/></svg></span><h3>Its tests are tested</h3><p>Before a release, more than 3,000 small bugs are planted in the code on purpose, and the tests must catch every one.</p></li>
+        <li class="glass"><span class="ico" aria-hidden="true"><svg><use href="#i-shuffle"/></svg></span><h3>The hard cases</h3><p>Before a release, ten minutes of random conversations, time-zone changes, disk errors and interrupted runs, on 17 machines at once.</p></li>
+        <li class="glass"><span class="ico" aria-hidden="true"><svg><use href="#i-package"/></svg></span><h3>Nothing extra</h3><p>No dependencies to download, and the code is open for anyone to read. MIT licence.</p></li>
       </ul>
     </div>
   </section>
 
-  <section class="part alt" id="install" aria-labelledby="install-h">
+  <section class="part" aria-labelledby="cmp-h">
     <div class="wrap">
-      <h2 id="install-h">Install it</h2>
-      <p class="intro">It takes about a minute. Not sure what you have? Ask Claude: <em>"Do I have Node.js 22 or newer, and Git?"</em></p>
+      <p class="eyebrow">Compared</p>
+      <h2 id="cmp-h">Claude Code, <span class="grad">with and without it.</span></h2>
+      <p class="intro">Claude Code's own memory keeps getting better. project-memory adds what it still doesn't do.</p>
+      <div class="glass compare-box">
+        <table class="compare" role="table">
+          <caption class="hidden">Claude Code alone, and with project-memory</caption>
+          <thead><tr role="row"><th role="columnheader" scope="col">Claude Code alone</th><th role="columnheader" scope="col" class="us">With project-memory</th></tr></thead>
+          <tbody>
+            <tr role="row"><td role="cell">Each new conversation starts from zero.</td><td role="cell" class="us">Claude starts already knowing where the last conversation stopped.</td></tr>
+            <tr role="row"><td role="cell">Work from a few weeks ago is hard to find again.</td><td role="cell" class="us">Every exchange is kept in a journal, and Claude finds it when you ask.</td></tr>
+            <tr role="row"><td role="cell">A note deleted or overwritten by mistake is gone.</td><td role="cell" class="us">Every change to your notes is kept, and Claude brings an old one back.</td></tr>
+            <tr role="row"><td role="cell">A long conversation is cut down to a summary, and the task in progress can get lost.</td><td role="cell" class="us">Claude saves its notes first, and afterwards it's told what you asked and what it last said.</td></tr>
+            <tr role="row"><td role="cell">You teach Claude your habits again in every project.</td><td role="cell" class="us">Lessons that apply everywhere are shared with all your projects.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="more">It searches by words, not by meaning, and works in Claude Code only. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/comparison.md">See how it compares with claude-mem, Mem0, Supermemory and other tools</a>.</p>
+    </div>
+  </section>
+
+  <section class="part" id="install" aria-labelledby="install-h">
+    <div class="wrap">
+      <p class="eyebrow">Install</p>
+      <h2 id="install-h">Ready <span class="grad">in a minute.</span></h2>
+      <p class="intro">Not sure what you have? Ask Claude: <em>"Do I have Node.js 22 or newer, and Git?"</em></p>
       <div class="install">
         <ol class="steps">
           <li>
             <p>In Claude Code, type these two lines. When the second opens a menu, choose to install it for you (user scope), so it works in every project.</p>
-            <div class="cmd"><pre class="code"><code>/plugin marketplace add zdraveski/project-memory
+            <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add zdraveski/project-memory
 /plugin install project-memory@project-memory</code></pre></div>
           </li>
           <li><p>Close Claude Code and open it again.</p></li>
           <li>
             <p>Check it's working. Every line should start with <code>ok</code>.</p>
-            <div class="cmd"><pre class="code"><code>/project-memory:memory doctor</code></pre></div>
-            <p class="aside">Until Claude finishes its first reply, one line says it's waiting for that reply. That's normal.</p>
+            <div class="cmd"><pre class="code" tabindex="0"><code>/project-memory:memory doctor</code></pre></div>
+            <p class="small">Until Claude finishes its first reply, one line says it's waiting for that reply. That's normal.</p>
           </li>
         </ol>
-        <div class="needs">
+        <div class="glass needs">
           <h3>What you need</h3>
           <ul>
-            <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><span><strong>Claude Code</strong> with its built-in memory on. It is, unless you turned it off.</span></li>
-            <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><span><strong><a href="https://nodejs.org">Node.js</a> 22 or newer.</strong> Choose the LTS version.</span></li>
-            <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><span><strong><a href="https://git-scm.com">Git</a>, optional.</strong> Without it, everything works except bringing back old versions of notes.</span></li>
-            <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><span><strong>Windows, macOS or Linux.</strong></span></li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><strong>Claude Code</strong> with its built-in memory on. It is, unless you turned it off.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><strong><a href="https://nodejs.org">Node.js</a> 22 or newer.</strong> Choose the LTS version.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><strong><a href="https://git-scm.com">Git</a>, optional.</strong> Without it, everything works except bringing back old versions of notes.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><strong>Windows, macOS or Linux.</strong></span></li>
           </ul>
         </div>
       </div>
@@ -469,29 +601,32 @@
 
   <section class="part" id="faq" aria-labelledby="faq-h">
     <div class="wrap">
-      <h2 id="faq-h">Questions people ask</h2>
+      <p class="eyebrow">Questions</p>
+      <h2 id="faq-h">Questions <span class="grad">people ask.</span></h2>
       <div class="faq">
-        <details><summary>Does it send anything over the internet?<svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>No. It makes no internet connections, and what it saves stays in Claude Code's own folder in your home folder. What Claude reads during a conversation goes to Anthropic with the rest of it, as with Claude Code's own memory.</p></div></details>
-        <details><summary>Does it slow Claude down or fill the conversation?<svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, usually under 1,000 tokens. The journal isn't loaded; Claude searches it only when you ask about earlier work.</p></div></details>
-        <details><summary>How much disk space does it use?<svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>A journal entry is usually under 3 KB. A very busy project adds up to about 40 MB a year.</p></div></details>
-        <details><summary>Can I use it on two computers?<svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>Each computer keeps its own notes and journal; they don't sync. Don't sync the memory folder yourself (Dropbox, OneDrive): each computer would undo the other's "forget".</p></div></details>
-        <details><summary>My model holds 200,000 tokens. Do I need to change anything?<svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>Yes, for long conversations. It assumes a window of 1,000,000 tokens, so the reminder to save notes never comes. Ask Claude: "Is my context window 200,000 tokens?" If it is, ask: "Add CLAUDE_CODE_AUTO_COMPACT_WINDOW set to 200k under env in my Claude Code settings," then restart Claude Code.</p></div></details>
-        <details><summary>How do I pause or remove it?<svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>To pause it, run <code>claude plugin disable project-memory@project-memory</code> in a terminal and restart Claude Code. To remove it, type <code>/plugin uninstall project-memory@project-memory</code> in Claude Code. Your notes and the journal stay either way; the <a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#deleting-it">privacy policy</a> says what to delete by hand.</p></div></details>
+        <details class="glass"><summary>Does it send anything over the internet?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>No. It makes no internet connections, and what it saves stays in Claude Code's own folder in your home folder. What Claude reads during a conversation goes to Anthropic with the rest of it, as with Claude Code's own memory.</p></div></details>
+        <details class="glass"><summary>Does it slow Claude down or fill the conversation?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, usually under 1,000 tokens. The journal isn't loaded; Claude searches it only when you ask about earlier work.</p></div></details>
+        <details class="glass"><summary>How much disk space does it use?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>A journal entry is usually under 3 KB. A very busy project adds up to about 40 MB a year.</p></div></details>
+        <details class="glass"><summary>Can I use it on two computers?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>Each computer keeps its own notes and journal; they don't sync. Don't sync the memory folder yourself (Dropbox, OneDrive): each computer would undo the other's "forget".</p></div></details>
+        <details class="glass"><summary>My model holds 200,000 tokens. Do I need to change anything?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>Yes, for long conversations. It assumes a window of 1,000,000 tokens, so the reminder to save notes never comes. Ask Claude: "Is my context window 200,000 tokens?" If it is, ask: "Add CLAUDE_CODE_AUTO_COMPACT_WINDOW set to 200k under env in my Claude Code settings," then restart Claude Code.</p></div></details>
+        <details class="glass"><summary>How do I pause or remove it?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="answer"><p>To pause it, run <code>claude plugin disable project-memory@project-memory</code> in a terminal and restart Claude Code. To remove it, type <code>/plugin uninstall project-memory@project-memory</code> in Claude Code. Your notes and the journal stay either way; the <a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#deleting-it">privacy policy</a> says what to delete by hand.</p></div></details>
       </div>
       <p class="more">Something missing? <a href="https://github.com/zdraveski/project-memory/discussions">Ask in Discussions</a>.</p>
     </div>
   </section>
 
-  <section class="end" aria-labelledby="end-h">
+  <section class="part closing" aria-labelledby="end-h">
+    <i class="stars" aria-hidden="true"></i>
     <div class="wrap">
-      <img src="icon.svg" alt="" width="64" height="64">
-      <h2 id="end-h">Give Claude a memory</h2>
+      <img class="logo" src="brain.png" alt="" width="148" height="136">
+      <h2 id="end-h">Give Claude Code <span class="grad">a memory.</span></h2>
       <p>Free, no account, and nothing leaves your computer. Two lines in Claude Code, and it works in every project.</p>
       <div class="actions">
         <a class="button primary" href="#install">Install in a minute</a>
         <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="gh" aria-hidden="true"><use href="#i-github"/></svg>View on GitHub</a>
       </div>
     </div>
+    <i class="horizon warm" aria-hidden="true"></i>
   </section>
 </main>
 
@@ -509,7 +644,7 @@
 </footer>
 
 <script>
-  // The header gets a line once the page scrolls.
+  // The header turns to glass once the page scrolls.
   const bar = document.querySelector('.bar');
   const edge = () => bar.classList.toggle('scrolled', scrollY > 8);
   addEventListener('scroll', edge, { passive: true }); edge();
@@ -518,9 +653,9 @@
   const tabs = [...document.querySelectorAll('[role="tab"]')];
   const pick = (t, focus) => {
     for (const o of tabs) {
-      const on = o === t, p = document.getElementById(o.getAttribute('aria-controls'));
+      const on = o === t;
       o.setAttribute('aria-selected', on); o.tabIndex = on ? 0 : -1;
-      p.classList.toggle('show', on);
+      document.getElementById(o.getAttribute('aria-controls')).classList.toggle('show', on);
     }
     if (focus) t.focus();
   };
@@ -533,13 +668,18 @@
     });
   });
 
+  // The three bars fill once they're on screen.
+  const wrap = document.querySelector('.track-wrap');
+  if ('IntersectionObserver' in window) new IntersectionObserver((es, o) => { if (es.some((e) => e.isIntersecting)) { wrap.classList.add('seen'); o.disconnect(); } }, { threshold: 0.4 }).observe(wrap);
+  else wrap.classList.add('seen');
+
   // A copy button beside each command, added only when the browser can copy.
   const status = document.getElementById('copied');
   if (navigator.clipboard) for (const box of document.querySelectorAll('.cmd')) {
     const code = box.querySelector('code'), two = code.textContent.includes('\n');
     const b = document.createElement('button');
     b.className = 'copy'; b.type = 'button';
-    b.innerHTML = '<svg class="i" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span>';
+    b.innerHTML = '<svg aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span>';
     b.setAttribute('aria-label', two ? 'Copy both lines' : 'Copy the command');
     const say = (s) => { b.lastChild.textContent = s; };
     b.addEventListener('click', async () => {
