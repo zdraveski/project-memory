@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>project-memory: Claude Code remembers your work</title>
+<meta name="description" content="A free plugin for Claude Code. It keeps a journal of your work and a record of where you stopped, so the next conversation starts where the last one ended. Everything stays on your computer.">
+<meta name="theme-color" content="#1B1F36">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://zdraveski.github.io/project-memory/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="project-memory: Claude Code remembers your work">
+<meta property="og:description" content="A journal of your work, a record of where you stopped, every version of your notes. Free, no account, never goes online.">
+<meta property="og:url" content="https://zdraveski.github.io/project-memory/">
+<meta property="og:image" content="https://zdraveski.github.io/project-memory/banner.png">
+<meta property="og:image:width" content="1177">
+<meta property="og:image:height" content="325">
+<meta property="og:image:alt" content="project-memory: give Claude Code a memory. Remember, restore, continue.">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root {
+    --ink: #1B1F36;
+    --night: #14172A;
+    --amber: #F5B544;
+    --paper: #F4F1EA;
+    --paper-ink: #6B6558;
+    --mist: #EEF0F5;
+    --slate: #565B74;
+    --fog: #AEB3CF;
+    --line: #D9DCE6;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", P052, Georgia, serif;
+    --sans: Seravek, "Gill Sans Nova", Ubuntu, Calibri, "DejaVu Sans", source-sans-pro, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    --measure: 36rem;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; font: 1.125rem/1.6 var(--sans); color: var(--ink); background: var(--mist); }
+  a { color: inherit; text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+  a:hover { text-decoration-thickness: 2px; }
+  /* Navy rings on the light parts, amber on the dark ones: both clear 3:1. */
+  :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 2px; }
+  .night :focus-visible, footer :focus-visible { outline-color: var(--amber); }
+  code { font-family: var(--mono); font-size: 0.88em; }
+  .wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.5rem; }
+  .skip { position: absolute; left: -999px; top: 0; background: var(--amber); color: var(--night); padding: 0.5rem 1rem; z-index: 2; }
+  .skip:focus { left: 1rem; top: 1rem; }
+  .hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* Night: the header, the opening and the privacy part */
+  .night { background: var(--ink); color: #fff; }
+  .night a { color: #fff; }
+  header.top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 0; }
+  .brand { display: flex; align-items: center; gap: 0.7rem; font-weight: 600; text-decoration: none; letter-spacing: 0.01em; }
+  .brand img { width: 2.25rem; height: 2.25rem; }
+  nav.links { display: flex; gap: 1.5rem; font-size: 1rem; }
+  nav.links a { text-decoration: none; color: var(--fog); }
+  nav.links a:hover { color: #fff; }
+
+  .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 3.5rem; align-items: center; padding: 3.5rem 0 5.5rem; }
+  h1, h2 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.01em; }
+  h1 { font-size: clamp(2.5rem, 5.2vw, 4.1rem); line-height: 1.06; margin: 0 0 1.5rem; }
+  .lede { font-size: 1.25rem; color: #DCDFEE; max-width: 30rem; margin: 0 0 2rem; }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.9rem; align-items: center; }
+  .button { display: inline-block; padding: 0.8rem 1.4rem; border-radius: 0.5rem; font-weight: 600; text-decoration: none; }
+  .night .button.primary { background: var(--amber); color: var(--night); }
+  .night .button.primary:hover { background: #FFC75F; }
+  .night .button.quiet { color: #fff; box-shadow: inset 0 0 0 1.5px #59607F; }
+  .night .button.quiet:hover { box-shadow: inset 0 0 0 1.5px var(--fog); }
+  .facts { margin: 2.25rem 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem 1.6rem; color: var(--fog); font-size: 0.98rem; }
+  .facts li::before { content: ""; display: inline-block; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--amber); margin-right: 0.55rem; vertical-align: 0.12em; }
+
+  /* The two days: one day's journal page, the arc, the next day's first reply */
+  .days { position: relative; isolation: isolate; }
+  .page { position: relative; background: var(--paper); color: var(--ink); border-radius: 0.6rem; padding: 1.4rem 1.5rem 1.2rem; box-shadow: 0 24px 48px -24px #0009; }
+  .page::before { content: ""; position: absolute; inset: 0.55rem -0.55rem -0.55rem 0.55rem; background: #DDD8CC; border-radius: 0.6rem; z-index: -1; }
+  .file { font-family: var(--mono); font-size: 0.8rem; color: var(--paper-ink); margin: 0 0 0.9rem; }
+  .entry { margin: 0 0 0.85rem; font-size: 0.98rem; line-height: 1.5; }
+  .entry:last-child { margin-bottom: 0; }
+  .entry b { font-weight: 700; }
+  .entry .when { font-family: var(--mono); font-size: 0.8rem; color: var(--paper-ink); }
+  .entry .did { display: block; padding-left: 1rem; color: #3D4157; }
+  .arc { display: flex; align-items: center; gap: 0.75rem; margin: 0.9rem 0 0.9rem 1.2rem; color: var(--fog); font-size: 0.95rem; }
+  .arc svg { flex: none; width: 3.4rem; height: 3.4rem; }
+  .arc path { fill: none; stroke: var(--amber); stroke-width: 7; stroke-linecap: round; }
+  .chat { background: var(--night); border: 1.5px solid #2E3456; border-radius: 0.6rem; padding: 1.1rem 1.3rem; }
+  .say { margin: 0 0 0.7rem; font-size: 1rem; }
+  .say:last-child { margin: 0; }
+  .who { display: block; font-size: 0.82rem; color: var(--fog); }
+  .say.you { color: #DCDFEE; }
+  .say.claude { color: #fff; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .arc path { stroke-dasharray: 260; stroke-dashoffset: 260; animation: draw 0.9s 0.5s ease-out forwards; }
+    .arc polygon { opacity: 0; animation: show 0.2s 1.3s forwards; }
+    .chat .claude { opacity: 0; transform: translateY(4px); animation: arrive 0.45s 1.5s ease-out forwards; }
+  }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes show { to { opacity: 1; } }
+  @keyframes arrive { to { opacity: 1; transform: none; } }
+
+  /* Light parts */
+  .part { padding: 5rem 0; }
+  .part.follows { padding-top: 0; }
+  h2 { font-size: clamp(1.9rem, 3.4vw, 2.5rem); line-height: 1.15; margin: 0 0 1rem; }
+  .intro { max-width: var(--measure); color: var(--slate); margin: 0 0 2.5rem; }
+
+  .compare { width: 100%; border-collapse: collapse; border-top: 1.5px solid var(--ink); }
+  .compare th, .compare td { text-align: left; vertical-align: top; padding: 1.1rem 1.5rem 1.1rem 0; border-bottom: 1px solid var(--line); width: 50%; }
+  .compare th { font-size: 1rem; padding-top: 0.8rem; padding-bottom: 0.8rem; }
+  .compare td:first-child { color: var(--slate); }
+  .compare th + th, .compare td + td { padding-left: 1.5rem; padding-right: 0; border-left: 1px solid var(--line); }
+
+  .asks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem 3rem; margin: 0; }
+  .asks dt { font-family: var(--serif); font-style: italic; font-size: 1.3rem; line-height: 1.35; margin: 0 0 0.35rem; }
+  .asks dd { margin: 0; color: var(--slate); }
+
+  .privacy .intro { color: #DCDFEE; }
+  .points { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem 3rem; margin: 0 0 2.5rem; padding: 0; list-style: none; }
+  .points h3 { font-size: 1.15rem; margin: 0 0 0.35rem; }
+  .points p { margin: 0; color: #C9CDE2; }
+  .points code { background: #2A2F4E; color: var(--amber); padding: 0.1em 0.35em; border-radius: 0.25rem; }
+  .honest { max-width: var(--measure); color: var(--fog); font-size: 1rem; margin: 0 0 1.5rem; }
+
+  .steps { counter-reset: step; list-style: none; margin: 0 0 2rem; padding: 0; max-width: 44rem; }
+  .steps > li { counter-increment: step; position: relative; padding: 0 0 2rem 3.25rem; }
+  .steps > li::before { content: counter(step); position: absolute; left: 0; top: -0.1rem; width: 2.1rem; height: 2.1rem; border-radius: 50%; background: var(--ink); color: var(--amber); font-family: var(--serif); font-weight: 600; display: grid; place-items: center; }
+  .steps p { margin: 0 0 0.75rem; }
+  .steps .aside { color: var(--slate); font-size: 1rem; }
+  .cmd { position: relative; margin: 0 0 0.75rem; }
+  .code { background: var(--ink); color: #E8EAF4; border-radius: 0.5rem; padding: 1rem 5.5rem 1rem 1.2rem; margin: 0; overflow-x: auto; }
+  .code code { font-size: 0.95rem; line-height: 1.7; }
+  .copy { position: absolute; top: 0.6rem; right: 0.6rem; font: 600 0.85rem var(--sans); background: #2E3456; color: #fff; border: 0; border-radius: 0.35rem; padding: 0.35rem 0.7rem; cursor: pointer; }
+  .copy:hover { background: #3A416A; }
+  .copy:focus-visible { outline-color: var(--amber); }
+  .needs { max-width: 44rem; color: var(--slate); font-size: 1rem; }
+
+  footer { background: var(--night); color: var(--fog); padding: 3rem 0; font-size: 1rem; }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1.5rem 3rem; }
+  footer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+  footer a { color: #fff; text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  footer p { margin: 0; }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; gap: 3rem; padding: 2rem 0 4rem; }
+    .asks, .points { grid-template-columns: 1fr; }
+    nav.links { gap: 1rem; }
+  }
+  @media (max-width: 560px) {
+    body { font-size: 1.05rem; }
+    nav.links a.hide-small { display: none; }
+    .part { padding: 3.5rem 0; }
+    /* One column: each row reads "Without it", then "With project-memory". */
+    .compare thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .compare tr { display: block; border-bottom: 1px solid var(--line); padding: 1rem 0; }
+    .compare td { display: block; width: auto; border: 0; padding: 0; }
+    .compare td + td { border: 0; padding: 0.35rem 0 0; }
+    .compare td::before { font-weight: 700; color: var(--ink); }
+    .compare td:first-child::before { content: "Without it: "; }
+    .compare td + td::before { content: "With project-memory: "; }
+    /* The copy button sits above the command, which scrolls sideways if it must. */
+    .code { padding: 2.9rem 1rem 1rem; }
+    .code code { font-size: 0.82rem; }
+    .steps > li { padding-left: 2.9rem; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+
+<div class="night">
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="./"><img src="icon.svg" alt="">project-memory</a>
+      <nav class="links" aria-label="Main">
+        <a href="#install">Install</a>
+        <a class="hide-small" href="#privacy">Privacy</a>
+        <a href="https://github.com/zdraveski/project-memory">GitHub</a>
+      </nav>
+    </header>
+  </div>
+</div>
+
+<main id="main">
+<div class="night">
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <h1>Claude remembers where you left off.</h1>
+        <p class="lede">project-memory is a free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, so the next conversation starts where the last one ended.</p>
+        <div class="actions">
+          <a class="button primary" href="#install">Install it</a>
+          <a class="button quiet" href="https://github.com/zdraveski/project-memory">Read the code</a>
+        </div>
+        <ul class="facts" aria-label="In short">
+          <li>Free and open source</li>
+          <li>No account or API key</li>
+          <li>Never goes online</li>
+        </ul>
+      </div>
+
+      <div class="days" role="group" aria-label="An example: one day's journal, then the next day's conversation">
+        <div class="page">
+          <p class="file">journal/2026-10-27.md</p>
+          <p class="entry"><b>asked</b> <span class="when">16:42</span> Make the pricing table match the three new plans.
+            <span class="did"><b>did:</b> Rewrote pricing.md with monthly and yearly prices.</span></p>
+          <p class="entry"><b>asked</b> <span class="when">17:05</span> Let's stop here for today.
+            <span class="did"><b>did:</b> Saved. The checkout copy is next.</span></p>
+        </div>
+        <p class="arc">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><path d="M20 12 A40 40 0 1 0 80 30"/><polygon points="66,22 90,26 80,46" fill="#F5B544"/></svg>
+          <span>The next morning, a new conversation</span>
+        </p>
+        <div class="chat">
+          <p class="say you"><span class="who">You</span>Let's carry on.</p>
+          <p class="say claude"><span class="who">Claude</span>Yesterday we finished the pricing table. The checkout copy is next, so I'll start there.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="part" aria-labelledby="changes">
+  <div class="wrap">
+    <h2 id="changes">What changes</h2>
+    <p class="intro">Claude Code keeps a notebook of notes for each project. project-memory looks after that notebook and adds a journal of everything you did. It helps most when you come back to the same project over days or weeks.</p>
+    <table class="compare">
+      <caption class="hidden">Claude Code without and with project-memory</caption>
+      <thead><tr><th scope="col">Without it</th><th scope="col">With project-memory</th></tr></thead>
+      <tbody>
+        <tr><td>Each new conversation starts from zero.</td><td>Claude starts already knowing where the last conversation stopped.</td></tr>
+        <tr><td>Work from a few weeks ago is hard to find again.</td><td>Every exchange is kept in a journal on your computer. Ask in your own words, and Claude finds it and tells you when it happened.</td></tr>
+        <tr><td>A note deleted or overwritten by mistake is gone.</td><td>Every version of your notes is kept, and Claude brings an old one back when you ask.</td></tr>
+        <tr><td>A long conversation is cut down to a summary, and the task in progress can get lost.</td><td>Claude saves its notes first, and afterwards it's told what you asked and what it last said.</td></tr>
+        <tr><td>You teach Claude your habits again in every project.</td><td>Lessons that apply everywhere are shared with all your projects.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="part follows" aria-labelledby="ask">
+  <div class="wrap">
+    <h2 id="ask">Ask in your own words</h2>
+    <p class="intro">There's nothing to learn. Most of these have a command too, if you'd rather type one.</p>
+    <dl class="asks">
+      <div><dt>"What did we decide about the logo in September?"</dt><dd>Claude searches your notes and the journal, and answers with the date.</dd></div>
+      <div><dt>"Where did we leave off?"</dt><dd>Claude reads the record of your last conversation.</dd></div>
+      <div><dt>"I deleted the note about pricing by mistake. Bring it back."</dt><dd>Claude restores it from the history of your notes.</dd></div>
+      <div><dt>"Forget the password I pasted yesterday."</dt><dd>Claude lists the journal entries that match, and removes the ones you confirm.</dd></div>
+      <div><dt>"Remember that I prefer short answers."</dt><dd>Claude saves a note.</dd></div>
+      <div><dt>"Remember for all my projects that I like plain language."</dt><dd>Claude saves it to the notebook every project shares.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="night part privacy" id="privacy" aria-labelledby="privacy-h">
+  <div class="wrap">
+    <h2 id="privacy-h">Your work stays on your computer</h2>
+    <p class="intro">project-memory makes no internet connections. What it saves stays in Claude Code's own folder in your home folder, and it never writes in your projects.</p>
+    <ul class="points">
+      <li><h3>Secrets are blanked out</h3><p>Keys, tokens and passwords become <code>[redacted]</code> before anything is saved.</p></li>
+      <li><h3>Keep a part out</h3><p>Put text between <code>&lt;private&gt;</code> and <code>&lt;/private&gt;</code>, and it isn't saved.</p></li>
+      <li><h3>Keep a conversation out</h3><p>Type <code>&lt;private-session&gt;</code> in any message. What was saved of that conversation before is removed, except the history's copy of days that are already over.</p></li>
+      <li><h3>Forget on request</h3><p>Ask Claude to forget something, and it removes the journal entries you confirm. For days that are already over, a copy stays in the history until you delete it.</p></li>
+    </ul>
+    <p class="honest">No tool catches every secret, so use the tags for anything sensitive. And what Claude reads during a conversation goes to Anthropic with the rest of it, as with Claude Code's own memory.</p>
+    <p><a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md">Read the privacy policy</a>: everything it reads and saves, and how to delete it.</p>
+  </div>
+</section>
+
+<section class="part" id="install" aria-labelledby="install-h">
+  <div class="wrap">
+    <h2 id="install-h">Install it</h2>
+    <p class="intro">It takes about a minute. Not sure what you have? Ask Claude: <em>"Do I have Node.js 22 or newer, and Git?"</em></p>
+    <ol class="steps">
+      <li>
+        <p>In Claude Code, type these two lines. When the second opens a menu, choose to install it for you (user scope), so it works in every project.</p>
+        <div class="cmd"><pre class="code"><code>/plugin marketplace add zdraveski/project-memory
+/plugin install project-memory@project-memory</code></pre></div>
+      </li>
+      <li><p>Close Claude Code and open it again.</p></li>
+      <li>
+        <p>Check it's working. Every line should start with <code>ok</code>.</p>
+        <div class="cmd"><pre class="code"><code>/project-memory:memory doctor</code></pre></div>
+        <p class="aside">Until Claude finishes its first reply, one line says it's waiting for that reply. That's normal.</p>
+      </li>
+    </ol>
+    <p class="needs">You need Claude Code with its built-in memory on (it is, unless you turned it off) and <a href="https://nodejs.org">Node.js</a> 22 or newer. <a href="https://git-scm.com">Git</a> is optional: without it, everything works except bringing back old versions of notes. It runs on Windows, macOS and Linux.</p>
+    <p class="hidden" role="status" id="copied"></p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <ul aria-label="More">
+      <li><a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md">How it works</a></li>
+      <li><a href="https://github.com/zdraveski/project-memory/blob/master/docs/comparison.md">Compared with other tools</a></li>
+      <li><a href="https://github.com/zdraveski/project-memory/blob/master/CHANGELOG.md">Changelog</a></li>
+      <li><a href="https://github.com/zdraveski/project-memory/releases/latest">Latest release</a></li>
+      <li><a href="https://github.com/zdraveski/project-memory/issues">Report a problem</a></li>
+      <li><a href="https://github.com/zdraveski/project-memory/blob/master/SECURITY.md">Security</a></li>
+    </ul>
+    <p>MIT licence. This page loads nothing from anywhere else.</p>
+  </div>
+</footer>
+
+<script>
+  // A copy button beside each command, added only when the browser can copy.
+  const status = document.getElementById('copied');
+  if (navigator.clipboard) for (const box of document.querySelectorAll('.cmd')) {
+    const code = box.querySelector('code'), lines = code.textContent.split('\n').length;
+    const b = document.createElement('button');
+    b.className = 'copy'; b.type = 'button'; b.textContent = 'Copy';
+    b.setAttribute('aria-label', lines > 1 ? 'Copy both lines' : 'Copy the command');
+    b.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(code.textContent); b.textContent = 'Copied'; status.textContent = 'Copied to the clipboard.'; }
+      catch { b.textContent = 'Select and copy'; status.textContent = 'Could not copy. Select the text and copy it.'; }
+      setTimeout(() => { b.textContent = 'Copy'; status.textContent = ''; }, 1800);
+    });
+    box.append(b);
+  }
+</script>
+</body>
+</html>
