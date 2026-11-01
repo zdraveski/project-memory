@@ -1554,6 +1554,17 @@ ok(!keptNested.length && !red(nested.at(-1).join('')).includes('First11'), `ever
 const yamlKept = ['secret:\n  password: string', 'tokens:\n  input: 863324\n  output: 1234', 'secretKeyRef:\n  name: db-credentials\n  key: password', 'secretName: db\nport: 5432', 'passwords:\n  - admin'];
 const yamlCut = yamlKept.filter((s) => red(s) !== s || clip(s, 400) !== s.replace(/\s+/g, ' '));
 ok(!yamlCut.length, `code, counts, a secret's name and a list under a secret's key are kept, and no child's key is cut (cut: ${yamlCut.map((s) => JSON.stringify(red(s))).join(' | ')})`);
+// P-F4: the command-line secrets quoted, as one with symbols or spaces must be: the value refused an opening quote, and each was
+// kept (e2e audit, 2026-11-01). A quoted value goes whole, spaces and all; a quoted reference, path or prose word is kept.
+for (const [s, gone] of [['deploy --password "' + k('Pw1', 'Quoted') + '"', 'Pw1'], ["cli login --token '" + k('Tk2', 'Quoted') + "'", 'Tk2'],
+  ['deploy --password="' + k('Pw3', 'Quoted') + '" --verbose', 'Pw3'], ['docker login -u me -p "' + k('Dk3', 'Quoted') + '" registry.example.com', 'Dk3'],
+  ["sshpass -p '" + k('Ss4', 'Quoted') + "' ssh deploy@host", 'Ss4'], ['curl -u "admin:' + k('Cu5', 'Quoted') + '" https://api.example.com', 'Cu5'],
+  ["curl --user 'admin:" + k('Cu6', 'Quoted') + "' https://api.example.com", 'Cu6'], ['aws configure set aws_secret_access_key "' + k('Aw6', 'QuotedSecretKey') + '"', 'Aw6'],
+  ['tool --client-secret "correct ' + k('hor', 'se') + ' battery staple"', 'horse']])
+  for (const f of [red, (x) => clip(x, 2000)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a quoted secret passed to a command is redacted (got ${f(s)})`);
+const quotedKept = ['tool --token "$TOKEN"', "tool --password '${DB_PASS}'", 'tool --password "./pw.txt"', 'the --token "flag" is new', 'docker run -u "1000:1000" img', 'deploy --password ""'];
+const quotedCut = quotedKept.filter((s) => red(s) !== s);
+ok(!quotedCut.length, `a quoted reference, path, prose word or user:group is kept (cut: ${quotedCut.map(red).join(' | ')})`);
 const tNest = Date.now(); red('secret:'.repeat(30_000)); red('secret: ' + 'a: '.repeat(30_000)); red('secrets:\n' + '  a: b  c: d e:'.repeat(5_000)); red('secrets:\n' + '  a:\n'.repeat(30_000));
 ok(Date.now() - tNest < 1000, `a parent key repeated, or a block of 30,000 children, is read in linear time (${Date.now() - tNest} ms)`);
 

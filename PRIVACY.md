@@ -46,9 +46,9 @@ All of it stays in `~/.claude/projects` on your computer:
   - Common kinds of keys, tokens and passwords (API keys, access tokens,
     passwords in web addresses, settings such as `password=`, and the
     entries under a settings key such as `passwords:` or `secrets:`) are
-    replaced with `[redacted]` first. So are passwords and tokens Claude passes to a
-    command: after `--password`, `--token` or `--secret`, after `-p` in
-    `docker login` and the like, in `export`, `setx`,
+    replaced with `[redacted]` first. So are passwords and tokens Claude
+    passes to a command, in quotes or not: after `--password`, `--token` or
+    `--secret`, after `-p` in `docker login` and the like, in `export`, `setx`,
     `SetEnvironmentVariable` or `aws configure set` of a name that says key,
     secret, token or password, in `htpasswd`, `gh secret set` and an npm
     `_authToken`. A reference to one, such as `$API_TOKEN`, and a file's

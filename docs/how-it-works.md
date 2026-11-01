@@ -175,7 +175,10 @@ Before any of it is written, these are taken out:
 - a secret passed to a command, which the journal's `Ran` keeps: the value
   after `--password`, `--token` or `--secret`, with up to three words before
   the last (`--client-secret`), but not after `--no-password`, nor a word
-  such as `flag` or `option` after one in prose; `aws configure set` of a
+  such as `flag` or `option` after one in prose; in quotes, the whole value
+  to the closing quote, blanks and all (`--password "a b c"`, `-p '…'`; a
+  quoted `curl -u` or `aws configure set` value to its first blank);
+  `aws configure set` of a
   secret, key or token; the password of `htpasswd -b` or `-nb`, before any
   redirect; `gh secret set … --body`; an npm `:_authToken`; and
   `export NAME=…`, `setx NAME …` and `SetEnvironmentVariable("NAME", …)`

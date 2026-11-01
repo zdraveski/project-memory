@@ -77,6 +77,11 @@
   Before, the child's name was taken for the secret and the real value
   after it was saved. Every entry under such a key is now redacted, not
   only one whose own name says password.
+- A password or token Claude passes to a command in quotes is now replaced
+  with `[redacted]` too: `--password "…"`, `--token '…'`, `-p "…"` after
+  `docker login` or `sshpass`, `curl -u "user:…"` and
+  `aws configure set … "…"`. Before, only unquoted ones were. A quoted
+  value after `--password` and the like goes whole, spaces and all.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in
