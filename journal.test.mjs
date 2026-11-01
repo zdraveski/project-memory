@@ -2,7 +2,7 @@
 // per day. Run: node journal.test.mjs
 import fs, { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
@@ -132,8 +132,11 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
     `a formatted day file parses to its entries, whole, and no prose (got ${JSON.stringify(p)})`);
   record(dir, T, [turn({ at: '2026-11-10 09:00', id: 'p-1', ask: 'the door code is 4417', raw: 'the door code is 4417' })]);
   ok(code(readFileSync(f, 'utf8')) === 1, 'the next record adds no second copy');
+  // And the temp copy of that day a killed Stop left, holding the code: forget scrubs it (audit H-F3).
+  const left = `${f}.tmp${spawnSync(process.execPath, ['-e', '']).pid}`;
+  writeFileSync(left, readFileSync(f, 'utf8'));
   forget(dir, ['4417'], { apply: true });
-  ok(code(readFileSync(f, 'utf8')) === 0, 'and forget reaches it');
+  ok(code(readFileSync(f, 'utf8')) === 0 && !existsSync(left), 'and forget reaches it, and the temp copy a killed Stop left of its day');
 }
 {
   // A note written under an entry stays under it, as the day is rewritten
@@ -185,6 +188,29 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   ok(throws(() => sweep(d, 'aaaaaaaa')) && others() === 'w-0,w-3' && readFileSync(f).equals(bytes), 'a sweep leaves it too, after the other days, and says so');
   const failedForget = [], r = forget(d, ['zebra'], { apply: true, failed: failedForget });
   ok(r.matched.length === 1 && !r.removed.length && readFileSync(f).equals(bytes) && failedForget.some((x) => x.path === f), `forget leaves it, and names it (got ${JSON.stringify(failedForget)})`);
+}
+{
+  // A journal folder that takes no writes takes no record of the failure either: journal/.failed was in it, and every
+  // reply's entry was lost unsaid (audit H-F4). Kept beside the projects instead, read by status, and cleared by a
+  // write that goes through.
+  const d = storeFor(home, 'C:\\journal-refused'), aside = join(dirname(dirname(d)), `.journal-failed-${basename(dirname(d))}`);
+  const names = ['writeFileSync', 'mkdirSync', 'renameSync', 'appendFileSync'], real = names.map((n) => fs[n]);
+  const refused = (fn) => {
+    names.forEach((n, i) => { fs[n] = function (p, ...a) { if (String(p).startsWith(join(d, 'journal'))) throw Object.assign(new Error(`EACCES: permission denied, ${n} '${p}'`), { code: 'EACCES' }); return real[i].call(this, p, ...a); }; });
+    syncBuiltinESMExports();
+    try { fn(); } finally { names.forEach((n, i) => { fs[n] = real[i]; }); syncBuiltinESMExports(); }
+  };
+  refused(() => write(d, T, [turn({ at: '2026-11-14 09:00', id: 'r-1' })], { quiet: false, hush: false }));
+  ok(existsSync(aside) && summary(d).failed?.includes('EACCES'), `a journal folder that refuses writes has its failure kept beside the projects, and status says it (got ${existsSync(aside) && readFileSync(aside, 'utf8')})`);
+  // The import's failure, refused the same, does not take its place: the briefing reads only a live write's.
+  mkdirSync(dirname(d), { recursive: true });
+  writeFileSync(join(dirname(d), 'refused-1.jsonl'), [{ type: 'user', cwd: 'C:\\journal-refused', uuid: 'q-1', timestamp: '2026-11-13T09:00:00Z', message: { role: 'user', content: 'an older ask' } },
+    { type: 'assistant', cwd: 'C:\\journal-refused', timestamp: '2026-11-13T09:01:00Z', message: { role: 'assistant', content: [{ type: 'text', text: 'an older answer' }], stop_reason: 'end_turn' } }].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  utimesSync(join(dirname(d), 'refused-1.jsonl'), new Date(Date.now() - 3600_000), new Date(Date.now() - 3600_000));
+  refused(() => backfill(d));
+  ok(!readFileSync(aside, 'utf8').includes('backfill:'), `and an import refused the same leaves the live write's failure there (got ${readFileSync(aside, 'utf8')})`);
+  write(d, T, [turn({ at: '2026-11-14 09:30', id: 'r-2' })], { quiet: false, hush: false });
+  ok(!existsSync(aside), 'and a write that goes through clears it');
 }
 {
   // A day saved as UTF-16 (PowerShell 5.1's Out-File) parsed as a day with no

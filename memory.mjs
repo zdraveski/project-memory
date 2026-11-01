@@ -315,10 +315,15 @@ function snapshots() {
   const h = json(join(projectsRoot(), '.snapshot-health'));
   if (!h) return 'snapshots: none recorded yet';
   if (h.off) return `snapshots: off, ${h.off}: everything else works, but an old version of a note cannot be brought back`;
+  // A first snapshot in parts, or one waiting on another git, as it is: "none recorded yet" hid a history that never
+  // started, and "ok, last <now>" was said of none (audit H-F1).
+  const waiting = h.busySince ? `; waiting since ${local(h.busySince)} for another git to let go of the repository` : '';
   return h.failures ? `snapshots: failing, ${h.failures} in a row (${h.error}); last ok ${h.lastOk ? local(h.lastOk) : 'never'}. ` +
     `The user's fix: run git -C "${projectsRoot()}" status in a terminal to see git's own message; if git says the repository is damaged, rename its .git folder and the next reply starts a new history`
+    : h.partial ? `snapshots: the first is being taken in parts, ${h.partial} file(s) still to add; each reply adds more${waiting}`
+    : !h.lastOk ? `snapshots: none taken yet${waiting}`
     : h.missed?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they leave out ${h.missed.join(', ')}: ${MISSED}`
-    : `snapshots: ok, last ${local(h.lastOk)}`;
+    : `snapshots: ok, last ${local(h.lastOk)}${waiting}`;
 }
 
 // The store the hooks give this session: Claude Code names the transcript by

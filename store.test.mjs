@@ -3,14 +3,14 @@
 // replace that will not overwrite a write it did not see. Run: node store.test.mjs
 import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import { spawn, execFileSync } from 'node:child_process';
-import { join, isAbsolute, basename } from 'node:path';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
+import { join, isAbsolute, basename, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps } = await import('./store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -98,6 +98,25 @@ if (!quick) {
 mkdirSync(join(dir, '.lock'));
 const gaveUp = fastClock(() => withLock(dir, () => 'got'));
 ok(gaveUp === null && existsSync(join(dir, '.lock')), `a held lock is given up on when the wait is up, and the holder's lock kept (got ${gaveUp})`);
+// One wait for a whole hook run (lockBudget): a Stop takes up to four locks, and with another hook holding them each waited 2 s
+// of its own, 8 s in all (audit H-F2). Spent on the first, a second held lock is tried once; a free one is still taken.
+{
+  const other = join(proj, 'other');
+  mkdirSync(join(other, '.lock'), { recursive: true });
+  const tries = (on) => {
+    let n = 0; const real = fs.mkdirSync;
+    fs.mkdirSync = function (p, ...a) { if (String(p) === join(other, '.lock')) n++; return real.call(this, p, ...a); }; syncBuiltinESMExports();
+    lockBudget(on);
+    try { fastClock(() => { withLock(dir, () => 'got'); withLock(other, () => 'got'); }); } finally { lockBudget(false); fs.mkdirSync = real; syncBuiltinESMExports(); }
+    return n;
+  };
+  const alone = tries(false), shared = tries(true);
+  ok(shared === 1 && alone > 1, `a hook's second held lock, its wait spent on the first, is tried once (${shared}; ${alone} with a wait of its own)`);
+  rmdirSync(join(other, '.lock'));
+  lockBudget(true);
+  try { fastClock(() => withLock(dir, () => 'got')); ok(fastClock(() => withLock(other, () => 'got')) === 'got', 'and a free lock is taken with no wait left'); } finally { lockBudget(false); }
+  rmSync(other, { recursive: true, force: true });
+}
 rmdirSync(join(dir, '.lock'));
 let threw = false;
 try { withLock(dir, () => { throw new Error('boom'); }); } catch { threw = true; }
@@ -536,6 +555,46 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(front('---\n---\ntier: archive\n').tier === '', 'an empty frontmatter ends at once: the body is no frontmatter');
   ok(front('---\nname: abc').name === 'abc', 'an unclosed frontmatter is read to its last character');
   ok(pointerLine('x.md', 'hello') === '- [x](x.md) — hello', 'a pointer line keeps the description from its first character');
+}
+
+// A repository whose folder name Claude Code shortens (past 200 characters, with a hash of its own) is not followed: a
+// conversation in its subfolder keeps its handoff in its own folder. Under the whole long name, past the 255 characters a
+// folder name can have, it saved nothing, and the failure's record failed too (audit H-F11). One of 200 is followed.
+{
+  // Six names: past 255 characters whatever the home's length (/tmp/... on Linux is short).
+  const long = join(home, 'r', ...Array.from({ length: 6 }, (_, i) => `a-rather-long-repository-folder-name-number-${i}`));
+  const at200 = join(home, 'q', 'x'.repeat(200 - slug(join(home, 'q')).length - 1));
+  for (const repo of [long, at200]) { mkdirSync(join(repo, '.git'), { recursive: true }); mkdirSync(join(repo, 'web'), { recursive: true }); }
+  const t = (repo) => {
+    const f = join(root, `${slug(join(repo, 'web')).slice(0, 200)}-1a2b3c`), p = join(f, `${basename(repo)}.jsonl`);
+    mkdirSync(f, { recursive: true });
+    writeFileSync(p, JSON.stringify({ type: 'user', cwd: join(repo, 'web'), message: { content: 'q' } }) + '\n');
+    return p;
+  };
+  const tl = t(long), t2 = t(at200);
+  ok(slug(long).length > 255 && storeOf({ transcript_path: tl }) === join(dirname(tl), 'memory'), `a repository named past 200 characters is not followed: the conversation's own folder (got ${storeOf({ transcript_path: tl })})`);
+  ok(slug(at200).length === 200 && storeOf({ transcript_path: t2 }) === join(root, slug(at200), 'memory'), `one of exactly 200 is (got ${storeOf({ transcript_path: t2 })})`);
+  for (const p of [tl, t2]) rmSync(dirname(p), { recursive: true, force: true });
+  rmSync(join(home, 'r'), { recursive: true, force: true }); rmSync(join(home, 'q'), { recursive: true, force: true });
+}
+// A temp copy a killed hook left (`<file>.tmp<pid>`) goes: its writer is gone, or it is older than a held lock can be. It
+// can hold text forget then removed (audit H-F3). One a live writer may still rename stays.
+{
+  const d = join(root, 'C--temps', 'memory'), j = join(d, 'journal');
+  mkdirSync(j, { recursive: true });
+  const gone = spawnSync(process.execPath, ['-e', '']).pid, old = new Date(Date.now() - 60_000);
+  const put = (p, aged = false) => { writeFileSync(p, 'the vault word'); if (aged) utimesSync(p, old, old); return p; };
+  const deadDay = put(join(j, `2026-11-01.md.tmp${gone}`)), deadHandoff = put(join(d, `handoff.md.tmp${gone}`));
+  // This process is the live writer: no other process is asked about (a mutant that sends a real signal hits only this one).
+  const mine = put(join(d, `MEMORY.md.tmp${process.pid}`)), live = put(join(j, `.imported.tmp${process.pid}`)), stale = put(join(d, `MEMORY-archive.md.tmp${process.pid}`), true);
+  const note = put(join(d, 'tmp123.md')), deadList = put(join(j, `.forgotten.tmp${gone}`));
+  // Only this tool's names (a note, an index, a day: `.md`; a list: a dotfile): a user's own file of that shape is theirs.
+  const users = [put(join(d, `x.tmp${gone}`), true), put(join(j, `notes.txt.tmp${gone}`), true)];
+  sweepTemps(d);
+  ok(!existsSync(deadDay) && !existsSync(deadHandoff) && !existsSync(stale) && !existsSync(deadList), "a temp copy whose writer is gone, or older than 30 s, is swept from the store and its journal");
+  ok(existsSync(mine) && existsSync(live) && existsSync(note), "one a live writer may still rename stays, and so does a note that only looks like one");
+  ok(users.every((p) => existsSync(p)), "and a user's own file named like a temp copy (x.tmp5) stays");
+  rmSync(join(root, 'C--temps'), { recursive: true, force: true });
 }
 
 console.log(`store: ${checks} checks passed`);

@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, rea
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
+import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -29,6 +29,8 @@ const OVERFLOW = '<!-- overflow -->';
 // add one (the model writes the file, then edits the index, seconds apart).
 const ORPHAN_GRACE = 2 * 60000;
 const GIT_LOCK_STALE = 10 * 60000;  // an index.lock this old outlived the git that made it
+const GIT_TIMEOUT = 30_000;         // a git that hangs (a prompt nobody sees) must not hold the Stop hook
+const BATCH = 1000;                 // files a part of a first snapshot adds: ~6 s at Windows' ~6 ms a file, well inside GIT_TIMEOUT
 
 // The byte ceilings of an index, project and shared, are in store.mjs: the
 // memory CLI reports them too.
@@ -50,6 +52,8 @@ let dry;
 // waited out instead, 1.5 s, the test guessed how long a loaded box takes to
 // start. Test-only, like `--now`.
 let PAUSE;
+// `--batch <files>` and `--git-timeout <ms>`, test-only too: a part of a first snapshot, and git's timeout, made small.
+let batch, gitWait;
 
 // A killed process must not leave a half-written index (temp + rename), and a
 // write must not land over an edit this pass did not see (store.mjs). Nothing
@@ -70,25 +74,36 @@ const write = (path, read, next) => (read !== null && sameLines(read, next) ? fa
 // store once -- the same store twice doubled every number reported about it.
 const stores = (root) => readdirSync(root).map((p) => join(root, p, 'memory')).filter((d) => existsSync(join(d, 'MEMORY.md')));
 
+// What factsFor read of each note, by name, with the size and mtime it had: read again only when one of them changed. Reading
+// every note's head cost a Stop that tidied ~1 ms a note on Windows, a second at 1,000 (audit H-F2). The Stop's gate already
+// trusts size and mtime to say a note changed. No text in it: a type, a tier and a date a note.
+const FACTS = '.facts';
+
 // `modified:` in the frontmatter beats mtime: a checkout or a copy resets mtime,
 // and the memory's own stamp is what the writer meant.
-function factsFor(dir, file) {
+function factsFor(dir, file, memo = null) {
   const path = join(dir, file);
   // A target that is missing or is no file (a directory) is treated as missing
   // rather than aborting the whole store. One another program holds fails the
   // pass instead: read as missing, its alarm was stamped and stayed a day.
   // The head only: the frontmatter is at the top, and a 1.5 GB file read whole
   // cost seconds of every Stop. 1,200 characters, as before: up to 4 bytes each.
-  let head, st;
+  let head, st, k, was;
   try {
-    st = statSync(path);
+    // As the Stop's gate saw it, when it did: a note changed since is read anew next pass, its size or time no longer the key.
+    st = memo?.seen?.get(file) ?? statSync(path);
     if (!st.isFile()) return null;
-    // 16 KB: the first 1,200 characters missed a pin set after a long folded
-    // description, and the note was archived for good (audit, 2026-10-28).
-    const fd = openSync(path, 'r'), buf = Buffer.alloc(16384);
-    try { head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)); } finally { closeSync(fd); }
+    k = `${st.size} ${st.mtimeMs}`; was = memo?.was[file];
+    if (!Array.isArray(was) || was[0] !== k) {
+      was = null;
+      // 16 KB: the first 1,200 characters missed a pin set after a long folded
+      // description, and the note was archived for good (audit, 2026-10-28).
+      const fd = openSync(path, 'r'), buf = Buffer.alloc(16384);
+      try { head = buf.toString('utf8', 0, readSync(fd, buf, 0, buf.length, 0)); } finally { closeSync(fd); }
+    }
   } catch (e) { if (BUSY.includes(e.code)) throw e; return null; }
-  const { type, tier, desc, modified: stamp } = front(head);
+  const { type, tier, desc, modified: stamp } = was ? { type: was[1], tier: was[2], modified: was[3] ?? NaN } : front(head);
+  if (memo) memo.now[file] = [k, type, tier, Number.isNaN(stamp) ? null : stamp];
   const modified = Number.isNaN(stamp) ? st.mtimeMs : stamp;
   const named = (file.match(/(\d{4})-(\d{2})-(\d{2})/) || [])[0];
   const eventDate = named ? Date.parse(named) : null;
@@ -115,19 +130,25 @@ function isHot(f, now, shared) {
 function split(text) {
   const pointers = [];
   const preamble = [];
+  // `gap`: a blank line between the prose and the first pointer, kept: dropped, a `# Memory Index` heading lost the line
+  // under it at the first pass (audit I-F4).
+  let gap = false;
   // A BOM binds to the first line and stops it matching POINTER, which quietly
   // demotes the top memory to prose and orphans it.
   for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const m = line.match(POINTER);
     if (m && m[1] === ARCHIVE) continue;   // by its target, not its title: regenerated with a live count
-    if (m) pointers.push({ line, target: m[1] });
+    if (m) { gap ||= !pointers.length && preamble.at(-1)?.trim() === ''; pointers.push({ line, target: m[1] }); }
     else if (line.trim() || preamble[preamble.length - 1]?.trim()) preamble.push(line);
   }
   while (preamble.length && preamble[preamble.length - 1].trim() === '') preamble.pop();
-  return { preamble, pointers };
+  return { preamble, pointers, gap };
 }
+// A file's line ending, as its first line has it: a CRLF index was written back LF (audit I-F4).
+const eolOf = (text) => (/^[^\n]*\r\n/.test(text) ? '\r\n' : '\n');
 
-function tier(dir, now) {
+// `seen`: the Stop's stat of each note, by name (main()); none, each is stat'ed here.
+function tier(dir, now, seen = null) {
   const mainPath = join(dir, 'MEMORY.md'), shared = isShared(dir);
   const arcPath = join(dir, ARCHIVE);
   // What this pass is computed from. A write goes through only while the file
@@ -157,6 +178,9 @@ function tier(dir, now) {
   // second, machine-written one.
   let listed = []; try { listed = readdirSync(dir); } catch {}
   const key = opener(dir, listed);
+  // A cache: one that does not parse is none.
+  const memo = { was: {}, now: {}, seen };
+  try { memo.was = JSON.parse(raw(join(dir, FACTS))) ?? {}; } catch {}
   const placed = new Map();
   const place = (p, where, inIndex = false) => {
     const was = placed.get(key(p.target));
@@ -165,7 +189,7 @@ function tier(dir, now) {
     where.push(p);
   };
   for (const p of main.pointers) {
-    p.f = factsFor(dir, p.target);
+    p.f = factsFor(dir, p.target, memo);
     if (!p.f) missing.push(p.target);
     place(p, isHot(p.f, now, shared) ? hot : cold, true);
   }
@@ -177,7 +201,7 @@ function tier(dir, now) {
   // One whose file is gone stays, unreported: the archive is history, and a
   // note deleted after its line was archived warned at every startup, for good.
   for (const p of arc.pointers) {
-    p.f = factsFor(dir, p.target);
+    p.f = factsFor(dir, p.target, memo);
     const overflow = p.line.endsWith(OVERFLOW);
     p.was = p.line;   // as the archive holds it, mark and all
     // The one space the mark was added with: a trailing one the line had is its own.
@@ -210,7 +234,9 @@ function tier(dir, now) {
   }
 
   const archiveLine = (n) => `- [Archive](${ARCHIVE}) — ${n} older pointers; grep it before assuming something was never learned`;
-  const render = () => [...main.preamble, ...hot.map((p) => p.line), archiveLine(cold.length)].join('\n') + '\n';
+  // Each file in its own line endings (a new archive in the index's), the blank under the prose kept.
+  const eol = eolOf(mainText), arcEol = arcText !== null ? eolOf(arcText) : eol;
+  const render = () => [...main.preamble, ...(main.gap ? [''] : []), ...hot.map((p) => p.line), archiveLine(cold.length)].join(eol) + eol;
 
   // A ceiling, not a warning. The windows cap how many lines survive, not how
   // long they are, so a corpus that writes six memories a day outgrows any
@@ -250,12 +276,12 @@ function tier(dir, now) {
   const bytes = (s) => Buffer.byteLength(s);
   let size = bytes(render());
   // And lines: Claude Code loads the first 200, and 7 KB of short lines is more.
-  let count = main.preamble.length + hot.length + 1;
+  let count = main.preamble.length + Number(main.gap) + hot.length + 1;
   const evicted = new Set();
   for (let q = 0; (size > budget || count > LINES) && q < queue.length; q++) {
     const victim = queue[q];
     count--;
-    size -= bytes(victim.line) + 1 + bytes(archiveLine(cold.length)) - bytes(archiveLine(cold.length + 1));
+    size -= bytes(victim.line) + eol.length + bytes(archiveLine(cold.length)) - bytes(archiveLine(cold.length + 1));
     evicted.add(victim);
     victim.line += ' ' + OVERFLOW;        // so the archive loop knows it may come back
     cold.push(victim);
@@ -264,7 +290,7 @@ function tier(dir, now) {
 
   const before = Buffer.byteLength(mainText);
   const nextMain = render();
-  const nextArc = [...arc.preamble, '', ...cold.map((p) => p.line)].join('\n') + '\n';
+  const nextArc = [...arc.preamble, '', ...cold.map((p) => p.line)].join(arcEol) + arcEol;
   // Written at once: the sleep blocks the loop an async write would wait on.
   if (PAUSE) { writeSync(2, 'paused\n'); sleep(PAUSE); }
 
@@ -280,12 +306,15 @@ function tier(dir, now) {
   let wrote = false, conflict = false;
   if (!dry) {
     const back = arc.pointers.filter((p) => hot.includes(p));
-    const first = back.length ? [...arc.preamble, '', ...cold.map((p) => p.line), ...back.map((p) => p.was)].join('\n') + '\n' : nextArc;
+    const first = back.length ? [...arc.preamble, '', ...cold.map((p) => p.line), ...back.map((p) => p.was)].join(arcEol) + arcEol : nextArc;
     const a = write(arcPath, arcText, first);
     const m = a === 'conflict' ? 'conflict' : write(mainPath, mainText, nextMain);
     const b = back.length && a !== 'conflict' && m !== 'conflict' ? write(arcPath, a === true ? first : arcText, nextArc) : false;
     conflict = a === 'conflict' || m === 'conflict' || b === 'conflict';
     wrote = a === true || m === true || b === true;
+    // Whole, so a note deleted leaves it too; under the store's lock, and a cache: a write that fails costs the next pass a read.
+    const facts = JSON.stringify(memo.now);
+    if (facts !== JSON.stringify(memo.was)) try { writeFileSync(join(dir, FACTS), facts); } catch {}
   }
 
   return { dir, budget, before, after: Buffer.byteLength(nextMain), hot: hot.length, cold: cold.length,
@@ -346,8 +375,11 @@ function snapshot() {
   // handed on. Put back at the end: main() may run in a test's process.
   const lc = process.env.LC_ALL;
   process.env.LC_ALL = 'C';
-  // A git that hangs (a prompt nobody sees) must not hold the Stop hook.
-  const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 });
+  // A git that hangs (a prompt nobody sees) must not hold the Stop hook. `input`: stdin's text.
+  const gitIn = (input, ...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], timeout: gitWait });
+  const git = (...a) => gitIn('', ...a);
+  // A first snapshot taken in parts: the rest is still to add.
+  const parts = join(root, '.git', 'project-memory-parts');
   // git's lock files a commit takes: the index, HEAD, the branch's, config.
   const locks = () => {
     const g = join(root, '.git'), heads = join(g, 'refs', 'heads');
@@ -399,7 +431,28 @@ function snapshot() {
         for (const l of want.split('\n').filter((x) => x && x !== '*' && !x.startsWith('!'))) git('rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', l);
         writeFileSync(applied, want);
       }
+      // A history's first add, of every note at once, was killed at GIT_TIMEOUT on a large store (~6 ms a file on Windows,
+      // 5,000 files): it left index.lock, and no snapshot ever started (audit H-F1). With no index yet, or after an add that
+      // timed out, it goes in parts of `batch` files, a part a run, the indexes first so the first commit holds them as the
+      // user wrote them. update-index, not `add --pathspec-from-file`: any git has it. Returns the files still to add.
+      // A history that lost its index (deleted by hand): git read it as empty, and a part committed against it dropped
+      // every other note from HEAD (review of #6). Rebuilt from HEAD first, as a damaged one is; with no HEAD, a first.
+      if (!existsSync(join(root, '.git', 'index'))) {
+        let head = true; try { git('rev-parse', '-q', '--verify', 'HEAD'); } catch (e) { if (e.status !== 1) throw e; head = false; }
+        if (head) git('reset', '-q');
+      }
+      if (!existsSync(join(root, '.git', 'index')) || existsSync(parts)) {
+        const todo = git('ls-files', '-z', '-o', '-m', '--exclude-standard').split('\0').filter(Boolean)
+          .sort((a, b) => /(^|\/)MEMORY[^/]*$/.test(b) - /(^|\/)MEMORY[^/]*$/.test(a));
+        if (todo.length > batch) {
+          gitIn(todo.slice(0, batch).join('\0'), 'update-index', '--add', '--remove', '-z', '--stdin');
+          writeFileSync(parts, '');
+          return todo.length - batch;
+        }
+        try { unlinkSync(parts); } catch {}
+      }
       git('add', '-A');
+      return 0;
     };
     // A damaged index (a crash or a full disk while git wrote it) failed every
     // snapshot after it, for good. It is only git's copy of the last commit
@@ -407,7 +460,8 @@ function snapshot() {
     // A note another window deleted between git's listing and its read is one
     // more try: read as busy, a cause that never goes away (a link to nothing)
     // would have hidden a history that never commits.
-    try { stage(); } catch (e) {
+    let rest;
+    try { rest = stage(); } catch (e) {
       const why = gitWhy(e);
       if (/index file (?:smaller than expected|corrupt)|bad (?:signature|index file)/.test(why)) {
         try { unlinkSync(join(root, '.git', 'index')); } catch {}
@@ -417,7 +471,7 @@ function snapshot() {
         // `add -A` updated it, handoff.md and all.
         try { unlinkSync(applied); } catch {}
       } else if (!/^error: open\("[^"]*"\): No such file or directory/.test(why)) throw e;
-      stage();
+      rest = stage();
     }
     // A store linked to a folder outside the root is in the history only if git
     // follows the link: Git for Windows follows a junction, git elsewhere keeps a
@@ -443,12 +497,15 @@ function snapshot() {
       if (/no changes added to commit/.test(String(e.stdout))) return 'busy';
       throw e;
     }
-    return fresh ? 'initialised' : 'committed';
+    return rest ? `in parts: ${rest} file(s) still to add; each reply adds more` : fresh ? 'initialised' : 'committed';
   } catch (e) {
     // No git is a setup, not a failure: everything but the history works.
     // Only git's own start: a lock that vanished between two calls is ENOENT
     // too, and was recorded as "git is not installed".
     if (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn')) return 'off: git is not installed';
+    // Killed at its timeout: from the next run the history is taken in parts. Its lock stays, for GIT_LOCK_STALE: a git
+    // that outlived the kill (a wrapper's child) may still hold it. No note is touched: git only reads them.
+    if (e.code === 'ETIMEDOUT') { try { writeFileSync(parts, ''); } catch {} return `snapshot failed: git took longer than ${gitWait / 1000} s; the next replies take the history in parts`; }
     const why = gitWhy(e);   // git's reason, not a warning before it, nor 'Command failed'
     // This session runs two or three git commands, and another session's commit can
     // take a lock in a gap between them, or move HEAD under this one's: busy,
@@ -476,19 +533,27 @@ function health(dir, problems) {
 
 // ponytail: two sessions updating this counter at once can miscount by one;
 // it only decides whether a warning shows.
+// `pending`: a snapshot still owed (busy, failed, or in parts), which the next Stop retries though no note changed: the
+// tidy-up is stamped whatever the snapshot did, or one that never went through redid the whole pass every Stop.
 function snapshotHealth(s) {
-  if (s === 'busy') return;
   const p = join(projectsRoot(), '.snapshot-health');
   let h = {}; try { h = JSON.parse(readFileSync(p, 'utf8')); } catch {}
   const failed = typeof s === 'string' && s.startsWith('snapshot failed');
   const off = typeof s === 'string' && s.startsWith('off: ');
-  const next = failed
-    ? { lastOk: h.lastOk || null, failures: (h.failures || 0) + 1, error: s.slice('snapshot failed: '.length) }
+  const rest = typeof s === 'string' && s.startsWith('in parts: ') ? parseInt(s.slice('in parts: '.length), 10) : 0;
+  // Busy is another commit in flight, until it lasts longer than any commit takes (GIT_LOCK_STALE): then it is counted.
+  // Never counted, a lock renewed again and again (a git killed at its timeout each time) stopped every snapshot, unsaid.
+  const since = h.busySince || new Date().toISOString(), stuck = s === 'busy' && Date.now() - Date.parse(since) > GIT_LOCK_STALE;
+  const next = s === 'busy'
+    ? { ...h, busySince: since, pending: true, ...(stuck && { failures: (h.failures ?? 0) + 1, error: `busy since ${local(since)}: another git holds the repository's lock` }) }
+    : failed
+    ? { lastOk: h.lastOk || null, failures: (h.failures || 0) + 1, error: s.slice('snapshot failed: '.length), pending: true }
     : off ? { lastOk: h.lastOk || null, failures: 0, off: s.slice('off: '.length) }
-    : { lastOk: new Date().toISOString(), failures: 0 };
+    : { lastOk: new Date().toISOString(), failures: 0, ...(rest && { partial: rest, pending: true }) };
   if (missed.length) next.missed = missed;
   try { writeFileSync(p, JSON.stringify(next)); } catch {}
 }
+const owed = () => { try { return JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8')).pending === true; } catch { return false; } };
 
 // A run: its arguments and, behind --stop, stdin's text; it returns the exit
 // code. The entry at the end calls it once, the suite many times in its own
@@ -497,6 +562,8 @@ export async function main(argv, input) {
   dry = argv.includes('--dry-run');
   const pauseAt = argv.indexOf('--pause');
   PAUSE = pauseAt === -1 ? 0 : Number(argv[pauseAt + 1]) || 0;
+  const arg = (flag, or) => (argv.includes(flag) ? Number(argv[argv.indexOf(flag) + 1]) || or : or);
+  batch = arg('--batch', BATCH); gitWait = arg('--git-timeout', GIT_TIMEOUT);
   missed = [];
   // `--now <ms>` exists so a month of use can be simulated in one run
   // (memory-tier.soak.mjs). Nothing else sets it.
@@ -508,6 +575,8 @@ export async function main(argv, input) {
   // terminal). The handoff is written first, in this process -- a second Node
   // start cost a median 200 ms a turn on this box.
   const stop = argv.includes('--stop');
+  // Its locks wait 2 s in all, not 2 s each (store.mjs).
+  lockBudget(stop);
   // Auto memory turned off: no record, no nudge, no tiering. Only the
   // conversation's tag, so no later Stop's backfill imports it (handoff-log OFF).
   if (stop && memoryOff()) {
@@ -558,6 +627,8 @@ export async function main(argv, input) {
       try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
       try { if (payload) handoff(payload, sink); try { unlinkSync(failed); } catch {} }
       catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); }
+      // The temp copies a killed Stop left here (store.mjs).
+      if (payload) try { sweepTemps(storeOf(payload)); } catch {}
       // Then a few of the conversations still on disk, into the journal, without
       // a word; in a try of its own, so a failed import costs only the import.
       // Not due, no lock taken: another hook holding the store cost the Stop a
@@ -598,12 +669,22 @@ export async function main(argv, input) {
   // time-based, so a quiet store is still re-tiered once a day. The stamp lives in
   // its store, so sessions of different projects never share one.
   const stampOf = (d) => join(d, '.tiered');
-  const fingerprint = (d) => new Date().toDateString() + JSON.stringify(readdirSync(d)
-    .filter((f) => f.endsWith('.md') && f !== 'handoff.md')
-    .map((f) => { const s = statSync(join(d, f)); return [f, s.size, s.mtimeMs]; }));
+  // Each note is stat'ed once a Stop: the gate, the pass and its stamp each did it, three stats of every note (audit H-F2).
+  const scan = (d) => new Map(readdirSync(d).filter((f) => f.endsWith('.md') && f !== 'handoff.md').map((f) => [f, statSync(join(d, f))]));
+  const fingerprint = (s) => new Date().toDateString() + JSON.stringify([...s].map(([f, st]) => [f, st.size, st.mtimeMs]));
+  const seen = new Map();
+  // The stamp: what the pass saw, with the index and archive as it left them. A note written while it ran is not in it, and
+  // the next turn takes it up. An archive it made is a new name: the folder listed again, in its own order.
+  const stampAfter = (d) => {
+    const s = new Map(seen.get(d));
+    if (!s.has('MEMORY.md') || !s.has(ARCHIVE)) return fingerprint(scan(d));
+    for (const f of ['MEMORY.md', ARCHIVE]) s.set(f, statSync(join(d, f)));
+    return fingerprint(s);
+  };
   const gated = stop && !dry && dirAt === -1;
-  const todo = gated ? dirs.filter((d) => { try { return readFileSync(stampOf(d), 'utf8') !== fingerprint(d); } catch { return true; } }) : dirs;
-  if (gated && !todo.length) return 0;
+  const todo = gated ? dirs.filter((d) => { try { seen.set(d, scan(d)); return readFileSync(stampOf(d), 'utf8') !== fingerprint(seen.get(d)); } catch { return true; } }) : dirs;
+  // Nothing to tidy: done, unless a snapshot is owed, which runs alone.
+  if (gated && !todo.length && !owed()) return 0;
   // The first time, the notebook is kept as it was found before the tidy-up
   // changes it: snapshotted after, the table of contents as the user had
   // written it could never come back (docs review, 2026-10-28).
@@ -614,7 +695,7 @@ export async function main(argv, input) {
     // One unreadable store must not stop the others. This runs as a Stop hook,
     // where a thrown error is a stack trace nobody reads.
     let r;
-    try { r = withLock(dir, () => tier(dir, now)); }
+    try { r = withLock(dir, () => tier(dir, now, seen.get(dir))); }
     catch (e) { console.log(`${dir}: skipped — ${reason(e)}`); if (!dry) try { health(dir, [`a pass failed: ${reason(e)}`]); } catch {} continue; }
     if (r === null) { console.log(`${dir}: busy — another hook holds this store; the next turn redoes it`); continue; }
     if (r.conflict) { console.log(`${dir}: changed during the pass — the edit wins; the next turn redoes it`); continue; }
@@ -630,11 +711,12 @@ export async function main(argv, input) {
     // The stamp is what this pass saw, taken before the snapshot: a memory
     // another session writes while git runs differs from it, and the next turn
     // takes it up. Taken after the snapshot, it skipped that memory for a day.
-    if (!r.waiting && gated) try { clean.push([dir, fingerprint(dir)]); } catch {}
+    if (!r.waiting && gated) try { clean.push([dir, stampAfter(dir)]); } catch {}
     if (!dry && !r.wrote && !r.recovered.length && !r.dupes.length && !r.missing.length) continue;
     const saved = Math.round((r.before - r.after) / 4);
     console.log(`${dry ? '[dry] ' : ''}${r.dir}: ${r.hot} hot / ${r.cold} archived, ` +
-      `MEMORY.md ${r.before}B -> ${r.after}B (~${saved} tokens/session)`);
+      // A growth (pointer lines added) said as one: "~-26 tokens/session" read as a saving (audit I-F3).
+      `MEMORY.md ${r.before}B -> ${r.after}B (${saved < 0 ? `grew ~${-saved}` : `~${saved}`} tokens/session)`);
     if (r.recovered.length) console.log(`  pointers recovered: ${r.recovered.join(', ')}`);
     if (r.dupes.length) console.log(`  duplicate pointers dropped: ${r.dupes.join(', ')}`);
     for (const p of problems) console.log(`  ${p}`);
@@ -642,19 +724,18 @@ export async function main(argv, input) {
 
   // After the stores are tiered, not before: the snapshot should record the
   // state a session will actually start from.
-  let snapOk = true;
   if (!dry && dirAt === -1) {
     const s = snapshot();
     if (s === 'busy') console.log('memory snapshot: busy — another session is committing; the next turn retries');
     else if (s) console.log(`memory snapshot: ${s}`);
     snapshotHealth(s);
-    snapOk = s !== 'busy' && !(s && s.startsWith('snapshot failed'));
   }
   // The tool's own writes are part of the stamp, so the next turn is quiet
   // unless something else changed. None for a store that was skipped, busy,
-  // edited mid-pass or waiting on a writer, nor when the snapshot failed:
-  // without a stamp the next turn retries, with one it would skip for days.
-  if (gated && snapOk) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen); } catch {}
+  // edited mid-pass or waiting on a writer: without a stamp the next turn
+  // retries. A snapshot that did not go through is owed (snapshotHealth), and
+  // retried alone: left unstamped for it, every Stop redid the whole pass.
+  if (gated) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen); } catch {}
   return 0;
 }
 

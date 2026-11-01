@@ -13,6 +13,9 @@ export const projectsRoot = () => join(configDir(), 'projects');
 // What a Stop could not save, `<projects>/<this><project folder>`: memory-tier writes it, the briefing and status read it. One
 // name for the three: spelt in four places, a change to one would have left the warning silent (release review).
 export const HANDOFF_FAILED = '.handoff-failed-';
+// A journal write's failure its own folder would not take (journal/.failed is in it), `<projects>/<this><project folder>`:
+// journal.mjs writes it, the briefing and status read it, beside journal/.failed (audit H-F4).
+export const JOURNAL_FAILED = '.journal-failed-';
 // A transcript where Claude Code keeps them, `<projects>/<folder>/<id>.jsonl`.
 // Resolved: `<projects>/../history.jsonl` passed, and was read as a session's.
 export const inProjects = (t) => same(dirname(dirname(resolve(t))), projectsRoot());
@@ -93,8 +96,15 @@ function startCwd(t) {
 // handoff. A transcript anywhere else (a test, a payload without one) falls
 // back to the cwd. Resolved: `<projects>/../x.jsonl` passed the check and
 // named a store outside it. A path that is no string threw, and the hook with it.
-// shortcut: a repository path long enough for Claude Code to shorten its
-// folder name with a hash gets the long name here; build that if one turns up.
+// A repository whose name is past 200 characters is not followed: Claude Code
+// names its folder by the first 200 and a hash of the path, its runtime's, not
+// one to make here, and every subfolder's folder starts with the same 200. The
+// conversation's own folder, which Claude Code made, holds its handoff and
+// journal. Under the whole long name, past the 255 characters a folder name
+// can have, a session in a subfolder saved nothing, and the record of that
+// failure, named after it, failed too (audit H-F11).
+const CC_NAME = 200;
+const repoFolder = (repo, t) => join(slugOf(repo).length > CC_NAME ? dirname(t) : join(projectsRoot(), slugOf(repo)), 'memory');
 export function storeOf(payload = {}) {
   // As Claude Code takes it: a plain name of up to 64 letters, digits, - and
   // _, used as it is; any other is ignored. Slugged, `my_proj` named a folder
@@ -108,7 +118,7 @@ export function storeOf(payload = {}) {
     // payload's, which is where it started. Read as the transcript's folder,
     // the startup briefing of a subfolder's session read another store.
     const cwd = startCwd(t) || (typeof payload.cwd === 'string' && payload.cwd) || null, repo = cwd && repoRoot(cwd);
-    return repo && !same(repo, cwd) ? join(projectsRoot(), slugOf(repo), 'memory') : join(dirname(t), 'memory');
+    return repo && !same(repo, cwd) ? repoFolder(repo, t) : join(dirname(t), 'memory');
   }
   const cwd = String(payload.cwd || process.cwd());
   return join(projectsRoot(), slugOf(repoRoot(cwd) || cwd), 'memory');
@@ -268,16 +278,21 @@ export const LOCK_STALE = 30_000;  // nothing held under the lock takes this lon
 export const STEP = 25;    // ms between tries for a held lock: a freed one is taken within 25 ms, 80 tries in LOCK_WAIT
 // The codes Windows gives while another program holds a path or a delete is still settling.
 export const BUSY = ['EPERM', 'EBUSY', 'EACCES'];
+// What one hook run may still wait for locks, in all; null: each lock waits LOCK_WAIT of its own. A Stop takes up to four (its
+// handoff, the journal's import, its store's tidy-up, the shared one's), and with another hook holding them it waited 8 s, not
+// the 2 s documented (audit H-F2). A free lock is taken however little is left.
+let left = null;
+export const lockBudget = (on) => { left = on ? LOCK_WAIT : null; };
 
 // Run fn holding the store's lock: `mkdir` either creates the folder or fails,
 // on NTFS as anywhere. Returns fn's result, or null when the lock stayed busy.
 // ponytail: two hooks that both find a dead lock can both take it over in the
 // same instant; that needs a killed hook first, and costs one merged write.
 export function withLock(dir, fn) {
-  const lock = join(dir, '.lock');
-  let refused = 0;
-  for (const until = Date.now() + LOCK_WAIT; ;) {
-    try { mkdirSync(lock); break; }
+  const lock = join(dir, '.lock'), t0 = Date.now();
+  let refused = 0, held = false;
+  for (const until = t0 + Math.min(LOCK_WAIT, left ?? LOCK_WAIT); ;) {
+    try { mkdirSync(lock); held = true; break; }
     catch (e) {
       // The last holder's rmdir still settling: the same codes a rename retries.
       if (e.code !== 'EEXIST' && !BUSY.includes(e.code)) throw e;
@@ -296,12 +311,31 @@ export function withLock(dir, fn) {
         try { rmSync(lock, { recursive: true, force: true }); continue; }
         catch (err) { if (Date.now() > until) throw err; }
       }
-      if (Date.now() > until) return null;
+      if (Date.now() > until) break;
       sleep(STEP);
     }
   }
+  if (left !== null) left = Math.max(0, left - (Date.now() - t0));
+  if (!held) return null;
   // The disk may refuse the unlock for a moment (the codes a rename retries): a lock left behind stops every hook for LOCK_STALE.
   try { return fn(); } finally { for (let i = 0; ; i++) { try { rmdirSync(lock); break; } catch (e) { if (!BUSY.includes(e.code) || i === 2) break; sleep(STEP); } } }
+}
+
+// The temp copies replaceIfUnchanged leaves when its hook is killed between the write and the rename (`<file>.tmp<pid>`),
+// in a store and its journal: one whose writer is gone, or older than a held lock can be (a pid used again). One can hold
+// text forget then removed, where forget never reached (audit H-F3). The Stop and forget sweep them. Only this tool's
+// names: what it writes there is `.md` (notes, indexes, days, handoff.md) or a dotfile (.facts, .forgotten, ...).
+export function sweepTemps(dir) {
+  for (const d of [dir, join(dir, 'journal')]) {
+    let names = []; try { names = readdirSync(d); } catch {}
+    for (const f of names) {
+      const pid = Number((/^(?:.+\.md|\.[^.]+)\.tmp(\d+)$/.exec(f) || [])[1]);
+      if (!pid) continue;
+      // Signal 0 sends nothing: it asks whether the process is there.
+      let gone = false; try { process.kill(pid, 0); } catch (e) { gone = e.code === 'ESRCH'; }
+      try { if (gone || Math.abs(Date.now() - statSync(join(d, f)).mtimeMs) > LOCK_STALE) unlinkSync(join(d, f)); } catch {}
+    }
+  }
 }
 
 // Write `next` over `path` only while the file still holds `expected`, the text

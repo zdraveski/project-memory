@@ -502,16 +502,35 @@ const r2 = await stop('proj-two');
 ok(r.status === 0 && /skipped/.test(r.stdout) && /skipped/.test(r2.stdout), '--stop: a store that throws is reported again next turn');
 rmSync(join(root, 'proj-two', 'memory', 'MEMORY.md'), { recursive: true });
 writeFileSync(join(root, 'proj-two', 'memory', 'MEMORY.md'), '# Index\n\n- [a](a.md) — a\n');
-// Another session's commit in flight: busy, no stamp, and the next turn commits.
+// Another session's commit in flight: busy, and the next turn commits. The tidy-up is stamped all the same: unstamped,
+// a snapshot that never went through redid the whole pass every Stop, 14 s at 6,000 notes (audit H-F1). The snapshot
+// is owed instead, and the next turn retries it alone, no note changed.
 note('proj-two', 'f');
 writeFileSync(join(root, '.git', 'index.lock'), '');
 r = await stop('proj-two');
 ok(r.status === 0 && /memory snapshot: busy/.test(r.stdout) && !tracked().includes('proj-two/memory/f.md'), '--stop: a fresh index.lock is busy');
 const stampBusy = existsSync(stamp('proj-two')) ? readFileSync(stamp('proj-two'), 'utf8') : '';
-ok(!stampBusy.includes('"f.md"'), '--stop: and a busy snapshot stamps nothing');
+ok(stampBusy.includes('"f.md"') && sh().pending === true, `--stop: a busy snapshot still stamps the tidy-up, and is owed (got ${JSON.stringify(sh())})`);
 unlinkSync(join(root, '.git', 'index.lock'));
 r = await stop('proj-two');
-ok(r.status === 0 && tracked().includes('proj-two/memory/f.md'), '--stop: next turn retries and commits');
+ok(r.status === 0 && tracked().includes('proj-two/memory/f.md') && !sh().pending, '--stop: next turn retries and commits');
+// Busy for longer than any commit takes is no commit in flight: counted as a failure, for the startup line. A lock a git
+// killed at its timeout left was busy every turn, never counted, and no snapshot was ever taken, unsaid (audit H-F1).
+note('proj-two', 'f2');
+writeFileSync(join(root, '.git', 'index.lock'), '');
+writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: sh().lastOk, busySince: new Date(Date.now() - 11 * 60000).toISOString(), pending: true }));
+r = await stop('proj-two');
+ok(/busy/.test(r.stdout) && sh().failures === 1 && /busy since/.test(sh().error), `--stop: busy for over ten minutes is a failure, the first counted as one (got ${JSON.stringify(sh())})`);
+writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ ...sh(), busySince: new Date(Date.now() - 60000).toISOString() }));
+r = await stop('proj-two');
+ok(sh().failures === 1 && sh().busySince, `--stop: busy for a minute is not (got ${JSON.stringify(sh())})`);
+unlinkSync(join(root, '.git', 'index.lock'));
+r = await stop('proj-two');
+ok(tracked().includes('proj-two/memory/f2.md') && sh().failures === 0 && !sh().busySince, `--stop: and once it goes through, all is well again (got ${JSON.stringify(sh())})`);
+// No snapshot is owed with no record of one: a quiet Stop runs no git.
+rmSync(join(root, '.snapshot-health'));
+r = await stop('proj-two');
+ok(!existsSync(join(root, '.snapshot-health')), '--stop: a quiet Stop with no snapshot record owes none, and runs no git');
 // An index.lock a dead git left behind would refuse every commit from now on.
 note('proj-two', 'g');
 writeFileSync(join(root, '.git', 'index.lock'), '');
@@ -589,10 +608,11 @@ utimesSync(join(five, 'MEMORY.md'), tenMin, tenMin);   // an index this old repo
 // Held, its open fails busy: made so by a preload in that Stop, on every
 // system. A real lock, this process's or PowerShell's, held on GitHub's test
 // machines but not on its mutate machines, and the mutant lived (2026-10-30).
+// The new note: one the pass before read is not read again (.facts).
 const busy = join(tempDir('memtier-busy-'), 'busy.cjs');
 writeFileSync(busy, `const fs = require('node:fs'), open = fs.openSync, hit = ${JSON.stringify(busy + '.hit')};
 fs.openSync = (p, ...a) => {
-  if (!String(p).endsWith(${JSON.stringify(join('proj-five', 'memory', 'a.md'))})) return open(p, ...a);
+  if (!String(p).endsWith(${JSON.stringify(join('proj-five', 'memory', 'b.md'))})) return open(p, ...a);
   fs.writeFileSync(hit, '');
   throw Object.assign(new Error('EBUSY: resource busy or locked, open'), { code: 'EBUSY' });
 };
@@ -617,7 +637,7 @@ if (!quick && process.platform === 'win32') {
   note('proj-lock', 'b');
   writeFileSync(join(lockd, 'MEMORY.md'), readFileSync(join(lockd, 'MEMORY.md'), 'utf8') + '- [b](b.md) — b\n');
   utimesSync(join(lockd, 'MEMORY.md'), tenMin, tenMin);
-  const heldLock = join(lockd, 'a.md');
+  const heldLock = join(lockd, 'b.md');
   process.env.HELD = heldLock;   // inherited: the holder is never handed a copy of the whole environment
   const holder = spawn('powershell', ['-NoProfile', '-Command', [
     `try { $f = [IO.File]::Open($env:HELD, 'Open', 'Read', 'None') } catch { 'failed ' + $_.Exception.Message; exit }`,
@@ -1300,7 +1320,8 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
     writeNote(d, 'a');
     writeFileSync(join(d, 'MEMORY.md'), '# Index\n\nSome prose\n\n\n- [a](a.md) — a\n');
     await tierDir(d);
-    ok(readFileSync(join(d, 'MEMORY.md'), 'utf8').startsWith('# Index\n\nSome prose\n- [a](a.md)'), 'the blank line under a heading survives, and a run of blank lines is one');
+    // Before the lines too (audit I-F4): it was dropped there.
+    ok(readFileSync(join(d, 'MEMORY.md'), 'utf8').startsWith('# Index\n\nSome prose\n\n- [a](a.md)'), 'the blank line under a heading survives, and a run of blank lines is one, before the lines too');
   }
 
   // --pause <ms> holds a pass open and says so on stderr: only when asked, and only with a number.
@@ -1381,6 +1402,16 @@ require('node:module').syncBuiltinESMExports();
   ok(was - now2 >= 100 && saved === Math.round((was - now2) / 4), `the tokens saved are a quarter of the bytes (got ${was} -> ${now2}, ~${saved})`);
   const digits = await fit(101, 8);
   ok(digits.evicted === 1 && digits.bytes <= 7000, `with eight pointers already archived, 101 B over loses one line, the count's width unchanged (got ${digits.evicted})`);
+  // An index kept in CRLF: a line's ending is two bytes, so 203 B over, in lines of 102, loses two lines, not three.
+  {
+    const d = tempDir('memtier-crlf-fit-'), want = 7203, n = Math.floor((want - bytesOf(AL(0)) - 2) / 102);
+    const ls = Array.from({ length: n }, (_, i) => { const name = `r${String(i).padStart(2, '0')}`; writeNote(d, name, { modified: new Date(Date.now() - (3 + (n - i) * 0.001) * DAY).toISOString() }); return lineFor(name, 100); });
+    ls[n - 1] += 'x'.repeat(want - (n * 102 + bytesOf(AL(0)) + 2));
+    writeFileSync(join(d, 'MEMORY.md'), [...ls, AL(0)].join('\r\n') + '\r\n');
+    await tierDir(d);
+    const main = readOr(join(d, 'MEMORY.md')), lost = (readOr(join(d, 'MEMORY-archive.md')).match(/<!-- overflow -->/g) || []).length;
+    ok(lost === 2 && bytesOf(main) <= 7000 && !/(^|[^\r])\n/.test(main), `a CRLF index 203 B over, in lines of 102 B, loses two lines and stays CRLF (got ${lost}, ${bytesOf(main)} B)`);
+  }
 
   // Claude Code loads 200 lines: 198 of prose and a note make exactly 200 with the archive line.
   {
@@ -1389,6 +1420,10 @@ require('node:module').syncBuiltinESMExports();
     writeFileSync(join(d, 'MEMORY.md'), Array.from({ length: 198 }, (_, i) => `Line ${i}`).join('\n') + '\n- [only](only.md) — hook\n');
     await tierDir(d);
     ok(readFileSync(join(d, 'MEMORY.md'), 'utf8').split('\n').filter(Boolean).length === 200 && !/overflow/.test(readOr(join(d, 'MEMORY-archive.md'))), 'exactly 200 lines is within what Claude Code loads: nothing is evicted');
+    // The blank kept under the prose is a line too: with it, 201.
+    writeFileSync(join(d, 'MEMORY.md'), Array.from({ length: 198 }, (_, i) => `Line ${i}`).join('\n') + '\n\n- [only](only.md) — hook\n');
+    await tierDir(d);
+    ok(/overflow/.test(readOr(join(d, 'MEMORY-archive.md'))), 'and with a blank line before the note, 201: the note is evicted');
   }
 
   // The rule share, to the byte: B = 7000, P = the pinned lines + 1 each, R = the rules'.
@@ -1552,6 +1587,146 @@ require('node:module').syncBuiltinESMExports();
     await stopRan();
     ok(statSync(ran).size === 8192, `--stop: a run log of exactly 8192 B is not trimmed (got ${statSync(ran).size} B)`);
   }
+}
+
+// A Stop's tidy-up reads a note's head again only when its size or time changed since the pass before: reading every one cost a
+// Stop ~1 ms a note on Windows, a second at 1,000 notes (audit H-F2). A changed note is read, and what it says now counts.
+{
+  const d = store('proj-facts'), at = (m) => new Date(Date.now() - m * 60000);
+  const put = (n, extra, m) => { writeFileSync(join(d, `${n}.md`), `---\nname: ${n}\ndescription: "${n}"\nmetadata:\n  type: project${extra}\n---\nbody\n`); utimesSync(join(d, `${n}.md`), at(m), at(m)); };
+  for (let i = 0; i < 12; i++) put(`n${i}`, '', 10);
+  // Hot by its `modified:`, though its file is a month old: the date kept is the note's, not its mtime.
+  put('kept', `\n  modified: ${new Date(Date.now() - 86400000).toISOString()}`, 43200);
+  writeFileSync(join(d, 'MEMORY.md'), '# Index\n\n- [a](a.md) — a\n- [kept](kept.md) — kept\n' + Array.from({ length: 12 }, (_, i) => `- [n${i}](n${i}.md) — n${i}`).join('\n') + '\n');
+  utimesSync(join(d, 'MEMORY.md'), at(10), at(10)); utimesSync(join(d, 'a.md'), at(10), at(10));
+  // An index the pass made longer (its Archive line) says it grew: "~-7 tokens/session" read as a saving (audit I-F3).
+  const grew = (await stop('proj-facts')).stdout;
+  ok(/MEMORY\.md (\d+)B -> (\d+)B \(grew ~\d+ tokens\/session\)/.test(grew) && !/~-/.test(grew), `--stop: an index that grew says so, with no negative saving (got ${grew})`);
+  // That pass wrote the index and made the archive; its stamp holds both as it left them, so the next turn is quiet.
+  const stamped = statSync(join(d, '.tiered')).mtimeMs;
+  await stop('proj-facts');
+  ok(existsSync(join(d, 'MEMORY-archive.md')) && statSync(join(d, '.tiered')).mtimeMs === stamped, '--stop: after a pass that wrote the index and made the archive, the next turn is quiet');
+  put('n0', '\n  tier: archive', 9);
+  const opened = [];
+  const shrank = (await swap('node:fs', 'openSync', (real) => function (p, ...a) { if (/proj-facts[\\/]memory[\\/]n\d+\.md$/.test(String(p))) opened.push(String(p).split(/[\\/]/).pop()); return real.call(this, p, ...a); }, () => stop('proj-facts'))).stdout;
+  ok(/MEMORY\.md \d+B -> \d+B \(~\d+ tokens\/session\)/.test(shrank), `--stop: and one that shrank, its saving (got ${shrank})`);
+  const index = readFileSync(join(d, 'MEMORY.md'), 'utf8');
+  ok(opened.join() === 'n0.md', `--stop: a pass after one note changed reads that note's head, not every note's (read ${opened.join(', ')})`);
+  ok(!/\(n0\.md\)/.test(index) && /\(n1\.md\)/.test(index) && /\(kept\.md\)/.test(index), `and what the changed note says now counts, the others' kept facts too: n0 archived, n1 and kept kept (got ${index})`);
+  const restamped = statSync(join(d, '.tiered')).mtimeMs;
+  await stop('proj-facts');
+  ok(statSync(join(d, '.tiered')).mtimeMs === restamped, '--stop: and after a pass that rewrote an index and archive it found, the next turn is quiet too');
+  // What is kept is a cache: one that does not parse is no cache, and the pass reads every note.
+  writeFileSync(join(d, '.facts'), '{"n1.md": [');
+  put('n2', '\n  tier: archive', 8);
+  await stop('proj-facts');
+  ok(!/\(n2\.md\)/.test(readFileSync(join(d, 'MEMORY.md'), 'utf8')) && JSON.parse(readFileSync(join(d, '.facts'), 'utf8'))['n1.md'], '--stop: a .facts that does not parse is read as none, and written anew');
+}
+// Every Stop, a quiet one too, sweeps the temp copies a killed Stop left in its store: `handoff.md.tmp<pid>` held the
+// latest exchanges, where forget never reached (audit H-F3).
+{
+  const d = join(root, 'proj-one', 'memory'), gone = spawnSync(process.execPath, ['-e', '']).pid;
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  const left = [join(d, `handoff.md.tmp${gone}`), join(d, 'journal', `2026-11-01.md.tmp${gone}`)];
+  for (const p of left) writeFileSync(p, 'what was said');
+  await stop('proj-one');
+  ok(left.every((p) => !existsSync(p)), '--stop: a quiet Stop sweeps the temp copies a killed Stop left in its store and journal');
+}
+// A Stop waits 2 s for its locks in all, not 2 s for each: with another hook holding its store's and the shared one's, it
+// waited for its handoff, the journal's import and both tidy-ups, 8 s (audit H-F2). Slow: the wait is real.
+if (!quick) {
+  const d = store('proj-wait');
+  writeFileSync(join(root, 'proj-wait', 'session.jsonl'), '');
+  writeFileSync(join(shared, 'wait.md'), '---\nname: wait\ndescription: "wait"\n---\nbody\n');
+  mkdirSync(join(d, '.lock')); mkdirSync(join(shared, '.lock'));
+  const t0 = Date.now();
+  let ms; try { await stop('proj-wait'); ms = Date.now() - t0; } finally { rmdirSync(join(d, '.lock')); rmdirSync(join(shared, '.lock')); }
+  ok(ms < 3500, `--stop: with its locks held it waits about 2 s in all (took ${ms} ms)`);
+  rmSync(join(shared, 'wait.md'));
+}
+// A note written while a pass runs is not in that pass's stamp, so the next turn takes it up: stamped from a look after the
+// pass, it waited for the next change or the next day. --pause holds the pass open, which only a process does.
+if (!quick) {
+  const d = store('proj-mid');
+  for (const f of ['a.md', 'MEMORY.md']) utimesSync(join(d, f), tenMin, tenMin);
+  writeFileSync(join(root, 'proj-mid', 'session.jsonl'), '');
+  await stop('proj-mid');
+  note('proj-mid', 'b');
+  writeFileSync(join(d, 'MEMORY.md'), readFileSync(join(d, 'MEMORY.md'), 'utf8') + '- [b](b.md) — b\n');
+  utimesSync(join(d, 'MEMORY.md'), tenMin, tenMin);
+  const child = spawn(process.execPath, [TOOL, '--stop', '--pause', '1000'], { env });
+  child.stdin.end(stopInput('proj-mid'));
+  const closed = new Promise((res) => child.on('close', res));
+  await new Promise((res) => { child.stderr.on('data', (b) => { if (String(b).includes('paused')) res(); }); closed.then(res); });
+  note('proj-mid', 'mid');
+  await closed;
+  await stop('proj-mid');
+  const both = readFileSync(join(d, 'MEMORY.md'), 'utf8') + (existsSync(join(d, 'MEMORY-archive.md')) ? readFileSync(join(d, 'MEMORY-archive.md'), 'utf8') : '');
+  ok(/\(mid\.md\)/.test(both), `--stop: a note written while a pass ran is taken up by the next turn (got ${both})`);
+}
+
+// An index saved with CRLF keeps CRLF, and the blank line under its heading: a pass that added its lines wrote it back LF
+// with the heading's blank dropped (audit I-F4). A new archive takes the index's endings; an LF index keeps its blank too.
+{
+  const run = async (name, text) => {
+    const d = store(name);
+    writeFileSync(join(d, 'MEMORY.md'), text);
+    for (const f of ['a.md', 'MEMORY.md']) utimesSync(join(d, f), tenMin, tenMin);
+    note(name, 'b');   // no line for it: the pass gives it one
+    await stop(name);
+    return [readFileSync(join(d, 'MEMORY.md'), 'utf8'), readFileSync(join(d, 'MEMORY-archive.md'), 'utf8')];
+  };
+  const lf = /(^|[^\r])\n/;
+  const [idx, arc] = await run('proj-crlf', '# Memory Index\r\n\r\n- [a](a.md) — a\r\n');
+  ok(idx.startsWith('# Memory Index\r\n\r\n- [a](a.md)') && /\(b\.md\)/.test(arc) && !lf.test(idx) && !lf.test(arc), `a CRLF index keeps CRLF and the blank under its heading, and its new archive is CRLF (got ${JSON.stringify(idx)} ${JSON.stringify(arc)})`);
+  const [idx2] = await run('proj-lfgap', '# Memory Index\n\n- [a](a.md) — a\n');
+  ok(idx2.startsWith('# Memory Index\n\n- [a](a.md)') && !idx2.includes('\r'), `an LF index keeps LF and its blank (got ${JSON.stringify(idx2)})`);
+  const [idx3] = await run('proj-nogap', '# Memory Index\n- [a](a.md) — a\n\n- [b](b.md) — b\n');
+  ok(idx3.startsWith('# Memory Index\n- [a](a.md)'), `and one with none under its prose gets none, whatever blank sits between its lines (got ${JSON.stringify(idx3)})`);
+}
+// A history's first snapshot, taken in parts: one `git add` of every note at once was killed at its 30 s on a large store
+// (~6 ms a file on Windows, 5,000 files), it left index.lock, and no snapshot ever started (audit H-F1). The indexes go
+// first, so the first part holds them as the user wrote them. `--batch 3`, test-only, makes a part three files.
+{
+  const h1 = tempDir('memtier-parts-'), r1 = join(h1, '.claude', 'projects'), d1 = join(r1, 'proj-big', 'memory');
+  mkdirSync(d1, { recursive: true });
+  // Named to sort before MEMORY.md, as git lists them: the index goes first by choice, not by name.
+  for (let i = 0; i < 7; i++) { writeFileSync(join(d1, `Big${i}.md`), `---\nname: big${i}\ndescription: "big ${i}"\nmetadata:\n  type: project\n---\nbody\n`); utimesSync(join(d1, `Big${i}.md`), tenMin, tenMin); }
+  const asFound = '# Big\n\n' + Array.from({ length: 7 }, (_, i) => `- [big${i}](Big${i}.md) — big ${i}`).join('\n') + '\n';
+  writeFileSync(join(d1, 'MEMORY.md'), asFound); utimesSync(join(d1, 'MEMORY.md'), tenMin, tenMin);
+  writeFileSync(join(r1, 'proj-big', 'session.jsonl'), '');
+  const g1 = (...a) => execFileSync('git', ['-C', r1, ...a], { encoding: 'utf8' }).trim();
+  const health1 = () => JSON.parse(readFileSync(join(r1, '.snapshot-health'), 'utf8'));
+  const stop1 = (...more) => call(['--stop', '--batch', '3', ...more], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(r1, 'proj-big', 'session.jsonl'), session_id: 'big' }));
+  process.env.HOME = h1; process.env.USERPROFILE = h1;
+  try {
+    let s = await stop1();
+    ok(/in parts/.test(s.stdout) && health1().partial > 0 && health1().pending && !existsSync(join(r1, '.git', 'index.lock')), `a first snapshot too big for one run is taken in parts, and says so (got ${s.stdout.trim()}; ${JSON.stringify(health1())})`);
+    ok(g1('show', `${g1('rev-list', '--max-parents=0', 'HEAD')}:proj-big/memory/MEMORY.md`) === asFound.trim(), 'and its first part holds the index as the user wrote it');
+    for (let i = 0; i < 10 && health1().partial; i++) s = await stop1();
+    const files = g1('ls-files').split('\n');
+    ok(Array.from({ length: 7 }, (_, i) => `proj-big/memory/Big${i}.md`).every((f) => files.includes(f)) && !health1().pending && health1().failures === 0 && !g1('status', '--porcelain'),
+      `and the replies after it, no note changed, add the rest (got ${JSON.stringify(health1())}, ${g1('status', '--porcelain')})`);
+    // A git killed at its timeout (here 1 ms, test-only) leaves every note as it was; from the next run, the history is taken in parts.
+    for (let i = 7; i < 12; i++) { writeFileSync(join(d1, `Big${i}.md`), `---\nname: big${i}\ndescription: "big ${i}"\n---\nbody\n`); utimesSync(join(d1, `Big${i}.md`), tenMin, tenMin); }
+    const notes = () => readdirSync(d1).filter((f) => /^Big\d+\.md$/.test(f)).map((f) => f + readFileSync(join(d1, f), 'utf8')).join('\n');
+    const before = notes();
+    s = await stop1('--git-timeout', '1');
+    // (Its pass filed the new notes in the archive: the index is the same size, and saves nothing, not "grew ~0".)
+    ok(/(\d+)B -> \1B \(~0 tokens\/session\)/.test(s.stdout) && /longer than/.test(s.stdout) && notes() === before && health1().pending && existsSync(join(r1, '.git', 'project-memory-parts')), `a git killed at its timeout leaves the notes as they were, and the next run takes the history in parts (got ${s.stdout.trim()})`);
+    rmSync(join(r1, '.git', 'index.lock'), { force: true });   // what a killed git left: cleared after ten minutes
+    for (let i = 0; i < 10 && health1().pending; i++) s = await stop1();
+    ok(g1('ls-files').split('\n').includes('proj-big/memory/Big11.md') && !existsSync(join(r1, '.git', 'project-memory-parts')), `and the runs after it add them (got ${JSON.stringify(health1())})`);
+    // A history that lost its index (deleted by hand): git reads it as empty, and a part committed against it dropped
+    // .gitignore and every other note from HEAD (review of #6). Rebuilt from HEAD first, it commits the change alone.
+    const had = g1('ls-tree', '-r', '--name-only', 'HEAD').split('\n');
+    rmSync(join(r1, '.git', 'index'));
+    writeFileSync(join(d1, 'Big0.md'), readFileSync(join(d1, 'Big0.md'), 'utf8') + 'more\n');
+    s = await stop1();
+    const kept = g1('ls-tree', '-r', '--name-only', 'HEAD').split('\n');
+    ok(had.length > 3 && had.every((f) => kept.includes(f)) && /^proj-big\/memory\/Big0\.md$/.test(g1('diff', '--name-only', 'HEAD~1', 'HEAD')) && !g1('status', '--porcelain'),
+      `a history that lost its index keeps every file in its next snapshot (got ${s.stdout.trim()}; lost ${had.filter((f) => !kept.includes(f)).join(', ')})`);
+  } finally { process.env.HOME = home; process.env.USERPROFILE = home; }
 }
 
 rmSync(home, { recursive: true, force: true });

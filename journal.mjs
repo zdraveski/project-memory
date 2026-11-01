@@ -2,11 +2,11 @@
 // turn, kept apart from handoff.md so what was done last month is still
 // findable. Entries are capped and redacted here, the one place a turn's
 // files and commands (uncapped in turns()) are shortened.
-import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason } from './store.mjs';
+import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED } from './store.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -347,6 +347,8 @@ export function forget(dir, terms, { since, until, conversation, keys: only, mor
     // one minute go together.
     const at = new Set(matched.map((e) => `${e.s} ${e.at}`));
     try { unsay(dir, (t) => at.has(`${t.s} ${t.at}`)); } catch (e) { failed.push({ path: join(dir, 'handoff.md'), code: e.code || e.message, write: true }); }
+    // And the temp copies a killed Stop left of a day or the handoff, which can hold what went (audit H-F3).
+    sweepTemps(dir);
     return { matched, removed: matched.filter((e) => went.has(e.key) || e.unsaid) };
   });
 }
@@ -358,15 +360,21 @@ export function forget(dir, terms, { since, until, conversation, keys: only, mor
 // backfill overwrote the live write's failure: status said nothing of either.
 const FAILED = '.failed';
 const own = (text, backfill) => (text ?? '').split(/\r?\n/).filter((l) => l && l.includes('"error":"backfill: ') === backfill);
+// A live write's failure the journal folder would not take is kept beside the projects: kept in the folder that refused
+// it, it was lost with every reply's entry, and nothing said so (audit H-F4).
+const aside = (dir) => join(projectsRoot(), JOURNAL_FAILED + basename(dirname(dir)));
 function fault(dir, e, from = '') {
-  const f = join(dir, JOURNAL, FAILED);
+  const f = join(dir, JOURNAL, FAILED), line = JSON.stringify({ at: new Date().toISOString(), error: from + reason(e) });
   try {
     mkdirSync(join(dir, JOURNAL), { recursive: true });
-    const before = raw(f), line = JSON.stringify({ at: new Date().toISOString(), error: from + reason(e) });
+    const before = raw(f);
     replaceIfUnchanged(f, before, [line, ...own(before, !from)].join('\n') + '\n');
-  } catch {}
+  } catch { if (!from) try { writeFileSync(aside(dir), line + '\n'); } catch {} }
 }
+// The failures kept, in the journal and beside the projects: one line each.
+const failures = (dir) => [raw(join(dir, JOURNAL, FAILED)), raw(aside(dir))].flatMap((t) => (t ?? '').split(/\r?\n/).filter(Boolean));
 function clear(dir, backfill) {
+  if (!backfill) try { unlinkSync(aside(dir)); } catch {}
   const f = join(dir, JOURNAL, FAILED), before = raw(f), left = own(before, !backfill);
   if (before == null) return;
   if (left.length) replaceIfUnchanged(f, before, left.join('\n') + '\n');
@@ -768,7 +776,7 @@ export function summary(dir) {
       bytes += b.length; n++; first ??= d;
     } catch (e) { unread.push(`${f}: ${e.code || e.message}`); }
   }
-  try { failed = (raw(join(dir, JOURNAL, FAILED)) ?? '').split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l).error).join('; ') || null; } catch {}
+  try { failed = failures(dir).map((l) => JSON.parse(l).error).join('; ') || null; } catch {}
   let left = 0; try { left = candidates(dir).filter((c) => ours(dir, c.p)).length; } catch {}
   return { first, days: n, bytes, left, failed, unread };
 }

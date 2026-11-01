@@ -26,6 +26,18 @@
   path moved to `show <key>`, and the last line says so. Ten hits are about
   a third smaller, which is less for Claude to read every time it searches.
 
+**Recording**
+- A turn with more than 32 MB of tool output after its request (a long
+  browser task's screenshots) was never written by its own conversation's
+  replies: not to `handoff.md`, and to the journal only once another
+  conversation took it in, half an hour later. The request is now found
+  further back, up to 256 MB, and the turn is written at once.
+- A conversation started in a subfolder of a repository with a very long
+  path (a folder name past 200 characters, which Claude Code shortens) saved
+  nothing and said nothing: its handoff went to a folder name too long for
+  the disk. It is now kept in the conversation's own folder, as the docs
+  say.
+
 **Privacy**
 - The start of a conversation never shows the words of a conversation
   marked `<private-session>`, as the last conversation or as one still
@@ -40,6 +52,58 @@
   `search`, `show` and the day's listing still showed it until `forget` ran
   again. They now leave it out. When the list of forgotten entries can't be
   read, they show none of that project's journal, and say so.
+- A reply's save stopped half way (Claude Code closed right after a reply)
+  left a temp copy of the journal day or `handoff.md` behind for good, and
+  `forget` didn't reach it, so words you had forgotten stayed on disk. The
+  next reply now removes such copies, once the process that wrote one is
+  gone or the copy is over 30 seconds old, and so does `forget`.
+
+**Failures said**
+- A `journal` folder that refused writes lost every reply's entry in
+  silence: the record of the failure, `journal/.failed`, is in that same
+  folder. It is now kept beside the projects folder
+  (`.journal-failed-<project folder>`) when the journal won't take it, and
+  the startup briefing and `status` say it.
+- A full disk, or a projects folder that refused writes, was reported as
+  "Memory hooks look stopped … if project-memory was turned off
+  meanwhile". The briefing and `doctor` now say the save failed, and why:
+  the disk is full, or the folder refuses writes (with the code).
+
+**Snapshots**
+- On a large store (about 5,000 files on Windows), the history never
+  started: the first snapshot's `git add` ran past its 30 seconds, was
+  stopped, and left git's lock behind. Every later try then found the lock
+  and gave up as "busy", which was never counted, so `doctor` said "none
+  recorded yet" and the startup briefing said nothing; and since the tidy-up
+  was only marked done after a snapshot, every reply redid it (14 s at
+  6,000 notes). The first snapshot is now taken in parts, 1,000 files a
+  reply, the indexes first; a git command stopped at its time limit makes
+  the next replies go on in parts; the tidy-up is marked done whatever the
+  snapshot did, and a snapshot that didn't go through is tried again alone
+  after the next reply. Waiting on another git for more than 10 minutes
+  counts as a failure, and `doctor` says when the first snapshot is still
+  being taken or none has been taken yet.
+
+**Speed**
+- After a reply that changed a note, the Stop hook read the top of every
+  note to tidy the index, about a second at 1,000 notes on Windows. It now
+  keeps what it read of each note (its type, `tier:` and date, in `.facts`)
+  and reads a note again only once it changes, and it looks at each note's
+  size and time once a reply instead of three times. On Windows, such a
+  Stop took 0.45 s at 100 notes, 1.1 s at 500 and 1.3 s at 1,000; it now
+  takes 0.32 s, 0.40 s and 0.46 s.
+- While another window held the notebook, one Stop waited up to 2 seconds
+  for each of its locks: 6.4 seconds, 8.5 with the shared notebook. The 2
+  seconds are now for the whole Stop, as documented: 2.4 and 2.5 seconds.
+
+**Small fixes**
+- The tidy-up's line (printed by a manual run, and on the Stop's own output,
+  which nobody sees) showed an index that grew as a negative saving,
+  `(~-26 tokens/session)`. It now says `(grew ~26 tokens/session)`.
+- A `MEMORY.md` saved with Windows line endings (CRLF) was rewritten with
+  LF ones, and the blank line under its heading was dropped, when the
+  plugin added its lines. It now keeps the file's line endings, and the
+  blank line.
 
 ## 1.2.4 (2026-11-01)
 

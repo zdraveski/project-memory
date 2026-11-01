@@ -40,10 +40,11 @@ subfolder or a worktree uses the repository's folder, though its transcript
 sits in the folder named for where it started. project-memory finds the
 repository the same way, from the folder the conversation started in. It
 follows a worktree's `.git` file only when the main repository's worktree
-record names it back, as Claude Code does. A repository whose path is so long
-that Claude Code shortens its folder name with a hash is not followed: a
-conversation started in a subfolder of it writes its handoff under the long
-name.
+record names it back, as Claude Code does. A repository whose folder name
+would pass 200 characters, which Claude Code shortens with a hash of its own,
+is not followed: a conversation started in a subfolder of it keeps its
+handoff and journal in the folder Claude Code made for that conversation,
+and the startup briefing there shows them.
 
 With `CLAUDE_CONFIG_DIR` set, all of this is under that folder instead of
 `~/.claude`, and a plain name in `CLAUDE_CODE_PROJECT_DIR_NAME` (up to 64
@@ -63,12 +64,14 @@ Windows device names such as `con` and `nul`.
 | `…/memory/journal/.failed`, `.forgotten` | the last failure of the live write and of the import, one line each; the keys of forgotten entries, each with its conversation and time |
 | `…/memory/.lock` | the store's lock, a folder that exists while a write is in progress |
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
+| `…/memory/.facts` | what the tidy-up read at the top of each note (its type, its `tier:` and its date), with the note's size and time, so a note is read again only once it changes |
 | `…/memory/.private-sessions` | the tags of conversations marked private (the newest 1,000) |
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
 | `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
-| `~/.claude/projects/.git/project-memory-ignored` | bookkeeping for the snapshot's ignore list |
+| `~/.claude/projects/.git/project-memory-ignored`, `project-memory-parts` | bookkeeping for the snapshot's ignore list; a first snapshot still being taken in parts |
 | `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran, the snapshot's state, the reminder's state per conversation tag |
 | `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, or with auto memory off a conversation's tag that could not be written (`off`), and why (a list that won't read is named there); read at the next start and by `status` |
+| `~/.claude/projects/.journal-failed-<project folder>` | a journal write that failed after a reply when the `journal` folder wouldn't take `.failed` either, and why; read at the next start and by `status`, removed by the next write that goes through |
 | `~/.claude/projects/.memory-off` | the tags of conversations held with auto memory off, which the journal never imports: kept while the transcript is on disk, and the newest 100 in any case, 10,000 at most |
 
 Uninstalling the plugin leaves all of these, and the history, in place; you
@@ -86,7 +89,9 @@ limits; past 7,000 bytes, the startup briefing says the index is over budget.
 Every `MEMORY.md` ends with an Archive line that counts the archived lines,
 and a project's also gets a line for `handoff.md` and, once it has a journal,
 one for `journal.md`; both are pinned. Prose and headings anywhere in it
-are gathered at the top, above the lines.
+are gathered at the top, above the lines, with a blank line between if the
+file had one there. The file keeps its line endings: a `MEMORY.md` saved
+with CRLF stays CRLF, and a new archive takes the index's.
 
 After each reply it decides which lines stay in `MEMORY.md` and which move to
 `MEMORY-archive.md`:
@@ -132,11 +137,23 @@ arguments. The answer is the reply Claude Code hands the Stop hook, since the
 transcript file can lag behind it. A project gets its `memory/` folder for
 this if Claude hasn't saved a note there yet.
 
+The conversation's file is read from its end, up to 32 MB, back to the
+turn's request. A request further back than that (a long browser task's
+screenshots) is looked for line by line, up to 256 MB more, and the turn is
+recorded with the files changed in its last 32 MB.
+
 Entries carry your local time and are ordered by it, so changing time zones
 shows up here. After you move west, new turns rank before the newest entries
 and aren't kept until your clock passes them, up to the hours you moved.
 After you move east, recent turns can be listed twice until newer ones
-replace them.
+replace them. The clock going back an hour at the end of daylight saving
+time, or set back by hand, works like a move west: the repeated hour's
+turns are ordered by the clock, and the startup briefing can name an older
+turn as the last one. A conversation you go on with after a change of zone
+is read again in the new zone, so its earlier entries show their time in
+the new zone (one made at 09:00 in Los Angeles shows 17:00 once the
+conversation goes on in Skopje, eight hours ahead), and near midnight
+another day.
 
 Before any of it is written, these are taken out:
 
@@ -251,8 +268,9 @@ journal is the detailed record, and `search` reads headlines of it.
   turn seen again with more in it replaces its entry. A turn skipped while
   another window held the lock is written after the next reply, as the
   handoff catches up. A key written to a day leaves the day before and the
-  day after: read again after a time-zone change, a turn can fall on the
-  next or the previous day.
+  day after: read again after a time-zone change, a turn gets the new
+  zone's time, and so can fall on the next or the previous day. Daylight
+  saving time ending, or a clock set back, acts the same way.
 - Writes go under the store's lock through the same unchanged-file check as
   every other write. Entries are kept in time order. A line in a day file
   that isn't part of an entry (a note you wrote) stays under the entry it
@@ -297,7 +315,10 @@ journal is the detailed record, and `search` reads headlines of it.
   the index gets a pinned line telling Claude to search the journal. It is
   never rewritten, so an edit to it stays.
 - A failure is kept in `journal/.failed` for `status`, one line for the live
-  write and one for the import, each cleared by its own next success.
+  write and one for the import, each cleared by its own next success. A
+  live write's failure that the `journal` folder won't take either (it
+  refuses writes) is kept in `~/.claude/projects/.journal-failed-<project
+  folder>`, and the startup briefing and `status` say it all the same.
 
 An entry has no size limit. With the limits it had until 1.2.4 (2,000
 characters of the request, 6,000 of the reply, 20 commands of 400), measured
@@ -488,13 +509,25 @@ settings that would break snapshots, whatever yours say: no hooks of yours run
 on it, commits aren't signed, line endings are kept exactly as
 written, and long paths work on Windows. Your other git settings still apply.
 A damaged index (git's working copy of the last snapshot, after a crash or a
-full disk) is rebuilt from that snapshot; no note is touched. If
+full disk) is rebuilt from that snapshot; no note is touched. So is a
+missing one, before anything is added. If
 `~/.claude/projects` is already a git repository that project-memory didn't
 make, it commits nothing there, and `doctor` says snapshots are off. A
 repository at `~/.claude` itself (a dotfiles repository) doesn't count:
 project-memory still makes its own in `~/.claude/projects`.
 The first time, with no repository there yet, it takes a snapshot of every
-notebook as it finds it before its first tidy-up, then tidies.
+notebook as it finds it before its first tidy-up, then tidies. On a large
+store that first snapshot is taken in parts of 1,000 files, the `MEMORY.md`
+files first: two parts at the first reply (before and after its tidy-up),
+then one a reply, so no git command runs past its 30 seconds; `doctor` says
+how many files are still to add. A git command that
+does run past them is stopped, and the next replies go on in parts.
+
+A snapshot that doesn't go through (another window's git is committing, or
+git fails) is tried again after the next reply, even when no note changed;
+the tidy-up itself isn't redone. Waiting on another window's git counts as a
+failure once it has lasted more than 10 minutes, and the startup briefing
+names snapshots that failed three times in a row.
 
 - `history <note>` lists the commits that changed a note, the newest 30
   (`--limit N` for more).
@@ -544,13 +577,22 @@ Claude to ask you before promoting.
 ## Several conversations at once
 
 Each store has a lock, a `.lock` folder that only one process can create. A
-hook waits up to 2 seconds for it. If the store is still busy, the hook skips
-this reply and catches up after the next one. A lock left by a process that
+hook waits up to 2 seconds for its locks, in all: a Stop takes up to four
+(its handoff, the journal's import, its notebook's tidy-up and the shared
+one's), and the wait is shared among them. If a store is still busy, the
+hook skips that part for this reply and catches up after the next one. A lock left by a process that
 was killed is taken over after 30 seconds.
 
 Every write first checks that the file still holds what was read. When Claude
 edited the file in the meantime, Claude's edit is kept and the hook tries
 again next time.
+
+A write goes to a temp copy, `<file>.tmp<process id>`, which then replaces
+the file. A hook killed between the two leaves its copy behind; the next Stop
+removes it from the notebook and its journal once that process is gone (or
+the copy is over 30 seconds old), and so does `forget`. Only copies of its own
+files are removed (a `.md` file or one whose name starts with a dot); a file of
+yours named like `x.tmp5` stays.
 
 ## Search and forget
 
@@ -730,6 +772,12 @@ meet most:
 - **"Memory hooks look stopped"**, in the briefing. Another conversation in
   this project finished a reply after the plugin last saved. After a pause
   this goes away with the next reply; otherwise run `doctor`.
+- **"Memory could not be saved after … reply"**, in the briefing or from
+  `doctor`. The same, but the disk holding `~/.claude/projects` is full (less
+  than 1 MB free), or that folder refuses writes (the code says why: a
+  permission, another program holding a file). Free some space or fix the
+  folder's permissions; the plugin saves again at the next reply, and the
+  journal takes in what was missed from Claude Code's own conversation files.
 - **"snapshots: off".** Git isn't installed, or the projects folder is a git
   repository the user made. Everything works except bringing back an old
   version of a note. Install Git, or move that repository out of the folder.

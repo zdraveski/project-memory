@@ -148,7 +148,9 @@ All of it stays in `~/.claude/projects` on your computer:
   it last looked for them (`.looked`), the last failure of the journal's
   write and of its import (`.failed`), the conversations and days whose
   entries are still to be removed (`.sweeps`), and which entries you had it
-  forget (`.forgotten`).
+  forget (`.forgotten`); and, in each `memory` folder, each note's type,
+  `tier:` and date as last read, with its size and time (`.facts`), so a
+  note is read again only once it changes.
 
 If auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (set to
 `1`, `true`, `yes` or `on`), project-memory reads and saves nothing on its
@@ -213,7 +215,9 @@ Uninstalling the plugin leaves all of this in place. To delete:
   folder, and the line that points to it in its `MEMORY.md`.
 - the archive: `MEMORY-archive.md` in a project's `memory` folder, and the
   `Archive` line in its `MEMORY.md`. It holds the pointers to older notes:
-  move any you want loaded again back into `MEMORY.md` first.
+  move any you want loaded again back into `MEMORY.md` first. The shared
+  notebook, `~/.claude/projects/_shared/memory`, gets its own archive and
+  `Archive` line once it has a `MEMORY.md`: delete them there too.
 - the journal: the `journal` folder (with its bookkeeping files inside it)
   and `journal.md` in a project's `memory` folder, and the line that points
   to `journal.md` in its `MEMORY.md`. While
@@ -221,9 +225,11 @@ Uninstalling the plugin leaves all of this in place. To delete:
   from the conversations Claude Code still keeps. To empty the journal
   instead, use `forget` as below.
 - the bookkeeping files: in `~/.claude/projects`, `.gitignore`, `.stop-ran`,
-  `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` file and the
-  folder `.nudge`; in each project's `memory` folder, `.tiered`, `.health`
-  and `.private-sessions`. Delete `.memory-off` and `.private-sessions` only
+  `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
+  `.journal-failed-…` file and the folder `.nudge`; in each project's
+  `memory` folder, `.tiered`, `.facts`, `.health` and `.private-sessions`;
+  and in the shared notebook's (`_shared/memory`), `.tiered`, `.facts` and
+  `.health`. Delete `.memory-off` and `.private-sessions` only
   once project-memory is removed for good: they list the conversations it
   must not record. Without them, a conversation held with auto memory off is
   recorded from its next reply; one marked private is tagged again at its
@@ -239,7 +245,9 @@ a date range (`--since`, `--until`) or a conversation's tag or id. It first
 lists the entries that match, each with its key, and removes nothing. After
 you confirm, `forget --key <key> --yes` removes exactly the entries whose
 keys you name, and `--yes` with the same words removes every entry they
-match. A list by words, keys or a conversation shows up to 200 entries;
+match. It also removes the temp copy of a journal day or of `handoff.md`
+that a reply's save left half done when it was stopped, as the next reply
+does. A list by words, keys or a conversation shows up to 200 entries;
 past that, narrow it, since `--yes` removes only what a list can show. A
 list by dates alone shows the first 20 and how many entries fall between
 the first and last day, and `--yes` removes them all, however many. Their

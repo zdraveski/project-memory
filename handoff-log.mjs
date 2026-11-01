@@ -18,11 +18,11 @@
 // secrets (SECRETS), the answer to a <private> message and the files its turn
 // changed (answer()), and every entry of a conversation marked
 // <private-session> (hushed()).
-import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, realpathSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, statfsSync, realpathSync, mkdirSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED } from './store.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
@@ -460,8 +460,39 @@ function latest(path, since = null, all) {
     // 2026-10-30). Not at its own minute too: two identical exchanges are no move.
     const moved = since && !there && got.some(same);
     const back = !moved && (!since || got[0]?.at < since.at || there);
-    if ((got.length && back && !all) || whole || bytes >= 32e6) { got.whole = whole; return got; }
+    if ((got.length && back && !all) || whole || bytes >= 32e6) {
+      // 32 MB read and no prompt in them: the turn's prompt is further back (a long browser task's screenshots), and its
+      // own Stops never wrote it (audit H-F6). Found by a look back, and read with the tail: its tools are the tail's.
+      const p = !whole && !got.open ? promptBefore(path, bytes) : null;
+      const out = p ? turns(`${p}\n${tail}`) : got;
+      out.whole = whole; return out;
+    }
   }
+}
+// The last prompt's line before a tail of `bytes` (fewer than the file has), the line the tail cut through included:
+// read back a megabyte at a time, up to 256 MB. null: none there.
+export function promptBefore(path, bytes) {
+  const fd = openSync(path, 'r');
+  try {
+    // From the end of the line the tail cut through, when it ends within 64 KB; a longer one is left out.
+    const peek = Buffer.alloc(65536), from = fstatSync(fd).size - bytes;
+    let pos = from + peek.subarray(0, readSync(fd, peek, 0, peek.length, from)).indexOf(10) + 1, carry = Buffer.alloc(0);
+    for (let k = 0; k < 256 && pos; k++) {
+      const buf = Buffer.alloc(Math.min(1048576, pos));
+      pos -= buf.length; readSync(fd, buf, 0, buf.length, pos);
+      // Whole lines only: the piece before the first line break ends a line that started further back. (Every read but
+      // the first ends with the line break the carry holds; the first ends with one, or the tail cut a line too long.)
+      const all = Buffer.concat([buf, carry]), cut = pos && all.indexOf(10) + 1;
+      carry = all.subarray(0, cut);
+      for (const l of all.subarray(cut).toString('utf8').split('\n').reverse()) {
+        // A tool's result, by its head: a screenshot's line is 300 KB to parse for nothing.
+        if (l.slice(0, 4096).includes('"tool_result"')) continue;
+        let r; try { r = JSON.parse(l); } catch { continue; }
+        if (r?.type === 'user' && prompt(r, text(r).trim())) return l;
+      }
+    }
+    return null;
+  } finally { closeSync(fd); }
 }
 
 // An entry whose ask is private shows no answer and no files, whoever wrote
@@ -796,12 +827,15 @@ function health(dir) {
   } catch {}
   // A journal write that failed after a reply (journal/.failed; not a backfill,
   // which is retried): only status said so, and every reply went unrecorded.
-  try {
-    for (const l of readFileSync(join(dir, 'journal', '.failed'), 'utf8').split(/\r?\n/).filter(Boolean)) {
-      const f = JSON.parse(l);
-      if (!String(f.error).startsWith('backfill: ')) out.push(`Memory store needs attention (${dir}): the journal could not be written after the reply at ${local(f.at)}: ${f.error}`);
-    }
-  } catch {}
+  // And one its folder would not take, kept beside the projects (JOURNAL_FAILED).
+  for (const p of [join(dir, 'journal', '.failed'), join(projectsRoot(), `${JOURNAL_FAILED}${basename(dirname(dir))}`)]) {
+    try {
+      for (const l of readFileSync(p, 'utf8').split(/\r?\n/).filter(Boolean)) {
+        const f = JSON.parse(l);
+        if (!String(f.error).startsWith('backfill: ')) out.push(`Memory store needs attention (${dir}): the journal could not be written after the reply at ${local(f.at)}: ${f.error}`);
+      }
+    } catch {}
+  }
   try {
     const s = JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8'));
     if (s.failures >= 3) out.push(`Memory snapshots have failed ${s.failures} times in a row, last ok ${s.lastOk ? local(s.lastOk) : 'never'}: ${s.error}`);
@@ -869,6 +903,13 @@ export function stalled(t, hint = true) {
   // No file is not knowing (just installed, or cleaned away), not "never ran".
   let ran; try { ran = statSync(join(projectsRoot(), '.stop-ran')).mtimeMs; } catch { return []; }
   if (end - ran > GRACE && Date.now() - end > GRACE) {
+    // A full disk, or a folder that takes no writes, stops the proof of life too: said as hooks stopped or turned off, the
+    // failed write was never named (audit H-F5). The file opened for writing, not written: a full disk opens it all the same.
+    const root = projectsRoot();
+    let refused = '';
+    try { const s = statfsSync(root); if (s.bavail * s.bsize < 1048576) refused = `the disk holding ${root} is full`; } catch {}
+    if (!refused) try { closeSync(openSync(join(root, '.stop-ran'), 'r+')); } catch (e) { if (e.code !== 'ENOENT') refused = `${root} refuses writes (${e.code})`; }
+    if (refused) return [`Memory could not be saved after [${t.s}]'s reply at ${local(end)}: ${refused}. project-memory saves again once it can write there.`];
     return [`Memory hooks look stopped: [${t.s}] finished a reply at ${local(end)}, but project-memory last saved after one at ${local(ran)}. ` +
       `If project-memory was turned off meanwhile, this clears after the next reply.` +
       (hint ? ` If not: node "${join(dirname(fileURLToPath(import.meta.url)), 'memory.mjs')}" doctor` : '')];
