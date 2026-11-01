@@ -243,7 +243,10 @@ had written before the tag. A `.memory-off` that won't read is unknown, as
 `.private-sessions` is: the Stop writes nothing and records why.
 Other conversations' briefings name it as working, without its messages.
 Both tags are read in any case, with spaces or attributes, self-closed,
-fullwidth, with hidden zero-width characters, and as `private_session`; in a
+fullwidth, with hidden characters inside (any character Unicode shows as
+nothing: a zero-width space, a soft hyphen, a left-to-right or
+right-to-left mark, a bidi control, a variation selector), and as
+`private_session`; in a
 message typed while Claude works (a queued record); inside another tag; in
 the answer to Claude's question (the result of its `AskUserQuestion` call,
 found by the call's id); and in the words given with a rejected tool call
@@ -403,7 +406,7 @@ the sweeps listed in `.sweeps`. A conversation never imported:
   done: it adds the tag to `.private-sessions` and removes the
   conversation's earlier entries from the journal and from `handoff.md`. A
   tag quoted in a tool's output is no mark; one typed fullwidth or with a
-  zero-width character is.
+  hidden character inside is.
 
 Keys listed in `journal/.forgotten` are never written again, by an import or
 a live Stop, and the exchanges they name are never written to `handoff.md`

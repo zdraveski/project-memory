@@ -88,6 +88,11 @@
   `autoMemoryEnabled` setting doesn't stop it, since it never reads Claude
   Code's settings. The FAQ, the privacy policy and How it works now say so,
   and that disabling the plugin is the way to stop it.
+- `<private>` and `<private-session>` now work with any invisible character
+  inside them: a soft hyphen, the left-to-right and right-to-left marks a
+  right-to-left keyboard or a paste can add, and the like. Before, only
+  zero-width spaces and joiners were looked past, and a tag with one of the
+  others kept nothing private.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in

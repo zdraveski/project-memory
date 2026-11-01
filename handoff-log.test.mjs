@@ -735,6 +735,20 @@ ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'pr
   ok(next() === true && /while the list is refused/.test(mdoc()), 'the next Stop, with the list read, writes the turn');
 }
 
+// P-F6: any invisible character inside a tag is read through, not the five zero-width ones alone: a soft hyphen, the left-to-right
+// and right-to-left marks an RTL keyboard or a paste puts around `<` and `>`, the other bidi controls, invisible operators, a
+// variation selector, a tag character (e2e audit, 2026-11-01).
+{
+  const { turns, answer, userText } = await import('./handoff-log.mjs');
+  const hidden = { 'U+00AD': '­', 'U+200E': '‎', 'U+200F': '‏', 'U+202A': '‪', 'U+202E': '‮', 'U+2066': '⁦', 'U+2069': '⁩',
+    'U+2061': '⁡', 'U+2063': '⁣', 'U+180E': '᠎', 'U+034F': '͏', 'U+FE0F': '️', 'U+E0020': '\u{E0020}', 'U+E007F': '\u{E007F}', 'U+061C': '؜', 'U+200B': '​' };
+  const missed = Object.entries(hidden).filter(([, c]) => {
+    const t = turns([user(`my pin is <pri${c}vate>41${c}77</private> ok`), asst('Got it: 4177.')].join('\n'))[0];
+    return /41.?77/u.test(clip(t.ask, 240)) || answer(userText(t), t.did, 400) !== '[private]' || turns([user(`<private${c}-session>`), asst('ok')].join('\n')).hush !== true;
+  }).map(([n]) => n);
+  ok(!missed.length, `a tag with an invisible character inside is still read (missed: ${missed.join(', ')})`);
+}
+
 // 37. A note the compaction gate left for a conversation marked since goes at
 // its next Stop, though no entry changed.
 writeFileSync(join(dirI, 'handoff.md'), idoc().replace('<!-- auto:end -->', '- **cut mid-turn** [mmmmmmmm] 2026-10-27 12:12 at 965k tokens, asked 2026-10-27 12:11: the Contoso plan\n  **last said:** x\n  **still running (read their output files, do not rerun):** none\n  **edited this turn:** none\n<!-- auto:end -->'));

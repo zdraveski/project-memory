@@ -152,7 +152,10 @@ export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 export const FORGETS = /memory\.mjs["']?(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?)*\s+(?:forget\b|'forget'|"forget")/;
 // Text read the same in any width and without hidden characters: a fullwidth
 // ＜private＞, or a zero-width space inside the tag, kept what it should hide.
-export const norm = (s) => s.normalize('NFKC').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
+// Every character Unicode says to show as nothing (Default_Ignorable_Code_Point): with the five zero-width ones alone, a soft
+// hyphen, a left-to-right mark (an RTL keyboard's, or a paste's), a bidi control or a variation selector inside the tag kept it
+// (e2e audit, 2026-11-01).
+export const norm = (s) => s.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '');
 // The harness's blocks that quote others: an agent's message, a task's end, a
 // command's output. What they quote is not the user's, and a red-team report
 // quoting <private-session> marked the conversation that read it private.
