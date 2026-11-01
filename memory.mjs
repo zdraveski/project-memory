@@ -568,9 +568,11 @@ export function promote(dir, file) {
 const stopRuns = () => (read(join(projectsRoot(), '.stop-ran')) ?? '').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r?.at ? [r] : []; } catch { return []; } });
 // Two wirings answer one Stop at once. Not a /compact typed after a reply (a
 // PreCompact run), nor the reply to a block (stop_hook_active): both are a
-// second run seconds later, and both read as hooks wired twice.
+// second run seconds later, and both read as hooks wired twice. Nor two
+// replies, by their fingerprints (`m`): a task's end answered in a line came
+// under 2 s after the reply before it (audit H-F10). A run logged before 1.2.5 has none.
 const TWICE = 2000;
-const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h &&
+const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h && r.m === p.m &&
   Math.abs(Date.parse(r.at) - Date.parse(p.at)) < TWICE;
 
 export function doctor() {
@@ -625,7 +627,9 @@ export function doctor() {
     // the one the startup briefing judges: checked on the newest alone, the
     // two disagreed when this window saved and another did not.
     const ts = transcripts(sessionStore(), '', session && transcriptOf(session)), s = [ts[0], ts.find((t) => t.s !== tag(session))].flatMap((t) => stalled(t, false));
-    say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`);
+    // A record there that won't stat (a scan holding it) is said: unguarded, doctor was a stack trace (audit H-F7).
+    let when; try { when = `last ran ${local(statSync(ran).mtime)}`; } catch (e) { when = `has run, but ${ran} could not be read (${e.code || e.message}), so not when`; }
+    say(!s.length, s[0] || `the Stop hook ${when}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`);
   }
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return Date.now() - statSync(l).mtimeMs > LOCK_STALE; } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);

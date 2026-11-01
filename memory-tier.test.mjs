@@ -1582,6 +1582,10 @@ require('node:module').syncBuiltinESMExports();
     await stopRan();
     const lineBytes = bytesOf(runLines().at(-1)) + 1;
     ok(JSON.parse(runLines().at(-1)).s === 'abcdefgh', `--stop: the run log names a conversation by its first eight characters (got ${runLines().at(-1)})`);
+    // And the reply by a fingerprint: two quick replies of one conversation read as hooks wired twice (audit H-F10).
+    const { hash } = await import('./handoff-log.mjs');
+    await call(['--stop'], JSON.stringify({ ...payload, last_assistant_message: 'a reply to tell apart' }));
+    ok(JSON.parse(runLines().at(-1)).m === hash('a reply to tell apart').slice(0, 8), `--stop: the run log carries the reply's fingerprint (got ${runLines().at(-1)})`);
     const fill = 8192 - lineBytes, whole100 = Math.floor(fill / 100) - 1, rest = fill - whole100 * 100;
     writeFileSync(ran, ('j'.repeat(99) + '\n').repeat(whole100) + 'j'.repeat(rest - 1) + '\n');
     await stopRan();

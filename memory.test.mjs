@@ -1674,6 +1674,21 @@ if (!quick) {
   ok(!/ran twice/.test((await cli('doctor')).stdout), 'two runs 2000 ms apart are not hooks wired twice');
   ranLog({ at: iso(base), s: 'aaaaaaaa', from: 'C:/x' }, { at: iso(base + 1999), s: 'aaaaaaaa', from: 'C:/x' });
   ok(/ran twice/.test((await cli('doctor')).stdout), 'two runs 1999 ms apart are');
+  // Two quick replies of one conversation (a task's end answered in a line) are two runs for two replies, told apart by the
+  // reply's fingerprint; one reply answered twice is still the hooks wired twice (audit H-F10).
+  ranLog({ at: iso(base), s: 'aaaaaaaa', m: '11111111', from: 'C:/x' }, { at: iso(base + 500), s: 'aaaaaaaa', m: '22222222', from: 'C:/x' });
+  ok(!/ran twice/.test((await cli('doctor')).stdout), 'two replies 500 ms apart are not hooks wired twice');
+  ranLog({ at: iso(base), s: 'aaaaaaaa', m: '11111111', from: 'C:/x' }, { at: iso(base + 500), s: 'aaaaaaaa', m: '11111111', from: 'C:/x' });
+  ok(/ran twice/.test((await cli('doctor')).stdout), 'one reply answered twice 500 ms apart is');
+  // A .stop-ran that exists but won't stat (held by a scan, refused): doctor said nothing, a stack trace instead (audit H-F7).
+  {
+    const refuseStat = join(home, 'refuse-stat.mjs'), ranPath = join(root, '.stop-ran');
+    writeFileSync(refuseStat, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst stat = fs.statSync;\n" +
+      `fs.statSync = (p, ...a) => { if (String(p) === ${JSON.stringify(ranPath)}) throw Object.assign(new Error('EBUSY: resource busy or locked, stat'), { code: 'EBUSY', syscall: 'stat', path: String(p) }); return stat(p, ...a); };\nsyncBuiltinESMExports();\n`);
+    r = spawnSync(process.execPath, ['--import', pathToFileURL(refuseStat).href, CLI, 'doctor', '--store', dir], { env, encoding: 'utf8' });
+    ok(!/\n\s+at \S.*:\d+:\d+/.test(r.stderr) && new RegExp(`^ok +the Stop hook has run, but ${ranPath.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')} could not be read \\(EBUSY\\), so not when`, 'm').test(r.stdout),
+      `a .stop-ran that won't stat is said, never a stack trace (got ${r.status}: ${r.stdout}${r.stderr.slice(0, 300)})`);
+  }
   ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
   // A lock is a killed hook's only past LOCK_STALE; a store with none is not listed.
   const lock = join(dir, '.lock'), realNow = Date.now;

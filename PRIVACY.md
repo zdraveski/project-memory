@@ -158,7 +158,9 @@ All of it stays in `~/.claude/projects` on your computer:
   the history records that, keeping its earlier versions. It never holds
   the record of where you left off, today's journal file, or the journal's
   bookkeeping files.
-- A few small bookkeeping files, such as when it last ran, the short tags of
+- A few small bookkeeping files, such as when it last ran (with 8 characters
+  of a hash of each reply, which tell two quick replies from one reply
+  answered twice; the reply can't be read back from them), the short tags of
   conversations you marked `<private-session>` or held with auto memory off,
   and, in each `journal` folder, which conversations it has taken in
   (`.imported`), how far it read the current one for a `<private-session>`
