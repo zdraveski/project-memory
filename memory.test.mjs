@@ -829,6 +829,26 @@ if (!quick) {
   ok(lead('tune the tapir cache') === 'Done. The cache now holds a day of pages, measured twice.' && lead('size the tapir pool')?.length === 140 && lead('size the tapir pool').endsWith('…'),
     `a Result is the first sentence of 20 characters or more, else the reply cut at 140 (got ${r.stdout})`);
   ok(lead('count the tapir herd') === undefined && /^     Answered: ab ab/m.test(of(r.stdout, 'count the tapir herd')), `a word 30 characters in: the stretch starts the reply, no Result (got ${r.stdout})`);
+  // A Result is redacted before it is cut: a day an older version wrote keeps a
+  // secret, and the 140 cut lands inside it here.
+  const sk = ['sk', 'live', '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
+  day(jd, '2026-10-14', [entry('2026-10-14 09:00', 'rotate the dugong key', { answered: `Stored ${sk} as the new deploy key of the dugong, then restarted.` }),
+    entry('2026-10-14 10:00', 'rotate the dugong cert', { answered: `${'ab '.repeat(40)}then ${sk} went in for the dugong.` })]);
+  r = await jcli('search', 'dugong');
+  ok(lead('rotate the dugong key') === 'Stored [redacted] as the new deploy key of the dugong, then restarted.' &&/^ab ab .*\[redacted\]/.test(lead('rotate the dugong cert') ?? '') && !r.stdout.includes(sk.slice(8, 20)),
+    `a Result shows no part of a secret (got ${r.stdout})`);
+  // Nor is a hit, a day's listing or show ever an entry forget listed: one whose
+  // day would not be written still holds it, until forget runs again.
+  const fgList = join(jd, 'journal', '.forgotten'), fgHad = existsSync(fgList) ? readFileSync(fgList, 'utf8') : '';
+  const fg = entry('2026-10-14 11:00', 'feed the ibex herd', { answered: 'The ibex herd was fed twice.' });
+  day(jd, '2026-10-14', [fg, entry('2026-10-14 12:00', 'count the ibex herd')]);
+  writeFileSync(fgList, `${fgHad}${fg.key}\tC--jr/c0ffee12-full\t2026-10-14 11:00\n`);
+  r = await jcli('search', 'ibex');
+  const fgShow = (await jcli('show', fg.key)).stdout, fgDay = (await jcli('search', '--since', '2026-10-14', '--until', '2026-10-14')).stdout;
+  if (fgHad) writeFileSync(fgList, fgHad); else rmSync(fgList);
+  rmSync(join(jd, 'journal', '2026-10-14.md'));   // a day no other check uses
+  ok(/^     Asked: count the ibex herd$/m.test(r.stdout) && !/feed the ibex|fed twice/.test(r.stdout + fgShow + fgDay) && /^no journal entry has the key /m.test(fgShow) && /count the ibex herd/.test(fgDay),
+    `an entry forget listed is no hit, no line of its day, and show has none (got ${r.stdout}${fgShow}${fgDay})`);
   r = await jcli('search', 'zeppelin');
   const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
   ok(z.length < 800 && zask.length === 200 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
@@ -973,7 +993,7 @@ if (!quick) {
   // 1.0 s was usual, and beside other suites the right search took 5.3 s too.
   const reads = join(home, 'count-reads.mjs');
   writeFileSync(reads, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst read = fs.readFileSync; let n = 0;\n" +
-    `fs.readFileSync = (p, ...a) => { if (String(p).includes(${JSON.stringify(join('C--big', 'memory', 'journal'))})) n++; return read(p, ...a); };\nsyncBuiltinESMExports();\nprocess.on('exit', () => process.stderr.write(\`\${n} day reads\`));\n`);
+    `fs.readFileSync = (p, ...a) => { if (String(p).includes(${JSON.stringify(join('C--big', 'memory', 'journal'))}) && String(p).endsWith('.md')) n++; return read(p, ...a); };\nsyncBuiltinESMExports();\nprocess.on('exit', () => process.stderr.write(\`\${n} day reads\`));\n`);
   r = spawnSync(process.execPath, ['--import', pathToFileURL(reads).href, CLI, 'search', 'needle', 'lorem', 'rollout', 'build', 'passed', 'plan', 'module', 'filter', '--store', big], { env, encoding: 'utf8' });
   ok(r.stderr === '365 day reads', `eight terms read each of a year's days once (got ${r.stderr})`);
   ok(r.status === 0 && new RegExp(`^ *\\d+  journal   ${last} 18:00 `).test(r.stdout), `the one entry asking for every term is first (got ${r.stdout.slice(0, 200)})`);

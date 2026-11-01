@@ -188,6 +188,11 @@ function around(text, find, room) {
   return s.length > room ? s.slice(0, room - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : s;
 }
 
+// The journal as a reader sees it: never an entry forget listed. It lists the
+// keys before it writes the days, and a day that would not be written keeps
+// the entry until forget runs again, which reads them all.
+const told = (dirs, o) => { const gone = new Set(dirs.flatMap((d) => forgotten(read(join(d, FORGOTTEN))).map(([k]) => k))); return entries(dirs, o).filter((e) => !gone.has(e.key)); };
+
 // Ranked, not grepped: a name says more than a description, a description more
 // than a passing mention. Every term in the name or description is the strong
 // match; every term somewhere in the body is a weak one, or a month-long log
@@ -218,7 +223,7 @@ export function search(dirs, query, { since, until, failed } = {}) {
   }
   // An entry by what was asked, then what it changed and ran (and its branch),
   // then the reply: a reply that names everything must not outrank the request.
-  for (const e of terms.length ? entries(dirs, { since, until, failed }) : []) {
+  for (const e of terms.length ? told(dirs, { since, until, failed }) : []) {
     const asked = e.asked.toLowerCase(), did = [...e.changed, ...e.ran].join('\n').toLowerCase(), branch = e.branch.toLowerCase(), answered = e.answered.toLowerCase();
     let score = 0, strong = true, every = true;
     for (const t of terms) {
@@ -682,7 +687,7 @@ export function main(given) {
   } else if (cmd === 'show' && args.length) {
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).
-    const es = entries(scope, { failed }), got = args.map((k) => es.find((e) => e.key === k)), seen = new Set();
+    const es = told(scope, { failed }), got = args.map((k) => es.find((e) => e.key === k)), seen = new Set();
     const whole = (e) => [head(e), `     key: ${clip(e.key, Infinity)}`,
       ...[['Asked', e.asked], ['Answered', e.answered], ['Changed', e.changed.join(', ')], ['Ran', e.ran.join(' · ')]].filter(([, v]) => v).map(([k, v]) => `     ${k}: ${clip(v, Infinity)}`),
       `     Day file: ${e.path}`, ...full(e)];
@@ -691,7 +696,7 @@ export function main(given) {
     r = { ok: got.every(Boolean), lines: got.flatMap((e, i) => e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${args[i]} in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
   } else if (cmd === 'search' && (range.since || range.until)) {
     // What was asked on those days, newest first: "what did we do last week".
-    const es = entries(scope, { ...range, failed }).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
+    const es = told(scope, { ...range, failed }).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
     r = { ok: true, lines: es.length ? [...shown.map((e) => `${head(e)}  ${clip(e.asked, 200)}`), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [`no journal entry ${span} in ${where}`] };
   } else if (cmd === 'forget') {
