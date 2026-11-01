@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.3 (2026-11-01)
 
 project-memory now needs Node.js 22 or newer. Node 20 reached its end of life
 in April 2026 and gets no more security fixes; if `node --version` says v20,
