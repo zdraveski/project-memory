@@ -57,6 +57,13 @@
   `forget` didn't reach it, so words you had forgotten stayed on disk. The
   next reply now removes such copies, once the process that wrote one is
   gone or the copy is over 30 seconds old, and so does `forget`.
+- `<private>` and `<private-session>` now work when you type them as your
+  answer to a question Claude asks you, or as what you tell Claude when you
+  turn down something it was about to do. Before, they were ignored there:
+  Claude's reply, which could repeat the private text, and the names of the
+  files it then changed were saved, and `<private-session>` marked nothing.
+  A tag that only appears in a file Claude reads or in a command's output
+  still counts for nothing.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in

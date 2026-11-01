@@ -228,10 +228,15 @@ entries out of `handoff.md` too.
 Other conversations' briefings name it as working, without its messages.
 Both tags are read in any case, with spaces or attributes, self-closed,
 fullwidth, with hidden zero-width characters, and as `private_session`; in a
-message typed while Claude works (a queued record); and inside another tag.
-The tags inside what Claude Code quotes, such as an agent's report or a task's
-result, are not the user's and mark nothing, and neither does a compaction
-summary that mentions them. The mark is kept by the conversation's tag in
+message typed while Claude works (a queued record); inside another tag; in
+the answer to Claude's question (the result of its `AskUserQuestion` call,
+found by the call's id); and in the words given with a rejected tool call
+(an error result in Claude Code's own wording). From there on, the turn's
+reply and the files it changes are not saved. The tags inside what Claude
+Code quotes, such as an agent's report or a task's result, are not the
+user's and mark nothing, and neither do they in any other tool's output (a
+file read, a command's output) or in a compaction summary that mentions
+them. The mark is kept by the conversation's tag in
 `.private-sessions` (the newest 1,000), because only the turn that typed it
 sees it in the transcript. `handoff.md` is not in the snapshots.
 

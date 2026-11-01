@@ -165,6 +165,24 @@ export const queuedText = (r) => {
   const p = r.attachment?.prompt;
   return typeof p === 'string' ? p : Array.isArray(p) ? p.map((b) => (typeof b === 'string' ? b : b?.type === 'text' ? String(b.text ?? '') : '')).join(' ') : '';
 };
+// What the user typed into a tool call's result: the answer to Claude's question (the result of an AskUserQuestion call, by the
+// call's id, kept as the calls go by) or the words given with a rejected call (an error result in the harness's own words). A tag
+// typed there was ignored, and the reply that repeated it was saved (e2e audit, 2026-11-01). No other tool's output: a file read
+// that quotes <private-session> is no mark. One reader a pass: `heard(r)` for every record in order, '' for all but those results.
+// shortcut: a question asked before the text read starts (an import's next segment, a look's next chunk) is not known, so its
+// answer is not read; carry the ids across if a question and its answer are ever found apart.
+const REJECTED = "The user doesn't want to ";
+const resultText = (b) => (typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => (x?.type === 'text' ? String(x.text ?? '') : '')).join(' ') : '');
+export const toolAnswers = () => {
+  const asks = new Set();
+  return (r) => {
+    const c = Array.isArray(r?.message?.content) ? r.message.content : [];
+    if (r.type === 'assistant') for (const b of c) if (b?.type === 'tool_use' && b.name === 'AskUserQuestion') asks.add(b.id);
+    if (r.type !== 'user') return '';
+    return c.filter((b) => b?.type === 'tool_result').map((b) => { const s = resultText(b); return asks.has(b.tool_use_id) || (b.is_error === true && s.startsWith(REJECTED)) ? s : ''; })
+      .filter(Boolean).join('\n');
+  };
+};
 export const unquote = (s) => {
   let out = '', i = 0;
   for (let n = 0; n < 50; n++) {
@@ -192,6 +210,7 @@ export function turns(tail) {
   // A nudge holds the answer for its memory update only; a private message
   // (frozen: true) holds it to the next prompt.
   const hold = (p) => { if (p.frozen !== true) { p.frozen = 'nudge'; p.ended = false; } };
+  const heard = toolAnswers();
   for (const line of tail.split('\n')) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
     let r; try { r = JSON.parse(line); } catch { continue; }
@@ -214,7 +233,7 @@ export function turns(tail) {
     // Read as typed; normalized (fullwidth, hidden characters) only to find the
     // private tags. Written normalized, `…` and CJK punctuation became ASCII,
     // and every entry an older version wrote was added again beside it.
-    const t = text(r).trim(), n = norm(t);
+    const t = text(r).trim(), n = norm(t), told = heard(r);
     let ask = r.type === 'user' ? prompt(r, t) : '';
     if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
     // What the user typed, tags and all: a slash command's arguments, a
@@ -224,7 +243,8 @@ export function turns(tail) {
     // conversation private), nor a record it added, nor a compaction summary.
     // A summary is no part of it at all: it recaps the conversation, and one
     // that named the tag froze the rest of a long turn, its answer hours stale.
-    const mine = r.type === 'user' && !r.isCompactSummary ? unquote(unwrap(n)) : '';
+    // An answer to Claude's question, or a rejected call's words, too (toolAnswers).
+    const mine = r.type === 'user' && !r.isCompactSummary ? unquote(unwrap(told ? `${n}\n${norm(told)}` : n)) : '';
     const typed = r.type === 'user' && !r.isMeta && !r.isCompactSummary ? mine
       : r.type === 'attachment' && r.attachment?.type === 'queued_command' ? unquote(norm(queuedText(r))) : '';
     // Marked whether or not a reply follows: a turn of tool calls, or one

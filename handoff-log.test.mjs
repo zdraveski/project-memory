@@ -676,6 +676,38 @@ writeFileSync(tm, [user('<private-session>', { ts: '2026-10-27T12:10:00Z' }), re
 ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'private' && !/123456|salary/.test(idoc()) && /mmmmmmmm/.test(readFileSync(join(dirI, '.private-sessions'), 'utf8')),
   'a mark with no reply after it still keeps the conversation out');
 
+// P-F1: a tag typed as the answer to Claude's question (the result of its AskUserQuestion call, by the call's id) or with a rejected
+// call is the user's: the reply after it and the files changed after it are not saved, and <private-session> marks the conversation.
+// Only there: a tag quoted in any other tool's output (a file read, a command's output, a failed command) marks nothing (e2e audit,
+// 2026-11-01).
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const cwdA = 'C:\\handoff-tool-answers', dirA = storeFor(home, cwdA);
+  mkdirSync(dirA, { recursive: true });
+  const adoc = () => readFileSync(join(dirA, 'handoff.md'), 'utf8');
+  const call = (id, name) => rec('assistant', [{ type: 'tool_use', id, name, input: name === 'AskUserQuestion' ? { questions: [{ question: 'Which one?' }] } : { file_path: 'C:\\app\\vault-77.env', command: 'cat notes.md' } }]);
+  const result = (id, content, extra = {}) => rec('user', [{ type: 'tool_result', tool_use_id: id, content, ...extra }]);
+  const said = (a) => `User has answered your questions: "Which one?"="${a}". You can now continue with the user's answers in mind.`;
+  const no = (a) => `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\n${a}`;
+  const conv = (s, ...lines) => { const p = join(dirA, `${s}.jsonl`); writeFileSync(p, lines.join('\n') + '\n'); return handoff({ cwd: cwdA, transcript_path: p, session_id: `${s}-1` }); };
+  conv('f1aaaaaa', user('set up the vault', { ts: '2026-10-27T12:40:00Z' }), call('toolu_q1', 'AskUserQuestion'), result('toolu_q1', said('<private>Tr0ub4dor-77</private>')),
+    call('toolu_e1', 'Edit'), result('toolu_e1', 'ok'), asst('Done: the vault holds Tr0ub4dor-77.'));
+  ok(/set up the vault/.test(adoc()) && !/Tr0ub4dor|vault-77/.test(adoc()), `a <private> answer to Claude's question: the reply and the files after it are not saved (got ${adoc().split('<!-- auto:start -->')[1]})`);
+  conv('f1bbbbbb', user('fix the config', { ts: '2026-10-27T12:41:00Z' }), call('toolu_e2', 'Edit'),
+    result('toolu_e2', [{ type: 'text', text: no('use <private>PIN-77814</private> instead') }], { is_error: true }), asst('Switched to PIN-77814.'));
+  ok(/fix the config/.test(adoc()) && !/77814/.test(adoc()), `<private> feedback with a rejected call: the reply after it is not saved (got ${adoc().split('<!-- auto:start -->')[1]})`);
+  const sess = conv('f1cccccc', user('plan the reorg', { ts: '2026-10-27T12:42:00Z' }), asst('a plan'), user('go on', { ts: '2026-10-27T12:43:00Z' }),
+    call('toolu_q2', 'AskUserQuestion'), result('toolu_q2', said('<private-session>')), asst('Understood.'));
+  ok(sess === 'private' && !/plan the reorg/.test(adoc()), `<private-session> as the answer to Claude's question marks the conversation (got ${sess})`);
+  ok(turns([call('toolu_e3', 'Bash'), result('toolu_e3', no('<private-session>'), { is_error: true })].join('\n')).hush === true, '<private-session> as a rejected call\'s feedback marks the conversation');
+  // Quoted by a file read, printed by a command (the rejection's words too, but no error), in a failed command's output, or the
+  // result of a call that was no question: no mark, and the reply is saved.
+  const quoted = conv('f1dddddd', user('read the notes', { ts: '2026-10-27T12:44:00Z' }), call('toolu_r1', 'Read'), result('toolu_r1', 'type <private-session> to keep it out; <private>x</private>'),
+    call('toolu_b1', 'Bash'), result('toolu_b1', no('<private-session>')), call('toolu_b2', 'Bash'), result('toolu_b2', 'Exit code 1\n<private-session> <private>y</private>', { is_error: true }),
+    result('toolu_q9', said('<private-session> <private>z</private>')), asst('The notes explain both tags.'));
+  ok(quoted !== 'private' && /read the notes\n  \*\*did:\*\* The notes explain both tags\./.test(adoc()), `a tag only quoted in a tool's output marks nothing (got ${quoted}, ${adoc().split('<!-- auto:start -->')[1]})`);
+}
+
 // 37. A note the compaction gate left for a conversation marked since goes at
 // its next Stop, though no entry changed.
 writeFileSync(join(dirI, 'handoff.md'), idoc().replace('<!-- auto:end -->', '- **cut mid-turn** [mmmmmmmm] 2026-10-27 12:12 at 965k tokens, asked 2026-10-27 12:11: the Contoso plan\n  **last said:** x\n  **still running (read their output files, do not rerun):** none\n  **edited this turn:** none\n<!-- auto:end -->'));

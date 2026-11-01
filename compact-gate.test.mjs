@@ -259,6 +259,13 @@ write(user('keep going'), rec('user', [{ type: 'text', text: 'queued: <private>p
 gate();
 hdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
 ok(/cut mid-turn[^\n]*keep going\n  \*\*last said:\*\* \[private\]/.test(hdoc) && !/11223344/.test(hdoc), `the answer to a private message that is no ask is withheld (got ${hdoc})`);
+// P-F1: so is the answer after a <private> typed as the answer to Claude's question (its AskUserQuestion call's result).
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('keep going'), rec('assistant', [{ type: 'tool_use', id: 'q1', name: 'AskUserQuestion', input: {} }]),
+  rec('user', [{ type: 'tool_result', tool_use_id: 'q1', content: 'User has answered your questions: "Which pin?"="<private>pin 55667788</private>".' }]), asst('Pin 55667788 noted.', 965_000, 'tool_use'), result('ok'));
+gate();
+hdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
+ok(/cut mid-turn[^\n]*keep going\n  \*\*last said:\*\* \[private\]/.test(hdoc) && !/55667788/.test(hdoc), `the answer after a private answer to Claude's question is withheld (got ${hdoc})`);
 
 // 1.1.0. A slash command is the ask; a null block is skipped, not a throw that
 // let the compaction through with no note; a task's output path may hold a

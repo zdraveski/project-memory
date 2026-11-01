@@ -66,9 +66,12 @@ All of it stays in `~/.claude/projects` on your computer:
     conversations to take in.
   - An exchange in which Claude runs `forget` is saved as `[private]`, with
     no file names.
-  - Both tags work in any letter case, and in a message typed while Claude is
-    still working. A later reply that repeats something private is saved like
-    any other reply.
+  - Both tags work in any letter case, in a message typed while Claude is
+    still working, in your answer to a question Claude asks you, and in what
+    you type when you turn down something Claude was about to do. A tag that
+    only appears in a file Claude reads or in a command's output counts for
+    nothing. A later reply that repeats something private is saved like any
+    other reply.
   - The tags keep text out of project-memory's own files only. Claude still
     sees it, Claude Code keeps it in its own conversation files, and a note
     Claude writes about it is kept in the history like any other note.
