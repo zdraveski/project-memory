@@ -623,6 +623,8 @@ async function execute(steps, meta) {
       let now = null; try { now = readFileSync(p, 'utf8'); } catch {}
       if (!mine) { if (now !== null) problems.push(`restore ${name}, which the round does not hold (promoted or never made), wrote ${p}`); return; }
       if (now === null) { problems.push(`${f} is gone after restore`); return; }
+      // As the edit step: a note written now is left to its writer to index for ORPHAN_GRACE (2 min), and the settling Stops come sooner (R68).
+      utimesSync(p, old, old);
       if (!texts.get(f).has(now)) problems.push(`restore left ${f} with a text the round never gave it: ${JSON.stringify(now.slice(0, 120))}`);
       else if ((c.status !== 0 || !force) && now !== was) problems.push(`restore ${a.slice(1).join(' ')} exited ${c.status}${force ? '' : ' without --force'} and changed ${f}`);
       notes.set(f, now);
