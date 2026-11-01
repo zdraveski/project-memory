@@ -933,11 +933,12 @@ function shared() {
 // Claude Code passes a hook's text whole up to 10,000 characters; past that,
 // a preview and a file, and the shared lessons at the end were what was cut.
 const SAY = 9500;
-// About 1,000 tokens at four characters a token, the "usually under 1,000
-// tokens" the README promises: the last session's exchanges fill the startup
-// briefing up to it, the oldest left out first, and never past it. What is
-// there without them (the shared index alone can be 3,000 B) is as before.
-const BRIEF = 4000;
+// The "usually under 1,000 tokens" the README promises, at 3.5 characters a
+// token, which code and paths come near: the last session's exchanges fill
+// the startup briefing up to it, the oldest left out first, and never past
+// it. What is there without them (the shared index alone can be 3,000 B) is
+// as before.
+const BRIEF = 3500;
 // Defused, then held to SAY at a line's end, on both paths: the startup's
 // health lists and the compaction note's task lists had no bound, and `<`
 // grows fourfold as `&lt;`. What is cut is cut from the end, the shared

@@ -2140,7 +2140,7 @@ require('node:module').syncBuiltinESMExports();
           ...Array.from({ length: n }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(size)}`))));
         return print_(cw4, 'pppppppp-1', 'startup', at4);
       };
-      // Within about 1,000 tokens (4,000 characters): the shared index at its
+      // Under 1,000 tokens (3,500 characters): the shared index at its
       // 3,000 B ceiling leaves no room for an exchange of 900, and every lesson stays.
       const crowded = startup(10, 899);
       ok(!/^- \*\*asked\*\*/m.test(crowded) && !crowded.includes('Its last exchanges') && crowded.split('\n').filter((l) => l.startsWith('- [Pad')).length === 30
@@ -2150,16 +2150,16 @@ require('node:module').syncBuiltinESMExports();
       ok(/Last session here ended 2026-10-01 10:02 on: ask-2 here[^\n]*\nIts last exchanges, oldest first:\n- \*\*asked\*\* 2026-10-01 10:00 \[ssssssss\]: ask-0 here\n {2}\*\*did:\*\* did-0 /.test(few)
         && few.indexOf('ask-1 here') < few.indexOf('ask-2 here\n') && !few.includes('another session ask'), `startup prints the last session's exchanges, oldest first, none of another's (${few.slice(0, 700)})`);
       const many = startup(10, 899), kept = many.split('\n').filter((l) => /^- \*\*asked\*\*/.test(l)).length;
-      ok(many.length <= 4000 && many.includes('ask-9 here') && !many.includes('ask-0 here') && kept >= 2 && kept < 10,
-        `a long session's oldest exchanges go until the briefing is within 4,000 characters, its newest stay (${kept} kept, ${many.length} characters)`);
+      ok(many.length <= 3500 && many.includes('ask-9 here') && !many.includes('ask-0 here') && kept >= 2 && kept < 10,
+        `a long session's oldest exchanges go until the briefing is within 3,500 characters, its newest stay (${kept} kept, ${many.length} characters)`);
       ok(/^ {2}\*\*did:\*\* did-9 .{890,}$/m.test(many), 'an exchange keeps up to 900 characters of its answer');
-      // Exactly 4,000 characters keeps the oldest exchange; one more, and it goes.
+      // Exactly 3,500 characters keeps the oldest exchange; one more, and it goes.
       const edge = (last) => {
-        writeFileSync(join(dP4, 'handoff.md'), docOf(...Array.from({ length: 5 }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(i === 4 ? last : 700)}`))));
+        writeFileSync(join(dP4, 'handoff.md'), docOf(...Array.from({ length: 5 }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(i === 4 ? last : 600)}`))));
         return print_(cw4, 'pppppppp-1', 'startup', at4);
       };
-      const E1 = edge(1).length, need = 1 + 4000 - E1, brim = edge(need);
-      ok(need > 1 && need <= 894 && brim.length === 4000 && brim.includes('ask-0 here'), `a startup briefing of exactly 4,000 characters keeps every exchange (${E1} -> ${brim.length})`);
+      const E1 = edge(1).length, need = 1 + 3500 - E1, brim = edge(need);
+      ok(need > 1 && need <= 894 && brim.length === 3500 && brim.includes('ask-0 here'), `a startup briefing of exactly 3,500 characters keeps every exchange (${E1} -> ${brim.length})`);
       ok(!edge(need + 1).includes('ask-0 here'), 'one character more, and the oldest exchange goes');
       writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'ssssssss', `long-ask ${mk(700)}`, 'done')));
       const asked = print_(cw4, 'pppppppp-1', 'startup', at4).match(/^- \*\*asked\*\* \S+ \S+ \[ssssssss\]: (long-ask .*)$/m)?.[1] ?? '';
