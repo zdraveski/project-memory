@@ -388,9 +388,20 @@ export const defuse = (s) => s.replace(/[<\uFF1C\uFE64](?=[\u200B-\u200D\u2060\u
 // pattern keeps as a path is half redacted by a later one, which the first then takes. Bounded at 7 cuts, what the widest clip a writer
 // makes (the journal's 2,000) can need: a `-u` value is redacted 200 characters a pass, so a longer run clipped at Infinity (a journal
 // reply, a search's display) can stop short of stable (B3). Nothing else the tests build takes more than 2.
+// Kept for the process, by length and text: a Stop clips each turn of its read several times (latest(), the fresh entries, the
+// journal's), and each clip is four passes of every secret pattern or more (release review). clip is pure: redact(),
+// defuse() and cut() read no state and no environment, so a clip kept is the clip again, whatever store the run is for.
+// shortcut: emptied once its texts pass 8 M characters (a Stop's 512 KB read keeps about 1 M), so a read near latest()'s 32 MB
+// redoes some of its redaction; make it an LRU if a long-lived process ever clips that much.
+const clipped = new Map();
+let clippedSize = 0;
 export const clip = (s, n) => {
+  // Text only: anything else spelt as a text kept here fails in cut(), as it always did.
+  const k = typeof s === 'string' ? `${n}\0${s}` : null;
+  if (clipped.has(k)) return clipped.get(k);
   let out = cut(s, n);
   for (let i = 0; i < 6; i++) { const again = cut(out, n); if (again === out) break; out = again; }
+  if (k !== null) { if ((clippedSize += k.length) > 8e6) { clipped.clear(); clippedSize = k.length; } clipped.set(k, out); }
   return out;
 };
 const cut = (s, n) => {

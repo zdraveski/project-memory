@@ -1055,6 +1055,11 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
   // A U+0085 splits a value as a line break does: read as part of a word, `abc` and `defgh` were one password of 9 characters.
   const nel = clip(`password: abc${ch(0x85)}defgh`, 400);
   ok(nel === 'password: abc defgh', `a U+0085 is a blank to redaction too (got ${JSON.stringify(nel)})`);
+  // A clip is kept for the process, by its length and text (release review): asked again, the same clip, and only for text. A number
+  // spelt as a text clipped before is no text, and fails as it always did.
+  const text = clip('12345', 9);
+  let thrown = null; try { clip(12345, 9); } catch (e) { thrown = e.name; }
+  ok(text === '12345' && clip('12345', 9) === text && thrown === 'TypeError', `a clip kept is the clip again, and only for text (got ${text}, ${thrown})`);
   // Built from those pieces at random, with a fixed seed so a failure replays.
   const P = [' ', '  ', '\t', '\n', '\r', ch(0x85), ch(0x2028), '<', 'private', '>', '</private>', '[private]', flag, '--password', '=', ':', 'Bearer ', ':_authToken', ' is ',
     'api_key', 'password', 'token', v, '~/k', 'a/b.txt', 'process.env.X', '$X', '"', ';', '|', ch(0x2026), 'x', '.', '/', ' -p', 'docker login', 'export KEY_A=', 'mysql',

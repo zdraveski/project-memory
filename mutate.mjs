@@ -162,6 +162,7 @@ export const suites = {
     'a secret after two blanks redacted only before the squeeze': [String.raw`defuse(redact(redact(s.replace(/\u0085/g, '\n')).replace(/\s+/g, ' ')))`, String.raw`defuse(redact(s.replace(/\u0085/g, '\n')).replace(/\s+/g, ' '))`],
     "a bare flag at a line's end takes the next line's keyword": [String.raw`defuse(redact(redact(s.replace(/\u0085/g, '\n')).replace(/\s+/g, ' ')))`, String.raw`defuse(redact(s.replace(/\u0085/g, '\n').replace(/\s+/g, ' ')))`],
     'a clip cut again only after a cut': ["for (let i = 0; i < 6; i++) { const again = cut(out, n); if (again === out) break; out = again; }", "if (out.endsWith('…')) out = cut(out, n);"],
+    'a kept clip answers for a number spelt as its text': ["const k = typeof s === 'string' ?", "const k = true ?"],
     'a forget seen in any memory.mjs command': [String.raw`/memory\.mjs["']?(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?)*\s+(?:forget\b|'forget'|"forget")/`, String.raw`/memory\.mjs\b.*\bforget\b/s`],
     'a quoted option before forget missed': [String.raw`(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1`, String.raw`(?:\s+()--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1`],
     'a negative option value before forget missed': [String.raw`|-\d+(?!\S)|[^\s"'-]\S*))?)*\s+(?:forget`, String.raw`|[^\s"'-]\S*))?)*\s+(?:forget`],
