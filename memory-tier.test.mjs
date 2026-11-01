@@ -618,11 +618,12 @@ if (!quick && process.platform === 'win32') {
   writeFileSync(join(lockd, 'MEMORY.md'), readFileSync(join(lockd, 'MEMORY.md'), 'utf8') + '- [b](b.md) — b\n');
   utimesSync(join(lockd, 'MEMORY.md'), tenMin, tenMin);
   const heldLock = join(lockd, 'a.md');
+  process.env.HELD = heldLock;   // inherited: the holder is never handed a copy of the whole environment
   const holder = spawn('powershell', ['-NoProfile', '-Command', [
     `try { $f = [IO.File]::Open($env:HELD, 'Open', 'Read', 'None') } catch { 'failed ' + $_.Exception.Message; exit }`,
     `$again = try { [IO.File]::Open($env:HELD, 'Open', 'Read', 'ReadWrite').Close(); 'reopened' } catch { 'refused' }`,
     `'held ' + $again + ' ' + [IO.DriveInfo]::new([IO.Path]::GetPathRoot($env:HELD)).DriveFormat`,
-    '[Console]::In.ReadToEnd() | Out-Null; $f.Close()'].join('; ')], { stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, HELD: heldLock } });
+    '[Console]::In.ReadToEnd() | Out-Null; $f.Close()'].join('; ')], { stdio: ['pipe', 'pipe', 'ignore'] });
   let said = '';
   const released = new Promise((res) => holder.on('close', res));
   await new Promise((res) => { holder.stdout.on('data', (b) => { said += b; if (/held|failed/.test(said)) res(); }); released.then(res); });

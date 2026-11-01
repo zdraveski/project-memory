@@ -1898,8 +1898,15 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
 fs.openSync = (p, ...a) => { if (String(p).endsWith('unopenable-1.jsonl')) throw Object.assign(new Error('EBUSY: resource busy or locked, open'), { code: 'EBUSY' }); return open(p, ...a); };
 require('node:module').syncBuiltinESMExports();
 `);
-  const print_ = (cwd_, session_id, source, now, ...pre) => execFileSync(process.execPath, [...(now === undefined ? [] : ['--require', nowJs]), ...pre.flatMap((p) => ['--require', p]), HOOK, '--print'],
-    { input: JSON.stringify({ cwd: cwd_, session_id, source }), env: { ...process.env, HL_NOW: String(now), TZ: 'UTC' } }).toString();
+  // The child inherits HL_NOW and TZ set here and put back after: a copy of the whole environment handed to it is what this repo never does.
+  const print_ = (cwd_, session_id, source, now, ...pre) => {
+    const was = { HL_NOW: process.env.HL_NOW, TZ: process.env.TZ };
+    Object.assign(process.env, { HL_NOW: String(now), TZ: 'UTC' });
+    try {
+      return execFileSync(process.execPath, [...(now === undefined ? [] : ['--require', nowJs]), ...pre.flatMap((p) => ['--require', p]), HOOK, '--print'],
+        { input: JSON.stringify({ cwd: cwd_, session_id, source }) }).toString();
+    } finally { for (const [k, v] of Object.entries(was)) if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  };
   const entry = (at, s, ask, did) => `- **asked** ${at} [${s}]: ${ask}\n  **did:** ${did}`;
   const docOf = (...es) => `---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written by hand._\n\n${es.join('\n')}\n<!-- auto:end -->\n`;
   // fn with every read of `target` returning text that differs from the last read: a file someone else keeps writing.
