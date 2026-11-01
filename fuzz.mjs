@@ -165,6 +165,9 @@ const shapesOf = (x) => {
 // A shape with the blank before its value made sep (two spaces, a tab): redacted before the blanks were squeezed, such a value was
 // stored whole in the journal (F19). A shape with no blank there is left as it is.
 const widen = ([text, s], sep) => [text.replace(` ${s}`, () => `${sep}${s}`), s];
+// The shapes a command can hold, joined as commands are: the one-line ones. A YAML or JSON block is a file's text, never a
+// command's, and joined onto one line by ` ; ` it was no shape redact() knows (round-1 review shapes, 2026-11-01).
+const oneLine = (texts) => texts.filter((t) => !t.includes('\n')).join(' ; ');
 
 // A process, as Claude Code runs a hook: its input on stdin, cut off at 30 s.
 // Disk faults (fuzz-faults.cjs) reach only the hook's own process, not the git it spawns.
@@ -284,7 +287,7 @@ function generate(seed) {
     if (kind >= 0.3 && x() < 0.25) {
       const { secrets, near } = shapesOf(x), drawn = Array.from({ length: 5 }, () => secrets[Math.floor(x() * secrets.length)]), nm = near[Math.floor(x() * near.length)][0];
       const few = drawn.map((sh) => (wx() < 0.4 ? widen(sh, wx() < 0.5 ? '  ' : '\t') : sh));
-      st.shapes = { text: [...few.map(([t]) => t), nm].join('\n'), secrets: few.map(([, sc]) => sc) };
+      st.shapes = { text: [...few.map(([t]) => t), nm].join('\n'), command: oneLine([...few.map(([t]) => t), nm]), secrets: few.map(([, sc]) => sc) };
     }
     marks.set(mark, { kind: st.kind, s, uuid: st.uuid });
     // The ask as a string or a text block; the answer half written when the Stop comes, or a broken line after it.
@@ -397,18 +400,20 @@ async function execute(steps, meta) {
     if (p.status !== 0) { problems.push(`the Stop hook (${s.id}, TZ=${tz}) exited ${p.status ?? p.signal}: ${p.err.trim().split('\n').slice(-2).join(' | ')}`); return; }
     // The nudge: its tag in a line of stdout. At most once between dips under the
     // trigger (a size smaller than the last nudge's is a dip too), never in a
-    // <private-session> conversation, and on the first Stop of a plain turn past it.
+    // <private-session> conversation or one held with auto memory off, and on the first Stop of a plain turn past it.
     const gave = p.out.split('\n').some((l) => { try { return JSON.parse(l).hookSpecificOutput?.additionalContext?.includes(NUDGE_TAG); } catch { return false; } });
     // The hook records a nudge only when it prints one: a Stop of a private turn that printed none spent none.
     // A dip under the trigger, seen by a Stop that ran whole, restarts the hook's count and the rules (a hurt Stop may have left its record as it was).
     if (s.ctx < TRIGGER * WINDOW) { s.nudges = 0; if (!hurt(o)) s.nudgeOff = false; }
     else {
       if (gave && s.private) problems.push(`the Stop of a <private-session> conversation (${s.id}) gave a nudge`);
+      // Nor one held with auto memory off once, resumed with it on (P-F2, review 2026-11-01).
+      if (gave && s.off) problems.push(`the Stop of a conversation held with auto memory off (${s.id}) gave a nudge`);
       if (s.nudgeOff) { /* a hurt Stop's record is unknown */ }
       else if (gave) {
         if (s.nudges > 0 && s.ctx >= s.givenAt) problems.push(`a second nudge for ${s.id} between dips under the trigger: at ${s.givenAt}, then at ${s.ctx} tokens`);
         s.nudges++; s.givenAt = s.ctx;
-      } else if (s.nudges === 0 && !s.private && s.lastPlain) problems.push(`no nudge on the first Stop of a plain turn past the trigger (${s.id}, ${s.ctx} tokens)`);
+      } else if (s.nudges === 0 && !s.private && !s.off && s.lastPlain) problems.push(`no nudge on the first Stop of a plain turn past the trigger (${s.id}, ${s.ctx} tokens)`);
     }
     // A turn that has ended and stopped leaves no cut-turn note (the Stop rebuilds the section); not two Stops at once, which can leave one to the other.
     if (solo && !s.rest && !s.private && !hurt(o)) {
@@ -517,8 +522,8 @@ async function execute(steps, meta) {
       writeFileSync(session(id).t, big ? JSON.stringify({ type: 'user', sessionId: id, cwd, timestamp: new Date(Date.UTC(2026, 9, 30, 8, 0, 0)).toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: 'y'.repeat(600_000) }] } }) + '\n' : '');
     },
     turn: (st0) => {
-      // The secret shapes ride in the ask, the answer and a Bash command (the journal's Ran field).
-      const st = st0.shapes && !st0.tool ? { ...st0, ask: `${st0.ask}\n${st0.shapes.text}`, did: `${st0.did}\n${st0.shapes.text}`, tool: { type: 'tool_use', id: `s${st0.uuid}`, name: 'Bash', input: { command: st0.shapes.text.replace(/\n/g, ' ; ') } } } : st0;
+      // The secret shapes ride in the ask, the answer and a Bash command (the journal's Ran field): the one-line ones, joined by ` ; `.
+      const st = st0.shapes && !st0.tool ? { ...st0, ask: `${st0.ask}\n${st0.shapes.text}`, did: `${st0.did}\n${st0.shapes.text}`, tool: { type: 'tool_use', id: `s${st0.uuid}`, name: 'Bash', input: { command: st0.shapes.command } } } : st0;
       const s = session(st.s), ts = (ms) => new Date(st.at + ms).toISOString(), size = st.size ?? 1000, id = (p) => st.uuid.replace('u-', p);
       endCut(s); flush(s);
       if (st.secret) secrets.push(st.secret);
@@ -582,7 +587,7 @@ async function execute(steps, meta) {
       // that names each of the turn's launches not yet done, and none whose notice has come, from this turn or an
       // earlier one (whether an earlier launch is named depends on how much of the file is read) -- when the file had its section to put it in.
       const turnCut = c.open?.st;
-      if (trigger === 'auto' && c.mid && c.ctx >= 0.9 * MODEL_WINDOW && turnCut?.kind === 'plain' && !turnCut.secret && !turnCut.queued?.secret && !c.private && marked && !fault) {
+      if (trigger === 'auto' && c.mid && c.ctx >= 0.9 * MODEL_WINDOW && turnCut?.kind === 'plain' && !turnCut.secret && !turnCut.queued?.secret && !c.private && !c.off && marked && !fault) {
         const head = `**cut mid-turn** [${s.slice(0, 8)}]`, i = h.indexOf(head), note = i === -1 ? '' : h.slice(i, h.indexOf('**edited this turn:**', i));
         if (i === -1) problems.push(`no cut-turn note in handoff.md after the gate over 90% (${s}, ${c.ctx} tokens)`);
         else {
@@ -887,8 +892,8 @@ const LONE = [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'no
   ['Stop with faults', [{ type: 'stop', s: plain.s, tz: 'UTC', fault: { seed: 3, rate: 0.3 } }]], ['Stop killed', [{ type: 'stop', s: plain.s, tz: 'UTC', kill: 40 }]],
   ['gate with faults', [{ ...gate, fault: { seed: 5, rate: 0.3 } }]], ['CLI with faults', [{ type: 'cli', args: ['status'], tz: 'UTC', fault: { seed: 7, rate: 0.3 } }]],
   ['queued string', [{ ...plain, queued: { blocks: false, text: 'queued words' } }]], ['queued blocks, private', [{ ...plain, did: `${plain.did} ZQXQlone`, tool: { type: 'tool_use', id: 'qlone', name: 'Bash', input: { command: 'echo ZQXQlone' } }, queued: { blocks: true, secret: 'ZQXQlone', text: '<private>ZQXQlone</private> words' } }]],
-  ['every secret shape', [{ ...plain, shapes: { text: [...allShapes.secrets.map(([t]) => t), ...allShapes.near.map(([t]) => t)].join('\n'), secrets: allShapes.secrets.map(([, s]) => s) } }]],
-  ['every secret shape, two blanks or a tab before its value', [{ ...plain, shapes: { text: allShapes.secrets.map((sh, k) => widen(sh, k % 2 ? '\t' : '  ')[0]).join('\n'), secrets: allShapes.secrets.map(([, s]) => s) } }]],
+  ['every secret shape', [{ ...plain, shapes: { text: [...allShapes.secrets.map(([t]) => t), ...allShapes.near.map(([t]) => t)].join('\n'), command: oneLine([...allShapes.secrets.map(([t]) => t), ...allShapes.near.map(([t]) => t)]), secrets: allShapes.secrets.map(([, s]) => s) } }]],
+  ['every secret shape, two blanks or a tab before its value', [{ ...plain, shapes: { text: allShapes.secrets.map((sh, k) => widen(sh, k % 2 ? '\t' : '  ')[0]).join('\n'), command: oneLine(allShapes.secrets.map((sh, k) => widen(sh, k % 2 ? '\t' : '  ')[0])), secrets: allShapes.secrets.map(([, s]) => s) } }]],
   ['auto memory off', [{ type: 'off', s: plain.s, tz: 'UTC' }]], ['turn, Stop, auto memory off', [plain, { type: 'stop', s: plain.s, tz: 'UTC' }, { type: 'off', s: plain.s, tz: 'UTC' }]],
   ['history (no such note: a failure path)', [{ type: 'history', name: 'no-such-note', tz: 'UTC', all: true, limit: 2 }]], ['restore (no such note)', [{ type: 'restore', name: 'no-such-note', tz: 'UTC', rev: true, force: true, pick: 0.5 }]],
   ['promote (no such note)', [{ type: 'promote', name: 'no-such-note', tz: 'UTC' }]], ['doctor', [{ type: 'doctor', tz: 'UTC' }]],
