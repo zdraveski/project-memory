@@ -190,8 +190,16 @@ function around(text, find, room) {
 
 // The journal as a reader sees it: never an entry forget listed. It lists the
 // keys before it writes the days, and a day that would not be written keeps
-// the entry until forget runs again, which reads them all.
-const told = (dirs, o) => { const gone = new Set(dirs.flatMap((d) => forgotten(read(join(d, FORGOTTEN))).map(([k]) => k))); return entries(dirs, o).filter((e) => !gone.has(e.key)); };
+// the entry until forget runs again, which reads them all. A list that won't
+// read could name any entry: none of that store's is shown, and it is named.
+const told = (dirs, o) => {
+  const gone = new Set(), open = dirs.filter((d) => {
+    const p = join(d, FORGOTTEN);
+    try { for (const [k] of forgotten(readFileSync(p, 'utf8').replace(/^﻿/, ''))) gone.add(k); return true; }
+    catch (e) { if (e.code === 'ENOENT') return true; o.failed?.push({ path: p, code: e.code || e.message }); return false; }
+  });
+  return entries(open, o).filter((e) => !gone.has(e.key));
+};
 
 // Ranked, not grepped: a name says more than a description, a description more
 // than a passing mention. Every term in the name or description is the strong

@@ -845,10 +845,16 @@ if (!quick) {
   writeFileSync(fgList, `${fgHad}${fg.key}\tC--jr/c0ffee12-full\t2026-10-14 11:00\n`);
   r = await jcli('search', 'ibex');
   const fgShow = (await jcli('show', fg.key)).stdout, fgDay = (await jcli('search', '--since', '2026-10-14', '--until', '2026-10-14')).stdout;
-  if (fgHad) writeFileSync(fgList, fgHad); else rmSync(fgList);
+  // A list that won't read could name any entry: none of that store's is shown, and the list is named.
+  rmSync(fgList); mkdirSync(fgList);
+  const shut = (await jcli('search', 'ibex')).stdout, shutShow = (await jcli('show', fg.key)).stdout;
+  rmSync(fgList, { recursive: true });
+  if (fgHad) writeFileSync(fgList, fgHad);
   rmSync(join(jd, 'journal', '2026-10-14.md'));   // a day no other check uses
   ok(/^     Asked: count the ibex herd$/m.test(r.stdout) && !/feed the ibex|fed twice/.test(r.stdout + fgShow + fgDay) && /^no journal entry has the key /m.test(fgShow) && /count the ibex herd/.test(fgDay),
     `an entry forget listed is no hit, no line of its day, and show has none (got ${r.stdout}${fgShow}${fgDay})`);
+  ok(!/ibex herd|fed twice/.test(shut + shutShow) && /^could not read .*[\\/]journal[\\/]\.forgotten: E[A-Z]+$/m.test(shut) && /^could not read .*[\\/]journal[\\/]\.forgotten: E[A-Z]+$/m.test(shutShow),
+    `with the list of forgotten keys unreadable, the journal shows nothing and says why (got ${shut}${shutShow})`);
   r = await jcli('search', 'zeppelin');
   const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
   ok(z.length < 800 && zask.length === 200 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),

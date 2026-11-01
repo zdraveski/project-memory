@@ -2087,6 +2087,16 @@ require('node:module').syncBuiltinESMExports();
     writeFileSync(join(folderP, 'unopenable-1.jsonl'), lines(user('an open prompt')));
     ok(!/Another session is working/.test(print_(cw, 'pppppppp-1', 'startup', undefined, busyJs)), 'a transcript that cannot be read is not working');
     ok(/Another session is working in this project: .*\[unopenab\]/.test(print_(cw, 'pppppppp-1', 'startup')), 'one that can is');
+    // One marked private is named working, never by what it was asked, though
+    // handoff.md still holds that (a sweep that failed, tried again at its next reply).
+    const hdP = join(dP, 'handoff.md'), hdHad = existsSync(hdP) ? readFileSync(hdP) : null;
+    writeFileSync(hdP, docOf(entry('2026-10-01 10:00', 'unopenab', 'the okapi merger closes on friday', 'noted')));
+    ok(/^Another session is working in this project: \S+ \S+ \[unopenab\] the okapi merger closes on friday$/m.test(print_(cw, 'pppppppp-1', 'startup')), 'a working session is named by its last request');
+    writeFileSync(join(dP, '.private-sessions'), 'unopenab\n');
+    const pw = print_(cw, 'pppppppp-1', 'startup');
+    ok(/^Another session is working in this project: \S+ \S+ \[unopenab\] \(no handoff entry\)$/m.test(pw) && !pw.includes('okapi'), `a private one working is named without its words (${pw.slice(0, 400)})`);
+    rmSync(join(dP, '.private-sessions'));
+    if (hdHad) writeFileSync(hdP, hdHad); else rmSync(hdP);
     rmSync(join(folderP, 'unopenable-1.jsonl'));
 
     // Working is judged on a clock that stands still: a transcript exactly ACTIVE old is not.
@@ -2176,13 +2186,28 @@ require('node:module').syncBuiltinESMExports();
       b = brief();
       ok(!/Last session here ended|\*\*asked\*\*/.test(b), `with the list of private conversations unreadable, no exchange is briefed (${b.slice(0, 700)})`);
       rmSync(join(dP4, '.private-sessions'), { recursive: true });
-      // Auto memory off: nothing at all (and the start tags this conversation in the memory-off list, put back after).
+      // A list of forgotten exchanges that won't read could name any of them: none is listed; the line naming where it stopped stays.
+      rmSync(join(dP4, FORGOTTEN)); mkdirSync(join(dP4, FORGOTTEN));
+      b = brief();
+      ok(/Last session here ended 2026-10-01 10:02 on: my pin is \[private\]/.test(b) && !/\*\*asked\*\*/.test(b), `with the list of forgotten exchanges unreadable, no exchange is listed (${b.slice(0, 700)})`);
+      rmSync(join(dP4, FORGOTTEN), { recursive: true });
       const offList = join(root_, OFF), offHad = existsSync(offList) ? readFileSync(offList) : null;
       try {
+        // Held with auto memory off: what was typed then is in handoff.md once a
+        // later reply with it on reads the turn back, so none of its exchanges is
+        // listed. The line naming where it stopped stays, as before.
+        writeFileSync(offList, 'ssssssss\n');
+        b = brief();
+        ok(/Last session here ended 2026-10-01 10:02 on: my pin is \[private\]/.test(b) && !/\*\*asked\*\*|kept-ask/.test(b), `a conversation held with auto memory off has no exchange listed (${b.slice(0, 700)})`);
+        rmSync(offList); mkdirSync(offList);
+        b = brief();
+        ok(/Last session here ended/.test(b) && !/\*\*asked\*\*/.test(b), `with the memory-off list unreadable, no exchange is listed (${b.slice(0, 700)})`);
+        rmSync(offList, { recursive: true });
+        // Auto memory off: nothing at all (and the start tags this conversation in the memory-off list, put back after).
         process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
         try { b = brief(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
         ok(b === '', `with auto memory off, nothing is briefed (got ${b.slice(0, 200)})`);
-      } finally { if (offHad) writeFileSync(offList, offHad); else rmSync(offList, { force: true }); }
+      } finally { rmSync(offList, { recursive: true, force: true }); if (offHad) writeFileSync(offList, offHad); }
       rmSync(join(dP4, 'journal'), { recursive: true });
     } finally { if (had) writeFileSync(shared, had); else rmSync(shared, { force: true }); }
   }

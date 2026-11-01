@@ -981,15 +981,15 @@ async function print(input) {
   const busy = (t) => { try { return lastTurn(t.p).open; } catch { return false; } };
   const working = [];
   for (const t of live) { if (working.length === 2 || Date.now() - t.m >= ACTIVE) break; if (busy(t)) working.push(t); }
+  // Never the words of a conversation marked private, though handoff.md still
+  // holds them (a sweep that failed waits for the next reply): the mark is
+  // kept apart. A list that won't read hides them all.
+  const hid = new Map(), quiet = (s) => hid.get(s) ?? hid.set(s, hushed(dir, s) !== false).get(s);
   const others = working.map((t) => {
-    const e = all.filter((x) => x.s === t.s).at(-1);
+    const e = all.filter((x) => x.s === t.s && !quiet(x.s)).at(-1);
     return `Another session is working in this project: ${e ? `${e.at} [${t.s}] ${clip(e.ask, 120)}` : `${local(t.m)} [${t.s}] (no handoff entry)`}`;
   });
   if (input.source === 'startup' || input.source === 'clear') {
-    // Never a conversation marked private, though handoff.md still holds it (a
-    // sweep that failed waits for the next reply): the mark is kept apart. A
-    // list that won't read hides them all.
-    const hid = new Map(), quiet = (s) => hid.get(s) ?? hid.set(s, hushed(dir, s) !== false).get(s);
     const told = all.filter((t) => !quiet(t.s));
     const last = told.filter((t) => t.s !== me).at(-1);
     // After /clear the conversation just cleared is the newest transcript and
@@ -1008,9 +1008,13 @@ async function print(input) {
     // conversation and minute as its sweep matches them: a sweep that failed
     // waits for that conversation's next reply. The line above still names the
     // newest entry: that reply puts back another exchange of a swept minute.
-    let list = null; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch {}
+    // A list that won't read could name any: none is listed. Nor any of a
+    // conversation held with auto memory off, unknown included: a later Stop
+    // with it on reads back what was typed while it was off.
+    let list = null, shut = false; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch (e) { shut = e.code !== 'ENOENT'; }
     const gone = new Set(forgotten(list).filter(([, t]) => t).map(([, t, at]) => `${tag(basename(t))} ${at}`));
-    const theirs = lines.length && last && !others.length ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).map(render) : [];
+    const theirs = lines.length && last && !others.length && !shut && hushed(projectsRoot(), last.s, false, OFF) === false
+      ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).map(render) : [];
     const rest = [...(first ? [`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`] : []),
       ...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];
     const say = (ex) => fit([...lines, ...(ex.length ? ['Its last exchanges, oldest first:', ...ex] : []), ...rest].join('\n') + '\n', 1000);
