@@ -462,7 +462,8 @@ At the start of a conversation, and after `/clear`, Claude is told:
 
 - which other conversations are working in this project right now (their
   transcript changed in the last 30 minutes and has a turn still open), and
-  what they were last asked; if none, where the last conversation stopped, if
+  the last request recorded for each, said as such: what it works on now may
+  be newer; if none, where the last conversation stopped, if
   that was in the last 7 days, followed by that conversation's own exchanges
   from the handoff, oldest first (request, answer and files, as the handoff
   keeps them), as many as fit (see below). After `/clear` neither, since the conversation

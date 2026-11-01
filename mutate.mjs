@@ -479,6 +479,7 @@ export const suites = {
     "startup lists exchanges though the forgotten list won't read": [' && !shut && ', ' && '],
     'startup takes a missing forgotten list for one that will not read': ["shut = e.code !== 'ENOENT';", 'shut = true;'],
     'a private session working named by its words': ['x.s === t.s && !quiet(x.s)', 'x.s === t.s'],
+    'H-F8 a working session named by a finished ask as its current work': ['`; the last request recorded for it, at ${e.at}: ${clip(e.ask, 120)}`', '` ${e.at} ${clip(e.ask, 120)}`'],
     "startup prints another session's exchanges": ['told.filter((t) => t.s === last.s && ', 'told.filter((t) => '],
     'startup exchanges past the budget': ['const from = theirs.findIndex((_, i) => say(theirs.slice(i)).length <= BRIEF);', 'const from = 0;'],
     'startup budget of exactly BRIEF cut': ['.length <= BRIEF);', '.length < BRIEF);'],

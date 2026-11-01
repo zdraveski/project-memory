@@ -186,7 +186,7 @@ for (const id of ['aaaaaaaa-1', 'bbbbbbbb-2', 'cccccccc-3']) utimesSync(join(dir
 const printS = (session_id, source) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdS, session_id, source }), env }).toString();
 const pc = printS('cccccccc-3', 'compact');
 ok(/cccc q11/.test(pc) && !/bbbb q/.test(pc) && !/dddd q0/.test(pc), 'a compacted session is given its own exchanges only');
-ok(/Another session is working in this project: \S+ \S+ \[dddddddd\] dddd q1/.test(pc), 'and told who else is working here');
+ok(/Another session is working in this project: \[dddddddd\]; the last request recorded for it, at \S+ \S+: dddd q1/.test(pc), 'and told who else is working here');
 ok(!/Another session[^\n]*bbbbbbbb/.test(pc), 'a session quiet for weeks is not called working');
 // A session with no entries of its own yet (cut in its first turn, or a private
 // one) is shown none: another session's, under "the last exchanges before this
@@ -197,7 +197,7 @@ ok(shownF === 0 && !/The last exchanges/.test(pf), `a session with no entries of
 
 // 16. At startup: who is working here now, or where the last session stopped; then anything failing.
 const ps = printS('eeeeeeee-5', 'startup');
-ok(/^Another session is working in this project: \S+ \S+ \[dddddddd\] dddd q1$/m.test(ps) && !/Last session here/.test(ps), 'startup names the session working here now');
+ok(/^Another session is working in this project: \[dddddddd\]; the last request recorded for it, at \S+ \S+: dddd q1$/m.test(ps) && !/Last session here/.test(ps), 'startup names the session working here now');
 ok(!/Another session/.test(printS('dddddddd-4', 'startup')), 'and never names a session to itself');
 const cwdL = 'C:\\handoff-last';
 const dirL = storeFor(home, cwdL);
@@ -358,12 +358,13 @@ writeFileSync(tw, user('a long job', { ts: nowIso(60) }) + '\n' + asst('step 1')
 execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdW, transcript_path: tw, session_id: 'wwwwwwww-1' }), env });
 appendFileSync(tw, asst('step 40') + '\n');
 const printW = () => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdW, session_id: 'xxxxxxxx-2', source: 'startup' }), env }).toString();
-ok(/^Another session is working in this project: \S+ \S+ \[wwwwwwww\] a long job$/m.test(printW()), 'a session an hour into one prompt is still working');
+// Named by the last request recorded for it, and said so: one at work on a newer request read as still on that one (audit H-F8).
+ok(/^Another session is working in this project: \[wwwwwwww\]; the last request recorded for it, at \S+ \S+: a long job$/m.test(printW()), 'a session an hour into one prompt is still working');
 const hourAgo = new Date(Date.now() - 60 * 60000);
 utimesSync(tw, hourAgo, hourAgo);
 ok(!/Another session/.test(printW()) && /Last session here ended/.test(printW()), 'one whose transcript has not moved for an hour is not');
 writeFileSync(join(dirname(dirW), 'ffffffff-3.jsonl'), user('a first prompt', { ts: nowIso(1) }) + '\n');
-ok(/^Another session is working in this project: \S+ \S+ \[ffffffff\] \(no handoff entry\)$/m.test(printW()), 'and one still in its first turn is named all the same');
+ok(/^Another session is working in this project: \[ffffffff\], active at \S+ \S+ \(no handoff entry\)$/m.test(printW()), 'and one still in its first turn is named all the same');
 
 // 24. A Stop hook that stopped running is said at startup: its output reaches
 // nobody, so an unwired or crashing hook was silence. Every Stop touches
@@ -2282,10 +2283,10 @@ require('node:module').syncBuiltinESMExports();
     // handoff.md still holds that (a sweep that failed, tried again at its next reply).
     const hdP = join(dP, 'handoff.md'), hdHad = existsSync(hdP) ? readFileSync(hdP) : null;
     writeFileSync(hdP, docOf(entry('2026-10-01 10:00', 'unopenab', 'the okapi merger closes on friday', 'noted')));
-    ok(/^Another session is working in this project: \S+ \S+ \[unopenab\] the okapi merger closes on friday$/m.test(print_(cw, 'pppppppp-1', 'startup')), 'a working session is named by its last request');
+    ok(/^Another session is working in this project: \[unopenab\]; the last request recorded for it, at \S+ \S+: the okapi merger closes on friday$/m.test(print_(cw, 'pppppppp-1', 'startup')), 'a working session is named by its last request');
     writeFileSync(join(dP, '.private-sessions'), 'unopenab\n');
     const pw = print_(cw, 'pppppppp-1', 'startup');
-    ok(/^Another session is working in this project: \S+ \S+ \[unopenab\] \(no handoff entry\)$/m.test(pw) && !pw.includes('okapi'), `a private one working is named without its words (${pw.slice(0, 400)})`);
+    ok(/^Another session is working in this project: \[unopenab\], active at \S+ \S+ \(no handoff entry\)$/m.test(pw) && !pw.includes('okapi'), `a private one working is named without its words (${pw.slice(0, 400)})`);
     rmSync(join(dP, '.private-sessions'));
     if (hdHad) writeFileSync(hdP, hdHad); else rmSync(hdP);
     rmSync(join(folderP, 'unopenable-1.jsonl'));

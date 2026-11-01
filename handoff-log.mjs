@@ -1103,9 +1103,11 @@ async function print(input) {
   // holds them (a sweep that failed waits for the next reply): the mark is
   // kept apart. A list that won't read hides them all.
   const hid = new Map(), quiet = (s) => hid.get(s) ?? hid.set(s, hushed(dir, s) !== false).get(s);
+  // By the last request recorded for it, and said so: what it works on now may be newer, and named as its work, a finished
+  // ask read as the current one (audit H-F8).
   const others = working.map((t) => {
     const e = all.filter((x) => x.s === t.s && !quiet(x.s)).at(-1);
-    return `Another session is working in this project: ${e ? `${e.at} [${t.s}] ${clip(e.ask, 120)}` : `${local(t.m)} [${t.s}] (no handoff entry)`}`;
+    return `Another session is working in this project: [${t.s}]${e ? `; the last request recorded for it, at ${e.at}: ${clip(e.ask, 120)}` : `, active at ${local(t.m)} (no handoff entry)`}`;
   });
   if (input.source === 'startup' || input.source === 'clear') {
     const told = all.filter((t) => !quiet(t.s));
