@@ -188,10 +188,12 @@ context-mode and two more is in [Comparison](docs/comparison.md).
 
 ## More
 
+- [Questions people ask](docs/faq.md): short answers.
 - [How it works](docs/how-it-works.md): the technical details.
 - [Changelog](CHANGELOG.md): what changed in each version.
 - [Privacy policy](PRIVACY.md): what it reads and saves, in full.
 - [Contributing](CONTRIBUTING.md): running the tests and changing the code.
-- Questions or problems:
-  [open an issue](https://github.com/zdraveski/project-memory/issues).
+- A question: ask in
+  [Discussions](https://github.com/zdraveski/project-memory/discussions).
+  A problem: [open an issue](https://github.com/zdraveski/project-memory/issues).
 - License: [MIT](LICENSE). Free to use, change and share.

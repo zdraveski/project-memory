@@ -190,7 +190,8 @@ fuzz on every platform. Have the change reviewed from its diff alone, by
 someone (or an agent) who has not heard why you made it. Leave the version
 number alone, and describe the change under an `## Unreleased` heading at
 the top of `CHANGELOG.md` (add the heading if it isn't there), in plain
-words for someone who uses the plugin.
+words for someone who uses the plugin. A change that saves, reads or sends
+anything new updates `PRIVACY.md` in the same pull request.
 
 ## Releasing
 
