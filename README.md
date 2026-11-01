@@ -2,12 +2,31 @@
 
 # project-memory
 
+[![Tests](https://img.shields.io/github/actions/workflow/status/zdraveski/project-memory/test.yml?branch=master&label=tests)](https://github.com/zdraveski/project-memory/actions/workflows/test.yml)
+[![Latest release](https://img.shields.io/github/v/release/zdraveski/project-memory?label=release)](https://github.com/zdraveski/project-memory/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/zdraveski/project-memory?label=license)](LICENSE)
+[![Node.js 22 or newer](https://img.shields.io/badge/node-%E2%89%A5%2022-3c873a)](#install)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/zdraveski/project-memory/badge)](https://scorecard.dev/viewer/?uri=github.com/zdraveski/project-memory)
+
 **Claude remembers your work: where you left off, and anything you did
 before.**
 
 project-memory is a free add-on (a "plugin") for Claude Code. It works on its
 own after every reply, keeps everything on your computer, and needs no
 account or API key.
+
+To try it, type these two lines in Claude Code. When the second one opens a
+menu, choose to install it for you (user scope), then restart Claude Code. It
+needs Node.js 22 or newer; the full steps are under [Install](#install).
+
+```
+/plugin marketplace add zdraveski/project-memory
+/plugin install project-memory@project-memory
+```
+
+[Install](#install) · [Using it](#using-it) · [Privacy](#your-privacy) ·
+[Questions](docs/faq.md) ·
+[Project page](https://zdraveski.github.io/project-memory/)
 
 <img src="docs/problem.webp" width="600" alt="The problem: every new conversation starts fresh. On Monday you say: Let's stop here. Claude says: Pricing comes next. Then a new conversation. On Tuesday you say: Let's carry on. Claude says: Sure. What were we working on?">
 
@@ -159,8 +178,8 @@ added it from claude.ai, use `/plugin` in Claude Code for both.
 Your notes, the journal and the history stay either way, and so do the lines
 project-memory added to each `MEMORY.md`: the ones pointing at `handoff.md`
 and `journal.md` keep being loaded, so delete them when you remove it. The
-privacy policy
-lists what to delete by hand: [Deleting it](PRIVACY.md#deleting-it).
+privacy policy lists what to delete by hand:
+[Deleting it](PRIVACY.md#deleting-it).
 
 ## If something seems wrong
 
@@ -188,6 +207,8 @@ context-mode and two more is in [Comparison](docs/comparison.md).
 
 ## More
 
+- [Project page](https://zdraveski.github.io/project-memory/): the short
+  tour.
 - [Questions people ask](docs/faq.md): short answers.
 - [How it works](docs/how-it-works.md): the technical details.
 - [Changelog](CHANGELOG.md): what changed in each version.
@@ -196,4 +217,6 @@ context-mode and two more is in [Comparison](docs/comparison.md).
 - A question: ask in
   [Discussions](https://github.com/zdraveski/project-memory/discussions).
   A problem: [open an issue](https://github.com/zdraveski/project-memory/issues).
+  A security or privacy problem: report it privately, as
+  [SECURITY.md](SECURITY.md) says. Where to ask what: [Support](SUPPORT.md).
 - License: [MIT](LICENSE). Free to use, change and share.
