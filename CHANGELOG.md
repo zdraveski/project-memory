@@ -10,6 +10,12 @@
   now finds the exchange in its conversation, lists it as not in the journal
   yet, and with `--yes` keeps it out of both. A key you forgot before is
   named as already forgotten, and nothing more is removed.
+- When the list of conversations held with auto memory off couldn't be read,
+  the journal's look for older conversations stopped at the first one that
+  needed that list. A conversation you had marked private, met after it in
+  the same look, kept its earlier journal entries until the list could be
+  read again. The look now goes on past it, and still reads the list only
+  once.
 
 ## 1.2.3 (2026-11-01)
 

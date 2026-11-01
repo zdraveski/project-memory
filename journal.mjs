@@ -628,14 +628,16 @@ function marked(fd, pos, seg, size, more = () => true) {
 // goes on from where it stopped (a gigabyte held the lock ~5 s). Then its
 // exchanges, a segment at a time while `more()`. Returns the offset the
 // import reached (its size when done), the size, and how far the look got.
-function importOne(dir, c, fd, seg, cap, more) {
+// `off(s)`: whether the memory-off list holds s, as hushed() answers.
+function importOne(dir, c, fd, seg, cap, more, off) {
   const s = tag(basename(c.p, '.jsonl')), size = fstatSync(fd).size, none = { at: size, size, looked: size };
   // Marked private, or held with auto memory off: never imported, and what it
   // has in the journal goes at the first look that meets it, as at its first
   // such Stop. Tagged by a writer with no sink (a memory-off Stop, the
   // compaction gate) and no Stop after, it kept its entries (review, 2026-10-29).
-  // A list that won't read: unknown, so null, neither imported nor swept, and
-  // not listed as read; the next look takes it (F12).
+  // A list that won't read: unknown, neither imported nor swept, and not
+  // listed as read; the next look takes it (F12). Null for the store's private
+  // list, false for the memory-off list.
   const priv = hushed(dir, s);
   if (priv === null) return null;
   if (priv) { takeBack(dir, c.k, s, false, true); return none; }
@@ -643,9 +645,9 @@ function importOne(dir, c, fd, seg, cap, more) {
   // where the last stopped, past the mark, imported it (F6). Tagged private
   // again (memory-off too, R17), so it is swept once, of what was saved since.
   if (checked(dir, c.k)?.[4] === 'swept') {
-    const off = hushed(projectsRoot(), s, false, OFF);
-    if (off === null) return null;
-    if (!off) { hushed(dir, s, true); takeBack(dir, c.k, s, true, true); return none; }
+    const was = off(s);
+    if (was === null) return false;
+    if (!was) { hushed(dir, s, true); takeBack(dir, c.k, s, true, true); return none; }
   }
   // A mark typed while the plugin was off is taken as its Stop takes one: the
   // conversation is marked, and what it wrote before goes, from the journal
@@ -653,8 +655,8 @@ function importOne(dir, c, fd, seg, cap, more) {
   const look = marked(fd, c.looked, seg, size, more);
   if (look.hit) { hushed(dir, s, true); takeBack(dir, c.k, s, true, true); return none; }
   if (look.pos < size) return { at: c.from, size, looked: look.pos };
-  const held = hushed(projectsRoot(), s, false, OFF);
-  if (held === null) return null;
+  const held = off(s);
+  if (held === null) return false;
   if (held) { takeBack(dir, c.k, s); return none; }
   let at = c.from;
   try {
@@ -701,6 +703,9 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
   // with work left to a look in half an hour, and its line in status after
   // the day was fixed and a live write finished the sweep (review, 2026-10-29).
   try { resweep(dir); } catch { stuck = true; }
+  // The memory-off list, read once a look while it won't read: every conversation reads the same list, and each read pauses (R70).
+  let offUnread = false;
+  const off = (s) => { if (offUnread) return null; const v = hushed(projectsRoot(), s, false, OFF); offUnread = v === null; return v; };
   try {
     all = candidates(dir, skip);
     for (const [i, c] of all.entries()) {
@@ -713,8 +718,12 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
         // retried at every look, it failed at every look.
         let fd; try { fd = openSync(c.p, 'r'); } catch (e) { mark(dir, [`${c.k} ${c.size} failed ${Date.now()}`]); throw e; }
         try {
-          const r = importOne(dir, c, fd, segment, cap, () => Date.now() - t0 < budgetMs);
-          if (!r) break;   // unknown whether it may be imported: left as it is; every conversation reads the same list, and each read pauses (R70)
+          const r = importOne(dir, c, fd, segment, cap, () => Date.now() - t0 < budgetMs, off);
+          // Unknown whether it may be imported: left as it is. The store's private list stops the look, as every conversation
+          // reads it and each read pauses (R70); the memory-off list only the conversations that need it, so one private in
+          // the store's list is still swept (R72).
+          if (r === null) break;
+          if (!r) continue;
           const { at, size, looked } = r;
           mark(dir, [at < size ? `${c.k} ${looked} at ${at}` : `${c.k} ${size}`]);
           n++; if (at >= size) done++;

@@ -1773,7 +1773,7 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   const a = { asks: asks(d).join(), n: line(N) === before, p: !line(P) };
   grow(S, 6);   // grown again: the next look meets it whether or not that one read it
   due(d); refusing(['.memory-off'], () => fill(d));
-  // A look stops at the first list it can't read (R70): M's was met above, S's now that S is the oldest.
+  // S met last above and first now: a look once stopped at the first list it couldn't read (R70), the memory-off list too (R72).
   utimesSync(at(S), ago(3), ago(3));
   due(d); refusing(['.memory-off'], () => fill(d));
   const b = { asks: asks(d).join(), m: !line(M), s: !tagsOf(d).includes(S.slice(0, 8)) && readFileSync(join(d, 'handoff.md'), 'utf8').includes('handed off with memory on') };
@@ -1781,6 +1781,26 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   ok(a.asks === 'question 0' && a.n && a.p, `a look whose private list won't read imports and sweeps nothing, and lists nothing as read (got ${JSON.stringify(a)})`);
   ok(b.asks === 'question 0' && b.m && b.s, `nor one whose memory-off list won't read; a memory-off conversation swept before is not tagged private (got ${JSON.stringify(b)})`);
   ok(asks(d).join() === 'question 0,question 1' && tagsOf(d).includes(P.slice(0, 8)), `the next clean look imports the normal conversation's new turn, and only that (got ${asks(d)})`);
+}
+{
+  // R72: a look stopped at the memory-off list it couldn't read as at the store's private list (R70), though a conversation
+  // tagged private in the store's own list needs no answer from it: met after one that did, its entries stayed until a look
+  // found the memory-off list readable. The memory-off list is read once a look all the same, every conversation reading it.
+  // W: held with auto memory off, swept at the first look, so the next asks the list whether it still is.
+  const [r, d] = repo('offrefused'), [A, B, Q, W] = ['oa', 'ob', 'oq', 'ow'].map(sid);
+  const at = (id) => join(projects, slug(r), `${id}.jsonl`), grow = (id, i, h) => { appendFileSync(at(id), exchange(id, r, i)); utimesSync(at(id), ago(h), ago(h)); };
+  appendFileSync(join(projects, '.memory-off'), `${W.slice(0, 8)}\n`);
+  grow(Q, 0, 2); grow(W, 0, 5); fill(d);
+  const had = asks(d).join();
+  appendFileSync(join(d, '.private-sessions'), `${Q.slice(0, 8)}\n`);
+  grow(W, 1, 5); grow(A, 1, 4); grow(B, 2, 3); grow(Q, 3, 2);   // W, A and B older, so met first
+  const read = fs.readFileSync;
+  let reads = 0, res;
+  fs.readFileSync = (q, ...a) => { if (String(q).endsWith('.memory-off')) { reads++; throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); } return read(q, ...a); };
+  syncBuiltinESMExports();
+  try { due(d); res = fill(d); } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
+  ok(had === 'question 0' && !asks(d).length && reads === 3 && res.imported === 1 && res.left === 3,
+    `a look whose memory-off list won't read still sweeps a conversation private in the store's list, and reads that list once (got ${had}, ${asks(d)}, ${reads} reads, ${JSON.stringify(res)})`);
 }
 
 // A failure's reason is stored in .failed and printed by status: it never names a temp file (the pid-numbered file of a refused
