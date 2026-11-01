@@ -215,7 +215,9 @@ Uninstalling the plugin leaves all of this in place. To delete:
   folder, and the line that points to it in its `MEMORY.md`.
 - the archive: `MEMORY-archive.md` in a project's `memory` folder, and the
   `Archive` line in its `MEMORY.md`. It holds the pointers to older notes:
-  move any you want loaded again back into `MEMORY.md` first.
+  move any you want loaded again back into `MEMORY.md` first. The shared
+  notebook, `~/.claude/projects/_shared/memory`, gets its own archive and
+  `Archive` line once it has a `MEMORY.md`: delete them there too.
 - the journal: the `journal` folder (with its bookkeeping files inside it)
   and `journal.md` in a project's `memory` folder, and the line that points
   to `journal.md` in its `MEMORY.md`. While
@@ -224,8 +226,10 @@ Uninstalling the plugin leaves all of this in place. To delete:
   instead, use `forget` as below.
 - the bookkeeping files: in `~/.claude/projects`, `.gitignore`, `.stop-ran`,
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
-  `.journal-failed-…` file and the folder `.nudge`; in each project's `memory` folder, `.tiered`, `.facts`,
-  `.health` and `.private-sessions`. Delete `.memory-off` and `.private-sessions` only
+  `.journal-failed-…` file and the folder `.nudge`; in each project's
+  `memory` folder, `.tiered`, `.facts`, `.health` and `.private-sessions`;
+  and in the shared notebook's (`_shared/memory`), `.tiered`, `.facts` and
+  `.health`. Delete `.memory-off` and `.private-sessions` only
   once project-memory is removed for good: they list the conversations it
   must not record. Without them, a conversation held with auto memory off is
   recorded from its next reply; one marked private is tagged again at its

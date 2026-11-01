@@ -146,7 +146,14 @@ Entries carry your local time and are ordered by it, so changing time zones
 shows up here. After you move west, new turns rank before the newest entries
 and aren't kept until your clock passes them, up to the hours you moved.
 After you move east, recent turns can be listed twice until newer ones
-replace them.
+replace them. The clock going back an hour at the end of daylight saving
+time, or set back by hand, works like a move west: the repeated hour's
+turns are ordered by the clock, and the startup briefing can name an older
+turn as the last one. A conversation you go on with after a change of zone
+is read again in the new zone, so its earlier entries show their time in
+the new zone (one made at 09:00 in Los Angeles shows 17:00 once the
+conversation goes on in Skopje, eight hours ahead), and near midnight
+another day.
 
 Before any of it is written, these are taken out:
 
@@ -261,8 +268,9 @@ journal is the detailed record, and `search` reads headlines of it.
   turn seen again with more in it replaces its entry. A turn skipped while
   another window held the lock is written after the next reply, as the
   handoff catches up. A key written to a day leaves the day before and the
-  day after: read again after a time-zone change, a turn can fall on the
-  next or the previous day.
+  day after: read again after a time-zone change, a turn gets the new
+  zone's time, and so can fall on the next or the previous day. Daylight
+  saving time ending, or a clock set back, acts the same way.
 - Writes go under the store's lock through the same unchanged-file check as
   every other write. Entries are kept in time order. A line in a day file
   that isn't part of an entry (a note you wrote) stays under the entry it
