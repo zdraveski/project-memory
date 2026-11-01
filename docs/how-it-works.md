@@ -673,8 +673,10 @@ reply that names everything can't outrank the request for the thing. Equal
 scores show the newest first.
 
 It shows the top 10 (`--limit N` for more), then how many matched. A journal
-hit shows its day and time, conversation tag and branch (and its project,
-under `--all`), then its key and its request, cut to 200 characters, then
+hit shows its day and time, conversation tag and branch (and under `--all`
+its project: the folder its conversations started in, then in brackets its
+folder in `~/.claude/projects`, which `--store` takes), then its key and its
+request, cut to 200 characters, then
 `Result:`, the first sentence of its reply (140 characters at most; left out
 when the reply's own stretch below starts there). Of its
 reply, files and commands it shows only those that hold a search word, and
@@ -797,8 +799,9 @@ node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory
 
 Every command works on the project of the conversation that `--session <id>`
 names (the skill passes Claude Code's session id). Without it, or when that
-conversation's transcript isn't found, it works on the nearest project with
-a notebook, from the folder you're in upward. The tool reads no environment
+conversation's transcript isn't found (it then says so on its first line),
+it works on the nearest project with a notebook, from the folder you're in
+upward. The tool reads no environment
 variable to find the conversation. `--store <folder>` picks another
 project's `memory` folder, one inside `~/.claude/projects` (any other is
 refused), and `--shared` picks the shared notebook. With no command, it runs

@@ -1809,6 +1809,28 @@ if (!quick) {
     ok(made.status === 0 && await miss('TWIN') && await miss('dual-é-é') && await miss('STRASSE') && !(await miss('Twin')),
       `a name two snapshot names read alike, or only a fold that NTFS does not make, is no name (got ${made.stderr}${(await cli('history', 'TWIN')).stdout})`);
   }
+  // C-9. Under --all, a hit named its project by its folder (`C--work-api-server`), no name a person reads: now by the folder its
+  // conversations started in, then the folder --store needs. A project with no conversation on disk keeps the folder alone.
+  const rp = join(root, 'C--work-readable'), rd = join(rp, 'memory');
+  mkdirSync(join(rd, 'journal'), { recursive: true });
+  writeFileSync(join(rp, 'rrrrrrrr-1.jsonl'), JSON.stringify({ type: 'user', uuid: 'rd-1', cwd: 'C:\\work\\readable', timestamp: '2026-10-20T10:00:00Z', message: { role: 'user', content: 'the narwhal plan' } }) + '\n');
+  writeFileSync(join(rd, 'journal', '2026-10-20.md'), '# Journal 2026-10-20\n\n<!-- j:rd-1 t:C--work-readable/rrrrrrrr-1 d:2026-10-20 -->\n## 10:00 · conversation rrrrrrrr\n**Asked:** the narwhal plan\n**Answered:** drafted it\n');
+  r = await run(['search', 'narwhal', '--all']);
+  ok(/^ *\d+  journal   2026-10-20 10:00  conversation rrrrrrrr · project C:\\work\\readable \(C--work-readable\)$/m.test(r.stdout), `a hit under --all names its project by its folder on disk, and its store's folder (got ${r.stdout})`);
+  r = await run(['show', 'rd-1', '--all']);
+  ok(/^2026-10-20 10:00  conversation rrrrrrrr · project C:\\work\\readable \(C--work-readable\)$/m.test(r.stdout), `and so does show --all (got ${r.stdout})`);
+  // C-10. status said "1 days", counted the plugin's own handoff.md and journal.md, before the index has their lines, as notes
+  // with no pointer, and took a --session no transcript has for the folder it ran in, in silence.
+  writeFileSync(join(rd, 'handoff.md'), '---\nname: handoff\ndescription: "where you left off"\nmetadata:\n  type: project\n---\n\n');
+  writeFileSync(join(rd, 'journal.md'), '---\nname: journal\ndescription: "every exchange"\nmetadata:\n  type: reference\n---\n\n');
+  r = await run(['status', '--store', rd]);
+  ok(/^  journal: 1 day since 2026-10-20, /m.test(r.stdout) && /^  index 0 \/ 7000 B · 0 hot · 0 archived$/m.test(r.stdout), `one day is "1 day", and the plugin's own files are no notes without a pointer (got ${r.stdout})`);
+  memory(rd, 'loose', 'a note with no line yet');
+  ok(/^  index 0 \/ 7000 B · 0 hot · 0 archived · 1 with no pointer yet$/m.test((await run(['status', '--store', rd])).stdout), 'a note of the user\'s still is');
+  r = await run(['status', '--session', 'no-such-conversation']);
+  ok(r.status === 0 && /^no conversation no-such-conversation on this machine, so this is the store of the folder this runs in: /.test(r.stdout), `a --session no transcript has is said (got ${r.stdout})`);
+  ok(!/^no conversation/m.test((await run(['status', '--session', 'rrrrrrrr-1'])).stdout) && !/^no conversation/m.test((await run(['status', '--session', 'no-such-conversation', '--store', rd])).stdout),
+    'not for one that has, nor when --store names the store');
 }
 
 console.log(`memory: ${checks} checks passed`);

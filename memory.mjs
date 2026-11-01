@@ -31,7 +31,7 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd } from './store.mjs';
 import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
@@ -265,8 +265,11 @@ export function status(dir, sharedNames = []) {
   // A journal alone is a store: search finds its entries.
   if (main === null && !ms.length && !existsSync(join(dir, 'journal'))) return [...lines, '  no store here yet'];
   const n = (w) => ms.filter((m) => m.where === w).length;
+  // Not handoff.md and journal.md, the plugin's own, which tiering points to at its next run: a store with no index yet
+  // counted them as notes with no pointer (audit C-10).
+  const loose = ms.filter((m) => m.where === 'unindexed' && m.file !== 'handoff.md' && m.file !== 'journal.md').length;
   lines.push(`  index ${Buffer.byteLength(main ?? '')} / ${budgetOf(dir)} B · ${n('hot')} hot · ${n('archived')} archived` +
-    (n('unindexed') ? ` · ${n('unindexed')} with no pointer yet` : ''));
+    (loose ? ` · ${loose} with no pointer yet` : ''));
   const health = (read(join(dir, '.health')) ?? '').trim();
   if (health) lines.push(...health.split('\n').map((h) => `  needs attention: ${h}`));
   // The Stop's record of what it could not save, as the briefing says it: only the briefing did (R64).
@@ -284,7 +287,7 @@ export function status(dir, sharedNames = []) {
   const j = summary(dir);
   if (j?.broken) lines.push(`  journal: could not read journal.mjs: ${j.broken}`);
   // Failing from the first write, it has no day to show: the failure is the news.
-  if (j?.first || j?.failed) lines.push(`  journal: ${j.first ? `${j.days} days since ${j.first}, ${(j.bytes / 1048576).toFixed(1)} MB` : 'no days yet'}` + (j.left > 0 ? `; importing ${j.left} older conversations` : '') + (j.failed ? `; last write failed: ${j.failed}` : ''));
+  if (j?.first || j?.failed) lines.push(`  journal: ${j.first ? `${j.days} day${j.days === 1 ? '' : 's'} since ${j.first}, ${(j.bytes / 1048576).toFixed(1)} MB` : 'no days yet'}` + (j.left > 0 ? `; importing ${j.left} older conversations` : '') + (j.failed ? `; last write failed: ${j.failed}` : ''));
   // A day search can't read: its entries are missing from every search.
   lines.push(...(j?.unread ?? []).map((u) => `  journal: could not read ${u}`));
   const ch = recent(dir);
@@ -700,8 +703,10 @@ export function main(given) {
   // What the model reads back: a hit's lines stay short (a 13-link hit was a
   // quarter of its output), and a miss says where it looked in one line.
   const where = scope.length <= 2 ? scope.join(' and ') : `${scope.length} stores`, n = Number(opt('--limit'));
-  // An entry's line; under --all, with the project it is from: forget and --store need it.
-  const head = (e) => `${e.at}  conversation ${clip(e.s, 100)}${e.branch ? ` · branch ${clip(e.branch, 100)}` : ''}${rest.includes('--all') ? ` · project ${basename(dirname(e.dir))}` : ''}`;
+  // An entry's line; under --all, with the project it is from: forget and --store need its folder. Named first by where its
+  // conversations started: the folder alone (`C--work-api-server`) was no name a person reads (audit C-9).
+  const project = (d) => { const f = dirname(d); let t; try { t = readdirSync(f).find((n) => n.endsWith('.jsonl')); } catch {} const cwd = t && startCwd(join(f, t)); return cwd ? `${cwd} (${basename(f)})` : basename(f); };
+  const head = (e) => `${e.at}  conversation ${clip(e.s, 100)}${e.branch ? ` · branch ${clip(e.branch, 100)}` : ''}${rest.includes('--all') ? ` · project ${project(e.dir)}` : ''}`;
   // Its transcript, for detail; not a private turn's: the only detail it has
   // is the private part, and the transcript still holds it (final review).
   const full = (e, conv = join(projectsRoot(), `${e.t}.jsonl`)) => (e.answered !== '[private]' && existsSync(conv) ? [`     Full conversation: ${conv}`] : []);
@@ -848,6 +853,8 @@ export function main(given) {
   // still in, the lines above. Before the last line of a search or a forget,
   // which is its count, as the skill says. Once: a forget reads a day twice.
   r.lines.splice(cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
+  // A --session no transcript has: the store came from the folder this runs in, and status reported it in silence (audit C-10).
+  if (opt('--session') !== undefined && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);
   console.log(r.lines.join('\n'));
   // A forget that failed anywhere fails: exit 0 read as all gone.
   return r.ok && !(cmd === 'forget' && failed.length) ? 0 : 1;

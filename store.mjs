@@ -73,7 +73,7 @@ function worktreeMain(d) {
 // From its head only, once per process, by its text: a first record longer
 // than the head (a large paste) is no JSON to parse there.
 const started = new Map();
-function startCwd(t) {
+export function startCwd(t) {
   if (!started.has(t)) {
     let cwd = null;
     try {
