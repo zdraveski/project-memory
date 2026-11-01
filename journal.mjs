@@ -287,31 +287,32 @@ function resweep(dir) {
 
 // The turns with these keys in the store's conversations, as entries (`unsaid`: no day holds them), for forget's `more`. A key
 // no day holds yet can be a turn a Stop skipped while the store's lock was held, written after the next reply: forgotten as no
-// entry's, no key kept it out, and it came back then (fuzz seed 1729835215). Found by the prompt record's uuid, as segments() cuts.
+// entry's, no key kept it out, and it came back then (fuzz seed 1729835215). Found by the prompt record's uuid, as segments()
+// cuts: a turn with none is keyed by a hash, and not found. One read of the conversations for all the keys, until each is found.
 // shortcut: a key no conversation has (a typo, another project's) reads all of them, and one that won't read is passed over
 // (the key is then named as no entry's, and the forget fails); upgrade if that is ever slow or wrong.
 export function unwritten(dir, keys) {
-  return keys.flatMap((k) => {
-    let fs = []; try { fs = looked(dir); } catch {}
-    for (const f of fs) {
-      let ns = []; try { ns = readdirSync(join(projectsRoot(), f)).filter((n) => n.endsWith('.jsonl')); } catch {}
-      for (const n of ns) {
-        const p = join(projectsRoot(), f, n);
+  const out = [], left = new Set(keys);
+  let fs = []; try { fs = looked(dir); } catch {}
+  for (const f of fs) {
+    let ns = []; try { ns = readdirSync(join(projectsRoot(), f)).filter((n) => n.endsWith('.jsonl')); } catch {}
+    for (const n of ns) {
+      if (!left.size) return out;
+      const p = join(projectsRoot(), f, n);
+      try {
+        const fd = openSync(p, 'r');
         try {
-          const fd = openSync(p, 'r');
-          try {
-            const size = fstatSync(fd).size;
-            for (let b, pos = 0; (b = chunk(fd, pos, IMPORT_SEGMENT, size)); pos = b.pos + b.buf.length) {
-              if (!b.buf.includes(`"uuid":${JSON.stringify(k)}`)) continue;
-              const got = turns(b.buf.toString('utf8')), t = [...got, got.open].find((x) => x?.id === k);
-              if (t && ours(dir, p)) { const e = entryOf(t, p); return [{ ...e, day: day(e.at), dir, unsaid: true }]; }
-            }
-          } finally { closeSync(fd); }
-        } catch {}
-      }
+          const size = fstatSync(fd).size;
+          for (let b, pos = 0; left.size && (b = chunk(fd, pos, IMPORT_SEGMENT, size)); pos = b.pos + b.buf.length) {
+            if (![...left].some((k) => b.buf.includes(`"uuid":${JSON.stringify(k)}`))) continue;
+            const got = turns(b.buf.toString('utf8'));
+            for (const t of new Set([...got, got.open])) if (t && left.has(t.id) && ours(dir, p)) { const e = entryOf(t, p); out.push({ ...e, day: day(e.at), dir, unsaid: true }); left.delete(t.id); }
+          }
+        } finally { closeSync(fd); }
+      } catch {}
     }
-    return [];
-  });
+  }
+  return out;
 }
 
 // The entries with every term (any case) in one of their fields, in the range,

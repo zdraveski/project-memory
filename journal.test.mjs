@@ -1269,9 +1269,17 @@ mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(pr
   writeFileSync(tw, [rec('user', 'uw-0', '2026-10-27T09:00:00Z', 'an earlier question'), rec('assistant', 'uw-0a', '2026-10-27T09:00:30Z', 'an earlier answer'),
     rec('user', 'uw-1', '2026-10-27T10:00:00Z', 'the ibex plan'), rec('assistant', 'uw-1a', '2026-10-27T10:00:30Z', 'drafted the ibex plan')].join('\n') + '\n');
   writeFileSync(join(web, 'wwwwwwww-2.jsonl'), [rec('user', 'uw-web', '2026-10-27T11:00:00Z', 'the web question', 'C:\\unwritten-selftest\\web'), rec('assistant', 'uw-weba', '2026-10-27T11:00:30Z', 'the web answer', 'C:\\unwritten-selftest\\web')].join('\n') + '\n');
-  const found = unwritten(d, ['uw-1', 'uw-1a', 'uw-web', 'uw-none']), e = found[0];
+  // Each conversation read once for all the keys (review): read again for each, a forget of three keys read a month three times.
+  // Counted by fstat, which the read does once a transcript (ours() opens one's head as well).
+  const fstat = fs.fstatSync;
+  let opens = 0, found;
+  fs.fstatSync = (...a) => { opens++; return fstat(...a); };
+  syncBuiltinESMExports();
+  try { found = unwritten(d, ['uw-1', 'uw-1a', 'uw-web', 'uw-none']); } finally { fs.fstatSync = fstat; syncBuiltinESMExports(); }
+  const e = found[0];
   ok(found.length === 1 && e.key === 'uw-1' && e.asked === 'the ibex plan' && e.t === 'C--unwritten-selftest/uwuwuwuw-1' && e.day === local(Date.parse('2026-10-27T10:00:00Z')).slice(0, 10) && e.unsaid === true,
     `unwritten() finds the turn of a key in the store's conversations, and nothing else (got ${JSON.stringify(found)})`);
+  ok(opens === 2, `and reads each of the two conversations once for the four keys (got ${opens} opens)`);
   const n = (o) => forget(d, [], { keys: ['uw-1'], more: found, ...o }).matched.length;
   ok(n({ since: e.day, until: e.day }) === 1 && n({ since: '2099-01-01' }) === 0 && n({ until: '2000-01-01' }) === 0, 'forget takes it by its day for a range');
   const r = forget(d, [], { keys: ['uw-1'], more: found, apply: true });
