@@ -2078,6 +2078,9 @@ require('node:module').syncBuiltinESMExports();
     const cw = 'C:\\hl-A-print', dP = store(cw), folderP = dirname(dP);
     writeFileSync(join(root_, `.handoff-failed-${basename(folderP)}`), JSON.stringify({ at: Date.parse('2026-10-01T10:00:00Z'), error: 'disk full' }));
     ok(/^Memory store needs attention \([^)]*\): the record of where you left off could not be saved after the reply at \d{4}-\d\d-\d\d \d\d:\d\d: disk full$/m.test(print_(cw, 'pppppppp-1', 'startup')), 'a handoff that failed to save is said at startup');
+    // A memory-off tag the Stop could not write, in its own words: nothing was to be saved (release review).
+    writeFileSync(join(root_, `.handoff-failed-${basename(folderP)}`), JSON.stringify({ at: Date.parse('2026-10-01T10:00:00Z'), error: 'list held', off: true }));
+    ok(/^Memory store needs attention \([^)]*\): a conversation held with auto memory off could not be marked after the reply at \d{4}-\d\d-\d\d \d\d:\d\d, so the journal may take it in later: list held$/m.test(print_(cw, 'pppppppp-1', 'startup')), 'a memory-off tag that could not be written is said at startup in its own words');
     rmSync(join(root_, `.handoff-failed-${basename(folderP)}`));
 
     // A transcript that cannot be read is not a session working.

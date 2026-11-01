@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, rea
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -516,8 +516,9 @@ export async function main(argv, input) {
       p = JSON.parse(input);
       (await import(new URL('./handoff-log.mjs', import.meta.url))).off(p);
     } catch (e) {
-      // A tag that could not be kept is said at the next start with memory on, as a handoff that could not be saved is (R67).
-      if (p) try { writeFileSync(join(projectsRoot(), `.handoff-failed-${basename(dirname(storeOf(p)))}`), JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); } catch {}
+      // A tag that could not be kept is said at the next start with memory on, as a handoff that could not be saved is (R67), in its
+      // own words (`off`): nothing was to be saved, and the journal may take the conversation in later (release review).
+      if (p) try { writeFileSync(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(storeOf(p)))}`), JSON.stringify({ at: new Date().toISOString(), error: reason(e), off: true })); } catch {}
     }
     return 0;
   }
@@ -550,7 +551,7 @@ export async function main(argv, input) {
       // file the next start reads: swallowed, nothing was saved, and nothing said.
       // One per project, beside the projects, not in the store that refused it:
       // shared, another project's next save cleared this one's.
-      const failed = join(projectsRoot(), `.handoff-failed-${basename(dirname(storeOf(payload || {})))}`);
+      const failed = join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(storeOf(payload || {})))}`);
       // The journal in a try of its own: a journal.mjs that cannot load costs
       // the journal, never the handoff.
       let sink = null;

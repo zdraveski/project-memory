@@ -10,6 +10,9 @@ import { homedir } from 'node:os';
 // (read by its fixed name). Under it, the hooks wrote nothing and said nothing.
 export const configDir = () => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 export const projectsRoot = () => join(configDir(), 'projects');
+// What a Stop could not save, `<projects>/<this><project folder>`: memory-tier writes it, the briefing and status read it. One
+// name for the three: spelt in four places, a change to one would have left the warning silent (release review).
+export const HANDOFF_FAILED = '.handoff-failed-';
 // A transcript where Claude Code keeps them, `<projects>/<folder>/<id>.jsonl`.
 // Resolved: `<projects>/../history.jsonl` passed, and was read as a session's.
 export const inProjects = (t) => same(dirname(dirname(resolve(t))), projectsRoot());

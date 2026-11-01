@@ -853,8 +853,16 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   const offSaid = execFileSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: to2, session_id: 'other', source: 'startup' }), env }).toString();
   rmSync(offList, { recursive: true }); writeFileSync(offList, hadOff);
-  ok(offBad.status === 0 && !existsSync(join(po, 'memory')) && existsSync(offFailed) && offSaid.split('\n').some((l) => /needs attention/.test(l) && l.includes('.memory-off could not be read')),
-    `a memory-off Stop whose list won't read exits 0, saves nothing, and the next start with memory on says so (got ${offBad.status}, record ${existsSync(offFailed)}; ${offSaid.slice(0, 300)})`);
+  const savedNothing = !existsSync(join(po, 'memory'));
+  // In its own words, in the briefing and in status (a store kept from before memory went off): nothing was meant to be saved, and
+  // what failed is the tag that keeps the conversation out of the journal (release review).
+  mkdirSync(join(po, 'memory')); writeFileSync(join(po, 'memory', 'MEMORY.md'), '# Index\n');
+  const offStatus = execFileSync(process.execPath, [tool('memory.mjs'), 'status', '--store', join(po, 'memory')], { env }).toString();
+  rmSync(join(po, 'memory'), { recursive: true });
+  const offWords = (l) => /needs attention/.test(l) && l.includes('a conversation held with auto memory off could not be marked after the reply at ')
+    && l.includes(', so the journal may take it in later: ') && l.includes('.memory-off could not be read') && !l.includes('where you left off');
+  ok(offBad.status === 0 && savedNothing && existsSync(offFailed) && offSaid.split('\n').some(offWords) && offStatus.split('\n').some(offWords),
+    `a memory-off Stop whose list won't read exits 0, saves nothing, and the next start with memory on and status say so in their own words (got ${offBad.status}, record ${existsSync(offFailed)}; ${offSaid.slice(0, 300)}; ${offStatus})`);
   rmSync(offFailed, { force: true });
 
   // A record of where you left off that cannot be saved (here the store's
@@ -869,7 +877,8 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   const stopB = () => call(['--stop'], JSON.stringify({ transcript_path: tb, session_id: 'brkn' }));
   await stopB();
   const said = execFileSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: tb, session_id: 'other', source: 'startup' }), env }).toString();
-  ok(existsSync(join(root, '.handoff-failed-proj-broken')) && /could not be saved/.test(said), `a handoff that cannot be saved is said at the next start (got ${said.slice(0, 200)})`);
+  ok(existsSync(join(root, '.handoff-failed-proj-broken')) && /needs attention[^\n]*: the record of where you left off could not be saved after the reply at /.test(said) && !said.includes('auto memory off'),
+    `a handoff that cannot be saved is said at the next start (got ${said.slice(0, 200)})`);
   // The failure file keeps the error's first line, whole, for the startup line to quote.
   const failedNote = JSON.parse(readFileSync(join(root, '.handoff-failed-proj-broken'), 'utf8'));
   ok(typeof failedNote.error === 'string' && failedNote.error.length > 0 && !failedNote.error.includes('\n'), `the failure file holds the error's first line (got ${JSON.stringify(failedNote)})`);

@@ -1284,6 +1284,12 @@ if (!quick) {
   rmSync(join(root, '.handoff-failed-C--mutA-health'));
   ok(/^  needs attention: the record of where you left off could not be saved after the reply at \d{4}-\d\d-\d\d \d\d:\d\d: the list could not be read$/m.test(r.stdout),
     `a handoff the Stop could not save is said by status (got ${r.stdout})`);
+  // With auto memory off nothing was to be saved: what failed is the tag that keeps the conversation out of the journal (release review).
+  writeFileSync(join(root, '.handoff-failed-C--mutA-health'), JSON.stringify({ at: '2026-10-01T10:00:00Z', error: 'the list could not be read', off: true }));
+  r = await run(['status', '--store', hs]);
+  rmSync(join(root, '.handoff-failed-C--mutA-health'));
+  ok(/^  needs attention: a conversation held with auto memory off could not be marked after the reply at \d{4}-\d\d-\d\d \d\d:\d\d, so the journal may take it in later: the list could not be read$/m.test(r.stdout),
+    `a memory-off tag the Stop could not write is said by status in its own words (got ${r.stdout})`);
 
   // The week's changes: added, edited (in the first snapshot, changed since), deleted; never the index, the handoff or a journal day.
   // NOTE for a block appended after this one: this changes the shared `dir` fixture (mentions edited, spam-log deleted, zz-fresh added, handoff and index rewritten).

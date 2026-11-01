@@ -68,7 +68,7 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
 | `~/.claude/projects/.git/project-memory-ignored` | bookkeeping for the snapshot's ignore list |
 | `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran, the snapshot's state, the reminder's state per conversation tag |
-| `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, and why (a private list that won't read is named there); read at the next start and by `status` |
+| `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, or with auto memory off a conversation's tag that could not be written (`off`), and why (a list that won't read is named there); read at the next start and by `status` |
 | `~/.claude/projects/.memory-off` | the tags of conversations held with auto memory off, which the journal never imports: kept while the transcript is on disk, and the newest 100 in any case, 10,000 at most |
 
 Uninstalling the plugin leaves all of these, and the history, in place; you

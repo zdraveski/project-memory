@@ -33,8 +33,10 @@ install the current LTS from nodejs.org.
 - With auto memory off, if the list of conversations held that way couldn't
   be written after a reply, nothing said so, and a conversation whose tag
   was never written could later be taken into the journal. Now the next
-  briefing with auto memory on says the store needs attention and names the
-  list. A conversation that got no tag at all can still be taken in.
+  briefing with auto memory on, and `status`, say the store needs attention:
+  the conversation could not be marked, so the journal may take it in later,
+  and they name the list. A conversation that got no tag at all can still be
+  taken in.
 - If the reply where you typed `<private-session>` couldn't save the mark (a
   full or busy disk), a later reply near the compaction limit could still ask
   Claude to write the conversation into memory, and a note kept across a

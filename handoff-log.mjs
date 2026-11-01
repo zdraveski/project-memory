@@ -22,7 +22,7 @@ import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, rea
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED } from './store.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
@@ -774,6 +774,12 @@ export const unsay = (dir, gone) => put(dir, [], gone);
 export const FORGOTTEN = join('journal', '.forgotten');
 export const forgotten = (text) => listOf(text).map((l) => l.split('\t'));
 
+// What a Stop's record of a failure (HANDOFF_FAILED) says, in the briefing and in status: the record of where you left off, or with
+// auto memory off (`off`) the tag that keeps the conversation out of the journal, which was all a Stop then meant to write.
+export const unsaved = (f) => (f.off
+  ? `a conversation held with auto memory off could not be marked after the reply at ${local(f.at)}, so the journal may take it in later: ${f.error}`
+  : `the record of where you left off could not be saved after the reply at ${local(f.at)}: ${f.error}`);
+
 // Warnings only: the startup line costs every session, so it says nothing
 // here when all is well. The shared store's problems are every project's.
 function health(dir) {
@@ -781,10 +787,10 @@ function health(dir) {
   for (const d of [dir, sharedStore()]) {
     try { const h = readFileSync(join(d, '.health'), 'utf8').trim(); if (h) out.push(`Memory store needs attention (${d}): ${h.split('\n').join('; ')}`); } catch {}
   }
-  // The record of where you left off could not be saved after the last reply.
+  // What the last Stop could not save.
   try {
-    const f = JSON.parse(readFileSync(join(projectsRoot(), `.handoff-failed-${basename(dirname(dir))}`), 'utf8'));
-    out.push(`Memory store needs attention (${dir}): the record of where you left off could not be saved after the reply at ${local(f.at)}: ${f.error}`);
+    const f = JSON.parse(readFileSync(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(dir))}`), 'utf8'));
+    out.push(`Memory store needs attention (${dir}): ${unsaved(f)}`);
   } catch {}
   // A journal write that failed after a reply (journal/.failed; not a backfill,
   // which is retried): only status said so, and every reply went unrecorded.

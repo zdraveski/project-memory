@@ -31,8 +31,8 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local } from './store.mjs';
-import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag } from './handoff-log.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED } from './store.mjs';
+import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -237,9 +237,9 @@ export function status(dir, sharedNames = []) {
     (n('unindexed') ? ` · ${n('unindexed')} with no pointer yet` : ''));
   const health = (read(join(dir, '.health')) ?? '').trim();
   if (health) lines.push(...health.split('\n').map((h) => `  needs attention: ${h}`));
-  // The Stop's record of a handoff it could not save, as the briefing says it: only the briefing did (R64).
-  const lost = json(join(projectsRoot(), `.handoff-failed-${basename(dirname(dir))}`));
-  if (lost) lines.push(`  needs attention: the record of where you left off could not be saved after the reply at ${local(lost.at)}: ${lost.error}`);
+  // The Stop's record of what it could not save, as the briefing says it: only the briefing did (R64).
+  const lost = json(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(dir))}`));
+  if (lost) lines.push(`  needs attention: ${unsaved(lost)}`);
   const known = new Set([...names(ms), ...sharedNames]);
   const dangling = ms.flatMap((m) => m.links.filter((l) => !known.has(l)).map((l) => `${m.file} → [[${l}]]`));
   if (dangling.length) lines.push(`  links to no memory: ${dangling.join(', ')}`);

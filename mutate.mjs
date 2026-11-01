@@ -169,6 +169,8 @@ export const suites = {
     'an option value read as the next option': [String.raw`"(?!--)[^"]*"|'(?!--)[^']*'|-\d+`, String.raw`"[^"]*"|'[^']*'|-\d+`],
     'a quoted forget missed': [String.raw`\s+(?:forget\b|'forget'|"forget")/`, String.raw`\s+forget\b/`],
     'a failed journal write unseen at startup': ["if (!String(f.error).startsWith('backfill: ')) out.push(", 'if (false) out.push('],
+    'a memory-off tag not written said as a lost handoff': ['export const unsaved = (f) => (f.off', 'export const unsaved = (f) => (false'],
+    'a lost handoff said as a memory-off tag not written': ['export const unsaved = (f) => (f.off', 'export const unsaved = (f) => (true'],
     'a retried backfill reported at startup': ["if (!String(f.error).startsWith('backfill: ')) ", ''],
     'snapshot health dated in UTC': ["last ok ${s.lastOk ? local(s.lastOk) : 'never'}", "last ok ${s.lastOk || 'never'}"],
     'forget after an option kept': [String.raw`(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?)*`, ''],
@@ -432,6 +434,7 @@ export const suites = {
   'memory-tier.mjs': ['memory-tier.test.mjs', {
     "a handoff failure names its temp file": ["writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) }))", "writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\\n')[0] }))"],
     "R67 a memory-off tag that could not be kept is silence": ["if (p) try { writeFileSync(", "if (false) try { writeFileSync("],
+    'a memory-off tag that could not be kept recorded as a lost handoff': [', error: reason(e), off: true }', ', error: reason(e) }'],
     'a nudge with no reader exits 1': ["process.stdout.on('error', () => {}); ", ''],
     'a run through a symlink does nothing': ['pathToFileURL(realpathSync(process.argv[1])).href', 'pathToFileURL(process.argv[1]).href'],
     "one run's --dry-run kept for the next": ["dry = argv.includes('--dry-run');", "dry ||= argv.includes('--dry-run');"],
@@ -534,6 +537,7 @@ export const suites = {
   }],
   'memory.mjs': ['memory.test.mjs', {
     'R64 status silent on a handoff the Stop could not save': ['if (lost) lines.push(', 'if (false) lines.push('],
+    'status says every record as a lost handoff': ['`  needs attention: ${unsaved(lost)}`', '`  needs attention: the record of where you left off could not be saved after the reply at ${local(lost.at)}: ${lost.error}`'],
     'a forget over a journal that will not list crashes': ["} catch (e) { if (!e.code) throw e; r = no(`${join(here, 'journal')} could not be listed", "} catch (e) { throw e; r = no(`${join(here, 'journal')} could not be listed"],
     "a forget over a journal that will not list says the key is another project's": ["; nothing removed`); }", "; nothing removed`); if (lost.length) { r.lines.splice(-1, 0, ...lost); } }"],
     'a hit stretch starts on half an emoji': [".slice(a, b).replace(/^[\\uDC00-\\uDFFF]/, '').replace(", ".slice(a, b).replace("],
