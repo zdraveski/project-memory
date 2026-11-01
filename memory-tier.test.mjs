@@ -1604,6 +1604,16 @@ require('node:module').syncBuiltinESMExports();
   await stop('proj-facts');
   ok(!/\(n2\.md\)/.test(readFileSync(join(d, 'MEMORY.md'), 'utf8')) && JSON.parse(readFileSync(join(d, '.facts'), 'utf8'))['n1.md'], '--stop: a .facts that does not parse is read as none, and written anew');
 }
+// Every Stop, a quiet one too, sweeps the temp copies a killed Stop left in its store: `handoff.md.tmp<pid>` held the
+// latest exchanges, where forget never reached (audit H-F3).
+{
+  const d = join(root, 'proj-one', 'memory'), gone = spawnSync(process.execPath, ['-e', '']).pid;
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  const left = [join(d, `handoff.md.tmp${gone}`), join(d, 'journal', `2026-11-01.md.tmp${gone}`)];
+  for (const p of left) writeFileSync(p, 'what was said');
+  await stop('proj-one');
+  ok(left.every((p) => !existsSync(p)), '--stop: a quiet Stop sweeps the temp copies a killed Stop left in its store and journal');
+}
 // A Stop waits 2 s for its locks in all, not 2 s for each: with another hook holding its store's and the shared one's, it
 // waited for its handoff, the journal's import and both tidy-ups, 8 s (audit H-F2). Slow: the wait is real.
 if (!quick) {

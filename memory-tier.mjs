@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, rea
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, lockBudget, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
+import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -614,6 +614,8 @@ export async function main(argv, input) {
       try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
       try { if (payload) handoff(payload, sink); try { unlinkSync(failed); } catch {} }
       catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); }
+      // The temp copies a killed Stop left here (store.mjs).
+      if (payload) try { sweepTemps(storeOf(payload)); } catch {}
       // Then a few of the conversations still on disk, into the journal, without
       // a word; in a try of its own, so a failed import costs only the import.
       // Not due, no lock taken: another hook holding the store cost the Stop a

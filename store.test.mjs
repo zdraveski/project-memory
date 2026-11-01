@@ -3,14 +3,14 @@
 // replace that will not overwrite a write it did not see. Run: node store.test.mjs
 import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { join, isAbsolute, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps } = await import('./store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -555,6 +555,23 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(front('---\n---\ntier: archive\n').tier === '', 'an empty frontmatter ends at once: the body is no frontmatter');
   ok(front('---\nname: abc').name === 'abc', 'an unclosed frontmatter is read to its last character');
   ok(pointerLine('x.md', 'hello') === '- [x](x.md) — hello', 'a pointer line keeps the description from its first character');
+}
+
+// A temp copy a killed hook left (`<file>.tmp<pid>`) goes: its writer is gone, or it is older than a held lock can be. It
+// can hold text forget then removed (audit H-F3). One a live writer may still rename stays.
+{
+  const d = join(root, 'C--temps', 'memory'), j = join(d, 'journal');
+  mkdirSync(j, { recursive: true });
+  const gone = spawnSync(process.execPath, ['-e', '']).pid, old = new Date(Date.now() - 60_000);
+  const put = (p, aged = false) => { writeFileSync(p, 'the vault word'); if (aged) utimesSync(p, old, old); return p; };
+  const deadDay = put(join(j, `2026-11-01.md.tmp${gone}`)), deadHandoff = put(join(d, `handoff.md.tmp${gone}`));
+  // This process is the live writer: no other process is asked about (a mutant that sends a real signal hits only this one).
+  const mine = put(join(d, `MEMORY.md.tmp${process.pid}`)), live = put(join(j, `.imported.tmp${process.pid}`)), stale = put(join(d, `MEMORY-archive.md.tmp${process.pid}`), true);
+  const note = put(join(d, 'tmp123.md'));
+  sweepTemps(d);
+  ok(!existsSync(deadDay) && !existsSync(deadHandoff) && !existsSync(stale), "a temp copy whose writer is gone, or older than 30 s, is swept from the store and its journal");
+  ok(existsSync(mine) && existsSync(live) && existsSync(note), "one a live writer may still rename stays, and so does a note that only looks like one");
+  rmSync(join(root, 'C--temps'), { recursive: true, force: true });
 }
 
 console.log(`store: ${checks} checks passed`);

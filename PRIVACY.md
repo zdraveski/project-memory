@@ -241,7 +241,9 @@ a date range (`--since`, `--until`) or a conversation's tag or id. It first
 lists the entries that match, each with its key, and removes nothing. After
 you confirm, `forget --key <key> --yes` removes exactly the entries whose
 keys you name, and `--yes` with the same words removes every entry they
-match. A list by words, keys or a conversation shows up to 200 entries;
+match. It also removes the temp copy of a journal day or of `handoff.md`
+that a reply's save left half done when it was stopped, as the next reply
+does. A list by words, keys or a conversation shows up to 200 entries;
 past that, narrow it, since `--yes` removes only what a list can show. A
 list by dates alone shows the first 20 and how many entries fall between
 the first and last day, and `--yes` removes them all, however many. Their

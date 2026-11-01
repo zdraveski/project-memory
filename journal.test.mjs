@@ -132,8 +132,11 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
     `a formatted day file parses to its entries, whole, and no prose (got ${JSON.stringify(p)})`);
   record(dir, T, [turn({ at: '2026-11-10 09:00', id: 'p-1', ask: 'the door code is 4417', raw: 'the door code is 4417' })]);
   ok(code(readFileSync(f, 'utf8')) === 1, 'the next record adds no second copy');
+  // And the temp copy of that day a killed Stop left, holding the code: forget scrubs it (audit H-F3).
+  const left = `${f}.tmp${spawnSync(process.execPath, ['-e', '']).pid}`;
+  writeFileSync(left, readFileSync(f, 'utf8'));
   forget(dir, ['4417'], { apply: true });
-  ok(code(readFileSync(f, 'utf8')) === 0, 'and forget reaches it');
+  ok(code(readFileSync(f, 'utf8')) === 0 && !existsSync(left), 'and forget reaches it, and the temp copy a killed Stop left of its day');
 }
 {
   // A note written under an entry stays under it, as the day is rewritten

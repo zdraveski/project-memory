@@ -6,7 +6,7 @@ import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, f
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason } from './store.mjs';
+import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps } from './store.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -347,6 +347,8 @@ export function forget(dir, terms, { since, until, conversation, keys: only, mor
     // one minute go together.
     const at = new Set(matched.map((e) => `${e.s} ${e.at}`));
     try { unsay(dir, (t) => at.has(`${t.s} ${t.at}`)); } catch (e) { failed.push({ path: join(dir, 'handoff.md'), code: e.code || e.message, write: true }); }
+    // And the temp copies a killed Stop left of a day or the handoff, which can hold what went (audit H-F3).
+    sweepTemps(dir);
     return { matched, removed: matched.filter((e) => went.has(e.key) || e.unsaid) };
   });
 }

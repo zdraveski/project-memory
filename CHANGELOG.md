@@ -40,6 +40,11 @@
   `search`, `show` and the day's listing still showed it until `forget` ran
   again. They now leave it out. When the list of forgotten entries can't be
   read, they show none of that project's journal, and say so.
+- A reply's save stopped half way (Claude Code closed right after a reply)
+  left a temp copy of the journal day or `handoff.md` behind for good, and
+  `forget` didn't reach it, so words you had forgotten stayed on disk. The
+  next reply now removes such copies, once the process that wrote one is
+  gone or the copy is over 30 seconds old, and so does `forget`.
 
 **Snapshots**
 - On a large store (about 5,000 files on Windows), the history never

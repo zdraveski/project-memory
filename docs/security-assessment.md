@@ -105,6 +105,8 @@ the journal, the handoff, a briefing, a search hit or the history.
   and from `handoff.md`. Its tag is kept so it is never taken in again.
 - `handoff.md` is never committed; the snapshot repository has no remote
   and is never pushed.
+- A temp copy a killed save left (`<file>.tmp<pid>`) is removed by the next
+  Stop and by `forget`, once its process is gone or it is 30 s old.
 - A search hit never names a transcript, and `show` of a private entry
   doesn't name its transcript, which still holds the private part.
 - The startup briefing never shows the words of a conversation marked

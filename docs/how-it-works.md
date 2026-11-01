@@ -566,6 +566,11 @@ Every write first checks that the file still holds what was read. When Claude
 edited the file in the meantime, Claude's edit is kept and the hook tries
 again next time.
 
+A write goes to a temp copy, `<file>.tmp<process id>`, which then replaces
+the file. A hook killed between the two leaves its copy behind; the next Stop
+removes it from the notebook and its journal once that process is gone (or
+the copy is over 30 seconds old), and so does `forget`.
+
 ## Search and forget
 
 `search` looks at notes in this project and the shared notebook, archive
