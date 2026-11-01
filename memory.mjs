@@ -381,9 +381,20 @@ const tracked = (dir, file) => {
   return (links.length ? links : [basename(dirname(dir))]).map((n) => `${n}/memory/${file}`);
 };
 
+// Why no snapshot can be read, in plain words, or '' when one can: git's own ("fatal: not a git repository", "cannot change
+// to") read as a fault, and without git, restore offered to replace a note "with the snapshot" (audit C-3, C-4).
+const unsnapped = () => {
+  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); } catch { return 'git is not installed, so there are no snapshots: everything else works. Installing Git (git-scm.com) turns them on'; }
+  return existsSync(join(projectsRoot(), '.git')) ? '' : 'no snapshots yet: project-memory takes the first at the end of a reply';
+};
+// git saying a snapshot does not hold a path, or there is no such commit.
+const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
+
 // The newest `max`: a note edited every reply had 2,000 snapshots, 72 KB of output.
 export function history(dirs, file, everywhere = false, max = 30) {
   const verb = { A: 'added', M: 'changed', D: 'deleted' };
+  const why = unsnapped();
+  if (why) return no(why);
   try {
     for (const dir of dirs) {
       // No renames: a link that sorts first moves every path to it, and an R line was no change.
@@ -410,7 +421,8 @@ export function history(dirs, file, everywhere = false, max = 30) {
 // line it had at that revision comes back with it: hand-written, where
 // tiering's orphan recovery would give it a machine line in the archive.
 export function restore(dir, file, { rev, force = false } = {}) {
-  const path = join(dir, file);
+  const path = join(dir, file), why = unsnapped();
+  if (why) return no(why);
   if (existsSync(path) && !force) return no(`${path} exists; restore --force replaces it with the snapshot`);
   // Deleted here by a promote: brought back, it would be in both stores, loaded twice, drifting apart.
   // Not an index: every store has its own, and a deleted one read as promoted.
@@ -440,7 +452,11 @@ export function restore(dir, file, { rev, force = false } = {}) {
         from = `${rev}^`;
       }
       failure = null; break;
-    } catch (e) { failure ??= `no snapshot of ${at} at ${from || 'HEAD'}: ${gitWhy(e)}`; }
+    } catch (e) {
+      // In plain words when git only says it has no such path or commit (audit C-3).
+      failure ??= !missing(e) ? `no snapshot of ${at} at ${from || 'HEAD'}: ${gitWhy(e)}` : rev ? `no snapshot of ${file} at ${rev}: history ${file.replace(/\.md$/, '')} lists the ones that hold it`
+        : `no snapshot of ${file} (looked in ${dir}): search <words> finds a memory's name`;
+    }
   }
   if (failure) return no(failure);
   let line = null;

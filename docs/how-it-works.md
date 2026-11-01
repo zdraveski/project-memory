@@ -806,7 +806,9 @@ too, so options go before it. The tool exits with 1 when a command is
 refused or fails.
 
 A note's name may be several words, quoted or not: `restore my note` is
-`my note.md`. `restore` and `promote` take a note's name as the disk resolves it: on Windows
+`my note.md`. Without Git, or before the first snapshot, `history` and
+`restore` say so, and a note no snapshot holds is named in plain words, not
+git's. `restore` and `promote` take a note's name as the disk resolves it: on Windows
 and on macOS by default in any letter case (on Windows, a short name such as
 `memory~1` too), on Linux only as written. git reads the name literally, so a
 name with `[`, `*` or `?` in it works. A write the disk refuses is reported in

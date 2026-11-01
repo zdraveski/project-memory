@@ -1737,6 +1737,21 @@ if (!quick) {
   rmSync(join(dir, 'two words.md'));
   r = await cli('restore', 'two', 'words');
   ok(r.status === 0 && readFileSync(join(dir, 'two words.md'), 'utf8').includes('the two words body'), `and so does restore (got ${r.stdout})`);
+  // C-3. git's own words reached the user: "fatal: not a git repository" before the first snapshot, and "fatal: path '…' does
+  // not exist in 'HEAD'" for a note no snapshot holds.
+  memory(dir, 'c4-note', 'a note that exists', 'c4 body');
+  renameSync(join(root, '.git'), join(root, '.git-away'));
+  let h, s; try { h = await cli('history', 'c4-note'); s = await cli('restore', 'c4-note'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
+  ok(h.status === 1 && s.status === 1 && h.stdout === s.stdout && /^no snapshots yet: project-memory takes the first at the end of a reply\n$/.test(h.stdout),
+    `before the first snapshot, history and restore say so plainly (got ${h.stdout}${s.stdout})`);
+  r = await cli('restore', 'never-was');
+  ok(r.status === 1 && r.stdout === `no snapshot of never-was.md (looked in ${dir}): search <words> finds a memory's name\n`, `a note no snapshot holds is said plainly (got ${r.stdout})`);
+  r = await cli('restore', 'c4-note', '--force', '--rev', 'deadbeef');
+  ok(r.status === 1 && r.stdout === 'no snapshot of c4-note.md at deadbeef: history c4-note lists the ones that hold it\n', `and a commit that doesn't hold it (got ${r.stdout})`);
+  // C-4. Without git, restore of a note that exists offered to replace it "with the snapshot", as though there were one.
+  r = spawnSync(process.execPath, [CLI, 'restore', 'c4-note', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
+  ok(r.status === 1 && /^git is not installed, so there are no snapshots/.test(r.stdout) && !/restore --force replaces it/.test(r.stdout), `without git, restore says there are no snapshots (got ${r.stdout}${r.stderr})`);
+  rmSync(join(dir, 'c4-note.md'));
 }
 
 console.log(`memory: ${checks} checks passed`);
