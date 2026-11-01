@@ -471,9 +471,10 @@ At the start of a conversation, and after `/clear`, Claude is told:
   `journal/.forgotten`, matched by conversation and minute as `forget`
   matches them), for the same reason, and none is listed when that list
   can't be read. A conversation held with auto memory off has none of its
-  exchanges listed: what was typed while memory was off reaches
-  `handoff.md` when a later reply with memory on reads the turn back. In
-  both cases the "where it stopped" line still names the newest entry;
+  exchanges listed, a second guard: its replies with memory on write none
+  to `handoff.md` and take out what it wrote before ([The
+  handoff](#the-handoff)). In both cases the "where it stopped" line still
+  names the newest entry;
 - when the project's journal has an entry, one line: "Earlier work in this
   project since <first day> is in its journal: when asked about the past,
   search it with the memory skill before saying you don't know." The

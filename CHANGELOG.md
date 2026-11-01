@@ -46,8 +46,7 @@
   conversations can't be read, it names no last conversation; if the list
   of forgotten exchanges can't be read, it lists none.
 - The exchanges listed at the start never include those of a conversation
-  held with auto memory off: what you typed while it was off reaches
-  `handoff.md` when you go on with it on.
+  held with auto memory off.
 - When `forget` couldn't rewrite a day's file, the entry stayed there and
   `search`, `show` and the day's listing still showed it until `forget` ran
   again. They now leave it out. When the list of forgotten entries can't be
@@ -69,8 +68,10 @@
   auto memory back on, as it already stayed out of the journal. Before, the
   first reply with auto memory on saved its last exchanges there, including
   those typed while auto memory was off, and the next briefing could show
-  them. If the list of such conversations can't be read after a reply,
-  nothing is saved for that reply, and the next briefing says so.
+  them. Nor does Claude get the reminder to save its notes in it, and no
+  note of a turn cut by a compaction is kept for it. If the list of such
+  conversations can't be read after a reply, nothing is saved for that
+  reply, and the next briefing says so.
 - A password under a settings key such as `secret:`, `secrets:`,
   `passwords:` or `tokens:` (as in a YAML file: `secret:` on one line,
   `password: …` indented on the next) is now replaced with `[redacted]`.

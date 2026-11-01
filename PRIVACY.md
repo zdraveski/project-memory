@@ -201,8 +201,8 @@ shows in other conversations' briefings only as working, without its
 messages, even if removing it from `handoff.md` failed. Its exchanges are
 never listed at the start of a conversation, nor is an exchange you had
 Claude forget, nor any exchange of a conversation held with auto memory off
-(what you typed while it was off can reach `handoff.md` when you go on with
-it on). Claude reads the briefing and your notes like anything else in the
+(which `handoff.md` keeps out too, even when you go on with it with auto
+memory on). Claude reads the briefing and your notes like anything else in the
 conversation, so they go to Anthropic with it, as Claude Code's built-in
 memory does. Journal entries reach Anthropic only when Claude reads them in
 a conversation.
