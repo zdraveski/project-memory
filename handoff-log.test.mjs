@@ -8,7 +8,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
-import { tool, tempHome, storeFor, quick, fastClock } from './harness.mjs';
+import { tool, tempHome, tempDir, storeFor, quick, fastClock } from './harness.mjs';
 
 const HOOK = tool('handoff-log.mjs'), TIER = tool('memory-tier.mjs');
 const { home, env } = tempHome('hl-test-');
@@ -1519,6 +1519,51 @@ ok(/\[r3tail02\]: second ask\n  \*\*did:\*\* second done/.test(readFileSync(join
   } finally { process.env.TZ = TZ0; }
   const k = readFileSync(join(dir3, 'handoff.md'), 'utf8').match(/\[r3west01\]: kudu \d+/g) ?? [];
   ok(k.length === 10 && new Set(k).size === 10 && k.includes('[r3west01]: kudu 10'), `after a time-zone change a long conversation's turns are listed once each, its newest kept (got ${k.join(', ')})`);
+}
+// F21: the same when handoff.md won't read for the hint (EBUSY: a scan holding it), once. Read as "no entry", the tail alone was
+// read, the old zone's entries stayed beside the turns read now, and every later Stop found its newest entry at its own minute
+// (fuzz 169429179, 71191855).
+{
+  const t10 = join(dir3, 'r3west02.jsonl'), hf = join(dir3, 'handoff.md');
+  const at = (i, s = '00') => `2026-09-12T09:${String(i).padStart(2, '0')}:${s}Z`;
+  const turn = (i) => [user(`axolotl ${i}`, { ts: at(i) }), asst(`fed axolotl ${i}`, { ts: at(i, '30') })].join('\n') + '\n';
+  writeFileSync(t10, tool_(600_000) + '\n' + Array.from({ length: 10 }, (_, i) => turn(i)).join(''));
+  const read = fs.readFileSync;
+  let refused = 0;
+  try {
+    process.env.TZ = 'Europe/Berlin';
+    handoff({ cwd: cwd3, transcript_path: t10, session_id: 'r3west02' });
+    appendFileSync(t10, turn(10));
+    process.env.TZ = 'America/Los_Angeles';
+    fs.readFileSync = (p, ...a) => { if (String(p) === hf && !refused && ++refused) throw Object.assign(new Error(`EBUSY: resource busy or locked, open '${p}'`), { code: 'EBUSY' }); return read(p, ...a); };
+    syncBuiltinESMExports();
+    handoff({ cwd: cwd3, transcript_path: t10, session_id: 'r3west02' });
+  } finally { fs.readFileSync = read; syncBuiltinESMExports(); process.env.TZ = TZ0; }
+  const k = readFileSync(hf, 'utf8').match(/\[r3west02\]: axolotl \d+/g) ?? [];
+  ok(refused === 1 && k.length === 10 && new Set(k).size === 10 && k.includes('[r3west02]: axolotl 10'), `after a time-zone change, a Stop whose hint won't read lists each turn once (got ${refused}, ${k.join(', ')})`);
+}
+// And a refusal that lasts (an ACL, a file another account owns) still throws where it did, under the lock: the Stop keeps its
+// failure record, the next start says so, and the journal goes on. Taken as "busy" instead, every Stop said nothing, for good (R57).
+{
+  const homeR = tempDir('hl-refused-'), cwdR = 'C:\\handoff-refused', dirR = storeFor(homeR, cwdR), projR = dirname(dirR), tR = join(projR, 'refused01-0000.jsonl');
+  mkdirSync(dirR, { recursive: true });
+  writeFileSync(join(dirR, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+  writeFileSync(tR, [user('plan the walrus', { ts: '2026-09-12T08:00:00Z', uuid: 'walrus-1' }), asst('planned the walrus', { ts: '2026-09-12T08:00:30Z' })].join('\n') + '\n');
+  const pre = join(homeR, 'refuse-handoff.cjs'), failedR = join(dirname(projR), `.handoff-failed-${basename(projR)}`);
+  writeFileSync(pre, "const fs = require('node:fs'), read = fs.readFileSync;\n" +
+    "fs.readFileSync = (p, ...a) => { if (String(p).endsWith('handoff.md')) throw Object.assign(new Error('EACCES: permission denied, open ' + p), { code: 'EACCES' }); return read(p, ...a); };\n" +
+    "require('node:module').syncBuiltinESMExports();\n");
+  // Its own HOME, set here for the spawn, which copies it (a Stop commits the snapshots of the home it runs in).
+  const was = [process.env.HOME, process.env.USERPROFILE];
+  let stopR, briefR;
+  try {
+    process.env.HOME = process.env.USERPROFILE = homeR;
+    stopR = spawnSync(process.execPath, ['--require', pre, TIER, '--stop'], { input: JSON.stringify({ cwd: cwdR, transcript_path: tR, session_id: 'refused01-0000', hook_event_name: 'Stop', last_assistant_message: 'planned the walrus' }), encoding: 'utf8', timeout: 60_000 });
+    briefR = spawnSync(process.execPath, ['--require', pre, HOOK, '--print'], { input: JSON.stringify({ cwd: cwdR, session_id: 'fresh000-1', source: 'startup' }), encoding: 'utf8', timeout: 60_000 });
+  } finally { [process.env.HOME, process.env.USERPROFILE] = was; }
+  const days = existsSync(join(dirR, 'journal')) ? readdirSync(join(dirR, 'journal')).filter((f) => f.endsWith('.md')) : [];
+  ok(stopR.status === 0 && existsSync(failedR) && /EACCES/.test(readFileSync(failedR, 'utf8')) && days.length === 1 && /needs attention[^\n]*could not be saved[^\n]*EACCES/.test(briefR.stdout),
+    `a handoff.md that never reads is reported and the journal goes on (got ${stopR.status}, record ${existsSync(failedR)}, ${days.length} day(s), ${briefR.stdout.slice(0, 300)})`);
 }
 // Two identical exchanges are no moved clock: the Stop after them reads only
 // what the newest needs, not the whole file.

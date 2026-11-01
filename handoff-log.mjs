@@ -430,7 +430,8 @@ const shown = (t) => {
   // As render writes it: an ask that quotes [private] has no answer either (I2, R36).
   return { ask, did: gone || ask.includes('[private]') ? '[private]' : answer(userText(t), t.did, DID) };
 };
-function latest(path, since = null) {
+// `all`: on to the whole file whatever the tail holds, for a hint that would not read (F21).
+function latest(path, since = null, all) {
   for (let bytes = TAIL; ; bytes *= 4) {
     const { text: tail, whole } = readTail(path, bytes);
     const got = turns(tail);
@@ -443,7 +444,7 @@ function latest(path, since = null) {
     // 2026-10-30). Not at its own minute too: two identical exchanges are no move.
     const moved = since && !there && got.some(same);
     const back = !moved && (!since || got[0]?.at < since.at || there);
-    if ((got.length && back) || whole || bytes >= 32e6) { got.whole = whole; return got; }
+    if ((got.length && back && !all) || whole || bytes >= 32e6) { got.whole = whole; return got; }
   }
 }
 
@@ -660,9 +661,12 @@ export function handoff(input, sink = null) {
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);
   // Read without the lock: a hint for how far back to read, nothing more.
-  let since = null;
-  try { const d = readFileSync(file, 'utf8'), { a, b } = sectionOf(d); if (a !== -1) since = parse(d.slice(a, b)).filter((t) => t.s === s).sort(byAt).at(-1) ?? null; } catch {}
-  const got = latest(input.transcript_path, since);
+  // One the disk won't read (EBUSY: a scan holding it) is no hint, and no sign of no entry: read as none, only the tail was read,
+  // and after a clock moved to another zone each turn was listed twice (F21, fuzz 169429179). Read whole, as for a moved clock:
+  // build() takes the old entries back. One that never reads throws under the lock, as before, and the Stop records the failure.
+  let since = null, refused = false;
+  try { const d = readFileSync(file, 'utf8'), { a, b } = sectionOf(d); if (a !== -1) since = parse(d.slice(a, b)).filter((t) => t.s === s).sort(byAt).at(-1) ?? null; } catch (e) { refused = e.code !== 'ENOENT'; }
+  const got = latest(input.transcript_path, since, refused);
   // The transcript can lag the reply that ends it: on Stop, Claude Code passes
   // that reply itself (hooks docs). Not after a block: then it is the reply
   // to the block. Nor when the hold has just ended and nothing was said since:
