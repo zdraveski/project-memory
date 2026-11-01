@@ -172,6 +172,12 @@ goes through. If it can't be written after any of that conversation's
 replies, the conversation has no tag, and the journal may take it in later.
 The memory skill still reads or changes your notes when you ask it to.
 
+That variable is the only switch project-memory follows. Turning auto
+memory off in Claude Code itself, with `/memory` or the `autoMemoryEnabled`
+setting, doesn't reach it, because it never reads Claude Code's settings:
+it goes on saving and briefing as above. To stop it, disable the plugin
+([Pausing or removing it](README.md#pausing-or-removing-it)).
+
 ## What it sends
 
 project-memory itself connects to nothing: it makes no internet connections

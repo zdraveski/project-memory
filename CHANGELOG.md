@@ -82,6 +82,12 @@
   `docker login` or `sshpass`, `curl -u "user:…"` and
   `aws configure set … "…"`. Before, only unquoted ones were. A quoted
   value after `--password` and the like goes whole, spaces and all.
+- The FAQ said project-memory saves nothing when auto memory is turned off.
+  It follows only the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` environment
+  variable: turning auto memory off in Claude Code with `/memory` or its
+  `autoMemoryEnabled` setting doesn't stop it, since it never reads Claude
+  Code's settings. The FAQ, the privacy policy and How it works now say so,
+  and that disabling the plugin is the way to stop it.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in
