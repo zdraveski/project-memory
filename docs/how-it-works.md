@@ -598,8 +598,12 @@ import reads) that no day holds yet: a reply whose Stop met the lock, which
 the next reply writes. That exchange is listed as `[not in the journal yet]`,
 without its words (its conversation may be one the journal never takes), and
 `--yes` lists its key in `.forgotten` and takes it out of `handoff.md`, as
-for an entry. A key already listed in `.forgotten` is named as already
-forgotten, nothing is removed, and the tool exits with 0. It works on one
+for an entry. It is found by the id of its prompt record: a turn whose
+record has none (rare: Claude Code gives every record one) is keyed by a
+hash, as above, and can't be found until the journal holds it. `--same` with
+such a key adds only the copies the journal already holds. A key already
+listed in `.forgotten` is named as already forgotten, nothing is removed,
+and the tool exits with 0. It works on one
 store: `--all` is refused, and `--store` picks another project's.
 
 The keys are added to `journal/.forgotten` first, each with its
