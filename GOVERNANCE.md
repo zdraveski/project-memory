@@ -46,7 +46,8 @@ maintainer included, with no one allowed to bypass it:
 
 - nobody can push to `master`: every change is a pull request;
 - a pull request merges only when its required checks pass: the test suites
-  on Linux, macOS and Windows, actionlint, the sign-off check, dependency
+  on Linux, macOS and Windows, actionlint, the sign-off check (skipped for
+  Dependabot's pin updates, which the maintainer reviews), dependency
   review, and CodeQL's code scanning results;
 - `master` can't be deleted or force-pushed.
 

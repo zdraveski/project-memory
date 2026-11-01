@@ -25,9 +25,10 @@ jobs:
       # Storing the attestation with the repository.
       attestations: write
     steps:
-      # A release event checks out its tag.
+      # The commit the tag named when the release was published, not the tag's name: a moved tag can't change what is archived.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       # The tag comes in through env, and must be a version.
       - env:

@@ -111,7 +111,9 @@ must pass before it can merge ([GOVERNANCE.md](GOVERNANCE.md#changes-reach-maste
   pinned to a full commit SHA with its version in a comment, and actionlint,
   downloaded at a pinned version and checked against its published SHA-256.
   Dependabot ([`dependabot.yml`](.github/dependabot.yml)) proposes new pins
-  once a month, as pull requests that pass the same checks as any other.
+  once a month, as pull requests that pass the same checks as any other,
+  except the sign-off check, which Dependabot can't meet; the maintainer
+  reviews those pull requests instead.
 - A new dependency, for the plugin or the CI, must be needed, maintained,
   and under an OSI-approved license that allows MIT-licensed use. The
   maintainer decides, in its pull request. One whose license doesn't meet

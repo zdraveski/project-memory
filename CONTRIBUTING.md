@@ -250,7 +250,9 @@ Signed-off-by: Your Name <you@example.com>
 `git rebase --signoff master`, then force-push your branch. The `dco` check
 ([`dco.yml`](.github/workflows/dco.yml)) fails a pull request that has a
 commit without a sign-off matching its author; merge commits don't need
-one.
+one. Dependabot's pull requests, which only update the pinned GitHub
+Actions, can't be signed off, so the check skips them and the maintainer
+reviews them instead.
 
 ## Releasing
 
