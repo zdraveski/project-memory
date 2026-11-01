@@ -2426,5 +2426,56 @@ process.exit(s.code || 0);
   } finally { delete process.env.DEPLOY_CTL; }
 }
 
+// The look back for a prompt (promptBefore), on a small file: past tool results, over reads of a megabyte; the prompt the
+// tail cut through; the file's first line; none in a file with no prompt.
+{
+  const { promptBefore } = await import('./handoff-log.mjs');
+  const pb = join(home, 'pb.jsonl'), big = tool_(700_000);
+  const rows = [user('the first line asks'), big, big, asst('mid'), user('the later ask'), big, big, asst('done')];
+  writeFileSync(pb, rows.join('\n') + '\n');
+  const size = statSync(pb).size, at = (k) => Buffer.byteLength(rows.slice(0, k).map((r) => r + '\n').join(''));
+  const ask = (from) => { const l = promptBefore(pb, size - from); return l && JSON.parse(l).message.content[0].text; };
+  ok(ask(at(6)) === 'the later ask', `the prompt before a tail is found past a tool result (got ${ask(at(6))})`);
+  ok(ask(at(4) + 5) === 'the later ask', `and the prompt the tail cut through (got ${ask(at(4) + 5)})`);
+  ok(ask(at(3)) === 'the first line asks', `and the file's first line, over reads of a megabyte (got ${ask(at(3))})`);
+  writeFileSync(pb, [big, asst('only answers'), big].join('\n') + '\n');
+  ok(promptBefore(pb, 10) === null, 'and none in a file with no prompt');
+  // A prompt split over two reads, and a tool result longer than a read: each line is read whole.
+  const last = asst('done') + '\n';
+  writeFileSync(pb, [user(`a long paste ${'p'.repeat(400_000)}`), big].join('\n') + '\n' + last);
+  const paste = JSON.parse(promptBefore(pb, Buffer.byteLength(last)) ?? '{}').message?.content[0].text ?? '';
+  ok(/^a long paste p/.test(paste) && paste.length === 400_013, `a prompt split over two reads is read whole, to the byte (got ${paste.length} characters)`);
+  // A prompt that is the first whole line of a read, right after the line break that ends a longer one.
+  writeFileSync(pb, [tool_(1_200_000), user('first whole line of a read')].join('\n') + '\n' + last);
+  ok(JSON.parse(promptBefore(pb, Buffer.byteLength(last)) ?? '{}').message?.content[0].text === 'first whole line of a read', 'and one that is the first whole line of a read');
+  const before = user('before a huge result') + '\n';
+  writeFileSync(pb, before + tool_(2_500_000) + '\n' + last);
+  ok(JSON.parse(promptBefore(pb, Buffer.byteLength(last)) ?? '{}').message?.content[0].text === 'before a huge result', 'and one before a result longer than a read');
+  // A tail that starts 1.5 MB into that result: the reads before it hold no line break at all.
+  const into = statSync(pb).size - (Buffer.byteLength(before) + 1_500_000);
+  ok(JSON.parse(promptBefore(pb, into) ?? '{}').message?.content[0].text === 'before a huge result', 'and one before a tail that cut a line longer than a read');
+  // A prompt longer than two reads: a read in its middle holds no line break, and is kept for the line all the same.
+  writeFileSync(pb, user(`a huge paste ${'h'.repeat(2_500_000)}`) + '\n' + last);
+  const huge = JSON.parse(promptBefore(pb, Buffer.byteLength(last)) ?? '{}').message?.content[0].text ?? '';
+  ok(huge.length === 2_500_013, `and a prompt longer than two reads, whole (got ${huge.length} characters)`);
+  rmSync(pb);
+}
+// A turn whose prompt is more than 32 MB back (a long browser task's screenshots): the read stopped there with no prompt,
+// and the turn's own Stops never wrote it (audit H-F6). The prompt is found by a look back from there, a line at a time,
+// and the turn is written with the tail's tools. Slow: 33 MB written and read.
+if (!quick) {
+  const cwdB = 'C:\\handoff-big-turn', dirB = storeFor(home, cwdB), tB = join(dirB, 'big.jsonl');
+  mkdirSync(dirB, { recursive: true });
+  writeFileSync(tB, [user('an earlier question', { ts: '2026-09-12T06:00:00Z' }), asst('an earlier answer', { ts: '2026-09-12T06:01:00Z' }),
+    user('check every page of the shop', { ts: '2026-09-12T07:00:00Z' })].join('\n') + '\n');
+  const shot = tool_(300_000) + '\n';
+  for (let i = 0; i < 110; i++) appendFileSync(tB, shot);
+  appendFileSync(tB, asst('Checked all 110 pages.', { ts: '2026-09-12T07:30:00Z' }) + '\n');
+  handoff({ cwd: cwdB, transcript_path: tB, session_id: 'bigturn-1', hook_event_name: 'Stop', last_assistant_message: 'Checked all 110 pages.' });
+  const got = existsSync(join(dirB, 'handoff.md')) ? readFileSync(join(dirB, 'handoff.md'), 'utf8') : '';
+  ok(/check every page of the shop\n\s+\*\*did:\*\* Checked all 110 pages\./.test(got) && !/an earlier question/.test(got), `a turn whose prompt is past the 32 MB read is written, with its own ask (got ${got.slice(0, 600)})`);
+  rmSync(dirB, { recursive: true, force: true });
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

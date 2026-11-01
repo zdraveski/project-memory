@@ -26,6 +26,13 @@
   path moved to `show <key>`, and the last line says so. Ten hits are about
   a third smaller, which is less for Claude to read every time it searches.
 
+**Recording**
+- A turn with more than 32 MB of tool output after its request (a long
+  browser task's screenshots) was never written by its own conversation's
+  replies: not to `handoff.md`, and to the journal only once another
+  conversation took it in, half an hour later. The request is now found
+  further back, up to 256 MB, and the turn is written at once.
+
 **Privacy**
 - The start of a conversation never shows the words of a conversation
   marked `<private-session>`, as the last conversation or as one still

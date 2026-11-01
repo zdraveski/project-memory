@@ -134,6 +134,11 @@ arguments. The answer is the reply Claude Code hands the Stop hook, since the
 transcript file can lag behind it. A project gets its `memory/` folder for
 this if Claude hasn't saved a note there yet.
 
+The conversation's file is read from its end, up to 32 MB, back to the
+turn's request. A request further back than that (a long browser task's
+screenshots) is looked for line by line, up to 256 MB more, and the turn is
+recorded with the files changed in its last 32 MB.
+
 Entries carry your local time and are ordered by it, so changing time zones
 shows up here. After you move west, new turns rank before the newest entries
 and aren't kept until your clock passes them, up to the hours you moved.

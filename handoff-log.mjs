@@ -460,8 +460,39 @@ function latest(path, since = null, all) {
     // 2026-10-30). Not at its own minute too: two identical exchanges are no move.
     const moved = since && !there && got.some(same);
     const back = !moved && (!since || got[0]?.at < since.at || there);
-    if ((got.length && back && !all) || whole || bytes >= 32e6) { got.whole = whole; return got; }
+    if ((got.length && back && !all) || whole || bytes >= 32e6) {
+      // 32 MB read and no prompt in them: the turn's prompt is further back (a long browser task's screenshots), and its
+      // own Stops never wrote it (audit H-F6). Found by a look back, and read with the tail: its tools are the tail's.
+      const p = !whole && !got.open ? promptBefore(path, bytes) : null;
+      const out = p ? turns(`${p}\n${tail}`) : got;
+      out.whole = whole; return out;
+    }
   }
+}
+// The last prompt's line before a tail of `bytes` (fewer than the file has), the line the tail cut through included:
+// read back a megabyte at a time, up to 256 MB. null: none there.
+export function promptBefore(path, bytes) {
+  const fd = openSync(path, 'r');
+  try {
+    // From the end of the line the tail cut through, when it ends within 64 KB; a longer one is left out.
+    const peek = Buffer.alloc(65536), from = fstatSync(fd).size - bytes;
+    let pos = from + peek.subarray(0, readSync(fd, peek, 0, peek.length, from)).indexOf(10) + 1, carry = Buffer.alloc(0);
+    for (let k = 0; k < 256 && pos; k++) {
+      const buf = Buffer.alloc(Math.min(1048576, pos));
+      pos -= buf.length; readSync(fd, buf, 0, buf.length, pos);
+      // Whole lines only: the piece before the first line break ends a line that started further back. (Every read but
+      // the first ends with the line break the carry holds; the first ends with one, or the tail cut a line too long.)
+      const all = Buffer.concat([buf, carry]), cut = pos && all.indexOf(10) + 1;
+      carry = all.subarray(0, cut);
+      for (const l of all.subarray(cut).toString('utf8').split('\n').reverse()) {
+        // A tool's result, by its head: a screenshot's line is 300 KB to parse for nothing.
+        if (l.slice(0, 4096).includes('"tool_result"')) continue;
+        let r; try { r = JSON.parse(l); } catch { continue; }
+        if (r?.type === 'user' && prompt(r, text(r).trim())) return l;
+      }
+    }
+    return null;
+  } finally { closeSync(fd); }
 }
 
 // An entry whose ask is private shows no answer and no files, whoever wrote
