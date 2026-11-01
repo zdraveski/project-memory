@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+**Privacy**
+- A reply that comes while another window holds the project's memory folder
+  is saved after the next reply. If you forgot that exchange by its key
+  before then, `forget --key` said no entry had the key, kept nothing out,
+  and the next reply saved the exchange in the journal and the handoff. It
+  now finds the exchange in its conversation, lists it as not in the journal
+  yet, and with `--yes` keeps it out of both. A key you forgot before is
+  named as already forgotten, and nothing more is removed.
+
 ## 1.2.3 (2026-11-01)
 
 project-memory now needs Node.js 22 or newer. Node 20 reached its end of life
@@ -60,12 +71,6 @@ install the current LTS from nodejs.org.
 - `forget` said "nothing matches" when it couldn't list the journal folder,
   and the exchange stayed. It now says the folder could not be listed, with
   the disk's reason, removes nothing and fails, so you can run it again.
-- A reply that comes while another window holds the project's memory folder
-  is saved after the next reply. If you forgot that exchange by its key
-  before then, `forget --key` said no entry had the key, kept nothing out,
-  and the next reply saved the exchange in the journal and the handoff. It
-  now finds the exchange in its conversation, lists it as not in the journal
-  yet, and with `--yes` keeps it out of both.
 
 **Fixes**
 - When the disk briefly refused to remove a store's lock after a write, the
