@@ -838,7 +838,7 @@
             <span class="lockbox"><svg class="pi"><use href="#p-lock-key"/></svg>notes</span>
             <span class="w">Window 2<small>waits its turn</small></span>
           </div>
-          <div><h3>Two windows, no clashes</h3><p>Only one window writes the notes at a time, and each is told what the other is working on.</p></div>
+          <div><h3>Two windows, no clashes</h3><p>The hooks write the notes one window at a time, and a new conversation is told what the other windows are working on.</p></div>
         </div>
       </div>
     </div>
@@ -972,7 +972,7 @@
           <tbody>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-play-circle"/></svg>Picking up</span></th>
-              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>Each new conversation starts from zero.</span></span></td>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>A new conversation doesn't know where the last one stopped.</span></span></td>
               <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Claude starts already knowing where the last conversation stopped.</span></span></td>
             </tr>
             <tr role="row">
@@ -992,7 +992,7 @@
             </tr>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-share-network"/></svg>Many projects</span></th>
-              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>You teach Claude your habits again in every project.</span></span></td>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>Its notebook is kept per project, so lessons aren't shared between projects.</span></span></td>
               <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Lessons that apply everywhere are shared with all your projects.</span></span></td>
             </tr>
             <tr role="row">
