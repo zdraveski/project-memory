@@ -17,6 +17,16 @@
   read again. The look now goes on past it, and still reads the list only
   once.
 
+**Releases**
+- Each GitHub release now comes with its source as a `.tar.gz` and a
+  `.zip`, a `SHA256SUMS` file, and a signed attestation that the project's
+  release workflow made them. How to check them is in
+  [SECURITY.md](SECURITY.md#verifying-a-release). Installing with `/plugin`
+  works as before.
+- Changes now reach `master` only through pull requests that pass the
+  tests, and every commit in one must be signed off
+  ([CONTRIBUTING.md](CONTRIBUTING.md#developer-certificate-of-origin)).
+
 ## 1.2.3 (2026-11-01)
 
 project-memory now needs Node.js 22 or newer. Node 20 reached its end of life
