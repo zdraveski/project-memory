@@ -931,6 +931,9 @@ export const suites = {
     '--all searches a store reached by two links twice': ['return !seen.has(k) && seen.add(k);', 'return true;'],
     "a private entry's hit names its transcript": ["e.answered !== '[private]' && existsSync(conv)", 'existsSync(conv)'],
     'status names no unreadable journal day': ["  lines.push(...(j?.unread ?? []).map((u) => `  journal: could not read ${u}`));\n", ''],
+    "R73 a key of a day that won't read said removed": ['const late = unread.length ? [] : unwritten(', 'const late = unwritten('],
+    "R73 a key of a day that won't read named as another project's": ['(unread.length ? `no day of ', '(false ? `no day of '],
+    'R73 a retry leaves the exchange in handoff.md': ['if (yes && before.length) {', 'if (false) {'],
   }],
   'hooks/hooks.json': ['memory.test.mjs', {
     'the plugin starts handoff-log without --print': ['handoff-log.mjs", "--print"]', 'handoff-log.mjs"]'],

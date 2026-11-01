@@ -32,7 +32,7 @@ import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED } from './store.mjs';
-import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN } from './handoff-log.mjs';
+import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -718,15 +718,17 @@ export function main(given) {
     const named = rest.flatMap((a, i) => (a === '--key' && i + 1 < rest.length ? [rest[i + 1]] : []));
     // A key no entry here has is named, never skipped: a confirmed key of another
     // project's entry went unsaid, with exit 0 (review, 2026-10-29).
-    const stored = named.length ? entries([here], { failed: [] }) : [];
+    const unread = [], stored = named.length ? entries([here], { failed: unread }) : [];
     // Nor one of a turn no day holds yet, in this store's conversations: a Stop that met the lock writes it after the next
     // reply, and named as another project's, it was kept out by no key and came back (fuzz seed 1729835215).
     // Not one forgotten before: in no day, and still in its conversation, it was found again and said removed (review).
-    const already = new Set(forgotten(read(join(here, FORGOTTEN))).map(([k]) => k)), none = (k) => !stored.some((e) => e.key === k);
-    const late = unwritten(here, named.filter((k) => none(k) && !already.has(k)));
+    // Nor while a day won't read: a key of that day, found in its conversation, was said removed while the day still held it (R73).
+    const listed = forgotten(read(join(here, FORGOTTEN))), already = new Set(listed.map(([k]) => k)), none = (k) => !stored.some((e) => e.key === k);
+    const late = unread.length ? [] : unwritten(here, named.filter((k) => none(k) && !already.has(k)));
     stored.push(...late);
-    const again = named.filter((k) => none(k) && already.has(k)).map((k) => `key ${k} is already forgotten; nothing to remove`);
-    const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`);
+    const before = named.filter((k) => none(k) && already.has(k)), again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
+    const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => (unread.length ? `no day of ${here} that could be read has the key ${k}: it may be in one that could not, so nothing was removed for it`
+      : `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`));
     // --same: every entry asking what a keyed one asked, the copies a hit counts.
     const asks = new Set(stored.filter((e) => named.includes(e.key)).map((e) => norm(e.asked)));
     const keys = rest.includes('--same') ? stored.filter((e) => asks.has(norm(e.asked))).map((e) => e.key) : named;
@@ -745,6 +747,13 @@ export function main(given) {
     // forget() lists the journal strictly: one that will not list read as empty, "nothing matches" with exit 0, and the entry stayed
     // (F20, R45). Named, as a refused restore is, and alone: the --key lookup above read the same failure as "no entry has the key".
     else try {
+      // A retry after a handoff.md that would not be written finds the keys listed and no day holding them: their exchanges
+      // still go from handoff.md, by the conversation and minute the list keeps. Said "already forgotten" alone, they stayed (R73).
+      if (yes && before.length) {
+        const at = new Set(listed.filter(([k, t, m]) => t && m && before.includes(k)).map(([, t, m]) => `${tag(basename(t))} ${m}`));
+        try { if (withLock(here, () => { unsay(here, (t) => at.has(`${t.s} ${t.at}`)); return true; }) === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true }); }
+        catch (e) { failed.push({ path: join(here, 'handoff.md'), code: e.code || e.message, write: true }); }
+      }
       const m = forget(here, terms, o).matched, byRange = !terms.length && !named.length && !conversation;
       const ds = m.map((e) => e.day).sort(), shown = byRange ? m.slice(0, RANGE_SHOWN) : m;
       if (m.length > LOOK && !byRange) r = { ok: !yes, lines: [`${m.length} entries in ${here} match; narrow it: a look lists ${LOOK} at most${yes ? ', and --yes removes only what a look can list: nothing removed' : ''}`] };

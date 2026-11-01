@@ -1114,6 +1114,16 @@ if (!quick) {
   r = await fcli('forget', '--key', 'f-late', '--key', es[0].key);
   ok(r.status === 0 && r.stdout === `${fl(es[0])}key f-late is already forgotten; nothing to remove\n1 entry in ${fd} would go; run again with --yes to remove them\n`,
     `with another key's entry, the line comes before the count (got ${r.stdout})`);
+  // A key whose day won't read (a folder by its name here) is no turn "not in the journal yet": found in its conversation, it was
+  // said removed while that day still held it (R73). Named as in no day that could be read, nothing removed, and the forget fails.
+  reset();
+  mkdirSync(join(fj, '2025-10-22.md'));
+  for (const yes of [[], ['--yes']]) {
+    r = await fcli('forget', '--key', 'f-late', ...yes);
+    ok(r.status === 1 && new RegExp(`^no day of [^\\n]+ that could be read has the key f-late: it may be in one that could not, so nothing was removed for it\\ncould not read [^\\n]*2025-10-22\\.md: \\w+\\nnothing in [^\\n]+ matches\\n$`).test(r.stdout) &&
+      !existsSync(join(fj, '.forgotten')), `a key whose day won't read is named so, never said removed (${yes.join('') || 'a look'}: got ${r.stdout})`);
+  }
+  rmSync(join(fj, '2025-10-22.md'), { recursive: true });
   rmSync(lateT);
   {
     // A store with no journal folder yet (a new project whose first Stop was busy) where it can't be made: the folder is named
@@ -1181,6 +1191,18 @@ if (!quick) {
   r = refusing('.forgotten');
   ok(r.status === 1 && !r.stderr && r.stdout === `could not write ${join(fj, '.forgotten')}: EPERM\nremoved 0 of 2 from ${fd}\n` && kept('2025-10-20', '2025-10-21', today),
     `a forget whose list cannot be written removes nothing, and says so (got ${r.stdout}${r.stderr})`);
+  // A retry after a handoff.md that would not be written: the keys were listed by then, so the journal had nothing left to
+  // remove, and "already forgotten" left the exchange in handoff.md for the next briefing (R73). It goes, by the line's minute.
+  reset();
+  const hf = join(fd, 'handoff.md');
+  writeFileSync(hf, `---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written._\n\n${said(es[0].at, 'aaaa1111', es[0].asked)}\n${said(es[0].at, 'cccc3333', 'the walrus budget')}\n<!-- auto:end -->\n`);
+  r = refusing('handoff.md');
+  ok(r.status === 1 && r.stdout.includes(`could not write ${hf}: EPERM`) && readFileSync(hf, 'utf8').includes(es[0].asked), `a handoff.md that refuses the write keeps the exchange, and is named (got ${r.stdout}${r.stderr})`);
+  r = await fcli('forget', '--key', es[0].key);
+  ok(r.stdout === `key ${es[0].key} is already forgotten; nothing to remove\nnothing in ${fd} matches\n` && readFileSync(hf, 'utf8').includes(es[0].asked), `a look at it changes nothing (got ${r.stdout})`);
+  r = await fcli('forget', '--key', es[0].key, '--yes');
+  ok(r.status === 0 && r.stdout === `key ${es[0].key} is already forgotten; nothing to remove\nnothing in ${fd} matches\n` && !readFileSync(hf, 'utf8').includes(es[0].asked) && readFileSync(hf, 'utf8').includes('the walrus budget'),
+    `the retry takes it out of handoff.md, and only it (got ${r.stdout}; ${readFileSync(hf, 'utf8')})`);
   // A journal folder the disk will not list is no empty journal: forget said "nothing matches" with exit 0 (by --key, that the key was
   // another project's), and the entries stayed. It names the code, removes nothing and fails, as a refused restore does (F20, R45).
   reset();
