@@ -107,7 +107,12 @@ Beyond the suites:
   `<id> <reason>` for each, and `#` lines are comments. An id listed there
   with no mutant prints `stale ignore: <id>`. The last line reads
   `all M mutants killed; K stillborn, I ignored`, or `N of M mutant(s)
-  survived: ...; K stillborn, I ignored`. Only a survivor exits 1.
+  survived: ...; K stillborn, I ignored`. It exits 1 when any mutant run is
+  not a kill: one that survived, one the clock cut off (`TIMED OUT`) and one
+  whose find-text no longer matches once (`MUTATION DID NOT APPLY`,
+  `FIND-TEXT NOT UNIQUE`) are all named there as survivors. A suite that
+  fails unmutated stops the run with exit 1 too. A stillborn or ignored
+  mutant never does.
 - `node deploy.mjs` runs only the mutants of the files changed since the live
   copy's commit; every one when that commit is unknown, when `store.mjs`,
   `harness.mjs` or `mutate.mjs` changed, or under `--full`. Run it with

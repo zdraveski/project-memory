@@ -15,6 +15,10 @@ on:
         description: Seconds of fuzz on each machine
         default: '600'
 
+# Read the code, nothing more, whatever the repository's default; an artifact upload needs no permission.
+permissions:
+  contents: read
+
 jobs:
   plan:
     runs-on: ubuntu-latest

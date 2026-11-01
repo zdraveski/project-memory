@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# Read the code, nothing more, whatever the repository's default; actionlint's download is a public release.
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:

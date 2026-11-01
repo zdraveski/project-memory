@@ -129,8 +129,14 @@ step('every mutant applies once', bad);
 const runs = suitesFor(changed).flatMap((t) => ['UTC', 'America/New_York'].map((tz) => [t, tz]));
 // Why a suite failed: its error line, not the stack or Node's closing version line.
 const why = (text) => { const ls = String(text).split('\n').map((l) => l.trim()).filter((l) => l && !/^at /.test(l) && !/^Node\.js v/.test(l)); return (ls.find((l) => /Error\b/.test(l)) ?? ls.at(-1) ?? '').slice(0, 300); };
-step(`the changed files' suites (${runs.length ? [...new Set(runs.map(([t]) => t))].join(', ') : 'none'})`, (await pool(runs, ([t, tz]) => new Promise((done) =>
-  execFile(process.execPath, [join(repo, t), '--mutant'], { env: { ...process.env, TZ: tz }, maxBuffer: 1 << 26 }, (e, out, err) => done(e ? `${t} (TZ=${tz}): ${why(err + out)}` : null))))).filter(Boolean));
+// The zone is set on this process just before each spawn, which copies it, and the child inherits: no child is handed the whole
+// environment as an object (R42, R66). Put back after, so the later steps' children run in the zone this one was given.
+const tz0 = process.env.TZ;
+step(`the changed files' suites (${runs.length ? [...new Set(runs.map(([t]) => t))].join(', ') : 'none'})`, (await pool(runs, ([t, tz]) => new Promise((done) => {
+  process.env.TZ = tz;
+  execFile(process.execPath, [join(repo, t), '--mutant'], { maxBuffer: 1 << 26 }, (e, out, err) => done(e ? `${t} (TZ=${tz}): ${why(err + out)}` : null));
+}))).filter(Boolean));
+if (tz0 === undefined) delete process.env.TZ; else process.env.TZ = tz0;
 
 // 5 and 6. The mutants on the changed lines; the changed code lines none covers.
 const on = [], bare = [], autoLines = new Map();

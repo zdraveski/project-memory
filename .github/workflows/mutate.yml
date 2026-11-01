@@ -28,6 +28,10 @@ concurrency:
   group: mutate-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
+# Read the code and its history (the plan's diff), nothing more, whatever the repository's default.
+permissions:
+  contents: read
+
 jobs:
   plan:
     runs-on: ubuntu-latest
