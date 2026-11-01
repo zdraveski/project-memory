@@ -218,6 +218,18 @@ writeFileSync(join(dir, '.private-sessions'), 's1\n');
 write(user('secret plan'), asst('working', 965_000, 'tool_use'), result('ok'));
 ok(gate().code === 0 && !/cut mid-turn|secret plan/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a private conversation is compacted with nothing written');
 rmSync(join(dir, '.private-sessions'));
+// P-F2 (review): nor does one held with auto memory off once (its tag in the projects' .memory-off), resumed with it on, as its
+// handoff keeps it out: the note held what it said, and no recovery note is printed either.
+const offList = join(home, '.claude', 'projects', '.memory-off');
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+writeFileSync(offList, 's1\n');
+write(user('the Acme offer is 2.1M'), asst('drafting the 2.1M offer', 965_000, 'tool_use'), result('ok'));
+{
+  const { recover } = await import('./compact-gate.mjs');
+  const g = gate(), noted = readFileSync(join(dir, 'handoff.md'), 'utf8'), rec2 = recover({ cwd, transcript_path: transcript, session_id: 's1' });
+  ok(g.code === 0 && !/cut mid-turn|2\.1M/.test(noted) && rec2 === '', `a conversation held with auto memory off gets no in-flight note and no recovery note (got ${noted.split('<!-- auto:start -->')[1]}, ${JSON.stringify(rec2)})`);
+}
+rmSync(offList);
 // A private message's answer is withheld from the note, as from the handoff.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
 write(user('<private>pin 4321</private> unlock it'), asst('Unlocking with 4321', 965_000, 'tool_use'), result('ok'));
@@ -325,6 +337,11 @@ mkdirSync(dirP, { recursive: true });
 writeFileSync(tp, [user('plan it'), asst('planning', T + 80_000, 'end_turn')].join('\n') + '\n');
 hushed(dirP, 'pppppppp', true);
 ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-1' }) === null, 'a conversation marked private gets no nudge');
+// P-F2 (review): nor one held with auto memory off once, resumed with it on: the nudge had Claude write its work into handoff.md.
+writeFileSync(offList, 'offnudge\n');
+const offNudge = nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'offnudge-1' }), onNudge = nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'onnudge0-1' });
+rmSync(offList);
+ok(offNudge === null && onNudge !== null, `a conversation held with auto memory off gets no nudge; another does (got ${JSON.stringify(offNudge)}, ${onNudge === null ? 'none' : 'a nudge'})`);
 writeFileSync(tp, [user('<private>card 4242</private> plan it'), asst('planning', T + 80_000, 'end_turn')].join('\n') + '\n');
 ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'qqqqqqqq-1' }) === null, 'nor does a turn whose ask is private');
 // Nor one whose private ask is further back than the tail read: the whole turn is read.

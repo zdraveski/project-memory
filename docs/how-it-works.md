@@ -494,7 +494,9 @@ things soften that.
 
 - **A reminder.** When a conversation passes 85% of the compaction window, the
   Stop hook asks Claude once to write its notes now. It asks again only after
-  a compaction, and never in a private conversation. It's sent as hook
+  a compaction, and never in a private conversation or one held with auto
+  memory off (its tag in `.memory-off`), which gets no cut-turn note
+  either. It's sent as hook
   feedback (`additionalContext`), so the conversation goes on and no hook
   error is shown. What Claude writes in answer is its notes, not the turn's
   result, so the record keeps the answer from before the reminder until the

@@ -134,11 +134,13 @@ All of it stays in `~/.claude/projects` on your computer:
   task, with no room to wait for the task's step to end, a note of what was in
   progress: your request, the start of Claude's last words, any background
   tasks still running, and the names of the files Claude had changed. It
-  lasts until Claude's next reply. None is made for a private conversation.
+  lasts until Claude's next reply. None is made for a private conversation,
+  or for one held with auto memory off, even after auto memory is back on.
 - When a conversation is about 85% full, project-memory asks Claude to write
   down the work in progress: in its notes, and in `handoff.md` outside the
   automatic record. Those lines are Claude's own writing, and stay until
-  Claude or you change them. Claude isn't asked in a private conversation.
+  Claude or you change them. Claude isn't asked in a private conversation,
+  or in one held with auto memory off.
 - A history of your notes, in a local git repository: after each reply that
   changed a note, its new version is kept. Once a day is over, that day's
   journal file is kept there too, and when a day's file is deleted later,
