@@ -800,8 +800,10 @@ a notebook, from the folder you're in upward. The tool reads no environment
 variable to find the conversation. `--store <folder>` picks another
 project's `memory` folder, one inside `~/.claude/projects` (any other is
 refused), and `--shared` picks the shared notebook. With no command, it runs
-`status`. `D` is a date, `YYYY-MM-DD`. An option the tool doesn't know is
-refused. Every word after `--` is a search word, one that starts with `--`
+`status`. `D` is a date, `YYYY-MM-DD`, one the calendar has (`2026-02-30` is
+refused). An option the tool doesn't know is refused, and so is an option
+that takes a value with nothing after it, or another option in its place
+(`forget --key --yes`). Every word after `--` is a search word, one that starts with `--`
 too, so options go before it. The tool exits with 1 when a command is
 refused or fails.
 

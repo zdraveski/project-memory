@@ -1376,9 +1376,9 @@ if (!quick) {
   // show names an entry once however many times its key is given.
   const k0 = r.stdout.match(/^     key: (\S+)$/m)[1];
   ok(((await jcli('show', k0, k0)).stdout.match(/^     key: /gm) || []).length === 1, 'show prints an entry once for a key given twice');
-  // forget: --key with no value is no key; the words of a sentence are blamed when the journal is empty.
+  // forget: --key with no value is no key, and is refused (audit C-7); the words of a sentence are blamed when the journal is empty.
   r = await run(['forget', '--store', jm, '--key']);
-  ok(r.status === 1 && /^forget needs words/.test(r.stdout) && !/undefined/.test(r.stdout), `--key with nothing after it is no key (got ${r.stdout})`);
+  ok(r.status === 1 && r.stdout === '--key needs a value after it\n', `--key with nothing after it is no key (got ${r.stdout})`);
   const empty = join(root, 'C--mutA-empty', 'memory');
   r = await run(['forget', 'nosuchword', '--store', empty]);
   ok(r.stdout.trim() === `nothing in ${empty} matches: no entry holds "nosuchword"`, `a miss in an empty journal blames the word (got ${r.stdout})`);
@@ -1607,9 +1607,9 @@ if (!quick) {
   ok(r.status === 0 && r.stdout.includes('(key ma000)') && /^1 entry in /m.test(r.stdout), `--key as the last word names its entry (got ${r.stdout})`);
   r = await run(['forget', 'zzzz', '--store', jm, '--key', 'ma000']);
   ok(r.stdout.trim() === `nothing in ${jm} matches: no entry holds "zzzz"`, `a word that misses, with a key that exists, is blamed (got ${r.stdout})`);
-  // --help as an option's value is a value.
+  // --help where an option's value goes is no request for the usage: an option is no value, and is refused (audit C-7).
   r = await run(['status', '--conversation', '--help', '--store', jm]);
-  ok(r.status === 0 && r.stdout.startsWith(`${jm}\n`) && !/node memory\.mjs <command>/.test(r.stdout) && /node memory\.mjs <command>/.test((await run(['status', '--help'])).stdout), `--help after an option that takes a value is its value, not a request for the usage (got ${r.stdout})`);
+  ok(r.status === 1 && r.stdout === '--conversation needs a value after it\n' && /node memory\.mjs <command>/.test((await run(['status', '--help'])).stdout), `--help after an option that takes a value is not a request for the usage (got ${r.stdout})`);
 
   // A range forget names its first and last day; the snapshots' days are listed six at a time.
   const old7 = mdir('C--mutB-old'), days7 = [1, 2, 3, 4, 5, 6, 7].map((d) => `2025-02-0${d}`);
@@ -1752,6 +1752,20 @@ if (!quick) {
   r = spawnSync(process.execPath, [CLI, 'restore', 'c4-note', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
   ok(r.status === 1 && /^git is not installed, so there are no snapshots/.test(r.stdout) && !/restore --force replaces it/.test(r.stdout), `without git, restore says there are no snapshots (got ${r.stdout}${r.stderr})`);
   rmSync(join(dir, 'c4-note.md'));
+  // C-5. A date no calendar has was taken: --since 2026-02-30 searched, and forget --since 2026-13-45 said "nothing matches".
+  for (const [o, bad] of [['--since', '2026-02-30'], ['--until', '2026-10-45'], ['--since', '2026-13-45'], ['--until', '2025-02-29'], ['--since', '2026-00-10']]) {
+    r = await cli('forget', o, bad);
+    ok(r.status === 1 && r.stdout === `${o} takes a date like 2026-10-01\n`, `${o} ${bad} is refused (got ${r.stdout})`);
+  }
+  ok((await cli('search', 'deploy', '--since', '2024-02-29')).status === 0 && (await cli('search', 'deploy', '--until', '2026-12-31')).status === 0, 'a leap day in a leap year, and the year\'s last day, are dates');
+  // C-7. A valued option's value is never another option, nor missing: `forget --key --store X` took "--store" for the key, and a
+  // last --key was dropped, so the words alone said what went.
+  for (const args of [['forget', '--key', '--store', dir], ['forget', 'zebra', '--store', dir, '--key'], ['forget', '--key=--yes', '--store', dir]]) {
+    r = await run(args);
+    ok(r.status === 1 && r.stdout === '--key needs a value after it\n', `${args.join(' ')} is refused (got ${r.stdout})`);
+  }
+  r = await run(['forget', '--conversation', '--yes', '--store', dir]);
+  ok(r.status === 1 && r.stdout === '--conversation needs a value after it\n', `so is --conversation with an option for its value (got ${r.stdout})`);
 }
 
 console.log(`memory: ${checks} checks passed`);

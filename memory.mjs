@@ -640,6 +640,10 @@ export function main(given) {
   // "2026", and `--after=2026-10-28` listed what came before it.
   const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--help'].includes(a));
   if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); return 1; }
+  // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
+  // so the words alone said what went (audit C-7). --rev says what it takes itself.
+  const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--')));
+  if (bare) { console.log(`${bare} needs a value after it`); return 1; }
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
@@ -656,8 +660,10 @@ export function main(given) {
     console.log(`--store takes a memory folder in ${projectsRoot()} (search names them): not ${store}`);
     return 1;
   }
-  // Days compare as text: `--since yesterday` would match no day, and say nothing matched.
-  for (const o of ['--since', '--until']) if (rest.includes(o) && !/^\d{4}-\d\d-\d\d$/.test(opt(o) ?? '')) { console.log(`${o} takes a date like 2026-10-01`); return 1; }
+  // Days compare as text: `--since yesterday` would match no day, and say nothing matched. Nor one no calendar has: 2026-02-30
+  // matched nothing, and forget said so with exit 0 (audit C-5).
+  const isDay = (v) => { const [y, m, d] = v.split('-').map(Number), t = new Date(Date.UTC(y, m - 1, d)); return /^\d{4}-\d\d-\d\d$/.test(v) && t.getUTCMonth() === m - 1 && t.getUTCDate() === d; };
+  for (const o of ['--since', '--until']) if (rest.includes(o) && !isDay(opt(o) ?? '')) { console.log(`${o} takes a date like 2026-10-01`); return 1; }
   const range = { since: opt('--since'), until: opt('--until') }, failed = [];
   const span = [range.since && `since ${range.since}`, range.until && `until ${range.until}`].filter(Boolean).join(' ');
   const here = rest.includes('--shared') ? sharedStore() : store || sessionStore();
