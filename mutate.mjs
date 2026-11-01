@@ -75,6 +75,8 @@ export const suites = {
     "a dead writer's temp copy kept": ["let gone = false; try { process.kill(pid, 0); } catch (e) { gone = e.code === 'ESRCH'; }", 'let gone = false;'],
     'an old temp copy kept': ['if (gone || Math.abs(Date.now() - statSync(join(d, f)).mtimeMs) > LOCK_STALE)', 'if (gone)'],
     "a live writer's temp copy swept": ['if (gone || Math.abs(Date.now()', 'if (true || Math.abs(Date.now()'],
+    "a user's file named like a temp copy swept": ['/^(?:.+\\.md|\\.[^.]+)\\.tmp(\\d+)$/', '/\\.tmp(\\d+)$/'],
+    "a list's temp copy kept": ['/^(?:.+\\.md|\\.[^.]+)\\.tmp(\\d+)$/', '/^(?:.+\\.md)\\.tmp(\\d+)$/'],
     "the journal's temp copies left": ["for (const d of [dir, join(dir, 'journal')]) {", 'for (const d of [dir]) {'],
     'lock kept after a throw': ['try { return fn(); } finally { for (let i = 0; ; i++) { try { rmdirSync(lock); break; } catch (e) { if (!BUSY.includes(e.code) || i === 2) break; sleep(STEP); } } }', 'const out = fn(); for (let i = 0; ; i++) { try { rmdirSync(lock); break; } catch (e) { if (!BUSY.includes(e.code) || i === 2) break; sleep(STEP); } } return out;'],
     'nothing-to-write rewrites': ['if (read() === next) return false;', ''],

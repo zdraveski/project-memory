@@ -323,12 +323,13 @@ export function withLock(dir, fn) {
 
 // The temp copies replaceIfUnchanged leaves when its hook is killed between the write and the rename (`<file>.tmp<pid>`),
 // in a store and its journal: one whose writer is gone, or older than a held lock can be (a pid used again). One can hold
-// text forget then removed, where forget never reached (audit H-F3). The Stop and forget sweep them.
+// text forget then removed, where forget never reached (audit H-F3). The Stop and forget sweep them. Only this tool's
+// names: what it writes there is `.md` (notes, indexes, days, handoff.md) or a dotfile (.facts, .forgotten, ...).
 export function sweepTemps(dir) {
   for (const d of [dir, join(dir, 'journal')]) {
     let names = []; try { names = readdirSync(d); } catch {}
     for (const f of names) {
-      const pid = Number((/\.tmp(\d+)$/.exec(f) || [])[1]);
+      const pid = Number((/^(?:.+\.md|\.[^.]+)\.tmp(\d+)$/.exec(f) || [])[1]);
       if (!pid) continue;
       // Signal 0 sends nothing: it asks whether the process is there.
       let gone = false; try { process.kill(pid, 0); } catch (e) { gone = e.code === 'ESRCH'; }

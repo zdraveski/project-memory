@@ -590,7 +590,9 @@ again next time.
 A write goes to a temp copy, `<file>.tmp<process id>`, which then replaces
 the file. A hook killed between the two leaves its copy behind; the next Stop
 removes it from the notebook and its journal once that process is gone (or
-the copy is over 30 seconds old), and so does `forget`.
+the copy is over 30 seconds old), and so does `forget`. Only copies of its own
+files are removed (a `.md` file or one whose name starts with a dot); a file of
+yours named like `x.tmp5` stays.
 
 ## Search and forget
 

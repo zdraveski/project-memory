@@ -587,10 +587,13 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   const deadDay = put(join(j, `2026-11-01.md.tmp${gone}`)), deadHandoff = put(join(d, `handoff.md.tmp${gone}`));
   // This process is the live writer: no other process is asked about (a mutant that sends a real signal hits only this one).
   const mine = put(join(d, `MEMORY.md.tmp${process.pid}`)), live = put(join(j, `.imported.tmp${process.pid}`)), stale = put(join(d, `MEMORY-archive.md.tmp${process.pid}`), true);
-  const note = put(join(d, 'tmp123.md'));
+  const note = put(join(d, 'tmp123.md')), deadList = put(join(j, `.forgotten.tmp${gone}`));
+  // Only this tool's names (a note, an index, a day: `.md`; a list: a dotfile): a user's own file of that shape is theirs.
+  const users = [put(join(d, `x.tmp${gone}`), true), put(join(j, `notes.txt.tmp${gone}`), true)];
   sweepTemps(d);
-  ok(!existsSync(deadDay) && !existsSync(deadHandoff) && !existsSync(stale), "a temp copy whose writer is gone, or older than 30 s, is swept from the store and its journal");
+  ok(!existsSync(deadDay) && !existsSync(deadHandoff) && !existsSync(stale) && !existsSync(deadList), "a temp copy whose writer is gone, or older than 30 s, is swept from the store and its journal");
   ok(existsSync(mine) && existsSync(live) && existsSync(note), "one a live writer may still rename stays, and so does a note that only looks like one");
+  ok(users.every((p) => existsSync(p)), "and a user's own file named like a temp copy (x.tmp5) stays");
   rmSync(join(root, 'C--temps'), { recursive: true, force: true });
 }
 
