@@ -224,6 +224,11 @@ const warn = startup();
 ok(/Memory store needs attention[^\n]*over budget/.test(warn) && /snapshots have failed 3 times in a row, last ok \d{4}-\d\d-\d\d \d\d:\d\d:/.test(warn), `and warns when the store or the snapshots are failing, in local time (got ${warn})`);
 ok(/the journal could not be written after the reply at \d{4}-\d\d-\d\d \d\d:\d\d: day file is not UTF-8 text/.test(warn) && !/EBUSY/.test(warn), `and when the journal is, not for a backfill retried later (got ${warn})`);
 rmSync(join(dirL, 'journal', '.failed'));
+// A journal folder that took no record of its own failure: kept beside the projects, and said the same (audit H-F4).
+const asideL = join(home, '.claude', 'projects', `.journal-failed-${basename(dirname(dirL))}`);
+writeFileSync(asideL, JSON.stringify({ at: '2026-10-02T09:00:00Z', error: 'EACCES: permission denied' }) + '\n');
+ok(/the journal could not be written after the reply at \d{4}-\d\d-\d\d \d\d:\d\d: EACCES/.test(startup()), 'and when the journal folder took no record of it, from the one kept beside the projects');
+rmSync(asideL);
 writeFileSync(join(home, '.claude', 'projects', '.snapshot-health'), 'not json');
 writeFileSync(join(dirL, 'handoff.md'), 'no markers at all\n');
 ok(/Memory store needs attention/.test(startup()), 'a damaged handoff.md or health file is no crash');

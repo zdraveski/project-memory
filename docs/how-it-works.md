@@ -70,6 +70,7 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/.git/project-memory-ignored`, `project-memory-parts` | bookkeeping for the snapshot's ignore list; a first snapshot still being taken in parts |
 | `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran, the snapshot's state, the reminder's state per conversation tag |
 | `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, or with auto memory off a conversation's tag that could not be written (`off`), and why (a list that won't read is named there); read at the next start and by `status` |
+| `~/.claude/projects/.journal-failed-<project folder>` | a journal write that failed after a reply when the `journal` folder wouldn't take `.failed` either, and why; read at the next start and by `status`, removed by the next write that goes through |
 | `~/.claude/projects/.memory-off` | the tags of conversations held with auto memory off, which the journal never imports: kept while the transcript is on disk, and the newest 100 in any case, 10,000 at most |
 
 Uninstalling the plugin leaves all of these, and the history, in place; you
@@ -298,7 +299,10 @@ journal is the detailed record, and `search` reads headlines of it.
   the index gets a pinned line telling Claude to search the journal. It is
   never rewritten, so an edit to it stays.
 - A failure is kept in `journal/.failed` for `status`, one line for the live
-  write and one for the import, each cleared by its own next success.
+  write and one for the import, each cleared by its own next success. A
+  live write's failure that the `journal` folder won't take either (it
+  refuses writes) is kept in `~/.claude/projects/.journal-failed-<project
+  folder>`, and the startup briefing and `status` say it all the same.
 
 An entry has no size limit. With the limits it had until 1.2.4 (2,000
 characters of the request, 6,000 of the reply, 20 commands of 400), measured

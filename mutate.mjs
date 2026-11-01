@@ -160,6 +160,7 @@ export const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    'the briefing reads no journal failure kept aside': [", join(projectsRoot(), `${JOURNAL_FAILED}${basename(dirname(dir))}`)]) {", ']) {'],
     "an ask that quotes [private] shown with its answer": ["did: gone || ask.includes('[private]') ? '[private]' :", "did: gone ? '[private]' :"],
     'a briefing with no reader exits 1': ["process.stdout.on('error', () => {}); ", ''],
     'a moved clock read in part': ['const back = !moved && (', 'const back = ('],
@@ -851,6 +852,10 @@ export const suites = {
   }],
   'journal.mjs': ['journal.test.mjs', {
     'forget leaves the temp copies a killed Stop left': ['    sweepTemps(dir);\n    return { matched', '    return { matched'],
+    'a journal failure its folder refused said nowhere': ["} catch { if (!from) try { writeFileSync(aside(dir), line + '\\n'); } catch {} }", '} catch {}'],
+    "an import's refused failure in the live write's place": ["if (!from) try { writeFileSync(aside(dir)", "if (true) try { writeFileSync(aside(dir)"],
+    'a refused journal failure never cleared': ['  if (!backfill) try { unlinkSync(aside(dir)); } catch {}\n', ''],
+    'status reads no journal failure kept aside': ['[raw(join(dir, JOURNAL, FAILED)), raw(aside(dir))]', '[raw(join(dir, JOURNAL, FAILED))]'],
     'R70 a look reads a list it cannot read once per conversation': ['if (r === null) break;', 'if (r === null) continue;'],
     'R72 a look stops at the memory-off list it cannot read': ['          if (!r) continue;\n', '          if (!r) break;\n'],
     'R72 the memory-off list read once a conversation while it will not read': ['if (offUnread) return null; ', ''],
@@ -966,7 +971,7 @@ export const suites = {
     "journal a live write clears the backfill's failure": ['if (did) clear(dir, false);', 'if (did) try { unlinkSync(join(dir, JOURNAL, FAILED)); } catch {}'],
     "journal a backfill failure overwrites the live write's": ['[line, ...own(before, !from)]', '[line]'],
     'journal failures kept oldest first': ['[line, ...own(before, !from)]', '[...own(before, !from), line]'],
-    'journal status names one failure of two': ['.filter(Boolean).map((l) => JSON.parse(l).error)', '.filter(Boolean).slice(0, 1).map((l) => JSON.parse(l).error)'],
+    'journal status names one failure of two': ['failures(dir).map((l) => JSON.parse(l).error)', 'failures(dir).slice(0, 1).map((l) => JSON.parse(l).error)'],
     'journal status counts a day with no entry': ["const held = (b) => b.includes('\\n<!-- j:');", 'const held = (b) => true;'],
     'journal a day not in UTF-8 read as an empty day': ['      try { utf8Only(path, text); } catch (e) { failed.push({ path, code: e.code }); }\n', ''],
     'journal status says nothing of a day not in UTF-8': ["      if (!isUtf8(b)) unread.push(`${f}: not UTF-8`);\n", ''],

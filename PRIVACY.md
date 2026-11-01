@@ -223,8 +223,8 @@ Uninstalling the plugin leaves all of this in place. To delete:
   from the conversations Claude Code still keeps. To empty the journal
   instead, use `forget` as below.
 - the bookkeeping files: in `~/.claude/projects`, `.gitignore`, `.stop-ran`,
-  `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` file and the
-  folder `.nudge`; in each project's `memory` folder, `.tiered`, `.facts`,
+  `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
+  `.journal-failed-…` file and the folder `.nudge`; in each project's `memory` folder, `.tiered`, `.facts`,
   `.health` and `.private-sessions`. Delete `.memory-off` and `.private-sessions` only
   once project-memory is removed for good: they list the conversations it
   must not record. Without them, a conversation held with auto memory off is

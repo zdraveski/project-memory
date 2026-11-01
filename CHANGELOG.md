@@ -46,6 +46,13 @@
   next reply now removes such copies, once the process that wrote one is
   gone or the copy is over 30 seconds old, and so does `forget`.
 
+**Failures said**
+- A `journal` folder that refused writes lost every reply's entry in
+  silence: the record of the failure, `journal/.failed`, is in that same
+  folder. It is now kept beside the projects folder
+  (`.journal-failed-<project folder>`) when the journal won't take it, and
+  the startup briefing and `status` say it.
+
 **Snapshots**
 - On a large store (about 5,000 files on Windows), the history never
   started: the first snapshot's `git add` ran past its 30 seconds, was
