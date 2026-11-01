@@ -216,8 +216,13 @@ Before any of it is written, these are taken out:
   (`token: abc123def`), so a count like `input_tokens: 863324` stays;
 - under a YAML key of its own line that names a secret (`passwords:`,
   `secrets:`, `tokens:`, `api_keys:`, with or without the `s`), the value of
-  every indented `name: value` line, 6 characters or more and not plainly
-  code (`admin: …`, `github: …`); under `tokens:`, one with a letter in it.
+  every `name: value` line indented under it (up to the next line indented
+  no more than the key), 6 characters or more, with a digit or a symbol
+  (`!@#$%^&*+=?~`), a PIN included, and not plainly code or a path
+  (`admin: …`);
+  under `tokens:`, 16 characters or more with a letter and a digit
+  (`github: …`). So a sibling after the key, a name (`type: apiKey`), a
+  setting (`hash_algorithm: bcrypt`), a colour or a count stays.
 
 No list of patterns finds every secret: anything these rules miss belongs
 between `<private>` tags. The same rules apply to everything the startup

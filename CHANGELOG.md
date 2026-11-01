@@ -75,8 +75,9 @@
   `passwords:` or `tokens:` (as in a YAML file: `secret:` on one line,
   `password: …` indented on the next) is now replaced with `[redacted]`.
   Before, the child's name was taken for the secret and the real value
-  after it was saved. Every entry under such a key is now redacted, not
-  only one whose own name says password.
+  after it was saved. Every entry indented under such a key whose value
+  looks like a password or a token is now redacted, not only one whose own
+  name says password; names, settings and the lines after the key are kept.
 - A password or token Claude passes to a command in quotes is now replaced
   with `[redacted]` too: `--password "…"`, `--token '…'`, `-p "…"` after
   `docker login` or `sshpass`, `curl -u "user:…"` and

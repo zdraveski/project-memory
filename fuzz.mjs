@@ -154,7 +154,7 @@ const shapesOf = (x) => {
     ['DB_PASSWORD: @@', v()], ['clientSecret=@@', v()], ['client-key-data: @@', v()], ['token=@@', v()],
     // 1.2.5 (e2e audit): a quoted value, a YAML key that names a secret, PowerShell's $env:, a .env line, an Azure key.
     ['deploy --password "@@"', v()], ["cli login --token '@@'", v()], ['docker login -u me -p "@@" registry', v()], ['curl -u "bob:@@" https://example.com', v()],
-    ['aws configure set aws_secret_access_key "@@"', v()], ['secret:\n  password: @@', v()], ['passwords:\n  admin: x1\n  root: @@', v()], ['tokens:\n  github: @@', v()],
+    ['aws configure set aws_secret_access_key "@@"', v()], ['secret:\n  password: @@', v()], ['passwords:\n  admin: x1\n  root: @@', v()], ['tokens:\n  github: @@', t(24)],
     ['$env:SIGNING_KEY = "@@"', v()], ['SIGNING_KEY=@@', v()], ['Endpoint=sb://ns.example.net/;SharedAccessKeyName=Root;SharedAccessKey=@@', v()]]) all.push(sec(text, s));
   const near = [['api_key = process.env.API_KEY'], ['password: user.password'], ['secret = correct_horse_battery_staple'], ['token: this.apiKey'], ['password: string']];
   return { secrets: all, near };

@@ -325,6 +325,10 @@ const named = (n) => {
 // A number under a count's name (TOKEN_LIMIT, MAX_TOKEN, SECRET_PORT): no
 // secret, as only a count-like whole part says (R34).
 const counted = (n, v) => /^\d+$/.test(v) && n.toUpperCase().split('_').some((p) => /^(?:LIMIT|MAX|MIN|SIZE|COUNT|LEN|TTL|TIMEOUT|BYTES|PORT)$/.test(p));
+// A YAML child's value under a secret's key, whose own name says nothing: a secret has a digit or a symbol, a PIN too (not a
+// name such as `apiKey`, `tls-cert` or `production`); under `tokens:` a token's length too, 16 or more with a letter and a digit
+// (not a colour, `blue-500`, a model's name or a count).
+const yamlSecret = (v, tok) => (tok ? v.length >= 16 && /\d/.test(v) && /[A-Za-z]/.test(v) : /[\d!@#$%^&*+=?~]/.test(v));
 const SECRETS = [
   // From the first opener to the last closer: nested, the text after the inner
   // closer was saved. Self-closed or unclosed, to the end.
@@ -396,10 +400,12 @@ const SECRETS = [
   // is plainly code: `password: string`, `token = jwt.sign(payload`,
   // `secret: process.env.JWT_SECRET`, `${DB_PASSWORD}`, a path.
   // Each child of a YAML parent key that names a secret (`passwords:\n  admin: X\n  root: Y`, `secrets:\n  db: X`): only the
-  // parent's name says what they are (e2e audit, 2026-11-01). A count under `tokens:` stays, as below. A child a line, each line
-  // read once: linear.
-  [/^([ \t]*(?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?[ \t]*:[ \t]*\r?\n)((?:[ \t]+[\w.-]{1,40}[ \t]*:[^\n]{0,500}(?:\n|$))+)/gim,
-    (m, head, tok, block) => head + block.replace(/^([ \t]+[\w.-]{1,40}[ \t]*:[ \t]*["']?)([^\s"',;]{6,})/gm, (x, pre, v) => (code(v) || (tok && !/[A-Za-z]/.test(v)) ? x : `${pre}[redacted]`))],
+  // parent's name says what they are (e2e audit, 2026-11-01). Only the lines indented under it, and only a value that looks like a
+  // secret (yamlSecret): read on to any indented line, the siblings after it were cut (GitHub Actions' runs-on, Helm's username),
+  // and so were names and settings under it (OpenAPI's `type: apiKey`, design tokens) (review, 2026-11-01). A child a line, each
+  // line read once: linear.
+  [/^([ \t]*)((?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?[ \t]*:[ \t]*\r?\n)((?:\1[ \t]+[\w.-]{1,40}[ \t]*:[^\n]{0,500}(?:\n|$))+)/gim,
+    (m, ind, head, tok, block) => ind + head + block.replace(/^([ \t]+[\w.-]{1,40}[ \t]*:[ \t]*["']?)([^\s"',;]{6,})/gm, (x, pre, v) => (yamlSecret(v, tok) && !code(v) && !arg(v) ? `${pre}[redacted]` : x))],
   // A value is never a key (a name, a colon, then a blank or the line's end): taken for the parent's value, the child after it was
   // kept (`secret:\n  password: X`, `secret: password: X`; e2e audit, 2026-11-01). Only that shape: any value ending in `:` was
   // taken for a key, and a password such as `"Tr0ub4dor&3:"` was kept (review, 2026-11-01).

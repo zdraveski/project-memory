@@ -1584,10 +1584,24 @@ ok(Date.now() - tExport < 1000, `an exported name of 20,000 words is read in lin
 // P-F3: a value under a YAML parent key that names a secret (`secret:`, `secrets:`, `passwords:`, `tokens:`), or a key after one
 // on its line: the parent's rule took the child's key for its value, and the child's real value was kept (e2e audit, 2026-11-01).
 const nested = [['secret:\n  password: ', k('Zq8', 'hunter33')], ['secrets:\n  db_password: ', k('Kx9', 'stapler44')], ['passwords:\n  admin: ', k('Nest', 'Pw55xyz')],
-  ['tokens:\n  github: ', k('Nest', 'Tk66xyz')], ['secret: password: ', k('Inline', '77xyz')], ['api_key:\n  prod: ', k('Prod', 'Key88xyz')],
+  ['tokens:\n  github: ', k('Nest', 'Tk66xyz0123abcd')], ['secret: password: ', k('Inline', '77xyz')], ['api_key:\n  prod: ', k('Prod', 'Key88xyz')],
+  ['  passwords:\n    admin: ', k('P@ss', 'word!')], ['passwords:\n  atm: ', k('482', '913')],
   ['passwords:\r\n  admin: ' + k('First', '11xyz') + '\r\n  nested:\n    root: ', k('Sibling', '99xyz')]];
 const keptNested = nested.filter(([p, v]) => red(p + v).includes(v) || clip(p + v, 400).includes(v)).map(([p, v]) => JSON.stringify(p + v));
 ok(!keptNested.length && !red(nested.at(-1).join('')).includes('First11'), `every value under a parent key that names a secret is redacted (kept: ${keptNested.join(' | ')})`);
+// Only what is indented under the key, and only a value that looks like a secret (a letter and a digit or a symbol; under `tokens:`
+// 16 characters or more with a letter and a digit): read to the next line as indented as the key, siblings and later lines were cut,
+// and so were names and settings under such a key (review, 2026-11-01).
+const yamlFp = ['jobs:\n  call:\n    uses: ./.github/workflows/deploy.yml\n    secrets:\n      api_token: ${{ secrets.API_TOKEN }}\n  test:\n    runs-on: ubuntu-22.04\n    timeout-minutes: 30\n    environment: production',
+  'tokens:\n  input_count: 12345678901234567',
+  'on:\n  workflow_call:\n    secrets:\n      npm_token:\n        required: true\n    inputs:\n      environment:\n        type: string\n        default: production',
+  'secrets:\n  db_password:\n    file: ./certs/db_password2.txt\n  api_cert:\n    external: true', 'password:\n  minimum_length: 12\n  hash_algorithm: bcrypt',
+  'postgresql:\n  auth:\n    password:\n    username: appuser\n  primary:\n    storageClass: standard',
+  'components:\n  securitySchemes:\n    api_key:\n      type: apiKey\n      name: X-API-Key\n      in: header',
+  'tokens:\n  color-primary: "#ff0000"\n  font-family: Inter\n  spacing-large: 24px\n  brand-blue: blue-500', 'tokens:\n  model: claude-opus-4\n  input: 1234',
+  'secrets:\n  db: process.env.DB_PASS2'];
+const yamlFpCut = yamlFp.filter((s) => red(s) !== s);
+ok(!yamlFpCut.length, `a YAML key's siblings, and names and settings under it, are kept (cut: ${yamlFpCut.map((s) => JSON.stringify(red(s))).join(' | ')})`);
 // A secret that itself ends in `:` is a value, not a key: only a name, a colon and a blank or the end is one (review, 2026-11-01).
 const colonEnd = [['password: "', k('Tr0ub4dor', '&3:'), '"'], ['"password": "', k('abc', '123:'), '"'], ['token: "', k('tok9', 'enValue:'), '"']];
 const colonKept = colonEnd.filter(([p, v, q]) => red(p + v + q).includes(v.slice(0, -1))).map((x) => x.join(''));
