@@ -371,7 +371,13 @@ not looked in. A listed folder gone from disk, or holding only other
 repositories' transcripts, is dropped from the list. Each candidate is
 confirmed to belong to this repository by reading its start, oldest first.
 One of another repository is listed as `other` and not read again. One
-changed in the last 30 minutes is left to its own Stop.
+changed in the last 30 minutes is left to its own Stop. A subagent's own
+transcript is no candidate: today's Claude Code keeps them in
+`<conversation>/subagents/`, which no look lists, and one named
+`agent-<id>.jsonl` beside the conversations, where a version kept them, is
+passed over. A subagent's records inside a conversation's transcript
+(`isSidechain`) are read by no writer: they are neither your words nor the
+conversation's reply.
 
 The import holds the store's lock for up to 150 ms per Stop, plus one
 segment past that, and goes on at the next Stop. It reads a transcript

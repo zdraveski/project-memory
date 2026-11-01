@@ -749,6 +749,17 @@ ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'pr
   ok(!missed.length, `a tag with an invisible character inside is still read (missed: ${missed.join(', ')})`);
 }
 
+// A sidechain record (a subagent's turn, which an older Claude Code wrote into its conversation's transcript) is not the
+// conversation's: its prompt is no ask, its reply no answer, and a tag in it marks nothing (e2e audit, 2026-11-01).
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const side = { isSidechain: true };
+  const got = turns([user('the real ask'), rec('user', [{ type: 'text', text: 'a subagent prompt <private-session>' }], side), rec('assistant', [{ type: 'text', text: 'a subagent reply' }], side),
+    asst('the real reply'), user('the next ask'), rec('assistant', [{ type: 'text', text: 'a later subagent reply' }], side)].join('\n'));
+  ok(got.length === 1 && got[0].ask === 'the real ask' && got[0].did === 'the real reply' && got.open?.ask === 'the next ask' && got.open.did === '' && got.hush !== true,
+    `a sidechain record is neither ask, answer nor mark (got ${JSON.stringify(got.map((t) => [t.ask, t.did]))}, open ${JSON.stringify(got.open?.did)}, hush ${got.hush})`);
+}
+
 // 37. A note the compaction gate left for a conversation marked since goes at
 // its next Stop, though no entry changed.
 writeFileSync(join(dirI, 'handoff.md'), idoc().replace('<!-- auto:end -->', '- **cut mid-turn** [mmmmmmmm] 2026-10-27 12:12 at 965k tokens, asked 2026-10-27 12:11: the Contoso plan\n  **last said:** x\n  **still running (read their output files, do not rerun):** none\n  **edited this turn:** none\n<!-- auto:end -->'));

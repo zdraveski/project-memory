@@ -217,6 +217,9 @@ export function turns(tail) {
   for (const line of tail.split('\n')) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
     let r; try { r = JSON.parse(line); } catch { continue; }
+    // A subagent's record (isSidechain), as a Claude Code version wrote them into its conversation's transcript: neither the
+    // user's words nor the conversation's reply, and a tag it quotes marks nothing (e2e audit, 2026-11-01).
+    if (r.isSidechain === true) continue;
     // A turn's edits are tool calls with no text: taken before the text test skips them.
     // Once a nudge or a private message froze the turn, what follows is the
     // memory update, or the private part: only a forget of it is kept, below.

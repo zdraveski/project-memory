@@ -751,6 +751,17 @@ const due = (d) => looked(d, Date.now() - 3600e3);
   rmSync(broken);
 }
 {
+  // A subagent's transcript kept beside its conversation's (`agent-<id>.jsonl`, where a Claude Code version kept one) is no
+  // conversation: imported as one, it was journaled even when its conversation was private (e2e audit, 2026-11-01).
+  const [r, d] = repo('agents');
+  old(r, sid('m'), 30, ['the main ask']);
+  const p = join(projects, slug(r), 'agent-0a1b2c3d.jsonl');
+  writeFileSync(p, [rec('user', 'agent-0a1b2c3d', '2026-09-01T10:00:00Z', 'a subagent prompt', r), rec('assistant', 'agent-0a1b2c3d', '2026-09-01T10:00:30Z', 'a subagent reply', r)].join('\n') + '\n');
+  utimesSync(p, ago(30), ago(30));
+  fill(d);
+  ok(asks(d).join() === 'the main ask' && !listed(d).some((l) => l.includes('agent-')), `a subagent's own transcript is not imported (got ${asks(d)}; ${listed(d)})`);
+}
+{
   // Between looks the list is not even read: its length costs an idle Stop nothing.
   const [r, d] = repo('idle'), list = join(d, 'journal', '.imported'), failed = join(d, 'journal', '.failed');
   old(r, sid('a'), 30, ['idle']);

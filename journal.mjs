@@ -529,7 +529,9 @@ function candidates(dir, skip) {
   out.seen = new Set(); out.mine = new Set();
   let looks = []; try { looks = looked(dir); } catch { out.seen = null; }
   for (const f of looks) {
-    let names = []; try { names = readdirSync(join(root, f)).filter((n) => n.endsWith('.jsonl')); } catch { out.seen = null; }
+    // Not a subagent's own transcript (`agent-<id>.jsonl`), as a Claude Code version kept them beside its conversation's: no
+    // conversation, and imported as one it was journaled even when its conversation was private (e2e audit, 2026-11-01).
+    let names = []; try { names = readdirSync(join(root, f)).filter((n) => n.endsWith('.jsonl') && !n.startsWith('agent-')); } catch { out.seen = null; }
     for (const n of names) {
       const p = join(root, f, n), k = transcriptKey(p);
       out.seen?.add(pathKey(k));

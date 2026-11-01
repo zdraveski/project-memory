@@ -97,6 +97,11 @@
   `$env:NAME = "…"` and a `.env` file's `NAME=…` line, where the name says
   key, secret, token or password (as `export NAME=…` already was), and an
   Azure connection string's `SharedAccessKey=…`.
+- The journal no longer takes in a subagent's own transcript as a
+  conversation of its own, nor reads a subagent's messages inside a
+  conversation's transcript as yours. Claude Code keeps subagents
+  elsewhere today, so nothing changes now; an older layout could have had a
+  private conversation's subagent journaled.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in
