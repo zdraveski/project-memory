@@ -1,6 +1,6 @@
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/banner-narrow.webp">
-  <img src="docs/banner.png" width="880" alt="project-memory: Give Claude Code a memory. Remember, restore, continue.">
+  <img src="docs/banner.webp" width="880" alt="project-memory: Give Claude Code a memory. Remember, restore, continue.">
 </picture></p>
 
 # project-memory
