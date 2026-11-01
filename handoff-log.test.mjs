@@ -1037,10 +1037,14 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
 // later one, which the first then takes: three cuts.
 {
   const { clip } = await import('./handoff-log.mjs');
-  const ch = String.fromCharCode, flag = ['--', 'token'].join(''), v = ['Qz7k', 'Lm9X', 'p4w'].join('');
+  const ch = String.fromCharCode, flag = ['--', 'token'].join(''), v = ['Qz7k', 'Lm9X', 'p4w'].join(''), bt = ['Hk7v', 'Tq2n', 'Wb9x', 'Lp4d', 'Rz6m', 'Gs3c', 'Jy'].join('');
   for (const [s, n, gone] of [[`deploy ${flag}  ${v}`, Infinity, v], [`deploy ${flag}\t${v}`, 400, v], [`deploy ${flag}${ch(0x85)}${v}`, 400, v],
     [`deploy ${flag}\n${v}`, 400, v], [`Bearer  ${v}${v}`, 400, v], [`npm config set //r/:_authToken  ${v}`, 400, v], [`say <private>x</private> and ${flag}  ${v}`, 240, v],
-    ['quokka ' + 'z'.repeat(216) + 'api_key = process.env.API_KEY', 240], ['the api key is x<y', 400], [`${flag}=~/k</x>`, 400]]) {
+    ['quokka ' + 'z'.repeat(216) + 'api_key = process.env.API_KEY', 240], ['the api key is x<y', 400], [`${flag}=~/k</x>`, 400],
+    // A `-u` value is redacted 200 characters a pass: at the journal's 2,000 it takes 7 cuts (B3).
+    [`curl -u bob:${'x'.repeat(4000)}`, 2000],
+    // Redacted after the squeeze before it is cut: else the cut leaves 11 characters of the token, which no pattern knows as one (R59).
+    [`${'z'.repeat(220)} Bearer  ${bt}`, 240, bt.slice(0, 8)]]) {
     const once = clip(s, n);
     ok(clip(once, n) === once && !(gone && once.includes(gone)), `a clip clipped again is the same, and keeps no secret: ${JSON.stringify(s)} (got ${JSON.stringify(once)}, then ${JSON.stringify(clip(once, n))})`);
   }
@@ -1059,6 +1063,28 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
     if (clip(once, n) !== once) differ.push([s, n]);
   }
   ok(!differ.length, `clip(clip(x)) is clip(x) for 3,000 built strings (${differ.length} differ, the first ${JSON.stringify(differ[0])})`);
+  // The re-review's grid: 38 shapes, each blank in turn made one of 13 separators, and each shape after a bare flag that ends the line
+  // before. Squeezed first, that flag took the shape's keyword as its value, the shape's own pattern no longer matched, and its secret was
+  // kept whole: an htpasswd, aws configure, SetEnvironmentVariable or gh secret set after `--password`, `--token` or `--body` (B1, F23, R59).
+  const tok = (n) => `k${1 + rnd(9)}${Array.from({ length: n - 2 }, () => 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[rnd(62)]).join('')}`;
+  const shapes = [['Authorization: Bearer @@', 30], ['postgres://admin:@@@db.example.com/app', 14], ['curl -u bob:@@ https://example.com', 14], ['deploy --password @@', 14],
+    ['deploy --token @@', 14], ['deploy --client-secret @@', 14], ['Authorization: Basic @@', 30], ['Authorization: Token @@', 30], ['az login -u me -p @@', 14], ['sshpass -p @@ ssh host', 14],
+    ['twine upload -p @@ dist', 14], ['mysqldump -u root -p@@ app', 14], ['mariadb -u root -p@@ app', 14], ['passphrase: @@', 14], ['pwd=@@', 14], ['pass: @@', 14], ['docker login -u me -p @@', 14],
+    ['aws configure set aws_secret_access_key @@', 14], ['[Environment]::SetEnvironmentVariable("MY_API_TOKEN", "@@", "User")', 14], ['htpasswd -b .htpasswd bob @@', 14], ['export MY_API_KEY=@@', 14],
+    ['setx DB_PASSWORD @@', 14], ['gh secret set DEPLOY --body @@', 14], ['//registry.npmjs.org/:_authToken=@@', 4], ['mysql -u root -p@@ app', 14], ['my password is @@', 14], ['the api key is @@', 14],
+    ['password @@', 14], ['DB_PASSWORD: @@', 14], ['clientSecret=@@', 14], ['client-key-data: @@', 14], ['token=@@', 14], [':_authToken @@', 14], ['token: @@', 14], ['oc login -u me -p @@', 14],
+    ['podman login -u me -p @@', 14], ['the password for the prod db is @@', 14], ['deploy --password=@@', 14]];
+  const seps = ['  ', '\t', ch(0x85), '\n', '\r\n', ch(0x2028), ch(0xa0), ch(0x3000), ` \t\n${ch(0x85)} `, ' '.repeat(30), '\v', '\f', '\r'];
+  const bare = ['options: --password', `login ${flag}`, 'gh secret set A --body'], kept = [];
+  for (const [k, [tpl, len]] of shapes.entries()) {
+    const sv = tok(len), text = tpl.replace('@@', sv), at = [...text.matchAll(/ /g)].map((m) => m.index);
+    for (const [j, sep] of seps.entries()) {
+      for (const s of [...at.map((i) => text.slice(0, i) + sep + text.slice(i + 1)), `${bare[(k + j) % 3]}${sep}${text}`]) {
+        for (const n of [240, Infinity]) { const once = clip(s, n); if (once.includes(sv) || clip(once, n) !== once) kept.push([s, n, once]); }
+      }
+    }
+  }
+  ok(shapes.length === 38 && !kept.length, `the grid of 38 shapes and 13 separators keeps no secret, and clips again the same (${kept.length} fail, the first ${JSON.stringify(kept[0])})`);
 }
 // A <private> tag inside fullwidth reminder tags the user typed: normalized,
 // the reminder swallowed it from the typed text, but the ask kept it.
@@ -1221,6 +1247,26 @@ if (process.platform === 'win32') {
   const hd = readFileSync(join(dirB, 'handoff.md'), 'utf8');
   ok(/deploy --token \[redacted\] on prod/.test(kept) && kept.includes('deploy --token [redacted]') && /on staging/.test(hd), `both turns are in the journal and in handoff.md (journal ${kept}; handoff.md ${hd})`);
   for (const i of [1, 2, 3, 4]) ok(!kept.includes(v(i)) && !hd.includes(v(i)), `a secret after two blanks or a tab is in neither the journal nor handoff.md: ${i} (journal ${kept}; handoff.md ${hd})`);
+}
+// And a bare flag that ends a line, before a construct with a secret of its own, in an ask, a Bash command and an answer, through the
+// Stop's own path (handoff() with the journal's write as its sink). Squeezed first, the flag took the next line's keyword as its value and
+// the secret was kept whole: 3 times in the journal, twice in handoff.md. The same with two blanks on one line (B1, F23, R59).
+{
+  const { write } = await import('./journal.mjs');
+  const cwdL = 'C:\\handoff-flags', dirL = storeFor(home, cwdL), tl = join(dirL, 'l.jsonl'), NEL = String.fromCharCode(0x85);
+  const flag = ['--', 'token'].join(''), v = (i) => ['Wd3q', 'Rt8Y', `m2z${i}`].join('');
+  const cases = [`options: --password\nhtpasswd -b .htpasswd bob ${v(1)}`, `login ${flag}\naws configure set aws_secret_access_key ${v(2)}`,
+    `deploy ${flag}\n[Environment]::SetEnvironmentVariable("MY_API_TOKEN", "${v(3)}", "User")`, `gh secret set A --body\ngh secret set B --body ${v(4)}`,
+    `deploy ${flag}  htpasswd -b .htpasswd bob ${v(5)}`, `aws configure set aws_secret_access_key \t\n${NEL} ${v(6)}`];
+  const bash = (c, ts) => rec('assistant', [{ type: 'tool_use', id: 'b', name: 'Bash', input: { command: c } }], { ts });
+  const at = (i, s) => `2026-10-29T13:${String(i * 5).padStart(2, '0')}:${s}Z`;
+  mkdirSync(dirL, { recursive: true });
+  writeFileSync(tl, cases.flatMap((c, i) => [user(`run this: ${c}`, { ts: at(i, '00') }), bash(c, at(i, '10')), asst(`ran ${c}`, { ts: at(i, '30') })]).join('\n') + '\n');
+  handoff({ cwd: cwdL, transcript_path: tl, session_id: 'llllllll-1' }, write);
+  const jd = join(dirL, 'journal'), kept = readdirSync(jd).filter((f) => f.endsWith('.md')).map((f) => readFileSync(join(jd, f), 'utf8')).join('');
+  const hd = readFileSync(join(dirL, 'handoff.md'), 'utf8');
+  ok((kept.match(/\*\*Asked:\*\* run this:/g) ?? []).length === 6 && (hd.match(/: run this:/g) ?? []).length === 6, `every turn is in the journal and in handoff.md (journal ${kept}; handoff.md ${hd})`);
+  for (const i of [1, 2, 3, 4, 5, 6]) ok(!kept.includes(v(i)) && !hd.includes(v(i)), `a secret after a bare flag on the line before is in neither the journal nor handoff.md: ${i} (journal ${kept}; handoff.md ${hd})`);
 }
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.

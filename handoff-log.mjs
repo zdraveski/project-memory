@@ -385,16 +385,19 @@ export const defuse = (s) => s.replace(/[<\uFF1C\uFE64](?=[\u200B-\u200D\u2060\u
 // Cut until a cut changes nothing, so an entry as written (clipped again by render) is the turn as read, to latest() and to forget, and
 // what the journal stores (clipped once) is what handoff.md shows (F15, F19, R36, R44). One more cut was not enough: a cut can leave a
 // code reference (api_key = proces…) that reads as a secret, defuse's `&lt;` gives a value the symbol a password has, and a value one
-// pattern keeps as a path is half redacted by a later one, which the first then takes. Bounded: none of 600,000 built strings took over 4.
+// pattern keeps as a path is half redacted by a later one, which the first then takes. Bounded at 7 cuts, what the widest clip a writer
+// makes (the journal's 2,000) can need: a `-u` value is redacted 200 characters a pass, so a longer run clipped at Infinity (a journal
+// reply, a search's display) can stop short of stable (B3). Nothing else the tests build takes more than 2.
 export const clip = (s, n) => {
   let out = cut(s, n);
-  for (let i = 0; i < 4; i++) { const again = cut(out, n); if (again === out) break; out = again; }
+  for (let i = 0; i < 6; i++) { const again = cut(out, n); if (again === out) break; out = again; }
   return out;
 };
 const cut = (s, n) => {
-  // Squeezed first, U+0085 with the rest (it is not \s in JavaScript): a secret after two blanks, a tab or a U+0085 was redacted only
-  // when the entry was clipped again (F19, R44).
-  const one = defuse(redact(s.replace(/[\s\u0085]+/g, ' '))).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
+  // Redacted before the blanks are squeezed and after. After only, a bare flag that ends a line took the next line's keyword as its value,
+  // and that line's own secret was kept whole (F23, R59); before only, a secret after two blanks or a tab was redacted only when the entry
+  // was clipped again (F19). U+0085 is made a line break first: it is not \s in JavaScript, and the first pass took it for a value.
+  const one = defuse(redact(redact(s.replace(/\u0085/g, '\n')).replace(/\s+/g, ' '))).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
   return one.length > n ? one.slice(0, n - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : one;
 };
 
