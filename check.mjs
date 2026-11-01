@@ -108,7 +108,7 @@ const unused = [];
 for (const f of files) {
   const s = readFileSync(join(repo, f), 'utf8');
   for (const m of s.matchAll(/^import \{([^}]+)\} from/gm)) for (const n of m[1].split(',').map((x) => x.trim().split(/\s+as\s+/).pop()).filter(Boolean)) {
-    if ((s.match(new RegExp(`(?<![\\w$])${n.replace(/\$/g, '\\$')}(?![\\w$])`, 'g')) ?? []).length < 2) unused.push(`${f}: ${n}`);
+    if ((s.match(new RegExp(`(?<![\\w$])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w$])`, 'g')) ?? []).length < 2) unused.push(`${f}: ${n}`);
   }
 }
 step('no unused imports', unused);
