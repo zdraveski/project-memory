@@ -175,9 +175,14 @@ It does add a briefing to your conversations: when one starts, after
 the start of recent messages and replies in this project, what other
 conversations open on this project were last asked, a line saying the
 project has a journal and its first day, the shared notebook's table of
-contents, and problems to fix. A conversation marked `<private-session>`
+contents, and problems to fix. When a conversation starts, that is the
+last conversation's latest exchanges as `handoff.md` keeps them, as many as
+fit in about 4,000 characters. A conversation marked `<private-session>`
 shows in other conversations' briefings only as working, without its
-messages. Claude reads the briefing and your notes like anything else in the
+messages. A conversation marked `<private-session>` is never in the
+briefing at the start of a conversation, and an exchange you had Claude
+forget is never among the exchanges listed there, even if removing it from
+`handoff.md` failed. Claude reads the briefing and your notes like anything else in the
 conversation, so they go to Anthropic with it, as Claude Code's built-in
 memory does. Journal entries reach Anthropic only when Claude reads them in
 a conversation.
@@ -259,17 +264,19 @@ conversations left to import, or run it again once they're in.
   It matches them there by conversation and minute, so another exchange of
   that conversation in the same minute goes too. Claude Code's own
   conversation files are separate.
-- A search hit or `show` of a private entry doesn't name its conversation
-  file, since that file still holds the private part. A hit of another
-  exchange in the same conversation still names that file: it is Claude
-  Code's own record of the whole conversation, private parts included.
+- A search hit never names a conversation file. `show` of a private entry
+  doesn't either, since that file still holds the private part. `show` of
+  another exchange in the same conversation still names that file: it is
+  Claude Code's own record of the whole conversation, private parts
+  included.
 - An exchange in which Claude runs `forget` is kept without its words, files
   or commands, in the journal and in `handoff.md`, so its list of what goes
   isn't saved again. Claude finds the entries with `forget` itself for that
   reason. An exchange in which Claude searched for them with `search`
   instead is kept as usual.
 - A day whose file can't be written keeps its entries, and `forget` names
-  it.
+  it. Until a later `forget` removes them, `search`, `show` and the day's
+  listing leave them out.
 - A finished day's file is already in the history, and an entry removed
   later by `forget`, or by a `<private-session>` typed later in its
   conversation, stays there. `forget` names those days. Delete the `.git`

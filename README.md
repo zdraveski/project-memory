@@ -91,7 +91,7 @@ There's nothing to learn. Ask in your own words:
 |---|---|
 | *"What did we decide about the logo in September?"* | Claude searches your notes and the journal, and answers with the date. |
 | *"What did I work on last week?"* | Claude lists what you asked each day, from the journal. |
-| *"Where did we leave off?"* | Claude reads the record of your last conversation. |
+| *"Where did we leave off?"* | Claude already knows: each new conversation starts with the last one's latest exchanges, as many as fit in about 1,000 tokens. For more, it reads the record of your last conversation. |
 | *"Remember that I prefer short answers."* | Claude saves a note. |
 | *"I deleted the note about pricing by mistake. Bring it back."* | Claude restores it from the history. |
 | *"Forget the password I pasted yesterday."* | Claude lists the journal entries that match, and removes the ones you confirm. |
@@ -101,7 +101,7 @@ If you'd rather type a command, start with `/project-memory:memory`:
 
 | Type after it | What it does |
 |---|---|
-| `search logo colors` | Finds notes and journal entries about "logo colors" |
+| `search logo colors` | Finds notes and journal entries about "logo colors". An entry shows as a short headline: what you asked, how it ended, and the lines with your words |
 | `show 'key'` | Shows one journal entry in full, by the key `search` printed |
 | `forget password` | Lists the journal entries that mention "password" and removes the ones you confirm |
 | `history pricing` / `restore pricing` | Shows when the note "pricing" changed / brings it back |

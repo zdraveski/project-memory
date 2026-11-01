@@ -384,9 +384,16 @@ At the start of a conversation, and after `/clear`, Claude is told:
   what they were last asked; if none, where the last conversation stopped, if
   that was in the last 7 days, followed by that conversation's own exchanges
   from the handoff, oldest first (request, answer and files, as the handoff
-  keeps them). After `/clear` neither, since the conversation
+  keeps them), as many as fit (see below). After `/clear` neither, since the conversation
   just cleared is the newest. It names at most two, and only conversations
-  started in the project's folder or in the folder this one started in;
+  started in the project's folder or in the folder this one started in.
+  A conversation marked `<private-session>` is never named or shown, even
+  when `handoff.md` still holds it because removing it failed: the last
+  conversation is then the one before it, and when the list of private
+  conversations can't be read, none is named. Its exchanges never include
+  one `forget` took out (listed in `journal/.forgotten`, matched by
+  conversation and minute as `forget` matches them), for the same reason;
+  the "where it stopped" line still names the newest entry;
 - when the project's journal has an entry, one line: "Earlier work in this
   project since <first day> is in its journal: when asked about the past,
   search it with the memory skill before saying you don't know." The
@@ -407,9 +414,12 @@ A conversation that is resumed gets no briefing: its history already holds
 the one it got when it started.
 
 The briefing stays under 9,500 characters, inside the 10,000 Claude Code
-passes on whole. After a compaction, and at the start of a conversation, the
-oldest exchanges are left out first, until it fits. At the start of a
-conversation, each line is cut to 1,000 characters, then the end is cut, so
+passes on whole. After a compaction, the oldest exchanges are left out first,
+until it fits. At the start of a conversation, the last conversation's
+exchanges fill the briefing up to 4,000 characters (about 1,000 tokens), the
+oldest left out first, and never past that: with a full shared index (3,000
+bytes) there is often room for none, and the briefing is what it was
+without them. Each line is cut to 1,000 characters, then the end is cut, so
 the shared index goes first. A `<` that starts a
 tag is written `&lt;`, so text from an earlier conversation can't pose as part
 of Claude Code's own message.
@@ -575,6 +585,10 @@ heading, the key, every field, the day file and, when it's still on disk
 and the entry isn't private, the transcript. `--same` adds every entry whose request is the same, as a
 hit's "more like this" counts them; `--all` and `--store` reach another
 project. A key no entry has is named, and the tool exits with 1.
+
+`search`, `show` and a day's listing never show an entry whose key is in
+`journal/.forgotten`: when `forget` couldn't rewrite its day file, the entry
+is still there until `forget` runs again, but nothing prints it.
 
 `--since` and `--until` take a date, `YYYY-MM-DD`, and keep only the days
 from one to the other, both included: a note by the day of its `modified:`
