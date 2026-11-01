@@ -661,8 +661,8 @@ export function main(given) {
     return 1;
   }
   // Days compare as text: `--since yesterday` would match no day, and say nothing matched. Nor one no calendar has: 2026-02-30
-  // matched nothing, and forget said so with exit 0 (audit C-5).
-  const isDay = (v) => { const [y, m, d] = v.split('-').map(Number), t = new Date(Date.UTC(y, m - 1, d)); return /^\d{4}-\d\d-\d\d$/.test(v) && t.getUTCMonth() === m - 1 && t.getUTCDate() === d; };
+  // matched nothing, and forget said so with exit 0 (audit C-5). A day past its month's end, or 00, rolls into another month.
+  const isDay = (v) => { const [y, m, d] = v.split('-').map(Number); return /^\d{4}-\d\d-\d\d$/.test(v) && new Date(Date.UTC(y, m - 1, d)).getUTCMonth() === m - 1; };
   for (const o of ['--since', '--until']) if (rest.includes(o) && !isDay(opt(o) ?? '')) { console.log(`${o} takes a date like 2026-10-01`); return 1; }
   const range = { since: opt('--since'), until: opt('--until') }, failed = [];
   const span = [range.since && `since ${range.since}`, range.until && `until ${range.until}`].filter(Boolean).join(' ');
