@@ -509,7 +509,8 @@ settings that would break snapshots, whatever yours say: no hooks of yours run
 on it, commits aren't signed, line endings are kept exactly as
 written, and long paths work on Windows. Your other git settings still apply.
 A damaged index (git's working copy of the last snapshot, after a crash or a
-full disk) is rebuilt from that snapshot; no note is touched. If
+full disk) is rebuilt from that snapshot; no note is touched. So is a
+missing one, before anything is added. If
 `~/.claude/projects` is already a git repository that project-memory didn't
 make, it commits nothing there, and `doctor` says snapshots are off. A
 repository at `~/.claude` itself (a dotfiles repository) doesn't count:

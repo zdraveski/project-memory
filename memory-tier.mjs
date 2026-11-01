@@ -435,6 +435,12 @@ function snapshot() {
       // 5,000 files): it left index.lock, and no snapshot ever started (audit H-F1). With no index yet, or after an add that
       // timed out, it goes in parts of `batch` files, a part a run, the indexes first so the first commit holds them as the
       // user wrote them. update-index, not `add --pathspec-from-file`: any git has it. Returns the files still to add.
+      // A history that lost its index (deleted by hand): git read it as empty, and a part committed against it dropped
+      // every other note from HEAD (review of #6). Rebuilt from HEAD first, as a damaged one is; with no HEAD, a first.
+      if (!existsSync(join(root, '.git', 'index'))) {
+        let head = true; try { git('rev-parse', '-q', '--verify', 'HEAD'); } catch (e) { if (e.status !== 1) throw e; head = false; }
+        if (head) git('reset', '-q');
+      }
       if (!existsSync(join(root, '.git', 'index')) || existsSync(parts)) {
         const todo = git('ls-files', '-z', '-o', '-m', '--exclude-standard').split('\0').filter(Boolean)
           .sort((a, b) => /(^|\/)MEMORY[^/]*$/.test(b) - /(^|\/)MEMORY[^/]*$/.test(a));

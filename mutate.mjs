@@ -558,6 +558,7 @@ export const suites = {
     'a busy snapshot not owed': ['busySince: since, pending: true', 'busySince: since'],
     'a failed snapshot not owed': [", error: s.slice('snapshot failed: '.length), pending: true }", ", error: s.slice('snapshot failed: '.length) }"],
     'a first snapshot added at once': ['if (todo.length > batch) {', 'if (false) {'],
+    'a lost index read as an empty one, its part dropping the rest from HEAD': ["        if (head) git('reset', '-q');\n", ''],
     'the indexes not first in a first snapshot': ['\n          .sort((a, b) => /(^|\\/)MEMORY[^/]*$/.test(b) - /(^|\\/)MEMORY[^/]*$/.test(a));', ';'],
     'a snapshot in parts never ends them': ['        try { unlinkSync(parts); } catch {}\n', ''],
     'the rest of a first snapshot added at once': ["          writeFileSync(parts, '');\n          return todo.length - batch;", '          return todo.length - batch;'],

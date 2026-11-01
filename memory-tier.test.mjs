@@ -1717,6 +1717,15 @@ if (!quick) {
     rmSync(join(r1, '.git', 'index.lock'), { force: true });   // what a killed git left: cleared after ten minutes
     for (let i = 0; i < 10 && health1().pending; i++) s = await stop1();
     ok(g1('ls-files').split('\n').includes('proj-big/memory/Big11.md') && !existsSync(join(r1, '.git', 'project-memory-parts')), `and the runs after it add them (got ${JSON.stringify(health1())})`);
+    // A history that lost its index (deleted by hand): git reads it as empty, and a part committed against it dropped
+    // .gitignore and every other note from HEAD (review of #6). Rebuilt from HEAD first, it commits the change alone.
+    const had = g1('ls-tree', '-r', '--name-only', 'HEAD').split('\n');
+    rmSync(join(r1, '.git', 'index'));
+    writeFileSync(join(d1, 'Big0.md'), readFileSync(join(d1, 'Big0.md'), 'utf8') + 'more\n');
+    s = await stop1();
+    const kept = g1('ls-tree', '-r', '--name-only', 'HEAD').split('\n');
+    ok(had.length > 3 && had.every((f) => kept.includes(f)) && /^proj-big\/memory\/Big0\.md$/.test(g1('diff', '--name-only', 'HEAD~1', 'HEAD')) && !g1('status', '--porcelain'),
+      `a history that lost its index keeps every file in its next snapshot (got ${s.stdout.trim()}; lost ${had.filter((f) => !kept.includes(f)).join(', ')})`);
   } finally { process.env.HOME = home; process.env.USERPROFILE = home; }
 }
 
