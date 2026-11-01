@@ -9,12 +9,10 @@ import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, tur
 import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason } from './store.mjs';
 
 export const JOURNAL = 'journal';
-export const J_ASK = 2000;     // chars of what was asked
-export const J_ANSWER = 6000;  // chars of the reply; a longer one keeps its start and its end
-export const J_TAIL = 2000;    // ...the end: a reply's end says what was done and why
-export const J_FILES = 20;     // files an entry names: the turn's last
-export const J_RAN = 20;       // commands an entry names: the turn's last
-export const J_CMD = 400;      // chars of one command
+// An entry keeps its request, reply, files and commands whole: the detail is
+// the point of a journal, and a search reads headlines of it, never the whole
+// (KIRE, 2026-10-31: "having a memory from previous sessions in details is a
+// priority"). Only a branch and a path are cut: a pasted text in their place.
 export const J_BRANCH = 100;   // chars of a branch name: any real one whole, a pasted text in one cut
 export const J_PATH = 300;     // chars of one file path: Windows' 260-character limit fits whole
 // A Stop imports old conversations for this long, holding the store's lock,
@@ -65,20 +63,11 @@ const rel = (p, cwd) => {
   return c && p.length > c.length + 1 && /[\\/]/.test(p[c.length]) && fold(p.slice(0, c.length)) === fold(c) ? p.slice(c.length + 1) : p;
 };
 
-// A reply over the cap keeps its first J_ANSWER - J_TAIL characters and its
-// last J_TAIL. Redacted whole first, so no half of a key is left at either
-// cut; and no half of an emoji, which reads back as U+FFFD, matches nothing,
-// and was written again every Stop.
-const reply = (s) => {
-  const t = clip(s, Infinity);
-  return t.length > J_ANSWER ? `${t.slice(0, J_ANSWER - J_TAIL).replace(/[\uD800-\uDBFF]$/, '')} … ${t.slice(-J_TAIL).replace(/^[\uDC00-\uDFFF]/, '')}` : t;
-};
-
 // `when`: the time of a turn whose own won't parse (a transcript another tool
 // wrote): NaN-NaN-Na.md was its day file, which nothing lists or sweeps.
 export function entryOf(turn, transcriptPath, when = local()) {
   const s = tag(basename(transcriptPath, '.jsonl'));
-  // Every command, before the cap: a forget among a turn's first ones counts.
+  // Every command: a forget among a turn's first ones counts.
   const forgets = turn.ran.some((c) => FORGETS.test(c));
   const quiet = forgets || PRIVATE.test(userText(turn));
   return {
@@ -86,10 +75,11 @@ export function entryOf(turn, transcriptPath, when = local()) {
     at: TIME.test(turn.at) ? turn.at : when, s,
     t: transcriptKey(transcriptPath),
     branch: clip(turn.branch || '', J_BRANCH),
-    asked: forgets ? '[private]' : clip(turn.ask, J_ASK),
-    answered: quiet ? '[private]' : reply(turn.did),
-    changed: quiet ? [] : turn.changed.slice(-J_FILES).map((p) => clip(rel(p, turn.cwd), J_PATH)),
-    ran: quiet ? [] : turn.ran.slice(-J_RAN).map((c) => clip(c, J_CMD)),
+    // Redacted, and squeezed to one line: a day file is one entry a line per field.
+    asked: forgets ? '[private]' : clip(turn.ask, Infinity),
+    answered: quiet ? '[private]' : clip(turn.did, Infinity),
+    changed: quiet ? [] : turn.changed.map((p) => clip(rel(p, turn.cwd), J_PATH)),
+    ran: quiet ? [] : turn.ran.map((c) => clip(c, Infinity)),
   };
 }
 

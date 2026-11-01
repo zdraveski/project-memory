@@ -60,8 +60,16 @@ const RANGE_SHOWN = 20;
 // What a journal hit prints: its request to HIT_ASK characters, and of the
 // reply, files and commands only the stretches that hold a search word, HIT_SPAN
 // either side, HIT_MORE in all. The top 3 printed whole were 30 KB, and the line
-// that answered the question was lost in them (recall test, 2026-10-29).
-const HIT_ASK = 400, HIT_SPAN = 80, HIT_MORE = 800;
+// that answered the question was lost in them (recall test, 2026-10-29). A
+// headline, not the entry: ten hits at 400 and 800 were 7 KB a search, mostly
+// passages and transcript paths nobody read; `show` gives one whole (2026-10-31).
+// HIT_SPAN fits a third of HIT_MORE: at 80, three fields' stretches were all
+// lead-in, cut before the word. HIT_HEAD: the reply's first sentence, what
+// came of it, which a stretch from the middle never says (2026-10-31).
+const HIT_ASK = 200, HIT_SPAN = 30, HIT_MORE = 240, HIT_HEAD = 140;
+// The first sentence of a reply, HIT_HEAD at most: one of 20 characters or
+// more, so a lone "Done." or "**Yes.**" is not taken for the whole outcome.
+const result = (a) => { const t = clip(a, HIT_HEAD); return /^.{20,}?[.!?](?=\s|$)/u.exec(t)?.[0] ?? t; };
 // A request this long (normalized) asked again is one hit: a script's prompt,
 // a retry. A shorter one ("continue", "yes") is different work each time, and
 // collapsed, its reply could not be read (review, 2026-10-29).
@@ -180,6 +188,19 @@ function around(text, find, room) {
   return s.length > room ? s.slice(0, room - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : s;
 }
 
+// The journal as a reader sees it: never an entry forget listed. It lists the
+// keys before it writes the days, and a day that would not be written keeps
+// the entry until forget runs again, which reads them all. A list that won't
+// read could name any entry: none of that store's is shown, and it is named.
+const told = (dirs, o) => {
+  const gone = new Set(), open = dirs.filter((d) => {
+    const p = join(d, FORGOTTEN);
+    try { for (const [k] of forgotten(readFileSync(p, 'utf8'))) gone.add(k); return true; }
+    catch (e) { if (e.code === 'ENOENT') return true; o.failed?.push({ path: p, code: e.code || e.message }); return false; }
+  });
+  return entries(open, o).filter((e) => !gone.has(e.key));
+};
+
 // Ranked, not grepped: a name says more than a description, a description more
 // than a passing mention. Every term in the name or description is the strong
 // match; every term somewhere in the body is a weak one, or a month-long log
@@ -210,7 +231,7 @@ export function search(dirs, query, { since, until, failed } = {}) {
   }
   // An entry by what was asked, then what it changed and ran (and its branch),
   // then the reply: a reply that names everything must not outrank the request.
-  for (const e of terms.length ? entries(dirs, { since, until, failed }) : []) {
+  for (const e of terms.length ? told(dirs, { since, until, failed }) : []) {
     const asked = e.asked.toLowerCase(), did = [...e.changed, ...e.ran].join('\n').toLowerCase(), branch = e.branch.toLowerCase(), answered = e.answered.toLowerCase();
     let score = 0, strong = true, every = true;
     for (const t of terms) {
@@ -654,12 +675,13 @@ export function main(given) {
     const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (t.length > 2 ? t : alone(t).source)).join('|'), 'giu');
     const entry = (h, also) => {
       const hold = [['Answered', h.answered], ['Changed', h.changed.join(', ')], ['Ran', h.ran.join(' · ')]].filter(([, v]) => clip(v, Infinity).search(find) !== -1);
-      const ds = [h, ...also].map((x) => x.day).sort();
+      const ds = [h, ...also].map((x) => x.day).sort(), at = clip(h.answered, Infinity).search(find);
       // Redacted before it is cut: a stretch must not cut a secret in two. The
       // copies' keys are named: a forget of the one shown left them (review).
+      // No Result when the reply's stretch already starts at its start.
       return [`${String(h.score).padStart(3)}  journal   ${head(h)}`, `     key: ${clip(h.key, Infinity)}`, `     Asked: ${clip(h.asked, HIT_ASK)}`,
+        ...(h.answered && !(at !== -1 && at <= HIT_SPAN) ? [`     Result: ${result(h.answered)}`] : []),
         ...hold.map(([k, v]) => `     ${k}: ${around(clip(v, Infinity), find, Math.floor(HIT_MORE / hold.length))}`),
-        ...full(h),
         ...(also.length ? [`     ${also.length} more like this, ${ds[0]}..${ds.at(-1)}: ${more(also.map((x) => clip(x.key, Infinity)), 5)}; --same takes them all`] : [])];
     };
     const wider = rest.includes('--all') ? '' : '; --all searches every project';
@@ -668,12 +690,12 @@ export function main(given) {
         `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...out,
         // A hit's date, and what was not shown or not searched.
-        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}`]
+        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}${shown.some(([h]) => h.kind === 'journal') ? "; show '<key>' prints an entry whole" : ''}`]
       : [...out, `nothing matches "${q}" in ${where}${span && ` ${span}`}${wider}`] };
   } else if (cmd === 'show' && args.length) {
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).
-    const es = entries(scope, { failed }), got = args.map((k) => es.find((e) => e.key === k)), seen = new Set();
+    const es = told(scope, { failed }), got = args.map((k) => es.find((e) => e.key === k)), seen = new Set();
     const whole = (e) => [head(e), `     key: ${clip(e.key, Infinity)}`,
       ...[['Asked', e.asked], ['Answered', e.answered], ['Changed', e.changed.join(', ')], ['Ran', e.ran.join(' · ')]].filter(([, v]) => v).map(([k, v]) => `     ${k}: ${clip(v, Infinity)}`),
       `     Day file: ${e.path}`, ...full(e)];
@@ -682,7 +704,7 @@ export function main(given) {
     r = { ok: got.every(Boolean), lines: got.flatMap((e, i) => e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${args[i]} in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
   } else if (cmd === 'search' && (range.since || range.until)) {
     // What was asked on those days, newest first: "what did we do last week".
-    const es = entries(scope, { ...range, failed }).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
+    const es = told(scope, { ...range, failed }).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
     r = { ok: true, lines: es.length ? [...shown.map((e) => `${head(e)}  ${clip(e.asked, 200)}`), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [`no journal entry ${span} in ${where}`] };
   } else if (cmd === 'forget') {

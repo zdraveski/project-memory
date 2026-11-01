@@ -2087,6 +2087,16 @@ require('node:module').syncBuiltinESMExports();
     writeFileSync(join(folderP, 'unopenable-1.jsonl'), lines(user('an open prompt')));
     ok(!/Another session is working/.test(print_(cw, 'pppppppp-1', 'startup', undefined, busyJs)), 'a transcript that cannot be read is not working');
     ok(/Another session is working in this project: .*\[unopenab\]/.test(print_(cw, 'pppppppp-1', 'startup')), 'one that can is');
+    // One marked private is named working, never by what it was asked, though
+    // handoff.md still holds that (a sweep that failed, tried again at its next reply).
+    const hdP = join(dP, 'handoff.md'), hdHad = existsSync(hdP) ? readFileSync(hdP) : null;
+    writeFileSync(hdP, docOf(entry('2026-10-01 10:00', 'unopenab', 'the okapi merger closes on friday', 'noted')));
+    ok(/^Another session is working in this project: \S+ \S+ \[unopenab\] the okapi merger closes on friday$/m.test(print_(cw, 'pppppppp-1', 'startup')), 'a working session is named by its last request');
+    writeFileSync(join(dP, '.private-sessions'), 'unopenab\n');
+    const pw = print_(cw, 'pppppppp-1', 'startup');
+    ok(/^Another session is working in this project: \S+ \S+ \[unopenab\] \(no handoff entry\)$/m.test(pw) && !pw.includes('okapi'), `a private one working is named without its words (${pw.slice(0, 400)})`);
+    rmSync(join(dP, '.private-sessions'));
+    if (hdHad) writeFileSync(hdP, hdHad); else rmSync(hdP);
     rmSync(join(folderP, 'unopenable-1.jsonl'));
 
     // Working is judged on a clock that stands still: a transcript exactly ACTIVE old is not.
@@ -2121,6 +2131,84 @@ require('node:module').syncBuiltinESMExports();
       const L1 = compact(1).length, exact = compact(1 + 9500 - L1);
       ok(exact.length === 9500 && exact.includes('ask-0 '), `a compaction briefing of exactly 9500 characters keeps every exchange (${L1} -> ${exact.length})`);
       ok(!compact(1 + 9500 - L1 + 1).includes('ask-0 '), 'one character more, and the oldest exchange goes');
+
+      // At startup: the last session's own exchanges, oldest first; the oldest
+      // go until the briefing fits, and the shared lessons are never cut.
+      const cw4 = 'C:\\hl-A-start', dP4 = store(cw4), at4 = Date.UTC(2026, 9, 1, 10, 30);
+      const startup = (n, size) => {
+        writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 09:00', 'yyyyyyyy', 'another session ask', 'theirs'),
+          ...Array.from({ length: n }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(size)}`))));
+        return print_(cw4, 'pppppppp-1', 'startup', at4);
+      };
+      // Under 1,000 tokens (3,500 characters): the shared index at its
+      // 3,000 B ceiling leaves no room for an exchange of 900, and every lesson stays.
+      const crowded = startup(10, 899);
+      ok(!/^- \*\*asked\*\*/m.test(crowded) && !crowded.includes('Its last exchanges') && crowded.split('\n').filter((l) => l.startsWith('- [Pad')).length === 30
+        && /Last session here ended 2026-10-01 10:09 on: ask-9 here/.test(crowded), `with the shared index full, no exchange fits, and every shared lesson stays (${crowded.length} characters)`);
+      writeFileSync(shared, '');
+      const few = startup(3, 50);
+      ok(/Last session here ended 2026-10-01 10:02 on: ask-2 here[^\n]*\nIts last exchanges, oldest first:\n- \*\*asked\*\* 2026-10-01 10:00 \[ssssssss\]: ask-0 here\n {2}\*\*did:\*\* did-0 /.test(few)
+        && few.indexOf('ask-1 here') < few.indexOf('ask-2 here\n') && !few.includes('another session ask'), `startup prints the last session's exchanges, oldest first, none of another's (${few.slice(0, 700)})`);
+      const many = startup(10, 899), kept = many.split('\n').filter((l) => /^- \*\*asked\*\*/.test(l)).length;
+      ok(many.length <= 3500 && many.includes('ask-9 here') && !many.includes('ask-0 here') && kept >= 2 && kept < 10,
+        `a long session's oldest exchanges go until the briefing is within 3,500 characters, its newest stay (${kept} kept, ${many.length} characters)`);
+      ok(/^ {2}\*\*did:\*\* did-9 .{890,}$/m.test(many), 'an exchange keeps up to 900 characters of its answer');
+      // Exactly 3,500 characters keeps the oldest exchange; one more, and it goes.
+      const edge = (last) => {
+        writeFileSync(join(dP4, 'handoff.md'), docOf(...Array.from({ length: 5 }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(i === 4 ? last : 600)}`))));
+        return print_(cw4, 'pppppppp-1', 'startup', at4);
+      };
+      const E1 = edge(1).length, need = 1 + 3500 - E1, brim = edge(need);
+      ok(need > 1 && need <= 894 && brim.length === 3500 && brim.includes('ask-0 here'), `a startup briefing of exactly 3,500 characters keeps every exchange (${E1} -> ${brim.length})`);
+      ok(!edge(need + 1).includes('ask-0 here'), 'one character more, and the oldest exchange goes');
+      writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'ssssssss', `long-ask ${mk(700)}`, 'done')));
+      const asked = print_(cw4, 'pppppppp-1', 'startup', at4).match(/^- \*\*asked\*\* \S+ \S+ \[ssssssss\]: (long-ask .*)$/m)?.[1] ?? '';
+      ok(asked.length === 500 && asked.endsWith('…'), `an exchange keeps 500 characters of its request (got ${asked.length})`);
+
+      // Never an exchange forget took out, nor a conversation marked private,
+      // though handoff.md still holds it (a sweep that failed, tried again at
+      // the next reply); a secret is [redacted].
+      const brief = () => print_(cw4, 'pppppppp-1', 'startup', at4), sk = stripe('sk', 'live');
+      writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 09:00', 'oooooooo', 'older plain ask', 'older answer'),
+        entry('2026-10-01 10:00', 'ssssssss', 'kept-ask here', `kept answer with ${sk}`), entry('2026-10-01 10:01', 'ssssssss', 'gone-ask here', 'gone answer'),
+        entry('2026-10-01 10:02', 'ssssssss', 'my pin is [private]', 'the pin is 4321')));
+      mkdirSync(join(dP4, 'journal'), { recursive: true });
+      // An older line is its key alone, with no conversation to match.
+      writeFileSync(join(dP4, FORGOTTEN), 'k-older\nk-gone\tC--hl-A-start/ssssssss-1\t2026-10-01 10:01\n');
+      let b = brief();
+      ok(/^ {2}\*\*did:\*\* kept answer with \[redacted\]$/m.test(b) && !b.includes(sk.slice(-12)), `a secret in an exchange is briefed as [redacted] (${b.slice(0, 700)})`);
+      ok(b.includes('kept-ask here') && !b.includes('gone-ask') && !b.includes('gone answer'), `an exchange forget took out is not briefed, though handoff.md still holds it (${b.slice(0, 700)})`);
+      ok(/my pin is \[private\]\n {2}\*\*did:\*\* \[private\]$/m.test(b) && !b.includes('4321'), `a private request's answer is not briefed (${b.slice(0, 700)})`);
+      writeFileSync(join(dP4, '.private-sessions'), 'ssssssss\n');
+      b = brief();
+      ok(!/\[ssssssss\]|kept-ask|my pin/.test(b) && /Last session here ended 2026-10-01 09:00 on: older plain ask/.test(b), `a conversation marked private is not briefed; the one before it is (${b.slice(0, 700)})`);
+      rmSync(join(dP4, '.private-sessions')); mkdirSync(join(dP4, '.private-sessions'));
+      b = brief();
+      ok(!/Last session here ended|\*\*asked\*\*/.test(b), `with the list of private conversations unreadable, no exchange is briefed (${b.slice(0, 700)})`);
+      rmSync(join(dP4, '.private-sessions'), { recursive: true });
+      // A list of forgotten exchanges that won't read could name any of them: none is listed; the line naming where it stopped stays.
+      rmSync(join(dP4, FORGOTTEN)); mkdirSync(join(dP4, FORGOTTEN));
+      b = brief();
+      ok(/Last session here ended 2026-10-01 10:02 on: my pin is \[private\]/.test(b) && !/\*\*asked\*\*/.test(b), `with the list of forgotten exchanges unreadable, no exchange is listed (${b.slice(0, 700)})`);
+      rmSync(join(dP4, FORGOTTEN), { recursive: true });
+      const offList = join(root_, OFF), offHad = existsSync(offList) ? readFileSync(offList) : null;
+      try {
+        // Held with auto memory off: what was typed then is in handoff.md once a
+        // later reply with it on reads the turn back, so none of its exchanges is
+        // listed. The line naming where it stopped stays, as before.
+        writeFileSync(offList, 'ssssssss\n');
+        b = brief();
+        ok(/Last session here ended 2026-10-01 10:02 on: my pin is \[private\]/.test(b) && !/\*\*asked\*\*|kept-ask/.test(b), `a conversation held with auto memory off has no exchange listed (${b.slice(0, 700)})`);
+        rmSync(offList); mkdirSync(offList);
+        b = brief();
+        ok(/Last session here ended/.test(b) && !/\*\*asked\*\*/.test(b), `with the memory-off list unreadable, no exchange is listed (${b.slice(0, 700)})`);
+        rmSync(offList, { recursive: true });
+        // Auto memory off: nothing at all (and the start tags this conversation in the memory-off list, put back after).
+        process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+        try { b = brief(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+        ok(b === '', `with auto memory off, nothing is briefed (got ${b.slice(0, 200)})`);
+      } finally { rmSync(offList, { recursive: true, force: true }); if (offHad) writeFileSync(offList, offHad); }
+      rmSync(join(dP4, 'journal'), { recursive: true });
     } finally { if (had) writeFileSync(shared, had); else rmSync(shared, { force: true }); }
   }
 

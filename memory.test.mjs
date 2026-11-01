@@ -816,10 +816,49 @@ if (!quick) {
   const blocks = (out) => out.split(/\n(?= *\d+  )/), of = (out, asked) => blocks(out).find((b) => b.includes(`\n     Asked: ${asked}`)) ?? '';
   ok(!/Answered/.test(of(r.stdout, 'fix the deploy error')) && /^     Answered: the deploy error, the deploy error again, and the deploy error once more$/m.test(of(r.stdout, 'tidy the readme')),
     `a reply is printed only when it holds a search word (got ${r.stdout})`);
+  // Every hit says what came of it: the reply's first sentence, unless its stretch already starts there.
+  ok(/^     Asked: fix the deploy error\n     Result: done$/m.test(of(r.stdout, 'fix the deploy error')) && !/Result:/.test(of(r.stdout, 'tidy the readme')),
+    `a hit leads with its reply's start, not twice (got ${r.stdout})`);
+  day(jd, '2026-10-12', [entry('2026-10-12 09:00', 'tune the tapir cache', { answered: 'Done. The cache now holds a day of pages, measured twice. Then the tapir rest, which a hit leaves out.' }),
+    entry('2026-10-12 10:00', 'size the tapir pool', { answered: `the pool ${'grows and shrinks '.repeat(12)}and settles` }),
+    // The word at exactly HIT_SPAN (30): its stretch starts at the reply's start, so no Result.
+    entry('2026-10-12 11:00', 'count the tapir herd', { answered: `${'ab '.repeat(10)}tapir herd counted at noon, nine of them.` })]);
+  r = await jcli('search', 'tapir');
+  rmSync(join(jd, 'journal', '2026-10-12.md'));   // a day no other check uses
+  const lead = (asked) => of(r.stdout, asked).match(/^     Result: (.*)$/m)?.[1];
+  ok(lead('tune the tapir cache') === 'Done. The cache now holds a day of pages, measured twice.' && lead('size the tapir pool')?.length === 140 && lead('size the tapir pool').endsWith('…'),
+    `a Result is the first sentence of 20 characters or more, else the reply cut at 140 (got ${r.stdout})`);
+  ok(lead('count the tapir herd') === undefined && /^     Answered: ab ab/m.test(of(r.stdout, 'count the tapir herd')), `a word 30 characters in: the stretch starts the reply, no Result (got ${r.stdout})`);
+  // A Result is redacted before it is cut: a day an older version wrote keeps a
+  // secret, and the 140 cut lands inside it here.
+  const sk = ['sk', 'live', '51Habcdefghijklmnopqrstuv'].join('_') + 'WX';
+  day(jd, '2026-10-14', [entry('2026-10-14 09:00', 'rotate the dugong key', { answered: `Stored ${sk} as the new deploy key of the dugong, then restarted.` }),
+    entry('2026-10-14 10:00', 'rotate the dugong cert', { answered: `${'ab '.repeat(40)}then ${sk} went in for the dugong.` })]);
+  r = await jcli('search', 'dugong');
+  ok(lead('rotate the dugong key') === 'Stored [redacted] as the new deploy key of the dugong, then restarted.' &&/^ab ab .*\[redacted\]/.test(lead('rotate the dugong cert') ?? '') && !r.stdout.includes(sk.slice(8, 20)),
+    `a Result shows no part of a secret (got ${r.stdout})`);
+  // Nor is a hit, a day's listing or show ever an entry forget listed: one whose
+  // day would not be written still holds it, until forget runs again.
+  const fgList = join(jd, 'journal', '.forgotten'), fgHad = existsSync(fgList) ? readFileSync(fgList, 'utf8') : '';
+  const fg = entry('2026-10-14 11:00', 'feed the ibex herd', { answered: 'The ibex herd was fed twice.' });
+  day(jd, '2026-10-14', [fg, entry('2026-10-14 12:00', 'count the ibex herd')]);
+  writeFileSync(fgList, `${fgHad}${fg.key}\tC--jr/c0ffee12-full\t2026-10-14 11:00\n`);
+  r = await jcli('search', 'ibex');
+  const fgShow = (await jcli('show', fg.key)).stdout, fgDay = (await jcli('search', '--since', '2026-10-14', '--until', '2026-10-14')).stdout;
+  // A list that won't read could name any entry: none of that store's is shown, and the list is named.
+  rmSync(fgList); mkdirSync(fgList);
+  const shut = (await jcli('search', 'ibex')).stdout, shutShow = (await jcli('show', fg.key)).stdout;
+  rmSync(fgList, { recursive: true });
+  if (fgHad) writeFileSync(fgList, fgHad);
+  rmSync(join(jd, 'journal', '2026-10-14.md'));   // a day no other check uses
+  ok(/^     Asked: count the ibex herd$/m.test(r.stdout) && !/feed the ibex|fed twice/.test(r.stdout + fgShow + fgDay) && /^no journal entry has the key /m.test(fgShow) && /count the ibex herd/.test(fgDay),
+    `an entry forget listed is no hit, no line of its day, and show has none (got ${r.stdout}${fgShow}${fgDay})`);
+  ok(!/ibex herd|fed twice/.test(shut + shutShow) && /^could not read .*[\\/]journal[\\/]\.forgotten: E[A-Z]+$/m.test(shut) && /^could not read .*[\\/]journal[\\/]\.forgotten: E[A-Z]+$/m.test(shutShow),
+    `with the list of forgotten keys unreadable, the journal shows nothing and says why (got ${shut}${shutShow})`);
   r = await jcli('search', 'zeppelin');
   const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
-  ok(z.length < 1500 && zask.length === 400 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
-    `an entry at every cap: its request cut to 400, the rest the stretches around the word, under 1.5 KB in all (got ${z.length}: ${z})`);
+  ok(z.length < 800 && zask.length === 200 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
+    `an entry at every cap: a headline, its request cut to 200, its result, the rest the stretches around the word, under 800 characters in all (got ${z.length}: ${z})`);
   // A stretch never starts or ends on half an emoji, nor does the cap cut one:
   // printed, half of one is U+FFFD. Each of the three cuts lands mid-emoji here.
   const em = (n) => '\u{1F600}'.repeat(n);
@@ -862,8 +901,9 @@ if (!quick) {
   r = await jcli('search', 'narwhal');
   ok(/conversation \[redacted\] · branch feat-\[redacted\]$/m.test(r.stdout) && !r.stdout.includes(tagKey) && !r.stdout.includes(brKey) && !r.stdout.includes(cutKey.slice(16)),
     `a secret in a tag, a branch or under a stretch's cut is never printed (got ${r.stdout})`);
-  // Matches near each other are one stretch, not the same text twice.
-  ok(!/^     Answered: [^\n]* … /m.test(z), `close matches merge into one stretch (got ${z})`);
+  // Matches farther apart than two windows (here 121 characters) are separate
+  // stretches; ones whose windows touch merge (the zeta check below).
+  ok(/^     Answered: …[^\n]*zeppelin[^\n]* … /m.test(z), `distant matches are separate stretches (got ${z})`);
   ok(!/[\\/]journal\.md$/m.test((await jcli('search', 'every', 'exchange')).stdout), "journal.md is the journal's pointer, not a search hit");
   ok(/^     Asked: tidy the scripts$/m.test((await jcli('search', 'memory-tier.mjs')).stdout) && /^     Asked: tidy the scripts$/m.test((await jcli('search', 'bench')).stdout),
     'an entry is found by a file it changed, and by a command it ran, alone');
@@ -908,10 +948,13 @@ if (!quick) {
   r = await jcli('search', 'deploy', '--since', 'yesterday');
   const r2 = await jcli('search', 'deploy', '--until=2026-10');
   ok(r.status === 1 && r.stdout.trim() === '--since takes a date like 2026-10-01' && r2.status === 1 && r2.stdout.trim() === '--until takes a date like 2026-10-01', `a bad date is refused (got ${r.stdout}${r2.stdout})`);
-  const conv = join(root, 'C--jr', 'c0ffee12-full.jsonl'), named = async () => /^     Full conversation: .*[\\/]C--jr[\\/]c0ffee12-full\.jsonl$/m.test((await jcli('search', 'fix', 'deploy', 'error')).stdout);
+  // The transcript is show's to name; a hit is a headline, and says how to get the rest.
+  const conv = join(root, 'C--jr', 'c0ffee12-full.jsonl'), named = async () => /^     Full conversation: .*[\\/]C--jr[\\/]c0ffee12-full\.jsonl$/m.test((await jcli('show', fix.key)).stdout);
   writeFileSync(conv, '{}\n');
-  const was = await named(); unlinkSync(conv);
-  ok(was && !await named(), 'the full conversation is named while it exists');
+  const was = await named(), hit = (await jcli('search', 'fix', 'deploy', 'error')).stdout; unlinkSync(conv);
+  ok(was && !await named(), 'show names the full conversation while it exists');
+  ok(!/Full conversation/.test(hit) && /; show '<key>' prints an entry whole$/m.test(hit), `a hit names no transcript, and its last line points at show (got ${hit})`);
+  ok(!/show '<key>'/.test((await jcli('search', 'how', 'we', 'ship')).stdout), 'a search with no journal hit does not point at show');
   // A private turn's only detail is the private part, which its transcript
   // still holds: neither a hit nor show points at it (final review, 2026-10-29).
   const pin = entry('2026-09-30 10:00', 'my quokka pin is [private]', { answered: '[private]' }), pinDay = join(jd, 'journal', '2026-09-30.md');
@@ -956,7 +999,7 @@ if (!quick) {
   // 1.0 s was usual, and beside other suites the right search took 5.3 s too.
   const reads = join(home, 'count-reads.mjs');
   writeFileSync(reads, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst read = fs.readFileSync; let n = 0;\n" +
-    `fs.readFileSync = (p, ...a) => { if (String(p).includes(${JSON.stringify(join('C--big', 'memory', 'journal'))})) n++; return read(p, ...a); };\nsyncBuiltinESMExports();\nprocess.on('exit', () => process.stderr.write(\`\${n} day reads\`));\n`);
+    `fs.readFileSync = (p, ...a) => { if (String(p).includes(${JSON.stringify(join('C--big', 'memory', 'journal'))}) && String(p).endsWith('.md')) n++; return read(p, ...a); };\nsyncBuiltinESMExports();\nprocess.on('exit', () => process.stderr.write(\`\${n} day reads\`));\n`);
   r = spawnSync(process.execPath, ['--import', pathToFileURL(reads).href, CLI, 'search', 'needle', 'lorem', 'rollout', 'build', 'passed', 'plan', 'module', 'filter', '--store', big], { env, encoding: 'utf8' });
   ok(r.stderr === '365 day reads', `eight terms read each of a year's days once (got ${r.stderr})`);
   ok(r.status === 0 && new RegExp(`^ *\\d+  journal   ${last} 18:00 `).test(r.stdout), `the one entry asking for every term is first (got ${r.stdout.slice(0, 200)})`);
@@ -1256,16 +1299,21 @@ if (!quick) {
   ok(!/mn-beta/.test(r.stdout) && scoreOf(r.stdout, 'Asked: set up CI') === 8 && !/Answered:/.test(r.stdout), `a two-letter term is counted and shown only standing alone (got ${r.stdout})`);
   ok(/^ +links: l1, l2, l3, l4, l5$/m.test((await jcli('search', 'fivelinks')).stdout), 'exactly five links are listed with no "and 0 more"');
 
-  // A stretch: matches 164 apart are one stretch (the windows touch), and a
-  // stretch of exactly the room is not cut. The last match is 50 characters from
-  // the end, so the stretch ends there and the cap would replace its last letter.
+  // A stretch: matches 60 apart are one stretch (the 30-character windows
+  // touch): no " … " where the second window starts, and it is cut at the room (240).
   const fill = (k) => 'ab '.repeat(Math.ceil(k / 3)).slice(0, k);
-  const text = fill(100) + 'zeta' + [1, 2, 3, 4].map(() => fill(160) + 'zeta').join('') + fill(5) + 'zeta' + fill(50);
-  ok(text.length === 819, `the text is built to 819 characters (got ${text.length})`);
-  day(jm, '2026-10-22', [entry('2026-10-22 10:00', 'set up CI on the cluster', { answered: 'a decision on logos' }), entry('2026-10-22 11:00', 'zeta hunt', { answered: text })]);
+  const text = fill(100) + 'zeta' + [1, 2, 3, 4].map(() => fill(60) + 'zeta').join('') + fill(5) + 'zeta' + fill(50);
+  ok(text.length === 419, `the text is built to 419 characters (got ${text.length})`);
+  // And a stretch of exactly the room is not cut. The last match is 9
+  // characters from the end, so the stretch ends there and the cap would replace its last letter.
+  const exact = fill(100) + ['kappa', 'kappa', 'kappa', 'kappa'].join(fill(60)) + fill(8) + 'z';   // a stored reply loses a trailing space
+  day(jm, '2026-10-22', [entry('2026-10-22 10:00', 'set up CI on the cluster', { answered: 'a decision on logos' }), entry('2026-10-22 11:00', 'zeta hunt', { answered: text }),
+    entry('2026-10-22 12:00', 'kappa hunt', { answered: exact })]);
   r = await jcli('search', 'zeta');
   const stretch = r.stdout.split('\n').find((l) => l.startsWith('     Answered: '));
-  ok(stretch === `     Answered: …${text.slice(20)}` && stretch.length - '     Answered: '.length === 800, `matches 164 apart merge, and a stretch of 800 characters is kept whole (got ${stretch})`);
+  ok(stretch === `     Answered: …${text.slice(70, 308)}…` && stretch.length - '     Answered: '.length === 240, `matches 60 apart merge, cut at 240 (got ${stretch})`);
+  const whole = (await jcli('search', 'kappa')).stdout.split('\n').find((l) => l.startsWith('     Answered: '));
+  ok(whole === `     Answered: …${exact.slice(70)}` && whole.length - '     Answered: '.length === 240, `a stretch of exactly 240 characters is kept whole (got ${whole})`);
 
   // A range with no terms lists those days, newest first; equal minutes keep their order.
   day(jm, '2026-10-21', [entry('2026-10-21 10:00', 'tie alpha'), entry('2026-10-21 10:00', 'tie beta'), entry('2026-10-21 09:00', 'tie gamma')]);
@@ -1500,9 +1548,9 @@ if (!quick) {
   day(jm, '2026-10-25', [entry('2026-10-25 10:00', 'omega tail', { answered: tail }), entry('2026-10-25 10:01', 'omega cut', { answered: cutme }), entry('2026-10-25 10:02', 'plain request', { answered: 'a concatenated string' })]);
   r = await jcli('search', 'omega');
   const ans = (out, marker) => (blocks(out).find((b) => b.includes(marker))?.split('\n').find((l) => l.startsWith('     Answered: ')) ?? '').slice('     Answered: '.length);
-  ok(ans(r.stdout, 'Asked: omega tail') === `…${tail.slice(20, 185)}…`, `a stretch that stops before the end of the text ends with an ellipsis (got ${ans(r.stdout, 'Asked: omega tail')})`);
+  ok(ans(r.stdout, 'Asked: omega tail') === `…${tail.slice(70, 135)}…`, `a stretch that stops before the end of the text ends with an ellipsis (got ${ans(r.stdout, 'Asked: omega tail')})`);
   const cut = ans(r.stdout, 'Asked: omega cut');
-  ok(cut.length === 800 && cut.startsWith('…') && cut.endsWith('…'), `stretches past the room are cut to 800 characters, ellipsis included (got ${cut.length})`);
+  ok(cut.length === 240 && cut.startsWith('…') && cut.endsWith('…'), `stretches past the room are cut to 240 characters, ellipsis included (got ${cut.length})`);
   ok(ans((await jcli('search', 'cat')).stdout, 'Asked: plain request').includes('concatenated'), 'a three-letter term shows its stretch inside a longer word');
 
   // The first column: a score is right-aligned to 3, the kind padded to 9.

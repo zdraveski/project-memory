@@ -748,6 +748,10 @@ async function execute(steps, meta) {
       else if (due && want && !said?.includes(want)) problems.push(`the startup briefing does not name ${want}, the last plain exchange handoff.md lists (${last.s}): ${(said ?? fresh.out).slice(0, 200)}`);
       else if (notDue && said) problems.push(`the startup briefing names a last session that handoff.md ${last ? 'lists 12 days old' : 'does not list'}:${said.slice(0, 200)}`);
     }
+    // Nor does it list an exchange of a conversation held with auto memory off: what was typed while it was off reaches handoff.md when a
+    // later Stop with it on reads the turn back. Only the lines that name a conversation (where it stopped, or that it is working) may.
+    const listed = fresh.out.split('\n').filter((l) => !/^(?:Last session here ended|Another session is working) /.test(l)).join('\n');
+    for (const [mark, m] of marks) if (m.s?.off && listed.includes(mark)) problems.push(`a conversation held with auto memory off: ${mark} is listed in the startup briefing of a new conversation`);
   }
 
   // A round with faults or kills: no half-written *.tmp<digits> file is named in the index or in `status`.

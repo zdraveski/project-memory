@@ -105,8 +105,16 @@ the journal, the handoff, a briefing, a search hit or the history.
   and from `handoff.md`. Its tag is kept so it is never taken in again.
 - `handoff.md` is never committed; the snapshot repository has no remote
   and is never pushed.
-- A search hit or `show` of a private entry doesn't name its transcript,
-  which still holds the private part.
+- A search hit never names a transcript, and `show` of a private entry
+  doesn't name its transcript, which still holds the private part.
+- The startup briefing never shows the words of a conversation marked
+  private, even while `handoff.md` still holds them (its removal failed);
+  a private list it can't read hides every conversation. The exchanges it
+  lists leave out one listed in `journal/.forgotten`, and every one of a
+  conversation held with auto memory off; a list of either it can't read
+  lists none. `search`, `show` and a day's listing leave out an entry
+  listed in `journal/.forgotten` that a day file still holds, and every
+  entry of a store whose list can't be read.
 - The fuzzer checks after every round that no private or forgotten text is
   written, briefed or printed. Mutation testing checks that the tests catch
   each rule broken.
@@ -147,8 +155,10 @@ run, or instructions placed in a later briefing.
   `cwd` alone; `--store` refuses a folder outside it. A worktree's `.git`
   file is followed only when the main repository names it back.
 - Broken lines, half-written lines, odd encodings and huge replies are
-  read without failing; the fuzzer sends all of them. Saved text is cut to
-  fixed sizes, and the briefing to 9,500 characters.
+  read without failing; the fuzzer sends all of them. Text saved in
+  `handoff.md` is cut to fixed sizes; a journal entry is kept whole, a line
+  a field. The briefing is held to 9,500 characters, and the last
+  conversation's exchanges at startup to a briefing of 3,500.
 
 What remains: text saved from one conversation is shown to Claude in a
 later one, as with Claude Code's own memory. The briefing holds only the

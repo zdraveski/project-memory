@@ -35,9 +35,10 @@ sensitive.
 
 ## How much disk space does it use?
 
-A journal entry is usually under 3 KB. A very busy project adds up to about
-40 MB a year. The journal stays until you delete it or ask Claude to forget
-part of it.
+The journal keeps each exchange whole, so an entry is as long as what was
+said: half are under about 5 KB, and one in a hundred is over about 60 KB. A
+very busy project adds up to about 110 MB a year. The journal stays until
+you delete it or ask Claude to forget part of it.
 
 ## Does it slow Claude down or fill the conversation?
 

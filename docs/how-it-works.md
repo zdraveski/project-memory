@@ -124,8 +124,8 @@ written when nothing changed.
 ## The handoff
 
 `handoff.md` records the latest exchanges after every reply: up to 10 per
-conversation, for up to 3 conversations, keeping the first 240 characters of
-what you asked and the first 400 of the answer, and the names of the files
+conversation, for up to 3 conversations, keeping the first 500 characters of
+what you asked and the first 900 of the answer, and the names of the files
 the turn changed (from Edit, Write and NotebookEdit; the 8 edited last, and
 how many more). A slash command is recorded as you typed it, with its
 arguments. The answer is the reply Claude Code hands the Stop hook, since the
@@ -230,15 +230,14 @@ notebook has none. An entry, with a blank line between entries:
 ```
 <!-- j:<key> t:<project folder>/<session id> d:2026-10-28 -->
 ## 14:05 · conversation 551dc2d3 · branch master
-**Asked:** your message, up to 2,000 characters
-**Answered:** Claude's reply, up to 6,000 characters
-**Changed:** the files edited or written in the turn, the last 20
-**Ran:** the Bash and PowerShell commands, the last 20, 400 characters each
+**Asked:** your message, whole
+**Answered:** Claude's reply, whole
+**Changed:** every file edited or written in the turn
+**Ran:** every Bash and PowerShell command, whole
 ```
 
-A reply over 6,000 characters keeps its first 4,000 and its last 2,000,
-joined by ` … `: a reply's end says what was done and why. It is redacted
-whole before it is cut, so no half of a secret is left at either cut.
+Each field is kept whole, on one line (line breaks become spaces): the
+journal is the detailed record, and `search` reads headlines of it.
 
 - The time is local, as in the handoff. The branch is the one Claude Code
   recorded with the message (`gitBranch`): the branch at the time of the
@@ -272,8 +271,8 @@ whole before it is cut, so no half of a secret is left at either cut.
   as a day with no entry.
 - Every field goes through the redaction rules above, commands included. A
   `<private>` message's answer is `[private]`, with no files or commands. A
-  turn that ran `memory.mjs forget` in any of its commands, not only the 20
-  an entry keeps, is kept like a private one, its request included:
+  turn that ran `memory.mjs forget` in any of its commands is kept like a
+  private one, its request included:
   `[private]`, with no files or commands, since its reply lists what the
   forget removes. With auto memory off, nothing is written.
 - A `<private-session>` conversation writes nothing, and its entries are
@@ -300,13 +299,16 @@ whole before it is cut, so no half of a secret is left at either cut.
 - A failure is kept in `journal/.failed` for `status`, one line for the live
   write and one for the import, each cleared by its own next success.
 
-The caps allow an entry of about 22,000 characters: 2,000 + 6,003, 20 paths
-of up to 300 and 20 commands of 400. Measured on 2026-10-29 by importing
-the 293 transcripts on the author's computer (362 entries): half the
-entries are under 2,660 bytes, nine in ten under 6,723, and the largest is
-14,546. The busiest project wrote 74 entries in 3 days, 115 KB a day: about
-40 MB in a year of daily use. The memory suite's year of entries, 14 a day,
-is 30 MB, which `search` reads in about a second.
+An entry has no size limit. With the limits it had until 1.2.4 (2,000
+characters of the request, 6,000 of the reply, 20 commands of 400), measured
+on 2026-10-29 by importing the 293 transcripts on the author's computer (362
+entries): half the entries were under 2,660 bytes, nine in ten under 6,723,
+and the largest 14,546. The busiest project wrote 74 entries in 3 days, 115
+KB a day: about 40 MB in a year of daily use. Kept whole, measured again on
+2026-11-01 from real transcripts: half the entries are under 4.6 KB, 64 % are
+over 3 KB, one in a hundred is over 59 KB, and a busy project writes about
+110 MB a year. The memory suite's year of entries, 14 a day, is 30 MB,
+which `search` reads in about a second.
 
 **Importing other conversations.** Every Stop also imports some of the
 project's conversations still on disk that it hasn't read: on a new install
@@ -382,9 +384,23 @@ At the start of a conversation, and after `/clear`, Claude is told:
 - which other conversations are working in this project right now (their
   transcript changed in the last 30 minutes and has a turn still open), and
   what they were last asked; if none, where the last conversation stopped, if
-  that was in the last 7 days. After `/clear` neither, since the conversation
+  that was in the last 7 days, followed by that conversation's own exchanges
+  from the handoff, oldest first (request, answer and files, as the handoff
+  keeps them), as many as fit (see below). After `/clear` neither, since the conversation
   just cleared is the newest. It names at most two, and only conversations
-  started in the project's folder or in the folder this one started in;
+  started in the project's folder or in the folder this one started in.
+  A conversation marked `<private-session>` is never named as the last one
+  or shown, even when `handoff.md` still holds it because removing it
+  failed: the last conversation is then the one before it, and when the
+  list of private conversations can't be read, none is named. One that is
+  working is named without its words (`(no handoff entry)`). The exchanges
+  listed never include one `forget` took out (listed in
+  `journal/.forgotten`, matched by conversation and minute as `forget`
+  matches them), for the same reason, and none is listed when that list
+  can't be read. A conversation held with auto memory off has none of its
+  exchanges listed: what was typed while memory was off reaches
+  `handoff.md` when a later reply with memory on reads the turn back. In
+  both cases the "where it stopped" line still names the newest entry;
 - when the project's journal has an entry, one line: "Earlier work in this
   project since <first day> is in its journal: when asked about the past,
   search it with the memory skill before saying you don't know." The
@@ -405,9 +421,13 @@ A conversation that is resumed gets no briefing: its history already holds
 the one it got when it started.
 
 The briefing stays under 9,500 characters, inside the 10,000 Claude Code
-passes on whole. After a compaction, the oldest exchanges are left out first.
-At the start of a conversation, each line is cut to 1,000 characters, then
-the end is cut, so the shared index goes first. A `<` that starts a
+passes on whole. After a compaction, the oldest exchanges are left out first,
+until it fits. At the start of a conversation, the last conversation's
+exchanges fill the briefing up to 3,500 characters (under 1,000 tokens), the
+oldest left out first, and never past that: with a full shared index (3,000
+bytes) there is often room for none, and the briefing is what it was
+without them. Each line is cut to 1,000 characters, then the end is cut, so
+the shared index goes first. A `<` that starts a
 tag is written `&lt;`, so text from an earlier conversation can't pose as part
 of Claude Code's own message.
 
@@ -550,12 +570,15 @@ scores show the newest first.
 
 It shows the top 10 (`--limit N` for more), then how many matched. A journal
 hit shows its day and time, conversation tag and branch (and its project,
-under `--all`), then its key and its request, cut to 400 characters. Of its
+under `--all`), then its key and its request, cut to 200 characters, then
+`Result:`, the first sentence of its reply (140 characters at most; left out
+when the reply's own stretch below starts there). Of its
 reply, files and commands it shows only those that hold a search word, and
-of each only the stretches 80 characters either side of a match, 800
+of each only the stretches 30 characters either side of a match, 240
 characters in all a hit. Every field is redacted before it is cut, so a
-stretch never shows part of a secret. When the hit's transcript is still on
-disk, its path follows, unless the entry is private (its reply is
+stretch never shows part of a secret. A hit is a headline: `show <key>`
+prints the entry whole, with its day file and, while it is still on disk,
+its transcript's path, unless the entry is private (its reply is
 `[private]`): the transcript is where the private part still is. A request
 of 80 characters or more asked again (a
 prompt a script sends, a retry) is one hit: the best-ranked copy, then
@@ -569,6 +592,12 @@ heading, the key, every field, the day file and, when it's still on disk
 and the entry isn't private, the transcript. `--same` adds every entry whose request is the same, as a
 hit's "more like this" counts them; `--all` and `--store` reach another
 project. A key no entry has is named, and the tool exits with 1.
+
+`search`, `show` and a day's listing never show an entry whose key is in
+`journal/.forgotten`: when `forget` couldn't rewrite its day file, the entry
+is still there until `forget` runs again, but nothing prints it. When that
+list can't be read, they show none of that project's entries, and name the
+list (`could not read …`).
 
 `--since` and `--until` take a date, `YYYY-MM-DD`, and keep only the days
 from one to the other, both included: a note by the day of its `modified:`

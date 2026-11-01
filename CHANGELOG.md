@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased
+
+**More detail kept**
+- The journal now keeps every exchange whole: your whole message, Claude's
+  whole reply, every file it changed and every command it ran, each in full.
+  It used to cut the message at 2,000 characters, the reply at 6,000, and
+  keep the last 20 commands at 400 characters each. Entries written before
+  this update stay as they were. The journal grows faster for it: measured
+  on real conversations, half the entries are under about 5 KB and a very
+  busy project adds about 110 MB a year (was 40 MB).
+- A new conversation now starts with the last conversation's own exchanges
+  (what you asked, what Claude did, the files changed), not only one line
+  saying where it stopped. They fill the briefing up to 3,500 characters,
+  under 1,000 tokens, the oldest left out first, so the briefing stays as
+  short as before; with a full shared notebook there may be room for none.
+  `handoff.md` keeps more of each exchange for this: 500 characters of your
+  message (was 240) and 900 of the reply (was 400).
+
+**Search**
+- A journal hit is now a headline: the request cut at 200 characters (was
+  400), a `Result:` line with the first sentence of the reply, so the outcome
+  shows even when the search words sit further in, and short stretches
+  around the search words, 240 characters in all (was 800). The transcript's
+  path moved to `show <key>`, and the last line says so. Ten hits are about
+  a third smaller, which is less for Claude to read every time it searches.
+
+**Privacy**
+- The start of a conversation never shows the words of a conversation
+  marked `<private-session>`, as the last conversation or as one still
+  working, and never lists an exchange you had Claude forget, even when
+  removing it from `handoff.md` failed. If the list of private
+  conversations can't be read, it names no last conversation; if the list
+  of forgotten exchanges can't be read, it lists none.
+- The exchanges listed at the start never include those of a conversation
+  held with auto memory off: what you typed while it was off reaches
+  `handoff.md` when you go on with it on.
+- When `forget` couldn't rewrite a day's file, the entry stayed there and
+  `search`, `show` and the day's listing still showed it until `forget` ran
+  again. They now leave it out. When the list of forgotten entries can't be
+  read, they show none of that project's journal, and say so.
+
 ## 1.2.4 (2026-11-01)
 
 **Privacy**

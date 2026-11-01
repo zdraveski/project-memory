@@ -91,7 +91,7 @@ There's nothing to learn. Ask in your own words:
 |---|---|
 | *"What did we decide about the logo in September?"* | Claude searches your notes and the journal, and answers with the date. |
 | *"What did I work on last week?"* | Claude lists what you asked each day, from the journal. |
-| *"Where did we leave off?"* | Claude reads the record of your last conversation. |
+| *"Where did we leave off?"* | Claude already knows: each new conversation starts with the last one's latest exchanges, as many as keep the briefing under 1,000 tokens. For more, it reads the record of your last conversation. |
 | *"Remember that I prefer short answers."* | Claude saves a note. |
 | *"I deleted the note about pricing by mistake. Bring it back."* | Claude restores it from the history. |
 | *"Forget the password I pasted yesterday."* | Claude lists the journal entries that match, and removes the ones you confirm. |
@@ -101,7 +101,7 @@ If you'd rather type a command, start with `/project-memory:memory`:
 
 | Type after it | What it does |
 |---|---|
-| `search logo colors` | Finds notes and journal entries about "logo colors" |
+| `search logo colors` | Finds notes and journal entries about "logo colors". An entry shows as a short headline: what you asked, how it ended, and the lines with your words |
 | `show 'key'` | Shows one journal entry in full, by the key `search` printed |
 | `forget password` | Lists the journal entries that mention "password" and removes the ones you confirm |
 | `history pricing` / `restore pricing` | Shows when the note "pricing" changed / brings it back |
@@ -122,8 +122,8 @@ memory folder. The journal is its `journal` folder, one file per day.
   folder (`.claude`, in your home folder). What Claude reads during a
   conversation goes to Anthropic with the rest of it, as with Claude Code's
   own memory.
-- The journal keeps each exchange: your message, Claude's reply (up to 6,000
-  characters), the files it changed and the commands it ran. It stays until
+- The journal keeps each exchange whole: your message, Claude's reply, every
+  file it changed and every command it ran. It stays until
   you delete it or ask Claude to forget part of it.
 - Keys, tokens and passwords are replaced with `[redacted]` before anything
   is saved. No tool catches every secret, so use the tags below for anything
@@ -156,8 +156,9 @@ Everything it reads and saves, and how to delete it, is in the
 
 - **Room.** Each conversation starts with a short briefing for Claude, usually
   under 1,000 tokens. The journal isn't loaded, only searched when needed.
-- **Disk space.** A journal entry is usually under 3 KB. A very busy project
-  adds up to about 40 MB a year.
+- **Disk space.** The journal keeps each exchange whole, so an entry is as
+  long as what was said: half are under about 5 KB, and one in a hundred is
+  over about 60 KB. A very busy project adds up to about 110 MB a year.
 - **Your notes.** The first run may move older lines of the table of contents
   to an archive. No note is deleted, and Claude can still search them.
 - **Where.** Windows, macOS and Linux. Notes stay on the computer they were
