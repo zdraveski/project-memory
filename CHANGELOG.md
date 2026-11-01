@@ -71,6 +71,12 @@
   those typed while auto memory was off, and the next briefing could show
   them. If the list of such conversations can't be read after a reply,
   nothing is saved for that reply, and the next briefing says so.
+- A password under a settings key such as `secret:`, `secrets:`,
+  `passwords:` or `tokens:` (as in a YAML file: `secret:` on one line,
+  `password: …` indented on the next) is now replaced with `[redacted]`.
+  Before, the child's name was taken for the secret and the real value
+  after it was saved. Every entry under such a key is now redacted, not
+  only one whose own name says password.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in

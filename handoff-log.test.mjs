@@ -1544,6 +1544,18 @@ ok(!cutCmd.length, `commands that only look like they pass a secret are kept (cu
 const tExport = Date.now();
 red('export ' + 'key_'.repeat(20_000));
 ok(Date.now() - tExport < 1000, `an exported name of 20,000 words is read in linear time (${Date.now() - tExport} ms)`);
+// P-F3: a value under a YAML parent key that names a secret (`secret:`, `secrets:`, `passwords:`, `tokens:`), or a key after one
+// on its line: the parent's rule took the child's key for its value, and the child's real value was kept (e2e audit, 2026-11-01).
+const nested = [['secret:\n  password: ', k('Zq8', 'hunter33')], ['secrets:\n  db_password: ', k('Kx9', 'stapler44')], ['passwords:\n  admin: ', k('Nest', 'Pw55xyz')],
+  ['tokens:\n  github: ', k('Nest', 'Tk66xyz')], ['secret: password: ', k('Inline', '77xyz')], ['api_key:\n  prod: ', k('Prod', 'Key88xyz')],
+  ['passwords:\r\n  admin: ' + k('First', '11xyz') + '\r\n  nested:\n    root: ', k('Sibling', '99xyz')]];
+const keptNested = nested.filter(([p, v]) => red(p + v).includes(v) || clip(p + v, 400).includes(v)).map(([p, v]) => JSON.stringify(p + v));
+ok(!keptNested.length && !red(nested.at(-1).join('')).includes('First11'), `every value under a parent key that names a secret is redacted (kept: ${keptNested.join(' | ')})`);
+const yamlKept = ['secret:\n  password: string', 'tokens:\n  input: 863324\n  output: 1234', 'secretKeyRef:\n  name: db-credentials\n  key: password', 'secretName: db\nport: 5432', 'passwords:\n  - admin'];
+const yamlCut = yamlKept.filter((s) => red(s) !== s || clip(s, 400) !== s.replace(/\s+/g, ' '));
+ok(!yamlCut.length, `code, counts, a secret's name and a list under a secret's key are kept, and no child's key is cut (cut: ${yamlCut.map((s) => JSON.stringify(red(s))).join(' | ')})`);
+const tNest = Date.now(); red('secret:'.repeat(30_000)); red('secret: ' + 'a: '.repeat(30_000)); red('secrets:\n' + '  a: b  c: d e:'.repeat(5_000)); red('secrets:\n' + '  a:\n'.repeat(30_000));
+ok(Date.now() - tNest < 1000, `a parent key repeated, or a block of 30,000 children, is read in linear time (${Date.now() - tNest} ms)`);
 
 // Two real turns in one minute, one ask inside the other, the first past the
 // first read: both stay. Taken for two spellings of one turn, the first was lost.

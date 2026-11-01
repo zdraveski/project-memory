@@ -44,8 +44,9 @@ All of it stays in `~/.claude/projects` on your computer:
   of your 3 most recent conversations. Older entries are replaced as you go,
   and the record is not part of the history below.
   - Common kinds of keys, tokens and passwords (API keys, access tokens,
-    passwords in web addresses, settings such as `password=`) are replaced
-    with `[redacted]` first. So are passwords and tokens Claude passes to a
+    passwords in web addresses, settings such as `password=`, and the
+    entries under a settings key such as `passwords:` or `secrets:`) are
+    replaced with `[redacted]` first. So are passwords and tokens Claude passes to a
     command: after `--password`, `--token` or `--secret`, after `-p` in
     `docker login` and the like, in `export`, `setx`,
     `SetEnvironmentVariable` or `aws configure set` of a name that says key,

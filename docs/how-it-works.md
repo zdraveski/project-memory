@@ -196,13 +196,19 @@ Before any of it is written, these are taken out:
   `refresh_token`, `session_token`, `api_token`, `api_key`, `account_key`,
   `private_key`, `key-data` or `pwd`, also inside a longer name
   (`DB_PASSWORD=`, `DB_PASS=`, `PGPASSWORD=`, `dbPassword`, `clientSecret`)
-  and with the value on the next line. Such a value goes even with no digit
+  and with the value on the next line. A key is never taken for the value:
+  in `secret:` with `password: …` under it, or on its line, the value after
+  `password:` goes. Such a value goes even with no digit
   (`correct_horse_battery_staple`), unless it is plainly code: a type
   (`password: string`), a reference (`${…}`, `$(…)`, `process.env.X`,
   `user.password`), or, with no digit in it, a call, an index or a path of two
   parts or more (`jwt.sign(…`, `request.form[…`, `/etc/app/secret`);
 - a value after `token` alone, only when it has a letter in it
-  (`token: abc123def`), so a count like `input_tokens: 863324` stays.
+  (`token: abc123def`), so a count like `input_tokens: 863324` stays;
+- under a YAML key of its own line that names a secret (`passwords:`,
+  `secrets:`, `tokens:`, `api_keys:`, with or without the `s`), the value of
+  every indented `name: value` line, 6 characters or more and not plainly
+  code (`admin: …`, `github: …`); under `tokens:`, one with a letter in it.
 
 No list of patterns finds every secret: anything these rules miss belongs
 between `<private>` tags. The same rules apply to everything the startup
