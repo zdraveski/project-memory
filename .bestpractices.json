@@ -64,7 +64,7 @@
   "enhancement_responses_status": "Met",
   "enhancement_responses_justification": "No enhancement requests have been filed by others yet; the 'idea' issue template and Discussions take them.",
   "report_archive_status": "Met",
-  "report_archive_justification": "Issues and Discussions are public and searchable on GitHub.",
+  "report_archive_justification": "Issues and Discussions are public and searchable on GitHub: https://github.com/zdraveski/project-memory/issues",
 
   "vulnerability_report_process_status": "Met",
   "vulnerability_report_process_justification": "https://github.com/zdraveski/project-memory/blob/master/SECURITY.md",
