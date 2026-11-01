@@ -98,7 +98,8 @@ export const suites = {
     "no git read as spawnSync ENOENT": ["(e.code === 'ENOENT' && String(e.syscall).startsWith('spawn') ? 'git is not installed'\n  : ", "("],
   }],
   'compact-gate.mjs': ['compact-gate.test.mjs', {
-    "P-F2 the gate's notes speak of a memory-off conversation": [" || hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return true;", ") return true;"],
+    "a subagent's record read as the conversation's by the gate": ["    if (r.isSidechain === true) continue;   // a subagent's record", "    // a subagent's record"],
+    "P-F2 the gate's notes speak of a memory-off conversation":[" || hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return true;", ") return true;"],
     "P-F1 the gate's note ignores a private answer to Claude's question":["const told = heard(r);", "const told = '';"],
     "a forget turn not seen by the gate":["FORGETS.test(String(b.input?.command ?? ''))) s.forgot = true;", "false) s.forgot = true;"],
     "a forget turn's cut note keeps its ask": ["${s.forgot ? '[private]' : clip(s.ask, 240)}", "${clip(s.ask, 240)}"],

@@ -108,6 +108,7 @@ function walk(raw) {
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
+    if (r.isSidechain === true) continue;   // a subagent's record, as turns() skips it: its size and its turn are the subagent's
     const m = r.message, c = Array.isArray(m?.content) ? m.content : [];
     const t = text(r).trim();   // as typed; normalized only to find the private tags
     const told = heard(r);   // an answer to Claude's question, or a rejected call's words: the user's, as the handoff reads them

@@ -48,6 +48,11 @@ const stop = (session = 's1', extra = {}) => nudge({ hook_event_name: 'Stop', cw
 // 1. A finished turn: the compaction may run, whatever the size.
 write(user('build it'), asst('done.', 870_000, 'end_turn'));
 ok(gate().code === 0, 'end_turn lets the compaction run');
+// A subagent's record (isSidechain, as a Claude Code version wrote them into the transcript) is not the conversation's: its size
+// and its unfinished turn are the subagent's, and deferred nothing (review, 2026-11-01).
+write(user('build it'), asst('done.', 870_000, 'end_turn'), rec('assistant', [{ type: 'text', text: 'a subagent at work' }],
+  { isSidechain: true, message: { stop_reason: 'tool_use', usage: { input_tokens: 3, cache_read_input_tokens: 870_000, cache_creation_input_tokens: 0, output_tokens: 9 } } }));
+ok(gate().code === 0, "a subagent's unfinished turn does not defer the compaction");
 
 // 2. Mid-turn under the ceiling: deferred, and only for an auto compaction.
 write(user('build it'), asst('running the suites', 870_000, 'tool_use'), result(launch('bg1')));
