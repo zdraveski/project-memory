@@ -1723,7 +1723,9 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   due(d); refusing(['.private-sessions'], () => fill(d));
   const a = { asks: asks(d).join(), n: line(N) === before, p: !line(P) };
   grow(S, 6);   // grown again: the next look meets it whether or not that one read it
-  utimesSync(at(S), ago(3), ago(3));   // the oldest, so it is met before the look stops at M's refused list (R70)
+  due(d); refusing(['.memory-off'], () => fill(d));
+  // A look stops at the first list it can't read (R70): M's was met above, S's now that S is the oldest.
+  utimesSync(at(S), ago(3), ago(3));
   due(d); refusing(['.memory-off'], () => fill(d));
   const b = { asks: asks(d).join(), m: !line(M), s: !tagsOf(d).includes(S.slice(0, 8)) && readFileSync(join(d, 'handoff.md'), 'utf8').includes('handed off with memory on') };
   due(d); fill(d);
