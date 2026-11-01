@@ -237,6 +237,9 @@ export function status(dir, sharedNames = []) {
     (n('unindexed') ? ` · ${n('unindexed')} with no pointer yet` : ''));
   const health = (read(join(dir, '.health')) ?? '').trim();
   if (health) lines.push(...health.split('\n').map((h) => `  needs attention: ${h}`));
+  // The Stop's record of a handoff it could not save, as the briefing says it: only the briefing did (R64).
+  const lost = json(join(projectsRoot(), `.handoff-failed-${basename(dirname(dir))}`));
+  if (lost) lines.push(`  needs attention: the record of where you left off could not be saved after the reply at ${local(lost.at)}: ${lost.error}`);
   const known = new Set([...names(ms), ...sharedNames]);
   const dangling = ms.flatMap((m) => m.links.filter((l) => !known.has(l)).map((l) => `${m.file} → [[${l}]]`));
   if (dangling.length) lines.push(`  links to no memory: ${dangling.join(', ')}`);

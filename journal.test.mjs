@@ -253,6 +253,13 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   // Fixed as an editor that took it for the code page does: saved whole as
   // UTF-8, every heading's `·` is `Â·`, and the entries' headings still read.
   writeFileSync(f, readFileSync(f, 'latin1'));
+  // A memory-off list that won't read holds up no other conversation's sweep owed: that is done, then the list's failure kept (R64).
+  const offList = join(home, '.claude', 'projects', '.memory-off'), hadOff = existsSync(offList) ? readFileSync(offList) : null;
+  rmSync(offList, { force: true }); mkdirSync(offList, { recursive: true });
+  write(d, Q, [turn({ at: '2026-09-02 09:04', id: 'q-3', ask: 'asked with the list a folder', raw: 'asked with the list a folder' })], { quiet: false, hush: false });
+  rmSync(offList, { recursive: true }); if (hadOff) writeFileSync(offList, hadOff);
+  ok(!holds() && !existsSync(owed) && summary(d).failed?.includes('.memory-off could not be read') && !readFileSync(dayFile(d, '2026-09-02'), 'utf8').includes('asked with the list a folder'),
+    `a write whose memory-off list won't read still does the sweeps owed, records nothing, and says why (got ${summary(d).failed})`);
   write(d, Q, [turn({ at: '2026-09-02 09:05', id: 'q-2' })], { quiet: false, hush: false });
   ok(!holds() && !existsSync(failed) && !existsSync(owed) && readFileSync(f, 'utf8').includes('café'), 'the first write after the fix finishes it, and clears the failure');
 }
@@ -601,6 +608,27 @@ for (const [c, names] of [['na', ['.private-sessions']], ['nb', ['.memory-off']]
   stop(N);
   ok(kept.includes('the first plain question') && keptHd && of(N).map((e) => e.asked).sort().join() === 'the first plain question,the second plain question' && hd().includes('the second plain question'),
     `a normal conversation whose ${names} won't read at a Stop keeps its entries and lines, and the next clean Stop saves its new turn (got ${kept}, ${keptHd}, then ${of(N).map((e) => e.asked)})`);
+}
+// A list that stays unreadable (a folder where it goes: every read EISDIR) is reported. The Stop still exits 0 and saves nothing
+// for the conversation, but the failure is recorded, and the briefing and status say the store needs attention and name the list.
+// Silent, the store stopped recording and nothing said so (final review I1, R64). The next clean Stop saves the turn and clears it.
+for (const [c, name, at, where] of [['ua', '.private-sessions', sdir, ['journal', 'handoff.md']], ['ub', '.memory-off', join(home, '.claude', 'projects'), ['journal']]]) {
+  const U = sid(c), list = join(at, name), had = existsSync(list) ? readFileSync(list) : null, hf = join(sdir, 'handoff.md');
+  const failed = name === '.memory-off' ? join(sdir, 'journal', '.failed') : join(dirname(proj), `.handoff-failed-${slug(scwd)}`);
+  const saved = () => where.filter((w) => (w === 'journal' ? of(U).length > 0 : existsSync(hf) && readFileSync(hf, 'utf8').includes('asked while the list is a folder')));
+  const said = () => [spawnSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+    input: JSON.stringify({ cwd: scwd, session_id: sid('uz'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '',
+  spawnSync(process.execPath, [tool('memory.mjs'), 'status', '--store', sdir], { env, encoding: 'utf8', timeout: 60e3 }).stdout ?? ''];
+  say(U, new Date(Date.now() - 60e3).toISOString(), 'asked while the list is a folder', 'answered');
+  rmSync(list, { force: true }); mkdirSync(list);
+  const r = stop(U), during = saved(), recorded = existsSync(failed), [brief, status] = said();
+  rmSync(list, { recursive: true, force: true }); if (had) writeFileSync(list, had);
+  const named = (s) => s.split('\n').some((l) => /needs attention|last write failed/.test(l) && l.includes(`${name} could not be read`));
+  ok(r.status === 0 && !during.length && recorded && named(brief) && named(status),
+    `a ${name} that stays unreadable: the Stop exits 0, saves nothing, and the failure is recorded and named in the briefing and status (got exit ${r.status}, saved in ${during}, recorded ${recorded}; ${brief.slice(0, 400)}; ${status.slice(0, 400)})`);
+  const r2 = stop(U);
+  ok(r2.status === 0 && saved().length === where.length && !existsSync(failed) && !named(said().join('\n')),
+    `and once ${name} reads, the next Stop saves the turn and clears the record (got exit ${r2.status}, saved in ${saved()}, record ${existsSync(failed)})`);
 }
 
 // --- backfill: the conversations still on disk, a few a Stop -----------------

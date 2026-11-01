@@ -1278,6 +1278,12 @@ if (!quick) {
   r = await run(['status', '--store', hs]);
   ok(/^  needs attention: disk is full\n  needs attention: locks stuck$/m.test(r.stdout) && (r.stdout.match(/needs attention/g) || []).length === 2 + ((await run(['status', '--store', none])).stdout.match(/needs attention/g) || []).length && ((await run(['status', '--store', jm])).stdout.match(/needs attention/g) || []).length === ((await run(['status', '--store', none])).stdout.match(/needs attention/g) || []).length,
     `a .health file is listed line by line, and no file lists nothing (got ${r.stdout})`);
+  // A handoff the Stop could not save, as the briefing says it: only the briefing did, and a list that never read went unsaid (R64).
+  writeFileSync(join(root, '.handoff-failed-C--mutA-health'), JSON.stringify({ at: '2026-10-01T10:00:00Z', error: 'the list could not be read' }));
+  r = await run(['status', '--store', hs]);
+  rmSync(join(root, '.handoff-failed-C--mutA-health'));
+  ok(/^  needs attention: the record of where you left off could not be saved after the reply at \d{4}-\d\d-\d\d \d\d:\d\d: the list could not be read$/m.test(r.stdout),
+    `a handoff the Stop could not save is said by status (got ${r.stdout})`);
 
   // The week's changes: added, edited (in the first snapshot, changed since), deleted; never the index, the handoff or a journal day.
   // NOTE for a block appended after this one: this changes the shared `dir` fixture (mentions edited, spam-log deleted, zz-fresh added, handoff and index rewritten).

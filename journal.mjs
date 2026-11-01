@@ -5,7 +5,7 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
-import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG } from './handoff-log.mjs';
+import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
 import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason } from './store.mjs';
 
 export const JOURNAL = 'journal';
@@ -374,7 +374,8 @@ function takeBack(dir, k, s, again = false, priv = false) {
 
 // What a Stop's read of its conversation does to the journal (importOne does
 // the same for an import). Call under withLock(dir). False when nothing was
-// tried for this read's sake: a conversation private or memory-off already.
+// tried for this read's sake: a conversation private or memory-off already;
+// null when the memory-off list won't read.
 function take(dir, transcriptPath, got, { quiet, hush }) {
   const s = tag(basename(transcriptPath, '.jsonl')), k = transcriptKey(transcriptPath), was = checked(dir, k), f = basename(dirname(transcriptPath));
   // Its folder first, a quiet one's too: in a folder no look listed, its
@@ -388,7 +389,7 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
   // first Stop journaled every turn (review, 2026-10-29).
   const out = quiet || hushed(projectsRoot(), s, false, OFF);
   // Unknown (the list won't read): neither recorded nor swept; the next Stop does it (F12).
-  if (out === null) return false;
+  if (out === null) return null;
   if (out) { takeBack(dir, k, s, hush); return hush; }
   // A read short of the whole transcript: what no look has read is looked at
   // for a mark, from where the last stopped, once more has come since than
@@ -429,9 +430,14 @@ const noteFolder = (dir, f) => refold(dir, (have) => (have.some((h) => pathKey(h
 
 // handoff()'s sink, called under its lock. A sweep still owed keeps its
 // failure until it goes through.
+// A memory-off list that won't read is a failure too, after the other conversations' owed sweeps: silent, a list that never
+// read again stopped the journal and nothing said so (R64).
 export function write(dir, transcriptPath, got, opts) {
-  try { const did = take(dir, transcriptPath, got, opts); resweep(dir); if (did) clear(dir, false); }
-  catch (e) { fault(dir, e); }
+  try {
+    const did = take(dir, transcriptPath, got, opts); resweep(dir);
+    if (did === null) throw unreadable(projectsRoot(), OFF);
+    if (did) clear(dir, false);
+  } catch (e) { fault(dir, e); }
 }
 
 // What the backfill has read: `<folder>/<session> <bytes>`, one line a

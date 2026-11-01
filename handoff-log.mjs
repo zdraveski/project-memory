@@ -611,6 +611,8 @@ export function hushed(dir, s, mark = false, list = QUIET, prune = (have) => hav
   }
   return unread ? null : false;
 }
+// What a writer throws when hushed() answers unknown, after changing nothing.
+export const unreadable = (dir, list) => new Error(`${join(dir, list)} could not be read`);
 
 // The tags of the transcripts in every project folder; null when one won't list.
 function onDisk(root) {
@@ -695,10 +697,11 @@ export function handoff(input, sink = null) {
     // sees it in the transcript.
     // Private by this read even when the mark could not be kept.
     const was = hushed(dir, s);
-    // Unknown (the list won't read): nothing written, nothing swept, as when
-    // the lock stays busy; the next Stop does it. Taken as private, a normal
-    // conversation's lines and entries went (F12).
-    if (was === null) return null;
+    // Unknown (the list won't read): nothing written, nothing swept; the next
+    // Stop does it. Taken as private, a normal conversation's lines and entries
+    // went (F12). Thrown, so the Stop records it: a list that never read again
+    // stopped the store in silence (R64).
+    if (was === null) throw unreadable(dir, QUIET);
     let quiet = was || hushed(dir, s, hush) || hush;
     // The journal (memory-tier's Stop passes its writer) takes this lock too,
     // not one of its own; whatever it throws is its own. Swept anew only by the
@@ -708,7 +711,7 @@ export function handoff(input, sink = null) {
     if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush: hush && !was }); } catch {}
     // Or by the journal's look at the whole transcript, past this read.
     quiet ||= hushed(dir, s);
-    if (quiet === null) return null;
+    if (quiet === null) throw unreadable(dir, QUIET);
     // An exchange forget took out stays out: read again, the forget turn's own
     // Stop put it back (R36). By its transcript and minute, as forget lists it,
     // and by its key, the prompt's id: a clock moved to another time zone gave
