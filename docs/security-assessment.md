@@ -2,7 +2,7 @@
 
 What could go wrong with project-memory, how likely and how bad it would be,
 and what in the code and the tests guards against it. It covers version
-1.2.3 and the project around it, and was written in November 2026. A change
+1.2.4 and the project around it, and was written in November 2026. A change
 that reads, saves or sends anything new updates this page, as
 [CONTRIBUTING.md](../CONTRIBUTING.md#sending-a-change) says. The facts here
 come from [PRIVACY.md](../PRIVACY.md) and [How it works](how-it-works.md),
@@ -209,7 +209,8 @@ encrypted. What Claude Code sends to Anthropic is Claude Code's.
 
 ## How this stays true
 
-- Six test suites and the fuzzer run on every push and pull request, on
+- Six test suites and the fuzzer run on every pull request and every push to
+  `master`, on
   Linux, macOS and Windows; mutation testing checks before each release
   that they catch every rule broken ([CONTRIBUTING.md](../CONTRIBUTING.md#tests)).
 - CodeQL scans the code and the workflows on every pull request
