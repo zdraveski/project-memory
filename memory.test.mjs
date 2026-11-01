@@ -1062,6 +1062,19 @@ if (!quick) {
     ok(r.status === 0 && r.stdout === again && readFileSync(join(fj, '.forgotten'), 'utf8') === listed1, `a key forgotten before is said to be, and nothing goes (${yes.join('') || 'a look'}: got ${r.stdout})`);
   }
   rmSync(lateT);
+  {
+    // A store with no journal folder yet (a new project whose first Stop was busy) where it can't be made: the folder is named
+    // as not written, nothing is said removed, and the forget fails; not "could not be listed", the look's failure (review).
+    const md = join(root, 'C--mk', 'memory'), mj = join(md, 'journal'), refuseMk = join(home, 'refuse-mkdir.mjs');
+    mkdirSync(md, { recursive: true });
+    writeFileSync(join(root, 'C--mk', 'mmmmmmmm-1.jsonl'), [{ type: 'user', uuid: 'mk-1', cwd: 'C:\\mk', timestamp: '2025-10-22T09:00:00Z', message: { role: 'user', content: 'the tapir plan' } },
+      { type: 'assistant', uuid: 'mk-1a', cwd: 'C:\\mk', timestamp: '2025-10-22T09:00:30Z', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } }].map((x) => JSON.stringify(x)).join('\n') + '\n');
+    writeFileSync(refuseMk, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst mk = fs.mkdirSync;\n" +
+      `fs.mkdirSync = (p, ...a) => { if (String(p) === ${JSON.stringify(mj)}) throw Object.assign(new Error('EPERM: operation not permitted, mkdir'), { code: 'EPERM', syscall: 'mkdir', path: String(p) }); return mk(p, ...a); };\nsyncBuiltinESMExports();\n`);
+    r = spawnSync(process.execPath, ['--import', pathToFileURL(refuseMk).href, CLI, 'forget', '--key', 'mk-1', '--yes', '--store', md], { env, encoding: 'utf8' });
+    ok(r.status === 1 && !r.stderr && r.stdout === `could not write ${mj}: EPERM\nremoved 0 of 1 from ${md}\n` && !existsSync(mj),
+      `a journal folder that can't be made is named, and nothing is said removed (got ${r.status}: ${r.stdout}${r.stderr})`);
+  }
   // A plain-words forget that matches nothing says which words no entry holds.
   r = await fcli('forget', 'the', 'zebra', 'pasted', 'yesterday');
   ok(r.status === 0 && r.stdout === `nothing in ${fd} matches: no entry holds "pasted", "yesterday"\n`, `a forget that matches nothing names the words no entry holds (got ${r.stdout})`);
