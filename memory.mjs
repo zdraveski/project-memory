@@ -104,17 +104,27 @@ const no = (why) => ({ ok: false, lines: [why] });
 // A memory by the name it has on disk: on Windows `ALPHA` opens alpha.md (and
 // `memory~1` an index), and moved under the typed name, alpha.md's index line
 // was left pointing at nothing. The disk says which file a name opens, and
-// the entry that is that file is its name; case is never folded here: on
-// Linux Alpha.md and alpha.md are two notes, and a folded match restored the
-// other one. A name that opens nothing is kept as typed.
+// the entry that is that file is its name; case is never folded on Linux:
+// Alpha.md and alpha.md are two notes there, and a folded match restored the
+// other one. A name that opens nothing is the one name that reads alike
+// (pick), or kept as typed.
 const onDisk = (dir, file) => {
   try {
     const names = readdirSync(dir);
     if (names.includes(file)) return file;
-    const st = statSync(join(dir, file), { bigint: true });   // throws when it opens nothing
+    let st; try { st = statSync(join(dir, file), { bigint: true }); } catch { return pick(file, names); }
     return names.find((n) => { try { const s = statSync(join(dir, n), { bigint: true }); return s.ino === st.ino && s.dev === st.dev; } catch { return false; } }) ?? file;
   } catch { return file; }
 };
+// The one name of `names` a typed name means, as the user's disk reads names: in any letter case on Windows and macOS, and in
+// either Unicode form everywhere (a café typed composed, its file named decomposed). Two that read alike are two notes, and
+// neither is taken. Each letter upper-cased alone, as NTFS does: a whole-string fold made straße STRASSE, which NTFS keeps
+// apart (audit C-8).
+const FOLDS = process.platform === 'win32' || process.platform === 'darwin';
+const fold = (s) => { const n = s.normalize('NFC'); return FOLDS ? [...n].map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join('') : n; };
+const pick = (file, names) => { if (names.includes(file)) return file; const m = [...new Set(names)].filter((n) => fold(n) === fold(file)); return m.length === 1 ? m[0] : file; };
+// A note no file has by that name, by the name the snapshots had for it: `history Pricing` found nothing of a deleted pricing.md.
+const named = (dir, file) => { const d = onDisk(dir, file); return d !== file || existsSync(join(dir, d)) ? d : pick(file, ever(dir)); };
 // A write the disk refuses (read-only, held by another program) is said, with
 // what it left behind: thrown, it was a stack trace, read as nothing done.
 const put = (p, read, next) => { try { return replaceIfUnchanged(p, read, next); } catch (e) { return `failed: ${e.code || e.message}`; } };
@@ -380,6 +390,11 @@ const tracked = (dir, file) => {
   const links = names.filter((n) => pathKey(real(join(projectsRoot(), n, 'memory'))) === me);
   return (links.length ? links : [basename(dirname(dir))]).map((n) => `${n}/memory/${file}`);
 };
+// Every name the store's files had in the snapshots (each was added once).
+const ever = (dir) => {
+  try { return tracked(dir, '').flatMap((at) => git('-c', 'core.quotepath=off', 'log', '--format=', '--name-only', '--no-renames', '--diff-filter=A', '--', at).split('\n')).map((p) => p.split('/').pop()); }
+  catch { return []; }
+};
 
 // Why no snapshot can be read, in plain words, or '' when one can: git's own ("fatal: not a git repository", "cannot change
 // to") read as a fault, and without git, restore offered to replace a note "with the snapshot" (audit C-3, C-4).
@@ -397,8 +412,9 @@ export function history(dirs, file, everywhere = false, max = 30) {
   if (why) return no(why);
   try {
     for (const dir of dirs) {
+      const f = named(dir, file);
       // No renames: a link that sorts first moves every path to it, and an R line was no change.
-      const out = git('log', '--no-renames', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', ...tracked(dir, file));
+      const out = git('log', '--no-renames', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', ...tracked(dir, f));
       const lines = [];
       let head = null;
       for (const l of out.split('\n')) {
@@ -408,8 +424,8 @@ export function history(dirs, file, everywhere = false, max = 30) {
       }
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
-      const moved = !isShared(dir) && !file.startsWith('MEMORY') && existsSync(join(sharedStore(), file)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
-      if (lines.length) return { ok: true, lines: [join(dir, file), ...lines.slice(0, max), ...(lines.length > max ? [`  and ${lines.length - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, file).map((p) => `"${p}"`).join(' ')}`] };
+      const moved = !isShared(dir) && !f.startsWith('MEMORY') && existsSync(join(sharedStore(), f)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
+      if (lines.length) return { ok: true, lines: [join(dir, f), ...lines.slice(0, max), ...(lines.length > max ? [`  and ${lines.length - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, f).map((p) => `"${p}"`).join(' ')}`] };
     }
   } catch (e) { return no(`no snapshots to read: ${gitWhy(e)}`); }
   return no(`no snapshot holds ${file} (looked in ${dirs.join(', ')}): search <words> finds a memory's name${everywhere ? '' : '; --all looks in every project'}`);
@@ -678,8 +694,8 @@ export function main(given) {
   };
   const scope = rest.includes('--all') ? every() : isShared(here) ? [here] : [here, sharedStore()];
   // A memory is named by its file, with or without `.md`; never by a path. Every word of it: typed without quotes, `restore my
-  // note` answered about my.md (audit C-2).
-  const file = args[0] && basename(args.join(' ')).replace(/(\.md)?$/, '.md');
+  // note` answered about my.md (audit C-2). `.MD` is `.md`: PRICING.MD was looked for as PRICING.MD.md (audit C-8).
+  const file = args[0] && basename(args.join(' ')).replace(/(\.md)?$/i, '.md');
   let r;
   // What the model reads back: a hit's lines stay short (a 13-link hit was a
   // quarter of its output), and a miss says where it looked in one line.
@@ -822,7 +838,7 @@ export function main(given) {
     const sharedNames = names(memories(sharedStore()));
     r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined);
-  else if (cmd === 'restore' && file) r = restore(here, onDisk(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
+  else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file));
   else if (cmd === 'doctor') r = doctor();
   // The usage, after why: a misspelt command, or one with no word after it,

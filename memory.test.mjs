@@ -1769,6 +1769,46 @@ if (!quick) {
   }
   r = await run(['forget', '--conversation', '--yes', '--store', dir]);
   ok(r.status === 1 && r.stdout === '--conversation needs a value after it\n', `so is --conversation with an option for its value (got ${r.stdout})`);
+  // C-8. A name as the user's disk reads it: `history Pricing`, `history PRICING.MD` and a café typed composed, of a file named
+  // decomposed, found nothing. In any letter case where the disk is so (Windows, macOS), in either Unicode form everywhere.
+  const folds = process.platform === 'win32' || process.platform === 'darwin', nfd = 'café-menu', nfc = nfd.normalize('NFC');
+  memory(dir, 'pricing', 'the pricing tiers', 'pricing body');
+  memory(dir, nfd, 'the café menu', 'café body');
+  tier();
+  const at = (out, f) => out.startsWith(`${join(dir, f)}\n`);
+  for (const typed of ['Pricing', 'PRICING.MD']) {
+    r = await cli('history', typed);
+    ok(folds ? r.status === 0 && at(r.stdout, 'pricing.md') : r.status === 1, `history ${typed} finds pricing.md where the disk folds case, and only there (got ${r.stdout})`);
+  }
+  r = await cli('history', nfc);
+  ok(r.status === 0 && at(r.stdout, `${nfd}.md`), `a name typed composed finds the note named decomposed (got ${r.stdout})`);
+  // Deleted, by the names the snapshots had.
+  rmSync(join(dir, 'pricing.md')); rmSync(join(dir, `${nfd}.md`));
+  tier();
+  r = await cli('history', nfc);
+  ok(r.status === 0 && at(r.stdout, `${nfd}.md`) && /deleted$/m.test(r.stdout), `and once deleted, by the name the snapshots had (got ${r.stdout})`);
+  r = await cli('restore', 'Pricing');
+  ok(folds ? r.status === 0 && existsSync(join(dir, 'pricing.md')) && readdirSync(dir).includes('pricing.md') && !readdirSync(dir).includes('Pricing.md') : r.status === 1 && !existsSync(join(dir, 'pricing.md')),
+    `restore Pricing brings back pricing.md under its own name where the disk folds case, and only there (got ${r.stdout})`);
+  r = await cli('restore', nfc);
+  ok(r.status === 0 && readdirSync(dir).includes(`${nfd}.md`) && !readdirSync(dir).includes(`${nfc}.md`), `restore of a name typed composed brings back the decomposed file (got ${r.stdout})`);
+  // A note no snapshot holds yet, by the one name on disk that reads alike.
+  memory(dir, 'promo-é', 'a lesson named decomposed', 'promo body');
+  r = await cli('promote', 'promo-é');
+  ok(r.status === 0 && readdirSync(shared).includes('promo-é.md') && !existsSync(join(dir, 'promo-é.md')), `promote of a name typed composed moves the decomposed file (got ${r.stdout})`);
+  {
+    // Two names the snapshots had that read alike are two notes: neither is taken for a third spelling. Nor is STRASSE taken
+    // for straße, which NTFS keeps apart.
+    const g = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' }).stdout.trim();
+    const branch = g('symbolic-ref', 'HEAD'), from = g('rev-parse', 'HEAD'), msg = 'memory: alike\n';
+    const alike = ['Twin', 'twin', 'dual-é-é', 'dual-é-é', 'straße'];
+    // Case kept: on Windows, git's core.ignorecase made the two one.
+    const made = spawnSync('git', ['-C', root, '-c', 'core.ignorecase=false', 'fast-import', '--quiet'], { encoding: 'utf8', input: `commit ${branch}\ncommitter memory <memory@localhost> 1600000000 +0000\ndata ${Buffer.byteLength(msg)}\n${msg}from ${from}\n` +
+      alike.map((n) => `M 100644 inline C--mem-cli/memory/${n}.md\ndata ${Buffer.byteLength(n) + 1}\n${n}\n`).join('') + '\n' });
+    const miss = async (typed) => (await cli('history', typed)).stdout.startsWith(`no snapshot holds ${typed}.md `);
+    ok(made.status === 0 && await miss('TWIN') && await miss('dual-é-é') && await miss('STRASSE') && !(await miss('Twin')),
+      `a name two snapshot names read alike, or only a fold that NTFS does not make, is no name (got ${made.stderr}${(await cli('history', 'TWIN')).stdout})`);
+  }
 }
 
 console.log(`memory: ${checks} checks passed`);

@@ -812,9 +812,13 @@ refused or fails.
 A note's name may be several words, quoted or not: `restore my note` is
 `my note.md`. Without Git, or before the first snapshot, `history` and
 `restore` say so, and a note no snapshot holds is named in plain words, not
-git's. `restore` and `promote` take a note's name as the disk resolves it: on Windows
+git's. `history`, `restore` and `promote` take a note's name as the disk resolves it: on Windows
 and on macOS by default in any letter case (on Windows, a short name such as
-`memory~1` too), on Linux only as written. git reads the name literally, so a
+`memory~1` too), on Linux only as written, and everywhere in either Unicode
+form (`café` typed composed finds a file named decomposed); a deleted note
+by the name the snapshots had for it, the same way, and `.MD` is `.md`.
+When two names read alike (`Twin.md` and `twin.md` in the snapshots, typed
+`TWIN`), neither is taken. git reads the name literally, so a
 name with `[`, `*` or `?` in it works. A write the disk refuses is reported in
 one line that says what was left behind.
 
