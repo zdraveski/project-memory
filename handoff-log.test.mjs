@@ -1639,9 +1639,19 @@ const envKept = ['$env:PATH = "C:\\tools;" + $env:PATH', '$env:API_TOKEN = $null
   // were cut (review, 2026-11-01).
   'for item in items:\n    key = item.name\n    value = item.value', 'key = sorted_keys[0]\nKEY = "production"', 'CACHE_KEY = "user_profile"',
   'TOKEN_URL=https://login.example.com/oauth/token', 'AZURE_KEY_VAULT_URL=https://myvault.vault.azure.net/', 'KEY_ALGORITHM=RS256', 'SECRET_BACKEND=vault'];
+// The .env shape's close relatives: cmd's `set NAME=…`, one after `&&` (an inline variable before a command), a compose list item
+// `- NAME=…`, a Kubernetes `- name: NAME` / `value: …` pair, and a JSON object under a key that names a secret (review, 2026-11-01).
+for (const [s, gone] of [['set SIGNING_KEY=' + k('Sg5', 'value') + ' && node app.js', 'Sg5'], ['cd app && SIGNING_KEY=' + k('Sg6', 'value') + ' npm start', 'Sg6'],
+  ['environment:\n  - SIGNING_KEY=' + k('Sg9', 'value'), 'Sg9'], ['env:\n  - name: DB_PASSWORD\n    value: ' + k('hunter', '2abc'), 'hunter2'],
+  ['env:\n  - name: "API_TOKEN"\n    value: "abc ' + k('de', 'f9') + ' ghi"', 'def9'], ['"secrets": {\n  "db": "' + k('hunter', '3abc') + '",\n  "name": "x"\n}', 'hunter3']])
+  for (const f of [red, (x) => clip(x, 2000)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a secret set by set, inline, in a list or a JSON object under a secret's key is redacted (got ${f(s)})`);
+envKept.push('set PATH=C:\\tools', 'set KEY_ALGORITHM=RS256 && run', 'cd app && NODE_ENV=production npm start', 'environment:\n  - TOKEN_URL=https://login.example.com',
+  'env:\n  - name: TOKEN_URL\n    value: https://login.example.com', 'env:\n  - name: KEY_ALGORITHM\n    value: RS256', 'env:\n  - name: MAX_TOKEN\n    value: 8192', 'env:\n  - name: DB_PASSWORD\n    valueFrom:\n      secretKeyRef:\n        name: db',
+  '"secrets": {"name": "production"}', '"api_key": {"type": "apiKey", "in": "header"}', '"tokens": {"input": "12345678", "output": 5678}');
 const envCut = envKept.filter((s) => red(s) !== s);
 ok(!envCut.length, `a path, a reference, a count, an ordinary name and an Azure key's name are kept (cut: ${envCut.map(red).join(' | ')})`);
 const tNest = Date.now(); red('secret:'.repeat(30_000)); red('secret: ' + 'a: '.repeat(30_000)); red('secrets:\n' + '  a: b  c: d e:'.repeat(5_000)); red('secrets:\n' + '  a:\n'.repeat(30_000));
+red('"secret":{'.repeat(30_000)); red('- name: "'.repeat(30_000)); red('&& A_KEY='.repeat(30_000));
 ok(Date.now() - tNest < 1000, `a parent key repeated, or a block of 30,000 children, is read in linear time (${Date.now() - tNest} ms)`);
 
 // Two real turns in one minute, one ask inside the other, the first past the

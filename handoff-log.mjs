@@ -385,8 +385,13 @@ const SECRETS = [
   [/((?:\b(?:export\s+([A-Za-z_]\w{0,100})=|setx[ \t]+([A-Za-z_]\w{0,100})[ \t]+)|\$env:([A-Za-z_]\w{0,100})[ \t]*=[ \t]*)["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]+)/gi, (m, pre, a, b, c, v) => (named(a ?? b ?? c) && !arg(v) && !code(v) && !counted(a ?? b ?? c, v) ? `${pre}[redacted]` : m)],
   // A .env line at a line's start (e2e audit, 2026-11-01): only its own shape, an upper-case name with no blank before `=`, whose
   // last part is the secret's word (envNamed). Any `name = value` was read as one, and Python's `key = item.name`, `CACHE_KEY =
-  // "x"` and `TOKEN_URL=https://…` were cut (review, 2026-11-01).
-  [/^([ \t]*(?:export[ \t]+)?([A-Z][A-Z0-9_]{0,100})=["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]+)/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
+  // "x"` and `TOKEN_URL=https://…` were cut (review, 2026-11-01). Its close relatives too: a compose list item's `- NAME=…`, cmd's
+  // `set NAME=…`, and one after a shell's `&&`, `||`, `;` or `|` (an inline variable before a command).
+  [/((?:^[ \t]*(?:-[ \t]+)?|(?:&&|\|\||[;|])[ \t]*)(?:(?:export|set|SET)[ \t]+)?([A-Z][A-Z0-9_]{0,100})=["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]+)/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
+  // A Kubernetes env entry, `- name: NAME` then `value: …` on the next line, judged by the name as a .env line is (review,
+  // 2026-11-01).
+  [/(-[ \t]+name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]{0,100})["']?[ \t]*\r?\n[ \t]+value:[ \t]*["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']+)/g,
+    (m, pre, n, v) => (envNamed(n.toUpperCase()) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
   [/(\bgh\s+secret\s+set\b[^\n|;&]{0,200}?\s(?:--body|-b)[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   [/(:_authToken[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
@@ -412,6 +417,10 @@ const SECRETS = [
   // line read once: linear.
   [/^([ \t]*)((?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?[ \t]*:[ \t]*\r?\n)((?:\1[ \t]+[\w.-]{1,40}[ \t]*:[^\n]{0,500}(?:\n|$))+)/gim,
     (m, ind, head, tok, block) => ind + head + block.replace(/^([ \t]+[\w.-]{1,40}[ \t]*:[ \t]*["']?)([^\s"',;]{6,})/gm, (x, pre, v) => (yamlSecret(v, tok) && !code(v) && !arg(v) ? `${pre}[redacted]` : x))],
+  // The same in JSON: each string in an object under a key that names a secret (`"secrets": {"db": "…"}`), judged as a YAML child
+  // is (review, 2026-11-01). An object of one level only, read to its first `}`, bounded.
+  [/("(?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?"[ \t]*:[ \t]*\{)([^{}]{0,2000})\}/gi,
+    (m, head, tok, body) => `${head}${body.replace(/("[\w.-]{1,40}"[ \t]*:[ \t]*")([^"\n]{6,200})(?=")/g, (x, pre, v) => (yamlSecret(v, tok) && !code(v) && !arg(v) ? `${pre}[redacted]` : x))}}`],
   // A value is never a key (a name, a colon, then a blank or the line's end): taken for the parent's value, the child after it was
   // kept (`secret:\n  password: X`, `secret: password: X`; e2e audit, 2026-11-01). Only that shape: any value ending in `:` was
   // taken for a key, and a password such as `"Tr0ub4dor&3:"` was kept (review, 2026-11-01).

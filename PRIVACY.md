@@ -49,8 +49,9 @@ All of it stays in `~/.claude/projects` on your computer:
     replaced with `[redacted]` first. So are passwords and tokens Claude
     passes to a command, in quotes or not: after `--password`, `--token` or
     `--secret`, after `-p` in `docker login` and the like, in `export`, `setx`,
-    `SetEnvironmentVariable`, PowerShell's `$env:`, a `.env` line or
-    `aws configure set` of a name that says key, secret, token or password,
+    `SetEnvironmentVariable`, PowerShell's `$env:`, a `.env` line (and
+    cmd's `set`, a compose or Kubernetes env entry) or `aws configure set`
+    of a name that says key, secret, token or password,
     in `htpasswd`, `gh secret set`, an npm `_authToken` and an Azure
     `SharedAccessKey`. A reference to one, such as `$API_TOKEN`, and a file's
     path are kept. A number is kept only under a name that counts something,

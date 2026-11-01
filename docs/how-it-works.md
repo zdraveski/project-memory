@@ -200,7 +200,10 @@ Before any of it is written, these are taken out:
   blank before `=` and a last `_`-part of `KEY`, `SECRET`, `TOKEN`,
   `PASSWORD`, `PASSWD`, `PASS` or `PWD` (`SIGNING_KEY=…`, not
   `KEY_ALGORITHM=RS256` or `TOKEN_URL=…`, nor code such as `key = x`), with
-  the same exceptions;
+  the same exceptions; also as a compose list item (`- NAME=…`), as cmd's
+  `set NAME=…`, after a shell's `&&`, `||`, `;` or `|` (`cd app &&
+  NAME=… npm start`), and as a Kubernetes env entry (`- name: NAME` with
+  `value: …` on the next line);
 - "password is …", "the password for the server is …" and "the api key is …",
   when the value has a digit or a symbol in it ("my password is sunshine"
   stays, since "the password is hashed" is prose);
@@ -228,7 +231,10 @@ Before any of it is written, these are taken out:
   (`admin: …`);
   under `tokens:`, 16 characters or more with a letter and a digit
   (`github: …`). So a sibling after the key, a name (`type: apiKey`), a
-  setting (`hash_algorithm: bcrypt`), a colour or a count stays.
+  setting (`hash_algorithm: bcrypt`), a colour or a count stays. The same
+  for each string in a JSON object under such a key (`"secrets": {"db":
+  "…"}`), one level deep. Not read: a deeper JSON object, and a variable
+  set mid-command, such as `docker run -e NAME=…`.
 
 No list of patterns finds every secret: anything these rules miss belongs
 between `<private>` tags. The same rules apply to everything the startup

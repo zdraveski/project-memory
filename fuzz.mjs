@@ -155,7 +155,10 @@ const shapesOf = (x) => {
     // 1.2.5 (e2e audit): a quoted value, a YAML key that names a secret, PowerShell's $env:, a .env line, an Azure key.
     ['deploy --password "@@"', v()], ["cli login --token '@@'", v()], ['docker login -u me -p "@@" registry', v()], ['curl -u "bob:@@" https://example.com', v()],
     ['aws configure set aws_secret_access_key "@@"', v()], ['secret:\n  password: @@', v()], ['passwords:\n  admin: x1\n  root: @@', v()], ['tokens:\n  github: @@', t(24)],
-    ['$env:SIGNING_KEY = "@@"', v()], ['SIGNING_KEY=@@', v()], ['Endpoint=sb://ns.example.net/;SharedAccessKeyName=Root;SharedAccessKey=@@', v()]]) all.push(sec(text, s));
+    ['$env:SIGNING_KEY = "@@"', v()], ['SIGNING_KEY=@@', v()], ['Endpoint=sb://ns.example.net/;SharedAccessKeyName=Root;SharedAccessKey=@@', v()],
+    // 1.2.5 review: the .env shape's relatives, a JSON object under a secret's key, a quoted value with blanks.
+    ['set SIGNING_KEY=@@ && node app.js', v()], ['cd app && SIGNING_KEY=@@ npm start', v()], ['environment:\n  - SIGNING_KEY=@@', v()],
+    ['env:\n  - name: DB_PASSWORD\n    value: @@', v()], ['"secrets": {"db": "@@"}', v()], ['curl -u "bob:my @@ pass" https://example.com', v()]]) all.push(sec(text, s));
   const near = [['api_key = process.env.API_KEY'], ['password: user.password'], ['secret = correct_horse_battery_staple'], ['token: this.apiKey'], ['password: string']];
   return { secrets: all, near };
 };

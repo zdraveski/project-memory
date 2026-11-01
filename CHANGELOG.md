@@ -96,9 +96,12 @@
   zero-width spaces and joiners were looked past, and a tag with one of the
   others kept nothing private.
 - More secret shapes are replaced with `[redacted]`: PowerShell's
-  `$env:NAME = "…"` and a `.env` file's `NAME=…` line, where the name says
-  key, secret, token or password (as `export NAME=…` already was), and an
-  Azure connection string's `SharedAccessKey=…`.
+  `$env:NAME = "…"` where the name says key, secret, token or password (as
+  `export NAME=…` already was); a `.env` file's `NAME=…` line whose name
+  ends in such a word, and the same in cmd's `set NAME=…`, after `&&` in a
+  command, in a compose list item and in a Kubernetes `- name:` / `value:`
+  pair; a JSON object under a key such as `"secrets"`; and an Azure
+  connection string's `SharedAccessKey=…`.
 - The journal no longer takes in a subagent's own transcript as a
   conversation of its own, nor reads a subagent's messages inside a
   conversation's transcript as yours. Claude Code keeps subagents
