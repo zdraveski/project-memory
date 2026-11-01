@@ -217,6 +217,12 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   let threw = null;
   try { record(d, T, [turn({ at: '2026-11-10 09:00', id: 'z-2', ask: 'beside a folder' })]); } catch (e) { threw = e.code || e.message; }
   ok(threw === null && keys('2026-11-10') === 'z-2', `a day beside it that won't read fails no record (got ${threw}, ${keys('2026-11-10')})`);
+  // A turn with no id is keyed by its conversation, time and text, spaces and all; one whose time won't parse is dated by the
+  // Stop that records it. Recorded again after midnight, it leaves the day before: the day beside is read for its keys whole.
+  const noId = () => [turn({ id: undefined, at: 'no time', ask: 'a turn with no id' })];
+  record(d, T, noId(), '2026-11-20 23:59');
+  record(d, T, noId(), '2026-11-21 00:01');
+  ok(!existsSync(dayFile(d, '2026-11-20')) && keys('2026-11-21').includes(' no time '), `a key with spaces leaves the day beside it (got ${existsSync(dayFile(d, '2026-11-20'))}, ${keys('2026-11-21')})`);
 }
 {
   // A path is cut relative to the turn's folder in any case only where the

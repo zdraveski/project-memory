@@ -182,7 +182,10 @@ export function record(dir, transcriptPath, turns, when) {
     if (landed) for (const k of [-1, 1]) {
       try {
         const nd = new Date(Date.parse(d) + k * 864e5).toISOString().slice(0, 10), bytes = raw(dayFile(dir, nd)) ?? '';
-        if ([...mine].some((key) => bytes.includes(`<!-- j:${key} `))) drop(dir, nd, (e) => !mine.has(e.key));
+        // Its markers' keys read once, then each key looked up: its bytes searched once a key cost keys x its size, 176 ms of a
+        // busy Stop (release review). Greedy to the line's last ` t:`, as MARK reads a key, so every key drop() would find is here.
+        const there = new Set(Array.from(bytes.matchAll(/<!-- j:(.+) t:/g), (m) => m[1]));
+        if ([...mine].some((key) => there.has(key))) drop(dir, nd, (e) => !mine.has(e.key));
       } catch {}
     }
   });

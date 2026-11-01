@@ -777,6 +777,7 @@ export const suites = {
     'a copy beside cleared only by the Stop that wrote the entry': ['if (landed) for (const k of [-1, 1]) {', 'if (n) for (const k of [-1, 1]) {'],
     'a copy beside cleared though the day\'s own write never landed': ['if (landed) for (const k of [-1, 1]) {', 'if (true) for (const k of [-1, 1]) {'],
     'a copy beside cleared before the write is known to have landed': ['{ n += changed; landed = true; break; }', '{ n += changed; break; }'],
+    'a key beside read up to its first space': ['bytes.matchAll(/<!-- j:(.+) t:/g)', 'bytes.matchAll(/<!-- j:(\\S+) /g)'],
     'a day on --since left out': ['d >= since', 'd > since'],
     "a Stop's line dropped when its folder's case differs": ['const key = (l) => { const k = LINE.exec(l)?.[1]; return k && pathKey(k); };', 'const key = (l) => LINE.exec(l)?.[1];'],
     'a day on --until left out': ['d <= until', 'd < until'],
