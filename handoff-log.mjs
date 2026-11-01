@@ -152,7 +152,10 @@ export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 export const FORGETS = /memory\.mjs["']?(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?)*\s+(?:forget\b|'forget'|"forget")/;
 // Text read the same in any width and without hidden characters: a fullwidth
 // ＜private＞, or a zero-width space inside the tag, kept what it should hide.
-export const norm = (s) => s.normalize('NFKC').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
+// Every character Unicode says to show as nothing (Default_Ignorable_Code_Point): with the five zero-width ones alone, a soft
+// hyphen, a left-to-right mark (an RTL keyboard's, or a paste's), a bidi control or a variation selector inside the tag kept it
+// (e2e audit, 2026-11-01).
+export const norm = (s) => s.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '');
 // The harness's blocks that quote others: an agent's message, a task's end, a
 // command's output. What they quote is not the user's, and a red-team report
 // quoting <private-session> marked the conversation that read it private.
@@ -164,6 +167,32 @@ const QUOTES = /<(task-notification|agent-message|teammate-message|local-command
 export const queuedText = (r) => {
   const p = r.attachment?.prompt;
   return typeof p === 'string' ? p : Array.isArray(p) ? p.map((b) => (typeof b === 'string' ? b : b?.type === 'text' ? String(b.text ?? '') : '')).join(' ') : '';
+};
+// What the user typed into a tool call's result: the answer to Claude's question (the result of an AskUserQuestion call, by the
+// call's id, kept as the calls go by) or the words given with a rejected call. A tag typed there was ignored, and the reply that
+// repeated it was saved (e2e audit, 2026-11-01). The answers alone (toolUseResult.answers): the result's words quote Claude's
+// question too, and a question that named <private-session> marked the conversation (review, 2026-11-01); the words only for a
+// record without them. A rejection by Claude Code's own mark on the record (toolUseResult), not by its words, which an MCP
+// server's error can spell out, and only what follows "the user said:". No other tool's output: a file read that quotes
+// <private-session> is no mark. One reader a pass: `heard(r)` for every record in order, '' for all but those results.
+// shortcut: a question asked before the text read starts (an import's next segment, a look's next chunk) is not known, so its
+// answer is not read; carry the ids across if a question and its answer are ever found apart.
+const SAID = 'the user said:';
+const resultText = (b) => (typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => (x?.type === 'text' ? String(x.text ?? '') : '')).join(' ') : '');
+const answersOf = (r) => { const a = r.toolUseResult?.answers; return a && typeof a === 'object' ? Object.values(a).map(String).join('\n') : null; };
+export const toolAnswers = () => {
+  const asks = new Set();
+  return (r) => {
+    const c = Array.isArray(r?.message?.content) ? r.message.content : [];
+    if (r.type === 'assistant') for (const b of c) if (b?.type === 'tool_use' && b.name === 'AskUserQuestion') asks.add(b.id);
+    if (r.type !== 'user') return '';
+    return c.filter((b) => b?.type === 'tool_result').map((b) => {
+      if (asks.has(b.tool_use_id)) return answersOf(r) ?? resultText(b);
+      if (r.toolUseResult !== 'User rejected tool use') return '';
+      const s = resultText(b), i = s.indexOf(SAID);
+      return i === -1 ? '' : s.slice(i + SAID.length);
+    }).filter(Boolean).join('\n');
+  };
 };
 export const unquote = (s) => {
   let out = '', i = 0;
@@ -192,9 +221,13 @@ export function turns(tail) {
   // A nudge holds the answer for its memory update only; a private message
   // (frozen: true) holds it to the next prompt.
   const hold = (p) => { if (p.frozen !== true) { p.frozen = 'nudge'; p.ended = false; } };
+  const heard = toolAnswers();
   for (const line of tail.split('\n')) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
     let r; try { r = JSON.parse(line); } catch { continue; }
+    // A subagent's record (isSidechain), as a Claude Code version wrote them into its conversation's transcript: neither the
+    // user's words nor the conversation's reply, and a tag it quotes marks nothing (e2e audit, 2026-11-01).
+    if (r.isSidechain === true) continue;
     // A turn's edits are tool calls with no text: taken before the text test skips them.
     // Once a nudge or a private message froze the turn, what follows is the
     // memory update, or the private part: only a forget of it is kept, below.
@@ -214,7 +247,7 @@ export function turns(tail) {
     // Read as typed; normalized (fullwidth, hidden characters) only to find the
     // private tags. Written normalized, `…` and CJK punctuation became ASCII,
     // and every entry an older version wrote was added again beside it.
-    const t = text(r).trim(), n = norm(t);
+    const t = text(r).trim(), n = norm(t), told = heard(r);
     let ask = r.type === 'user' ? prompt(r, t) : '';
     if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
     // What the user typed, tags and all: a slash command's arguments, a
@@ -224,7 +257,8 @@ export function turns(tail) {
     // conversation private), nor a record it added, nor a compaction summary.
     // A summary is no part of it at all: it recaps the conversation, and one
     // that named the tag froze the rest of a long turn, its answer hours stale.
-    const mine = r.type === 'user' && !r.isCompactSummary ? unquote(unwrap(n)) : '';
+    // An answer to Claude's question, or a rejected call's words, too (toolAnswers).
+    const mine = r.type === 'user' && !r.isCompactSummary ? unquote(unwrap(told ? `${n}\n${norm(told)}` : n)) : '';
     const typed = r.type === 'user' && !r.isMeta && !r.isCompactSummary ? mine
       : r.type === 'attachment' && r.attachment?.type === 'queued_command' ? unquote(norm(queuedText(r))) : '';
     // Marked whether or not a reply follows: a turn of tool calls, or one
@@ -291,6 +325,13 @@ const named = (n) => {
 // A number under a count's name (TOKEN_LIMIT, MAX_TOKEN, SECRET_PORT): no
 // secret, as only a count-like whole part says (R34).
 const counted = (n, v) => /^\d+$/.test(v) && n.toUpperCase().split('_').some((p) => /^(?:LIMIT|MAX|MIN|SIZE|COUNT|LEN|TTL|TIMEOUT|BYTES|PORT)$/.test(p));
+// A .env name that holds a secret: its last `_`-part is the word (SIGNING_KEY, DB_PASSWORD). One whose word comes first names
+// something else (KEY_ALGORITHM, TOKEN_URL, SECRET_BACKEND); a name with SECRET or PASSWORD anywhere the setting rule reads anyway.
+const envNamed = (n) => /(?:^|_)(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|PASS|PWD)$/.test(n);
+// A YAML child's value under a secret's key, whose own name says nothing: a secret has a digit or a symbol, a PIN too (not a
+// name such as `apiKey`, `tls-cert` or `production`); under `tokens:` a token's length too, 16 or more with a letter and a digit
+// (not a colour, `blue-500`, a model's name or a count).
+const yamlSecret = (v, tok) => (tok ? v.length >= 16 && /\d/.test(v) && /[A-Za-z]/.test(v) : /[\d!@#$%^&*+=?~]/.test(v));
 const SECRETS = [
   // From the first opener to the last closer: nested, the text after the inner
   // closer was saved. Self-closed or unclosed, to the end.
@@ -320,24 +361,37 @@ const SECRETS = [
   // user), one with an @ in it (to the last one). Not a query: a port
   // before `?user=me@x` was cut as a password.
   [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)[^\s/?#]{1,200}@/gi, '$1[redacted]@'],
-  // curl -u user:it, --user user:it. Not `docker run -u 1000:1000`, a user and group.
-  [/((?:^|\s)(?:-u|--user)[ =]+(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)[^\s'"]{1,200}/g, '$1[redacted]'],
+  // curl -u user:it, --user user:it, quoted too, to the closing quote (review, 2026-11-01). Not `docker run -u 1000:1000`, a user
+  // and group.
+  [/((?:^|\s)(?:-u|--user)[ =]+["']?(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)(?:(?<="[^\s:'"]{1,100}:)[^"\n]{1,200}(?=")|(?<='[^\s:'"]{1,100}:)[^'\n]{1,200}(?=')|[^\s'"]{1,200})/g, '$1[redacted]'],
   // --password it (--token, --client-secret); docker login, az login, sshpass
   // and twine take it as -p it. Not --no-password, whose next word is the
   // command's own; nor "the --token flag", in prose.
-  [/(--(?!no-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret)[ =]|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+)(?!-)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)([^\s"']{3,})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  // Quoted, as a value with symbols or blanks must be, to its closing quote: the opening quote refused, each was kept (e2e audit,
+  // 2026-11-01). A quoted one may start with `-`; a bare one that does is the next option (review, 2026-11-01).
+  [/(--(?!no-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret)[ =]["']?|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+["']?)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // A secret as a command's argument, which the journal's Ran field keeps (P1
   // hunt, 2026-10-29): `aws configure set` of a secret, key or token; a
   // SetEnvironmentVariable or setx of one; htpasswd -b's password, after its
   // file (none with -n) and user, before any redirect (-n prints, so one
   // follows: `> .htpasswd` was taken for the password); an exported name whose
   // word is a key's; gh secret set's body; an npm registry's _authToken.
-  [/(\baws\s+configure\s+set\s+[\w.-]{0,100}(?:secret|key|token)[\w.-]{0,100}\s+)(?!-)[^\s"']+/gi, '$1[redacted]'],
+  // Quoted values here and below to the closing quote, as above (review, 2026-11-01).
+  [/(\baws\s+configure\s+set\s+[\w.-]{0,100}(?:secret|key|token)[\w.-]{0,100}\s+["']?)(?!-)(?:(?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']+)/gi, '$1[redacted]'],
   [/(SetEnvironmentVariable\(\s*["']([^"'\n]{1,100})["']\s*,\s*["'])([^"'\n]+)/gi, (m, pre, name, v) => (named(name) && !arg(v) && !counted(name, v) ? `${pre}[redacted]` : m)],
   [/(\bhtpasswd(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+(?:[^\s<>-]\S*\s+)?[^\s<>]+\s+)(?!\d*>)[^\s;|&<>]+/g, '$1[redacted]'],
   // The name read whole, then judged: as words in one pattern, KEY_ repeated
-  // took 28 s.
-  [/(\b(?:export\s+([A-Za-z_]\w{0,100})=|setx[ \t]+([A-Za-z_]\w{0,100})[ \t]+)["']?)([^\s"';|&]+)/g, (m, pre, a, b, v) => (named(a ?? b) && !arg(v) && !code(v) && !counted(a ?? b, v) ? `${pre}[redacted]` : m)],
+  // took 28 s. PowerShell's `$env:NAME = …` too, in any case, as export's is (e2e audit, 2026-11-01).
+  [/((?:\b(?:export\s+([A-Za-z_]\w{0,100})=|setx[ \t]+([A-Za-z_]\w{0,100})[ \t]+)|\$env:([A-Za-z_]\w{0,100})[ \t]*=[ \t]*)["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]+)/gi, (m, pre, a, b, c, v) => (named(a ?? b ?? c) && !arg(v) && !code(v) && !counted(a ?? b ?? c, v) ? `${pre}[redacted]` : m)],
+  // A .env line at a line's start (e2e audit, 2026-11-01): only its own shape, an upper-case name with no blank before `=`, whose
+  // last part is the secret's word (envNamed). Any `name = value` was read as one, and Python's `key = item.name`, `CACHE_KEY =
+  // "x"` and `TOKEN_URL=https://…` were cut (review, 2026-11-01). Its close relatives too: a compose list item's `- NAME=…`, cmd's
+  // `set NAME=…`, and one after a shell's `&&`, `||`, `;` or `|` (an inline variable before a command).
+  [/((?:^[ \t]*(?:-[ \t]+)?|(?:&&|\|\||[;|])[ \t]*)(?:(?:export|set|SET)[ \t]+)?([A-Z][A-Z0-9_]{0,100})=["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]+)/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
+  // A Kubernetes env entry, `- name: NAME` then `value: …` on the next line, judged by the name as a .env line is (review,
+  // 2026-11-01).
+  [/(-[ \t]+name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]{0,100})["']?[ \t]*\r?\n[ \t]+value:[ \t]*["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']+)/g,
+    (m, pre, n, v) => (envNamed(n.toUpperCase()) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
   [/(\bgh\s+secret\s+set\b[^\n|;&]{0,200}?\s(?:--body|-b)[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   [/(:_authToken[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
@@ -356,9 +410,27 @@ const SECRETS = [
   // `pass` alone too (DB_PASS=, pass:), and a key's data. Not a value that
   // is plainly code: `password: string`, `token = jwt.sign(payload`,
   // `secret: process.env.JWT_SECRET`, `${DB_PASSWORD}`, a path.
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  // Each child of a YAML parent key that names a secret (`passwords:\n  admin: X\n  root: Y`, `secrets:\n  db: X`): only the
+  // parent's name says what they are (e2e audit, 2026-11-01). Only the lines indented under it, and only a value that looks like a
+  // secret (yamlSecret): read on to any indented line, the siblings after it were cut (GitHub Actions' runs-on, Helm's username),
+  // and so were names and settings under it (OpenAPI's `type: apiKey`, design tokens) (review, 2026-11-01). A child a line, each
+  // line read once: linear.
+  [/^([ \t]*)((?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?[ \t]*:[ \t]*\r?\n)((?:\1[ \t]+[\w.-]{1,40}[ \t]*:[^\n]{0,500}(?:\n|$))+)/gim,
+    (m, ind, head, tok, block) => ind + head + block.replace(/^([ \t]+[\w.-]{1,40}[ \t]*:[ \t]*["']?)([^\s"',;]{6,})/gm, (x, pre, v) => (yamlSecret(v, tok) && !code(v) && !arg(v) ? `${pre}[redacted]` : x))],
+  // The same in JSON: each string in an object under a key that names a secret (`"secrets": {"db": "…"}`), judged as a YAML child
+  // is (review, 2026-11-01). An object of one level only, read to its first `}`, bounded.
+  [/("(?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?"[ \t]*:[ \t]*\{)([^{}]{0,2000})\}/gi,
+    (m, head, tok, body) => `${head}${body.replace(/("[\w.-]{1,40}"[ \t]*:[ \t]*")([^"\n]{6,200})(?=")/g, (x, pre, v) => (yamlSecret(v, tok) && !code(v) && !arg(v) ? `${pre}[redacted]` : x))}}`],
+  // A value is never a key (a name and a colon with more after it: blanks then a value on its line, or a line break then an
+  // indented child): taken for the parent's value, the child after it was kept (`secret:\n  password: X`, `secret: password: X`;
+  // e2e audit, 2026-11-01). Only that shape: a value ending in `:` before a blank or at its line's end was taken for a key, and
+  // a password such as `"Tr0ub4dor&3:"` or `Tr0ub4dor3:` was kept (review rounds 1 and 2, 2026-11-01).
+  // A quoted value goes whole, blanks and all, as in a command; it is never a key. Unquoted, a value ends at its first blank
+  // (`password: p@ss w0rd` keeps all of it: `p@ss` is under 6), since prose follows a value as often as a second word does.
+  // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)((?<=")[^"\n]{6,200}(?=")|(?<=')[^'\n]{6,200}(?=')|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))[^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
-  [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
 ];
 export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
 // The answer to a private message often repeats what it was told, so it is
@@ -753,7 +825,11 @@ export function handoff(input, sink = null) {
     // went (F12). Thrown, so the Stop records it: a list that never read again
     // stopped the store in silence (R64).
     if (was === null) throw unreadable(dir, QUIET);
-    let quiet = was || hushed(dir, s, hush) || hush;
+    let quiet = was || hushed(dir, s, hush) || hush || hushed(projectsRoot(), s, false, OFF);
+    // Held with auto memory off once (OFF): kept out as the journal keeps it out (take()), what it wrote before included. Read by
+    // the journal alone, what was typed while auto memory was off reached handoff.md at the first Stop with it back on (e2e audit,
+    // 2026-11-01). A list that won't read is unknown here too: nothing written or swept (F12).
+    if (quiet === null) throw unreadable(projectsRoot(), OFF);
     // The journal (memory-tier's Stop passes its writer) takes this lock too,
     // not one of its own; whatever it throws is its own. Swept anew only by the
     // read that first marks it: while the mark stayed in the tail each Stop

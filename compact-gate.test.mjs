@@ -48,6 +48,11 @@ const stop = (session = 's1', extra = {}) => nudge({ hook_event_name: 'Stop', cw
 // 1. A finished turn: the compaction may run, whatever the size.
 write(user('build it'), asst('done.', 870_000, 'end_turn'));
 ok(gate().code === 0, 'end_turn lets the compaction run');
+// A subagent's record (isSidechain, as a Claude Code version wrote them into the transcript) is not the conversation's: its size
+// and its unfinished turn are the subagent's, and deferred nothing (review, 2026-11-01).
+write(user('build it'), asst('done.', 870_000, 'end_turn'), rec('assistant', [{ type: 'text', text: 'a subagent at work' }],
+  { isSidechain: true, message: { stop_reason: 'tool_use', usage: { input_tokens: 3, cache_read_input_tokens: 870_000, cache_creation_input_tokens: 0, output_tokens: 9 } } }));
+ok(gate().code === 0, "a subagent's unfinished turn does not defer the compaction");
 
 // 2. Mid-turn under the ceiling: deferred, and only for an auto compaction.
 write(user('build it'), asst('running the suites', 870_000, 'tool_use'), result(launch('bg1')));
@@ -218,6 +223,23 @@ writeFileSync(join(dir, '.private-sessions'), 's1\n');
 write(user('secret plan'), asst('working', 965_000, 'tool_use'), result('ok'));
 ok(gate().code === 0 && !/cut mid-turn|secret plan/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a private conversation is compacted with nothing written');
 rmSync(join(dir, '.private-sessions'));
+// P-F2 (review): nor does one held with auto memory off once (its tag in the projects' .memory-off), resumed with it on, as its
+// handoff keeps it out: the note held what it said, and no recovery note is printed either.
+const offList = join(home, '.claude', 'projects', '.memory-off');
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+writeFileSync(offList, 's1\n');
+write(user('the Acme offer is 2.1M'), asst('drafting the 2.1M offer', 965_000, 'tool_use'), result('ok'));
+{
+  const { recover } = await import('./compact-gate.mjs');
+  const g = gate(), noted = readFileSync(join(dir, 'handoff.md'), 'utf8'), rec2 = recover({ cwd, transcript_path: transcript, session_id: 's1' });
+  ok(g.code === 0 && !/cut mid-turn|2\.1M/.test(noted) && rec2 === '', `a conversation held with auto memory off gets no in-flight note and no recovery note (got ${noted.split('<!-- auto:start -->')[1]}, ${JSON.stringify(rec2)})`);
+}
+rmSync(offList);
+// A memory-off list that won't read (a folder where it goes) is unknown, and a note only adds: none (F12).
+mkdirSync(offList);
+gate();
+ok(!/cut mid-turn|2\.1M/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a memory-off list that will not read writes no in-flight note');
+rmSync(offList, { recursive: true });
 // A private message's answer is withheld from the note, as from the handoff.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
 write(user('<private>pin 4321</private> unlock it'), asst('Unlocking with 4321', 965_000, 'tool_use'), result('ok'));
@@ -259,6 +281,13 @@ write(user('keep going'), rec('user', [{ type: 'text', text: 'queued: <private>p
 gate();
 hdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
 ok(/cut mid-turn[^\n]*keep going\n  \*\*last said:\*\* \[private\]/.test(hdoc) && !/11223344/.test(hdoc), `the answer to a private message that is no ask is withheld (got ${hdoc})`);
+// P-F1: so is the answer after a <private> typed as the answer to Claude's question (its AskUserQuestion call's result).
+writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+write(user('keep going'), rec('assistant', [{ type: 'tool_use', id: 'q1', name: 'AskUserQuestion', input: {} }]),
+  rec('user', [{ type: 'tool_result', tool_use_id: 'q1', content: 'User has answered your questions: "Which pin?"="<private>pin 55667788</private>".' }]), asst('Pin 55667788 noted.', 965_000, 'tool_use'), result('ok'));
+gate();
+hdoc = readFileSync(join(dir, 'handoff.md'), 'utf8');
+ok(/cut mid-turn[^\n]*keep going\n  \*\*last said:\*\* \[private\]/.test(hdoc) && !/55667788/.test(hdoc), `the answer after a private answer to Claude's question is withheld (got ${hdoc})`);
 
 // 1.1.0. A slash command is the ask; a null block is skipped, not a throw that
 // let the compaction through with no note; a task's output path may hold a
@@ -318,6 +347,11 @@ mkdirSync(dirP, { recursive: true });
 writeFileSync(tp, [user('plan it'), asst('planning', T + 80_000, 'end_turn')].join('\n') + '\n');
 hushed(dirP, 'pppppppp', true);
 ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-1' }) === null, 'a conversation marked private gets no nudge');
+// P-F2 (review): nor one held with auto memory off once, resumed with it on: the nudge had Claude write its work into handoff.md.
+writeFileSync(offList, 'offnudge\n');
+const offNudge = nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'offnudge-1' }), onNudge = nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'onnudge0-1' });
+rmSync(offList);
+ok(offNudge === null && onNudge !== null, `a conversation held with auto memory off gets no nudge; another does (got ${JSON.stringify(offNudge)}, ${onNudge === null ? 'none' : 'a nudge'})`);
 writeFileSync(tp, [user('<private>card 4242</private> plan it'), asst('planning', T + 80_000, 'end_turn')].join('\n') + '\n');
 ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'qqqqqqqq-1' }) === null, 'nor does a turn whose ask is private');
 // Nor one whose private ask is further back than the tail read: the whole turn is read.

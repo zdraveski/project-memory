@@ -76,12 +76,20 @@ under env in my Claude Code settings,"* then restart Claude Code.
 
 ## What happens when auto memory is turned off?
 
-project-memory then reads and saves nothing on its own, except a short tag
-for the conversation, so the journal won't take that conversation in later,
-even if you go on with it after turning auto memory back on. If that tag
-can't be written, the next briefing with auto memory on says so, and until
-it is written the journal may take that conversation in.
-[Privacy policy](../PRIVACY.md).
+project-memory follows one switch only: the environment variable
+`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, set to `1`. While it is set,
+project-memory reads and saves nothing on its own, except a short tag for
+the conversation, so neither the journal nor the record of where you left
+off takes that conversation in later, even if you go on with it after
+turning auto memory back on. If that tag can't be written, the next
+briefing with auto memory on says so, and until it is written the journal
+may take that conversation in. [Privacy policy](../PRIVACY.md).
+
+Turning auto memory off in Claude Code itself, with `/memory` or the
+`autoMemoryEnabled` setting, doesn't stop project-memory: it never reads
+Claude Code's settings, so it keeps its journal, its record of where you
+left off and its briefing. To stop it, disable the plugin
+([Pausing or removing it](../README.md#pausing-or-removing-it)).
 
 ## Does search understand meaning?
 

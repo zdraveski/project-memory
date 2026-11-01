@@ -46,8 +46,7 @@
   conversations can't be read, it names no last conversation; if the list
   of forgotten exchanges can't be read, it lists none.
 - The exchanges listed at the start never include those of a conversation
-  held with auto memory off: what you typed while it was off reaches
-  `handoff.md` when you go on with it on.
+  held with auto memory off.
 - When `forget` couldn't rewrite a day's file, the entry stayed there and
   `search`, `show` and the day's listing still showed it until `forget` ran
   again. They now leave it out. When the list of forgotten entries can't be
@@ -57,6 +56,60 @@
   `forget` didn't reach it, so words you had forgotten stayed on disk. The
   next reply now removes such copies, once the process that wrote one is
   gone or the copy is over 30 seconds old, and so does `forget`.
+- `<private>` and `<private-session>` now work when you type them as your
+  answer to a question Claude asks you, or as what you tell Claude when you
+  turn down something it was about to do. Before, they were ignored there:
+  Claude's reply, which could repeat the private text, and the names of the
+  files it then changed were saved, and `<private-session>` marked nothing.
+  A tag that only appears in a file Claude reads, in a command's output or
+  in Claude's own question still counts for nothing.
+- A conversation held with auto memory off now stays out of the record of
+  where you left off (`handoff.md`) too when you go on with it after turning
+  auto memory back on, as it already stayed out of the journal. Before, the
+  first reply with auto memory on saved its last exchanges there, including
+  those typed while auto memory was off, and the next briefing could show
+  them. Nor does Claude get the reminder to save its notes in it, and no
+  note of a turn cut by a compaction is kept for it. If the list of such
+  conversations can't be read after a reply, nothing is saved for that
+  reply, and the next briefing says so.
+- A password under a settings key such as `secret:`, `secrets:`,
+  `passwords:` or `tokens:` (as in a YAML file: `secret:` on one line,
+  `password: …` indented on the next) is now replaced with `[redacted]`.
+  Before, the child's name was taken for the secret and the real value
+  after it was saved. Every entry indented under such a key whose value
+  looks like a password or a token is now redacted, not only one whose own
+  name says password; names, settings and the lines after the key are kept.
+- A password or token Claude passes to a command in quotes is now replaced
+  with `[redacted]` too: `--password "…"`, `--token '…'`, `-p "…"` after
+  `docker login` or `sshpass`, `curl -u "user:…"` and
+  `aws configure set … "…"`. Before, only unquoted ones were. A quoted
+  value goes whole, spaces and all, here, in `export`, `setx`, `$env:` and
+  `.env` lines, and in a setting such as `api_key: "…"` or
+  `password = '…'`, where only a first word of 6 characters or more went
+  before.
+- The FAQ said project-memory saves nothing when auto memory is turned off.
+  It follows only the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` environment
+  variable: turning auto memory off in Claude Code with `/memory` or its
+  `autoMemoryEnabled` setting doesn't stop it, since it never reads Claude
+  Code's settings. The FAQ, the privacy policy and How it works now say so,
+  and that disabling the plugin is the way to stop it.
+- `<private>` and `<private-session>` now work with any invisible character
+  inside them: a soft hyphen, the left-to-right and right-to-left marks a
+  right-to-left keyboard or a paste can add, and the like. Before, only
+  zero-width spaces and joiners were looked past, and a tag with one of the
+  others kept nothing private.
+- More secret shapes are replaced with `[redacted]`: PowerShell's
+  `$env:NAME = "…"` where the name says key, secret, token or password (as
+  `export NAME=…` already was); a `.env` file's `NAME=…` line whose name
+  ends in such a word, and the same in cmd's `set NAME=…`, after `&&` in a
+  command, in a compose list item and in a Kubernetes `- name:` / `value:`
+  pair; a JSON object under a key such as `"secrets"`; and an Azure
+  connection string's `SharedAccessKey=…`.
+- The journal no longer takes in a subagent's own transcript as a
+  conversation of its own, nor reads a subagent's messages inside a
+  conversation's transcript as yours. Claude Code keeps subagents
+  elsewhere today, so nothing changes now; an older layout could have had a
+  private conversation's subagent journaled.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in

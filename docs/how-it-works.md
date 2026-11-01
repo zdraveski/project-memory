@@ -27,7 +27,10 @@ the compaction gate can ask Claude Code to wait (exit status 2). While
 `CLAUDE_CODE_DISABLE_AUTO_MEMORY` is `1`, `true`, `yes` or `on` (in any case),
 every hook does nothing, except that the SessionStart and Stop hooks note
 the conversation's tag in `.memory-off` so the journal never imports it; the
-memory tool still works when you run it yourself.
+memory tool still works when you run it yourself. That variable is the only
+switch the hooks see: Claude Code's own (`autoMemoryEnabled` in its
+settings, which `/memory` sets) is not, since they never read its settings,
+and with it off they go on as usual. Disabling the plugin stops them.
 
 ## Where things live
 
@@ -175,10 +178,15 @@ Before any of it is written, these are taken out:
 - a secret passed to a command, which the journal's `Ran` keeps: the value
   after `--password`, `--token` or `--secret`, with up to three words before
   the last (`--client-secret`), but not after `--no-password`, nor a word
-  such as `flag` or `option` after one in prose; `aws configure set` of a
-  secret, key or token; the password of `htpasswd -b` or `-nb`, before any
-  redirect; `gh secret set … --body`; an npm `:_authToken`; and
-  `export NAME=…`, `setx NAME …` and `SetEnvironmentVariable("NAME", …)`
+  such as `flag` or `option` after one in prose; in quotes, the whole value
+  to the closing quote, blanks and all, and one starting with `-` too
+  (`--password "a b c"`, `-p '…'`; the same for every quoted value below and
+  for `curl -u "user:…"`);
+  `aws configure set` of a secret, key or token; the password of
+  `htpasswd -b` or `-nb`, before any redirect; `gh secret set … --body`; an
+  npm `:_authToken`; and `export NAME=…`, `setx NAME …`,
+  `SetEnvironmentVariable("NAME", …)` and PowerShell's `$env:NAME = …` (in
+  any case)
   when a `_`-separated part of `NAME` is `KEY`, `SECRET`, `TOKEN`,
   `PASSWORD`, `PASSWD`, `PASS` or `PWD` and its last part isn't `FILE`,
   `PATH`, `DIR`, `NAME` or `ID`. Kept, so a search still finds the command:
@@ -188,21 +196,51 @@ Before any of it is written, these are taken out:
   `TIMEOUT` or `PORT` (`TOKEN_LIMIT=4096`). A number after a password or
   token option, or under a secret's name (`export TOKEN=12345678`), goes:
   it can be a PIN;
+- a `.env` line, `NAME=…` at a line's start with an upper-case name, no
+  blank before `=` and a last `_`-part of `KEY`, `SECRET`, `TOKEN`,
+  `PASSWORD`, `PASSWD`, `PASS` or `PWD` (`SIGNING_KEY=…`, not
+  `KEY_ALGORITHM=RS256` or `TOKEN_URL=…`, nor code such as `key = x`), with
+  the same exceptions; also as a compose list item (`- NAME=…`), as cmd's
+  `set NAME=…`, after a shell's `&&`, `||`, `;` or `|` (`cd app &&
+  NAME=… npm start`), and as a Kubernetes env entry (`- name: NAME` with
+  `value: …` on the next line);
 - "password is …", "the password for the server is …" and "the api key is …",
   when the value has a digit or a symbol in it ("my password is sunshine"
   stays, since "the password is hashed" is prose);
 - a value of 6 characters or more after `:` or `=` following `password`,
   `passwd`, `pass`, `passphrase`, `secret`, `access_token`, `auth_token`,
   `refresh_token`, `session_token`, `api_token`, `api_key`, `account_key`,
-  `private_key`, `key-data` or `pwd`, also inside a longer name
+  `private_key`, Azure's `SharedAccessKey` (not `SharedAccessKeyName`),
+  `key-data` or `pwd`, also inside a longer name
   (`DB_PASSWORD=`, `DB_PASS=`, `PGPASSWORD=`, `dbPassword`, `clientSecret`)
-  and with the value on the next line. Such a value goes even with no digit
-  (`correct_horse_battery_staple`), unless it is plainly code: a type
-  (`password: string`), a reference (`${…}`, `$(…)`, `process.env.X`,
-  `user.password`), or, with no digit in it, a call, an index or a path of two
-  parts or more (`jwt.sign(…`, `request.form[…`, `/etc/app/secret`);
+  and with the value on the next line. A key (a name and a colon with a
+  value after it on its line, or an indented child on the next) is never
+  taken for the value: in `secret:` with `password: …` under it, or on its
+  line, the value after `password:` goes; a password that itself ends in
+  `:`, before a blank or at its line's end, is still a value. Such a value
+  goes even with no digit (`correct_horse_battery_staple`), unless it is
+  plainly code: a type (`password: string`), a reference (`${…}`, `$(…)`,
+  `process.env.X`, `user.password`), or, with no digit in it, a call, an
+  index or a path of two parts or more (`jwt.sign(…`, `request.form[…`,
+  `/etc/app/secret`). In quotes, the whole value goes, blanks and all
+  (`api_key: "my secret value 1"`). Not in quotes, a value ends at its first
+  blank: in `password: p@ss w0rd` the first word is too short to go and the
+  second is not read;
 - a value after `token` alone, only when it has a letter in it
-  (`token: abc123def`), so a count like `input_tokens: 863324` stays.
+  (`token: abc123def`), so a count like `input_tokens: 863324` stays;
+- under a YAML key of its own line that names a secret (`passwords:`,
+  `secrets:`, `tokens:`, `api_keys:`, with or without the `s`), the value of
+  every `name: value` line indented under it (up to the next line indented
+  no more than the key), 6 characters or more, with a digit or a symbol
+  (`!@#$%^&*+=?~`), a PIN included, and not plainly code or a path
+  (`admin: …`);
+  under `tokens:`, 16 characters or more with a letter and a digit
+  (`github: …`). So a sibling after the key, a name (`type: apiKey`), a
+  setting (`hash_algorithm: bcrypt`), a colour or a count stays. The same
+  for each string in a JSON object under such a key (`"secrets": {"db":
+  "…"}`), one level deep. Not read: a deeper JSON object
+  (`"secrets": {"db": {"main": "…"}}`), and a variable set mid-command whose
+  name no rule above reads, such as `docker run -e SIGNING_KEY=…`.
 
 No list of patterns finds every secret: anything these rules miss belongs
 between `<private>` tags. The same rules apply to everything the startup
@@ -224,14 +262,28 @@ conversation: its entries are removed from `handoff.md`, later turns write
 none, the compaction gate writes no recovery note for it, and Claude gets
 no reminder to write notes. A mark the Stop's read missed, found later by
 the journal (its import, or its look at the whole transcript), takes the
-entries out of `handoff.md` too.
+entries out of `handoff.md` too. So does a conversation held with auto
+memory off (its tag in `.memory-off`), as the journal keeps it out: its
+first Stop with auto memory on writes none of its turns and removes what it
+had written before the tag. A `.memory-off` that won't read is unknown, as
+`.private-sessions` is: the Stop writes nothing and records why.
 Other conversations' briefings name it as working, without its messages.
 Both tags are read in any case, with spaces or attributes, self-closed,
-fullwidth, with hidden zero-width characters, and as `private_session`; in a
-message typed while Claude works (a queued record); and inside another tag.
-The tags inside what Claude Code quotes, such as an agent's report or a task's
-result, are not the user's and mark nothing, and neither does a compaction
-summary that mentions them. The mark is kept by the conversation's tag in
+fullwidth, with hidden characters inside (any character Unicode shows as
+nothing: a zero-width space, a soft hyphen, a left-to-right or
+right-to-left mark, a bidi control, a variation selector), and as
+`private_session`; in a
+message typed while Claude works (a queued record); inside another tag; in
+the answer to Claude's question (the answers in the result of its
+`AskUserQuestion` call, found by the call's id; not the question, which the
+result quotes too); and in the words given with a rejected tool call (what
+follows "the user said:" in a result Claude Code marks as rejected, not one
+that only reads like it). From there on, the turn's
+reply and the files it changes are not saved. The tags inside what Claude
+Code quotes, such as an agent's report or a task's result, are not the
+user's and mark nothing, and neither do they in any other tool's output (a
+file read, a command's output) or in a compaction summary that mentions
+them. The mark is kept by the conversation's tag in
 `.private-sessions` (the newest 1,000), because only the turn that typed it
 sees it in the transcript. `handoff.md` is not in the snapshots.
 
@@ -345,7 +397,13 @@ not looked in. A listed folder gone from disk, or holding only other
 repositories' transcripts, is dropped from the list. Each candidate is
 confirmed to belong to this repository by reading its start, oldest first.
 One of another repository is listed as `other` and not read again. One
-changed in the last 30 minutes is left to its own Stop.
+changed in the last 30 minutes is left to its own Stop. A subagent's own
+transcript is no candidate: today's Claude Code keeps them in
+`<conversation>/subagents/`, which no look lists, and one named
+`agent-<id>.jsonl` beside the conversations, where a version kept them, is
+passed over. A subagent's records inside a conversation's transcript
+(`isSidechain`) are read by no writer: they are neither your words nor the
+conversation's reply.
 
 The import holds the store's lock for up to 150 ms per Stop, plus one
 segment past that, and goes on at the next Stop. It reads a transcript
@@ -382,7 +440,7 @@ the sweeps listed in `.sweeps`. A conversation never imported:
   done: it adds the tag to `.private-sessions` and removes the
   conversation's earlier entries from the journal and from `handoff.md`. A
   tag quoted in a tool's output is no mark; one typed fullwidth or with a
-  zero-width character is.
+  hidden character inside is.
 
 Keys listed in `journal/.forgotten` are never written again, by an import or
 a live Stop, and the exchanges they name are never written to `handoff.md`
@@ -419,9 +477,10 @@ At the start of a conversation, and after `/clear`, Claude is told:
   `journal/.forgotten`, matched by conversation and minute as `forget`
   matches them), for the same reason, and none is listed when that list
   can't be read. A conversation held with auto memory off has none of its
-  exchanges listed: what was typed while memory was off reaches
-  `handoff.md` when a later reply with memory on reads the turn back. In
-  both cases the "where it stopped" line still names the newest entry;
+  exchanges listed, a second guard: its replies with memory on write none
+  to `handoff.md` and take out what it wrote before ([The
+  handoff](#the-handoff)). In both cases the "where it stopped" line still
+  names the newest entry;
 - when the project's journal has an entry, one line: "Earlier work in this
   project since <first day> is in its journal: when asked about the past,
   search it with the memory skill before saying you don't know." The
@@ -460,7 +519,9 @@ things soften that.
 
 - **A reminder.** When a conversation passes 85% of the compaction window, the
   Stop hook asks Claude once to write its notes now. It asks again only after
-  a compaction, and never in a private conversation. It's sent as hook
+  a compaction, and never in a private conversation or one held with auto
+  memory off (its tag in `.memory-off`), which gets no cut-turn note
+  either. It's sent as hook
   feedback (`additionalContext`), so the conversation goes on and no hook
   error is shown. What Claude writes in answer is its notes, not the turn's
   result, so the record keeps the answer from before the reminder until the

@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS } from './handoff-log.mjs';
+import { readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -104,11 +104,14 @@ function state(path, { ask = true } = {}) {
 
 function walk(raw) {
   const s = { ctx: 0, midTurn: false, ask: '', raw: '', said: '', hidden: false, forgot: false, at: '', running: new Map(), edited: new Set(), launchers: new Set() };
+  const heard = toolAnswers();
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
+    if (r.isSidechain === true) continue;   // a subagent's record, as turns() skips it: its size and its turn are the subagent's
     const m = r.message, c = Array.isArray(m?.content) ? m.content : [];
     const t = text(r).trim();   // as typed; normalized only to find the private tags
+    const told = heard(r);   // an answer to Claude's question, or a rejected call's words: the user's, as the handoff reads them
     // A record queued while Claude worked: how a task's end arrives now (read
     // only from user records, every finished task stayed "still running", and
     // the note said not to rerun it), and a message the user typed meanwhile:
@@ -132,7 +135,7 @@ function walk(raw) {
       // named the tag hid them, and the nudge, for the rest of the turn.
       // Unless no ask came before it (a file that opens with one): then it is
       // all the turn has, and the words after it may answer what it quotes.
-      else if ((!r.isCompactSummary || !s.ask) && /<\s*private/i.test(unquote(unwrap(norm(t))))) s.hidden = true;
+      else if ((!r.isCompactSummary || !s.ask) && /<\s*private/i.test(unquote(unwrap(norm(told ? `${t}\n${told}` : t))))) s.hidden = true;
       // A launch is read from the result of a Bash or Agent call only: from any
       // tool result, a fetched page that spelt one out put its words, and any
       // instruction in them, into the note printed after the compaction.
@@ -230,8 +233,10 @@ const secret = (payload, s) => PRIVATE_SESSION.test(userText(s)) || PRIVATE.test
 // (F22, fuzz 169429269). The whole transcript, so only on a path about to print.
 // shortcut: one read of the whole file; one too big for a string throws, and the caller prints nothing; read it in segments, as the
 // journal's look does, if a transcript that size ever needs its nudge.
+// Or held with auto memory off once (OFF), as handoff() keeps it out: resumed with auto memory on, the notes and the nudge wrote
+// what it said into handoff.md (review, 2026-11-01).
 const marked = (payload) => {
-  if (hushed(storeOf(payload), tag(payload.session_id)) !== false) return true;
+  if (hushed(storeOf(payload), tag(payload.session_id)) !== false || hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return true;
   const all = readTail(payload.transcript_path, Infinity).text;
   return PRIVATE_SESSION.test(norm(all)) && turns(all).hush === true;
 };
@@ -280,8 +285,8 @@ export function nudge(payload) {
   // then have passed with no memory written (found by the second audit).
   if (payload.hook_event_name !== 'Stop' || payload.stop_hook_active || !payload.transcript_path || !existsSync(payload.transcript_path)) return null;
   // A conversation marked private, before any read: past the trigger, its
-  // whole turn was read again at every Stop, for no nudge.
-  if (hushed(storeOf(payload), tag(payload.session_id)) !== false) return null;
+  // whole turn was read again at every Stop, for no nudge. Or held with auto memory off once (OFF), as marked() reads it.
+  if (hushed(storeOf(payload), tag(payload.session_id)) !== false || hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return null;
   const s = state(payload.transcript_path, { ask: false });
   // The conversation's tag, as everywhere else: its full id named a file.
   const id = tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''));

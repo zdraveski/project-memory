@@ -676,6 +676,106 @@ writeFileSync(tm, [user('<private-session>', { ts: '2026-10-27T12:10:00Z' }), re
 ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'private' && !/123456|salary/.test(idoc()) && /mmmmmmmm/.test(readFileSync(join(dirI, '.private-sessions'), 'utf8')),
   'a mark with no reply after it still keeps the conversation out');
 
+// P-F1: a tag typed as the answer to Claude's question (the result of its AskUserQuestion call, by the call's id) or with a rejected
+// call is the user's: the reply after it and the files changed after it are not saved, and <private-session> marks the conversation.
+// Only there: a tag quoted in any other tool's output (a file read, a command's output, a failed command) marks nothing (e2e audit,
+// 2026-11-01).
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const cwdA = 'C:\\handoff-tool-answers', dirA = storeFor(home, cwdA);
+  mkdirSync(dirA, { recursive: true });
+  const adoc = () => readFileSync(join(dirA, 'handoff.md'), 'utf8');
+  const call = (id, name, question = 'Which one?') => rec('assistant', [{ type: 'tool_use', id, name, input: name === 'AskUserQuestion' ? { questions: [{ question }] } : { file_path: 'C:\\app\\vault-77.env', command: 'cat notes.md' } }]);
+  const result = (id, content, extra = {}, top = {}) => rec('user', [{ type: 'tool_result', tool_use_id: id, content, ...extra }], top);
+  const said = (a, q = 'Which one?') => `User has answered your questions: "${q}"="${a}". You can now continue with the user's answers in mind.`;
+  // The answer record as Claude Code writes it: the words in the result, and the answers alone in toolUseResult.
+  const answered = (id, a, q = 'Which one?') => result(id, said(a, q), {}, { toolUseResult: { questions: [{ question: q }], answers: { [q]: a } } });
+  const no = (a) => `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). To tell you how to proceed, the user said:\n${a}`;
+  const rejected = (id, content) => result(id, content, { is_error: true }, { toolUseResult: 'User rejected tool use' });
+  const conv = (s, ...lines) => { const p = join(dirA, `${s}.jsonl`); writeFileSync(p, lines.join('\n') + '\n'); return handoff({ cwd: cwdA, transcript_path: p, session_id: `${s}-1` }); };
+  conv('f1aaaaaa', user('set up the vault', { ts: '2026-10-27T12:40:00Z' }), call('toolu_q1', 'AskUserQuestion'), answered('toolu_q1', '<private>Tr0ub4dor-77</private>'),
+    call('toolu_e1', 'Edit'), result('toolu_e1', 'ok'), asst('Done: the vault holds Tr0ub4dor-77.'));
+  ok(/set up the vault/.test(adoc()) && !/Tr0ub4dor|vault-77/.test(adoc()), `a <private> answer to Claude's question: the reply and the files after it are not saved (got ${adoc().split('<!-- auto:start -->')[1]})`);
+  conv('f1bbbbbb', user('fix the config', { ts: '2026-10-27T12:41:00Z' }), call('toolu_e2', 'Edit'),
+    rejected('toolu_e2', [{ type: 'text', text: no('use <private>PIN-77814</private> instead') }]), asst('Switched to PIN-77814.'));
+  ok(/fix the config/.test(adoc()) && !/77814/.test(adoc()), `<private> feedback with a rejected call: the reply after it is not saved (got ${adoc().split('<!-- auto:start -->')[1]})`);
+  const sess = conv('f1cccccc', user('plan the reorg', { ts: '2026-10-27T12:42:00Z' }), asst('a plan'), user('go on', { ts: '2026-10-27T12:43:00Z' }),
+    call('toolu_q2', 'AskUserQuestion'), answered('toolu_q2', '<private-session>'), asst('Understood.'));
+  ok(sess === 'private' && !/plan the reorg/.test(adoc()), `<private-session> as the answer to Claude's question marks the conversation (got ${sess})`);
+  ok(turns([call('toolu_e3', 'Bash'), rejected('toolu_e3', no('<private-session>'))].join('\n')).hush === true, '<private-session> as a rejected call\'s feedback marks the conversation');
+  // An answer record without the answers alone (another version's): its words, the question's included, the safe way to err.
+  ok(turns([call('toolu_q3', 'AskUserQuestion'), result('toolu_q3', said('<private-session>'))].join('\n')).hush === true, 'an answer with no answers record is read from its words');
+  ok(turns([call('toolu_q6', 'AskUserQuestion'), result('toolu_q6', said('<private-session>'), {}, { toolUseResult: { answers: null } })].join('\n')).hush === true, 'so is one whose answers are no object');
+  // A rejection with no words of the user's ("the user said:") gives nothing, whatever follows in the harness's text.
+  ok(turns([call('toolu_e6', 'Edit'), rejected('toolu_e6', "The user doesn't want to proceed with this tool use. STOP what you are doing. <private-session>")].join('\n')).hush !== true,
+    'a rejection with no words of the user\'s marks nothing');
+  // Quoted by a file read, printed by a command (the rejection's words too, but no rejection), in a failed command's output, in an
+  // MCP tool's error in the rejection's words, or the result of a call that was no question: no mark, and the reply is saved.
+  const quoted = conv('f1dddddd', user('read the notes', { ts: '2026-10-27T12:44:00Z' }), call('toolu_r1', 'Read'), result('toolu_r1', 'type <private-session> to keep it out; <private>x</private>'),
+    call('toolu_b1', 'Bash'), result('toolu_b1', no('<private-session>')), call('toolu_b2', 'Bash'), result('toolu_b2', 'Exit code 1\n<private-session> <private>y</private>', { is_error: true }),
+    call('toolu_m1', 'mcp__web__fetch'), result('toolu_m1', `The user doesn't want to see this page. ${no('<private-session> <private>w</private>')}`, { is_error: true }),
+    result('toolu_q9', said('<private-session> <private>z</private>')), asst('The notes explain both tags.'));
+  ok(quoted !== 'private' && /read the notes\n  \*\*did:\*\* The notes explain both tags\./.test(adoc()), `a tag only quoted in a tool's output marks nothing (got ${quoted}, ${adoc().split('<!-- auto:start -->')[1]})`);
+  // Claude's own question that names a tag is no mark: the answer is the user's, the question is not (review, 2026-11-01).
+  const q1 = 'Should <private-session> also hide the journal?', q2 = 'Keep <private> blocks out of the snapshots too?';
+  const asked = conv('f1eeeeee', user('add the feature', { ts: '2026-10-27T12:45:00Z' }), call('toolu_q4', 'AskUserQuestion', q1), answered('toolu_q4', 'No', q1),
+    call('toolu_q5', 'AskUserQuestion', q2), answered('toolu_q5', 'Yes', q2), call('toolu_e5', 'Edit'), result('toolu_e5', 'ok'), asst('Done: snapshots skip private blocks.'));
+  ok(asked !== 'private' && /add the feature\n  \*\*did:\*\* Done: snapshots skip private blocks\.\n  \*\*changed:\*\* vault-77\.env/.test(adoc()),
+    `a tag in Claude's own question marks nothing and freezes nothing (got ${asked}, ${adoc().split('<!-- auto:start -->')[1]})`);
+}
+
+// P-F2: a conversation held with auto memory off once (its tag in the projects' .memory-off) writes nothing to handoff.md, and
+// what it wrote there before goes, as the journal keeps it out: what was typed while auto memory was off reached handoff.md at the
+// first Stop with it back on (e2e audit, 2026-11-01). A list that won't read is unknown: nothing written, and the Stop says so.
+{
+  const { OFF } = await import('./handoff-log.mjs');
+  const cwdM = 'C:\\handoff-memory-off', dirM = storeFor(home, cwdM), offList = join(home, '.claude', 'projects', OFF);
+  mkdirSync(dirM, { recursive: true });
+  const mdoc = () => readFileSync(join(dirM, 'handoff.md'), 'utf8');
+  const conv = (s, ...lines) => { const p = join(dirM, `${s}.jsonl`); writeFileSync(p, lines.join('\n') + '\n', { flag: 'a' }); return () => handoff({ cwd: cwdM, transcript_path: p, session_id: `${s}-1` }); };
+  conv('f2on0000', user('plain work goes on', { ts: '2026-10-27T13:00:00Z' }), asst('it went on'))();
+  // Written by an earlier version, before the tag.
+  conv('f2off000', user('the offer to Acme is 2.1M', { ts: '2026-10-27T13:01:00Z' }), asst('noted the 2.1M offer'))();
+  appendFileSync(offList, 'f2off000\n');
+  const r = conv('f2off000', user('ok, now something else', { ts: '2026-10-27T13:02:00Z' }), asst('sure, something else'))();
+  ok(r === 'private' && !/2\.1M|something else/.test(mdoc()) && /plain work goes on/.test(mdoc()),
+    `a conversation held with auto memory off writes nothing, and its entries go; another's stay (got ${r}, ${mdoc().split('<!-- auto:start -->')[1]})`);
+  const read = fs.readFileSync;
+  fs.readFileSync = (p, ...a) => { if (String(p) === offList) throw Object.assign(new Error(`EACCES: permission denied, open '${p}'`), { code: 'EACCES' }); return read(p, ...a); };
+  syncBuiltinESMExports();
+  let refused;
+  const next = conv('f2on0000', user('a turn while the list is refused', { ts: '2026-10-27T13:03:00Z' }), asst('done meanwhile'));
+  try { refused = next(); } catch (e) { refused = e.message; } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
+  ok(String(refused).endsWith(`${OFF} could not be read`) && !/while the list is refused/.test(mdoc()) && /plain work goes on/.test(mdoc()),
+    `a memory-off list that won't read: nothing written or taken out, and the Stop says why (got ${refused})`);
+  ok(next() === true && /while the list is refused/.test(mdoc()), 'the next Stop, with the list read, writes the turn');
+}
+
+// P-F6: any invisible character inside a tag is read through, not the five zero-width ones alone: a soft hyphen, the left-to-right
+// and right-to-left marks an RTL keyboard or a paste puts around `<` and `>`, the other bidi controls, invisible operators, a
+// variation selector, a tag character (e2e audit, 2026-11-01).
+{
+  const { turns, answer, userText } = await import('./handoff-log.mjs');
+  const hidden = { 'U+00AD': '­', 'U+200E': '‎', 'U+200F': '‏', 'U+202A': '‪', 'U+202E': '‮', 'U+2066': '⁦', 'U+2069': '⁩',
+    'U+2061': '⁡', 'U+2063': '⁣', 'U+180E': '᠎', 'U+034F': '͏', 'U+FE0F': '️', 'U+E0020': '\u{E0020}', 'U+E007F': '\u{E007F}', 'U+061C': '؜', 'U+200B': '​' };
+  const missed = Object.entries(hidden).filter(([, c]) => {
+    const t = turns([user(`my pin is <pri${c}vate>41${c}77</private> ok`), asst('Got it: 4177.')].join('\n'))[0];
+    return /41.?77/u.test(clip(t.ask, 240)) || answer(userText(t), t.did, 400) !== '[private]' || turns([user(`<private${c}-session>`), asst('ok')].join('\n')).hush !== true;
+  }).map(([n]) => n);
+  ok(!missed.length, `a tag with an invisible character inside is still read (missed: ${missed.join(', ')})`);
+}
+
+// A sidechain record (a subagent's turn, which an older Claude Code wrote into its conversation's transcript) is not the
+// conversation's: its prompt is no ask, its reply no answer, and a tag in it marks nothing (e2e audit, 2026-11-01).
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const side = { isSidechain: true };
+  const got = turns([user('the real ask'), rec('user', [{ type: 'text', text: 'a subagent prompt <private-session>' }], side), rec('assistant', [{ type: 'text', text: 'a subagent reply' }], side),
+    asst('the real reply'), user('the next ask'), rec('assistant', [{ type: 'text', text: 'a later subagent reply' }], side)].join('\n'));
+  ok(got.length === 1 && got[0].ask === 'the real ask' && got[0].did === 'the real reply' && got.open?.ask === 'the next ask' && got.open.did === '' && got.hush !== true,
+    `a sidechain record is neither ask, answer nor mark (got ${JSON.stringify(got.map((t) => [t.ask, t.did]))}, open ${JSON.stringify(got.open?.did)}, hush ${got.hush})`);
+}
+
 // 37. A note the compaction gate left for a conversation marked since goes at
 // its next Stop, though no entry changed.
 writeFileSync(join(dirI, 'handoff.md'), idoc().replace('<!-- auto:end -->', '- **cut mid-turn** [mmmmmmmm] 2026-10-27 12:12 at 965k tokens, asked 2026-10-27 12:11: the Contoso plan\n  **last said:** x\n  **still running (read their output files, do not rerun):** none\n  **edited this turn:** none\n<!-- auto:end -->'));
@@ -739,7 +839,7 @@ const leaks = [[fake('postgres://app:', 'S3cretPass', '@db.example.com/prod'), '
   [fake('AccountName=x;Account', 'Key=', 'abc123def456=='), 'abc123def456'], [fake('my pass', 'word is ', 'tulip-garden-9'), 'tulip-garden-9'],
   [fake('mysql -u root -p', 'Sup3rS3cret', ' prod'), 'Sup3rS3cret'], [fake('PGPASS', 'WORD=', 'hunter2hunter2'), 'hunter2hunter2'],
   [fake('db', 'Password = "', 'Zx9vQ2mL7"'), 'Zx9vQ2mL7'], [fake('client', 'Secret: ', 'abcdef123456'), 'abcdef123456'], [fake('MY_API', '_KEY=', 'abcdef123456'), 'abcdef123456'],
-  [fake('stripeApi', 'Key = "', 'abcdef123456"'), 'abcdef123456'], [fake('DB_', 'PWD=', 'abcdef123456'), 'abcdef123456'], [fake('tok', 'en=', 'abc123def456'), 'abc123def456']];
+  [fake('stripeApi', 'Key = "', 'abcdef123456"'), 'abcdef123456'], [fake('DB_', 'PWD=', 'abcdef123456'), 'abcdef123456'], [fake('docker run -e DB_', 'PWD=', 'abcdef123457'), 'abcdef123457'],[fake('tok', 'en=', 'abc123def456'), 'abc123def456']];
 const leaked = leaks.filter(([s, secret]) => redact(s).includes(secret)).map(([s]) => s);
 ok(!leaked.length, `URL passwords, GitLab, npm, Hugging Face and Slack secrets, Azure keys, "password is", mysql -p and glued names are redacted (leaked: ${leaked.join(' | ')})`);
 ok(redact('input_tokens: 863324') === 'input_tokens: 863324' && redact('monkey=bananas123') === 'monkey=bananas123' && redact('mysql -u root -p prod') === 'mysql -u root -p prod',
@@ -1485,6 +1585,92 @@ ok(!cutCmd.length, `commands that only look like they pass a secret are kept (cu
 const tExport = Date.now();
 red('export ' + 'key_'.repeat(20_000));
 ok(Date.now() - tExport < 1000, `an exported name of 20,000 words is read in linear time (${Date.now() - tExport} ms)`);
+// P-F3: a value under a YAML parent key that names a secret (`secret:`, `secrets:`, `passwords:`, `tokens:`), or a key after one
+// on its line: the parent's rule took the child's key for its value, and the child's real value was kept (e2e audit, 2026-11-01).
+const nested = [['secret:\n  password: ', k('Zq8', 'hunter33')], ['secrets:\n  db_password: ', k('Kx9', 'stapler44')], ['passwords:\n  admin: ', k('Nest', 'Pw55xyz')],
+  ['tokens:\n  github: ', k('Nest', 'Tk66xyz0123abcd')], ['secret: password: ', k('Inline', '77xyz')], ['api_key:\n  prod: ', k('Prod', 'Key88xyz')],
+  ['  passwords:\n    admin: ', k('P@ss', 'word!')], ['passwords:\n  atm: ', k('482', '913')], ['tokens:\n  gitlab: ', k('Nest', 'Tk66xyz0123a')],
+  ['passwords:\r\n  admin: ' + k('First', '11xyz') + '\r\n  nested:\n    root: ', k('Sibling', '99xyz')]];
+const keptNested = nested.filter(([p, v]) => red(p + v).includes(v) || clip(p + v, 400).includes(v)).map(([p, v]) => JSON.stringify(p + v));
+ok(!keptNested.length && !red(nested.at(-1).join('')).includes('First11'), `every value under a parent key that names a secret is redacted (kept: ${keptNested.join(' | ')})`);
+// Only what is indented under the key, and only a value that looks like a secret (a letter and a digit or a symbol; under `tokens:`
+// 16 characters or more with a letter and a digit): read to the next line as indented as the key, siblings and later lines were cut,
+// and so were names and settings under such a key (review, 2026-11-01).
+const yamlFp = ['jobs:\n  call:\n    uses: ./.github/workflows/deploy.yml\n    secrets:\n      api_token: ${{ secrets.API_TOKEN }}\n  test:\n    runs-on: ubuntu-22.04\n    timeout-minutes: 30\n    environment: production',
+  'tokens:\n  input_count: 12345678901234567',
+  'on:\n  workflow_call:\n    secrets:\n      npm_token:\n        required: true\n    inputs:\n      environment:\n        type: string\n        default: production',
+  'secrets:\n  db_password:\n    file: ./certs/db_password2.txt\n  api_cert:\n    external: true', 'password:\n  minimum_length: 12\n  hash_algorithm: bcrypt',
+  'postgresql:\n  auth:\n    password:\n    username: appuser\n  primary:\n    storageClass: standard',
+  'components:\n  securitySchemes:\n    api_key:\n      type: apiKey\n      name: X-API-Key\n      in: header',
+  'tokens:\n  color-primary: "#ff0000"\n  font-family: Inter\n  spacing-large: 24px\n  brand-blue: blue-500', 'tokens:\n  model: claude-opus-4\n  input: 1234',
+  'secrets:\n  db: process.env.DB_PASS2'];
+const yamlFpCut = yamlFp.filter((s) => red(s) !== s);
+ok(!yamlFpCut.length, `a YAML key's siblings, and names and settings under it, are kept (cut: ${yamlFpCut.map((s) => JSON.stringify(red(s))).join(' | ')})`);
+// A secret that itself ends in `:` is a value, not a key: a key is a name and a colon with more after it, a value on its line or an
+// indented child on the next; never one at the end of its line or the text (review rounds 1 and 2, 2026-11-01).
+const colonEnd = [['password: "', k('Tr0ub4dor', '&3:'), '"'], ['"password": "', k('abc', '123:'), '"'], ['token: "', k('tok9', 'enValue:'), '"'],
+  ['password: ', k('Tr0ub4', 'dor3:'), ''], ['password: ', k('Tr0ub4', 'dor3:'), '\nnext'], ['password=', k('Abcdef', '12345:'), ''], ['token: ', k('tok9', 'enValue:'), '\r\n']];
+const colonKept = colonEnd.filter(([p, v, q]) => red(p + v + q).includes(v.slice(0, -1)) || clip(p + v + q, 400).includes(v.slice(0, -1))).map((x) => JSON.stringify(x.join('')));
+ok(!colonKept.length, `a secret ending in a colon is redacted (kept: ${colonKept.join(' | ')})`);
+ok(!/X1234|X5678|X9012/.test(red('secret: password: X12345678') + red('secret:\n  password: X56785678') + red('secret:\n  password:\n    X90129012')),
+  'a key with a value after it, on its line or indented under it, is still no value');
+// A quoted value goes whole in the setting form too, blanks and all (`key: "…"`, `key = "…"`), as in a command and an env line;
+// a quoted value is never a key (review round 2, 2026-11-01).
+for (const [s, gone] of [['api_key: "my ' + k('sec', 'ret') + ' value here 1"', 'secret value'], ["password = 'correct horse " + k('batt', 'ery') + " 9'", 'battery'],
+  ['"password": "abc def ' + k('gh', 'i1') + '"', 'ghi1'], ['password: "abc: def ' + k('gh', 'i2') + '"', 'ghi2'], ["secret: 'abc: def " + k('gh', 'i3') + "'", 'ghi3']])
+  for (const f of [red, (x) => clip(x, 400)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a quoted setting value with blanks is redacted whole (got ${f(s)})`);
+// Kept: a quoted sentence under a key that names no secret, a quoted reference, and a short quoted word (`"secret": "false"`),
+// under the same 6-character floor as an unquoted value.
+const quotedSettingKept = ['description: "my secret value here 1"', 'title = "the password field is required"', 'name: "a token of thanks"',
+  'password: "${{ secrets.DB_PASSWORD }}"', '"secret": "false"', "pass: 'none'", 'password: "a b"'];
+ok(quotedSettingKept.every((s) => red(s) === s), `a quoted sentence under a key that names no secret is kept (got ${quotedSettingKept.map(red).join(' | ')})`);
+const yamlKept = ['secret:\n  password: string', 'tokens:\n  input: 863324\n  output: 1234', 'secretKeyRef:\n  name: db-credentials\n  key: password', 'secretName: db\nport: 5432', 'passwords:\n  - admin'];
+const yamlCut = yamlKept.filter((s) => red(s) !== s || clip(s, 400) !== s.replace(/\s+/g, ' '));
+ok(!yamlCut.length, `code, counts, a secret's name and a list under a secret's key are kept, and no child's key is cut (cut: ${yamlCut.map((s) => JSON.stringify(red(s))).join(' | ')})`);
+// P-F4: the command-line secrets quoted, as one with symbols or spaces must be: the value refused an opening quote, and each was
+// kept (e2e audit, 2026-11-01). A quoted value goes whole, spaces and all; a quoted reference, path or prose word is kept.
+for (const [s, gone] of [['deploy --password "' + k('Pw1', 'Quoted') + '"', 'Pw1'], ["cli login --token '" + k('Tk2', 'Quoted') + "'", 'Tk2'],
+  ['deploy --password="' + k('Pw3', 'Quoted') + '" --verbose', 'Pw3'], ['docker login -u me -p "' + k('Dk3', 'Quoted') + '" registry.example.com', 'Dk3'],
+  ["sshpass -p '" + k('Ss4', 'Quoted') + "' ssh deploy@host", 'Ss4'], ['curl -u "admin:' + k('Cu5', 'Quoted') + '" https://api.example.com', 'Cu5'],
+  ["curl --user 'admin:" + k('Cu6', 'Quoted') + "' https://api.example.com", 'Cu6'], ['aws configure set aws_secret_access_key "' + k('Aw6', 'QuotedSecretKey') + '"', 'Aw6'],
+  ['tool --client-secret "correct ' + k('hor', 'se') + ' battery staple"', 'horse']])
+  for (const f of [red, (x) => clip(x, 2000)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a quoted secret passed to a command is redacted (got ${f(s)})`);
+// A quoted value with blanks goes whole in the other rules too, and a quoted one may start with `-` (review, 2026-11-01).
+for (const [s, gone] of [['curl -u "bob:my ' + k('sec', 'ret') + ' pass" https://x', 'secret'], ["curl --user 'bob:my " + k('sec', 'ret') + " pass' x", 'secret'],
+  ['aws configure set aws_secret_access_key "abc ' + k('de', 'f9') + ' ghi"', 'def9'], ['SIGNING_KEY="abc ' + k('de', 'f9') + ' ghi"', 'def9'],
+  ['$env:SIGNING_KEY = "abc ' + k('de', 'f9') + ' ghi"', 'def9'], ['export SIGNING_KEY="abc ' + k('de', 'f9') + ' ghi"', 'def9'], ["setx DB_PASSWORD 'abc " + k('de', 'f9') + " ghi'", 'def9'],
+  ['deploy --password "-' + k('Xy9', 'secret') + '"', 'Xy9']])
+  for (const f of [red, (x) => clip(x, 2000)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a quoted value with blanks, or one starting with -, is redacted whole (got ${f(s)})`);
+const quotedKept = ['tool --token "$TOKEN"', "tool --password '${DB_PASS}'", 'tool --password "./pw.txt"', 'the --token "flag" is new', 'docker run -u "1000:1000" img', 'deploy --password ""',
+  'tool --password --verbose'];
+const quotedCut = quotedKept.filter((s) => red(s) !== s);
+ok(!quotedCut.length, `a quoted reference, path, prose word or user:group is kept (cut: ${quotedCut.map(red).join(' | ')})`);
+// P-F7: PowerShell's `$env:NAME = "…"`, a .env line `NAME=…` and an Azure connection string's SharedAccessKey, judged by the name
+// as `export NAME=` is: a name whose part is KEY kept its value in each (e2e audit, 2026-11-01).
+for (const [s, gone] of [['$env:SIGNING_KEY = "' + k('Sg2', 'R7value') + '"', 'Sg2'], ["$Env:DEPLOY_KEY='" + k('Dk3', 'R7value') + "'", 'Dk3'],
+  ['SIGNING_KEY=' + k('Sg3', 'R7value'), 'Sg3'], ['# .env\nAPP_NAME=demo\n  STRIPE_KEY="' + k('St4', 'R7value') + '"\n', 'St4'],
+  ['Endpoint=sb://ns.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=' + k('Az4R7', 'valueXyz='), 'Az4R7']])
+  for (const f of [red, (x) => clip(x, 2000)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a secret set in PowerShell, a .env line or an Azure key is redacted (got ${f(s)})`);
+const envKept = ['$env:PATH = "C:\\tools;" + $env:PATH', '$env:API_TOKEN = $null', '$env:TOKEN_LIMIT = 4096', 'NODE_ENV=production', 'KEY_FILE=./key.pem', 'API_KEY=${API_KEY}',
+  'SharedAccessKeyName=RootManageSharedAccessKey',
+  // Only the dotenv shape (an upper-case name whose last part is the secret's word, no blank before `=`): code and other names
+  // were cut (review, 2026-11-01).
+  'for item in items:\n    key = item.name\n    value = item.value', 'key = sorted_keys[0]\nKEY = "production"', 'CACHE_KEY = "user_profile"',
+  'TOKEN_URL=https://login.example.com/oauth/token', 'AZURE_KEY_VAULT_URL=https://myvault.vault.azure.net/', 'KEY_ALGORITHM=RS256', 'SECRET_BACKEND=vault'];
+// The .env shape's close relatives: cmd's `set NAME=…`, one after `&&` (an inline variable before a command), a compose list item
+// `- NAME=…`, a Kubernetes `- name: NAME` / `value: …` pair, and a JSON object under a key that names a secret (review, 2026-11-01).
+for (const [s, gone] of [['set SIGNING_KEY=' + k('Sg5', 'value') + ' && node app.js', 'Sg5'], ['cd app && SIGNING_KEY=' + k('Sg6', 'value') + ' npm start', 'Sg6'],
+  ['environment:\n  - SIGNING_KEY=' + k('Sg9', 'value'), 'Sg9'], ['env:\n  - name: DB_PASSWORD\n    value: ' + k('hunter', '2abc'), 'hunter2'],
+  ['env:\n  - name: "API_TOKEN"\n    value: "abc ' + k('de', 'f9') + ' ghi"', 'def9'], ['"secrets": {\n  "db": "' + k('hunter', '3abc') + '",\n  "name": "x"\n}', 'hunter3']])
+  for (const f of [red, (x) => clip(x, 2000)]) ok(!f(s).includes(gone) && f(s).includes('[redacted]'), `a secret set by set, inline, in a list or a JSON object under a secret's key is redacted (got ${f(s)})`);
+envKept.push('set PATH=C:\\tools', 'set KEY_ALGORITHM=RS256 && run', 'cd app && NODE_ENV=production npm start', 'environment:\n  - TOKEN_URL=https://login.example.com',
+  'env:\n  - name: TOKEN_URL\n    value: https://login.example.com', 'env:\n  - name: KEY_ALGORITHM\n    value: RS256', 'env:\n  - name: MAX_TOKEN\n    value: 8192', 'env:\n  - name: DB_PASSWORD\n    valueFrom:\n      secretKeyRef:\n        name: db',
+  '"secrets": {"name": "production"}', '"api_key": {"type": "apiKey", "in": "header"}', '"tokens": {"input": "12345678", "output": 5678}');
+const envCut = envKept.filter((s) => red(s) !== s);
+ok(!envCut.length, `a path, a reference, a count, an ordinary name and an Azure key's name are kept (cut: ${envCut.map(red).join(' | ')})`);
+const tNest = Date.now(); red('secret:'.repeat(30_000)); red('secret: ' + 'a: '.repeat(30_000)); red('secrets:\n' + '  a: b  c: d e:'.repeat(5_000)); red('secrets:\n' + '  a:\n'.repeat(30_000));
+red('"secret":{'.repeat(30_000)); red('- name: "'.repeat(30_000)); red('&& A_KEY='.repeat(30_000));
+ok(Date.now() - tNest < 1000, `a parent key repeated, or a block of 30,000 children, is read in linear time (${Date.now() - tNest} ms)`);
 
 // Two real turns in one minute, one ask inside the other, the first past the
 // first read: both stay. Taken for two spellings of one turn, the first was lost.

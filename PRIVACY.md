@@ -44,17 +44,30 @@ All of it stays in `~/.claude/projects` on your computer:
   of your 3 most recent conversations. Older entries are replaced as you go,
   and the record is not part of the history below.
   - Common kinds of keys, tokens and passwords (API keys, access tokens,
-    passwords in web addresses, settings such as `password=`) are replaced
-    with `[redacted]` first. So are passwords and tokens Claude passes to a
-    command: after `--password`, `--token` or `--secret`, after `-p` in
-    `docker login` and the like, in `export`, `setx`,
-    `SetEnvironmentVariable` or `aws configure set` of a name that says key,
-    secret, token or password, in `htpasswd`, `gh secret set` and an npm
-    `_authToken`. A reference to one, such as `$API_TOKEN`, and a file's
+    passwords in web addresses, settings such as `password=`, and the
+    entries under a settings key such as `passwords:` or `secrets:`) are
+    replaced with `[redacted]` first. So are passwords and tokens Claude
+    passes to a command, in quotes or not: after `--password`, `--token` or
+    `--secret`, after `-p` in `docker login` and the like, in `export`, `setx`,
+    `SetEnvironmentVariable`, PowerShell's `$env:`, a `.env` line (and
+    cmd's `set`, a compose or Kubernetes env entry) or `aws configure set`
+    of a name that says key, secret, token or password,
+    in `htpasswd`, `gh secret set`, an npm `_authToken` and an Azure
+    `SharedAccessKey`. A reference to one, such as `$API_TOKEN`, and a file's
     path are kept. A number is kept only under a name that counts something,
     such as `TOKEN_LIMIT=4096`; after a password or token option, or under a
-    secret's name, it is replaced, since it can be a PIN. No tool recognizes
-    every secret.
+    secret's name, it is replaced, since it can be a PIN. A value in quotes
+    is replaced whole, blanks and all. Not found:
+    - a value with blanks and no quotes, past its first word (in
+      `password: p@ss w0rd` nothing is replaced, since `p@ss` is under 6
+      characters);
+    - a JSON object more than one level under a secret's key
+      (`"secrets": {"db": {"main": …}}`);
+    - a variable set mid-command whose name says no password or token,
+      such as `docker run -e SIGNING_KEY=…`.
+
+    No tool recognizes every secret, so put such text between `<private>`
+    tags.
   - Anything you write between `<private>` and `</private>` is left out, and
     so are Claude's reply to that message and the names of the files changed
     in that turn.
@@ -66,8 +79,12 @@ All of it stays in `~/.claude/projects` on your computer:
     conversations to take in.
   - An exchange in which Claude runs `forget` is saved as `[private]`, with
     no file names.
-  - Both tags work in any letter case, and in a message typed while Claude is
-    still working. A later reply that repeats something private is saved like
+  - Both tags work in any letter case, with invisible characters inside
+    them, in a message typed while Claude is still working, in your answer
+    to a question Claude asks you, and in what you type when you turn down
+    something Claude was about to do. A tag that only appears in a file
+    Claude reads, in a command's output or in Claude's own question counts
+    for nothing. A later reply that repeats something private is saved like
     any other reply.
   - The tags keep text out of project-memory's own files only. Claude still
     sees it, Claude Code keeps it in its own conversation files, and a note
@@ -104,11 +121,11 @@ All of it stays in `~/.claude/projects` on your computer:
     program, such as a virus scanner, has it open), nothing is saved or
     removed for that conversation, and it is tried again after the next
     reply. Each time, the next briefing says the store needs attention and
-    names the list, and `status` names it too (for `.memory-off`, in its
-    journal line), so a list that stays unreadable is reported, not
-    silently left to stop the saving. The warning goes at the next reply
-    that reads the list again; for `.memory-off`, at the next reply the
-    journal records. Finding a mark typed while the plugin was off,
+    names the list, and `status` names it too, so a list that stays
+    unreadable is reported, not silently left to stop the saving. The
+    warning goes at the next reply that reads the list again. Either list
+    unreadable after a reply keeps that reply out of the record of where you
+    left off too. Finding a mark typed while the plugin was off,
     it tags the conversation and removes its earlier entries, from the
     journal and from `handoff.md`, as it does for one typed while it is on.
     A conversation held with auto memory off while this version wasn't
@@ -128,11 +145,13 @@ All of it stays in `~/.claude/projects` on your computer:
   task, with no room to wait for the task's step to end, a note of what was in
   progress: your request, the start of Claude's last words, any background
   tasks still running, and the names of the files Claude had changed. It
-  lasts until Claude's next reply. None is made for a private conversation.
+  lasts until Claude's next reply. None is made for a private conversation,
+  or for one held with auto memory off, even after auto memory is back on.
 - When a conversation is about 85% full, project-memory asks Claude to write
   down the work in progress: in its notes, and in `handoff.md` outside the
   automatic record. Those lines are Claude's own writing, and stay until
-  Claude or you change them. Claude isn't asked in a private conversation.
+  Claude or you change them. Claude isn't asked in a private conversation,
+  or in one held with auto memory off.
 - A history of your notes, in a local git repository: after each reply that
   changed a note, its new version is kept. Once a day is over, that day's
   journal file is kept there too, and when a day's file is deleted later,
@@ -156,8 +175,10 @@ If auto memory is turned off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (set to
 `1`, `true`, `yes` or `on`), project-memory reads and saves nothing on its
 own, except the conversation's short tag in `~/.claude/projects/.memory-off`
 when it starts and after every reply, so the journal never takes that
-conversation in later. It stays out of the journal even if you go on with
-it after turning auto memory back on. A tag is kept while Claude Code keeps
+conversation in later. It stays out of the journal and out of the record
+of where you left off even if you go on with it after turning auto memory
+back on: its first reply with auto memory on removes what that record held
+of it from before, and saves nothing new. A tag is kept while Claude Code keeps
 that conversation (the newest 100 always, 10,000 at most). If that list
 can't be written after a reply of such a conversation, the next briefing
 with auto memory on says the store needs attention and names `.memory-off`,
@@ -165,6 +186,12 @@ until the handoff of a later reply in that project, with auto memory on,
 goes through. If it can't be written after any of that conversation's
 replies, the conversation has no tag, and the journal may take it in later.
 The memory skill still reads or changes your notes when you ask it to.
+
+That variable is the only switch project-memory follows. Turning auto
+memory off in Claude Code itself, with `/memory` or the `autoMemoryEnabled`
+setting, doesn't reach it, because it never reads Claude Code's settings:
+it goes on saving and briefing as above. To stop it, disable the plugin
+([Pausing or removing it](README.md#pausing-or-removing-it)).
 
 ## What it sends
 
@@ -184,8 +211,8 @@ shows in other conversations' briefings only as working, without its
 messages, even if removing it from `handoff.md` failed. Its exchanges are
 never listed at the start of a conversation, nor is an exchange you had
 Claude forget, nor any exchange of a conversation held with auto memory off
-(what you typed while it was off can reach `handoff.md` when you go on with
-it on). Claude reads the briefing and your notes like anything else in the
+(which `handoff.md` keeps out too, even when you go on with it with auto
+memory on). Claude reads the briefing and your notes like anything else in the
 conversation, so they go to Anthropic with it, as Claude Code's built-in
 memory does. Journal entries reach Anthropic only when Claude reads them in
 a conversation.
