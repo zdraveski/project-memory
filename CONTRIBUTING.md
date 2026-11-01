@@ -50,8 +50,8 @@ that fails stops at the first failed check, prints that check's message
 (what it checks, and often what it got), and exits non-zero.
 
 CI ([`test.yml`](.github/workflows/test.yml)) runs `node check.mjs`, all
-six suites and a minute of fuzz on every push to any branch and on every
-pull request, in seven jobs: Linux with Node 22, 24 and 26, and macOS and
+six suites and a minute of fuzz on every pull request and every push to
+`master`, in seven jobs: Linux with Node 22, 24 and 26, and macOS and
 Windows with Node 24 and 26. A pull request can't merge until every job
 passes. Each job's log on GitHub shows the same lines as a run here.
 
@@ -67,7 +67,7 @@ Beyond the suites:
   `mutate.mjs` run that exits non-zero. Then it lists changed code lines no mutant
   covers, and after a change to a hook's code it fuzzes for 20 seconds.
   Seconds for most files, a minute or two after a change to `memory.mjs` or
-  `store.mjs`. CI runs it on every push, where nothing has changed and it
+  `store.mjs`. CI runs it in every job, where nothing has changed and it
   takes a second. To run it before every commit of yours:
   `printf '#!/bin/sh\nexec node check.mjs\n' > .git/hooks/pre-commit`.
   TypeScript's checker (`tsc --checkJs`) was tried on the hooks: 49 reports
