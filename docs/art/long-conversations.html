@@ -3,58 +3,78 @@
 <title>Long conversations</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=block" rel="stylesheet">
 <link href="style.css" rel="stylesheet">
+<script src="icons.js"></script>
 <style>
-  .steps { margin-top: 30px; display: grid; gap: 16px; }
-  .step { padding: 22px 24px 24px; }
-  .top { display: flex; align-items: center; gap: 14px; }
-  .num { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
-    font: 800 23px/1 Inter, sans-serif; color: #04121f;
-    background: linear-gradient(160deg, #67e8f9, #3b82f6); box-shadow: 0 0 18px rgba(34,211,238,.6); }
-  .top b { font: 800 29px/1 Inter, sans-serif; letter-spacing: -.01em; }
-  .top span:last-child { margin-left: auto; font: 700 22px/1 var(--mono); color: #a5f3fc; }
-  .track { margin-top: 18px; position: relative; height: 16px; border-radius: 9px; background: rgba(20,30,80,.9);
-    box-shadow: inset 0 0 0 1px rgba(130,170,255,.3); }
-  .track b { position: absolute; inset: 3px auto 3px 3px; border-radius: 6px;
-    background: linear-gradient(90deg, #22d3ee, #3b82f6 70%, #8b5cf6); box-shadow: 0 0 14px rgba(56,189,248,.7); }
-  .track.full b { right: 3px; background: linear-gradient(90deg, #3b82f6, #8b5cf6 60%, #f472b6); box-shadow: 0 0 16px rgba(244,114,182,.7); }
-  .step p { margin: 16px 0 0; font-size: 25px; line-height: 1.35; color: var(--body); }
-  .hot { border-color: rgba(244,114,182,.5);
-    box-shadow: 0 0 0 1px rgba(244,114,182,.18), 0 0 34px rgba(244,114,182,.16), 0 22px 44px -18px rgba(0,0,0,.7); }
-  .hot .num { background: linear-gradient(160deg, #f9a8d4, #8b5cf6); box-shadow: 0 0 18px rgba(244,114,182,.6); }
-  .hot .top span:last-child { color: #f9a8d4; }
+  /* Before, during and after a conversation is shortened to a summary */
+  .steps { position: relative; display: grid; gap: 14px; }
+  .step { padding: .8em .9em .9em; display: grid; gap: .65em; align-content: start; }
+  .top { display: flex; align-items: center; gap: .55em; }
+  .top b { font-weight: 800; letter-spacing: -.01em; }
+  .at { margin-left: auto; font: 700 1em/1 var(--mono); color: var(--cyan-ink); }
+  .num { width: 1.9em; height: 1.9em; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 800; color: #04121f;
+    background: linear-gradient(160deg, #67e8f9, #3b82f6); box-shadow: 0 0 16px rgba(34, 211, 238, .6); }
+  .hot .num { background: linear-gradient(160deg, #f9a8d4, #8b5cf6); box-shadow: 0 0 16px rgba(244, 114, 182, .6); }
+  .hot .at { color: var(--pink-ink); }
+  .track { position: relative; height: .8em; border-radius: .45em; background: rgba(20, 30, 80, .9); box-shadow: inset 0 0 0 1px rgba(130, 170, 255, .3); }
+  .track b { position: absolute; top: 3px; bottom: 3px; left: 3px; width: var(--w); border-radius: .3em;
+    background: linear-gradient(90deg, #22d3ee, #3b82f6 70%, #8b5cf6); box-shadow: 0 0 12px rgba(56, 189, 248, .7); }
+  .hot .track b { background: linear-gradient(90deg, #3b82f6, #8b5cf6 60%, #f472b6); box-shadow: 0 0 14px rgba(244, 114, 182, .7); }
+  .say { color: var(--body); text-wrap: balance; }
+
+  .wide { padding: 24px 28px; }
+  .wide .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .wide .top { font-size: 20px; }
+  .wide .at { font-size: 15px; }
+  .wide .say { font-size: 17px; }
+  /* a line from step to step, across the gap */
+  .step + .step::before { content: ""; position: absolute; background: #60a5fa; box-shadow: 0 0 8px rgba(96, 165, 250, .8); }
+  .wide .step + .step::before { left: -15px; width: 14px; top: 33px; height: 2px; }
+
+  .narrow { padding: 22px; }
+  .narrow .steps { gap: 18px; }
+  .narrow .step { padding: .55em .7em .65em; gap: .45em; }
+  .narrow .top b { font-size: 1.15em; }
+  .narrow .step + .step::before { left: 42px; width: 3px; top: -19px; height: 18px; }
 </style>
 
-<div class="art phone">
-  <svg class="streaks" viewBox="0 0 600 760" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
-    <defs>
-      <linearGradient id="sk" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity="0"/><stop offset=".55" stop-color="#38bdf8" stop-opacity=".6"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient>
-      <filter id="bl" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
-    </defs>
-    <path d="M300 -20 C 420 70, 520 40, 620 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
-    <path d="M300 -20 C 420 70, 520 40, 620 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
-    <path d="M380 -20 C 480 100, 560 90, 620 30" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
-  </svg>
+<div class="art wide">
   <i class="stars"></i>
-  <i class="horizon"></i>
-
-  <div class="eyebrow">Long conversations</div>
-  <h1>Kept <span class="grad">on track.</span></h1>
-
   <div class="steps">
     <div class="glass step">
-      <div class="top"><span class="num">1</span><b>Before</b><span>85% full</span></div>
-      <div class="track"><b style="width:84%"></b></div>
-      <p>Claude saves its notes.</p>
+      <p class="top"><span class="num">1</span><b>Before</b><span class="at">85% full</span></p>
+      <div class="track"><b style="--w: calc(85% - 6px)"></b></div>
+      <p class="say">Claude saves its notes.</p>
     </div>
-    <div class="glass step hot">
-      <div class="top"><span class="num">2</span><b>During</b><span>100%</span></div>
-      <div class="track full"><b></b></div>
-      <p>The step in progress is written down.</p>
+    <div class="glass hot step">
+      <p class="top"><span class="num">2</span><b>During</b><span class="at">100%</span></p>
+      <div class="track"><b style="--w: calc(100% - 6px)"></b></div>
+      <p class="say">The step in progress is written down.</p>
     </div>
-    <div class="glass step lit">
-      <div class="top"><span class="num">3</span><b>After</b><span>summary</span></div>
-      <div class="track"><b style="width:22%"></b></div>
-      <p>Claude is told where it was.</p>
+    <div class="glass lit step">
+      <p class="top"><span class="num">3</span><b>After</b><span class="at">summary</span></p>
+      <div class="track"><b style="--w: 22%"></b></div>
+      <p class="say">Claude is told what you asked and what it last said.</p>
+    </div>
+  </div>
+</div>
+
+<div class="art narrow">
+  <i class="stars"></i>
+  <div class="steps">
+    <div class="glass step">
+      <p class="top"><span class="num">1</span><b>Before</b><span class="at">85% full</span></p>
+      <div class="track"><b style="--w: calc(85% - 6px)"></b></div>
+      <p class="say">Claude saves its notes.</p>
+    </div>
+    <div class="glass hot step">
+      <p class="top"><span class="num">2</span><b>During</b><span class="at">100%</span></p>
+      <div class="track"><b style="--w: calc(100% - 6px)"></b></div>
+      <p class="say">The step in progress is written down.</p>
+    </div>
+    <div class="glass lit step">
+      <p class="top"><span class="num">3</span><b>After</b><span class="at">summary</span></p>
+      <div class="track"><b style="--w: 22%"></b></div>
+      <p class="say">Claude is told what you asked and what it last said.</p>
     </div>
   </div>
 </div>

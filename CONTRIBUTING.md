@@ -267,7 +267,8 @@ The maintainer's steps:
    fix what it confirms.
 4. Merge it into `master` through a pull request, start the `mutate`
    workflow by hand with `auto` on (every hand-written and automatic
-   mutant), and wait for it and CI to pass on every job. A survivor must be
+   mutant) and the `fuzz` workflow (ten minutes on 17 machines), and wait
+   for them and CI to pass on every job. A survivor must be
    killed by a test, or listed in `automut-ignore.txt` with its reason,
    before a release.
 5. Check **Security** on GitHub: no high or critical code scanning alert
