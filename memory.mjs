@@ -587,9 +587,10 @@ const stopRuns = () => (read(join(projectsRoot(), '.stop-ran')) ?? '').split('\n
 // PreCompact run), nor the reply to a block (stop_hook_active): both are a
 // second run seconds later, and both read as hooks wired twice. Nor two
 // replies, by their fingerprints (`m`): a task's end answered in a line came
-// under 2 s after the reply before it (audit H-F10). A run logged before 1.2.5 has none.
+// under 2 s after the reply before it (audit H-F10). A run logged before 1.2.5 has none,
+// so a run without one matches any: an old copy wired by hand next to the plugin.
 const TWICE = 2000;
-const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h && r.m === p.m &&
+const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h && (!r.m || !p.m || r.m === p.m) &&
   Math.abs(Date.parse(r.at) - Date.parse(p.at)) < TWICE;
 
 export function doctor() {
@@ -682,7 +683,7 @@ export function main(given) {
   if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); return 1; }
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
-  const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--')));
+  const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--')));
   if (bare) { console.log(`${bare} needs a value after it`); return 1; }
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
