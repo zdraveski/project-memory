@@ -1877,6 +1877,8 @@ if (!quick) {
     r = await run(args);
     ok(r.status === 1 && r.stdout === '--key needs a value after it\n', `${args.join(' ')} is refused (got ${r.stdout})`);
   }
+  r = await run(['search', 'zebra', '--store', dir, '--session']);
+  ok(r.status === 0, `a last --session with nothing after it is no session, as when the skill's session id comes through empty (got ${r.status} ${r.stdout})`);
   r = await run(['forget', '--conversation', '--yes', '--store', dir]);
   ok(r.status === 1 && r.stdout === '--conversation needs a value after it\n', `so is --conversation with an option for its value (got ${r.stdout})`);
   // C-8. A name as the user's disk reads it: `history Pricing`, `history PRICING.MD` and a café typed composed, of a file named
