@@ -319,13 +319,13 @@ rmSync(nudgeDir, { force: true });
 // A tool result of launches with no output file each: every one read on to the
 // end, 9 s over 520 KB on every Stop.
 if (!quick) {
-  // The gate on the transcript before the 40,000 launches is the baseline, a machine's own cost of starting Node and the gate: the old fixed
-  // 2 s stays as the floor, and 100 times the baseline lifts it on a slow runner (audit #18).
+  // The gate on the transcript before the 40,000 launches is the baseline, a machine's own cost of starting Node and the gate (audit #18):
+  // only the time past it counts. 100 times the baseline let a gate that read every launch to the end pass.
   const gate = () => { const t = performance.now(); execFileSync(process.execPath, [GATE, '--state', transcript], { env, stdio: 'ignore' }); return performance.now() - t; };
   const base = gate();
   write(user('scan the logs'), result('agentId: abc\n'.repeat(40_000)), asst('', 300_000, 'tool_use'));
   const took = gate();
-  ok(took < Math.max(2000, 100 * base), `launches with no output file are read once each (${took.toFixed(0)} ms, ${base.toFixed(0)} ms for the gate alone)`);
+  ok(took - base < 2000, `launches with no output file are read once each (${took.toFixed(0)} ms, ${base.toFixed(0)} ms for the gate alone)`);
 }
 
 // Round 3 (2026-10-27).
