@@ -194,8 +194,8 @@ export function front(text) {
   // The frontmatter only: a note that quotes `tier: archive` in its body (one
   // about the format) is not archived by it. Unclosed, it is all frontmatter.
   const t = text.replace(/^\uFEFF/, '');
-  const end = t.startsWith('---') ? t.indexOf('\n---', 3) : 0;
-  const head = end === -1 ? t : t.slice(0, end);
+  const end = t.indexOf('\n---', 3);
+  const head = !/^---[ \t]*\r?\n/.test(t) ? '' : end === -1 ? t : t.slice(0, end);
   // A value stays on its line: an emptied `superseded-by:` took the next line
   // as its value. `.` stops before a \r, for a file saved CRLF, and get()
   // trims: a lazy value before `[ \t\r]*$` was quadratic, and a description of

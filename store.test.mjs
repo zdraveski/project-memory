@@ -581,6 +581,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   // The frontmatter ends at its closing line, empty or not, and an unclosed one is all there is.
   ok(front('---\n---\ntier: archive\n').tier === '', 'an empty frontmatter ends at once: the body is no frontmatter');
   ok(front('---\nname: abc').name === 'abc', 'an unclosed frontmatter is read to its last character');
+  ok(front('----\nsome text\ntier: archive\ntype: feedback\n').tier === '' && front('----\ntype: feedback\n').type === '', 'a note that opens with ---- has no frontmatter: its body cannot archive it');
   ok(pointerLine('x.md', 'hello') === '- [x](x.md) — hello', 'a pointer line keeps the description from its first character');
 }
 

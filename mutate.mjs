@@ -16,6 +16,7 @@ const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'journal.mjs', 'co
 export const suites = {
   'store.mjs': ['store.test.mjs', {
     'a repository named past 200 characters followed under its long name': ['slugOf(repo).length > CC_NAME ? dirname(t) : ', ''],
+    'a ---- line opens frontmatter': ["const head = !/^---[ \\t]*\\r?\\n/.test(t) ?", "const head = !t.startsWith('---') ?"],
     'a repository named exactly 200 characters not followed': ['slugOf(repo).length > CC_NAME ?', 'slugOf(repo).length >= CC_NAME ?'],
     'a refused write names its temp file in the reason': [".split('\\n')[0].replace(/\\.tmp\\d+/g, '');", ".split('\\n')[0];"],
     'a CRLF block read to its first line': ['\\\\S.*\\\\r?(?:\\\\n|$))+)`', '\\\\S.*(?:\\\\n|$))+)`'],
@@ -47,7 +48,7 @@ export const suites = {
     'an env switch on only as 1': ['/^(1|true|yes|on)$/i', '/^1$/'],
     "a quoted tier ignored": ["get(/^[ \\t]*tier:[ \\t]*[\"']?(\\w+)/m).toLowerCase()", "get(/^[ \\t]*tier:[ \\t]*(\\w+)/m)"],
     "a folded description read as >-": ["/^[>|][-+]?$/.test(desc) ? block('description').join(' ') : scalar(desc)", "scalar(desc)"],
-    "the body read as frontmatter": ["const head = end === -1 ? t : t.slice(0, end);", "const head = t;"],
+    "the body read as frontmatter": ["' : end === -1 ? t : t.slice(0, end);", "' : t;"],
     "an emptied value takes the next line": ["superseded-by:[ \\t]*(.*)$", "superseded-by:\\s*(.*)$"],
     "a replaced memory stays hot": ["tier: superseded ? 'archive' : get(", "tier: get("],
     'transcript ignored': ['if (t && inProjects(t)) {', 'if (false && inProjects(t)) {'],
