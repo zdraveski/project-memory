@@ -1597,6 +1597,13 @@ for (const [s, gone] of [['API key: ' + k('abcd1234', 'efgh5678'), 'abcd1234'], 
   ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a key named with a blank is redacted (got ${red(s)})`);
 }
 ok(['the API key rotation happens monthly', 'access key to the building', 'a secret key is kept safe', 'cookie recipe', 'the sig of the mail'].every((s) => red(s) === s), 'prose about keys is kept');
+// 1.2.6 audit #4: a session cookie logs anyone in: a Cookie or Set-Cookie header (Chrome's "Copy as cURL" too), and curl -b / --cookie.
+const sess = k('eyJ1c2Vy', 'IjoxfQ9zT');
+for (const s of [`curl 'https://x.io/a' -H 'cookie: _ga=GA1.2.3; session=${sess}' -H 'x-csrf-token: abc'`, `Cookie: sessionid=${sess}; csrftoken=zzz`, `Set-Cookie: sid=${sess}; Path=/; HttpOnly`,
+  `{"Cookie": "sid=${sess}"}`, `curl -b "connect.sid=s%3A${sess}; other=1" https://x.io`, `curl --cookie sid=${sess} https://x.io`, `curl https://x.io -b 'sid=${sess}'`]) {
+  ok(!red(s).includes(sess) && red(s).includes('[redacted]'), `a session cookie is redacted (got ${red(s)})`);
+}
+ok(['cookie recipe: flour, sugar', 'the cookie: they expire in a week', 'git checkout -b feature/x', 'curl -b cookies.txt https://x.io', 'Cookie policy: see the page', 'set-cookie headers matter'].every((s) => red(s) === s), 'prose and a cookie jar file are kept');
 // Audit #7: a Bearer/Basic/Token value of 32 or more characters is cut with no digit in it too (1 in 400 random ones has none), and
 // a hidden character between the word and the value does not hide it; 31 characters of letters stay prose.
 {

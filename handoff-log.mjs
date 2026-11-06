@@ -359,6 +359,10 @@ const SECRETS = [
   [/\bpypi-AgE[A-Za-z0-9_-]{20,}|\bwhsec_[A-Za-z0-9+/=]{20,}|\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|\bGOCSPX-[A-Za-z0-9_-]{20,}|\bya29\.[A-Za-z0-9_-]{20,}|\bgsk_[A-Za-z0-9]{20,}|\bxai-[A-Za-z0-9]{20,}|\bshp(?:at|ca|pa|ss)_[A-Fa-f0-9]{32}|\bdop_v1_[a-f0-9]{64}|\bntn_[A-Za-z0-9]{20,}|\bATATT[A-Za-z0-9_=-]{20,}|\bhvs\.[A-Za-z0-9_-]{20,}|\bdckr_pat_[A-Za-z0-9_-]{20,}|\bpplx-[A-Za-z0-9]{40,}|LS0tLS1CRUdJTi[A-Za-z0-9+/=]{20,}/g, '[redacted]'],
   [/(hooks\.slack\.com\/services\/)[A-Za-z0-9/]+/g, '$1[redacted]'],
   [/(discord(?:app)?\.com\/api\/webhooks\/\d{1,25}\/)[\w-]+/g, '$1[redacted]'],
+  // A session cookie logs anyone in: a Cookie / Set-Cookie header (name=value inside it), and curl's -b / --cookie value (not a jar file).
+  // The curl rule first: the header rule reads to the next quote, which may be the one that opens a -b value.
+  [/(\bcurl\b[^\n|;&]{0,300}?\s(?:-b|--cookie)[ =]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (v.includes('=') ? `${pre}[redacted]` : m)],
+  [/((?:^|[\s'"])(?:set-)?cookie["']?[ \t]*:[ \t]*["']?)(?=[^'"\n=]{1,100}=)[^'"\n]{1,4000}/gim, '$1[redacted]'],
   // The password in a URL: postgres://user:it@host, redis://:it@host (no
   // user), one with an @ in it (to the last one). Not a query: a port
   // before `?user=me@x` was cut as a password.
