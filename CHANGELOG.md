@@ -47,6 +47,7 @@ review of its four riskiest files, and every confirmed finding fixed.
 - Words with combining marks (Hindi, or an accent typed as a separate
   mark) were split apart and never found. They are whole words now, and
   `café` typed either way finds the other.
+  The line of the reply that holds it is shown too.
 
 **Checked**
 - The memory skill receives the session id (`${CLAUDE_SESSION_ID}`), so
