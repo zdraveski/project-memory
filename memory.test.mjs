@@ -180,6 +180,21 @@ r = await cli('restore', 'deploy-notes', '--force', '--rev', 'HEAD~1..HEAD');
 ok(r.status === 1 && /--rev takes a commit/.test(r.stdout) && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes('deploy deploy'), 'a range is no commit: refused, never an empty note');
 r = await cli('restore', 'deploy-notes', '--force', '--rev', 'HEAD~999');
 ok(r.status === 1 && /at HEAD~999: /.test(r.stdout), `an unknown commit is named as given (got ${r.stdout.trim()})`);
+// A snapshot git has but cannot read (a damaged object), at the commit that added it: the error is that commit's,
+// in git's words. The commit before has no such note, and its "does not exist" took the error's place.
+{
+  const g = (a, input) => spawnSync('git', ['-C', root, ...a], { input, encoding: 'utf8' });
+  const blob = g(['hash-object', '-w', '--stdin'], 'a note whose snapshot is damaged\n').stdout.trim(), obj = join(root, '.git', 'objects', blob.slice(0, 2), blob.slice(2));
+  const msg = 'memory: rotten\n', head = g(['symbolic-ref', 'HEAD']).stdout.trim();
+  g(['fast-import', '--quiet'], `commit ${head}\ncommitter memory <memory@localhost> 1700000000 +0000\ndata ${msg.length}\n${msg}from ${g(['rev-parse', 'HEAD']).stdout.trim()}\nM 100644 ${blob} C--mem-cli/memory/rotten-note.md\n\n`);
+  const added = g(['rev-parse', '--short', 'HEAD']).stdout.trim(), good = readFileSync(obj);
+  chmodSync(obj, 0o644);
+  writeFileSync(obj, Buffer.concat([good.subarray(0, -4), Buffer.from(good.subarray(-4).map((x) => x ^ 0xff))]));  // its zlib checksum broken
+  r = await cli('restore', 'rotten-note', '--force', '--rev', added);
+  writeFileSync(obj, good);
+  // Any reason but the missing one: git's words for the damage differ between versions.
+  ok(r.status === 1 && r.stdout.includes(`at ${added}: `) && !/lists the ones that hold it/.test(r.stdout), `a damaged snapshot fails with its own commit and git's reason (got ${r.stdout.trim()})`);
+}
 // The command is the first word that is no option: an option before it worked.
 r = await run(['--store', dir, 'search', 'deploy']);
 ok(r.status === 0 && /match\(es\) in/.test(r.stdout), `an option before the command still runs it (got ${r.stdout.slice(0, 200)})`);
