@@ -1603,7 +1603,7 @@ for (const s of [`curl 'https://x.io/a' -H 'cookie: _ga=GA1.2.3; session=${sess}
   `{"Cookie": "sid=${sess}"}`, `curl -b "connect.sid=s%3A${sess}; other=1" https://x.io`, `curl --cookie sid=${sess} https://x.io`, `curl https://x.io -b 'sid=${sess}'`]) {
   ok(!red(s).includes(sess) && red(s).includes('[redacted]'), `a session cookie is redacted (got ${red(s)})`);
 }
-ok(['cookie recipe: flour, sugar', 'the cookie: they expire in a week', 'git checkout -b feature/x', 'curl -b cookies.txt https://x.io', 'Cookie policy: see the page', 'set-cookie headers matter'].every((s) => red(s) === s), 'prose and a cookie jar file are kept');
+ok(['cookie recipe: flour, sugar', 'the cookie: they expire in a week', 'git checkout -b feature/x', 'curl -b cookies.txt https://x.io', 'Cookie policy: see the page', 'set-cookie headers matter', '| cookie: | a=b | rest |'].every((s) => red(s) === s), 'prose and a cookie jar file are kept');
 // 1.2.6 audit #7: more provider keys (each alone in prose) and a signed URL's signature.
 {
   const H16 = '0123456789abcdef'.repeat(2), H20 = '0123456789abcdef'.repeat(2) + '01234567';
@@ -1617,6 +1617,14 @@ ok(['cookie recipe: flour, sugar', 'the cookie: they expire in a week', 'git che
     ok(red(u).includes('=[redacted]') && !/AbCdEfGh|0123456789abcdef0123/.test(red(u)), `a signed URL's signature is redacted (got ${red(u)})`);
   }
   ok(['the sig of the mail', 'key-value pairs and key-frames', 'set sig=short here', 'SK1 and sk.example', 'a?sig=abc&x=1', 'ordinary 123456789:ABC prose', 'dapi is the API', 'r8_ is a prefix'].every((s) => red(s) === s), 'prose that only looks like these keys is kept');
+}
+// 1.2.6 release review: a cookie header redacts its name=value pairs and stops there; prose after "cookie:" is kept.
+ok(red('The fix for the session cookie: when maxAge=0 the browser deletes it. Then I updated the tests') === 'The fix for the session cookie: when maxAge=0 the browser deletes it. Then I updated the tests', `prose after "cookie:" with an = in it is kept (got ${red('The fix for the session cookie: when maxAge=0 the browser deletes it.')})`);
+{
+  const c = red('Cookie: a=' + k('abcdef01', '2345') + '; b=' + k('fedcba98', '7654') + ' then the next words');
+  ok(!c.includes('abcdef01') && !c.includes('fedcba98') && c.endsWith(' then the next words'), `every pair of a cookie header goes, the words after it stay (got ${c})`);
+  const q = red('redis-cli -h db -a "my ' + k('hunter', '2abc') + '" ping');
+  ok(!q.includes('hunter') && q.endsWith('" ping'), `a quoted redis-cli password goes whole (got ${q})`);
 }
 // Review: an Authorization header with no scheme word, redis-cli -a, a cookie header in any case.
 for (const [s, gone] of [['authorization: ' + k('dXNlcjpw', 'YXNzd29yZDEyMzQ1Njc4'), 'dXNlcjpw'], ['"Authorization": "' + k('dXNlcjpw', 'YXNzd29yZDEyMzQ1Njc4') + '"', 'dXNlcjpw'], ['redis-cli -a ' + k('hunter', '2abc'), 'hunter'],
