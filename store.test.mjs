@@ -438,6 +438,17 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   }
 }
 
+// The caller's repo-locating git variables never reach a snapshot's git (a pre-commit hook running `claude -p` sets them); the rest stay.
+{
+  const { gitArgs } = await import('./store.mjs');
+  const names = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_CONFIG_PARAMETERS'];
+  for (const k of names) process.env[k] = '/elsewhere';
+  process.env.GIT_SSH_COMMAND = 'ssh';
+  gitArgs('status');
+  ok(names.every((k) => !(k in process.env)) && process.env.GIT_SSH_COMMAND === 'ssh' && Object.keys(process.env).some((k) => /^path$/i.test(k)), 'a snapshot git runs without the caller\'s repo-locating variables, with the rest of the environment');
+  delete process.env.GIT_SSH_COMMAND;
+}
+
 // Round 6. Front matter as YAML reads it: null is no replacement, quotes
 // only around a whole value, '' in single quotes, a ` #` comment cut.
 {

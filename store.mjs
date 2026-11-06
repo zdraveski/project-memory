@@ -246,8 +246,12 @@ export function front(text) {
 // the whole machine, and a CRLF note came back from a restore with LF ones.
 // Names as the disk spells them: macOS git composes them (NFC) by default, so a café named decomposed was a snapshot's
 // composed one and `history` of it answered with a path the disk never had (audit C-8).
-export const gitArgs = (...a) => ['-C', projectsRoot(), '-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false', '-c', 'core.precomposeunicode=false',
-  '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`, ...a];
+// Every git spawn takes its args here, so the caller's repo-locating variables (git's own `rev-parse --local-env-vars` list) go here too, by name:
+// they beat -C (a Stop hook under a pre-commit hook committed into the user's repo). PATH, HOME, GIT_EXEC_PATH and the like stay.
+const LOCAL_GIT_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_PREFIX',
+  'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_SHALLOW_FILE', 'GIT_NO_REPLACE_OBJECTS', 'GIT_REPLACE_REF_BASE', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT'];
+export const gitArgs = (...a) => (LOCAL_GIT_ENV.forEach((k) => delete process.env[k]), ['-C', projectsRoot(),'-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false', '-c', 'core.precomposeunicode=false',
+  '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`, ...a]);
 
 // A failure's reason, as stored for status and the briefing: the message's first line, with a refused write's `<path>.tmp<pid>` cut from
 // it (status printed it as a leftover file).

@@ -374,6 +374,20 @@ ok(sh().failures === 0 && sh().lastOk, 'and a good one resets the count');
   try { r = await plain(); } finally { rmSync(join(home, '.gitconfig'), { force: true }); }
   ok(sh().failures === 0 && tracked().includes('proj-one/memory/signed.md'), `a global hooks path and commit signing do not reach the snapshot (got ${r.stdout.trim()})`);
 }
+// git's own repo-locating variables (set in a pre-commit hook that runs `claude -p`) are not the snapshot's: with GIT_DIR the Stop
+// hook committed into the user's repo, with GIT_INDEX_FILE it overwrote that repo's index (audit 1.2.6).
+{
+  const user = tempDir('memtier-user-'), ug = (...a) => execFileSync('git', ['-C', user, ...a], { encoding: 'utf8' });
+  ug('init', '-q'); writeFileSync(join(user, 'f.txt'), 'mine\n'); ug('add', 'f.txt'); ug('-c', 'user.name=u', '-c', 'user.email=u@u', 'commit', '-qm', 'mine');
+  const userState = () => `${ug('rev-list', '--all', '--count')}${ug('status', '--porcelain')}${readFileSync(join(user, '.git', 'index')).toString('hex')}`;
+  const before = userState();
+  for (const [k, v] of [['GIT_DIR', join(user, '.git')], ['GIT_INDEX_FILE', join(user, '.git', 'index')]]) {
+    note('proj-one', `env-${k}`);
+    process.env[k] = v;
+    try { r = await plain(); } finally { delete process.env[k]; }
+    ok(tracked().includes(`proj-one/memory/env-${k}.md`) && userState() === before, `${k} set: the snapshot lands in the store's repo, the user's repo is untouched (got ${r.stdout.trim()})`);
+  }
+}
 // The handoff is not snapshotted, and one an older version committed leaves
 // the index when the new .gitignore is written.
 writeFileSync(join(root, 'proj-one', 'memory', 'handoff.md'), 'the last exchanges\n');

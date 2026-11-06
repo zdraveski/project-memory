@@ -32,6 +32,7 @@ export const suites = {
     "a plain description cut at #": ["(cut ? v.replace(", "(true ? v.replace("],
     "a lone opening quote kept": [".replace(/^([\"'])(?![\\s\\S]*\\1)/, '')", ""],
     "a quote stripped from one end only": ["if ((m = v.match(/^\"((?:[^\"\\\\]|\\\\.)*)\"(?:[ \\t]+#.*)?$/))) return m[1].replace(/\\\\([\"\\\\])/g, '$1');", "if ((m = v.match(/^\"?(.*?)\"?$/))) return m[1];"],
+    "a caller's GIT_DIR reaches the snapshot's git": ["(LOCAL_GIT_ENV.forEach((k) => delete process.env[k]), ['-C'", "(['-C'"],
     "snapshots convert line endings": ["'-c', 'core.autocrlf=false', ", ""],
     "a relative path read against the hook's folder": ["    if (!isAbsolute(dir)) return null;\n", ""],
     "a worktree through a junction is a stranger": ["!same(real(resolve(gd, back)), real(join(d, '.git')))", "!same(resolve(gd, back), join(d, '.git'))"],
