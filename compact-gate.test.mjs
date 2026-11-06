@@ -84,6 +84,14 @@ ok(/edited this turn:\*\* a\.py/.test(doc) && !/C:\\repo/.test(doc), 'files edit
 ok(/last said:\*\* running the suites/.test(doc), 'the last words said are kept');
 ok(doc.indexOf('cut mid-turn') < doc.indexOf('<!-- auto:end -->'), 'the note sits inside the auto section, so the next Stop drops it');
 
+// An API-error or interrupt entry (model <synthetic>, usage all zeros) is no size: the turn's real one stays, and the nudge still fires.
+const synth = rec('assistant', [{ type: 'text', text: 'API Error' }], { message: { model: '<synthetic>', stop_reason: 'stop_sequence', usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 } } });
+write(user('q'), asst('a', T + 20_000, 'tool_use'), synth);
+const synthState = JSON.parse(execFileSync(process.execPath, [GATE, '--state', transcript], { env, timeout: 30_000 }).toString());
+ok(synthState.ctx === T + 20_000 && synthState.midTurn === true, `a <synthetic> entry keeps the previous size and turn state (got ${synthState.ctx}, ${synthState.midTurn})`);
+write(user('q'), asst('a', T + 20_000, 'end_turn'), synth);
+ok(!!stop('synth')?.hookSpecificOutput?.additionalContext, 'the nudge still fires after a <synthetic> entry');
+
 // 4. The next finished turn rebuilds the section and the note is gone.
 write(user('build it'), asst('all green', 200_000, 'end_turn'), user('next thing'), asst('next answer', 210_000, 'end_turn'));
 execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd, transcript_path: transcript }), env });

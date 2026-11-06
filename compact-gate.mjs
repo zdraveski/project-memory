@@ -153,7 +153,8 @@ function walk(raw) {
       for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);
     } else if (r.type === 'assistant') {
       if (t) s.said = t;
-      if (m?.usage) {
+      // Not a <synthetic> entry (Claude Code's API-error and interrupt notes, usage all zeros): it is no size, and read as one it sent the nudge back to 0.
+      if (m?.usage && m.model !== '<synthetic>') {
         const u = m.usage;
         s.ctx = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
         s.midTurn = m.stop_reason !== 'end_turn';

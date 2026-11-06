@@ -119,6 +119,7 @@ export const suites = {
     "a private conversation nudged": ["  if (full.hidden || secret(payload, full)) return null;\n", ""],
     "a private conversation gets a recovery note": ["if (!s.midTurn || secret(input, s)) return '';", "if (!s.midTurn) return '';"],
     "the nudge file named by the full id": ["const id = tag(String(", "const id = (String("],
+    "a synthetic error entry read as the size": ["if (m?.usage && m.model !== '<synthetic>') {", "if (m?.usage) {"],
     "a 200k window read wrong": ["(m[2] ? (m[2].toLowerCase() === 'k' ? 1e3 : 1e6) : 1)", "1"],
     "the model window always 1M": ["tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) || ", ""],
     "the compaction window past the model's": ["export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW, MODEL_WINDOW);", "export const WINDOW = tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW;"],
