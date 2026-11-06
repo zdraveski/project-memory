@@ -198,13 +198,16 @@
   (its reply came while another window held the project's memory folder,
   and is saved at the next reply). It used to say nothing matched, and the
   next reply saved the exchange. It's listed as not in the journal yet, as
-  with `--key`.
+  with `--key`. It leaves out conversations marked `<private-session>` or
+  held with auto memory off, and reads an exchange whole even when it sits
+  across one of the 64 MB parts a long conversation is read in.
 - `forget --key` of an entry whose day file can't be read said "removed".
   While a day file can't be read, such a key is named as in no day that
   could be read, nothing is removed for it, and the command fails.
 - Running `forget --key ... --yes` again, after a first run couldn't update
   `handoff.md`, said "already forgotten" and left the exchange there for the
-  next conversation's start. It now takes it out of `handoff.md`.
+  next conversation's start. It now takes it out of `handoff.md`, and says
+  so.
 - After removing entries, `forget` says that Claude Code's own conversation
   files still hold them: it changes only project-memory's files.
 
@@ -216,7 +219,9 @@
 - `history`, `restore` and `promote` find a note in another letter case on
   Windows and macOS (`history Pricing`, `PRICING.MD`), and in either Unicode
   form everywhere (`café` typed one way, the file named the other), deleted
-  notes too. When two names read alike, neither is taken.
+  notes too. When two names read alike, neither is taken. The letter case
+  is ignored only where the folder itself ignores it: a case-sensitive
+  folder (possible on macOS and Windows) gets the exact name.
 - `history` and `restore` say plainly when there are no snapshots yet, when
   Git isn't installed, or when no snapshot holds a note, instead of git's own
   error. Without Git, `restore` no longer offers to replace a note "with the
