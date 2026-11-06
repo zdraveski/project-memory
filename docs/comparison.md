@@ -21,7 +21,7 @@ so check their pages before you choose.
 | Main job | Looking after Claude Code's own memory | Recording and summarising sessions | Memory in the cloud | Memory in the cloud | A knowledge base of notes | Saving context window space |
 | Where your memories live | Claude Code's own notebook, on your computer | Its own database, on your computer | Mem0's servers | Supermemory's servers | Text files on your computer, or a paid cloud | A database on your computer, cleared after 14 days |
 | Account or API key | No | Optional | Required | Required | No, unless you use the paid cloud | No |
-| Extra software | Node.js and Git | Node.js, Bun, uv and a background service | Python and Git | Node.js | Python | Node.js |
+| Extra software | Node.js (Git optional, for snapshots) | Node.js, Bun, uv and a background service | Python and Git | Node.js | Python | Node.js |
 | Uses an AI model to write memories | No | Yes: your Claude plan, your own key, or its paid service | Yes, on Mem0's side | Yes, on Supermemory's side | No | No |
 | How memories are made | Claude writes notes, and every exchange is saved to a journal after every reply | Automatically, from everything Claude does | Automatically, from your conversations | Automatically, from your conversations | Claude writes notes when asked | Automatically, from what happens in a session |
 | Search | By words | By words and by meaning | By meaning | By meaning | By words and by meaning, plus links between notes | By words |

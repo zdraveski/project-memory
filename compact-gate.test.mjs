@@ -84,6 +84,14 @@ ok(/edited this turn:\*\* a\.py/.test(doc) && !/C:\\repo/.test(doc), 'files edit
 ok(/last said:\*\* running the suites/.test(doc), 'the last words said are kept');
 ok(doc.indexOf('cut mid-turn') < doc.indexOf('<!-- auto:end -->'), 'the note sits inside the auto section, so the next Stop drops it');
 
+// An API-error or interrupt entry (model <synthetic>, usage all zeros) is no size: the turn's real one stays, and the nudge still fires.
+const synth = rec('assistant', [{ type: 'text', text: 'API Error' }], { message: { model: '<synthetic>', stop_reason: 'stop_sequence', usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 } } });
+write(user('q'), asst('a', T + 20_000, 'tool_use'), synth);
+const synthState = JSON.parse(execFileSync(process.execPath, [GATE, '--state', transcript], { env, timeout: 30_000 }).toString());
+ok(synthState.ctx === T + 20_000 && synthState.midTurn === true, `a <synthetic> entry keeps the previous size and turn state (got ${synthState.ctx}, ${synthState.midTurn})`);
+write(user('q'), asst('a', T + 20_000, 'end_turn'), synth);
+ok(!!stop('synth')?.hookSpecificOutput?.additionalContext, 'the nudge still fires after a <synthetic> entry');
+
 // 4. The next finished turn rebuilds the section and the note is gone.
 write(user('build it'), asst('all green', 200_000, 'end_turn'), user('next thing'), asst('next answer', 210_000, 'end_turn'));
 execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd, transcript_path: transcript }), env });
@@ -311,10 +319,13 @@ rmSync(nudgeDir, { force: true });
 // A tool result of launches with no output file each: every one read on to the
 // end, 9 s over 520 KB on every Stop.
 if (!quick) {
+  // The gate on the transcript before the 40,000 launches is the baseline, a machine's own cost of starting Node and the gate (audit #18):
+  // only the time past it counts. 100 times the baseline let a gate that read every launch to the end pass.
+  const gate = () => { const t = performance.now(); execFileSync(process.execPath, [GATE, '--state', transcript], { env, stdio: 'ignore' }); return performance.now() - t; };
+  const base = gate();
   write(user('scan the logs'), result('agentId: abc\n'.repeat(40_000)), asst('', 300_000, 'tool_use'));
-  const tLaunch = Date.now();
-  execFileSync(process.execPath, [GATE, '--state', transcript], { env, stdio: 'ignore' });
-  ok(Date.now() - tLaunch < 2000, `launches with no output file are read once each (${Date.now() - tLaunch} ms)`);
+  const took = gate();
+  ok(took - base < 2000, `launches with no output file are read once each (${took.toFixed(0)} ms, ${base.toFixed(0)} ms for the gate alone)`);
 }
 
 // Round 3 (2026-10-27).
@@ -423,10 +434,19 @@ const windowWith = (vars) => {
 };
 const w1 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200k' });
 ok(w1.WINDOW === 200_000 && w1.MODEL_WINDOW === 1_000_000, `a 200k window is read as 200,000 (got ${JSON.stringify(w1)})`);
+// The 60k of room holds in any window: 0.85 of 200k left 31k, under a p75 turn (46k).
+ok(w1.TRIGGER * w1.WINDOW <= 0.959 * w1.WINDOW - 60_000 + 1e-6 && w1.TRIGGER > 0.6, `a 200k window keeps 60k of room before the compaction (got ${JSON.stringify(w1)})`);
+ok(windowWith({}).TRIGGER === 0.85, 'a 1M window keeps the 0.85 trigger');
 const w2 = windowWith({ CLAUDE_CODE_MAX_CONTEXT_TOKENS: '400000', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '800k' });
 ok(w2.MODEL_WINDOW === 400_000 && w2.WINDOW === 400_000, `the model's window from CLAUDE_CODE_MAX_CONTEXT_TOKENS, and no compaction window past it (got ${JSON.stringify(w2)})`);
 const w3 = windowWith({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50' });
 ok(w3.MODEL_WINDOW === 200_000 && w3.TRIGGER < 0.5, `200K held, and an earlier compaction moves the nudge earlier (got ${JSON.stringify(w3)})`);
+// Compacting at 50% of 200k (~100k), the room is counted from there: half of it, since 60k would leave 40k for the conversation.
+ok(Math.abs(w3.TRIGGER - 0.959 * 50 / 96 / 2) < 1e-6, `an earlier compaction keeps its room too (got ${JSON.stringify(w3)})`);
+const w4 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '50k' });
+ok(Math.abs(w4.TRIGGER - 0.959 / 2) < 1e-6, `a window under 120k nudges at half the compaction point, never below 0 (got ${JSON.stringify(w4)})`);
+const w5 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400k', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '80' });
+ok(Math.abs(w5.TRIGGER * 400_000 - (0.959 * 80 / 96 * 400_000 - 60_000)) < 1, `an earlier compaction in a mid-size window keeps 60k of room (got ${JSON.stringify(w5)})`);
 // Under a 400K model window, mid-turn at 390k is not deferred: past it the API refuses the call.
 process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '400000';
 let g4;
@@ -506,6 +526,19 @@ write(user('build it'), asst('running', 965_000, 'tool_use'));
 const gw = said();
 ok(/handoff and in-flight note written/.test(gw.stderr) && readFileSync(join(dir, 'handoff.md'), 'utf8').startsWith('---\nname: handoff'), `the note is written into the file whole, and reported (got ${gw.stderr})`);
 
+// The handoff changed while the note was being written (another hook's write lands first): the gate says that, not "no markers".
+{
+  const pre = join(tempDir('cg-conflict-'), 'conflict.cjs');
+  writeFileSync(pre, `const fs = require('node:fs'), write = fs.writeFileSync;
+fs.writeFileSync = (p, d, ...a) => { if (/handoff\\.md\\.tmp\\d+$/.test(String(p)) && String(d).includes('cut mid-turn')) fs.appendFileSync(${JSON.stringify(join(dir, 'handoff.md'))}, 'another hook was here\\n'); return write(p, d, ...a); };
+require('node:module').syncBuiltinESMExports();
+`);
+  emptyHandoff();
+  write(user('build it'), asst('running', 965_000, 'tool_use'));
+  const gc = spawnSync(process.execPath, ['--require', pre, GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
+  ok(gc.status === 0 && /note: the handoff changed meanwhile/.test(gc.stderr) && !/no handoff\.md with markers/.test(gc.stderr) && !/cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), `a handoff changed meanwhile is named as that, and the other write is kept (got ${gc.status}: ${gc.stderr})`);
+}
+
 // A transcript that is gone: nothing to read, nothing deferred, said as such.
 const { recover } = await import('./compact-gate.mjs');
 const gone2 = join(dir, 'gone.jsonl');
@@ -526,7 +559,8 @@ const triggerWith = (pct) => {
   try { return Number(execFileSync(process.execPath, ['--input-type=module', '-e', `import { TRIGGER } from ${JSON.stringify(new URL('./compact-gate.mjs', import.meta.url).href)}; console.log(TRIGGER)`], { env, timeout: 30_000 }).toString()); }
   finally { delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE; }
 };
-ok(triggerWith('48') === 0.85 * 48 / 96 && triggerWith('1') === 0.85 / 96 && triggerWith('0') === 0.85 && triggerWith('100') === 0.85 && triggerWith('-5') === 0.85,
+const near = (a, b) => Math.abs(a - b) < 1e-9;
+ok(near(triggerWith('48'), 0.959 * 48 / 96 - 0.06) && near(triggerWith('1'), 0.959 / 96 / 2) && triggerWith('0') === 0.85 && triggerWith('100') === 0.85 && triggerWith('-5') === 0.85,
   'the trigger follows an override of 1 to 95 percent and ignores 0, a negative and one over 95');
 
 // The first read grows 4x: a prompt 600 KB from the end is held by the second read (1,024,000 bytes),

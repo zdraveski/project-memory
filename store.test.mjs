@@ -1,7 +1,7 @@
 // Self-check for store.mjs: whose store a payload names, a lock two processes
 // never hold at once, a dead lock taken over, a held one given up on, and a
 // replace that will not overwrite a write it did not see. Run: node store.test.mjs
-import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync } from 'node:fs';
+import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync, statSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { join, isAbsolute, basename, dirname } from 'node:path';
@@ -133,6 +133,29 @@ mkdirSync(join(dir, '.lock'));
 writeFileSync(join(dir, '.lock', 'left'), '');
 backdateLock();
 ok(withLock(dir, () => 'got') === 'got', 'and one that is a folder with something in it');
+// Two waiters that both saw the same stale lock: only the one whose rename wins takes it over, and the other
+// never deletes the lock the first made (audit #4). `other` plays the first waiter, just before our rename.
+{
+  const lock = join(dir, '.lock'), real = fs.renameSync;
+  const race = (otherTakes) => {
+    mkdirSync(lock); backdateLock();
+    let n = 0;
+    fs.renameSync = function (a, b, ...r) {
+      if (String(a) === lock && ++n === 1) { real.call(this, a, `${lock}.dead.other`); rmSync(`${lock}.dead.other`, { recursive: true }); if (otherTakes) mkdirSync(lock); }
+      return real.call(this, a, b, ...r);
+    }; syncBuiltinESMExports();
+    try { return { got: fastClock(() => withLock(dir, () => 'got')), n }; } finally { fs.renameSync = real; syncBuiltinESMExports(); }
+  };
+  let r = race(false);
+  ok(r.n === 1 && r.got === 'got', `a waiter that lost the takeover to a rename finds the lock gone and takes it (got ${r.got}, ${r.n} renames)`);
+  r = race(true);
+  ok(r.got === null && existsSync(lock) && Math.abs(Date.now() - statSync(lock).mtimeMs) < 5000, `a waiter that lost the takeover leaves the winner's fresh lock alone (got ${r.got})`);
+  ok(!readdirSync(dir).some((f) => f.startsWith('.lock.dead')), 'and leaves no renamed copy behind');
+  rmdirSync(lock);
+  mkdirSync(`${lock}.dead.1.2`);
+  sweepTemps(dir);
+  ok(!existsSync(`${lock}.dead.1.2`), 'a renamed copy a killed waiter left is swept');
+}
 // One that cannot be removed -- on Windows another process's working folder,
 // elsewhere one in a read-only folder -- throws once the wait is up, so the
 // pass that fails says so in .health. Busy every turn was silence.
@@ -211,9 +234,12 @@ ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !r
 // Long runs of blanks in a value are read in linear time: 50,000 spaces took
 // 12 s, and every tier pass and search paid it.
 {
-  const blanks = ' '.repeat(50_000), t0 = Date.now();
-  const f = front(`---\nname: n${blanks}x\ndescription: d${blanks}\nsuperseded-by: ${blanks}#\ntype:\n ${blanks}\n---\n`);
-  ok(Date.now() - t0 < 1000 && f.desc === 'd' && f.superseded === '', `a value with 50,000 blanks is read in linear time (${Date.now() - t0} ms, ${JSON.stringify(f).slice(0, 80)})`);
+  // Timed at 5,000 blanks and at 50,000 (a linear read costs ten times the first; the old 12 s one a hundred): a slow runner slows both, the old
+  // fixed 1 s stays as the floor (audit #18).
+  const read = (n) => { const blanks = ' '.repeat(n), t = performance.now(); const g = front(`---\nname: n${blanks}x\ndescription: d${blanks}\nsuperseded-by: ${blanks}#\ntype:\n ${blanks}\n---\n`); return [performance.now() - t, g]; };
+  read(5_000);
+  const [small] = read(5_000), [big, f] = read(50_000);
+  ok(big < Math.max(1000, 50 * small) && f.desc === 'd' && f.superseded === '', `a value with 50,000 blanks is read in linear time (${big.toFixed(0)} ms, ${small.toFixed(1)} ms at a tenth, ${JSON.stringify(f).slice(0, 80)})`);
 }
 
 // A transcript is in the projects folder by its resolved path: `<projects>/../x`
@@ -370,6 +396,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   // records the real path. And `_shared` names no project.
   const viaJ = join(home, 'work', 'jwt');
   try { symlinkSync(wt, viaJ, 'junction'); } catch {}
+  if (!existsSync(viaJ)) console.log('skip: this machine cannot make a junction to a worktree');
   ok(!existsSync(viaJ) || repoRoot(viaJ) === repo, `a worktree through a junction maps to its repository (got ${existsSync(viaJ) ? repoRoot(viaJ) : 'no junction'})`);
   process.env.CLAUDE_CONFIG_DIR = cfg; process.env.CLAUDE_CODE_PROJECT_DIR_NAME = '_shared';
   let notShared; try { notShared = storeOf({ cwd: sub }); } finally { delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; }
@@ -480,7 +507,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
     mkdirSync(lockPath); utimesSync(lockPath, M / 1000, M / 1000);
     const realNow = Date.now; let i = 0, k = 0;
     Date.now = () => M + script[Math.min(i++, script.length - 1)];
-    const undoRm = patch('rmSync', (real) => function (p, o) { if (String(p).endsWith('.lock') && k < rmErrors.length) throw rmErrors[k++]; return real.call(this, p, o); });
+    const undoRm = patch('renameSync', (real) => function (p, o) { if (String(p).endsWith('.lock') && k < rmErrors.length) throw rmErrors[k++]; return real.call(this, p, o); });
     const undoStat = vanish ? patch('statSync', (real) => function (p, ...a) { const r = real.call(this, p, ...a); if (String(p).endsWith('.lock')) rmdirSync(p); return r; }) : () => {};
     let res; try { res = withLock(lockDir, () => 'got'); } catch (e) { res = `threw ${e.message}`; } finally { Date.now = realNow; undoRm(); undoStat(); }
     rmSync(lockPath, { recursive: true, force: true });

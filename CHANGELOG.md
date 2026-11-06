@@ -110,6 +110,39 @@
   conversation's transcript as yours. Claude Code keeps subagents
   elsewhere today, so nothing changes now; an older layout could have had a
   private conversation's subagent journaled.
+- A token after `Bearer`, `Basic` or `Token` is now replaced with
+  `[redacted]` when it has no digit in it (32 characters or more), and when
+  an invisible character sits between the word and the token. Before, both
+  were saved as they were.
+- The privacy policy said `forget --yes` removes the matches when there are
+  too many; it removes nothing then and asks you to narrow the search, as
+  the command always did.
+
+**Compaction**
+- With a smaller compaction window, such as the 200,000 tokens the FAQ
+  suggests for a 200k model, the reminder to save notes came only about
+  22,000 tokens before the compaction, too late for a long reply. It now
+  comes early enough to leave at least 60,000 tokens: at about 66% of a
+  200k window, counted from where the compaction really comes, also when
+  `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` moves it earlier. A window too small
+  for that gets it halfway to the compaction. A 1M window still gets it at
+  85%.
+- An error Claude Code adds to the transcript (an entry with no real
+  token counts) was read as a conversation of 0 tokens, so the reminder
+  could be skipped after it. Such entries are now passed over.
+- When another window changed `handoff.md` while a note of a cut turn was
+  being written, the note was dropped and the hook said the file had no
+  place for it. It now says the handoff changed meanwhile.
+
+**Several windows at once**
+- When a window left a lock behind (it was closed mid-save), two others
+  waiting for it could both take it over and write at the same time. Now
+  only one takes it over, short of three windows racing within the same few
+  microseconds.
+- When the Stop hook cut its own log (`.stop-ran`) back, a line another
+  window added at that moment could be lost, and `doctor` could then miss
+  hooks set up twice. The log is now cut only if nothing was added
+  meanwhile.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in
@@ -157,19 +190,28 @@
   LF ones, and the blank line under its heading was dropped, when the
   plugin added its lines. It now keeps the file's line endings, and the
   blank line.
+- A note named with a date that isn't on the calendar (`2026-02-31-…`) was
+  read as a real date, so the tidy-up could archive it. Such a name now
+  counts as having no date.
+- A note whose closing `---` was the file's very last line, with no line
+  break after it, was read as all body, header included, so a search could
+  match words of its header. Its body is now empty.
 
 **Forget**
 - `forget <words>` now also finds an exchange the journal doesn't hold yet
   (its reply came while another window held the project's memory folder,
   and is saved at the next reply). It used to say nothing matched, and the
   next reply saved the exchange. It's listed as not in the journal yet, as
-  with `--key`.
+  with `--key`. It leaves out conversations marked `<private-session>` or
+  held with auto memory off, and reads an exchange whole even when it sits
+  across one of the 64 MB parts a long conversation is read in.
 - `forget --key` of an entry whose day file can't be read said "removed".
   While a day file can't be read, such a key is named as in no day that
   could be read, nothing is removed for it, and the command fails.
 - Running `forget --key ... --yes` again, after a first run couldn't update
   `handoff.md`, said "already forgotten" and left the exchange there for the
-  next conversation's start. It now takes it out of `handoff.md`.
+  next conversation's start. It now takes it out of `handoff.md`, and says
+  so.
 - After removing entries, `forget` says that Claude Code's own conversation
   files still hold them: it changes only project-memory's files.
 
@@ -181,7 +223,9 @@
 - `history`, `restore` and `promote` find a note in another letter case on
   Windows and macOS (`history Pricing`, `PRICING.MD`), and in either Unicode
   form everywhere (`café` typed one way, the file named the other), deleted
-  notes too. When two names read alike, neither is taken.
+  notes too. When two names read alike, neither is taken. The letter case
+  is ignored only where the folder itself ignores it: a case-sensitive
+  folder (possible on macOS and Windows) gets the exact name.
 - `history` and `restore` say plainly when there are no snapshots yet, when
   Git isn't installed, or when no snapshot holds a note, instead of git's own
   error. Without Git, `restore` no longer offers to replace a note "with the

@@ -182,6 +182,7 @@ ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').filter((l) => l === 
 // the ceiling may not take it. A recovered pointer once carried its filename
 // where its facts belong: that made a pinned orphan evictable, gave it an age
 // of NaN, and a NaN in the comparator scrambles the whole eviction order.
+// The day is read once: a run across midnight UTC does not name two days in the file names (audit #18).
 const today = new Date().toISOString().slice(0, 10);
 const pad = ' and a hook long enough to make the ceiling bite ' + 'x'.repeat(110);
 const evLines = [], noteLines = [];
@@ -472,6 +473,15 @@ ok(lastRun.s && lastRun.from && !Number.isNaN(Date.parse(lastRun.at)), `--stop: 
 writeFileSync(join(root, '.stop-ran'), Array.from({ length: 200 }, (_, i) => JSON.stringify({ at: new Date(i).toISOString(), s: 'old', from: 'x'.repeat(30) })).join('\n') + '\n');
 await stop();
 ok(runLines().length <= 20 && JSON.parse(runLines().at(-1)).s !== 'old', `--stop: the log keeps the newest runs only (got ${runLines().length} lines)`);
+// A line another session appends while this run cuts the log back survives (audit #13).
+{
+  const ranPath = join(root, '.stop-ran');
+  writeFileSync(ranPath, Array.from({ length: 200 }, (_, i) => JSON.stringify({ at: new Date(i).toISOString(), s: 'old', from: 'x'.repeat(30) })).join('\n') + '\n');
+  let reads = 0;
+  await swap('node:fs', 'readFileSync', (real) => (p, ...a) => { const t = real(p, ...a); if (String(p) === ranPath && ++reads === 2) writeFileSync(ranPath, '{"s":"parallel"}\n', { flag: 'a' }); return t; }, stop);
+  ok(reads >= 2 && runLines().some((l) => l.includes('"parallel"')), `--stop: a line appended while the log is cut back is kept (got ${runLines().length} lines)`);
+  ok(!existsSync(`${ranPath}.tmp${process.pid}`), '--stop: and no temp copy is left');
+}
 // A handoff-log.mjs that cannot load writes no handoff: no proof of life either.
 const broken = tempDir('broken-');
 for (const f of ['memory-tier.mjs', 'store.mjs', 'compact-gate.mjs']) copyFileSync(tool(f), join(broken, f));
@@ -493,8 +503,9 @@ ok(r.status === 0 && two() === twoBefore, "--stop in one project leaves another 
 // A day boundary must re-run the pass even when no file changed: the windows are time-based.
 r = await stop('proj-two');
 writeFileSync(stamp('proj-two'), readFileSync(stamp('proj-two'), 'utf8').replace(/^\S+ \S+ \d+ \d+/, 'Wed Sep 10 2025'));
+const dayBefore = new Date().toDateString();   // a run across midnight stamps either day (audit #18)
 r = await stop('proj-two');
-ok(r.status === 0 && readFileSync(stamp('proj-two'), 'utf8').startsWith(new Date().toDateString()), '--stop: a stamp from another day is not a pass; today re-stamps');
+ok(r.status === 0 && [dayBefore, new Date().toDateString()].some((d) => readFileSync(stamp('proj-two'), 'utf8').startsWith(d)), '--stop: a stamp from another day is not a pass; today re-stamps');
 rmSync(join(root, 'proj-two', 'memory', 'MEMORY.md'));
 mkdirSync(join(root, 'proj-two', 'memory', 'MEMORY.md'));               // an index that cannot be read throws in tier()
 r = await stop('proj-two');
@@ -1102,6 +1113,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   const sh12 = JSON.parse(readFileSync(join(root12, '.snapshot-health'), 'utf8'));
   ok(!/C--ext/.test(readFileSync(join(root12, '.gitignore'), 'utf8')), 'a store linked outside the root is not ignored as a second path');
   const tracked12 = /C--ext\/memory\/price\.md/.test(files12);
+  if (process.platform !== 'win32') console.log('skip: a junction outside the root is snapshotted on Windows only');
   ok(process.platform !== 'win32' || tracked12, `a junction outside the root is snapshotted on Windows (got ${files12})`);
   ok(tracked12 ? !sh12.missed && !/leave out/.test(doc12) : sh12.missed?.length === 1 && /PROBLEM\s+snapshots: ok, last [^\n]*but they leave out [^\n]*C--ext/.test(doc12),
     `a store the snapshot cannot reach is said to be left out (got ${JSON.stringify(sh12)} / ${doc12})`);
@@ -1291,6 +1303,8 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(!await hotAt({ name: 'log-2026-01-10' }, logDay + 3 * DAY), 'and archived when the third day is out');
   ok(await hotAt({ name: 'seen', modified: stamped }, Date.parse(stamped) + 7 * DAY - 1), 'a note is still hot a millisecond before its seventh day is out');
   ok(!await hotAt({ name: 'seen', modified: stamped }, Date.parse(stamped) + 7 * DAY), 'and archived when the seventh day is out');
+  // A date that is not one (month 13, day 45, Feb 31) is no event date: the note goes by its modified time.
+  for (const bad of ['2026-13-45', '2026-00-10', '2026-02-31']) ok(await hotAt({ name: `typo-${bad}` }, Date.now()), `a name dated ${bad} is tiered by its modified time, not archived at once`);
 
   const whole = Math.floor(Date.now() / 1000) * 1000 - 600000, wholeAt = new Date(whole);   // to the second: the mtime is read back exact
   const ghost = async (nowMs) => {

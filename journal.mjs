@@ -13,11 +13,11 @@ export const JOURNAL = 'journal';
 // the point of a journal, and a search reads headlines of it, never the whole
 // (KIRE, 2026-10-31: "having a memory from previous sessions in details is a
 // priority"). Only a branch and a path are cut: a pasted text in their place.
-export const J_BRANCH = 100;   // chars of a branch name: any real one whole, a pasted text in one cut
+const J_BRANCH = 100;   // chars of a branch name: any real one whole, a pasted text in one cut
 export const J_PATH = 300;     // chars of one file path: Windows' 260-character limit fits whole
 // A Stop imports old conversations for this long, holding the store's lock,
 // then leaves the rest to the next: a month of them can be a gigabyte.
-export const IMPORT_BUDGET_MS = 150;
+const IMPORT_BUDGET_MS = 150;
 // The most of a transcript one read holds, and so the longest line read: the
 // lock is held a segment past the budget, and one tool result can be 70 MB.
 // A longer line (a tool's output: no prompt or reply is that long) is passed
@@ -26,7 +26,7 @@ export const IMPORT_SEGMENT = 64 * 1024 * 1024;
 // The most turns one look imports from a transcript, the rest at the next: a
 // segment of 49,053 short turns (a long /loop) held the lock 18 s, and a
 // parallel session's handoff was skipped (P1 hunt, 2026-10-29).
-export const IMPORT_TURNS = 500;
+const IMPORT_TURNS = 500;
 // A transcript that would not open is tried again this long after, grown or not.
 const RETRY = 24 * 3600e3;
 
@@ -282,27 +282,34 @@ function resweep(dir) {
 // shortcut: a key no conversation has (a typo, another project's) reads all of them, and one that won't read is passed over
 // (the key is then named as no entry's, and the forget fails); upgrade if that is ever slow or wrong.
 // `terms`, forget's look by words: every turn holding each word as its entry would, in any case. A look by words missed a turn
-// no day held yet, and the next reply wrote it (1.2.5). A chunk is parsed only when its text holds each word's pieces as the
-// transcript spells them (escaped as JSON; an entry squeezes "a  b" to "a b").
+// no day held yet, and the next reply wrote it (1.2.5).
 // shortcut: by words, every conversation of the store is read whole, at each look; read only past the import's offsets if slow.
-export function unwritten(dir, keys, terms = null) {
+export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
   const out = [], left = new Set(keys);
-  const ts = terms?.map((t) => t.toLowerCase()), bits = ts?.flatMap((t) => t.split(/\s+/)).filter(Boolean).map((t) => JSON.stringify(t).slice(1, -1));
-  const near = (b) => (ts ? ((s) => bits.every((t) => s.includes(t)))(b.toString('utf8').toLowerCase()) : [...left].some((k) => b.includes(`"uuid":${JSON.stringify(k)}`)));
+  const ts = terms?.map((t) => t.toLowerCase());
+  const near = (b) => [...left].some((k) => b.includes(`"uuid":${JSON.stringify(k)}`));
   let fs = []; try { fs = looked(dir); } catch {}
   for (const f of fs) {
     let ns = []; try { ns = readdirSync(join(projectsRoot(), f)).filter((n) => n.endsWith('.jsonl')); } catch {}
     for (const n of ns) {
       if (!ts && !left.size) return out;
-      const p = join(projectsRoot(), f, n);
+      const p = join(projectsRoot(), f, n), s = tag(basename(n, '.jsonl'));
+      // Not a conversation the journal never takes (private, or held with auto memory off; a list that won't read is no answer): it
+      // had no entry to forget, and listing its turn said one was lost.
+      if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;
       try {
         const fd = openSync(p, 'r');
         try {
           const size = fstatSync(fd).size;
-          for (let b, pos = 0; (ts || left.size) && (b = chunk(fd, pos, IMPORT_SEGMENT, size)); pos = b.pos + b.buf.length) {
+          if (marked(fd, 0, IMPORT_SEGMENT, size).hit) continue;
+          // By words, a turn is cut at its start (segments()), so its prompt and its reply are read together; a part cut inside a turn leaves it to the next.
+          if (ts) {
+            if (ours(dir, p)) for (const g of segments(fd, 0, seg, size, Infinity)) for (const t of new Set(g.next === null ? g.got.filter((x) => x !== g.got.open) : [...g.got, g.got.open])) { const e = t && entryOf(t, p); if (e && ts.every((w) => holds(e, w))) out.push({ ...e, day: day(e.at), dir, unsaid: true }); }
+            continue;
+          }
+          for (let b, pos = 0; left.size && (b = chunk(fd, pos, seg, size)); pos = b.pos + b.buf.length) {
             if (!near(b.buf)) continue;
             const got = turns(b.buf.toString('utf8'));
-            if (ts) { if (ours(dir, p)) for (const t of new Set([...got, got.open])) { const e = t && entryOf(t, p); if (e && ts.every((w) => holds(e, w))) out.push({ ...e, day: day(e.at), dir, unsaid: true }); } continue; }
             for (const t of new Set([...got, got.open])) if (t && left.has(t.id) && ours(dir, p)) { const e = entryOf(t, p); out.push({ ...e, day: day(e.at), dir, unsaid: true }); left.delete(t.id); }
           }
         } finally { closeSync(fd); }

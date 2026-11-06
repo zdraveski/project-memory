@@ -1,7 +1,8 @@
 // Self-check for memory.mjs, the memory CLI: ranked search, status, history
 // and restore from real snapshots, promote, doctor. A throwaway HOME holds a
 // project store and the shared store. Run: node memory.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync, readdirSync, chmodSync, renameSync, statSync } from 'node:fs';
+import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync, readdirSync, chmodSync, renameSync, statSync, appendFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -15,6 +16,14 @@ const dir = join(root, 'C--mem-cli', 'memory'), shared = join(root, '_shared', '
 mkdirSync(dir, { recursive: true });
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
+// Another session acts at one exact moment of a call: after the first time `kind` (an fs function) is called with
+// a path `match` accepts, `act` runs, and the call goes on. This is how the "meanwhile" branches are reached.
+const meanwhile = (kind, match, act) => {
+  const real = fs[kind]; let done = false;
+  fs[kind] = function (p, ...a) { const r = real.call(this, p, ...a); if (!done && match(String(p))) { done = true; act(); } return r; };
+  syncBuiltinESMExports();
+  return () => { fs[kind] = real; syncBuiltinESMExports(); };
+};
 // The CLI in this process: a process a call cost 0.2 s, and 256 calls were
 // nearly all of the suite's 50 s (2026-10-30). What needs a process of its
 // own (another cwd or PATH, a run through a symlink, a journal.mjs that will
@@ -286,6 +295,34 @@ ok(r.status === 0 && /^- \[draft okapi\]\(\[draft\] okapi\.md\) — an okapi sti
   ok(stuck.ok === false && existsSync(join(dir, 'stuck-note.md')) && !existsSync(join(shared, 'stuck-note.md')), `a copy that fails moves nothing (got ${JSON.stringify(stuck)})`);
   rmSync(join(shared, `stuck-note.md.tmp${process.pid}`), { recursive: true, force: true });
   rmSync(join(dir, 'stuck-note.md'));
+}
+// Another session acts while promote runs: each data-safety branch says so, and the memory is never in neither store.
+{
+  const { promote } = await import(pathToFileURL(CLI).href);
+  const sharedIdx = join(shared, 'MEMORY.md'), dirIdx = join(dir, 'MEMORY.md'), tmp = (f) => `${f}.tmp${process.pid}`;
+  const sharedWas = existsSync(sharedIdx) ? readFileSync(sharedIdx, 'utf8') : null, dirWas = readFileSync(dirIdx, 'utf8');
+  const sharedLock = join(shared, '.lock');
+  const attempt = (name, kind, match, act, { line = false } = {}) => {
+    memory(dir, name, 'a memory to share');
+    if (line) writeFileSync(dirIdx, dirWas + `- [${name}](${name}.md) — a memory to share\n`);
+    const undo = meanwhile(kind, match, () => act(join(dir, `${name}.md`), join(shared, `${name}.md`)));
+    try { return promote(dir, `${name}.md`); } finally { undo(); writeFileSync(dirIdx, dirWas); }
+  };
+  const copies = (name) => [join(dir, `${name}.md`), join(shared, `${name}.md`)].filter(existsSync).length;
+  let q = attempt('mw-gone', 'mkdirSync', (p) => p === sharedLock, (src) => unlinkSync(src));
+  ok(q.ok === false && /went away meanwhile; nothing moved/.test(q.lines[0]) && copies('mw-gone') === 0, `promote: a note that went away is not moved, nothing is made up (got ${JSON.stringify(q)})`);
+  q = attempt('mw-there', 'mkdirSync', (p) => p === sharedLock, (src, dst) => writeFileSync(dst, 'theirs'));
+  ok(q.ok === false && /shared store got a mw-there\.md meanwhile; nothing moved/.test(q.lines[0]) && readFileSync(join(shared, 'mw-there.md'), 'utf8') === 'theirs' && existsSync(join(dir, 'mw-there.md')), `promote: a shared file that appeared is kept, and the project's note stays (got ${JSON.stringify(q)})`);
+  q = attempt('mw-idx', 'writeFileSync', (p) => p === tmp(sharedIdx), () => appendFileSync(sharedIdx, '# theirs\n'));
+  ok(q.ok === false && /shared index changed meanwhile: mw-idx\.md is in both stores/.test(q.lines[0]) && copies('mw-idx') === 2 && /# theirs/.test(readFileSync(sharedIdx, 'utf8')), `promote: a shared index written meanwhile is kept, and the note stays in both stores for the user to settle (got ${JSON.stringify(q)})`);
+  q = attempt('mw-edit', 'renameSync', (p) => p === tmp(sharedIdx), (src) => appendFileSync(src, 'edited\n'));
+  ok(q.ok === false && /changed while it was copied/.test(q.lines[0]) && copies('mw-edit') === 2 && /edited/.test(readFileSync(join(dir, 'mw-edit.md'), 'utf8')), `promote: an edit that landed during the copy keeps the project copy (got ${JSON.stringify(q)})`);
+  q = attempt('mw-home', 'writeFileSync', (p) => p === tmp(dirIdx), () => appendFileSync(dirIdx, '# theirs\n'), { line: true });
+  ok(q.ok === false && /project index changed meanwhile: mw-home\.md is in both stores/.test(q.lines[0]) && copies('mw-home') === 2, `promote: a project index written meanwhile is said, the note stays in both stores (got ${JSON.stringify(q)})`);
+  q = attempt('mw-late', 'renameSync', (p) => p === tmp(dirIdx), (src) => appendFileSync(src, 'edited\n'), { line: true });
+  ok(q.ok === false && /changed while it was copied/.test(q.lines[0]) && copies('mw-late') === 2, `promote: an edit that landed after the index line went keeps the project copy (got ${JSON.stringify(q)})`);
+  for (const f of ['mw-idx', 'mw-edit', 'mw-home', 'mw-late', 'mw-there']) for (const d of [dir, shared]) rmSync(join(d, `${f}.md`), { force: true });
+  if (sharedWas === null) rmSync(sharedIdx, { force: true }); else writeFileSync(sharedIdx, sharedWas);
 }
 // Frontmatter never closed is all frontmatter, as tiering reads it.
 writeFileSync(join(dir, 'pangolin-rule.md'), '---\nname: pangolin-rule\ndescription: pangolin rule text\nmetadata:\n  type: feedback\n');
@@ -1239,7 +1276,7 @@ if (!quick) {
   ok(r.value === 1 && r.out.includes(`could not write ${hf}: busy\n`) && readFileSync(hf, 'utf8').includes(es[0].asked), `a retry that meets the lock is named and fails (got ${r.out})`);
   r = await fcli('forget', '--key', es[0].key, '--yes');
   const hd2 = readFileSync(hf, 'utf8');
-  ok(r.status === 0 && r.stdout === `key ${es[0].key} is already forgotten; nothing to remove\nnothing in ${fd} matches\n` && !hd2.includes(es[0].asked) && hd2.includes('the walrus budget') && hd2.includes(es[2].asked),
+  ok(r.status === 0 && r.stdout === `key ${es[0].key} is already forgotten; nothing to remove from the journal\nhandoff.md holds none of these exchanges now\nnothing in ${fd} matches\n` && !hd2.includes(es[0].asked) && hd2.includes('the walrus budget') && hd2.includes(es[2].asked),
     `the retry takes it out of handoff.md, and only it: not another conversation's of that minute, nor another forgotten key's (got ${r.stdout}; ${hd2})`);
   // A journal folder the disk will not list is no empty journal: forget said "nothing matches" with exit 0 (by --key, that the key was
   // another project's), and the entries stayed. It names the code, removes nothing and fails, as a refused restore does (F20, R45).
@@ -1500,6 +1537,13 @@ if (!quick) {
   rmSync(join(root, 'C--mutA-rs'), { recursive: true, force: true });
   r = await run(['restore', 'kept', '--store', rs]);
   ok(r.status === 0 && readFileSync(join(rs, 'kept.md'), 'utf8').includes('v1') && r.stdout.includes('with its line: - [Kept](kept.md) — kept note'), `restore remakes a store whose folder is gone, with its line (got ${r.stdout}${r.stderr})`);
+  // Another session writes the note while restore runs: its version is kept, the snapshot's is not laid over it.
+  for (const [what, kind, match, said] of [['appeared', 'mkdirSync', (p) => p === join(rs, '.lock'), /appeared meanwhile; nothing written/], ['changed', 'writeFileSync', (p) => p === join(rs, `kept.md.tmp${process.pid}`), /changed meanwhile; nothing written/]]) {
+    unlinkSync(join(rs, 'kept.md'));
+    const undo = meanwhile(kind, match, () => writeFileSync(join(rs, 'kept.md'), 'theirs'));
+    try { r = restore(rs, 'kept.md'); } finally { undo(); }
+    ok(r.ok === false && said.test(r.lines[0]) && readFileSync(join(rs, 'kept.md'), 'utf8') === 'theirs' && !existsSync(join(rs, `kept.md.tmp${process.pid}`)), `restore: a note that ${what} meanwhile is kept, and the snapshot is not written over it (got ${JSON.stringify(r)})`);
+  }
 
   // The disk refuses a write: the reply gives the disk's own code (a directory
   // where the temp file goes, so the write fails the same way on every OS), the
@@ -1589,6 +1633,9 @@ if (!quick) {
   ok(scoreOf(r.stdout, 'mn-aa.md') === 7 && scoreOf(r.stdout, 'mn-bb.md') === 3, `a three-letter term is found inside a longer word, in a description (+2, strong) and in a body (got ${r.stdout})`);
   ok(/mn-nofront\.md/.test((await jcli('search', 'quokka')).stdout), 'a note with no frontmatter is searched from its first line');
   ok(/mn-tight\.md/.test((await jcli('search', 'zebu')).stdout), 'a body that starts right after the closing --- is searched from its first character');
+  // The closing --- is the file's last bytes: the body is empty, not the whole file with its frontmatter.
+  writeFileSync(join(jm, 'mn-endfm.md'), '---\nname: mn-endfm\ndescription: "end"\nextra: okapi\n---');
+  ok(!/mn-endfm\.md/.test((await jcli('search', 'okapi')).stdout), 'a note whose closing --- ends the file has an empty body, its frontmatter is not searched');
   // An empty frontmatter followed by a rule: the body is what follows the first fence, not what follows the rule.
   writeFileSync(join(jm, 'mn-hr.md'), '---\n---\nlemur is in the first part\n\n---\n\nthe second part\n');
   ok(/mn-hr\.md/.test((await jcli('search', 'lemur')).stdout), 'a note with an empty frontmatter and a later rule is searched from after its frontmatter');
@@ -1635,6 +1682,8 @@ if (!quick) {
   // --help where an option's value goes is no request for the usage: an option is no value, and is refused (audit C-7).
   r = await run(['status', '--conversation', '--help', '--store', jm]);
   ok(r.status === 1 && r.stdout === '--conversation needs a value after it\n' && /node memory\.mjs <command>/.test((await run(['status', '--help'])).stdout), `--help after an option that takes a value is not a request for the usage (got ${r.stdout})`);
+  r = await run(['status', '--store', jm, '--help']);
+  ok(/node memory\.mjs <command>/.test(r.stdout), `--help after an option's value is a request for the usage (got ${r.stdout})`);
 
   // A range forget names its first and last day; the snapshots' days are listed six at a time.
   const old7 = mdir('C--mutB-old'), days7 = [1, 2, 3, 4, 5, 6, 7].map((d) => `2025-02-0${d}`);
@@ -1830,8 +1879,10 @@ if (!quick) {
   ok(r.status === 1 && r.stdout === '--conversation needs a value after it\n', `so is --conversation with an option for its value (got ${r.stdout})`);
   // C-8. A name as the user's disk reads it: `history Pricing`, `history PRICING.MD` and a café typed composed, of a file named
   // decomposed, found nothing. In any letter case where the disk is so (Windows, macOS), in either Unicode form everywhere.
-  const folds = process.platform === 'win32' || process.platform === 'darwin', nfd = 'café-menu', nfc = nfd.normalize('NFC');
+  const nfd = 'café-menu', nfc = nfd.normalize('NFC');
   memory(dir, 'pricing', 'the pricing tiers', 'pricing body');
+  // What this folder does, not the platform: a macOS volume can be case-sensitive (and Windows can mark a folder so).
+  const folds = existsSync(join(dir, 'PRICING.MD'));
   memory(dir, nfd, 'the café menu', 'café body');
   tier();
   const at = (out, f) => out.startsWith(`${join(dir, f)}\n`);
@@ -1872,6 +1923,57 @@ if (!quick) {
     writeFileSync(join(dir, 'solo-é.md'), 'a note not yet snapshotted\n');
     ok(await miss('solo-é'), `a name on disk as typed is not taken for another form the snapshots had (got ${(await cli('history', 'solo-é')).stdout})`);
     rmSync(join(dir, 'solo-é.md'));
+  }
+  {
+    // A folder that is case-sensitive does not fold, whatever the platform: `promote alpha` took Alpha.md. Windows can mark a
+    // folder so (fsutil, which may need a feature or admin rights); the others cannot be made here, and say so.
+    const cs = join(root, 'C--mem-cs', 'memory');
+    mkdirSync(cs, { recursive: true });
+    const marked = process.platform === 'win32' && spawnSync('fsutil', ['file', 'setCaseSensitiveInfo', cs, 'enable'], { encoding: 'utf8' }).status === 0;
+    if (!marked) console.log('skip: no case-sensitive folder can be made here, so a folder that does not fold is not tested');
+    else {
+      memory(cs, 'Alpha', 'a capital note');
+      writeFileSync(join(cs, 'MEMORY.md'), '- [Alpha](Alpha.md) — a\n');
+      r = await run(['promote', 'alpha', '--store', cs]);
+      ok(r.status === 1 && existsSync(join(cs, 'Alpha.md')) && !existsSync(join(shared, 'Alpha.md')), `promote alpha does not take Alpha.md in a case-sensitive folder (got ${r.stdout})`);
+      // Only lower-case names to ask with, then a name whose other case is another file, then a third name only the fold would match.
+      const cs2 = join(root, 'C--mem-cs2', 'memory');
+      mkdirSync(cs2, { recursive: true });
+      spawnSync('fsutil', ['file', 'setCaseSensitiveInfo', cs2, 'enable'], { encoding: 'utf8' });
+      memory(cs2, 'foxtrot', 'a lower-case note');
+      r = await run(['promote', 'FOXTROT', '--store', cs2]);
+      ok(r.status === 1 && existsSync(join(cs2, 'foxtrot.md')) && !existsSync(join(shared, 'foxtrot.md')), `promote FOXTROT does not take foxtrot.md in a case-sensitive folder of lower-case names (got ${r.stdout})`);
+      memory(cs2, 'DELTA', 'a capital twin');
+      memory(cs2, 'delta', 'a small twin');
+      memory(cs2, 'Echo', 'a third note');
+      r = await run(['promote', 'echo', '--store', cs2]);
+      ok(r.status === 1 && existsSync(join(cs2, 'Echo.md')) && !existsSync(join(shared, 'Echo.md')), `a name whose other case is another file is no sign the folder folds (got ${r.stdout})`);
+    }
+  }
+  {
+    // A name whose other case is longer (aß, ASS on upper-casing) asks nothing: NTFS opens STRAßE for straße, not STRASSE, so
+    // taking it for an answer made a folder that folds read as one that doesn't, and `history ZETA` missed a deleted zeta.md.
+    const sz = join(root, 'C--mem-sz', 'memory');
+    mkdirSync(sz, { recursive: true });
+    memory(sz, 'aß', 'a sharp s first in the folder');
+    memory(sz, 'zeta', 'the note asked for');
+    tier();
+    rmSync(join(sz, 'zeta.md'));
+    tier();
+    r = await run(['history', 'ZETA', '--store', sz]);
+    ok((r.status === 0) === (process.platform === 'win32' || process.platform === 'darwin'), `a sharp s first in the folder does not hide that it folds (got ${r.status}: ${r.stdout})`);
+  }
+  {
+    // A folder whose notes were all deleted still folds case as the platform does. Its MEMORY.md answers the probe, so the
+    // platform fallback itself (a folder with no cased name at all) is not reached here.
+    const em = join(root, 'C--mem-empty', 'memory');
+    mkdirSync(em, { recursive: true });
+    memory(em, 'pricing', 'the pricing tiers');
+    tier();
+    rmSync(join(em, 'pricing.md'));
+    tier();
+    r = await run(['history', 'PRICING', '--store', em]);
+    ok((r.status === 0) === (process.platform === 'win32' || process.platform === 'darwin'), `a folder of deleted notes folds case as the platform does (got ${r.status}: ${r.stdout})`);
   }
   // C-9. Under --all, a hit named its project by its folder (`C--work-api-server`), no name a person reads: now by the folder its
   // conversations started in, then the folder --store needs. A project with no conversation on disk keeps the folder alone.

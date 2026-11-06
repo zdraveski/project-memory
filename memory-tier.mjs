@@ -8,7 +8,7 @@
 // As the Stop hook (and before a manual /compact) it runs with `--stop`, the
 // payload on stdin, and tiers that session's own store; a manual run walks them all.
 
-import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
+import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -106,7 +106,9 @@ function factsFor(dir, file, memo = null) {
   if (memo) memo.now[file] = [k, type, tier, Number.isNaN(stamp) ? null : stamp];
   const modified = Number.isNaN(stamp) ? st.mtimeMs : stamp;
   const named = (file.match(/(\d{4})-(\d{2})-(\d{2})/) || [])[0];
-  const eventDate = named ? Date.parse(named) : null;
+  // A name's date that is not one (2026-13-45, or Feb 31 that Date.parse rolls to March) is no date: NaN archived the note at once.
+  const d = named ? Date.parse(named) : NaN;
+  const eventDate = d === d && new Date(d).toISOString().slice(0, 10) === named ? d : null;
   return { type, tier, modified, eventDate, desc, when: eventDate ?? modified };
 }
 
@@ -615,7 +617,17 @@ export async function main(argv, input) {
         // On a line of its own: before 1.0.7 the file was one time and no newline.
         const prev = raw(ran);
         appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: hash(String(payload?.last_assistant_message ?? '')).slice(0, 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
-        if (statSync(ran).size > 8192) writeFileSync(ran, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
+        // The cut goes to a temp copy that replaces the log only if it is no longer than when read:
+        // another session's line appended in between was lost (audit #13).
+        // shortcut: an append between the size check and the rename (well under a millisecond) is
+        // still lost, which costs one line of the double-wiring check; lock the projects root if that shows.
+        const size = statSync(ran).size, cut = `${ran}.tmp${process.pid}`;
+        if (size > 8192) {
+          try {
+            writeFileSync(cut, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
+            if (statSync(ran).size === size) renameSync(cut, ran);
+          } finally { rmSync(cut, { force: true }); }
+        }
       } catch {}
       // One that throws (a store folder that takes no new files) is kept in a
       // file the next start reads: swallowed, nothing was saved, and nothing said.

@@ -58,7 +58,10 @@ export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDO
 // at 0.95 the room was 7k and no nudge was ever seen. 0.85 leaves ~87k.
 // Lower when CLAUDE_AUTOCOMPACT_PCT_OVERRIDE makes it compact earlier.
 const PCT = Number(process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE);
-export const TRIGGER = PCT > 0 && PCT < 96 ? 0.85 * PCT / 96 : 0.85;
+// And 60k of room before the compaction point, in any window (0.85 of a 200k window left 31k, under one p75 turn),
+// but never before half of it: a 50k window would nudge at once.
+const AT = 0.959 * (PCT > 0 && PCT < 96 ? PCT / 96 : 1);
+export const TRIGGER = Math.max(AT / 2, Math.min(0.85 / 0.959 * AT, AT - 60_000 / WINDOW));
 // Over this share of the model's window a mid-turn compaction goes through.
 // The API refuses a call when input + max output exceeds the window, so the
 // margin must hold the response budget (32k+) and one more tool result: 10 %.
@@ -153,7 +156,8 @@ function walk(raw) {
       for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);
     } else if (r.type === 'assistant') {
       if (t) s.said = t;
-      if (m?.usage) {
+      // Not a <synthetic> entry (Claude Code's API-error and interrupt notes, usage all zeros): it is no size, and read as one it sent the nudge back to 0.
+      if (m?.usage && m.model !== '<synthetic>') {
         const u = m.usage;
         s.ctx = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
         s.midTurn = m.stop_reason !== 'end_turn';
@@ -202,7 +206,8 @@ function inflight(payload, s) {
     const { a, b } = sectionOf(doc);
     if (a === -1) return false;
     const out = doc.slice(0, b).trimEnd() + '\n' + note(payload, s) + '\n' + doc.slice(b);
-    return replaceIfUnchanged(file, doc, out) === true;
+    // 'changed': another write landed first and is kept (false from it: the note is already there).
+    return replaceIfUnchanged(file, doc, out) === 'conflict' ? 'changed' : true;
   });
   return r ?? 'busy';
 }
@@ -271,6 +276,7 @@ export function gate(payload) {
     const n = inflight(payload, s);
     if (n === 'private') return { code: 0, why: `mid-turn at ${pct}%, over the ceiling: a private conversation, nothing written` };
     if (n === 'busy') failed.push(`note: ${held}`);
+    else if (n === 'changed') failed.push('note: the handoff changed meanwhile, so the note was not written');
     else if (!n) failed.push('note: no handoff.md with markers in the store');
   } catch (e) { failed.push(`note: ${e.message}`); }
   return { code: 0, why: `mid-turn at ${pct}%, over the ceiling: ` + (failed.length ? failed.join('; ') : 'handoff and in-flight note written') };

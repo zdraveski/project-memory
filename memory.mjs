@@ -74,7 +74,7 @@ const result = (a) => { const t = clip(a, HIT_HEAD); return /^.{20,}?[.!?](?=\s|
 // a retry. A shorter one ("continue", "yes") is different work each time, and
 // collapsed, its reply could not be read (review, 2026-10-29).
 const SAME_MIN = 80;
-const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+const sameKey = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
 // What deploy.mjs needs to agree with doctor about, defined once: the plugin,
 // the live copy, and what runs.
@@ -112,19 +112,33 @@ const onDisk = (dir, file) => {
   try {
     const names = readdirSync(dir);
     if (names.includes(file)) return file;
-    let st; try { st = statSync(join(dir, file), { bigint: true }); } catch { return pick(file, names); }
+    let st; try { st = statSync(join(dir, file), { bigint: true }); } catch { return pick(dir, file, names); }
     return names.find((n) => { try { const s = statSync(join(dir, n), { bigint: true }); return s.ino === st.ino && s.dev === st.dev; } catch { return false; } }) ?? file;
   } catch { return file; }
 };
-// The one name of `names` a typed name means, as the user's disk reads names: in any letter case on Windows and macOS, and in
+// The one name of `names` a typed name means, as the user's disk reads names: in any letter case where the folder is so, and in
 // either Unicode form everywhere (a café typed composed, its file named decomposed). Two that read alike are two notes, and
 // neither is taken. Each letter upper-cased alone, as NTFS does: a whole-string fold made straße STRASSE, which NTFS keeps
 // apart (audit C-8).
+// Whether the folder reads names in any case, asked of the folder: a note's name in the other case opens the same file or no file. A
+// macOS volume can be case-sensitive, and Windows can mark a folder so; the platform's habit was wrong there, and `promote alpha`
+// took Alpha.md. A folder with no letters in any name to try the question on has the platform's habit.
 const FOLDS = process.platform === 'win32' || process.platform === 'darwin';
-const fold = (s) => { const n = s.normalize('NFC'); return FOLDS ? [...n].map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join('') : n; };
-const pick = (file, names) => { if (names.includes(file)) return file; const m = [...new Set(names)].filter((n) => fold(n) === fold(file)); return m.length === 1 ? m[0] : file; };
+const caseless = (dir) => {
+  try {
+    for (const n of readdirSync(dir)) {
+      const o = n === n.toLowerCase() ? n.toUpperCase() : n.toLowerCase();
+      if (o === n || o.length !== n.length) continue;   // straße's STRASSE is no name NTFS opens for it
+      const a = statSync(join(dir, n), { bigint: true });
+      try { const b = statSync(join(dir, o), { bigint: true }); return a.ino === b.ino && a.dev === b.dev; } catch { return false; }
+    }
+  } catch {}
+  return FOLDS;
+};
+const fold = (s, folds) => { const n = s.normalize('NFC'); return folds ? [...n].map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join('') : n; };
+const pick = (dir, file, names) => { if (names.includes(file)) return file; const f = caseless(dir), m = [...new Set(names)].filter((n) => fold(n, f) === fold(file, f)); return m.length === 1 ? m[0] : file; };
 // A note no file has by that name, by the name the snapshots had for it: `history Pricing` found nothing of a deleted pricing.md.
-const named = (dir, file) => { const d = onDisk(dir, file); return d !== file || existsSync(join(dir, d)) ? d : pick(file, ever(dir)); };
+const named = (dir, file) => { const d = onDisk(dir, file); return d !== file || existsSync(join(dir, d)) ? d : pick(dir, file, ever(dir)); };
 // A write the disk refuses (read-only, held by another program) is said, with
 // what it left behind: thrown, it was a stack trace, read as nothing done.
 const put = (p, read, next) => { try { return replaceIfUnchanged(p, read, next); } catch (e) { return `failed: ${e.code || e.message}`; } };
@@ -156,7 +170,8 @@ export function memories(dir) {
     let mtime = 0; try { mtime = statSync(path).mtimeMs; } catch {}
     return [{
       file, path, dir, name, desc, type, superseded,
-      body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1),
+      // No newline after the closing --- (indexOf gives -1): the body is empty, not the whole file.
+      body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1 || text.length),
       // Not in code (`grid[[0]]`, a fenced block: its fences start a line, an
       // inline ``` in prose hid the links up to the next fence; ```` holds a
       // ``` fence and only ```` closes it), and `[[name.md]]` is name's. A
@@ -724,7 +739,7 @@ export function main(given) {
     // is one hit with a count: its copies filled the list (recall test, 2026-10-29).
     const groups = [], like = new Map();
     for (const h of found) {
-      const k = h.kind === 'journal' && norm(h.asked).length >= SAME_MIN ? norm(h.asked) : null;
+      const k = h.kind === 'journal' && sameKey(h.asked).length >= SAME_MIN ? sameKey(h.asked) : null;
       if (k !== null && like.has(k)) like.get(k).push(h);
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
@@ -756,7 +771,7 @@ export function main(given) {
       ...[['Asked', e.asked], ['Answered', e.answered], ['Changed', e.changed.join(', ')], ['Ran', e.ran.join(' · ')]].filter(([, v]) => v).map(([k, v]) => `     ${k}: ${clip(v, Infinity)}`),
       `     Day file: ${e.path}`, ...full(e)];
     // --same: every entry asking what this one asked, the copies a hit counts.
-    const alike = (e) => (rest.includes('--same') ? es.filter((x) => norm(x.asked) === norm(e.asked)) : [e]).filter((x) => !seen.has(x) && seen.add(x));
+    const alike = (e) => (rest.includes('--same') ? es.filter((x) => sameKey(x.asked) === sameKey(e.asked)) : [e]).filter((x) => !seen.has(x) && seen.add(x));
     r = { ok: got.every(Boolean), lines: got.flatMap((e, i) => e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${args[i]} in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
   } else if (cmd === 'search' && (range.since || range.until)) {
     // What was asked on those days, newest first: "what did we do last week".
@@ -766,7 +781,7 @@ export function main(given) {
   } else if (cmd === 'forget') {
     // A blank term is in every entry: `forget "" --yes` would empty the journal.
     const conversation = opt('--conversation'), yes = rest.includes('--yes'), terms = args.filter((a) => a.trim());
-    const named = rest.flatMap((a, i) => (a === '--key' && i + 1 < rest.length ? [rest[i + 1]] : []));
+    const named = rest.flatMap((a, i) => (a === '--key' ? [rest[i + 1]] : []));
     // A key no entry here has is named, never skipped: a confirmed key of another
     // project's entry went unsaid, with exit 0 (review, 2026-10-29).
     const unread = [], stored = named.length ? entries([here], { failed: unread }) : [];
@@ -778,12 +793,13 @@ export function main(given) {
     // By words alone, every such turn holding them: a look by words missed one, and the next reply wrote it (1.2.5).
     const late = unread.length ? [] : terms.length && !named.length ? unwritten(here, [], terms).filter((e) => !already.has(e.key)) : unwritten(here, named.filter((k) => none(k) && !already.has(k)));
     stored.push(...late);
-    const before = named.filter((k) => none(k) && already.has(k)), again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
+    const before = named.filter((k) => none(k) && already.has(k));
+    let again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
     const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => (unread.length ? `no day of ${here} that could be read has the key ${k}: it may be in one that could not, so nothing was removed for it`
       : `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`));
     // --same: every entry asking what a keyed one asked, the copies a hit counts.
-    const asks = new Set(stored.filter((e) => named.includes(e.key)).map((e) => norm(e.asked)));
-    const keys = rest.includes('--same') ? stored.filter((e) => asks.has(norm(e.asked))).map((e) => e.key) : named;
+    const asks = new Set(stored.filter((e) => named.includes(e.key)).map((e) => sameKey(e.asked)));
+    const keys = rest.includes('--same') ? stored.filter((e) => asks.has(sameKey(e.asked))).map((e) => e.key) : named;
     // By the tag, from the full session id too: the skill has the id, an entry the tag.
     // Keys given filter even when none is left: no key is never "every entry".
     const o = { ...range, conversation: conversation && tag(conversation), keys: named.length ? keys : undefined, more: late, failed };
@@ -803,7 +819,13 @@ export function main(given) {
       // still go from handoff.md, by the conversation and minute the list keeps. Said "already forgotten" alone, they stayed (R73).
       if (yes && before.length) {
         const at = new Set(listed.filter(([k, t, m]) => t && m && before.includes(k)).map(([, t, m]) => `${tag(basename(t))} ${m}`));
-        try { if (withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`))) === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true }); }
+        try {
+          const w = withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`)));
+          if (w === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true });
+          // The retry did something: said, not "nothing to remove" alone.
+          // Said once: which of several keys still had an exchange there is not known here.
+          else if (w === true) again = [...before.map((k) => `key ${k} is already forgotten; nothing to remove from the journal`), 'handoff.md holds none of these exchanges now'];
+        }
         catch (e) { failed.push({ path: join(here, 'handoff.md'), code: e.code || e.message, write: true }); }
       }
       const m = forget(here, terms, o).matched, byRange = !terms.length && !named.length && !conversation;

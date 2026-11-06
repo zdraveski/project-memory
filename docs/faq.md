@@ -77,7 +77,7 @@ under env in my Claude Code settings,"* then restart Claude Code.
 ## What happens when auto memory is turned off?
 
 project-memory follows one switch only: the environment variable
-`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, set to `1`. While it is set,
+`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, set to `1`, `true`, `yes` or `on`. While it is set,
 project-memory reads and saves nothing on its own, except a short tag for
 the conversation, so neither the journal nor the record of where you left
 off takes that conversation in later, even if you go on with it after

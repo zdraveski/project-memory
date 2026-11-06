@@ -65,8 +65,11 @@ export const suites = {
     "the user's commit signing reaches the snapshot": ["'-c', 'commit.gpgsign=false',", ''],
     "the user's hooks run on the snapshot": ["\n  '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`,", ''],
     'long paths skipped on Windows': ["'-c', 'core.longpaths=true', ", ''],
-    'a dead lock of any shape is not taken over': ['rmSync(lock, { recursive: true, force: true })', 'rmdirSync(lock)'],
-    'an unremovable dead lock is busy forever': ['catch (err) { if (Date.now() > until) throw err; }', 'catch {}', { full: true }],
+    'a dead lock of any shape is not taken over': ['renameSync(lock, dead);', "throw Object.assign(new Error('x'), { code: 'EPERM' });"],
+    'a takeover that renamed a fresh lock keeps it renamed away': ['if (fresh) { try', 'if (false) { try'],
+    'a takeover that lost the rename to another waiter gives up': ["if (err.code === 'ENOENT') continue; ", ''],
+    'a renamed lock copy left by a killed waiter is not swept': ["f.startsWith('.lock.dead.')", "f.startsWith('.lock.dead!')"],
+    'an unremovable dead lock is busy forever': ["if (err.code === 'ENOENT') continue; if (Date.now() > until) throw err; }", "if (err.code === 'ENOENT') continue; }", { full: true }],
     'EACCES on the lock throws': ["if (e.code !== 'EEXIST' && !BUSY.includes(e.code)) throw e;", "if (e.code !== 'EEXIST' && e.code !== 'EPERM') throw e;"],
     'a held lock is not given up on': ['if (!held) return null;', ''],
     "each lock waits its own 2 s in a hook's run": ['t0 + Math.min(LOCK_WAIT, left ?? LOCK_WAIT)', 't0 + LOCK_WAIT'],
@@ -119,10 +122,15 @@ export const suites = {
     "a private conversation nudged": ["  if (full.hidden || secret(payload, full)) return null;\n", ""],
     "a private conversation gets a recovery note": ["if (!s.midTurn || secret(input, s)) return '';", "if (!s.midTurn) return '';"],
     "the nudge file named by the full id": ["const id = tag(String(", "const id = (String("],
+    "a note lost to a changed handoff reported as no markers": ["=== 'conflict' ? 'changed' : true;", "=== true;"],
+    "a note lost to a changed handoff reported written": ["    else if (n === 'changed') failed.push('note: the handoff changed meanwhile, so the note was not written');\n", ""],
+    "a synthetic error entry read as the size": ["if (m?.usage && m.model !== '<synthetic>') {", "if (m?.usage) {"],
     "a 200k window read wrong": ["(m[2] ? (m[2].toLowerCase() === 'k' ? 1e3 : 1e6) : 1)", "1"],
     "the model window always 1M": ["tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) || ", ""],
     "the compaction window past the model's": ["export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW, MODEL_WINDOW);", "export const WINDOW = tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW;"],
-    "an earlier compaction ignored": ["export const TRIGGER = PCT > 0 && PCT < 96 ? 0.85 * PCT / 96 : 0.85;", "export const TRIGGER = 0.85;"],
+    "an earlier compaction ignored": ["const AT = 0.959 * (PCT > 0 && PCT < 96 ? PCT / 96 : 1);", "const AT = 0.959;"],
+    "a small window keeps no room": ["Math.min(0.85 / 0.959 * AT, AT - 60_000 / WINDOW)", "Math.min(0.85 / 0.959 * AT, 1)"],
+    "a tiny window nudges at once": ["Math.max(AT / 2, ", "Math.max(0, "],
     "the gate runs with auto memory off": ["  if (payload && memoryOff()) r = ", "  if (false) r = "],
     "the nudge a hook error again": ["return { hookSpecificOutput: { hookEventName: 'Stop', additionalContext:", "return { decision: 'block', hookSpecificOutput: { hookEventName: 'Stop', additionalContext:"],
     "the last answer carried into the next turn": ["s.said = ''; ", ""],
@@ -160,7 +168,7 @@ export const suites = {
     'a launch with no output file reads to the end': ['(?:(?!agentId:|running in background with ID)[\\s\\S]){0,1000}?', '[\\s\\S]*?', { full: true }],
     "recovery never runs": ["if (!s.midTurn || secret(input, s)) return '';", "return '';"],
     "a finished turn gets a note": ["if (!s.midTurn || secret(input, s)) return '';", "if (secret(input, s)) return '';"],
-    "nudge back at 0.95": ["? 0.85 * PCT / 96 : 0.85;", "? 0.85 * PCT / 96 : 0.95;"],
+    "nudge back at 0.95": ["Math.min(0.85 / 0.959 * AT,", "Math.min(0.95 / 0.959 * AT,"],
     'old nudge files never pruned': ['if (Date.now() - statSync(p).mtimeMs > WEEK) unlinkSync(p);', ''],
     'notes untagged': ["**cut mid-turn**${t ? ` [${t}]` : ''}", '**cut mid-turn**'],
     'the note is built from the short read': ['  s = state(payload.transcript_path);', ''],
@@ -168,6 +176,10 @@ export const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    'a long Bearer value with no digit kept': ['\\d|[A-Za-z0-9_~+=-]{32})', '\\d)'],
+    'a Bearer value 32 long needs 33': ['\\d|[A-Za-z0-9_~+=-]{32})', '\\d|[A-Za-z0-9_~+=-]{33})'],
+    'a long Bearer value may hold a path': ['[A-Za-z0-9_~+=-]{32})', '[A-Za-z0-9._~+/=-]{32})'],
+    'a hidden character after Bearer hides the value': ['(Bearer|Basic|Token)[ \\p{Default_Ignorable_Code_Point}]+(?=', '(Bearer|Basic|Token) (?='],
     'a prompt past the 32 MB read never looked for': ['const p = !whole && !got.open ? promptBefore(path, bytes) : null;', 'const p = null;', { full: true }],
     'the prompt the tail cut through left out': ['.indexOf(10) + 1, carry', '.indexOf(10) * 0, carry'],
     'a line split over two reads lost': ['const all = Buffer.concat([buf, carry])', 'const all = buf'],
@@ -392,7 +404,7 @@ export const suites = {
     "P-F3 a count under tokens: redacted": ['&& /\\d/.test(v) && /[A-Za-z]/.test(v) :', '&& /\\d/.test(v) :'],
     "P-F3 a PIN under a secret's key kept": [String.raw`: /[\d!@#$%^&*+=?~]/.test(v));`, String.raw`: /[A-Za-z]/.test(v) && /[\d!@#$%^&*+=?~]/.test(v));`],
     "a bare token's value on the next line kept": ["tokens?[ \\t]{0,20}[:=]\\s{0,20}", "tokens?[ \\t]{0,20}[:=][ \\t]{0,20}"],
-    "lowercase bearer kept": ["{20,}/gi, '$1 [redacted]']", "{20,}/g, '$1 [redacted]']"],
+    "lowercase bearer kept": ["{20,}/giu, '$1 [redacted]']", "{20,}/gu, '$1 [redacted]']"],
     "a name-and-value pattern backtracks": ["[A-Za-z0-9_]{0,40}", "[A-Za-z0-9_]*"],
     "an emoji cut in half": [".replace(/[\\uD800-\\uDBFF]$/, '')", ""],
     "a note left keeps the file unchanged": ["const notes = has && doc.slice(a, b).includes('**cut mid-turn**');", "const notes = false;"],
@@ -542,6 +554,9 @@ export const suites = {
     "a forgotten exchange back when its folder's case differs": ['t && pathKey(t) === me', 't === me'],
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
+    'a log cut back over a line appended meanwhile': ["if (statSync(ran).size === size) renameSync(cut, ran);", "renameSync(cut, ran);"],
+    'an impossible date in a name trusted as NaN': ["const eventDate = d === d && new Date(d).toISOString().slice(0, 10) === named ? d : null;", "const eventDate = named ? d : null;"],
+    'a Feb 31 name rolled over to March': ["d === d && new Date(d).toISOString().slice(0, 10) === named ? d : null", "d === d ? d : null"],
     "a handoff failure names its temp file": ["writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) }))", "writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\\n')[0] }))"],
     "R67 a memory-off tag that could not be kept is silence": ["if (p) try { writeFileSync(", "if (false) try { writeFileSync("],
     'a memory-off tag that could not be kept recorded as a lost handoff': [', error: reason(e), off: true }', ', error: reason(e) }'],
@@ -592,7 +607,7 @@ export const suites = {
     'working rules age out': ['if (shared || KEEP_TYPES.has(f.type)) return true;', 'if (shared) return true;'],
     'a shared lesson ages out': ['if (shared || KEEP_TYPES.has(f.type)) return true;', 'if (KEEP_TYPES.has(f.type)) return true;'],
     "the Stop hook leaves no proof of life": ["      appendFileSync(ran, (prev && ", "      (() => {})(ran, (prev && "],
-    'the Stop log grows forever': ['if (statSync(ran).size > 8192)', 'if (false)'],
+    'the Stop log grows forever': ['if (size > 8192)', 'if (false)'],
     'a held memory reads as missing': ['catch (e) { if (BUSY.includes(e.code)) throw e; return null; }', 'catch { return null; }'],
     'tier: hot ignored': ["if (f.tier === 'hot') return true;", ''],
     'tier: archive ignored': ["if (f.tier === 'archive') return false;", ''],
@@ -678,6 +693,7 @@ export const suites = {
   }],
   'memory.mjs': ['memory.test.mjs', {
     'R64 status silent on a handoff the Stop could not save': ['if (lost) lines.push(', 'if (false) lines.push('],
+    'a retry that cleaned handoff.md says nothing of it': ['else if (w === true) again = [...before.map(', 'else if (false) again = [...before.map('],
     'status says every record as a lost handoff': ['`  needs attention: ${unsaved(lost)}`', '`  needs attention: the record of where you left off could not be saved after the reply at ${local(lost.at)}: ${lost.error}`'],
     'a forget over a journal that will not list crashes': ["} catch (e) { if (!e.code) throw e; r = no(`${join(here, 'journal')} could not be listed", "} catch (e) { throw e; r = no(`${join(here, 'journal')} could not be listed"],
     "a forget over a journal that will not list says the key is another project's": ["; nothing removed`); }", "; nothing removed`); if (lost.length) { r.lines.splice(-1, 0, ...lost); } }"],
@@ -793,10 +809,10 @@ export const suites = {
     "a hit field never redacted": ["around(clip(v, Infinity), find,", "around(v, find,"],
     "a hit field redacted after it is cut": ["around(clip(v, Infinity), find, Math.floor(HIT_MORE / hold.length))", "clip(around(v, find, Math.floor(HIT_MORE / hold.length)), Infinity)"],
     "touching stretches not merged": ["if (spans.length && a <= spans.at(-1)[1]) spans.at(-1)[1] = b; else spans.push([a, b]);", "spans.push([a, b]);"],
-    "a short request collapsed": [" && norm(h.asked).length >= SAME_MIN ? norm(h.asked) : null", " ? norm(h.asked) : null"],
+    "a short request collapsed": [" && sameKey(h.asked).length >= SAME_MIN ? sameKey(h.asked) : null", " ? sameKey(h.asked) : null"],
     "the copies' keys unsaid": [": ${more(also.map((x) => clip(x.key, Infinity)), 5)}; --same takes them all", ""],
-    "show --same ignored": ["rest.includes('--same') ? es.filter((x) => norm(x.asked) === norm(e.asked)) : [e]", "[e]"],
-    "forget --same ignored": ["rest.includes('--same') ? stored.filter((e) => asks.has(norm(e.asked))).map((e) => e.key) : named", "named"],
+    "show --same ignored": ["rest.includes('--same') ? es.filter((x) => sameKey(x.asked) === sameKey(e.asked)) : [e]", "[e]"],
+    "forget --same ignored": ["rest.includes('--same') ? stored.filter((e) => asks.has(sameKey(e.asked))).map((e) => e.key) : named", "named"],
     "forget: keys that match nothing read as no key": ["keys: named.length ? keys : undefined", "keys: keys.length ? keys : undefined"],
     "a lost key skipped in silence": ["if (lost.length) { r.lines.splice(-1, 0, ...lost); r.ok = false; }", ""],
     "a lost key named but exit 0": ["r.ok = false; }", "}"],
@@ -821,7 +837,7 @@ export const suites = {
     "a hit prints a field from its start, not around its words": ["around(clip(v, Infinity), find, Math.floor(HIT_MORE / hold.length))", "clip(v, Math.floor(HIT_MORE / hold.length))"],
     'a stretch cut at its start unmarked': ["(spans[0][0] ? '…' : '')", "''"],
     'identical requests not collapsed': ['if (k !== null && like.has(k))', 'if (false)'],
-    "identical requests told apart by case and spacing": ["const norm = (s) => s.toLowerCase().replace(/\\s+/g, ' ').trim();", "const norm = (s) => s;"],
+    "identical requests told apart by case and spacing": ["const sameKey = (s) => s.toLowerCase().replace(/\\s+/g, ' ').trim();", "const sameKey = (s) => s;"],
     'the repeats of a request unsaid': ['...(also.length ? [', '...(false ? ['],
     'a hit without its key': ['`     key: ${clip(h.key, Infinity)}`, ', ''],
     'a hit under --all without its project': ["${rest.includes('--all') ? ` · project ${project(e.dir)}` : ''}", ''],
@@ -956,13 +972,17 @@ export const suites = {
     "C-6 a forget that removed nothing speaks of them": ["...(gone.length ? [`Claude Code still keeps", "...(true ? [`Claude Code still keeps"],
     'C-8 a name in another case or form never picked': ['return m.length === 1 ? m[0] : file; };', 'return file; };'],
     'C-8 one of two names alike taken': ['return m.length === 1 ? m[0] : file; };', 'return m.length ? m[0] : file; };'],
-    'C-8 a decomposed name read as another': ["const fold = (s) => { const n = s.normalize('NFC');", 'const fold = (s) => { const n = s;'],
-    'C-8 names folded as one string, straße as STRASSE': ['return FOLDS ? [...n].map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join(\'\') : n; };', 'return FOLDS ? n.toUpperCase() : n; };'],
-    'C-8 a name in another case never folded': ['return FOLDS ? [...n]', 'return false ? [...n]'],
-    'C-8 history reads no snapshot name': ['existsSync(join(dir, d)) ? d : pick(file, ever(dir)); };', 'existsSync(join(dir, d)) ? d : file; };'],
+    'C-8 a decomposed name read as another': ["const fold = (s, folds) => { const n = s.normalize('NFC');", 'const fold = (s, folds) => { const n = s;'],
+    'C-8 names folded as one string, straße as STRASSE': ['return folds ? [...n].map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join(\'\') : n; };', 'return folds ? n.toUpperCase() : n; };'],
+    'a case-sensitive folder folded by the platform': ['return a.ino === b.ino && a.dev === b.dev; } catch { return false; }', 'return FOLDS; } catch { return FOLDS; }'],
+    'a folder with no name to try is taken as case-sensitive': ['  } catch {}\n  return FOLDS;', '  } catch {}\n  return false;'],
+    'a sharp s answers the case probe': ['if (o === n || o.length !== n.length) continue;', 'if (o === n) continue;'],
+    'a folder that folds case never folded': ['return a.ino === b.ino && a.dev === b.dev; } catch { return false; }', 'return false; } catch { return false; }'],
+    'C-8 a name in another case never folded': ['return folds ? [...n]', 'return false ? [...n]'],
+    'C-8 history reads no snapshot name': ['existsSync(join(dir, d)) ? d : pick(dir, file, ever(dir)); };', 'existsSync(join(dir, d)) ? d : file; };'],
     'C-8 history by the name as typed': ['      const f = named(dir, file);\n', '      const f = file;\n'],
     'C-8 .MD taken for part of the name': ["replace(/(\\.md)?$/i, '.md')", "replace(/(\\.md)?$/, '.md')"],
-    'C-8 a name the disk would not open never picked from its listing': ['} catch { return pick(file, names); }', '} catch { return file; }'],
+    'C-8 a name the disk would not open never picked from its listing': ['} catch { return pick(dir, file, names); }', '} catch { return file; }'],
     'H-F10 two quick replies read as hooks wired twice': [' && !r.h === !p.h && r.m === p.m &&', ' && !r.h === !p.h &&'],
     "H-F7 a .stop-ran that won't stat stops doctor": ["let when; try { when = `last ran ${local(statSync(ran).mtime)}`; } catch (e) { when = `has run, but ${ran} could not be read (${e.code || e.message}), so not when`; }", 'let when = `last ran ${local(statSync(ran).mtime)}`;'],
     'a look by words takes no unwritten turn': ['terms.length && !named.length ? unwritten(here, [], terms)', 'false ? unwritten(here, [], terms)'],
@@ -977,6 +997,10 @@ export const suites = {
     'a resumed conversation left out of the matcher (memory off untagged)': ['"matcher": "startup|resume|clear|compact"', '"matcher": "startup|clear|compact"'],
   }],
   'journal.mjs': ['journal.test.mjs', {
+    'a word search lists a turn of a private-listed conversation': ['if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;', 'if (hushed(projectsRoot(), s, false, OFF) !== false) continue;'],
+    'a word search lists a turn of a memory-off conversation': ['if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;', 'if (hushed(dir, s) !== false) continue;'],
+    'a word search lists a turn of a conversation with a typed private mark': ['          if (marked(fd, 0, IMPORT_SEGMENT, size).hit) continue;\n', ''],
+    'a word search lists a turn when a private list will not read': ['if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;', 'if (hushed(dir, s) || hushed(projectsRoot(), s, false, OFF)) continue;'],
     'forget leaves the temp copies a killed Stop left': ['    sweepTemps(dir);\n    return { matched', '    return { matched'],
     'a journal failure its folder refused said nowhere': ["} catch { if (!from) try { writeFileSync(aside(dir), line + '\\n'); } catch {} }", '} catch {}'],
     "an import's refused failure in the live write's place": ["if (!from) try { writeFileSync(aside(dir)", "if (true) try { writeFileSync(aside(dir)"],
@@ -1080,10 +1104,11 @@ export const suites = {
     'unwritten by words finds no turn': ['if (e && ts.every((w) => holds(e, w))) out.push(', 'if (false) out.push('],
     'unwritten by words takes a turn holding one word': ['if (e && ts.every((w) => holds(e, w)))', 'if (e && ts.some((w) => holds(e, w)))'],
     'unwritten by words in one case only': ['const ts = terms?.map((t) => t.toLowerCase())', 'const ts = terms'],
-    'unwritten by words misses an escaped word': ['.map((t) => JSON.stringify(t).slice(1, -1));', ';'],
-    "unwritten by words takes another store's conversation": ['if (ts) { if (ours(dir, p)) for', 'if (ts) { if (true) for'],
+    "unwritten by words takes another store's conversation": ['if (ours(dir, p)) for (const g', 'if (true) for (const g'],
     'unwritten by words stops at once': ['if (!ts && !left.size) return out;', 'if (!left.size) return out;'],
     'R73 forget takes an unwritten turn while a day will not read': ['  if (failed.length > fails) more = [];\n', ''],
+    'a look by words reads a turn cut in a part as two': ['g.next === null ? g.got.filter((x) => x !== g.got.open) : [...g.got, g.got.open]', '[...g.got, g.got.open]'],
+    'a look by words cuts a part anywhere, not at a turn': ['segments(fd, 0, seg, size, Infinity)', '[{ got: turns(chunk(fd, 0, seg, size).buf.toString("utf8")), next: size }]'],
     'unwritten reads the conversations once a key': ['const out = [], left = new Set(keys);', 'const out = [], left = new Set(keys.slice(0, 1));\n  if (keys.length > 1) out.push(...unwritten(dir, keys.slice(1)));'],
     'forget removes without the lock': ['return withLock(dir, () => {', 'return ((f) => f())(() => {'],
     'forget lists no key': ['...forgotten(before), ...matched.map((e) => [e.key, e.t, e.at])]', '...forgotten(before)]'],
@@ -1194,6 +1219,7 @@ export const suites = {
   }],
   'deploy.mjs': ['handoff-log.test.mjs', {
     'a shared-layer change checks only its own mutants': ['changed.some((f) => SHARED.includes(f))', 'false'],
+    'a change to the harness checks only its own mutants': ["['store.mjs', 'harness.mjs', 'mutate.mjs']", "['store.mjs', 'mutate.mjs']"],
     'an unknown live commit checks no mutant': ['(!changed || changed.some', '(changed.some'],
     'the plugin version not stamped': ["if (patch !== undefined && f === '.claude-plugin/plugin.json') {", 'if (false) {'],
     'the live plugin runs node from PATH': ["if (node && f === 'hooks/hooks.json') {", 'if (false) {'],
@@ -1222,6 +1248,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // reach half the mutants.
   const args = process.argv.slice(2), value = (n) => { const i = args.indexOf(n); return i === -1 ? undefined : args[i + 1]; };
   const changed = value('--changed')?.split(',').filter(Boolean), shard = value('--shard')?.match(/^(\d+)\/(\d+)$/);
+  // --shard 0/17, 18/17 or a typo selected no mutant and reported "all 0 killed": a check that never ran (audit #15).
+  if (args.includes('--shard') && !(shard && Number(shard[1]) >= 1 && Number(shard[1]) <= Number(shard[2]))) { console.error(`--shard wants i/n with i from 1 to n, not "${value('--shard')}"`); process.exit(1); }
   const only = args.filter((a, i) => !a.startsWith('--') && !['--changed', '--shard', '--auto-lines'].includes(args[i - 1]));
   // A missing or empty --auto-lines value selects nothing, never every hand mutant.
   const wantsLines = args.includes('--auto-lines'), autoLines = wantsLines ? (value('--auto-lines') ?? '').replace(/^--.*/, '') : undefined;
@@ -1268,6 +1296,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   if (args.includes('--list')) {
     for (const j of jobs) console.log(j.label);
     if (auto) console.error(`${dropped} automatic mutant(s) dropped as copies of hand mutants`);
+    for (const id of stale) console.error(`stale ignore: ${id}`);   // stderr: stdout is the list check.mjs reads
     process.exit(0);
   }
   for (const id of stale) console.log(`stale ignore: ${id}`);

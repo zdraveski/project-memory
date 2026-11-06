@@ -288,8 +288,6 @@ export const lockBudget = (on) => { left = on ? LOCK_WAIT : null; };
 
 // Run fn holding the store's lock: `mkdir` either creates the folder or fails,
 // on NTFS as anywhere. Returns fn's result, or null when the lock stayed busy.
-// ponytail: two hooks that both find a dead lock can both take it over in the
-// same instant; that needs a killed hook first, and costs one merged write.
 export function withLock(dir, fn) {
   const lock = join(dir, '.lock'), t0 = Date.now();
   let refused = 0, held = false;
@@ -310,8 +308,21 @@ export function withLock(dir, fn) {
       // in it. One still there when the wait is up throws, so the pass that
       // fails says so in .health: busy every turn was silence.
       if (stale) {
-        try { rmSync(lock, { recursive: true, force: true }); continue; }
-        catch (err) { if (Date.now() > until) throw err; }
+        // Taken by renaming it away, which only one waiter's rename wins: two that both saw it stale
+        // used to both delete it, the second deleting the first's new lock (audit #4).
+        // shortcut: while a late waiter has a fresh lock renamed away, a third waiter can mkdir one (two holders),
+        // or the holder can finish and the put-back revive a lock nobody holds (30 s of skipped work). Needs a
+        // killed hook and three waiters within microseconds; guard the takeover with a .lock.takeover mkdir if seen.
+        const dead = `${lock}.dead.${process.pid}.${Math.random().toString(36).slice(2)}`;   // not Date.now: a test steps the clock
+        try {
+          renameSync(lock, dead);
+          // What we renamed may be a lock another waiter made in between: put it back.
+          let fresh = false; try { fresh = Math.abs(Date.now() - statSync(dead).mtimeMs) <= LOCK_STALE; } catch {}
+          if (fresh) { try { renameSync(dead, lock); } catch {} }
+          else try { rmSync(dead, { recursive: true, force: true }); } catch {}   // left over: sweepTemps takes it
+          continue;
+        }
+        catch (err) { if (err.code === 'ENOENT') continue; if (Date.now() > until) throw err; }
       }
       if (Date.now() > until) break;
       sleep(STEP);
@@ -331,6 +342,8 @@ export function sweepTemps(dir) {
   for (const d of [dir, join(dir, 'journal')]) {
     let names = []; try { names = readdirSync(d); } catch {}
     for (const f of names) {
+      // A stale lock renamed away by withLock whose waiter died before deleting it.
+      if (d === dir && f.startsWith('.lock.dead.')) { try { rmSync(join(d, f), { recursive: true, force: true }); } catch {} continue; }
       const pid = Number((/^(?:.+\.md|\.[^.]+)\.tmp(\d+)$/.exec(f) || [])[1]);
       if (!pid) continue;
       // Signal 0 sends nothing: it asks whether the process is there.
