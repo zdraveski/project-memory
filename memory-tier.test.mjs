@@ -116,6 +116,21 @@ const arc2 = readFileSync(join(dir, 'MEMORY-archive.md'), 'utf8');
 ok(/^- \[lost note\]\(lost-note\.md\) — desc of lost-note$/m.test(arc2), 'an orphan is recovered into the archive');
 ok(/lost-but-pinned\.md/.test(main2), 'a pinned orphan is recovered hot, in the same pass');
 ok(!/lost-note\.md/.test(main2), 'recovered prose is machine-written and never billed at session start');
+// Only the two index files are skipped, not every name that starts with MEMORY.
+memory('MEMORY-leak-investigation', { days: 0 });
+await run();
+ok(/\(MEMORY-leak-investigation\.md\)/.test(readFileSync(join(dir, 'MEMORY-archive.md'), 'utf8')), 'a note named MEMORY-something.md is recovered like any other');
+// A second pass writes the same bytes: the blank line under the heading stays when every pointer went cold.
+{
+  const d = tempDir('memtier-twice-');
+  writeFileSync(join(d, 'old-one.md'), '---\nname: old-one\ndescription: d\nmetadata:\n  type: project\n  tier: archive\n---\nbody\n');
+  const t = new Date(Date.now() - 10 * 60000); utimesSync(join(d, 'old-one.md'), t, t);
+  writeFileSync(join(d, 'MEMORY.md'), '# Index\n\n- [old-one](old-one.md) — hook\n');
+  await tierExec(['--dir', d]);
+  const first = readFileSync(join(d, 'MEMORY.md'), 'utf8');
+  await tierExec(['--dir', d]);
+  ok(readFileSync(join(d, 'MEMORY.md'), 'utf8') === first, 'a second tier run leaves the index as the first wrote it');
+}
 
 // A file written a minute ago with no pointer is its writer's, not an orphan:
 // the model writes the memory, then points at it. Recovering it now would put

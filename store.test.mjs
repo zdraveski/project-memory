@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps } = await import('./store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -589,9 +589,22 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   mkdirSync(gone); mkdirSync(dang); symlinkSync(gone, join(dang, 'memory'), 'junction'); rmdirSync(gone);
   ok(!allStores().some((d) => d.includes('C--dangling')), 'allStores() skips a store whose link leads nowhere');
 
+  // frontEnd() is the newline before the closing ---; none opened, or never closed, is -1 (search then reads the whole note).
+  ok(frontEnd('---\na: b\n---\nbody') === 8 && frontEnd('---\r\na: b\r\n---\r\nbody') === 10, 'frontEnd is the newline before the closing ---');
+  ok(frontEnd('---\na: b\nbody') === -1 && frontEnd('----\na: b\n---\n') === -1, 'unclosed, or opened by ----, frontEnd is -1');
+
+  // Only the two files the plugin writes are indexes; a note may be named MEMORY-anything.md.
+  ok(isIndex('MEMORY.md') && isIndex('MEMORY-archive.md'), 'the two index files are indexes');
+  ok(!isIndex('MEMORY-leak.md') && !isIndex('MEMORY') && !isIndex('note.md'), 'any other name is a note');
+
   // The frontmatter ends at its closing line, empty or not, and an unclosed one is all there is.
   ok(front('---\n---\ntier: archive\n').tier === '', 'an empty frontmatter ends at once: the body is no frontmatter');
   ok(front('---\nname: abc').name === 'abc', 'an unclosed frontmatter is read to its last character');
+  ok(front('----\nsome text\ntier: archive\ntype: feedback\n').tier === '' && front('----\ntype: feedback\n').type === '', 'a note that opens with ---- has no frontmatter: its body cannot archive it');
+  ok(front('---\ndescription: |\n  a\n---x\n  b\ntier: archive\n---\n').tier === 'archive', 'a ---x line inside the frontmatter does not close it');
+  ok(front('---\ndescription: |\n  a\n----\ntier: archive\n---\n').tier === 'archive', 'a ---- line inside the frontmatter does not close it');
+  ok(front('---\r\ntier: hot\r\n---  \r\ntier: archive\r\n').tier === 'hot', 'a CRLF closing line, trailing blanks too, closes it');
+  ok(front('---\ndescription: |\n  how to\n  tier: archive\n---\n').tier === '', 'a tier: line inside a block description is text, not the tier');
   ok(pointerLine('x.md', 'hello') === '- [x](x.md) — hello', 'a pointer line keeps the description from its first character');
 }
 

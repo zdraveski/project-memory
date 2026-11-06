@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, ren
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
+import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -139,8 +139,10 @@ function split(text) {
   // demotes the top memory to prose and orphans it.
   for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const m = line.match(POINTER);
+    // The Archive line counts for the gap too: with every pointer cold it is the only line after the blank one.
+    if (m) gap ||= !pointers.length && preamble.at(-1)?.trim() === '';
     if (m && m[1] === ARCHIVE) continue;   // by its target, not its title: regenerated with a live count
-    if (m) { gap ||= !pointers.length && preamble.at(-1)?.trim() === ''; pointers.push({ line, target: m[1] }); }
+    if (m) pointers.push({ line, target: m[1] });
     else if (line.trim() || preamble[preamble.length - 1]?.trim()) preamble.push(line);
   }
   while (preamble.length && preamble[preamble.length - 1].trim() === '') preamble.pop();
@@ -217,7 +219,7 @@ function tier(dir, now, seen = null) {
   // from its own `description:`, always into the archive: recovered prose is
   // machine-written, so it is greppable but never billed at session start.
   for (const f of readdirSync(dir)) {
-    if (!f.endsWith('.md') || f.startsWith('MEMORY') || placed.has(key(f))) continue;
+    if (!f.endsWith('.md') || isIndex(f) || placed.has(key(f))) continue;
     // Its writer is about to point at it. A recovered line placed now would
     // beat the hand-written one to the index. Not handoff.md: this same Stop
     // just rewrote it, and its writer never adds a pointer. Nor journal.md's.
