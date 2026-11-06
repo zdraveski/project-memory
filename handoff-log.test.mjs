@@ -1604,6 +1604,20 @@ for (const s of [`curl 'https://x.io/a' -H 'cookie: _ga=GA1.2.3; session=${sess}
   ok(!red(s).includes(sess) && red(s).includes('[redacted]'), `a session cookie is redacted (got ${red(s)})`);
 }
 ok(['cookie recipe: flour, sugar', 'the cookie: they expire in a week', 'git checkout -b feature/x', 'curl -b cookies.txt https://x.io', 'Cookie policy: see the page', 'set-cookie headers matter'].every((s) => red(s) === s), 'prose and a cookie jar file are kept');
+// 1.2.6 audit #7: more provider keys (each alone in prose) and a signed URL's signature.
+{
+  const H16 = '0123456789abcdef'.repeat(2), H20 = '0123456789abcdef'.repeat(2) + '01234567';
+  for (const t of [k('123456789', ':AAH', 'dk3Jf8sLq2Zx0PqW9mN4vB7tYc1RgUe5'), k('lin', '_api_', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'), k('PMAK', '-', 'a1B2c3D4e5F6g7H8i9J0k1L2', '-', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7'),
+    k('r8', '_', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s'), k('sbp', '_', H20), k('dapi', H16), k('sntrys', '_', 'eyJpYXQiOjE2OTk2NDMyMDAuMTIzNDU2LCJ1cmwiOiJodHRwczo'), k('SK', H16),
+    k('key', '-', H16), k('sk', '.eyJ', '1IjoiYWNtZSIsImEiOiJjbGt4eHh4eHgifQ', '.', 'dGhpc2lzYW5leGFtcGxl')]) {
+    ok(!red(`pushed ${t} today`).includes(t.slice(4)) && red(`pushed ${t} today`).includes('[redacted]'), `a provider key is redacted by its shape (kept: ${t})`);
+  }
+  for (const u of ['https://acct.blob.core.windows.net/c/f.png?sv=2022-11-02&sig=AbCdEfGh%2BIjKlMnOpQrStUv%3D&se=2026-12-01', 'https://b.s3.amazonaws.com/f?X-Amz-Signature=0123456789abcdef0123456789abcdef&X-Amz-Expires=60',
+    'https://storage.googleapis.com/b/f?X-Goog-Signature=0123456789abcdef0123456789abcdef']) {
+    ok(red(u).includes('=[redacted]') && !/AbCdEfGh|0123456789abcdef0123/.test(red(u)), `a signed URL's signature is redacted (got ${red(u)})`);
+  }
+  ok(['the sig of the mail', 'key-value pairs and key-frames', 'set sig=short here', 'SK1 and sk.example', 'a?sig=abc&x=1', 'ordinary 123456789:ABC prose', 'dapi is the API', 'r8_ is a prefix'].every((s) => red(s) === s), 'prose that only looks like these keys is kept');
+}
 // Audit #7: a Bearer/Basic/Token value of 32 or more characters is cut with no digit in it too (1 in 400 random ones has none), and
 // a hidden character between the word and the value does not hide it; 31 characters of letters stay prose.
 {
