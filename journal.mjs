@@ -13,11 +13,11 @@ export const JOURNAL = 'journal';
 // the point of a journal, and a search reads headlines of it, never the whole
 // (KIRE, 2026-10-31: "having a memory from previous sessions in details is a
 // priority"). Only a branch and a path are cut: a pasted text in their place.
-export const J_BRANCH = 100;   // chars of a branch name: any real one whole, a pasted text in one cut
+const J_BRANCH = 100;   // chars of a branch name: any real one whole, a pasted text in one cut
 export const J_PATH = 300;     // chars of one file path: Windows' 260-character limit fits whole
 // A Stop imports old conversations for this long, holding the store's lock,
 // then leaves the rest to the next: a month of them can be a gigabyte.
-export const IMPORT_BUDGET_MS = 150;
+const IMPORT_BUDGET_MS = 150;
 // The most of a transcript one read holds, and so the longest line read: the
 // lock is held a segment past the budget, and one tool result can be 70 MB.
 // A longer line (a tool's output: no prompt or reply is that long) is passed
@@ -26,7 +26,7 @@ export const IMPORT_SEGMENT = 64 * 1024 * 1024;
 // The most turns one look imports from a transcript, the rest at the next: a
 // segment of 49,053 short turns (a long /loop) held the lock 18 s, and a
 // parallel session's handoff was skipped (P1 hunt, 2026-10-29).
-export const IMPORT_TURNS = 500;
+const IMPORT_TURNS = 500;
 // A transcript that would not open is tried again this long after, grown or not.
 const RETRY = 24 * 3600e3;
 

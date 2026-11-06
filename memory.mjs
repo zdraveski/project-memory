@@ -74,7 +74,7 @@ const result = (a) => { const t = clip(a, HIT_HEAD); return /^.{20,}?[.!?](?=\s|
 // a retry. A shorter one ("continue", "yes") is different work each time, and
 // collapsed, its reply could not be read (review, 2026-10-29).
 const SAME_MIN = 80;
-const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+const sameKey = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
 // What deploy.mjs needs to agree with doctor about, defined once: the plugin,
 // the live copy, and what runs.
@@ -725,7 +725,7 @@ export function main(given) {
     // is one hit with a count: its copies filled the list (recall test, 2026-10-29).
     const groups = [], like = new Map();
     for (const h of found) {
-      const k = h.kind === 'journal' && norm(h.asked).length >= SAME_MIN ? norm(h.asked) : null;
+      const k = h.kind === 'journal' && sameKey(h.asked).length >= SAME_MIN ? sameKey(h.asked) : null;
       if (k !== null && like.has(k)) like.get(k).push(h);
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
@@ -757,7 +757,7 @@ export function main(given) {
       ...[['Asked', e.asked], ['Answered', e.answered], ['Changed', e.changed.join(', ')], ['Ran', e.ran.join(' · ')]].filter(([, v]) => v).map(([k, v]) => `     ${k}: ${clip(v, Infinity)}`),
       `     Day file: ${e.path}`, ...full(e)];
     // --same: every entry asking what this one asked, the copies a hit counts.
-    const alike = (e) => (rest.includes('--same') ? es.filter((x) => norm(x.asked) === norm(e.asked)) : [e]).filter((x) => !seen.has(x) && seen.add(x));
+    const alike = (e) => (rest.includes('--same') ? es.filter((x) => sameKey(x.asked) === sameKey(e.asked)) : [e]).filter((x) => !seen.has(x) && seen.add(x));
     r = { ok: got.every(Boolean), lines: got.flatMap((e, i) => e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${args[i]} in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
   } else if (cmd === 'search' && (range.since || range.until)) {
     // What was asked on those days, newest first: "what did we do last week".
@@ -783,8 +783,8 @@ export function main(given) {
     const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => (unread.length ? `no day of ${here} that could be read has the key ${k}: it may be in one that could not, so nothing was removed for it`
       : `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`));
     // --same: every entry asking what a keyed one asked, the copies a hit counts.
-    const asks = new Set(stored.filter((e) => named.includes(e.key)).map((e) => norm(e.asked)));
-    const keys = rest.includes('--same') ? stored.filter((e) => asks.has(norm(e.asked))).map((e) => e.key) : named;
+    const asks = new Set(stored.filter((e) => named.includes(e.key)).map((e) => sameKey(e.asked)));
+    const keys = rest.includes('--same') ? stored.filter((e) => asks.has(sameKey(e.asked))).map((e) => e.key) : named;
     // By the tag, from the full session id too: the skill has the id, an entry the tag.
     // Keys given filter even when none is left: no key is never "every entry".
     const o = { ...range, conversation: conversation && tag(conversation), keys: named.length ? keys : undefined, more: late, failed };
