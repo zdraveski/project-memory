@@ -429,6 +429,8 @@ ranLog({ at: ago(60_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' }, { at: ago(59
 ok(!/ran twice/.test((await cli('doctor')).stdout), 'doctor: the reply to a blocked stop is not a second wiring');
 ranLog({ at: ago(60_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' }, { at: ago(56_000), s: 'aaaaaaaa', e: 'Stop', from: 'C:/x' });
 ok(!/ran twice/.test((await cli('doctor')).stdout), 'doctor: two replies four seconds apart are two replies');
+ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(59_000), s: 'aaaaaaaa', m: 'ab12cd34', from: 'C:/y' });
+ok(/ran twice/.test((await cli('doctor')).stdout), 'doctor: an old wiring that logs no fingerprint, next to the plugin, is hooks wired twice');
 rmSync(join(root, '.stop-ran'), { force: true });
 // Before Claude's first reply nothing has saved: waiting, not a problem. A reply
 // this conversation finished over a minute ago, with nothing saved, is one.

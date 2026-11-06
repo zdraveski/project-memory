@@ -587,9 +587,10 @@ const stopRuns = () => (read(join(projectsRoot(), '.stop-ran')) ?? '').split('\n
 // PreCompact run), nor the reply to a block (stop_hook_active): both are a
 // second run seconds later, and both read as hooks wired twice. Nor two
 // replies, by their fingerprints (`m`): a task's end answered in a line came
-// under 2 s after the reply before it (audit H-F10). A run logged before 1.2.5 has none.
+// under 2 s after the reply before it (audit H-F10). A run logged before 1.2.5 has none,
+// so a run without one matches any: an old copy wired by hand next to the plugin.
 const TWICE = 2000;
-const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h && r.m === p.m &&
+const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h && (!r.m || !p.m || r.m === p.m) &&
   Math.abs(Date.parse(r.at) - Date.parse(p.at)) < TWICE;
 
 export function doctor() {
