@@ -82,3 +82,4 @@ da83bf887eda memory.mjs:123 FOLDS's `process.platform === 'darwin'` -> `!==`: on
 a86fafee1880 store.mjs:315 the takeover's `let fresh = false` -> `true`: the value matters only when the renamed copy cannot be stat'ed; then the put-back rename fails the same way and the copy is left for sweepTemps
 93a804dd92e8 store.mjs:315 the takeover's freshness `<= LOCK_STALE` -> `<`: the two differ only for a lock exactly LOCK_STALE old to the millisecond
 a5d3d2522001 store.mjs:317 the takeover's cleanup `force: true` -> `false`: the copy exists (we just renamed it), so force has nothing to silence; a failure is caught either way
+b6d474d5253d memory-tier.mjs:629 the log cut's cleanup `force: true` -> `false`: after a successful rename the temp copy is gone and rmSync then throws, into the try/catch around the whole proof-of-life block, which swallows it; nothing after it in that block

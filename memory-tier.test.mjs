@@ -472,6 +472,15 @@ ok(lastRun.s && lastRun.from && !Number.isNaN(Date.parse(lastRun.at)), `--stop: 
 writeFileSync(join(root, '.stop-ran'), Array.from({ length: 200 }, (_, i) => JSON.stringify({ at: new Date(i).toISOString(), s: 'old', from: 'x'.repeat(30) })).join('\n') + '\n');
 await stop();
 ok(runLines().length <= 20 && JSON.parse(runLines().at(-1)).s !== 'old', `--stop: the log keeps the newest runs only (got ${runLines().length} lines)`);
+// A line another session appends while this run cuts the log back survives (audit #13).
+{
+  const ranPath = join(root, '.stop-ran');
+  writeFileSync(ranPath, Array.from({ length: 200 }, (_, i) => JSON.stringify({ at: new Date(i).toISOString(), s: 'old', from: 'x'.repeat(30) })).join('\n') + '\n');
+  let reads = 0;
+  await swap('node:fs', 'readFileSync', (real) => (p, ...a) => { const t = real(p, ...a); if (String(p) === ranPath && ++reads === 2) writeFileSync(ranPath, '{"s":"parallel"}\n', { flag: 'a' }); return t; }, stop);
+  ok(reads >= 2 && runLines().some((l) => l.includes('"parallel"')), `--stop: a line appended while the log is cut back is kept (got ${runLines().length} lines)`);
+  ok(!existsSync(`${ranPath}.tmp${process.pid}`), '--stop: and no temp copy is left');
+}
 // A handoff-log.mjs that cannot load writes no handoff: no proof of life either.
 const broken = tempDir('broken-');
 for (const f of ['memory-tier.mjs', 'store.mjs', 'compact-gate.mjs']) copyFileSync(tool(f), join(broken, f));

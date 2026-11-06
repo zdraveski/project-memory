@@ -545,6 +545,7 @@ export const suites = {
     "a forgotten exchange back when its folder's case differs": ['t && pathKey(t) === me', 't === me'],
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
+    'a log cut back over a line appended meanwhile': ["if (statSync(ran).size === size) renameSync(cut, ran);", "renameSync(cut, ran);"],
     'an impossible date in a name trusted as NaN': ["const eventDate = d === d && new Date(d).toISOString().slice(0, 10) === named ? d : null;", "const eventDate = named ? d : null;"],
     'a Feb 31 name rolled over to March': ["d === d && new Date(d).toISOString().slice(0, 10) === named ? d : null", "d === d ? d : null"],
     "a handoff failure names its temp file": ["writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) }))", "writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\\n')[0] }))"],
@@ -597,7 +598,7 @@ export const suites = {
     'working rules age out': ['if (shared || KEEP_TYPES.has(f.type)) return true;', 'if (shared) return true;'],
     'a shared lesson ages out': ['if (shared || KEEP_TYPES.has(f.type)) return true;', 'if (KEEP_TYPES.has(f.type)) return true;'],
     "the Stop hook leaves no proof of life": ["      appendFileSync(ran, (prev && ", "      (() => {})(ran, (prev && "],
-    'the Stop log grows forever': ['if (statSync(ran).size > 8192)', 'if (false)'],
+    'the Stop log grows forever': ['if (size > 8192)', 'if (false)'],
     'a held memory reads as missing': ['catch (e) { if (BUSY.includes(e.code)) throw e; return null; }', 'catch { return null; }'],
     'tier: hot ignored': ["if (f.tier === 'hot') return true;", ''],
     'tier: archive ignored': ["if (f.tier === 'archive') return false;", ''],
