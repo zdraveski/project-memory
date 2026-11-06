@@ -1574,6 +1574,9 @@ if (!quick) {
   ok(scoreOf(r.stdout, 'mn-aa.md') === 7 && scoreOf(r.stdout, 'mn-bb.md') === 3, `a three-letter term is found inside a longer word, in a description (+2, strong) and in a body (got ${r.stdout})`);
   ok(/mn-nofront\.md/.test((await jcli('search', 'quokka')).stdout), 'a note with no frontmatter is searched from its first line');
   ok(/mn-tight\.md/.test((await jcli('search', 'zebu')).stdout), 'a body that starts right after the closing --- is searched from its first character');
+  // The closing --- is the file's last bytes: the body is empty, not the whole file with its frontmatter.
+  writeFileSync(join(jm, 'mn-endfm.md'), '---\nname: mn-endfm\ndescription: "end"\nextra: okapi\n---');
+  ok(!/mn-endfm\.md/.test((await jcli('search', 'okapi')).stdout), 'a note whose closing --- ends the file has an empty body, its frontmatter is not searched');
   // An empty frontmatter followed by a rule: the body is what follows the first fence, not what follows the rule.
   writeFileSync(join(jm, 'mn-hr.md'), '---\n---\nlemur is in the first part\n\n---\n\nthe second part\n');
   ok(/mn-hr\.md/.test((await jcli('search', 'lemur')).stdout), 'a note with an empty frontmatter and a later rule is searched from after its frontmatter');

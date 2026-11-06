@@ -156,7 +156,8 @@ export function memories(dir) {
     let mtime = 0; try { mtime = statSync(path).mtimeMs; } catch {}
     return [{
       file, path, dir, name, desc, type, superseded,
-      body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1),
+      // No newline after the closing --- (indexOf gives -1): the body is empty, not the whole file.
+      body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1 || text.length),
       // Not in code (`grid[[0]]`, a fenced block: its fences start a line, an
       // inline ``` in prose hid the links up to the next fence; ```` holds a
       // ``` fence and only ```` closes it), and `[[name.md]]` is name's. A
