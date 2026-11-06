@@ -431,6 +431,9 @@ const windowWith = (vars) => {
 };
 const w1 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200k' });
 ok(w1.WINDOW === 200_000 && w1.MODEL_WINDOW === 1_000_000, `a 200k window is read as 200,000 (got ${JSON.stringify(w1)})`);
+// The 60k of room holds in any window: 0.85 of 200k left 31k, under a p75 turn (46k).
+ok(w1.TRIGGER * w1.WINDOW <= 0.959 * w1.WINDOW - 60_000 + 1e-6 && w1.TRIGGER > 0.6, `a 200k window keeps 60k of room before the compaction (got ${JSON.stringify(w1)})`);
+ok(windowWith({}).TRIGGER === 0.85, 'a 1M window keeps the 0.85 trigger');
 const w2 = windowWith({ CLAUDE_CODE_MAX_CONTEXT_TOKENS: '400000', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '800k' });
 ok(w2.MODEL_WINDOW === 400_000 && w2.WINDOW === 400_000, `the model's window from CLAUDE_CODE_MAX_CONTEXT_TOKENS, and no compaction window past it (got ${JSON.stringify(w2)})`);
 const w3 = windowWith({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50' });
