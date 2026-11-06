@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.5 (2026-11-06)
 
 **More detail kept**
 - The journal now keeps every exchange whole: your whole message, Claude's
