@@ -360,6 +360,9 @@ const SECRETS = [
   [/(hooks\.slack\.com\/services\/)[A-Za-z0-9/]+/g, '$1[redacted]'],
   [/(discord(?:app)?\.com\/api\/webhooks\/\d{1,25}\/)[\w-]+/g, '$1[redacted]'],
   // A session cookie logs anyone in: a Cookie / Set-Cookie header (name=value inside it), and curl's -b / --cookie value (not a jar file).
+  // An Authorization value with no scheme word: 20+ characters with a digit. And redis-cli's -a password.
+  [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?)(?=[A-Za-z0-9._~+/=-]{0,200}\d)[A-Za-z0-9._~+/=-]{20,}/gi, '$1[redacted]'],
+  [/(\bredis-cli\b[^\n|;&]{0,200}?\s-a[ \t]+["']?)[^\s"']+/g, '$1[redacted]'],
   // The curl rule first: the header rule reads to the next quote, which may be the one that opens a -b value.
   [/(\bcurl\b[^\n|;&]{0,300}?\s(?:-b|--cookie)[ =]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (v.includes('=') ? `${pre}[redacted]` : m)],
   [/((?:^|[\s'"])(?:set-)?cookie["']?[ \t]*:[ \t]*["']?)(?=[^'"\n=]{1,100}=)[^'"\n]{1,4000}/gim, '$1[redacted]'],

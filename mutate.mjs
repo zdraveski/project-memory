@@ -387,6 +387,8 @@ export const suites = {
     "a Mailgun key saved": ["|\\bkey-[0-9a-f]{32}\\b", ""],
     "a Mapbox key saved": ["|\\bsk\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}", ""],
     "a signed URL signature saved": ["  [/([?&](?:sig|X-Amz-Signature|X-Goog-Signature)=)[^&\\s]{16,}/gi, '$1[redacted]'],\n", ""],
+    "a schemeless Authorization saved": ["  [/(\\bauthorization[\"']?[ \\t]*[:=][ \\t]*[\"']?)(?=[A-Za-z0-9._~+/=-]{0,200}\\d)[A-Za-z0-9._~+/=-]{20,}/gi, '$1[redacted]'],\n", ""],
+    "a redis-cli password saved": ["  [/(\\bredis-cli\\b[^\\n|;&]{0,200}?\\s-a[ \\t]+[\"']?)[^\\s\"']+/g, '$1[redacted]'],\n", ""],
     "a password in a URL saved": ["[^\\s:@/]{0,100}:)[^\\s/?#]{1,200}@/gi", "[^\\s:@/]{0,100}:)NEVER[^\\s/?#]{1,200}@/gi"],
     "mysql -p saved": ["mysqladmin|mariadb)\\b[^\\n|;&]{0,200}?\\s-p)", "mysqladmin|mariadb)\\bNEVER[^\\n|;&]{0,200}?\\s-p)"],
     "mysql asking for its password redacted": ["\\s-p)[^\\s-][^\\s]{2,}", "\\s-p)[^\\s]{0,}"],

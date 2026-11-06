@@ -1618,6 +1618,12 @@ ok(['cookie recipe: flour, sugar', 'the cookie: they expire in a week', 'git che
   }
   ok(['the sig of the mail', 'key-value pairs and key-frames', 'set sig=short here', 'SK1 and sk.example', 'a?sig=abc&x=1', 'ordinary 123456789:ABC prose', 'dapi is the API', 'r8_ is a prefix'].every((s) => red(s) === s), 'prose that only looks like these keys is kept');
 }
+// Review: an Authorization header with no scheme word, redis-cli -a, a cookie header in any case.
+for (const [s, gone] of [['authorization: ' + k('dXNlcjpw', 'YXNzd29yZDEyMzQ1Njc4'), 'dXNlcjpw'], ['"Authorization": "' + k('dXNlcjpw', 'YXNzd29yZDEyMzQ1Njc4') + '"', 'dXNlcjpw'], ['redis-cli -a ' + k('hunter', '2abc'), 'hunter'],
+  ['redis-cli -h db.local -a ' + k('hunter', '2abc') + ' PING', 'hunter'], ['Set-Cookie: sid=' + k('abcdef01', '23456789abcdef0123456789'), 'abcdef01'], ['cookie: session=' + k('abcdef01', '23456789'), 'abcdef01']]) {
+  ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a schemeless Authorization value, redis-cli -a and a cookie are redacted (got ${red(s)})`);
+}
+ok(['the authorization: header is required', 'authorization: granted', 'ls -a src', 'redis-cli -a', 'authorization: Bearer'].every((s) => red(s) === s), 'prose about authorization and other -a flags are kept');
 // Audit #7: a Bearer/Basic/Token value of 32 or more characters is cut with no digit in it too (1 in 400 random ones has none), and
 // a hidden character between the word and the value does not hide it; 31 characters of letters stay prose.
 {
