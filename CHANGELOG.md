@@ -136,8 +136,9 @@
 
 **Several windows at once**
 - When a window left a lock behind (it was closed mid-save), two others
-  waiting for it could both take it over and write at the same time. Only
-  one can now.
+  waiting for it could both take it over and write at the same time. Now
+  only one takes it over, short of three windows racing within the same few
+  microseconds.
 - When the Stop hook cut its own log (`.stop-ran`) back, a line another
   window added at that moment could be lost, and `doctor` could then miss
   hooks set up twice. The log is now cut only if nothing was added
