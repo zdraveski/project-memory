@@ -1556,6 +1556,15 @@ const byPrefix = [
   k('dckr', '_pat_', 'abcdefghij0123456789'), k('LS0tLS1CRUdJTi', 'BQUklWQVRFIEtFWS0tLS0t')];
 const notCut = byPrefix.filter((t) => red(`see ${t} end`).includes(t.slice(4)) || !red(`see ${t} end`).includes('[redacted]'));
 ok(!notCut.length, `each key type in the list is redacted by its prefix (kept: ${notCut.join(' | ')})`);
+// Audit #7: a Bearer/Basic/Token value of 32 or more characters is cut with no digit in it too (1 in 400 random ones has none), and
+// a hidden character between the word and the value does not hide it; 31 characters of letters stay prose.
+{
+  const L32 = 'abcdefghijklmnopqrstuvwxyzABCDEF', zw = String.fromCharCode(0x200b);
+  for (const [s, gone] of [[`Authorization: Bearer ${L32}`, L32], [`Basic ${L32}`, L32], [`Bearer${zw} ${L32}`, L32], [`Token ${zw}${L32}`, L32], [`Bearer ${zw}${k('abc', 'def', '0123456789', 'abcdefghij')}`, 'def0123']]) {
+    ok(!red(s).includes(gone.slice(0, 8)) && red(s).includes('[redacted]'), `a long Bearer value with no digit, or a hidden character before it, is redacted (got ${red(s)})`);
+  }
+  ok(red(`Bearer ${L32.slice(1)}`) === `Bearer ${L32.slice(1)}`, 'a 31-letter word after Bearer is prose');
+}
 // Digit-free secrets that only look like code are secrets all the same: a
 // looser "this is code" rule let every one of these through.
 const wordy = ['password: Pa$$word', 'DB_PASSWORD=correct_horse_battery_staple', 'JWT_SECRET=my_jwt_secret_value', 'api_key=abcdef.ghijkl',

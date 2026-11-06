@@ -168,6 +168,9 @@ export const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    'a long Bearer value with no digit kept': ['\\d|[A-Za-z0-9._~+/=-]{32})', '\\d)'],
+    'a Bearer value 32 long needs 33': ['\\d|[A-Za-z0-9._~+/=-]{32})', '\\d|[A-Za-z0-9._~+/=-]{33})'],
+    'a hidden character after Bearer hides the value': ['(Bearer|Basic|Token)[ \\p{Default_Ignorable_Code_Point}]+(?=', '(Bearer|Basic|Token) (?='],
     'a prompt past the 32 MB read never looked for': ['const p = !whole && !got.open ? promptBefore(path, bytes) : null;', 'const p = null;', { full: true }],
     'the prompt the tail cut through left out': ['.indexOf(10) + 1, carry', '.indexOf(10) * 0, carry'],
     'a line split over two reads lost': ['const all = Buffer.concat([buf, carry])', 'const all = buf'],
@@ -392,7 +395,7 @@ export const suites = {
     "P-F3 a count under tokens: redacted": ['&& /\\d/.test(v) && /[A-Za-z]/.test(v) :', '&& /\\d/.test(v) :'],
     "P-F3 a PIN under a secret's key kept": [String.raw`: /[\d!@#$%^&*+=?~]/.test(v));`, String.raw`: /[A-Za-z]/.test(v) && /[\d!@#$%^&*+=?~]/.test(v));`],
     "a bare token's value on the next line kept": ["tokens?[ \\t]{0,20}[:=]\\s{0,20}", "tokens?[ \\t]{0,20}[:=][ \\t]{0,20}"],
-    "lowercase bearer kept": ["{20,}/gi, '$1 [redacted]']", "{20,}/g, '$1 [redacted]']"],
+    "lowercase bearer kept": ["{20,}/giu, '$1 [redacted]']", "{20,}/gu, '$1 [redacted]']"],
     "a name-and-value pattern backtracks": ["[A-Za-z0-9_]{0,40}", "[A-Za-z0-9_]*"],
     "an emoji cut in half": [".replace(/[\\uD800-\\uDBFF]$/, '')", ""],
     "a note left keeps the file unchanged": ["const notes = has && doc.slice(a, b).includes('**cut mid-turn**');", "const notes = false;"],
