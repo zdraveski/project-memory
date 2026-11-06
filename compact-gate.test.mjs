@@ -84,6 +84,14 @@ ok(/edited this turn:\*\* a\.py/.test(doc) && !/C:\\repo/.test(doc), 'files edit
 ok(/last said:\*\* running the suites/.test(doc), 'the last words said are kept');
 ok(doc.indexOf('cut mid-turn') < doc.indexOf('<!-- auto:end -->'), 'the note sits inside the auto section, so the next Stop drops it');
 
+// An API-error or interrupt entry (model <synthetic>, usage all zeros) is no size: the turn's real one stays, and the nudge still fires.
+const synth = rec('assistant', [{ type: 'text', text: 'API Error' }], { message: { model: '<synthetic>', stop_reason: 'stop_sequence', usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 } } });
+write(user('q'), asst('a', T + 20_000, 'tool_use'), synth);
+const synthState = JSON.parse(execFileSync(process.execPath, [GATE, '--state', transcript], { env, timeout: 30_000 }).toString());
+ok(synthState.ctx === T + 20_000 && synthState.midTurn === true, `a <synthetic> entry keeps the previous size and turn state (got ${synthState.ctx}, ${synthState.midTurn})`);
+write(user('q'), asst('a', T + 20_000, 'end_turn'), synth);
+ok(!!stop('synth')?.hookSpecificOutput?.additionalContext, 'the nudge still fires after a <synthetic> entry');
+
 // 4. The next finished turn rebuilds the section and the note is gone.
 write(user('build it'), asst('all green', 200_000, 'end_turn'), user('next thing'), asst('next answer', 210_000, 'end_turn'));
 execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd, transcript_path: transcript }), env });
@@ -423,6 +431,9 @@ const windowWith = (vars) => {
 };
 const w1 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200k' });
 ok(w1.WINDOW === 200_000 && w1.MODEL_WINDOW === 1_000_000, `a 200k window is read as 200,000 (got ${JSON.stringify(w1)})`);
+// The 60k of room holds in any window: 0.85 of 200k left 31k, under a p75 turn (46k).
+ok(w1.TRIGGER * w1.WINDOW <= 0.959 * w1.WINDOW - 60_000 + 1e-6 && w1.TRIGGER > 0.6, `a 200k window keeps 60k of room before the compaction (got ${JSON.stringify(w1)})`);
+ok(windowWith({}).TRIGGER === 0.85, 'a 1M window keeps the 0.85 trigger');
 const w2 = windowWith({ CLAUDE_CODE_MAX_CONTEXT_TOKENS: '400000', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '800k' });
 ok(w2.MODEL_WINDOW === 400_000 && w2.WINDOW === 400_000, `the model's window from CLAUDE_CODE_MAX_CONTEXT_TOKENS, and no compaction window past it (got ${JSON.stringify(w2)})`);
 const w3 = windowWith({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50' });
@@ -505,6 +516,19 @@ emptyHandoff();
 write(user('build it'), asst('running', 965_000, 'tool_use'));
 const gw = said();
 ok(/handoff and in-flight note written/.test(gw.stderr) && readFileSync(join(dir, 'handoff.md'), 'utf8').startsWith('---\nname: handoff'), `the note is written into the file whole, and reported (got ${gw.stderr})`);
+
+// The handoff changed while the note was being written (another hook's write lands first): the gate says that, not "no markers".
+{
+  const pre = join(tempDir('cg-conflict-'), 'conflict.cjs');
+  writeFileSync(pre, `const fs = require('node:fs'), write = fs.writeFileSync;
+fs.writeFileSync = (p, d, ...a) => { if (/handoff\\.md\\.tmp\\d+$/.test(String(p)) && String(d).includes('cut mid-turn')) fs.appendFileSync(${JSON.stringify(join(dir, 'handoff.md'))}, 'another hook was here\\n'); return write(p, d, ...a); };
+require('node:module').syncBuiltinESMExports();
+`);
+  emptyHandoff();
+  write(user('build it'), asst('running', 965_000, 'tool_use'));
+  const gc = spawnSync(process.execPath, ['--require', pre, GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
+  ok(gc.status === 0 && /note: the handoff changed meanwhile/.test(gc.stderr) && !/no handoff\.md with markers/.test(gc.stderr) && !/cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), `a handoff changed meanwhile is named as that, and the other write is kept (got ${gc.status}: ${gc.stderr})`);
+}
 
 // A transcript that is gone: nothing to read, nothing deferred, said as such.
 const { recover } = await import('./compact-gate.mjs');
