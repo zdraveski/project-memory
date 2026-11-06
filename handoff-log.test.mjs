@@ -789,8 +789,9 @@ writeFileSync(join(dirI, 'handoff.md'), idoc().replace('<!-- auto:end -->', '- *
 ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'private' && !/Contoso/.test(idoc()) && /fix the login bug/.test(idoc()), 'the note goes, the other entries stay');
 
 // 38. An ask cut through an emoji is written once, not again at every Stop.
+// 498 = ASK - 2: the cut at ASK - 1 falls between the emoji's two halves.
 const te = join(dirI, 'e.jsonl');
-writeFileSync(te, [user('a'.repeat(238) + '\u{1F600} and more', { ts: '2026-10-27T12:20:00Z' }), asst('ok')].join('\n') + '\n');
+writeFileSync(te, [user('a'.repeat(498) + '\u{1F600} and more', { ts: '2026-10-27T12:20:00Z' }), asst('ok')].join('\n') + '\n');
 for (let i = 0; i < 3; i++) handoff({ cwd: cwdI, transcript_path: te, session_id: 'eeeeeeee-3' });
 ok((idoc().match(/\[eeeeeeee\]/g) || []).length === 1 && !/\uFFFD/.test(idoc()), 'a cut emoji leaves no half behind and no copies');
 
@@ -2555,6 +2556,8 @@ require('node:module').syncBuiltinESMExports();
   // fit() cuts a line before a surrogate pair it would split, and exactly one character short.
   {
     ok(fit('ab\u{1F600}cd', 3) === 'ab…' && fit('abc\u{1F600}d', 4) === 'abc…' && fit('abcdef', 4) === 'abcd…', 'fit does not split an emoji at a line limit');
+    // clip() too, at any limit: test 38 cuts at the ask limit, and once missed it when that limit grew.
+    ok(clip('a'.repeat(9) + '\u{1F600}x', 11) === 'a'.repeat(9) + '…', 'clip drops the half of an emoji it cuts');
   }
 
   // Importing the hook runs nothing: only running it as a script does.
