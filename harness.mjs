@@ -63,7 +63,7 @@ export function tempHome(prefix) {
   // the machine would have sent every test to the real store.
   delete process.env.GIT_DIR; delete process.env.GIT_WORK_TREE; delete process.env.GIT_INDEX_FILE;
   delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY;
-  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS; delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT; delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE;
+  delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS; delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT; delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE; delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
   return { home, env: undefined };
 }
 
