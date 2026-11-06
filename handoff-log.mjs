@@ -949,12 +949,16 @@ export function transcripts(dir, me, t) {
 // When a transcript's last finished turn ended (NaN: none in its tail), how
 // many of its last messages are model replies the hooks know, and whether a
 // turn is open in it: a prompt, or a reply that did not end the turn, last.
+// Whether a reply leaves its turn open: a tool call or a server pause goes on, and so does a record with no stop_reason yet.
+// max_tokens, stop_sequence and refusal end the turn (the user is next).
+export const goesOn = (m) => !m?.stop_reason || m.stop_reason === 'tool_use' || m.stop_reason === 'pause_turn';
 export function lastTurn(p) {
   const tail = readTail(p, TAIL).text;
   let end = NaN, seen = 0, known = 0, open = false;
   for (const line of tail.split('\n')) {
     if (!line.startsWith('{')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
+    if (r.isSidechain === true) continue;   // a subagent's record, as turns() and the gate skip it
     // Messages only: a session's start-up records (attachments, modes, titles)
     // ran to 41 before its first reply.
     if (r.type === 'user' || r.type === 'assistant') seen++;
@@ -967,7 +971,7 @@ export function lastTurn(p) {
     if (r.type === 'user' && /^\s*\[Request interrupted by user/.test(text(r))) { open = false; continue; }
     if (r.type !== 'assistant' || !r.message?.usage) continue;
     known++;
-    open = r.message.stop_reason !== 'end_turn';
+    open = goesOn(r.message);
     if (!open) end = Date.parse(r.timestamp);
   }
   return { end, seen, known, open };

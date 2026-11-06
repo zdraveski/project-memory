@@ -69,6 +69,13 @@ const gone = await new Promise((done) => {
 ok(gone === 2, `a deferral whose reader is gone still exits 2 (got ${gone})`);
 ok(gate('manual').code === 0, 'a manual /compact is never blocked');
 
+// A reply cut off or refused ended its turn: only tool_use and pause_turn go on. Escape after a tool call ends it too.
+for (const stop of ['max_tokens', 'stop_sequence', 'refusal']) { write(user('q'), asst('cut', 870_000, stop)); ok(gate().code === 0, `${stop} is a finished turn: the compaction runs`); }
+write(user('q'), asst('wait', 870_000, 'pause_turn'));
+ok(gate().code === 2, 'pause_turn is mid-turn');
+write(user('q'), asst('x', 870_000, 'tool_use'), rec('user', [{ type: 'text', text: '[Request interrupted by user for tool use]' }]));
+ok(gate().code === 0, 'Escape after a tool call ends the turn: the compaction runs');
+
 // 3. Mid-turn over the ceiling: allowed, and the handoff says what was in flight.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** 2026-09-13 12:00: earlier\n  **did:** earlier answer\n<!-- auto:end -->\n');
 // A long turn: the prompt is past the first tail, so the note's own read has to grow.

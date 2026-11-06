@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF } from './handoff-log.mjs';
+import { goesOn, readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -125,6 +125,7 @@ function walk(raw) {
       if (/<\s*private/i.test(unquote(q))) s.hidden = true;
     }
     if (r.type === 'user') {
+      if (/^\s*\[Request interrupted by user/.test(t)) s.midTurn = false;   // Escape ends the turn, as lastTurn() reads it
       // A new prompt starts a new turn's edits. Not its running tasks: a build
       // launched two turns ago is still running now, and a note that said
       // "none" had the model rerun it after the compaction.
@@ -160,7 +161,7 @@ function walk(raw) {
       if (m?.usage && m.model !== '<synthetic>') {
         const u = m.usage;
         s.ctx = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
-        s.midTurn = m.stop_reason !== 'end_turn';
+        s.midTurn = goesOn(m);
       }
       for (const b of c) {
         if (b?.type === 'tool_use' && /^(Bash|Agent|Task)$/.test(b.name)) s.launchers.add(b.id);
