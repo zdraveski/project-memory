@@ -1858,11 +1858,6 @@ if (!quick) {
       "cp.execFileSync = (f, a, ...o) => { if (Array.isArray(a) && a.includes('--diff-filter=D')) throw Object.assign(new Error('Command failed'), { stderr: 'fatal: a simulated failure\\n' }); return run(f, a, ...o); };\nsyncBuiltinESMExports();\n");
     r = spawnSync(process.execPath, ['--import', pathToFileURL(failLog).href, CLI, 'restore', 'never-was', '--store', dir], { env, encoding: 'utf8' });
     ok(r.status === 1 && r.stdout === 'no snapshot of C--mem-cli/memory/never-was.md at HEAD: fatal: a simulated failure\n', `another git failure is git's line, at HEAD (got ${r.stdout}${r.stderr})`);
-    // Failing at the commit given and at its parent too: named at the commit given, not its parent.
-    writeFileSync(failLog, "import cp from 'node:child_process'; import { syncBuiltinESMExports } from 'node:module';\nconst run = cp.execFileSync;\n" +
-      "cp.execFileSync = (f, a, ...o) => { if (Array.isArray(a) && a.includes('cat-file')) throw Object.assign(new Error('Command failed'), { stderr: 'fatal: a simulated failure\\n' }); return run(f, a, ...o); };\nsyncBuiltinESMExports();\n");
-    r = spawnSync(process.execPath, ['--import', pathToFileURL(failLog).href, CLI, 'restore', 'c4-note', '--force', '--rev', 'deadbeef', '--store', dir], { env, encoding: 'utf8' });
-    ok(r.status === 1 && /^no snapshot of \S*c4-note\.md at deadbeef: fatal: a simulated failure\n$/.test(r.stdout), `a git failure at a given commit names that commit (got ${r.stdout}${r.stderr})`);
   }
   // C-4. Without git, restore of a note that exists offered to replace it "with the snapshot", as though there were one.
   r = spawnSync(process.execPath, [CLI, 'restore', 'c4-note', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });

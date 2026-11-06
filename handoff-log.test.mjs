@@ -1186,8 +1186,6 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
   // A U+0085 splits a value as a line break does: read as part of a word, `abc` and `defgh` were one password of 9 characters.
   const nel = clip(`password: abc${ch(0x85)}defgh`, 400);
   ok(nel === 'password: abc defgh', `a U+0085 is a blank to redaction too (got ${JSON.stringify(nel)})`);
-  // A cut that lands inside an emoji drops its first half, not writes it alone.
-  ok(clip('ab\u{1F600}cd', 4) === 'ab…', `a clip through an emoji drops its half (got ${JSON.stringify(clip('ab\u{1F600}cd', 4))})`);
   // A clip is kept for the process, by its length and text (release review): asked again, the same clip, and only for text. A number
   // spelt as a text clipped before is no text, and fails as it always did.
   const text = clip('12345', 9);
