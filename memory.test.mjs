@@ -1,7 +1,8 @@
 // Self-check for memory.mjs, the memory CLI: ranked search, status, history
 // and restore from real snapshots, promote, doctor. A throwaway HOME holds a
 // project store and the shared store. Run: node memory.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync, readdirSync, chmodSync, renameSync, statSync } from 'node:fs';
+import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, utimesSync, rmSync, symlinkSync, readdirSync, chmodSync, renameSync, statSync, appendFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -15,6 +16,14 @@ const dir = join(root, 'C--mem-cli', 'memory'), shared = join(root, '_shared', '
 mkdirSync(dir, { recursive: true });
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
+// Another session acts at one exact moment of a call: after the first time `kind` (an fs function) is called with
+// a path `match` accepts, `act` runs, and the call goes on. This is how the "meanwhile" branches are reached.
+const meanwhile = (kind, match, act) => {
+  const real = fs[kind]; let done = false;
+  fs[kind] = function (p, ...a) { const r = real.call(this, p, ...a); if (!done && match(String(p))) { done = true; act(); } return r; };
+  syncBuiltinESMExports();
+  return () => { fs[kind] = real; syncBuiltinESMExports(); };
+};
 // The CLI in this process: a process a call cost 0.2 s, and 256 calls were
 // nearly all of the suite's 50 s (2026-10-30). What needs a process of its
 // own (another cwd or PATH, a run through a symlink, a journal.mjs that will
@@ -271,6 +280,34 @@ ok(r.status === 0 && /^- \[draft okapi\]\(\[draft\] okapi\.md\) — an okapi sti
   ok(stuck.ok === false && existsSync(join(dir, 'stuck-note.md')) && !existsSync(join(shared, 'stuck-note.md')), `a copy that fails moves nothing (got ${JSON.stringify(stuck)})`);
   rmSync(join(shared, `stuck-note.md.tmp${process.pid}`), { recursive: true, force: true });
   rmSync(join(dir, 'stuck-note.md'));
+}
+// Another session acts while promote runs: each data-safety branch says so, and the memory is never in neither store.
+{
+  const { promote } = await import(pathToFileURL(CLI).href);
+  const sharedIdx = join(shared, 'MEMORY.md'), dirIdx = join(dir, 'MEMORY.md'), tmp = (f) => `${f}.tmp${process.pid}`;
+  const sharedWas = existsSync(sharedIdx) ? readFileSync(sharedIdx, 'utf8') : null, dirWas = readFileSync(dirIdx, 'utf8');
+  const sharedLock = join(shared, '.lock');
+  const attempt = (name, kind, match, act, { line = false } = {}) => {
+    memory(dir, name, 'a memory to share');
+    if (line) writeFileSync(dirIdx, dirWas + `- [${name}](${name}.md) — a memory to share\n`);
+    const undo = meanwhile(kind, match, () => act(join(dir, `${name}.md`), join(shared, `${name}.md`)));
+    try { return promote(dir, `${name}.md`); } finally { undo(); writeFileSync(dirIdx, dirWas); }
+  };
+  const copies = (name) => [join(dir, `${name}.md`), join(shared, `${name}.md`)].filter(existsSync).length;
+  let q = attempt('mw-gone', 'mkdirSync', (p) => p === sharedLock, (src) => unlinkSync(src));
+  ok(q.ok === false && /went away meanwhile; nothing moved/.test(q.lines[0]) && copies('mw-gone') === 0, `promote: a note that went away is not moved, nothing is made up (got ${JSON.stringify(q)})`);
+  q = attempt('mw-there', 'mkdirSync', (p) => p === sharedLock, (src, dst) => writeFileSync(dst, 'theirs'));
+  ok(q.ok === false && /shared store got a mw-there\.md meanwhile; nothing moved/.test(q.lines[0]) && readFileSync(join(shared, 'mw-there.md'), 'utf8') === 'theirs' && existsSync(join(dir, 'mw-there.md')), `promote: a shared file that appeared is kept, and the project's note stays (got ${JSON.stringify(q)})`);
+  q = attempt('mw-idx', 'writeFileSync', (p) => p === tmp(sharedIdx), () => appendFileSync(sharedIdx, '# theirs\n'));
+  ok(q.ok === false && /shared index changed meanwhile: mw-idx\.md is in both stores/.test(q.lines[0]) && copies('mw-idx') === 2 && /# theirs/.test(readFileSync(sharedIdx, 'utf8')), `promote: a shared index written meanwhile is kept, and the note stays in both stores for the user to settle (got ${JSON.stringify(q)})`);
+  q = attempt('mw-edit', 'renameSync', (p) => p === tmp(sharedIdx), (src) => appendFileSync(src, 'edited\n'));
+  ok(q.ok === false && /changed while it was copied/.test(q.lines[0]) && copies('mw-edit') === 2 && /edited/.test(readFileSync(join(dir, 'mw-edit.md'), 'utf8')), `promote: an edit that landed during the copy keeps the project copy (got ${JSON.stringify(q)})`);
+  q = attempt('mw-home', 'writeFileSync', (p) => p === tmp(dirIdx), () => appendFileSync(dirIdx, '# theirs\n'), { line: true });
+  ok(q.ok === false && /project index changed meanwhile: mw-home\.md is in both stores/.test(q.lines[0]) && copies('mw-home') === 2, `promote: a project index written meanwhile is said, the note stays in both stores (got ${JSON.stringify(q)})`);
+  q = attempt('mw-late', 'renameSync', (p) => p === tmp(dirIdx), (src) => appendFileSync(src, 'edited\n'), { line: true });
+  ok(q.ok === false && /changed while it was copied/.test(q.lines[0]) && copies('mw-late') === 2, `promote: an edit that landed after the index line went keeps the project copy (got ${JSON.stringify(q)})`);
+  for (const f of ['mw-idx', 'mw-edit', 'mw-home', 'mw-late', 'mw-there']) for (const d of [dir, shared]) rmSync(join(d, `${f}.md`), { force: true });
+  if (sharedWas === null) rmSync(sharedIdx, { force: true }); else writeFileSync(sharedIdx, sharedWas);
 }
 // Frontmatter never closed is all frontmatter, as tiering reads it.
 writeFileSync(join(dir, 'pangolin-rule.md'), '---\nname: pangolin-rule\ndescription: pangolin rule text\nmetadata:\n  type: feedback\n');
@@ -1485,6 +1522,13 @@ if (!quick) {
   rmSync(join(root, 'C--mutA-rs'), { recursive: true, force: true });
   r = await run(['restore', 'kept', '--store', rs]);
   ok(r.status === 0 && readFileSync(join(rs, 'kept.md'), 'utf8').includes('v1') && r.stdout.includes('with its line: - [Kept](kept.md) — kept note'), `restore remakes a store whose folder is gone, with its line (got ${r.stdout}${r.stderr})`);
+  // Another session writes the note while restore runs: its version is kept, the snapshot's is not laid over it.
+  for (const [what, kind, match, said] of [['appeared', 'mkdirSync', (p) => p === join(rs, '.lock'), /appeared meanwhile; nothing written/], ['changed', 'writeFileSync', (p) => p === join(rs, `kept.md.tmp${process.pid}`), /changed meanwhile; nothing written/]]) {
+    unlinkSync(join(rs, 'kept.md'));
+    const undo = meanwhile(kind, match, () => writeFileSync(join(rs, 'kept.md'), 'theirs'));
+    try { r = restore(rs, 'kept.md'); } finally { undo(); }
+    ok(r.ok === false && said.test(r.lines[0]) && readFileSync(join(rs, 'kept.md'), 'utf8') === 'theirs' && !existsSync(join(rs, `kept.md.tmp${process.pid}`)), `restore: a note that ${what} meanwhile is kept, and the snapshot is not written over it (got ${JSON.stringify(r)})`);
+  }
 
   // The disk refuses a write: the reply gives the disk's own code (a directory
   // where the temp file goes, so the write fails the same way on every OS), the
@@ -1574,6 +1618,9 @@ if (!quick) {
   ok(scoreOf(r.stdout, 'mn-aa.md') === 7 && scoreOf(r.stdout, 'mn-bb.md') === 3, `a three-letter term is found inside a longer word, in a description (+2, strong) and in a body (got ${r.stdout})`);
   ok(/mn-nofront\.md/.test((await jcli('search', 'quokka')).stdout), 'a note with no frontmatter is searched from its first line');
   ok(/mn-tight\.md/.test((await jcli('search', 'zebu')).stdout), 'a body that starts right after the closing --- is searched from its first character');
+  // The closing --- is the file's last bytes: the body is empty, not the whole file with its frontmatter.
+  writeFileSync(join(jm, 'mn-endfm.md'), '---\nname: mn-endfm\ndescription: "end"\nextra: okapi\n---');
+  ok(!/mn-endfm\.md/.test((await jcli('search', 'okapi')).stdout), 'a note whose closing --- ends the file has an empty body, its frontmatter is not searched');
   // An empty frontmatter followed by a rule: the body is what follows the first fence, not what follows the rule.
   writeFileSync(join(jm, 'mn-hr.md'), '---\n---\nlemur is in the first part\n\n---\n\nthe second part\n');
   ok(/mn-hr\.md/.test((await jcli('search', 'lemur')).stdout), 'a note with an empty frontmatter and a later rule is searched from after its frontmatter');

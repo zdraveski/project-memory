@@ -1,7 +1,7 @@
 // Self-check for store.mjs: whose store a payload names, a lock two processes
 // never hold at once, a dead lock taken over, a held one given up on, and a
 // replace that will not overwrite a write it did not see. Run: node store.test.mjs
-import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync } from 'node:fs';
+import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync, statSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { join, isAbsolute, basename, dirname } from 'node:path';
@@ -133,6 +133,29 @@ mkdirSync(join(dir, '.lock'));
 writeFileSync(join(dir, '.lock', 'left'), '');
 backdateLock();
 ok(withLock(dir, () => 'got') === 'got', 'and one that is a folder with something in it');
+// Two waiters that both saw the same stale lock: only the one whose rename wins takes it over, and the other
+// never deletes the lock the first made (audit #4). `other` plays the first waiter, just before our rename.
+{
+  const lock = join(dir, '.lock'), real = fs.renameSync;
+  const race = (otherTakes) => {
+    mkdirSync(lock); backdateLock();
+    let n = 0;
+    fs.renameSync = function (a, b, ...r) {
+      if (String(a) === lock && ++n === 1) { real.call(this, a, `${lock}.dead.other`); rmSync(`${lock}.dead.other`, { recursive: true }); if (otherTakes) mkdirSync(lock); }
+      return real.call(this, a, b, ...r);
+    }; syncBuiltinESMExports();
+    try { return { got: fastClock(() => withLock(dir, () => 'got')), n }; } finally { fs.renameSync = real; syncBuiltinESMExports(); }
+  };
+  let r = race(false);
+  ok(r.n === 1 && r.got === 'got', `a waiter that lost the takeover to a rename finds the lock gone and takes it (got ${r.got}, ${r.n} renames)`);
+  r = race(true);
+  ok(r.got === null && existsSync(lock) && Math.abs(Date.now() - statSync(lock).mtimeMs) < 5000, `a waiter that lost the takeover leaves the winner's fresh lock alone (got ${r.got})`);
+  ok(!readdirSync(dir).some((f) => f.startsWith('.lock.dead')), 'and leaves no renamed copy behind');
+  rmdirSync(lock);
+  mkdirSync(`${lock}.dead.1.2`);
+  sweepTemps(dir);
+  ok(!existsSync(`${lock}.dead.1.2`), 'a renamed copy a killed waiter left is swept');
+}
 // One that cannot be removed -- on Windows another process's working folder,
 // elsewhere one in a read-only folder -- throws once the wait is up, so the
 // pass that fails says so in .health. Busy every turn was silence.
@@ -484,7 +507,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
     mkdirSync(lockPath); utimesSync(lockPath, M / 1000, M / 1000);
     const realNow = Date.now; let i = 0, k = 0;
     Date.now = () => M + script[Math.min(i++, script.length - 1)];
-    const undoRm = patch('rmSync', (real) => function (p, o) { if (String(p).endsWith('.lock') && k < rmErrors.length) throw rmErrors[k++]; return real.call(this, p, o); });
+    const undoRm = patch('renameSync', (real) => function (p, o) { if (String(p).endsWith('.lock') && k < rmErrors.length) throw rmErrors[k++]; return real.call(this, p, o); });
     const undoStat = vanish ? patch('statSync', (real) => function (p, ...a) { const r = real.call(this, p, ...a); if (String(p).endsWith('.lock')) rmdirSync(p); return r; }) : () => {};
     let res; try { res = withLock(lockDir, () => 'got'); } catch (e) { res = `threw ${e.message}`; } finally { Date.now = realNow; undoRm(); undoStat(); }
     rmSync(lockPath, { recursive: true, force: true });
