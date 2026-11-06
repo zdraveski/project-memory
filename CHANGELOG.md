@@ -123,7 +123,10 @@
   suggests for a 200k model, the reminder to save notes came only about
   22,000 tokens before the compaction, too late for a long reply. It now
   comes early enough to leave at least 60,000 tokens: at about 66% of a
-  200k window. A 1M window still gets it at 85%.
+  200k window, counted from where the compaction really comes, also when
+  `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` moves it earlier. A window too small
+  for that gets it halfway to the compaction. A 1M window still gets it at
+  85%.
 - An error Claude Code adds to the transcript (an entry with no real
   token counts) was read as a conversation of 0 tokens, so the reminder
   could be skipped after it. Such entries are now passed over.

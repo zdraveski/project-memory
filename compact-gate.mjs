@@ -58,8 +58,10 @@ export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDO
 // at 0.95 the room was 7k and no nudge was ever seen. 0.85 leaves ~87k.
 // Lower when CLAUDE_AUTOCOMPACT_PCT_OVERRIDE makes it compact earlier.
 const PCT = Number(process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE);
-// And never less than 60k of room, in any window: 0.85 of a 200k window left 31k, under one p75 turn.
-export const TRIGGER = Math.min(PCT > 0 && PCT < 96 ? 0.85 * PCT / 96 : 0.85, (0.959 * WINDOW - 60_000) / WINDOW);
+// And 60k of room before the compaction point, in any window (0.85 of a 200k window left 31k, under one p75 turn),
+// but never before half of it: a 50k window would nudge at once.
+const AT = 0.959 * (PCT > 0 && PCT < 96 ? PCT / 96 : 1);
+export const TRIGGER = Math.max(AT / 2, Math.min(0.85 / 0.959 * AT, AT - 60_000 / WINDOW));
 // Over this share of the model's window a mid-turn compaction goes through.
 // The API refuses a call when input + max output exceeds the window, so the
 // margin must hold the response budget (32k+) and one more tool result: 10 %.

@@ -441,6 +441,12 @@ const w2 = windowWith({ CLAUDE_CODE_MAX_CONTEXT_TOKENS: '400000', CLAUDE_CODE_AU
 ok(w2.MODEL_WINDOW === 400_000 && w2.WINDOW === 400_000, `the model's window from CLAUDE_CODE_MAX_CONTEXT_TOKENS, and no compaction window past it (got ${JSON.stringify(w2)})`);
 const w3 = windowWith({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50' });
 ok(w3.MODEL_WINDOW === 200_000 && w3.TRIGGER < 0.5, `200K held, and an earlier compaction moves the nudge earlier (got ${JSON.stringify(w3)})`);
+// Compacting at 50% of 200k (~100k), the room is counted from there: half of it, since 60k would leave 40k for the conversation.
+ok(Math.abs(w3.TRIGGER - 0.959 * 50 / 96 / 2) < 1e-6, `an earlier compaction keeps its room too (got ${JSON.stringify(w3)})`);
+const w4 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '50k' });
+ok(Math.abs(w4.TRIGGER - 0.959 / 2) < 1e-6, `a window under 120k nudges at half the compaction point, never below 0 (got ${JSON.stringify(w4)})`);
+const w5 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400k', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '80' });
+ok(Math.abs(w5.TRIGGER * 400_000 - (0.959 * 80 / 96 * 400_000 - 60_000)) < 1, `an earlier compaction in a mid-size window keeps 60k of room (got ${JSON.stringify(w5)})`);
 // Under a 400K model window, mid-turn at 390k is not deferred: past it the API refuses the call.
 process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '400000';
 let g4;
@@ -553,7 +559,8 @@ const triggerWith = (pct) => {
   try { return Number(execFileSync(process.execPath, ['--input-type=module', '-e', `import { TRIGGER } from ${JSON.stringify(new URL('./compact-gate.mjs', import.meta.url).href)}; console.log(TRIGGER)`], { env, timeout: 30_000 }).toString()); }
   finally { delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE; }
 };
-ok(triggerWith('48') === 0.85 * 48 / 96 && triggerWith('1') === 0.85 / 96 && triggerWith('0') === 0.85 && triggerWith('100') === 0.85 && triggerWith('-5') === 0.85,
+const near = (a, b) => Math.abs(a - b) < 1e-9;
+ok(near(triggerWith('48'), 0.959 * 48 / 96 - 0.06) && near(triggerWith('1'), 0.959 / 96 / 2) && triggerWith('0') === 0.85 && triggerWith('100') === 0.85 && triggerWith('-5') === 0.85,
   'the trigger follows an override of 1 to 95 percent and ignores 0, a negative and one over 95');
 
 // The first read grows 4x: a prompt 600 KB from the end is held by the second read (1,024,000 bytes),
