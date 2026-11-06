@@ -1225,6 +1225,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // reach half the mutants.
   const args = process.argv.slice(2), value = (n) => { const i = args.indexOf(n); return i === -1 ? undefined : args[i + 1]; };
   const changed = value('--changed')?.split(',').filter(Boolean), shard = value('--shard')?.match(/^(\d+)\/(\d+)$/);
+  // --shard 0/17, 18/17 or a typo selected no mutant and reported "all 0 killed": a check that never ran (audit #15).
+  if (args.includes('--shard') && !(shard && Number(shard[1]) >= 1 && Number(shard[1]) <= Number(shard[2]))) { console.error(`--shard wants i/n with i from 1 to n, not "${value('--shard')}"`); process.exit(1); }
   const only = args.filter((a, i) => !a.startsWith('--') && !['--changed', '--shard', '--auto-lines'].includes(args[i - 1]));
   // A missing or empty --auto-lines value selects nothing, never every hand mutant.
   const wantsLines = args.includes('--auto-lines'), autoLines = wantsLines ? (value('--auto-lines') ?? '').replace(/^--.*/, '') : undefined;
@@ -1271,6 +1273,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   if (args.includes('--list')) {
     for (const j of jobs) console.log(j.label);
     if (auto) console.error(`${dropped} automatic mutant(s) dropped as copies of hand mutants`);
+    for (const id of stale) console.error(`stale ignore: ${id}`);   // stderr: stdout is the list check.mjs reads
     process.exit(0);
   }
   for (const id of stale) console.log(`stale ignore: ${id}`);
