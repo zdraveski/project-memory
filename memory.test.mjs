@@ -886,8 +886,8 @@ if (!quick) {
   r = await jcli('search', 'tapir');
   rmSync(join(jd, 'journal', '2026-10-12.md'));   // a day no other check uses
   const lead = (asked) => of(r.stdout, asked).match(/^     Result: (.*)$/m)?.[1];
-  ok(lead('tune the tapir cache') === 'Done. The cache now holds a day of pages, measured twice.' && lead('size the tapir pool')?.length === 140 && lead('size the tapir pool').endsWith('…'),
-    `a Result is the first sentence of 20 characters or more, else the reply cut at 140 (got ${r.stdout})`);
+  ok(lead('tune the tapir cache') === 'Done. The cache now holds a day of pages, measured twice.' && lead('size the tapir pool')?.length <= 140 && lead('size the tapir pool').length > 120 && lead('size the tapir pool').endsWith('…'),
+    `a Result is the first sentence of 20 characters or more, else the reply cut at a word's end by 140 (got ${r.stdout})`);
   ok(lead('count the tapir herd') === undefined && /^     Answered: ab ab/m.test(of(r.stdout, 'count the tapir herd')), `a word 30 characters in: the stretch starts the reply, no Result (got ${r.stdout})`);
   // A Result is redacted before it is cut: a day an older version wrote keeps a
   // secret, and the 140 cut lands inside it here.
@@ -917,8 +917,8 @@ if (!quick) {
     `with the list of forgotten keys unreadable, the journal shows nothing and says why (got ${shut}${shutShow})`);
   r = await jcli('search', 'zeppelin');
   const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
-  ok(z.length < 800 && zask.length === 200 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
-    `an entry at every cap: a headline, its request cut to 200, its result, the rest the stretches around the word, under 800 characters in all (got ${z.length}: ${z})`);
+  ok(z.length < 800 && zask.length <= 200 && zask.length > 180 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
+    `an entry at every cap: a headline, its request cut by 200 at a word's end, its result, the rest the stretches around the word, under 800 characters in all (got ${z.length}: ${z})`);
   // A stretch never starts or ends on half an emoji, nor does the cap cut one:
   // printed, half of one is U+FFFD. Each of the three cuts lands mid-emoji here.
   const em = (n) => '\u{1F600}'.repeat(n);

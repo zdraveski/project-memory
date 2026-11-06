@@ -1171,6 +1171,18 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
   const { clip } = await import('./handoff-log.mjs');
   const s = 'plan \u0085 <system-reminder> x  \u0085y';
   ok(clip(clip(s, 400), 400) === clip(s, 400) && !/ {2}/.test(clip(s, 400)), `a clip clipped again is the same (got ${JSON.stringify(clip(s, 400))})`);
+  // A cut ends at the last sentence, else the last word, if that keeps half the room: a cut mid-sentence kept a claim
+  // and dropped its condition ("deploy" without "only on Windows").
+  const said = 'First point here. Second point is longer than the first one. Deploy only on Windows today.';
+  for (const [got, want, what] of [
+    [clip(said, 70), 'First point here. Second point is longer than the first one.…', 'ends at the last sentence end'],
+    [clip('Abcdefghi. jj kkkkkkkkkkkk', 20), 'Abcdefghi.…', 'a sentence end at exactly half the room, before a later space'],
+    [clip('Short one. ' + 'x'.repeat(80), 40), `Short one. ${'x'.repeat(28)}…`, 'a sentence end before half the room is not used'],
+    [clip('abcdefghij kkkkkkkkkkkkkkk', 20), 'abcdefghij…', 'no sentence end: the last space, at exactly half'],
+    [clip('abcdefghi kkkkkkkkkkkkkkkkk', 20), `abcdefghi ${'k'.repeat(9)}…`, 'a space before half the room: cut as before'],
+    [clip('x'.repeat(50), 20), `${'x'.repeat(19)}…`, 'no space: cut as before'],
+    [clip(said, 500), said, 'text that fits is kept whole'],
+  ]) ok(got === want, `clip: ${what} (got ${JSON.stringify(got)})`);
 }
 // And for every input. Each of these was clipped again into something else: a secret after two blanks, a tab, a U+0085 or a line break was
 // redacted only once they were squeezed, so the journal, which clips once, kept it whole (F19, R44); a cut can leave a code reference that reads
@@ -2406,7 +2418,7 @@ require('node:module').syncBuiltinESMExports();
       ok(!edge(need + 1).includes('ask-0 here'), 'one character more, and the oldest exchange goes');
       writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'ssssssss', `long-ask ${mk(700)}`, 'done')));
       const asked = print_(cw4, 'pppppppp-1', 'startup', at4).match(/^- \*\*asked\*\* \S+ \S+ \[ssssssss\]: (long-ask .*)$/m)?.[1] ?? '';
-      ok(asked.length === 500 && asked.endsWith('…'), `an exchange keeps 500 characters of its request (got ${asked.length})`);
+      ok(asked.length <= 500 && asked.length > 450 && asked.endsWith('…'), `an exchange keeps up to 500 characters of its request, to a word's end (got ${asked.length})`);
 
       // Never an exchange forget took out, nor a conversation marked private,
       // though handoff.md still holds it (a sweep that failed, tried again at
