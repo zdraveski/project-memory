@@ -142,8 +142,11 @@ Everything it reads and saves, and how to delete it, is in the
 
 - **Every change is checked.** It reaches the code only as a pull request
   that passes the tests on Windows, macOS and Linux, GitHub's CodeQL scan,
-  a workflow lint, a dependency review and a sign-off check. Before a release, more than 3,000 planted bugs must
-  all be caught, and a ten-minute fuzz run on 17 machines must find nothing.
+  a workflow lint, a dependency review and a sign-off check. Before the
+  maintainer deploys, the hand-written planted bugs must all be caught
+  by the tests. A larger run of more than 3,000 planted bugs and a ten-minute
+  fuzz run on 17 machines are started by hand on GitHub before each release,
+  and the release waits until both pass.
 - **Releases can be verified.** From 1.2.4, each release carries its files,
   their checksums and a GitHub-signed record of where they were built:
   [Verifying a release](SECURITY.md#verifying-a-release).
