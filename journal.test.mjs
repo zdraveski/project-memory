@@ -293,6 +293,11 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
     `a write whose memory-off list won't read still does the sweeps owed, records nothing, and says why (got ${summary(d).failed})`);
   write(d, Q, [turn({ at: '2026-09-02 09:05', id: 'q-2' })], { quiet: false, hush: false });
   ok(!holds() && !existsSync(failed) && !existsSync(owed) && readFileSync(f, 'utf8').includes('café'), 'the first write after the fix finishes it, and clears the failure');
+  // Tagged memory-off after it was journaled, by a caller that did not see the tag: the write reads the list itself, and takes back what was written.
+  const q2 = dayFile(d, '2026-09-02'), hadQ = existsSync(q2) && readFileSync(q2, 'utf8').includes('cccccccc');
+  appendFileSync(offList, 'cccccccc\n');
+  try { write(d, Q, [], { quiet: false, hush: false }); } finally { if (hadOff) writeFileSync(offList, hadOff); else rmSync(offList, { force: true }); }
+  ok(hadQ && !(existsSync(q2) && readFileSync(q2, 'utf8').includes('cccccccc')), `a late memory-off tag takes back what was written (had it: ${hadQ})`);
 }
 {
   // A time that won't parse (a transcript another tool wrote) made the day file

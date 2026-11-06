@@ -1667,6 +1667,8 @@ if (!quick) {
   // --help where an option's value goes is no request for the usage: an option is no value, and is refused (audit C-7).
   r = await run(['status', '--conversation', '--help', '--store', jm]);
   ok(r.status === 1 && r.stdout === '--conversation needs a value after it\n' && /node memory\.mjs <command>/.test((await run(['status', '--help'])).stdout), `--help after an option that takes a value is not a request for the usage (got ${r.stdout})`);
+  r = await run(['status', '--store', jm, '--help']);
+  ok(/node memory\.mjs <command>/.test(r.stdout), `--help after an option's value is a request for the usage (got ${r.stdout})`);
 
   // A range forget names its first and last day; the snapshots' days are listed six at a time.
   const old7 = mdir('C--mutB-old'), days7 = [1, 2, 3, 4, 5, 6, 7].map((d) => `2025-02-0${d}`);
@@ -1841,6 +1843,11 @@ if (!quick) {
       "cp.execFileSync = (f, a, ...o) => { if (Array.isArray(a) && a.includes('--diff-filter=D')) throw Object.assign(new Error('Command failed'), { stderr: 'fatal: a simulated failure\\n' }); return run(f, a, ...o); };\nsyncBuiltinESMExports();\n");
     r = spawnSync(process.execPath, ['--import', pathToFileURL(failLog).href, CLI, 'restore', 'never-was', '--store', dir], { env, encoding: 'utf8' });
     ok(r.status === 1 && r.stdout === 'no snapshot of C--mem-cli/memory/never-was.md at HEAD: fatal: a simulated failure\n', `another git failure is git's line, at HEAD (got ${r.stdout}${r.stderr})`);
+    // Failing at the commit given and at its parent too: named at the commit given, not its parent.
+    writeFileSync(failLog, "import cp from 'node:child_process'; import { syncBuiltinESMExports } from 'node:module';\nconst run = cp.execFileSync;\n" +
+      "cp.execFileSync = (f, a, ...o) => { if (Array.isArray(a) && a.includes('cat-file')) throw Object.assign(new Error('Command failed'), { stderr: 'fatal: a simulated failure\\n' }); return run(f, a, ...o); };\nsyncBuiltinESMExports();\n");
+    r = spawnSync(process.execPath, ['--import', pathToFileURL(failLog).href, CLI, 'restore', 'c4-note', '--force', '--rev', 'deadbeef', '--store', dir], { env, encoding: 'utf8' });
+    ok(r.status === 1 && /^no snapshot of \S*c4-note\.md at deadbeef: fatal: a simulated failure\n$/.test(r.stdout), `a git failure at a given commit names that commit (got ${r.stdout}${r.stderr})`);
   }
   // C-4. Without git, restore of a note that exists offered to replace it "with the snapshot", as though there were one.
   r = spawnSync(process.execPath, [CLI, 'restore', 'c4-note', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
