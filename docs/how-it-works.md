@@ -518,7 +518,9 @@ Claude Code compacts a conversation when it nears the size limit, and it
 checks before every step, so a long task can be cut in the middle. Three
 things soften that.
 
-- **A reminder.** When a conversation passes 85% of the compaction window, the
+- **A reminder.** When a conversation passes 85% of the compaction window
+  (less in a small window, so at least 60k tokens stay free: about 66% of
+  200k), the
   Stop hook asks Claude once to write its notes now. It asks again only after
   a compaction, and never in a private conversation or one held with auto
   memory off (its tag in `.memory-off`), which gets no cut-turn note

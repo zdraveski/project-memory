@@ -32,7 +32,7 @@
   "english_status": "Met",
   "english_justification": "All documentation is in English, and reports in English are accepted.",
   "maintained_status": "Met",
-  "maintained_justification": "Actively maintained: frequent releases (v1.0.0 to v1.2.3), with the tests running on every change.",
+  "maintained_justification": "Actively maintained: frequent releases (v1.0.0 to v1.2.4), with the tests running on every change.",
 
   "repo_public_status": "Met",
   "repo_public_justification": "https://github.com/zdraveski/project-memory",
@@ -48,7 +48,7 @@
   "version_semver_status": "Met",
   "version_semver_justification": "Semantic versioning: MAJOR.MINOR.PATCH, see CHANGELOG.md.",
   "version_tags_status": "Met",
-  "version_tags_justification": "Every release is tagged (v1.0.0 to v1.2.3): https://github.com/zdraveski/project-memory/tags",
+  "version_tags_justification": "Every release is tagged (v1.0.0 to v1.2.4): https://github.com/zdraveski/project-memory/tags",
 
   "release_notes_status": "Met",
   "release_notes_justification": "CHANGELOG.md, written for users, and the same notes on each GitHub release: https://github.com/zdraveski/project-memory/blob/master/CHANGELOG.md",
