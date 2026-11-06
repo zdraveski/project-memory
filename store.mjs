@@ -244,7 +244,9 @@ export function front(text) {
 // a warning. The hooks path names a folder that does not exist: no hooks.
 // Line endings as written, too: Git for Windows sets core.autocrlf=true for
 // the whole machine, and a CRLF note came back from a restore with LF ones.
-export const gitArgs = (...a) => ['-C', projectsRoot(), '-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false',
+// Names as the disk spells them: macOS git composes them (NFC) by default, so a café named decomposed was a snapshot's
+// composed one and `history` of it answered with a path the disk never had (audit C-8).
+export const gitArgs = (...a) => ['-C', projectsRoot(), '-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false', '-c', 'core.precomposeunicode=false',
   '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`, ...a];
 
 // A failure's reason, as stored for status and the briefing: the message's first line, with a refused write's `<path>.tmp<pid>` cut from
