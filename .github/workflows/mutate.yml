@@ -9,10 +9,13 @@ name: mutate
 # mutate.yml -f machines=N`), every hand-written mutant, and with `-f auto=true`
 # the automatic ones too. deploy.mjs
 # --mutants-checked-on-github then skips its own run, on your word that a run
-# covering the commit passed.
+# covering the commit passed. On a pull request, the changed files' mutants on
+# 10 machines, beside the PR's ~11 other jobs: a survivor found after the merge
+# went unread through 3 merges (2026-11-06), so the `mutants` job is required.
 on:
   push:
     branches: [master]
+  pull_request:
   workflow_dispatch:
     inputs:
       machines:
@@ -23,10 +26,10 @@ on:
         type: boolean
         default: false
 
-# A newer push makes an older push's run moot; a run started by hand is never cut short.
+# A newer push makes an older push's run moot, a PR's too; a run started by hand is never cut short.
 concurrency:
   group: mutate-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 # Read the code and its history (the plan's diff), nothing more, whatever the repository's default.
 permissions:
@@ -48,8 +51,9 @@ jobs:
           node-version: 24
       - id: list
         env:
-          MACHINES: ${{ inputs.machines }}
-          BEFORE: ${{ github.event.before }}
+          MACHINES: ${{ inputs.machines || (github.event_name == 'pull_request' && '10') || '' }}
+          # A PR has no `before`: without its base, every mutant ran (~20 min).
+          BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node .github/plan-mutants.mjs >> "$GITHUB_OUTPUT"
   mutate:
     needs: plan
@@ -74,3 +78,15 @@ jobs:
           AUTO: ${{ inputs.auto && '1' || '' }}
           SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
         run: node mutate.mjs --shard "$SHARD" ${AUTO:+--auto} ${CHANGED:+--changed "$CHANGED"}
+  # The one check the master ruleset requires: the shards' names change with
+  # their count, and a PR that touches no mutant's file runs none (skipped: a pass).
+  mutants:
+    needs: [plan, mutate]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          MUTATE: ${{ needs.mutate.result }}
+        run: test "$PLAN" = success && { test "$MUTATE" = success || test "$MUTATE" = skipped; }

@@ -153,10 +153,12 @@ Beyond the suites:
   `harness.mjs` or `mutate.mjs` changed, or under `--full`. Run it with
   `--full` before a version release.
 - The `mutate` workflow on GitHub splits the mutants across 17 machines
-  (GitHub Free runs 20 jobs at once). Every push to `master` runs the
-  changed files' mutants, by the deploy's rule; started by hand (Actions >
-  mutate > Run workflow), it runs all the hand-written ones in about 7
-  minutes, and with `auto` on, the automatic ones too. Once a run
+  (GitHub Free runs 20 jobs at once). Every pull request runs the changed
+  files' mutants on 10 machines, by the deploy's rule, and its `mutants`
+  job is a required check: a survivor blocks the merge. Every push to
+  `master` runs them again on 17. Started by hand (Actions > mutate > Run
+  workflow), it runs all the hand-written ones in about 20 minutes
+  (2026-11), and with `auto` on, the automatic ones too. Once a run
   covering the commit passes, `node deploy.mjs --mutants-checked-on-github`
   skips the local run. The deploy never asks GitHub itself: nothing here
   goes online.
