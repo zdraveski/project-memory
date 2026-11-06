@@ -21,11 +21,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
 import { suites } from './mutate.mjs';
+import { SHARED } from './deploy.mjs';
 
 const repo = dirname(fileURLToPath(import.meta.url));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
-// What every suite stands on: changed, all six run.
-const SHARED = ['store.mjs', 'harness.mjs'];
+// What every suite stands on (SHARED): changed, all six run. The list is deploy.mjs's own, so the quick check and the deploy agree
+// (audit #16); handoff-log.mjs is left out on purpose: store.mjs and memory-tier.mjs do not import it, so it is not under every suite.
 const ALL = [...new Set(Object.values(suites).map(([t]) => t))];
 
 // The suites a set of changed files needs: a source's own, a suite itself,
@@ -38,6 +39,9 @@ export const changedLines = (diff) => {
   for (const m of diff.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm)) for (let i = 0; i < (m[2] === undefined ? 1 : Number(m[2])); i++) at.add(Number(m[1]) + i);
   return at;
 };
+// The lines of a file the check treats as changed: a new file's every line (git diff HEAD says nothing of an untracked file, so a
+// new source passed the mutant steps untested, audit #17), else the diff's.
+export const touchedOf = (isNew, lines, diff) => (isNew ? new Set(lines.map((_, i) => i + 1)) : changedLines(diff));
 // The --auto-lines value for mutate.mjs: file:n,n;file:n
 export const autoArg = (byFile) => [...byFile].map(([f, ls]) => `${f}:${[...ls].join(',')}`).join(';');
 // The 1-based lines a text's first occurrence of `find` spans.
@@ -50,8 +54,11 @@ const span = (text, find) => {
 assert.deepEqual(suitesFor(['README.md']), []);
 assert.deepEqual(suitesFor(['journal.mjs', 'memory.test.mjs']), ['journal.test.mjs', 'memory.test.mjs']);
 assert.equal(suitesFor(['harness.mjs']).length, ALL.length);
+assert.equal(suitesFor(['mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
 assert.deepEqual([...changedLines('@@ -3 +3,2 @@\n@@ -9,0 +11 @@\n')], [3, 4, 11]);
 assert.deepEqual(span('a\nbb\nc', 'b\nc'), [2, 3]);
+assert.deepEqual([...touchedOf(true, ['a', 'b', 'c'], '')], [1, 2, 3]);
+assert.deepEqual([...touchedOf(false, ['a', 'b', 'c'], '@@ -2 +2 @@\n')], [2]);
 // Why a mutate.mjs run failed: its known failure lines; failing that (a crash, a spawn error, a timeout) the error or the output's tail, so a non-zero exit never reads as ok.
 export const failures = (r, known) => {
   if (r.status === 0 && !r.error) return [];
@@ -93,7 +100,8 @@ const pool = async (items, fn) => {
 };
 
 const files = git('ls-files', '-co', '--exclude-standard', '*.mjs').split('\n').filter(Boolean);
-const changed = [...new Set([...git('diff', '--name-only', 'HEAD').split('\n'), ...git('ls-files', '-o', '--exclude-standard').split('\n')].filter(Boolean))];
+const untracked = git('ls-files', '-o', '--exclude-standard').split('\n').filter(Boolean);
+const changed = [...new Set([...git('diff', '--name-only', 'HEAD').split('\n'), ...untracked].filter(Boolean))];
 console.log(`changed since the last commit: ${changed.length ? changed.join(', ') : 'nothing'}`);
 
 // 1. Every file parses.
@@ -143,7 +151,7 @@ const on = [], bare = [], autoLines = new Map();
 for (const [file, [, mutants]] of Object.entries(suites)) {
   if (!changed.includes(file) || !existsSync(join(repo, file))) continue;
   const text = readFileSync(join(repo, file), 'utf8'), lines = text.split('\n');
-  const touched = changedLines(git('diff', '-U0', 'HEAD', '--', file)), covered = new Set();
+  const touched = touchedOf(untracked.includes(file), lines, git('diff', '-U0', 'HEAD', '--', file)), covered = new Set();
   if (touched.size && file.endsWith('.mjs')) autoLines.set(file, touched); // automut reads code, not hooks.json
   for (const [label, [from]] of Object.entries(mutants)) {
     const at = span(text, from);

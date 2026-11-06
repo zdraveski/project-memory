@@ -172,6 +172,9 @@ export const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
+    'a long Bearer value with no digit kept': ['\\d|[A-Za-z0-9._~+/=-]{32})', '\\d)'],
+    'a Bearer value 32 long needs 33': ['\\d|[A-Za-z0-9._~+/=-]{32})', '\\d|[A-Za-z0-9._~+/=-]{33})'],
+    'a hidden character after Bearer hides the value': ['(Bearer|Basic|Token)[ \\p{Default_Ignorable_Code_Point}]+(?=', '(Bearer|Basic|Token) (?='],
     'a prompt past the 32 MB read never looked for': ['const p = !whole && !got.open ? promptBefore(path, bytes) : null;', 'const p = null;', { full: true }],
     'the prompt the tail cut through left out': ['.indexOf(10) + 1, carry', '.indexOf(10) * 0, carry'],
     'a line split over two reads lost': ['const all = Buffer.concat([buf, carry])', 'const all = buf'],
@@ -396,7 +399,7 @@ export const suites = {
     "P-F3 a count under tokens: redacted": ['&& /\\d/.test(v) && /[A-Za-z]/.test(v) :', '&& /\\d/.test(v) :'],
     "P-F3 a PIN under a secret's key kept": [String.raw`: /[\d!@#$%^&*+=?~]/.test(v));`, String.raw`: /[A-Za-z]/.test(v) && /[\d!@#$%^&*+=?~]/.test(v));`],
     "a bare token's value on the next line kept": ["tokens?[ \\t]{0,20}[:=]\\s{0,20}", "tokens?[ \\t]{0,20}[:=][ \\t]{0,20}"],
-    "lowercase bearer kept": ["{20,}/gi, '$1 [redacted]']", "{20,}/g, '$1 [redacted]']"],
+    "lowercase bearer kept": ["{20,}/giu, '$1 [redacted]']", "{20,}/gu, '$1 [redacted]']"],
     "a name-and-value pattern backtracks": ["[A-Za-z0-9_]{0,40}", "[A-Za-z0-9_]*"],
     "an emoji cut in half": [".replace(/[\\uD800-\\uDBFF]$/, '')", ""],
     "a note left keeps the file unchanged": ["const notes = has && doc.slice(a, b).includes('**cut mid-turn**');", "const notes = false;"],
@@ -1198,6 +1201,7 @@ export const suites = {
   }],
   'deploy.mjs': ['handoff-log.test.mjs', {
     'a shared-layer change checks only its own mutants': ['changed.some((f) => SHARED.includes(f))', 'false'],
+    'a change to the harness checks only its own mutants': ["['store.mjs', 'harness.mjs', 'mutate.mjs']", "['store.mjs', 'mutate.mjs']"],
     'an unknown live commit checks no mutant': ['(!changed || changed.some', '(changed.some'],
     'the plugin version not stamped': ["if (patch !== undefined && f === '.claude-plugin/plugin.json') {", 'if (false) {'],
     'the live plugin runs node from PATH': ["if (node && f === 'hooks/hooks.json') {", 'if (false) {'],
@@ -1226,6 +1230,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // reach half the mutants.
   const args = process.argv.slice(2), value = (n) => { const i = args.indexOf(n); return i === -1 ? undefined : args[i + 1]; };
   const changed = value('--changed')?.split(',').filter(Boolean), shard = value('--shard')?.match(/^(\d+)\/(\d+)$/);
+  // --shard 0/17, 18/17 or a typo selected no mutant and reported "all 0 killed": a check that never ran (audit #15).
+  if (args.includes('--shard') && !(shard && Number(shard[1]) >= 1 && Number(shard[1]) <= Number(shard[2]))) { console.error(`--shard wants i/n with i from 1 to n, not "${value('--shard')}"`); process.exit(1); }
   const only = args.filter((a, i) => !a.startsWith('--') && !['--changed', '--shard', '--auto-lines'].includes(args[i - 1]));
   // A missing or empty --auto-lines value selects nothing, never every hand mutant.
   const wantsLines = args.includes('--auto-lines'), autoLines = wantsLines ? (value('--auto-lines') ?? '').replace(/^--.*/, '') : undefined;
@@ -1272,6 +1278,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   if (args.includes('--list')) {
     for (const j of jobs) console.log(j.label);
     if (auto) console.error(`${dropped} automatic mutant(s) dropped as copies of hand mutants`);
+    for (const id of stale) console.error(`stale ignore: ${id}`);   // stderr: stdout is the list check.mjs reads
     process.exit(0);
   }
   for (const id of stale) console.log(`stale ignore: ${id}`);

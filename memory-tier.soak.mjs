@@ -5,18 +5,22 @@
 //      runs leave a valid store?
 //   2. Steady state — the corpus grows ~6 memories a day. Simulate a month of
 //      that and see what the index costs on day 30, and what survives in it.
-// Run: node memory-tier.soak.mjs [store dir]   (default: this machine's largest store, copied)
+// Run: node memory-tier.soak.mjs [store dir] [--days N]   (default: this machine's largest store, copied; 30 days)
 import { writeFileSync, readFileSync, readdirSync, rmSync, cpSync } from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
-import { tool, tempDir, audit, largestStore } from './harness.mjs';
+import { tool, tempDir, audit, largestStore, pointers } from './harness.mjs';
 // The ceiling under test is the tool's own: a copy of the number here went
 // stale the day the owner lowered it and asserted nothing.
 import { BUDGET } from './store.mjs';
 
 const TOOL = tool('memory-tier.mjs');
-const REAL = process.argv[2] || largestStore();
+// --days N is its own flag: "60" as the first argument used to be taken for the store's folder.
+const argv = process.argv.slice(2), di = argv.indexOf('--days');
+const DAYS = di === -1 ? 30 : Number(argv[di + 1]);
+if (!Number.isInteger(DAYS) || DAYS < 1) { console.error('--days wants a whole number of days, 1 or more'); process.exit(1); }
+const REAL = argv.find((a, i) => !a.startsWith('--') && i !== di + 1) || largestStore();
 if (!REAL) { console.error('no memory store on this machine to copy: pass one, node memory-tier.soak.mjs <store dir>'); process.exit(1); }
 const CLOCK = Date.now();
 const run = (dir, ...a) => execFileSync(process.execPath, [TOOL, '--dir', dir, ...a], { encoding: 'utf8' });
@@ -25,9 +29,11 @@ const run = (dir, ...a) => execFileSync(process.execPath, [TOOL, '--dir', dir, .
 // --- 1. concurrency ---------------------------------------------------------
 const cdir = tempDir('soak-c-');
 cpSync(REAL, cdir, { recursive: true, preserveTimestamps: true });
-await Promise.all(Array.from({ length: 12 }, () => new Promise((res) => {
-  execFile(process.execPath, [TOOL, '--dir', cdir, '--now', String(CLOCK)], () => res());
-})));
+// A child that crashed is a failure: the others' work would still "match" the serial run.
+const crashed = (await Promise.all(Array.from({ length: 12 }, () => new Promise((res) => {
+  execFile(process.execPath, [TOOL, '--dir', cdir, '--now', String(CLOCK)], (e) => res(e));
+})))).filter(Boolean);
+assert.equal(crashed.length, 0, `all 12 concurrent runs must exit 0 (${crashed.length} did not: ${String(crashed[0]?.message).split('\n')[0]})`);
 // The property worth asserting: a race is a no-op, not a different answer.
 // Same store, same clock, run once -- the result must be byte-identical.
 const sdir0 = tempDir('soak-serial-');
@@ -50,8 +56,11 @@ rmSync(cdir, { recursive: true, force: true });
 const sdir = tempDir('soak-s-');
 cpSync(REAL, sdir, { recursive: true, preserveTimestamps: true });
 const DAY = 86400000;
-const DAYS = Number(process.argv[2]) || 30;
 const start = Date.now();
+// A memory of this store, pinned (tier: hot) so it must survive every day: not one named after a store only one machine has.
+const front = pointers(readFileSync(join(sdir, 'MEMORY.md'), 'utf8'))[0];
+assert(front, 'the store copied has no memory in its index to pin');
+writeFileSync(join(sdir, front), readFileSync(join(sdir, front), 'utf8').replace(/^[ \t]*tier:.*\r?\n/m, '').replace(/^---\r?\n/, '---\ntier: hot\n'));
 let day0 = audit(sdir);
 for (let d = 1; d <= DAYS; d++) {
   const when = new Date(start + d * DAY).toISOString();
@@ -83,7 +92,7 @@ assert.equal(s.dupes, 0, 'no duplicates after a month');
 assert.deepEqual(s.orphans, [], 'no memory falls out of both indexes');
 assert.deepEqual(s.dangling, [], 'no dangling pointer');
 const hotLines = readFileSync(join(sdir, 'MEMORY.md'), 'utf8');
-assert(/opus-launch-order/.test(hotLines), 'a pinned front door survives every day of writing');
+assert(hotLines.includes(`(${front})`), `a pinned memory (${front}) survives every day of writing`);
 assert(hotLines.includes(`(working-rule-d${DAYS}.md)`), "the last day's working rule stays hot");
 // A pointer line names its memory twice, in the title and in the target. Count
 // targets: the first draft of this counted both and reported 60 of 30.

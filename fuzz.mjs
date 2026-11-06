@@ -85,8 +85,11 @@ import { LOCK_STALE, SHARED_BUDGET, POINTER } from './store.mjs';
 import { NUDGE_TAG, ACTIVE, tag, parse, sectionOf } from './handoff-log.mjs';
 
 const args = process.argv.slice(2);
-const seconds = Number(args.find((a, i) => /^\d+$/.test(a) && args[i - 1] !== '--seed') ?? 60);
-const only = args.includes('--seed') ? Number(args[args.indexOf('--seed') + 1]) : null;
+// A typo ("10m", "0", "--seed x") exits 1: it used to run 60 s, or no rounds, and report a pass for a run that tested nothing (audit #15).
+const secs = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--seed'), seedArg = args.includes('--seed') ? args[args.indexOf('--seed') + 1] : null;
+if ((secs !== undefined && !/^[1-9]\d*$/.test(secs)) || (args.includes('--seed') && !/^\d+$/.test(seedArg ?? ''))) { console.error('usage: node fuzz.mjs [seconds, a whole number above 0] [--seed N, a whole number]'); process.exit(1); }
+const seconds = Number(secs ?? 60);
+const only = seedArg === null ? null : Number(seedArg);
 const REAL = join(homedir(), '.claude').replaceAll('\\', '/').toLowerCase();   // the user's own folder, read before tempHome moves HOME: no command may name it
 const OWN = new RegExp(`${dirname(fileURLToPath(import.meta.url)).replaceAll('\\', '/').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[/\\s)'",:;]|$)`, 'g');   // the hooks folder itself (then a slash, a blank, a bracket, a quote, , : ; or the end: not hooks-live, not hooks.bak)
 const homes = tempHome('fuzz-').home, kept = new Set();

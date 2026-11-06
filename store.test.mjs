@@ -211,9 +211,12 @@ ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !r
 // Long runs of blanks in a value are read in linear time: 50,000 spaces took
 // 12 s, and every tier pass and search paid it.
 {
-  const blanks = ' '.repeat(50_000), t0 = Date.now();
-  const f = front(`---\nname: n${blanks}x\ndescription: d${blanks}\nsuperseded-by: ${blanks}#\ntype:\n ${blanks}\n---\n`);
-  ok(Date.now() - t0 < 1000 && f.desc === 'd' && f.superseded === '', `a value with 50,000 blanks is read in linear time (${Date.now() - t0} ms, ${JSON.stringify(f).slice(0, 80)})`);
+  // Timed at 5,000 blanks and at 50,000 (a linear read costs ten times the first; the old 12 s one a hundred): a slow runner slows both, the old
+  // fixed 1 s stays as the floor (audit #18).
+  const read = (n) => { const blanks = ' '.repeat(n), t = performance.now(); const g = front(`---\nname: n${blanks}x\ndescription: d${blanks}\nsuperseded-by: ${blanks}#\ntype:\n ${blanks}\n---\n`); return [performance.now() - t, g]; };
+  read(5_000);
+  const [small] = read(5_000), [big, f] = read(50_000);
+  ok(big < Math.max(1000, 50 * small) && f.desc === 'd' && f.superseded === '', `a value with 50,000 blanks is read in linear time (${big.toFixed(0)} ms, ${small.toFixed(1)} ms at a tenth, ${JSON.stringify(f).slice(0, 80)})`);
 }
 
 // A transcript is in the projects folder by its resolved path: `<projects>/../x`
@@ -370,6 +373,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   // records the real path. And `_shared` names no project.
   const viaJ = join(home, 'work', 'jwt');
   try { symlinkSync(wt, viaJ, 'junction'); } catch {}
+  if (!existsSync(viaJ)) console.log('skip: this machine cannot make a junction to a worktree');
   ok(!existsSync(viaJ) || repoRoot(viaJ) === repo, `a worktree through a junction maps to its repository (got ${existsSync(viaJ) ? repoRoot(viaJ) : 'no junction'})`);
   process.env.CLAUDE_CONFIG_DIR = cfg; process.env.CLAUDE_CODE_PROJECT_DIR_NAME = '_shared';
   let notShared; try { notShared = storeOf({ cwd: sub }); } finally { delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; }
