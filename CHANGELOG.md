@@ -131,6 +131,15 @@
   being written, the note was dropped and the hook said the file had no
   place for it. It now says the handoff changed meanwhile.
 
+**Several windows at once**
+- When a window left a lock behind (it was closed mid-save), two others
+  waiting for it could both take it over and write at the same time. Only
+  one can now.
+- When the Stop hook cut its own log (`.stop-ran`) back, a line another
+  window added at that moment could be lost, and `doctor` could then miss
+  hooks set up twice. The log is now cut only if nothing was added
+  meanwhile.
+
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in
   silence: the record of the failure, `journal/.failed`, is in that same
@@ -177,6 +186,12 @@
   LF ones, and the blank line under its heading was dropped, when the
   plugin added its lines. It now keeps the file's line endings, and the
   blank line.
+- A note named with a date that isn't on the calendar (`2026-02-31-…`) was
+  read as a real date, so the tidy-up could archive it. Such a name now
+  counts as having no date.
+- A note whose closing `---` was the file's very last line, with no line
+  break after it, was read as all body, header included, so a search could
+  match words of its header. Its body is now empty.
 
 **Forget**
 - `forget <words>` now also finds an exchange the journal doesn't hold yet
