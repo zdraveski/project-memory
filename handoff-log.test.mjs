@@ -251,7 +251,7 @@ if (!quick) {
   const cwdP = 'C:\\handoff-parallel';
   const dirP = storeFor(home, cwdP);
   mkdirSync(dirP, { recursive: true });
-  const hookAt = (payload) => new Promise((res) => { const c = spawn(process.execPath, [HOOK], { env }); c.on('close', res); c.stdin.end(JSON.stringify(payload)); });
+  const hookAt = (payload) => new Promise((res) => { const t0 = Date.now(), c = spawn(process.execPath, [HOOK], { env }); c.on('close', () => res(Date.now() - t0)); c.stdin.end(JSON.stringify(payload)); });
   let missed = 0;
   for (let round = 0; round < 5; round++) {
     const payloads = Array.from({ length: 8 }, (_, k) => {
@@ -260,11 +260,17 @@ if (!quick) {
       return { cwd: cwdP, transcript_path: t };
     });
     rmSync(join(dirP, 'handoff.md'), { force: true });
-    await Promise.all(payloads.map(hookAt));
+    const took = await Promise.all(payloads.map(hookAt));
+    // A Stop that waits 2 s for the lock skips its turn by design, so only one done sooner is owed its place: without the lock,
+    // the quick ones overwrite each other. A skipped turn is redone by the session's next Stop. (Same turn, a longer answer:
+    // handoff.md keeps 10 entries of a session, so 8 first turns and 8 next ones could not all show.)
+    const d1 = readFileSync(join(dirP, 'handoff.md'), 'utf8');
+    missed += payloads.filter((_, k) => took[k] < 2000 && !d1.includes(`round ${round} writer ${k}`)).length;
+    await Promise.all(payloads.map((p) => { appendFileSync(p.transcript_path, asst('ok again') + '\n'); return hookAt(p); }));
     const d = readFileSync(join(dirP, 'handoff.md'), 'utf8');
     missed += payloads.filter((_, k) => !d.includes(`round ${round} writer ${k}`)).length;
   }
-  ok(missed === 0, `8 writers at once x5: every turn reaches handoff.md (${missed} of 40 missing)`);
+  ok(missed === 0, `8 writers at once x5: every turn reaches handoff.md, a skipped one at the next Stop (${missed} of 40 missing)`);
   for (let round = 0; round < 5; round++) {
     await Promise.all(['s1aaaaaa', 's2bbbbbb', 's3cccccc'].map((id) => {
       const t = join(dirP, `${id}.jsonl`);
