@@ -417,11 +417,11 @@ const SECRETS = [
   // secret (yamlSecret): read on to any indented line, the siblings after it were cut (GitHub Actions' runs-on, Helm's username),
   // and so were names and settings under it (OpenAPI's `type: apiKey`, design tokens) (review, 2026-11-01). A child a line, each
   // line read once: linear.
-  [/^([ \t]*)((?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?[ \t]*:[ \t]*\r?\n)((?:\1[ \t]+[\w.-]{1,40}[ \t]*:[^\n]{0,500}(?:\n|$))+)/gim,
+  [/^([ \t]*)((?:password|passwd|passphrase|secret|(token)|(?:api|account|private|secret)[ _-]?key|access[ _-]key)s?[ \t]*:[ \t]*\r?\n)((?:\1[ \t]+[\w.-]{1,40}[ \t]*:[^\n]{0,500}(?:\n|$))+)/gim,
     (m, ind, head, tok, block) => ind + head + block.replace(/^([ \t]+[\w.-]{1,40}[ \t]*:[ \t]*["']?)([^\s"',;]{6,})/gm, (x, pre, v) => (yamlSecret(v, tok) && !code(v) && !arg(v) ? `${pre}[redacted]` : x))],
   // The same in JSON: each string in an object under a key that names a secret (`"secrets": {"db": "…"}`), judged as a YAML child
   // is (review, 2026-11-01). An object of one level only, read to its first `}`, bounded.
-  [/("(?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?"[ \t]*:[ \t]*\{)([^{}]{0,2000})\}/gi,
+  [/("(?:password|passwd|passphrase|secret|(token)|(?:api|account|private|secret)[ _-]?key|access[ _-]key)s?"[ \t]*:[ \t]*\{)([^{}]{0,2000})\}/gi,
     (m, head, tok, body) => `${head}${body.replace(/("[\w.-]{1,40}"[ \t]*:[ \t]*")([^"\n]{6,200})(?=")/g, (x, pre, v) => (yamlSecret(v, tok) && !code(v) && !arg(v) ? `${pre}[redacted]` : x))}}`],
   // A value is never a key (a name and a colon with more after it: blanks then a value on its line, or a line break then an
   // indented child): taken for the parent's value, the child after it was kept (`secret:\n  password: X`, `secret: password: X`;
@@ -430,7 +430,7 @@ const SECRETS = [
   // A quoted value goes whole, blanks and all, as in a command; it is never a key. Unquoted, a value ends at its first blank
   // (`password: p@ss w0rd` keeps all of it: `p@ss` is under 6), since prose follows a value as often as a second word does.
   // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)((?<=")[^"\n]{6,200}(?=")|(?<=')[^'\n]{6,200}(?=')|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))[^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret)[ _-]?key|access[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)((?<=")[^"\n]{6,200}(?=")|(?<=')[^'\n]{6,200}(?=')|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))[^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
   [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
 ];

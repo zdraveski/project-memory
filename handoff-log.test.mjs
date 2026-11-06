@@ -1591,6 +1591,12 @@ for (const [s, gone] of [[`use ${k('xoxe', '-1-', 'My0xLTEyMzQ1Njc4OTAxMjM0NTY3O
   [`webhook_url: https://discordapp.com/api/webhooks/123456789012345678/${k('AbCdEfGh', 'IjKlMnOp_qrstUVWX-yz0123456789')}`, 'AbCdEfGh']]) {
   ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `xoxe, pplx and a Discord webhook are redacted (got ${red(s)})`);
 }
+// 1.2.6 audit #3: "API key: X", "Secret key: X", "Access key: X" with a blank between the words, flat, as a YAML parent and a JSON object.
+for (const [s, gone] of [['API key: ' + k('abcd1234', 'efgh5678'), 'abcd1234'], ['Secret key: ' + k('abcd1234', 'efgh5678'), 'abcd1234'], ['Access key: ' + k('AbCd1234', 'EfGh5678'), 'AbCd1234'],
+  ['access key:\n  prod: ' + k('Prod', 'Key88xyz'), 'Key88'], ['{"api key": {"prod": "' + k('Prod', 'Key88xyz') + '"}}', 'Key88']]) {
+  ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a key named with a blank is redacted (got ${red(s)})`);
+}
+ok(['the API key rotation happens monthly', 'access key to the building', 'a secret key is kept safe', 'cookie recipe', 'the sig of the mail'].every((s) => red(s) === s), 'prose about keys is kept');
 // Audit #7: a Bearer/Basic/Token value of 32 or more characters is cut with no digit in it too (1 in 400 random ones has none), and
 // a hidden character between the word and the value does not hide it; 31 characters of letters stay prose.
 {
