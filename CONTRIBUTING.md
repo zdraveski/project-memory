@@ -273,6 +273,10 @@ The maintainer's steps:
    for them and CI to pass on every job. A survivor must be
    killed by a test, or listed in `automut-ignore.txt` with its reason,
    before a release.
+   No other pull request merges between this one and the tag: the runs
+   must test exactly the commit that gets tagged. A mutant reported
+   `TIMED OUT`, or a shard that fails for time on a crowded machine, is
+   run again (that shard alone) before it counts as a survivor.
 5. Check **Security** on GitHub: no high or critical code scanning alert
    and no Dependabot alert is open. Each is fixed, or dismissed with a
    written reason ([SECURITY.md](SECURITY.md#checks-on-every-change)).
