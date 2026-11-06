@@ -139,8 +139,10 @@ function split(text) {
   // demotes the top memory to prose and orphans it.
   for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const m = line.match(POINTER);
+    // The Archive line counts for the gap too: with every pointer cold it is the only line after the blank one.
+    if (m) gap ||= !pointers.length && preamble.at(-1)?.trim() === '';
     if (m && m[1] === ARCHIVE) continue;   // by its target, not its title: regenerated with a live count
-    if (m) { gap ||= !pointers.length && preamble.at(-1)?.trim() === ''; pointers.push({ line, target: m[1] }); }
+    if (m) pointers.push({ line, target: m[1] });
     else if (line.trim() || preamble[preamble.length - 1]?.trim()) preamble.push(line);
   }
   while (preamble.length && preamble[preamble.length - 1].trim() === '') preamble.pop();
