@@ -182,6 +182,7 @@ ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').filter((l) => l === 
 // the ceiling may not take it. A recovered pointer once carried its filename
 // where its facts belong: that made a pinned orphan evictable, gave it an age
 // of NaN, and a NaN in the comparator scrambles the whole eviction order.
+// The day is read once: a run across midnight UTC does not name two days in the file names (audit #18).
 const today = new Date().toISOString().slice(0, 10);
 const pad = ' and a hook long enough to make the ceiling bite ' + 'x'.repeat(110);
 const evLines = [], noteLines = [];
@@ -493,8 +494,9 @@ ok(r.status === 0 && two() === twoBefore, "--stop in one project leaves another 
 // A day boundary must re-run the pass even when no file changed: the windows are time-based.
 r = await stop('proj-two');
 writeFileSync(stamp('proj-two'), readFileSync(stamp('proj-two'), 'utf8').replace(/^\S+ \S+ \d+ \d+/, 'Wed Sep 10 2025'));
+const dayBefore = new Date().toDateString();   // a run across midnight stamps either day (audit #18)
 r = await stop('proj-two');
-ok(r.status === 0 && readFileSync(stamp('proj-two'), 'utf8').startsWith(new Date().toDateString()), '--stop: a stamp from another day is not a pass; today re-stamps');
+ok(r.status === 0 && [dayBefore, new Date().toDateString()].some((d) => readFileSync(stamp('proj-two'), 'utf8').startsWith(d)), '--stop: a stamp from another day is not a pass; today re-stamps');
 rmSync(join(root, 'proj-two', 'memory', 'MEMORY.md'));
 mkdirSync(join(root, 'proj-two', 'memory', 'MEMORY.md'));               // an index that cannot be read throws in tier()
 r = await stop('proj-two');
@@ -1102,6 +1104,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   const sh12 = JSON.parse(readFileSync(join(root12, '.snapshot-health'), 'utf8'));
   ok(!/C--ext/.test(readFileSync(join(root12, '.gitignore'), 'utf8')), 'a store linked outside the root is not ignored as a second path');
   const tracked12 = /C--ext\/memory\/price\.md/.test(files12);
+  if (process.platform !== 'win32') console.log('skip: a junction outside the root is snapshotted on Windows only');
   ok(process.platform !== 'win32' || tracked12, `a junction outside the root is snapshotted on Windows (got ${files12})`);
   ok(tracked12 ? !sh12.missed && !/leave out/.test(doc12) : sh12.missed?.length === 1 && /PROBLEM\s+snapshots: ok, last [^\n]*but they leave out [^\n]*C--ext/.test(doc12),
     `a store the snapshot cannot reach is said to be left out (got ${JSON.stringify(sh12)} / ${doc12})`);

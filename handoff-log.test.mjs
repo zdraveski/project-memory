@@ -24,6 +24,9 @@ mkdirSync(dir, { recursive: true });
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
+// A guard that a pattern is linear, not that the machine is fast (audit #18): f(m) runs the hostile input at m parts, timed at 1 and at
+// 10. A slow or busy runner slows both, and the old fixed limit stays as the floor; a cubic pattern (1,000 times) or an exponential one still fails.
+const linear = (f, floor) => { f(1); let t = performance.now(); f(1); const small = performance.now() - t; t = performance.now(); f(10); const big = performance.now() - t; return [big < Math.max(floor, 50 * small), `${big.toFixed(0)} ms at full size, ${small.toFixed(1)} ms at a tenth`]; };
 
 const rec = (type, content, extra = {}) => JSON.stringify({ type, timestamp: extra.ts || '2026-09-11T07:00:00Z', message: { content }, ...extra });
 const user = (s, extra) => rec('user', [{ type: 'text', text: s }], extra);
@@ -516,9 +519,10 @@ for (const s of ['2**32 and 2**64', '**kwargs and **opts', '__init__.py', 'a || 
 ok(plain('**The 3 parties:** 1. **You**, the (**owner**)') === 'The 3 parties: 1. You, the (owner)', 'and bold that hugs its words is dropped');
 // Sized so the cubic pattern this replaced takes seconds, not hours: it fails
 // the check instead of hanging the mutation run, and 2 s holds under its load.
-const tPlain = Date.now();
-plain(' \n'.repeat(1500) + 'x'); plain('-\n'.repeat(1500) + 'x'); plain(' - '.repeat(20000) + 'x'); plain('**a '.repeat(20000));
-ok(Date.now() - tPlain < 2000, `blank, dash and unclosed-bold runs take no time (took ${Date.now() - tPlain} ms; a pattern across newlines was cubic)`);
+{
+  const [good, how] = linear((m) => { plain(' \n'.repeat(150 * m) + 'x'); plain('-\n'.repeat(150 * m) + 'x'); plain(' - '.repeat(2000 * m) + 'x'); plain('**a '.repeat(2000 * m)); }, 2000);
+  ok(good, `blank, dash and unclosed-bold runs are read in linear time (${how}; a pattern across newlines was cubic)`);
+}
 
 // 27. The shared store, printed into every session of every project: Claude
 // Code loads only the project's own index.
@@ -643,8 +647,10 @@ for (const l of shapes) ok(!/hunter2|s3cr3t|wJalr|abc123def|51Habc|lQOYBF|abcdef
 // redact() on its own too: clip's second pass, after the blanks are squeezed, takes a next-line value even when the first missed it (F23).
 for (const l of [fake('pass', 'word:\n  ', 'hunter2secret'), fake('tok', 'en:\n  ', 'hunter2tok3n')]) ok(!/hunter2/.test(redact(l)), `redact alone takes a value on the next line: ${JSON.stringify(redact(l))}`);
 ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 'sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6', 'ordinary text is left alone');
-const t34 = Date.now(); redact('_secret'.repeat(20_000)); redact('password' + ' '.repeat(100_000));
-ok(Date.now() - t34 < 1000, 'a name-and-value pattern cannot be made to backtrack');
+{
+  const [good, how] = linear((m) => { redact('_secret'.repeat(2_000 * m)); redact('password' + ' '.repeat(10_000 * m)); }, 1000);
+  ok(good, `a name-and-value pattern cannot be made to backtrack (${how})`);
+}
 
 // 35. A message that opens with some other tag is still the user's: its
 // <private> part and its answer stay out. An IDE's note before the words is
@@ -945,10 +951,10 @@ const cwdD = 'C:\\handoff-dir';
 mkdirSync(join(storeFor(home, cwdD), 'handoff.md'), { recursive: true });
 ok(/^- \[Pin 0\]/m.test(printOf(cwdD, 'dddddddd-8', 'startup')), 'a handoff.md that cannot be read leaves the rest of the briefing');
 // Linear on any message: a tag name of 50,000 `a-` took 35 s a hook.
-const t0 = Date.now();
-own('<' + 'a-'.repeat(50_000));
-own('<system-reminder>'.repeat(30_000));
-ok(Date.now() - t0 < 1000, `reading a hostile message is linear (${Date.now() - t0} ms)`);
+{
+  const [good, how] = linear((m) => { own('<' + 'a-'.repeat(5_000 * m)); own('<system-reminder>'.repeat(3_000 * m)); }, 1000);
+  ok(good, `reading a hostile message is linear (${how})`);
+}
 // A private mark 60 conversations back still holds: the newest 50 were kept,
 // and a resumed one was recorded again.
 for (let i = 0; i < 60; i++) hushed(dirN, `s${String(i).padStart(7, '0')}`, true);
@@ -1228,11 +1234,14 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
   ok(answer(userText(t), t.did, 400) === '[private]', `a private tag the typed text lost but the ask kept still hides the answer (got ${JSON.stringify(t)})`);
 }
 // Linear: an option read as the one before's value too doubled the work per option.
-const tf0 = Date.now();
-FORGETS.test('node memory.mjs' + ' --a'.repeat(40) + ' x');
-FORGETS.test('node memory.mjs' + " '--a' 'v'".repeat(40) + ' x');
-FORGETS.test('node memory.mjs' + " '--a'".repeat(40) + ' x');
-ok(Date.now() - tf0 < 1000, `a command of 40 options, quoted or not, is read in linear time (${Date.now() - tf0} ms)`);
+{
+  const [good, how] = linear((m) => {
+    FORGETS.test('node memory.mjs' + ' --a'.repeat(4 * m) + ' x');
+    FORGETS.test('node memory.mjs' + " '--a' 'v'".repeat(4 * m) + ' x');
+    FORGETS.test('node memory.mjs' + " '--a'".repeat(4 * m) + ' x');
+  }, 1000);
+  ok(good, `a command of 40 options, quoted or not, is read in linear time (${how})`);
+}
 // A mark the journal's sink finds (its look at the whole transcript): the
 // turn stays out of handoff.md too.
 const th = join(dirF, 'h.jsonl');
@@ -1609,9 +1618,10 @@ const commands = ['mkdir -p build/out', 'git add -p', 'docker run -p 8080:80 -u 
   'export MAX_TOKEN_SIZE=4096', '[Environment]::SetEnvironmentVariable("TOKEN_TTL", "3600", "User")', 'export SECRET_PORT=8443', 'tool --password $(cat pw.txt)'];
 const cutCmd = commands.filter((s) => red(s) !== s);
 ok(!cutCmd.length, `commands that only look like they pass a secret are kept (cut: ${cutCmd.join(' | ')})`);
-const tExport = Date.now();
-red('export ' + 'key_'.repeat(20_000));
-ok(Date.now() - tExport < 1000, `an exported name of 20,000 words is read in linear time (${Date.now() - tExport} ms)`);
+{
+  const [good, how] = linear((m) => red('export ' + 'key_'.repeat(2_000 * m)), 1000);
+  ok(good, `an exported name of 20,000 words is read in linear time (${how})`);
+}
 // P-F3: a value under a YAML parent key that names a secret (`secret:`, `secrets:`, `passwords:`, `tokens:`), or a key after one
 // on its line: the parent's rule took the child's key for its value, and the child's real value was kept (e2e audit, 2026-11-01).
 const nested = [['secret:\n  password: ', k('Zq8', 'hunter33')], ['secrets:\n  db_password: ', k('Kx9', 'stapler44')], ['passwords:\n  admin: ', k('Nest', 'Pw55xyz')],
@@ -1695,9 +1705,13 @@ envKept.push('set PATH=C:\\tools', 'set KEY_ALGORITHM=RS256 && run', 'cd app && 
   '"secrets": {"name": "production"}', '"api_key": {"type": "apiKey", "in": "header"}', '"tokens": {"input": "12345678", "output": 5678}');
 const envCut = envKept.filter((s) => red(s) !== s);
 ok(!envCut.length, `a path, a reference, a count, an ordinary name and an Azure key's name are kept (cut: ${envCut.map(red).join(' | ')})`);
-const tNest = Date.now(); red('secret:'.repeat(30_000)); red('secret: ' + 'a: '.repeat(30_000)); red('secrets:\n' + '  a: b  c: d e:'.repeat(5_000)); red('secrets:\n' + '  a:\n'.repeat(30_000));
-red('"secret":{'.repeat(30_000)); red('- name: "'.repeat(30_000)); red('&& A_KEY='.repeat(30_000));
-ok(Date.now() - tNest < 1000, `a parent key repeated, or a block of 30,000 children, is read in linear time (${Date.now() - tNest} ms)`);
+{
+  const [good, how] = linear((m) => {
+    red('secret:'.repeat(3_000 * m)); red('secret: ' + 'a: '.repeat(3_000 * m)); red('secrets:\n' + '  a: b  c: d e:'.repeat(500 * m)); red('secrets:\n' + '  a:\n'.repeat(3_000 * m));
+    red('"secret":{'.repeat(3_000 * m)); red('- name: "'.repeat(3_000 * m)); red('&& A_KEY='.repeat(3_000 * m));
+  }, 1000);
+  ok(good, `a parent key repeated, or a block of 30,000 children, is read in linear time (${how})`);
+}
 
 // Two real turns in one minute, one ask inside the other, the first past the
 // first read: both stay. Taken for two spellings of one turn, the first was lost.
@@ -1749,10 +1763,13 @@ handoff({ cwd: cwd3, transcript_path: t10, session_id: 'r3cont01' });
 const cont = readFileSync(join(dir3, 'handoff.md'), 'utf8');
 ok(/\[r3cont01\]: continue\n  \*\*did:\*\* step one/.test(cont) && /\[r3cont01\]: continue\n  \*\*did:\*\* step two/.test(cont), 'the same ask twice in a minute, after a long first turn, stays two entries');
 // Linear on hostile input: a key block's opener repeated, a command's args never closed.
-const t11 = Date.now();
-red('-----BEGIN ' + 'PRIVATE KEY '.repeat(22_000));
-case3([user('<command-name>/x</command-name>' + '<command-args>'.repeat(37_000)), asst('ok')]);
-ok(Date.now() - t11 < 2000, `hostile key blocks and command args are read in linear time (${Date.now() - t11} ms)`);
+{
+  const [good, how] = linear((m) => {
+    red('-----BEGIN ' + 'PRIVATE KEY '.repeat(2_200 * m));
+    case3([user('<command-name>/x</command-name>' + '<command-args>'.repeat(3_700 * m)), asst('ok')]);
+  }, 2000);
+  ok(good, `hostile key blocks and command args are read in linear time (${how})`);
+}
 
 
 // Second pass. A skipped turn in the same minute as the last one recorded:
