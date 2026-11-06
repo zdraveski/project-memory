@@ -1417,6 +1417,11 @@ if (!quick) {
   ok(/Asked: the cafe\u0301 menu/.test(r.stdout), `a typed café finds a decomposed one (got ${r.stdout})`);
   r = await jcli('search', 'cafe\u0301');
   ok(/Asked: a caf\u00e9 bill/.test(r.stdout), `a decomposed query finds a typed café (got ${r.stdout})`);
+  // 1.2.6 release review: the reply's stretch that holds a decomposed café is shown, not a Result line in its place.
+  day(jm, '2026-10-24', [entry('2026-10-24 10:00', 'lunch plans', { answered: 'we met at the cafe\u0301 near the station' })]);
+  r = await jcli('search', 'caf\u00e9');
+  const lunch = blocks(r.stdout).find((b) => b.includes('Asked: lunch plans')) ?? '';
+  ok(/Answered: we met at the caf\u00e9 near/.test(lunch) && !/Result:/.test(lunch), `a decomposed match in the reply shows its stretch (got ${lunch})`);
 
   // A stretch: matches 60 apart are one stretch (the 30-character windows
   // touch): no " … " where the second window starts, and it is cut at the room (240).
