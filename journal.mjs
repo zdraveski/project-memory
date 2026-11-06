@@ -294,11 +294,15 @@ export function unwritten(dir, keys, terms = null) {
     let ns = []; try { ns = readdirSync(join(projectsRoot(), f)).filter((n) => n.endsWith('.jsonl')); } catch {}
     for (const n of ns) {
       if (!ts && !left.size) return out;
-      const p = join(projectsRoot(), f, n);
+      const p = join(projectsRoot(), f, n), s = tag(basename(n, '.jsonl'));
+      // Not a conversation the journal never takes (private, or held with auto memory off; a list that won't read is no answer): it
+      // had no entry to forget, and listing its turn said one was lost.
+      if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;
       try {
         const fd = openSync(p, 'r');
         try {
           const size = fstatSync(fd).size;
+          if (marked(fd, 0, IMPORT_SEGMENT, size).hit) continue;
           for (let b, pos = 0; (ts || left.size) && (b = chunk(fd, pos, IMPORT_SEGMENT, size)); pos = b.pos + b.buf.length) {
             if (!near(b.buf)) continue;
             const got = turns(b.buf.toString('utf8'));

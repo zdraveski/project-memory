@@ -1347,6 +1347,21 @@ mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(pr
   ok(keys(['QUOKKA', 'plan']) === 'uv-1,uv-2' && keys(['quokka', 'drafted']) === 'uv-1' && keys(['okapi']) === '',
     `unwritten() by words finds each turn holding all of them, its reply too, in any case (got ${keys(['QUOKKA', 'plan'])}; ${keys(['quokka', 'drafted'])})`);
   ok(keys(['"plan"']) === 'uv-1' && keys(['c:\\zoo']) === 'uv-1', `a word with a quote or a backslash, which the transcript escapes, is found too (got ${keys(['"plan"'])}; ${keys(['c:\\zoo'])})`);
+  {
+    // Not a turn of a conversation the journal never takes: marked private (typed, or listed) or held with auto memory off. Listed
+    // by a forget, such a turn read as one the journal had lost, though no entry of it ever was.
+    const two = (n, id, t = 'a narwhal plan') => writeFileSync(join(own, n), [rec('user', id, '2026-10-27T12:00:00Z', t), rec('assistant', `${id}a`, '2026-10-27T12:00:30Z', 'ok')].join('\n') + '\n');
+    two('pppppppp-1.jsonl', 'pv-p'); two('oooooooo-1.jsonl', 'pv-o'); two('nnnnnnnn-1.jsonl', 'pv-n');
+    writeFileSync(join(own, 'mmmmmmmm-1.jsonl'), [rec('user', 'pv-m2', '2026-10-27T11:55:00Z', '<private-session> from here on'), rec('user', 'pv-m', '2026-10-27T12:00:00Z', 'a narwhal plan'), rec('assistant', 'pv-ma', '2026-10-27T12:00:30Z', 'ok')].join('\n') + '\n');
+    const off = join(projects, '.memory-off'), priv = join(d, '.private-sessions');
+    writeFileSync(priv, 'pppppppp\n'); writeFileSync(off, 'oooooooo\n');
+    try {
+      ok(keys(['narwhal']) === 'pv-n', `a turn of a conversation marked private, listed private or held with auto memory off is not found by words (got ${keys(['narwhal'])})`);
+      ok(unwritten(d, ['pv-p', 'pv-o', 'pv-m', 'pv-n']).map((e) => e.key).join() === 'pv-n', 'nor by its key');
+      rmSync(priv); mkdirSync(priv);
+      ok(keys(['narwhal']) === '', `nor while the private list won't read: it may hold the conversation (got ${keys(['narwhal'])})`);
+    } finally { for (const f of [priv, off, join(own, 'pppppppp-1.jsonl'), join(own, 'oooooooo-1.jsonl'), join(own, 'nnnnnnnn-1.jsonl'), join(own, 'mmmmmmmm-1.jsonl')]) rmSync(f, { recursive: true, force: true }); }
+  }
   // forget() takes them as a key's (`more`), from the day once a day holds one.
   record(d, tv, [turn({ at: local(Date.parse('2026-10-27T10:00:00Z')), id: 'uv-2', ask: 'another quokka' })]);
   const m = forget(d, ['quokka'], { more: unwritten(d, [], ['quokka']) }).matched;

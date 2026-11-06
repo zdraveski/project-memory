@@ -988,6 +988,10 @@ export const suites = {
     'a resumed conversation left out of the matcher (memory off untagged)': ['"matcher": "startup|resume|clear|compact"', '"matcher": "startup|clear|compact"'],
   }],
   'journal.mjs': ['journal.test.mjs', {
+    'a word search lists a turn of a private-listed conversation': ['if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;', 'if (hushed(projectsRoot(), s, false, OFF) !== false) continue;'],
+    'a word search lists a turn of a memory-off conversation': ['if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;', 'if (hushed(dir, s) !== false) continue;'],
+    'a word search lists a turn of a conversation with a typed private mark': ['          if (marked(fd, 0, IMPORT_SEGMENT, size).hit) continue;\n', ''],
+    'a word search lists a turn when a private list will not read': ['if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;', 'if (hushed(dir, s) || hushed(projectsRoot(), s, false, OFF)) continue;'],
     'forget leaves the temp copies a killed Stop left': ['    sweepTemps(dir);\n    return { matched', '    return { matched'],
     'a journal failure its folder refused said nowhere': ["} catch { if (!from) try { writeFileSync(aside(dir), line + '\\n'); } catch {} }", '} catch {}'],
     "an import's refused failure in the live write's place": ["if (!from) try { writeFileSync(aside(dir)", "if (true) try { writeFileSync(aside(dir)"],
