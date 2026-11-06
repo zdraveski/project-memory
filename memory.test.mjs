@@ -68,6 +68,12 @@ r = await cli('search', 'deploy', 'steps');
 ok(order(r.stdout)[0] === 'release-checklist', `every term in the description is the strong match (got ${order(r.stdout).join(', ')})`);
 ok(order(r.stdout).indexOf('deploy-notes') < order(r.stdout).indexOf('a-long-log'), 'and a log that mentions every term in passing does not outrank a named one');
 ok(/^ *\d+ +archived +\d{4}-\d\d-\d\d +\S*old-thing\.md$/m.test((await cli('search', 'archived')).stdout), 'an archived memory is found, and labelled with its date');
+{ // A note that opens with a ---- rule has no frontmatter: its first lines are searched, as front() reads it (a ---x line closes nothing).
+  const fm = join(root, 'C--fm-probe', 'memory'); mkdirSync(fm, { recursive: true });
+  writeFileSync(join(fm, 'rule-note.md'), '----\naxolotl care steps\n---x\nwater changes\n');
+  const f = await run(['search', 'axolotl', '--store', fm]);
+  ok(/rule-note\.md/.test(f.stdout), `the lines above a ---x line are searched (got ${f.stdout})`);
+}
 ok(/^ *\d+ +shared hot +\d{4}-\d\d-\d\d +\S*shared-rule\.md$/m.test((await cli('search', 'stage')).stdout), 'the shared store is searched too, and labelled');
 r = await cli('search', 'deploy', '--limit', '2');
 ok(order(r.stdout).length === 2 && /^2 of [3-9] match\(es\) in [^\n]*; --limit N shows more; --all searches every project$/m.test(r.stdout), `--limit caps the results, and the count says how many it left out (got ${r.stdout.trim().split('\n').pop()})`);

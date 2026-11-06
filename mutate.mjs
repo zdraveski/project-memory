@@ -48,7 +48,7 @@ export const suites = {
     'an env switch on only as 1': ['/^(1|true|yes|on)$/i', '/^1$/'],
     "a quoted tier ignored": ["get(/^[ \\t]*tier:[ \\t]*[\"']?(\\w+)/m, keys).toLowerCase()", "get(/^[ \\t]*tier:[ \\t]*(\\w+)/m)"],
     "a folded description read as >-": ["/^[>|][-+]?$/.test(desc) ? block('description').join(' ') : scalar(desc)", "scalar(desc)"],
-    "the body read as frontmatter": ["' : end === -1 ? t : t.slice(0, end + 3);", "' : t;"],
+    "the body read as frontmatter": ["' : end === -1 ? t : t.slice(0, end);", "' : t;"],
     'a ---x line closes the frontmatter': ["search(/\\n---[ \\t]*(?:\\r?\\n|$)/)", "indexOf('\\n---')"],
     'a quoted tier in a block description is the tier': ["get(/^[ \\t]*tier:[ \\t]*[\"']?(\\w+)/m, keys)", "get(/^[ \\t]*tier:[ \\t]*[\"']?(\\w+)/m)"],
     "an emptied value takes the next line": ["superseded-by:[ \\t]*(.*)$", "superseded-by:\\s*(.*)$"],

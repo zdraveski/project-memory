@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps } = await import('./store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -577,6 +577,10 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   const gone = join(home, 'gone-target'), dang = join(root, 'C--dangling');
   mkdirSync(gone); mkdirSync(dang); symlinkSync(gone, join(dang, 'memory'), 'junction'); rmdirSync(gone);
   ok(!allStores().some((d) => d.includes('C--dangling')), 'allStores() skips a store whose link leads nowhere');
+
+  // frontEnd() is the newline before the closing ---; none opened, or never closed, is -1 (search then reads the whole note).
+  ok(frontEnd('---\na: b\n---\nbody') === 8 && frontEnd('---\r\na: b\r\n---\r\nbody') === 10, 'frontEnd is the newline before the closing ---');
+  ok(frontEnd('---\na: b\nbody') === -1 && frontEnd('----\na: b\n---\n') === -1, 'unclosed, or opened by ----, frontEnd is -1');
 
   // Only the two files the plugin writes are indexes; a note may be named MEMORY-anything.md.
   ok(isIndex('MEMORY.md') && isIndex('MEMORY-archive.md'), 'the two index files are indexes');
