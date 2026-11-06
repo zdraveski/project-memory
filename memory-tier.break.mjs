@@ -36,6 +36,7 @@ const cases = {
   'nothing broken (control)': () => {},
 };
 
+const failed = [];
 for (const [name, brk] of Object.entries(cases)) {
   const dir = tempDir('brk-');
   cpSync(SRC, dir, { recursive: true, preserveTimestamps: true });
@@ -57,5 +58,8 @@ for (const [name, brk] of Object.entries(cases)) {
     verdict = `THREW: ${String(e.message).split('\n').find((l) => /Error|error/.test(l)) || e.message.slice(0, 80)}`;
   }
   console.log(`${name.padEnd(32)} ${verdict}`);
+  if (!verdict.startsWith('ok (')) failed.push(name);
   try { rmSync(dir, { recursive: true, force: true }); } catch {}
 }
+// A non-zero exit: deploy.mjs runs this with execFileSync, so it fails there with the last lines of output, this one among them.
+if (failed.length) { console.log(`FAILED: ${failed.join('; ')}`); process.exitCode = 1; }
