@@ -967,6 +967,16 @@ if (process.platform === 'win32') {
   ok(was === 'my diagnosis came back' && !asks(d).length, `a late memory-off tag takes back what an import wrote (got ${was}; ${asks(d)})`);
 }
 {
+  // write() reads the memory-off list itself: the Stop above passes quiet already true, so only a
+  // caller that passes it false (a tag that landed after the caller looked) shows the journal's own read.
+  const [r, d] = repo('lateoff2'), id = sid('lt'), p = old(r, id, 30, ['said before the late tag']);
+  fill(d);
+  const was = asks(d).join();
+  appendFileSync(join(projects, '.memory-off'), `${id.slice(0, 8)}\n`);
+  withLock(d, () => write(d, p, null, { quiet: false, hush: false }));
+  ok(was === 'said before the late tag' && !asks(d).length, `write() takes back a conversation tagged memory-off after its caller looked (got ${was}; ${asks(d)})`);
+}
+{
   // Tagged with no Stop of its own to follow (a memory-off Stop tags it and
   // exits; the compaction gate's handoff marks it private and the user quits):
   // the import that meets it takes back what it wrote, and a private one's
