@@ -349,8 +349,8 @@ const SECRETS = [
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[redacted]'],
   // With a digit in it, or 32 characters or more: "Basic implementation/approach" and "Bearer authentication-header" were prose,
   // and were cut; a long one with no digit (1 in 400 random ones) was kept (audit #7). A hidden character after the word, as
-  // redact() sees the raw text, does not hide the value.
-  [/\b(Bearer|Basic|Token)[ \p{Default_Ignorable_Code_Point}]+(?=[A-Za-z0-9._~+/=-]{0,200}\d|[A-Za-z0-9._~+/=-]{32})[A-Za-z0-9._~+/=-]{20,}/giu, '$1 [redacted]'],
+  // redact() sees the raw text, does not hide the value. The long one has no . or /, so "basic tests/integration/x.rb" is kept.
+  [/\b(Bearer|Basic|Token)[ \p{Default_Ignorable_Code_Point}]+(?=[A-Za-z0-9._~+/=-]{0,200}\d|[A-Za-z0-9_~+=-]{32})[A-Za-z0-9._~+/=-]{20,}/giu, '$1 [redacted]'],
   // GitLab, npm and Hugging Face tokens; a Slack webhook is its own secret.
   [/\bglpat-[A-Za-z0-9_-]{20,}|\bnpm_[A-Za-z0-9]{36}\b|\bhf_[A-Za-z0-9]{30,}/g, '[redacted]'],
   // PyPI, Stripe webhooks, SendGrid, Google OAuth, Groq, xAI, Shopify,

@@ -1543,7 +1543,8 @@ const leaked = leaks.filter((s) => red(s) === s || /Sw0rd|pa55|Tr0ub4|BQUklW|AgE
 ok(!leaked.length, `common secret shapes are redacted (leaked: ${leaked.join(' | ')})`);
 const plainCode = ['password: string', 'api_key: Optional[str]', 'authToken: string', 'token = jwt.sign(payload, key)', 'password = request.form["pw"]',
   'secret: process.env.JWT_SECRET', 'refresh_token = response.json()["rt"]', 'password = os.environ["PW"]', 'DB_PASSWORD=${DB_PASSWORD}', 'pwd: /home/kire', 'basic implementation/approach here', 'Bearer authentication-header',
-  'http://localhost:8080?user=me@x', 'mysql -u root db; find . -print', 'the password is hashed', 'tokens: tokenizer.encode(text)'];
+  'http://localhost:8080?user=me@x', 'mysql -u root db; find . -print', 'the password is hashed', 'tokens: tokenizer.encode(text)',
+  'run the basic tests/integration/auth_flow_spec.rb now', 'token src/components/auth/RefreshHandler.tsx'];
 const cut = plainCode.filter((s) => red(s) !== s);
 ok(!cut.length, `code and prose that only look like secrets are kept (cut: ${cut.join(' | ')})`);
 // A token by its prefix alone, in prose: no word before it says what it is.

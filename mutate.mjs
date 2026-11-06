@@ -175,8 +175,9 @@ export const suites = {
     'notified tasks still listed as running':['for (const hit of t.matchAll(DONE)) s.running.delete(hit[1]);', ''],
   }],
   'handoff-log.mjs': ['handoff-log.test.mjs', {
-    'a long Bearer value with no digit kept': ['\\d|[A-Za-z0-9._~+/=-]{32})', '\\d)'],
-    'a Bearer value 32 long needs 33': ['\\d|[A-Za-z0-9._~+/=-]{32})', '\\d|[A-Za-z0-9._~+/=-]{33})'],
+    'a long Bearer value with no digit kept': ['\\d|[A-Za-z0-9_~+=-]{32})', '\\d)'],
+    'a Bearer value 32 long needs 33': ['\\d|[A-Za-z0-9_~+=-]{32})', '\\d|[A-Za-z0-9_~+=-]{33})'],
+    'a long Bearer value may hold a path': ['[A-Za-z0-9_~+=-]{32})', '[A-Za-z0-9._~+/=-]{32})'],
     'a hidden character after Bearer hides the value': ['(Bearer|Basic|Token)[ \\p{Default_Ignorable_Code_Point}]+(?=', '(Bearer|Basic|Token) (?='],
     'a prompt past the 32 MB read never looked for': ['const p = !whole && !got.open ? promptBefore(path, bytes) : null;', 'const p = null;', { full: true }],
     'the prompt the tail cut through left out': ['.indexOf(10) + 1, carry', '.indexOf(10) * 0, carry'],
