@@ -1233,6 +1233,10 @@ export const suites = {
 };
 
 // Run when executed, not when imported: check.mjs reads the table above.
+// A mutant that hit the clock is run once more, alone: on a slow GitHub machine three that a run before killed in 18-75 s
+// timed out at 120 s and counted as survivors. Killed the second time it counts as killed; otherwise the second verdict stands.
+export const settle = async (first, again) => first !== 'TIMED OUT' ? first : ((v) => v === 'killed' ? 'killed on retry' : v)(await again());
+
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   // Side by side, one per core but one: each mutant has its own folder and HOME,
   // and one after another the check took ~15 minutes of a 20-minute deploy.
@@ -1362,12 +1366,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // The id is what automut-ignore.txt needs; a label can name two mutants.
   const tag = (j) => `${j.label}${j.id ? ` [${j.id}]` : ''}`;
   for (const j of jobs) if (ignore.has(j.id)) console.log(`${j.name.padEnd(17)} ${tag(j).padEnd(48)} IGNORED: ${ignore.get(j.id)}`);
-  await pool(live, async (job) => {
-    const t0 = Date.now(), verdict = await run(how(job), job.name, job.edit?.from ?? job.from, job.edit?.to ?? job.to, Math.max(120_000, 3 * took[how(job)]), job.edit?.at);
+  const report = (job, verdict, t0) => {
     if (verdict.startsWith('STILLBORN')) count.STILLBORN++;
-    else if (verdict !== 'killed') survived.push(`${job.name} :: ${tag(job)} (${verdict})`);
+    else if (verdict !== 'killed' && verdict !== 'killed on retry') survived.push(`${job.name} :: ${tag(job)} (${verdict})`);
     console.log(`${job.name.padEnd(17)} ${tag(job).padEnd(48)} ${verdict} ${Math.round((Date.now() - t0) / 1000)} s`);
+  };
+  const go = (job) => run(how(job), job.name, job.edit?.from ?? job.from, job.edit?.to ?? job.to, Math.max(120_000, 3 * took[how(job)]), job.edit?.at);
+  const late = [];
+  await pool(live, async (job) => {
+    const t0 = Date.now(), verdict = await go(job);
+    if (verdict === 'TIMED OUT') late.push(job); else report(job, verdict, t0);
   });
+  // One at a time, after the pool: alone on the machine.
+  for (const job of late) { const t0 = Date.now(); report(job, await settle('TIMED OUT', () => go(job)), t0); }
   // Named on the last line: deploy prints only the last few, and "2 survived"
   // sent a 65-minute run back to find which (2026-10-30).
   const ran = live.length - count.STILLBORN, tail = `; ${count.STILLBORN} stillborn, ${count.IGNORED} ignored`;
