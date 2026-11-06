@@ -1815,8 +1815,10 @@ if (!quick) {
   ok(r.status === 1 && r.stdout === '--conversation needs a value after it\n', `so is --conversation with an option for its value (got ${r.stdout})`);
   // C-8. A name as the user's disk reads it: `history Pricing`, `history PRICING.MD` and a café typed composed, of a file named
   // decomposed, found nothing. In any letter case where the disk is so (Windows, macOS), in either Unicode form everywhere.
-  const folds = process.platform === 'win32' || process.platform === 'darwin', nfd = 'café-menu', nfc = nfd.normalize('NFC');
+  const nfd = 'café-menu', nfc = nfd.normalize('NFC');
   memory(dir, 'pricing', 'the pricing tiers', 'pricing body');
+  // What this folder does, not the platform: a macOS volume can be case-sensitive (and Windows can mark a folder so).
+  const folds = existsSync(join(dir, 'PRICING.MD'));
   memory(dir, nfd, 'the café menu', 'café body');
   tier();
   const at = (out, f) => out.startsWith(`${join(dir, f)}\n`);
@@ -1857,6 +1859,43 @@ if (!quick) {
     writeFileSync(join(dir, 'solo-é.md'), 'a note not yet snapshotted\n');
     ok(await miss('solo-é'), `a name on disk as typed is not taken for another form the snapshots had (got ${(await cli('history', 'solo-é')).stdout})`);
     rmSync(join(dir, 'solo-é.md'));
+  }
+  {
+    // A folder that is case-sensitive does not fold, whatever the platform: `promote alpha` took Alpha.md. Windows can mark a
+    // folder so (fsutil, which may need a feature or admin rights); the others cannot be made here, and say so.
+    const cs = join(root, 'C--mem-cs', 'memory');
+    mkdirSync(cs, { recursive: true });
+    const marked = process.platform === 'win32' && spawnSync('fsutil', ['file', 'setCaseSensitiveInfo', cs, 'enable'], { encoding: 'utf8' }).status === 0;
+    if (!marked) console.log('skip: no case-sensitive folder can be made here, so a folder that does not fold is not tested');
+    else {
+      memory(cs, 'Alpha', 'a capital note');
+      writeFileSync(join(cs, 'MEMORY.md'), '- [Alpha](Alpha.md) — a\n');
+      r = await run(['promote', 'alpha', '--store', cs]);
+      ok(r.status === 1 && existsSync(join(cs, 'Alpha.md')) && !existsSync(join(shared, 'Alpha.md')), `promote alpha does not take Alpha.md in a case-sensitive folder (got ${r.stdout})`);
+      // Only lower-case names to ask with, then a name whose other case is another file, then a third name only the fold would match.
+      const cs2 = join(root, 'C--mem-cs2', 'memory');
+      mkdirSync(cs2, { recursive: true });
+      spawnSync('fsutil', ['file', 'setCaseSensitiveInfo', cs2, 'enable'], { encoding: 'utf8' });
+      memory(cs2, 'foxtrot', 'a lower-case note');
+      r = await run(['promote', 'FOXTROT', '--store', cs2]);
+      ok(r.status === 1 && existsSync(join(cs2, 'foxtrot.md')) && !existsSync(join(shared, 'foxtrot.md')), `promote FOXTROT does not take foxtrot.md in a case-sensitive folder of lower-case names (got ${r.stdout})`);
+      memory(cs2, 'DELTA', 'a capital twin');
+      memory(cs2, 'delta', 'a small twin');
+      memory(cs2, 'Echo', 'a third note');
+      r = await run(['promote', 'echo', '--store', cs2]);
+      ok(r.status === 1 && existsSync(join(cs2, 'Echo.md')) && !existsSync(join(shared, 'Echo.md')), `a name whose other case is another file is no sign the folder folds (got ${r.stdout})`);
+    }
+  }
+  {
+    // A folder with no name to ask the question of (all its notes deleted) has the platform's habit.
+    const em = join(root, 'C--mem-empty', 'memory');
+    mkdirSync(em, { recursive: true });
+    memory(em, 'pricing', 'the pricing tiers');
+    tier();
+    rmSync(join(em, 'pricing.md'));
+    tier();
+    r = await run(['history', 'PRICING', '--store', em]);
+    ok((r.status === 0) === (process.platform === 'win32' || process.platform === 'darwin'), `an empty folder folds case as the platform does (got ${r.status}: ${r.stdout})`);
   }
   // C-9. Under --all, a hit named its project by its folder (`C--work-api-server`), no name a person reads: now by the folder its
   // conversations started in, then the folder --store needs. A project with no conversation on disk keeps the folder alone.
