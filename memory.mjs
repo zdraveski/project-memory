@@ -197,10 +197,11 @@ const STOP = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'with', 'was', 
   'am', 'an', 'as', 'at', 'be', 'by', 'do', 'he', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or', 'so', 'to', 'up', 'us', 'we']);
 // Two letters are a word too: CI, PR, DB were never found. But only standing
 // alone: `ci` is in "decision".
-const words = (q) => [...new Set(q.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 2 && !STOP.has(t)))];
-const alone = (t) => new RegExp(`(?<![\\p{L}\\p{N}])${t}(?![\\p{L}\\p{N}])`, 'gu');
-const count = (hay, t) => (t.length > 2 ? hay.split(t).length - 1 : (hay.match(alone(t)) ?? []).length);
-const has = (hay, t) => (t.length > 2 ? hay.includes(t) : alone(t).test(hay));
+// Combining marks (\p{M}) belong to the word (Hindi), and both sides are NFC so a decomposed "e" + accent is "é".
+const words = (q) => [...new Set(q.normalize('NFC').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => t.length >= 2 && !STOP.has(t)))];
+const alone = (t) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${t}(?![\\p{L}\\p{M}\\p{N}])`, 'gu');
+const count = (hay, t) => (t.length > 2 ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
+const has = (hay, t) => (t.length > 2 ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
 // The stretches of `text` around each match of `find`, joined, `room` characters
 // at most; no cut leaves half an emoji, which prints as U+FFFD.
 function around(text, find, room) {

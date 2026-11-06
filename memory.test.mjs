@@ -1403,6 +1403,14 @@ if (!quick) {
   r = await jcli('search', 'ci');
   ok(!/mn-beta/.test(r.stdout) && scoreOf(r.stdout, 'Asked: set up CI') === 8 && !/Answered:/.test(r.stdout), `a two-letter term is counted and shown only standing alone (got ${r.stdout})`);
   ok(/^ +links: l1, l2, l3, l4, l5$/m.test((await jcli('search', 'fivelinks')).stdout), 'exactly five links are listed with no "and 0 more"');
+  // Combining marks are part of a word: Hindi is found, and a decomposed accent in a note matches the typed one.
+  day(jm, '2026-10-23', [entry('2026-10-23 10:00', 'हिन्दी भाषा सीखना'), entry('2026-10-23 11:00', 'the cafe\u0301 menu'), entry('2026-10-23 12:00', 'a caf\u00e9 bill')]);
+  r = await jcli('search', 'हिन्दी');
+  ok(/हिन्दी भाषा/.test(r.stdout) && !/nothing to search for/.test(r.stdout), `a Hindi word is searched (got ${r.stdout})`);
+  r = await jcli('search', 'caf\u00e9');
+  ok(/Asked: the cafe\u0301 menu/.test(r.stdout), `a typed café finds a decomposed one (got ${r.stdout})`);
+  r = await jcli('search', 'cafe\u0301');
+  ok(/Asked: a caf\u00e9 bill/.test(r.stdout), `a decomposed query finds a typed café (got ${r.stdout})`);
 
   // A stretch: matches 60 apart are one stretch (the 30-character windows
   // touch): no " … " where the second window starts, and it is cut at the room (240).
