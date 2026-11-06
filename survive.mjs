@@ -20,7 +20,7 @@ const N = 15, ASK_AT = [0, 600], DID_AT = [0, 400, 850, 1200, 3000];
 // the rest wrong ("deploy" without "only on Windows"): that half-kept case is counted on its own.
 // Each ends in `END`, so a token the print cut short (`QUALQ1…` from `QUALQ10END`) never passes for another.
 const fact = (k) => `FACT${k}END`, qual = (k) => `QUAL${k}END`;
-const fill = (n) => 'the build ran and the log was long '.repeat(Math.ceil(n / 35)).slice(0, n);
+const fill = (n) => 'The build ran. The log was long. '.repeat(Math.ceil(n / 33)).slice(0, n);
 // Text with each token at (about) its offset, filler between.
 const place = (marks, len) => {
   let s = '';
@@ -32,8 +32,8 @@ const rec = (type, text, ts) => JSON.stringify({ type, timestamp: ts, message: {
 const turns = [];
 for (let i = 1; i <= N; i++) {
   const ask = place(ASK_AT.map((o) => [o, fact(`A${i}@${o}`)]), 900);
-  // The qualifier rides just past the answer's limit: 880 + the fact, then `only on Windows QUAL`.
-  const did = place([...DID_AT.map((o) => [o, fact(`D${i}@${o}`)]), [870, `${fact(`Q${i}`)} only on Windows ${qual(`Q${i}`)}`]].sort((a, b) => a[0] - b[0]), 3200);
+  // One sentence across the answer's limit: the fact before it, its qualifier after.
+  const did = place([...DID_AT.map((o) => [o, fact(`D${i}@${o}`)]), [870, `Deploy ${fact(`Q${i}`)} only on Windows ${qual(`Q${i}`)}.`]].sort((a, b) => a[0] - b[0]), 3200);
   turns.push({ i, ask, did });
 }
 writeFileSync(t, turns.flatMap(({ i, ask, did }) => [rec('user', ask, iso(i)), rec('assistant', did, iso(i, 30))]).join('\n') + '\n');
@@ -64,5 +64,7 @@ console.log(`Exchanges in handoff.md: ${shown}. Kept whole by the print after a 
 console.log(`Fact kept but its qualifier cut off: ${half} of ${N}.\n`);
 console.log(`back  ${head.map((h) => h.padEnd(8)).join('')}journal`);
 console.log(rows.reverse().join('\n'));
+// A cut ends at a sentence: a fact never stays without the qualifier in its own sentence.
+if (half) broken.push(`print kept ${half} facts without their qualifier`);
 rmSync(home, { recursive: true, force: true });
 if (broken.length) { console.error(`\n${broken.join('\n')}`); process.exit(1); }

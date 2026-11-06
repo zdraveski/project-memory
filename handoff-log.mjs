@@ -484,7 +484,14 @@ const cut = (s, n) => {
   // and that line's own secret was kept whole (F23, R59); before only, a secret after two blanks or a tab was redacted only when the entry
   // was clipped again (F19). U+0085 is made a line break first: it is not \s in JavaScript, and the first pass took it for a value.
   const one = defuse(redact(redact(s.replace(/\u0085/g, '\n')).replace(/\s+/g, ' '))).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
-  return one.length > n ? one.slice(0, n - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : one;
+  if (one.length <= n) return one;
+  // Ends at the last sentence, else the last word, in the second half of the room: a cut mid-sentence kept
+  // a claim and dropped the condition after it ("deploy" without "only on Windows"; survive.mjs).
+  const room = one.slice(0, n), half = n / 2;
+  const sentence = room.match(/^.*[.!?](?=\s)/)?.[0], word = room.match(/^(.*) /)?.[1];
+  if (sentence?.length >= half) return sentence + '…';
+  if (word?.length >= half) return word + '…';
+  return one.slice(0, n - 1).replace(/[\uD800-\uDBFF]$/, '') + '…';
 };
 
 // An answer is markdown, and its marks carry no words: heading hashes, bold,
