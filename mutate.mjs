@@ -542,6 +542,8 @@ export const suites = {
     "a forgotten exchange back when its folder's case differs": ['t && pathKey(t) === me', 't === me'],
   }],
   'memory-tier.mjs': ['memory-tier.test.mjs', {
+    'an impossible date in a name trusted as NaN': ["const eventDate = d === d && new Date(d).toISOString().slice(0, 10) === named ? d : null;", "const eventDate = named ? d : null;"],
+    'a Feb 31 name rolled over to March': ["d === d && new Date(d).toISOString().slice(0, 10) === named ? d : null", "d === d ? d : null"],
     "a handoff failure names its temp file": ["writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) }))", "writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: String(e.message).split('\\n')[0] }))"],
     "R67 a memory-off tag that could not be kept is silence": ["if (p) try { writeFileSync(", "if (false) try { writeFileSync("],
     'a memory-off tag that could not be kept recorded as a lost handoff': [', error: reason(e), off: true }', ', error: reason(e) }'],

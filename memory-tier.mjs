@@ -106,7 +106,9 @@ function factsFor(dir, file, memo = null) {
   if (memo) memo.now[file] = [k, type, tier, Number.isNaN(stamp) ? null : stamp];
   const modified = Number.isNaN(stamp) ? st.mtimeMs : stamp;
   const named = (file.match(/(\d{4})-(\d{2})-(\d{2})/) || [])[0];
-  const eventDate = named ? Date.parse(named) : null;
+  // A name's date that is not one (2026-13-45, or Feb 31 that Date.parse rolls to March) is no date: NaN archived the note at once.
+  const d = named ? Date.parse(named) : NaN;
+  const eventDate = d === d && new Date(d).toISOString().slice(0, 10) === named ? d : null;
   return { type, tier, modified, eventDate, desc, when: eventDate ?? modified };
 }
 

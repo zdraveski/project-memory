@@ -1291,6 +1291,8 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(!await hotAt({ name: 'log-2026-01-10' }, logDay + 3 * DAY), 'and archived when the third day is out');
   ok(await hotAt({ name: 'seen', modified: stamped }, Date.parse(stamped) + 7 * DAY - 1), 'a note is still hot a millisecond before its seventh day is out');
   ok(!await hotAt({ name: 'seen', modified: stamped }, Date.parse(stamped) + 7 * DAY), 'and archived when the seventh day is out');
+  // A date that is not one (month 13, day 45, Feb 31) is no event date: the note goes by its modified time.
+  for (const bad of ['2026-13-45', '2026-00-10', '2026-02-31']) ok(await hotAt({ name: `typo-${bad}` }, Date.now()), `a name dated ${bad} is tiered by its modified time, not archived at once`);
 
   const whole = Math.floor(Date.now() / 1000) * 1000 - 600000, wholeAt = new Date(whole);   // to the second: the mtime is read back exact
   const ghost = async (nowMs) => {
