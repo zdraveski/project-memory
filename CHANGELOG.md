@@ -110,6 +110,26 @@
   conversation's transcript as yours. Claude Code keeps subagents
   elsewhere today, so nothing changes now; an older layout could have had a
   private conversation's subagent journaled.
+- A token after `Bearer`, `Basic` or `Token` is now replaced with
+  `[redacted]` when it has no digit in it (32 characters or more), and when
+  an invisible character sits between the word and the token. Before, both
+  were saved as they were.
+- The privacy policy said `forget --yes` removes the matches when there are
+  too many; it removes nothing then and asks you to narrow the search, as
+  the command always did.
+
+**Compaction**
+- With a smaller compaction window, such as the 200,000 tokens the FAQ
+  suggests for a 200k model, the reminder to save notes came only about
+  22,000 tokens before the compaction, too late for a long reply. It now
+  comes early enough to leave at least 60,000 tokens: at about 66% of a
+  200k window. A 1M window still gets it at 85%.
+- An error Claude Code adds to the transcript (an entry with no real
+  token counts) was read as a conversation of 0 tokens, so the reminder
+  could be skipped after it. Such entries are now passed over.
+- When another window changed `handoff.md` while a note of a cut turn was
+  being written, the note was dropped and the hook said the file had no
+  place for it. It now says the handoff changed meanwhile.
 
 **Failures said**
 - A `journal` folder that refused writes lost every reply's entry in
