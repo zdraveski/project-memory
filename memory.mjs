@@ -112,19 +112,33 @@ const onDisk = (dir, file) => {
   try {
     const names = readdirSync(dir);
     if (names.includes(file)) return file;
-    let st; try { st = statSync(join(dir, file), { bigint: true }); } catch { return pick(file, names); }
+    let st; try { st = statSync(join(dir, file), { bigint: true }); } catch { return pick(dir, file, names); }
     return names.find((n) => { try { const s = statSync(join(dir, n), { bigint: true }); return s.ino === st.ino && s.dev === st.dev; } catch { return false; } }) ?? file;
   } catch { return file; }
 };
-// The one name of `names` a typed name means, as the user's disk reads names: in any letter case on Windows and macOS, and in
+// The one name of `names` a typed name means, as the user's disk reads names: in any letter case where the folder is so, and in
 // either Unicode form everywhere (a café typed composed, its file named decomposed). Two that read alike are two notes, and
 // neither is taken. Each letter upper-cased alone, as NTFS does: a whole-string fold made straße STRASSE, which NTFS keeps
 // apart (audit C-8).
+// Whether the folder reads names in any case, asked of the folder: a note's name in the other case opens the same file or no file. A
+// macOS volume can be case-sensitive, and Windows can mark a folder so; the platform's habit was wrong there, and `promote alpha`
+// took Alpha.md. A folder with no letters in any name to try the question on has the platform's habit.
 const FOLDS = process.platform === 'win32' || process.platform === 'darwin';
-const fold = (s) => { const n = s.normalize('NFC'); return FOLDS ? [...n].map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join('') : n; };
-const pick = (file, names) => { if (names.includes(file)) return file; const m = [...new Set(names)].filter((n) => fold(n) === fold(file)); return m.length === 1 ? m[0] : file; };
+const caseless = (dir) => {
+  try {
+    for (const n of readdirSync(dir)) {
+      const o = n === n.toLowerCase() ? n.toUpperCase() : n.toLowerCase();
+      if (o === n) continue;
+      const a = statSync(join(dir, n), { bigint: true });
+      try { const b = statSync(join(dir, o), { bigint: true }); return a.ino === b.ino && a.dev === b.dev; } catch { return false; }
+    }
+  } catch {}
+  return FOLDS;
+};
+const fold = (s, folds) => { const n = s.normalize('NFC'); return folds ? [...n].map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join('') : n; };
+const pick = (dir, file, names) => { if (names.includes(file)) return file; const f = caseless(dir), m = [...new Set(names)].filter((n) => fold(n, f) === fold(file, f)); return m.length === 1 ? m[0] : file; };
 // A note no file has by that name, by the name the snapshots had for it: `history Pricing` found nothing of a deleted pricing.md.
-const named = (dir, file) => { const d = onDisk(dir, file); return d !== file || existsSync(join(dir, d)) ? d : pick(file, ever(dir)); };
+const named = (dir, file) => { const d = onDisk(dir, file); return d !== file || existsSync(join(dir, d)) ? d : pick(dir, file, ever(dir)); };
 // A write the disk refuses (read-only, held by another program) is said, with
 // what it left behind: thrown, it was a stack trace, read as nothing done.
 const put = (p, read, next) => { try { return replaceIfUnchanged(p, read, next); } catch (e) { return `failed: ${e.code || e.message}`; } };
@@ -779,7 +793,8 @@ export function main(given) {
     // By words alone, every such turn holding them: a look by words missed one, and the next reply wrote it (1.2.5).
     const late = unread.length ? [] : terms.length && !named.length ? unwritten(here, [], terms).filter((e) => !already.has(e.key)) : unwritten(here, named.filter((k) => none(k) && !already.has(k)));
     stored.push(...late);
-    const before = named.filter((k) => none(k) && already.has(k)), again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
+    const before = named.filter((k) => none(k) && already.has(k));
+    let again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
     const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => (unread.length ? `no day of ${here} that could be read has the key ${k}: it may be in one that could not, so nothing was removed for it`
       : `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`));
     // --same: every entry asking what a keyed one asked, the copies a hit counts.
@@ -804,7 +819,12 @@ export function main(given) {
       // still go from handoff.md, by the conversation and minute the list keeps. Said "already forgotten" alone, they stayed (R73).
       if (yes && before.length) {
         const at = new Set(listed.filter(([k, t, m]) => t && m && before.includes(k)).map(([, t, m]) => `${tag(basename(t))} ${m}`));
-        try { if (withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`))) === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true }); }
+        try {
+          const w = withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`)));
+          if (w === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true });
+          // The retry did something: said, not "nothing to remove" alone.
+          else if (w === true) again = before.map((k) => `key ${k} is already forgotten; nothing to remove from the journal, but its exchange went from handoff.md`);
+        }
         catch (e) { failed.push({ path: join(here, 'handoff.md'), code: e.code || e.message, write: true }); }
       }
       const m = forget(here, terms, o).matched, byRange = !terms.length && !named.length && !conversation;
