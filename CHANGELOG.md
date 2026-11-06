@@ -158,6 +158,51 @@
   plugin added its lines. It now keeps the file's line endings, and the
   blank line.
 
+**Forget**
+- `forget <words>` now also finds an exchange the journal doesn't hold yet
+  (its reply came while another window held the project's memory folder,
+  and is saved at the next reply). It used to say nothing matched, and the
+  next reply saved the exchange. It's listed as not in the journal yet, as
+  with `--key`.
+- `forget --key` of an entry whose day file can't be read said "removed".
+  While a day file can't be read, such a key is named as in no day that
+  could be read, nothing is removed for it, and the command fails.
+- Running `forget --key ... --yes` again, after a first run couldn't update
+  `handoff.md`, said "already forgotten" and left the exchange there for the
+  next conversation's start. It now takes it out of `handoff.md`.
+- After removing entries, `forget` says that Claude Code's own conversation
+  files still hold them: it changes only project-memory's files.
+
+**Commands**
+- `promote journal` is refused, as `promote handoff` is: it moved the
+  journal's own pointer into the shared notebook.
+- A note's name of several words works without quotes: `restore my note`
+  used to answer about `my.md`.
+- `history`, `restore` and `promote` find a note in another letter case on
+  Windows and macOS (`history Pricing`, `PRICING.MD`), and in either Unicode
+  form everywhere (`café` typed one way, the file named the other), deleted
+  notes too. When two names read alike, neither is taken.
+- `history` and `restore` say plainly when there are no snapshots yet, when
+  Git isn't installed, or when no snapshot holds a note, instead of git's own
+  error. Without Git, `restore` no longer offers to replace a note "with the
+  snapshot".
+- A date that isn't on the calendar (`--since 2026-02-30`) is refused, and so
+  is an option that needs a value with none after it (`forget --key --yes`).
+- Under `--all`, a journal hit names its project by the folder you worked
+  in, then the folder name `--store` takes.
+- `status` says "1 day", doesn't count `handoff.md` and `journal.md` as notes
+  without an index line, and says when the conversation `--session` names
+  isn't on this computer.
+
+**Doctor and the start of a conversation**
+- `doctor` no longer stops with an error when it can't read the time of the
+  last Stop.
+- `doctor` no longer reports the hooks as set up twice when two replies of
+  one conversation come less than 2 seconds apart. Each run now notes a short
+  fingerprint of its reply to tell them apart.
+- The start of a conversation names another working window by the last
+  request recorded for it, and says so: what it works on now may be newer.
+
 ## 1.2.4 (2026-11-01)
 
 **Privacy**

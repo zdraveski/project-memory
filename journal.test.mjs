@@ -1330,6 +1330,34 @@ mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(pr
   ok(m.length === 1 && !m[0].unsaid, `a turn a day holds by now is taken from the day, once (got ${JSON.stringify(m)})`);
 }
 {
+  // unwritten() by words: the turns of the store's conversations holding every word, in any case, as an entry would hold it. A
+  // look by words found none of a turn no day held yet (a Stop that met the lock skipped it), and the next reply wrote it.
+  const d = storeFor(home, 'C:\\unwritten-words'), own = dirname(d);
+  mkdirSync(d, { recursive: true });
+  const rec = (type, uuid, ts, text) => JSON.stringify({ type, uuid, cwd: 'C:\\unwritten-words', timestamp: ts, message: { role: type, content: type === 'user' ? text : [{ type: 'text', text }] } });
+  const tv = join(own, 'uvuvuvuv-1.jsonl');
+  writeFileSync(tv, [rec('user', 'uv-1', '2026-10-27T09:00:00Z', 'the Quokka "plan" in C:\\zoo'), rec('assistant', 'uv-1a', '2026-10-27T09:00:30Z', 'drafted it'),
+    rec('user', 'uv-2', '2026-10-27T10:00:00Z', 'another quokka'), rec('assistant', 'uv-2a', '2026-10-27T10:00:30Z', 'a plan for it'),
+    rec('user', 'uv-3', '2026-10-27T11:00:00Z', 'nothing alike'), rec('assistant', 'uv-3a', '2026-10-27T11:00:30Z', 'quiet')].join('\n') + '\n');
+  // Another project's, in a folder the look reads (its name starts like a subfolder's): not this store's turn.
+  const theirs = join(projects, 'C--unwritten-words-zoo');
+  mkdirSync(theirs, { recursive: true });
+  writeFileSync(join(theirs, 'zozozozo-1.jsonl'), JSON.stringify({ type: 'user', uuid: 'uv-zoo', cwd: 'C:\\unwritten-words-zoo', timestamp: '2026-10-27T12:00:00Z', message: { role: 'user', content: 'a quokka plan' } }) + '\n');
+  const keys = (ws) => unwritten(d, [], ws).map((e) => `${e.key}${e.unsaid ? '' : '!'}`).join();
+  ok(keys(['QUOKKA', 'plan']) === 'uv-1,uv-2' && keys(['quokka', 'drafted']) === 'uv-1' && keys(['okapi']) === '',
+    `unwritten() by words finds each turn holding all of them, its reply too, in any case (got ${keys(['QUOKKA', 'plan'])}; ${keys(['quokka', 'drafted'])})`);
+  ok(keys(['"plan"']) === 'uv-1' && keys(['c:\\zoo']) === 'uv-1', `a word with a quote or a backslash, which the transcript escapes, is found too (got ${keys(['"plan"'])}; ${keys(['c:\\zoo'])})`);
+  // forget() takes them as a key's (`more`), from the day once a day holds one.
+  record(d, tv, [turn({ at: local(Date.parse('2026-10-27T10:00:00Z')), id: 'uv-2', ask: 'another quokka' })]);
+  const m = forget(d, ['quokka'], { more: unwritten(d, [], ['quokka']) }).matched;
+  ok(m.map((e) => `${e.key}${e.unsaid ? '?' : ''}`).sort().join() === 'uv-1?,uv-2', `a look by words takes an unwritten turn, and a written one from its day (got ${JSON.stringify(m)})`);
+  // Not while a day won't read: the turn may be in it, and taken as unwritten it was said removed while that day held it (R73).
+  mkdirSync(dayFile(d, '2026-10-26'));
+  const failed = [], f = forget(d, ['quokka'], { more: unwritten(d, [], ['quokka']), failed, apply: true });
+  ok(f.matched.map((e) => e.key).join() === 'uv-2' && failed.some((x) => x.path === dayFile(d, '2026-10-26')) && !/^uv-1\t/m.test(readFileSync(join(d, 'journal', '.forgotten'), 'utf8')),
+    `with a day that won't read, no turn is taken as unwritten (got ${JSON.stringify(f.matched)})`);
+}
+{
   // A day that changed under each of its three writes keeps its entries, and
   // forget says so: what it returns as removed is what went. The other writer
   // is simulated here, just before each write of that day lands.

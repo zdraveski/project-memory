@@ -598,7 +598,7 @@ export async function main(argv, input) {
     // over the same store at once) must not also skip the nudge -- that was
     // the one Stop the nudge exists for.
     try {
-      const { handoff } = await import(new URL('./handoff-log.mjs', import.meta.url));
+      const { handoff, hash } = await import(new URL('./handoff-log.mjs', import.meta.url));
       // Proof of life for the startup line (handoff-log's stalled()), once the
       // handoff has loaded: Stop output reaches nobody, so a hook that stopped
       // running was silence.
@@ -610,10 +610,11 @@ export async function main(argv, input) {
         const ran = join(projectsRoot(), '.stop-ran');
         // The event too, and whether a block sent it back: a /compact typed
         // right after a reply, or a reply to the nudge, is a second run seconds
-        // later, not a second wiring.
+        // later, not a second wiring. And the reply's fingerprint, 8 hex of its
+        // hash: two quick replies of one conversation read as two wirings (audit H-F10).
         // On a line of its own: before 1.0.7 the file was one time and no newline.
         const prev = raw(ran);
-        appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
+        appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: hash(String(payload?.last_assistant_message ?? '')).slice(0, 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
         if (statSync(ran).size > 8192) writeFileSync(ran, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
       } catch {}
       // One that throws (a store folder that takes no new files) is kept in a

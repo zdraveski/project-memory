@@ -72,7 +72,7 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
 | `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
 | `~/.claude/projects/.git/project-memory-ignored`, `project-memory-parts` | bookkeeping for the snapshot's ignore list; a first snapshot still being taken in parts |
-| `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran, the snapshot's state, the reminder's state per conversation tag |
+| `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran (with each reply's fingerprint, 8 characters of its hash), the snapshot's state, the reminder's state per conversation tag |
 | `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, or with auto memory off a conversation's tag that could not be written (`off`), and why (a list that won't read is named there); read at the next start and by `status` |
 | `~/.claude/projects/.journal-failed-<project folder>` | a journal write that failed after a reply when the `journal` folder wouldn't take `.failed` either, and why; read at the next start and by `status`, removed by the next write that goes through |
 | `~/.claude/projects/.memory-off` | the tags of conversations held with auto memory off, which the journal never imports: kept while the transcript is on disk, and the newest 100 in any case, 10,000 at most |
@@ -462,7 +462,8 @@ At the start of a conversation, and after `/clear`, Claude is told:
 
 - which other conversations are working in this project right now (their
   transcript changed in the last 30 minutes and has a turn still open), and
-  what they were last asked; if none, where the last conversation stopped, if
+  the last request recorded for each, said as such: what it works on now may
+  be newer; if none, where the last conversation stopped, if
   that was in the last 7 days, followed by that conversation's own exchanges
   from the handoff, oldest first (request, answer and files, as the handoff
   keeps them), as many as fit (see below). After `/clear` neither, since the conversation
@@ -632,8 +633,9 @@ the index, no longer shows them; `tier: hot` keeps a lesson in view.
 `promote <note>` moves a note there: it copies the file, adds the line to the
 shared index, then removes both from the project. If anything fails part-way,
 the note is in both places, never in neither. When the shared index is
-already full, `promote` says so and suggests `tier: hot`. The skill tells
-Claude to ask you before promoting.
+already full, `promote` says so and suggests `tier: hot`. It refuses an
+index, `handoff.md` and `journal.md`, which are project-memory's own. The
+skill tells Claude to ask you before promoting.
 
 ## Several conversations at once
 
@@ -672,8 +674,10 @@ reply that names everything can't outrank the request for the thing. Equal
 scores show the newest first.
 
 It shows the top 10 (`--limit N` for more), then how many matched. A journal
-hit shows its day and time, conversation tag and branch (and its project,
-under `--all`), then its key and its request, cut to 200 characters, then
+hit shows its day and time, conversation tag and branch (and under `--all`
+its project: the folder its conversations started in, then in brackets its
+folder in `~/.claude/projects`, which `--store` takes), then its key and its
+request, cut to 200 characters, then
 `Result:`, the first sentence of its reply (140 characters at most; left out
 when the reply's own stretch below starts there). Of its
 reply, files and commands it shows only those that hold a search word, and
@@ -723,7 +727,9 @@ none and asks for a narrower one, and `--yes` removes nothing. A look by
 `--since` or `--until` alone is confirmed by its range: it lists the first
 20, says how many more, and names the first and last day of what would go.
 With `--yes`, it looks again and removes what that look found, under the
-store's lock, then lists what went (past 200, only how many). A key the
+store's lock, then lists what went (past 200, only how many), and says that
+Claude Code's own conversation files still hold those exchanges: `forget`
+changes only project-memory's files. A key the
 store has no entry for is named, and the tool exits with 1, unless it is the
 key of an exchange in one of the project's conversations (the folders the
 import reads) that no day holds yet: a reply whose Stop met the lock, which
@@ -733,9 +739,16 @@ without its words (its conversation may be one the journal never takes), and
 for an entry. It is found by the id of its prompt record: a turn whose
 record has none (rare: Claude Code gives every record one) is keyed by a
 hash, as above, and can't be found until the journal holds it. `--same` with
-such a key adds only the copies the journal already holds. A key already
+such a key adds only the copies the journal already holds. A look by words
+alone (no `--key`) finds such exchanges too, those that hold every word,
+listed the same way: it reads every conversation of the project for them.
+While a day file can't be read, neither looks for them: the exchange may be
+in that day, and a key of it is named as in no day that could be read,
+nothing is removed for it, and the tool exits with 1. A key already
 listed in `.forgotten` is named as already forgotten, nothing is removed,
-and the tool exits with 0. It works on one
+and the tool exits with 0; with `--yes`, its exchange still goes from
+`handoff.md`, by the conversation and minute its line keeps, in case an
+earlier `forget` couldn't write that file. It works on one
 store: `--all` is refused, and `--store` picks another project's.
 
 The keys are added to `journal/.forgotten` first, each with its
@@ -787,19 +800,29 @@ node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory
 
 Every command works on the project of the conversation that `--session <id>`
 names (the skill passes Claude Code's session id). Without it, or when that
-conversation's transcript isn't found, it works on the nearest project with
-a notebook, from the folder you're in upward. The tool reads no environment
+conversation's transcript isn't found (it then says so on its first line),
+it works on the nearest project with a notebook, from the folder you're in
+upward. The tool reads no environment
 variable to find the conversation. `--store <folder>` picks another
 project's `memory` folder, one inside `~/.claude/projects` (any other is
 refused), and `--shared` picks the shared notebook. With no command, it runs
-`status`. `D` is a date, `YYYY-MM-DD`. An option the tool doesn't know is
-refused. Every word after `--` is a search word, one that starts with `--`
+`status`. `D` is a date, `YYYY-MM-DD`, one the calendar has (`2026-02-30` is
+refused). An option the tool doesn't know is refused, and so is an option
+that takes a value with nothing after it, or another option in its place
+(`forget --key --yes`). Every word after `--` is a search word, one that starts with `--`
 too, so options go before it. The tool exits with 1 when a command is
 refused or fails.
 
-`restore` and `promote` take a note's name as the disk resolves it: on Windows
+A note's name may be several words, quoted or not: `restore my note` is
+`my note.md`. Without Git, or before the first snapshot, `history` and
+`restore` say so, and a note no snapshot holds is named in plain words, not
+git's. `history`, `restore` and `promote` take a note's name as the disk resolves it: on Windows
 and on macOS by default in any letter case (on Windows, a short name such as
-`memory~1` too), on Linux only as written. git reads the name literally, so a
+`memory~1` too), on Linux only as written, and everywhere in either Unicode
+form (`café` typed composed finds a file named decomposed); a deleted note
+by the name the snapshots had for it, the same way, and `.MD` is `.md`.
+When two names read alike (`Twin.md` and `twin.md` in the snapshots, typed
+`TWIN`), neither is taken. git reads the name literally, so a
 name with `[`, `*` or `?` in it works. A write the disk refuses is reported in
 one line that says what was left behind.
 
@@ -829,7 +852,10 @@ meet most:
 - **"the Stop hook ran twice for one reply".** The hooks are set up twice, so
   everything happens twice: they were also added to the Claude Code settings
   by hand, or a second copy is installed under another name. Remove the hooks
-  from the settings, or uninstall the second copy, and keep the plugin.
+  from the settings, or uninstall the second copy, and keep the plugin. Two
+  different replies under 2 seconds apart don't count: each run notes its
+  reply's fingerprint. Runs noted before 1.2.5 have none, and are judged by
+  time alone.
 - **"Memory hooks look stopped"**, in the briefing. Another conversation in
   this project finished a reply after the plugin last saved. After a pause
   this goes away with the next reply; otherwise run `doctor`.

@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
-import { tool, tempHome, tempDir, storeFor, quick, capture } from './harness.mjs';
+import { tool, tempHome, tempDir, storeFor, quick, capture, fastClock } from './harness.mjs';
 
 const CLI = tool('memory.mjs'), TIER = tool('memory-tier.mjs');
 const { home, env } = tempHome('memcli-');
@@ -1036,6 +1036,7 @@ if (!quick) {
   const { render } = await import('./journal.mjs'), { local } = await import('./store.mjs');
   const fd = join(root, 'C--fg', 'memory'), fj = join(fd, 'journal'), today = local().slice(0, 10);
   const fcli = (...a) => run([...a, '--store', fd]);
+  const cc = `Claude Code still keeps these exchanges in its own conversation files (the .jsonl files in ${root}): forget does not change them\n`;
   let n = 0;
   const entry = (at, asked, s = 'aaaa1111') => ({ key: `f${n++}`, at, s, t: `C--fg/${s}`, branch: '', asked, answered: 'done', changed: [], ran: [] });
   const es = [entry('2025-10-20 09:00', 'the zebra eats mango'), entry('2025-10-20 10:00', 'the zebra policy'), entry('2025-10-21 09:00', 'mango, the zebra again'),
@@ -1058,6 +1059,8 @@ if (!quick) {
     `forget --yes removes only the matches, the rest byte for byte (got ${r.stdout}${r.stderr})`);
   ok(r.stdout.startsWith(zm) && r.stdout.endsWith(`\nremoved 2 from ${fd}\n`) && /^the snapshots still hold the journal of 2025-10-20, 2025-10-21: deleting .*[\\/]\.git removes /m.test(r.stdout),
     `and lists what went, says the snapshots still hold the days before today, and ends with the count (got ${r.stdout})`);
+  // And that Claude Code's own conversation files still hold them, as PRIVACY.md says: unsaid, it read as gone everywhere (audit C-6).
+  ok(r.stdout.endsWith(`\n${cc}removed 2 from ${fd}\n`), `forget --yes says Claude Code's conversation files still hold what it removed (got ${r.stdout})`);
   reset();
   // A blank word is in every entry: taken as a filter, it removed the whole journal.
   const refused = 'forget needs words, a date range, --conversation or --key; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)';
@@ -1102,7 +1105,7 @@ if (!quick) {
   r = await fcli('forget', '--key', 'f-late-a');
   ok(r.status === 1 && r.stdout.startsWith(`no entry in ${fd} has the key f-late-a;`), `a reply's id is no exchange's key (got ${r.stdout})`);
   r = await fcli('forget', '--key', 'f-late', '--yes');
-  ok(r.status === 0 && r.stdout === `${unsaid}removed 1 from ${fd}\n` && readFileSync(join(fj, '.forgotten'), 'utf8').includes(`f-late\tC--fg/dddd4444\t${lateAt}\n`) && kept('2025-10-20', '2025-10-21', today),
+  ok(r.status === 0 && r.stdout === `${unsaid}${cc}removed 1 from ${fd}\n` && readFileSync(join(fj, '.forgotten'), 'utf8').includes(`f-late\tC--fg/dddd4444\t${lateAt}\n`) && kept('2025-10-20', '2025-10-21', today),
     `forget --key --yes keeps it out: its key listed, no day touched, no snapshot named (got ${r.stdout}${r.stderr})`);
   // Forgotten, it is in no day and still in its conversation: found there again, a second forget said it removed it (review).
   const listed1 = readFileSync(join(fj, '.forgotten'), 'utf8'), again = `key f-late is already forgotten; nothing to remove\nnothing in ${fd} matches\n`;
@@ -1114,6 +1117,29 @@ if (!quick) {
   r = await fcli('forget', '--key', 'f-late', '--key', es[0].key);
   ok(r.status === 0 && r.stdout === `${fl(es[0])}key f-late is already forgotten; nothing to remove\n1 entry in ${fd} would go; run again with --yes to remove them\n`,
     `with another key's entry, the line comes before the count (got ${r.stdout})`);
+  // By its words too: a look by words found no turn a day did not hold yet, and the next reply wrote it (1.2.5). Listed as by
+  // its key, kept out by --yes, and not found again once forgotten.
+  reset();
+  r = await fcli('forget', 'OKAPI', 'plan');
+  ok(r.status === 0 && r.stdout === `${unsaid}1 entry in ${fd} would go; run again with --yes to remove them\n`, `a look by words lists a turn no day holds yet (got ${r.stdout})`);
+  r = await fcli('forget', 'okapi', '--yes');
+  ok(r.status === 0 && r.stdout.startsWith(unsaid) && r.stdout.endsWith(`removed 1 from ${fd}\n`) && /^f-late\t/m.test(readFileSync(join(fj, '.forgotten'), 'utf8')) && kept('2025-10-20', '2025-10-21', today),
+    `and --yes by words keeps it out by its key (got ${r.stdout})`);
+  r = await fcli('forget', 'okapi');
+  ok(r.status === 0 && r.stdout === `nothing in ${fd} matches: no entry holds "okapi"\n`, `once forgotten, a look by words finds it no more (got ${r.stdout})`);
+  // A key whose day won't read (a folder by its name here) is no turn "not in the journal yet": found in its conversation, it was
+  // said removed while that day still held it (R73). Named as in no day that could be read, nothing removed, and the forget fails.
+  // By words, it is not listed at all.
+  reset();
+  mkdirSync(join(fj, '2025-10-22.md'));
+  for (const yes of [[], ['--yes']]) {
+    r = await fcli('forget', '--key', 'f-late', ...yes);
+    ok(r.status === 1 && new RegExp(`^no day of [^\\n]+ that could be read has the key f-late: it may be in one that could not, so nothing was removed for it\\ncould not read [^\\n]*2025-10-22\\.md: \\w+\\nnothing in [^\\n]+ matches\\n$`).test(r.stdout) &&
+      !existsSync(join(fj, '.forgotten')), `a key whose day won't read is named so, never said removed (${yes.join('') || 'a look'}: got ${r.stdout})`);
+    r = await fcli('forget', 'okapi', ...yes);
+    ok(r.status === 1 && !/okapi|not in the journal yet|removed 1/.test(r.stdout.replace(/"okapi"/, '')) && !existsSync(join(fj, '.forgotten')), `nor is a turn found by its words (${yes.join('') || 'a look'}: got ${r.stdout})`);
+  }
+  rmSync(join(fj, '2025-10-22.md'), { recursive: true });
   rmSync(lateT);
   {
     // A store with no journal folder yet (a new project whose first Stop was busy) where it can't be made: the folder is named
@@ -1138,7 +1164,7 @@ if (!quick) {
   // A turn of it recorded after the look goes too, and is listed with the rest.
   writeFileSync(join(fj, `${today}.md`), page(today, [...es.slice(3), lateTurn]));
   r = await fcli('forget', '--conversation', 'bbbb2222', '--yes');
-  ok(r.status === 0 && r.stdout === `${bb}${fl(lateTurn)}removed 3 from ${fd}\n` && gone(today) && kept('2025-10-20', '2025-10-21'),
+  ok(r.status === 0 && r.stdout === `${bb}${fl(lateTurn)}${cc}removed 3 from ${fd}\n` && gone(today) && kept('2025-10-20', '2025-10-21'),
     `forget --conversation removes one conversation, a turn since the look too; today's day, not yet in the snapshots, needs no word on them (got ${r.stdout}${r.stderr})`);
   // What the refusal advises does forget the whole journal, every key listed so no backfill brings it back.
   reset();
@@ -1154,13 +1180,13 @@ if (!quick) {
   reset();
   renameSync(join(root, '.git'), join(root, '.git-away'));
   try { r = await fcli('forget', 'Zebra', 'mango', '--yes'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
-  ok(r.status === 0 && r.stdout === `${zm}removed 2 from ${fd}\n`, `with no snapshots, forget --yes says nothing of them (got ${r.stdout}${r.stderr})`);
+  ok(r.status === 0 && r.stdout === `${zm}${cc}removed 2 from ${fd}\n`, `with no snapshots, forget --yes says nothing of them (got ${r.stdout}${r.stderr})`);
   // Nor in a repository the user made there: the plugin commits nothing to it, and it is theirs to keep.
   reset();
   const cfg = join(root, '.git', 'config'), had = readFileSync(cfg, 'utf8');
   writeFileSync(cfg, had.replace(/^\[project-memory\][^[]*/m, ''));
   try { r = await fcli('forget', 'Zebra', 'mango', '--yes'); } finally { writeFileSync(cfg, had); }
-  ok(had.includes('[project-memory]') && r.status === 0 && r.stdout === `${zm}removed 2 from ${fd}\n`, `nor in a repository the user made (got ${r.stdout}${r.stderr})`);
+  ok(had.includes('[project-memory]') && r.status === 0 && r.stdout === `${zm}${cc}removed 2 from ${fd}\n`, `nor in a repository the user made (got ${r.stdout}${r.stderr})`);
   // A day the disk refuses keeps its entries and is named before the count, which says so; exit 1, never a stack trace.
   reset();
   const refuse = join(home, 'refuse-day.mjs'), refusing = (end) => {
@@ -1181,6 +1207,25 @@ if (!quick) {
   r = refusing('.forgotten');
   ok(r.status === 1 && !r.stderr && r.stdout === `could not write ${join(fj, '.forgotten')}: EPERM\nremoved 0 of 2 from ${fd}\n` && kept('2025-10-20', '2025-10-21', today),
     `a forget whose list cannot be written removes nothing, and says so (got ${r.stdout}${r.stderr})`);
+  // A retry after a handoff.md that would not be written: the keys were listed by then, so the journal had nothing left to
+  // remove, and "already forgotten" left the exchange in handoff.md for the next briefing (R73). It goes, by the line's minute.
+  reset();
+  const hf = join(fd, 'handoff.md');
+  writeFileSync(hf, `---\nname: handoff\n---\n\n<!-- auto:start -->\n_Written._\n\n${said(es[0].at, 'aaaa1111', es[0].asked)}\n${said(es[2].at, 'aaaa1111', es[2].asked)}\n${said(es[0].at, 'cccc3333', 'the walrus budget')}\n<!-- auto:end -->\n`);
+  r = refusing('handoff.md');
+  ok(r.status === 1 && r.stdout.includes(`could not write ${hf}: EPERM`) && readFileSync(hf, 'utf8').includes(es[0].asked), `a handoff.md that refuses the write keeps the exchange, and is named (got ${r.stdout}${r.stderr})`);
+  r = await fcli('forget', '--key', es[0].key);
+  ok(r.stdout === `key ${es[0].key} is already forgotten; nothing to remove\nnothing in ${fd} matches\n` && readFileSync(hf, 'utf8').includes(es[0].asked), `a look at it changes nothing (got ${r.stdout})`);
+  // A retry the disk refuses again, or that finds the store's lock held, says so and fails.
+  r = spawnSync(process.execPath, ['--import', pathToFileURL(refuse).href, CLI, 'forget', '--key', es[0].key, '--yes', '--store', fd], { env, encoding: 'utf8' });
+  ok(r.status === 1 && r.stdout.includes(`could not write ${hf}: EPERM\n`) && readFileSync(hf, 'utf8').includes(es[0].asked), `a retry the disk refuses is named and fails (got ${r.stdout}${r.stderr})`);
+  mkdirSync(join(fd, '.lock'));
+  try { r = await capture(() => fastClock(() => main(['forget', '--key', es[0].key, '--yes', '--store', fd]))); } finally { rmSync(join(fd, '.lock'), { recursive: true, force: true }); }
+  ok(r.value === 1 && r.out.includes(`could not write ${hf}: busy\n`) && readFileSync(hf, 'utf8').includes(es[0].asked), `a retry that meets the lock is named and fails (got ${r.out})`);
+  r = await fcli('forget', '--key', es[0].key, '--yes');
+  const hd2 = readFileSync(hf, 'utf8');
+  ok(r.status === 0 && r.stdout === `key ${es[0].key} is already forgotten; nothing to remove\nnothing in ${fd} matches\n` && !hd2.includes(es[0].asked) && hd2.includes('the walrus budget') && hd2.includes(es[2].asked),
+    `the retry takes it out of handoff.md, and only it: not another conversation's of that minute, nor another forgotten key's (got ${r.stdout}; ${hd2})`);
   // A journal folder the disk will not list is no empty journal: forget said "nothing matches" with exit 0 (by --key, that the key was
   // another project's), and the entries stayed. It names the code, removes nothing and fails, as a refused restore does (F20, R45).
   reset();
@@ -1230,7 +1275,7 @@ if (!quick) {
   writeFileSync(busy, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst read = fs.readFileSync;\n" +
     "fs.readFileSync = (p, ...a) => { if (String(p).endsWith('2025-10-21.md') && fs.existsSync(`${p}.tmp${process.pid}`)) fs.appendFileSync(p, '\\nanother writer'); return read(p, ...a); };\nsyncBuiltinESMExports();\n");
   r = spawnSync(process.execPath, ['--import', pathToFileURL(busy).href, CLI, 'forget', 'Zebra', 'mango', '--yes', '--store', fd], { env, encoding: 'utf8' });
-  ok(/^2025-10-20 09:00  conversation aaaa1111  the zebra eats mango  \(key f0\)\nthe snapshots still hold the journal of 2025-10-20: [^\n]*\nremoved 1 of 2 from /.test(r.stdout) && file('2025-10-21').includes('mango, the zebra again'),
+  ok(/^2025-10-20 09:00  conversation aaaa1111  the zebra eats mango  \(key f0\)\nthe snapshots still hold the journal of 2025-10-20: [^\n]*\nClaude Code still keeps these exchanges in [^\n]*\nremoved 1 of 2 from /.test(r.stdout) && file('2025-10-21').includes('mango, the zebra again'),
     `a day the write never landed in keeps its entry, neither listed nor counted as removed (got ${r.stdout}${r.stderr})`);
 }
 
@@ -1341,9 +1386,9 @@ if (!quick) {
   // show names an entry once however many times its key is given.
   const k0 = r.stdout.match(/^     key: (\S+)$/m)[1];
   ok(((await jcli('show', k0, k0)).stdout.match(/^     key: /gm) || []).length === 1, 'show prints an entry once for a key given twice');
-  // forget: --key with no value is no key; the words of a sentence are blamed when the journal is empty.
+  // forget: --key with no value is no key, and is refused (audit C-7); the words of a sentence are blamed when the journal is empty.
   r = await run(['forget', '--store', jm, '--key']);
-  ok(r.status === 1 && /^forget needs words/.test(r.stdout) && !/undefined/.test(r.stdout), `--key with nothing after it is no key (got ${r.stdout})`);
+  ok(r.status === 1 && r.stdout === '--key needs a value after it\n', `--key with nothing after it is no key (got ${r.stdout})`);
   const empty = join(root, 'C--mutA-empty', 'memory');
   r = await run(['forget', 'nosuchword', '--store', empty]);
   ok(r.stdout.trim() === `nothing in ${empty} matches: no entry holds "nosuchword"`, `a miss in an empty journal blames the word (got ${r.stdout})`);
@@ -1572,9 +1617,9 @@ if (!quick) {
   ok(r.status === 0 && r.stdout.includes('(key ma000)') && /^1 entry in /m.test(r.stdout), `--key as the last word names its entry (got ${r.stdout})`);
   r = await run(['forget', 'zzzz', '--store', jm, '--key', 'ma000']);
   ok(r.stdout.trim() === `nothing in ${jm} matches: no entry holds "zzzz"`, `a word that misses, with a key that exists, is blamed (got ${r.stdout})`);
-  // --help as an option's value is a value.
+  // --help where an option's value goes is no request for the usage: an option is no value, and is refused (audit C-7).
   r = await run(['status', '--conversation', '--help', '--store', jm]);
-  ok(r.status === 0 && r.stdout.startsWith(`${jm}\n`) && !/node memory\.mjs <command>/.test(r.stdout) && /node memory\.mjs <command>/.test((await run(['status', '--help'])).stdout), `--help after an option that takes a value is its value, not a request for the usage (got ${r.stdout})`);
+  ok(r.status === 1 && r.stdout === '--conversation needs a value after it\n' && /node memory\.mjs <command>/.test((await run(['status', '--help'])).stdout), `--help after an option that takes a value is not a request for the usage (got ${r.stdout})`);
 
   // A range forget names its first and last day; the snapshots' days are listed six at a time.
   const old7 = mdir('C--mutB-old'), days7 = [1, 2, 3, 4, 5, 6, 7].map((d) => `2025-02-0${d}`);
@@ -1636,6 +1681,21 @@ if (!quick) {
   ok(!/ran twice/.test((await cli('doctor')).stdout), 'two runs 2000 ms apart are not hooks wired twice');
   ranLog({ at: iso(base), s: 'aaaaaaaa', from: 'C:/x' }, { at: iso(base + 1999), s: 'aaaaaaaa', from: 'C:/x' });
   ok(/ran twice/.test((await cli('doctor')).stdout), 'two runs 1999 ms apart are');
+  // Two quick replies of one conversation (a task's end answered in a line) are two runs for two replies, told apart by the
+  // reply's fingerprint; one reply answered twice is still the hooks wired twice (audit H-F10).
+  ranLog({ at: iso(base), s: 'aaaaaaaa', m: '11111111', from: 'C:/x' }, { at: iso(base + 500), s: 'aaaaaaaa', m: '22222222', from: 'C:/x' });
+  ok(!/ran twice/.test((await cli('doctor')).stdout), 'two replies 500 ms apart are not hooks wired twice');
+  ranLog({ at: iso(base), s: 'aaaaaaaa', m: '11111111', from: 'C:/x' }, { at: iso(base + 500), s: 'aaaaaaaa', m: '11111111', from: 'C:/x' });
+  ok(/ran twice/.test((await cli('doctor')).stdout), 'one reply answered twice 500 ms apart is');
+  // A .stop-ran that exists but won't stat (held by a scan, refused): doctor said nothing, a stack trace instead (audit H-F7).
+  {
+    const refuseStat = join(home, 'refuse-stat.mjs'), ranPath = join(root, '.stop-ran');
+    writeFileSync(refuseStat, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';\nconst stat = fs.statSync;\n" +
+      `fs.statSync = (p, ...a) => { if (String(p) === ${JSON.stringify(ranPath)}) throw Object.assign(new Error('EBUSY: resource busy or locked, stat'), { code: 'EBUSY', syscall: 'stat', path: String(p) }); return stat(p, ...a); };\nsyncBuiltinESMExports();\n`);
+    r = spawnSync(process.execPath, ['--import', pathToFileURL(refuseStat).href, CLI, 'doctor', '--store', dir], { env, encoding: 'utf8' });
+    ok(!/\n\s+at \S.*:\d+:\d+/.test(r.stderr) && new RegExp(`^ok +the Stop hook has run, but ${ranPath.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')} could not be read \\(EBUSY\\), so not when`, 'm').test(r.stdout),
+      `a .stop-ran that won't stat is said, never a stack trace (got ${r.status}: ${r.stdout}${r.stderr.slice(0, 300)})`);
+  }
   ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
   // A lock is a killed hook's only past LOCK_STALE; a store with none is not listed.
   const lock = join(dir, '.lock'), realNow = Date.now;
@@ -1682,6 +1742,144 @@ if (!quick) {
   utimesSync(theirs, new Date(T0 - 5 * 60_000), new Date(T0 - 5 * 60_000));
   try { r = await run(['doctor', '--session', 'aaaaaaaa-s']); } finally { rmSync(mine, { force: true }); rmSync(theirs, { force: true }); }
   ok(r.status === 1 && /^PROBLEM Memory hooks look stopped: \[aaaaaaaa\] finished a reply at /m.test(r.stdout), `doctor judges the newest conversation, this session's own, as well as the newest other (got ${r.stdout})`);
+}
+
+// The end-to-end audit of 1.2.4's commands (C-1 to C-10).
+{
+  // C-1. journal.md is the plugin's pointer to the journal, as handoff.md is its record: promoted, the next Stop wrote it
+  // again, it was in both stores, and every project's startup listed "Every exchange in this project".
+  const had = existsSync(join(dir, 'journal.md'));
+  if (!had) writeFileSync(join(dir, 'journal.md'), '---\nname: journal\ndescription: "Every exchange in this project"\n---\n\nbody\n');
+  r = await cli('promote', 'journal');
+  ok(r.status === 1 && /^only a memory is shared, not an index, the handoff or the journal$/m.test(r.stdout) && existsSync(join(dir, 'journal.md')) && !existsSync(join(shared, 'journal.md')),
+    `promote journal is refused, as promote handoff is (got ${r.stdout})`);
+  if (!had) rmSync(join(dir, 'journal.md'));
+  // C-2. A name of several words, typed without quotes, was cut to its first: `restore my note` answered about my.md.
+  memory(dir, 'two words', 'a note named in two words', 'the two words body');
+  tier();
+  r = await cli('history', 'two', 'words');
+  ok(r.status === 0 && r.stdout.startsWith(join(dir, 'two words.md')), `history takes every word of a name (got ${r.stdout})`);
+  rmSync(join(dir, 'two words.md'));
+  r = await cli('restore', 'two', 'words');
+  ok(r.status === 0 && readFileSync(join(dir, 'two words.md'), 'utf8').includes('the two words body'), `and so does restore (got ${r.stdout})`);
+  // C-3. git's own words reached the user: "fatal: not a git repository" before the first snapshot, and "fatal: path '…' does
+  // not exist in 'HEAD'" for a note no snapshot holds.
+  memory(dir, 'c4-note', 'a note that exists', 'c4 body');
+  renameSync(join(root, '.git'), join(root, '.git-away'));
+  let h, s; try { h = await cli('history', 'c4-note'); s = await cli('restore', 'c4-note'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
+  ok(h.status === 1 && s.status === 1 && h.stdout === s.stdout && /^no snapshots yet: project-memory takes the first at the end of a reply\n$/.test(h.stdout),
+    `before the first snapshot, history and restore say so plainly (got ${h.stdout}${s.stdout})`);
+  // Nor while the first is still being taken (a repository with no commit yet), nor from a repository in a folder above the
+  // projects folder (a dotfiles ~/.claude): git found that one, and its history was read as the snapshots'.
+  {
+    const above = join(home, '.claude'), g = (...a) => spawnSync('git', a, { encoding: 'utf8' });
+    renameSync(join(root, '.git'), join(root, '.git-away'));
+    try {
+      g('init', '-q', root);
+      h = await cli('history', 'c4-note');
+      rmSync(join(root, '.git'), { recursive: true, force: true });
+      g('init', '-q', above); g('-C', above, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'dotfiles');
+      s = await cli('history', 'c4-note');
+    } finally { rmSync(join(above, '.git'), { recursive: true, force: true }); rmSync(join(root, '.git'), { recursive: true, force: true }); renameSync(join(root, '.git-away'), join(root, '.git')); }
+    ok(/^no snapshots yet: /.test(h.stdout) && /^no snapshots yet: /.test(s.stdout), `a repository with no commit, or one above the projects folder, is no snapshot yet (got ${h.stdout}${s.stdout})`);
+  }
+  r = await cli('restore', 'never-was');
+  ok(r.status === 1 && r.stdout === `no snapshot of never-was.md (looked in ${dir}): search <words> finds a memory's name\n`, `a note no snapshot holds is said plainly (got ${r.stdout})`);
+  r = await cli('restore', 'c4-note', '--force', '--rev', 'deadbeef');
+  ok(r.status === 1 && r.stdout === 'no snapshot of c4-note.md at deadbeef: history c4-note lists the ones that hold it\n', `and a commit that doesn't hold it (got ${r.stdout})`);
+  // Any other failure of git is still git's own line, named at the commit it read (HEAD when none was given).
+  {
+    const failLog = join(home, 'fail-log.mjs');
+    writeFileSync(failLog, "import cp from 'node:child_process'; import { syncBuiltinESMExports } from 'node:module';\nconst run = cp.execFileSync;\n" +
+      "cp.execFileSync = (f, a, ...o) => { if (Array.isArray(a) && a.includes('--diff-filter=D')) throw Object.assign(new Error('Command failed'), { stderr: 'fatal: a simulated failure\\n' }); return run(f, a, ...o); };\nsyncBuiltinESMExports();\n");
+    r = spawnSync(process.execPath, ['--import', pathToFileURL(failLog).href, CLI, 'restore', 'never-was', '--store', dir], { env, encoding: 'utf8' });
+    ok(r.status === 1 && r.stdout === 'no snapshot of C--mem-cli/memory/never-was.md at HEAD: fatal: a simulated failure\n', `another git failure is git's line, at HEAD (got ${r.stdout}${r.stderr})`);
+  }
+  // C-4. Without git, restore of a note that exists offered to replace it "with the snapshot", as though there were one.
+  r = spawnSync(process.execPath, [CLI, 'restore', 'c4-note', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
+  ok(r.status === 1 && /^git is not installed, so there are no snapshots/.test(r.stdout) && !/restore --force replaces it/.test(r.stdout), `without git, restore says there are no snapshots (got ${r.stdout}${r.stderr})`);
+  rmSync(join(dir, 'c4-note.md'));
+  // C-5. A date no calendar has was taken: --since 2026-02-30 searched, and forget --since 2026-13-45 said "nothing matches".
+  for (const [o, bad] of [['--since', '2026-02-30'], ['--until', '2026-10-45'], ['--since', '2026-13-45'], ['--until', '2025-02-29'], ['--since', '2026-00-10']]) {
+    r = await cli('forget', o, bad);
+    ok(r.status === 1 && r.stdout === `${o} takes a date like 2026-10-01\n`, `${o} ${bad} is refused (got ${r.stdout})`);
+  }
+  ok((await cli('search', 'deploy', '--since', '2024-02-29')).status === 0 && (await cli('search', 'deploy', '--until', '2026-12-31')).status === 0, 'a leap day in a leap year, and the year\'s last day, are dates');
+  // C-7. A valued option's value is never another option, nor missing: `forget --key --store X` took "--store" for the key, and a
+  // last --key was dropped, so the words alone said what went.
+  for (const args of [['forget', '--key', '--store', dir], ['forget', 'zebra', '--store', dir, '--key'], ['forget', '--key=--yes', '--store', dir]]) {
+    r = await run(args);
+    ok(r.status === 1 && r.stdout === '--key needs a value after it\n', `${args.join(' ')} is refused (got ${r.stdout})`);
+  }
+  r = await run(['forget', '--conversation', '--yes', '--store', dir]);
+  ok(r.status === 1 && r.stdout === '--conversation needs a value after it\n', `so is --conversation with an option for its value (got ${r.stdout})`);
+  // C-8. A name as the user's disk reads it: `history Pricing`, `history PRICING.MD` and a café typed composed, of a file named
+  // decomposed, found nothing. In any letter case where the disk is so (Windows, macOS), in either Unicode form everywhere.
+  const folds = process.platform === 'win32' || process.platform === 'darwin', nfd = 'café-menu', nfc = nfd.normalize('NFC');
+  memory(dir, 'pricing', 'the pricing tiers', 'pricing body');
+  memory(dir, nfd, 'the café menu', 'café body');
+  tier();
+  const at = (out, f) => out.startsWith(`${join(dir, f)}\n`);
+  for (const typed of ['Pricing', 'PRICING.MD']) {
+    r = await cli('history', typed);
+    ok(folds ? r.status === 0 && at(r.stdout, 'pricing.md') : r.status === 1, `history ${typed} finds pricing.md where the disk folds case, and only there (got ${r.stdout})`);
+  }
+  r = await cli('history', nfc);
+  ok(r.status === 0 && at(r.stdout, `${nfd}.md`), `a name typed composed finds the note named decomposed (got ${r.stdout})`);
+  // Deleted, by the names the snapshots had.
+  rmSync(join(dir, 'pricing.md')); rmSync(join(dir, `${nfd}.md`));
+  tier();
+  r = await cli('history', nfc);
+  ok(r.status === 0 && at(r.stdout, `${nfd}.md`) && /deleted$/m.test(r.stdout), `and once deleted, by the name the snapshots had (got ${r.stdout})`);
+  r = await cli('restore', 'Pricing');
+  ok(folds ? r.status === 0 && existsSync(join(dir, 'pricing.md')) && readdirSync(dir).includes('pricing.md') && !readdirSync(dir).includes('Pricing.md') : r.status === 1 && !existsSync(join(dir, 'pricing.md')),
+    `restore Pricing brings back pricing.md under its own name where the disk folds case, and only there (got ${r.stdout})`);
+  r = await cli('restore', nfc);
+  ok(r.status === 0 && readdirSync(dir).includes(`${nfd}.md`) && !readdirSync(dir).includes(`${nfc}.md`), `restore of a name typed composed brings back the decomposed file (got ${r.stdout})`);
+  // A note no snapshot holds yet, by the one name on disk that reads alike.
+  memory(dir, 'promo-é', 'a lesson named decomposed', 'promo body');
+  r = await cli('promote', 'promo-é');
+  ok(r.status === 0 && readdirSync(shared).includes('promo-é.md') && !existsSync(join(dir, 'promo-é.md')), `promote of a name typed composed moves the decomposed file (got ${r.stdout})`);
+  {
+    // Two names the snapshots had that read alike are two notes: neither is taken for a third spelling. Nor is STRASSE taken
+    // for straße, which NTFS keeps apart.
+    const g = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' }).stdout.trim();
+    const branch = g('symbolic-ref', 'HEAD'), from = g('rev-parse', 'HEAD'), msg = 'memory: alike\n';
+    const alike = ['Twin', 'twin', 'dual-é-é', 'dual-é-é', 'straße', 'solo-é'];
+    // Case kept: on Windows, git's core.ignorecase made the two one.
+    const made = spawnSync('git', ['-C', root, '-c', 'core.ignorecase=false', 'fast-import', '--quiet'], { encoding: 'utf8', input: `commit ${branch}\ncommitter memory <memory@localhost> 1600000000 +0000\ndata ${Buffer.byteLength(msg)}\n${msg}from ${from}\n` +
+      alike.map((n) => `M 100644 inline C--mem-cli/memory/${n}.md\ndata ${Buffer.byteLength(n) + 1}\n${n}\n`).join('') + '\n' });
+    const miss = async (typed) => (await cli('history', typed)).stdout.startsWith(`no snapshot holds ${typed}.md `);
+    ok(made.status === 0 && await miss('TWIN') && await miss('dual-é-é') && await miss('STRASSE') && !(await miss('Twin')),
+      `a name two snapshot names read alike, or only a fold that NTFS does not make, is no name (got ${made.stderr}${(await cli('history', 'TWIN')).stdout})`);
+    // A file on disk by the very name typed is that note, though no snapshot holds it yet: never the one the snapshots had
+    // under the other Unicode form, a different file on Windows and Linux.
+    writeFileSync(join(dir, 'solo-é.md'), 'a note not yet snapshotted\n');
+    ok(await miss('solo-é'), `a name on disk as typed is not taken for another form the snapshots had (got ${(await cli('history', 'solo-é')).stdout})`);
+    rmSync(join(dir, 'solo-é.md'));
+  }
+  // C-9. Under --all, a hit named its project by its folder (`C--work-api-server`), no name a person reads: now by the folder its
+  // conversations started in, then the folder --store needs. A project with no conversation on disk keeps the folder alone.
+  const rp = join(root, 'C--work-readable'), rd = join(rp, 'memory');
+  mkdirSync(join(rd, 'journal'), { recursive: true });
+  writeFileSync(join(rp, 'rrrrrrrr-1.jsonl'), JSON.stringify({ type: 'user', uuid: 'rd-1', cwd: 'C:\\work\\readable', timestamp: '2026-10-20T10:00:00Z', message: { role: 'user', content: 'the narwhal plan' } }) + '\n');
+  writeFileSync(join(rd, 'journal', '2026-10-20.md'), '# Journal 2026-10-20\n\n<!-- j:rd-1 t:C--work-readable/rrrrrrrr-1 d:2026-10-20 -->\n## 10:00 · conversation rrrrrrrr\n**Asked:** the narwhal plan\n**Answered:** drafted it\n');
+  r = await run(['search', 'narwhal', '--all']);
+  ok(/^ *\d+  journal   2026-10-20 10:00  conversation rrrrrrrr · project C:\\work\\readable \(C--work-readable\)$/m.test(r.stdout), `a hit under --all names its project by its folder on disk, and its store's folder (got ${r.stdout})`);
+  r = await run(['show', 'rd-1', '--all']);
+  ok(/^2026-10-20 10:00  conversation rrrrrrrr · project C:\\work\\readable \(C--work-readable\)$/m.test(r.stdout), `and so does show --all (got ${r.stdout})`);
+  // C-10. status said "1 days", counted the plugin's own handoff.md and journal.md, before the index has their lines, as notes
+  // with no pointer, and took a --session no transcript has for the folder it ran in, in silence.
+  writeFileSync(join(rd, 'handoff.md'), '---\nname: handoff\ndescription: "where you left off"\nmetadata:\n  type: project\n---\n\n');
+  writeFileSync(join(rd, 'journal.md'), '---\nname: journal\ndescription: "every exchange"\nmetadata:\n  type: reference\n---\n\n');
+  r = await run(['status', '--store', rd]);
+  ok(/^  journal: 1 day since 2026-10-20, /m.test(r.stdout) && /^  index 0 \/ 7000 B · 0 hot · 0 archived$/m.test(r.stdout), `one day is "1 day", and the plugin's own files are no notes without a pointer (got ${r.stdout})`);
+  memory(rd, 'loose', 'a note with no line yet');
+  ok(/^  index 0 \/ 7000 B · 0 hot · 0 archived · 1 with no pointer yet$/m.test((await run(['status', '--store', rd])).stdout), 'a note of the user\'s still is');
+  r = await run(['status', '--session', 'no-such-conversation']);
+  ok(r.status === 0 && /^no conversation no-such-conversation on this machine, so this is the store of the folder this runs in: /.test(r.stdout), `a --session no transcript has is said (got ${r.stdout})`);
+  ok(!/^no conversation/m.test((await run(['status', '--session', 'rrrrrrrr-1'])).stdout) && !/^no conversation/m.test((await run(['status', '--session', 'no-such-conversation', '--store', rd])).stdout),
+    'not for one that has, nor when --store names the store');
 }
 
 console.log(`memory: ${checks} checks passed`);

@@ -158,7 +158,9 @@ All of it stays in `~/.claude/projects` on your computer:
   the history records that, keeping its earlier versions. It never holds
   the record of where you left off, today's journal file, or the journal's
   bookkeeping files.
-- A few small bookkeeping files, such as when it last ran, the short tags of
+- A few small bookkeeping files, such as when it last ran (with 8 characters
+  of a hash of each reply, which tell two quick replies from one reply
+  answered twice; the reply can't be read back from them), the short tags of
   conversations you marked `<private-session>` or held with auto memory off,
   and, in each `journal` folder, which conversations it has taken in
   (`.imported`), how far it read the current one for a `<private-session>`
@@ -291,15 +293,18 @@ conversations left to import, or run it again once they're in.
   project has no entry for, it says so. A key of an exchange that isn't in
   the journal yet (its reply came while another window held the project's
   memory folder, and is saved at the next reply) is kept out all the same:
-  the list shows it as not in the journal yet, without its words. A key you
-  had it forget before is named as already forgotten, and nothing more is
-  removed.
+  the list shows it as not in the journal yet, without its words. A list by
+  words finds such an exchange too. A key you had it forget before is named
+  as already forgotten, and nothing more is removed from the journal (its
+  exchange still goes from `handoff.md`, if an earlier `forget` couldn't
+  remove it there).
 - `forget` also takes the exchanges it removes out of the record of where
   you left off (`handoff.md`), so the next conversation's briefing doesn't
   show them, and a later reply in their conversation doesn't put them back.
   It matches them there by conversation and minute, so another exchange of
   that conversation in the same minute goes too. Claude Code's own
-  conversation files are separate.
+  conversation files are separate: they still hold the exchanges, and
+  `forget` says so after removing them.
 - A search hit never names a conversation file. `show` of a private entry
   doesn't either, since that file still holds the private part. `show` of
   another exchange in the same conversation still names that file: it is

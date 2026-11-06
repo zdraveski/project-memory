@@ -281,21 +281,28 @@ function resweep(dir) {
 // cuts: a turn with none is keyed by a hash, and not found. One read of the conversations for all the keys, until each is found.
 // shortcut: a key no conversation has (a typo, another project's) reads all of them, and one that won't read is passed over
 // (the key is then named as no entry's, and the forget fails); upgrade if that is ever slow or wrong.
-export function unwritten(dir, keys) {
+// `terms`, forget's look by words: every turn holding each word as its entry would, in any case. A look by words missed a turn
+// no day held yet, and the next reply wrote it (1.2.5). A chunk is parsed only when its text holds each word's pieces as the
+// transcript spells them (escaped as JSON; an entry squeezes "a  b" to "a b").
+// shortcut: by words, every conversation of the store is read whole, at each look; read only past the import's offsets if slow.
+export function unwritten(dir, keys, terms = null) {
   const out = [], left = new Set(keys);
+  const ts = terms?.map((t) => t.toLowerCase()), bits = ts?.flatMap((t) => t.split(/\s+/)).filter(Boolean).map((t) => JSON.stringify(t).slice(1, -1));
+  const near = (b) => (ts ? ((s) => bits.every((t) => s.includes(t)))(b.toString('utf8').toLowerCase()) : [...left].some((k) => b.includes(`"uuid":${JSON.stringify(k)}`)));
   let fs = []; try { fs = looked(dir); } catch {}
   for (const f of fs) {
     let ns = []; try { ns = readdirSync(join(projectsRoot(), f)).filter((n) => n.endsWith('.jsonl')); } catch {}
     for (const n of ns) {
-      if (!left.size) return out;
+      if (!ts && !left.size) return out;
       const p = join(projectsRoot(), f, n);
       try {
         const fd = openSync(p, 'r');
         try {
           const size = fstatSync(fd).size;
-          for (let b, pos = 0; left.size && (b = chunk(fd, pos, IMPORT_SEGMENT, size)); pos = b.pos + b.buf.length) {
-            if (![...left].some((k) => b.buf.includes(`"uuid":${JSON.stringify(k)}`))) continue;
+          for (let b, pos = 0; (ts || left.size) && (b = chunk(fd, pos, IMPORT_SEGMENT, size)); pos = b.pos + b.buf.length) {
+            if (!near(b.buf)) continue;
             const got = turns(b.buf.toString('utf8'));
+            if (ts) { if (ours(dir, p)) for (const t of new Set([...got, got.open])) { const e = t && entryOf(t, p); if (e && ts.every((w) => holds(e, w))) out.push({ ...e, day: day(e.at), dir, unsaid: true }); } continue; }
             for (const t of new Set([...got, got.open])) if (t && left.has(t.id) && ours(dir, p)) { const e = entryOf(t, p); out.push({ ...e, day: day(e.at), dir, unsaid: true }); left.delete(t.id); }
           }
         } finally { closeSync(fd); }
@@ -319,7 +326,9 @@ export function forget(dir, terms, { since, until, conversation, keys: only, mor
   // 15,000 entries spent 5 s here.
   const ts = terms.map((t) => t.toLowerCase()), want = only && new Set(only);
   // `more`, unwritten()'s: by their day for the range, and not once a day holds them.
-  const have = entries([dir], { since, until, failed, strict: true }), held = new Set(have.map((e) => e.key));
+  const fails = failed.length, have = entries([dir], { since, until, failed, strict: true }), held = new Set(have.map((e) => e.key));
+  // None while a day won't read: the turn may be in it, and taken as unwritten it was said removed while that day held it (R73).
+  if (failed.length > fails) more = [];
   const matched = [...have, ...more.filter((e) => !held.has(e.key) && (!since || e.day >= since) && (!until || e.day <= until))].filter((e) => (!conversation || e.s === conversation) && (!want || want.has(e.key)) &&
     ts.every((t) => holds(e, t)));
   if (!apply || !matched.length) return { matched, removed: [] };

@@ -31,8 +31,8 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED } from './store.mjs';
-import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN } from './handoff-log.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd } from './store.mjs';
+import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -104,17 +104,27 @@ const no = (why) => ({ ok: false, lines: [why] });
 // A memory by the name it has on disk: on Windows `ALPHA` opens alpha.md (and
 // `memory~1` an index), and moved under the typed name, alpha.md's index line
 // was left pointing at nothing. The disk says which file a name opens, and
-// the entry that is that file is its name; case is never folded here: on
-// Linux Alpha.md and alpha.md are two notes, and a folded match restored the
-// other one. A name that opens nothing is kept as typed.
+// the entry that is that file is its name; case is never folded on Linux:
+// Alpha.md and alpha.md are two notes there, and a folded match restored the
+// other one. A name that opens nothing is the one name that reads alike
+// (pick), or kept as typed.
 const onDisk = (dir, file) => {
   try {
     const names = readdirSync(dir);
     if (names.includes(file)) return file;
-    const st = statSync(join(dir, file), { bigint: true });   // throws when it opens nothing
+    let st; try { st = statSync(join(dir, file), { bigint: true }); } catch { return pick(file, names); }
     return names.find((n) => { try { const s = statSync(join(dir, n), { bigint: true }); return s.ino === st.ino && s.dev === st.dev; } catch { return false; } }) ?? file;
   } catch { return file; }
 };
+// The one name of `names` a typed name means, as the user's disk reads names: in any letter case on Windows and macOS, and in
+// either Unicode form everywhere (a café typed composed, its file named decomposed). Two that read alike are two notes, and
+// neither is taken. Each letter upper-cased alone, as NTFS does: a whole-string fold made straße STRASSE, which NTFS keeps
+// apart (audit C-8).
+const FOLDS = process.platform === 'win32' || process.platform === 'darwin';
+const fold = (s) => { const n = s.normalize('NFC'); return FOLDS ? [...n].map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join('') : n; };
+const pick = (file, names) => { if (names.includes(file)) return file; const m = [...new Set(names)].filter((n) => fold(n) === fold(file)); return m.length === 1 ? m[0] : file; };
+// A note no file has by that name, by the name the snapshots had for it: `history Pricing` found nothing of a deleted pricing.md.
+const named = (dir, file) => { const d = onDisk(dir, file); return d !== file || existsSync(join(dir, d)) ? d : pick(file, ever(dir)); };
 // A write the disk refuses (read-only, held by another program) is said, with
 // what it left behind: thrown, it was a stack trace, read as nothing done.
 const put = (p, read, next) => { try { return replaceIfUnchanged(p, read, next); } catch (e) { return `failed: ${e.code || e.message}`; } };
@@ -255,8 +265,11 @@ export function status(dir, sharedNames = []) {
   // A journal alone is a store: search finds its entries.
   if (main === null && !ms.length && !existsSync(join(dir, 'journal'))) return [...lines, '  no store here yet'];
   const n = (w) => ms.filter((m) => m.where === w).length;
+  // Not handoff.md and journal.md, the plugin's own, which tiering points to at its next run: a store with no index yet
+  // counted them as notes with no pointer (audit C-10).
+  const loose = ms.filter((m) => m.where === 'unindexed' && m.file !== 'handoff.md' && m.file !== 'journal.md').length;
   lines.push(`  index ${Buffer.byteLength(main ?? '')} / ${budgetOf(dir)} B · ${n('hot')} hot · ${n('archived')} archived` +
-    (n('unindexed') ? ` · ${n('unindexed')} with no pointer yet` : ''));
+    (loose ? ` · ${loose} with no pointer yet` : ''));
   const health = (read(join(dir, '.health')) ?? '').trim();
   if (health) lines.push(...health.split('\n').map((h) => `  needs attention: ${h}`));
   // The Stop's record of what it could not save, as the briefing says it: only the briefing did (R64).
@@ -274,7 +287,7 @@ export function status(dir, sharedNames = []) {
   const j = summary(dir);
   if (j?.broken) lines.push(`  journal: could not read journal.mjs: ${j.broken}`);
   // Failing from the first write, it has no day to show: the failure is the news.
-  if (j?.first || j?.failed) lines.push(`  journal: ${j.first ? `${j.days} days since ${j.first}, ${(j.bytes / 1048576).toFixed(1)} MB` : 'no days yet'}` + (j.left > 0 ? `; importing ${j.left} older conversations` : '') + (j.failed ? `; last write failed: ${j.failed}` : ''));
+  if (j?.first || j?.failed) lines.push(`  journal: ${j.first ? `${j.days} day${j.days === 1 ? '' : 's'} since ${j.first}, ${(j.bytes / 1048576).toFixed(1)} MB` : 'no days yet'}` + (j.left > 0 ? `; importing ${j.left} older conversations` : '') + (j.failed ? `; last write failed: ${j.failed}` : ''));
   // A day search can't read: its entries are missing from every search.
   lines.push(...(j?.unread ?? []).map((u) => `  journal: could not read ${u}`));
   const ch = recent(dir);
@@ -380,14 +393,33 @@ const tracked = (dir, file) => {
   const links = names.filter((n) => pathKey(real(join(projectsRoot(), n, 'memory'))) === me);
   return (links.length ? links : [basename(dirname(dir))]).map((n) => `${n}/memory/${file}`);
 };
+// Every name the store's files had in the snapshots (each was added once).
+const ever = (dir) => {
+  try { return tracked(dir, '').flatMap((at) => git('-c', 'core.quotepath=off', 'log', '--format=', '--name-only', '--no-renames', '--diff-filter=A', '--', at).split('\n')).map((p) => p.split('/').pop()); }
+  catch { return []; }
+};
+
+// Why no snapshot can be read, in plain words, or '' when one can: git's own ("fatal: not a git repository", "cannot change
+// to") read as a fault, and without git, restore offered to replace a note "with the snapshot" (audit C-3, C-4).
+const unsnapped = () => {
+  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); } catch { return 'git is not installed, so there are no snapshots: everything else works. Installing Git (git-scm.com) turns them on'; }
+  // Nor a repository with no commit yet: a large first snapshot is taken in parts, over several replies.
+  let head = false; try { head = existsSync(join(projectsRoot(), '.git')) && !!git('rev-parse', '--verify', '-q', 'HEAD'); } catch {}
+  return head ? '' : 'no snapshots yet: project-memory takes the first at the end of a reply';
+};
+// git saying a snapshot does not hold a path, or there is no such commit.
+const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
 
 // The newest `max`: a note edited every reply had 2,000 snapshots, 72 KB of output.
 export function history(dirs, file, everywhere = false, max = 30) {
   const verb = { A: 'added', M: 'changed', D: 'deleted' };
+  const why = unsnapped();
+  if (why) return no(why);
   try {
     for (const dir of dirs) {
+      const f = named(dir, file);
       // No renames: a link that sorts first moves every path to it, and an R line was no change.
-      const out = git('log', '--no-renames', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', ...tracked(dir, file));
+      const out = git('log', '--no-renames', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', ...tracked(dir, f));
       const lines = [];
       let head = null;
       for (const l of out.split('\n')) {
@@ -397,8 +429,8 @@ export function history(dirs, file, everywhere = false, max = 30) {
       }
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
-      const moved = !isShared(dir) && !file.startsWith('MEMORY') && existsSync(join(sharedStore(), file)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
-      if (lines.length) return { ok: true, lines: [join(dir, file), ...lines.slice(0, max), ...(lines.length > max ? [`  and ${lines.length - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, file).map((p) => `"${p}"`).join(' ')}`] };
+      const moved = !isShared(dir) && !f.startsWith('MEMORY') && existsSync(join(sharedStore(), f)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
+      if (lines.length) return { ok: true, lines: [join(dir, f), ...lines.slice(0, max), ...(lines.length > max ? [`  and ${lines.length - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, f).map((p) => `"${p}"`).join(' ')}`] };
     }
   } catch (e) { return no(`no snapshots to read: ${gitWhy(e)}`); }
   return no(`no snapshot holds ${file} (looked in ${dirs.join(', ')}): search <words> finds a memory's name${everywhere ? '' : '; --all looks in every project'}`);
@@ -410,7 +442,8 @@ export function history(dirs, file, everywhere = false, max = 30) {
 // line it had at that revision comes back with it: hand-written, where
 // tiering's orphan recovery would give it a machine line in the archive.
 export function restore(dir, file, { rev, force = false } = {}) {
-  const path = join(dir, file);
+  const path = join(dir, file), why = unsnapped();
+  if (why) return no(why);
   if (existsSync(path) && !force) return no(`${path} exists; restore --force replaces it with the snapshot`);
   // Deleted here by a promote: brought back, it would be in both stores, loaded twice, drifting apart.
   // Not an index: every store has its own, and a deleted one read as promoted.
@@ -440,7 +473,11 @@ export function restore(dir, file, { rev, force = false } = {}) {
         from = `${rev}^`;
       }
       failure = null; break;
-    } catch (e) { failure ??= `no snapshot of ${at} at ${from || 'HEAD'}: ${gitWhy(e)}`; }
+    } catch (e) {
+      // In plain words when git only says it has no such path or commit (audit C-3).
+      failure ??= !missing(e) ? `no snapshot of ${at} at ${from || 'HEAD'}: ${gitWhy(e)}` : rev ? `no snapshot of ${file} at ${rev}: history ${file.replace(/\.md$/, '')} lists the ones that hold it`
+        : `no snapshot of ${file} (looked in ${dir}): search <words> finds a memory's name`;
+    }
   }
   if (failure) return no(failure);
   let line = null;
@@ -483,7 +520,8 @@ export function restore(dir, file, { rev, force = false } = {}) {
 export function promote(dir, file) {
   const to = sharedStore(), src = join(dir, file), dst = join(to, file);
   if (isShared(dir)) return no(`${file} is in the shared store already`);
-  if (file.startsWith('MEMORY') || file === 'handoff.md') return no('only a memory is shared, not an index or the handoff');
+  // Nor the journal's pointer: promoted, the next Stop wrote it again, and it was in both stores (audit C-1).
+  if (file.startsWith('MEMORY') || file === 'handoff.md' || file === 'journal.md') return no('only a memory is shared, not an index, the handoff or the journal');
   if (!existsSync(src)) return no(`no ${src}`);
   if (existsSync(dst)) return no(`the shared store has a ${file} already: rename one, or merge them by hand`);
   mkdirSync(to, { recursive: true });
@@ -532,9 +570,11 @@ export function promote(dir, file) {
 const stopRuns = () => (read(join(projectsRoot(), '.stop-ran')) ?? '').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r?.at ? [r] : []; } catch { return []; } });
 // Two wirings answer one Stop at once. Not a /compact typed after a reply (a
 // PreCompact run), nor the reply to a block (stop_hook_active): both are a
-// second run seconds later, and both read as hooks wired twice.
+// second run seconds later, and both read as hooks wired twice. Nor two
+// replies, by their fingerprints (`m`): a task's end answered in a line came
+// under 2 s after the reply before it (audit H-F10). A run logged before 1.2.5 has none.
 const TWICE = 2000;
-const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h &&
+const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h && r.m === p.m &&
   Math.abs(Date.parse(r.at) - Date.parse(p.at)) < TWICE;
 
 export function doctor() {
@@ -589,7 +629,9 @@ export function doctor() {
     // the one the startup briefing judges: checked on the newest alone, the
     // two disagreed when this window saved and another did not.
     const ts = transcripts(sessionStore(), '', session && transcriptOf(session)), s = [ts[0], ts.find((t) => t.s !== tag(session))].flatMap((t) => stalled(t, false));
-    say(!s.length, s[0] || `the Stop hook last ran ${local(statSync(ran).mtime)}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`);
+    // A record there that won't stat (a scan holding it) is said: unguarded, doctor was a stack trace (audit H-F7).
+    let when; try { when = `last ran ${local(statSync(ran).mtime)}`; } catch (e) { when = `has run, but ${ran} could not be read (${e.code || e.message}), so not when`; }
+    say(!s.length, s[0] || `the Stop hook ${when}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`);
   }
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return Date.now() - statSync(l).mtimeMs > LOCK_STALE; } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);
@@ -623,6 +665,10 @@ export function main(given) {
   // "2026", and `--after=2026-10-28` listed what came before it.
   const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--help'].includes(a));
   if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); return 1; }
+  // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
+  // so the words alone said what went (audit C-7). --rev says what it takes itself.
+  const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--')));
+  if (bare) { console.log(`${bare} needs a value after it`); return 1; }
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
@@ -639,8 +685,10 @@ export function main(given) {
     console.log(`--store takes a memory folder in ${projectsRoot()} (search names them): not ${store}`);
     return 1;
   }
-  // Days compare as text: `--since yesterday` would match no day, and say nothing matched.
-  for (const o of ['--since', '--until']) if (rest.includes(o) && !/^\d{4}-\d\d-\d\d$/.test(opt(o) ?? '')) { console.log(`${o} takes a date like 2026-10-01`); return 1; }
+  // Days compare as text: `--since yesterday` would match no day, and say nothing matched. Nor one no calendar has: 2026-02-30
+  // matched nothing, and forget said so with exit 0 (audit C-5). A day past its month's end, or 00, rolls into another month.
+  const isDay = (v) => { const [y, m, d] = v.split('-').map(Number); return /^\d{4}-\d\d-\d\d$/.test(v) && new Date(Date.UTC(y, m - 1, d)).getUTCMonth() === m - 1; };
+  for (const o of ['--since', '--until']) if (rest.includes(o) && !isDay(opt(o) ?? '')) { console.log(`${o} takes a date like 2026-10-01`); return 1; }
   const range = { since: opt('--since'), until: opt('--until') }, failed = [];
   const span = [range.since && `since ${range.since}`, range.until && `until ${range.until}`].filter(Boolean).join(' ');
   const here = rest.includes('--shared') ? sharedStore() : store || sessionStore();
@@ -654,14 +702,17 @@ export function main(given) {
       .filter((d) => { const k = pathKey(real(d)); return !seen.has(k) && seen.add(k); });
   };
   const scope = rest.includes('--all') ? every() : isShared(here) ? [here] : [here, sharedStore()];
-  // A memory is named by its file, with or without `.md`; never by a path.
-  const file = args[0] && basename(args[0]).replace(/(\.md)?$/, '.md');
+  // A memory is named by its file, with or without `.md`; never by a path. Every word of it: typed without quotes, `restore my
+  // note` answered about my.md (audit C-2). `.MD` is `.md`: PRICING.MD was looked for as PRICING.MD.md (audit C-8).
+  const file = args[0] && basename(args.join(' ')).replace(/(\.md)?$/i, '.md');
   let r;
   // What the model reads back: a hit's lines stay short (a 13-link hit was a
   // quarter of its output), and a miss says where it looked in one line.
   const where = scope.length <= 2 ? scope.join(' and ') : `${scope.length} stores`, n = Number(opt('--limit'));
-  // An entry's line; under --all, with the project it is from: forget and --store need it.
-  const head = (e) => `${e.at}  conversation ${clip(e.s, 100)}${e.branch ? ` · branch ${clip(e.branch, 100)}` : ''}${rest.includes('--all') ? ` · project ${basename(dirname(e.dir))}` : ''}`;
+  // An entry's line; under --all, with the project it is from: forget and --store need its folder. Named first by where its
+  // conversations started: the folder alone (`C--work-api-server`) was no name a person reads (audit C-9).
+  const project = (d) => { const f = dirname(d); let t; try { t = readdirSync(f).find((n) => n.endsWith('.jsonl')); } catch {} const cwd = t && startCwd(join(f, t)); return cwd ? `${cwd} (${basename(f)})` : basename(f); };
+  const head = (e) => `${e.at}  conversation ${clip(e.s, 100)}${e.branch ? ` · branch ${clip(e.branch, 100)}` : ''}${rest.includes('--all') ? ` · project ${project(e.dir)}` : ''}`;
   // Its transcript, for detail; not a private turn's: the only detail it has
   // is the private part, and the transcript still holds it (final review).
   const full = (e, conv = join(projectsRoot(), `${e.t}.jsonl`)) => (e.answered !== '[private]' && existsSync(conv) ? [`     Full conversation: ${conv}`] : []);
@@ -718,15 +769,18 @@ export function main(given) {
     const named = rest.flatMap((a, i) => (a === '--key' && i + 1 < rest.length ? [rest[i + 1]] : []));
     // A key no entry here has is named, never skipped: a confirmed key of another
     // project's entry went unsaid, with exit 0 (review, 2026-10-29).
-    const stored = named.length ? entries([here], { failed: [] }) : [];
+    const unread = [], stored = named.length ? entries([here], { failed: unread }) : [];
     // Nor one of a turn no day holds yet, in this store's conversations: a Stop that met the lock writes it after the next
     // reply, and named as another project's, it was kept out by no key and came back (fuzz seed 1729835215).
     // Not one forgotten before: in no day, and still in its conversation, it was found again and said removed (review).
-    const already = new Set(forgotten(read(join(here, FORGOTTEN))).map(([k]) => k)), none = (k) => !stored.some((e) => e.key === k);
-    const late = unwritten(here, named.filter((k) => none(k) && !already.has(k)));
+    // Nor while a day won't read: a key of that day, found in its conversation, was said removed while the day still held it (R73).
+    const listed = forgotten(read(join(here, FORGOTTEN))), already = new Set(listed.map(([k]) => k)), none = (k) => !stored.some((e) => e.key === k);
+    // By words alone, every such turn holding them: a look by words missed one, and the next reply wrote it (1.2.5).
+    const late = unread.length ? [] : terms.length && !named.length ? unwritten(here, [], terms).filter((e) => !already.has(e.key)) : unwritten(here, named.filter((k) => none(k) && !already.has(k)));
     stored.push(...late);
-    const again = named.filter((k) => none(k) && already.has(k)).map((k) => `key ${k} is already forgotten; nothing to remove`);
-    const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`);
+    const before = named.filter((k) => none(k) && already.has(k)), again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
+    const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => (unread.length ? `no day of ${here} that could be read has the key ${k}: it may be in one that could not, so nothing was removed for it`
+      : `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`));
     // --same: every entry asking what a keyed one asked, the copies a hit counts.
     const asks = new Set(stored.filter((e) => named.includes(e.key)).map((e) => norm(e.asked)));
     const keys = rest.includes('--same') ? stored.filter((e) => asks.has(norm(e.asked))).map((e) => e.key) : named;
@@ -745,6 +799,13 @@ export function main(given) {
     // forget() lists the journal strictly: one that will not list read as empty, "nothing matches" with exit 0, and the entry stayed
     // (F20, R45). Named, as a refused restore is, and alone: the --key lookup above read the same failure as "no entry has the key".
     else try {
+      // A retry after a handoff.md that would not be written finds the keys listed and no day holding them: their exchanges
+      // still go from handoff.md, by the conversation and minute the list keeps. Said "already forgotten" alone, they stayed (R73).
+      if (yes && before.length) {
+        const at = new Set(listed.filter(([k, t, m]) => t && m && before.includes(k)).map(([, t, m]) => `${tag(basename(t))} ${m}`));
+        try { if (withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`))) === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true }); }
+        catch (e) { failed.push({ path: join(here, 'handoff.md'), code: e.code || e.message, write: true }); }
+      }
       const m = forget(here, terms, o).matched, byRange = !terms.length && !named.length && !conversation;
       const ds = m.map((e) => e.day).sort(), shown = byRange ? m.slice(0, RANGE_SHOWN) : m;
       if (m.length > LOOK && !byRange) r = { ok: !yes, lines: [`${m.length} entries in ${here} match; narrow it: a look lists ${LOOK} at most${yes ? ', and --yes removes only what a look can list: nothing removed' : ''}`] };
@@ -777,6 +838,8 @@ export function main(given) {
         r = !got ? no(`${here} is busy (another hook holds it); try again`)
           // Past LOOK (a range's), the count, not every line.
           : { ok: true, lines: [...(gone.length > LOOK ? [] : gone.map(line)), ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : []),
+            // As PRIVACY.md says it: forget empties project-memory's files, and said nothing of Claude Code's own (audit C-6).
+            ...(gone.length ? [`Claude Code still keeps these exchanges in its own conversation files (the .jsonl files in ${projectsRoot()}): forget does not change them`] : []),
             `removed ${gone.length}${gone.length === tried.length ? '' : ` of ${tried.length}`} from ${here}`] };
       }
       r.lines.splice(-1, 0, ...again);
@@ -786,7 +849,7 @@ export function main(given) {
     const sharedNames = names(memories(sharedStore()));
     r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined);
-  else if (cmd === 'restore' && file) r = restore(here, onDisk(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
+  else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file));
   else if (cmd === 'doctor') r = doctor();
   // The usage, after why: a misspelt command, or one with no word after it,
@@ -796,6 +859,8 @@ export function main(given) {
   // still in, the lines above. Before the last line of a search or a forget,
   // which is its count, as the skill says. Once: a forget reads a day twice.
   r.lines.splice(cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
+  // A --session no transcript has: the store came from the folder this runs in, and status reported it in silence (audit C-10).
+  if (opt('--session') !== undefined && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);
   console.log(r.lines.join('\n'));
   // A forget that failed anywhere fails: exit 0 read as all gone.
   return r.ok && !(cmd === 'forget' && failed.length) ? 0 : 1;

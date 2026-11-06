@@ -72,3 +72,6 @@ ebcef2c6f978 handoff-log.mjs stalled()'s full disk `< 1048576` -> `<=`: they dif
 d65b34c7a047 handoff-log.mjs promptBefore's `k < 256` -> `<=`: 257 reads at most instead of 256
 646742c55b7f handoff-log.mjs promptBefore's `k < 256 && pos` -> `||`: once the file's start is reached, the reads left read nothing and look at no line, up to the 256th
 a0f1b4b80b41 handoff-log.mjs promptBefore's head `l.slice(0, 4096)` -> `slice(1, 4096)`: a line's first character is `{`, never part of `"tool_result"`
+da83bf887eda memory.mjs:123 FOLDS's `process.platform === 'darwin'` -> `!==`: on Windows, where the mutants run, `=== 'win32'` already makes it true; on macOS the C-8 checks in memory.test.mjs fail with it (case folded nowhere), and CI runs them there
+9c8cfea0d19d journal.mjs:290 unwritten()'s word bits `JSON.stringify(t).slice(1, -1)` with one bound moved by 1: a bit one character shorter is still in every text the whole one is, so the prefilter only lets more chunks through, and holds() decides the same turns
+23920f9a28eb journal.mjs:290 unwritten()'s word bits `JSON.stringify(t).slice(1, -1)` with the other bound moved by 1: a bit one character shorter is still in every text the whole one is, so the prefilter only lets more chunks through, and holds() decides the same turns
