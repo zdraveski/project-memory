@@ -20,7 +20,7 @@ import { availableParallelism } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
-import { suites } from './mutate.mjs';
+import { suites, settle } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
 
 const repo = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +55,16 @@ assert.deepEqual(suitesFor(['README.md']), []);
 assert.deepEqual(suitesFor(['journal.mjs', 'memory.test.mjs']), ['journal.test.mjs', 'memory.test.mjs']);
 assert.equal(suitesFor(['harness.mjs']).length, ALL.length);
 assert.equal(suitesFor(['mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
+// A mutant that timed out is run once more: killed then it counts as killed, late again it stays TIMED OUT, any other verdict is not rerun.
+{
+  let runs = 0;
+  const again = (v) => () => { runs++; return Promise.resolve(v); };
+  assert.equal(await settle('TIMED OUT', again('killed')), 'killed on retry');
+  assert.equal(await settle('TIMED OUT', again('TIMED OUT')), 'TIMED OUT');
+  assert.equal(await settle('TIMED OUT', again('SURVIVED')), 'TIMED OUT');
+  assert.equal(await settle('SURVIVED', again('killed')), 'SURVIVED');
+  assert.equal(runs, 3);
+}
 assert.deepEqual([...changedLines('@@ -3 +3,2 @@\n@@ -9,0 +11 @@\n')], [3, 4, 11]);
 assert.deepEqual(span('a\nbb\nc', 'b\nc'), [2, 3]);
 assert.deepEqual([...touchedOf(true, ['a', 'b', 'c'], '')], [1, 2, 3]);
