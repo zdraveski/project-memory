@@ -1234,8 +1234,8 @@ export const suites = {
 
 // Run when executed, not when imported: check.mjs reads the table above.
 // A mutant that hit the clock is run once more, alone: on a slow GitHub machine three that a run before killed in 18-75 s
-// timed out at 120 s and counted as survivors. Killed the second time it counts as killed; twice late it stays TIMED OUT.
-export const settle = async (first, again) => first !== 'TIMED OUT' ? first : (await again()) === 'killed' ? 'killed on retry' : 'TIMED OUT';
+// timed out at 120 s and counted as survivors. Killed the second time it counts as killed; otherwise the second verdict stands.
+export const settle = async (first, again) => first !== 'TIMED OUT' ? first : ((v) => v === 'killed' ? 'killed on retry' : v)(await again());
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   // Side by side, one per core but one: each mutant has its own folder and HOME,
@@ -1377,7 +1377,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     const t0 = Date.now(), verdict = await go(job);
     if (verdict === 'TIMED OUT') late.push(job); else report(job, verdict, t0);
   });
-  // One at a time, after the pool: alone on the machine. Its line says TIMED OUT only if the second run was late too.
+  // One at a time, after the pool: alone on the machine.
   for (const job of late) { const t0 = Date.now(); report(job, await settle('TIMED OUT', () => go(job)), t0); }
   // Named on the last line: deploy prints only the last few, and "2 survived"
   // sent a 65-minute run back to find which (2026-10-30).

@@ -55,13 +55,13 @@ assert.deepEqual(suitesFor(['README.md']), []);
 assert.deepEqual(suitesFor(['journal.mjs', 'memory.test.mjs']), ['journal.test.mjs', 'memory.test.mjs']);
 assert.equal(suitesFor(['harness.mjs']).length, ALL.length);
 assert.equal(suitesFor(['mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
-// A mutant that timed out is run once more: killed then it counts as killed, late again it stays TIMED OUT, any other verdict is not rerun.
+// A mutant that timed out is run once more: killed then it counts as killed, otherwise the second verdict stands, any other verdict is not rerun.
 {
   let runs = 0;
   const again = (v) => () => { runs++; return Promise.resolve(v); };
   assert.equal(await settle('TIMED OUT', again('killed')), 'killed on retry');
   assert.equal(await settle('TIMED OUT', again('TIMED OUT')), 'TIMED OUT');
-  assert.equal(await settle('TIMED OUT', again('SURVIVED')), 'TIMED OUT');
+  assert.equal(await settle('TIMED OUT', again('SURVIVED')), 'SURVIVED');
   assert.equal(await settle('SURVIVED', again('killed')), 'SURVIVED');
   assert.equal(runs, 3);
 }
