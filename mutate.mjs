@@ -1197,6 +1197,7 @@ export const suites = {
   }],
   'deploy.mjs': ['handoff-log.test.mjs', {
     'a shared-layer change checks only its own mutants': ['changed.some((f) => SHARED.includes(f))', 'false'],
+    'a change to the harness checks only its own mutants': ["['store.mjs', 'harness.mjs', 'mutate.mjs']", "['store.mjs', 'mutate.mjs']"],
     'an unknown live commit checks no mutant': ['(!changed || changed.some', '(changed.some'],
     'the plugin version not stamped': ["if (patch !== undefined && f === '.claude-plugin/plugin.json') {", 'if (false) {'],
     'the live plugin runs node from PATH': ["if (node && f === 'hooks/hooks.json') {", 'if (false) {'],

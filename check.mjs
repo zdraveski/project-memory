@@ -21,11 +21,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
 import { suites } from './mutate.mjs';
+import { SHARED } from './deploy.mjs';
 
 const repo = dirname(fileURLToPath(import.meta.url));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
-// What every suite stands on: changed, all six run.
-const SHARED = ['store.mjs', 'harness.mjs'];
+// What every suite stands on (SHARED): changed, all six run. The list is deploy.mjs's own, so the quick check and the deploy agree
+// (audit #16); handoff-log.mjs is left out on purpose: store.mjs and memory-tier.mjs do not import it, so it is not under every suite.
 const ALL = [...new Set(Object.values(suites).map(([t]) => t))];
 
 // The suites a set of changed files needs: a source's own, a suite itself,
@@ -50,6 +51,7 @@ const span = (text, find) => {
 assert.deepEqual(suitesFor(['README.md']), []);
 assert.deepEqual(suitesFor(['journal.mjs', 'memory.test.mjs']), ['journal.test.mjs', 'memory.test.mjs']);
 assert.equal(suitesFor(['harness.mjs']).length, ALL.length);
+assert.equal(suitesFor(['mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
 assert.deepEqual([...changedLines('@@ -3 +3,2 @@\n@@ -9,0 +11 @@\n')], [3, 4, 11]);
 assert.deepEqual(span('a\nbb\nc', 'b\nc'), [2, 3]);
 // Why a mutate.mjs run failed: its known failure lines; failing that (a crash, a spawn error, a timeout) the error or the output's tail, so a non-zero exit never reads as ok.
