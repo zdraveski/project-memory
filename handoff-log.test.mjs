@@ -1585,6 +1585,45 @@ const byPrefix = [
   k('dckr', '_pat_', 'abcdefghij0123456789'), k('LS0tLS1CRUdJTi', 'BQUklWQVRFIEtFWS0tLS0t')];
 const notCut = byPrefix.filter((t) => red(`see ${t} end`).includes(t.slice(4)) || !red(`see ${t} end`).includes('[redacted]'));
 ok(!notCut.length, `each key type in the list is redacted by its prefix (kept: ${notCut.join(' | ')})`);
+// 1.2.6 audit #2: Slack xoxe-, Perplexity pplx- and a Discord webhook, in plain prose with no word before them that names a secret.
+for (const [s, gone] of [[`use ${k('xoxe', '-1-', 'My0xLTEyMzQ1Njc4OTAxMjM0NTY3ODkw')} for the bot`, 'My0xLTEy'], [`my key is ${k('pplx', '-', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0uX4')} ok`, 'a1B2c3D4'],
+  [`post to https://discord.com/api/webhooks/123456789012345678/${k('AbCdEfGh', 'IjKlMnOp_qrstUVWX-yz0123456789')} please`, 'AbCdEfGh'],
+  [`webhook_url: https://discordapp.com/api/webhooks/123456789012345678/${k('AbCdEfGh', 'IjKlMnOp_qrstUVWX-yz0123456789')}`, 'AbCdEfGh']]) {
+  ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `xoxe, pplx and a Discord webhook are redacted (got ${red(s)})`);
+}
+// 1.2.6 audit #3: "API key: X", "Secret key: X", "Access key: X" with a blank between the words, flat, as a YAML parent and a JSON object.
+for (const [s, gone] of [['API key: ' + k('abcd1234', 'efgh5678'), 'abcd1234'], ['Secret key: ' + k('abcd1234', 'efgh5678'), 'abcd1234'], ['Access key: ' + k('AbCd1234', 'EfGh5678'), 'AbCd1234'],
+  ['access key:\n  prod: ' + k('Prod', 'Key88xyz'), 'Key88'], ['{"api key": {"prod": "' + k('Prod', 'Key88xyz') + '"}}', 'Key88']]) {
+  ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a key named with a blank is redacted (got ${red(s)})`);
+}
+ok(['the API key rotation happens monthly', 'access key to the building', 'a secret key is kept safe', 'cookie recipe', 'the sig of the mail'].every((s) => red(s) === s), 'prose about keys is kept');
+// 1.2.6 audit #4: a session cookie logs anyone in: a Cookie or Set-Cookie header (Chrome's "Copy as cURL" too), and curl -b / --cookie.
+const sess = k('eyJ1c2Vy', 'IjoxfQ9zT');
+for (const s of [`curl 'https://x.io/a' -H 'cookie: _ga=GA1.2.3; session=${sess}' -H 'x-csrf-token: abc'`, `Cookie: sessionid=${sess}; csrftoken=zzz`, `Set-Cookie: sid=${sess}; Path=/; HttpOnly`,
+  `{"Cookie": "sid=${sess}"}`, `curl -b "connect.sid=s%3A${sess}; other=1" https://x.io`, `curl --cookie sid=${sess} https://x.io`, `curl https://x.io -b 'sid=${sess}'`]) {
+  ok(!red(s).includes(sess) && red(s).includes('[redacted]'), `a session cookie is redacted (got ${red(s)})`);
+}
+ok(['cookie recipe: flour, sugar', 'the cookie: they expire in a week', 'git checkout -b feature/x', 'curl -b cookies.txt https://x.io', 'Cookie policy: see the page', 'set-cookie headers matter'].every((s) => red(s) === s), 'prose and a cookie jar file are kept');
+// 1.2.6 audit #7: more provider keys (each alone in prose) and a signed URL's signature.
+{
+  const H16 = '0123456789abcdef'.repeat(2), H20 = '0123456789abcdef'.repeat(2) + '01234567';
+  for (const t of [k('123456789', ':AAH', 'dk3Jf8sLq2Zx0PqW9mN4vB7tYc1RgUe5'), k('lin', '_api_', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'), k('PMAK', '-', 'a1B2c3D4e5F6g7H8i9J0k1L2', '-', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7'),
+    k('r8', '_', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s'), k('sbp', '_', H20), k('dapi', H16), k('sntrys', '_', 'eyJpYXQiOjE2OTk2NDMyMDAuMTIzNDU2LCJ1cmwiOiJodHRwczo'), k('SK', H16),
+    k('key', '-', H16), k('sk', '.eyJ', '1IjoiYWNtZSIsImEiOiJjbGt4eHh4eHgifQ', '.', 'dGhpc2lzYW5leGFtcGxl')]) {
+    ok(!red(`pushed ${t} today`).includes(t.slice(4)) && red(`pushed ${t} today`).includes('[redacted]'), `a provider key is redacted by its shape (kept: ${t})`);
+  }
+  for (const u of ['https://acct.blob.core.windows.net/c/f.png?sv=2022-11-02&sig=AbCdEfGh%2BIjKlMnOpQrStUv%3D&se=2026-12-01', 'https://b.s3.amazonaws.com/f?X-Amz-Signature=0123456789abcdef0123456789abcdef&X-Amz-Expires=60',
+    'https://storage.googleapis.com/b/f?X-Goog-Signature=0123456789abcdef0123456789abcdef']) {
+    ok(red(u).includes('=[redacted]') && !/AbCdEfGh|0123456789abcdef0123/.test(red(u)), `a signed URL's signature is redacted (got ${red(u)})`);
+  }
+  ok(['the sig of the mail', 'key-value pairs and key-frames', 'set sig=short here', 'SK1 and sk.example', 'a?sig=abc&x=1', 'ordinary 123456789:ABC prose', 'dapi is the API', 'r8_ is a prefix'].every((s) => red(s) === s), 'prose that only looks like these keys is kept');
+}
+// Review: an Authorization header with no scheme word, redis-cli -a, a cookie header in any case.
+for (const [s, gone] of [['authorization: ' + k('dXNlcjpw', 'YXNzd29yZDEyMzQ1Njc4'), 'dXNlcjpw'], ['"Authorization": "' + k('dXNlcjpw', 'YXNzd29yZDEyMzQ1Njc4') + '"', 'dXNlcjpw'], ['redis-cli -a ' + k('hunter', '2abc'), 'hunter'],
+  ['redis-cli -h db.local -a ' + k('hunter', '2abc') + ' PING', 'hunter'], ['Set-Cookie: sid=' + k('abcdef01', '23456789abcdef0123456789'), 'abcdef01'], ['cookie: session=' + k('abcdef01', '23456789'), 'abcdef01']]) {
+  ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a schemeless Authorization value, redis-cli -a and a cookie are redacted (got ${red(s)})`);
+}
+ok(['the authorization: header is required', 'authorization: granted', 'ls -a src', 'redis-cli -a', 'authorization: Bearer'].every((s) => red(s) === s), 'prose about authorization and other -a flags are kept');
 // Audit #7: a Bearer/Basic/Token value of 32 or more characters is cut with no digit in it too (1 in 400 random ones has none), and
 // a hidden character between the word and the value does not hide it; 31 characters of letters stay prose.
 {

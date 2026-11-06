@@ -136,7 +136,7 @@ for (const { at, zone } of INSTANTS) {
 // a stream x. Each is [the text, the part that must never be written], or [the text] for a near-miss, which
 // redact may keep or cut and no rule follows. A token holds a letter and a digit (several patterns want both).
 const AL = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', SAFE = `${AL}_-`, HEX = '0123456789abcdef', UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-const PREFIXED = [['sk-ant-', SAFE, 30], ['sk_live_', AL, 26], ['rk_test_', AL, 26], ['pk_live_', AL, 24], ['ghp_', AL, 36], ['gho_', AL, 36], ['ghu_', AL, 36], ['ghs_', AL, 36], ['ghr_', AL, 36], ['xoxa-', `${AL}-`, 24], ['xoxp-', `${AL}-`, 24], ['xoxr-', `${AL}-`, 24], ['xoxs-', `${AL}-`, 24], ['shpca_', HEX, 32], ['shppa_', HEX, 32], ['github_pat_', `${AL}_`, 50], ['xoxb-', `${AL}-`, 24], ['xapp-', `${AL}-`, 24],
+const PREFIXED = [['sk-ant-', SAFE, 30], ['sk_live_', AL, 26], ['rk_test_', AL, 26], ['pk_live_', AL, 24], ['ghp_', AL, 36], ['gho_', AL, 36], ['ghu_', AL, 36], ['ghs_', AL, 36], ['ghr_', AL, 36], ['xoxa-', `${AL}-`, 24], ['xoxp-', `${AL}-`, 24], ['xoxr-', `${AL}-`, 24], ['xoxs-', `${AL}-`, 24], ['shpca_', HEX, 32], ['shppa_', HEX, 32], ['github_pat_', `${AL}_`, 50], ['xoxb-', `${AL}-`, 24], ['xapp-', `${AL}-`, 24], ['xoxe-', `${AL}-`, 24], ['pplx-', AL, 48], ['lin_api_', AL, 40], ['r8_', AL, 37], ['sntrys_', SAFE, 40], ['sbp_', HEX, 40], ['dapi', HEX, 32], ['PMAK-', AL, 40],
   ['AKIA', UPPER, 16], ['ASIA', UPPER, 16], ['AIza', SAFE, 35], ['glpat-', SAFE, 22], ['npm_', AL, 36], ['hf_', AL, 34], ['pypi-AgE', SAFE, 30], ['whsec_', AL, 28], ['GOCSPX-', SAFE, 28], ['ya29.', SAFE, 30],
   ['gsk_', AL, 30], ['xai-', AL, 30], ['shpat_', HEX, 32], ['shpss_', HEX, 32], ['dop_v1_', HEX, 64], ['ntn_', AL, 30], ['ATATT', SAFE, 30], ['hvs.', SAFE, 30], ['dckr_pat_', SAFE, 30], ['LS0tLS1CRUdJTi', AL, 30]];
 const shapesOf = (x) => {
@@ -151,10 +151,11 @@ const shapesOf = (x) => {
   const sg = `SG.${t(20, SAFE)}.${t(20, SAFE)}`;
   all.push([`jwt ${jwt}`, jwt], [`mail ${sg}`, sg]);
   const hook = `T${t(8)}/B${t(8)}/${t(24)}`; all.push([`webhook ${['https://hooks.', 'slack.com/services/'].join('')}${hook}`, hook]);
+  const dh = t(40, `${AL}_-`); all.push([`webhook https://discord.com/api/webhooks/123456789012345678/${dh}`, dh]);
   for (const [text, s] of [['Authorization: Bearer @@', t(30, `${AL}._~`)], ['postgres://admin:@@@db.example.com/app', v()], ['curl -u bob:@@ https://example.com', v()], ['deploy --password @@', v()], ['deploy --token @@', v()], ['deploy --client-secret @@', v()], ['Authorization: Basic @@', t(30, `${AL}._~`)], ['Authorization: Token @@', t(30, `${AL}._~`)], ['az login -u me -p @@', v()], ['sshpass -p @@ ssh host', v()], ['twine upload -p @@ dist', v()], ['mysqldump -u root -p@@ app', v()], ['mariadb -u root -p@@ app', v()], ['passphrase: @@', v()], ['pwd=@@', v()], ['pass: @@', v()], ['docker login -u me -p @@', v()],
     ['aws configure set aws_secret_access_key @@', v()], ['[Environment]::SetEnvironmentVariable("MY_API_TOKEN", "@@", "User")', v()], ['htpasswd -b .htpasswd bob @@', v()], ['export MY_API_KEY=@@', v()], ['setx DB_PASSWORD @@', v()],
     ['gh secret set DEPLOY --body @@', v()], ['//registry.npmjs.org/:_authToken=@@', t(4)], ['mysql -u root -p@@ app', v()], ['my password is @@', v()], ['the api key is @@', v()], ['password @@', v()],
-    ['DB_PASSWORD: @@', v()], ['clientSecret=@@', v()], ['client-key-data: @@', v()], ['token=@@', v()],
+    ['DB_PASSWORD: @@', v()], ['clientSecret=@@', v()], ['client-key-data: @@', v()], ['token=@@', v()], ['Cookie: sid=@@; theme=dark', v()], ['curl -b "sid=@@" https://example.com', v()],
     // 1.2.5 (e2e audit): a quoted value, a YAML key that names a secret, PowerShell's $env:, a .env line, an Azure key.
     ['deploy --password "@@"', v()], ["cli login --token '@@'", v()], ['docker login -u me -p "@@" registry', v()], ['curl -u "bob:@@" https://example.com', v()],
     ['aws configure set aws_secret_access_key "@@"', v()], ['secret:\n  password: @@', v()], ['passwords:\n  admin: x1\n  root: @@', v()], ['tokens:\n  github: @@', t(24)],

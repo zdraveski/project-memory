@@ -342,7 +342,7 @@ const SECRETS = [
   // sk-... (Anthropic, OpenAI); sk_live_, pk_test_, rk_live_ (Stripe).
   [/\b(?:sk|rk|pk)(?:-|_(?:live|test)_)[A-Za-z0-9_-]{20,}/g, '[redacted]'],
   [/\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{40,}/g, '[redacted]'],
-  [/\bxox[abprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}/g, '[redacted]'],
+  [/\bxox[abeprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}/g, '[redacted]'],
   // AWS keys, long-lived and STS.
   [/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, '[redacted]'],
   [/\bAIza[0-9A-Za-z_-]{35}/g, '[redacted]'],
@@ -356,8 +356,18 @@ const SECRETS = [
   // PyPI, Stripe webhooks, SendGrid, Google OAuth, Groq, xAI, Shopify,
   // DigitalOcean, Notion, Atlassian, Vault, Docker; and a PEM key in base64
   // (kubeconfig's client-key-data).
-  [/\bpypi-AgE[A-Za-z0-9_-]{20,}|\bwhsec_[A-Za-z0-9+/=]{20,}|\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|\bGOCSPX-[A-Za-z0-9_-]{20,}|\bya29\.[A-Za-z0-9_-]{20,}|\bgsk_[A-Za-z0-9]{20,}|\bxai-[A-Za-z0-9]{20,}|\bshp(?:at|ca|pa|ss)_[A-Fa-f0-9]{32}|\bdop_v1_[a-f0-9]{64}|\bntn_[A-Za-z0-9]{20,}|\bATATT[A-Za-z0-9_=-]{20,}|\bhvs\.[A-Za-z0-9_-]{20,}|\bdckr_pat_[A-Za-z0-9_-]{20,}|LS0tLS1CRUdJTi[A-Za-z0-9+/=]{20,}/g, '[redacted]'],
+  [/\bpypi-AgE[A-Za-z0-9_-]{20,}|\bwhsec_[A-Za-z0-9+/=]{20,}|\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|\bGOCSPX-[A-Za-z0-9_-]{20,}|\bya29\.[A-Za-z0-9_-]{20,}|\bgsk_[A-Za-z0-9]{20,}|\bxai-[A-Za-z0-9]{20,}|\bshp(?:at|ca|pa|ss)_[A-Fa-f0-9]{32}|\bdop_v1_[a-f0-9]{64}|\bntn_[A-Za-z0-9]{20,}|\bATATT[A-Za-z0-9_=-]{20,}|\bhvs\.[A-Za-z0-9_-]{20,}|\bdckr_pat_[A-Za-z0-9_-]{20,}|\bpplx-[A-Za-z0-9]{40,}|\b\d{8,10}:AA[\w-]{33}\b|\blin_api_[A-Za-z0-9]{30,}|\bPMAK-[A-Za-z0-9-]{40,}|\br8_[A-Za-z0-9]{30,}|\bsbp_[a-f0-9]{40}\b|\bdapi[a-f0-9]{32}\b|\bsntrys_[A-Za-z0-9+/=_-]{20,}|\bSK[0-9a-f]{32}\b|\bkey-[0-9a-f]{32}\b|\bsk\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|LS0tLS1CRUdJTi[A-Za-z0-9+/=]{20,}/g, '[redacted]'],
   [/(hooks\.slack\.com\/services\/)[A-Za-z0-9/]+/g, '$1[redacted]'],
+  [/(discord(?:app)?\.com\/api\/webhooks\/\d{1,25}\/)[\w-]+/g, '$1[redacted]'],
+  // A session cookie logs anyone in: a Cookie / Set-Cookie header (name=value inside it), and curl's -b / --cookie value (not a jar file).
+  // An Authorization value with no scheme word: 20+ characters with a digit. And redis-cli's -a password.
+  [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?)(?=[A-Za-z0-9._~+/=-]{0,200}\d)[A-Za-z0-9._~+/=-]{20,}/gi, '$1[redacted]'],
+  [/(\bredis-cli\b[^\n|;&]{0,200}?\s-a[ \t]+["']?)[^\s"']+/g, '$1[redacted]'],
+  // The curl rule first: the header rule reads to the next quote, which may be the one that opens a -b value.
+  [/(\bcurl\b[^\n|;&]{0,300}?\s(?:-b|--cookie)[ =]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (v.includes('=') ? `${pre}[redacted]` : m)],
+  [/((?:^|[\s'"])(?:set-)?cookie["']?[ \t]*:[ \t]*["']?)(?=[^'"\n=]{1,100}=)[^'"\n]{1,4000}/gim, '$1[redacted]'],
+  // A signed URL's signature is the credential (Azure SAS, S3, GCS).
+  [/([?&](?:sig|X-Amz-Signature|X-Goog-Signature)=)[^&\s]{16,}/gi, '$1[redacted]'],
   // The password in a URL: postgres://user:it@host, redis://:it@host (no
   // user), one with an @ in it (to the last one). Not a query: a port
   // before `?user=me@x` was cut as a password.
@@ -416,11 +426,11 @@ const SECRETS = [
   // secret (yamlSecret): read on to any indented line, the siblings after it were cut (GitHub Actions' runs-on, Helm's username),
   // and so were names and settings under it (OpenAPI's `type: apiKey`, design tokens) (review, 2026-11-01). A child a line, each
   // line read once: linear.
-  [/^([ \t]*)((?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?[ \t]*:[ \t]*\r?\n)((?:\1[ \t]+[\w.-]{1,40}[ \t]*:[^\n]{0,500}(?:\n|$))+)/gim,
+  [/^([ \t]*)((?:password|passwd|passphrase|secret|(token)|(?:api|account|private|secret)[ _-]?key|access[ _-]key)s?[ \t]*:[ \t]*\r?\n)((?:\1[ \t]+[\w.-]{1,40}[ \t]*:[^\n]{0,500}(?:\n|$))+)/gim,
     (m, ind, head, tok, block) => ind + head + block.replace(/^([ \t]+[\w.-]{1,40}[ \t]*:[ \t]*["']?)([^\s"',;]{6,})/gm, (x, pre, v) => (yamlSecret(v, tok) && !code(v) && !arg(v) ? `${pre}[redacted]` : x))],
   // The same in JSON: each string in an object under a key that names a secret (`"secrets": {"db": "…"}`), judged as a YAML child
   // is (review, 2026-11-01). An object of one level only, read to its first `}`, bounded.
-  [/("(?:password|passwd|passphrase|secret|(token)|(?:api|account|private)[_-]?key)s?"[ \t]*:[ \t]*\{)([^{}]{0,2000})\}/gi,
+  [/("(?:password|passwd|passphrase|secret|(token)|(?:api|account|private|secret)[ _-]?key|access[ _-]key)s?"[ \t]*:[ \t]*\{)([^{}]{0,2000})\}/gi,
     (m, head, tok, body) => `${head}${body.replace(/("[\w.-]{1,40}"[ \t]*:[ \t]*")([^"\n]{6,200})(?=")/g, (x, pre, v) => (yamlSecret(v, tok) && !code(v) && !arg(v) ? `${pre}[redacted]` : x))}}`],
   // A value is never a key (a name and a colon with more after it: blanks then a value on its line, or a line break then an
   // indented child): taken for the parent's value, the child after it was kept (`secret:\n  password: X`, `secret: password: X`;
@@ -429,7 +439,7 @@ const SECRETS = [
   // A quoted value goes whole, blanks and all, as in a command; it is never a key. Unquoted, a value ends at its first blank
   // (`password: p@ss w0rd` keeps all of it: `p@ss` is under 6), since prose follows a value as often as a second word does.
   // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private)[_-]?key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)((?<=")[^"\n]{6,200}(?=")|(?<=')[^'\n]{6,200}(?=')|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))[^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret)[ _-]?key|access[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=]\s{0,20}["']?)((?<=")[^"\n]{6,200}(?=")|(?<=')[^'\n]{6,200}(?=')|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))[^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
   [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
 ];
