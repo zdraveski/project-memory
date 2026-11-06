@@ -582,6 +582,10 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(front('---\n---\ntier: archive\n').tier === '', 'an empty frontmatter ends at once: the body is no frontmatter');
   ok(front('---\nname: abc').name === 'abc', 'an unclosed frontmatter is read to its last character');
   ok(front('----\nsome text\ntier: archive\ntype: feedback\n').tier === '' && front('----\ntype: feedback\n').type === '', 'a note that opens with ---- has no frontmatter: its body cannot archive it');
+  ok(front('---\ndescription: |\n  a\n---x\n  b\ntier: archive\n---\n').tier === 'archive', 'a ---x line inside the frontmatter does not close it');
+  ok(front('---\ndescription: |\n  a\n----\ntier: archive\n---\n').tier === 'archive', 'a ---- line inside the frontmatter does not close it');
+  ok(front('---\r\ntier: hot\r\n---  \r\ntier: archive\r\n').tier === 'hot', 'a CRLF closing line, trailing blanks too, closes it');
+  ok(front('---\ndescription: |\n  how to\n  tier: archive\n---\n').tier === '', 'a tier: line inside a block description is text, not the tier');
   ok(pointerLine('x.md', 'hello') === '- [x](x.md) — hello', 'a pointer line keeps the description from its first character');
 }
 

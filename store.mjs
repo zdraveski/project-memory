@@ -194,14 +194,16 @@ export function front(text) {
   // The frontmatter only: a note that quotes `tier: archive` in its body (one
   // about the format) is not archived by it. Unclosed, it is all frontmatter.
   const t = text.replace(/^\uFEFF/, '');
-  const end = t.indexOf('\n---', 3);
-  const head = !/^---[ \t]*\r?\n/.test(t) ? '' : end === -1 ? t : t.slice(0, end);
+  const end = t.slice(3).search(/\n---[ \t]*(?:\r?\n|$)/);   // a line of exactly ---, not ---- or ---x
+  const head = !/^---[ \t]*\r?\n/.test(t) ? '' : end === -1 ? t : t.slice(0, end + 3);
   // A value stays on its line: an emptied `superseded-by:` took the next line
   // as its value. `.` stops before a \r, for a file saved CRLF, and get()
   // trims: a lazy value before `[ \t\r]*$` was quadratic, and a description of
   // 16,000 spaces cost every tier pass 1.4 s. Nor two runs of blanks side by
   // side below (`[ \t]+-?[ \t]*`, `[ \t]+#`), for the same reason.
-  const get = (re) => ((head.match(re) || [])[1] || '').trim();
+  const get = (re, from = head) => ((from.match(re) || [])[1] || '').trim();
+  // The keys outside a `description: |` block: its text may quote `tier: archive`.
+  const keys = head.replace(/^description:[ \t]*[>|][-+]?[ \t\r]*\n(?:[ \t]+\S.*\r?(?:\n|$))+/m, '');
   // A YAML block value (`description: >-`, a list under `superseded-by:`):
   // its indented lines. Read as the line itself, a hook said `>-`. CRLF too:
   // `.` stops at the \r, and only the first line was read (review, 2026-10-30).
@@ -229,8 +231,8 @@ export function front(text) {
   return {
     name: scalar(get(/^name:[ \t]*(.*)$/m)),
     desc: /^[>|][-+]?$/.test(desc) ? block('description').join(' ') : scalar(desc),
-    type: get(/^[ \t]*type:[ \t]*["']?(\w+)/m).toLowerCase(),
-    tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)/m).toLowerCase(),
+    type: get(/^[ \t]*type:[ \t]*["']?(\w+)/m, keys).toLowerCase(),
+    tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)/m, keys).toLowerCase(),
     superseded,
     // A date alone is that day here: read as UTC midnight, it printed as the
     // day before anywhere west of Greenwich.
