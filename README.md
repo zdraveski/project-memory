@@ -259,3 +259,5 @@ context-mode and two more is in [Comparison](docs/comparison.md).
   A security or privacy problem: report it privately, as
   [SECURITY.md](SECURITY.md) says. Where to ask what: [Support](SUPPORT.md).
 - License: [MIT](LICENSE). Free to use, change and share.
+- From the same author: [claude-juice](https://github.com/zdraveski/claude-juice)
+  shows your Claude Code usage limits as batteries in the status line.
