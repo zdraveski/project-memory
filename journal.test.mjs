@@ -1347,6 +1347,10 @@ mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(pr
   ok(keys(['QUOKKA', 'plan']) === 'uv-1,uv-2' && keys(['quokka', 'drafted']) === 'uv-1' && keys(['okapi']) === '',
     `unwritten() by words finds each turn holding all of them, its reply too, in any case (got ${keys(['QUOKKA', 'plan'])}; ${keys(['quokka', 'drafted'])})`);
   ok(keys(['"plan"']) === 'uv-1' && keys(['c:\\zoo']) === 'uv-1', `a word with a quote or a backslash, which the transcript escapes, is found too (got ${keys(['"plan"'])}; ${keys(['c:\\zoo'])})`);
+  // A conversation read in parts cuts them at a turn's start: a prompt in one part and its reply in the next still hold both words.
+  const part = Buffer.byteLength(rec('assistant', 'uv-1a', '2026-10-27T09:00:30Z', 'drafted it')) + 10;
+  ok(unwritten(d, [], ['quokka', 'drafted'], part).map((e) => e.key).join() === 'uv-1' && unwritten(d, [], ['quokka'], part).map((e) => e.key).join() === 'uv-1,uv-2',
+    `a look by words in parts finds a turn cut between its prompt and its reply (got ${unwritten(d, [], ['quokka', 'drafted'], part).map((e) => e.key)})`);
   {
     // Not a turn of a conversation the journal never takes: marked private (typed, or listed) or held with auto memory off. Listed
     // by a forget, such a turn read as one the journal had lost, though no entry of it ever was.
