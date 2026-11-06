@@ -1539,6 +1539,23 @@ const cut = plainCode.filter((s) => red(s) !== s);
 ok(!cut.length, `code and prose that only look like secrets are kept (cut: ${cut.join(' | ')})`);
 // A token by its prefix alone, in prose: no word before it says what it is.
 ok(!red(`pushed it with ${k('gh', 'p_', 'abcdefghijklmnopqrstuvwxyz0123456789')} today`).includes('ghp_'), 'a GitHub token in plain prose is redacted by its prefix');
+// One sample per key type in the redaction list (audit #8): a broken or deleted rule must fail here, not only in the fuzz run.
+// Split with k() so no secret scanner takes the test file for a leak.
+const A36 = 'abcdefghijklmnopqrstuvwxyz0123456789', H64 = '0123456789abcdef'.repeat(4);
+const byPrefix = [
+  k('eyJ', 'hbGciOiJIUzI1NiJ9', '.', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', '.', 'dBjftJeZ4CVPmB92K27uhbUJU1p1r'),
+  k('AKIA', 'IOSFODNN7EXAMPLE'), k('AIza', 'SyA-1234567890abcdefghijklmnopqrstuv'),
+  k('xoxb', '-', '123456789012-abcdefghij'), k('xapp', '-', '1-A0123456789-abcdefghij'),
+  k('gho', '_', A36), k('ghu', '_', A36), k('ghs', '_', A36), k('ghr', '_', A36), k('github', '_pat_', A36 + 'ABCDEFG'),
+  k('glpat', '-', 'abcdefghij0123456789'), k('npm', '_', A36),
+  k('hf', '_', A36), k('sk', '_live_', 'abcdefghij0123456789'), k('rk', '_live_', 'abcdefghij0123456789'), k('pk', '_live_', 'abcdefghij0123456789'),
+  k('pypi', '-AgE', 'IcHlwaS5vcmcCJGFhYWFh'), k('GOCSPX', '-', 'abcdefghij0123456789'), k('ya29', '.', 'abcdefghij0123456789'),
+  k('gsk', '_', 'abcdefghij0123456789'), k('xai', '-', 'abcdefghij0123456789'),
+  k('shp', 'at_', 'a1b2c3d4'.repeat(4)), k('shp', 'ca_', 'a1b2c3d4'.repeat(4)), k('shp', 'pa_', 'a1b2c3d4'.repeat(4)), k('shp', 'ss_', 'a1b2c3d4'.repeat(4)),
+  k('dop', '_v1_', H64), k('ntn', '_', 'abcdefghij0123456789'), k('ATATT', 'abcdefghij0123456789'), k('hvs', '.', 'abcdefghij0123456789'),
+  k('dckr', '_pat_', 'abcdefghij0123456789'), k('LS0tLS1CRUdJTi', 'BQUklWQVRFIEtFWS0tLS0t')];
+const notCut = byPrefix.filter((t) => red(`see ${t} end`).includes(t.slice(4)) || !red(`see ${t} end`).includes('[redacted]'));
+ok(!notCut.length, `each key type in the list is redacted by its prefix (kept: ${notCut.join(' | ')})`);
 // Digit-free secrets that only look like code are secrets all the same: a
 // looser "this is code" rule let every one of these through.
 const wordy = ['password: Pa$$word', 'DB_PASSWORD=correct_horse_battery_staple', 'JWT_SECRET=my_jwt_secret_value', 'api_key=abcdef.ghijkl',
