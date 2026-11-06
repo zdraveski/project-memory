@@ -204,7 +204,8 @@ function inflight(payload, s) {
     const { a, b } = sectionOf(doc);
     if (a === -1) return false;
     const out = doc.slice(0, b).trimEnd() + '\n' + note(payload, s) + '\n' + doc.slice(b);
-    return replaceIfUnchanged(file, doc, out) === true;
+    // 'changed': another write landed first and is kept (false from it: the note is already there).
+    return replaceIfUnchanged(file, doc, out) === 'conflict' ? 'changed' : true;
   });
   return r ?? 'busy';
 }
@@ -273,6 +274,7 @@ export function gate(payload) {
     const n = inflight(payload, s);
     if (n === 'private') return { code: 0, why: `mid-turn at ${pct}%, over the ceiling: a private conversation, nothing written` };
     if (n === 'busy') failed.push(`note: ${held}`);
+    else if (n === 'changed') failed.push('note: the handoff changed meanwhile, so the note was not written');
     else if (!n) failed.push('note: no handoff.md with markers in the store');
   } catch (e) { failed.push(`note: ${e.message}`); }
   return { code: 0, why: `mid-turn at ${pct}%, over the ceiling: ` + (failed.length ? failed.join('; ') : 'handoff and in-flight note written') };

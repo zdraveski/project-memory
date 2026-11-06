@@ -517,6 +517,19 @@ write(user('build it'), asst('running', 965_000, 'tool_use'));
 const gw = said();
 ok(/handoff and in-flight note written/.test(gw.stderr) && readFileSync(join(dir, 'handoff.md'), 'utf8').startsWith('---\nname: handoff'), `the note is written into the file whole, and reported (got ${gw.stderr})`);
 
+// The handoff changed while the note was being written (another hook's write lands first): the gate says that, not "no markers".
+{
+  const pre = join(tempDir('cg-conflict-'), 'conflict.cjs');
+  writeFileSync(pre, `const fs = require('node:fs'), write = fs.writeFileSync;
+fs.writeFileSync = (p, d, ...a) => { if (/handoff\\.md\\.tmp\\d+$/.test(String(p)) && String(d).includes('cut mid-turn')) fs.appendFileSync(${JSON.stringify(join(dir, 'handoff.md'))}, 'another hook was here\\n'); return write(p, d, ...a); };
+require('node:module').syncBuiltinESMExports();
+`);
+  emptyHandoff();
+  write(user('build it'), asst('running', 965_000, 'tool_use'));
+  const gc = spawnSync(process.execPath, ['--require', pre, GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
+  ok(gc.status === 0 && /note: the handoff changed meanwhile/.test(gc.stderr) && !/no handoff\.md with markers/.test(gc.stderr) && !/cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), `a handoff changed meanwhile is named as that, and the other write is kept (got ${gc.status}: ${gc.stderr})`);
+}
+
 // A transcript that is gone: nothing to read, nothing deferred, said as such.
 const { recover } = await import('./compact-gate.mjs');
 const gone2 = join(dir, 'gone.jsonl');
