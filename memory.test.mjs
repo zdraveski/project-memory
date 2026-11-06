@@ -1505,6 +1505,9 @@ if (!quick) {
   writeFileSync(join(dir, 'journal', '2026-10-27.md'), '# Journal 2026-10-27\nedited\n');
   tier();
   // The snapshots ignore the handoff, but a repository from before that rule holds it: forced in here.
+  // On a crowded Windows runner the snapshot's git can pass its 30 s timeout: the kill reaches git's wrapper, and the
+  // git under it still holds index.lock for a while. Wait it out (up to 60 s) before this test's own git writes.
+  for (const t0 = Date.now(); existsSync(join(root, '.git', 'index.lock')) && Date.now() - t0 < 60_000;) await new Promise((r) => setTimeout(r, 200));
   const forced = [['add', '-f', 'C--mem-cli/memory/handoff.md'], ['commit', '-m', 'handoff from an older version', '--', 'C--mem-cli/memory/handoff.md']]
     .map((g) => spawnSync('git', gitArgs('-c', 'user.name=t', '-c', 'user.email=t@t', ...g), { encoding: 'utf8' }));
   ok(forced.every((f) => f.status === 0), `the handoff is forced into the history (got ${forced.map((f) => f.stderr).join('')})`);
