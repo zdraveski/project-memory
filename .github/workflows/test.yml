@@ -6,7 +6,7 @@ on:
     branches: [master]
   pull_request:
 
-# Read the code, nothing more, whatever the repository's default; actionlint's download is a public release.
+# Read the code, nothing more, whatever the repository's default; actionlint's and zizmor's downloads are public releases.
 permissions:
   contents: read
 
@@ -64,3 +64,20 @@ jobs:
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint_1.7.12_linux_amd64.tar.gz" | sha256sum -c -
           tar xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
           ./actionlint -color
+
+  # The workflows' security, which actionlint does not look at: template injection, risky triggers, leaked credentials.
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Pinned the same way; the token lets it check the actions used against GitHub's advisories.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.32.0 -R zizmorcore/zizmor -p zizmor-x86_64-unknown-linux-gnu.tar.gz
+          echo "bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b  zizmor-x86_64-unknown-linux-gnu.tar.gz" | sha256sum -c -
+          tar xzf zizmor-x86_64-unknown-linux-gnu.tar.gz zizmor
+          ./zizmor --format=github .github/workflows
