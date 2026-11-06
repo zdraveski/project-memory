@@ -1585,6 +1585,12 @@ const byPrefix = [
   k('dckr', '_pat_', 'abcdefghij0123456789'), k('LS0tLS1CRUdJTi', 'BQUklWQVRFIEtFWS0tLS0t')];
 const notCut = byPrefix.filter((t) => red(`see ${t} end`).includes(t.slice(4)) || !red(`see ${t} end`).includes('[redacted]'));
 ok(!notCut.length, `each key type in the list is redacted by its prefix (kept: ${notCut.join(' | ')})`);
+// 1.2.6 audit #2: Slack xoxe-, Perplexity pplx- and a Discord webhook, in plain prose with no word before them that names a secret.
+for (const [s, gone] of [[`use ${k('xoxe', '-1-', 'My0xLTEyMzQ1Njc4OTAxMjM0NTY3ODkw')} for the bot`, 'My0xLTEy'], [`my key is ${k('pplx', '-', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0uX4')} ok`, 'a1B2c3D4'],
+  [`post to https://discord.com/api/webhooks/123456789012345678/${k('AbCdEfGh', 'IjKlMnOp_qrstUVWX-yz0123456789')} please`, 'AbCdEfGh'],
+  [`webhook_url: https://discordapp.com/api/webhooks/123456789012345678/${k('AbCdEfGh', 'IjKlMnOp_qrstUVWX-yz0123456789')}`, 'AbCdEfGh']]) {
+  ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `xoxe, pplx and a Discord webhook are redacted (got ${red(s)})`);
+}
 // Audit #7: a Bearer/Basic/Token value of 32 or more characters is cut with no digit in it too (1 in 400 random ones has none), and
 // a hidden character between the word and the value does not hide it; 31 characters of letters stay prose.
 {
