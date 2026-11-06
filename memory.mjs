@@ -31,7 +31,7 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd } from './store.mjs';
 import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
@@ -159,7 +159,7 @@ export function memories(dir) {
   // One listing for the store: read once a line, a 5 MB index hung status for good.
   const opens = opener(dir, files);
   const hot = new Set([...new Set(targets(read(join(dir, 'MEMORY.md'))))].map(opens)), cold = new Set([...new Set(targets(read(join(dir, ARCHIVE))))].map(opens));
-  return files.filter((f) => f.endsWith('.md') && !f.startsWith('MEMORY')).flatMap((file) => {
+  return files.filter((f) => f.endsWith('.md') && !isIndex(f)).flatMap((file) => {
     const path = join(dir, file);
     const text = read(path);
     if (text === null) return [];
@@ -330,7 +330,7 @@ function recent(dir) {
     const [st, p] = l.trim().split('\t');
     const f = p && p.split('/').pop();
     // Nor a journal day: every finished one was listed as a memory added.
-    if (!f || !f.endsWith('.md') || f === 'handoff.md' || f.startsWith('MEMORY') || p.includes('/journal/')) continue;
+    if (!f || !f.endsWith('.md') || f === 'handoff.md' || isIndex(f) || p.includes('/journal/')) continue;
     if (!last.has(f)) last.set(f, st);                 // git lists the newest first
     if (st === 'A') born.add(f);
   }
@@ -444,7 +444,7 @@ export function history(dirs, file, everywhere = false, max = 30) {
       }
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
-      const moved = !isShared(dir) && !f.startsWith('MEMORY') && existsSync(join(sharedStore(), f)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
+      const moved = !isShared(dir) && !isIndex(f) && existsSync(join(sharedStore(), f)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
       if (lines.length) return { ok: true, lines: [join(dir, f), ...lines.slice(0, max), ...(lines.length > max ? [`  and ${lines.length - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, f).map((p) => `"${p}"`).join(' ')}`] };
     }
   } catch (e) { return no(`no snapshots to read: ${gitWhy(e)}`); }
@@ -462,7 +462,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
   if (existsSync(path) && !force) return no(`${path} exists; restore --force replaces it with the snapshot`);
   // Deleted here by a promote: brought back, it would be in both stores, loaded twice, drifting apart.
   // Not an index: every store has its own, and a deleted one read as promoted.
-  if (!isShared(dir) && !file.startsWith('MEMORY') && existsSync(join(sharedStore(), file)) && !force) return no(`${file} was promoted: it is in ${sharedStore()}; restore --force brings a second copy back here`);
+  if (!isShared(dir) && !isIndex(file) && existsSync(join(sharedStore(), file)) && !force) return no(`${file} was promoted: it is in ${sharedStore()}; restore --force brings a second copy back here`);
   // A commit's name, or one counted back from it (abc123^, HEAD~2): anything
   // else reached git as an option, and `--format=...` wrote git's own output
   // into the note.
@@ -496,7 +496,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
   }
   if (failure) return no(failure);
   let line = null;
-  if (!file.startsWith('MEMORY')) {
+  if (!isIndex(file)) {
     for (const idx of ['MEMORY.md', ARCHIVE]) {
       const t = tracked(dir, idx).map((at) => { try { return git('cat-file', '-p', `${from}:${at}`); } catch { return ''; } }).join('\n');
       line = t.split(/\r?\n/).find((l) => target(l) === file)?.replace(OVERFLOW, '') ?? null;
@@ -516,7 +516,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
     const w = put(path, cur, text);
     if (failed(w)) return `${path} could not be written (${w.slice(8)}); nothing restored`;
     if (w === 'conflict') return `${path} changed meanwhile; nothing written`;
-    if (file.startsWith('MEMORY')) return `restored ${path} from ${from}${kept}`;
+    if (isIndex(file)) return `restored ${path} from ${from}${kept}`;
     const idx = join(dir, 'MEMORY.md'), main = raw(idx);
     if ([main, raw(join(dir, ARCHIVE))].some((t) => targets(t).some((x) => x === file || same(join(dir, x), path)))) return `restored ${path} from ${from}; its index line is still there${kept}`;
     if (!line) return `restored ${path} from ${from}; no index line at that revision: the next turn's tiering gives it one${kept}`;
@@ -536,7 +536,7 @@ export function promote(dir, file) {
   const to = sharedStore(), src = join(dir, file), dst = join(to, file);
   if (isShared(dir)) return no(`${file} is in the shared store already`);
   // Nor the journal's pointer: promoted, the next Stop wrote it again, and it was in both stores (audit C-1).
-  if (file.startsWith('MEMORY') || file === 'handoff.md' || file === 'journal.md') return no('only a memory is shared, not an index, the handoff or the journal');
+  if (isIndex(file) || file === 'handoff.md' || file === 'journal.md') return no('only a memory is shared, not an index, the handoff or the journal');
   if (!existsSync(src)) return no(`no ${src}`);
   if (existsSync(dst)) return no(`the shared store has a ${file} already: rename one, or merge them by hand`);
   mkdirSync(to, { recursive: true });

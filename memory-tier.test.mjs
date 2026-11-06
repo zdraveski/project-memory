@@ -116,6 +116,10 @@ const arc2 = readFileSync(join(dir, 'MEMORY-archive.md'), 'utf8');
 ok(/^- \[lost note\]\(lost-note\.md\) — desc of lost-note$/m.test(arc2), 'an orphan is recovered into the archive');
 ok(/lost-but-pinned\.md/.test(main2), 'a pinned orphan is recovered hot, in the same pass');
 ok(!/lost-note\.md/.test(main2), 'recovered prose is machine-written and never billed at session start');
+// Only the two index files are skipped, not every name that starts with MEMORY.
+memory('MEMORY-leak-investigation', { days: 0 });
+await run();
+ok(/\(MEMORY-leak-investigation\.md\)/.test(readFileSync(join(dir, 'MEMORY-archive.md'), 'utf8')), 'a note named MEMORY-something.md is recovered like any other');
 
 // A file written a minute ago with no pointer is its writer's, not an orphan:
 // the model writes the memory, then points at it. Recovering it now would put

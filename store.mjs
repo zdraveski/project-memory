@@ -142,6 +142,8 @@ export const budgetOf = (dir) => (isShared(dir) ? SHARED_BUDGET : BUDGET);
 // startup, and `../../big.bin` was read whole by every Stop.
 export const POINTER = /^- \[[^\]]*\]\(([^)/\\:]+)\)/;
 export const ARCHIVE = 'MEMORY-archive.md';
+// The two index files the plugin writes; any other MEMORY-*.md is a note.
+export const isIndex = (f) => f === 'MEMORY.md' || f === ARCHIVE;
 // A line for a memory no index names, from its file name and description. One
 // builder for tiering and promote: promote's kept the brackets of
 // `[draft] plan.md`, and POINTER never read its line back. The hook is the
