@@ -781,7 +781,7 @@ export function main(given) {
   } else if (cmd === 'forget') {
     // A blank term is in every entry: `forget "" --yes` would empty the journal.
     const conversation = opt('--conversation'), yes = rest.includes('--yes'), terms = args.filter((a) => a.trim());
-    const named = rest.flatMap((a, i) => (a === '--key' && i + 1 < rest.length ? [rest[i + 1]] : []));
+    const named = rest.flatMap((a, i) => (a === '--key' ? [rest[i + 1]] : []));
     // A key no entry here has is named, never skipped: a confirmed key of another
     // project's entry went unsaid, with exit 0 (review, 2026-10-29).
     const unread = [], stored = named.length ? entries([here], { failed: unread }) : [];
