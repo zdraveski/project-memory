@@ -746,15 +746,17 @@ export function main(given) {
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
     const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (t.length > 2 ? t : alone(t).source)).join('|'), 'giu');
+    // NFC, as the scoring reads it: a decomposed "é" scored the entry, and its stretch must show too.
+    const nfc = (v) => clip(v, Infinity).normalize('NFC');
     const entry = (h, also) => {
-      const hold = [['Answered', h.answered], ['Changed', h.changed.join(', ')], ['Ran', h.ran.join(' · ')]].filter(([, v]) => clip(v, Infinity).search(find) !== -1);
-      const ds = [h, ...also].map((x) => x.day).sort(), at = clip(h.answered, Infinity).search(find);
+      const hold = [['Answered', h.answered], ['Changed', h.changed.join(', ')], ['Ran', h.ran.join(' · ')]].filter(([, v]) => nfc(v).search(find) !== -1);
+      const ds = [h, ...also].map((x) => x.day).sort(), at = nfc(h.answered).search(find);
       // Redacted before it is cut: a stretch must not cut a secret in two. The
       // copies' keys are named: a forget of the one shown left them (review).
       // No Result when the reply's stretch already starts at its start.
       return [`${String(h.score).padStart(3)}  journal   ${head(h)}`, `     key: ${clip(h.key, Infinity)}`, `     Asked: ${clip(h.asked, HIT_ASK)}`,
         ...(h.answered && !(at !== -1 && at <= HIT_SPAN) ? [`     Result: ${result(h.answered)}`] : []),
-        ...hold.map(([k, v]) => `     ${k}: ${around(clip(v, Infinity), find, Math.floor(HIT_MORE / hold.length))}`),
+        ...hold.map(([k, v]) => `     ${k}: ${around(nfc(v), find, Math.floor(HIT_MORE / hold.length))}`),
         ...(also.length ? [`     ${also.length} more like this, ${ds[0]}..${ds.at(-1)}: ${more(also.map((x) => clip(x.key, Infinity)), 5)}; --same takes them all`] : [])];
     };
     const wider = rest.includes('--all') ? '' : '; --all searches every project';
