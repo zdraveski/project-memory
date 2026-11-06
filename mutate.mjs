@@ -983,7 +983,7 @@ export const suites = {
     'C-8 history by the name as typed': ['      const f = named(dir, file);\n', '      const f = file;\n'],
     'C-8 .MD taken for part of the name': ["replace(/(\\.md)?$/i, '.md')", "replace(/(\\.md)?$/, '.md')"],
     'C-8 a name the disk would not open never picked from its listing': ['} catch { return pick(dir, file, names); }', '} catch { return file; }'],
-    'H-F10 two quick replies read as hooks wired twice': [' && !r.h === !p.h && r.m === p.m &&', ' && !r.h === !p.h &&'],
+    'H-F10 two quick replies read as hooks wired twice': [' && !r.h === !p.h && (!r.m || !p.m || r.m === p.m) &&', ' && !r.h === !p.h &&'],
     "H-F7 a .stop-ran that won't stat stops doctor": ["let when; try { when = `last ran ${local(statSync(ran).mtime)}`; } catch (e) { when = `has run, but ${ran} could not be read (${e.code || e.message}), so not when`; }", 'let when = `last ran ${local(statSync(ran).mtime)}`;'],
     'a look by words takes no unwritten turn': ['terms.length && !named.length ? unwritten(here, [], terms)', 'false ? unwritten(here, [], terms)'],
     'a look by words finds a forgotten turn again': ['unwritten(here, [], terms).filter((e) => !already.has(e.key))', 'unwritten(here, [], terms)'],
