@@ -778,7 +778,8 @@ export function main(given) {
     // By words alone, every such turn holding them: a look by words missed one, and the next reply wrote it (1.2.5).
     const late = unread.length ? [] : terms.length && !named.length ? unwritten(here, [], terms).filter((e) => !already.has(e.key)) : unwritten(here, named.filter((k) => none(k) && !already.has(k)));
     stored.push(...late);
-    const before = named.filter((k) => none(k) && already.has(k)), again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
+    const before = named.filter((k) => none(k) && already.has(k));
+    let again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
     const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => (unread.length ? `no day of ${here} that could be read has the key ${k}: it may be in one that could not, so nothing was removed for it`
       : `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`));
     // --same: every entry asking what a keyed one asked, the copies a hit counts.
@@ -803,7 +804,12 @@ export function main(given) {
       // still go from handoff.md, by the conversation and minute the list keeps. Said "already forgotten" alone, they stayed (R73).
       if (yes && before.length) {
         const at = new Set(listed.filter(([k, t, m]) => t && m && before.includes(k)).map(([, t, m]) => `${tag(basename(t))} ${m}`));
-        try { if (withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`))) === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true }); }
+        try {
+          const w = withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`)));
+          if (w === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true });
+          // The retry did something: said, not "nothing to remove" alone.
+          else if (w === true) again = before.map((k) => `key ${k} is already forgotten; nothing to remove from the journal, but its exchange went from handoff.md`);
+        }
         catch (e) { failed.push({ path: join(here, 'handoff.md'), code: e.code || e.message, write: true }); }
       }
       const m = forget(here, terms, o).matched, byRange = !terms.length && !named.length && !conversation;

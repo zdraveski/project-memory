@@ -1224,7 +1224,7 @@ if (!quick) {
   ok(r.value === 1 && r.out.includes(`could not write ${hf}: busy\n`) && readFileSync(hf, 'utf8').includes(es[0].asked), `a retry that meets the lock is named and fails (got ${r.out})`);
   r = await fcli('forget', '--key', es[0].key, '--yes');
   const hd2 = readFileSync(hf, 'utf8');
-  ok(r.status === 0 && r.stdout === `key ${es[0].key} is already forgotten; nothing to remove\nnothing in ${fd} matches\n` && !hd2.includes(es[0].asked) && hd2.includes('the walrus budget') && hd2.includes(es[2].asked),
+  ok(r.status === 0 && r.stdout === `key ${es[0].key} is already forgotten; nothing to remove from the journal, but its exchange went from handoff.md\nnothing in ${fd} matches\n` && !hd2.includes(es[0].asked) && hd2.includes('the walrus budget') && hd2.includes(es[2].asked),
     `the retry takes it out of handoff.md, and only it: not another conversation's of that minute, nor another forgotten key's (got ${r.stdout}; ${hd2})`);
   // A journal folder the disk will not list is no empty journal: forget said "nothing matches" with exit 0 (by --key, that the key was
   // another project's), and the entries stayed. It names the code, removes nothing and fails, as a refused restore does (F20, R45).
