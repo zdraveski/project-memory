@@ -128,7 +128,7 @@ const caseless = (dir) => {
   try {
     for (const n of readdirSync(dir)) {
       const o = n === n.toLowerCase() ? n.toUpperCase() : n.toLowerCase();
-      if (o === n) continue;
+      if (o === n || o.length !== n.length) continue;   // straße's STRASSE is no name NTFS opens for it
       const a = statSync(join(dir, n), { bigint: true });
       try { const b = statSync(join(dir, o), { bigint: true }); return a.ino === b.ino && a.dev === b.dev; } catch { return false; }
     }
@@ -823,7 +823,8 @@ export function main(given) {
           const w = withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`)));
           if (w === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true });
           // The retry did something: said, not "nothing to remove" alone.
-          else if (w === true) again = before.map((k) => `key ${k} is already forgotten; nothing to remove from the journal, but its exchange went from handoff.md`);
+          // Said once: which of several keys still had an exchange there is not known here.
+          else if (w === true) again = [...before.map((k) => `key ${k} is already forgotten; nothing to remove from the journal`), 'handoff.md holds none of these exchanges now'];
         }
         catch (e) { failed.push({ path: join(here, 'handoff.md'), code: e.code || e.message, write: true }); }
       }

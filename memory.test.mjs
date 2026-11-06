@@ -1261,7 +1261,7 @@ if (!quick) {
   ok(r.value === 1 && r.out.includes(`could not write ${hf}: busy\n`) && readFileSync(hf, 'utf8').includes(es[0].asked), `a retry that meets the lock is named and fails (got ${r.out})`);
   r = await fcli('forget', '--key', es[0].key, '--yes');
   const hd2 = readFileSync(hf, 'utf8');
-  ok(r.status === 0 && r.stdout === `key ${es[0].key} is already forgotten; nothing to remove from the journal, but its exchange went from handoff.md\nnothing in ${fd} matches\n` && !hd2.includes(es[0].asked) && hd2.includes('the walrus budget') && hd2.includes(es[2].asked),
+  ok(r.status === 0 && r.stdout === `key ${es[0].key} is already forgotten; nothing to remove from the journal\nhandoff.md holds none of these exchanges now\nnothing in ${fd} matches\n` && !hd2.includes(es[0].asked) && hd2.includes('the walrus budget') && hd2.includes(es[2].asked),
     `the retry takes it out of handoff.md, and only it: not another conversation's of that minute, nor another forgotten key's (got ${r.stdout}; ${hd2})`);
   // A journal folder the disk will not list is no empty journal: forget said "nothing matches" with exit 0 (by --key, that the key was
   // another project's), and the entries stayed. It names the code, removes nothing and fails, as a refused restore does (F20, R45).
@@ -1934,7 +1934,21 @@ if (!quick) {
     }
   }
   {
-    // A folder with no name to ask the question of (all its notes deleted) has the platform's habit.
+    // A name whose other case is longer (aß, ASS on upper-casing) asks nothing: NTFS opens STRAßE for straße, not STRASSE, so
+    // taking it for an answer made a folder that folds read as one that doesn't, and `history ZETA` missed a deleted zeta.md.
+    const sz = join(root, 'C--mem-sz', 'memory');
+    mkdirSync(sz, { recursive: true });
+    memory(sz, 'aß', 'a sharp s first in the folder');
+    memory(sz, 'zeta', 'the note asked for');
+    tier();
+    rmSync(join(sz, 'zeta.md'));
+    tier();
+    r = await run(['history', 'ZETA', '--store', sz]);
+    ok((r.status === 0) === (process.platform === 'win32' || process.platform === 'darwin'), `a sharp s first in the folder does not hide that it folds (got ${r.status}: ${r.stdout})`);
+  }
+  {
+    // A folder whose notes were all deleted still folds case as the platform does. Its MEMORY.md answers the probe, so the
+    // platform fallback itself (a folder with no cased name at all) is not reached here.
     const em = join(root, 'C--mem-empty', 'memory');
     mkdirSync(em, { recursive: true });
     memory(em, 'pricing', 'the pricing tiers');
@@ -1942,7 +1956,7 @@ if (!quick) {
     rmSync(join(em, 'pricing.md'));
     tier();
     r = await run(['history', 'PRICING', '--store', em]);
-    ok((r.status === 0) === (process.platform === 'win32' || process.platform === 'darwin'), `an empty folder folds case as the platform does (got ${r.status}: ${r.stdout})`);
+    ok((r.status === 0) === (process.platform === 'win32' || process.platform === 'darwin'), `a folder of deleted notes folds case as the platform does (got ${r.status}: ${r.stdout})`);
   }
   // C-9. Under --all, a hit named its project by its folder (`C--work-api-server`), no name a person reads: now by the folder its
   // conversations started in, then the folder --store needs. A project with no conversation on disk keeps the folder alone.

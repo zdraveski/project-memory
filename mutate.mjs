@@ -693,7 +693,7 @@ export const suites = {
   }],
   'memory.mjs': ['memory.test.mjs', {
     'R64 status silent on a handoff the Stop could not save': ['if (lost) lines.push(', 'if (false) lines.push('],
-    'a retry that cleaned handoff.md says nothing of it': ['else if (w === true) again = before.map(', 'else if (false) again = before.map('],
+    'a retry that cleaned handoff.md says nothing of it': ['else if (w === true) again = [...before.map(', 'else if (false) again = [...before.map('],
     'status says every record as a lost handoff': ['`  needs attention: ${unsaved(lost)}`', '`  needs attention: the record of where you left off could not be saved after the reply at ${local(lost.at)}: ${lost.error}`'],
     'a forget over a journal that will not list crashes': ["} catch (e) { if (!e.code) throw e; r = no(`${join(here, 'journal')} could not be listed", "} catch (e) { throw e; r = no(`${join(here, 'journal')} could not be listed"],
     "a forget over a journal that will not list says the key is another project's": ["; nothing removed`); }", "; nothing removed`); if (lost.length) { r.lines.splice(-1, 0, ...lost); } }"],
@@ -976,6 +976,7 @@ export const suites = {
     'C-8 names folded as one string, straße as STRASSE': ['return folds ? [...n].map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join(\'\') : n; };', 'return folds ? n.toUpperCase() : n; };'],
     'a case-sensitive folder folded by the platform': ['return a.ino === b.ino && a.dev === b.dev; } catch { return false; }', 'return FOLDS; } catch { return FOLDS; }'],
     'a folder with no name to try is taken as case-sensitive': ['  } catch {}\n  return FOLDS;', '  } catch {}\n  return false;'],
+    'a sharp s answers the case probe': ['if (o === n || o.length !== n.length) continue;', 'if (o === n) continue;'],
     'a folder that folds case never folded': ['return a.ino === b.ino && a.dev === b.dev; } catch { return false; }', 'return false; } catch { return false; }'],
     'C-8 a name in another case never folded': ['return folds ? [...n]', 'return false ? [...n]'],
     'C-8 history reads no snapshot name': ['existsSync(join(dir, d)) ? d : pick(dir, file, ever(dir)); };', 'existsSync(join(dir, d)) ? d : file; };'],
