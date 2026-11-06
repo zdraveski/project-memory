@@ -2470,6 +2470,16 @@ require('node:module').syncBuiltinESMExports();
     const f = join(home, 'lt.jsonl');
     writeFileSync(f, lines(JSON.stringify({ type: 'summary' })));
     ok(lastTurn(f).open === false, 'a transcript with no message has no turn open');
+    // A subagent's records (isSidechain) are not the conversation's: its end_turn does not close the main turn. A cut-off reply does end it.
+    const reply = (stop, extra) => rec('assistant', [], { ...extra, message: { content: [{ type: 'text', text: 'x' }], stop_reason: stop, usage: { input_tokens: 1 } } });
+    writeFileSync(f, lines(user('go'), reply('tool_use'), reply('end_turn', { isSidechain: true })));
+    ok(lastTurn(f).open === true && Number.isNaN(lastTurn(f).end), "a subagent's end_turn leaves the main turn open");
+    writeFileSync(f, lines(user('go'), reply('max_tokens')));
+    ok(lastTurn(f).open === false, 'a reply cut off by max_tokens ended its turn');
+    writeFileSync(f, lines(user('go'), reply('pause_turn')));
+    ok(lastTurn(f).open === true, 'a pause_turn reply leaves its turn open');
+    writeFileSync(f, lines(user('go'), reply(undefined)));
+    ok(lastTurn(f).open === true, 'a reply with no stop_reason yet leaves its turn open');
     const p50 = (n) => { writeFileSync(f, lines(...Array.from({ length: n }, (_, i) => user(`question ${i}`)))); return stalled({ s: 'abcd1234', p: f }); };
     ok(/cannot read \[abcd1234\]'s transcript: none of its last 50 messages/.test(p50(50)[0] ?? ''), 'fifty messages the hooks do not know are said');
     ok(!/cannot read/.test(p50(49)[0] ?? ''), 'forty-nine are not');

@@ -101,6 +101,7 @@ export const suites = {
     "no git read as spawnSync ENOENT": ["(e.code === 'ENOENT' && String(e.syscall).startsWith('spawn') ? 'git is not installed'\n  : ", "("],
   }],
   'compact-gate.mjs': ['compact-gate.test.mjs', {
+    "an Escape after a tool call reads as mid-turn by the gate": ["      if (/^\\s*\\[Request interrupted by user/.test(t)) s.midTurn = false;", "      "],
     "a subagent's record read as the conversation's by the gate": ["    if (r.isSidechain === true) continue;   // a subagent's record", "    // a subagent's record"],
     "P-F2 the gate's notes speak of a memory-off conversation":[" || hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return true;", ") return true;"],
     "P-F1 the gate's note ignores a private answer to Claude's question":["const told = heard(r);", "const told = '';"],
@@ -228,6 +229,10 @@ export const suites = {
     "a payload's cwd alone makes a project folder": ["    if (!inProjects(input.transcript_path)) return false;\n", ""],
     "the startup is silent on a store the snapshots leave out": ["    if (s.missed?.length) out.push(`Memory snapshots leave out ${s.missed.join(', ')}: ${MISSED}`);\n", ""],
     "same-minute entries of two sessions swap": [".sort((x, y) => byAt(x, y) || (x.s < y.s ? -1 : x.s > y.s ? 1 : 0));", ".sort(byAt);"],
+    "a subagent's record read as the main turn's by lastTurn": ["    if (r.isSidechain === true) continue;   // a subagent's record, as turns() and the gate skip it\n", ""],
+    "a reply cut off by max_tokens reads as working": ["export const goesOn = (m) => !m?.stop_reason || m.stop_reason === 'tool_use' || m.stop_reason === 'pause_turn';", "export const goesOn = (m) => m?.stop_reason !== 'end_turn';"],
+    "a pause_turn reply reads as ended": [" || m.stop_reason === 'pause_turn'", ""],
+    "a reply with no stop_reason yet reads as ended": ["!m?.stop_reason || m.stop_reason === 'tool_use'", "m?.stop_reason === 'tool_use'"],
     "a turn stopped with Escape reads as working": ["    if (r.type === 'user' && /^\\s*\\[Request interrupted by user/.test(text(r))) { open = false; continue; }\n", ""],
     "a turn stopped with Escape owes a Stop": ["/.test(text(r))) { open = false; continue; }", "/.test(text(r))) { open = false; end = Date.parse(r.timestamp); continue; }"],
     "a quoted start marker taken for the section": ["    if (!alone(doc, a, START)) continue;\n", ""],
