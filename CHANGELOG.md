@@ -1,5 +1,66 @@
 # Changelog
 
+## 1.2.6 (2026-11-06)
+
+A bug-fix release: a full audit of the repository and an independent
+review of its four riskiest files, and every confirmed finding fixed.
+
+**Your own repository**
+- When Claude ran from inside a git hook in one of your projects (a commit
+  hook, say), git settings pointing at that project (`GIT_DIR`,
+  `GIT_INDEX_FILE` and others) reached the memory snapshot's git. The
+  snapshot could then be written into your project's repository, or break
+  its index. The plugin's git now clears them first.
+
+**Secrets kept out of the notes**
+- More secrets are now replaced with `[redacted]` before anything is saved:
+  Slack `xoxe-` tokens, Perplexity `pplx-` keys, Discord webhook URLs,
+  Telegram, Linear, Postman, Replicate, Supabase, Databricks, Sentry,
+  Twilio, Mailgun and Mapbox keys, cookies (a `Cookie` or `Set-Cookie`
+  header, and curl's `-b`/`--cookie`), the signature in a signed URL
+  (Azure, S3, Google Cloud), an `Authorization` value with no scheme word,
+  `redis-cli -a`, and "API key: …", "Secret key: …" or "Access key: …"
+  written with a space. Text saved before this update stays as it was.
+
+**Notes and the index**
+- A note that starts with a `----` line, or holds a `---x` line, was read as
+  if that line closed its frontmatter, so a body line `tier: archive` could
+  archive it, and search skipped its first lines. Only a line of exactly
+  `---` opens or closes the frontmatter now. A `tier:` line quoted inside a
+  `description: |` block no longer sets the tier.
+- A note named `MEMORY-something.md` was never indexed, archived or found.
+  Only `MEMORY.md` and `MEMORY-archive.md` are indexes now.
+- A second tidy-up run, with nothing changed, still rewrote the index. It
+  now leaves it as the first run wrote it.
+
+**Recording and compaction**
+- A reply cut off at the token limit, stopped by a stop sequence, or
+  refused counted as still working, so the compaction gate held off and
+  the turn read as open. Only a tool call or a server pause keeps a turn
+  open now. Pressing Escape after a tool call ends the turn too.
+- A subagent's reply could close the main conversation's turn. Subagent
+  records are now skipped there, as they already were elsewhere.
+- The briefing cuts a long line at the end of a sentence, else at a word,
+  never mid-word, so a fact keeps the condition that follows it.
+
+**Search**
+- Words with combining marks (Hindi, or an accent typed as a separate
+  mark) were split apart and never found. They are whole words now, and
+  `café` typed either way finds the other.
+
+**Checked**
+- The memory skill receives the session id (`${CLAUDE_SESSION_ID}`), so
+  `--session` finds the project from any folder.
+
+**Tests and tooling**
+- New tests: a fake `[User]:` line in a file or tool output never shows up
+  as your words; what survives a compaction is checked without a model.
+- The "8 writers at once" test no longer fails on a crowded machine, and
+  `mutate.mjs` reruns a timed-out mutant once, alone, before counting it.
+  A test that runs git after a slow snapshot waits for its lock to go.
+- README and SECURITY.md now describe the release checks and the CI tools
+  as they are; CONTRIBUTING's release steps hold merges until the tag.
+
 ## 1.2.5 (2026-11-06)
 
 **More detail kept**
