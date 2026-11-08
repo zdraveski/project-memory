@@ -8,6 +8,9 @@
   of them.
 - A push to `master` no longer reruns the mutants its pull request already
   ran.
+- The release steps give the commands for the big mutant run and the fuzz,
+  start the mutants first so the two queue less, and run both on the release
+  branch before the merge, as 1.2.6 did.
 
 ## 1.2.6 (2026-11-06)
 
