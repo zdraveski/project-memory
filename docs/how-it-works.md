@@ -132,8 +132,8 @@ one, built from its description, two minutes after it was written. That line
 is filed by the same rules as any other, by the note's age: a note changed in
 the last 7 days is in the index, an older one in the archive. `tier: hot` or
 `tier: archive` in the note still decides it, and in the shared notebook the
-line is in the index unless the note says `tier: archive`. A file name no line can point at, such as `lesson (1).md`,
-is reported in the startup briefing instead, to be renamed. A line that points
+line is in the index unless the note says `tier: archive`. A file name no line
+can point at, such as `lesson (1).md`, is reported in the startup briefing instead, to be renamed. A line that points
 at a web page or a path outside the notebook is kept as plain text. When two
 lines point at the same note, one is kept: in the index, the newer (lower)
 line, in the first one's place; an index line over an archived one. The other

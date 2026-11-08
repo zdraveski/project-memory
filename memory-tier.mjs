@@ -55,6 +55,9 @@ let PAUSE;
 // `--batch <files>` and `--git-timeout <ms>`, test-only too: a part of a first snapshot, and git's timeout, made small.
 let batch, gitWait;
 
+// A line Claude Code's own backfill of the index adds for a journal day; the journal is searched, never listed.
+const DEBRIS = /^- \[[^\]]*\]\(journal\/\d{4}-\d\d-\d\d\.md\)\s*$/;
+
 // A killed process must not leave a half-written index (temp + rename), and a
 // write must not land over an edit this pass did not see (store.mjs). Nothing
 // is written when the file already says it: churning every store would destroy
@@ -63,8 +66,6 @@ let batch, gitWait;
 // either: the index is re-rendered with the archive line last and the model
 // appends below it, so every new memory used to cost a rewrite -- each one a
 // moment the model's next edit could be lost in (2026-10-26).
-// A line Claude Code's own backfill of the index adds for a journal day; the journal is searched, never listed.
-export const DEBRIS = /^- \[[^\]]*\]\(journal\/\d{4}-\d\d-\d\d\.md\)\s*$/;
 const sameLines = (a, b) => {
   const norm = (t) => t.replace(/\n+$/, '').split('\n').sort().join('\n');
   return norm(a) === norm(b);
@@ -558,9 +559,6 @@ function snapshotHealth(s) {
 }
 const owed = () => { try { return JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8')).pending === true; } catch { return false; } };
 
-// A run: its arguments and, behind --stop, stdin's text; it returns the exit
-// code. The entry at the end calls it once, the suite many times in its own
-// process, as memory.test.mjs calls memory.mjs's: a process a check cost ~0.2 s.
 // A store the plugin has written to (a handoff or a journal) with no MEMORY.md gets a title-only one: Claude Code never made it,
 // and tiering walks only stores that have one. Exclusive create, so an index written meanwhile is never overwritten.
 function ensureIndex(d) {
@@ -570,6 +568,9 @@ function ensureIndex(d) {
   } catch {}
 }
 
+// A run: its arguments and, behind --stop, stdin's text; it returns the exit
+// code. The entry at the end calls it once, the suite many times in its own
+// process, as memory.test.mjs calls memory.mjs's: a process a check cost ~0.2 s.
 export async function main(argv, input) {
   dry = argv.includes('--dry-run');
   const pauseAt = argv.indexOf('--pause');
