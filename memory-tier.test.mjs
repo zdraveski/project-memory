@@ -107,19 +107,21 @@ ok(/older pointers/.test(main), 'the archive line carries a live count');
 ok(new Set([...pointers(main), ...pointers(arc)]).size === Object.keys(lines).length, 'every memory keeps exactly one pointer');
 
 // A memory nobody points at is unreachable at session start: recover it from
-// its own description, cold — unless it is pinned, which must land in one pass.
+// its own description, filed by its age like any other line (a pin is hot at any age).
 memory('lost-note', { days: 0 });
+memory('lost-stale', { days: 90 });
 memory('lost-but-pinned', { tier: 'hot', days: 400 });
 await run();
 const main2 = readFileSync(join(dir, 'MEMORY.md'), 'utf8');
 const arc2 = readFileSync(join(dir, 'MEMORY-archive.md'), 'utf8');
-ok(/^- \[lost note\]\(lost-note\.md\) — desc of lost-note$/m.test(arc2), 'an orphan is recovered into the archive');
+ok(/^- \[lost note\]\(lost-note\.md\) — desc of lost-note$/m.test(main2), 'an orphan modified today is recovered hot');
+ok(/^- \[lost stale\]\(lost-stale\.md\) — desc of lost-stale$/m.test(arc2) && !/lost-stale\.md/.test(main2), 'an orphan past the stale window is recovered into the archive');
 ok(/lost-but-pinned\.md/.test(main2), 'a pinned orphan is recovered hot, in the same pass');
-ok(!/lost-note\.md/.test(main2), 'recovered prose is machine-written and never billed at session start');
+ok(!/lost-note\.md/.test(arc2), 'a recovered hot line is not also archived');
 // Only the two index files are skipped, not every name that starts with MEMORY.
 memory('MEMORY-leak-investigation', { days: 0 });
 await run();
-ok(/\(MEMORY-leak-investigation\.md\)/.test(readFileSync(join(dir, 'MEMORY-archive.md'), 'utf8')), 'a note named MEMORY-something.md is recovered like any other');
+ok(/\(MEMORY-leak-investigation\.md\)/.test(readFileSync(join(dir, 'MEMORY.md'), 'utf8')), 'a note named MEMORY-something.md is recovered like any other');
 // A second pass writes the same bytes: the blank line under the heading stays when every pointer went cold.
 {
   const d = tempDir('memtier-twice-');
@@ -141,7 +143,7 @@ const both = () => readFileSync(join(dir, 'MEMORY.md'), 'utf8') + readFileSync(j
 ok(!/just-written\.md/.test(both()), 'a pointerless memory under two minutes old is left for its writer');
 backdate('just-written');
 await run();
-ok(/^- \[just written\]\(just-written\.md\)/m.test(readFileSync(join(dir, 'MEMORY-archive.md'), 'utf8')), 'and recovered once it is older');
+ok(/^- \[just written\]\(just-written\.md\)/m.test(readFileSync(join(dir, 'MEMORY.md'), 'utf8')), 'and recovered once it is older');
 
 // A second run must be a no-op, or the hook rewrites the store every session.
 const before = readFileSync(join(dir, 'MEMORY.md'), 'utf8');
@@ -228,6 +230,8 @@ ok(noteLines.some((l) => has(main4, l)), 'before any durable note, though every 
 // A clean store: the logs and notes above would otherwise return through the
 // overflow door below and take the room this block measures.
 for (const l of [...evLines, ...noteLines]) rmSync(join(dir, l.match(/\((.+?\.md)\)/)[1]));
+// The unpinned notes left from above, recovered hot now that orphans are filed by age, would take room from the lines this block measures.
+for (const f of ['lost-note', 'MEMORY-leak-investigation', 'just-written', 'added-mid-pass', 'already-archived', 'appended-below', 'seen-twice']) rmSync(join(dir, `${f}.md`));
 writeFileSync(join(dir, 'MEMORY-archive.md'), '# Archive\n');
 const big = ' ' + 'x'.repeat(180);
 const pinLines = [], ruleLines = [], workLines = [];
@@ -715,7 +719,7 @@ writeFileSync(join(shared, 'MEMORY.md'), '- [Old tool](old-tool.md) — a tool\n
 await tierExec(['--dir', shared]);
 ok(/old-tool\.md/.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8')) && /retired\.md/.test(readFileSync(join(shared, 'MEMORY-archive.md'), 'utf8')),
   'the shared store has no age window: an old reference stays hot, tier: archive still archives');
-// A shared lesson written with no pointer is recovered hot: filed cold, it was printed nowhere.
+// A shared lesson written with no pointer is recovered hot, as any recovered note is by its age: filed cold, it was printed nowhere.
 ok(/no-pointer\.md/.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8')) && /no-pointer-retired\.md/.test(readFileSync(join(shared, 'MEMORY-archive.md'), 'utf8')),
   'a shared lesson with no pointer gets a hot line; with tier: archive, an archive one');
 for (const f of ['old-tool.md', 'retired.md', 'no-pointer.md', 'no-pointer-retired.md', 'MEMORY.md', 'MEMORY-archive.md']) rmSync(join(shared, f));
@@ -1233,6 +1237,9 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 {
   const pw = join(root, 'C--lockwait'), dw = join(pw, 'memory'), lock = join(dw, '.lock'), left = join(lock, 'left-by-a-killed-hook');
   mkdirSync(join(dw, 'journal'), { recursive: true });
+  const stopInp = JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(pw, 'gone.jsonl'), session_id: 'lockwait', hook_event_name: 'Stop' });
+  // This Stop makes the store's index and tiers it once; after it the tiering has nothing due and tries no lock.
+  await call(['--stop'], stopInp);
   const stopWith = async (looked) => {
     mkdirSync(lock, { recursive: true }); writeFileSync(left, '');
     const old = new Date(Date.now() - 120_000); utimesSync(lock, old, old);
@@ -1283,7 +1290,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   const da = twin('proj-twin-a'), db = twin('proj-twin-b');
   const proc = (file, args, input) => spawnSync(process.execPath, [file, ...args], { encoding: 'utf8', input });
   const one = await call(['--dry-run', '--dir', da]), two = await call(['--dry-run', '--dir', da]), three = proc(TOOL, ['--dry-run', '--dir', da]);
-  ok(/\[dry\] .*1 hot \/ 2 archived/.test(one.stdout) && one.stdout === two.stdout && two.stdout === three.stdout && one.status === 0 && three.status === 0,
+  ok(/\[dry\] .*2 hot \/ 1 archived/.test(one.stdout) && one.stdout === two.stdout && two.stdout === three.stdout && one.status === 0 && three.status === 0,
     `two in-process dry runs print what a process prints (got ${JSON.stringify([one.stdout, two.stdout, three.stdout])})`);
   symlinkSync(dirname(TOOL), join(home, 'linked-tier'), 'junction');
   const viaLink = proc(join(home, 'linked-tier', 'memory-tier.mjs'), ['--dry-run', '--dir', da]);
@@ -1292,6 +1299,95 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   const ends = (d) => ['MEMORY.md', 'MEMORY-archive.md', '.health', '.tiered'].map((f) => (f === '.tiered' ? existsSync(join(d, f)) : readOr(join(d, f)))).join('|');
   ok(sa.status === 0 && sb.status === 0 && /recovered: .*lost\.md/.test(sa.stdout) && sa.stdout.replaceAll('proj-twin-a', 'proj-twin-b') === sb.stdout && ends(da) === ends(db),
     `a Stop through main() then one as a process print the same and leave twin stores the same (got ${JSON.stringify([sa.stdout, sb.stdout, ends(da), ends(db)])})`);
+}
+
+// --- 1.3.0: the index the plugin creates, journal debris, and recovery by age --------
+{
+  const readOr = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '');
+  const mk = (name) => { const d = join(root, name, 'memory'); mkdirSync(d, { recursive: true }); writeFileSync(join(root, name, 'session.jsonl'), ''); return d; };
+  const { allStores } = await import(new URL('./store.mjs', pathToFileURL(TOOL)).href);
+  const listed = (d) => allStores().some((s) => s === d);
+
+  // A store with a handoff and a journal but no index (the plugin wrote both): its own Stop makes the index, that same Stop.
+  const d1 = mk('idx-has-files');
+  writeFileSync(join(d1, 'handoff.md'), 'old\n'); mkdirSync(join(d1, 'journal'));
+  ok(!listed(d1), 'a store with a handoff and a journal but no index is not a tiered store yet');
+  let created = null;
+  await swap('node:fs', 'writeFileSync', (real) => (p, ...a) => {
+    if (String(p) === join(d1, 'MEMORY.md') && a[1]?.flag === 'wx') created = a[0];
+    return real(p, ...a);
+  }, () => call(['--stop'], stopInput('idx-has-files')));
+  ok(created === '# Memory Index\n' && existsSync(join(d1, 'MEMORY.md')), 'its own Stop creates a title-only index, however fresh the handoff');
+  ok(listed(d1), 'and the store is then one the tiering walks');
+
+  // A brand-new project: the first Stop writes the handoff and the index.
+  const d2 = join(root, 'idx-new', 'memory'); mkdirSync(join(root, 'idx-new'), { recursive: true }); writeFileSync(join(root, 'idx-new', 'session.jsonl'),
+    [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'first ask' } }, { type: 'assistant', timestamp: '2026-10-28T09:01:00Z', message: { content: [{ type: 'text', text: 'answered' }] } }].map((x) => JSON.stringify(x)).join('\n') + '\n');
+  await call(['--stop'], stopInput('idx-new'));
+  ok(existsSync(join(d2, 'handoff.md')) && existsSync(join(d2, 'MEMORY.md')), 'a brand-new project\'s first Stop writes the handoff and the index');
+
+  // Another project's Stop makes nothing here; a manual run does. A store with neither a handoff nor a journal gets none.
+  const d3 = mk('idx-other'), d4 = mk('idx-bare'), d11 = mk('idx-journal-only'), d12 = mk('idx-dry');
+  writeFileSync(join(d3, 'handoff.md'), 'x\n'); writeFileSync(join(d4, 'a.md'), 'x\n'); mkdirSync(join(d11, 'journal')); writeFileSync(join(d12, 'handoff.md'), 'x\n');
+  await call(['--stop'], stopInput('idx-has-files'));
+  ok(!existsSync(join(d3, 'MEMORY.md')), 'a Stop of another project creates no index here');
+  await call(['--dry-run']);
+  ok(!existsSync(join(d12, 'MEMORY.md')), 'a --dry-run creates no index');
+  rmSync(join(d12, 'handoff.md'));
+  await call([]);
+  ok(existsSync(join(d3, 'MEMORY.md')) && existsSync(join(d11, 'MEMORY.md')) && !existsSync(join(d4, 'MEMORY.md')), 'a manual run creates it where the plugin wrote a handoff or a journal, and nowhere else');
+
+  // A Stop it cannot read creates nothing.
+  const d5 = mk('idx-bad-input');
+  writeFileSync(join(d5, 'handoff.md'), 'x\n');
+  const bad = await call(['--stop'], '{not json');
+  ok(bad.status === 0 && !existsSync(join(d5, 'MEMORY.md')), 'a Stop with unreadable input creates no index');
+
+  // Auto memory off: the return ahead of all this stays.
+  const d6 = mk('idx-off');
+  writeFileSync(join(d6, 'handoff.md'), 'x\n');
+  process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+  try { await call(['--stop'], stopInput('idx-off')); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  ok(!existsSync(join(d6, 'MEMORY.md')), 'with auto memory off no index is created');
+
+  // An index written by someone else between the look and the write is never overwritten (exclusive create).
+  const d7 = mk('idx-race');
+  writeFileSync(join(d7, 'handoff.md'), 'x\n');
+  await swap('node:fs', 'writeFileSync', (real) => (p, ...a) => {
+    if (String(p) === join(d7, 'MEMORY.md') && a[1]?.flag === 'wx') real(p, '# Theirs\n');
+    return real(p, ...a);
+  }, () => call(['--stop'], stopInput('idx-race')));
+  ok(readOr(join(d7, 'MEMORY.md')).startsWith('# Theirs'), 'an index someone else wrote first is never overwritten');
+
+  // Journal day lines: Claude Code's own backfill of the index. Other subfolders stay.
+  const d8 = mk('idx-debris');
+  writeFileSync(join(d8, 'MEMORY.md'), '# Index\n\n- [2026-11-01](journal/2026-11-01.md) \n- [x](notes/x.md) — mine\n- [Journal](journal/2026-11-02.md)\n- [Day](journal/2026-11-03.md) — what happened\n- [Notes](journal/notes.md)\n');
+  await call(['--dir', d8]);
+  const idx8 = readOr(join(d8, 'MEMORY.md'));
+  ok(!idx8.includes('](journal/2026-11-01.md)') && !idx8.includes('](journal/2026-11-02.md)'), 'a journal/ day line in the index is evicted');
+  ok(idx8.includes('](notes/x.md)') && idx8.includes('](journal/notes.md)'), 'other subfolder lines, and journal/ files that are no day, stay');
+  ok(idx8.includes('](journal/2026-11-03.md) — what happened'), 'a journal day line with a hook of its own stays');
+  ok(idx8.startsWith('# Index'), 'and the prose stays');
+
+  // A damaged index (prose only) and three notes modified today, past the grace: the age rule files them.
+  const d9 = mk('idx-damaged');
+  writeFileSync(join(d9, 'MEMORY.md'), '# Index\n\nSome prose only.\n');
+  const old10 = new Date(Date.now() - 10 * 60000);
+  const note9 = (n, type, days = 0) => { writeFileSync(join(d9, `${n}.md`), `---\nname: ${n}\ndescription: "${n}"\nmetadata:\n  type: ${type}\n  modified: ${new Date(Date.now() - days * 86400000).toISOString()}\n---\nbody\n`); utimesSync(join(d9, `${n}.md`), old10, old10); };
+  note9('fb', 'feedback'); note9('us', 'user'); note9('pr', 'project'); note9('pr-old', 'project', 30);
+  await call(['--dir', d9]);
+  const m9 = readOr(join(d9, 'MEMORY.md')), a9 = readOr(join(d9, 'MEMORY-archive.md'));
+  ok(['fb', 'us', 'pr'].every((n) => m9.includes(`](${n}.md)`)), 'a feedback, a user and a today\'s project note recovered from a damaged index are hot');
+  ok(a9.includes('](pr-old.md)') && !m9.includes('](pr-old.md)'), 'a project note past the stale window recovers into the archive');
+
+  // A hundred old orphaned rules: the index stays inside its budget.
+  const d10 = mk('idx-many');
+  writeFileSync(join(d10, 'MEMORY.md'), '# Index\n');
+  for (let i = 0; i < 100; i++) { const f = join(d10, `rule-${i}.md`); writeFileSync(f, `---\nname: rule-${i}\ndescription: "${'a rule about how to work, '.repeat(4)}${i}"\nmetadata:\n  type: feedback\n  modified: ${new Date(Date.now() - 400 * 86400000).toISOString()}\n---\nbody\n`); utimesSync(f, old10, old10); }
+  await call(['--dir', d10]);
+  const m10 = readOr(join(d10, 'MEMORY.md')), a10 = readOr(join(d10, 'MEMORY-archive.md'));
+  ok(Buffer.byteLength(m10) <= 7000 && m10.split('\n').length <= 200, 'a hundred orphaned rules leave the index inside its budget');
+  ok((m10.match(/\]\(rule-/g) || []).length + (a10.match(/\]\(rule-/g) || []).length === 100, 'and every one of them is still in the index or the archive');
 }
 
 // --- the automatic mutants: edges, exact sizes and failures made on purpose -----
@@ -1351,11 +1447,11 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
     utimesSync(join(d, 'MEMORY.md'), wholeAt, wholeAt);
     writeNote(d, 'orphan', { when: wholeAt });
     const r = await tierDir(d, '--now', String(nowMs));
-    return { out: r.stdout, arc: readOr(join(d, 'MEMORY-archive.md')) };
+    return { out: r.stdout, arc: readOr(join(d, 'MEMORY-archive.md')), main: readOr(join(d, 'MEMORY.md')) };
   };
   const young = await orphaned(whole + 119999), old = await orphaned(whole + 120000);
   ok(!/orphan\.md/.test(young.out + young.arc), 'a memory with no pointer, a millisecond short of two minutes old, is left for its writer');
-  ok(/pointers recovered: orphan\.md/.test(old.out) && /\]\(orphan\.md\)/.test(old.arc), 'and recovered, and said so, at two minutes');
+  ok(/pointers recovered: orphan\.md/.test(old.out) && /\]\(orphan\.md\)/.test(old.main), 'and recovered, hot by its age, and said so, at two minutes');
 
   // Prose is kept as written: one blank line stays, a run of them is one.
   {
@@ -1725,7 +1821,7 @@ if (!quick) {
   };
   const lf = /(^|[^\r])\n/;
   const [idx, arc] = await run('proj-crlf', '# Memory Index\r\n\r\n- [a](a.md) — a\r\n');
-  ok(idx.startsWith('# Memory Index\r\n\r\n- [a](a.md)') && /\(b\.md\)/.test(arc) && !lf.test(idx) && !lf.test(arc), `a CRLF index keeps CRLF and the blank under its heading, and its new archive is CRLF (got ${JSON.stringify(idx)} ${JSON.stringify(arc)})`);
+  ok(idx.startsWith('# Memory Index\r\n\r\n- [a](a.md)') && /\(b\.md\)/.test(idx) && !lf.test(idx) && !lf.test(arc), `a CRLF index keeps CRLF and the blank under its heading, and its new archive is CRLF (got ${JSON.stringify(idx)} ${JSON.stringify(arc)})`);
   const [idx2] = await run('proj-lfgap', '# Memory Index\n\n- [a](a.md) — a\n');
   ok(idx2.startsWith('# Memory Index\n\n- [a](a.md)') && !idx2.includes('\r'), `an LF index keeps LF and its blank (got ${JSON.stringify(idx2)})`);
   const [idx3] = await run('proj-nogap', '# Memory Index\n- [a](a.md) — a\n\n- [b](b.md) — b\n');
@@ -1755,7 +1851,7 @@ if (!quick) {
     ok(Array.from({ length: 7 }, (_, i) => `proj-big/memory/Big${i}.md`).every((f) => files.includes(f)) && !health1().pending && health1().failures === 0 && !g1('status', '--porcelain'),
       `and the replies after it, no note changed, add the rest (got ${JSON.stringify(health1())}, ${g1('status', '--porcelain')})`);
     // A git killed at its timeout (here 1 ms, test-only) leaves every note as it was; from the next run, the history is taken in parts.
-    for (let i = 7; i < 12; i++) { writeFileSync(join(d1, `Big${i}.md`), `---\nname: big${i}\ndescription: "big ${i}"\n---\nbody\n`); utimesSync(join(d1, `Big${i}.md`), tenMin, tenMin); }
+    for (let i = 7; i < 12; i++) { writeFileSync(join(d1, `Big${i}.md`), `---\nname: big${i}\ndescription: "big ${i}"\nmetadata:\n  type: project\n  modified: 2020-01-01T00:00:00.000Z\n---\nbody\n`); utimesSync(join(d1, `Big${i}.md`), tenMin, tenMin); }
     const notes = () => readdirSync(d1).filter((f) => /^Big\d+\.md$/.test(f)).map((f) => f + readFileSync(join(d1, f), 'utf8')).join('\n');
     const before = notes();
     s = await stop1('--git-timeout', '1');

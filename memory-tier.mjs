@@ -63,6 +63,8 @@ let batch, gitWait;
 // either: the index is re-rendered with the archive line last and the model
 // appends below it, so every new memory used to cost a rewrite -- each one a
 // moment the model's next edit could be lost in (2026-10-26).
+// A line Claude Code's own backfill of the index adds for a journal day; the journal is searched, never listed.
+export const DEBRIS = /^- \[[^\]]*\]\(journal\/\d{4}-\d\d-\d\d\.md\)\s*$/;
 const sameLines = (a, b) => {
   const norm = (t) => t.replace(/\n+$/, '').split('\n').sort().join('\n');
   return norm(a) === norm(b);
@@ -165,7 +167,7 @@ function tier(dir, now, seen = null) {
   // hold until the date changed, and the grace would become a day.
   const young = Math.abs(now - statSync(mainPath).mtimeMs) < ORPHAN_GRACE;   // dated ahead of the clock is no younger
   let waiting = false;
-  const main = split(mainText);
+  const main = split(mainText.split(/\r?\n/).filter((l) => !DEBRIS.test(l)).join('\n'));
   // No trailing blank in the default: render adds one, and a second blank was
   // trimmed on the next run -- a fresh store rewrote its archive one session late.
   const arc = arcText !== null ? split(arcText) : { preamble: ['# Archive'], pointers: [] };
@@ -216,8 +218,7 @@ function tier(dir, now, seen = null) {
   // A memory no pointer names is unreachable at session start. Truncate either
   // index -- an interrupted write, a bad merge, a BOM -- and the memories are
   // still on disk with nothing to recall them by. Give each one a pointer built
-  // from its own `description:`, always into the archive: recovered prose is
-  // machine-written, so it is greppable but never billed at session start.
+  // from its own `description:`, hot or archived by the note's age.
   for (const f of readdirSync(dir)) {
     if (!f.endsWith('.md') || isIndex(f) || placed.has(key(f))) continue;
     // Its writer is about to point at it. A recovered line placed now would
@@ -229,11 +230,9 @@ function tier(dir, now, seen = null) {
     if ((`- [x](${f})`.match(POINTER) || [])[1] !== f) { odd.push(f); continue; }
     const facts = factsFor(dir, f);
     if (!facts) continue;
-    // Cold, except a pin -- which the archive would promote on the next run
-    // anyway, leaving the store rewriting itself one session behind forever.
-    // In the shared store hot unless archived: filed cold, a lesson whose pointer
-    // was forgotten was printed nowhere, ever (review, 2026-10-27).
-    place({ line: pointerLine(f, facts.desc || 'recovered: no description'), target: f, f: facts }, (shared ? facts.tier !== 'archive' : facts.tier === 'hot') ? hot : cold);
+    // Filed by its age like any line, so a note written today is not hidden from the next session; the ceiling evicts it
+    // like any other (a pin the archive would promote anyway, and the shared store's lessons are hot unless archived).
+    place({ line: pointerLine(f, facts.desc || 'recovered: no description'), target: f, f: facts }, isHot(facts, now, shared) ? hot : cold);
     recovered.push(f);
   }
 
@@ -562,6 +561,15 @@ const owed = () => { try { return JSON.parse(readFileSync(join(projectsRoot(), '
 // A run: its arguments and, behind --stop, stdin's text; it returns the exit
 // code. The entry at the end calls it once, the suite many times in its own
 // process, as memory.test.mjs calls memory.mjs's: a process a check cost ~0.2 s.
+// A store the plugin has written to (a handoff or a journal) with no MEMORY.md gets a title-only one: Claude Code never made it,
+// and tiering walks only stores that have one. Exclusive create, so an index written meanwhile is never overwritten.
+function ensureIndex(d) {
+  try {
+    if (existsSync(join(d, 'MEMORY.md')) || !(existsSync(join(d, 'handoff.md')) || existsSync(join(d, 'journal')))) return;
+    writeFileSync(join(d, 'MEMORY.md'), '# Memory Index\n', { flag: 'wx' });
+  } catch {}
+}
+
 export async function main(argv, input) {
   dry = argv.includes('--dry-run');
   const pauseAt = argv.indexOf('--pause');
@@ -642,6 +650,8 @@ export async function main(argv, input) {
       try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
       try { if (payload) handoff(payload, sink); try { unlinkSync(failed); } catch {} }
       catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); }
+      // The index of a store the plugin writes to, in the same Stop that wrote its handoff; the nudge below must not skip it.
+      if (payload && !dry) ensureIndex(storeOf(payload));
       // The temp copies a killed Stop left here (store.mjs).
       if (payload) try { sweepTemps(storeOf(payload)); } catch {}
       // Then a few of the conversations still on disk, into the journal, without
@@ -666,6 +676,7 @@ export async function main(argv, input) {
   }
 
   const dirAt = argv.indexOf('--dir');
+  if (!stop && !dry && dirAt === -1) try { for (const p of readdirSync(projectsRoot())) ensureIndex(join(projectsRoot(), p, 'memory')); } catch {}
   if (dirAt !== -1 && !argv[dirAt + 1]) { console.log('--dir needs a path'); return 1; }
   // A Stop tiers its own session's store and no other. Every Stop once walked all
   // sixteen: a session in one project rewrote another's index while that
