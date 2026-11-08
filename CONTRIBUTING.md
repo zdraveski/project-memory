@@ -219,8 +219,8 @@ false test here.
   whole, and a rule that matters only on a partial read needs 600 KB before
   its turn. Output captured in-process skips the UTF-8 a pipe would apply.
   Wait for the event, not a fixed time.
-- **Processes.** `process.exit()` can cut a pipe's output short on macOS:
-  set `process.exitCode`.
+- **Processes.** `process.exit()` can cut a pipe's output short on Linux and
+  macOS: set `process.exitCode`.
 
 ## Sending a change
 

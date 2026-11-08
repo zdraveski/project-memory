@@ -12,6 +12,8 @@
 - The release steps give the commands for the big mutant run and the fuzz,
   start the mutants first so the two queue less, and run both on the release
   branch before the merge, as 1.2.6 did.
+- `mutate.mjs --list` keeps every line when its reader is slow. A busy Linux
+  machine lost the end of the list and failed the check at random.
 
 ## 1.2.6 (2026-11-06)
 
