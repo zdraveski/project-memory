@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+**Tests and tooling**
+- The hand-written mutants moved from `mutate.mjs` to `mutants/`, one file
+  per source file. Adding one now reruns only that file's mutants, not all
+  of them.
+
 ## 1.2.6 (2026-11-06)
 
 A bug-fix release: a full audit of the repository and an independent

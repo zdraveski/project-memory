@@ -1,6 +1,6 @@
 // Automatic mutants: eight small breaks (an operator flipped, a condition
 // negated, a call dropped) made everywhere in the code, not only where a
-// hand-written mutant in mutate.mjs sits. The 883 hand mutants touched a third
+// hand-written mutant in mutants/ sits. The 883 hand mutants touched a third
 // of the code lines (2026-10-30); a line no mutant touches can lose its test
 // unnoticed. Only code is mutated: strings, template text, regular
 // expressions and comments are blanked first by a masker that keeps offsets,
