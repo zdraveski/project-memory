@@ -156,8 +156,9 @@ Beyond the suites:
 - The `mutate` workflow on GitHub splits the mutants across 17 machines
   (GitHub Free runs 20 jobs at once). Every pull request runs the changed
   files' mutants on 10 machines, by the deploy's rule, and its `mutants`
-  job is a required check: a survivor blocks the merge. Every push to
-  `master` runs them again on 17. Started by hand (Actions > mutate > Run
+  job is a required check: a survivor blocks the merge. A pull request
+  need not be up to date to merge, so two that leave a survivor only together
+  show in the full run before a release. Started by hand (Actions > mutate > Run
   workflow), it runs all the hand-written ones in about 20 minutes
   (2026-11), and with `auto` on, the automatic ones too. Once a run
   covering the commit passes, `node deploy.mjs --mutants-checked-on-github`

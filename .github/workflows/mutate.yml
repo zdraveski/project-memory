@@ -3,18 +3,17 @@ name: mutate
 # The mutation check, split across 17 machines: GitHub Free runs 20 jobs at
 # once for an account, and past that they queue. 20 machines took 6 min 44 s
 # beside a push's test run, three of them queued; six took about 10 minutes,
-# one 65. On every push to master it runs the changed files' mutants (all of
-# them after a change to store.mjs, harness.mjs or mutate.mjs: plan-mutants.mjs);
-# started by hand (Actions > mutate > Run workflow, or `gh workflow run
+# one 65. Started by hand (Actions > mutate > Run workflow, or `gh workflow run
 # mutate.yml -f machines=N`), every hand-written mutant, and with `-f auto=true`
-# the automatic ones too. deploy.mjs
-# --mutants-checked-on-github then skips its own run, on your word that a run
-# covering the commit passed. On a pull request, the changed files' mutants on
-# 10 machines, beside the PR's ~11 other jobs: a survivor found after the merge
-# went unread through 3 merges (2026-11-06), so the `mutants` job is required.
+# the automatic ones too. deploy.mjs --mutants-checked-on-github then skips its
+# own run, on your word that a run covering the commit passed. On a pull request,
+# the changed files' mutants (all of them after a change to store.mjs, harness.mjs
+# or mutate.mjs: plan-mutants.mjs) on 10 machines, beside the PR's ~11 other jobs:
+# a survivor found after the merge went unread through 3 merges (2026-11-06), so
+# the `mutants` job is required, and a push to master no longer repeats it
+# (median 8 min on 17 machines, 2026-11). Two PRs that leave a survivor only
+# together show in the full run before a release.
 on:
-  push:
-    branches: [master]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -26,7 +25,7 @@ on:
         type: boolean
         default: false
 
-# A newer push makes an older push's run moot, a PR's too; a run started by hand is never cut short.
+# A newer push to a PR makes its older run moot; a run started by hand is never cut short.
 concurrency:
   group: mutate-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
@@ -51,9 +50,9 @@ jobs:
           node-version: 24
       - id: list
         env:
-          MACHINES: ${{ inputs.machines || (github.event_name == 'pull_request' && '10') || '' }}
-          # A PR has no `before`: without its base, every mutant ran (~20 min).
-          BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          MACHINES: ${{ inputs.machines || '10' }}
+          # Without a PR's base every mutant ran (~20 min). Started by hand there is none, and every mutant is what's asked.
+          BEFORE: ${{ github.event.pull_request.base.sha }}
         run: node .github/plan-mutants.mjs >> "$GITHUB_OUTPUT"
   mutate:
     needs: plan
