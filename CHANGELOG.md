@@ -17,6 +17,8 @@ itself is unchanged.
   branch before the merge, as 1.2.6 did.
 - `mutate.mjs --list` keeps every line when its reader is slow. A busy Linux
   machine lost the end of the list and failed the check at random.
+- `check.mjs` catches a mutant label given twice when no space comes before
+  its `[`. Nine labels were written that way, and none was doubled.
 
 ## 1.2.6 (2026-11-06)
 
