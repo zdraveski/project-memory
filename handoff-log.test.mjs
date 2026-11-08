@@ -502,14 +502,6 @@ g('checkout', '-q', 'master');
 appendFileSync(join(gated, 'store.mjs'), '// an edit\n');
 gate = spawnSync(process.execPath, [join(gated, 'deploy.mjs')], { env, encoding: 'utf8' });
 ok(gate.status === 1 && /uncommitted changes/.test(gate.stderr), `and uncommitted changes (got ${gate.stderr.trim()})`);
-// Its mutation check runs only the changed files' mutants; every one when the
-// live commit is unknown or what every suite stands on changed.
-{
-  const { changedScope } = await import('./deploy.mjs');
-  ok(changedScope(null) === null && changedScope(['README.md', 'journal.mjs'])?.join() === 'README.md,journal.mjs'
-    && changedScope(['journal.mjs', 'store.mjs']) === null && changedScope(['harness.mjs']) === null && changedScope(['mutate.mjs']) === null,
-  'a deploy checks the changed files\' mutants, and all of them after a change to the shared layer');
-}
 
 // 28. An answer's markdown marks carry no words: dropped before the 400 characters are counted.
 const cwdM = 'C:\\handoff-markdown';
@@ -2683,7 +2675,7 @@ process.exit(s.code || 0);
     writeFileSync(join(plug, 'known_marketplaces.json'), JSON.stringify({ 'project-memory': { source: marketplace } }));
   };
   const sum = (r) => `${r.status} ${JSON.stringify(r.stdout)} ${JSON.stringify(r.stderr)}`;
-  const ALL = 'the six suites ... ok\nmutation check (all, ~65 min) ... ok\n';
+  const ALL = 'the six suites ... ok\nmutation check ... skipped\n';
   process.env.DEPLOY_CTL = ctl;
   try {
     // A failing suite stops the deploy, its last three lines named (stderr, then stdout).
@@ -2701,36 +2693,36 @@ process.exit(s.code || 0);
       ok(r.status === 1 && r.stderr === 'deploy: the repo changed during the check: deploy again\n' && !existsSync(liveD), `a repo ${how} during the check is not deployed (${sum(r)})`);
       rmSync(join(dep, 'junk.txt'), { force: true });
     }
-    // The first deploy: no live copy, nothing installed: every mutant, no dry run.
+    // The first deploy: no live copy, nothing installed: no mutants, no dry run.
     let c = g2('rev-parse', '--short', 'HEAD');
     r = deploy({ 'memory-tier.break.mjs': [{ out: ' x ok (1)\n\ny ok (2)\n' }] });
     ok(r.status === 0 && r.stdout === `${ALL}soak ... ok\nbreak harness ... ok\ndeployed ${c} to ${liveD}\n` && r.stderr === '', `the first deploy (${sum(r)})`);
-    ok(r.calls.join('|') === 'mutate.mjs|memory-tier.soak.mjs|memory-tier.break.mjs', `mutants, soak and break harness run once each (${r.calls})`);
+    ok(r.calls.join('|') === 'memory-tier.soak.mjs|memory-tier.break.mjs', `soak and break harness run once each, no mutants (${r.calls})`);
     ok(manifest().commit === c && JSON.parse(readFileSync(join(liveD, '.claude-plugin', 'plugin.json'), 'utf8')).version.endsWith(`.${g2('rev-list', '--count', 'HEAD')}`)
       && Object.values(JSON.parse(readFileSync(join(liveD, 'hooks', 'hooks.json'), 'utf8')).hooks).flat().flatMap((e) => e.hooks).every((x) => x.command === process.execPath.replace(/\\/g, '/')), 'the live copy names the commit, stamps its number and runs the deploying node');
-    // A change to a file that is not shared: its mutants only; the dry run agrees; the plugin runs this commit.
+    // A later deploy: the dry run agrees; the plugin runs this commit.
     writeFileSync(join(dep, 'README.md'), 'x\n'); g2('add', 'README.md'); g2('commit', '-qm', 'readme');
     c = g2('rev-parse', '--short', 'HEAD');
     installed(join(home, 'cache-a'), { source: 'directory', path: liveD });
     r = deploy({ 'memory-tier.mjs@live': [{ out: 'plan\n' }], 'memory-tier.mjs': [{ out: 'plan\n' }] });
-    ok(r.status === 0 && r.stdout === 'the six suites ... ok\nmutation check (1 changed file(s)) ... ok\nsoak ... ok\nbreak harness ... ok\ndry run same as live ... ok\n'
-      + `deployed ${c} to ${liveD}\nthe plugin runs ${c} from ${liveD}\n`, `a change to one file checks its mutants, the dry run agrees (${sum(r)})`);
-    ok(r.calls.join('|') === 'mutate.mjs --changed README.md|memory-tier.soak.mjs|memory-tier.break.mjs|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run', `only the changed file's mutants, one dry run each side (${r.calls})`);
+    ok(r.status === 0 && r.stdout === `${ALL}soak ... ok\nbreak harness ... ok\ndry run same as live ... ok\n`
+      + `deployed ${c} to ${liveD}\nthe plugin runs ${c} from ${liveD}\n`, `a later deploy, the dry run agrees (${sum(r)})`);
+    ok(r.calls.join('|') === 'memory-tier.soak.mjs|memory-tier.break.mjs|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run', `no mutants, one dry run each side (${r.calls})`);
     // --full: every mutant although the live commit is known; --tiering-change: no dry run; an older plugin copy is named.
     mkdirSync(join(home, 'cache-b'), { recursive: true });
     writeFileSync(join(home, 'cache-b', '.deployed.json'), JSON.stringify({ commit: 'old1234' }));
     installed(join(home, 'cache-b'), { source: 'github' });
     r = deploy({}, '--full', '--tiering-change');
-    ok(r.status === 0 && r.stdout === `${ALL}soak ... ok\nbreak harness ... ok\ndeployed ${c} to ${liveD}\nwarning: the plugin runs old1234 from ${join(home, 'cache-b')}, not ${c}: node memory.mjs doctor says why\n`, `--full checks every mutant, --tiering-change skips the dry run, an older plugin copy is named (${sum(r)})`);
-    ok(r.calls.join('|') === 'mutate.mjs|memory-tier.soak.mjs|memory-tier.break.mjs', `no dry run, mutate.mjs without a scope (${r.calls})`);
-    // Mutants checked on GitHub; a dry run that differs once and agrees on the second look passes; a plugin copy with no manifest is unknown.
+    ok(r.status === 0 && r.stdout === `the six suites ... ok\nmutation check (all, ~65 min) ... ok\nsoak ... ok\nbreak harness ... ok\ndeployed ${c} to ${liveD}\nwarning: the plugin runs old1234 from ${join(home, 'cache-b')}, not ${c}: node memory.mjs doctor says why\n`, `--full checks every mutant, --tiering-change skips the dry run, an older plugin copy is named (${sum(r)})`);
+    ok(r.calls.join('|') === 'mutate.mjs|memory-tier.soak.mjs|memory-tier.break.mjs', `no dry run, every mutant (${r.calls})`);
+    // A dry run that differs once and agrees on the second look passes; a plugin copy with no manifest is unknown.
     installed(join(home, 'cache-c'), { source: 'github' });
-    r = deploy({ 'memory-tier.mjs@live': [{ out: 'a' }, { out: 'b' }], 'memory-tier.mjs': [{ out: 'b' }] }, '--mutants-checked-on-github');
-    ok(r.status === 0 && r.stdout === 'the six suites ... ok\nmutation check ... skipped: run on GitHub (mutate.yml), on your word\nsoak ... ok\nbreak harness ... ok\ndry run same as live ... ok\n'
-      + `deployed ${c} to ${liveD}\nwarning: the plugin runs an unknown copy from ${join(home, 'cache-c')}, not ${c}: node memory.mjs doctor says why\n`, `mutants checked on GitHub are skipped; a dry run is repeated once (${sum(r)})`);
-    ok(r.calls.join('|') === 'memory-tier.soak.mjs|memory-tier.break.mjs|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run', `no mutate.mjs, the dry run looked at twice (${r.calls})`);
+    r = deploy({ 'memory-tier.mjs@live': [{ out: 'a' }, { out: 'b' }], 'memory-tier.mjs': [{ out: 'b' }] });
+    ok(r.status === 0 && r.stdout === `${ALL}soak ... ok\nbreak harness ... ok\ndry run same as live ... ok\n`
+      + `deployed ${c} to ${liveD}\nwarning: the plugin runs an unknown copy from ${join(home, 'cache-c')}, not ${c}: node memory.mjs doctor says why\n`, `a dry run is repeated once (${sum(r)})`);
+    ok(r.calls.join('|') === 'memory-tier.soak.mjs|memory-tier.break.mjs|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run', `the dry run looked at twice (${r.calls})`);
     // A dry run that differs twice stops the deploy.
-    r = deploy({ 'memory-tier.mjs@live': [{ out: 'a' }], 'memory-tier.mjs': [{ out: 'b' }] }, '--mutants-checked-on-github');
+    r = deploy({ 'memory-tier.mjs@live': [{ out: 'a' }], 'memory-tier.mjs': [{ out: 'b' }] });
     ok(r.status === 1 && r.stdout.endsWith('dry run same as live ... FAILED\n') && r.stderr === 'deploy: dry run same as live: the dry run differs from live; rerun with --tiering-change if the change meant it\n', `a dry run that differs twice stops the deploy (${sum(r)})`);
   } finally { delete process.env.DEPLOY_CTL; }
 }

@@ -836,7 +836,7 @@ one line that says what was left behind.
   when `CLAUDE_CONFIG_DIR` is set too (see [Where things live](#where-things-live)).
   The `autoMemoryDirectory` setting is not followed: the plugin reads no
   settings.
-- Tested on Linux, macOS and Windows, with Node 22, 24 and 26.
+- Tested on Linux with Node 22, Windows with Node 24 and macOS with Node 26.
 - The snapshot repository only grows.
 
 The design documents, with the measurements behind these numbers, are in

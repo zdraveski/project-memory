@@ -3,13 +3,11 @@ name: scorecard
 # OpenSSF Scorecard: how the repo follows security practices (pinned
 # actions, token permissions, branch protection, a security policy...).
 # It publishes the score for the README's badge and puts the findings under
-# Security > Code scanning. Push and schedule only, on the default branch:
-# the triggers Scorecard supports. To publish, the workflow must have no
+# Security > Code scanning. Weekly, on the default branch:
+# schedule is a trigger Scorecard supports. To publish, the workflow must have no
 # top-level env or defaults, no write permission at the top, and only the
 # approved actions in this job: no `run:` steps here.
 on:
-  push:
-    branches: [master]
   schedule:
     - cron: '41 5 * * 6'
 

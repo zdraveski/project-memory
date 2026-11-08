@@ -118,8 +118,7 @@ the journal, the handoff, a briefing, a search hit or the history.
   listed in `journal/.forgotten` that a day file still holds, and every
   entry of a store whose list can't be read.
 - The fuzzer checks after every round that no private or forgotten text is
-  written, briefed or printed. Mutation testing checks that the tests catch
-  each rule broken.
+  written, briefed or printed.
 
 What remains: Claude still sees private text, Claude Code keeps it in its
 own transcripts, and a finished day already in the history stays there
@@ -200,12 +199,10 @@ computer with their rights.
 
 - The maintainer's GitHub account uses two-factor sign-in.
 - Every change reaches `master` through a pull request that must pass the
-  tests, the sign-off check, dependency review, the changed files' mutants,
-  zizmor and CodeQL. Nobody can push to `master` or bypass the ruleset
+  tests and the sign-off check. Nobody can push to `master` or bypass the ruleset
   ([GOVERNANCE.md](../GOVERNANCE.md)).
 - The plugin has no dependencies, so no third-party code ships. The CI's
-  actions are pinned by commit SHA and updated by Dependabot; dependency
-  review checks each change to them.
+  actions are pinned by commit SHA and updated by Dependabot.
 - Secret scanning and push protection are on, and the project keeps no
   secrets for an attacker to steal from CI. Pull requests run with a
   read-only token and no secrets.
@@ -226,11 +223,10 @@ encrypted. What Claude Code sends to Anthropic is Claude Code's.
 
 ## How this stays true
 
-- Six test suites and the fuzzer run on every pull request and every push to
-  `master`, on
-  Linux, macOS and Windows; mutation testing checks before each release
-  that they catch every rule broken ([CONTRIBUTING.md](../CONTRIBUTING.md#tests)).
-- CodeQL scans the code and the workflows on every pull request
+- Six test suites run on every pull request and every push to `master`, on
+  Linux, macOS and Windows; before each release the changes get one code
+  review ([CONTRIBUTING.md](../CONTRIBUTING.md#tests)).
+- CodeQL scans the code and the workflows every week
   ([SECURITY.md](../SECURITY.md#code-scanning)).
 - This page is reviewed at each release, and updated with any change to
   what the plugin reads, saves or sends.

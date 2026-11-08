@@ -86,20 +86,17 @@ repository from GitHub with git over HTTPS.
 
 ## Checks on every change
 
-Every change reaches `master` through a pull request, and the checks below
-must pass before it can merge ([GOVERNANCE.md](GOVERNANCE.md#changes-reach-master-only-through-a-pull-request)).
+Every change reaches `master` through a pull request, and the tests and the
+sign-off check must pass before it can merge ([GOVERNANCE.md](GOVERNANCE.md#changes-reach-master-only-through-a-pull-request)).
+The scans below run on their own and block nothing.
 
 ### Code scanning
 
 - CodeQL ([`codeql.yml`](.github/workflows/codeql.yml)) scans the
-  JavaScript and the workflow files on every pull request, every push to
-  `master`, and weekly. Its findings are under **Security > Code scanning**.
-- A pull request with a new alert of high or critical security severity,
-  or a new error, can't merge: `master`'s ruleset requires CodeQL's results.
-- Before a release, every open high or critical alert is fixed, or
-  dismissed in GitHub with a written reason why it can't be exploited here.
-  Lower alerts are reviewed at each release, and fixed or dismissed the same
-  way.
+  JavaScript and the workflow files every week. Its findings are under
+  **Security > Code scanning**, and they don't block a pull request.
+- Alerts are fixed, or dismissed in GitHub with a written reason, as the
+  maintainer gets to them. They don't hold up a release.
 
 ### Dependencies
 
@@ -119,17 +116,8 @@ must pass before it can merge ([GOVERNANCE.md](GOVERNANCE.md#changes-reach-maste
   and under an OSI-approved license that allows MIT-licensed use. The
   maintainer decides, in its pull request. One whose license doesn't meet
   this is removed before the change merges.
-- Every pull request runs dependency review
-  ([`dependency-review.yml`](.github/workflows/dependency-review.yml)): a
-  dependency it adds or changes with a known vulnerability or malware in
-  GitHub's advisory database, of any severity, fails the check, and the
-  pull request can't merge. An advisory that can't affect this project is
-  let through only by its ID in the workflow's `allow-ghsas`, with a comment
-  saying why.
-- A Dependabot alert on `master` of high or critical severity is fixed
-  within 7 days, and any other before the next release, unless it is
-  dismissed with a written reason why it can't affect this project. No
-  release goes out with an open alert.
+- A Dependabot alert on `master` can only concern the CI's actions, since
+  nothing third-party ships. It is handled like a code scanning alert.
 - No third-party component ships, so there is no vulnerability in one to
   explain, and no VEX document is needed. If one ever ships, a
   vulnerability in it that doesn't affect project-memory will be published

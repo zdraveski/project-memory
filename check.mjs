@@ -1,27 +1,27 @@
 #!/usr/bin/env node
-// The quick check, for every edit: what the full check (deploy.mjs, CI, the
-// mutate workflow) would say about the files changed since the last commit,
-// in seconds to a minute or two instead of the hour the mutation check took
-// (2026-10-30). In order, each step stopping the check when it fails:
+// The quick check, for every edit: what CI would say about the files changed
+// since the last commit, in seconds to a minute or two. In order, each step
+// stopping the check when it fails:
 //   1. every .mjs and every .json parses;
 //   2. no file imports a name it never uses;
-//   3. every mutant's find-text is in its file exactly once, no label twice;
-//   4. the suites of the changed files, --mutant mode, in UTC and in New
+//   3. the suites of the changed files, --mutant mode, in UTC and in New
 //      York: GitHub's machines run in UTC, where a test of local midnight
-//      once checked nothing;
+//      once checked nothing.
+// With --full, by hand, also:
+//   4. every mutant's find-text is in its file exactly once, no label twice;
 //   5. the hand-written mutants on the changed lines;
 //   6. the automatic mutants on the changed lines (--no-auto skips them);
 //   7. changed code lines no mutant covers: a reminder, not a failure;
 //   8. after a change to a hook's code, 20 s of fuzz.mjs.
-// Run: node check.mjs [--no-auto]  (from this repo)
+// Run: node check.mjs [--full] [--no-auto]  (from this repo)
 import { readFileSync, existsSync } from 'node:fs';
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { availableParallelism } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
-import { suites, settle, tableOf, shardsFor } from './mutate.mjs';
-import { SHARED, changedScope } from './deploy.mjs';
+import { suites, settle, tableOf } from './mutate.mjs';
+import { SHARED } from './deploy.mjs';
 
 const repo = dirname(fileURLToPath(import.meta.url));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
@@ -103,11 +103,6 @@ if (process.platform !== 'win32') {
   assert.deepEqual(listed('mutants/journal.mjs'), Object.keys(suites['journal.mjs'][1]));
   assert.deepEqual(listed('mutants/hooks.mjs'), Object.keys(suites['hooks/hooks.json'][1]));
   assert.deepEqual(suitesFor(['mutants/hooks.mjs']), ['memory.test.mjs']);
-  // The GitHub plan agrees: no machines only for a change that touches no group.
-  assert.deepEqual(shardsFor(changedScope(['README.md']), 3), []);
-  assert.deepEqual(shardsFor(changedScope(['mutants/journal.mjs']), 3), [1, 2, 3]);
-  assert.deepEqual(shardsFor(changedScope(['mutate.mjs']), 3), [1, 2, 3]);
-  assert.deepEqual(shardsFor(null, 3), [1, 2, 3]);
 }
 
 const t0 = Date.now(), problems = [];
@@ -149,18 +144,9 @@ for (const f of files) {
 }
 step('no unused imports', unused);
 
-// 3. The mutant tables. A label given twice is one key in an object literal:
-// counted in the text, per file.
-const bad = [];
-for (const [file, [, mutants]] of Object.entries(suites)) {
-  const text = readFileSync(join(repo, file), 'utf8');
-  for (const [label, [from]] of Object.entries(mutants)) { const n = text.split(from).length - 1; if (n !== 1) bad.push(`${file} :: ${label}: find-text found ${n} times`); }
-  const keys = [...readFileSync(join(repo, tableOf(file)), 'utf8').matchAll(/^ {2}(['"])((?:(?!\1)[^\\]|\\.)*)\1: ?\[/gm)].map((m) => m[2]);
-  for (const k of new Set(keys.filter((k, i) => keys.indexOf(k) !== i))) bad.push(`${file} :: ${k}: label given twice`);
-}
-step('every mutant applies once', bad);
+const full = process.argv.includes('--full');
 
-// 4. The changed files' suites, in two time zones.
+// 3. The changed files' suites, in two time zones.
 const runs = suitesFor(changed).flatMap((t) => ['UTC', 'America/New_York'].map((tz) => [t, tz]));
 // Why a suite failed: its error line, not the stack or Node's closing version line.
 const why = (text) => { const ls = String(text).split('\n').map((l) => l.trim()).filter((l) => l && !/^at /.test(l) && !/^Node\.js v/.test(l)); return (ls.find((l) => /Error\b/.test(l)) ?? ls.at(-1) ?? '').slice(0, 300); };
@@ -172,6 +158,19 @@ step(`the changed files' suites (${runs.length ? [...new Set(runs.map(([t]) => t
   execFile(process.execPath, [join(repo, t), '--mutant'], { maxBuffer: 1 << 26 }, (e, out, err) => done(e ? `${t} (TZ=${tz}): ${why(err + out)}` : null));
 }))).filter(Boolean));
 if (tz0 === undefined) delete process.env.TZ; else process.env.TZ = tz0;
+
+if (!full) finish();
+
+// 4. The mutant tables. A label given twice is one key in an object literal:
+// counted in the text, per file.
+const bad = [];
+for (const [file, [, mutants]] of Object.entries(suites)) {
+  const text = readFileSync(join(repo, file), 'utf8');
+  for (const [label, [from]] of Object.entries(mutants)) { const n = text.split(from).length - 1; if (n !== 1) bad.push(`${file} :: ${label}: find-text found ${n} times`); }
+  const keys = [...readFileSync(join(repo, tableOf(file)), 'utf8').matchAll(/^ {2}(['"])((?:(?!\1)[^\\]|\\.)*)\1: ?\[/gm)].map((m) => m[2]);
+  for (const k of new Set(keys.filter((k, i) => keys.indexOf(k) !== i))) bad.push(`${file} :: ${k}: label given twice`);
+}
+step('every mutant applies once', bad);
 
 // 5 and 6. The mutants on the changed lines; the changed code lines none covers.
 const on = [], bare = [], autoLines = new Map();
@@ -213,7 +212,7 @@ if (bare.length) {
   if (bare.length > 15) console.log(`       and ${bare.length - 15} more`);
 }
 
-// 7. A hook's code changed: 20 s of fuzz, new rounds each time.
+// 8. A hook's code changed: 20 s of fuzz, new rounds each time.
 if (changed.some((f) => ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'memory-tier.mjs', 'compact-gate.mjs'].includes(f))) {
   const r = spawnSync(process.execPath, [join(repo, 'fuzz.mjs'), '20'], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
   step('20 s of fuzz', r.status === 0 ? [] : r.stdout.trim().split('\n'));

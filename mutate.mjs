@@ -31,12 +31,10 @@ export const suites = {
   'journal.mjs': ['journal.test.mjs', journal],
   'deploy.mjs': ['handoff-log.test.mjs', deploy],
 };
-// The file that holds a group's mutants. Editing it reruns that group alone; a change to this file reruns them all (SHARED in deploy.mjs).
+// The file that holds a group's mutants: a --changed list naming it asks for that group alone.
 export const tableOf = (name) => `mutants/${name.split('/').pop().replace(/\.\w+$/, '')}.mjs`;
 // Whether a --changed list asks for a group: its source, its suite or its mutants.
 export const inScope = (changed, name, test) => [name, test, tableOf(name)].some((f) => changed.includes(f));
-// The machines a change needs on GitHub: scope is deploy.mjs's changedScope, null for every mutant.
-export const shardsFor = (scope, machines) => (!scope || Object.entries(suites).some(([name, [test]]) => inScope(scope, name, test)) ? Array.from({ length: machines }, (_, i) => i + 1) : []);
 
 // Run when executed, not when imported: check.mjs reads the table above.
 // A mutant that hit the clock is run once more, alone: on a slow GitHub machine three that a run before killed in 18-75 s

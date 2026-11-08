@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+**Tests and tooling**
+
+- The checks now fit the size of the plugin. A pull request runs the normal
+  tests on three setups and the sign-off check. Before a release the changes
+  get one code review, and what it finds is fixed. Mutation tests and the long
+  fuzz are no longer part of a pull request or a release, and stay in the repo
+  to run by hand. CodeQL and Scorecard run weekly and block nothing. Dependency
+  review is gone: the plugin has no dependencies. `node check.mjs` and
+  `node deploy.mjs` run mutants only with `--full`, and `deploy.mjs
+  --mutants-checked-on-github` is gone.
+
 ## 1.2.7 (2026-11-08)
 
 A bug-fix release for the tools that build and check the plugin. The plugin
