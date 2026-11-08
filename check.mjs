@@ -20,8 +20,8 @@ import { availableParallelism } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
-import { suites, settle } from './mutate.mjs';
-import { SHARED } from './deploy.mjs';
+import { suites, settle, tableOf, shardsFor } from './mutate.mjs';
+import { SHARED, changedScope } from './deploy.mjs';
 
 const repo = dirname(fileURLToPath(import.meta.url));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
@@ -29,10 +29,11 @@ const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8'
 // (audit #16); handoff-log.mjs is left out on purpose: store.mjs and memory-tier.mjs do not import it, so it is not under every suite.
 const ALL = [...new Set(Object.values(suites).map(([t]) => t))];
 
-// The suites a set of changed files needs: a source's own, a suite itself,
+// The suites a set of changed files needs: a source's own, its mutants', a suite itself,
 // or all of them after a change to what they share.
+const suiteOf = Object.fromEntries(Object.entries(suites).flatMap(([f, [t]]) => [[f, t], [tableOf(f), t]]));
 export const suitesFor = (changed) => (changed.some((f) => SHARED.includes(f)) ? ALL
-  : [...new Set(changed.flatMap((f) => (ALL.includes(f) ? [f] : suites[f] ? [suites[f][0]] : [])))]);
+  : [...new Set(changed.flatMap((f) => (ALL.includes(f) ? [f] : suiteOf[f] ? [suiteOf[f]] : [])))]);
 // The lines a unified diff with no context (-U0) adds or changes, in the new file.
 export const changedLines = (diff) => {
   const at = new Set();
@@ -91,6 +92,18 @@ assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11]
   assert.ok(listed.includes(`auto equality store.mjs:${n} === -> !==`), `exit ${r.status}\n${listed.join('\n')}\n${r.stderr}`);
   assert.equal(new Set(listed).size, listed.length);
 }
+// A change that only adds a mutant runs that source's group: not every mutant (5 of the 17 PRs of 1.2.6 did), and not none.
+{
+  const listed = (f) => spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--changed', f], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+  assert.deepEqual(listed('mutants/journal.mjs'), Object.keys(suites['journal.mjs'][1]));
+  assert.deepEqual(listed('mutants/hooks.mjs'), Object.keys(suites['hooks/hooks.json'][1]));
+  assert.deepEqual(suitesFor(['mutants/hooks.mjs']), ['memory.test.mjs']);
+  // The GitHub plan agrees: no machines only for a change that touches no group.
+  assert.deepEqual(shardsFor(changedScope(['README.md']), 3), []);
+  assert.deepEqual(shardsFor(changedScope(['mutants/journal.mjs']), 3), [1, 2, 3]);
+  assert.deepEqual(shardsFor(changedScope(['mutate.mjs']), 3), [1, 2, 3]);
+  assert.deepEqual(shardsFor(null, 3), [1, 2, 3]);
+}
 
 const t0 = Date.now(), problems = [];
 const step = (name, found) => {
@@ -131,14 +144,13 @@ for (const f of files) {
 }
 step('no unused imports', unused);
 
-// 3. The mutant table. A label given twice is one key in an object literal:
-// counted in the text, per file group.
-const table = readFileSync(join(repo, 'mutate.mjs'), 'utf8'), bad = [];
+// 3. The mutant tables. A label given twice is one key in an object literal:
+// counted in the text, per file.
+const bad = [];
 for (const [file, [, mutants]] of Object.entries(suites)) {
   const text = readFileSync(join(repo, file), 'utf8');
   for (const [label, [from]] of Object.entries(mutants)) { const n = text.split(from).length - 1; if (n !== 1) bad.push(`${file} :: ${label}: find-text found ${n} times`); }
-  const group = table.slice(table.indexOf(`\n  '${file}': [`), table.indexOf('\n  }],', table.indexOf(`\n  '${file}': [`)));
-  const keys = [...group.matchAll(/^ {4}(['"])((?:(?!\1)[^\\]|\\.)*)\1: \[/gm)].map((m) => m[2]);
+  const keys = [...readFileSync(join(repo, tableOf(file)), 'utf8').matchAll(/^ {2}(['"])((?:(?!\1)[^\\]|\\.)*)\1: \[/gm)].map((m) => m[2]);
   for (const k of new Set(keys.filter((k, i) => keys.indexOf(k) !== i))) bad.push(`${file} :: ${k}: label given twice`);
 }
 step('every mutant applies once', bad);

@@ -118,16 +118,16 @@ Beyond the suites:
   automatically.
 - `node mutate.mjs [text...]` breaks one rule at a time and expects a suite to
   fail: all mutants, or those whose label contains one of the texts. Every mutant
-  must be killed. The mutants are in `mutate.mjs`, grouped by source file
-  with the suite that must catch them; each is a label and a pair, the text
-  to find and what to put in its place. A change to a line a mutant targets
+  must be killed. The mutants are in `mutants/`, one file per source file;
+  the table in `mutate.mjs` names the suite that must catch them. Each is a
+  label and a pair, the text to find and what to put in its place. A change to a line a mutant targets
   needs the mutant updated too. Each suite runs with `--mutant`, which skips
   its slow blocks (a held lock waited out, a race, a big fixture, a clock;
   `quick` in `harness.mjs`); a mutant only those blocks kill is marked
   `{ full: true }` and runs its whole suite. The full run took 65 minutes on
   a 4-core Windows machine (2026-10-29), half of it the ~200 mutants
-  `memory.test.mjs` checks. `--changed a,b` runs only the groups whose source
-  or suite is among those files; `--shard i/n` runs every n-th mutant from
+  `memory.test.mjs` checks. `--changed a,b` runs only the groups whose source,
+  suite or file in `mutants/` is among those; `--shard i/n` runs every n-th mutant from
   the i-th. `--list` prints the selected labels and runs nothing. The last
   line names every mutant that survived.
   `--auto` adds the automatic mutants to the hand-written ones. `automut.mjs`
@@ -150,8 +150,9 @@ Beyond the suites:
   mutant never does.
 - `node deploy.mjs` runs only the mutants of the files changed since the live
   copy's commit; every one when that commit is unknown, when `store.mjs`,
-  `harness.mjs` or `mutate.mjs` changed, or under `--full`. Run it with
-  `--full` before a version release.
+  `harness.mjs` or `mutate.mjs` changed, or under `--full`. A change to a file
+  in `mutants/` runs only that file's mutants. Run it with `--full` before a
+  version release.
 - The `mutate` workflow on GitHub splits the mutants across 17 machines
   (GitHub Free runs 20 jobs at once). Every pull request runs the changed
   files' mutants on 10 machines, by the deploy's rule, and its `mutants`
