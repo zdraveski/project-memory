@@ -92,6 +92,11 @@ assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11]
   assert.ok(listed.includes(`auto equality store.mjs:${n} === -> !==`), `exit ${r.status}\n${listed.join('\n')}\n${r.stderr}`);
   assert.equal(new Set(listed).size, listed.length);
 }
+// --list keeps every line for a slow reader: a busy GitHub machine got 193 of 218 and failed the check below. Windows writes a pipe at once.
+if (process.platform !== 'win32') {
+  const lines = (pipe) => spawnSync('sh', ['-c', `"$0" "$1" --list --auto${pipe}`, process.execPath, join(repo, 'mutate.mjs')], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean).length;
+  assert.equal(lines(' | (sleep 2; cat)'), lines(''));
+}
 // A change that only adds a mutant runs that source's group: not every mutant (5 of the 17 PRs of 1.2.6 did), and not none.
 {
   const listed = (f) => spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--changed', f], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);

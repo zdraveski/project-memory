@@ -107,6 +107,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     for (const j of jobs) console.log(j.label);
     if (auto) console.error(`${dropped} automatic mutant(s) dropped as copies of hand mutants`);
     for (const id of stale) console.error(`stale ignore: ${id}`);   // stderr: stdout is the list check.mjs reads
+    await new Promise((written) => process.stdout.write('', written));   // process.exit drops what a slow reader hasn't taken yet
     process.exit(0);
   }
   for (const id of stale) console.log(`stale ignore: ${id}`);
