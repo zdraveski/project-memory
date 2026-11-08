@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.2.7 (2026-11-08)
+
+A bug-fix release for the tools that build and check the plugin. The plugin
+itself is unchanged.
 
 **Tests and tooling**
 - Two ignored automatic mutants whose code is gone left the ignore list.
