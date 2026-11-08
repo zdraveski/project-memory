@@ -3,6 +3,7 @@
 ## Unreleased
 
 **Tests and tooling**
+- Two ignored automatic mutants whose code is gone left the ignore list.
 - The hand-written mutants moved from `mutate.mjs` to `mutants/`, one file
   per source file. Adding one now reruns only that file's mutants, not all
   of them.
