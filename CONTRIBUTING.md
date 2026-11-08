@@ -68,7 +68,7 @@ Beyond the suites:
   covers, and after a change to a hook's code it fuzzes for 20 seconds.
   Seconds for most files, a minute or two after a change to `memory.mjs` or
   `store.mjs`. CI runs it in every job, where nothing has changed and it
-  takes a second. To run it before every commit of yours:
+  takes a few seconds. To run it before every commit of yours:
   `printf '#!/bin/sh\nexec node check.mjs\n' > .git/hooks/pre-commit`.
   TypeScript's checker (`tsc --checkJs`) was tried on the hooks: 49 reports
   with strict mode off, 775 with it on, no bug among them, so it is not used.

@@ -200,8 +200,9 @@ computer with their rights.
 
 - The maintainer's GitHub account uses two-factor sign-in.
 - Every change reaches `master` through a pull request that must pass the
-  tests, the sign-off check, dependency review and CodeQL. Nobody can push
-  to `master` or bypass the ruleset ([GOVERNANCE.md](../GOVERNANCE.md)).
+  tests, the sign-off check, dependency review, the changed files' mutants,
+  zizmor and CodeQL. Nobody can push to `master` or bypass the ruleset
+  ([GOVERNANCE.md](../GOVERNANCE.md)).
 - The plugin has no dependencies, so no third-party code ships. The CI's
   actions are pinned by commit SHA and updated by Dependabot; dependency
   review checks each change to them.

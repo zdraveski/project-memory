@@ -155,7 +155,7 @@ const bad = [];
 for (const [file, [, mutants]] of Object.entries(suites)) {
   const text = readFileSync(join(repo, file), 'utf8');
   for (const [label, [from]] of Object.entries(mutants)) { const n = text.split(from).length - 1; if (n !== 1) bad.push(`${file} :: ${label}: find-text found ${n} times`); }
-  const keys = [...readFileSync(join(repo, tableOf(file)), 'utf8').matchAll(/^ {2}(['"])((?:(?!\1)[^\\]|\\.)*)\1: \[/gm)].map((m) => m[2]);
+  const keys = [...readFileSync(join(repo, tableOf(file)), 'utf8').matchAll(/^ {2}(['"])((?:(?!\1)[^\\]|\\.)*)\1: ?\[/gm)].map((m) => m[2]);
   for (const k of new Set(keys.filter((k, i) => keys.indexOf(k) !== i))) bad.push(`${file} :: ${k}: label given twice`);
 }
 step('every mutant applies once', bad);
