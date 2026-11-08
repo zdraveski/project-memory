@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
-      # A fresh checkout has nothing changed: its parse (.mjs and .json), import and mutant-table checks, about a second.
+      # A fresh checkout has nothing changed: its parse (.mjs and .json), import and mutant-table checks, a few seconds.
       - run: node check.mjs
       - run: node store.test.mjs
       - run: node compact-gate.test.mjs
