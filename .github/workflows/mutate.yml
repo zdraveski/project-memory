@@ -4,7 +4,7 @@ name: mutate
 # once for an account, and past that they queue. 20 machines took 6 min 44 s
 # beside a push's test run, three of them queued; six took about 10 minutes,
 # one 65. Started by hand (Actions > mutate > Run workflow, or `gh workflow run
-# mutate.yml -f machines=N`), every hand-written mutant, and with `-f auto=true`
+# mutate.yml --ref <branch> -f machines=N`), every hand-written mutant, and with `-f auto=true`
 # the automatic ones too. deploy.mjs --mutants-checked-on-github then skips its
 # own run, on your word that a run covering the commit passed. On a pull request,
 # the changed files' mutants (all of them after a change to store.mjs, harness.mjs

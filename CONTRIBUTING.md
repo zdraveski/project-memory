@@ -230,7 +230,7 @@ push to it directly. Sign off every commit
 `node mutate.mjs` if you changed a rule; CI runs the suites and a minute of
 fuzz on every platform. The pull request merges only when its required
 checks pass: the seven test jobs, actionlint, the sign-off check (`dco`),
-dependency review and CodeQL. Have the change reviewed from its diff alone,
+dependency review, `mutants`, zizmor and CodeQL. Have the change reviewed from its diff alone,
 by someone (or an agent) who has not heard why you made it. Leave the
 version number alone, and describe the change under an `## Unreleased`
 heading at the top of `CHANGELOG.md` (add the heading if it isn't there), in
@@ -265,18 +265,23 @@ The maintainer's steps:
 1. Bump `version` in `.claude-plugin/plugin.json`, and turn `## Unreleased`
    in `CHANGELOG.md` into the version's heading.
 2. Run `claude plugin validate . --strict`. It should find nothing to report.
-3. Run `node fuzz.mjs 600`, and review the whole repository, not just the
+3. Review the whole repository, not just the
    last change. Have every change since the last tag reviewed from its diff
    alone, by a reviewer who hasn't seen the work (a fresh agent will do), and
    fix what it confirms.
-4. Merge it into `master` through a pull request, start the `mutate`
-   workflow by hand with `auto` on (every hand-written and automatic
-   mutant) and the `fuzz` workflow (ten minutes on 17 machines), and wait
-   for them and CI to pass on every job. A survivor must be
+4. On the release branch, up to date with `master`, start every
+   hand-written and automatic mutant, then ten minutes of fuzz:
+   `gh workflow run mutate.yml --ref <branch> -f auto=true -f machines=17`,
+   then `gh workflow run fuzz.yml --ref <branch> -f machines=17 -f seconds=600`.
+   In that order: past GitHub's 20 jobs the rest queue, and a mutant job takes
+   longer than a fuzz job. A new commit on the branch means starting them
+   again. Wait for them to pass on every job, then merge
+   through a pull request once its CI passes. A survivor must be
    killed by a test, or listed in `automut-ignore.txt` with its reason,
    before a release.
-   No other pull request merges between this one and the tag: the runs
-   must test exactly the commit that gets tagged. A mutant reported
+   No other pull request merges between these runs and the tag, and
+   `git diff <tested commit> <merge commit>` must be empty: the runs must
+   test exactly the files that get tagged. A mutant reported
    `TIMED OUT`, or a shard that fails for time on a crowded machine, is
    run again (that shard alone) before it counts as a survivor.
 5. Check **Security** on GitHub: no high or critical code scanning alert

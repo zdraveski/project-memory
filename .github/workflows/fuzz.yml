@@ -4,7 +4,9 @@ name: fuzz
 # Linux and macOS (at most 5 at once on macOS), for a bug hunt or before a
 # release. A failing round prints its seed: `node fuzz.mjs --seed N` replays
 # it. Started from Actions > fuzz > Run workflow, or
-# `gh workflow run fuzz.yml --ref master -f machines=17 -f seconds=600`.
+# `gh workflow run fuzz.yml --ref <branch> -f machines=17 -f seconds=600`,
+# on the release branch for a release. Keep the 17 machines: a failure often
+# shows on one machine alone.
 on:
   workflow_dispatch:
     inputs:
