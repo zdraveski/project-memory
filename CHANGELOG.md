@@ -13,6 +13,15 @@
   `node deploy.mjs` run mutants only with `--full`, and `deploy.mjs
   --mutants-checked-on-github` is gone.
 
+**Memory index**
+- A project's notebook that the plugin has written to, but that has no
+  `MEMORY.md`, now gets one with a title only, in the reply that made the
+  handoff. A manual run does the same for every project.
+- A line like `- [title](journal/2026-11-01.md)` is removed from the index,
+  including one written by hand. A line with text after the link stays.
+- A note that has no line is filed by its age, like any other: a recent one in
+  the index, an old one in the archive. Before, it always went to the archive.
+
 ## 1.2.7 (2026-11-08)
 
 A bug-fix release for the tools that build and check the plugin. The plugin

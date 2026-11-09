@@ -1083,7 +1083,9 @@ if (!quick) {
     out += spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: r, transcript_path: ps, session_id: S, hook_event_name: 'Stop' }), encoding: 'utf8' }).stdout;
     ms = Math.max(ms, Date.now() - t0);
   }
-  ok(ms < 3000 && out === '' && line() === whole && asks(d).includes('before the flood') && asks(d).includes('after the flood'),
+  // The store now has an index, so its tier report is expected; the backfill itself says nothing.
+  const said = out.split('\n').filter((l) => l && !/ hot \/ \d+ archived, |^  pointers recovered: |^memory snapshot: /.test(l));
+  ok(ms < 3000 && said.length === 0 && line() === whole && asks(d).includes('before the flood') && asks(d).includes('after the flood'),
     `backfill keeps to its budget on a huge transcript: no Stop takes over ${ms} ms, none says anything, and the 70 MB line is passed over unread, the turns before and after it journaled (got ${line()}; ${asks(d)}; ${out})`);
 }
 // A transcript of any size is read whole, not only its last 64 MB: in

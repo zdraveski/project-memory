@@ -117,11 +117,23 @@ After each reply it decides which lines stay in `MEMORY.md` and which move to
   comes off and the line stays archived. Any other move to the archive is
   final, unless the note says `tier: hot`.
 
+A project's notebook that the plugin has written to (it has a `handoff.md` or
+a `journal/` folder) but that has no `MEMORY.md` gets an empty one, with a
+title only, in the reply that made the handoff. A manual run does the same for
+every project. A notebook with neither gets nothing.
+
+Claude Code's own index backfill sometimes adds a line like
+`- [title](journal/2026-11-01.md)` for a journal day. These are removed, since
+the journal is searched, not listed; so is one you wrote by hand in that form.
+A line with text after the link stays.
+
 Lines are moved word for word, never rewritten. A note that has no line gets
 one, built from its description, two minutes after it was written. That line
-goes in the archive (in the shared notebook, in its index) unless the note
-says `tier: hot`. A file name no line can point at, such as `lesson (1).md`,
-is reported in the startup briefing instead, to be renamed. A line that points
+is filed by the same rules as any other, by the note's age: a note changed in
+the last 7 days is in the index, an older one in the archive. `tier: hot` or
+`tier: archive` in the note still decides it, and in the shared notebook the
+line is in the index unless the note says `tier: archive`. A file name no line
+can point at, such as `lesson (1).md`, is reported in the startup briefing instead, to be renamed. A line that points
 at a web page or a path outside the notebook is kept as plain text. When two
 lines point at the same note, one is kept: in the index, the newer (lower)
 line, in the first one's place; an index line over an archived one. The other

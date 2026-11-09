@@ -665,9 +665,7 @@ async function execute(steps, meta) {
       else if ((c.status === 0) === lines.some((l) => l.startsWith('PROBLEM'))) problems.push(`doctor exited ${c.status} with ${lines.filter((l) => l.startsWith('PROBLEM')).length} PROBLEM line(s)`);
     },
   };
-  // A store has its MEMORY.md (a Stop leaves a folder without one alone): with
-  // the index step cut, an empty one, as generate makes when it draws no line.
-  if (!steps.some((st) => st.type === 'index')) act.index({ lines: [] });
+  // With the index step cut there is no MEMORY.md at first: the Stop that writes the handoff makes a title-only one.
   for (const st of steps) {
     if (!['turn', 'stop', 'stops', 'gate'].includes(st.type)) finish();
     await act[st.type](st);
