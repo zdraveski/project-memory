@@ -2123,7 +2123,10 @@ if (!quick) {
   // Old enough that a backfill would take it (a live one is left alone), but after the off time.
   writeFileSync(join(ofd, '.project-off'), JSON.stringify({ t: Date.now() - 3 * 864e5 }));
   utimesSync(join(oproj, `${OID}.jsonl`), new Date(Date.now() - 864e5), new Date(Date.now() - 864e5));
-  r = await go('on');
+  // Asked in the very millisecond memory goes on: still while it was off (macOS CI, 2026-11-09).
+  const realNow = Date.now, askedAt = Date.parse(JSON.parse(readFileSync(join(oproj, `${OID}.jsonl`), 'utf8').split('\n')[0]).timestamp);
+  Date.now = () => askedAt;
+  try { r = await go('on'); } finally { Date.now = realNow; }
   ok(r.status === 0 && !existsSync(join(ofd, '.project-off')) && /memory is on/.test(r.stdout), `memory on removes the marker (got ${r.stdout.trim()})`);
   appendFileSync(join(oproj, 'ffffffff-5555.jsonl'), `${line('user', 'after on', OC)}\n${line('assistant', 'fine', OC)}\n`);
   spawnSync(process.execPath, [TIER, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: 'C:\\off-cli', session_id: 'ffffffff-5555', transcript_path: join(oproj, 'ffffffff-5555.jsonl'), hook_event_name: 'Stop' }) });

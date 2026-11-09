@@ -191,7 +191,7 @@ export function isOff(dir) {
 export const OFF_PERIODS = '.off-periods';
 export function wasOff(dir) {
   const periods = listOf(raw(join(dir, OFF_PERIODS))).map((l) => l.split(' ').map(Number));
-  return (t) => periods.some(([from, to]) => t.ms >= from && t.ms < to);
+  return (t) => periods.some(([from, to]) => t.ms >= from && t.ms <= to);
 }
 // The local date a project was turned off, for what is said to the user.
 export const offSince = (o) => (o.since ? local(o.since).slice(0, 10) : 'an unknown date');
