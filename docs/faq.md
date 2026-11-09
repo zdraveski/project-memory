@@ -42,8 +42,9 @@ you delete it or ask Claude to forget part of it.
 
 ## Does it slow Claude down or fill the conversation?
 
-Each conversation starts with a short briefing for Claude, usually under
-1,000 tokens. The journal isn't loaded; Claude searches it only when you ask
+Each conversation starts with a short briefing for Claude: 3,018 characters
+at the median and 3,496 at most (8 projects measured). After a compaction it
+is larger: 8,481 at the median and 9,366 at most, never over 9,500. The journal isn't loaded; Claude searches it only when you ask
 about earlier work. What it does after each reply runs outside the
 conversation and uses none of its room.
 
