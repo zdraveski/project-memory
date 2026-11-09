@@ -19,6 +19,23 @@ Claude Code runs project-memory on three of its events, declared in
 The skill is `memory` (`/project-memory:memory`). It runs `memory.mjs`, the
 command-line tool described [below](#the-memory-tool-from-a-terminal).
 
+Each hook has a time limit, which Claude Code enforces by stopping the hook:
+120 seconds for Stop and for `/compact`, 60 for the automatic compaction check
+and 30 for the startup briefing. Without a limit Claude Code waits 10 minutes.
+A real Stop took up to 46 seconds. A hook stopped at its limit has its output
+thrown away, so a startup briefing that runs past 30 seconds is lost without a
+word. A Stop stopped while git runs has already written the journal and the
+handoff, because the snapshot comes last; the next Stop reports the snapshot as
+busy until the lock git left is ten minutes old, then takes it. Each hook shows
+a short status message while it runs. Nothing is printed during `/compact`:
+what a PreCompact hook prints becomes part of the instructions for the summary,
+so that run stays silent whatever it finds.
+
+The briefing runs on a new conversation, a resume, `/clear` and after a
+compaction, not on a fork. A fork starts from a copy of an existing
+conversation, which already holds the briefing, and the copied turns land on
+the journal entries they came from, not on new ones.
+
 A hook that fails exits with status 0, so a failure never blocks a session:
 what went wrong is reported in the startup briefing instead. Two hold things up
 on purpose, briefly: once per compaction cycle the Stop hook sends Claude
@@ -884,6 +901,8 @@ meet most:
   version of a note. Install Git, or move that repository out of the folder.
 - **"its Stop hook is not running".** Claude finished a reply, but the plugin
   didn't save after it. Restart Claude Code; if the line stays after the next
-  reply, check that Node.js is installed and on the `PATH`.
+  reply, check that Node.js is installed and on the `PATH`. A `disableAllHooks`
+  setting, `--bare`, `--settings` or `CLAUDE_CODE_SKIP_PROMPT_HISTORY` would
+  cause this too.
 - **"node" is not found.** Install Node.js 22 or newer and restart Claude
   Code.

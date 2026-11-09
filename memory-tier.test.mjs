@@ -575,6 +575,51 @@ ok(tracked().includes('proj-two/memory/f2.md') && sh().failures === 0 && !sh().b
 rmSync(join(root, '.snapshot-health'));
 r = await stop('proj-two');
 ok(!existsSync(join(root, '.snapshot-health')), '--stop: a quiet Stop with no snapshot record owes none, and runs no git');
+// PreCompact's stdout becomes the compaction's instructions, so the tidy-up's report must not reach it.
+const preCompact = (proj = 'proj-two') => call(['--stop'], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, proj, 'session.jsonl'), session_id: 'tst', hook_event_name: 'PreCompact', trigger: 'manual' }));
+note('proj-two', 'pc1');
+r = await preCompact();
+ok(r.status === 0 && r.stdout === '' && tracked().includes('proj-two/memory/pc1.md'), `PreCompact: a recovered pointer and a snapshot print nothing, and the work still happens (got ${JSON.stringify(r.stdout)})`);
+note('proj-two', 'pc2');
+writeFileSync(join(root, '.git', 'index.lock'), '');
+r = await preCompact();
+ok(r.status === 0 && r.stdout === '', `PreCompact: a busy snapshot prints nothing (got ${JSON.stringify(r.stdout)})`);
+unlinkSync(join(root, '.git', 'index.lock'));
+rmSync(join(root, 'proj-two', 'memory', 'MEMORY.md'));
+mkdirSync(join(root, 'proj-two', 'memory', 'MEMORY.md'));
+r = await preCompact();
+ok(r.status === 0 && r.stdout === '', `PreCompact: a store that throws prints nothing (got ${JSON.stringify(r.stdout)})`);
+rmSync(join(root, 'proj-two', 'memory', 'MEMORY.md'), { recursive: true });
+writeFileSync(join(root, 'proj-two', 'memory', 'MEMORY.md'), '# Index\n\n- [a](a.md) — a\n');
+await stop('proj-two');
+// A Stop killed while git runs: made by a preload whose git takes the lock like a real one and never returns.
+// The journal and handoff.md are written before the snapshot, so the kill loses nothing; the next Stop is busy, and
+// once the lock is stale the one after it snapshots. Bounded by spawnSync's own timeout.
+{
+  const hang = join(home, 'hang-git.cjs');
+  writeFileSync(hang, `const cp = require('node:child_process'), fs = require('node:fs'), real = cp.execFileSync;
+cp.execFileSync = function (cmd, args, ...rest) {
+  if (cmd === 'git' && args.includes('add')) { fs.writeFileSync(${JSON.stringify(join(root, '.git', 'index.lock'))}, ''); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 120000); }
+  return real.call(this, cmd, args, ...rest);
+};`);
+  const tp = join(root, 'proj-two', 'killed.jsonl'), line = (type, uuid, text) => JSON.stringify({ type, uuid, sessionId: 'kill1234', cwd: 'C:\\nowhere', timestamp: new Date().toISOString(), message: { role: type, content: type === 'user' ? text : [{ type: 'text', text }] } });
+  writeFileSync(tp, [line('user', 'k-1', 'question before the kill'), line('assistant', 'k-2', 'answer before the kill')].join('\n') + '\n');
+  note('proj-two', 'k1');
+  const payload = JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: tp, session_id: 'kill1234', hook_event_name: 'Stop' });
+  const killed = spawnSync(process.execPath, ['--require', hang, TOOL, '--stop'], { env, encoding: 'utf8', input: payload, timeout: 15000 });
+  const mem = join(root, 'proj-two', 'memory'), lock = join(root, '.git', 'index.lock');
+  const journal = () => readdirSync(join(mem, 'journal')).filter((f) => f.endsWith('.md')).map((f) => readFileSync(join(mem, 'journal', f), 'utf8')).join('');
+  ok(killed.error?.code === 'ETIMEDOUT' && existsSync(lock), `the fixture: a Stop killed inside git leaves its lock (got ${killed.error?.code})`);
+  ok(journal().includes('question before the kill') && readFileSync(join(mem, 'handoff.md'), 'utf8').includes('question before the kill'), 'a Stop killed during git still left the turn in the journal and handoff.md');
+  ok(!tracked().includes('proj-two/memory/k1.md'), 'and the killed Stop committed nothing');
+  r = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: payload, timeout: 60000 });
+  ok(r.status === 0 && /memory snapshot: busy/.test(r.stdout) && journal().includes('question before the kill'), `the next Stop says the snapshot is busy and loses nothing (got ${r.stdout.trim()})`);
+  const old = new Date(Date.now() - 15 * 60000);
+  utimesSync(lock, old, old);
+  r = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: payload, timeout: 60000 });
+  ok(r.status === 0 && tracked().includes('proj-two/memory/k1.md') && !existsSync(lock), `with the lock stale, the following Stop snapshots (got ${r.stdout.trim()})`);
+  rmSync(tp);
+}
 // An index.lock a dead git left behind would refuse every commit from now on.
 note('proj-two', 'g');
 writeFileSync(join(root, '.git', 'index.lock'), '');

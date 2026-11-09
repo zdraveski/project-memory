@@ -605,6 +605,8 @@ export async function main(argv, input) {
     return 0;
   }
   let payload = null;
+  // PreCompact's stdout becomes the compaction's instructions, so its run reports nothing.
+  const say = (m) => { if (payload?.hook_event_name !== 'PreCompact') console.log(m); };
   if (stop) {
     try { payload = JSON.parse(input); } catch {}
     // Two tries, not one: a handoff that fails to write (two sessions renaming
@@ -723,9 +725,9 @@ export async function main(argv, input) {
     // where a thrown error is a stack trace nobody reads.
     let r;
     try { r = withLock(dir, () => tier(dir, now, seen.get(dir))); }
-    catch (e) { console.log(`${dir}: skipped — ${reason(e)}`); if (!dry) try { health(dir, [`a pass failed: ${reason(e)}`]); } catch {} continue; }
-    if (r === null) { console.log(`${dir}: busy — another hook holds this store; the next turn redoes it`); continue; }
-    if (r.conflict) { console.log(`${dir}: changed during the pass — the edit wins; the next turn redoes it`); continue; }
+    catch (e) { say(`${dir}: skipped — ${reason(e)}`); if (!dry) try { health(dir, [`a pass failed: ${reason(e)}`]); } catch {} continue; }
+    if (r === null) { say(`${dir}: busy — another hook holds this store; the next turn redoes it`); continue; }
+    if (r.conflict) { say(`${dir}: changed during the pass — the edit wins; the next turn redoes it`); continue; }
     const problems = [];
     if (r.missing.length) problems.push(`pointers with no file: ${r.missing.join(', ')}`);
     if (r.merged) problems.push('merge-conflict markers in MEMORY.md (<<<<<<< ======= >>>>>>>): every session loads them as they are; resolve them by hand');
@@ -741,20 +743,20 @@ export async function main(argv, input) {
     if (!r.waiting && gated) try { clean.push([dir, stampAfter(dir)]); } catch {}
     if (!dry && !r.wrote && !r.recovered.length && !r.dupes.length && !r.missing.length) continue;
     const saved = Math.round((r.before - r.after) / 4);
-    console.log(`${dry ? '[dry] ' : ''}${r.dir}: ${r.hot} hot / ${r.cold} archived, ` +
+    say(`${dry ? '[dry] ' : ''}${r.dir}: ${r.hot} hot / ${r.cold} archived, ` +
       // A growth (pointer lines added) said as one: "~-26 tokens/session" read as a saving (audit I-F3).
       `MEMORY.md ${r.before}B -> ${r.after}B (${saved < 0 ? `grew ~${-saved}` : `~${saved}`} tokens/session)`);
-    if (r.recovered.length) console.log(`  pointers recovered: ${r.recovered.join(', ')}`);
-    if (r.dupes.length) console.log(`  duplicate pointers dropped: ${r.dupes.join(', ')}`);
-    for (const p of problems) console.log(`  ${p}`);
+    if (r.recovered.length) say(`  pointers recovered: ${r.recovered.join(', ')}`);
+    if (r.dupes.length) say(`  duplicate pointers dropped: ${r.dupes.join(', ')}`);
+    for (const p of problems) say(`  ${p}`);
   }
 
   // After the stores are tiered, not before: the snapshot should record the
   // state a session will actually start from.
   if (!dry && dirAt === -1) {
     const s = snapshot();
-    if (s === 'busy') console.log('memory snapshot: busy — another session is committing; the next turn retries');
-    else if (s) console.log(`memory snapshot: ${s}`);
+    if (s === 'busy') say('memory snapshot: busy — another session is committing; the next turn retries');
+    else if (s) say(`memory snapshot: ${s}`);
     snapshotHealth(s);
   }
   // The tool's own writes are part of the stamp, so the next turn is quiet

@@ -410,6 +410,15 @@ const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((
 ok(JSON.stringify(wiring) === JSON.stringify(['PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop',
   'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/handoff-log.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
   `the plugin wires the four hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
+// A hook with no timeout gets Claude Code's 10 minutes; a real Stop took 45.7 s. A timed-out hook's output is discarded.
+const hooksOf = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.map((e) => ({ ev, matcher: e.matcher || '', ...e.hooks[0] })));
+const timeouts = Object.fromEntries(hooksOf.map((h) => [`${h.ev}|${h.matcher}`, h.timeout]));
+ok(JSON.stringify(timeouts) === JSON.stringify({ 'Stop|': 120, 'SessionStart|startup|resume|clear|compact': 30, 'PreCompact|manual': 120, 'PreCompact|auto': 60 }),
+  `each hook has its timeout in seconds (got ${JSON.stringify(timeouts)})`);
+ok(hooksOf.every((h) => typeof h.statusMessage === 'string' && h.statusMessage), 'each hook has a statusMessage');
+ok(new Set(hooksOf.filter((h) => h.ev === 'PreCompact').map((h) => h.statusMessage)).size === 2, 'the two PreCompact messages differ');
+// A fork inherits its conversation, so it needs no briefing of its own.
+ok(!/fork/.test(hookFile.hooks.SessionStart[0].matcher), 'the SessionStart matcher leaves fork out');
 
 // 5. Doctor: what is installed and what ran, never settings.json (it can
 // hold the user's keys). A settings.json that does not even parse goes unsaid.
@@ -452,6 +461,7 @@ rmSync(join(root, '.stop-ran'), { force: true });
   replied('sess-dead', 5 * 60_000);
   const dead = doc('sess-dead');
   ok(/^PROBLEM Claude finished a reply at [^\n]*its Stop hook is not running\. The user's fix: restart Claude Code/m.test(dead), `doctor: a reply long finished with nothing saved is a problem (got ${dead})`);
+  ok(/a disableAllHooks setting, --bare, --settings or CLAUDE_CODE_SKIP_PROMPT_HISTORY would cause this too/.test(dead), 'doctor names the settings that stop hooks as other causes');
   for (const id of ['sess-fresh', 'sess-dead']) rmSync(join(root, 'C--mem-cli', `${id}.jsonl`));
   // From a terminal (no session), the project's newest conversation decides:
   // with none to read, dead hooks said "waiting" forever. The project is the

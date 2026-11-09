@@ -403,6 +403,31 @@ const [A, B, C, D, X] = ['1', '2', '3', '4', '5'].map(sid);
     `a reply leaves one journal entry, with the request, the reply and the branch (got ${JSON.stringify(es)})`);
 }
 {
+  // A Stop that fires before the transcript holds the turn's reply: the question is saved open, and the next Stop
+  // journals the reply (journal.mjs reads the transcript, not last_assistant_message).
+  const L = sid('6'), ts = '2026-10-28T10:30:00Z';
+  say(L, ts, 'late question');
+  stop(L, 'the reply that is not in the transcript yet');
+  const early = of(L).map((e) => e.answered).join();
+  appendFileSync(tp(L), rec('assistant', L, ts, 'the late answer') + '\n');
+  stop(L);
+  const es = of(L).filter((e) => e.asked === 'late question');
+  ok(es.length === 1 && es[0].answered === 'the late answer', `a reply missing at the first Stop is journaled by the next, in the same entry (first ${JSON.stringify(early)}, then ${JSON.stringify(es.map((e) => e.answered))})`);
+}
+{
+  // A fork: a new session id over copied history. Its turns keep their uuids, which key the entries, so the
+  // copies land on the entries already there. Not checked against a real fork transcript (none on this machine).
+  const F = sid('7'), G = sid('8'), ts = '2026-10-28T10:40:00Z';
+  say(F, ts, 'asked before the fork', 'answered before the fork');
+  stop(F);
+  writeFileSync(tp(G), readFileSync(tp(F), 'utf8').split(F).join(G));
+  say(G, '2026-10-28T10:41:00Z', 'asked after the fork', 'answered after the fork');
+  stop(G);
+  const all = days(sdir).flatMap((d) => parseDay(readFileSync(dayFile(sdir, d), 'utf8')).entries);
+  ok(all.filter((e) => e.asked === 'asked before the fork').length === 1 && all.filter((e) => e.asked === 'asked after the fork').length === 1,
+    `a fork adds no second entry for the turns it copied (got ${all.filter((e) => /fork/.test(e.asked)).map((e) => `${e.s}:${e.asked}`)})`);
+}
+{
   // Resumed with auto memory on, a conversation once held with it off is still
   // not journaled: its first Stop with memory on journaled every turn of it.
   const failed = join(sdir, 'journal', '.failed');
