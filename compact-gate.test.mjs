@@ -464,6 +464,11 @@ process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
 let g5;
 try { write(user('build it'), asst('running', 870_000, 'tool_use')); g5 = gate(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
 ok(g5.code === 0, `with auto memory off the gate defers nothing: the same turn is deferred with it on (got ${g5.code}: ${g5.err})`);
+// A project turned off (memory off): the same turn is not deferred, and no in-flight note is written.
+writeFileSync(join(dir, '.project-off'), '{}');
+let g6, hold;
+try { hold = readFileSync(join(dir, 'handoff.md'), 'utf8'); write(user('build it'), asst('running', 870_000, 'tool_use')); g6 = gate(); } finally { rmSync(join(dir, '.project-off')); }
+ok(g6.code === 0 && readFileSync(join(dir, 'handoff.md'), 'utf8') === hold, `with the project off the gate defers nothing and writes nothing (got ${g6.code}: ${g6.err})`);
 }
 
 // Round 4. A compaction summary naming the private tag hides nothing: the

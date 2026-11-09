@@ -2,7 +2,7 @@
 // way. Our hooks take the lock; Claude Code's own Edit and Write tools do not,
 // so a write the model makes during a pass can only be detected --
 // replaceIfUnchanged -- never prevented.
-import { mkdirSync, rmdirSync, rmSync, statSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, readdirSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
+import { lstatSync, mkdirSync, rmdirSync, rmSync, statSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, readdirSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, resolve, basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -177,6 +177,24 @@ export const pathKey = (p) => (process.platform === 'win32' ? p.toLowerCase() : 
 // A transcript as .forgotten, .imported and .checked name it: `<folder>/<session>`.
 // Compared through pathKey: a payload spelt the folder `c--x`, the disk `C--x`.
 export const transcriptKey = (p) => `${basename(dirname(p))}/${basename(p, '.jsonl')}`;
+// A project turned off (memory off): a marker in its store, {"t": ms}. A dotfile, so the snapshot's .gitignore leaves it out.
+export const PROJECT_OFF = '.project-off';
+// null when the project is on; else {since} (null when the marker does not read). A marker that cannot be stat'ed counts as
+// there, with {unread: code}: guessing "on" would write into a project the user turned off.
+export function isOff(dir) {
+  const f = join(dir, PROJECT_OFF);
+  try { lstatSync(f); } catch (e) { return e.code === 'ENOENT' || e.code === 'ENOTDIR' ? null : { since: null, unread: e.code || 'error' }; }
+  try { const t = JSON.parse(readFileSync(f, 'utf8')).t; return { since: Number.isFinite(t) ? t : null }; } catch { return { since: null }; }
+}
+// When a project was off, one `<from ms> <to ms>` a line (memory on adds it). A transcript runs on while the marker is there, and
+// its Stops and the import come later: a turn asked inside a period is never written. Tested on what a turn's own time says.
+export const OFF_PERIODS = '.off-periods';
+export function wasOff(dir) {
+  const periods = listOf(raw(join(dir, OFF_PERIODS))).map((l) => l.split(' ').map(Number));
+  return (t) => periods.some(([from, to]) => t.ms >= from && t.ms <= to);
+}
+// The local date a project was turned off, for what is said to the user.
+export const offSince = (o) => (o.since ? local(o.since).slice(0, 10) : 'an unknown date');
 export function allStores() {
   const root = projectsRoot(), seen = new Set();
   let all = []; try { all = readdirSync(root); } catch {}

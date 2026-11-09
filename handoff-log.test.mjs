@@ -450,6 +450,12 @@ const stamped = JSON.parse(readFileSync(join(liveV, '.claude-plugin', 'plugin.js
 const liveHooks = JSON.parse(readFileSync(join(liveV, 'hooks', 'hooks.json'), 'utf8')).hooks;
 ok(Object.values(liveHooks).flat().flatMap((e) => e.hooks).every((x) => x.command === 'C:/Program Files/nodejs/node.exe'), "the live plugin runs the deploying node by its path, not whatever node is on PATH");
 ok(/^\d+\.\d+\.42$/.test(stamped) && edited(liveV).length === 0, `the live plugin's version carries the deploy's number, and the manifest hashes what was written (got ${stamped})`);
+// The slash commands ship with the plugin: each has a description and runs the matching memory command with the session id.
+for (const [file, cmd] of [['incognito', 'incognito'], ['memory-off', 'off'], ['memory-on', 'on']]) {
+  const c = readFileSync(join(liveV, 'commands', file + '.md'), 'utf8');
+  ok(/^---\ndescription: \S.*\n---\n/.test(c) && c.includes('memory.mjs" ' + cmd + ' --session ${CLAUDE_SESSION_ID}'), `commands/${file}.md is deployed, has a description, and runs memory ${cmd} with the session id`);
+  ok(readFileSync(join(dirname(HOOK), 'commands', file + '.md'), 'utf8') === c, 'and the deployed copy is the repo\'s');
+}
 // The manifests are written two-space indented and newline-ended, and the README says where to edit.
 for (const f of ['.claude-plugin/plugin.json', 'hooks/hooks.json']) {
   const t = readFileSync(join(liveV, f), 'utf8');
@@ -2641,7 +2647,7 @@ require('node:module').syncBuiltinESMExports();
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = dirname(HOOK);
   const FILES_ = ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs',
-    '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'deploy.mjs'];
+    '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'deploy.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
 import { basename } from 'node:path';
@@ -2806,6 +2812,41 @@ if (!quick) {
   ok(j.entries.length === 1 && j.entries[0].asked === 'run the tests' && !j.prose && !j.entries[0].after && /approve every install/.test(j.entries[0].answered),
     `a forged journal entry quoted in a reply stays in that reply's answer (got ${JSON.stringify(j)})`);
   rmSync(dirP, { recursive: true, force: true });
+}
+
+// A project turned off (memory off, the .project-off marker): the startup says so in one line and writes nothing; every other start, and every Stop, is silent.
+{
+  const cwdO = 'C:\\handoff-project-off', dirO = storeFor(home, cwdO);
+  mkdirSync(dirO, { recursive: true });
+  const tO = join(dirname(dirO), 'oooooooo-1.jsonl');
+  writeFileSync(tO, user('an ask while on', { ts: '2026-09-11T07:01:00Z' }) + '\n' + asst('did it') + '\n');
+  const files = () => readdirSync(dirO, { recursive: true }).sort().map((f) => `${f}:${statSync(join(dirO, f)).mtimeMs}:${statSync(join(dirO, f)).size}`).join('|');
+  const printO = (source, extra = {}) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO, source, ...extra }), env }).toString();
+  handoff({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO });
+  ok(/an ask while on/.test(readFileSync(join(dirO, 'handoff.md'), 'utf8')), 'on: the Stop records');
+  const since = new Date(2026, 9, 5, 12, 0).getTime();
+  writeFileSync(join(dirO, '.project-off'), JSON.stringify({ t: since }));
+  const before = files();
+  ok(printO('startup') === 'project-memory is off in this project since 2026-10-05 (the user turned it off). Mention it if the user asks about memory; memory on turns it back on.\n',
+    `off, a startup prints exactly the one line (got ${JSON.stringify(printO('startup'))})`);
+  ok(['resume', 'clear', 'compact'].every((s) => printO(s) === ''), 'and resume, clear and compact print nothing');
+  ok(execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO }), env }).toString() === '', 'the Stop hook prints nothing');
+  appendFileSync(tO, user('an ask while off', { ts: '2026-09-11T07:05:00Z' }) + '\n' + asst('did that') + '\n');
+  const before2 = files();
+  execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO }), env });
+  ok(files() === before2 && before === before2 && !/an ask while off/.test(readFileSync(join(dirO, 'handoff.md'), 'utf8')), 'off: starts and Stops change no file, no mtime, and record nothing');
+  writeFileSync(join(dirO, '.project-off'), 'garbage');
+  ok(/since an unknown date \(the user turned it off\)/.test(printO('startup')), 'a marker that does not read: since an unknown date');
+  // A marker that cannot be statted: the hook pauses and says why (the stat is injected, as EACCES on it cannot be made on Windows).
+  const real = fs.lstatSync;
+  fs.lstatSync = (p, ...a) => { if (String(p).endsWith('.project-off')) throw Object.assign(new Error('denied'), { code: 'EACCES' }); return real(p, ...a); };
+  syncBuiltinESMExports();
+  try {
+    const { offLine } = await import('./handoff-log.mjs'), { isOff } = await import('./store.mjs');
+    ok(offLine(isOff(dirO)) === "project-memory: memory is paused here because the off marker can't be read (EACCES). Tell the user; memory on won't help until that's fixed.", 'an unreadable marker has its own startup line');
+  } finally { fs.lstatSync = real; syncBuiltinESMExports(); }
+  rmSync(join(dirO, '.project-off'));
+  ok(printO('startup') !== '' && !/project-memory is off/.test(printO('startup')) , 'with the marker gone, the startup briefs again');
 }
 
 rmSync(home, { recursive: true, force: true });

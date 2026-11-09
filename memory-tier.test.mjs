@@ -1917,5 +1917,56 @@ if (!quick) {
   } finally { process.env.HOME = home; process.env.USERPROFILE = home; }
 }
 
+// --- a project turned off (memory off): its Stop, its tiering and its snapshots do nothing ---------------
+{
+  const mk = (name, extra = {}) => {
+    const d = store(name);
+    writeFileSync(join(root, name, 'session.jsonl'), '');
+    for (const [f, t] of Object.entries(extra)) writeFileSync(join(d, f), t);
+    return d;
+  };
+  const offD = mk('proj-off'), onD = mk('proj-on');
+  await plain();   // both snapshotted as they are
+  const offBefore = git('show', 'HEAD:proj-off/memory/a.md');
+  writeFileSync(join(offD, '.project-off'), JSON.stringify({ t: Date.now() }));
+  ok(!tracked().some((f) => f.includes('.project-off')), 'the marker is a dotfile: no snapshot tracks it');
+  // An orphan note the tiering would give a pointer, and a real edit the snapshot would take.
+  writeFileSync(join(offD, 'orphan.md'), '---\nname: orphan\ndescription: "o"\nmetadata:\n  type: project\n---\nbody\n');
+  utimesSync(join(offD, 'orphan.md'), tenMin, tenMin);
+  writeFileSync(join(offD, 'a.md'), '---\nname: a\ndescription: "a"\nmetadata:\n  type: project\n---\nEDITED while off\n');
+  const listing = (d) => readdirSync(d, { recursive: true }).sort().map((f) => `${f}:${statSync(join(d, f)).mtimeMs}`).join('|');
+  const ran = join(root, '.stop-ran'), ranBefore = existsSync(ran) ? readFileSync(ran, 'utf8') : null;
+  const before = listing(offD);
+  r = await stop('proj-off');
+  ok(r.status === 0 && r.stdout === '' && listing(offD) === before, `a Stop in an off project exits 0, prints nothing and touches nothing (got ${r.stdout})`);
+  ok((existsSync(ran) ? readFileSync(ran, 'utf8') : null) === ranBefore, "and does not add to .stop-ran");
+  r = await call(['--stop'], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, 'proj-off', 'session.jsonl'), session_id: 'tst', hook_event_name: 'PreCompact' }));
+  ok(r.status === 0 && r.stdout === '' && listing(offD) === before, 'a manual PreCompact in an off project is as quiet');
+  // Another project's Stop, and a manual run, do not take the off project's edit or tier it.
+  note('proj-on', 'fresh');
+  r = await stop('proj-on');
+  ok(tracked().includes('proj-on/memory/fresh.md') && git('show', 'HEAD:proj-off/memory/a.md') === offBefore, "another project's Stop leaves the off project's edit out of the snapshot, and its notes in HEAD");
+  ok(tracked().includes('proj-off/memory/a.md'), 'an off project keeps its old notes in HEAD');
+  r = await plain();
+  ok(r.status === 0 && listing(offD) === before && git('show', 'HEAD:proj-off/memory/a.md') === offBefore, 'a manual run does not rewrite an off project\'s index, nor snapshot it');
+  r = await call(['--dir', offD]);
+  ok(r.status === 0 && listing(offD) === before, '--dir on an off store does nothing either');
+  // A first add in parts (no index yet) leaves it out too.
+  unlinkSync(join(root, '.git', 'index'));
+  for (let i = 0; i < 8; i++) { note('proj-on', `part${i}`); await call(['--stop', '--batch', '2'], stopInput('proj-on')); }
+  ok(git('show', 'HEAD:proj-off/memory/a.md') === offBefore && !git('status', '--porcelain', '--', 'proj-on').includes('part'), 'a history rebuilt in parts leaves the off project out as well');
+  // An off store with a handoff and no index gets none.
+  const noIdx = join(root, 'proj-noidx', 'memory');
+  mkdirSync(noIdx, { recursive: true });
+  writeFileSync(join(noIdx, 'handoff.md'), 'h\n'); writeFileSync(join(noIdx, '.project-off'), '{}');
+  writeFileSync(join(root, 'proj-noidx', 'session.jsonl'), '');
+  await stop('proj-noidx'); await plain();
+  ok(!existsSync(join(noIdx, 'MEMORY.md')), 'an off store with a handoff and no index gets no index');
+  // Turned back on, it is tiered and snapshotted again.
+  rmSync(join(offD, '.project-off'));
+  await stop('proj-off'); await stop('proj-on');
+  ok(git('show', 'HEAD:proj-off/memory/a.md').includes('EDITED while off'), 'back on, the next snapshot takes what changed meanwhile');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

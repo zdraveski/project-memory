@@ -88,6 +88,7 @@ Windows device names such as `con` and `nul`.
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
 | `…/memory/.facts` | what the tidy-up read at the top of each note (its type, its `tier:` and its date), with the note's size and time, so a note is read again only once it changes |
 | `…/memory/.private-sessions` | the tags of conversations marked private (the newest 1,000) |
+| `…/memory/.project-off`, `.off-periods` | the marker while `memory off` holds, and the times it was off before, whose turns are never written |
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
 | `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
 | `~/.claude/projects/.git/project-memory-ignored`, `project-memory-parts` | bookkeeping for the snapshot's ignore list; a first snapshot still being taken in parts |
@@ -592,6 +593,39 @@ is kept in Claude Code's settings, which the plugin doesn't read. With one of
 those, also put the size in `CLAUDE_CODE_AUTO_COMPACT_WINDOW` under `env` in
 your Claude Code settings, for example `"200k"`. Otherwise the reminder
 never fires.
+
+## Turning it off
+
+Two commands stop it, and each is checked first thing in the hook that would
+have saved something.
+
+- `.project-off` in a project's `memory` folder (`memory off` writes it, `memory
+  on` removes it). `isOff` in `store.mjs` reads it: no marker is on; a marker
+  is off, with the date from its `t` or "an unknown date" if it can't be read;
+  a marker that can't be examined at all (any error but "not there") also
+  counts as off, so a failure never reads as on. The Stop and PreCompact
+  hooks return before touching anything, `compact-gate.mjs` does nothing, the
+  startup prints one line saying memory is off, and the snapshot leaves that
+  store out by a git pathspec (not a `.gitignore` rule, which would stop
+  tracking the notes already committed). Search and show still read the store.
+- `memory on` first adds the period to `.off-periods` (`<from ms> <to ms>`, one
+  a line), then removes the marker. If either step fails it says `NOT applied`
+  and the marker stays. The handoff and the journal skip a turn whose prompt
+  is timed inside a period, so a conversation that runs across off and on keeps
+  what it said before and after, and the import takes nothing from the period.
+  A turn whose time won't parse isn't skipped.
+- `incognito` goes through the existing private-session route: it adds the
+  conversation's tag to `.private-sessions` and sweeps the journal and
+  `handoff.md` for it (`takeBack` in `journal.mjs`), under the store's lock. If
+  the sweep fails the tag stays and the next Stop retries; the command says
+  so and exits 1.
+
+The `/incognito`, `/memory-off` and `/memory-on` slash commands are three files
+in `commands/` that run the `memory` CLI with `--session ${CLAUDE_SESSION_ID}`.
+Checked by hand on 2026-11-09: each ran when typed by its full name,
+`/incognito` got the real session id, resuming keeps that id, and `/clear`
+starts a new one, in a new transcript. So incognito holds across a resume, and
+after `/clear` the new conversation is not incognito.
 
 ## Snapshots
 

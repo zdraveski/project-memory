@@ -202,9 +202,35 @@ What changed in each version is in the [changelog](CHANGELOG.md). Only the
 newest version gets fixes, so update when a new one comes out
 ([Supported versions](SECURITY.md#supported-versions)).
 
+## Turning it off
+
+Four ways, from narrowest to widest. None of them reaches Claude Code's own
+files: Claude Code by default still keeps its own transcript of every
+conversation (30 days unless you change that), and its own auto memory may
+still save notes. Those are Claude Code's settings, not project-memory's.
+
+- **One conversation:** type `/project-memory:incognito`. It stops saving that
+  conversation and sweeps what it already saved from the journal and
+  `handoff.md`; snapshots of days already over keep a copy. It holds if you
+  resume the conversation; `/clear` starts a new one, so run it again there.
+  If it says `NOT applied`, it did not work.
+- **One project:** `/project-memory:memory-off`, and `/project-memory:memory-on`
+  to come back. While it's off, project-memory adds nothing to that project's
+  journal, handoff or history, and doesn't tidy its notes; the startup says it
+  is off. What you say meanwhile stays out after it's back on, and the same
+  conversation's turns before and after are kept. Claude can still write a note
+  if you ask. Off stops adding; it doesn't hide: search and show still answer
+  from what is there.
+- **All projects, this machine:** set `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, or
+  disable the plugin with `enabledPlugins` in your Claude Code settings.
+- **Claude Code itself:** `autoMemoryEnabled: false` stops its auto memory,
+  `CLAUDE_CODE_SKIP_PROMPT_HISTORY` its transcripts (with none, the journal
+  records nothing either), and `claude purge` deletes what it keeps.
+  project-memory does not read or change any of these.
+
 ## Pausing or removing it
 
-To pause it, run `claude plugin disable project-memory@project-memory` in a
+To pause it everywhere, run `claude plugin disable project-memory@project-memory` in a
 terminal and restart Claude Code; `enable` turns it back on. To remove it,
 type `/plugin uninstall project-memory@project-memory` in Claude Code. If you
 added it from claude.ai, use `/plugin` in Claude Code for both.
