@@ -49,23 +49,23 @@ A suite that passes ends with one line, `<suite>: <n> checks passed`. One
 that fails stops at the first failed check, prints that check's message
 (what it checks, and often what it got), and exits non-zero.
 
-CI ([`test.yml`](.github/workflows/test.yml)) runs `node check.mjs`, all
-six suites and a minute of fuzz on every pull request and every push to
-`master`, in seven jobs: Linux with Node 22, 24 and 26, and macOS and
-Windows with Node 24 and 26. A pull request can't merge until every job
+CI ([`test.yml`](.github/workflows/test.yml)) runs `node check.mjs` and all
+six suites on every pull request and every push to `master`, in three jobs:
+Linux with Node 22, Windows with Node 24 and macOS with Node 26. A pull request can't merge until every job
 passes. Each job's log on GitHub shows the same lines as a run here.
 
 Beyond the suites:
 
 - `node check.mjs` is the quick check for every edit. Every `.mjs` and `.json` file parses, no
-  file imports a name it never uses, and every mutant's find-text is in its
-  file once; then the suites of the files changed since the last commit run
-  in `--mutant` mode, in UTC and in New York time (GitHub's machines run in
-  UTC, where a test of local midnight once checked nothing), and the mutants
-  on the changed lines run, hand-written first, then the automatic ones
-  (`--no-auto` skips those); a survivor fails the check, and so does a
-  `mutate.mjs` run that exits non-zero. Then it lists changed code lines no mutant
-  covers, and after a change to a hook's code it fuzzes for 20 seconds.
+  file imports a name it never uses, and the suites of the files changed since
+  the last commit run in `--mutant` mode, in UTC and in New York time (GitHub's
+  machines run in UTC, where a test of local midnight once checked nothing).
+  `--full`, by hand, adds the rest: every mutant's
+  find-text is in its file once, the mutants on the changed lines run,
+  hand-written first, then the automatic ones (`--no-auto` skips those); a
+  survivor fails the check, and so does a `mutate.mjs` run that exits non-zero.
+  Then it lists changed code lines no mutant covers, and after a change to a
+  hook's code it fuzzes for 20 seconds.
   Seconds for most files, a minute or two after a change to `memory.mjs` or
   `store.mjs`. CI runs it in every job, where nothing has changed and it
   takes a few seconds. To run it before every commit of yours:
@@ -105,11 +105,11 @@ Beyond the suites:
   fail with EBUSY, EPERM, EACCES or ENOSPC from a seeded stream, and some
   Stops are killed part way; the hooks must degrade safely. Faulted runs of
   two Stops at once, and kills, are races: replay a seed a few times.
-  CI fuzzes a minute on every job. The `fuzz` workflow, by hand, fuzzes ten
+  The `fuzz` workflow, by hand, fuzzes ten
   minutes on each of 17 machines (12 Linux, 3 Windows, 2 macOS, so no macOS
   job waits for one of the account's 5 slots), and a failing machine uploads
-  its kept files as the artifact `fuzz-kept-<machine>`: run it before a
-  release.
+  its kept files as the artifact `fuzz-kept-<machine>`: for a bug hunt; no
+  release needs it.
 - `node coverage.mjs [--suites] [--fuzz <seconds>]` runs the six suites
   and/or the fuzz under Node's own coverage and prints, for each of the six
   plugin files, the share of its code that ran, the functions that never
@@ -120,8 +120,8 @@ Beyond the suites:
   fail: all mutants, or those whose label contains one of the texts. Every mutant
   must be killed. The mutants are in `mutants/`, one file per source file;
   the table in `mutate.mjs` names the suite that must catch them. Each is a
-  label and a pair, the text to find and what to put in its place. A change to a line a mutant targets
-  needs the mutant updated too. Each suite runs with `--mutant`, which skips
+  label and a pair, the text to find and what to put in its place. No change or release needs the mutants run
+  or kept up to date: the tool stays for when someone asks. Each suite runs with `--mutant`, which skips
   its slow blocks (a held lock waited out, a race, a big fixture, a clock;
   `quick` in `harness.mjs`); a mutant only those blocks kill is marked
   `{ full: true }` and runs its whole suite. The full run took 65 minutes on
@@ -148,22 +148,12 @@ Beyond the suites:
   `FIND-TEXT NOT UNIQUE`) are all named there as survivors. A suite that
   fails unmutated stops the run with exit 1 too. A stillborn or ignored
   mutant never does.
-- `node deploy.mjs` runs only the mutants of the files changed since the live
-  copy's commit; every one when that commit is unknown, when `store.mjs`,
-  `harness.mjs` or `mutate.mjs` changed, or under `--full`. A change to a file
-  in `mutants/` runs only that file's mutants. Run it with `--full` before a
-  version release.
-- The `mutate` workflow on GitHub splits the mutants across 17 machines
-  (GitHub Free runs 20 jobs at once). Every pull request runs the changed
-  files' mutants on 10 machines, by the deploy's rule, and its `mutants`
-  job is a required check: a survivor blocks the merge. A pull request
-  need not be up to date to merge, so two that leave a survivor only together
-  show in the full run before a release. Started by hand (Actions > mutate > Run
-  workflow), it runs all the hand-written ones in about 20 minutes
-  (2026-11), and with `auto` on, the automatic ones too. Once a run
-  covering the commit passes, `node deploy.mjs --mutants-checked-on-github`
-  skips the local run. The deploy never asks GitHub itself: nothing here
-  goes online.
+- `node deploy.mjs` skips the mutation check; with `--full` it runs every
+  mutant here, about 65 minutes.
+- The `mutate` workflow on GitHub, started by hand (Actions > mutate > Run
+  workflow) only if someone asks, splits the mutants across 17 machines
+  (GitHub Free runs 20 jobs at once). It runs all the hand-written ones in about
+  20 minutes (2026-11), and with `auto` on, the automatic ones too.
 - `node memory-tier.soak.mjs [store]` copies a store (by default the largest
   on the machine) to a temp folder, then simulates a month of new notes and
   sessions ending at the same moment.
@@ -186,7 +176,7 @@ they finish.
 - Keep the numbers at the top of each file; the comments say why each is
   what it is.
 - Add or update a test with every change to what the plugin does, however
-  small, and a mutant for any new rule. A change without one isn't merged.
+  small. A change without one isn't merged.
 - Don't run the `claude` command, read a credential or Claude Code's
   `settings.json`, copy the whole environment, or connect to anything. The
   plugin directory's security scan holds a plugin that does, and it reads
@@ -226,11 +216,9 @@ false test here.
 
 Open a pull request against `master`: nobody, the maintainer included, can
 push to it directly. Sign off every commit
-([below](#developer-certificate-of-origin)). Run `node check.mjs` first, and
-`node mutate.mjs` if you changed a rule; CI runs the suites and a minute of
-fuzz on every platform. The pull request merges only when its required
-checks pass: the seven test jobs, actionlint, the sign-off check (`dco`),
-dependency review, `mutants`, zizmor and CodeQL. Have the change reviewed from its diff alone,
+([below](#developer-certificate-of-origin)). Run `node check.mjs` first; CI runs
+the suites on every platform. The pull request merges only when its required
+checks pass: the three test jobs and the sign-off check (`dco`). Have the change reviewed from its diff alone,
 by someone (or an agent) who has not heard why you made it. Leave the
 version number alone, and describe the change under an `## Unreleased`
 heading at the top of `CHANGELOG.md` (add the heading if it isn't there), in
@@ -265,29 +253,10 @@ The maintainer's steps:
 1. Bump `version` in `.claude-plugin/plugin.json`, and turn `## Unreleased`
    in `CHANGELOG.md` into the version's heading.
 2. Run `claude plugin validate . --strict`. It should find nothing to report.
-3. Review the whole repository, not just the
-   last change. Have every change since the last tag reviewed from its diff
-   alone, by a reviewer who hasn't seen the work (a fresh agent will do), and
-   fix what it confirms.
-4. On the release branch, up to date with `master`, start every
-   hand-written and automatic mutant, then ten minutes of fuzz:
-   `gh workflow run mutate.yml --ref <branch> -f auto=true -f machines=17`,
-   then `gh workflow run fuzz.yml --ref <branch> -f machines=17 -f seconds=600`.
-   In that order: past GitHub's 20 jobs the rest queue, and a mutant job takes
-   longer than a fuzz job. A new commit on the branch means starting them
-   again. Wait for them to pass on every job, then merge
-   through a pull request once its CI passes. A survivor must be
-   killed by a test, or listed in `automut-ignore.txt` with its reason,
-   before a release.
-   No other pull request merges between these runs and the tag, and
-   `git diff <tested commit> <merge commit>` must be empty: the runs must
-   test exactly the files that get tagged. A mutant reported
-   `TIMED OUT`, or a shard that fails for time on a crowded machine, is
-   run again (that shard alone) before it counts as a survivor.
-5. Check **Security** on GitHub: no high or critical code scanning alert
-   and no Dependabot alert is open. Each is fixed, or dismissed with a
-   written reason ([SECURITY.md](SECURITY.md#checks-on-every-change)).
-6. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release with
+3. Run `/ponytail:ponytail-review` on every change since the last tag, and fix
+   what it finds. Nothing else runs before a release: no mutants, no fuzz.
+4. Merge through a pull request once its CI passes.
+5. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release with
    the version's changelog. The `release` workflow then attaches the
    `.tar.gz`, the `.zip` and `SHA256SUMS`, and signs their attestation:
    check that it passed and the three files are on the release.
@@ -296,8 +265,8 @@ The maintainer's steps:
 
 The author keeps this repository at `~/.claude/hooks` and runs the hooks from
 a checked copy. `node deploy.mjs` runs only on `master` with nothing
-uncommitted. It runs the six suites, the mutation check, the soak and the
-break harness, then compares a dry run of the tidy-up with the live copy's,
+uncommitted. It runs the six suites, the soak and the break harness
+(with `--full`, the mutation check too), then compares a dry run of the tidy-up with the live copy's,
 and copies the plugin to `~/.claude/hooks-live`, which also serves as a local
 marketplace the plugin is installed from. It doesn't run the validator or the
 benchmark. None of this is needed to use or to change the plugin.

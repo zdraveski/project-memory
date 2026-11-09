@@ -141,12 +141,9 @@ Everything it reads and saves, and how to delete it, is in the
 ## Security and trust
 
 - **Every change is checked.** It reaches the code only as a pull request
-  that passes the tests on Windows, macOS and Linux, GitHub's CodeQL scan,
-  a workflow lint, a dependency review and a sign-off check. Before the
-  maintainer deploys, the hand-written planted bugs must all be caught
-  by the tests. A larger run of more than 3,000 planted bugs and a ten-minute
-  fuzz run on 17 machines are started by hand on GitHub before each release,
-  and the release waits until both pass.
+  that passes the tests on Windows, macOS and Linux and a sign-off check.
+  GitHub's CodeQL scan and OpenSSF Scorecard run every week. Before each
+  release the changes get one code review, and what it finds is fixed.
 - **Releases can be verified.** From 1.2.4, each release carries its files,
   their checksums and a GitHub-signed record of where they were built:
   [Verifying a release](SECURITY.md#verifying-a-release).

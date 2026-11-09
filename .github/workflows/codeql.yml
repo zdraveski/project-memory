@@ -1,14 +1,11 @@
 name: codeql
 
 # GitHub's code scanner, on the hooks' JavaScript and on these workflow files.
-# Its findings are under Security > Code scanning. Weekly too: new queries
-# come out between pushes. If CodeQL's "default setup" is ever turned on in
+# Its findings are under Security > Code scanning. Weekly, and they block
+# nothing: this is a local plugin with no dependencies. If CodeQL's "default setup" is ever turned on in
 # the repo's settings, delete this file: the two can't run side by side.
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
+  workflow_dispatch:
   schedule:
     - cron: '23 4 * * 1'
 

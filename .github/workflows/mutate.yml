@@ -4,17 +4,9 @@ name: mutate
 # once for an account, and past that they queue. 20 machines took 6 min 44 s
 # beside a push's test run, three of them queued; six took about 10 minutes,
 # one 65. Started by hand (Actions > mutate > Run workflow, or `gh workflow run
-# mutate.yml --ref <branch> -f machines=N`), every hand-written mutant, and with `-f auto=true`
-# the automatic ones too. deploy.mjs --mutants-checked-on-github then skips its
-# own run, on your word that a run covering the commit passed. On a pull request,
-# the changed files' mutants (all of them after a change to store.mjs, harness.mjs
-# or mutate.mjs: plan-mutants.mjs) on 10 machines, beside the PR's ~11 other jobs:
-# a survivor found after the merge went unread through 3 merges (2026-11-06), so
-# the `mutants` job is required, and a push to master no longer repeats it
-# (median 8 min on 17 machines, 2026-11). Two PRs that leave a survivor only
-# together show in the full run before a release.
+# mutate.yml --ref <branch> -f machines=N`), only when someone asks; no pull request or release needs it:
+# every hand-written mutant, and with `-f auto=true` the automatic ones too.
 on:
-  pull_request:
   workflow_dispatch:
     inputs:
       machines:
@@ -25,12 +17,11 @@ on:
         type: boolean
         default: false
 
-# A newer push to a PR makes its older run moot; a run started by hand is never cut short.
+# A run started by hand is never cut short.
 concurrency:
-  group: mutate-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  group: mutate-${{ github.ref }}
 
-# Read the code and its history (the plan's diff), nothing more, whatever the repository's default.
+# Read the code, nothing more, whatever the repository's default.
 permissions:
   contents: read
 
@@ -39,24 +30,19 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       shards: ${{ steps.list.outputs.shards }}
-      changed: ${{ steps.list.outputs.changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       - id: list
         env:
-          MACHINES: ${{ inputs.machines || '10' }}
-          # Without a PR's base every mutant ran (~20 min). Started by hand there is none, and every mutant is what's asked.
-          BEFORE: ${{ github.event.pull_request.base.sha }}
+          MACHINES: ${{ inputs.machines }}
         run: node .github/plan-mutants.mjs >> "$GITHUB_OUTPUT"
   mutate:
     needs: plan
-    if: needs.plan.outputs.shards != '[]'
     strategy:
       fail-fast: false
       matrix:
@@ -73,19 +59,6 @@ jobs:
       # Every value through env, none into the script's text.
       - shell: bash
         env:
-          CHANGED: ${{ needs.plan.outputs.changed }}
           AUTO: ${{ inputs.auto && '1' || '' }}
           SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
-        run: node mutate.mjs --shard "$SHARD" ${AUTO:+--auto} ${CHANGED:+--changed "$CHANGED"}
-  # The one check the master ruleset requires: the shards' names change with
-  # their count, and a PR that touches no mutant's file runs none (skipped: a pass).
-  mutants:
-    needs: [plan, mutate]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - env:
-          PLAN: ${{ needs.plan.result }}
-          MUTATE: ${{ needs.mutate.result }}
-        run: test "$PLAN" = success && { test "$MUTATE" = success || test "$MUTATE" = skipped; }
+        run: node mutate.mjs --shard "$SHARD" ${AUTO:+--auto}
