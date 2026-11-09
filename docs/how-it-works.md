@@ -33,8 +33,10 @@ so that run stays silent whatever it finds.
 
 The briefing runs on a new conversation, a resume, `/clear` and after a
 compaction, not on a fork. A fork starts from a copy of an existing
-conversation, which already holds the briefing, and the copied turns land on
-the journal entries they came from, not on new ones.
+conversation, which already holds the briefing. The journal keys an entry by
+its turn's id, so a copied turn that keeps its id lands on the entry it came
+from. This hasn't been checked against a real fork's transcript; a fork that
+gives its turns new ids would journal them again.
 
 A hook that fails exits with status 0, so a failure never blocks a session:
 what went wrong is reported in the startup briefing instead. Two hold things up

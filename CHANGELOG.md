@@ -32,8 +32,9 @@
   setting, `--bare`, `--settings` and `CLAUDE_CODE_SKIP_PROMPT_HISTORY` as
   possible causes.
 - Tests now pin that a Stop stopped during git loses nothing, that a reply
-  missing at one Stop is journaled by the next, and that a fork adds no second
-  journal entry. The startup briefing still skips forks.
+  missing at one Stop is journaled by the next, and that copied turns which
+  keep their ids add no second journal entry. The startup briefing still skips
+  forks.
 
 ## 1.2.7 (2026-11-08)
 
