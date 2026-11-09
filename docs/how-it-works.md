@@ -31,8 +31,8 @@ a short status message while it runs. Nothing is printed during `/compact`:
 what a PreCompact hook prints becomes part of the instructions for the summary,
 so that run stays silent whatever it finds.
 
-The briefing runs on a new conversation, a resume, `/clear` and after a
-compaction, not on a fork. A fork starts from a copy of an existing
+The briefing is printed on a new conversation, `/clear` and after a
+compaction, not on a resume, which has its history, and not on a fork. A fork starts from a copy of an existing
 conversation, which already holds the briefing. The journal keys an entry by
 its turn's id, so a copied turn that keeps its id lands on the entry it came
 from. This hasn't been checked against a real fork's transcript; a fork that
@@ -870,6 +870,8 @@ node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory
 | `restore <note>` | `--rev <commit>`, `--force` |
 | `promote <note>` | |
 | `doctor` | |
+| `incognito` | needs `--session <id>` (see [Turning it off](#turning-it-off)) |
+| `off`, `on` | turn this project off or back on (see [Turning it off](#turning-it-off)) |
 | `help` | (also `--help` and `-h`) |
 
 Every command works on the project of the conversation that `--session <id>`

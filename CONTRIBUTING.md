@@ -49,8 +49,10 @@ A suite that passes ends with one line, `<suite>: <n> checks passed`. One
 that fails stops at the first failed check, prints that check's message
 (what it checks, and often what it got), and exits non-zero.
 
-CI ([`test.yml`](.github/workflows/test.yml)) runs `node check.mjs` and all
-six suites on every pull request and every push to `master`, in three jobs:
+CI ([`test.yml`](.github/workflows/test.yml)) runs `node check.mjs`, all
+six suites and `node survive.mjs` (which facts of a session the briefing after
+a compaction still carries; it exits 1 if one is lost) on every pull request
+and every push to `master`, in three jobs:
 Linux with Node 22, Windows with Node 24 and macOS with Node 26. A pull request can't merge until every job
 passes. Each job's log on GitHub shows the same lines as a run here.
 
@@ -74,7 +76,9 @@ Beyond the suites:
   with strict mode off, 775 with it on, no bug among them, so it is not used.
 - CI's `actionlint` job checks the workflow files themselves (and their
   `run:` scripts, through shellcheck) with a pinned, checksum-checked
-  release. To run it here: download actionlint from its GitHub releases and
+  release, and its `zizmor` job scans them for unsafe patterns the same way.
+  Both run on pushes to `master` only, not on pull
+  requests. To run actionlint here: download actionlint from its GitHub releases and
   run `actionlint` in the repo.
 - `node fuzz.mjs [seconds] [--keep-going]` sends random, hostile
   conversations and notes through the real hooks and the CLI: a BOM, CRLF,

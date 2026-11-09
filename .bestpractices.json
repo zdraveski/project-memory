@@ -81,9 +81,9 @@
   "build_floss_tools_justification": "No build step.",
 
   "test_status": "Met",
-  "test_justification": "Six test suites, run together by `node check.mjs` and on GitHub Actions on Windows, macOS and Linux: https://github.com/zdraveski/project-memory/blob/master/CONTRIBUTING.md#tests",
+  "test_justification": "Six test suites, each run with one node command (listed in CONTRIBUTING.md); GitHub Actions runs `node check.mjs` and all six on Windows, macOS and Linux: https://github.com/zdraveski/project-memory/blob/master/CONTRIBUTING.md#tests",
   "test_invocation_status": "Unmet",
-  "test_invocation_justification": "The tests run with one documented command, `node check.mjs`; there is no package.json (the project has no dependencies), so `npm test` is not used.",
+  "test_invocation_justification": "The tests run with documented commands, one `node <name>.test.mjs` per suite (CONTRIBUTING.md); there is no package.json (the project has no dependencies), so `npm test` is not used.",
   "test_most_status": "Met",
   "test_most_justification": "Six test suites cover the rules, and CI runs them on every pull request. At the last full mutation run (v1.2.7) they caught more than 3,000 planted bugs, apart from the ones listed in automut-ignore.txt with a reason (mutate.mjs). That run is no longer part of a release.",
   "test_continuous_integration_status": "Met",
@@ -96,7 +96,7 @@
   "tests_documented_added_justification": "CONTRIBUTING.md and the pull-request template ('A test fails without this change and passes with it').",
 
   "warnings_status": "Met",
-  "warnings_justification": "All code is ES modules, which always run in JavaScript's strict mode; `node check.mjs` also fails on unused imports and on files that don't parse; CodeQL runs on every pull request and every push to master.",
+  "warnings_justification": "All code is ES modules, which always run in JavaScript's strict mode; `node check.mjs` also fails on unused imports and on files that don't parse; CodeQL runs weekly.",
   "warnings_fixed_status": "Met",
   "warnings_fixed_justification": "check.mjs must pass before a change is pushed, and CodeQL alerts are fixed or dismissed with a reason.",
   "warnings_strict_status": "Unmet",
