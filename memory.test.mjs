@@ -2061,4 +2061,82 @@ if (!quick) {
     'not for one that has, nor when --store names the store');
 }
 
+// 99. incognito, memory off and memory on.
+{
+  const proj = join(root, 'C--incog'), d = join(proj, 'memory'), cwd = 'C:\\incog';
+  mkdirSync(d, { recursive: true });
+  const SID = 'aaaaaaaa-1111', TID = 'bbbbbbbb-2222', UID = 'cccccccc-3333';
+  const line = (type, text, c = cwd) => JSON.stringify({ type, cwd: c, timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text }] } });
+  const turn = (id, ask, answer) => appendFileSync(join(proj, `${id}.jsonl`), `${line('user', ask)}\n${line('assistant', answer)}\n`);
+  const stopOf = (id, event = 'Stop') => spawnSync(process.execPath, [TIER, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd, session_id: id, transcript_path: join(proj, `${id}.jsonl`), hook_event_name: event }) });
+  const everything = () => { let t = ''; for (const f of readdirSync(d, { recursive: true })) { try { t += `\n#${f}\n` + readFileSync(join(d, f), 'utf8'); } catch {} } return t; };
+  const listing = () => readdirSync(d, { recursive: true }).sort().map((f) => `${f}:${statSync(join(d, f)).mtimeMs}`).join('|');
+  turn(SID, 'tell me about narwhal tusks', 'a narwhal tusk is a tooth');
+  turn(TID, 'tell me about otters', 'otters hold hands');
+  ok(stopOf(SID).status === 0 && stopOf(TID).status === 0 && /narwhal/.test(everything()), 'before: both conversations are recorded');
+  // Refused, and nothing written.
+  const frozen = listing();
+  for (const a of [[], ['--session', '../x'], ['--session', '${CLAUDE_SESSION_ID}'], ['--session', 'dddddddd-9999']]) {
+    r = await run(['incognito', '--store', d, ...a]);
+    ok(r.status === 1 && /incognito/.test(r.stdout) && listing() === frozen && !existsSync(join(d, '.private-sessions')), `incognito ${a.join(' ')} is refused and writes nothing (got ${r.status} ${r.stdout.trim()})`);
+  }
+  // A held lock: not applied, said so.
+  mkdirSync(join(d, '.lock'));
+  r = await run(['incognito', '--session', SID]);
+  rmSync(join(d, '.lock'), { recursive: true });
+  ok(r.status === 1 && /^incognito NOT applied/m.test(r.stdout) && !existsSync(join(d, '.private-sessions')), `a held lock: incognito NOT applied, exit 1, nothing marked (got ${r.stdout.trim()})`);
+  r = await run(['incognito', '--session', SID]);
+  ok(r.status === 0 && /Claude Code by default still keeps its own transcript/.test(r.stdout) && /its own auto memory may still save notes/.test(r.stdout)
+    && /snapshots of days already over keep a copy/.test(r.stdout) && /save no note unless the user asks/.test(r.stdout), `incognito says what it does not cover (got ${r.stdout.trim()})`);
+  ok(readFileSync(join(d, '.private-sessions'), 'utf8').includes('aaaaaaaa') && !/narwhal/.test(everything()) && /otters/.test(everything()), 'the turns so far are swept at once, the other conversation stays');
+  turn(SID, 'and what about pelican beaks', 'a pelican beak holds water');
+  ok(stopOf(SID).status === 0 && stopOf(SID, 'PreCompact').stdout === '' && !/narwhal|pelican/.test(everything()), 'the next Stop and a manual PreCompact in it record nothing');
+  turn(TID, 'tell me about seals', 'seals bark');
+  stopOf(TID);
+  ok(/seals/.test(everything()) && !/narwhal|pelican/.test(everything()), 'another conversation\'s Stop does not bring it back');
+  // A Stop in it still tiers and repairs the index; a note written in it is kept and indexed (known limit).
+  writeFileSync(join(d, 'kept.md'), '---\nname: kept\ndescription: "kept note"\nmetadata:\n  type: project\n---\nbody\n');
+  utimesSync(join(d, 'kept.md'), tenMin, tenMin);
+  rmSync(join(d, 'MEMORY.md'), { force: true });
+  stopOf(SID);
+  ok(existsSync(join(d, 'MEMORY.md')) && /kept\.md/.test(readFileSync(join(d, 'MEMORY.md'), 'utf8')), 'a Stop in it still repairs the index, and a note written during it is indexed');
+  r = await run(['search', 'seals', '--store', d]);
+  ok(/seals/.test(r.stdout), 'search still finds earlier work');
+  const start = spawnSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { env, encoding: 'utf8', input: JSON.stringify({ cwd, session_id: UID, source: 'startup' }) }).stdout;
+  ok(/seals/.test(start) && !/narwhal|pelican/.test(start), 'a startup after it still briefs, without it');
+
+  // memory off / on.
+  const ofd = join(root, 'C--off-cli', 'memory');
+  const go = (...a) => run([...a, '--store', ofd]);
+  r = await go('off');
+  ok(r.status === 0 && existsSync(join(ofd, '.project-off')) && /Off stops adding; it doesn't hide/.test(r.stdout) && /Claude Code by default still keeps its own transcript/.test(r.stdout), `memory off with no store folder makes it and the marker (got ${r.stdout.trim()})`);
+  r = await go('status');
+  ok(/memory is off in this project since \d{4}-\d\d-\d\d; next: run memory on if the user asks to turn it back on/.test(r.stdout), `status prints the off line (got ${r.stdout})`);
+  memory(ofd, 'findable', 'a findable thing about axolotls');
+  ok(/findable/.test((await go('search', 'axolotls')).stdout), 'search still answers in an off project');
+  ok(/memory is off in this project since/.test((await run(['doctor', '--store', ofd])).stdout), 'doctor prints the off line');
+  writeFileSync(join(ofd, '.project-off'), 'garbage');
+  ok(/since an unknown date/.test((await go('status')).stdout), 'a marker that does not read is off since an unknown date');
+  // A conversation that ran while it was off is not imported into the journal once memory is on.
+  const OC = 'C:\\off-cli', oproj = dirname(ofd), OID = 'eeeeeeee-4444';
+  appendFileSync(join(oproj, `${OID}.jsonl`), `${line('user', 'a secret axolotl plan', OC)}\n${line('assistant', 'noted', OC)}\n`);
+  // Old enough that a backfill would take it (a live one is left alone), but after the off time.
+  writeFileSync(join(ofd, '.project-off'), JSON.stringify({ t: Date.now() - 3 * 864e5 }));
+  utimesSync(join(oproj, `${OID}.jsonl`), new Date(Date.now() - 864e5), new Date(Date.now() - 864e5));
+  r = await go('on');
+  ok(r.status === 0 && !existsSync(join(ofd, '.project-off')) && /memory is on/.test(r.stdout), `memory on removes the marker (got ${r.stdout.trim()})`);
+  appendFileSync(join(oproj, 'ffffffff-5555.jsonl'), `${line('user', 'after on', OC)}\n${line('assistant', 'fine', OC)}\n`);
+  spawnSync(process.execPath, [TIER, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: 'C:\\off-cli', session_id: 'ffffffff-5555', transcript_path: join(oproj, 'ffffffff-5555.jsonl'), hook_event_name: 'Stop' }) });
+  ok(!/secret axolotl plan/.test(readdirSync(ofd, { recursive: true }).map((f) => { try { return readFileSync(join(ofd, f), 'utf8'); } catch { return ''; } }).join('\n')), 'a conversation from while it was off is not imported once it is on');
+  r = await go('on');
+  ok(r.status === 0 && /already on/.test(r.stdout), 'memory on when it is on says so');
+  // A marker that cannot be removed: not applied, exit 1.
+  writeFileSync(join(ofd, '.project-off'), '{}');
+  const realUnlink = fs.unlinkSync;
+  fs.unlinkSync = (p, ...a) => { if (String(p).endsWith('.project-off')) throw Object.assign(new Error('denied'), { code: 'EACCES' }); return realUnlink(p, ...a); };
+  syncBuiltinESMExports();
+  try { r = await go('on'); } finally { fs.unlinkSync = realUnlink; syncBuiltinESMExports(); }
+  ok(r.status === 1 && /memory on NOT applied/.test(r.stdout) && existsSync(join(ofd, '.project-off')), `a marker that cannot be removed: NOT applied, exit 1 (got ${r.stdout.trim()})`);
+}
+
 console.log(`memory: ${checks} checks passed`);

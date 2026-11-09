@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, ren
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
+import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -445,8 +445,9 @@ function snapshot() {
         let head = true; try { git('rev-parse', '-q', '--verify', 'HEAD'); } catch (e) { if (e.status !== 1) throw e; head = false; }
         if (head) git('reset', '-q');
       }
+      let offs = []; try { offs = readdirSync(root).filter((p) => isOff(join(root, p, 'memory'))).map((p) => `:(exclude,literal)${p}/memory`); } catch {}
       if (!existsSync(join(root, '.git', 'index')) || existsSync(parts)) {
-        const todo = git('ls-files', '-z', '-o', '-m', '--exclude-standard').split('\0').filter(Boolean)
+        const todo = git('ls-files', '-z', '-o', '-m', '--exclude-standard', ...(offs.length ? ['--', '.', ...offs] : [])).split('\0').filter(Boolean)
           .sort((a, b) => /(^|\/)MEMORY[^/]*$/.test(b) - /(^|\/)MEMORY[^/]*$/.test(a));
         if (todo.length > batch) {
           gitIn(todo.slice(0, batch).join('\0'), 'update-index', '--add', '--remove', '-z', '--stdin');
@@ -455,7 +456,7 @@ function snapshot() {
         }
         try { unlinkSync(parts); } catch {}
       }
-      git('add', '-A');
+      git('add', '-A', ...(offs.length ? ['--', '.', ...offs] : []));
       return 0;
     };
     // A damaged index (a crash or a full disk while git wrote it) failed every
@@ -609,6 +610,8 @@ export async function main(argv, input) {
   const say = (m) => { if (payload?.hook_event_name !== 'PreCompact') console.log(m); };
   if (stop) {
     try { payload = JSON.parse(input); } catch {}
+    // A project turned off (memory off): nothing is written, not even .stop-ran.
+    try { if (payload && isOff(storeOf(payload))) return 0; } catch {}
     // Two tries, not one: a handoff that fails to write (two sessions renaming
     // over the same store at once) must not also skip the nudge -- that was
     // the one Stop the nudge exists for.
@@ -679,7 +682,7 @@ export async function main(argv, input) {
   }
 
   const dirAt = argv.indexOf('--dir');
-  if (!stop && !dry && dirAt === -1) try { for (const p of readdirSync(projectsRoot())) ensureIndex(join(projectsRoot(), p, 'memory')); } catch {}
+  if (!stop && !dry && dirAt === -1) try { for (const p of readdirSync(projectsRoot())) { const d = join(projectsRoot(), p, 'memory'); if (!isOff(d)) ensureIndex(d); } } catch {}
   if (dirAt !== -1 && !argv[dirAt + 1]) { console.log('--dir needs a path'); return 1; }
   // A Stop tiers its own session's store and no other. Every Stop once walked all
   // sixteen: a session in one project rewrote another's index while that
@@ -690,6 +693,7 @@ export async function main(argv, input) {
   const dirs = dirAt !== -1 ? [argv[dirAt + 1]]
     : stop ? [(() => { try { return storeOf(payload || {}); } catch { return null; } })(), sharedStore()].filter((d) => d && existsSync(join(d, 'MEMORY.md')))
     : allStores();
+  for (let i = dirs.length; i--;) if (isOff(dirs[i])) dirs.splice(i, 1);
 
   // Then only do the rest when a memory in the store changed. handoff.md changes
   // every turn and is left out; every other file's name, size and mtime is the

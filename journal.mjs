@@ -414,7 +414,7 @@ function checked(dir, k) {
 // after it (a kill mid-sweep sweeps again), and after one that stopped short:
 // its days owed are retried alone, and swept whole again, each of its Stops
 // read every day. Again when `again`.
-function takeBack(dir, k, s, again = false, priv = false) {
+export function takeBack(dir, k, s, again = false, priv = false) {
   if (!again && checked(dir, k)?.[4] === 'swept') return;
   if (priv) unsay(dir, (t) => t.s === s);
   let owed = null;

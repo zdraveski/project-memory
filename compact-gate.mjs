@@ -34,7 +34,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { goesOn, readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF } from './handoff-log.mjs';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, isOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
 // A token count as Claude Code takes one: `800000`, `800k`, `1M`. NaN: none.
@@ -362,6 +362,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
   let r = { code: 0, why: 'no payload' };
   if (payload && memoryOff()) r = { code: 0, why: 'auto memory is off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): nothing done' };
+  else if (payload && (() => { try { return isOff(storeOf(payload)); } catch { return false; } })()) r = { code: 0, why: 'memory is off in this project (.project-off): nothing done' };
   else if (payload) { try { r = gate(payload); } catch (e) { r = { code: 0, why: `gate failed, not deferred: ${e.message}` }; } }
   // Always said, so the hooks debug log shows why a compaction ran or waited;
   // Claude Code shows exit-2 stderr to the user only for a manual /compact.

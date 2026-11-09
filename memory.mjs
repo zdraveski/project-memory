@@ -15,6 +15,10 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           the journal entries holding every word (with those keys, of
                                           that conversation): listed with their keys, up to 200; with
                                           --yes removed
+  incognito                               stop saving this conversation and sweep what it already saved
+                                          (needs --session: the command passes it)
+  off | on                                turn this project's memory off (nothing saved, snapshotted or
+                                          tiered) or back on; search and show still answer
   help                                    this (--help and -h too)
   status [--all]                          index size, hot/archived, problems, dangling [[links]],
                                           the memories changed in the last 7 days
@@ -31,14 +35,14 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd } from './store.mjs';
-import { MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, isOff, offSince, transcriptKey } from './store.mjs';
+import { hushed, OFF, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
 // (handoff-log's deploy gate test, 2026-10-28).
-let entries, forget, holds, summary, unwritten;
-try { ({ entries, forget, holds, summary, unwritten } = await import('./journal.mjs')); }
+let entries, forget, holds, summary, unwritten, takeBack;
+try { ({ entries, forget, holds, summary, unwritten, takeBack } = await import('./journal.mjs')); }
 catch (e) {
   const why = reason(e);
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: why }); return []; };
@@ -47,6 +51,7 @@ catch (e) {
   forget = (dir, terms, o) => ({ matched: entries([dir], o), removed: [] });
   holds = () => false;
   unwritten = () => [];
+  takeBack = () => { throw new Error(`journal.mjs could not be loaded: ${why}`); };
 }
 
 const OVERFLOW = /\s*<!-- overflow -->$/;
@@ -282,6 +287,8 @@ const names = (ms) => ms.flatMap((m) => [m.file.replace(/\.md$/, ''), m.name].fi
 export function status(dir, sharedNames = []) {
   const ms = memories(dir), main = read(join(dir, 'MEMORY.md'));
   const lines = [`${dir}${isShared(dir) ? '  (shared by every project)' : ''}`];
+  const gone = isOff(dir);
+  if (gone) lines.push(`  ${offText(gone)}`);
   // A journal alone is a store: search finds its entries.
   if (main === null && !ms.length && !existsSync(join(dir, 'journal'))) return [...lines, '  no store here yet'];
   const n = (w) => ms.filter((m) => m.where === w).length;
@@ -598,7 +605,7 @@ const TWICE = 2000;
 const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h && (!r.m || !p.m || r.m === p.m) &&
   Math.abs(Date.parse(r.at) - Date.parse(p.at)) < TWICE;
 
-export function doctor() {
+export function doctor(site = sessionStore()) {
   const lines = [];
   let bad = 0;
   const say = (fine, text) => { lines.push(`${fine ? 'ok     ' : 'PROBLEM'} ${text}`); if (!fine) bad++; };
@@ -615,6 +622,8 @@ export function doctor() {
   // Two enabled plugins of one name run one's hooks only (Claude Code leaves
   // the other's out): a second run is hooks added to settings.json by hand.
   if (twice) say(false, `the Stop hook ran twice for one reply (${local(twice.at)}): project-memory's hooks are wired twice, so every hook runs twice. The user's fix: remove the project-memory hooks added to settings.json by hand (the plugin wires its own); if a second copy is installed under another name, uninstall it`);
+  const gone = isOff(site);
+  if (gone) say(!gone.unread, offText(gone));
   // Auto memory turned off: the hooks do nothing, so nothing below applies.
   if (memoryOff()) { say(true, 'auto memory is off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): the hooks save and brief nothing until it is on again'); return { ok: !bad, lines }; }
   if (existsSync(join(LIVE, '.deployed.json'))) { const e = edited(LIVE); say(!e.length, e[0] || `${LIVE} matches what deploy.mjs checked`); }
@@ -667,6 +676,59 @@ export function doctor() {
   const snap = snapshots();
   say(!snap.startsWith('snapshots: failing') && !snap.includes('but they leave out'), snap);
   return { ok: !bad, lines };
+}
+
+// What status and doctor say of a project turned off.
+const offText = (o) => (o.unread
+  ? `memory is paused here: the off marker can't be read (${o.unread}); next: tell the user, memory on won't help until that's fixed`
+  : `memory is off in this project since ${offSince(o)}; next: run memory on if the user asks to turn it back on`);
+// What Claude Code and the snapshots still keep, said wherever the plugin says it saved less.
+const STILL = "Claude Code by default still keeps its own transcript (30 days unless changed), and its own auto memory may still save notes.";
+
+// Stop saving this conversation: marked private in its store, then what it already saved is swept (the next reply's Stop
+// retries a sweep that failed). Nothing is marked unless the whole of it can be: the failure says which part is left.
+function incognito(opt) {
+  const path = session && transcriptOf(session);
+  if (!opt) return no('incognito needs --session <id>: the /incognito command passes it, and nothing was marked');
+  if (!session) return no(`incognito NOT applied: "${clip(opt, 100)}" is not a session id; nothing was marked`);
+  if (!path) return no(`incognito NOT applied: no conversation ${session} on this machine; nothing was marked`);
+  const dir = storeOf({ transcript_path: path }), s = tag(session);
+  let got;
+  try {
+    mkdirSync(dir, { recursive: true });
+    got = withLock(dir, () => {
+      if (hushed(dir, s, true) !== true) return { marked: false };
+      try { takeBack(dir, transcriptKey(path), s, true, true); return { marked: true }; } catch (e) { return { marked: true, why: reason(e) }; }
+    });
+  } catch (e) { return no(`incognito NOT applied: ${reason(e)}; nothing was marked`); }
+  if (!got) return no('incognito NOT applied: the memory folder is busy (another hook holds its lock); nothing was marked. Try again.');
+  if (!got.marked) return no(`incognito NOT applied: the private-session list in ${dir} could not be written; nothing was marked`);
+  if (got.why) return no(`incognito is marked for this conversation, but sweeping what it already saved failed: ${got.why}. The next reply's Stop tries again; until then it may still be in the journal and handoff.`);
+  return { ok: true, lines: [`incognito is on for this conversation: what it saved so far is swept from the journal and handoff.md, and nothing more is saved from it. ${STILL} Notes Claude writes in it are kept like any other note, so save no note unless the user asks; snapshots of days already over keep a copy.`] };
+}
+
+// memory off: a marker in the store, and the plugin saves, tiers and snapshots nothing there. memory on: the marker goes.
+// A conversation that ran while it was off is not in the journal and must not be imported once it is on: marked held, as
+// memory-off conversations are (handoff-log OFF), before the marker goes.
+function projectSwitch(dir, off) {
+  const marker = join(dir, PROJECT_OFF), was = isOff(dir);
+  try {
+    if (off) {
+      if (was && !was.unread) return { ok: true, lines: [`memory is already off in this project since ${offSince(was)}`] };
+      mkdirSync(dir, { recursive: true });
+      if (replaceIfUnchanged(marker, raw(marker), JSON.stringify({ t: Date.now() })) === 'conflict') return no('memory off NOT applied: the marker was changed meanwhile; try again');
+      return { ok: true, lines: [`memory is off in this project (${dir}): nothing is saved, tiered or snapshotted here until memory on. Off stops adding; it doesn't hide: search and show still answer. ${STILL}`] };
+    }
+    if (!was) return { ok: true, lines: ['memory is already on in this project'] };
+    if (!was.unread) {
+      const from = was.since ?? statSync(marker).mtimeMs, proj = dirname(dir);
+      for (const f of readdirSync(proj).filter((n) => n.endsWith('.jsonl'))) {
+        if (statSync(join(proj, f)).mtimeMs >= from && hushed(projectsRoot(), tag(basename(f, '.jsonl')), true, OFF) !== true) return no(`memory on NOT applied: the list of conversations to leave out could not be written; memory stays off`);
+      }
+    }
+    unlinkSync(marker);
+    return { ok: true, lines: [`memory is on in this project again (${dir}). Conversations that ran while it was off stay out of the journal.`] };
+  } catch (e) { return no(`memory ${off ? 'off' : 'on'} NOT applied: ${reason(e)}${off ? '' : "; memory stays off"}`); }
 }
 
 // The command line, its words as given; returns the exit code. Callable in
@@ -875,13 +937,15 @@ export function main(given) {
       r.lines.splice(-1, 0, ...again);
       if (lost.length) { r.lines.splice(-1, 0, ...lost); r.ok = false; }
     } catch (e) { if (!e.code) throw e; r = no(`${join(here, 'journal')} could not be listed (${e.code}); nothing removed`); }
-  } else if (cmd === 'status') {
+  } else if (cmd === 'incognito') r = incognito(opt('--session'));
+  else if (cmd === 'off' || cmd === 'on') r = projectSwitch(here, cmd === 'off');
+  else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
     r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined);
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file));
-  else if (cmd === 'doctor') r = doctor();
+  else if (cmd === 'doctor') r = doctor(here);
   // The usage, after why: a misspelt command, or one with no word after it,
   // printed the usage alone.
   else r = { ok: !cmd || cmd === 'help', lines: [...(cmd && cmd !== 'help' ? [/^(?:search|show|history|restore|promote)$/.test(cmd) ? `${cmd} needs a word after it` : `no command "${cmd}"`] : []), USAGE] };
@@ -890,7 +954,7 @@ export function main(given) {
   // which is its count, as the skill says. Once: a forget reads a day twice.
   r.lines.splice(cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
   // A --session no transcript has: the store came from the folder this runs in, and status reported it in silence (audit C-10).
-  if (opt('--session') !== undefined && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);
+  if (opt('--session') !== undefined && cmd !== 'incognito' && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);
   console.log(r.lines.join('\n'));
   // A forget that failed anywhere fails: exit 0 read as all gone.
   return r.ok && !(cmd === 'forget' && failed.length) ? 0 : 1;

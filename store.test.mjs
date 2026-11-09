@@ -648,4 +648,27 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   rmSync(join(root, 'C--temps'), { recursive: true, force: true });
 }
 
+// 99. A project turned off (memory off) is a marker in its store: isOff says since when, fails closed on a marker it cannot stat.
+{
+  const { isOff, PROJECT_OFF } = await import('./store.mjs');
+  const od = join(root, 'C--off-project', 'memory');
+  mkdirSync(od, { recursive: true });
+  ok(PROJECT_OFF === '.project-off' && isOff(od) === null, 'no marker: not off');
+  ok(isOff(join(od, 'no', 'such')) === null, 'no store folder: not off');
+  writeFileSync(join(od, PROJECT_OFF), JSON.stringify({ t: 1700000000000 }));
+  ok(isOff(od)?.since === 1700000000000, 'a marker is off, since the time it holds');
+  writeFileSync(join(od, PROJECT_OFF), 'not json');
+  ok(isOff(od) && isOff(od).since === null, 'a marker that does not read is still off, since an unknown date');
+  rmSync(join(od, PROJECT_OFF));
+  // A marker that cannot be stat'ed stays off (fails closed); EACCES on a stat cannot be made real on Windows, so inject it.
+  const real = fs.lstatSync;
+  fs.lstatSync = (p, ...a) => { if (String(p).endsWith(PROJECT_OFF)) throw Object.assign(new Error('denied'), { code: 'EACCES' }); return real(p, ...a); };
+  syncBuiltinESMExports();
+  try {
+    const r = isOff(od);
+    ok(r && r.unread === 'EACCES' && r.since === null, 'a marker that cannot be statted is off, and says why');
+  } finally { fs.lstatSync = real; syncBuiltinESMExports(); }
+  ok(isOff(od) === null, 'and with the stat working again, not off');
+}
+
 console.log(`store: ${checks} checks passed`);
