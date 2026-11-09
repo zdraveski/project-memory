@@ -1436,7 +1436,9 @@ if (!quick) {
   // 1.3.0 (D1): a two-character Chinese or Japanese word is a word, as it has no spaces round it.
   memory(jm, 'cjk-zh', 'zh-note', '\u6211\u4eec\u51b3\u5b9a\u4fee\u6539\u8bb0\u5fc6\u7cfb\u7edf\u7684\u90e8\u7f72\u65b9\u5f0f');
   memory(jm, 'cjk-ja', 'ja-note', '\u30c7\u30fc\u30bf\u30d9\u30fc\u30b9\u306e\u8a2d\u8a08\u3092\u5909\u66f4\u3057\u307e\u3057\u305f');
-  for (const [q, f] of [['\u8bb0\u5fc6', 'cjk-zh.md'], ['\u90e8\u7f72', 'cjk-zh.md'], ['\u8a2d\u8a08', 'cjk-ja.md']]) {
+  // The third note: the long-vowel mark in \u30ad\u30fc ("key") is in no Japanese script by sc=, only by scx=.
+  memory(jm, 'cjk-ka', 'ka-note', '\u30ad\u30fc\u30dc\u30fc\u30c9\u306e\u8a2d\u5b9a');
+  for (const [q, f] of [['\u8bb0\u5fc6', 'cjk-zh.md'], ['\u90e8\u7f72', 'cjk-zh.md'], ['\u8a2d\u8a08', 'cjk-ja.md'], ['\u30ad\u30fc', 'cjk-ka.md']]) {
     r = await jcli('search', q);
     ok(r.stdout.includes(f) && !/nothing matches/.test(r.stdout), `${q}, two characters, is found (got ${r.stdout})`);
   }
@@ -1446,6 +1448,9 @@ if (!quick) {
   memory(jm, 'hz-deploy', 'deployqq notes');
   r = await jcli('search', 'deployqq', 'hetznerqq');
   ok(/hz-deploy\.md/.test(r.stdout) && /^no note or entry holds: hetznerqq$/m.test(r.stdout), `a word nothing holds is named (got ${r.stdout})`);
+  memory(jm, 'hz-old', 'oldwordqq notes'); utimesSync(join(jm, 'hz-old.md'), new Date('2020-01-01'), new Date('2020-01-01'));
+  r = await jcli('search', 'deployqq', 'oldwordqq', '--since', '2021-01-01');
+  ok(/^no note or entry holds: oldwordqq$/m.test(r.stdout) && /1 note matches outside the range/.test(r.stdout), `a word held only outside the range is named (got ${r.stdout})`);
   r = await jcli('search', 'deployqq', 'hetznerqq', 'vultrqq');
   ok(/^no note or entry holds: hetznerqq, vultrqq$/m.test(r.stdout), `several are listed with commas (got ${r.stdout})`);
   r = await jcli('search', 'deployqq', 'notes');

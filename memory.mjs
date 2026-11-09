@@ -201,7 +201,7 @@ const STOP = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'with', 'was', 
 const words = (q) => [...new Set(q.normalize('NFC').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => t.length >= 2 && !STOP.has(t)))];
 const alone = (t) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${t}(?![\\p{L}\\p{M}\\p{N}])`, 'gu');
 // Chinese and Japanese have no spaces round a word, so a two-character one is looked for as a substring.
-const plain = (t) => t.length > 2 || /^[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}]+$/u.test(t);
+const plain = (t) => t.length > 2 || /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]+$/u.test(t);
 const count = (hay, t) => (plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
 const has = (hay, t) => (plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
 // The stretches of `text` around each match of `find`, joined, `room` characters
