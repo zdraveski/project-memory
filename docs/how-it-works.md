@@ -727,6 +727,14 @@ copies' keys. `--limit` and the count are of these hits. A ranged search
 also says how many notes match outside the range, since a note's date is
 its last change.
 
+A word of two letters is found only standing alone (`ci` is not in
+"decision"), but a word made only of Chinese or Japanese characters is
+found anywhere in the text, at two characters too, since those languages put
+no spaces round words. When some of the search words are held by no note or
+entry in the stores and range searched, one line after the hits names them:
+`no note or entry holds: hetzner`. A search where no word is held still says
+only `nothing matches`.
+
 `show <key…>` prints journal entries whole, by the key a hit printed: the
 heading, the key, every field, the day file and, when it's still on disk
 and the entry isn't private, the transcript. `--same` adds every entry whose request is the same, as a

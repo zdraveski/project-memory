@@ -200,8 +200,10 @@ const STOP = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'with', 'was', 
 // Combining marks (\p{M}) belong to the word (Hindi), and both sides are NFC so a decomposed "e" + accent is "é".
 const words = (q) => [...new Set(q.normalize('NFC').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => t.length >= 2 && !STOP.has(t)))];
 const alone = (t) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${t}(?![\\p{L}\\p{M}\\p{N}])`, 'gu');
-const count = (hay, t) => (t.length > 2 ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
-const has = (hay, t) => (t.length > 2 ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
+// Chinese and Japanese have no spaces round a word, so a two-character one is looked for as a substring.
+const plain = (t) => t.length > 2 || /^[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}]+$/u.test(t);
+const count = (hay, t) => (plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
+const has = (hay, t) => (plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
 // The stretches of `text` around each match of `find`, joined, `room` characters
 // at most; no cut leaves half an emoji, which prints as U+FFFD.
 function around(text, find, room) {
@@ -234,18 +236,19 @@ const told = (dirs, o) => {
 // checklist", 2026-10-27).
 // `outside`: the notes that match but are dated out of the range.
 export function search(dirs, query, { since, until, failed } = {}) {
-  const terms = words(query), hits = [];
+  const terms = words(query), hits = [], held = new Set();
   let outside = 0;
   for (const dir of terms.length ? dirs : []) for (const m of memories(dir)) {
     // A log the startup line prints, and the journal's pointer: neither is a memory.
     if (m.file === 'handoff.md' || m.file === 'journal.md') continue;
     const name = `${m.file} ${m.name}`.toLowerCase(), desc = m.desc.toLowerCase(), body = m.body.toLowerCase();
     let score = 0, strong = true, every = true;
+    const got = [];
     for (const t of terms) {
       const s = (has(name, t) ? 3 : 0) + (has(desc, t) ? 2 : 0);
       const b = Math.min(2, count(body, t));
       if (!s) strong = false;
-      if (!s && !b) every = false;
+      if (!s && !b) every = false; else got.push(t);
       score += s + b;
     }
     if (!score) continue;
@@ -253,6 +256,7 @@ export function search(dirs, query, { since, until, failed } = {}) {
     // A note's date is its last change: written in September and edited since,
     // a September search left it out, and the miss read as no record.
     if ((since && d < since) || (until && d > until)) { outside++; continue; }
+    got.forEach((t) => held.add(t));
     hits.push({ ...m, kind: 'note', score: score + (strong ? 5 : every ? 2 : 0) });
   }
   // An entry by what was asked, then what it changed and ran (and its branch),
@@ -264,12 +268,12 @@ export function search(dirs, query, { since, until, failed } = {}) {
       // A branch is named on every entry of its work: below a file or command that names the word.
       const s = (has(asked, t) ? 3 : 0) + (has(did, t) ? 2 : has(branch, t) ? 1 : 0) + Math.min(2, count(answered, t));
       if (!has(asked, t)) strong = false;
-      if (!s) every = false;
+      if (!s) every = false; else held.add(t);
       score += s;
     }
     if (score) hits.push({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')), score: score + (strong ? 5 : every ? 2 : 0) });
   }
-  return Object.assign(hits.sort((a, b) => b.score - a.score || b.modified - a.modified), { outside });
+  return Object.assign(hits.sort((a, b) => b.score - a.score || b.modified - a.modified), { outside, missing: terms.filter((t) => !held.has(t)) });
 }
 
 // What a [[link]] may name: a memory's file name without `.md`, or its `name:`.
@@ -745,7 +749,7 @@ export function main(given) {
       if (k !== null && like.has(k)) like.get(k).push(h);
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
-    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (t.length > 2 ? t : alone(t).source)).join('|'), 'giu');
+    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (plain(t) ? t : alone(t).source)).join('|'), 'giu');
     // NFC, as the scoring reads it: a decomposed "é" scored the entry, and its stretch must show too.
     const nfc = (v) => clip(v, Infinity).normalize('NFC');
     const entry = (h, also) => {
@@ -763,7 +767,7 @@ export function main(given) {
     r = { ok: true, lines: !words(q).length ? [`nothing to search for: "${q}" has no word that says which memory`]
       : shown.length ? [...shown.flatMap(([h, ...also]) => h.kind === 'journal' ? entry(h, also) : [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
         `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
-        ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...out,
+        ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...(found.missing.length ? [`no note or entry holds: ${found.missing.join(', ')}`] : []), ...out,
         // A hit's date, and what was not shown or not searched.
         `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}${shown.some(([h]) => h.kind === 'journal') ? "; show '<key>' prints an entry whole" : ''}`]
       : [...out, `nothing matches "${q}" in ${where}${span && ` ${span}`}${wider}`] };
