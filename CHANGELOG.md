@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+**Search**
+
+- `search` finds two-character Chinese and Japanese words. In the repro of
+  eight queries, three missed on 1.2.7 (记忆, 部署, 設計) and none miss now.
+  Two-letter words in other scripts still match only standing alone, so `ci`
+  does not match "decision".
+- When some search words are held by no note or entry, one line after the
+  hits names them: `no note or entry holds: hetzner`.
+
 **Tests and tooling**
 
 - The checks now fit the size of the plugin. A pull request runs the normal
