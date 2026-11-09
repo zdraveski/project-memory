@@ -22,7 +22,7 @@ import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, rea
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, isOff, offSince, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED } from './store.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
@@ -279,7 +279,7 @@ export function turns(tail) {
     if (r.type === 'attachment' && /^hook_(?:additional_context|blocking_error)$/.test(r.attachment?.type ?? '')
       && nudged(JSON.stringify(r.attachment.content ?? r.attachment.blockingError ?? ''))) { if (pending) hold(pending); continue; }
     if (!t && !ask && !typed) continue;
-    if (ask) pending = { at: local(r.timestamp), ask, raw: unwrap(n), did: '', changed: [], ran: [],
+    if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), did: '', changed: [], ran: [],
       id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '' };
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
@@ -829,7 +829,7 @@ export function handoff(input, sink = null) {
   // File names, not paths; none for a private message's turn, read by what the
   // user typed as well as the ask made of it (userText): a wrapper own()
   // strips, or a command, hid the tag from the ask.
-  const fresh = got.map((t) => ({ ...t, s, ...shown(t),
+  const fresh = got.filter((t) => !wasOff(dir)(t)).map((t) => ({ ...t, s, ...shown(t),
     changed: PRIVATE.test(userText(t)) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) }));
   const hush = got.hush === true;
   // Sessions of one project write this file at once, so they take turns: 8 at

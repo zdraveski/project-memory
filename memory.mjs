@@ -30,13 +30,13 @@ The store is this session's own (outside a session: the cwd's project, or the ne
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
 reads its transcript. After --, every word is a term, one that starts with -- too.`;
-import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, unlinkSync, realpathSync } from 'node:fs';
+import { appendFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, unlinkSync, realpathSync } from 'node:fs';
 import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, isOff, offSince, transcriptKey } from './store.mjs';
-import { hushed, OFF, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
+import { hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -708,8 +708,8 @@ function incognito(opt) {
 }
 
 // memory off: a marker in the store, and the plugin saves, tiers and snapshots nothing there. memory on: the marker goes.
-// A conversation that ran while it was off is not in the journal and must not be imported once it is on: marked held, as
-// memory-off conversations are (handoff-log OFF), before the marker goes.
+// What was said while it was off must not be written once it is on: the period is kept (store wasOff) before the marker goes.
+// By time, not by conversation: one that runs across off and on keeps what it said before and after.
 function projectSwitch(dir, off) {
   const marker = join(dir, PROJECT_OFF), was = isOff(dir);
   try {
@@ -720,14 +720,9 @@ function projectSwitch(dir, off) {
       return { ok: true, lines: [`memory is off in this project (${dir}): nothing is saved, tiered or snapshotted here until memory on. Off stops adding; it doesn't hide: search and show still answer. ${STILL}`] };
     }
     if (!was) return { ok: true, lines: ['memory is already on in this project'] };
-    if (!was.unread) {
-      const from = was.since ?? statSync(marker).mtimeMs, proj = dirname(dir);
-      for (const f of readdirSync(proj).filter((n) => n.endsWith('.jsonl'))) {
-        if (statSync(join(proj, f)).mtimeMs >= from && hushed(projectsRoot(), tag(basename(f, '.jsonl')), true, OFF) !== true) return no(`memory on NOT applied: the list of conversations to leave out could not be written; memory stays off`);
-      }
-    }
+    if (!was.unread) appendFileSync(join(dir, OFF_PERIODS), `${was.since ?? statSync(marker).mtimeMs} ${Date.now()}\n`);
     unlinkSync(marker);
-    return { ok: true, lines: [`memory is on in this project again (${dir}). Conversations that ran while it was off stay out of the journal.`] };
+    return { ok: true, lines: [`memory is on in this project again (${dir}). What was said while it was off stays out of the journal and the handoff.`] };
   } catch (e) { return no(`memory ${off ? 'off' : 'on'} NOT applied: ${reason(e)}${off ? '' : "; memory stays off"}`); }
 }
 

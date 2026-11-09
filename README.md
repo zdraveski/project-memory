@@ -214,14 +214,18 @@ still save notes. Those are Claude Code's settings, not project-memory's.
   `handoff.md`; snapshots of days already over keep a copy. If it says
   `NOT applied`, it did not work.
 - **One project:** `/project-memory:memory-off`, and `/project-memory:memory-on`
-  to come back. While it's off, nothing is added to that project's notes,
-  journal, handoff or history, and the startup says it is off. Off stops
-  adding; it doesn't hide: search and show still answer from what is there.
+  to come back. While it's off, project-memory adds nothing to that project's
+  journal, handoff or history, and doesn't tidy its notes; the startup says it
+  is off. What you say meanwhile stays out after it's back on, and the same
+  conversation's turns before and after are kept. Claude can still write a note
+  if you ask. Off stops adding; it doesn't hide: search and show still answer
+  from what is there.
 - **All projects, this machine:** set `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, or
   disable the plugin with `enabledPlugins` in your Claude Code settings.
 - **Claude Code itself:** `autoMemoryEnabled: false` stops its auto memory,
-  `CLAUDE_CODE_SKIP_PROMPT_HISTORY` its prompt history, and `claude purge`
-  deletes what it keeps. project-memory does not read or change any of these.
+  `CLAUDE_CODE_SKIP_PROMPT_HISTORY` its transcripts (with none, the journal
+  records nothing either), and `claude purge` deletes what it keeps.
+  project-memory does not read or change any of these.
 
 ## Pausing or removing it
 

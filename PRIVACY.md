@@ -200,7 +200,7 @@ of the switches below or disable the plugin
 |---|---|---|---|
 | `CLAUDE_CODE_DISABLE_AUTO_MEMORY` | you, in the environment | everything it saves on its own, in every project, and the conversation is tagged in `.memory-off` | your notes, the journal and snapshots already made |
 | `.memory-off` | the line above, per conversation | that conversation is never taken into the journal later | what was saved before it started |
-| `.project-off` | `memory off` in one project's `memory` folder: `{"t": <time>}` | in that project, the handoff, journal, tiering and snapshots; the startup says it is off | everything already saved, readable by `search` and `show`; `memory on` removes the marker and leaves conversations from while it was off out of the journal |
+| `.project-off` | `memory off` in one project's `memory` folder: `{"t": <time>}` | in that project, the handoff, journal, tiering and snapshots; the startup says it is off | everything already saved, readable by `search` and `show`; `memory on` removes the marker and keeps the times it was off in `.off-periods`, so what was said in them stays out of the journal and handoff |
 
 Off stops adding; it doesn't hide. A marker that can't be read counts as off,
 and the startup and `status` say memory is paused there.
@@ -272,10 +272,10 @@ Uninstalling the plugin leaves all of this in place. To delete:
 - the bookkeeping files: in `~/.claude/projects`, `.gitignore`, `.stop-ran`,
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
   `.journal-failed-…` file and the folder `.nudge`; in each project's
-  `memory` folder, `.tiered`, `.facts`, `.health`, `.private-sessions` and
-  `.project-off` (the marker; delete it to turn that project on);
+  `memory` folder, `.tiered`, `.facts`, `.health`, `.private-sessions`,
+  `.off-periods` and `.project-off` (the marker; delete it to turn that project on);
   and in the shared notebook's (`_shared/memory`), `.tiered`, `.facts` and
-  `.health`. Delete `.memory-off` and `.private-sessions` only
+  `.health`. Delete `.memory-off`, `.private-sessions` and `.off-periods` only
   once project-memory is removed for good: they list the conversations it
   must not record. Without them, a conversation held with auto memory off is
   recorded from its next reply; one marked private is tagged again at its

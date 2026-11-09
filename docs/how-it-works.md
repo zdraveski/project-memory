@@ -88,6 +88,7 @@ Windows device names such as `con` and `nul`.
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
 | `…/memory/.facts` | what the tidy-up read at the top of each note (its type, its `tier:` and its date), with the note's size and time, so a note is read again only once it changes |
 | `…/memory/.private-sessions` | the tags of conversations marked private (the newest 1,000) |
+| `…/memory/.project-off`, `.off-periods` | the marker while `memory off` holds, and the times it was off before, whose turns are never written |
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
 | `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
 | `~/.claude/projects/.git/project-memory-ignored`, `project-memory-parts` | bookkeeping for the snapshot's ignore list; a first snapshot still being taken in parts |
@@ -595,7 +596,7 @@ never fires.
 
 ## Turning it off
 
-Three things stop it, and each is checked first thing in the hook that would
+Two commands stop it, and each is checked first thing in the hook that would
 have saved something.
 
 - `.project-off` in a project's `memory` folder (`memory off` writes it, `memory
@@ -607,12 +608,12 @@ have saved something.
   startup prints one line saying memory is off, and the snapshot leaves that
   store out by a git pathspec (not a `.gitignore` rule, which would stop
   tracking the notes already committed). Search and show still read the store.
-- `memory on` first tags every conversation that ran while it was off in
-  `.memory-off`, so the journal's look for unimported conversations doesn't
-  take them in, then removes the marker. If either step fails it says
-  `NOT applied` and the marker stays. A conversation that spanned the moment
-  it went off may have the part before it swept at the next look; the plan
-  left this open.
+- `memory on` first adds the period to `.off-periods` (`<from ms> <to ms>`, one
+  a line), then removes the marker. If either step fails it says `NOT applied`
+  and the marker stays. The handoff and the journal skip a turn whose prompt
+  is timed inside a period, so a conversation that runs across off and on keeps
+  what it said before and after, and the import takes nothing from the period.
+  A turn whose time won't parse isn't skipped.
 - `incognito` goes through the existing private-session route: it adds the
   conversation's tag to `.private-sessions` and sweeps the journal and
   `handoff.md` for it (`takeBack` in `journal.mjs`), under the store's lock. If
@@ -623,7 +624,6 @@ The `/incognito`, `/memory-off` and `/memory-on` slash commands are three files
 in `commands/` that run the `memory` CLI with `--session ${CLAUDE_SESSION_ID}`.
 Not yet checked: that the commands show in the `/` menu, that `/incognito`
 gets a real session id, and whether that id survives `/clear` and resume.
-Session-id survival across `/clear` and resume is not yet checked.
 
 ## Snapshots
 

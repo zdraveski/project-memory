@@ -2130,6 +2130,29 @@ if (!quick) {
   ok(!/secret axolotl plan/.test(readdirSync(ofd, { recursive: true }).map((f) => { try { return readFileSync(join(ofd, f), 'utf8'); } catch { return ''; } }).join('\n')), 'a conversation from while it was off is not imported once it is on');
   r = await go('on');
   ok(r.status === 0 && /already on/.test(r.stdout), 'memory on when it is on says so');
+  // One conversation across off and on: what it said before and after stays, what it said while off does not.
+  {
+    const sd = join(root, 'C--span', 'memory'), sproj = dirname(sd), SC = 'C:\\span', SPAN = '99999999-6666', t = join(sproj, `${SPAN}.jsonl`), now = Date.now();
+    mkdirSync(sd, { recursive: true });
+    const say = (ask, ago) => {
+      const row = (type, text) => JSON.stringify({ type, cwd: SC, timestamp: new Date(now - ago).toISOString(), message: { content: [{ type: 'text', text }] } });
+      appendFileSync(t, `${row('user', ask)}\n${row('assistant', 'noted')}\n`);
+      return spawnSync(process.execPath, [TIER, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: SC, session_id: SPAN, transcript_path: t, hook_event_name: 'Stop' }) });
+    };
+    const saved = () => readdirSync(sd, { recursive: true }).map((f) => { try { return readFileSync(join(sd, f), 'utf8'); } catch { return ''; } }).join('\n');
+    say('span walrus before', 3 * 36e5);
+    ok(/span walrus before/.test(saved()), 'spanning: the turn before off is saved');
+    r = await run(['off', '--store', sd]);
+    writeFileSync(join(sd, '.project-off'), JSON.stringify({ t: now - 2 * 36e5 }));
+    say('span secret during', 36e5);
+    r = await run(['on', '--store', sd]);
+    say('span walrus after', -1000);
+    const text = saved(), day = readdirSync(join(sd, 'journal')).filter((f) => f.endsWith('.md')).map((f) => readFileSync(join(sd, 'journal', f), 'utf8')).join('\n');
+    ok(/span walrus before/.test(day), `spanning: the turn before off stays in the journal (got ${day.slice(0, 200)})`);
+    ok(/span walrus after/.test(day), `spanning: the turn after on is journaled (got ${day.slice(0, 200)})`);
+    ok(/span walrus after/.test(readFileSync(join(sd, 'handoff.md'), 'utf8')), 'spanning: the turn after on reaches handoff.md');
+    ok(!/span secret during/.test(text), 'spanning: the turn while off is saved nowhere');
+  }
   // A marker that cannot be removed: not applied, exit 1.
   writeFileSync(join(ofd, '.project-off'), '{}');
   const realUnlink = fs.unlinkSync;

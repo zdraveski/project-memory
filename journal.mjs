@@ -6,7 +6,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSy
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED } from './store.mjs';
+import { replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED } from './store.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -133,8 +133,9 @@ const page = (d, prose, es) => `# Journal ${d}\n\n` + [prose, ...es.flatMap((e) 
 // a backfill reads a quiet conversation again once it grows, and would bring a
 // forgotten entry back.
 export function record(dir, transcriptPath, turns, when) {
-  const byDay = new Map(), gone = new Set(forgotten(raw(join(dir, FORGOTTEN))).map(([k]) => k));
+  const byDay = new Map(), gone = new Set(forgotten(raw(join(dir, FORGOTTEN))).map(([k]) => k)), off = wasOff(dir);
   for (const t of turns) {
+    if (off(t)) continue;
     const e = entryOf(t, transcriptPath, when), d = day(e.at);
     if (gone.has(e.key)) continue;
     byDay.set(d, [...(byDay.get(d) || []), e]);

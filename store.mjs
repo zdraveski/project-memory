@@ -186,6 +186,13 @@ export function isOff(dir) {
   try { lstatSync(f); } catch (e) { return e.code === 'ENOENT' || e.code === 'ENOTDIR' ? null : { since: null, unread: e.code || 'error' }; }
   try { const t = JSON.parse(readFileSync(f, 'utf8')).t; return { since: Number.isFinite(t) ? t : null }; } catch { return { since: null }; }
 }
+// When a project was off, one `<from ms> <to ms>` a line (memory on adds it). A transcript runs on while the marker is there, and
+// its Stops and the import come later: a turn asked inside a period is never written. Tested on what a turn's own time says.
+export const OFF_PERIODS = '.off-periods';
+export function wasOff(dir) {
+  const periods = listOf(raw(join(dir, OFF_PERIODS))).map((l) => l.split(' ').map(Number));
+  return (t) => periods.some(([from, to]) => t.ms >= from && t.ms < to);
+}
 // The local date a project was turned off, for what is said to the user.
 export const offSince = (o) => (o.since ? local(o.since).slice(0, 10) : 'an unknown date');
 export function allStores() {

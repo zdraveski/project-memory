@@ -12,7 +12,9 @@
 - `/project-memory:memory-off` and `memory-on` turn it off and on for one
   project with a `.project-off` marker. Off stops adding; it doesn't hide:
   search and show still answer. `status` and `doctor` say when a project is
-  off, and a marker that can't be read counts as off.
+  off, and a marker that can't be read counts as off. What was said while it
+  was off stays out afterwards (`.off-periods`), and a conversation that ran
+  across off and on keeps its turns before and after.
 - Docs: README, PRIVACY and how-it-works say what each way of turning it off
   does and does not cover. Not yet checked by hand: the commands in the `/`
   menu, the session id `/incognito` receives, and whether it survives
