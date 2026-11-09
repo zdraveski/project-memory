@@ -42,10 +42,12 @@ you delete it or ask Claude to forget part of it.
 
 ## Does it slow Claude down or fill the conversation?
 
-Each conversation starts with a short briefing for Claude: 3,018 characters
-at the median and 3,496 at most (8 projects measured). After a compaction it
-is larger: 8,481 at the median and 9,366 at most, never over 9,500. The journal isn't loaded; Claude searches it only when you ask
-about earlier work. What it does after each reply runs outside the
+Each conversation starts with a short briefing for Claude. The last
+conversation's exchanges fill it up to 3,500 characters (at most 3,499 on 13
+real projects). A long list of shared lessons or warnings can pass that, but
+never 9,500. After a compaction it is larger: 8,481 characters at the median
+and 9,366 at most on 8 projects, never over 9,500. The journal isn't loaded;
+Claude searches it only when you ask about earlier work. What it does after each reply runs outside the
 conversation and uses none of its room.
 
 ## Do I need Git?

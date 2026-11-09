@@ -829,7 +829,8 @@ export function handoff(input, sink = null) {
   // File names, not paths; none for a private message's turn, read by what the
   // user typed as well as the ask made of it (userText): a wrapper own()
   // strips, or a command, hid the tag from the ask.
-  const fresh = got.filter((t) => !wasOff(dir)(t)).map((t) => ({ ...t, s, ...shown(t),
+  const off = wasOff(dir);
+  const fresh = got.filter((t) => !off(t)).map((t) => ({ ...t, s, ...shown(t),
     changed: PRIVATE.test(userText(t)) ? '' : newest(t.changed.map((f) => f.split(/[\\/]/).pop()), CHANGED) }));
   const hush = got.hush === true;
   // Sessions of one project write this file at once, so they take turns: 8 at
@@ -1076,9 +1077,8 @@ function shared() {
 // Claude Code passes a hook's text whole up to 10,000 characters; past that,
 // a preview and a file, and the shared lessons at the end were what was cut.
 const SAY = 9500;
-// The 3,500 characters the README names for the startup briefing: the last
-// session's exchanges fill the startup briefing up to it, the oldest left out first, and never past
-// it. What is there without them (the shared index alone can be 3,000 B) is
+// The 3,500 characters the README names: the last session's exchanges fill the
+// startup briefing up to it, the oldest left out first, and never past it. What is there without them (the shared index alone can be 3,000 B) is
 // as before.
 const BRIEF = 3500;
 // Defused, then held to SAY at a line's end, on both paths: the startup's

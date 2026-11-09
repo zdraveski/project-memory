@@ -59,9 +59,11 @@ no network code.
   `doctor`.
 - **Switches**: `.project-off` (a marker in one project's `memory` folder),
   `.off-periods` (the times that project was off) and `.private-sessions`
-  (the conversations marked private, which incognito adds to). All are plain
-  files in `~/.claude/projects`; the hooks read them and only the memory tool
-  writes them ([Turning it off](how-it-works.md#turning-it-off)).
+  (the conversations marked private). All are plain files in
+  `~/.claude/projects`, and the hooks read them. Only the memory tool writes
+  the first two. Incognito adds to `.private-sessions`, and so does the Stop
+  hook when a conversation asks to be private
+  ([Turning it off](how-it-works.md#turning-it-off)).
 - **The network**: none.
 
 ## Trust boundaries
