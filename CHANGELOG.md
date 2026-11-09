@@ -22,6 +22,20 @@
 - A note that has no line is filed by its age, like any other: a recent one in
   the index, an old one in the archive. Before, it always went to the archive.
 
+**Hooks**
+- Each hook now has a time limit: 120 seconds for Stop and `/compact`, 60 for
+  the automatic compaction check, 30 for the startup briefing. Before, Claude
+  Code waited 10 minutes. Each hook shows a short status message while it runs.
+- `/compact` no longer prints the tidy-up report. What a PreCompact hook prints
+  becomes part of the instructions for the summary; the work itself is unchanged.
+- The "Stop hook is not running" line now also names a `disableAllHooks`
+  setting, `--bare`, `--settings` and `CLAUDE_CODE_SKIP_PROMPT_HISTORY` as
+  possible causes.
+- Tests now pin that a Stop stopped during git loses nothing, that a reply
+  missing at one Stop is journaled by the next, and that copied turns which
+  keep their ids add no second journal entry. The startup briefing still skips
+  forks.
+
 ## 1.2.7 (2026-11-08)
 
 A bug-fix release for the tools that build and check the plugin. The plugin
