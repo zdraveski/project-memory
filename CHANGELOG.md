@@ -16,9 +16,8 @@
   was off stays out afterwards (`.off-periods`), and a conversation that ran
   across off and on keeps its turns before and after.
 - Docs: README, PRIVACY and how-it-works say what each way of turning it off
-  does and does not cover. Not yet checked by hand: the commands in the `/`
-  menu, the session id `/incognito` receives, and whether it survives
-  `/clear` and resume.
+  does and does not cover. Incognito holds across a resume; `/clear` starts a
+  new conversation, which is not incognito.
 
 **Search**
 

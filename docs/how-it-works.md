@@ -622,8 +622,10 @@ have saved something.
 
 The `/incognito`, `/memory-off` and `/memory-on` slash commands are three files
 in `commands/` that run the `memory` CLI with `--session ${CLAUDE_SESSION_ID}`.
-Not yet checked: that the commands show in the `/` menu, that `/incognito`
-gets a real session id, and whether that id survives `/clear` and resume.
+Checked by hand on 2026-11-09: each ran when typed by its full name,
+`/incognito` got the real session id, resuming keeps that id, and `/clear`
+starts a new one, in a new transcript. So incognito holds across a resume, and
+after `/clear` the new conversation is not incognito.
 
 ## Snapshots
 

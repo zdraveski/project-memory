@@ -211,8 +211,9 @@ still save notes. Those are Claude Code's settings, not project-memory's.
 
 - **One conversation:** type `/project-memory:incognito`. It stops saving that
   conversation and sweeps what it already saved from the journal and
-  `handoff.md`; snapshots of days already over keep a copy. If it says
-  `NOT applied`, it did not work.
+  `handoff.md`; snapshots of days already over keep a copy. It holds if you
+  resume the conversation; `/clear` starts a new one, so run it again there.
+  If it says `NOT applied`, it did not work.
 - **One project:** `/project-memory:memory-off`, and `/project-memory:memory-on`
   to come back. While it's off, project-memory adds nothing to that project's
   journal, handoff or history, and doesn't tidy its notes; the startup says it
