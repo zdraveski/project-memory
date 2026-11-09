@@ -593,6 +593,38 @@ those, also put the size in `CLAUDE_CODE_AUTO_COMPACT_WINDOW` under `env` in
 your Claude Code settings, for example `"200k"`. Otherwise the reminder
 never fires.
 
+## Turning it off
+
+Three things stop it, and each is checked first thing in the hook that would
+have saved something.
+
+- `.project-off` in a project's `memory` folder (`memory off` writes it, `memory
+  on` removes it). `isOff` in `store.mjs` reads it: no marker is on; a marker
+  is off, with the date from its `t` or "an unknown date" if it can't be read;
+  a marker that can't be examined at all (any error but "not there") also
+  counts as off, so a failure never reads as on. The Stop and PreCompact
+  hooks return before touching anything, `compact-gate.mjs` does nothing, the
+  startup prints one line saying memory is off, and the snapshot leaves that
+  store out by a git pathspec (not a `.gitignore` rule, which would stop
+  tracking the notes already committed). Search and show still read the store.
+- `memory on` first tags every conversation that ran while it was off in
+  `.memory-off`, so the journal's look for unimported conversations doesn't
+  take them in, then removes the marker. If either step fails it says
+  `NOT applied` and the marker stays. A conversation that spanned the moment
+  it went off may have the part before it swept at the next look; the plan
+  left this open.
+- `incognito` goes through the existing private-session route: it adds the
+  conversation's tag to `.private-sessions` and sweeps the journal and
+  `handoff.md` for it (`takeBack` in `journal.mjs`), under the store's lock. If
+  the sweep fails the tag stays and the next Stop retries; the command says
+  so and exits 1.
+
+The `/incognito`, `/memory-off` and `/memory-on` slash commands are three files
+in `commands/` that run the `memory` CLI with `--session ${CLAUDE_SESSION_ID}`.
+Not yet checked: that the commands show in the `/` menu, that `/incognito`
+gets a real session id, and whether that id survives `/clear` and resume.
+Session-id survival across `/clear` and resume is not yet checked.
+
 ## Snapshots
 
 After each reply that changed a note, the Stop hook commits the notes to a git

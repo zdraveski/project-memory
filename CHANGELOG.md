@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+**Turning it off**
+
+- `/project-memory:incognito` stops saving the current conversation and
+  sweeps what it already saved from the journal and `handoff.md`. It says
+  it did not work (`NOT applied`) rather than claim success. Claude Code by
+  default still keeps its own transcript, its own auto memory may still save
+  notes, and snapshots of days already over keep a copy.
+- `/project-memory:memory-off` and `memory-on` turn it off and on for one
+  project with a `.project-off` marker. Off stops adding; it doesn't hide:
+  search and show still answer. `status` and `doctor` say when a project is
+  off, and a marker that can't be read counts as off.
+- Docs: README, PRIVACY and how-it-works say what each way of turning it off
+  does and does not cover. Not yet checked by hand: the commands in the `/`
+  menu, the session id `/incognito` receives, and whether it survives
+  `/clear` and resume.
+
 **Search**
 
 - `search` finds two-character Chinese and Japanese words. In the repro of

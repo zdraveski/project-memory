@@ -24,7 +24,7 @@ export const SHARED = ['store.mjs', 'harness.mjs', 'mutate.mjs'];
 // plugin is read in place, and Claude Code keeps a copy per version in
 // ~/.claude/plugins/cache that only a new version refreshes (2026-10-27).
 const HOOKS = ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs',
-  '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md'];
+  '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
 
 // Each file by rename, so a hook starting mid-deploy reads a whole file. Every
 // temp is written first, where a full disk or a scanner fails, then the renames

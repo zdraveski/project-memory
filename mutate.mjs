@@ -19,7 +19,7 @@ import deploy from './mutants/deploy.mjs';
 
 // Every file a suite may import, copied beside the mutant.
 const FILES = ['harness.mjs', 'store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs',
-  '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md'];
+  '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
 
 export const suites = {
   'store.mjs': ['store.test.mjs', store],
