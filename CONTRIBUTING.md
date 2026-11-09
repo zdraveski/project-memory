@@ -49,10 +49,12 @@ A suite that passes ends with one line, `<suite>: <n> checks passed`. One
 that fails stops at the first failed check, prints that check's message
 (what it checks, and often what it got), and exits non-zero.
 
-CI ([`test.yml`](.github/workflows/test.yml)) runs `node check.mjs` and all
-six suites on every pull request and every push to `master`, in three jobs:
-Linux with Node 22, Windows with Node 24 and macOS with Node 26. A pull request can't merge until every job
-passes. Each job's log on GitHub shows the same lines as a run here.
+CI ([`test.yml`](.github/workflows/test.yml)) runs `node check.mjs`, all
+six suites and `node survive.mjs` (which facts of a session the briefing after
+a compaction still carries; it exits 1 if one is lost) on every pull request
+and every push to `master`, in three jobs:
+Linux with Node 22, Windows with Node 24 and macOS with Node 26. A pull request
+can't merge until every job passes. Each job's log on GitHub shows the same lines as a run here.
 
 Beyond the suites:
 
@@ -74,7 +76,9 @@ Beyond the suites:
   with strict mode off, 775 with it on, no bug among them, so it is not used.
 - CI's `actionlint` job checks the workflow files themselves (and their
   `run:` scripts, through shellcheck) with a pinned, checksum-checked
-  release. To run it here: download actionlint from its GitHub releases and
+  release, and its `zizmor` job scans them for unsafe patterns the same way.
+  Both run on pushes to `master` only, not on pull
+  requests. To run actionlint here: download actionlint from its GitHub releases and
   run `actionlint` in the repo.
 - `node fuzz.mjs [seconds] [--keep-going]` sends random, hostile
   conversations and notes through the real hooks and the CLI: a BOM, CRLF,
@@ -120,9 +124,9 @@ Beyond the suites:
   fail: all mutants, or those whose label contains one of the texts. Every mutant
   must be killed. The mutants are in `mutants/`, one file per source file;
   the table in `mutate.mjs` names the suite that must catch them. Each is a
-  label and a pair, the text to find and what to put in its place. No change or release needs the mutants run
-  or kept up to date: the tool stays for when someone asks. Each suite runs with `--mutant`, which skips
-  its slow blocks (a held lock waited out, a race, a big fixture, a clock;
+  label and a pair, the text to find and what to put in its place. No change or
+  release needs the mutants run or kept up to date: the tool stays for when
+  someone asks. Each suite runs with `--mutant`, which skips its slow blocks (a held lock waited out, a race, a big fixture, a clock;
   `quick` in `harness.mjs`); a mutant only those blocks kill is marked
   `{ full: true }` and runs its whole suite. The full run took 65 minutes on
   a 4-core Windows machine (2026-10-29), half of it the ~200 mutants
@@ -218,8 +222,8 @@ Open a pull request against `master`: nobody, the maintainer included, can
 push to it directly. Sign off every commit
 ([below](#developer-certificate-of-origin)). Run `node check.mjs` first; CI runs
 the suites on every platform. The pull request merges only when its required
-checks pass: the three test jobs and the sign-off check (`dco`). Have the change reviewed from its diff alone,
-by someone (or an agent) who has not heard why you made it. Leave the
+checks pass: the three test jobs and the sign-off check (`dco`). Have the
+change reviewed from its diff alone, by someone (or an agent) who has not heard why you made it. Leave the
 version number alone, and describe the change under an `## Unreleased`
 heading at the top of `CHANGELOG.md` (add the heading if it isn't there), in
 plain words for someone who uses the plugin. A change that saves, reads or
@@ -266,7 +270,7 @@ The maintainer's steps:
 The author keeps this repository at `~/.claude/hooks` and runs the hooks from
 a checked copy. `node deploy.mjs` runs only on `master` with nothing
 uncommitted. It runs the six suites, the soak and the break harness
-(with `--full`, the mutation check too), then compares a dry run of the tidy-up with the live copy's,
-and copies the plugin to `~/.claude/hooks-live`, which also serves as a local
+(with `--full`, the mutation check too), then compares a dry run of the tidy-up
+with the live copy's, and copies the plugin to `~/.claude/hooks-live`, which also serves as a local
 marketplace the plugin is installed from. It doesn't run the validator or the
 benchmark. None of this is needed to use or to change the plugin.

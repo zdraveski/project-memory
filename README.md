@@ -13,8 +13,9 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16158/badge)](https://www.bestpractices.dev/projects/16158)
 [![OpenSSF Baseline](https://www.bestpractices.dev/projects/16158/baseline)](https://www.bestpractices.dev/projects/16158/baseline-2)
 
-**Claude remembers your work: where you left off, and anything you did
-before.**
+**It remembers everything so you never lose your work and your ideas.**
+
+It leaves out incognito conversations, `<private>` text and secrets.
 
 project-memory is a free add-on (a "plugin") for Claude Code. It works on its
 own after every reply, keeps everything on your computer, and needs no
@@ -91,7 +92,7 @@ There's nothing to learn. Ask in your own words:
 |---|---|
 | *"What did we decide about the logo in September?"* | Claude searches your notes and the journal, and answers with the date. |
 | *"What did I work on last week?"* | Claude lists what you asked each day, from the journal. |
-| *"Where did we leave off?"* | Claude already knows: each new conversation starts with the last one's latest exchanges, as many as keep the briefing under 1,000 tokens. For more, it reads the record of your last conversation. |
+| *"Where did we leave off?"* | Claude already knows: each new conversation starts with the last one's latest exchanges, as many as fit in a short briefing. For more, it reads the record of your last conversation. |
 | *"Remember that I prefer short answers."* | Claude saves a note. |
 | *"I deleted the note about pricing by mistake. Bring it back."* | Claude restores it from the history. |
 | *"Forget the password I pasted yesterday."* | Claude lists the journal entries that match, and removes the ones you confirm from project-memory's files. Claude Code's own conversation files still hold them. |
@@ -154,13 +155,18 @@ Everything it reads and saves, and how to delete it, is in the
 
 ## Good to know
 
-- **Room.** Each conversation starts with a short briefing for Claude, usually
-  under 1,000 tokens. The journal isn't loaded, only searched when needed.
+- **Room.** Each conversation starts with a short briefing for Claude. The last
+  conversation's exchanges fill it up to 3,500 characters (at most 3,499 on 13
+  real projects). A long list of shared lessons or warnings can pass that, but
+  never 9,500. After a compaction it is larger: 8,481 characters at the median
+  and 9,366 at most on 8 projects, never over 9,500. The journal isn't loaded,
+  only searched when needed.
 - **Disk space.** The journal keeps each exchange whole, so an entry is as
   long as what was said: half are under about 5 KB, and one in a hundred is
   over about 60 KB. A very busy project adds up to about 110 MB a year.
 - **Your notes.** The first run may move older lines of the table of contents
-  to an archive. No note is deleted, and Claude can still search them.
+  to an archive. The plugin deletes no note (Claude Code's own cleanup might),
+  and Claude can still search them.
 - **Where.** Windows, macOS and Linux. Notes stay on the computer they were
   made on, and don't sync. Don't sync the memory folder yourself (Dropbox,
   OneDrive): each computer would undo the other's *"forget"*.

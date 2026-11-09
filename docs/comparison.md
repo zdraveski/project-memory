@@ -6,7 +6,7 @@ Claude Code's own memory keeps improving. It now asks Claude to shorten the
 table of contents when it nears its limit, and after a compaction it reloads
 your notes, re-reads recent files and reminds Claude of jobs still running.
 project-memory adds what it still doesn't do: a new conversation that starts
-knowing where the last one stopped, a journal of every exchange that Claude
+knowing where the last one stopped, a journal of every exchange you do not mark private that Claude
 searches when you ask about earlier work, a history of every note, a shared
 notebook for all your projects, and safe use of several windows at once.
 
@@ -23,11 +23,11 @@ so check their pages before you choose.
 | Account or API key | No | Optional | Required | Required | No, unless you use the paid cloud | No |
 | Extra software | Node.js (Git optional, for snapshots) | Node.js, Bun, uv and a background service | Python and Git | Node.js | Python | Node.js |
 | Uses an AI model to write memories | No | Yes: your Claude plan, your own key, or its paid service | Yes, on Mem0's side | Yes, on Supermemory's side | No | No |
-| How memories are made | Claude writes notes, and every exchange is saved to a journal after every reply | Automatically, from everything Claude does | Automatically, from your conversations | Automatically, from your conversations | Claude writes notes when asked | Automatically, from what happens in a session |
+| How memories are made | Claude writes notes, and every exchange you do not mark private is saved to a journal after every reply | Automatically, from everything Claude does | Automatically, from your conversations | Automatically, from your conversations | Claude writes notes when asked | Automatically, from what happens in a session |
 | Search | By words | By words and by meaning | By meaning | By meaning | By words and by meaning, plus links between notes | By words |
 | Picks up where you left off | Yes | Yes | Brings back up to 5 memories at the start | Searches memory on every message | When Claude reads the notes | Yes |
 | Protects work when a conversation is compacted | Before and after; during too, with one setting | Not stated | Not stated | Not stated | Not stated | Yes |
-| Old versions kept, so you can undo | Yes, of notes and of each finished day of the journal | Not stated | Not stated | Not stated | Paid cloud only | No |
+| Old versions kept, so you can undo | Yes, of notes and of each finished day of the journal: Git history on your computer (needs Git) | Not stated | Not stated | Not stated | Paid cloud only | No |
 | Lessons shared across your projects | Yes | Not stated | No, kept per repository | A personal profile | Yes, one knowledge base | Search across projects |
 | Shared with a team | No | Optional | Yes | Yes | Not stated | No |
 | Safe with several windows open | Yes, and each window is told about the others | Not stated | Not stated | Not stated | Not stated | Not stated |
@@ -40,7 +40,7 @@ In plain words:
 - **project-memory** suits you if you want Claude Code's own memory kept
   tidy, safe from mistakes and intact through long conversations, with nothing
   to sign up for and nothing leaving your computer. It keeps a journal of
-  every exchange for Claude to search. It searches by words only, works in
+  every exchange you do not mark private for Claude to search. It searches by words only, works in
   Claude Code only, and doesn't sync between computers or teammates.
 - **claude-mem** records everything Claude does and searches it by meaning. It
   runs a background service, and an AI model writes its summaries, which uses

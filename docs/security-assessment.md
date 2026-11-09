@@ -2,7 +2,7 @@
 
 What could go wrong with project-memory, how likely and how bad it would be,
 and what in the code and the tests guards against it. It covers version
-1.2.4 and the project around it, and was written in November 2026. A change
+1.3.0 and the project around it, and was written in November 2026. A change
 that reads, saves or sends anything new updates this page, as
 [CONTRIBUTING.md](../CONTRIBUTING.md#sending-a-change) says. The facts here
 come from [PRIVACY.md](../PRIVACY.md) and [How it works](how-it-works.md),
@@ -26,7 +26,7 @@ no network code.
 | The Stop hook (`memory-tier.mjs --stop`) | After every reply: tidies the indexes, writes the handoff and the journal, imports other conversations, takes a snapshot, and may remind Claude to save notes. |
 | The SessionStart hook (`handoff-log.mjs --print`) | Prints the startup briefing. |
 | The compaction gate (`compact-gate.mjs`) | Before an automatic compaction: may ask Claude Code to wait for the turn to end, or writes a note of the work in progress. |
-| The memory tool (`memory.mjs`) | `search`, `show`, `forget`, `status`, `history`, `restore`, `promote`, `doctor` ([commands](how-it-works.md#the-memory-tool-from-a-terminal)). |
+| The memory tool (`memory.mjs`) | `search`, `show`, `forget`, `status`, `history`, `restore`, `promote`, `doctor`, and `off`, `on` and `incognito` ([commands](how-it-works.md#the-memory-tool-from-a-terminal)). |
 | git | Run by the hooks and the tool, as a program, for the snapshot repository. |
 | Other processes | Another Claude Code window on the same project, Claude's own edits, a virus scanner or a sync tool holding a file. |
 | The maintainer and GitHub | Write, review and release the code; GitHub hosts it, runs CI and serves it to Claude Code's `/plugin`. |
@@ -57,6 +57,13 @@ no network code.
   fails.
 - **Claude Code's plugin lists**, in `~/.claude/plugins`, read only by
   `doctor`.
+- **Switches**: `.project-off` (a marker in one project's `memory` folder),
+  `.off-periods` (the times that project was off) and `.private-sessions`
+  (the conversations marked private). All are plain files in
+  `~/.claude/projects`, and the hooks read them. Only the memory tool writes
+  the first two. Incognito adds to `.private-sessions`, and so does the Stop
+  hook when a conversation asks to be private
+  ([Turning it off](how-it-works.md#turning-it-off)).
 - **The network**: none.
 
 ## Trust boundaries
@@ -123,6 +130,35 @@ the journal, the handoff, a briefing, a search hit or the history.
 What remains: Claude still sees private text, Claude Code keeps it in its
 own transcripts, and a finished day already in the history stays there
 until the user deletes the history.
+
+### Saving what the user turned off
+
+Likely if a check is missed. Impact: text from a project the user turned off,
+or a conversation they made incognito, is written anyway.
+
+- `.project-off` is read first in the Stop and PreCompact hooks, before
+  anything is read or written. A marker that can't be examined counts as off,
+  so a failure never reads as on. The startup prints one line saying memory is
+  off, and the snapshot leaves that store out by a git pathspec.
+- `memory on` records the time it was off in `.off-periods` before it removes
+  the marker, and says `NOT applied` and keeps the marker if either step
+  fails. The handoff and the journal skip a turn asked inside a period
+  (`wasOff` in `store.mjs`), because a transcript runs on while the marker is
+  there and its turns are read later. A turn whose time won't parse is kept.
+- Incognito adds the conversation's tag to `.private-sessions` and sweeps the
+  journal and `handoff.md` for it under the store's lock (`takeBack`). If the
+  sweep fails the tag stays, the next Stop retries, and the command says so.
+- The tests turn a project off and on and check that nothing from the off
+  turns is written, briefed or printed, and that incognito's sweep leaves
+  nothing of the conversation.
+
+What remains: off stops adding; it doesn't hide, so `search`, `show` and
+`--all` still read what was saved before. What incognito swept is gone, but a
+finished day already in the history keeps a copy, and Claude Code keeps its
+own transcript and may still save auto-memory notes. Incognito holds across a
+resume; `/clear` starts a new conversation, which is not incognito. A user
+or process that can edit these files can turn the switches off, as in
+[Out of scope](#out-of-scope).
 
 ### Another process writing
 
