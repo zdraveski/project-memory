@@ -1690,7 +1690,8 @@ if (!quick) {
   ok(cut.length === 240 && cut.startsWith('…') && cut.endsWith('…'), `stretches past the room are cut to 240 characters, ellipsis included (got ${cut.length})`);
   ok(ans((await jcli('search', 'cat')).stdout, 'Asked: plain request').includes('concatenated'), 'a three-letter term shows its stretch inside a longer word');
 
-  // The first column: a score is right-aligned to 3, the kind padded to 9.
+  // The first column: a score is right-aligned to 3, the kind padded to 9. A note no run has filed yet is the unindexed one.
+  memory(jm, 'mn-unfiled', 'zork', 'quux');
   r = await jcli('search', 'zork', 'quux');
   ok(/^  6  journal   2026-10-20 10:00  conversation c0ffee12$/m.test(r.stdout) && /^  5  unindexed \d{4}-\d\d-\d\d  \S/m.test(r.stdout), `a hit's line is the score in 3 columns, the kind in 9 (got ${r.stdout})`);
   r = await cli('search', 'deploy');
