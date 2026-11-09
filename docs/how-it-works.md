@@ -32,8 +32,8 @@ what a PreCompact hook prints becomes part of the instructions for the summary,
 so that run stays silent whatever it finds.
 
 The briefing is printed on a new conversation, `/clear` and after a
-compaction, not on a resume, which has its history, and not on a fork. A fork starts from a copy of an existing
-conversation, which already holds the briefing. The journal keys an entry by
+compaction, not on a resume, which has its history, and not on a fork. A fork
+starts from a copy of an existing conversation, which already holds the briefing. The journal keys an entry by
 its turn's id, so a copied turn that keeps its id lands on the entry it came
 from. This hasn't been checked against a real fork's transcript; a fork that
 gives its turns new ids would journal them again.

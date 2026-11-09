@@ -51,8 +51,8 @@ conversation's exchanges fill it up to 3,500 characters (at most 3,499 on 13
 real projects). A long list of shared lessons or warnings can pass that, but
 never 9,500. After a compaction it is larger: 8,481 characters at the median
 and 9,366 at most on 8 projects, never over 9,500. The journal isn't loaded;
-Claude searches it only when you ask about earlier work. What it does after each reply runs outside the
-conversation and uses none of its room.
+Claude searches it only when you ask about earlier work. What it does after
+each reply runs outside the conversation and uses none of its room.
 
 ## Do I need Git?
 
@@ -95,7 +95,8 @@ may take that conversation in. [Privacy policy](../PRIVACY.md).
 Turning auto memory off in Claude Code itself, with `/memory` or the
 `autoMemoryEnabled` setting, doesn't stop project-memory: it never reads
 Claude Code's settings, so it keeps its journal, its record of where you
-left off and its briefing. To stop it, use `/project-memory:memory-off` for one project, or disable the plugin
+left off and its briefing. To stop it, use `/project-memory:memory-off` for
+one project, or disable the plugin
 ([Pausing or removing it](../README.md#pausing-or-removing-it)).
 
 ## Does search understand meaning?
