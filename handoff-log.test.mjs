@@ -2358,7 +2358,20 @@ require('node:module').syncBuiltinESMExports();
   ok(held() === 'real answer', 'a reply after the memory update is not the turn\'s answer');
   ok(held(att({ type: 'todo_reminder' })) === 'real answer', 'an attachment of another kind does not end the hold');
   ok(held(tool_(5)) === 'real answer', 'a tool result does not end the hold');
-  ok(held(user('<task-notification>done</task-notification>')) === 'later work' && held(att({ type: 'queued_command', prompt: 'more' })) === 'later work', 'a task\'s end or a queued prompt does');
+  ok(held(user('<task-notification>done</task-notification>')) === 'later work' && held(att({ type: 'queued_command', prompt: 'more' })) === 'real answer', 'a task\'s end ends the hold, and a queued prompt opens a turn of its own');
+  // A prompt that is one custom element, or starts with "[SYSTEM", is an ask; the harness's own tags and nudge label are not (1.3.2 B4).
+  const askOf = (s) => turns(lines(user('first'), endTurn('a1'), user(s), endTurn('a2'))).map((x) => x.ask).join('|');
+  ok(askOf('<my-card class="x">why empty?</my-card>') === 'first|<my-card class="x">why empty?</my-card>' && askOf('[SYSTEM_SERVICE] failed to start, why?') === 'first|[SYSTEM_SERVICE] failed to start, why?', 'a custom element or a [SYSTEM line is an ask');
+  ok(askOf('<ide_opened_file>x</ide_opened_file>') === 'first' && askOf(`${NUDGE_TAG} go`) === 'first' && askOf('[SYSTEM: compaction gate] go') === 'first', 'a harness tag or the nudge label is not');
+  // A message typed while Claude worked (no user record, only an attachment) is an ask, and its reply is its own (1.3.2 B1).
+  const qd = (...l) => turns(lines(user('first'), endTurn('a1'), att({ type: 'queued_command', prompt: 'second', commandMode: 'prompt' }), ...l, endTurn('a2'))).map((x) => `${x.ask}>${x.did}`).join('|');
+  ok(qd() === 'first>a1|second>a2', `a queued message opens a turn (got ${qd()})`);
+  ok(qd(user('second')) === 'first>a1|second>a2', 'a user record repeating it is the same turn');
+  ok(turns(lines(user('first'), endTurn('a1'), att({ type: 'queued_command', prompt: '<task-notification>x</task-notification>', commandMode: 'task-notification' }), endTurn('a2'))).length === 1, 'a task\'s end queued meanwhile is no ask');
+
+  // A skill's body (isMeta) that names <private> is no message of the user's: it must not freeze the turn (1.3.2 B2).
+  ok(turns(lines(user('what did we decide?'), user('Base directory for this skill: /x\n<private>docs</private>', { isMeta: true }), endTurn('We decided on 3 retries.')))[0]?.did === 'We decided on 3 retries.', 'a skill body that names <private> does not freeze the turn');
+  ok(turns(lines(user('what did we decide?'), endTurn('first'), user('queued: <private>x</private>', { isMeta: true }), endTurn('after')))[0]?.did === 'first', 'any other isMeta record that names <private> still does');
 
   // The section's markers count on a line of their own, both sides.
   ok(sectionOf('<!-- auto:start -->\nx\n<!-- auto:end -->\n').a === 0, 'a section is found');

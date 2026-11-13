@@ -5,6 +5,9 @@
 - More secrets are cut before they are saved: SQL passwords (`PASSWORD '…'`, `IDENTIFIED BY`), redis, mongo, zip, ldap and mosquitto passwords, a Telegram bot token inside the API URL, `curl -u user:"pass"`, `--proxy-user`, XML `<password>`, PowerShell `ConvertTo-SecureString` and `$pw =`, `net use`, `schtasks /rp`, a short Basic credential, a URL password with `/`, `?` or `#`, npm `_auth`, more vendor tokens, a `?key=` or `?code=` in a URL, and a password after a full-width colon.
 - One very long value after `NAME=` or `--password` no longer slows a Stop down for seconds.
 - A session whose first folder is recorded after the first 64 KB of its transcript no longer writes into another project's memory after a `cd`.
+- A message you type while Claude is working now opens its own entry in the handoff and the journal. It was lost before.
+- Running the `memory` skill no longer freezes the handoff: the answer to your real question is saved.
+- A message that starts with your own tag (such as `<my-card>`) or with `[SYSTEM_SERVICE]` is kept as your question, not dropped as an automatic one.
 
 ## 1.3.1 (2026-11-13)
 
