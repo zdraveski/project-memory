@@ -222,6 +222,14 @@ ok(replaceIfUnchanged(f, 'one', 'two') === true && readFileSync(f, 'utf8') === '
 ok(replaceIfUnchanged(f, 'two', 'two') === false, 'says so when there is nothing to write');
 writeFileSync(f, 'the model wrote this');
 ok(replaceIfUnchanged(f, 'two', 'three') === 'conflict' && readFileSync(f, 'utf8') === 'the model wrote this', 'a write it did not see is kept');
+// A file in the Windows code page (PowerShell 5.1's `>`) or UTF-16 reads with U+FFFD: written back, its letters were gone (1.3.1 audit C-1).
+for (const bytes of [Buffer.from('# Index\n- caf\xe9\n', 'latin1'), Buffer.from('﻿# Index\n', 'utf16le')]) {
+  const nb = join(dir, 'not-utf8.md');
+  writeFileSync(nb, bytes);
+  let code = '';
+  try { replaceIfUnchanged(nb, readFileSync(nb, 'utf8'), 'rewritten'); } catch (e) { code = e.code; }
+  ok(code === 'not UTF-8' && readFileSync(nb).equals(bytes), `a file that is not UTF-8 is left as it is (got ${code})`);
+}
 ok(replaceIfUnchanged(join(dir, 'new.md'), null, 'fresh') === true && readFileSync(join(dir, 'new.md'), 'utf8') === 'fresh', 'a file that did not exist is created');
 ok(replaceIfUnchanged(join(dir, 'new.md'), null, 'again') === 'conflict', 'and one that appeared meanwhile is not overwritten');
 ok(!readdirSync(dir).some((x) => x.includes('.tmp')), 'no temp file is left behind');
