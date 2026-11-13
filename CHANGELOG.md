@@ -7,6 +7,7 @@
 - `restore` brings back a note that is not UTF-8 byte for byte, not with broken letters.
 - A lock left by a killed hook is taken over at once, not after 30 seconds.
 - A Stop that finds the store held waits once more, so twenty Stops at once lose fewer turns.
+- The first snapshot works with a very large store (more than about 15,000 notes), where the file list used to overflow git's output buffer.
 
 ## 1.3.1 (2026-11-13)
 

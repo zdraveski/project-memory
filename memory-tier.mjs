@@ -392,7 +392,7 @@ function snapshot() {
   const lc = process.env.LC_ALL;
   process.env.LC_ALL = 'C';
   // A git that hangs (a prompt nobody sees) must not hold the Stop hook. `input`: stdin's text.
-  const gitIn = (input, ...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], timeout: gitWait });
+  const gitIn = (input, ...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], timeout: gitWait, maxBuffer: 256 << 20 });
   const git = (...a) => gitIn('', ...a);
   // A first snapshot taken in parts: the rest is still to add.
   const parts = join(root, '.git', 'project-memory-parts');

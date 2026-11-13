@@ -1729,6 +1729,18 @@ require('node:module').syncBuiltinESMExports();
     ok(readOr(join(g.r, '.git', 'project-memory-ignored')) === readOr(join(g.r, '.gitignore')) && /committed/.test(out), 'and the run remembers it did it: what it untracked is what .gitignore says');
   }
   {
+    // The first history lists every new file: past node's 1 MB default for a command's output (~15,000 notes) that listing failed with ENOBUFS,
+    // and no snapshot was ever taken (defect hunt 1.3.2, C6). A git whose listing would not fit the buffer it is given says so here.
+    const h = tempDir('memtier-buf-'), s = join(h, '.claude', 'projects', 'C--p', 'memory');
+    mkdirSync(s, { recursive: true });
+    writeNote(s, 'a'); writeFileSync(join(s, 'MEMORY.md'), '- [a](a.md) — a\n');
+    const out = (await asHome(h, () => swap('node:child_process', 'execFileSync', (real) => (f, a, o, ...r) => {
+      if (f === 'git' && a.includes('ls-files') && !(o?.maxBuffer >= 64 << 20)) throw Object.assign(new Error('spawnSync git ENOBUFS'), { code: 'ENOBUFS' });
+      return real(f, a, o, ...r);
+    }, () => call([])))).stdout;
+    ok(/snapshot: (initialised|committed)/.test(out), `a long list of new files fits the buffer git's output is read into (got ${out.trim()})`);
+  }
+  {
     // A note deleted between git's listing and its read: one more try, not a failure.
     const g = await gitHome();
     let n = 0;
