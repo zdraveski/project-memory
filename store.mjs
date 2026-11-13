@@ -140,7 +140,9 @@ export const budgetOf = (dir) => (isShared(dir) ? SHARED_BUDGET : BUDGET);
 // MEMORY.md is matched by its target, never its title. A file in the store,
 // by its name: a web link was reported as a memory with no file on every
 // startup, and `../../big.bin` was read whole by every Stop.
-export const POINTER = /^- \[[^\]]*\]\(([^)/\\:]+)\)/;
+// A title may hold one level of [brackets] (`[Fix [WIP] x]`): unmatched, the line was prose and its note got a second
+// pointer. The two branches start on different characters, so the match stays linear.
+export const POINTER = /^- \[(?:[^[\]]|\[[^[\]]*\])*\]\(([^)/\\:]+)\)/;
 export const ARCHIVE = 'MEMORY-archive.md';
 // The two index files the plugin writes; any other MEMORY-*.md is a note.
 export const isIndex = (f) => f === 'MEMORY.md' || f === ARCHIVE;
