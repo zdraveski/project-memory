@@ -882,6 +882,12 @@ gaps('a Telegram bot token', [`curl https://api.telegram.org/bot${tg}/getMe`, `t
 }
 // A5: curl -u with the password quoted after the colon.
 gaps('curl -u passwords quoted after the colon', [`curl -u admin:"${V}" https://x`, `curl -u admin:'${V}' https://x`, `curl --user admin:"${V}" https://x`], ['docker run -u 1000:1000 img', 'curl -u admin https://x']);
+// A6: XML, PowerShell and Windows commands.
+gaps('XML, PowerShell and Windows passwords', [`<password>${V}</password>`, `<DbPassword type="x">${V}</DbPassword>`, `<add key="DbPassword" value="${V}"/>`, `<add key="ApiToken" value="${V}" />`,
+  `ConvertTo-SecureString "${V}" -AsPlainText -Force`, `ConvertTo-SecureString -String '${V}' -AsPlainText`, `$pw = "${V}"`, `$dbPassword='${V}'`, `net use Z: \\\\h\\s ${V} /user:u`,
+  `schtasks /create /ru u /rp ${V} /tn t /tr x`],
+  ['<password>${env.PW}</password>', '<passwordPolicy>strict</passwordPolicy>', '<add key="Mode" value="release"/>', '$passed = "yes12345"', 'net use Z: \\\\h\\s /delete',
+    'schtasks /create /ru u /rp * /tn t', 'ConvertTo-SecureString $plain -AsPlainText']);
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));

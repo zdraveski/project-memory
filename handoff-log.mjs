@@ -429,6 +429,14 @@ const SECRETS = [
   [/\b((?:password|passwd)\s{1,3})(?=[^\s"',;]{0,200}\d)(?=[^\s"',;]{0,200}[A-Za-z])[^\s"',;:]{6,}/gi, '$1[redacted]'],
   // SQL: `WITH PASSWORD 'x'`, `PASSWORD('x')`, `IDENTIFIED [WITH plugin] BY 'x'`; the value quoted, to its closing quote (1.3.2).
   [/(\b(?:password(?:\s{1,5}\(?|\()|identified\s{1,5}(?:with\s{1,5}\w{1,40}\s{1,5})?by)\s{0,5})(["'])([^"'\n]{1,200})(?=\2)/gi, (m, pre, q, v) => (arg(v) || code(v) ? m : `${pre}${q}[redacted]`)],
+  // XML: `<password>x</password>` (the tag's name ends in the word), and `<add key="DbPassword" value="x"/>` (1.3.2).
+  [/(<[\w.:-]{0,40}(?:password|passwd|pwd|secret|apikey|token)(?=[\s>])[^>]{0,100}>)([^<\n]{3,500})(?=<)/gi, (m, pre, v) => (arg(v) || code(v) ? m : `${pre}[redacted]`)],
+  [/(\bkey=["'][\w.-]{0,40}(?:password|passwd|pwd|secret|apikey|token)["']\s{1,5}value=["'])[^"'\n]{3,500}/gi, '$1[redacted]'],
+  // Windows: PowerShell's ConvertTo-SecureString "x" and `$pw = "x"`, `net use Z: \\host\share x`, `schtasks /rp x` (1.3.2).
+  [/(\bConvertTo-SecureString\s{1,5}(?:-String\s{1,5})?)("[^"\n]{1,200}"|'[^'\n]{1,200}'|[^\s"'-]\S{0,200})/gi, (m, pre, v) => (arg(v.replace(/^["']/, '')) ? m : `${pre}[redacted]`)],
+  [/(\$(?:pw|pwd|pass|passwd|password|passphrase|secret|token|apikey|\w{1,40}(?:password|secret|token|apikey))[ \t]{0,5}=[ \t]{0,5})("[^"\n]{1,200}"|'[^'\n]{1,200}'|[^\s"';|&]{1,200})/gi, (m, pre, v) => (arg(v.replace(/^["']/, '')) || code(v) ? m : `${pre}[redacted]`)],
+  [/(\bnet\s{1,5}use\s{1,5}(?:[A-Za-z]:\s{1,5})?\\\\\S{1,200}\s{1,5})(?![/*])(?:"[^"\n]{1,200}"|'[^'\n]{1,200}'|[^\s"']{1,200})/gi, '$1[redacted]'],
+  [/(\bschtasks\b[^\n|;&]{0,300}?\s\/rp\s{1,5})(?!\*)(?:"[^"\n]{1,200}"|'[^'\n]{1,200}'|[^\s"']{1,200})/gi, '$1[redacted]'],
   // The word can end a longer name, glued (PGPASSWORD=, dbPassword, clientSecret,
   // stripeApiKey) or not (DB_PASSWORD=, AWS_SECRET_ACCESS_KEY=), and the value
   // can sit on the next line (YAML). `pwd` needs its own start. Bounded, so no
