@@ -669,7 +669,12 @@ export async function main(argv, input) {
       // the journal, never the handoff.
       let sink = null;
       try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
-      try { if (payload) handoff(payload, sink); try { unlinkSync(failed); } catch {} }
+      // A store still held after one wait (twenty Stops at once) gets one more, after a pause and with a fresh wait: the session's
+      // last Stop has no later one to redo the turn (defect hunt 1.3.2, C5).
+      try {
+        if (payload && handoff(payload, sink) === 'busy' && stop) { sleep(200 + Math.random() * 600); lockBudget(true); handoff(payload, sink); }
+        try { unlinkSync(failed); } catch {}
+      }
       catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); }
       // The index of a store the plugin writes to, in the same Stop that wrote its handoff; the nudge below must not skip it.
       if (payload && !dry) ensureIndex(storeOf(payload));

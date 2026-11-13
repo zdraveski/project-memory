@@ -6,6 +6,7 @@
 - `promote` and `restore` move a long index line that wraps onto a second line as a whole.
 - `restore` brings back a note that is not UTF-8 byte for byte, not with broken letters.
 - A lock left by a killed hook is taken over at once, not after 30 seconds.
+- A Stop that finds the store held waits once more, so twenty Stops at once lose fewer turns.
 
 ## 1.3.1 (2026-11-13)
 

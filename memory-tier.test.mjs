@@ -575,6 +575,18 @@ ok(tracked().includes('proj-two/memory/f2.md') && sh().failures === 0 && !sh().b
 rmSync(join(root, '.snapshot-health'));
 r = await stop('proj-two');
 ok(!existsSync(join(root, '.snapshot-health')), '--stop: a quiet Stop with no snapshot record owes none, and runs no git');
+// Twenty Stops at once outlast one 2 s wait, and a session's last Stop has no later one to take its turn up: a Stop that finds
+// the store held waits once more, after a pause (defect hunt 1.3.2, C5). The holder here lets go at about 2.6 s.
+if (!quick) {
+  const lock = join(root, 'proj-two', 'memory', '.lock'), tp = join(root, 'proj-two', 'held.jsonl');
+  const rec = (type, text) => JSON.stringify({ type, timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text }] } });
+  writeFileSync(tp, rec('user', 'held-turn question') + '\n' + rec('assistant', 'held-turn answer') + '\n');
+  const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs'); fs.mkdirSync(${JSON.stringify(lock)}); process.stdout.write('up'); setTimeout(() => fs.rmdirSync(${JSON.stringify(lock)}), 2600)`]);
+  await new Promise((up) => holder.stdout.once('data', up));
+  r = await call(['--stop'], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: tp, session_id: 'heldsess' }));
+  ok(r.status === 0 && readFileSync(join(root, 'proj-two', 'memory', 'handoff.md'), 'utf8').includes('held-turn question'), `--stop: a store held a little longer than one wait still gets the turn (got ${r.stdout})`);
+  await new Promise((done) => holder.once('close', done));
+}
 // PreCompact's stdout becomes the compaction's instructions, so the tidy-up's report must not reach it.
 const preCompact = (proj = 'proj-two') => call(['--stop'], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, proj, 'session.jsonl'), session_id: 'tst', hook_event_name: 'PreCompact', trigger: 'manual' }));
 note('proj-two', 'pc1');
