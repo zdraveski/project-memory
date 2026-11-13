@@ -2149,7 +2149,9 @@ if (!quick) {
     writeFileSync(join(sd, '.project-off'), JSON.stringify({ t: now - 2 * 36e5 }));
     say('span secret during', 36e5);
     r = await run(['on', '--store', sd]);
-    say('span walrus after', -1000);
+    // A minute ahead of `now`: on a slow machine `on` ran more than a second after `now`, the off period closed after this
+    // turn's time, and the turn was rightly dropped as asked while off (2026-11-13).
+    say('span walrus after', -60_000);
     const text = saved(), day = readdirSync(join(sd, 'journal')).filter((f) => f.endsWith('.md')).map((f) => readFileSync(join(sd, 'journal', f), 'utf8')).join('\n');
     ok(/span walrus before/.test(day), `spanning: the turn before off stays in the journal (got ${day.slice(0, 200)})`);
     ok(/span walrus after/.test(day), `spanning: the turn after on is journaled (got ${day.slice(0, 200)})`);
