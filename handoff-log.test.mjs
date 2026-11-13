@@ -860,7 +860,8 @@ ok(['check whether the password is hashed.', 'the password was changed', 'mysql 
 // 1.3.2: secrets in more shapes (defect hunt A1-A12). Each text must lose its secret V, in redact() and in clip(); each keep is left as it was.
 const V = 'Zq8xK2mP9vL4nR7tB3wY';
 const gaps = (what, texts, keeps = []) => {
-  const bad = texts.filter((s) => redact(s).includes(V) || clip(s, 2000).includes(V));
+  // A text is a string holding V, or [text, secret].
+  const bad = texts.filter((t) => { const [s, v] = [].concat(t, V); return redact(s).includes(v) || clip(s, 2000).includes(v); });
   ok(!bad.length, `${what} are redacted (leaked: ${bad.join(' | ')})`);
   ok(keeps.every((s) => redact(s) === s), `${what}: ordinary lines are kept`);
 };
@@ -873,8 +874,8 @@ gaps('redis, mongo, zip, ldap and mosquitto passwords', [`redis-cli CONFIG SET r
   `mongo -u u -p ${V} db`, `mongosh -u u -p ${V}`, `zip -P ${V} a.zip f`, `ldapsearch -x -D cn=a -w ${V}`, `mosquitto_pub -u a -P ${V} -t x`],
   ['requirepass in redis.conf', 'zip -r a.zip f', 'ldapsearch -P 3 -x', 'mongo -u u --port 27017 db', 'redis-cli --pass $REDIS_PW ping']);
 // A3: a Telegram bot token in the API's URL, where the digits follow the letters "bot".
-const tg = `123456789:AA${V}abcdefghijklm`;
-gaps('a Telegram bot token', [`curl https://api.telegram.org/bot${tg}/getMe`, `token ${tg}`, `x${tg}`]);
+const tgram = `123456789:AA${V}abcdefghijklm`;
+gaps('a Telegram bot token', [`curl https://api.telegram.org/bot${tgram}/getMe`, `token ${tgram}`, `x${tgram}`]);
 // A4: one very long value after NAME= or --password took seconds (quadratic) at every Stop.
 {
   const [good, how] = linear((m) => { redact('export API_KEY=' + 'a/'.repeat(2500 * m)); redact('--password ' + 'dir/'.repeat(1250 * m)); redact('MY_TOKEN=' + 'a/'.repeat(2500 * m) + ' ./run.sh'); }, 1000);
@@ -888,6 +889,10 @@ gaps('XML, PowerShell and Windows passwords', [`<password>${V}</password>`, `<Db
   `schtasks /create /ru u /rp ${V} /tn t /tr x`],
   ['<password>${env.PW}</password>', '<passwordPolicy>strict</passwordPolicy>', '<add key="Mode" value="release"/>', '$passed = "yes12345"', 'net use Z: \\\\h\\s /delete',
     'schtasks /create /ru u /rp * /tn t', 'ConvertTo-SecureString $plain -AsPlainText']);
+// A7: a short Basic credential (under 20 base64 characters) after Authorization.
+const b64 = (s) => Buffer.from(s).toString('base64');
+const short = (u) => [`curl -H "Authorization: Basic ${b64(u)}" https://x`, b64(u)];
+gaps('a short Basic credential', [short('bob:hunter22'), short('a:b2c3d4'), [`authorization: basic ${b64('a:b2c3d4e5')}`, b64('a:b2c3d4e5')]], ['Authorization: Basic authentication', 'the Basic auth header']);
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));

@@ -362,6 +362,8 @@ const SECRETS = [
   // A session cookie logs anyone in: a Cookie / Set-Cookie header's name=value pairs (nothing after them), and curl's -b / --cookie value (not a jar file).
   // An Authorization value with no scheme word: 20+ characters with a digit. And redis-cli's -a password.
   [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?)(?=[A-Za-z0-9._~+/=-]{0,200}\d)[A-Za-z0-9._~+/=-]{20,}/gi, '$1[redacted]'],
+  // Authorization: Basic with a short credential (8+ base64 characters), as the rule above wants 20 and a digit. A word in lower case is prose.
+  [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?basic[ \t]+)([A-Za-z0-9+/=]{8,200})/gi, (m, pre, v) => (/^[a-z]+$/.test(v) ? m : `${pre}[redacted]`)],
   [/(\bredis-cli\b[^\n|;&]{0,200}?\s-a[ \t]+["']?)(?:(?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, '$1[redacted]'],
   // The curl rule first: the header rule reads to the next quote, which may be the one that opens a -b value.
   [/(\bcurl\b[^\n|;&]{0,300}?\s(?:-b|--cookie)[ =]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (v.includes('=') ? `${pre}[redacted]` : m)],
