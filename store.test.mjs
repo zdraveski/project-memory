@@ -527,8 +527,9 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(lockRun(rep('EACCES', 9)).res === 'EACCES', 'nine in a row throw');
   ok(lockRun(['EEXIST', ...rep('EACCES', 8)]).res === 'got', 'a held lock between the refusals starts the count again');
 
-  // The unlock: refused for a moment (EBUSY), it is tried again; ENOENT is not retried.
-  for (const [code, n, gone] of [['EBUSY', 1, true], ['EPERM', 2, true], ['EBUSY', 3, false]]) {
+  // The unlock: refused for a moment (EBUSY), it is tried again; ENOENT is not retried. ENOTEMPTY too: on Windows the
+  // owner file a scanner holds stays in the folder a moment after its unlink (1.3.1 final review).
+  for (const [code, n, gone] of [['EBUSY', 1, true], ['EPERM', 2, true], ['ENOTEMPTY', 1, true], ['EBUSY', 3, false]]) {
     let k = 0, waits = 0;
     const undo = patch('rmdirSync', (real) => function (p, ...a) { if (String(p).endsWith('.lock') && k++ < n) throw err(code); return real.call(this, p, ...a); });
     const wait = Atomics.wait; Atomics.wait = (...a) => { waits++; return wait(...a); };

@@ -372,7 +372,7 @@ export function withLock(dir, fn) {
   // third hook in beside the second (audit D-2).
   try { return fn(); } finally {
     let mine = !signed; try { mine = readFileSync(owner, 'utf8') === token; } catch {}
-    if (mine) { try { unlinkSync(owner); } catch {} for (let i = 0; ; i++) { try { rmdirSync(lock); break; } catch (e) { if (!BUSY.includes(e.code) || i === 2) break; sleep(STEP); } } }
+    if (mine) { try { unlinkSync(owner); } catch {} for (let i = 0; ; i++) { try { rmdirSync(lock); break; } catch (e) { if (!(BUSY.includes(e.code) || e.code === 'ENOTEMPTY') || i === 2) break; sleep(STEP); } } }
   }
 }
 
