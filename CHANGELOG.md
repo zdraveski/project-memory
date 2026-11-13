@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.2 (2026-11-13)
 
 - `forget` finds text with accents whichever way the accent is stored, as `search` does.
 - `forget --conversation ""` is refused, instead of forgetting in every conversation.
