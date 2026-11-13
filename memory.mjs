@@ -35,7 +35,7 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
 import { hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
@@ -154,6 +154,17 @@ const withLine = (text, line) => {
   const ls = text.replace(/\n*$/, '').split('\n'), at = ls.findIndex((l) => target(l) === ARCHIVE);
   if (at === -1) ls.push(line); else ls.splice(at, 0, line);
   return ls.join('\n') + '\n';
+};
+
+// The first pointer `match` takes, with the indented lines a long hook wraps onto, and the text without every such pointer and its wrap.
+const take = (text, match) => {
+  const kept = []; let line = null, own = false, first = false;
+  for (const l of text.split(/\r?\n/)) {
+    if (match(l)) { own = true; first = line === null; if (first) line = l.replace(OVERFLOW, ''); }
+    else if (own && /^[ \t]+\S/.test(l)) { if (first) line += '\n' + l; }
+    else { own = false; kept.push(l); }
+  }
+  return { line, rest: kept.join('\n') };
 };
 
 // Every memory in a store: what its frontmatter says, its [[links]], and which
@@ -397,7 +408,10 @@ function sessionStore() {
 // matched other notes' history. A version is read with cat-file for the same
 // reason: `git show rev:a*.md` took the argument for a pattern, printed
 // nothing and succeeded, and restore wrote an empty note.
-const git = (...a) => execFileSync('git', gitArgs('--literal-pathspecs', ...a), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20, timeout: 60_000 });
+const gitAs = (encoding, a) => execFileSync('git', gitArgs('--literal-pathspecs', ...a), { encoding, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20, timeout: 60_000 });
+const git = (...a) => gitAs('utf8', a);
+// A blob's own bytes: through a string, a note that is not UTF-8 lost its letters.
+const gitBytes = (...a) => gitAs('buffer', a);
 // The on-disk spelling: git's paths are case-sensitive, and the JS realpath
 // keeps whatever case it was handed (a cwd typed in lower case).
 const real = (p) => { try { return realpathSync.native(p); } catch { return p; } };
@@ -481,7 +495,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
   // No `..` either: `A..B:path` is a range, and git showed it as an empty note.
   if (rev !== undefined && !/^[\w^~]{1,80}$/.test(rev)) return no(`--rev takes a commit from history, like abc1234: not "${rev}"`);
   // The first path that has it (tracked): the error is the first path's.
-  let from, text, failure;
+  let from, bytes, failure;
   for (const at of tracked(dir, file)) {
     from = rev;
     try {
@@ -491,12 +505,12 @@ export function restore(dir, file, { rev, force = false } = {}) {
         try { const head = git('rev-parse', '--short', 'HEAD').trim(); git('cat-file', '-e', `${head}:${at}`); from = head; }
         catch { const gone = git('log', '-1', '--format=%h', '--diff-filter=D', '--', at).trim(); from = gone ? `${gone}^` : 'HEAD'; }
       }
-      try { text = git('cat-file', '-p', `${from}:${at}`); }
+      try { bytes = gitBytes('cat-file', '-p', `${from}:${at}`); }
       // The commit history names as "deleted" no longer has it: the version it
       // deleted is the one before. Neither there: the error is the commit's own.
       catch (e) {
         if (!rev) throw e;
-        try { text = git('cat-file', '-p', `${rev}^:${at}`); } catch { throw e; }
+        try { bytes = gitBytes('cat-file', '-p', `${rev}^:${at}`); } catch { throw e; }
         from = `${rev}^`;
       }
       failure = null; break;
@@ -511,22 +525,23 @@ export function restore(dir, file, { rev, force = false } = {}) {
   if (!isIndex(file)) {
     for (const idx of ['MEMORY.md', ARCHIVE]) {
       const t = tracked(dir, idx).map((at) => { try { return git('cat-file', '-p', `${from}:${at}`); } catch { return ''; } }).join('\n');
-      line = t.split(/\r?\n/).find((l) => target(l) === file)?.replace(OVERFLOW, '') ?? null;
+      line = take(t, (l) => target(l) === file).line;
       if (line) break;
     }
   }
   mkdirSync(dir, { recursive: true });
   const r = withLock(dir, () => {
-    const cur = raw(path);
+    const cur = raw(path), curB = cur === null ? null : readFileSync(path);   // bytes too: a string loses a non-UTF-8 note's letters
     if (cur !== null && !force) return `${path} appeared meanwhile; nothing written`;
     // Already that version: "restored" here told the model a bad version was gone.
-    if (cur !== null && cur.replace(/^\uFEFF/, '') === text) return `${path} already matches ${from}: nothing to restore; history lists older versions, --rev <commit> picks one`;
+    if (cur !== null && (curB[0] === 0xEF && curB[1] === 0xBB && curB[2] === 0xBF ? curB.subarray(3) : curB).equals(bytes)) return `${path} already matches ${from}: nothing to restore; history lists older versions, --rev <commit> picks one`;
     // What --force replaces is kept in the repo, not lost: no snapshot may hold it yet.
     let kept = '';
     // No copy, no replace: the text it would overwrite was gone for good (1.3.1 audit D-8).
-    if (cur !== null) { try { kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: cur, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim()}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
+    // Under a ref: a blob nothing refers to is dangling, and gc deletes it.
+    if (cur !== null) { try { const sha = execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: curB, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim(); git('update-ref', `refs/project-memory/replaced/${sha}`, sha); kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${sha}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
     // Or one the disk refuses (a name Windows cannot hold, from a store synced from Linux).
-    const w = put(path, cur, text);
+    const w = put(path, cur, bytes);
     if (failed(w)) return `${path} could not be written (${w.slice(8)}); nothing restored`;
     if (w === 'conflict') return `${path} changed meanwhile; nothing written`;
     if (isIndex(file)) return `restored ${path} from ${from}${kept}`;
@@ -560,9 +575,11 @@ export function promote(dir, file) {
     let home = null, homeText = null, line = null;
     // Its line by the file it names: on Windows one written `(Casey.md)` names casey.md.
     const its = (x) => { const t = target(x); return !!t && (t === file || same(join(dir, t), src)); };
+    // Not through a string if it is no UTF-8: the shared copy would hold U+FFFD, and the original be deleted.
+    try { utf8Only(src, text); } catch (e) { return e.message; }
     for (const p of [join(dir, 'MEMORY.md'), join(dir, ARCHIVE)]) {
-      const t = raw(p), l = t?.split(/\r?\n/).find(its);
-      if (l) { home = p; homeText = t; line = l.replace(OVERFLOW, ''); break; }
+      const t = raw(p), l = t && take(t, its).line;
+      if (l) { home = p; homeText = t; line = l; break; }
     }
     line ??= pointerLine(file, front(text).desc || 'promoted');
     const wd = put(dst, null, text);
@@ -577,7 +594,7 @@ export function promote(dir, file) {
     // project copy, and its index line, where it was written.
     const edited = `${src} changed while it was copied: it is in both stores; merge the edit into ${dst}, then delete ${src} and its line by hand`;
     if (raw(src) !== text) return edited;
-    const wh = home ? put(home, homeText, homeText.split(/\r?\n/).filter((x) => !its(x)).join('\n')) : false;
+    const wh = home ? put(home, homeText, take(homeText, its).rest) : false;
     if (failed(wh)) return `the project index could not be written (${wh.slice(8)}): ${file} is in both stores; delete ${src} and its line by hand`;
     if (wh === 'conflict') return `the project index changed meanwhile: ${file} is in both stores; delete ${src} and its line by hand`;
     if (raw(src) !== text) return edited;

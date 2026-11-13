@@ -392,7 +392,7 @@ function snapshot() {
   const lc = process.env.LC_ALL;
   process.env.LC_ALL = 'C';
   // A git that hangs (a prompt nobody sees) must not hold the Stop hook. `input`: stdin's text.
-  const gitIn = (input, ...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], timeout: gitWait });
+  const gitIn = (input, ...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], timeout: gitWait, maxBuffer: 256 << 20 });
   const git = (...a) => gitIn('', ...a);
   // A first snapshot taken in parts: the rest is still to add.
   const parts = join(root, '.git', 'project-memory-parts');
@@ -441,6 +441,7 @@ function snapshot() {
     // busy index, a killed hook) was never retried, and handoff.md stayed in
     // every snapshot after. `--`: on Linux and macOS every project's folder
     // name starts with `-`, and read as an option.
+    let offs = []; try { offs = readdirSync(root).filter((p) => isOff(join(root, p, 'memory'))).map((p) => `:(exclude,literal)${p}/memory`); } catch {}
     const applied = join(root, '.git', 'project-memory-ignored');
     const stage = () => {
       if (have !== want || raw(applied) !== want) {
@@ -457,7 +458,6 @@ function snapshot() {
         let head = true; try { git('rev-parse', '-q', '--verify', 'HEAD'); } catch (e) { if (e.status !== 1) throw e; head = false; }
         if (head) git('reset', '-q');
       }
-      let offs = []; try { offs = readdirSync(root).filter((p) => isOff(join(root, p, 'memory'))).map((p) => `:(exclude,literal)${p}/memory`); } catch {}
       if (!existsSync(join(root, '.git', 'index')) || existsSync(parts)) {
         const todo = git('ls-files', '-z', '-o', '-m', '--exclude-standard', ...(offs.length ? ['--', '.', ...offs] : [])).split('\0').filter(Boolean)
           .sort((a, b) => /(^|\/)MEMORY[^/]*$/.test(b) - /(^|\/)MEMORY[^/]*$/.test(a));
@@ -514,6 +514,10 @@ function snapshot() {
       if (/no changes added to commit/.test(String(e.stdout))) return 'busy';
       throw e;
     }
+    // Changed since the add (another session's write, whose own snapshot went busy): still owed, or its pending mark is
+    // cleared by this success and the file stays out of every snapshot until it changes again.
+    // `diff --name-only`, not `status`: tracked files only, no scan of untracked ones (80-300 ms), and a path `add -A` can never add (nul.md) never shows.
+    if (!rest) { try { rest = git('diff', '--name-only', ...(offs.length ? ['--', '.', ...offs] : [])).split('\n').filter(Boolean).length; } catch {} }
     return rest ? `in parts: ${rest} file(s) still to add; each reply adds more` : fresh ? 'initialised' : 'committed';
   } catch (e) {
     // No git is a setup, not a failure: everything but the history works.
@@ -669,7 +673,12 @@ export async function main(argv, input) {
       // the journal, never the handoff.
       let sink = null;
       try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
-      try { if (payload) handoff(payload, sink); try { unlinkSync(failed); } catch {} }
+      // A store still held after one wait (twenty Stops at once) gets one more, after a pause and with a fresh wait: the session's
+      // last Stop has no later one to redo the turn (defect hunt 1.3.2, C5).
+      try {
+        if (payload && handoff(payload, sink) === 'busy' && stop) { sleep(200 + Math.random() * 600); lockBudget(true); handoff(payload, sink); }
+        try { unlinkSync(failed); } catch {}
+      }
       catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); }
       // The index of a store the plugin writes to, in the same Stop that wrote its handoff; the nudge below must not skip it.
       if (payload && !dry) ensureIndex(storeOf(payload));

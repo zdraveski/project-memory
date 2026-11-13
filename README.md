@@ -167,6 +167,9 @@ Everything it reads and saves, and how to delete it, is in the
 - **Your notes.** The first run may move older lines of the table of contents
   to an archive. The plugin deletes no note (Claude Code's own cleanup might),
   and Claude can still search them.
+- **MEMORY.md is the plugin's to tidy.** It rewrites the file as a plain file in
+  place (so a link to it becomes a copy) and keeps the lines, not your `##`
+  headings. Put what you want kept in a note, not in the headings.
 - **Where.** Windows, macOS and Linux. Notes stay on the computer they were
   made on, and don't sync. Don't sync the memory folder yourself (Dropbox,
   OneDrive): each computer would undo the other's *"forget"*.
