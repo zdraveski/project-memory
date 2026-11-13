@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `forget` finds text with accents whichever way the accent is stored, as `search` does.
+- `forget --conversation ""` is refused, instead of forgetting in every conversation.
+- `--store ~/...` works in PowerShell and cmd too.
+- `promote` of a folder says it is a folder, instead of printing an error trace.
+- `doctor` warns when the `autoMemoryDirectory` setting is set, because the plugin does not follow it.
 - `promote` refuses a note that is not UTF-8 text, instead of copying it with broken letters and deleting the original.
 - `promote` and `restore` move a long index line that wraps onto a second line as a whole.
 - `restore` brings back a note that is not UTF-8 byte for byte, not with broken letters.

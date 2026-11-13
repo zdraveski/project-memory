@@ -9,7 +9,7 @@ import assert from 'node:assert';
 import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, summary, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./journal.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./journal.mjs');
 const { ACTIVE, TAIL, NUDGE_TAG } = await import('./handoff-log.mjs');
 const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
@@ -1941,6 +1941,12 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   write(dT, pT, boom, {});
   const stored = readFileSync(join(dT, 'journal', '.failed'), 'utf8'), said = summary(dT).failed;
   ok(stored.includes('EPERM') && !/\.tmp\d+/.test(stored) && !/\.tmp\d+/.test(said), "a journal failure's reason names no temp file, in .failed or in status (got " + stored.trim() + ')');
+}
+
+// holds() reads both spellings of an accent: a term typed either way finds an entry written either way.
+{
+  const e = (v) => ({ asked: v, answered: '', branch: '', changed: [], ran: [] });
+  ok(holds(e('cafe\u0301'), 'caf\u00e9') && holds(e('caf\u00e9'), 'cafe\u0301'), 'holds: composed and decomposed accents hold each other');
 }
 
 console.log(`journal: ${checks} checks passed`);

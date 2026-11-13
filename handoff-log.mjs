@@ -226,6 +226,9 @@ export function turns(tail) {
   const heard = toolAnswers();
   for (const line of tail.split('\n')) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
+    // A record whose first key is a type nothing here reads (api-request-blob: 7 of 32 MB): no parse.
+    const ty = /^{"type":"([^"]*)"/.exec(line.slice(0, 40))?.[1];
+    if (ty && ty !== 'user' && ty !== 'assistant' && ty !== 'attachment') continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
     // A subagent's record (isSidechain), as a Claude Code version wrote them into its conversation's transcript: neither the
     // user's words nor the conversation's reply, and a tag it quotes marks nothing (e2e audit, 2026-11-01).
@@ -249,7 +252,7 @@ export function turns(tail) {
     // Read as typed; normalized (fullwidth, hidden characters) only to find the
     // private tags. Written normalized, `…` and CJK punctuation became ASCII,
     // and every entry an older version wrote was added again beside it.
-    const t = text(r).trim(), n = norm(t), told = heard(r);
+    const t = text(r).trim(), n = r.type === 'user' ? norm(t) : '', told = heard(r);   // n only for a user record: nothing else reads it
     // A message typed while Claude worked has no user record, only this attachment: it opens a turn too (1.3.2). A private one
     // keeps the older way below (it freezes the turn it came into).
     const q = r.type === 'attachment' && r.attachment?.type === 'queued_command' ? queuedText(r).trim() : '';
