@@ -1096,6 +1096,17 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   writeFileSync(join(d, '.facts'), JSON.stringify({ 'sup.md': [`${st.size} ${st.mtimeMs}`, 'project', 'archive', null] }));
   await call(['--dir', d]);
   ok(/\(sup\.md\)/.test(readFileSync(join(d, 'MEMORY.md'), 'utf8')), 'a note an older version misread is read again, not archived from its cache');
+  // As a real 1.3.0 store has it: that pass already moved the line to the archive, unmarked (1.3.1 fix review).
+  const e = store('proj-facts-archived');
+  writeFileSync(join(e, 'sup.md'), '---\nname: sup\ndescription: "sup"\nmetadata:\n  type: project\n  superseded-by: none\n---\nbody\n');
+  writeFileSync(join(e, 'MEMORY.md'), '# Index\n');
+  writeFileSync(join(e, 'MEMORY-archive.md'), '# Archive\n\n- [sup](sup.md) — sup\n');
+  const se = statSync(join(e, 'sup.md'));
+  writeFileSync(join(e, '.facts'), JSON.stringify({ 'sup.md': [`${se.size} ${se.mtimeMs}`, 'project', 'archive', null] }));
+  await call(['--dir', e]);
+  ok(/\(sup\.md\)/.test(readFileSync(join(e, 'MEMORY.md'), 'utf8')), 'a note 1.3.0 misread and archived comes back while its window holds');
+  await call(['--dir', e]);
+  ok(/\(sup\.md\)/.test(readFileSync(join(e, 'MEMORY.md'), 'utf8')), 'and stays');
 }
 // A typo'd future stamp (2099) kept a note hot forever: over a day ahead, the file's time counts (1.3.1 audit E-4).
 {

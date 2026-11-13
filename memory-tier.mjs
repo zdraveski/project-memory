@@ -213,12 +213,16 @@ function tier(dir, now, seen = null) {
   // One whose file is gone stays, unreported: the archive is history, and a
   // note deleted after its line was archived warned at every startup, for good.
   for (const p of arc.pointers) {
+    // 1.3.0 archived what it misread as `tier: archive` (`superseded-by: none`), unmarked: on the one pass that still sees
+    // its cache, the window decides that line as it would a marked one (1.3.1 fix review).
+    const old = memo?.was[p.target];
     p.f = factsFor(dir, p.target, memo);
+    const misread = Array.isArray(old) && !String(old[0]).startsWith('2 ') && old[2] === 'archive' && p.f?.tier !== 'archive';
     const overflow = p.line.endsWith(OVERFLOW);
     p.was = p.line;   // as the archive holds it, mark and all
     // The one space the mark was added with: a trailing one the line had is its own.
     if (overflow) p.line = p.line.slice(0, -OVERFLOW.length).replace(/ $/, '');
-    place(p, p.f && (p.f.tier === 'hot' || (overflow && isHot(p.f, now, shared))) ? hot : cold);
+    place(p, p.f && (p.f.tier === 'hot' || ((overflow || misread) && isHot(p.f, now, shared))) ? hot : cold);
   }
 
   // A memory no pointer names is unreachable at session start. Truncate either
