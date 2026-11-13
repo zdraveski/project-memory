@@ -901,6 +901,13 @@ gaps('URL passwords with / ? #', [`postgres://user:pa/${V}@host/db`, `git clone 
 // A10: npm's _auth (base64 user:pass) in .npmrc and in the environment.
 gaps('npm _auth values', [[`//registry.npmjs.org/:_auth=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], [`NPM_CONFIG__AUTH=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], `//r.example.com/:_auth="${V}"`],
   ['npm config get _auth']);
+// A11: more vendor tokens, names with no `_` before KEY, a key or code in a query, a bare AWS secret, a Discord token, a prefix after `_`.
+const VV = V + V;
+gaps('more vendor tokens and key shapes', [`gem push rubygems_${VV}`, `nfp_${VV}`, `fo1_${VV}`, `pscale_pw_${VV}`, `tskey-auth-kABC123CNTRL-${VV}`, `glc_${VV}`, `xoxd-${V}%2Bq`, [`AGE-SECRET-KEY-1${VV.toUpperCase()}`, V.toUpperCase()],
+  `ACCESSKEY=${V}`, `AuthKey: ${V}`, `Ocp-Apim-Subscription-Key: ${VV}`, `AUTH=${V}`, `CREDENTIALS=${V}`, `https://api.x.io/v1?key=${V}`, `https://x.io/cb?code=${V}&state=1`,
+  `OPENAI_KEY_sk-${VV}`, [`my_ghp_${'a1B2'.repeat(9)}`, 'a1B2a1B2'], [`key_AKIAIOSFODNN7EXAMPLE`, 'AKIAIOSFODNN7EXAMPLE'],
+  [`wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`, 'wJalrXUtnFEMI'], [fake('MTk4NjIyNDgzNDcx', 'OTI1MjQ4.Cl2FMQ.', 'ZnCjm1XVW7vRze4b7Cq4se7kKWs'), 'ZnCjm1XVW7vRze4b7Cq4se7kKWs']],
+  ['https://x.io/?key=primary', 'https://x.io/cb?code=404&state=1', 'src/Components/Foo/bar/Baz/qux/quux.js', 'AUTH=true', 'nfp_short', 'pscale_pw_x', 'the task-sk-list']);
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));
