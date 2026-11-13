@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A lock whose owner process is gone is no longer taken over at once (undoes a 1.3.2 change). A hook could take over a lock just as it was being released, and two hooks then worked in a store at once. A killed hook's lock is taken over after 30 seconds again.
+
 ## 1.3.2 (2026-11-13)
 
 - `forget` finds text with accents whichever way the accent is stored, as `search` does.

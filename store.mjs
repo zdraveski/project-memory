@@ -333,14 +333,6 @@ export const BUSY = ['EPERM', 'EBUSY', 'EACCES'];
 let left = null;
 export const lockBudget = (on) => { left = on ? LOCK_WAIT : null; };
 
-// The lock's owner file names a process (`pid.random`) that is no longer running: a killed hook's lock, whatever its age.
-// shortcut: a pid is read in this machine's pid space, so a store synced between machines, or shared with WSL or a container, could lose a live lock to a second holder; upgrade by adding the hostname to the owner token.
-const deadOwner = (owner) => {
-  let pid; try { pid = Number(/^(\d+)\./.exec(readFileSync(owner, 'utf8'))?.[1]); } catch {}
-  if (!pid) return false;
-  try { process.kill(pid, 0); return false; } catch (e) { return e.code === 'ESRCH'; }
-};
-
 // Run fn holding the store's lock: `mkdir` either creates the folder or fails,
 // on NTFS as anywhere. Returns fn's result, or null when the lock stayed busy.
 export function withLock(dir, fn) {
@@ -359,7 +351,9 @@ export function withLock(dir, fn) {
       if (refused > 8) throw e;
       let stale = false;
       // Either way: a lock dated in the future (a clock set back) was never stale.
-      try { stale = Math.abs(Date.now() - statSync(lock).mtimeMs) > LOCK_STALE || deadOwner(owner); } catch {}
+      // Age only, not a dead owner's pid: a waiter can read the owner of a lock being released, and took the next
+      // holder's live lock (1.3.3).
+      try { stale = Math.abs(Date.now() - statSync(lock).mtimeMs) > LOCK_STALE; } catch {}
       // A killed hook's lock, whatever it left: a file, a folder with something
       // in it. One still there when the wait is up throws, so the pass that
       // fails says so in .health: busy every turn was silence.
@@ -374,7 +368,7 @@ export function withLock(dir, fn) {
           renameSync(lock, dead);
           // What we renamed may be a lock another waiter made in between: put it back.
           let fresh = false; try { fresh = Math.abs(Date.now() - statSync(dead).mtimeMs) <= LOCK_STALE; } catch {}
-          if (fresh && !deadOwner(join(dead, 'owner'))) { try { renameSync(dead, lock); } catch {} }
+          if (fresh) { try { renameSync(dead, lock); } catch {} }
           else try { rmSync(dead, { recursive: true, force: true }); } catch {}   // left over: sweepTemps takes it
           continue;
         }

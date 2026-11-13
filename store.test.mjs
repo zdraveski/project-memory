@@ -130,14 +130,15 @@ ok(threw && !existsSync(join(dir, '.lock')), 'a throw inside still releases the 
   rmSync(lk, { recursive: true });
 }
 
-// A fresh lock whose owner process is gone is taken over at once, not after 30 s; one whose owner is alive, or unknown, is not
-// (defect hunt 1.3.2, C4).
+// A fresh lock is waited on even when its owner file names a process that is gone. 1.3.2 took such a lock over at once,
+// but a waiter can read the owner of a lock that is being released, and its takeover then renamed the next holder's live
+// lock away: two hooks inside at once when six ran on a busy 4-CPU PC (1.3.3). A killed hook's lock waits LOCK_STALE.
 {
   const lk = join(dir, '.lock'), gone = spawnSync(process.execPath, ['-e', '0']).pid;
   const plant = (token) => { mkdirSync(lk); if (token) writeFileSync(join(lk, 'owner'), token); };
   plant(`${gone}.abc`);
-  const r = fastClock(() => withLock(dir, () => 'got'));
-  ok(r === 'got' && !existsSync(lk), `a fresh lock of a dead process is taken over at once (got ${r})`);
+  ok(fastClock(() => withLock(dir, () => 'got')) === null && existsSync(lk), 'a fresh lock of a dead process is waited on');
+  rmSync(lk, { recursive: true });
   plant(`${process.pid}.abc`);
   ok(fastClock(() => withLock(dir, () => 'got')) === null && existsSync(lk), 'a fresh lock of a live process is waited on');
   rmSync(lk, { recursive: true });
