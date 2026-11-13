@@ -403,9 +403,10 @@ export function replaceIfUnchanged(path, expected, next) {
       if (read() !== expected) return 'conflict';
       try { renameSync(tmp, path); return true; }
       catch (e) {
-        // Windows refuses a rename over a file another program holds open.
-        if (i >= 3 || !BUSY.includes(e.code)) throw e;
-        sleep(50);
+        // Windows refuses a rename over a file another program holds open: a scanner or OneDrive sync
+        // holds one longer than 150 ms, so there it waits up to 1 s (1.3.1 audit C-5).
+        if (i >= (process.platform === 'win32' ? 8 : 3) || !BUSY.includes(e.code)) throw e;
+        sleep(process.platform === 'win32' ? 125 : 50);
       }
     }
   } finally { try { unlinkSync(tmp); } catch {} }

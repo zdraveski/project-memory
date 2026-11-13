@@ -534,7 +534,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(clockRun([100000, 100000, 102000, 102000, 100000, 200000], [err('E1'), err('E2')]) === 'threw E2', 'and given up on only once the wait is over, not at its last instant');
 
   // The rename: Windows refuses it while another program holds the file, so it is tried
-  // again, three times, after 50 ms.
+  // again, three times after 50 ms (eight after 125 ms on Windows: a scanner holds it longer).
   const g = join(dir, 'rn.md');
   const renameRun = (codes) => {
     writeFileSync(g, 'old'); let attempts = 0;
@@ -546,7 +546,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   const slow = renameRun(rep('EBUSY', 3));
   ok(slow.res === true && readFileSync(g, 'utf8') === 'new' && slow.ms >= 100, `a rename refused three times is done on the fourth try, after pauses (got ${slow.res}, ${slow.ms} ms)`);
   const stuck = renameRun(rep('EBUSY', 9));
-  ok(stuck.res === 'EBUSY' && stuck.attempts === 4, `and given up on after the fourth refusal (got ${stuck.res} after ${stuck.attempts})`);
+  ok(stuck.res === 'EBUSY' && stuck.attempts === (process.platform === 'win32' ? 9 : 4), `and given up on after the last refusal (got ${stuck.res} after ${stuck.attempts})`);
   const bad = renameRun(rep('EINVAL', 9));
   ok(bad.res === 'EINVAL' && bad.attempts === 1, `any other refusal is thrown at once (got ${bad.res} after ${bad.attempts})`);
 
