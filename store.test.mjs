@@ -385,6 +385,10 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(started(repo) === join(projectsRoot(), slug(repo), 'memory') && started(join(home, 'work')) === join(projectsRoot(), slug(join(home, 'work')), 'memory'),
     'one started at the root, or outside any repository, keeps its own folder');
   ok(storeOf({ cwd: sub }) === repoStore, 'with no transcript, the cwd goes by its repository too');
+  // A first cwd past the first 64 KB of the transcript is still the start folder (1.3.2): not the cwd of the moment.
+  { const tb = join(projectsRoot(), slug(sub), 'big.jsonl');
+    writeFileSync(tb, JSON.stringify({ type: 'attachment', attachment: { content: 'x'.repeat(150000) } }) + '\n' + JSON.stringify({ type: 'user', cwd: sub, message: { content: 'hi' } }) + '\n');
+    ok(storeOf({ cwd: join(home, 'moved', 'elsewhere'), transcript_path: tb }) === repoStore, 'a start cwd after 64 KB of other records is found'); }
   // Claude Code's folder where CLAUDE_CONFIG_DIR puts it, and a project folder
   // named by CLAUDE_CODE_PROJECT_DIR_NAME: under either, the hooks wrote nothing.
   const cfg = join(home, 'cfg');
