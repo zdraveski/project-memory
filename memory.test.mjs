@@ -155,6 +155,8 @@ ok(r.status === 0 && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes
 ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').filter((l) => l === handLine).length === 1, 'and no second line is added');
 const kept = r.stdout.match(/what it replaced is kept: git -C "([^"]+)" cat-file -p (\w+)/);
 ok(kept && spawnSync('git', ['-C', kept[1], 'cat-file', '-p', kept[2]], { encoding: 'utf8' }).stdout === 'scribbled over', `what --force replaced is kept in the repo, and said where (got ${r.stdout.trim()})`);
+// A blob nothing refers to is dangling: gc deletes it. Kept under a ref, it survives (defect hunt 1.3.2, C7).
+ok(kept && spawnSync('git', ['-C', kept[1], 'for-each-ref', '--format=%(objectname)', 'refs/project-memory/replaced/'], { encoding: 'utf8' }).stdout.trim() === kept[2], 'and under a ref, so a git gc keeps it');
 r = await cli('restore', 'deploy-notes', '--force');
 ok(r.status === 1 && /already matches/.test(r.stdout), `a restore that would change nothing says so, not "restored" (got ${r.stdout.trim()})`);
 // The copy of what --force replaces cannot be kept (its object folder is a file here): nothing is replaced (1.3.1 audit D-8).
@@ -250,6 +252,25 @@ memory(dir, 'hook-rule', 'never commit with --no-verify');
 r = await run(['search', '--store', dir, '--', '--no-verify', '--all']);
 ok(r.status === 0 && /[\\/]hook-rule\.md$/m.test(r.stdout) && /; --all searches every project$/m.test(r.stdout), `words after -- are searched, never read as options (got ${r.stdout})`);
 unlinkSync(join(dir, 'hook-rule.md'));
+// A note that is not UTF-8 comes back as the bytes the snapshot has, not with U+FFFD (C3); a wrapped index line comes back whole (C2).
+{
+  const bytes = Buffer.concat([Buffer.from('---\nname: latin-back\ndescription: "l"\n---\ncaf'), Buffer.from([0xe9]), Buffer.from('\n')]);
+  writeFileSync(join(dir, 'latin-back.md'), bytes);
+  const wrapped = '- [Back](latin-back.md) — a hook that is long and\n  wrapped onto a second line\n', idxNow = readFileSync(join(dir, 'MEMORY.md'), 'utf8');
+  writeFileSync(join(dir, 'MEMORY.md'), idxNow.replace(/\n*$/, '\n') + wrapped);
+  tier();
+  unlinkSync(join(dir, 'latin-back.md'));
+  writeFileSync(join(dir, 'MEMORY.md'), idxNow);
+  r = await cli('restore', 'latin-back');
+  ok(r.status === 0 && readFileSync(join(dir, 'latin-back.md')).equals(bytes), `restore writes the snapshot's bytes (got ${r.stdout.trim()})`);
+  ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').includes(wrapped), `and the wrapped index line whole (got ${readFileSync(join(dir, 'MEMORY.md'), 'utf8')})`);
+  // A current note that really holds U+FFFD is not "already that version" of a snapshot with a latin-1 byte.
+  writeFileSync(join(dir, 'latin-back.md'), Buffer.concat([Buffer.from('---\nname: latin-back\ndescription: "l"\n---\ncaf'), Buffer.from('�'), Buffer.from('\n')]));
+  r = await cli('restore', 'latin-back', '--force');
+  ok(r.status === 0 && !/already matches/.test(r.stdout) && readFileSync(join(dir, 'latin-back.md')).equals(bytes), `a note with U+FFFD is not taken for the snapshot's latin-1 byte (got ${r.stdout.trim()})`);
+  unlinkSync(join(dir, 'latin-back.md'));
+  writeFileSync(join(dir, 'MEMORY.md'), idxNow);
+}
 // Without git, history says so, not "spawnSync git ENOENT".
 r = spawnSync(process.execPath, [CLI, 'history', 'deploy-notes', '--store', dir], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
 ok(r.status === 1 && /git is not installed/.test(r.stdout), `history without git says git is not installed (got ${r.stdout.trim()})`);
@@ -309,6 +330,23 @@ memory(dir, '[draft] okapi', 'an okapi still in draft');
 r = await cli('promote', '[draft] okapi');
 ok(r.status === 0 && /^- \[draft okapi\]\(\[draft\] okapi\.md\) — an okapi still in draft$/m.test(readFileSync(join(shared, 'MEMORY.md'), 'utf8')),
   `a promoted name with brackets gets a line POINTER reads (got ${r.stdout})`);
+// A note that is not UTF-8 text is not copied through a string, and its original not deleted (defect hunt 1.3.2, C1).
+{
+  const bytes = Buffer.concat([Buffer.from('---\nname: latin-note\ndescription: "l"\n---\ncaf'), Buffer.from([0xe9]), Buffer.from('\n')]);
+  writeFileSync(join(dir, 'latin-note.md'), bytes);
+  r = await cli('promote', 'latin-note');
+  ok(r.status === 1 && /not UTF-8/.test(r.stdout) && readFileSync(join(dir, 'latin-note.md')).equals(bytes) && !existsSync(join(shared, 'latin-note.md')), `promote refuses a note that is not UTF-8 and keeps it (got ${r.stdout.trim()})`);
+  unlinkSync(join(dir, 'latin-note.md'));
+}
+// A hook wrapped onto a second line moves with its pointer, to the shared index, and the project index keeps none of it (C2).
+{
+  memory(dir, 'wrap-note', 'w');
+  writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace(/\n*$/, '\n') + '- [Wrap](wrap-note.md) — a hook that is long and\n  wrapped onto a second line\n- [After](after-wrap.md) — next\n');
+  r = await cli('promote', 'wrap-note');
+  ok(r.status === 0 && !/wrapped onto|wrap-note/.test(readFileSync(join(dir, 'MEMORY.md'), 'utf8')) && readFileSync(join(dir, 'MEMORY.md'), 'utf8').includes('- [After](after-wrap.md) — next'), `promote leaves no part of a wrapped line behind (got ${readFileSync(join(dir, 'MEMORY.md'), 'utf8')})`);
+  ok(readFileSync(join(shared, 'MEMORY.md'), 'utf8').includes('- [Wrap](wrap-note.md) — a hook that is long and\n  wrapped onto a second line\n'), `and the shared index gets all of it (got ${readFileSync(join(shared, 'MEMORY.md'), 'utf8')})`);
+  writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace('- [After](after-wrap.md) — next\n', ''));
+}
 // A copy that cannot be written moves nothing: the note stays in its project.
 {
   const { promote } = await import(pathToFileURL(CLI).href);

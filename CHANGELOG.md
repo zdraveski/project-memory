@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `promote` refuses a note that is not UTF-8 text, instead of copying it with broken letters and deleting the original.
+- `promote` and `restore` move a long index line that wraps onto a second line as a whole.
+- `restore` brings back a note that is not UTF-8 byte for byte, not with broken letters.
+- A lock left by a killed hook is taken over at once, not after 30 seconds.
+- A Stop that finds the store held waits once more, so twenty Stops at once lose fewer turns.
+- The first snapshot works with a very large store (more than about 15,000 notes), where the file list used to overflow git's output buffer.
+- `restore --force` keeps the text it replaced under a git ref, so a later `git gc` does not delete it.
+- A snapshot that finds files changed after its commit (another session writing at the same moment) keeps the next Stop owing one, so MEMORY.md is not left out of the history.
+- The README says MEMORY.md is rewritten in place as a plain file and that `##` headings in it are not kept.
 - More secrets are cut before they are saved: SQL passwords (`PASSWORD '…'`, `IDENTIFIED BY`), redis, mongo, zip, ldap and mosquitto passwords, a Telegram bot token inside the API URL, `curl -u user:"pass"`, `--proxy-user`, XML `<password>`, PowerShell `ConvertTo-SecureString` and `$pw =`, `net use`, `schtasks /rp`, a short Basic credential, a URL password with `/`, `?` or `#`, npm `_auth`, more vendor tokens, a `?key=` or `?code=` in a URL, and a password after a full-width colon.
 - One very long value after `NAME=` or `--password` no longer slows a Stop down for seconds.
 - A session whose first folder is recorded after the first 64 KB of its transcript no longer writes into another project's memory after a `cd`.
