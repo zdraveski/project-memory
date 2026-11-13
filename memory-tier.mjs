@@ -537,7 +537,8 @@ function health(dir, problems) {
   const want = problems.length ? problems.join('\n') + '\n' : null;
   const have = raw(p);
   if (want === have) return;
-  if (want === null) unlinkSync(p); else writeFileSync(p, want);
+  // Through a temp file: the startup line read a half-written one (1.3.1 audit D-5).
+  if (want === null) unlinkSync(p); else replaceIfUnchanged(p, have, want);
 }
 
 // ponytail: two sessions updating this counter at once can miscount by one;
@@ -546,7 +547,8 @@ function health(dir, problems) {
 // tidy-up is stamped whatever the snapshot did, or one that never went through redid the whole pass every Stop.
 function snapshotHealth(s) {
   const p = join(projectsRoot(), '.snapshot-health');
-  let h = {}; try { h = JSON.parse(readFileSync(p, 'utf8')); } catch {}
+  const text = raw(p);
+  let h = {}; try { h = JSON.parse(text) ?? {}; } catch {}
   const failed = typeof s === 'string' && s.startsWith('snapshot failed');
   const off = typeof s === 'string' && s.startsWith('off: ');
   const rest = typeof s === 'string' && s.startsWith('in parts: ') ? parseInt(s.slice('in parts: '.length), 10) : 0;
@@ -560,7 +562,8 @@ function snapshotHealth(s) {
     : off ? { lastOk: h.lastOk || null, failures: 0, off: s.slice('off: '.length) }
     : { lastOk: new Date().toISOString(), failures: 0, ...(rest && { partial: rest, pending: true }) };
   if (missed.length) next.missed = missed;
-  try { writeFileSync(p, JSON.stringify(next)); } catch {}
+  // Through a temp file: one torn by a parallel Stop parsed as {}, and the owed snapshot and failure count were lost (audit D-5).
+  try { replaceIfUnchanged(p, text, JSON.stringify(next)); } catch {}
 }
 const owed = () => { try { return JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8')).pending === true; } catch { return false; } };
 
