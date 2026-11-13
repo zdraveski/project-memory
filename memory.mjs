@@ -523,7 +523,8 @@ export function restore(dir, file, { rev, force = false } = {}) {
     if (cur !== null && cur.replace(/^\uFEFF/, '') === text) return `${path} already matches ${from}: nothing to restore; history lists older versions, --rev <commit> picks one`;
     // What --force replaces is kept in the repo, not lost: no snapshot may hold it yet.
     let kept = '';
-    if (cur !== null) { try { kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: cur, encoding: 'utf8' }).trim()}`; } catch {} }
+    // No copy, no replace: the text it would overwrite was gone for good (1.3.1 audit D-8).
+    if (cur !== null) { try { kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: cur, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim()}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
     // Or one the disk refuses (a name Windows cannot hold, from a store synced from Linux).
     const w = put(path, cur, text);
     if (failed(w)) return `${path} could not be written (${w.slice(8)}); nothing restored`;
