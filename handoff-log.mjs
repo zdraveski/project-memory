@@ -389,7 +389,9 @@ const SECRETS = [
   // until nothing changes, and each pass took two more words. Only options between redis-cli and AUTH: prose ("redis-cli needs
   // AUTH before") lost two words. Kept only when every word reads as a path or variable: a pass then `./check.sh` was kept.
   // shortcut: a password hand-wrapped onto the next line without `\` slips through clip(); a backslash wrap is caught.
-  [/(\bredis-cli(?:[ \t]+-{1,2}[\w-]+(?:[ \t=]+[^\s|;&<>-]\S*)?)*[ \t]+AUTH\s+)(?!\[redacted\])(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g,
+  // Each option one way only (-[\w-]+, not -{1,2}): read two ways, a line of --options took 2^n tries and stalled the Stop.
+  // A blank may be a `\` line wrap; an option's value may be quoted.
+  [/(\bredis-cli(?:(?:[ \t]|\\\r?\n)+-[\w-]+(?:(?:[ \t=]|\\\r?\n)+(?:"[^"\n]*"|'[^'\n]*'|[^\s|;&<>"'-]\S*))?)*(?:[ \t]|\\\r?\n)+AUTH\s+)(?!\[redacted\])(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g,
     (m, pre, v) => (v.split(/\s+/).every(arg) ? m : `${pre}[redacted]`)],
   // A secret as a command's argument, which the journal's Ran field keeps (P1
   // hunt, 2026-10-29): `aws configure set` of a secret, key or token; a

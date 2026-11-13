@@ -407,8 +407,11 @@ export default {
   "a forgotten exchange back when its folder's case differs": ['t && pathKey(t) === me', 't === me'],
   "redis-cli AUTH user pass kept": ["(?:[ \\t]+(?:\"[^\"\\n]*\"|'[^'\\n]*'|[^\\s\"'|;&<>]+))?)/g", ")/g"],
   "redis-cli AUTH quoted pass cut at ;": ["((?:\"[^\"\\n]*\"|'[^'\\n]*'|[^\\s\"'|;&<>]+)(?:[ \\t]+", "((?:[^\\s|;&<>]+)(?:[ \\t]+"],
-  "redis-cli AUTH redacted again by clip": ["[ \\t]+AUTH\\s+)(?!\\[redacted\\])", "[ \\t]+AUTH\\s+)"],
-  "redis-cli any words before AUTH": ["(\\bredis-cli(?:[ \\t]+-{1,2}[\\w-]+(?:[ \\t=]+[^\\s|;&<>-]\\S*)?)*[ \\t]+AUTH", "(\\bredis-cli\\b[^\\n|;&]{0,200}?\\sAUTH"],
+  "redis-cli AUTH redacted again by clip": ["(?:[ \\t]|\\\\\\r?\\n)+AUTH\\s+)(?!\\[redacted\\])", "(?:[ \\t]|\\\\\\r?\\n)+AUTH\\s+)"],
+  "redis-cli any words before AUTH": ["(\\bredis-cli(?:(?:[ \\t]|\\\\\\r?\\n)+-[\\w-]+(?:(?:[ \\t=]|\\\\\\r?\\n)+(?:\"[^\"\\n]*\"|'[^'\\n]*'|[^\\s|;&<>\"'-]\\S*))?)*(?:[ \\t]|\\\\\\r?\\n)+AUTH", "(\\bredis-cli\\b[^\\n|;&]{0,200}?\\sAUTH"],
+  "redis-cli option read two ways": ["\\r?\\n)+-[\\w-]+(?:(?:[ \\t=]", "\\r?\\n)+-{1,2}[\\w-]+(?:(?:[ \\t=]"],
+  "redis-cli AUTH after a line wrap kept": ["*))?)*(?:[ \\t]|\\\\\\r?\\n)+AUTH", "*))?)*(?:[ \\t])+AUTH"],
+  "redis-cli quoted option value kept": ["(?:\"[^\"\\n]*\"|'[^'\\n]*'|[^\\s|;&<>\"'-]\\S*))?)*", "(?:[^\\s|;&<>\"'-]\\S*))?)*"],
   "redis-cli AUTH pass then a path kept": ["v.split(/\\s+/).every(arg)", "arg(v.split(/\\s+/).pop())"],
   "a *.7z file name read as 7z": ["(?<![\\w.*])7za?)", "7za?)"],
 };
