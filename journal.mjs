@@ -14,6 +14,8 @@ export const JOURNAL = 'journal';
 // (KIRE, 2026-10-31: "having a memory from previous sessions in details is a
 // priority"). Only a branch and a path are cut: a pasted text in their place.
 const J_BRANCH = 100;   // chars of a branch name: any real one whole, a pasted text in one cut
+export const J_TEXT = 50000;   // chars of a request or a reply; a pasted log or a huge answer is cut here, not written whole
+export const J_RAN = 20000;     // chars of one command; 50000 for all of a turn's
 export const J_PATH = 300;     // chars of one file path: Windows' 260-character limit fits whole
 // A Stop imports old conversations for this long, holding the store's lock,
 // then leaves the rest to the next: a month of them can be a gigabyte.
@@ -62,16 +64,17 @@ export function entryOf(turn, transcriptPath, when = local()) {
   // Every command: a forget among a turn's first ones counts.
   const forgets = turn.ran.some((c) => FORGETS.test(c));
   const quiet = forgets || PRIVATE.test(userText(turn));
+  let room = 50000;
   return {
     key: turn.id || `${s} ${turn.at} ${hash(turn.raw ?? turn.ask).slice(0, 12)}`,
     at: TIME.test(turn.at) ? turn.at : when, s,
     t: transcriptKey(transcriptPath),
     branch: clip(turn.branch || '', J_BRANCH),
     // Redacted, and squeezed to one line: a day file is one entry a line per field.
-    asked: forgets ? '[private]' : clip(turn.ask, Infinity),
-    answered: quiet ? '[private]' : clip(turn.did, Infinity),
+    asked: forgets ? '[private]' : clip(turn.ask, J_TEXT),
+    answered: quiet ? '[private]' : clip(turn.did, J_TEXT),
     changed: quiet ? [] : turn.changed.map((p) => clip(rel(p, turn.cwd), J_PATH)),
-    ran: quiet ? [] : turn.ran.map((c) => clip(c, Infinity)),
+    ran: quiet ? [] : turn.ran.map((c) => clip(c, J_RAN)).filter((c) => (room -= c.length) >= 0),
   };
 }
 

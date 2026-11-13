@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps } = await import('./store.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, wasOff, OFF_PERIODS } = await import('./store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -400,6 +400,10 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(started(repo) === join(projectsRoot(), slug(repo), 'memory') && started(join(home, 'work')) === join(projectsRoot(), slug(join(home, 'work')), 'memory'),
     'one started at the root, or outside any repository, keeps its own folder');
   ok(storeOf({ cwd: sub }) === repoStore, 'with no transcript, the cwd goes by its repository too');
+  // A first cwd past the first 64 KB of the transcript is still the start folder (1.3.2): not the cwd of the moment.
+  { const tb = join(projectsRoot(), slug(sub), 'big.jsonl');
+    writeFileSync(tb, JSON.stringify({ type: 'attachment', attachment: { content: 'x'.repeat(150000) } }) + '\n' + JSON.stringify({ type: 'user', cwd: sub, message: { content: 'hi' } }) + '\n');
+    ok(storeOf({ cwd: join(home, 'moved', 'elsewhere'), transcript_path: tb }) === repoStore, 'a start cwd after 64 KB of other records is found'); }
   // Claude Code's folder where CLAUDE_CONFIG_DIR puts it, and a project folder
   // named by CLAUDE_CODE_PROJECT_DIR_NAME: under either, the hooks wrote nothing.
   const cfg = join(home, 'cfg');
@@ -717,6 +721,17 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
     ok(r && r.unread === 'EACCES' && r.since === null, 'a marker that cannot be statted is off, and says why');
   } finally { fs.lstatSync = real; syncBuiltinESMExports(); }
   ok(isOff(od) === null, 'and with the stat working again, not off');
+}
+
+// B7: a turn whose time is unknown (a record with no timestamp) cannot be placed outside a period the project was off: it is kept out
+// once the project has been off, and kept as before when it never was.
+{
+  const wd = join(home, 'wasoff-store'); mkdirSync(wd, { recursive: true });
+  const unknown = { ms: NaN };
+  ok(!wasOff(wd)(unknown), 'no off period: a turn of unknown time is kept');
+  writeFileSync(join(wd, OFF_PERIODS), '1000 2000\n');
+  ok(wasOff(wd)(unknown), 'with an off period, a turn of unknown time is kept out');
+  ok(wasOff(wd)({ ms: 1500 }) && !wasOff(wd)({ ms: 3000 }), 'a turn of known time goes by the periods as before');
 }
 
 console.log(`store: ${checks} checks passed`);
