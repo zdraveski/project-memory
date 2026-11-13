@@ -204,7 +204,8 @@ export function isOff(dir) {
 export const OFF_PERIODS = '.off-periods';
 export function wasOff(dir) {
   const periods = listOf(raw(join(dir, OFF_PERIODS))).map((l) => l.split(' ').map(Number));
-  return (t) => periods.some(([from, to]) => t.ms >= from && t.ms <= to);
+  // A turn of unknown time (NaN: its record had no timestamp) is placed in none, so it is kept out once the project has been off.
+  return (t) => Number.isNaN(t.ms) ? periods.length > 0 : periods.some(([from, to]) => t.ms >= from && t.ms <= to);
 }
 // The local date a project was turned off, for what is said to the user.
 export const offSince = (o) => (o.since ? local(o.since).slice(0, 10) : 'an unknown date');

@@ -8,6 +8,8 @@
 - A message you type while Claude is working now opens its own entry in the handoff and the journal. It was lost before.
 - Running the `memory` skill no longer freezes the handoff: the answer to your real question is saved.
 - A message that starts with your own tag (such as `<my-card>`) or with `[SYSTEM_SERVICE]` is kept as your question, not dropped as an automatic one.
+- A turn with no time in the transcript is no longer saved after you had turned memory off.
+- One huge request, reply or command no longer fills the journal: each is cut at 20 to 50 KB.
 
 ## 1.3.1 (2026-11-13)
 
