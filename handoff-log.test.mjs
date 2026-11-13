@@ -893,6 +893,14 @@ gaps('XML, PowerShell and Windows passwords', [`<password>${V}</password>`, `<Db
 const b64 = (s) => Buffer.from(s).toString('base64');
 const short = (u) => [`curl -H "Authorization: Basic ${b64(u)}" https://x`, b64(u)];
 gaps('a short Basic credential', [short('bob:hunter22'), short('a:b2c3d4'), [`authorization: basic ${b64('a:b2c3d4e5')}`, b64('a:b2c3d4e5')]], ['Authorization: Basic authentication', 'the Basic auth header']);
+// A8: curl's proxy user.
+gaps('curl proxy passwords', [`curl --proxy-user bob:${V} http://x`, `curl -U bob:${V} --proxy http://p http://x`], ['pip install -U pip', 'psql -U postgres db', 'curl --proxy-user bob http://x']);
+// A9: a URL password with / ? or # in it.
+gaps('URL passwords with / ? #', [`postgres://user:pa/${V}@host/db`, `git clone https://user:p#${V}@github.com/a/b`, `redis://:p?${V}@h:6379`],
+  ['http://localhost:8080/path?e=a@b.com', 'http://host:8080?x=a@b.c', 'https://example.com:443/x#a@b', 'see https://example.com/a: then mail me@x.org']);
+// A10: npm's _auth (base64 user:pass) in .npmrc and in the environment.
+gaps('npm _auth values', [[`//registry.npmjs.org/:_auth=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], [`NPM_CONFIG__AUTH=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], `//r.example.com/:_auth="${V}"`],
+  ['npm config get _auth']);
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));

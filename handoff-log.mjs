@@ -327,7 +327,7 @@ const named = (n) => {
 const counted = (n, v) => /^\d+$/.test(v) && n.toUpperCase().split('_').some((p) => /^(?:LIMIT|MAX|MIN|SIZE|COUNT|LEN|TTL|TIMEOUT|BYTES|PORT)$/.test(p));
 // A .env name that holds a secret: its last `_`-part is the word (SIGNING_KEY, DB_PASSWORD). One whose word comes first names
 // something else (KEY_ALGORITHM, TOKEN_URL, SECRET_BACKEND); a name with SECRET or PASSWORD anywhere the setting rule reads anyway.
-const envNamed = (n) => /(?:^|_)(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|PASS|PWD)$/.test(n);
+const envNamed = (n) => /(?:^|_)(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|PASS|PWD|AUTH)$/.test(n);
 // A YAML child's value under a secret's key, whose own name says nothing: a secret has a digit or a symbol, a PIN too (not a
 // name such as `apiKey`, `tls-cert` or `production`); under `tokens:` a token's length too, 16 or more with a letter and a digit
 // (not a colour, `blue-500`, a model's name or a count).
@@ -375,10 +375,10 @@ const SECRETS = [
   // before `?user=me@x` was cut as a password.
   // A token alone as a URL's user (git clone https://<token>@github.com/…): long, with a digit (1.3.1 audit B-6).
   [/(\/\/)(?=[A-Za-z0-9_-]{0,200}\d)[A-Za-z0-9_-]{30,200}@/g, '$1[redacted]@'],
-  [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)[^\s/?#]{1,200}@/gi, '$1[redacted]@'],
+  [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)(?!\d{1,5}[/?#])[^\s"'<>]{1,200}@/gi, '$1[redacted]@'],
   // curl -u user:it, --user user:it, quoted too, to the closing quote (review, 2026-11-01). Not `docker run -u 1000:1000`, a user
   // and group.
-  [/((?:^|\s)(?:-u|--user)[ =]+["']?(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)(?:(?<="[^\s:'"]{1,100}:)[^"\n]{1,200}(?=")|(?<='[^\s:'"]{1,100}:)[^'\n]{1,200}(?=')|(?<=:)"[^"\n]{1,200}(?=")|(?<=:)'[^'\n]{1,200}(?=')|[^\s'"]{1,200})/g, '$1[redacted]'],
+  [/((?:^|\s)(?:-[uU]|--(?:proxy-)?user)[ =]+["']?(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)(?:(?<="[^\s:'"]{1,100}:)[^"\n]{1,200}(?=")|(?<='[^\s:'"]{1,100}:)[^'\n]{1,200}(?=')|(?<=:)"[^"\n]{1,200}(?=")|(?<=:)'[^'\n]{1,200}(?=')|[^\s'"]{1,200})/g, '$1[redacted]'],
   // --password it (--token, --client-secret); docker login, az login, sshpass
   // and twine take it as -p it. Not --no-password, whose next word is the
   // command's own; nor "the --token flag", in prose.
@@ -419,7 +419,7 @@ const SECRETS = [
   [/(-[ \t]+name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]{0,100})["']?[ \t]*\r?\n[ \t]+value:[ \t]*["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,2000})/g,
     (m, pre, n, v) => (envNamed(n.toUpperCase()) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
   [/(\bgh\s+secret\s+set\b[^\n|;&]{0,200}?\s(?:--body|-b)[ =]["']?)([^\s"']{1,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
-  [/(:_authToken[ =]["']?)([^\s"']{1,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  [/(:_auth(?:Token)?[ =]["']?)([^\s"']{1,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
   // In the mysql command only: `; find . -print` after it was cut. 7z as a command, not a `*.7z` file name before -print.
   [/((?:\b(?:mysql|mysqldump|mysqladmin|mariadb)|(?<![\w.*])7za?)\b[^\n|;&]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
