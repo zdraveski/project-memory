@@ -157,6 +157,17 @@ const kept = r.stdout.match(/what it replaced is kept: git -C "([^"]+)" cat-file
 ok(kept && spawnSync('git', ['-C', kept[1], 'cat-file', '-p', kept[2]], { encoding: 'utf8' }).stdout === 'scribbled over', `what --force replaced is kept in the repo, and said where (got ${r.stdout.trim()})`);
 r = await cli('restore', 'deploy-notes', '--force');
 ok(r.status === 1 && /already matches/.test(r.stdout), `a restore that would change nothing says so, not "restored" (got ${r.stdout.trim()})`);
+// The copy of what --force replaces cannot be kept (its object folder is a file here): nothing is replaced (1.3.1 audit D-8).
+{
+  writeFileSync(join(dir, 'deploy-notes.md'), 'scribbled again');
+  const sha = spawnSync('git', ['hash-object', '--stdin'], { input: 'scribbled again', encoding: 'utf8' }).stdout.trim(), slot = join(kept[1], '.git', 'objects', sha.slice(0, 2));
+  const had = existsSync(slot);
+  if (!had) writeFileSync(slot, '');
+  r = await cli('restore', 'deploy-notes', '--force');
+  if (!had) unlinkSync(slot);
+  ok(had || (r.status === 1 && readFileSync(join(dir, 'deploy-notes.md'), 'utf8') === 'scribbled again'), `--force replaces nothing when it cannot keep a copy (got ${r.stdout.trim()})`);
+  ok((await cli('restore', 'deploy-notes', '--force')).status === 0, 'and once it can, --force restores');
+}
 ok(!/--all looks/.test((await cli('history', 'never-was', '--all')).stdout), 'history --all does not suggest --all');
 r = await cli('history', 'never-was');
 ok((await cli('restore', 'never-was')).status === 1 && r.status === 1 && /search <words> finds a memory's name; --all looks in every project/.test(r.stdout), 'a memory no snapshot holds: restore and history fail, and history says how to find the name');
@@ -2149,7 +2160,9 @@ if (!quick) {
     writeFileSync(join(sd, '.project-off'), JSON.stringify({ t: now - 2 * 36e5 }));
     say('span secret during', 36e5);
     r = await run(['on', '--store', sd]);
-    say('span walrus after', -1000);
+    // A minute ahead of `now`: on a slow machine `on` ran more than a second after `now`, the off period closed after this
+    // turn's time, and the turn was rightly dropped as asked while off (2026-11-13).
+    say('span walrus after', -60_000);
     const text = saved(), day = readdirSync(join(sd, 'journal')).filter((f) => f.endsWith('.md')).map((f) => readFileSync(join(sd, 'journal', f), 'utf8')).join('\n');
     ok(/span walrus before/.test(day), `spanning: the turn before off stays in the journal (got ${day.slice(0, 200)})`);
     ok(/span walrus after/.test(day), `spanning: the turn after on is journaled (got ${day.slice(0, 200)})`);
