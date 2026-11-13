@@ -164,9 +164,15 @@ ok(r.status === 1 && /already matches/.test(r.stdout), `a restore that would cha
   const had = existsSync(slot);
   if (!had) writeFileSync(slot, '');
   r = await cli('restore', 'deploy-notes', '--force');
-  if (!had) unlinkSync(slot);
   ok(had || (r.status === 1 && readFileSync(join(dir, 'deploy-notes.md'), 'utf8') === 'scribbled again'), `--force replaces nothing when it cannot keep a copy (got ${r.stdout.trim()})`);
-  ok((await cli('restore', 'deploy-notes', '--force')).status === 0, 'and once it can, --force restores');
+  // Other text, whose copy goes to another object folder: on Windows the one just removed can stay unusable a moment
+  // while a scanner holds it (1.3.1 mutant run).
+  let other = 'scribbled thrice';
+  while (spawnSync('git', ['hash-object', '--stdin'], { input: other, encoding: 'utf8' }).stdout.slice(0, 2) === sha.slice(0, 2)) other += '!';
+  writeFileSync(join(dir, 'deploy-notes.md'), other);
+  r = await cli('restore', 'deploy-notes', '--force');
+  ok(r.status === 0, `and once it can, --force restores (got ${r.stdout.trim()})`);
+  if (!had) unlinkSync(slot);
 }
 ok(!/--all looks/.test((await cli('history', 'never-was', '--all')).stdout), 'history --all does not suggest --all');
 r = await cli('history', 'never-was');
