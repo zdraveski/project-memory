@@ -875,6 +875,11 @@ gaps('redis, mongo, zip, ldap and mosquitto passwords', [`redis-cli CONFIG SET r
 // A3: a Telegram bot token in the API's URL, where the digits follow the letters "bot".
 const tg = `123456789:AA${V}abcdefghijklm`;
 gaps('a Telegram bot token', [`curl https://api.telegram.org/bot${tg}/getMe`, `token ${tg}`, `x${tg}`]);
+// A4: one very long value after NAME= or --password took seconds (quadratic) at every Stop.
+{
+  const [good, how] = linear((m) => { redact('export API_KEY=' + 'a/'.repeat(2500 * m)); redact('--password ' + 'dir/'.repeat(1250 * m)); redact('MY_TOKEN=' + 'a/'.repeat(2500 * m) + ' ./run.sh'); }, 1000);
+  ok(good, `one very long value after NAME= or --password is read in linear time (${how})`);
+}
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));
