@@ -441,6 +441,7 @@ function snapshot() {
     // busy index, a killed hook) was never retried, and handoff.md stayed in
     // every snapshot after. `--`: on Linux and macOS every project's folder
     // name starts with `-`, and read as an option.
+    let offs = []; try { offs = readdirSync(root).filter((p) => isOff(join(root, p, 'memory'))).map((p) => `:(exclude,literal)${p}/memory`); } catch {}
     const applied = join(root, '.git', 'project-memory-ignored');
     const stage = () => {
       if (have !== want || raw(applied) !== want) {
@@ -457,7 +458,6 @@ function snapshot() {
         let head = true; try { git('rev-parse', '-q', '--verify', 'HEAD'); } catch (e) { if (e.status !== 1) throw e; head = false; }
         if (head) git('reset', '-q');
       }
-      let offs = []; try { offs = readdirSync(root).filter((p) => isOff(join(root, p, 'memory'))).map((p) => `:(exclude,literal)${p}/memory`); } catch {}
       if (!existsSync(join(root, '.git', 'index')) || existsSync(parts)) {
         const todo = git('ls-files', '-z', '-o', '-m', '--exclude-standard', ...(offs.length ? ['--', '.', ...offs] : [])).split('\0').filter(Boolean)
           .sort((a, b) => /(^|\/)MEMORY[^/]*$/.test(b) - /(^|\/)MEMORY[^/]*$/.test(a));
@@ -514,6 +514,9 @@ function snapshot() {
       if (/no changes added to commit/.test(String(e.stdout))) return 'busy';
       throw e;
     }
+    // Changed since the add (another session's write, whose own snapshot went busy): still owed, or its pending mark is
+    // cleared by this success and the file stays out of every snapshot until it changes again.
+    if (!rest) { try { rest = git('status', '--porcelain', ...(offs.length ? ['--', '.', ...offs] : [])).split('\n').filter(Boolean).length; } catch {} }
     return rest ? `in parts: ${rest} file(s) still to add; each reply adds more` : fresh ? 'initialised' : 'committed';
   } catch (e) {
     // No git is a setup, not a failure: everything but the history works.

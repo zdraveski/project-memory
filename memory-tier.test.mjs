@@ -1741,6 +1741,18 @@ require('node:module').syncBuiltinESMExports();
     ok(/snapshot: (initialised|committed)/.test(out), `a long list of new files fits the buffer git's output is read into (got ${out.trim()})`);
   }
   {
+    // A file another session writes between this commit's add and its end is not in it: owed to the next Stop, not left dirty with the
+    // health record clean (defect hunt 1.3.2, C8). Here the write lands right after the commit.
+    const g = await gitHome();
+    const out = (await asHome(g.h, () => swap('node:child_process', 'execFileSync', (real) => (f, a, ...r) => {
+      const res = real(f, a, ...r);
+      if (f === 'git' && a.includes('commit')) writeFileSync(join(g.s, 'MEMORY.md'), '- [a](a.md) — a\n- [b](b.md) — b\n- [x](x.md) — late\n');
+      return res;
+    }, () => call([])))).stdout;
+    const h = JSON.parse(readOr(join(g.r, '.snapshot-health')));
+    ok(/still to add/.test(out) && h.pending === true, `a change made after the commit is owed to the next Stop (got ${out.trim()} ${JSON.stringify(h)})`);
+  }
+  {
     // A note deleted between git's listing and its read: one more try, not a failure.
     const g = await gitHome();
     let n = 0;
