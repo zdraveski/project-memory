@@ -538,7 +538,8 @@ export function restore(dir, file, { rev, force = false } = {}) {
     // What --force replaces is kept in the repo, not lost: no snapshot may hold it yet.
     let kept = '';
     // No copy, no replace: the text it would overwrite was gone for good (1.3.1 audit D-8).
-    if (cur !== null) { try { kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: cur, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim()}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
+    // Under a ref: a blob nothing refers to is dangling, and gc deletes it.
+    if (cur !== null) { try { const sha = execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: cur, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim(); git('update-ref', `refs/project-memory/replaced/${sha}`, sha); kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${sha}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
     // Or one the disk refuses (a name Windows cannot hold, from a store synced from Linux).
     const w = put(path, cur, bytes);
     if (failed(w)) return `${path} could not be written (${w.slice(8)}); nothing restored`;

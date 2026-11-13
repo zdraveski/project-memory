@@ -155,6 +155,8 @@ ok(r.status === 0 && readFileSync(join(dir, 'deploy-notes.md'), 'utf8').includes
 ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').split('\n').filter((l) => l === handLine).length === 1, 'and no second line is added');
 const kept = r.stdout.match(/what it replaced is kept: git -C "([^"]+)" cat-file -p (\w+)/);
 ok(kept && spawnSync('git', ['-C', kept[1], 'cat-file', '-p', kept[2]], { encoding: 'utf8' }).stdout === 'scribbled over', `what --force replaced is kept in the repo, and said where (got ${r.stdout.trim()})`);
+// A blob nothing refers to is dangling: gc deletes it. Kept under a ref, it survives (defect hunt 1.3.2, C7).
+ok(kept && spawnSync('git', ['-C', kept[1], 'for-each-ref', '--format=%(objectname)', 'refs/project-memory/replaced/'], { encoding: 'utf8' }).stdout.trim() === kept[2], 'and under a ref, so a git gc keeps it');
 r = await cli('restore', 'deploy-notes', '--force');
 ok(r.status === 1 && /already matches/.test(r.stdout), `a restore that would change nothing says so, not "restored" (got ${r.stdout.trim()})`);
 // The copy of what --force replaces cannot be kept (its object folder is a file here): nothing is replaced (1.3.1 audit D-8).
