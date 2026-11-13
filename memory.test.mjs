@@ -502,6 +502,20 @@ ok(!/ran twice/.test((await cli('doctor')).stdout), 'doctor: two replies four se
 ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' }, { at: ago(59_000), s: 'aaaaaaaa', m: 'ab12cd34', from: 'C:/y' });
 ok(/ran twice/.test((await cli('doctor')).stdout), 'doctor: an old wiring that logs no fingerprint, next to the plugin, is hooks wired twice');
 rmSync(join(root, '.stop-ran'), { force: true });
+// A moved auto-memory folder is not followed: doctor says so, and names no other setting.
+{
+  const sf = join(home, '.claude', 'settings.json');
+  ok(!/autoMemoryDirectory/.test((await cli('doctor')).stdout), 'doctor: no autoMemoryDirectory, no warning');
+  writeFileSync(sf, JSON.stringify({ autoMemoryDirectory: join(home, 'moved'), apiKeyHelper: 'secret-helper' }));
+  const d = (await cli('doctor')).stdout;
+  ok(/^PROBLEM the autoMemoryDirectory setting is set/m.test(d) && !/secret-helper/.test(d), `doctor warns that autoMemoryDirectory is not followed (got ${d})`);
+  rmSync(sf, { force: true });
+}
+// promote of a folder named like a note is refused in words, not an EISDIR stack trace.
+mkdirSync(join(dir, 'dirnote.md'));
+r = await cli('promote', 'dirnote.md');
+ok(r.status === 1 && /is a folder, not a memory/.test(r.stdout) && !r.stderr, `promote of a folder says so (got ${r.stdout}${r.stderr})`);
+rmSync(join(dir, 'dirnote.md'), { recursive: true });
 // Before Claude's first reply nothing has saved: waiting, not a problem. A reply
 // this conversation finished over a minute ago, with nothing saved, is one.
 {
@@ -1197,6 +1211,23 @@ if (!quick) {
   r = await fcli('forget', '--conversation=bbbb2222');
   ok(r.stdout === `${bb}2 entries in ${fd} would go; run again with --yes to remove them\n`, `--conversation=TAG lists that conversation (got ${r.stdout}${r.stderr})`);
   ok((await fcli('forget', '--conversation', 'bbbb2222-0000-4000-8000-00000000abcd')).stdout === r.stdout, 'the full session id is that conversation too');
+  // An empty --conversation (an unset variable in quotes) is refused, not "every conversation".
+  for (const more of [[], ['--yes']]) {
+    r = await fcli('forget', 'zebra', '--conversation', '', ...more);
+    ok(r.status === 1 && /--conversation needs a value/.test(r.stdout) && kept('2025-10-20', '2025-10-21', today), `an empty --conversation is refused (got ${r.stdout}${r.stderr})`);
+  }
+  // Accents: a "café" typed composed finds the entry stored decomposed, as search does.
+  writeFileSync(join(fj, '2025-10-22.md'), page('2025-10-22', [entry('2025-10-22 09:00', 'my favourite place is café-bistro')]));
+  r = await fcli('forget', 'café-bistro');
+  ok(/^1 entry in .* would go/m.test(r.stdout), `forget finds a decomposed accent by the composed spelling (got ${r.stdout}${r.stderr})`);
+  r = await fcli('forget', 'café-bistro', '--yes');
+  ok(/removed 1 from/.test(r.stdout) && gone('2025-10-22'), `and --yes removes it (got ${r.stdout}${r.stderr})`);
+  reset();
+  // A leading ~ in --store is the home folder, as a POSIX shell would have made it (PowerShell and cmd pass it as typed).
+  for (const s of [['--store', '~/.claude/projects/C--fg/memory'], ['--store=~/.claude/projects/C--fg/memory']]) {
+    r = await run(['search', 'zebra', ...s]);
+    ok(r.status === 0, `--store with a leading ~ is accepted (${s[0]}: got ${r.stdout}${r.stderr})`);
+  }
   // The entries a search showed, by their keys, and nothing else.
   r = await fcli('forget', '--key', es[0].key, `--key=${es[3].key}`);
   ok(r.stdout === `${fl(es[0])}${fl(es[3])}2 entries in ${fd} would go; run again with --yes to remove them\n`,

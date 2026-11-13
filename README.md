@@ -173,6 +173,9 @@ Everything it reads and saves, and how to delete it, is in the
 - **Where.** Windows, macOS and Linux. Notes stay on the computer they were
   made on, and don't sync. Don't sync the memory folder yourself (Dropbox,
   OneDrive): each computer would undo the other's *"forget"*.
+- **A moved memory folder.** The Claude Code setting `autoMemoryDirectory` is
+  not followed: notes in the moved folder are not tidied, snapshotted or
+  briefed. `doctor` warns when it is set.
 - **Your files.** It writes only inside Claude Code's own folder, never in
   your project.
 

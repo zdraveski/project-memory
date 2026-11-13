@@ -909,7 +909,7 @@ one line that says what was left behind.
 - Paths follow `CLAUDE_CONFIG_DIR`, and `CLAUDE_CODE_PROJECT_DIR_NAME` only
   when `CLAUDE_CONFIG_DIR` is set too (see [Where things live](#where-things-live)).
   The `autoMemoryDirectory` setting is not followed: the plugin reads no
-  settings.
+  settings, and `doctor` only warns when it is set.
 - Tested on Linux with Node 22, Windows with Node 24 and macOS with Node 26.
 - The snapshot repository only grows.
 

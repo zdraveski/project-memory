@@ -566,6 +566,7 @@ export function promote(dir, file) {
   // Nor the journal's pointer: promoted, the next Stop wrote it again, and it was in both stores (audit C-1).
   if (isIndex(file) || file === 'handoff.md' || file === 'journal.md') return no('only a memory is shared, not an index, the handoff or the journal');
   if (!existsSync(src)) return no(`no ${src}`);
+  if (!statSync(src).isFile()) return no(`${src} is a folder, not a memory`);
   if (existsSync(dst)) return no(`the shared store has a ${file} already: rename one, or merge them by hand`);
   mkdirSync(to, { recursive: true });
   // Project, then shared: whatever takes both locks takes them in this order.
@@ -644,6 +645,9 @@ export function doctor(site = sessionStore()) {
   if (gone) say(!gone.unread, offText(gone));
   // Auto memory turned off: the hooks do nothing, so nothing below applies.
   if (memoryOff()) { say(true, 'auto memory is off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): the hooks save and brief nothing until it is on again'); return { ok: !bad, lines }; }
+  // The one setting doctor reads (never printed but for its presence): the hooks keep the default folder, and a note in the moved one is
+  // never tiered, snapshotted or briefed.
+  if (typeof json(join(configDir(), 'settings.json'))?.autoMemoryDirectory === 'string') say(false, 'the autoMemoryDirectory setting is set, and project-memory does not follow it: notes in that folder are not tiered, snapshotted or briefed (the hooks work on the default memory folder). Remove the setting to use project-memory');
   if (existsSync(join(LIVE, '.deployed.json'))) { const e = edited(LIVE); say(!e.length, e[0] || `${LIVE} matches what deploy.mjs checked`); }
   // Installed from the live copy, the plugin runs it in place; from anywhere
   // else, a cached copy that only `claude plugin update` refreshes.
@@ -763,7 +767,8 @@ export function main(given) {
   if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); return 1; }
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
-  const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--')));
+  // An empty --conversation (an unset variable in quotes) is none given: forget took it for "every conversation".
+  const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || (a === '--conversation' && argv[i + 1] === '')));
   if (bare) { console.log(`${bare} needs a value after it`); return 1; }
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
@@ -776,7 +781,8 @@ export function main(given) {
   const args = [...rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1])), ...given.slice(cut + 1)];
   // Another store is a memory folder under the projects root: promote and
   // restore write where it points, and one anywhere else was written there.
-  const store = opt('--store') && resolve(opt('--store'));
+  // A leading ~ is the home folder: only a POSIX shell expands it, PowerShell and cmd pass it as typed (SKILL.md writes it so).
+  const store = opt('--store') && resolve(opt('--store').replace(/^~(?=[\\/]|$)/, homedir()));
   if (store && !(basename(store) === 'memory' && same(dirname(dirname(store)), projectsRoot()))) {
     console.log(`--store takes a memory folder in ${projectsRoot()} (search names them): not ${store}`);
     return 1;
