@@ -96,7 +96,8 @@ function factsFor(dir, file, memo = null) {
     // As the Stop's gate saw it, when it did: a note changed since is read anew next pass, its size or time no longer the key.
     st = memo?.seen?.get(file) ?? statSync(path);
     if (!st.isFile()) return null;
-    k = `${st.size} ${st.mtimeMs}`; was = memo?.was[file];
+    // `2 `: what 1.3.0 read is read again; it took `superseded-by: none` for archive (1.3.1 final review).
+    k = `2 ${st.size} ${st.mtimeMs}`; was = memo?.was[file];
     if (!Array.isArray(was) || was[0] !== k) {
       was = null;
       // 16 KB: the first 1,200 characters missed a pin set after a long folded
@@ -212,12 +213,16 @@ function tier(dir, now, seen = null) {
   // One whose file is gone stays, unreported: the archive is history, and a
   // note deleted after its line was archived warned at every startup, for good.
   for (const p of arc.pointers) {
+    // 1.3.0 archived what it misread as `tier: archive` (`superseded-by: none`), unmarked: on the one pass that still sees
+    // its cache, the window decides that line as it would a marked one (1.3.1 fix review).
+    const old = memo?.was[p.target];
     p.f = factsFor(dir, p.target, memo);
+    const misread = Array.isArray(old) && !String(old[0]).startsWith('2 ') && old[2] === 'archive';
     const overflow = p.line.endsWith(OVERFLOW);
     p.was = p.line;   // as the archive holds it, mark and all
     // The one space the mark was added with: a trailing one the line had is its own.
     if (overflow) p.line = p.line.slice(0, -OVERFLOW.length).replace(/ $/, '');
-    place(p, p.f && (p.f.tier === 'hot' || (overflow && isHot(p.f, now, shared))) ? hot : cold);
+    place(p, p.f && (p.f.tier === 'hot' || ((overflow || misread) && isHot(p.f, now, shared))) ? hot : cold);
   }
 
   // A memory no pointer names is unreachable at session start. Truncate either
@@ -284,11 +289,13 @@ function tier(dir, now, seen = null) {
   const bytes = (s) => Buffer.byteLength(s);
   let size = bytes(render());
   // And lines: Claude Code loads the first 200, and 7 KB of short lines is more.
-  let count = main.preamble.length + Number(main.gap) + hot.length + 1;
+  // A pointer with its wrapped hook is several lines.
+  const lines = (p) => p.line.split('\n').length;
+  let count = main.preamble.length + Number(main.gap) + hot.reduce((n, p) => n + lines(p), 0) + 1;
   const evicted = new Set();
   for (let q = 0; (size > budget || count > LINES) && q < queue.length; q++) {
     const victim = queue[q];
-    count--;
+    count -= lines(victim);
     size -= bytes(victim.line) + eol.length + bytes(archiveLine(cold.length)) - bytes(archiveLine(cold.length + 1));
     evicted.add(victim);
     victim.line += ' ' + OVERFLOW;        // so the archive loop knows it may come back
@@ -322,7 +329,8 @@ function tier(dir, now, seen = null) {
     wrote = a === true || m === true || b === true;
     // Whole, so a note deleted leaves it too; under the store's lock, and a cache: a write that fails costs the next pass a read.
     const facts = JSON.stringify(memo.now);
-    if (facts !== JSON.stringify(memo.was)) try { writeFileSync(join(dir, FACTS), facts); } catch {}
+    // Not after a conflict: the pass that still sees a 1.3.0 entry is the one that brings a misread line back.
+    if (!conflict && facts !== JSON.stringify(memo.was)) try { writeFileSync(join(dir, FACTS), facts); } catch {}
   }
 
   return { dir, budget, before, after: Buffer.byteLength(nextMain), hot: hot.length, cold: cold.length,

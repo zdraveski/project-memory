@@ -175,7 +175,8 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   const d = storeFor(home, 'C:\\journal-ansi'), f = dayFile(d, '2026-11-12'), failed = join(d, 'journal', '.failed'), P = '/x/projects/C--proj/aaaaaaaa.jsonl';
   record(d, T, [turn({ at: '2026-11-12 09:00', id: 'w-1', ask: 'the zebra', raw: 'the zebra' })]);
   record(d, P, [turn({ at: '2026-11-12 09:30', id: 'a-1' })]);
-  appendFileSync(f, Buffer.from('\nNote: café supplier José confirmed\n', 'latin1'));
+  // The blank lines after it are not how a write lays a day out, so a rewrite would differ.
+  appendFileSync(f, Buffer.from('\nNote: café supplier José confirmed\n\n\n', 'latin1'));
   const bytes = readFileSync(f), others = () => days(d).filter((x) => x !== '2026-11-12').map((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries.map((e) => e.key).join()).join();
   write(d, T, [turn({ at: '2026-11-11 10:00', id: 'w-0' }), turn({ at: '2026-11-12 10:00', id: 'w-2' }), turn({ at: '2026-11-13 10:00', id: 'w-3' })], { quiet: false, hush: false });
   let fl = ''; try { fl = readFileSync(failed, 'utf8'); } catch {}
@@ -1110,7 +1111,8 @@ if (!quick) {
   }
   // The store now has an index, so its tier report is expected; the backfill itself says nothing.
   const said = out.split('\n').filter((l) => l && !/ hot \/ \d+ archived, |^  pointers recovered: |^memory snapshot: /.test(l));
-  ok(ms < 3000 && said.length === 0 && line() === whole && asks(d).includes('before the flood') && asks(d).includes('after the flood'),
+  // A whole node process each: a busy Windows runner took 3.7 s where a desktop takes 1 s (1.3.1 CI).
+  ok(ms < (process.platform === 'win32' ? 6000 : 3000) && said.length === 0 && line() === whole && asks(d).includes('before the flood') && asks(d).includes('after the flood'),
     `backfill keeps to its budget on a huge transcript: no Stop takes over ${ms} ms, none says anything, and the 70 MB line is passed over unread, the turns before and after it journaled (got ${line()}; ${asks(d)}; ${out})`);
 }
 // A transcript of any size is read whole, not only its last 64 MB: in

@@ -1073,6 +1073,50 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   const idx = readFileSync(join(d, 'MEMORY.md'), 'utf8'), arc = readFileSync(join(d, 'MEMORY-archive.md'), 'utf8');
   ok(idx.includes('- [a](a.md) — a\r\n  a wraps here\r\n') && !idx.includes('b wraps') && arc.includes('- [b](b.md) — b\r\n  b wraps here\r\n'), `a wrapped hook stays under its pointer (got ${JSON.stringify(idx)} / ${JSON.stringify(arc)})`);
 }
+// Claude Code loads 200 lines: a pointer and its wrapped hook were counted as one line, and 150 of them made 300 (1.3.1 final review).
+{
+  const d = store('proj-wrap-cap');
+  let idx = '# Index\n\n';
+  for (let i = 0; i < 150; i++) {
+    writeFileSync(join(d, `n${i}.md`), `---\nname: n${i}\ndescription: "n"\nmetadata:\n  type: project\n---\nbody\n`);
+    idx += `- [n](n${i}.md) — n\n  h\n`;
+  }
+  writeFileSync(join(d, 'MEMORY.md'), idx);
+  await call(['--dir', d]);
+  const lines = readFileSync(join(d, 'MEMORY.md'), 'utf8').split('\n').length - 1;
+  // And no fewer than it must: a pair freed counted as one line evicted twice the pointers.
+  ok(lines <= 200 && lines > 190, `an index of wrapped hooks keeps to 200 lines, no fewer (got ${lines})`);
+}
+// What 1.3.0 read of a note and kept in .facts ('superseded-by: none' read as archive) is read again, not trusted (1.3.1 final review).
+{
+  const d = store('proj-facts-old');
+  writeFileSync(join(d, 'sup.md'), '---\nname: sup\ndescription: "sup"\nmetadata:\n  type: project\n  superseded-by: none\n---\nbody\n');
+  writeFileSync(join(d, 'MEMORY.md'), '# Index\n\n- [sup](sup.md) — sup\n');
+  const st = statSync(join(d, 'sup.md'));
+  writeFileSync(join(d, '.facts'), JSON.stringify({ 'sup.md': [`${st.size} ${st.mtimeMs}`, 'project', 'archive', null] }));
+  await call(['--dir', d]);
+  ok(/\(sup\.md\)/.test(readFileSync(join(d, 'MEMORY.md'), 'utf8')), 'a note an older version misread is read again, not archived from its cache');
+  // As a real 1.3.0 store has it: that pass already moved the line to the archive, unmarked (1.3.1 fix review).
+  const e = store('proj-facts-archived');
+  writeFileSync(join(e, 'sup.md'), '---\nname: sup\ndescription: "sup"\nmetadata:\n  type: project\n  superseded-by: none\n---\nbody\n');
+  writeFileSync(join(e, 'MEMORY.md'), '# Index\n');
+  writeFileSync(join(e, 'MEMORY-archive.md'), '# Archive\n\n- [sup](sup.md) — sup\n');
+  const se = statSync(join(e, 'sup.md'));
+  writeFileSync(join(e, '.facts'), JSON.stringify({ 'sup.md': [`${se.size} ${se.mtimeMs}`, 'project', 'archive', null] }));
+  await call(['--dir', e]);
+  ok(/\(sup\.md\)/.test(readFileSync(join(e, 'MEMORY.md'), 'utf8')), 'a note 1.3.0 misread and archived comes back while its window holds');
+  await call(['--dir', e]);
+  ok(/\(sup\.md\)/.test(readFileSync(join(e, 'MEMORY.md'), 'utf8')), 'and stays');
+  // One 1.3.0 read rightly (not as archive) stays where it was put: archived by hand, or by its window then (fix re-review).
+  const g = store('proj-facts-kept');
+  writeFileSync(join(g, 'kept.md'), '---\nname: kept\ndescription: "kept"\nmetadata:\n  type: project\n---\nbody\n');
+  writeFileSync(join(g, 'MEMORY.md'), '# Index\n');
+  writeFileSync(join(g, 'MEMORY-archive.md'), '# Archive\n\n- [kept](kept.md) — kept\n');
+  const sg = statSync(join(g, 'kept.md'));
+  writeFileSync(join(g, '.facts'), JSON.stringify({ 'kept.md': [`${sg.size} ${sg.mtimeMs}`, 'project', null, null] }));
+  await call(['--dir', g]);
+  ok(!/\(kept\.md\)/.test(readFileSync(join(g, 'MEMORY.md'), 'utf8')), 'a line 1.3.0 read rightly and archived stays archived');
+}
 // A typo'd future stamp (2099) kept a note hot forever: over a day ahead, the file's time counts (1.3.1 audit E-4).
 {
   const d = store('proj-future'), old = new Date(Date.now() - 90 * 86400000);
@@ -1848,7 +1892,8 @@ if (!quick) {
   mkdirSync(join(d, '.lock')); mkdirSync(join(shared, '.lock'));
   const t0 = Date.now();
   let ms; try { await stop('proj-wait'); ms = Date.now() - t0; } finally { rmdirSync(join(d, '.lock')); rmdirSync(join(shared, '.lock')); }
-  ok(ms < 3500, `--stop: with its locks held it waits about 2 s in all (took ${ms} ms)`);
+  // 6 s, not 3.5: a busy Windows runner took 4.1 s (1.3.1 mutant run); the bug waited 8 s.
+  ok(ms < 6000, `--stop: with its locks held it waits about 2 s in all (took ${ms} ms)`);
   rmSync(join(shared, 'wait.md'));
 }
 // A note written while a pass runs is not in that pass's stamp, so the next turn takes it up: stamped from a look after the

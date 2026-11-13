@@ -382,7 +382,18 @@ const SECRETS = [
   // command's own; nor "the --token flag", in prose.
   // Quoted, as a value with symbols or blanks must be, to its closing quote: the opening quote refused, each was kept (e2e audit,
   // 2026-11-01). A quoted one may start with `-`; a bare one that does is the next option (review, 2026-11-01).
-  [/(--(?!no-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|oauth2-bearer)[ =]["']?|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+["']?|\bssh-keygen\b[^\n|;&]{0,200}?\s-N\s+["']?|\bredis-cli\b[^\n|;&]{0,200}?\sAUTH\s+["']?)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  [/(--(?!no-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|oauth2-bearer)[ =]["']?|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+["']?|\bssh-keygen\b[^\n|;&]{0,200}?\s-N\s+["']?)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  // redis-cli AUTH [user] pass: both words, each quoted or bare; the user name is no secret worth the parsing (1.3.1 fix
+  // review: `> out.txt`, `2>/dev/null`, a quoted pass with a blank and CRLF each kept the password). Two words, not to the
+  // end: clip() joins lines first, and the rest of the entry went with it. Not an AUTH already [redacted]: clip() redacts
+  // until nothing changes, and each pass took two more words. Only options between redis-cli and AUTH: prose ("redis-cli needs
+  // AUTH before") lost two words. Kept only when every word reads as a path or variable: a pass then `./check.sh` was kept.
+  // shortcut: a password hand-wrapped onto the next line without `\` slips through clip(); a backslash wrap is caught.
+  // Each option one way only (-[\w-]+, not -{1,2}): read two ways, a line of --options took 2^n tries and stalled the Stop.
+  // A blank may be a `\` line wrap; an option's value may be quoted. A value never starts with `=`, which is also a blank
+  // here (two readings again), and at most 40 options: `-a redis-cli` repeated made each redis-cli a fresh start.
+  [/(\bredis-cli(?:(?:[ \t]|\\\r?\n)+-[\w-]+(?:(?:[ \t=]|\\\r?\n)+(?:"[^"\n]*"|'[^'\n]*'|[^\s|;&<>"'=-])\S*)?){0,40}(?:[ \t]|\\\r?\n)+AUTH\s+)(?!\[redacted\])(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g,
+    (m, pre, v) => (v.split(/\s+/).every(arg) ? m : `${pre}[redacted]`)],
   // A secret as a command's argument, which the journal's Ran field keeps (P1
   // hunt, 2026-10-29): `aws configure set` of a secret, key or token; a
   // SetEnvironmentVariable or setx of one; htpasswd -b's password, after its
@@ -408,8 +419,8 @@ const SECRETS = [
   [/(\bgh\s+secret\s+set\b[^\n|;&]{0,200}?\s(?:--body|-b)[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   [/(:_authToken[ =]["']?)([^\s"']+)/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
-  // In the mysql command only: `; find . -print` after it was cut.
-  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb|7za?)\b[^\n|;&]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
+  // In the mysql command only: `; find . -print` after it was cut. 7z as a command, not a `*.7z` file name before -print.
+  [/((?:\b(?:mysql|mysqldump|mysqladmin|mariadb)|(?<![\w.*])7za?)\b[^\n|;&]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
   // "my password is IT": one with a digit or a symbol, as a password has --
   // "the password is hashed" names none.
   // Also "the password for the prod db is IT", "the api key is IT", and

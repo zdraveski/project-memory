@@ -253,8 +253,9 @@ ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !r
   // Timed at 5,000 blanks and at 50,000 (a linear read costs ten times the first; the old 12 s one a hundred): a slow runner slows both, the old
   // fixed 1 s stays as the floor (audit #18).
   const read = (n) => { const blanks = ' '.repeat(n), t = performance.now(); const g = front(`---\nname: n${blanks}x\ndescription: d${blanks}\nsuperseded-by: ${blanks}#\ntype:\n ${blanks}\n---\n`); return [performance.now() - t, g]; };
+  // The fastest of three small reads: one slow sample on a busy CI runner once pulled a quadratic read under 50x (1.3.1 mutant run).
   read(5_000);
-  const [small] = read(5_000), [big, f] = read(50_000);
+  const small = Math.min(...[1, 2, 3].map(() => read(5_000)[0])), [big, f] = read(50_000);
   ok(big < Math.max(1000, 50 * small) && f.desc === 'd' && f.superseded === '', `a value with 50,000 blanks is read in linear time (${big.toFixed(0)} ms, ${small.toFixed(1)} ms at a tenth, ${JSON.stringify(f).slice(0, 80)})`);
 }
 
@@ -300,6 +301,8 @@ ok(listOf(' a1 \r\n\r\n\tb2\n  \n').join() === 'a1,b2' && listOf(null).length ==
 // A line made for a memory no index names reads back, and its hook ends whole.
 const made = pointerLine('[draft] plan.md', 'a'.repeat(139) + '\u{1F600} and more');
 ok(made.match(POINTER)?.[1] === '[draft] plan.md' && !/[\uD800-\uDFFF]$/.test(made), `a made line reads back and is cut whole (got ${made})`);
+// POINTER reads one level of brackets in a title; the made title has none, so two levels in a name read back too.
+ok(pointerLine('[[a]] b.md', 'x').match(POINTER)?.[1] === '[[a]] b.md', 'a made line for a name with nested [brackets] reads back');
 
 // A value stays on its line, the body is no frontmatter, and CRLF keeps quotes off.
 const emptied = front('---\nname: a\nsuperseded-by:\nmetadata:\n  type: project\n---\nbody');
@@ -527,8 +530,9 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(lockRun(rep('EACCES', 9)).res === 'EACCES', 'nine in a row throw');
   ok(lockRun(['EEXIST', ...rep('EACCES', 8)]).res === 'got', 'a held lock between the refusals starts the count again');
 
-  // The unlock: refused for a moment (EBUSY), it is tried again; ENOENT is not retried.
-  for (const [code, n, gone] of [['EBUSY', 1, true], ['EPERM', 2, true], ['EBUSY', 3, false]]) {
+  // The unlock: refused for a moment (EBUSY), it is tried again; ENOENT is not retried. ENOTEMPTY too: on Windows the
+  // owner file a scanner holds stays in the folder a moment after its unlink (1.3.1 final review).
+  for (const [code, n, gone] of [['EBUSY', 1, true], ['EPERM', 2, true], ['ENOTEMPTY', 1, true], ['EBUSY', 3, false]]) {
     let k = 0, waits = 0;
     const undo = patch('rmdirSync', (real) => function (p, ...a) { if (String(p).endsWith('.lock') && k++ < n) throw err(code); return real.call(this, p, ...a); });
     const wait = Atomics.wait; Atomics.wait = (...a) => { waits++; return wait(...a); };

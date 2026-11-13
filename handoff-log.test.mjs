@@ -1560,7 +1560,7 @@ const leaked = leaks.filter((s) => red(s) === s || /Sw0rd|pa55|Tr0ub4|BQUklW|AgE
 ok(!leaked.length, `common secret shapes are redacted (leaked: ${leaked.join(' | ')})`);
 const plainCode = ['password: string', 'api_key: Optional[str]', 'authToken: string', 'token = jwt.sign(payload, key)', 'password = request.form["pw"]',
   'secret: process.env.JWT_SECRET', 'refresh_token = response.json()["rt"]', 'password = os.environ["PW"]', 'DB_PASSWORD=${DB_PASSWORD}', 'pwd: /home/kire', 'basic implementation/approach here', 'Bearer authentication-header',
-  'http://localhost:8080?user=me@x', 'mysql -u root db; find . -print', 'the password is hashed', 'tokens: tokenizer.encode(text)',
+  'http://localhost:8080?user=me@x', 'mysql -u root db; find . -print', "find . -name '*.7z' -print", 'the password is hashed', 'tokens: tokenizer.encode(text)',
   'run the basic tests/integration/auth_flow_spec.rb now', 'token src/components/auth/RefreshHandler.tsx'];
 const cut = plainCode.filter((s) => red(s) !== s);
 ok(!cut.length, `code and prose that only look like secrets are kept (cut: ${cut.join(' | ')})`);
@@ -1669,10 +1669,28 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   ['tool --api-key ' + k('Zq81x', 'PlmN0aQ'), 'Zq81x'], ['tool --apikey=' + k('Zq82x', 'PlmN0aQ'), 'Zq82x'], ['aws-tool --aws-access-key ' + k('Zq83x', 'PlmN0aQ'), 'Zq83x'],
   ['gpg --batch --passphrase ' + k('Zq84x', 'PlmN0aQ') + ' -c f', 'Zq84x'], ['tool --passphrase "correct ' + k('hor', 'se') + ' staple"', 'horse'],
   ['curl --oauth2-bearer ' + k('Zq85x', 'PlmN0aQ9zAbCd') + ' https://x', 'Zq85x'], ['ssh-keygen -t ed25519 -N "' + k('Zq86x', 'PlmN0aQ') + '" -f k', 'Zq86x'],
-  ['redis-cli -h h AUTH ' + k('Zq87x', 'PlmN0aQ'), 'Zq87x'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
+  ['redis-cli -h h AUTH ' + k('Zq87x', 'PlmN0aQ'), 'Zq87x'], ['redis-cli AUTH default ' + k('Zq86x', 'PlmN0aQ'), 'Zq86x'],
+  // Whatever follows the password (fix review, 1.3.1).
+  ['redis-cli AUTH default ' + k('Zq89x', 'PlmN0aQ') + ' > out.txt', 'Zq89x'], ['redis-cli AUTH default ' + k('Zq90x', 'PlmN0aQ') + ' 2>/dev/null', 'Zq90x'],
+  ['redis-cli AUTH default "Zq91x ' + k('Plm', 'N0aQ') + '"', 'PlmN0aQ'], ['redis-cli AUTH alice ' + k('Zq92x', 'PlmN0aQ') + '\r\nnext', 'Zq92x'],
+  ['redis-cli -h h AUTH "Zq93x;' + k('Plm', 'N0aQ') + '"', 'PlmN0aQ'], ['redis-cli AUTH ' + k('s3cr', '3tPw99') + '>out.txt', '3tPw99'], ['redis-cli AUTH ' + k('Zq95x', 'PlmN0aQ') + ' ./check.sh', 'Zq95x'],
+  ['redis-cli -h host \\\nAUTH ' + k('Zq96x', 'PlmN0aQ'), 'Zq96x'], ['redis-cli -h "my host" AUTH ' + k('Zq97x', 'PlmN0aQ'), 'Zq97x'], ['redis-cli -h "$H":6379 AUTH ' + k('Zq98x', 'PlmN0aQ'), 'Zq98x'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
   ['git clone https://' + k('0123456789abcdef', '0123456789abcdef01234567') + '@github.com/x/y', '89abcdef0123'],
   ['git clone https://' + k('Ab3dEfGhIjKlMnOp', 'QrStUvWxYz0123') + '@host/x', 'QrStUv']])
   ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a secret passed to a command is redacted (got ${red(s)})`);
+{
+  // clip() joins lines and redacts again: the redis rule ran to the text's end and took what followed (1.3.1 fix re-review).
+  const c = clip('Ran redis-cli AUTH default Zq94xPlmN0aQ\nThen I checked the keys\nredis-cli needs AUTH before any command, so we log in first', 2000);
+  ok(!c.includes('Zq94x') && c.includes('Then I checked the keys') && c.includes('needs AUTH before any command, so we log in first'), `the redis rule takes the password, not the text after it (got ${c})`);
+  const p = 'use the redis-cli AUTH option to log in';
+  ok(red(p) === p, `"redis-cli AUTH option" in prose is kept (got ${red(p)})`);
+  // Each --option read one way only: read two ways, 24 of them took seconds and each one more doubled it (fix re-review 3).
+  // Sized so the slow forms take seconds, not hours: a mutant that times out counts as survived. The fix takes under 50 ms; the quadratic one 5 s here, so a fast runner still fails it.
+  for (const [s, n] of [[' --tls', 24], [' -x =v', 25], [' -a redis-cli', 12000]]) {
+    const t0 = Date.now(); red('redis-cli' + s.repeat(n));
+    ok(Date.now() - t0 < 300, `${n} redis-cli options like "${s}" redact fast (${Date.now() - t0} ms)`);
+  }
+}
 // Over-redaction costs recall: the word after a command's flag is often its
 // point. A reference ($TOKEN, ${TOKEN}, $(cat pw)) or a path is no secret, nor
 // a number under a count's name (TOKEN_LIMIT, MAX_TOKEN, R34); a name's word

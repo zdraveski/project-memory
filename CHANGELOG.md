@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.3.1 (2026-11-13)
+
+Bug fixes from a five-part audit (correctness, security, Windows/macOS/Linux,
+data loss with parallel sessions, test gaps) and the review after it.
+
+**Keeping notes safe**
+
+- A store lock is released only while it is still this session's, and an
+  unlock that meets `ENOTEMPTY` is retried.
+- `restore --force` replaces nothing when it cannot keep a copy of what it
+  replaces.
+- A `MEMORY.md` or `handoff.md` that is not UTF-8 (saved by PowerShell 5.1's
+  `>` or `Add-Content`) is left as it is, as journal days already were;
+  before, it was written back with its accented letters gone.
+- `.health` and `.snapshot-health` are written through a temp file, and on
+  Windows a rename a scanner holds busy is retried for up to 1 s.
+
+**Tiering**
+
+- A hook wrapped over several lines stays under its pointer, and all its
+  lines count toward the 200 lines Claude Code loads.
+- A note is archived as superseded only when `superseded-by` names a
+  replacement. A note stamped in the future ages by its file time.
+- An index line whose title holds `[brackets]` reads back, nested ones too.
+- `modified: YYYY-MM-DD HH:MM` keeps its time.
+- Each note is read again once after the upgrade: 1.3.0's cache in `.facts`
+  kept these misreadings for notes unchanged since. A note 1.3.0 archived
+  by misreading `superseded-by: none` comes back while its age allows.
+
+**Redaction**
+
+- Secrets given as `--api-key`, `--passphrase`, `ssh-keygen -N`, `redis-cli
+  AUTH user pass` and similar flags are redacted. `find -name '*.7z' -print`
+  is no longer mistaken for one.
+
+**Platforms**
+
+- A relative `CLAUDE_CONFIG_DIR` is resolved once, so every hook uses the
+  same folder.
+- Snapshots pass `safe.directory`, so git does not refuse the snapshot
+  repository first made from an elevated shell or under `sudo`.
+
+**Docs and tests**
+
+- PRIVACY says what snapshots keep and that notes are not scrubbed of
+  secrets.
+- Stale mutants point at the current code, with new ones for these fixes,
+  and three tests a busy Windows runner failed are steadier.
+
 ## 1.3.0 (2026-11-09)
 
 **Turning it off**
