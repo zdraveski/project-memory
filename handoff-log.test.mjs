@@ -908,6 +908,8 @@ gaps('more vendor tokens and key shapes', [`gem push rubygems_${VV}`, `nfp_${VV}
   `OPENAI_KEY_sk-${VV}`, [`my_ghp_${'a1B2'.repeat(9)}`, 'a1B2a1B2'], [`key_AKIAIOSFODNN7EXAMPLE`, 'AKIAIOSFODNN7EXAMPLE'],
   [`wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`, 'wJalrXUtnFEMI'], [fake('MTk4NjIyNDgzNDcx', 'OTI1MjQ4.Cl2FMQ.', 'ZnCjm1XVW7vRze4b7Cq4se7kKWs'), 'ZnCjm1XVW7vRze4b7Cq4se7kKWs']],
   ['https://x.io/?key=primary', 'https://x.io/cb?code=404&state=1', 'src/Components/Foo/bar/Baz/qux/quux.js', 'AUTH=true', 'nfp_short', 'pscale_pw_x', 'the task-sk-list']);
+// A12: a full-width colon (U+FF1A) after the word.
+gaps('a password after a full-width colon', [`password\uFF1A${V}`, `token\uFF1A ${V}`], ['password\uFF1A none']);
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));
