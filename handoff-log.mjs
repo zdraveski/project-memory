@@ -94,12 +94,14 @@ const unwrap = (s) => {
     i = b + '</system-reminder>'.length;
   }
 };
-// Only a harness-style name, one with `-` or `_` (every tag Claude Code puts
-// before a prompt here: task-notification, command-name, local-command-stdout,
-// ide_opened_file): a prompt that was one <template> element was stripped to
-// nothing, and its answer filed under the ask before. Any case: <PRIVATE> too.
-export const own = (s) => unwrap(s)
-  .replace(/^(?:\s*<(?!private|pasted)(?=[A-Za-z]\w{0,62}[_-])([A-Za-z][\w-]{0,63})(?=[\s>])[^>]{0,2000}>[\s\S]*?<\/\1>)+/i, '').trim();
+// A harness-style name, one with `-` or `_`, is taken off the front; a prompt
+// that was one such element (<my-card>, a <template>) would be nothing, and its
+// answer filed under the ask before: then only a name Claude Code itself uses
+// (task-notification, command-name, local-command-stdout, ide_opened_file,
+// agent-message, ...) is taken off, and the element is the ask. Any case: <PRIVATE> too.
+const lead = (known) => new RegExp(`^(?:\\s*<(?!private|pasted)(?=${known ? '(?:task-|command-|local-command-|bash-|ide_|agent-message|teammate-message|user-prompt-submit-hook)\\w' : '[A-Za-z]\\w{0,62}[_-]'})([A-Za-z][\\w-]{0,63})(?=[\\s>])[^>]{0,2000}>[\\s\\S]*?<\\/\\1>)+`, 'i');
+const LEAD = lead(false), KNOWN = lead(true);
+export const own = (s) => { const u = unwrap(s); return u.replace(LEAD, '').trim() || u.replace(KNOWN, '').trim(); };
 // A slash command's record opens with its tags. Quoted anywhere else in a
 // prompt (a question about a transcript), the prompt was taken for the command,
 // and its <private> parts were missed.
@@ -110,7 +112,7 @@ const isCommand = (s) => /^\s*<command-(?:name|message)>/.test(unwrap(s));
 export const asked = (r, s) => {
   if (!s || isCommand(s) || nudged(s)) return false;
   const o = own(s);
-  return !!o && !o.startsWith('[SYSTEM') && !o.startsWith('[Request interrupted');
+  return !!o && !o.startsWith('[SYSTEM:') && !o.startsWith('[Request interrupted');   // "[SYSTEM_SERVICE] ..." is a pasted log line
 };
 // A slash command's record names it and its arguments, and the user typed
 // both. Read as no ask, its reply was saved as the answer to the ask before.
@@ -251,7 +253,12 @@ export function turns(tail) {
     // private tags. Written normalized, `…` and CJK punctuation became ASCII,
     // and every entry an older version wrote was added again beside it.
     const t = text(r).trim(), n = r.type === 'user' ? norm(t) : '', told = heard(r);   // n only for a user record: nothing else reads it
-    let ask = r.type === 'user' ? prompt(r, t) : '';
+    // A message typed while Claude worked has no user record, only this attachment: it opens a turn too (1.3.2). A private one
+    // keeps the older way below (it freezes the turn it came into).
+    const q = r.type === 'attachment' && r.attachment?.type === 'queued_command' ? queuedText(r).trim() : '';
+    let ask = r.type === 'user' ? prompt(r, t) : q && !PRIVATE.test(norm(q)) && asked(r, q) ? own(q) : '';
+    // A user record that repeats the queued message just opened is the same ask.
+    if (ask && r.type === 'user' && pending?.queued && !pending.did && ask === pending.ask) continue;
     if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
     // What the user typed, tags and all: a slash command's arguments, a
     // wrapper own() strips, a message queued while Claude worked (an
@@ -282,11 +289,13 @@ export function turns(tail) {
     if (r.type === 'attachment' && /^hook_(?:additional_context|blocking_error)$/.test(r.attachment?.type ?? '')
       && nudged(JSON.stringify(r.attachment.content ?? r.attachment.blockingError ?? ''))) { if (pending) hold(pending); continue; }
     if (!t && !ask && !typed) continue;
-    if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), did: '', changed: [], ran: [],
+    if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [],
       id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '' };
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
-    else if ((r.type === 'user' || typed) && pending && /<\s*private/i.test(typed || mine)) pending.frozen = true;
+    // Not a skill's body (isMeta, opens "Base directory for this skill:"): it names <private> in its own text, and froze the turn
+    // with the answer unsaved (1.3.2). Any other isMeta record that names the tag still freezes it.
+    else if ((r.type === 'user' || typed) && pending && !(r.isMeta && /^Base directory for this skill:/.test(t)) && /<\s*private/i.test(typed || mine)) pending.frozen = true;
     else if (r.type === 'user' && pending && nudged(t)) hold(pending);
     else if (r.type === 'assistant' && pending) {
       if (!pending.frozen) { pending.did = t; pending.reopened = false; }     // last text block of the turn wins, unless a nudge froze it
@@ -584,6 +593,8 @@ function latest(path, since = null, all) {
       // own Stops never wrote it (audit H-F6). Found by a look back, and read with the tail: its tools are the tail's.
       const p = !whole && !got.open ? promptBefore(path, bytes) : null;
       const out = p ? turns(`${p}\n${tail}`) : got;
+      // Given up: 32 MB read, no turn in them and no prompt before. Thrown, so the Stop records the failure and the briefing says so.
+      if (!whole && !out.length) throw new Error(`no turn found in the last ${Math.round(bytes / 1e6)} MB of ${path}`);
       out.whole = whole; return out;
     }
   }
@@ -644,7 +655,7 @@ export const parse = (section) => [...section.matchAll(ENTRY)].map((m) => ({ at:
 // wrote into that sentence, and the real section went stale (audit, 2026-10-28).
 const alone = (doc, i, mark) => {
   const end = doc.indexOf('\n', i);
-  return /^[ \t]*$/.test(doc.slice(doc.lastIndexOf('\n', i - 1) + 1, i)) && /^[ \t]*\r?$/.test(doc.slice(i + mark.length, end === -1 ? doc.length : end));
+  return /^[ \t﻿]*$/.test(doc.slice(doc.lastIndexOf('\n', i - 1) + 1, i)) && /^[ \t]*\r?$/.test(doc.slice(i + mark.length, end === -1 ? doc.length : end));
 };
 export const sectionOf = (doc) => {
   for (let a = doc.lastIndexOf(START); a !== -1; a = a ? doc.lastIndexOf(START, a - 1) : -1) {

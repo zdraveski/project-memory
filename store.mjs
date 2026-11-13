@@ -78,10 +78,20 @@ export function startCwd(t) {
   if (!started.has(t)) {
     let cwd = null;
     try {
+      // 64 KB at a time up to 4 MB: a first cwd can come after a long skill listing (1.3.2).
+      // Each look starts 4 KB before the new chunk, so a cwd cut by the chunk edge is whole.
       const fd = openSync(t, 'r'), buf = Buffer.alloc(65536);
-      const n = readSync(fd, buf, 0, buf.length, 0); closeSync(fd);
-      const m = buf.toString('utf8', 0, n).match(/"cwd":"((?:[^"\\]|\\.){1,4096})"/);
-      if (m) cwd = JSON.parse(`"${m[1]}"`);
+      try {
+        let head = Buffer.alloc(0);
+        for (let at = 0; at < 4_194_304 && !cwd; at += buf.length) {
+          const n = readSync(fd, buf, 0, buf.length, at);
+          if (!n) break;
+          const from = Math.max(0, head.length - 4200);
+          head = Buffer.concat([head, buf.subarray(0, n)]);
+          const m = head.toString('utf8', from).match(/"cwd":"((?:[^"\\]|\\.){1,4096})"/);
+          if (m) cwd = JSON.parse(`"${m[1]}"`);
+        }
+      } finally { closeSync(fd); }
     } catch {}
     started.set(t, cwd);
   }
@@ -194,7 +204,8 @@ export function isOff(dir) {
 export const OFF_PERIODS = '.off-periods';
 export function wasOff(dir) {
   const periods = listOf(raw(join(dir, OFF_PERIODS))).map((l) => l.split(' ').map(Number));
-  return (t) => periods.some(([from, to]) => t.ms >= from && t.ms <= to);
+  // A turn of unknown time (NaN: its record had no timestamp) is placed in none, so it is kept out once the project has been off.
+  return (t) => Number.isNaN(t.ms) ? periods.length > 0 : periods.some(([from, to]) => t.ms >= from && t.ms <= to);
 }
 // The local date a project was turned off, for what is said to the user.
 export const offSince = (o) => (o.since ? local(o.since).slice(0, 10) : 'an unknown date');

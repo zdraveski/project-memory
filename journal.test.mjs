@@ -34,6 +34,10 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   ok(e.ran.length === 25 && e.ran[0] === 'cmd0' && e.ran[24] === 'cmd24', `every command (got ${e.ran})`);
   ok(entryOf(turn({ ran: ['x'.repeat(5000)] }), T).ran[0].length === 5000, 'a command is kept whole');
   ok(entryOf(turn({ ran: ['echo one\n\n  echo two\r\necho three'] }), T).ran[0] === 'echo one echo two echo three', 'a command over several lines is one line');
+  // B8: a field has a ceiling (a pasted log or a 5 MB command would be written, indexed and searched whole every time).
+  const big = entryOf(turn({ ask: 'q '.repeat(100000), did: 'a '.repeat(100000), ran: Array.from({ length: 10 }, () => 'x'.repeat(40000)) }), T);
+  ok(big.asked.length <= 50000 && big.answered.length <= 50000, `a request and a reply are cut at 50 KB (got ${big.asked.length}, ${big.answered.length})`);
+  ok(big.ran[0].length <= 20000 && big.ran.join('').length <= 50000, `a command is cut at 20 KB and all of them at 50 KB (got ${big.ran.length} commands, ${big.ran.join('').length})`);
   ok(e.s === '01234567' && e.t === 'C--proj/0123456789abcdef', `conversation tag and t from the path (got ${e.s} ${e.t})`);
   // A key deep in a long reply is still redacted, and an emoji is kept whole
   // (half of one reads back as U+FFFD and no longer matches).
