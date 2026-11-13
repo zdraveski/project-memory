@@ -138,16 +138,19 @@ function split(text) {
   const preamble = [];
   // `gap`: a blank line between the prose and the first pointer, kept: dropped, a `# Memory Index` heading lost the line
   // under it at the first pass (audit I-F4).
-  let gap = false;
+  let gap = false, last = null;
   // A BOM binds to the first line and stops it matching POINTER, which quietly
   // demotes the top memory to prose and orphans it.
   for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const m = line.match(POINTER);
     // The Archive line counts for the gap too: with every pointer cold it is the only line after the blank one.
     if (m) gap ||= !pointers.length && preamble.at(-1)?.trim() === '';
-    if (m && m[1] === ARCHIVE) continue;   // by its target, not its title: regenerated with a live count
-    if (m) pointers.push({ line, target: m[1] });
-    else if (line.trim() || preamble[preamble.length - 1]?.trim()) preamble.push(line);
+    if (m && m[1] === ARCHIVE) { last = null; continue; }   // by its target, not its title: regenerated with a live count
+    // An indented line right under a pointer is its hook, wrapped: it goes where the pointer goes (1.3.1 audit D-1).
+    // Held with \n inside; the writes below turn it into the file's own line ending.
+    if (m) pointers.push(last = { line, target: m[1] });
+    else if (last && /^[ \t]+\S/.test(line)) last.line += '\n' + line;
+    else { last = null; if (line.trim() || preamble[preamble.length - 1]?.trim()) preamble.push(line); }
   }
   while (preamble.length && preamble[preamble.length - 1].trim() === '') preamble.pop();
   return { preamble, pointers, gap };
@@ -241,7 +244,7 @@ function tier(dir, now, seen = null) {
   const archiveLine = (n) => `- [Archive](${ARCHIVE}) — ${n} older pointers; grep it before assuming something was never learned`;
   // Each file in its own line endings (a new archive in the index's), the blank under the prose kept.
   const eol = eolOf(mainText), arcEol = arcText !== null ? eolOf(arcText) : eol;
-  const render = () => [...main.preamble, ...(main.gap ? [''] : []), ...hot.map((p) => p.line), archiveLine(cold.length)].join(eol) + eol;
+  const render = () => [...main.preamble, ...(main.gap ? [''] : []), ...hot.map((p) => p.line), archiveLine(cold.length)].join(eol).replace(/\r?\n/g, eol) + eol;
 
   // A ceiling, not a warning. The windows cap how many lines survive, not how
   // long they are, so a corpus that writes six memories a day outgrows any
@@ -295,7 +298,7 @@ function tier(dir, now, seen = null) {
 
   const before = Buffer.byteLength(mainText);
   const nextMain = render();
-  const nextArc = [...arc.preamble, '', ...cold.map((p) => p.line)].join(arcEol) + arcEol;
+  const nextArc = [...arc.preamble, '', ...cold.map((p) => p.line)].join(arcEol).replace(/\r?\n/g, arcEol) + arcEol;
   // Written at once: the sleep blocks the loop an async write would wait on.
   if (PAUSE) { writeSync(2, 'paused\n'); sleep(PAUSE); }
 
@@ -311,7 +314,7 @@ function tier(dir, now, seen = null) {
   let wrote = false, conflict = false;
   if (!dry) {
     const back = arc.pointers.filter((p) => hot.includes(p));
-    const first = back.length ? [...arc.preamble, '', ...cold.map((p) => p.line), ...back.map((p) => p.was)].join(arcEol) + arcEol : nextArc;
+    const first = back.length ? [...arc.preamble, '', ...cold.map((p) => p.line), ...back.map((p) => p.was)].join(arcEol).replace(/\r?\n/g, arcEol) + arcEol : nextArc;
     const a = write(arcPath, arcText, first);
     const m = a === 'conflict' ? 'conflict' : write(mainPath, mainText, nextMain);
     const b = back.length && a !== 'conflict' && m !== 'conflict' ? write(arcPath, a === true ? first : arcText, nextArc) : false;
