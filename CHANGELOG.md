@@ -26,7 +26,8 @@ data loss with parallel sessions, test gaps) and the review after it.
 - An index line whose title holds `[brackets]` reads back, nested ones too.
 - `modified: YYYY-MM-DD HH:MM` keeps its time.
 - Each note is read again once after the upgrade: 1.3.0's cache in `.facts`
-  kept these misreadings for notes unchanged since.
+  kept these misreadings for notes unchanged since. A note 1.3.0 archived
+  by misreading `superseded-by: none` comes back while its age allows.
 
 **Redaction**
 
