@@ -253,8 +253,9 @@ ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !r
   // Timed at 5,000 blanks and at 50,000 (a linear read costs ten times the first; the old 12 s one a hundred): a slow runner slows both, the old
   // fixed 1 s stays as the floor (audit #18).
   const read = (n) => { const blanks = ' '.repeat(n), t = performance.now(); const g = front(`---\nname: n${blanks}x\ndescription: d${blanks}\nsuperseded-by: ${blanks}#\ntype:\n ${blanks}\n---\n`); return [performance.now() - t, g]; };
+  // The fastest of three small reads: one slow sample on a busy CI runner once pulled a quadratic read under 50x (1.3.1 mutant run).
   read(5_000);
-  const [small] = read(5_000), [big, f] = read(50_000);
+  const small = Math.min(...[1, 2, 3].map(() => read(5_000)[0])), [big, f] = read(50_000);
   ok(big < Math.max(1000, 50 * small) && f.desc === 'd' && f.superseded === '', `a value with 50,000 blanks is read in linear time (${big.toFixed(0)} ms, ${small.toFixed(1)} ms at a tenth, ${JSON.stringify(f).slice(0, 80)})`);
 }
 
