@@ -222,6 +222,8 @@ function inflight(payload, s) {
 export function recover(input) {
   const t = input.transcript_path;
   if (typeof t !== 'string' || !existsSync(t)) return '';
+  // Mid-turn is read from the tail alone, as gate() does; the walk back to the turn's prompt (megabytes) only when a note is due.
+  if (!state(t, { ask: false }).midTurn) return '';
   const s = state(t);
   // None for a private conversation, as the gate writes none.
   if (!s.midTurn || secret(input, s)) return '';
