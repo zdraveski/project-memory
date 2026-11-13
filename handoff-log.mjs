@@ -590,6 +590,8 @@ function latest(path, since = null, all) {
       // own Stops never wrote it (audit H-F6). Found by a look back, and read with the tail: its tools are the tail's.
       const p = !whole && !got.open ? promptBefore(path, bytes) : null;
       const out = p ? turns(`${p}\n${tail}`) : got;
+      // Given up: 32 MB read, no turn in them and no prompt before. Thrown, so the Stop records the failure and the briefing says so.
+      if (!whole && !out.length) throw new Error(`no turn found in the last ${Math.round(bytes / 1e6)} MB of ${path}`);
       out.whole = whole; return out;
     }
   }
@@ -650,7 +652,7 @@ export const parse = (section) => [...section.matchAll(ENTRY)].map((m) => ({ at:
 // wrote into that sentence, and the real section went stale (audit, 2026-10-28).
 const alone = (doc, i, mark) => {
   const end = doc.indexOf('\n', i);
-  return /^[ \t]*$/.test(doc.slice(doc.lastIndexOf('\n', i - 1) + 1, i)) && /^[ \t]*\r?$/.test(doc.slice(i + mark.length, end === -1 ? doc.length : end));
+  return /^[ \t﻿]*$/.test(doc.slice(doc.lastIndexOf('\n', i - 1) + 1, i)) && /^[ \t]*\r?$/.test(doc.slice(i + mark.length, end === -1 ? doc.length : end));
 };
 export const sectionOf = (doc) => {
   for (let a = doc.lastIndexOf(START); a !== -1; a = a ? doc.lastIndexOf(START, a - 1) : -1) {

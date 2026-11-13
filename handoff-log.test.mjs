@@ -2016,6 +2016,20 @@ ok(/\[r3tail02\]: second ask\n  \*\*did:\*\* second done/.test(readFileSync(join
   ok(stopR.status === 0 && existsSync(failedR) && /EACCES/.test(readFileSync(failedR, 'utf8')) && days.length === 1 && /needs attention[^\n]*could not be saved[^\n]*EACCES/.test(briefR.stdout),
     `a handoff.md that never reads is reported and the journal goes on (got ${stopR.status}, record ${existsSync(failedR)}, ${days.length} day(s), ${briefR.stdout.slice(0, 300)})`);
 }
+// B9: a Stop that reads 32 MB and finds no turn in them gives up with a failure note, not in silence.
+{
+  const homeG = tempDir('hl-giant-'), cwdG = 'C:\\handoff-giant', dirG = storeFor(homeG, cwdG), projG = dirname(dirG), tG = join(projG, 'giant001-0000.jsonl');
+  mkdirSync(dirG, { recursive: true });
+  writeFileSync(dirG + '/handoff.md', '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+  writeFileSync(tG, (tool_(3_000_000) + '\n').repeat(12));
+  const failedG = join(dirname(projG), `.handoff-failed-${basename(projG)}`), was = [process.env.HOME, process.env.USERPROFILE];
+  let stopG;
+  try {
+    process.env.HOME = process.env.USERPROFILE = homeG;
+    stopG = spawnSync(process.execPath, [TIER, '--stop'], { input: JSON.stringify({ cwd: cwdG, transcript_path: tG, session_id: 'giant001-0000', hook_event_name: 'Stop' }), encoding: 'utf8', timeout: 120_000 });
+  } finally { [process.env.HOME, process.env.USERPROFILE] = was; }
+  ok(stopG.status === 0 && existsSync(failedG) && /turn/.test(readFileSync(failedG, 'utf8')), `a transcript with no turn in its last 32 MB leaves a failure note (got ${stopG.status}, ${existsSync(failedG) ? readFileSync(failedG, 'utf8') : 'no note'})`);
+}
 // Two identical exchanges are no moved clock: the Stop after them reads only
 // what the newest needs, not the whole file.
 {
@@ -2172,6 +2186,9 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   ok(so6(inner).b === inner.lastIndexOf('<!-- auto:end -->'), 'an end marker quoted inside the section does not end it');
   const below = '<!-- auto:start -->\n- e\n<!-- auto:end -->\nsee `<!-- auto:start -->` above\n<!-- auto:end -->\n';
   ok(so6(below).a === 0 && so6(below).b === below.indexOf('<!-- auto:end -->'), 'a start marker quoted below the section does not start one');
+  // B10: an editor's BOM before the first line does not hide a marker on it.
+  const bom = '﻿<!-- auto:start -->\n- e\n<!-- auto:end -->\n';
+  ok(so6(bom).a === 1 && so6(bom).b === bom.indexOf('<!-- auto:end -->'), 'a BOM before the start marker still finds the section');
 }
 
 // Round 6. A turn the user stopped with Escape is no turn still running.
