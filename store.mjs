@@ -140,7 +140,9 @@ export const budgetOf = (dir) => (isShared(dir) ? SHARED_BUDGET : BUDGET);
 // MEMORY.md is matched by its target, never its title. A file in the store,
 // by its name: a web link was reported as a memory with no file on every
 // startup, and `../../big.bin` was read whole by every Stop.
-export const POINTER = /^- \[[^\]]*\]\(([^)/\\:]+)\)/;
+// A title may hold one level of [brackets] (`[Fix [WIP] x]`): unmatched, the line was prose and its note got a second
+// pointer. The two branches start on different characters, so the match stays linear.
+export const POINTER = /^- \[(?:[^[\]]|\[[^[\]]*\])*\]\(([^)/\\:]+)\)/;
 export const ARCHIVE = 'MEMORY-archive.md';
 // The two index files the plugin writes; any other MEMORY-*.md is a note.
 export const isIndex = (f) => f === 'MEMORY.md' || f === ARCHIVE;
@@ -249,17 +251,19 @@ export function front(text) {
     const p = (cut ? v.replace(/(?:^|[ \t])#.*$/, '') : v).trim().replace(/^(["'])(?![\s\S]*\1)/, '');
     return /^(?:null|Null|NULL|~|#(?:\s.*)?)$/.test(p) ? '' : p;
   };
-  const superseded = scalar(get(/^[ \t]*superseded-by:[ \t]*(.*)$/m), true) || block('superseded-by')[0] || '';
+  // An empty list or a "none" names no replacement; read as one, it archived the note for good (1.3.1 audit E-3).
+  const superseded = (scalar(get(/^[ \t]*superseded-by:[ \t]*(.*)$/m), true) || block('superseded-by')[0] || '').replace(/^(?:\[[ \t]*\]|none|false|no)$/i, '');
   const desc = get(/^description:[ \t]*(.*)$/m);
   return {
     name: scalar(get(/^name:[ \t]*(.*)$/m)),
     desc: /^[>|][-+]?$/.test(desc) ? block('description').join(' ') : scalar(desc),
     type: get(/^[ \t]*type:[ \t]*["']?(\w+)/m, keys).toLowerCase(),
-    tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)/m, keys).toLowerCase(),
+    // The whole word: `tier: hot-ish` read as hot.
+    tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)(?=["']?[ \t]*(?:#|$))/m, keys).toLowerCase(),
     superseded,
     // A date alone is that day here: read as UTC midnight, it printed as the
-    // day before anywhere west of Greenwich.
-    modified: Date.parse(get(/^[ \t]*modified:[ \t]*(\S+)/m).replace(/^(\d{4}-\d\d-\d\d)$/, '$1T00:00')),
+    // day before anywhere west of Greenwich. A date, a space and a time is that time: cut at the space, it was midnight.
+    modified: Date.parse(get(/^[ \t]*modified:[ \t]*(\d{4}-\d\d-\d\d \d\d:\d\d\S*|\S+)/m).replace(' ', 'T').replace(/^(\d{4}-\d\d-\d\d)$/, '$1T00:00')),
   };
 }
 
@@ -318,10 +322,11 @@ export const lockBudget = (on) => { left = on ? LOCK_WAIT : null; };
 // Run fn holding the store's lock: `mkdir` either creates the folder or fails,
 // on NTFS as anywhere. Returns fn's result, or null when the lock stayed busy.
 export function withLock(dir, fn) {
-  const lock = join(dir, '.lock'), t0 = Date.now();
-  let refused = 0, held = false;
+  const lock = join(dir, '.lock'), owner = join(lock, 'owner'), t0 = Date.now();
+  const token = `${process.pid}.${Math.random().toString(36).slice(2)}`;
+  let refused = 0, held = false, signed = false;
   for (const until = t0 + Math.min(LOCK_WAIT, left ?? LOCK_WAIT); ;) {
-    try { mkdirSync(lock); held = true; break; }
+    try { mkdirSync(lock); held = true; try { writeFileSync(owner, token); signed = true; } catch {} break; }
     catch (e) {
       // The last holder's rmdir still settling: the same codes a rename retries.
       if (e.code !== 'EEXIST' && !BUSY.includes(e.code)) throw e;
@@ -360,7 +365,12 @@ export function withLock(dir, fn) {
   if (left !== null) left = Math.max(0, left - (Date.now() - t0));
   if (!held) return null;
   // The disk may refuse the unlock for a moment (the codes a rename retries): a lock left behind stops every hook for LOCK_STALE.
-  try { return fn(); } finally { for (let i = 0; ; i++) { try { rmdirSync(lock); break; } catch (e) { if (!BUSY.includes(e.code) || i === 2) break; sleep(STEP); } } }
+  // Released only while it is still ours: a holder that outlived LOCK_STALE had it taken over, and removing it by path let a
+  // third hook in beside the second (audit D-2).
+  try { return fn(); } finally {
+    let mine = !signed; try { mine = readFileSync(owner, 'utf8') === token; } catch {}
+    if (mine) { try { unlinkSync(owner); } catch {} for (let i = 0; ; i++) { try { rmdirSync(lock); break; } catch (e) { if (!BUSY.includes(e.code) || i === 2) break; sleep(STEP); } } }
+  }
 }
 
 // The temp copies replaceIfUnchanged leaves when its hook is killed between the write and the rename (`<file>.tmp<pid>`),

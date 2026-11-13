@@ -107,7 +107,8 @@ function factsFor(dir, file, memo = null) {
   } catch (e) { if (BUSY.includes(e.code)) throw e; return null; }
   const { type, tier, desc, modified: stamp } = was ? { type: was[1], tier: was[2], modified: was[3] ?? NaN } : front(head);
   if (memo) memo.now[file] = [k, type, tier, Number.isNaN(stamp) ? null : stamp];
-  const modified = Number.isNaN(stamp) ? st.mtimeMs : stamp;
+  // A stamp over a day in the future is a typo (2099): it kept the note hot forever (1.3.1 audit E-4).
+  const modified = Number.isNaN(stamp) || stamp > Date.now() + DAY ? st.mtimeMs : stamp;
   const named = (file.match(/(\d{4})-(\d{2})-(\d{2})/) || [])[0];
   // A name's date that is not one (2026-13-45, or Feb 31 that Date.parse rolls to March) is no date: NaN archived the note at once.
   const d = named ? Date.parse(named) : NaN;
@@ -137,16 +138,19 @@ function split(text) {
   const preamble = [];
   // `gap`: a blank line between the prose and the first pointer, kept: dropped, a `# Memory Index` heading lost the line
   // under it at the first pass (audit I-F4).
-  let gap = false;
+  let gap = false, last = null;
   // A BOM binds to the first line and stops it matching POINTER, which quietly
   // demotes the top memory to prose and orphans it.
   for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const m = line.match(POINTER);
     // The Archive line counts for the gap too: with every pointer cold it is the only line after the blank one.
     if (m) gap ||= !pointers.length && preamble.at(-1)?.trim() === '';
-    if (m && m[1] === ARCHIVE) continue;   // by its target, not its title: regenerated with a live count
-    if (m) pointers.push({ line, target: m[1] });
-    else if (line.trim() || preamble[preamble.length - 1]?.trim()) preamble.push(line);
+    if (m && m[1] === ARCHIVE) { last = null; continue; }   // by its target, not its title: regenerated with a live count
+    // An indented line right under a pointer is its hook, wrapped: it goes where the pointer goes (1.3.1 audit D-1).
+    // Held with \n inside; the writes below turn it into the file's own line ending.
+    if (m) pointers.push(last = { line, target: m[1] });
+    else if (last && /^[ \t]+\S/.test(line)) last.line += '\n' + line;
+    else { last = null; if (line.trim() || preamble[preamble.length - 1]?.trim()) preamble.push(line); }
   }
   while (preamble.length && preamble[preamble.length - 1].trim() === '') preamble.pop();
   return { preamble, pointers, gap };
@@ -240,7 +244,7 @@ function tier(dir, now, seen = null) {
   const archiveLine = (n) => `- [Archive](${ARCHIVE}) — ${n} older pointers; grep it before assuming something was never learned`;
   // Each file in its own line endings (a new archive in the index's), the blank under the prose kept.
   const eol = eolOf(mainText), arcEol = arcText !== null ? eolOf(arcText) : eol;
-  const render = () => [...main.preamble, ...(main.gap ? [''] : []), ...hot.map((p) => p.line), archiveLine(cold.length)].join(eol) + eol;
+  const render = () => [...main.preamble, ...(main.gap ? [''] : []), ...hot.map((p) => p.line), archiveLine(cold.length)].join(eol).replace(/\r?\n/g, eol) + eol;
 
   // A ceiling, not a warning. The windows cap how many lines survive, not how
   // long they are, so a corpus that writes six memories a day outgrows any
@@ -294,7 +298,7 @@ function tier(dir, now, seen = null) {
 
   const before = Buffer.byteLength(mainText);
   const nextMain = render();
-  const nextArc = [...arc.preamble, '', ...cold.map((p) => p.line)].join(arcEol) + arcEol;
+  const nextArc = [...arc.preamble, '', ...cold.map((p) => p.line)].join(arcEol).replace(/\r?\n/g, arcEol) + arcEol;
   // Written at once: the sleep blocks the loop an async write would wait on.
   if (PAUSE) { writeSync(2, 'paused\n'); sleep(PAUSE); }
 
@@ -310,7 +314,7 @@ function tier(dir, now, seen = null) {
   let wrote = false, conflict = false;
   if (!dry) {
     const back = arc.pointers.filter((p) => hot.includes(p));
-    const first = back.length ? [...arc.preamble, '', ...cold.map((p) => p.line), ...back.map((p) => p.was)].join(arcEol) + arcEol : nextArc;
+    const first = back.length ? [...arc.preamble, '', ...cold.map((p) => p.line), ...back.map((p) => p.was)].join(arcEol).replace(/\r?\n/g, arcEol) + arcEol : nextArc;
     const a = write(arcPath, arcText, first);
     const m = a === 'conflict' ? 'conflict' : write(mainPath, mainText, nextMain);
     const b = back.length && a !== 'conflict' && m !== 'conflict' ? write(arcPath, a === true ? first : arcText, nextArc) : false;
@@ -533,7 +537,8 @@ function health(dir, problems) {
   const want = problems.length ? problems.join('\n') + '\n' : null;
   const have = raw(p);
   if (want === have) return;
-  if (want === null) unlinkSync(p); else writeFileSync(p, want);
+  // Through a temp file: the startup line read a half-written one (1.3.1 audit D-5).
+  if (want === null) unlinkSync(p); else replaceIfUnchanged(p, have, want);
 }
 
 // ponytail: two sessions updating this counter at once can miscount by one;
@@ -542,7 +547,8 @@ function health(dir, problems) {
 // tidy-up is stamped whatever the snapshot did, or one that never went through redid the whole pass every Stop.
 function snapshotHealth(s) {
   const p = join(projectsRoot(), '.snapshot-health');
-  let h = {}; try { h = JSON.parse(readFileSync(p, 'utf8')); } catch {}
+  const text = raw(p);
+  let h = {}; try { h = JSON.parse(text) ?? {}; } catch {}
   const failed = typeof s === 'string' && s.startsWith('snapshot failed');
   const off = typeof s === 'string' && s.startsWith('off: ');
   const rest = typeof s === 'string' && s.startsWith('in parts: ') ? parseInt(s.slice('in parts: '.length), 10) : 0;
@@ -556,7 +562,8 @@ function snapshotHealth(s) {
     : off ? { lastOk: h.lastOk || null, failures: 0, off: s.slice('off: '.length) }
     : { lastOk: new Date().toISOString(), failures: 0, ...(rest && { partial: rest, pending: true }) };
   if (missed.length) next.missed = missed;
-  try { writeFileSync(p, JSON.stringify(next)); } catch {}
+  // Through a temp file: one torn by a parallel Stop parsed as {}, and the owed snapshot and failure count were lost (audit D-5).
+  try { replaceIfUnchanged(p, text, JSON.stringify(next)); } catch {}
 }
 const owed = () => { try { return JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8')).pending === true; } catch { return false; } };
 
