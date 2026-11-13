@@ -1681,6 +1681,8 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   // clip() joins lines and redacts again: the redis rule ran to the text's end and took what followed (1.3.1 fix re-review).
   const c = clip('Ran redis-cli AUTH default Zq94xPlmN0aQ\nThen I checked the keys\nredis-cli needs AUTH before any command, so we log in first', 2000);
   ok(!c.includes('Zq94x') && c.includes('Then I checked the keys') && c.includes('so we log in first'), `the redis rule takes the password, not the text after it (got ${c})`);
+  const p = 'use the redis-cli AUTH option to log in';
+  ok(red(p) === p, `"redis-cli AUTH option" in prose is kept (got ${red(p)})`);
 }
 // Over-redaction costs recall: the word after a command's flag is often its
 // point. A reference ($TOKEN, ${TOKEN}, $(cat pw)) or a path is no secret, nor
