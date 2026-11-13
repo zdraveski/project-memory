@@ -857,6 +857,59 @@ ok(!leaked.length, `URL passwords, GitLab, npm, Hugging Face and Slack secrets, 
 ok(redact('input_tokens: 863324') === 'input_tokens: 863324' && redact('monkey=bananas123') === 'monkey=bananas123' && redact('mysql -u root -p prod') === 'mysql -u root -p prod',
   'a token count, a word ending in "key", and mysql asking for its password are left as they are');
 ok(['check whether the password is hashed.', 'the password was changed', 'mysql -h db -P3306 prod'].every((s) => redact(s) === s), 'prose about a password, and a port, are left as they are');
+// 1.3.2: secrets in more shapes (defect hunt A1-A12). Each text must lose its secret V, in redact() and in clip(); each keep is left as it was.
+const V = 'Zq8xK2mP9vL4nR7tB3wY';
+const gaps = (what, texts, keeps = []) => {
+  // A text is a string holding V, or [text, secret].
+  const bad = texts.filter((t) => { const [s, v] = [].concat(t, V); return redact(s).includes(v) || clip(s, 2000).includes(v); });
+  ok(!bad.length, `${what} are redacted (leaked: ${bad.join(' | ')})`);
+  ok(keeps.every((s) => redact(s) === s), `${what}: ordinary lines are kept`);
+};
+// A1: SQL passwords.
+gaps('SQL passwords', [`psql -c "ALTER USER app WITH PASSWORD '${V}'"`, `CREATE ROLE app LOGIN PASSWORD '${V}';`, `mysql -e "CREATE USER 'a'@'%' IDENTIFIED BY '${V}'"`,
+  `ALTER USER 'a'@'%' IDENTIFIED WITH mysql_native_password BY '${V}';`, `SET PASSWORD FOR 'a'@'h' = PASSWORD('${V}');`, `GRANT ALL ON *.* TO 'a'@'h' IDENTIFIED BY '${V}';`],
+  ['the password column is NOT NULL', 'identified by name']);
+// A2: redis, mongo, zip, ldap and mosquitto passwords.
+gaps('redis, mongo, zip, ldap and mosquitto passwords', [`redis-cli CONFIG SET requirepass ${V}`, `redis-cli --pass ${V} ping`, `redis-server --requirepass ${V}`, `requirepass ${V}`, `masterauth ${V}`,
+  `mongo -u u -p ${V} db`, `mongosh -u u -p ${V}`, `zip -P ${V} a.zip f`, `ldapsearch -x -D cn=a -w ${V}`, `mosquitto_pub -u a -P ${V} -t x`],
+  ['requirepass in redis.conf', 'zip -r a.zip f', 'ldapsearch -P 3 -x', 'mongo -u u --port 27017 db', 'redis-cli --pass $REDIS_PW ping']);
+// A3: a Telegram bot token in the API's URL, where the digits follow the letters "bot".
+const tgram = `123456789:AA${V}abcdefghijklm`;
+gaps('a Telegram bot token', [`curl https://api.telegram.org/bot${tgram}/getMe`, `token ${tgram}`, `x${tgram}`]);
+// A4: one very long value after NAME= or --password took seconds (quadratic) at every Stop.
+{
+  const [good, how] = linear((m) => { redact('export API_KEY=' + 'a/'.repeat(2500 * m)); redact('--password ' + 'dir/'.repeat(1250 * m)); redact('MY_TOKEN=' + 'a/'.repeat(2500 * m) + ' ./run.sh'); }, 1000);
+  ok(good, `one very long value after NAME= or --password is read in linear time (${how})`);
+}
+// A5: curl -u with the password quoted after the colon.
+gaps('curl -u passwords quoted after the colon', [`curl -u admin:"${V}" https://x`, `curl -u admin:'${V}' https://x`, `curl --user admin:"${V}" https://x`], ['docker run -u 1000:1000 img', 'curl -u admin https://x']);
+// A6: XML, PowerShell and Windows commands.
+gaps('XML, PowerShell and Windows passwords', [`<password>${V}</password>`, `<DbPassword type="x">${V}</DbPassword>`, `<add key="DbPassword" value="${V}"/>`, `<add key="ApiToken" value="${V}" />`,
+  `ConvertTo-SecureString "${V}" -AsPlainText -Force`, `ConvertTo-SecureString -String '${V}' -AsPlainText`, `$pw = "${V}"`, `$dbPassword='${V}'`, `net use Z: \\\\h\\s ${V} /user:u`,
+  `schtasks /create /ru u /rp ${V} /tn t /tr x`],
+  ['<password>${env.PW}</password>', '<passwordPolicy>strict</passwordPolicy>', '<add key="Mode" value="release"/>', '$passed = "yes12345"', 'net use Z: \\\\h\\s /delete',
+    'schtasks /create /ru u /rp * /tn t', 'ConvertTo-SecureString $plain -AsPlainText']);
+// A7: a short Basic credential (under 20 base64 characters) after Authorization.
+const b64 = (s) => Buffer.from(s).toString('base64');
+const short = (u) => [`curl -H "Authorization: Basic ${b64(u)}" https://x`, b64(u)];
+gaps('a short Basic credential', [short('bob:hunter22'), short('a:b2c3d4'), [`authorization: basic ${b64('a:b2c3d4e5')}`, b64('a:b2c3d4e5')]], ['Authorization: Basic authentication', 'the Basic auth header']);
+// A8: curl's proxy user.
+gaps('curl proxy passwords', [`curl --proxy-user bob:${V} http://x`, `curl -U bob:${V} --proxy http://p http://x`], ['pip install -U pip', 'psql -U postgres db', 'curl --proxy-user bob http://x']);
+// A9: a URL password with / ? or # in it.
+gaps('URL passwords with / ? #', [`postgres://user:pa/${V}@host/db`, `git clone https://user:p#${V}@github.com/a/b`, `redis://:p?${V}@h:6379`],
+  ['http://localhost:8080/path?e=a@b.com', 'http://host:8080?x=a@b.c', 'https://example.com:443/x#a@b', 'see https://example.com/a: then mail me@x.org']);
+// A10: npm's _auth (base64 user:pass) in .npmrc and in the environment.
+gaps('npm _auth values', [[`//registry.npmjs.org/:_auth=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], [`NPM_CONFIG__AUTH=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], `//r.example.com/:_auth="${V}"`, [`_auth=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], [`npm config set _auth ${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')]],
+  ['npm config get _auth']);
+// A11: more vendor tokens, names with no `_` before KEY, a key or code in a query, a bare AWS secret, a Discord token, a prefix after `_`.
+const VV = V + V;
+gaps('more vendor tokens and key shapes', [`gem push rubygems_${VV}`, `nfp_${VV}`, `fo1_${VV}`, `pscale_pw_${VV}`, `tskey-auth-kABC123CNTRL-${VV}`, `glc_${VV}`, `xoxd-${V}%2Bq`, [`AGE-SECRET-KEY-1${VV.toUpperCase()}`, V.toUpperCase()],
+  `ACCESSKEY=${V}`, `AuthKey: ${V}`, `Ocp-Apim-Subscription-Key: ${VV}`, `AUTH=${V}`, `CREDENTIALS=${V}`, `https://api.x.io/v1?key=${V}`, `https://x.io/cb?code=${V}&state=1`,
+  `OPENAI_KEY_sk-${VV}`, [`my_ghp_${'a1B2'.repeat(9)}`, 'a1B2a1B2'], [`key_AKIAIOSFODNN7EXAMPLE`, 'AKIAIOSFODNN7EXAMPLE'],
+  [`wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`, 'wJalrXUtnFEMI'], [fake('MTk4NjIyNDgzNDcx', 'OTI1MjQ4.Cl2FMQ.', 'ZnCjm1XVW7vRze4b7Cq4se7kKWs'), 'ZnCjm1XVW7vRze4b7Cq4se7kKWs']],
+  ['https://x.io/?key=primary', 'https://x.io/cb?code=404&state=1', 'src/Components/Foo/bar/Baz/qux/quux.js', 'AUTH=true', 'nfp_short', 'pscale_pw_x', 'the task-sk-list']);
+// A12: a full-width colon (U+FF1A) after the word.
+gaps('a password after a full-width colon', [`password\uFF1A${V}`, `token\uFF1A ${V}`], ['password\uFF1A none']);
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));

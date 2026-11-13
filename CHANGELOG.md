@@ -11,6 +11,8 @@
 - `restore --force` keeps the text it replaced under a git ref, so a later `git gc` does not delete it.
 - A snapshot that finds files changed after its commit (another session writing at the same moment) keeps the next Stop owing one, so MEMORY.md is not left out of the history.
 - The README says MEMORY.md is rewritten in place as a plain file and that `##` headings in it are not kept.
+- More secrets are cut before they are saved: SQL passwords (`PASSWORD '…'`, `IDENTIFIED BY`), redis, mongo, zip, ldap and mosquitto passwords, a Telegram bot token inside the API URL, `curl -u user:"pass"`, `--proxy-user`, XML `<password>`, PowerShell `ConvertTo-SecureString` and `$pw =`, `net use`, `schtasks /rp`, a short Basic credential, a URL password with `/`, `?` or `#`, npm `_auth`, more vendor tokens, a `?key=` or `?code=` in a URL, and a password after a full-width colon.
+- One very long value after `NAME=` or `--password` no longer slows a Stop down for seconds.
 
 ## 1.3.1 (2026-11-13)
 
