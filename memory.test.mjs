@@ -1216,11 +1216,11 @@ if (!quick) {
     r = await fcli('forget', 'zebra', '--conversation', '', ...more);
     ok(r.status === 1 && /--conversation needs a value/.test(r.stdout) && kept('2025-10-20', '2025-10-21', today), `an empty --conversation is refused (got ${r.stdout}${r.stderr})`);
   }
-  // Accents: a "café" typed composed finds the entry stored decomposed, as search does.
+  // Accents: a composed "caf\u00e9" typed finds the entry stored decomposed ("cafe\u0301"), as search does.
   writeFileSync(join(fj, '2025-10-22.md'), page('2025-10-22', [entry('2025-10-22 09:00', 'my favourite place is café-bistro')]));
-  r = await fcli('forget', 'café-bistro');
+  r = await fcli('forget', 'caf\u00e9-bistro');
   ok(/^1 entry in .* would go/m.test(r.stdout), `forget finds a decomposed accent by the composed spelling (got ${r.stdout}${r.stderr})`);
-  r = await fcli('forget', 'café-bistro', '--yes');
+  r = await fcli('forget', 'caf\u00e9-bistro', '--yes');
   ok(/removed 1 from/.test(r.stdout) && gone('2025-10-22'), `and --yes removes it (got ${r.stdout}${r.stderr})`);
   reset();
   // A leading ~ in --store is the home folder, as a POSIX shell would have made it (PowerShell and cmd pass it as typed).

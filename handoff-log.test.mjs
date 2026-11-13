@@ -713,7 +713,11 @@ ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'pr
   const sess = conv('f1cccccc', user('plan the reorg', { ts: '2026-10-27T12:42:00Z' }), asst('a plan'), user('go on', { ts: '2026-10-27T12:43:00Z' }),
     call('toolu_q2', 'AskUserQuestion'), answered('toolu_q2', '<private-session>'), asst('Understood.'));
   ok(sess === 'private' && !/plan the reorg/.test(adoc()), `<private-session> as the answer to Claude's question marks the conversation (got ${sess})`);
-  ok(turns([call('toolu_e3', 'Bash'), rejected('toolu_e3', no('<private-session>'))].join('\n')).hush === true, '<private-session> as a rejected call\'s feedback marks the conversation');
+  {
+  const t = turns(['{"type":"api-request-blob","data":"x"}', user('the real ask'), asst('the real reply')].join('\n'));
+  ok(t.length === 1 && t[0].ask === 'the real ask', 'a record of a type turns() does not read, first in the tail, is skipped and the turn after it is kept');
+}
+ok(turns([call('toolu_e3', 'Bash'), rejected('toolu_e3', no('<private-session>'))].join('\n')).hush === true, '<private-session> as a rejected call\'s feedback marks the conversation');
   // An answer record without the answers alone (another version's): its words, the question's included, the safe way to err.
   ok(turns([call('toolu_q3', 'AskUserQuestion'), result('toolu_q3', said('<private-session>'))].join('\n')).hush === true, 'an answer with no answers record is read from its words');
   ok(turns([call('toolu_q6', 'AskUserQuestion'), result('toolu_q6', said('<private-session>'), {}, { toolUseResult: { answers: null } })].join('\n')).hush === true, 'so is one whose answers are no object');

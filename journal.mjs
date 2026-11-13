@@ -318,8 +318,8 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
 // all the same). `keys`: only those entries, the ones a search showed. They go
 // from handoff.md too, which the next startup's briefing prints (R36).
 // An entry holds a word (lower case) when any of its fields does, in any case.
-// Both sides NFC, as search reads them: a composed "é" finds a decomposed one.
-export const holds = (e, t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.normalize('NFC').toLowerCase().includes(t));
+// Both sides NFC, as search reads them: a composed "é" finds a decomposed one, in the entry or in the word.
+export const holds = (e, t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.normalize('NFC').toLowerCase().includes(t.normalize('NFC')));
 export function forget(dir, terms, { since, until, conversation, keys: only, more = [], apply = false, failed = [] } = {}) {
   // The keys as a set: looked up in the list once an entry, a range forget of
   // 15,000 entries spent 5 s here.
