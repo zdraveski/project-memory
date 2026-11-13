@@ -1063,6 +1063,16 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   await tierExec(['--dir', d9]);
   ok(readFileSync(join(d9, 'MEMORY-archive.md'), 'utf8') === a9 && readFileSync(join(d9, 'MEMORY.md'), 'utf8') === m9, 'a second pass changes nothing, trailing spaces and all');
 }
+// A hook wrapped onto an indented line goes where its pointer goes: left as prose, it was orphaned at the top (1.3.1 audit D-1).
+{
+  const d = store('proj-wrap'), old = new Date(Date.now() - 90 * 86400000);
+  writeFileSync(join(d, 'b.md'), '---\nname: b\ndescription: "b"\nmetadata:\n  type: project\n---\nbody\n');
+  writeFileSync(join(d, 'MEMORY.md'), '# Index\r\n\r\n- [b](b.md) — b\r\n  b wraps here\r\n- [a](a.md) — a\r\n  a wraps here\r\n');
+  utimesSync(join(d, 'b.md'), old, old);
+  await call(['--dir', d]);
+  const idx = readFileSync(join(d, 'MEMORY.md'), 'utf8'), arc = readFileSync(join(d, 'MEMORY-archive.md'), 'utf8');
+  ok(idx.includes('- [a](a.md) — a\r\n  a wraps here\r\n') && !idx.includes('b wraps') && arc.includes('- [b](b.md) — b\r\n  b wraps here\r\n'), `a wrapped hook stays under its pointer (got ${JSON.stringify(idx)} / ${JSON.stringify(arc)})`);
+}
 // A typo'd future stamp (2099) kept a note hot forever: over a day ahead, the file's time counts (1.3.1 audit E-4).
 {
   const d = store('proj-future'), old = new Date(Date.now() - 90 * 86400000);
