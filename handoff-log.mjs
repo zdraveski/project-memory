@@ -382,7 +382,11 @@ const SECRETS = [
   // command's own; nor "the --token flag", in prose.
   // Quoted, as a value with symbols or blanks must be, to its closing quote: the opening quote refused, each was kept (e2e audit,
   // 2026-11-01). A quoted one may start with `-`; a bare one that does is the next option (review, 2026-11-01).
-  [/(--(?!no-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|oauth2-bearer)[ =]["']?|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+["']?|\bssh-keygen\b[^\n|;&]{0,200}?\s-N\s+["']?|\bredis-cli\b[^\n|;&]{0,200}?\sAUTH\s+(?:[^\s"']+\s+(?=["']?[^\s"']+["']?[ \t]*(?:$|[\n|;&])))?["']?)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  [/(--(?!no-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|oauth2-bearer)[ =]["']?|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload)\b[^\n|;&]{0,200}?\s-p\s+["']?|\bssh-keygen\b[^\n|;&]{0,200}?\s-N\s+["']?)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  // redis-cli AUTH [user] pass: all of it, to a redirect or the command's end; the user name is no secret worth the parsing
+  // (1.3.1 fix review: `> out.txt`, `2>/dev/null`, a quoted pass with a blank and CRLF each kept the password).
+  [/(\bredis-cli\b[^\n|;&]{0,200}?\sAUTH\s+)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)([^\s<>|;&][^\r\n|;&<>]*?)(?=\s*(?:\d*[<>]|[\r\n|;&]|$))/g,
+    (m, pre, v) => (arg(v.split(/\s+/).pop()) ? m : `${pre}[redacted]`)],
   // A secret as a command's argument, which the journal's Ran field keeps (P1
   // hunt, 2026-10-29): `aws configure set` of a secret, key or token; a
   // SetEnvironmentVariable or setx of one; htpasswd -b's password, after its

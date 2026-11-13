@@ -1669,7 +1669,10 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   ['tool --api-key ' + k('Zq81x', 'PlmN0aQ'), 'Zq81x'], ['tool --apikey=' + k('Zq82x', 'PlmN0aQ'), 'Zq82x'], ['aws-tool --aws-access-key ' + k('Zq83x', 'PlmN0aQ'), 'Zq83x'],
   ['gpg --batch --passphrase ' + k('Zq84x', 'PlmN0aQ') + ' -c f', 'Zq84x'], ['tool --passphrase "correct ' + k('hor', 'se') + ' staple"', 'horse'],
   ['curl --oauth2-bearer ' + k('Zq85x', 'PlmN0aQ9zAbCd') + ' https://x', 'Zq85x'], ['ssh-keygen -t ed25519 -N "' + k('Zq86x', 'PlmN0aQ') + '" -f k', 'Zq86x'],
-  ['redis-cli -h h AUTH ' + k('Zq87x', 'PlmN0aQ'), 'Zq87x'], ['redis-cli AUTH default ' + k('Zq86x', 'PlmN0aQ'), 'Zq86x'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
+  ['redis-cli -h h AUTH ' + k('Zq87x', 'PlmN0aQ'), 'Zq87x'], ['redis-cli AUTH default ' + k('Zq86x', 'PlmN0aQ'), 'Zq86x'],
+  // Whatever follows the password (fix review, 1.3.1).
+  ['redis-cli AUTH default ' + k('Zq89x', 'PlmN0aQ') + ' > out.txt', 'Zq89x'], ['redis-cli AUTH default ' + k('Zq90x', 'PlmN0aQ') + ' 2>/dev/null', 'Zq90x'],
+  ['redis-cli AUTH default "Zq91x ' + k('Plm', 'N0aQ') + '"', 'PlmN0aQ'], ['redis-cli AUTH alice ' + k('Zq92x', 'PlmN0aQ') + '\r\nnext', 'Zq92x'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
   ['git clone https://' + k('0123456789abcdef', '0123456789abcdef01234567') + '@github.com/x/y', '89abcdef0123'],
   ['git clone https://' + k('Ab3dEfGhIjKlMnOp', 'QrStUvWxYz0123') + '@host/x', 'QrStUv']])
   ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a secret passed to a command is redacted (got ${red(s)})`);
