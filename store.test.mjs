@@ -304,12 +304,18 @@ ok(front('---\r\nname: crlf\r\ndescription: "quoted"\r\n---\r\n').desc === 'quot
 // every Stop.
 ok(POINTER.test('- [a](a.md) \u2014 x') && !POINTER.test('- [Repo](https://github.com/x/y) \u2014 the code') && !POINTER.test('- [x](../../big.bin) \u2014 x') && !POINTER.test('- [x](C:\\big.bin) \u2014 x'),
   'a pointer names a file in the store, never a link or a path');
+// A hand-written title with brackets in it: unmatched, the line was prose and tiering added a second pointer to its note.
+ok(POINTER.exec('- [Fix [WIP] thing](a.md) — x')?.[1] === 'a.md', 'a title holding [brackets] still names its file');
 // A date alone is that day where the user is: read as UTC midnight, it printed
 // as the day before west of Greenwich. Checked there: in UTC (GitHub's
 // machines) the two readings agree, and the check caught nothing.
 {
   process.env.TZ = 'America/New_York';
-  try { ok(local(front('---\nmodified: 2025-09-01\n---\n').modified).startsWith('2025-09-01 00:00'), 'a modified: date alone is that day, here'); }
+  try {
+    ok(local(front('---\nmodified: 2025-09-01\n---\n').modified).startsWith('2025-09-01 00:00'), 'a modified: date alone is that day, here');
+    // A date and a time with a space between, as people write it: the time was dropped at the space.
+    ok(local(front('---\nmodified: 2025-09-01 12:30\n---\n').modified) === '2025-09-01 12:30', 'a modified: date and time with a space keeps the time');
+  }
   finally { process.env.TZ = TZ0; }
 }
 // A transcript path that is no string threw, and the Stop hook with it; one
