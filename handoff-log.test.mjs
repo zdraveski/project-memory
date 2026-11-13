@@ -857,6 +857,17 @@ ok(!leaked.length, `URL passwords, GitLab, npm, Hugging Face and Slack secrets, 
 ok(redact('input_tokens: 863324') === 'input_tokens: 863324' && redact('monkey=bananas123') === 'monkey=bananas123' && redact('mysql -u root -p prod') === 'mysql -u root -p prod',
   'a token count, a word ending in "key", and mysql asking for its password are left as they are');
 ok(['check whether the password is hashed.', 'the password was changed', 'mysql -h db -P3306 prod'].every((s) => redact(s) === s), 'prose about a password, and a port, are left as they are');
+// 1.3.2: secrets in more shapes (defect hunt A1-A12). Each text must lose its secret V, in redact() and in clip(); each keep is left as it was.
+const V = 'Zq8xK2mP9vL4nR7tB3wY';
+const gaps = (what, texts, keeps = []) => {
+  const bad = texts.filter((s) => redact(s).includes(V) || clip(s, 2000).includes(V));
+  ok(!bad.length, `${what} are redacted (leaked: ${bad.join(' | ')})`);
+  ok(keeps.every((s) => redact(s) === s), `${what}: ordinary lines are kept`);
+};
+// A1: SQL passwords.
+gaps('SQL passwords', [`psql -c "ALTER USER app WITH PASSWORD '${V}'"`, `CREATE ROLE app LOGIN PASSWORD '${V}';`, `mysql -e "CREATE USER 'a'@'%' IDENTIFIED BY '${V}'"`,
+  `ALTER USER 'a'@'%' IDENTIFIED WITH mysql_native_password BY '${V}';`, `SET PASSWORD FOR 'a'@'h' = PASSWORD('${V}');`, `GRANT ALL ON *.* TO 'a'@'h' IDENTIFIED BY '${V}';`],
+  ['the password column is NOT NULL', 'identified by name']);
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));

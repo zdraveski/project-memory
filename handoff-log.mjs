@@ -427,6 +427,8 @@ const SECRETS = [
   // "password IT" with no verb, when IT has a letter and a digit.
   [/\b((?:password|passwd|passphrase|api[ _-]?key|token|secret)(?:\s{1,5}(?:for|of|to)\s{1,5}[^.,;:\n]{1,40}?)?\s{1,5}(?:is|was)\s{1,5})["']?(?=\S*[0-9!@#$%^&*_+=-])[^\s"',;]{3,}[^\s"',;.]/gi, '$1[redacted]'],
   [/\b((?:password|passwd)\s{1,3})(?=[^\s"',;]{0,200}\d)(?=[^\s"',;]{0,200}[A-Za-z])[^\s"',;:]{6,}/gi, '$1[redacted]'],
+  // SQL: `WITH PASSWORD 'x'`, `PASSWORD('x')`, `IDENTIFIED [WITH plugin] BY 'x'`; the value quoted, to its closing quote (1.3.2).
+  [/(\b(?:password(?:\s{1,5}\(?|\()|identified\s{1,5}(?:with\s{1,5}\w{1,40}\s{1,5})?by)\s{0,5})(["'])([^"'\n]{1,200})(?=\2)/gi, (m, pre, q, v) => (arg(v) || code(v) ? m : `${pre}${q}[redacted]`)],
   // The word can end a longer name, glued (PGPASSWORD=, dbPassword, clientSecret,
   // stripeApiKey) or not (DB_PASSWORD=, AWS_SECRET_ACCESS_KEY=), and the value
   // can sit on the next line (YAML). `pwd` needs its own start. Bounded, so no
