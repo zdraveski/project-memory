@@ -10,6 +10,7 @@
 - The first snapshot works with a very large store (more than about 15,000 notes), where the file list used to overflow git's output buffer.
 - `restore --force` keeps the text it replaced under a git ref, so a later `git gc` does not delete it.
 - A snapshot that finds files changed after its commit (another session writing at the same moment) keeps the next Stop owing one, so MEMORY.md is not left out of the history.
+- The README says MEMORY.md is rewritten in place as a plain file and that `##` headings in it are not kept.
 
 ## 1.3.1 (2026-11-13)
 
