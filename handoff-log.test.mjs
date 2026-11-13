@@ -1685,8 +1685,8 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   const p = 'use the redis-cli AUTH option to log in';
   ok(red(p) === p, `"redis-cli AUTH option" in prose is kept (got ${red(p)})`);
   // Each --option read one way only: read two ways, 24 of them took seconds and each one more doubled it (fix re-review 3).
-  // Sized so the slow forms take seconds, not hours: a mutant that times out counts as survived. The fix takes ~20 ms.
-  for (const [s, n] of [[' --tls', 24], [' -x =v', 25], [' -a redis-cli', 3850]]) {
+  // Sized so the slow forms take seconds, not hours: a mutant that times out counts as survived. The fix takes under 50 ms; the quadratic one 5 s here, so a fast runner still fails it.
+  for (const [s, n] of [[' --tls', 24], [' -x =v', 25], [' -a redis-cli', 12000]]) {
     const t0 = Date.now(); red('redis-cli' + s.repeat(n));
     ok(Date.now() - t0 < 300, `${n} redis-cli options like "${s}" redact fast (${Date.now() - t0} ms)`);
   }
