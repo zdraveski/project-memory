@@ -404,7 +404,8 @@ export default {
   'a forgotten exchange with no key read again': ['(t.id ? keys.has(t.id) : out.has(t.at))', 'keys.has(t.id)'],
   "a forgotten exchange kept out of another conversation's handoff": ['.filter(([, t]) => t && pathKey(t) === me)', ''],
   "a forgotten exchange back when its folder's case differs": ['t && pathKey(t) === me', 't === me'],
-  "redis-cli AUTH user pass kept": ["[^\\s<>|;&][^\\r\\n|;&<>]*?)", "[^\\s<>|;&\"'][^\\s|;&<>\"']*?)"],
-  "redis-cli AUTH pass before a redirect kept": ["(?=\\s*(?:\\d*[<>]|[\\r\\n|;&]|$))", "(?=\\s*(?:[\\r\\n|;&]|$))"],
+  "redis-cli AUTH user pass kept": ["(?:[ \\t]+(?:\"[^\"\\n]*\"|'[^'\\n]*'|[^\\s\"'|;&<>]+))?)/g", ")/g"],
+  "redis-cli AUTH quoted pass cut at ;": ["((?:\"[^\"\\n]*\"|'[^'\\n]*'|[^\\s\"'|;&<>]+)(?:[ \\t]+", "((?:[^\\s|;&<>]+)(?:[ \\t]+"],
+  "redis-cli AUTH redacted again by clip": ["\\sAUTH\\s+)(?!\\[redacted\\])", "\\sAUTH\\s+)"],
   "a *.7z file name read as 7z": ["(?<![\\w.*])7za?)", "7za?)"],
 };
