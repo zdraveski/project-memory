@@ -1107,6 +1107,15 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(/\(sup\.md\)/.test(readFileSync(join(e, 'MEMORY.md'), 'utf8')), 'a note 1.3.0 misread and archived comes back while its window holds');
   await call(['--dir', e]);
   ok(/\(sup\.md\)/.test(readFileSync(join(e, 'MEMORY.md'), 'utf8')), 'and stays');
+  // One 1.3.0 read rightly (not as archive) stays where it was put: archived by hand, or by its window then (fix re-review).
+  const g = store('proj-facts-kept');
+  writeFileSync(join(g, 'kept.md'), '---\nname: kept\ndescription: "kept"\nmetadata:\n  type: project\n---\nbody\n');
+  writeFileSync(join(g, 'MEMORY.md'), '# Index\n');
+  writeFileSync(join(g, 'MEMORY-archive.md'), '# Archive\n\n- [kept](kept.md) — kept\n');
+  const sg = statSync(join(g, 'kept.md'));
+  writeFileSync(join(g, '.facts'), JSON.stringify({ 'kept.md': [`${sg.size} ${sg.mtimeMs}`, 'project', null, null] }));
+  await call(['--dir', g]);
+  ok(!/\(kept\.md\)/.test(readFileSync(join(g, 'MEMORY.md'), 'utf8')), 'a line 1.3.0 read rightly and archived stays archived');
 }
 // A typo'd future stamp (2099) kept a note hot forever: over a day ahead, the file's time counts (1.3.1 audit E-4).
 {

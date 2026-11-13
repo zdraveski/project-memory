@@ -217,7 +217,7 @@ function tier(dir, now, seen = null) {
     // its cache, the window decides that line as it would a marked one (1.3.1 fix review).
     const old = memo?.was[p.target];
     p.f = factsFor(dir, p.target, memo);
-    const misread = Array.isArray(old) && !String(old[0]).startsWith('2 ') && old[2] === 'archive' && p.f?.tier !== 'archive';
+    const misread = Array.isArray(old) && !String(old[0]).startsWith('2 ') && old[2] === 'archive';
     const overflow = p.line.endsWith(OVERFLOW);
     p.was = p.line;   // as the archive holds it, mark and all
     // The one space the mark was added with: a trailing one the line had is its own.
@@ -329,7 +329,8 @@ function tier(dir, now, seen = null) {
     wrote = a === true || m === true || b === true;
     // Whole, so a note deleted leaves it too; under the store's lock, and a cache: a write that fails costs the next pass a read.
     const facts = JSON.stringify(memo.now);
-    if (facts !== JSON.stringify(memo.was)) try { writeFileSync(join(dir, FACTS), facts); } catch {}
+    // Not after a conflict: the pass that still sees a 1.3.0 entry is the one that brings a misread line back.
+    if (!conflict && facts !== JSON.stringify(memo.was)) try { writeFileSync(join(dir, FACTS), facts); } catch {}
   }
 
   return { dir, budget, before, after: Buffer.byteLength(nextMain), hot: hot.length, cold: cold.length,
