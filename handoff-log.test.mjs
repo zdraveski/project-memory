@@ -1664,7 +1664,14 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   ['export MY_SECRET_TOKEN=' + k('t0k', 'enValue5'), 't0k'], ['[Environment]::SetEnvironmentVariable("API_KEY", "' + k('k3y', 'Value66') + '", "User")', 'k3y'],
   // A number after a secret's flag or name is a PIN; only a count's name keeps one (R34).
   ['psql --password ' + k('123', '456') + ' mydb', '123456'], ['tool --password=' + k('12', '34'), '1234'], ['export TOKEN=' + k('1234', '5678'), '12345678'],
-  ['setx DB_PASSWORD ' + k('86', '4213'), '864213'], ['[Environment]::SetEnvironmentVariable("APP_PIN_PASSWORD", "' + k('97', '5310') + '", "User")', '975310']])
+  ['setx DB_PASSWORD ' + k('86', '4213'), '864213'], ['[Environment]::SetEnvironmentVariable("APP_PIN_PASSWORD", "' + k('97', '5310') + '", "User")', '975310'],
+  // Flags and commands the audit found kept (1.3.1 audit B-1).
+  ['tool --api-key ' + k('Zq81x', 'PlmN0aQ'), 'Zq81x'], ['tool --apikey=' + k('Zq82x', 'PlmN0aQ'), 'Zq82x'], ['aws-tool --aws-access-key ' + k('Zq83x', 'PlmN0aQ'), 'Zq83x'],
+  ['gpg --batch --passphrase ' + k('Zq84x', 'PlmN0aQ') + ' -c f', 'Zq84x'], ['tool --passphrase "correct ' + k('hor', 'se') + ' staple"', 'horse'],
+  ['curl --oauth2-bearer ' + k('Zq85x', 'PlmN0aQ9zAbCd') + ' https://x', 'Zq85x'], ['ssh-keygen -t ed25519 -N "' + k('Zq86x', 'PlmN0aQ') + '" -f k', 'Zq86x'],
+  ['redis-cli -h h AUTH ' + k('Zq87x', 'PlmN0aQ'), 'Zq87x'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
+  ['git clone https://' + k('0123456789abcdef', '0123456789abcdef01234567') + '@github.com/x/y', '89abcdef0123'],
+  ['git clone https://' + k('Ab3dEfGhIjKlMnOp', 'QrStUvWxYz0123') + '@host/x', 'QrStUv']])
   ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a secret passed to a command is redacted (got ${red(s)})`);
 // Over-redaction costs recall: the word after a command's flag is often its
 // point. A reference ($TOKEN, ${TOKEN}, $(cat pw)) or a path is no secret, nor
