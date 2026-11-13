@@ -386,9 +386,11 @@ const SECRETS = [
   // redis-cli AUTH [user] pass: both words, each quoted or bare; the user name is no secret worth the parsing (1.3.1 fix
   // review: `> out.txt`, `2>/dev/null`, a quoted pass with a blank and CRLF each kept the password). Two words, not to the
   // end: clip() joins lines first, and the rest of the entry went with it. Not an AUTH already [redacted]: clip() redacts
-  // until nothing changes, and each pass took two more words.
-  [/(\bredis-cli\b[^\n|;&]{0,200}?\sAUTH\s+)(?!\[redacted\])(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g,
-    (m, pre, v) => (arg(v.split(/\s+/).pop()) ? m : `${pre}[redacted]`)],
+  // until nothing changes, and each pass took two more words. Only options between redis-cli and AUTH: prose ("redis-cli needs
+  // AUTH before") lost two words. Kept only when every word reads as a path or variable: a pass then `./check.sh` was kept.
+  // shortcut: a password hand-wrapped onto the next line without `\` slips through clip(); a backslash wrap is caught.
+  [/(\bredis-cli(?:[ \t]+-{1,2}[\w-]+(?:[ \t=]+[^\s|;&<>-]\S*)?)*[ \t]+AUTH\s+)(?!\[redacted\])(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g,
+    (m, pre, v) => (v.split(/\s+/).every(arg) ? m : `${pre}[redacted]`)],
   // A secret as a command's argument, which the journal's Ran field keeps (P1
   // hunt, 2026-10-29): `aws configure set` of a secret, key or token; a
   // SetEnvironmentVariable or setx of one; htpasswd -b's password, after its

@@ -1673,14 +1673,14 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   // Whatever follows the password (fix review, 1.3.1).
   ['redis-cli AUTH default ' + k('Zq89x', 'PlmN0aQ') + ' > out.txt', 'Zq89x'], ['redis-cli AUTH default ' + k('Zq90x', 'PlmN0aQ') + ' 2>/dev/null', 'Zq90x'],
   ['redis-cli AUTH default "Zq91x ' + k('Plm', 'N0aQ') + '"', 'PlmN0aQ'], ['redis-cli AUTH alice ' + k('Zq92x', 'PlmN0aQ') + '\r\nnext', 'Zq92x'],
-  ['redis-cli -h h AUTH "Zq93x;' + k('Plm', 'N0aQ') + '"', 'PlmN0aQ'], ['redis-cli AUTH ' + k('s3cr', '3tPw99') + '>out.txt', '3tPw99'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
+  ['redis-cli -h h AUTH "Zq93x;' + k('Plm', 'N0aQ') + '"', 'PlmN0aQ'], ['redis-cli AUTH ' + k('s3cr', '3tPw99') + '>out.txt', '3tPw99'], ['redis-cli AUTH ' + k('Zq95x', 'PlmN0aQ') + ' ./check.sh', 'Zq95x'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
   ['git clone https://' + k('0123456789abcdef', '0123456789abcdef01234567') + '@github.com/x/y', '89abcdef0123'],
   ['git clone https://' + k('Ab3dEfGhIjKlMnOp', 'QrStUvWxYz0123') + '@host/x', 'QrStUv']])
   ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a secret passed to a command is redacted (got ${red(s)})`);
 {
   // clip() joins lines and redacts again: the redis rule ran to the text's end and took what followed (1.3.1 fix re-review).
   const c = clip('Ran redis-cli AUTH default Zq94xPlmN0aQ\nThen I checked the keys\nredis-cli needs AUTH before any command, so we log in first', 2000);
-  ok(!c.includes('Zq94x') && c.includes('Then I checked the keys') && c.includes('so we log in first'), `the redis rule takes the password, not the text after it (got ${c})`);
+  ok(!c.includes('Zq94x') && c.includes('Then I checked the keys') && c.includes('needs AUTH before any command, so we log in first'), `the redis rule takes the password, not the text after it (got ${c})`);
   const p = 'use the redis-cli AUTH option to log in';
   ok(red(p) === p, `"redis-cli AUTH option" in prose is kept (got ${red(p)})`);
 }

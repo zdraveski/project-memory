@@ -407,6 +407,8 @@ export default {
   "a forgotten exchange back when its folder's case differs": ['t && pathKey(t) === me', 't === me'],
   "redis-cli AUTH user pass kept": ["(?:[ \\t]+(?:\"[^\"\\n]*\"|'[^'\\n]*'|[^\\s\"'|;&<>]+))?)/g", ")/g"],
   "redis-cli AUTH quoted pass cut at ;": ["((?:\"[^\"\\n]*\"|'[^'\\n]*'|[^\\s\"'|;&<>]+)(?:[ \\t]+", "((?:[^\\s|;&<>]+)(?:[ \\t]+"],
-  "redis-cli AUTH redacted again by clip": ["\\sAUTH\\s+)(?!\\[redacted\\])", "\\sAUTH\\s+)"],
+  "redis-cli AUTH redacted again by clip": ["[ \\t]+AUTH\\s+)(?!\\[redacted\\])", "[ \\t]+AUTH\\s+)"],
+  "redis-cli any words before AUTH": ["(\\bredis-cli(?:[ \\t]+-{1,2}[\\w-]+(?:[ \\t=]+[^\\s|;&<>-]\\S*)?)*[ \\t]+AUTH", "(\\bredis-cli\\b[^\\n|;&]{0,200}?\\sAUTH"],
+  "redis-cli AUTH pass then a path kept": ["v.split(/\\s+/).every(arg)", "arg(v.split(/\\s+/).pop())"],
   "a *.7z file name read as 7z": ["(?<![\\w.*])7za?)", "7za?)"],
 };
