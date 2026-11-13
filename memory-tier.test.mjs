@@ -1063,6 +1063,15 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   await tierExec(['--dir', d9]);
   ok(readFileSync(join(d9, 'MEMORY-archive.md'), 'utf8') === a9 && readFileSync(join(d9, 'MEMORY.md'), 'utf8') === m9, 'a second pass changes nothing, trailing spaces and all');
 }
+// A typo'd future stamp (2099) kept a note hot forever: over a day ahead, the file's time counts (1.3.1 audit E-4).
+{
+  const d = store('proj-future'), old = new Date(Date.now() - 90 * 86400000);
+  writeFileSync(join(d, 'fut.md'), '---\nname: fut\ndescription: "fut"\nmetadata:\n  type: project\n  modified: 2099-01-01\n---\nbody\n');
+  writeFileSync(join(d, 'MEMORY.md'), '# Index\n\n- [fut](fut.md) — fut\n');
+  for (const f of readdirSync(d)) utimesSync(join(d, f), old, old);
+  const r = await call(['--dry-run', '--dir', d]);
+  ok(/: 0 hot \/ 2 archived/.test(r.stdout), `a stamp years past the file's time does not keep it hot (got ${r.stdout.trim()})`);
+}
 // The first snapshot holds the notebook as it was found, before the first tidy-up.
 {
   const was = [process.env.HOME, process.env.USERPROFILE];

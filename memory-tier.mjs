@@ -107,7 +107,8 @@ function factsFor(dir, file, memo = null) {
   } catch (e) { if (BUSY.includes(e.code)) throw e; return null; }
   const { type, tier, desc, modified: stamp } = was ? { type: was[1], tier: was[2], modified: was[3] ?? NaN } : front(head);
   if (memo) memo.now[file] = [k, type, tier, Number.isNaN(stamp) ? null : stamp];
-  const modified = Number.isNaN(stamp) ? st.mtimeMs : stamp;
+  // A stamp over a day in the future is a typo (2099): it kept the note hot forever (1.3.1 audit E-4).
+  const modified = Number.isNaN(stamp) || stamp > Date.now() + DAY ? st.mtimeMs : stamp;
   const named = (file.match(/(\d{4})-(\d{2})-(\d{2})/) || [])[0];
   // A name's date that is not one (2026-13-45, or Feb 31 that Date.parse rolls to March) is no date: NaN archived the note at once.
   const d = named ? Date.parse(named) : NaN;
