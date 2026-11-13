@@ -8,7 +8,8 @@ import { homedir } from 'node:os';
 
 // Claude Code's folder: ~/.claude, or CLAUDE_CONFIG_DIR when that is set
 // (read by its fixed name). Under it, the hooks wrote nothing and said nothing.
-export const configDir = () => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+// Resolved: a relative one put a root of its own under each hook's cwd (1.3.1 audit C-3).
+export const configDir = () => resolve(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'));
 export const projectsRoot = () => join(configDir(), 'projects');
 // What a Stop could not save, `<projects>/<this><project folder>`: memory-tier writes it, the briefing and status read it. One
 // name for the three: spelt in four places, a change to one would have left the warning silent (release review).

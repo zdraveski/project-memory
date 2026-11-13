@@ -4,7 +4,7 @@
 import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmdirSync, rmSync, readdirSync, symlinkSync, chmodSync, statSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
-import { join, isAbsolute, basename, dirname } from 'node:path';
+import { join, isAbsolute, basename, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
@@ -365,6 +365,10 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   try { rooted = projectsRoot(); process.env.CLAUDE_CODE_PROJECT_DIR_NAME = 'shared-name'; named = storeOf({ cwd: sub }); }
   finally { delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; }
   ok(rooted === join(cfg, 'projects') && named === join(cfg, 'projects', 'shared-name', 'memory'), `CLAUDE_CONFIG_DIR and CLAUDE_CODE_PROJECT_DIR_NAME are followed (got ${rooted} | ${named})`);
+  // A relative one is one folder, not one per hook's cwd (1.3.1 audit C-3).
+  process.env.CLAUDE_CONFIG_DIR = '.claude-rel';
+  try { rooted = projectsRoot(); } finally { delete process.env.CLAUDE_CONFIG_DIR; }
+  ok(rooted === resolve('.claude-rel', 'projects'), `a relative CLAUDE_CONFIG_DIR is made absolute (got ${rooted})`);
   // A .git file is followed only as Claude Code follows it: one pointing into
   // another project's .git, with no worktree there naming it back, is its own.
   const victim = join(home, 'work', 'victim'); mkdirSync(join(victim, '.git'), { recursive: true });
