@@ -899,7 +899,7 @@ gaps('curl proxy passwords', [`curl --proxy-user bob:${V} http://x`, `curl -U bo
 gaps('URL passwords with / ? #', [`postgres://user:pa/${V}@host/db`, `git clone https://user:p#${V}@github.com/a/b`, `redis://:p?${V}@h:6379`],
   ['http://localhost:8080/path?e=a@b.com', 'http://host:8080?x=a@b.c', 'https://example.com:443/x#a@b', 'see https://example.com/a: then mail me@x.org']);
 // A10: npm's _auth (base64 user:pass) in .npmrc and in the environment.
-gaps('npm _auth values', [[`//registry.npmjs.org/:_auth=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], [`NPM_CONFIG__AUTH=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], `//r.example.com/:_auth="${V}"`],
+gaps('npm _auth values', [[`//registry.npmjs.org/:_auth=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], [`NPM_CONFIG__AUTH=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], `//r.example.com/:_auth="${V}"`, [`_auth=${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')], [`npm config set _auth ${b64('bob:hunter22pw')}`, b64('bob:hunter22pw')]],
   ['npm config get _auth']);
 // A11: more vendor tokens, names with no `_` before KEY, a key or code in a query, a bare AWS secret, a Discord token, a prefix after `_`.
 const VV = V + V;
