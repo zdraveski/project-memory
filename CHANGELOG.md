@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.3 (2026-11-14)
 
 - A lock whose owner process is gone is no longer taken over at once (undoes a 1.3.2 change). A hook could take over a lock just as it was being released, and two hooks then worked in a store at once. A killed hook's lock is taken over after 30 seconds again.
 
