@@ -8,7 +8,8 @@ import { homedir } from 'node:os';
 
 // Claude Code's folder: ~/.claude, or CLAUDE_CONFIG_DIR when that is set
 // (read by its fixed name). Under it, the hooks wrote nothing and said nothing.
-export const configDir = () => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+// Resolved: a relative one put a root of its own under each hook's cwd (1.3.1 audit C-3).
+export const configDir = () => resolve(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'));
 export const projectsRoot = () => join(configDir(), 'projects');
 // What a Stop could not save, `<projects>/<this><project folder>`: memory-tier writes it, the briefing and status read it. One
 // name for the three: spelt in four places, a change to one would have left the warning silent (release review).
@@ -280,6 +281,8 @@ export function front(text) {
 const LOCAL_GIT_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_PREFIX',
   'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_SHALLOW_FILE', 'GIT_NO_REPLACE_OBJECTS', 'GIT_REPLACE_REF_BASE', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT'];
 export const gitArgs = (...a) => (LOCAL_GIT_ENV.forEach((k) => delete process.env[k]), ['-C', projectsRoot(),'-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false', '-c', 'core.precomposeunicode=false',
+  // Ours whoever created it: one made from an elevated shell or under sudo failed every snapshot with "dubious ownership" (1.3.1 audit C-2).
+  '-c', `safe.directory=${projectsRoot().replace(/\\/g, '/')}`,
   '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`, ...a]);
 
 // A failure's reason, as stored for status and the briefing: the message's first line, with a refused write's `<path>.tmp<pid>` cut from
@@ -421,9 +424,10 @@ export function replaceIfUnchanged(path, expected, next) {
       if (read() !== expected) return 'conflict';
       try { renameSync(tmp, path); return true; }
       catch (e) {
-        // Windows refuses a rename over a file another program holds open.
-        if (i >= 3 || !BUSY.includes(e.code)) throw e;
-        sleep(50);
+        // Windows refuses a rename over a file another program holds open: a scanner or OneDrive sync
+        // holds one longer than 150 ms, so there it waits up to 1 s (1.3.1 audit C-5).
+        if (i >= (process.platform === 'win32' ? 8 : 3) || !BUSY.includes(e.code)) throw e;
+        sleep(process.platform === 'win32' ? 125 : 50);
       }
     }
   } finally { try { unlinkSync(tmp); } catch {} }
