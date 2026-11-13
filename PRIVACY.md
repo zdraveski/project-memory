@@ -89,6 +89,11 @@ All of it stays in `~/.claude/projects` on your computer:
   - The tags keep text out of project-memory's own files only. Claude still
     sees it, Claude Code keeps it in its own conversation files, and a note
     Claude writes about it is kept in the history like any other note.
+  - Notes are saved and snapshotted as Claude writes them: secrets are
+    replaced in the journal and handoff, not in notes. A key pasted into a
+    note stays in the history after the note is deleted, and `promote`
+    copies the note whole into the shared store, where every project reads
+    it.
 - A journal of every exchange, one file per day in a project's `memory`
   folder (`journal/YYYY-MM-DD.md`), with a file `journal.md` beside it that
   tells Claude the journal is there. Each entry holds your message and
@@ -100,7 +105,9 @@ All of it stays in `~/.claude/projects` on your computer:
     commands included, a `<private>` message's reply is saved as `[private]`
     with no files or commands, and a conversation marked `<private-session>`
     writes nothing, and its earlier entries are removed from every day's
-    file, wherever in the conversation the mark is. An exchange in which
+    file, wherever in the conversation the mark is. A mark found after a
+    day is over removes the entries from the file, but the snapshot of
+    that day keeps a copy, as `forget` says. An exchange in which
     Claude runs `forget` is saved without its words, files or commands.
   - A day's file left with no entries is deleted. One that also holds lines
     you wrote yourself keeps them.
