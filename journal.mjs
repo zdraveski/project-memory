@@ -6,7 +6,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSy
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED } from './store.mjs';
+import { replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only } from './store.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -38,14 +38,6 @@ const TIME = /^\d{4}-\d\d-\d\d \d\d:\d\d$/;
 const FIELDS = ['Asked', 'Answered', 'Changed', 'Ran'];   // as render() writes them, after the heading
 const day = (at) => at.slice(0, 10);
 
-// Before a day file is rewritten: one with a byte that is no UTF-8 (a note
-// added in the Windows code page, as PowerShell 5.1's Add-Content writes) was
-// read as U+FFFD and written back, its letters gone for good. It is left as
-// it is, and the write that needed it fails, so status says why.
-const UTF8 = new TextDecoder('utf-8', { fatal: true });
-function utf8Only(file, text) {
-  if (text?.includes('\uFFFD')) try { UTF8.decode(readFileSync(file)); } catch { throw Object.assign(new Error(`${file} is not UTF-8 text, so it was left as it is; save it as UTF-8`), { code: 'not UTF-8' }); }
-}
 // Each day's work, a day that throws (not UTF-8, a folder by its name) after
 // the rest: one bad file must not keep the others from a write or a sweep.
 function each(ds, fn) {

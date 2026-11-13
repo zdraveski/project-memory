@@ -392,6 +392,16 @@ export function sweepTemps(dir) {
   }
 }
 
+// Before a file is rewritten: one with a byte that is no UTF-8 (a note added in
+// the Windows code page, as PowerShell 5.1's Add-Content writes, or UTF-16) was
+// read as U+FFFD and written back, its letters gone for good. It is left as it
+// is, and the write that needed it fails, so status says why. Every rewrite
+// passes here: the index and handoff.md had no such guard (1.3.1 audit C-1).
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
+export function utf8Only(file, text) {
+  if (text?.includes('�')) try { UTF8.decode(readFileSync(file)); } catch { throw Object.assign(new Error(`${file} is not UTF-8 text, so it was left as it is; save it as UTF-8`), { code: 'not UTF-8' }); }
+}
+
 // Write `next` over `path` only while the file still holds `expected`, the text
 // the caller computed from (null: the file did not exist). Returns true when
 // written, false when the file already says `next`, and 'conflict' when someone
@@ -399,6 +409,7 @@ export function sweepTemps(dir) {
 export function replaceIfUnchanged(path, expected, next) {
   const read = () => raw(path);
   if (read() === next) return false;
+  utf8Only(path, expected);
   const tmp = `${path}.tmp${process.pid}`;
   try {
     // Inside the try: a write cut short (a full disk) left its half-copy of
