@@ -121,6 +121,14 @@ rmdirSync(join(dir, '.lock'));
 let threw = false;
 try { withLock(dir, () => { throw new Error('boom'); }); } catch { threw = true; }
 ok(threw && !existsSync(join(dir, '.lock')), 'a throw inside still releases the lock');
+// A holder whose lock was taken over while it ran (it outlived LOCK_STALE) leaves the new holder's lock alone: released by
+// path, it removed it, and a third hook went in beside the second (audit D-2).
+{
+  const lk = join(dir, '.lock');
+  withLock(dir, () => { rmSync(lk, { recursive: true }); mkdirSync(lk); writeFileSync(join(lk, 'owner'), 'another'); });
+  ok(existsSync(lk), 'a lock taken over meanwhile is not removed by the old holder');
+  rmSync(lk, { recursive: true });
+}
 
 // A dead lock of any shape is taken over: a file, or a folder with something
 // in it, was never removed, and the store was never tiered again, in silence

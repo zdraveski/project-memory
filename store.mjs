@@ -318,10 +318,11 @@ export const lockBudget = (on) => { left = on ? LOCK_WAIT : null; };
 // Run fn holding the store's lock: `mkdir` either creates the folder or fails,
 // on NTFS as anywhere. Returns fn's result, or null when the lock stayed busy.
 export function withLock(dir, fn) {
-  const lock = join(dir, '.lock'), t0 = Date.now();
-  let refused = 0, held = false;
+  const lock = join(dir, '.lock'), owner = join(lock, 'owner'), t0 = Date.now();
+  const token = `${process.pid}.${Math.random().toString(36).slice(2)}`;
+  let refused = 0, held = false, signed = false;
   for (const until = t0 + Math.min(LOCK_WAIT, left ?? LOCK_WAIT); ;) {
-    try { mkdirSync(lock); held = true; break; }
+    try { mkdirSync(lock); held = true; try { writeFileSync(owner, token); signed = true; } catch {} break; }
     catch (e) {
       // The last holder's rmdir still settling: the same codes a rename retries.
       if (e.code !== 'EEXIST' && !BUSY.includes(e.code)) throw e;
@@ -360,7 +361,12 @@ export function withLock(dir, fn) {
   if (left !== null) left = Math.max(0, left - (Date.now() - t0));
   if (!held) return null;
   // The disk may refuse the unlock for a moment (the codes a rename retries): a lock left behind stops every hook for LOCK_STALE.
-  try { return fn(); } finally { for (let i = 0; ; i++) { try { rmdirSync(lock); break; } catch (e) { if (!BUSY.includes(e.code) || i === 2) break; sleep(STEP); } } }
+  // Released only while it is still ours: a holder that outlived LOCK_STALE had it taken over, and removing it by path let a
+  // third hook in beside the second (audit D-2).
+  try { return fn(); } finally {
+    let mine = !signed; try { mine = readFileSync(owner, 'utf8') === token; } catch {}
+    if (mine) { try { unlinkSync(owner); } catch {} for (let i = 0; ; i++) { try { rmdirSync(lock); break; } catch (e) { if (!BUSY.includes(e.code) || i === 2) break; sleep(STEP); } } }
+  }
 }
 
 // The temp copies replaceIfUnchanged leaves when its hook is killed between the write and the rename (`<file>.tmp<pid>`),
