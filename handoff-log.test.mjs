@@ -1674,7 +1674,7 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   ['redis-cli AUTH default ' + k('Zq89x', 'PlmN0aQ') + ' > out.txt', 'Zq89x'], ['redis-cli AUTH default ' + k('Zq90x', 'PlmN0aQ') + ' 2>/dev/null', 'Zq90x'],
   ['redis-cli AUTH default "Zq91x ' + k('Plm', 'N0aQ') + '"', 'PlmN0aQ'], ['redis-cli AUTH alice ' + k('Zq92x', 'PlmN0aQ') + '\r\nnext', 'Zq92x'],
   ['redis-cli -h h AUTH "Zq93x;' + k('Plm', 'N0aQ') + '"', 'PlmN0aQ'], ['redis-cli AUTH ' + k('s3cr', '3tPw99') + '>out.txt', '3tPw99'], ['redis-cli AUTH ' + k('Zq95x', 'PlmN0aQ') + ' ./check.sh', 'Zq95x'],
-  ['redis-cli -h host \\\nAUTH ' + k('Zq96x', 'PlmN0aQ'), 'Zq96x'], ['redis-cli -h "my host" AUTH ' + k('Zq97x', 'PlmN0aQ'), 'Zq97x'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
+  ['redis-cli -h host \\\nAUTH ' + k('Zq96x', 'PlmN0aQ'), 'Zq96x'], ['redis-cli -h "my host" AUTH ' + k('Zq97x', 'PlmN0aQ'), 'Zq97x'], ['redis-cli -h "$H":6379 AUTH ' + k('Zq98x', 'PlmN0aQ'), 'Zq98x'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
   ['git clone https://' + k('0123456789abcdef', '0123456789abcdef01234567') + '@github.com/x/y', '89abcdef0123'],
   ['git clone https://' + k('Ab3dEfGhIjKlMnOp', 'QrStUvWxYz0123') + '@host/x', 'QrStUv']])
   ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a secret passed to a command is redacted (got ${red(s)})`);
@@ -1685,8 +1685,11 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   const p = 'use the redis-cli AUTH option to log in';
   ok(red(p) === p, `"redis-cli AUTH option" in prose is kept (got ${red(p)})`);
   // Each --option read one way only: read two ways, 24 of them took seconds and each one more doubled it (fix re-review 3).
-  const t0 = Date.now(); red('redis-cli' + ' --tls'.repeat(26)); clip('redis-cli' + ' --tls'.repeat(2000), 20000);
-  ok(Date.now() - t0 < 1000, `many redis-cli options redact fast (${Date.now() - t0} ms)`);
+  // Sized so the slow forms take seconds, not hours: a mutant that times out counts as survived. The fix takes ~20 ms.
+  for (const [s, n] of [[' --tls', 24], [' -x =v', 25], [' -a redis-cli', 3850]]) {
+    const t0 = Date.now(); red('redis-cli' + s.repeat(n));
+    ok(Date.now() - t0 < 300, `${n} redis-cli options like "${s}" redact fast (${Date.now() - t0} ms)`);
+  }
 }
 // Over-redaction costs recall: the word after a command's flag is often its
 // point. A reference ($TOKEN, ${TOKEN}, $(cat pw)) or a path is no secret, nor
