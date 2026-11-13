@@ -531,15 +531,15 @@ export function restore(dir, file, { rev, force = false } = {}) {
   }
   mkdirSync(dir, { recursive: true });
   const r = withLock(dir, () => {
-    const cur = raw(path);
+    const cur = raw(path), curB = cur === null ? null : readFileSync(path);   // bytes too: a string loses a non-UTF-8 note's letters
     if (cur !== null && !force) return `${path} appeared meanwhile; nothing written`;
     // Already that version: "restored" here told the model a bad version was gone.
-    if (cur !== null && cur.replace(/^\uFEFF/, '') === bytes.toString('utf8')) return `${path} already matches ${from}: nothing to restore; history lists older versions, --rev <commit> picks one`;
+    if (cur !== null && (curB[0] === 0xEF && curB[1] === 0xBB && curB[2] === 0xBF ? curB.subarray(3) : curB).equals(bytes)) return `${path} already matches ${from}: nothing to restore; history lists older versions, --rev <commit> picks one`;
     // What --force replaces is kept in the repo, not lost: no snapshot may hold it yet.
     let kept = '';
     // No copy, no replace: the text it would overwrite was gone for good (1.3.1 audit D-8).
     // Under a ref: a blob nothing refers to is dangling, and gc deletes it.
-    if (cur !== null) { try { const sha = execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: cur, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim(); git('update-ref', `refs/project-memory/replaced/${sha}`, sha); kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${sha}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
+    if (cur !== null) { try { const sha = execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: curB, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim(); git('update-ref', `refs/project-memory/replaced/${sha}`, sha); kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${sha}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
     // Or one the disk refuses (a name Windows cannot hold, from a store synced from Linux).
     const w = put(path, cur, bytes);
     if (failed(w)) return `${path} could not be written (${w.slice(8)}); nothing restored`;

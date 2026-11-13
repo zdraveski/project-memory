@@ -264,6 +264,10 @@ unlinkSync(join(dir, 'hook-rule.md'));
   r = await cli('restore', 'latin-back');
   ok(r.status === 0 && readFileSync(join(dir, 'latin-back.md')).equals(bytes), `restore writes the snapshot's bytes (got ${r.stdout.trim()})`);
   ok(readFileSync(join(dir, 'MEMORY.md'), 'utf8').includes(wrapped), `and the wrapped index line whole (got ${readFileSync(join(dir, 'MEMORY.md'), 'utf8')})`);
+  // A current note that really holds U+FFFD is not "already that version" of a snapshot with a latin-1 byte.
+  writeFileSync(join(dir, 'latin-back.md'), Buffer.concat([Buffer.from('---\nname: latin-back\ndescription: "l"\n---\ncaf'), Buffer.from('�'), Buffer.from('\n')]));
+  r = await cli('restore', 'latin-back', '--force');
+  ok(r.status === 0 && !/already matches/.test(r.stdout) && readFileSync(join(dir, 'latin-back.md')).equals(bytes), `a note with U+FFFD is not taken for the snapshot's latin-1 byte (got ${r.stdout.trim()})`);
   unlinkSync(join(dir, 'latin-back.md'));
   writeFileSync(join(dir, 'MEMORY.md'), idxNow);
 }
