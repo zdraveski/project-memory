@@ -1084,7 +1084,8 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   writeFileSync(join(d, 'MEMORY.md'), idx);
   await call(['--dir', d]);
   const lines = readFileSync(join(d, 'MEMORY.md'), 'utf8').split('\n').length - 1;
-  ok(lines <= 200, `an index of wrapped hooks keeps to 200 lines (got ${lines})`);
+  // And no fewer than it must: a pair freed counted as one line evicted twice the pointers.
+  ok(lines <= 200 && lines > 190, `an index of wrapped hooks keeps to 200 lines, no fewer (got ${lines})`);
 }
 // What 1.3.0 read of a note and kept in .facts ('superseded-by: none' read as archive) is read again, not trusted (1.3.1 final review).
 {
@@ -1871,7 +1872,8 @@ if (!quick) {
   mkdirSync(join(d, '.lock')); mkdirSync(join(shared, '.lock'));
   const t0 = Date.now();
   let ms; try { await stop('proj-wait'); ms = Date.now() - t0; } finally { rmdirSync(join(d, '.lock')); rmdirSync(join(shared, '.lock')); }
-  ok(ms < 3500, `--stop: with its locks held it waits about 2 s in all (took ${ms} ms)`);
+  // 6 s, not 3.5: a busy Windows runner took 4.1 s (1.3.1 mutant run); the bug waited 8 s.
+  ok(ms < 6000, `--stop: with its locks held it waits about 2 s in all (took ${ms} ms)`);
   rmSync(join(shared, 'wait.md'));
 }
 // A note written while a pass runs is not in that pass's stamp, so the next turn takes it up: stamped from a look after the
