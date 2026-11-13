@@ -1073,6 +1073,19 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   const idx = readFileSync(join(d, 'MEMORY.md'), 'utf8'), arc = readFileSync(join(d, 'MEMORY-archive.md'), 'utf8');
   ok(idx.includes('- [a](a.md) — a\r\n  a wraps here\r\n') && !idx.includes('b wraps') && arc.includes('- [b](b.md) — b\r\n  b wraps here\r\n'), `a wrapped hook stays under its pointer (got ${JSON.stringify(idx)} / ${JSON.stringify(arc)})`);
 }
+// Claude Code loads 200 lines: a pointer and its wrapped hook were counted as one line, and 150 of them made 300 (1.3.1 final review).
+{
+  const d = store('proj-wrap-cap');
+  let idx = '# Index\n\n';
+  for (let i = 0; i < 150; i++) {
+    writeFileSync(join(d, `n${i}.md`), `---\nname: n${i}\ndescription: "n"\nmetadata:\n  type: project\n---\nbody\n`);
+    idx += `- [n](n${i}.md) — n\n  h\n`;
+  }
+  writeFileSync(join(d, 'MEMORY.md'), idx);
+  await call(['--dir', d]);
+  const lines = readFileSync(join(d, 'MEMORY.md'), 'utf8').split('\n').length - 1;
+  ok(lines <= 200, `an index of wrapped hooks keeps to 200 lines (got ${lines})`);
+}
 // A typo'd future stamp (2099) kept a note hot forever: over a day ahead, the file's time counts (1.3.1 audit E-4).
 {
   const d = store('proj-future'), old = new Date(Date.now() - 90 * 86400000);

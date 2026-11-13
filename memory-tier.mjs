@@ -284,11 +284,13 @@ function tier(dir, now, seen = null) {
   const bytes = (s) => Buffer.byteLength(s);
   let size = bytes(render());
   // And lines: Claude Code loads the first 200, and 7 KB of short lines is more.
-  let count = main.preamble.length + Number(main.gap) + hot.length + 1;
+  // A pointer with its wrapped hook is several lines.
+  const lines = (p) => p.line.split('\n').length;
+  let count = main.preamble.length + Number(main.gap) + hot.reduce((n, p) => n + lines(p), 0) + 1;
   const evicted = new Set();
   for (let q = 0; (size > budget || count > LINES) && q < queue.length; q++) {
     const victim = queue[q];
-    count--;
+    count -= lines(victim);
     size -= bytes(victim.line) + eol.length + bytes(archiveLine(cold.length)) - bytes(archiveLine(cold.length + 1));
     evicted.add(victim);
     victim.line += ' ' + OVERFLOW;        // so the archive loop knows it may come back
