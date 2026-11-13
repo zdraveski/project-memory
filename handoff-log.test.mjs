@@ -1560,7 +1560,7 @@ const leaked = leaks.filter((s) => red(s) === s || /Sw0rd|pa55|Tr0ub4|BQUklW|AgE
 ok(!leaked.length, `common secret shapes are redacted (leaked: ${leaked.join(' | ')})`);
 const plainCode = ['password: string', 'api_key: Optional[str]', 'authToken: string', 'token = jwt.sign(payload, key)', 'password = request.form["pw"]',
   'secret: process.env.JWT_SECRET', 'refresh_token = response.json()["rt"]', 'password = os.environ["PW"]', 'DB_PASSWORD=${DB_PASSWORD}', 'pwd: /home/kire', 'basic implementation/approach here', 'Bearer authentication-header',
-  'http://localhost:8080?user=me@x', 'mysql -u root db; find . -print', 'the password is hashed', 'tokens: tokenizer.encode(text)',
+  'http://localhost:8080?user=me@x', 'mysql -u root db; find . -print', "find . -name '*.7z' -print", 'the password is hashed', 'tokens: tokenizer.encode(text)',
   'run the basic tests/integration/auth_flow_spec.rb now', 'token src/components/auth/RefreshHandler.tsx'];
 const cut = plainCode.filter((s) => red(s) !== s);
 ok(!cut.length, `code and prose that only look like secrets are kept (cut: ${cut.join(' | ')})`);
@@ -1669,7 +1669,7 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   ['tool --api-key ' + k('Zq81x', 'PlmN0aQ'), 'Zq81x'], ['tool --apikey=' + k('Zq82x', 'PlmN0aQ'), 'Zq82x'], ['aws-tool --aws-access-key ' + k('Zq83x', 'PlmN0aQ'), 'Zq83x'],
   ['gpg --batch --passphrase ' + k('Zq84x', 'PlmN0aQ') + ' -c f', 'Zq84x'], ['tool --passphrase "correct ' + k('hor', 'se') + ' staple"', 'horse'],
   ['curl --oauth2-bearer ' + k('Zq85x', 'PlmN0aQ9zAbCd') + ' https://x', 'Zq85x'], ['ssh-keygen -t ed25519 -N "' + k('Zq86x', 'PlmN0aQ') + '" -f k', 'Zq86x'],
-  ['redis-cli -h h AUTH ' + k('Zq87x', 'PlmN0aQ'), 'Zq87x'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
+  ['redis-cli -h h AUTH ' + k('Zq87x', 'PlmN0aQ'), 'Zq87x'], ['redis-cli AUTH default ' + k('Zq86x', 'PlmN0aQ'), 'Zq86x'], ['7z a -p' + k('Zq88x', 'PlmN0aQ') + ' x.7z f', 'Zq88x'],
   ['git clone https://' + k('0123456789abcdef', '0123456789abcdef01234567') + '@github.com/x/y', '89abcdef0123'],
   ['git clone https://' + k('Ab3dEfGhIjKlMnOp', 'QrStUvWxYz0123') + '@host/x', 'QrStUv']])
   ok(!red(s).includes(gone) && red(s).includes('[redacted]'), `a secret passed to a command is redacted (got ${red(s)})`);
