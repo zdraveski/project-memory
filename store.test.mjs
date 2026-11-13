@@ -296,6 +296,9 @@ ok(made.match(POINTER)?.[1] === '[draft] plan.md' && !/[\uD800-\uDFFF]$/.test(ma
 // A value stays on its line, the body is no frontmatter, and CRLF keeps quotes off.
 const emptied = front('---\nname: a\nsuperseded-by:\nmetadata:\n  type: project\n---\nbody');
 ok(emptied.superseded === '' && emptied.tier === '' && emptied.type === 'project', `an empty superseded-by: is empty (got ${JSON.stringify(emptied)})`);
+// Archiving is a one-way door: a value that says "none" in YAML's or a person's words is no replacement (1.3.1 audit E-3).
+for (const v of ['[]', '[ ]', 'none', 'None', 'false', 'no', '""']) ok(front(`---\nsuperseded-by: ${v}\n---\n`).tier === '', `superseded-by: ${v} does not archive the note`);
+ok(front('---\ntier: hot-ish\n---\n').tier === '' && front('---\ntier: hot # pinned\n---\n').tier === 'hot', 'only a whole tier word pins a note');
 ok(front('---\nname: fmt\n---\nHow to retire a note:\n  superseded-by: new.md\n  tier: archive\n').tier === '', 'a body that quotes the format does not archive its note');
 ok(front('---\r\nname: crlf\r\ndescription: "quoted"\r\n---\r\n').desc === 'quoted' && front('\uFEFF---\nname: bom\n---\n').name === 'bom', 'CRLF and a BOM read the same');
 

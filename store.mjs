@@ -251,13 +251,15 @@ export function front(text) {
     const p = (cut ? v.replace(/(?:^|[ \t])#.*$/, '') : v).trim().replace(/^(["'])(?![\s\S]*\1)/, '');
     return /^(?:null|Null|NULL|~|#(?:\s.*)?)$/.test(p) ? '' : p;
   };
-  const superseded = scalar(get(/^[ \t]*superseded-by:[ \t]*(.*)$/m), true) || block('superseded-by')[0] || '';
+  // An empty list or a "none" names no replacement; read as one, it archived the note for good (1.3.1 audit E-3).
+  const superseded = (scalar(get(/^[ \t]*superseded-by:[ \t]*(.*)$/m), true) || block('superseded-by')[0] || '').replace(/^(?:\[[ \t]*\]|none|false|no)$/i, '');
   const desc = get(/^description:[ \t]*(.*)$/m);
   return {
     name: scalar(get(/^name:[ \t]*(.*)$/m)),
     desc: /^[>|][-+]?$/.test(desc) ? block('description').join(' ') : scalar(desc),
     type: get(/^[ \t]*type:[ \t]*["']?(\w+)/m, keys).toLowerCase(),
-    tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)/m, keys).toLowerCase(),
+    // The whole word: `tier: hot-ish` read as hot.
+    tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)(?=["']?[ \t]*(?:#|$))/m, keys).toLowerCase(),
     superseded,
     // A date alone is that day here: read as UTC midnight, it printed as the
     // day before anywhere west of Greenwich. A date, a space and a time is that time: cut at the space, it was midnight.
