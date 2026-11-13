@@ -880,6 +880,8 @@ gaps('a Telegram bot token', [`curl https://api.telegram.org/bot${tg}/getMe`, `t
   const [good, how] = linear((m) => { redact('export API_KEY=' + 'a/'.repeat(2500 * m)); redact('--password ' + 'dir/'.repeat(1250 * m)); redact('MY_TOKEN=' + 'a/'.repeat(2500 * m) + ' ./run.sh'); }, 1000);
   ok(good, `one very long value after NAME= or --password is read in linear time (${how})`);
 }
+// A5: curl -u with the password quoted after the colon.
+gaps('curl -u passwords quoted after the colon', [`curl -u admin:"${V}" https://x`, `curl -u admin:'${V}' https://x`, `curl --user admin:"${V}" https://x`], ['docker run -u 1000:1000 img', 'curl -u admin https://x']);
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));
