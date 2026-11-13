@@ -318,11 +318,12 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
 // all the same). `keys`: only those entries, the ones a search showed. They go
 // from handoff.md too, which the next startup's briefing prints (R36).
 // An entry holds a word (lower case) when any of its fields does, in any case.
-export const holds = (e, t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.toLowerCase().includes(t));
+// Both sides NFC, as search reads them: a composed "é" finds a decomposed one.
+export const holds = (e, t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.normalize('NFC').toLowerCase().includes(t));
 export function forget(dir, terms, { since, until, conversation, keys: only, more = [], apply = false, failed = [] } = {}) {
   // The keys as a set: looked up in the list once an entry, a range forget of
   // 15,000 entries spent 5 s here.
-  const ts = terms.map((t) => t.toLowerCase()), want = only && new Set(only);
+  const ts = terms.map((t) => t.normalize('NFC').toLowerCase()), want = only && new Set(only);
   // `more`, unwritten()'s: by their day for the range, and not once a day holds them.
   const fails = failed.length, have = entries([dir], { since, until, failed, strict: true }), held = new Set(have.map((e) => e.key));
   // None while a day won't read: the turn may be in it, and taken as unwritten it was said removed while that day held it (R73).
