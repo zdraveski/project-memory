@@ -323,7 +323,7 @@ let left = null;
 export const lockBudget = (on) => { left = on ? LOCK_WAIT : null; };
 
 // The lock's owner file names a process (`pid.random`) that is no longer running: a killed hook's lock, whatever its age.
-// shortcut: a pid is read on this machine, so a store synced between machines could lose a live lock; none holds one that long.
+// shortcut: a pid is read in this machine's pid space, so a store synced between machines, or shared with WSL or a container, could lose a live lock to a second holder; upgrade by adding the hostname to the owner token.
 const deadOwner = (owner) => {
   let pid; try { pid = Number(/^(\d+)\./.exec(readFileSync(owner, 'utf8'))?.[1]); } catch {}
   if (!pid) return false;

@@ -516,7 +516,8 @@ function snapshot() {
     }
     // Changed since the add (another session's write, whose own snapshot went busy): still owed, or its pending mark is
     // cleared by this success and the file stays out of every snapshot until it changes again.
-    if (!rest) { try { rest = git('status', '--porcelain', ...(offs.length ? ['--', '.', ...offs] : [])).split('\n').filter(Boolean).length; } catch {} }
+    // `diff --name-only`, not `status`: tracked files only, no scan of untracked ones (80-300 ms), and a path `add -A` can never add (nul.md) never shows.
+    if (!rest) { try { rest = git('diff', '--name-only', ...(offs.length ? ['--', '.', ...offs] : [])).split('\n').filter(Boolean).length; } catch {} }
     return rest ? `in parts: ${rest} file(s) still to add; each reply adds more` : fresh ? 'initialised' : 'committed';
   } catch (e) {
     // No git is a setup, not a failure: everything but the history works.
