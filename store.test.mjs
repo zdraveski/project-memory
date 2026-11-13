@@ -300,6 +300,8 @@ ok(listOf(' a1 \r\n\r\n\tb2\n  \n').join() === 'a1,b2' && listOf(null).length ==
 // A line made for a memory no index names reads back, and its hook ends whole.
 const made = pointerLine('[draft] plan.md', 'a'.repeat(139) + '\u{1F600} and more');
 ok(made.match(POINTER)?.[1] === '[draft] plan.md' && !/[\uD800-\uDFFF]$/.test(made), `a made line reads back and is cut whole (got ${made})`);
+// POINTER reads one level of brackets in a title; the made title has none, so two levels in a name read back too.
+ok(pointerLine('[[a]] b.md', 'x').match(POINTER)?.[1] === '[[a]] b.md', 'a made line for a name with nested [brackets] reads back');
 
 // A value stays on its line, the body is no frontmatter, and CRLF keeps quotes off.
 const emptied = front('---\nname: a\nsuperseded-by:\nmetadata:\n  type: project\n---\nbody');
