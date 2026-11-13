@@ -96,7 +96,8 @@ function factsFor(dir, file, memo = null) {
     // As the Stop's gate saw it, when it did: a note changed since is read anew next pass, its size or time no longer the key.
     st = memo?.seen?.get(file) ?? statSync(path);
     if (!st.isFile()) return null;
-    k = `${st.size} ${st.mtimeMs}`; was = memo?.was[file];
+    // `2 `: what 1.3.0 read is read again; it took `superseded-by: none` for archive (1.3.1 final review).
+    k = `2 ${st.size} ${st.mtimeMs}`; was = memo?.was[file];
     if (!Array.isArray(was) || was[0] !== k) {
       was = null;
       // 16 KB: the first 1,200 characters missed a pin set after a long folded

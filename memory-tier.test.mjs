@@ -1086,6 +1086,16 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   const lines = readFileSync(join(d, 'MEMORY.md'), 'utf8').split('\n').length - 1;
   ok(lines <= 200, `an index of wrapped hooks keeps to 200 lines (got ${lines})`);
 }
+// What 1.3.0 read of a note and kept in .facts ('superseded-by: none' read as archive) is read again, not trusted (1.3.1 final review).
+{
+  const d = store('proj-facts-old');
+  writeFileSync(join(d, 'sup.md'), '---\nname: sup\ndescription: "sup"\nmetadata:\n  type: project\n  superseded-by: none\n---\nbody\n');
+  writeFileSync(join(d, 'MEMORY.md'), '# Index\n\n- [sup](sup.md) — sup\n');
+  const st = statSync(join(d, 'sup.md'));
+  writeFileSync(join(d, '.facts'), JSON.stringify({ 'sup.md': [`${st.size} ${st.mtimeMs}`, 'project', 'archive', null] }));
+  await call(['--dir', d]);
+  ok(/\(sup\.md\)/.test(readFileSync(join(d, 'MEMORY.md'), 'utf8')), 'a note an older version misread is read again, not archived from its cache');
+}
 // A typo'd future stamp (2099) kept a note hot forever: over a day ahead, the file's time counts (1.3.1 audit E-4).
 {
   const d = store('proj-future'), old = new Date(Date.now() - 90 * 86400000);
