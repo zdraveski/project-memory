@@ -872,6 +872,9 @@ gaps('SQL passwords', [`psql -c "ALTER USER app WITH PASSWORD '${V}'"`, `CREATE 
 gaps('redis, mongo, zip, ldap and mosquitto passwords', [`redis-cli CONFIG SET requirepass ${V}`, `redis-cli --pass ${V} ping`, `redis-server --requirepass ${V}`, `requirepass ${V}`, `masterauth ${V}`,
   `mongo -u u -p ${V} db`, `mongosh -u u -p ${V}`, `zip -P ${V} a.zip f`, `ldapsearch -x -D cn=a -w ${V}`, `mosquitto_pub -u a -P ${V} -t x`],
   ['requirepass in redis.conf', 'zip -r a.zip f', 'ldapsearch -P 3 -x', 'mongo -u u --port 27017 db', 'redis-cli --pass $REDIS_PW ping']);
+// A3: a Telegram bot token in the API's URL, where the digits follow the letters "bot".
+const tg = `123456789:AA${V}abcdefghijklm`;
+gaps('a Telegram bot token', [`curl https://api.telegram.org/bot${tg}/getMe`, `token ${tg}`, `x${tg}`]);
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));
