@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `promote` refuses a note that is not UTF-8 text, instead of copying it with broken letters and deleting the original.
+- `promote` and `restore` move a long index line that wraps onto a second line as a whole.
+- `restore` brings back a note that is not UTF-8 byte for byte, not with broken letters.
+
 ## 1.3.1 (2026-11-13)
 
 Bug fixes from a five-part audit (correctness, security, Windows/macOS/Linux,
