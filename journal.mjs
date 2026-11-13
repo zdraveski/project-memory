@@ -151,7 +151,6 @@ export function record(dir, transcriptPath, turns, when) {
       // Nothing new: no write, so a day not in UTF-8 is no failure of this one.
       if (!changed) { landed = true; break; }
       const all = [...have.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-      utf8Only(file, before);
       const w = replaceIfUnchanged(file, before, page(d, prose, all));
       if (w !== 'conflict') { n += changed; landed = true; break; }
     }
@@ -226,7 +225,6 @@ function drop(dir, d, keep) {
       else if (e.after) { const up = kept.at(-1); if (up) up.after = [up.after, e.after].filter(Boolean).join('\n\n'); else prose = [prose, e.after].filter(Boolean).join('\n\n'); }
     }
     if (kept.length === entries.length) return [];
-    utf8Only(file, before);
     if (replaceIfUnchanged(file, before, page(d, prose, kept)) === 'conflict') continue;
     if (!kept.length && !prose) try { unlinkSync(file); } catch {}
     return entries.filter((e) => !keep(e));
