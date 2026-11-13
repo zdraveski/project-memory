@@ -868,6 +868,10 @@ const gaps = (what, texts, keeps = []) => {
 gaps('SQL passwords', [`psql -c "ALTER USER app WITH PASSWORD '${V}'"`, `CREATE ROLE app LOGIN PASSWORD '${V}';`, `mysql -e "CREATE USER 'a'@'%' IDENTIFIED BY '${V}'"`,
   `ALTER USER 'a'@'%' IDENTIFIED WITH mysql_native_password BY '${V}';`, `SET PASSWORD FOR 'a'@'h' = PASSWORD('${V}');`, `GRANT ALL ON *.* TO 'a'@'h' IDENTIFIED BY '${V}';`],
   ['the password column is NOT NULL', 'identified by name']);
+// A2: redis, mongo, zip, ldap and mosquitto passwords.
+gaps('redis, mongo, zip, ldap and mosquitto passwords', [`redis-cli CONFIG SET requirepass ${V}`, `redis-cli --pass ${V} ping`, `redis-server --requirepass ${V}`, `requirepass ${V}`, `masterauth ${V}`,
+  `mongo -u u -p ${V} db`, `mongosh -u u -p ${V}`, `zip -P ${V} a.zip f`, `ldapsearch -x -D cn=a -w ${V}`, `mosquitto_pub -u a -P ${V} -t x`],
+  ['requirepass in redis.conf', 'zip -r a.zip f', 'ldapsearch -P 3 -x', 'mongo -u u --port 27017 db', 'redis-cli --pass $REDIS_PW ping']);
 // An entry 1.0.7 wrote, its marker made `<!- -`, still matches its turn: read
 // as another, it was listed twice.
 writeFileSync(join(dirN, 'handoff.md'), ndoc().replace('<!-- auto:end -->', '- **asked** 2026-10-28 09:09 [nnnnnnnn]: keep <!- - auto:start --> as text\n  **did:** kept\n<!-- auto:end -->'));
