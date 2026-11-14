@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A password typed alone as the answer to a password question (one token, or a passphrase of plain words) is no longer kept in the compaction note, or after a question asked with AskUserQuestion; "Passwort ist x", "mot de passe est x" and quoted passphrases are cut, and one-time-code prose and `creds: file.js:42` are kept.
 - Saved text no longer keeps a password written in chat (`pw: x`, `DBPW=x`, `credential=x`, `creds: bob / x`, `set the password to x`, `the PIN is 123456`, backup codes, `the password is correct horse battery staple`), one in German, French, Spanish, Russian, Swedish, Danish, Dutch, Portuguese, Polish, Japanese, Chinese or Korean (`Passwort: x`), or a password typed alone as the answer to "what is the password?".
 
 - Saved text no longer keeps session ids and cookies outside the Cookie header (sessionid, JSESSIONID, connect.sid, PHPSESSID, cookie-jar lines, HAR, Chrome and Playwright cookie objects), secrets in JSON and YAML keys (token, credentials, key, short passwords, Postman, `::add-mask::`), secrets in code (Python, JS, PHP, Java, Go, C#), `.env` lines after a `$ ` prompt or in chat and log lines, a base64 credential piped to `base64 -d`, and echoed password and passphrase prompts.

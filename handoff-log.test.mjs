@@ -3353,5 +3353,28 @@ if (!quick) {
   ok(turnsOf('What is the database password I should use?', 'use the one in vault')[0].ask === 'use the one in vault', '1.4.1 H: a sentence after a password question is kept');
 }
 
+// 1.4.1 H review: other-language prose, quoted passphrases, fewer false cuts, a typed passphrase, a cheap one-time-code rule.
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const V = ['Zq8x', 'K2mP', '9vL4n'].join('');
+  const bad = [];
+  for (const t of [`Passwort ist ${V}`, `Das Passwort lautet ${V}`, `mot de passe est ${V}`, `la contrase\u00f1a es ${V}`, `\u043f\u0430\u0440\u043e\u043b\u044c ${V}`, `heslo: ${V}`, `salasana: ${V}`, `jelsz\u00f3: ${V}`, `\u015fifre: ${V}`,
+    'the password is "correct horse battery staple"', 'pw is correct horse battery', 'the passphrase is \'correct horse battery staple\'']) {
+    const v = /correct/.test(t) ? 'horse battery' : V;
+    if (clip(t, 2000).includes(v)) bad.push(t);
+  }
+  ok(!bad.length, `1.4.1 H review: prose, other-language and quoted passwords are redacted (leaked: ${bad.join(' | ')})`);
+  for (const k of ['The reset key is held by the bastion host 2 days after rotation.', 'the verification code is sent by email in 5 minutes.', 'Use the reset code: sent to user within 24h', 'creds: foo/bar.js:42', 'creds: src/v2/auth.js']) ok(clip(k, 2000) === k, `1.4.1 H review: kept: ${k}`);
+  for (const unit of ['recovery codes: ', 'reset code is ']) {
+    const big = unit.repeat(Math.ceil(1e6 / unit.length)), t0 = Date.now();
+    clip(big, 2000);
+    ok(Date.now() - t0 < 3000, `1.4.1 H review: clip of 1 MB of "${unit}" is fast (${Date.now() - t0} ms)`);
+  }
+  const turnsOf = (q, a) => turns([q, user(a), asst('ok')].join('\n'));
+  ok(turnsOf(asst('What is the passphrase?'), 'correct horse battery staple')[0].ask === '[redacted]', '1.4.1 H review: a passphrase typed alone is not kept');
+  const askQ = rec('assistant', [{ type: 'tool_use', id: 'q1', name: 'AskUserQuestion', input: { questions: [{ question: 'What is the database password?' }] } }]);
+  ok(turnsOf(askQ, V)[0].ask === '[redacted]', '1.4.1 H review: a bare password after an AskUserQuestion is not kept');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

@@ -22,7 +22,7 @@ import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, rea
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { tag, QUIET, OFF, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED, redact } from './store.mjs';
+import { tag, QUIET, OFF, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED, redact, FUNC } from './store.mjs';
 export { redact };
 
 const TURNS = 10;         // how many exchanges to keep, per session
@@ -224,7 +224,10 @@ export const editedFile = (b) => (b?.type === 'tool_use' && /^(Edit|Write|Notebo
 // A reply that is one token with a digit or a symbol, to a question that asks for a password, token or key: the value alone, with no
 // keyword to redact it by (secret-paths-9). shortcut: a one-word answer of letters only ("hunter") is kept.
 const ASKS_SECRET = (q) => /\b(?:pass(?:word|phrase|code)|pwd|pin|tokens?|secret|api[ _-]?key|credentials?)\b/i.test(q) && /\?|\b(?:paste|enter|send|share|provide|type|give)\b/i.test(q);
-const BARE = (a, q) => /^\S{4,200}$/.test(a) && /[^A-Za-z]/.test(a) && ASKS_SECRET(q.slice(-400));
+// Also a passphrase typed alone (3 to 8 plain words). Shared with compact-gate's note. shortcut: any 3-word reply to a secret question is cut too.
+export const BARE = (a, q) => (/^\S{4,200}$/.test(a) && /[^A-Za-z]/.test(a) || /^[a-z]+(?: [a-z]+){2,7}$/i.test(a) && !a.toLowerCase().split(' ').some((w) => FUNC.has(w))) && ASKS_SECRET(q.slice(-400));
+// What an assistant record asked: its AskUserQuestion questions as text.
+const questions = (r) => (Array.isArray(r.message?.content) ? r.message.content.filter((b) => b?.type === 'tool_use' && b.name === 'AskUserQuestion').map((b) => JSON.stringify(b.input?.questions ?? '')).join(' ') : '');
 
 export function turns(tail) {
   const out = [];
@@ -298,6 +301,7 @@ export function turns(tail) {
     // answer is the memory update, not this turn's.
     if (r.type === 'attachment' && /^hook_(?:additional_context|blocking_error)$/.test(r.attachment?.type ?? '')
       && nudged(JSON.stringify(r.attachment.content ?? r.attachment.blockingError ?? ''))) { if (pending) hold(pending); continue; }
+    if (r.type === 'assistant') { const qs = questions(r); if (qs) said = qs; }
     if (!t && !ask && !typed) continue;
     if (r.type === 'assistant' && t) said = t;
     if (ask && r.type === 'user' && BARE(ask, said)) ask = '[redacted]';

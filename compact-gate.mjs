@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { goesOn, readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF, redact } from './handoff-log.mjs';
+import { goesOn, readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF, redact, BARE } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, isOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -133,6 +133,7 @@ function walk(raw) {
       // after a private ask it was shown under the next one.
       let ask = prompt(r, t);
       if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
+      if (ask && BARE(ask, s.said)) ask = '[redacted]';   // a password typed alone as the answer: handoff-log's turns() does the same
       if (ask) { s.ask = ask; s.raw = unwrap(norm(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.forgot = false; s.edited.clear(); }
       // Not in what the harness quotes: an agent's report quoting the tag hid
       // the last words said. Nor in a compaction summary, a recap: one that

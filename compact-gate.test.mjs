@@ -91,6 +91,12 @@ ok(/edited this turn:\*\* a\.py/.test(doc) && !/C:\\repo/.test(doc), 'files edit
 ok(/last said:\*\* running the suites/.test(doc), 'the last words said are kept');
 ok(doc.indexOf('cut mid-turn') < doc.indexOf('<!-- auto:end -->'), 'the note sits inside the auto section, so the next Stop drops it');
 
+// A password typed alone as the answer to a password question is not written into the note (1.4.1 H review).
+const SECRET = ['Zq8x', 'K2mP', '9vL4n'].join('');
+write(user('start'), asst('What is the database password I should use?', 500_000, 'end_turn'), user(SECRET), asst('editing', 965_000, 'tool_use'));
+ok(gate().code === 0, 'over the ceiling the compaction runs (secret answer)');
+ok(!readFileSync(join(dir, 'handoff.md'), 'utf8').includes(SECRET), 'a bare password answer is not in the cut mid-turn note');
+
 // An API-error or interrupt entry (model <synthetic>, usage all zeros) is no size: the turn's real one stays, and the nudge still fires.
 const synth = rec('assistant', [{ type: 'text', text: 'API Error' }], { message: { model: '<synthetic>', stop_reason: 'stop_sequence', usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 } } });
 write(user('q'), asst('a', T + 20_000, 'tool_use'), synth);
