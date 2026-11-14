@@ -3034,5 +3034,71 @@ if (!quick) {
   ok(!cut.includes('zzzz'), 'a secret just inside the cap is still redacted');
 }
 
+// 1.4.1 hardening C (redaction-corpus-1..6, 9..12): vendor token shapes, each template filled with seeded fake pieces (§ is stripped, so no
+// source line is a token; the secret is between « and ») and run through clip() bare and in three sentences; none of it may survive.
+{
+  const AL = { a: 'abcdefghijklmnopqrstuvwxyz0123456789', x: '0123456789abcdef', d: '0123456789', l: 'abcdefghijklmnopqrstuvwxyz',
+    m: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', w: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-', b: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/' };
+  const vendor = [
+    ["GitHub fine-grained PAT","github§_pat_«{w82}»"],
+    ["GitLab PAT routable","gl§pat-«{w30}.{a2}{a7}»"],
+    ["GitLab deploy token","gl§dt-«{w20}»"],
+    ["GitLab runner token","gl§rt-«{w20}»"],
+    ["GitLab runner token routable","gl§rt-t3_«{w30}.{a2}{a7}»"],
+    ["GitLab CI job token","gl§cbt-{a3}_«{w20}»"],
+    ["GitLab feed token","gl§ft-«{w20}»"],
+    ["GitLab incoming mail token","gl§imt-«{w25}»"],
+    ["GitLab agent token","gl§agent-«{w50}»"],
+    ["GitLab OAuth app secret","gl§oas-«{w64}»"],
+    ["GitLab SCIM token","gl§soat-«{w20}»"],
+    ["GitLab pipeline trigger","gl§ptt-«{x40}»"],
+    ["GitLab runner registration (old)","GR1§348941«{w20}»"],
+    ["GitLab session cookie","_gitlab_§session=«{a32}»"],
+    ["Stripe prod key","sk_§prod_«{m24}»"],
+    ["ElevenLabs key","sk_§«{x48}»"],
+    ["Square token","sq0§atp-«{w22}»"],
+    ["Square EAAA token","EAAA§«{w60}»"],
+    ["Discord webhook","https://discord§.com/api/webhooks/«{d18}/{w68}»"],
+    ["Microsoft Teams webhook","https://x{a5}.webhook.office§.com/webhookb2/«{x8}-{x4}-{x4}-{x4}-{x12}@{x8}-{x4}-{x4}-{x4}-{x12}»/IncomingWebhook/«{x32}/{x8}-{x4}-{x4}-{x4}-{x12}»"],
+    ["Zapier hook","https://hooks.zapier§.com/hooks/catch/{d7}/«{a8}»/"],
+    ["IFTTT maker","https://maker.ifttt§.com/trigger/evt/with/key/«{m22}»"],
+    ["Mattermost webhook","https://mm.example.org/hooks/«{a26}»"],
+    ["AWS Bedrock long-lived key","AB§SK«{b120}»"],
+    ["AWS Bedrock short-lived key","bedrock-api-key-«YmVkcm9jay5hbWF6b25hd3MuY29t{b100}»"],
+    ["Google OAuth refresh token","«1//0g{w60}»"],
+    ["Firebase FCM legacy server key","«AAAA{w7}:APA91b{w134}»"],
+    ["Azure AD client secret","«{w3}8Q~{w34}»"],
+    ["Azure DevOps PAT","«{a52}»"],
+    ["Azure DevOps PAT as basic user","curl -u :«{a52}» https://dev.azure.com/org/_apis/projects"],
+    ["Hugging Face org token","api_§org_«{l34}»"],
+    ["Twilio account SID and auth token","curl -u AC«{x32}»:«{x32}» https://api.twilio.com/2010-04-01/Accounts.json"],
+    ["Sidekiq URL","https://«{x8}:{x8}»@gems.contribsys§.com/"],
+    ["Fireworks key","fw§_«{m24}»"],
+    ["Cerebras key","cs§k-«{a48}»"],
+    ["Tavily key","tvl§y-«{m32}»"],
+    ["Pinecone key","pcs§k_«{m60}»"],
+    ["LangSmith key","lsv§2_pt_«{x32}_{x10}»"],
+    ["Voyage key","p§a-«{w40}»"],
+    ["Plaid secret","plaid_secret = \"«{x30}»\""],
+    ["Plaid access token","access-§sandbox-«{x8}-{x4}-{x4}-{x4}-{x12}»"],
+    ["Facebook page token","EAA§M«{a120}»"],
+    ["Twitter bearer","AAAAAAAAAAAAAAAAAAAAA§«{m60}%3D{m40}»"],
+    ["Twitter bearer header","Authorization: Bearer AAAAAAAAAAAAAAAAAAAAA§«{m60}%3D{m40}»"],
+    ["Salesforce session id","«00D{a12}!AQ{w80}»"],
+    ["Dropbox long-lived","sl.§«{w100}»"],
+  ];
+  const leaked = [];
+  for (let seed of [11, 4242]) for (const [name, tpl] of vendor) {
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff), secrets = [];
+    const gen = (c, n) => { let s = ''; while (s.length < n) s += AL[c][Math.floor(rnd() * AL[c].length)]; return /[abmw]/.test(c) ? s.replace(/^[^0-9]*$/, (z) => z.slice(0, -1) + '7') : s; };
+    const text = tpl.replace(/§/g, '').replace(/\{([a-zA-Z])(\d+)\}/g, (_, c, n) => gen(c, +n)).replace(/«([^»]*)»/g, (_, v) => { secrets.push(v); return v; });
+    for (const wrap of [(x) => x, (x) => `$ ${x}`, (x) => `look at this: ${x} thanks`, (x) => `echo start && ${x} # note`]) {
+      const out = clip(wrap(text), 20000);
+      if (secrets.some((v) => out.includes(v) || (v.length >= 8 && out.includes(v.slice(2, 10)) && out.includes(v.slice(-8))))) leaked.push(name);
+    }
+  }
+  ok(!leaked.length, `vendor token shapes are redacted (kept: ${[...new Set(leaked)].join(', ')})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
