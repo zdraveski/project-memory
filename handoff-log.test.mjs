@@ -3232,7 +3232,8 @@ if (!quick) {
     ok(keeps.every((s) => redact(s) === s), `${what}: ordinary lines are kept`);
   };
   const around = (t) => [t, `$ ${t}`, `look at this: ${t} thanks`, `echo start && ${t} # note`];
-  const E = (what, texts, keeps = []) => gaps(what, texts.flatMap((t) => around(t)), keeps);
+  // A [text, value] pair keeps its own value through the surrounds.
+  const E = (what, texts, keeps = []) => gaps(what, texts.flatMap((t) => (Array.isArray(t) ? around(t[0]).map((x) => [x, t[1]]) : around(t))), keeps);
   E('ssh-keygen -P and -N passphrases', [`ssh-keygen -p -P ${V} -N ${V}x -f k`, `ssh-keygen -p -P '${V}' -f k`], ['ssh-keygen -t ed25519 -N "" -f k']);
   E('a password piped to a command', [`echo ${V} | docker login -u me --password-stdin reg.io`, `printf '%s' '${V}' | docker login -u me --password-stdin`, `echo ${V} | sudo -S apt update`,
     `printf '%s\n' '${V}' | sudo -S cmd`, `echo "me:${V}" | chpasswd`, `echo ${V} | passwd --stdin me`, `echo ${V} | kinit me@X.ORG`, `echo ${V} | runas /user:me cmd`,
@@ -3257,6 +3258,21 @@ if (!quick) {
   E('form and HTTPie password fields, htpasswd -n', [`curl -d "user=me&pw=${V}" https://x`, `http POST https://x password:="\\"${V}\\""`, `htpasswd -nb me ${V}`, `htpasswd -nbB me ${V}`,
     `smbclient -U bob%${V} //host/share`, `xfreerdp /v:host /u:bob /p:${V}`, `dotnet user-secrets set "Db:Password" "${V}"`, `reg add HKLM\\Software\\App /v Password /d ${V} /f`],
   ['smbclient -L //host -U bob', 'curl -d "user=me&page=2" https://x']);
+  // Review of E: sudo or a path before the reader, docker's global flags, glued -pPASS, htpasswd's cost, more reg names.
+  const W = 'correcthorsebatterystaple';
+  E('piped passwords through sudo, a path or docker flags', [`echo "me:${V}" | sudo chpasswd`, `echo ${V} | sudo kinit me@X.ORG`, `echo ${V} | sudo passwd --stdin me`, `echo ${V} | /usr/bin/sudo -S x`,
+    `echo ${V} | docker --config c login -u me --password-stdin r.io`, [`echo ${W} | docker login -u me --password-stdin`, W], [`echo "me:${W}" | chpasswd`, W]]);
+  E('docker flags before login', [`docker --debug login -u me -p ${V} r.io`, `docker --config c login -u me -p ${V} r.io`, `podman --log-level debug login -u me -p ${V} r.io`]);
+  E('glued password flags', [`mycli -u me -p${V} db`, `mysql -u me -p${V} db`, `sqlcmd -S s -U sa -P${V}`, `sqlcmd -S s -U sa -P"${V}"`, `unzip -P${V} a.zip`, `zip -P${V} a.zip f`,
+    `ssh-keygen -p -P${V} -f k`, `ssh-keygen -N'${V}' -f k`], ['mysql -u me -p', 'sqlcmd -S s -E', 'psql -p5432 db']);
+  E('htpasswd with a cost and more reg names', [`htpasswd -nbC 10 me ${V}`, `htpasswd -bnBC 10 me ${V}`, `reg add HKLM\S /v ApiKey /d ${V} /f`, `reg add HKLM\S /v Key /d ${V} /f`,
+    `reg add HKLM\S /v Passphrase /d ${V} /f`]);
+  // No ReDoS: hostile 1 MB inputs for the new rules stay in seconds (measured: under 3 s each).
+  for (const unit of ['7z -p ', 'docker --a ', 'echo "a" | ', 'htpasswd -b ', 'reg add /v Key ', 'ssh-keygen -P ', "echo 'a", 'sqlcmd -P ']) {
+    const big = unit.repeat(Math.ceil(1e6 / unit.length)), t0 = Date.now();
+    redact(big); clip(big, 2000);
+    ok(Date.now() - t0 < 20000, `redact and clip of 1 MB of "${unit}" are fast (${Date.now() - t0} ms)`);
+  }
 }
 
 rmSync(home, { recursive: true, force: true });
