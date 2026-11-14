@@ -139,13 +139,13 @@ export function commandsOf(file, chunk, seg, got) {
   } finally { closeSync(fd); }
 }
 
-export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024;
+export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024, CACHE_V = 1;
 
-// A store's rules through its cache `.enforce.json` ({ file: { mtime, size, r } }): only a note that is new or changed since
+// A store's rules through its cache `.enforce.json` ({ v, files: { file: { mtime, size, r } } }; another v is rebuilt, as ruleOf may read differently): only a note that is new or changed since
 // is read, and then only its first 2 KB unless that holds `enforce:`. A cache that does not read is rebuilt. Never throws.
 function cached(dir) {
   let old = {}, names = [], changed = false;
-  try { const j = JSON.parse(readFileSync(join(dir, CACHE), 'utf8')); if (j && typeof j === 'object' && !Array.isArray(j)) old = j; } catch {}
+  try { const j = JSON.parse(readFileSync(join(dir, CACHE), 'utf8')); if (j?.v === CACHE_V && j.files && typeof j.files === 'object' && !Array.isArray(j.files)) old = j.files; } catch {}
   try { names = readdirSync(dir).filter((n) => n.endsWith('.md') && !isIndex(n)).sort(); } catch { return []; }
   const now = {}, out = [];
   for (const file of names) {
@@ -164,7 +164,7 @@ function cached(dir) {
       if (r) out.push({ file, ...r });
     } catch {}
   }
-  if (changed || Object.keys(old).length !== Object.keys(now).length) try { writeFileSync(join(dir, CACHE), JSON.stringify(now)); } catch {}
+  if (changed || Object.keys(old).length !== Object.keys(now).length) try { writeFileSync(join(dir, CACHE), JSON.stringify({ v: CACHE_V, files: now })); } catch {}
   return out;
 }
 

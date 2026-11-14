@@ -8,7 +8,7 @@ import assert from 'node:assert';
 import { tempHome, tool, storeFor } from './harness.mjs';
 import { ruleSet, record, LOG, CACHE, LOG_MAX } from './enforce.mjs';
 import { QUIET, OFF, PROJECT_OFF, sharedStore } from './store.mjs';
-import { tag as tagOf } from './handoff-log.mjs';
+import { tag as tagOf, hushed } from './handoff-log.mjs';
 import { gitignore } from './memory-tier.mjs';
 
 const { home } = tempHome('enforce-hook-');
@@ -91,12 +91,28 @@ quiet(run(p.payload('git add -A')), 'log full'); ok(statSync(join(p.store, LOG))
 // a changed note is read again.
 p = project(); const f = join(p.store, 'stage.md'), T = new Date('2026-01-01T00:00:00Z');
 utimesSync(f, T, T);
-quiet(run(p.payload('git add -A')), 'first run'); ok(Object.keys(JSON.parse(readFileSync(join(p.store, CACHE), 'utf8'))).join() === 'stage.md', 'the first run builds the cache');
+quiet(run(p.payload('git add -A')), 'first run'); ok(Object.keys(JSON.parse(readFileSync(join(p.store, CACHE), 'utf8')).files).join() === 'stage.md', 'the first run builds the cache');
 writeFileSync(f, readFileSync(f, 'utf8').replace('-A, --all', '-B, --zzz')); utimesSync(f, T, T);
 quiet(run(p.payload('git add -A')), 'second run'); ok(lines(p.store).length === 2, 'the second run used the cache, not the note');
 utimesSync(f, T, new Date(T.getTime() + 5000));
 quiet(run(p.payload('git add -A')), 'third run'); ok(lines(p.store).length === 2, 'a changed note is read again (its old rule is gone)');
 quiet(run(p.payload('git add -B')), 'fourth run'); ok(lines(p.store).length === 3, 'and its new rule applies');
+
+// A cache written by another version is not trusted: its parsed rule (a bogus one here) is rebuilt from the note.
+{ const q = project(); quiet(run(q.payload('git add -A')), 'build'); const c = JSON.parse(readFileSync(join(q.store, CACHE), 'utf8'));
+  c.v = 0; c.files['stage.md'].r = { on: 'ls', has: ['x'], unless: [] }; writeFileSync(join(q.store, CACHE), JSON.stringify(c));
+  quiet(run(q.payload('git add -A')), 'old cache version'); ok(lines(q.store).length === 2, 'a cache of another version is rebuilt from the notes');
+  ok(JSON.parse(readFileSync(join(q.store, CACHE), 'utf8')).v === 1, 'and written with the current version'); }
+// No file is read or made before the `git` check: a non-git command leaves no cache.
+{ const q = project(); quiet(run(q.payload('ls -la')), 'non-git'); ok(!existsSync(join(q.store, CACHE)), 'a non-git command builds no cache'); }
+// The hook's private test agrees with handoff-log's hushed() on odd tag files.
+for (const [what, make] of [['CRLF', (f) => writeFileSync(f, 'dead0000\r\nbeef0000\r\n')], ['empty', (f) => writeFileSync(f, '')], ['a folder', (f) => mkdirSync(f)],
+  ['no final newline', (f) => writeFileSync(f, 'beef0000\ndead0000')], ['blank lines', (f) => writeFileSync(f, '\n\ndead0000\n\n')], ['other tags only', (f) => writeFileSync(f, 'beef0000\n')]]) {
+  for (const sid of ['dead0000-1', 'abc']) {
+    const q = project(); make(join(q.store, QUIET));
+    ok((hushed(q.store, tagOf(sid)) !== false) === (ruleSet(q.payload('git add -A', { session_id: sid })).off === true), `ruleSet and hushed agree on ${what} for ${sid}`);
+  }
+}
 
 // ruleSet and record, called directly.
 p = project(); const set = ruleSet(p.payload('git add -A'));
