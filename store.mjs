@@ -478,6 +478,7 @@ export const OFF = '.memory-off';
 // `this.apiKey`, `settings.SECRET_KEY`) is a reference to one, not one.
 const code = (v) => /^\$[{(]|^(?:process\.env[.[]|os\.environ|os\.getenv|System\.getenv|ENV\[)/.test(v)
   || (!/\d/.test(v) && /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(v) && /(?:pass|secret|token|key|pwd|auth|cred)\w*$/i.test(v))
+  || /^[A-Za-z_$][\w$.]*\(\)$/.test(v)
   || /^(?:string|number|boolean|str|int|bytes|any|unknown|null|undefined|none|true|false|object|bool|float|char|optional|secretstr)$/i.test(v)
   || (!/\d/.test(v) && (/^[A-Za-z_$][\w$.]*[([]/.test(v) || /^(?:\/|~\/|[A-Za-z]:[\\/])[^\s/\\]+[\\/]/.test(v)));
 // A command's argument that is no secret itself: a reference ($TOKEN,
@@ -489,9 +490,11 @@ const arg = (v) => /^\$[{(A-Za-z_]|^~|^\.{1,2}[\\/]|^\/[^\s/]+\/|[\\/][^\s\\/]*\
 // A variable's name that holds a secret: one of its _-parts is the word (not
 // KEYBOARD or MONKEY), and it doesn't name a file (KEY_FILE, PUBLIC_KEY_PATH).
 const named = (n) => {
-  const ps = n.toUpperCase().split('_');
+  const ps = n.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase().split(/[_.-]/);
   return ps.some((p) => /^(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|PASS|PWD)$/.test(p)) && !/^(?:FILE|PATH|DIR|NAME|ID)$/.test(ps.at(-1));
 };
+// A PHP/Laravel validation rule ('required|min:8'), no secret.
+const RULES = /^(?:required|nullable|string|confirmed|sometimes|present|filled|bail|array|email|numeric|integer|alpha|alpha_num|alpha_dash|current_password|min|max|size|same|different|between|regex|unique|exists)(?::[\w,.-]+)?(?:\|(?:required|nullable|string|confirmed|sometimes|present|filled|bail|array|email|numeric|integer|alpha|alpha_num|alpha_dash|current_password|min|max|size|same|different|between|regex|unique|exists)(?::[\w,.-]+)?)*$/;
 // A number under a count's name (TOKEN_LIMIT, MAX_TOKEN, SECRET_PORT): no
 // secret, as only a count-like whole part says (R34).
 const counted = (n, v) => /^\d+$/.test(v) && n.toUpperCase().split('_').some((p) => /^(?:LIMIT|MAX|MIN|SIZE|COUNT|LEN|TTL|TIMEOUT|BYTES|PORT)$/.test(p));
@@ -660,8 +663,8 @@ const SECRETS = [
   // `set NAME=…`, and one after a shell's `&&`, `||`, `;` or `|` (an inline variable before a command).
   [/((?:^[ \t]*(?:-[ \t]+)?|(?:&&|\|\||[;|])[ \t]*|(?<=[ \t]))(?:(?:export|set|SET)[ \t]+)?([A-Z][A-Z0-9_]{0,100})=(?:\$?["'])?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]{1,2000})/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
   // 1.4.1 G: a cookie or setting written as a name/value object ({name: 'session', value: '...'}, HAR, Chrome, Postman's {"key": "token", "value": ...}): the name says what the value is.
-  [/(\{[^{}\n]{0,200}?["']?(?:name|key)["']?[ \t]*:[ \t]*["']([\w.-]{1,100})["'][ \t]*,[ \t]*["']?value["']?[ \t]*:[ \t]*["'])([^"'\n]{4,2000})/g,
-    (m, pre, n, v) => (/sess|(?:^|[_.-])(?:sid|key|secret|token|password|passwd|pass|pwd|auth|credentials?|cookie)(?:$|[_.-])|apikey|password|secret|token/i.test(n) && !arg(v) && !code(v) ? pre + '[redacted]' : m)],
+  [/(\{[^{}\n]{0,200}?["']?(?:name|key)["']?[ \t]*:[ \t]*["']([\w.-]{1,100})["'][^{}\n]{0,200}?,[ \t]*["']?value["']?[ \t]*:[ \t]*["'])([^"'\n]{4,2000})/g,
+    (m, pre, n, v) => (/sess|(?:^|[_.-])(?:sid|key|secret|token|password|passwd|pass|pwd|auth|credentials?|cookie)(?:$|[_.-])|apikey|password|secret|token/i.test(n) && !/^(?:\{\{|<|%)/.test(v) && !/(?:^|[_.-])(?:policy|file|path|dir|type|url|length|label|hint)$/i.test(n) && !arg(v) && !code(v) ? pre + '[redacted]' : m)],
   // A JSON password of any length, an escaped quote in it too: to the quote that ends the value (before , } ] or the line's end).
   [/("(?:password|passwd|pwd|pass|passphrase)"[ \t]*:[ \t]*")((?:[^"\\\n]|\\.|"(?![ \t]*(?:[,}\]]|\r?$)))+)(?=")/gim, (m, pre, v) => (v.length < 3 || arg(v) || code(v) ? m : pre + '[redacted]')],
   // A long mixed value under a bare key, in JSON or YAML (key, credentials, auth, session): a letter, a digit, 20 or more characters, no path.
@@ -670,13 +673,13 @@ const SECRETS = [
   // A Netscape cookie jar's line: domain, flag, path, secure, expiry, name, value.
   [/((?<!\S)\S{1,255}[ \t]+(?:TRUE|FALSE)[ \t]+\S+[ \t]+(?:TRUE|FALSE)[ \t]+\d+[ \t]+\S+[ \t]+)[^\s]{6,}/g, '$1[redacted]'],
   // A literal in code: a PHP 'password' => 'x', a setter (setPassword("x")), the 2nd string of a credential class or auth=("u", "x"), the 3rd of a connect call, a patched getpass.
-  [/((["'])([\w.-]{1,100})\2[ \t]*=>[ \t]*["'])([^"'\n]{3,500})/g, (m, pre, q, n, v) => (named(n) && !arg(v) && !code(v) ? pre + '[redacted]' : m)],
+  [/((["'])([\w.-]{1,100})\2[ \t]*=>[ \t]*["'])([^"'\n]{3,500})/g, (m, pre, q, n, v) => (named(n) && !arg(v) && !code(v) && !RULES.test(v) ? pre + '[redacted]' : m)],
   [/(\.set(?:Password|Passwd|Secret|SecretKey|ApiKey|Token|AccessKey|Passphrase)\(\s*["'])([^"'\n]{3,500})/g, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
   [/(\b(?:NetworkCredential|HTTPBasicAuth|HTTPDigestAuth|UsernamePasswordCredentials|PasswordAuthentication|auth[ \t]*=[ \t]*)\(?[ \t]*(?:"[^"\n]{0,100}"|'[^'\n]{0,100}')[ \t]*,[ \t]*["'])([^"'\n]{3,500})/g, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
   [/(\b(?:mysqli_connect|new[ \t]+mysqli|PlainAuth|getConnection|new[ \t]+PDO)\([ \t]*(?:"[^"\n]*"|'[^'\n]*'|[^,\n()"']{0,200}),[ \t]*(?:"[^"\n]*"|'[^'\n]*'|[^,\n()"']{0,100}),[ \t]*["'])([^"'\n]{3,500})/g, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
   [/(\bgetpass\b[^\n]{0,60}?\blambda\b[^:\n]{0,40}:[ \t]*["'])([^"'\n]{3,500})/g, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
   // A base64 credential fed to a decoder: echo X | base64 -d, base64 --decode <<< X (16 or more characters).
-  [/(\b(?:echo|printf)(?:[ \t]+-[neE]+)?[ \t]+["']?)[A-Za-z0-9+/]{16,}={0,2}(?=["']?[ \t]*\|[ \t]*base64[ \t]+(?:-[dD]|--decode)\b)|(\bbase64[ \t]+(?:-[dD]|--decode)\b[^\n|;&<]{0,50}?<<<[ \t]*["']?)[A-Za-z0-9+/]{16,}={0,2}/g, (m, a, b) => (a ?? b) + '[redacted]'],
+  [/(\b(?:echo|printf)(?:[ \t]+-[neE]+)?[ \t]+["']?)(?!\/)(?=[a-z/]*[A-Z0-9+])[A-Za-z0-9+/]{16,}={0,2}(?=["']?[ \t]*\|[ \t]*base64[ \t]+(?:-[dD]|--decode)\b)|(\bbase64[ \t]+(?:-[dD]|--decode)\b[^\n|;&<]{0,50}?<<<[ \t]*["']?)[A-Za-z0-9+/]{16,}={0,2}/g, (m, a, b) => (a ?? b) + '[redacted]'],
   // An echoed prompt: "[sudo] password for bob: X", "Enter passphrase for key '/path': X".
   [/(\b(?:password|passphrase)[ \t]+for[ \t]+(?:key[ \t]+)?(?:'[^'\n]{1,300}'|"[^"\n]{1,300}"|[^\s:'"]{1,100})[ \t]*:[ \t]*)([^\s"']{4,200})/gi, (m, pre, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) && !code(v) ? pre + '[redacted]' : m)],
   // A Kubernetes env entry, `- name: NAME` then `value: …` on the next line, judged by the name as a .env line is (review,

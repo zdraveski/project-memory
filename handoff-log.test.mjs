@@ -704,11 +704,15 @@ ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 's
       ['getConnection', `DriverManager.getConnection(url, "u", "${P}");`, P], ['PlainAuth', `smtp.PlainAuth("", "u", "${P}", "h")`, P], ['NetworkCredential', `new NetworkCredential("u", "${P}")`, P],
       ['.env after a prompt', `$ APP_KEY=base64:${T}=`, T], ['.env in chat', `see SERVICE_CREDENTIAL=${T} thanks`, T], ['NEO4J_AUTH in a log', `x executing NEO4J_AUTH=neo4j/${P}`, P],
       ['base64 -d pipe', `echo ${b64} | base64 -d`, b64], ['base64 --decode here-string', `base64 --decode <<< ${b64}`, b64],
+      ['Chrome cookie, keys in order', `{"domain":".a.com","name":"sessionid","path":"/","value":"${T}"}`, T], ['cookie, path between', `{"name":"sessionToken","path":"/","value":"${T}"}`, T],
+      ['camelCase setItem', `localStorage.setItem('authToken','${T}')`, T], ['camelCase php array', `'apiKey' => '${T}'`, T], ['dotted setProperty', `System.setProperty("db.password","${P}")`, P],
       ['sudo prompt', `[sudo] password for bob: ${P}`, P], ['ssh key passphrase prompt', `Enter passphrase for key '/home/bob/.ssh/id_ed25519': ${P}`, P],
     ];
     const lost = g.filter(([, s, n]) => clip(s, 2000).includes(n)).map(([n]) => n);
     ok(lost.length === 0, `1.4.1 G: a secret in a cookie, JSON/YAML key, code literal, .env line, decoder pipe or echoed prompt is redacted: ${lost.join('; ')}`);
-    const kept = ['{"name": "theme", "value": "dark-mode-on"}', "define('DB_HOST', 'localhost');", 'localStorage.setItem(\'theme\', \'dark\')', 'key: src/components/Button1', 'FOO=bar baz', 'echo SGVsbG8gd29ybGQ= | base64 -d', '{"password": null}'];
+    const kept = ['{"name": "theme", "value": "dark-mode-on"}', "define('DB_HOST', 'localhost');", 'localStorage.setItem(\'theme\', \'dark\')', 'key: src/components/Button1', 'FOO=bar baz', 'echo SGVsbG8gd29ybGQ= | base64 -d', '{"password": null}',
+      "'password' => 'required|min:8'", "'password' => 'confirmed'", 'echo /usr/local/lib/node/ | base64 -d', "echo 'abcdefghijklmnopqrstuvwxyz' | base64 -d", 'session_id = uuid.uuid4()',
+      '{"name":"password_policy","value":"strong-enough"}', '{"key":"password","value":"{{pw}}"}'];
     ok(kept.every((s) => clip(s, 2000) === s), '1.4.1 G: ordinary settings, names and values stay as written');
   }
   const [fast, how] = linear((m) => { redact('password: "' + 'a "\\'.repeat(2_000 * m)); redact('password=' + 'x,'.repeat(5_000 * m)); redact('pass​'.repeat(2_000 * m)); redact('\\'.repeat(2_000 * m)); }, 1000);
