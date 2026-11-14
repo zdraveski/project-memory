@@ -25,6 +25,7 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
   history <memory> [--all] [--limit N]    the snapshots that changed it, the newest 30
   restore <memory> [--rev <commit>] [--force]   back from the snapshots, with its index line
   promote <memory>                        move it to the shared store, for every project
+  enforce status                          each rule note: hits in the last 30 days from the live log
   enforce replay <note> [--all]           what the enforce: rule in a note (or in any .md file) would have
                                           caught in the last 30 days of this project's conversations, or
                                           every project's; read-only
@@ -39,7 +40,7 @@ import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
-import { ruleOf, hits, commandsOf } from './enforce.mjs';
+import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { redact, hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
@@ -647,6 +648,10 @@ export function doctor(site = sessionStore()) {
   if (twice) say(false, `the Stop hook ran twice for one reply (${local(twice.at)}): project-memory's hooks are wired twice, so every hook runs twice. The user's fix: remove the project-memory hooks added to settings.json by hand (the plugin wires its own); if a second copy is installed under another name, uninstall it`);
   const gone = isOff(site);
   if (gone) say(!gone.unread, offText(gone));
+  // The enforce hook fails open, so a broken copy would be silent: run the copy the plugin runs. Before the early return below.
+  const root = pluginRoot();
+  // A copy with no hooks.json at all is not one doctor can judge (the Stop checks below name a plugin that wires nothing).
+  if (root && existsSync(join(root, 'hooks', 'hooks.json'))) say(...enforceHook(root));
   // Auto memory turned off: the hooks do nothing, so nothing below applies.
   if (memoryOff()) { say(true, 'auto memory is off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): the hooks save and brief nothing until it is on again'); return { ok: !bad, lines }; }
   // The one setting doctor reads (never printed but for its presence): the hooks keep the default folder, and a note in the moved one is
@@ -704,6 +709,17 @@ export function doctor(site = sessionStore()) {
   return { ok: !bad, lines };
 }
 
+// Whether the plugin copy at `at` has the PreToolUse group and an enforce hook that starts, exits 0 and prints nothing: [fine, text].
+function enforceHook(at) {
+  const file = join(at, 'enforce-hook.mjs');
+  if (!existsSync(file)) return [false, `${file} is missing: the enforce hook cannot run. The user's fix: claude plugin update ${PLUGIN}`];
+  if (!json(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.length) return [false, `hooks.json in ${at} has no PreToolUse group: the enforce hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
+  try {
+    const out = execFileSync(process.execPath, [file], { input: '{}', encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] });
+    return out ? [false, `the enforce hook printed output for an empty call (${clip(out, 80)}): it must print nothing`] : [true, 'the enforce hook runs and is wired (PreToolUse)'];
+  } catch (e) { return [false, `the enforce hook failed an empty call (exit code ${e.status ?? e.code}): ${file}`]; }
+}
+
 // What status and doctor say of a project turned off.
 const offText = (o) => (o.unread
   ? `memory is paused here: the off marker can't be read (${o.unread}); next: tell the user, memory on won't help until that's fixed`
@@ -757,7 +773,7 @@ function projectSwitch(dir, off) {
 const REPLAY_SEG = 8 << 20, pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 function replay(here, args, all, label, failed) {
   const w = args.slice(1).join(' ');
-  if (args[0] !== 'replay' || !w) return { ok: false, lines: ['enforce takes replay <note> [--all]', USAGE] };
+  if (args[0] !== 'replay' || !w) return { ok: false, lines: ['enforce takes status, or replay <note> [--all]', USAGE] };
   if (!chunk) return { ok: false, lines: ['replay needs journal.mjs, which did not load'] };
   const p = /\.md$/i.test(w) && existsSync(w) && statSync(w).isFile() ? w : join(here, onDisk(here, basename(w).replace(/(\.md)?$/i, '.md')));
   let text; try { text = readFileSync(p, 'utf8'); } catch { return { ok: false, lines: [`no note ${w} in ${here}`] }; }
@@ -795,6 +811,16 @@ function replay(here, args, all, label, failed) {
     `checked ${pl(checked, 'git command')}, ${matched} are git ${r.rule.on}, ${pl(found.length, 'hit')} in ${pl(new Set(found.map((f) => f.s)).size, 'session')}, ${pl(Object.keys(by).length, 'project')}`,
     ...(found.length ? [`hits by project: ${Object.entries(by).map(([k, n]) => `${k} ${n}`).join(', ')}`] : []),
     'Read each hit. A hit is a catch only if you agree the command broke the lesson.'] };
+}
+
+// Each rule note with the hits the live log holds for it in the last 30 local days, and what the log cannot say.
+function enforceStatus(here) {
+  const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 30);
+  const { notes, full } = tally(here, from.getTime()), n = (x) => x.main + x.sub;
+  const off = memoryOff() || isOff(here);
+  return { ok: true, lines: [...(off ? ['memory is off here: watch is paused'] : []), ...(full ? ['log full, delete it to restart'] : []),
+    ...(notes.length ? notes.map((x) => x.bad ? `${x.file}  bad rule: ${x.bad}` : n(x) ? `${x.file}  ${pl(n(x), 'hit')} in 30 days (${x.main} main, ${x.sub} subagent), last ${local(x.last)}` : `${x.file}  no hits in 30 days`) : [`no enforce: rules in ${here}`]),
+    'To see the commands, run `memory enforce replay <note>`.'] };
 }
 
 // The command line, its words as given; returns the exit code. Callable in
@@ -1005,7 +1031,7 @@ export function main(given) {
       r.lines.splice(-1, 0, ...again);
       if (lost.length) { r.lines.splice(-1, 0, ...lost); r.ok = false; }
     } catch (e) { if (!e.code) throw e; r = no(`${join(here, 'journal')} could not be listed (${e.code}); nothing removed`); }
-  } else if (cmd === 'enforce') r = replay(here, args, rest.includes('--all'), project, failed);
+  } else if (cmd === 'enforce') r = args[0] === 'status' ? enforceStatus(here) : replay(here, args, rest.includes('--all'), project, failed);
   else if (cmd === 'incognito') r = incognito(opt('--session'));
   else if (cmd === 'off' || cmd === 'on') r = projectSwitch(here, cmd === 'off');
   else if (cmd === 'status') {

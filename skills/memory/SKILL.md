@@ -1,7 +1,7 @@
 ---
 name: memory
 description: Search, restore or share Claude Code's memories on this machine, and check the memory hooks. Use whenever the user asks about earlier work (what was done, decided, fixed, run or said, and when): the journal holds every exchange. Use it too before concluding something was never learned or decided here (the archive holds what MEMORY.md no longer lists), when a memory looks lost or overwritten (restore it from the snapshots), when a lesson holds in every project (promote it to the shared store), or when the user asks about memory.
-argument-hint: "[status | search <terms> | show <key> | forget <words> | history <memory> | restore <memory> | promote <memory> | doctor | incognito | off | on]"
+argument-hint: "[status | search <terms> | show <key> | forget <words> | history <memory> | restore <memory> | promote <memory> | enforce status | enforce replay <note> | doctor | incognito | off | on]"
 ---
 
 # Memory
@@ -34,9 +34,22 @@ node "${CLAUDE_PLUGIN_ROOT}/memory.mjs" <command> --session ${CLAUDE_SESSION_ID}
 | `forget <words>`, then `forget --key <key>... --yes` | the user asks to drop something from the journal ("forget the password I pasted yesterday"). Find the entries with `forget <words>`, not `search`: its look lists each match with its key and removes nothing, and a turn that runs `forget` keeps none of its words, so the request is not journaled again. Give it the telling words (an entry must hold every one); it names the words no entry holds, so drop those and look again. Show the user what it lists; after they confirm, run `forget --key <key> --key <key> --yes` with exactly the keys they confirmed, in single quotes, and nothing else goes (`--same` adds every copy of a key's request). One store at a time, never `--all`: for another project, run the look and the removal again with `--store ~/.claude/projects/<project>/memory`, one forget per store (a search hit under `--all` names its project, and in brackets the `<project>` folder). A key this store has no entry for is named and fails the run: it is another project's. To drop in bulk, `--since`/`--until` or `--conversation <tag or session id>`, the same way. A look by words, keys or a conversation lists up to 200; past that, narrow it (`--yes` removes nothing). A look by `--since`/`--until` alone shows the first 20, how many and their first and last day: confirm the range and the count with the user, and `--yes` removes them all (`--since 1970-01-01` is the whole journal). A `could not write` line means those entries are still in that file until a later forget removes them; `search`, `show` and the exchanges the next conversation's briefing lists leave them out meanwhile. The same exchanges go from `handoff.md` too, so the next briefing doesn't bring them back. Claude Code's own conversation files still hold them: `forget` doesn't change those, and its output says so; tell the user |
 | `incognito` | the user asks to go incognito, or says "don't remember this" about the whole conversation. It stops project-memory saving this conversation and sweeps what it already saved from the journal and `handoff.md`. "Don't remember this" can also mean one message: ask which, and for one message the answer is to wrap it in `<private>...</private>` (a plain `<private>` in the user's next message), not this. Tell the user exactly what it printed: Claude Code by default still keeps its own transcript, its own auto memory may still save notes, snapshots of days already over keep a copy. Notes you write in the conversation are kept like any other note, so after it save no note unless the user asks. If it says `NOT applied`, say it did not work and why; do not say it is on |
 | `off`, then later `on` | the user asks to turn off memory here ("turn off memory in this project", "stop remembering anything here"), or to turn it back on. Off stops project-memory adding anything in this project: no handoff, journal, tiering or snapshot, and the startup says it is off. It does not hide: `search` and `show` still answer, and Claude Code's own transcript and auto memory are not its to stop. Confirm with the user before `off`; tell them to say "turn it back on" later. If it says `NOT applied`, say so and why |
-| `doctor` | the hooks may not be running: the install, the deployed copy, the Stop hook (and whether it runs twice per reply), locks, git. It never reads settings.json |
+| `enforce status` | the user asks what their git rules caught: each note with an `enforce:` rule, its hits in the last 30 days (main and sub-agent) and the last one, bad rules with the reason, and whether the log is full or memory is off. It holds no command text: for that, `enforce replay` |
+| `enforce replay <note> [--all]` | the user wants to try a rule: a note's name, or the path of any `.md` file with an `enforce:` block, read against the git commands of the last 30 days of this project's conversations (`--all`: every project; about a minute on a big history). Read-only. Show the hits and let the user judge: a hit is a catch only if they agree the command broke the lesson |
+| `doctor` | the hooks may not be running: the install, the deployed copy, the Stop hook (and whether it runs twice per reply), the enforce hook (it fails open, so this line is the only sign it broke), locks, git. It never reads settings.json |
 
 Before answering a question about earlier work, search. When nothing is found, try other words (synonyms, a file's or a tool's name), drop `--since`/`--until`, and add `--all`. For "what did I do last week", search with `--since`/`--until` alone. Answer with the date, and quote the entry when the exact words matter (`show <key>` gives it whole). Never say there is no record until notes, journal and `--all` were searched. Run `forget --yes` only after the user confirms exactly what it removes.
+
+Writing a rule: when the user wants a lesson about a git command checked by the computer, add this to that note's front matter, indented two spaces (git only; one rule per note; words are exact, no patterns):
+
+```
+enforce:
+  on: git add
+  has: [-A, --all, .]
+  unless: [mktemp, init]
+```
+
+`on` is `git <subcommand>`; `has` is one word or up to 8; `unless` is optional. Then run `enforce replay <note>` and show the hits before the user relies on it. The hook only logs which note matched: it blocks nothing. Say plainly that few lessons fit this form.
 
 A memory is named by its file name, with or without `.md`. `--shared` runs a
 command against the shared store; `--store <dir>` against another project's

@@ -191,3 +191,20 @@ export function record(store, entry) {
     if (size <= LOG_MAX) appendFileSync(f, JSON.stringify(entry) + '\n');
   } catch {}
 }
+
+// What `memory enforce status` shows of a store: its rule notes (and the shared store's, as `_shared/<file>`), each with the
+// log's hits since `from` (ms) split main and sub-agent, and whether the log has stopped growing. Never throws.
+export function tally(dir, from) {
+  const lines = []; let full = false;
+  try {
+    const f = join(dir, LOG);
+    full = statSync(f).size > LOG_MAX;
+    for (const l of readFileSync(f, 'utf8').split('\n')) try { const j = JSON.parse(l), t = Date.parse(j.t); if (t >= from) lines.push({ note: String(j.note), t, sub: !!j.agent }); } catch {}
+  } catch {}
+  const shared = sharedStore() === dir ? [] : rulesOf(sharedStore()).map((x) => ({ ...x, file: `_shared/${x.file}` }));
+  const notes = [...rulesOf(dir), ...shared].map(({ file, bad }) => {
+    const mine = lines.filter((l) => l.note === file);
+    return { file, bad, main: mine.filter((l) => !l.sub).length, sub: mine.filter((l) => l.sub).length, last: Math.max(0, ...mine.map((l) => l.t)) };
+  });
+  return { notes, full };
+}
