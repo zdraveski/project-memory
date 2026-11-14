@@ -820,9 +820,9 @@ function replay(here, args, all, label, failed) {
 // Each rule note with the hits the live log holds for it in the last 30 local days, and what the log cannot say.
 function enforceStatus(here) {
   const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 30);
-  const { notes, full } = tally(here, from.getTime()), n = (x) => x.main + x.sub;
+  const { notes } = tally(here, from.getTime()), n = (x) => x.main + x.sub;
   const off = memoryOff() || isOff(here);
-  return { ok: true, lines: [...(off ? ['memory is off here: watch is paused'] : []), ...(full ? ['log full, delete it to restart'] : []),
+  return { ok: true, lines: [...(off ? ['memory is off here: watch is paused'] : []),
     ...(notes.length ? notes.map((x) => x.bad ? `${x.file}  bad rule: ${x.bad}` : n(x) ? `${x.file}  ${pl(n(x), 'hit')} in 30 days (${x.main} main, ${x.sub} subagent), last ${local(x.last)}` : `${x.file}  no hits in 30 days`) : [`no enforce: rules in ${here}`]),
     'To see the commands, run `memory enforce replay <note>`.'] };
 }
