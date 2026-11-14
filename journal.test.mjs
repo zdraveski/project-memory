@@ -86,6 +86,10 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   ok(record(dir, T, [turn({ did: 'new answer' })]) === 1, 'a changed answer counts one');
   const es = parseDay(day()).entries;
   ok(es.length === 1 && es[0].answered === 'new answer', 'the answer replaced in place');
+  // A fork's copy (same uuid, another transcript) leaves the parent's entry as it is.
+  const T2 = '/x/projects/C--proj/fedcba9876543210.jsonl';
+  record(dir, T2, [turn({ did: 'fork answer' })]);
+  ok(parseDay(day()).entries.length === 1 && parseDay(day()).entries[0].answered === 'new answer', 'a fork copy does not replace the parent entry');
 }
 {
   record(dir, T, [turn({ at: '2026-10-27 23:59', id: 'u-late' })]);

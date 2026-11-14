@@ -269,7 +269,7 @@ export function turns(tail) {
     // A message typed while Claude worked has no user record, only this attachment: it opens a turn too (1.3.2). A private one
     // keeps the older way below (it freezes the turn it came into).
     // Not another session's or a subagent's message (origin.kind peer, isMeta): it is no ask of the user's.
-    const q = r.type === 'attachment' && r.attachment?.type === 'queued_command' && !r.attachment.isMeta && [undefined, 'human', 'sdk'].includes(r.attachment.origin?.kind) ? queuedText(r).trim() : '';
+    const q = r.type === 'attachment' && r.attachment?.type === 'queued_command' && !r.attachment.isMeta && r.attachment.origin?.kind !== 'peer' ? queuedText(r).trim() : '';
     let ask = r.type === 'user' ? prompt(r, t) : q && !PRIVATE.test(norm(q)) && asked(r, q) ? own(q) : '';
     // A user record that repeats the queued message just opened is the same ask.
     if (ask && r.type === 'user' && pending?.queued && !pending.did && ask === pending.ask) continue;

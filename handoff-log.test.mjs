@@ -3416,6 +3416,11 @@ if (!quick) {
   handoff({ cwd: cwdN, transcript_path: tN, session_id: 'n1aaaa00' });
   const hN = readFileSync(join(dirN, 'handoff.md'), 'utf8');
   ok(hN.includes('the real nuthatch question') && !/cross-session-message|agent-message/.test(hN), `a peer or subagent message is no ask (got ${hN.slice(-400)})`);
+  // A kind Claude Code adds later, typed by the user (no isMeta), is still saved.
+  const typed = JSON.stringify({ type: 'attachment', timestamp: '2026-10-29T09:03:00Z', attachment: { type: 'queued_command', prompt: 'the typed heron question', origin: { kind: 'keyboard' }, commandMode: 'prompt' } });
+  appendFileSync(tN, typed + '\n' + asst('heron answer', { ts: '2026-10-29T09:03:10Z' }) + '\n');
+  handoff({ cwd: cwdN, transcript_path: tN, session_id: 'n1aaaa00' });
+  ok(readFileSync(join(dirN, 'handoff.md'), 'utf8').includes('the typed heron question'), 'a typed message of an unknown origin kind is kept');
 }
 // 1.4.1 N (e2e-sessions-2): a fork starts with a copy of its parent's records (same uuids, a new sessionId): they are not listed again.
 {
