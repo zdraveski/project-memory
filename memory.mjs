@@ -1055,7 +1055,7 @@ export function main(given) {
   // A --session no transcript has: the store came from the folder this runs in, and status reported it in silence (audit C-10).
   if (opt('--session') !== undefined && cmd !== 'incognito' && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);
   // A note's file name or [[link]] can hold a secret the model wrote: read-only listings scrub what they print.
-  console.log((cmd === 'search' || cmd === 'status' ? r.lines.map(redact) : r.lines).join('\n'));
+  console.log(r.lines.map(redact).join('\n'));
   // A forget that failed anywhere fails: exit 0 read as all gone.
   return r.ok && !(cmd === 'forget' && failed.length) ? 0 : 1;
 }

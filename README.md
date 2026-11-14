@@ -128,8 +128,8 @@ memory folder. The journal is its `journal` folder, one file per day.
   you delete it or ask Claude to forget part of it.
 - Keys, tokens and passwords in the journal and the handoff are replaced with
   `[redacted]` before they are saved. Notes Claude writes itself (and
-  `MEMORY.md`) are not rewritten: a note that holds one is kept out of the
-  snapshots, and `memory promote` refuses it. No tool catches every secret,
+  `MEMORY.md`) are not rewritten: a note whose text or file name holds one (or that only mentions a password, such as `password: required`) is kept out of the
+  snapshots, and `memory promote` refuses it. `MEMORY.md` lines keep the file name. No tool catches every secret,
   so use the tags below for anything else.
 - Put text between `<private>` and `</private>` to keep it out. Type
   `<private-session>` in any message to keep the whole conversation out; what

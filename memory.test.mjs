@@ -2395,6 +2395,10 @@ See [[nonexist-${GH}]]
     r = await run([...a, '--store', sd]);
     ok(!(r.stdout + r.stderr).includes(GH), `memory ${a.join(' ')} prints no token from a name or link`);
   }
+  for (const a of [['history', `token-${GH}`], ['restore', `token-${GH}`], ['promote', `token-${GH}`]]) {
+    r = await run([...a, '--store', sd]);
+    ok(!(r.stdout + r.stderr).includes(GH), `memory ${a[0]} of a note named with a token prints no token`);
+  }
   r = await run(['promote', 'lesson', '--force', '--store', sd]);
   ok(r.status === 0 && existsSync(join(shared, 'lesson.md')), 'promote --force copies it anyway');
 }

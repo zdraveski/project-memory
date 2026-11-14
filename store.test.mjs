@@ -740,7 +740,9 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = [
 // Paths that skipped redact (1.4.1 J): an index line, a stored failure reason and git's reason hold no secret.
 {
   const line = pointerLine(`n-${GH}.md`, `token ${GH} and password: ${PW}`);
-  ok(!line.includes(GH) && !line.includes(PW), 'a pointer line holds no token from the file name or the description');
+  const shown = line.replace(`](n-${GH}.md)`, "]()");
+  ok(!shown.includes(GH) && !shown.includes(PW), "a pointer line shows no token in its label or description");
+  ok(line.includes(`](n-${GH}.md)`) || line.includes(`](n-${GH}.md `), 'the pointer line still links the real file name, so the note is found by its own line');
   ok(!reason(new Error(`bad JSON (near "{"token": "${GH}"}")`)).includes(GH), 'reason() of an error quoting a token holds none');
   const e = Object.assign(new Error('Command failed: git push'), { stderr: `fatal: unable to access 'https://bob:${PW}@example.com/r.git/': Could not resolve host
 ` });

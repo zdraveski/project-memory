@@ -35,7 +35,7 @@ Code's own memory. [Privacy policy](../PRIVACY.md).
 
 Keys, tokens and passwords in the journal and the handoff are replaced with
 `[redacted]` before they are saved. Notes Claude writes itself are not
-rewritten: a note that holds one is kept out of the snapshots, and `memory
+rewritten: a note whose text or file name holds one (or only mentions a password, such as `password: required`) is kept out of the snapshots, and `memory
 promote` refuses it. No tool catches every secret, so use the tags for
 anything sensitive.
 

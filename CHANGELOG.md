@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A note with a secret in its file name is kept out of the snapshots too, and `memory history`, `restore` and `promote` print no secret from a note's name.
 - A note that holds a key, token or password is kept out of the memory snapshots, and `status` and the startup line say which one.
 - `memory promote` refuses a note that holds a key, token or password; `--force` copies it anyway.
 - Index lines for notes without an entry no longer copy a secret from the description or file name.

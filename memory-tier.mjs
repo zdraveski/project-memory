@@ -505,8 +505,9 @@ function snapshot() {
     // password stays out of it (unstaged, so its last clean version stays) until the secret is gone. Told in .snapshot-health.
     held = [];
     for (const f of git('diff', '--cached', '--name-only', '-z').split('\0').filter((x) => /^[^/]+\/memory\/(?!handoff\.md$|journal\.md$)[^/]+\.md$/.test(x))) {   // not the journal or handoff: scrubbed as written
-      const t = raw(join(root, f));
-      if (t !== null && redact(t) !== t) { git('reset', '-q', '--', `:(literal)${f}`); held.push(redact(f)); }
+      let t = null;   // the staged blob is what a commit keeps, not the working file a session may have cleaned since the add
+      try { t = git('show', `:${f}`); } catch { t = raw(join(root, f)); }
+      if (redact(f) !== f || (t !== null && redact(t) !== t)) { git('reset', '-q', '--', `:(literal)${f}`); held.push(redact(f)); }
     }
     // Straight to the commit, which says so when nothing changed: a `git status`
     // first was one more git start on every snapshot, ~80-300 ms on this box.

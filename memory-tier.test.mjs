@@ -2097,5 +2097,15 @@ Deploy with the token from the vault
   ok(tracked().includes('proj-one/memory/leaky.md') && !JSON.parse(readFileSync(join(root, '.snapshot-health'), 'utf8')).held, 'once the secret is gone, the note is snapshotted');
 }
 
+// A secret in a note's file name is held back too (1.4.1 J review).
+{
+  const GH2 = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
+  const f = join(root, 'proj-one', 'memory', `tok-${GH2}.md`);
+  writeFileSync(f, 'clean text\n');
+  utimesSync(f, tenMin, tenMin);
+  await stop();
+  ok(!git('ls-files').includes(GH2), 'a note with a token in its file name is not in the snapshot history');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);
