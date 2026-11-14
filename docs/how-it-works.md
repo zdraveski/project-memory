@@ -44,7 +44,7 @@ on purpose, briefly: once per compaction cycle the Stop hook sends Claude
 feedback that keeps the conversation going, to ask it to write its notes, and
 the compaction gate can ask Claude Code to wait (exit status 2). While
 `CLAUDE_CODE_DISABLE_AUTO_MEMORY` is `1`, `true`, `yes` or `on` (in any case),
-every hook does nothing, except that the SessionStart and Stop hooks note
+every hook (the git-rule watcher too, which then logs nothing) does nothing, except that the SessionStart and Stop hooks note
 the conversation's tag in `.memory-off` so the journal never imports it; the
 memory tool still works when you run it yourself. That variable is the only
 switch the hooks see: Claude Code's own (`autoMemoryEnabled` in its

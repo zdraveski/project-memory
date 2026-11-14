@@ -35,7 +35,7 @@ no network code.
 
 - **Hook events**, declared in [`hooks/hooks.json`](../hooks/hooks.json):
   `Stop`, `SessionStart` (`startup`, `resume`, `clear`, `compact`) and
-  `PreCompact` (`manual`, `auto`). Input: Claude Code's JSON payload on
+  `PreCompact` (`manual`, `auto`), and `PreToolUse` (`Bash|PowerShell`, filtered to `git *`; the git-rule watcher). Input: Claude Code's JSON payload on
   stdin. The fields read are `session_id`, `transcript_path`, `cwd`,
   `hook_event_name`, `stop_hook_active`, `last_assistant_message`, `source`
   and `trigger`. Output: the briefing as text (SessionStart, up to 9,500
@@ -227,6 +227,8 @@ Likely, from a bug or a full disk. Impact: a blocked or slow session.
 - A history's first snapshot is taken in parts of 1,000 files, so it fits
   that time on a large store. A git stopped at its timeout touches no note
   (git only reads them), and the next replies go on in parts.
+
+The git-rule watcher (`enforce-hook.mjs`, PreToolUse) fails open: one try/catch, exit 0, no output, a 5-second timeout that lets the call go on. It never prints a decision (allow, ask, deny) and never exits 2, so it cannot block or change a call. It writes only `.enforce-log` (note name, session tag, agent type, tool-call id; no command text, so nothing private) and `.enforce.json` (a cache of the rules), both inside the store. The log is appended without a lock, so a line can be lost under heavy parallel use, and it stops growing at 256 KB. Conversations marked private, and projects with memory off, are skipped. A tag list that cannot be read counts as private.
 
 ### The plugin's supply chain
 

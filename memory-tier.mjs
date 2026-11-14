@@ -353,7 +353,7 @@ function tier(dir, now, seen = null) {
 // back the stale copy. allStores() already knows which paths are the same
 // store; ignore every path that is not the resolved one.
 const within = (base, p) => { const r = relative(base, p); return r !== '' && !r.startsWith('..') && !isAbsolute(r); };
-function gitignore() {
+export function gitignore() {
   const root = projectsRoot(), real = realpathSync(root), elsewhere = new Set();
   const linked = stores(root)
     // Case-blind on Windows: a home dir spelt one way in USERPROFILE and another

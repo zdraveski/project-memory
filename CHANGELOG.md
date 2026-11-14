@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A new hook watches git commands against the `enforce:` rules in your notes and logs which note matched (`.enforce-log` in the store, no command text). It blocks nothing, prints nothing, and does nothing while memory is off or the conversation is private.
 - `memory enforce replay <note>`: lists what a rule in a note would have caught in the last 30 days of your conversations. Read-only; private sessions and projects with memory off are skipped.
 
 ## 1.3.3 (2026-11-14)

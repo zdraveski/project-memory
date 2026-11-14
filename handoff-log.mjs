@@ -22,7 +22,7 @@ import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, rea
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED } from './store.mjs';
+import { tag, QUIET, OFF, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED } from './store.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
@@ -210,8 +210,8 @@ export const unquote = (s) => {
 };
 export { unwrap };
 
-// A session's short tag: enough to tell parallel sessions apart in one file.
-export const tag = (id) => String(id || '').slice(0, 8);
+// tag, QUIET and OFF live in store.mjs, so the enforce hook can read them without loading this file.
+export { tag, OFF };
 
 // The file a tool call edits, or '': the one list of the edit tools, for the
 // handoff and the compaction note alike. NotebookEdit names its file differently.
@@ -758,11 +758,9 @@ function build(before, fresh, drop = null, me = fresh[0]?.s, whole = false) {
 // The conversations marked private, by tag: the newest 1,000, one per line
 // (9 KB). The newest 50 let an older private conversation, resumed, be
 // recorded again.
-const QUIET = '.private-sessions';
 // The conversations held with auto memory off, kept the same way beside the
 // projects (off(), at their start and every Stop, which make no store for
 // them): the journal never records or imports them.
-export const OFF = '.memory-off';
 // What a start says in a project turned off (memory off). The only text such a project gets.
 export const offLine = (o) => (o.unread
   ? `project-memory: memory is paused here because the off marker can't be read (${o.unread}). Tell the user; memory on won't help until that's fixed.`

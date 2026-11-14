@@ -43,6 +43,7 @@ jobs:
       - run: node memory.test.mjs
       - run: node journal.test.mjs
       - run: node enforce.test.mjs
+      - run: node enforce-hook.test.mjs
       # What a compaction keeps: the journal every fact, the print after it the start of each exchange it shows.
       - run: node survive.mjs
 
