@@ -221,9 +221,15 @@ export { tag, OFF };
 // handoff and the compaction note alike. NotebookEdit names its file differently.
 export const editedFile = (b) => (b?.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path)) || '';
 
+// A reply that is one token with a digit or a symbol, to a question that asks for a password, token or key: the value alone, with no
+// keyword to redact it by (secret-paths-9). shortcut: a one-word answer of letters only ("hunter") is kept.
+const ASKS_SECRET = (q) => /\b(?:pass(?:word|phrase|code)|pwd|pin|tokens?|secret|api[ _-]?key|credentials?)\b/i.test(q) && /\?|\b(?:paste|enter|send|share|provide|type|give)\b/i.test(q);
+const BARE = (a, q) => /^\S{4,200}$/.test(a) && /[^A-Za-z]/.test(a) && ASKS_SECRET(q.slice(-400));
+
 export function turns(tail) {
   const out = [];
   let pending = null;
+  let said = '';   // the last text Claude wrote
   // A nudge holds the answer for its memory update only; a private message
   // (frozen: true) holds it to the next prompt.
   const hold = (p) => { if (p.frozen !== true) { p.frozen = 'nudge'; p.ended = false; } };
@@ -293,6 +299,8 @@ export function turns(tail) {
     if (r.type === 'attachment' && /^hook_(?:additional_context|blocking_error)$/.test(r.attachment?.type ?? '')
       && nudged(JSON.stringify(r.attachment.content ?? r.attachment.blockingError ?? ''))) { if (pending) hold(pending); continue; }
     if (!t && !ask && !typed) continue;
+    if (r.type === 'assistant' && t) said = t;
+    if (ask && r.type === 'user' && BARE(ask, said)) ask = '[redacted]';
     if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [],
       id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '' };
     // A nudge, or a private message that is no ask: the answer after it is not
