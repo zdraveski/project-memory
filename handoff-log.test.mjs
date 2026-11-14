@@ -3405,5 +3405,37 @@ if (!quick) {
   ok(!adv.length, `1.4.1 I review: adversarial shapes are still cut (leaked: ${adv.join(' | ')})`);
 }
 
+// 1.4.1 N (e2e-sessions-1): another session's or a subagent's message (queued_command, origin peer, isMeta) is no ask of the user's.
+{
+  const cwdN = 'C:\\handoff-n1', dirN = storeFor(home, cwdN), tN = join(dirN, 'n1aaaa00.jsonl');
+  mkdirSync(dirN, { recursive: true });
+  const peer = (tag, body, ts) => JSON.stringify({ type: 'attachment', timestamp: ts, attachment: { type: 'queued_command', prompt: `<${tag} from="uds:pipe-x">\n${body}\n</${tag}>`, origin: { kind: 'peer' }, isMeta: true, commandMode: 'prompt' } });
+  writeFileSync(tN, [user('the real nuthatch question', { ts: '2026-10-29T09:00:00Z', uuid: 'n1-u1' }), asst('real nuthatch answer', { ts: '2026-10-29T09:00:10Z' }),
+    peer('cross-session-message', 'hold the pelican PR', '2026-10-29T09:01:00Z'), asst('holding the pelican PR', { ts: '2026-10-29T09:01:10Z' }),
+    peer('agent-message', 'the worker is finished', '2026-10-29T09:02:00Z'), asst('noted the hand-back', { ts: '2026-10-29T09:02:10Z' })].join('\n') + '\n');
+  handoff({ cwd: cwdN, transcript_path: tN, session_id: 'n1aaaa00' });
+  const hN = readFileSync(join(dirN, 'handoff.md'), 'utf8');
+  ok(hN.includes('the real nuthatch question') && !/cross-session-message|agent-message/.test(hN), `a peer or subagent message is no ask (got ${hN.slice(-400)})`);
+  // A kind Claude Code adds later, typed by the user (no isMeta), is still saved.
+  const typed = JSON.stringify({ type: 'attachment', timestamp: '2026-10-29T09:03:00Z', attachment: { type: 'queued_command', prompt: 'the typed heron question', origin: { kind: 'keyboard' }, commandMode: 'prompt' } });
+  appendFileSync(tN, typed + '\n' + asst('heron answer', { ts: '2026-10-29T09:03:10Z' }) + '\n');
+  handoff({ cwd: cwdN, transcript_path: tN, session_id: 'n1aaaa00' });
+  ok(readFileSync(join(dirN, 'handoff.md'), 'utf8').includes('the typed heron question'), 'a typed message of an unknown origin kind is kept');
+}
+// 1.4.1 N (e2e-sessions-2): a fork starts with a copy of its parent's records (same uuids, a new sessionId): they are not listed again.
+{
+  const cwdN = 'C:\\handoff-n2', dirN = storeFor(home, cwdN), tP = join(dirN, 'n2parent0.jsonl'), tF = join(dirN, 'n2forked0.jsonl');
+  mkdirSync(dirN, { recursive: true });
+  const stop = (t, id) => spawnSync(process.execPath, [TIER, '--stop'], { input: JSON.stringify({ cwd: cwdN, transcript_path: t, session_id: id, hook_event_name: 'Stop' }), encoding: 'utf8', timeout: 60_000 });
+  writeFileSync(tP, [user('orig heron one', { ts: '2026-10-29T09:00:00Z', uuid: 'n2-u1' }), asst('ans one', { ts: '2026-10-29T09:00:10Z' }), user('orig heron two', { ts: '2026-10-29T09:05:00Z', uuid: 'n2-u2' }), asst('ans two', { ts: '2026-10-29T09:05:10Z' })].join('\n') + '\n');
+  stop(tP, 'n2parent0');
+  writeFileSync(tF, readFileSync(tP, 'utf8') + [user('fork heron new', { ts: '2026-10-29T09:10:00Z', uuid: 'n2-u3' }), asst('fork ans', { ts: '2026-10-29T09:10:10Z' })].join('\n') + '\n');
+  stop(tF, 'n2forked0');
+  const hF = readFileSync(join(dirN, 'handoff.md'), 'utf8'), n = (x) => hF.split(x).length - 1;
+  ok(n('orig heron one') === 1 && n('orig heron two') === 1 && n('fork heron new') === 1, `a fork's copied turns are listed once (got ${n('orig heron one')}, ${n('orig heron two')}, ${n('fork heron new')})`);
+  const jN = readdirSync(join(dirN, 'journal')).map((f) => readFileSync(join(dirN, 'journal', f), 'utf8')).join('');
+  ok(jN.split('j:n2-u1 t:').length === 2 && jN.includes('j:n2-u1 t:' + basename(dirN) + '/n2parent0'), 'and the journal keeps the copy under the parent');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
