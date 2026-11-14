@@ -91,7 +91,9 @@ p = project(); quiet(run(p.payload('git add -A', { agent_type: 'A'.repeat(2e6), 
   quiet(spawnSync(process.execPath, [join(d, 'enforce-hook.mjs')], { input: '{}', encoding: 'utf8' }), 'enforce.mjs missing'); }
 p = project(); { const tp = join(home, 'priv.jsonl'); writeFileSync(tp, '{"type":"user","message":{"content":"x <private-session>"}}\n');
   quiet(run(p.payload('git add -A', { transcript_path: tp })), 'private transcript'); ok(lines(p.store).length === 0, 'no hit logged in a private-session turn');
-  quiet(run(p.payload('git add -A', { transcript_path: join(home, 'gone.jsonl') })), 'unreadable transcript'); ok(lines(p.store).length === 0, 'unreadable transcript counts as private'); }
+  const tq = join(home, 'quote.jsonl'); writeFileSync(tq, "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"the <private-session> tag\"}]}}\n{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"quoted <private-session>\"}]}}\n");
+  p = project(); quiet(run(p.payload('git add -A', { transcript_path: tq })), 'quoted mark'); ok(lines(p.store).length === 1, 'a mark quoted by the assistant or a tool result is no private mark');
+  p = project(); quiet(run(p.payload('git add -A', { transcript_path: join(home, 'gone.jsonl') })), 'unreadable transcript'); ok(lines(p.store).length === 0, 'unreadable transcript counts as private'); }
 
 // The cache: built on first run; a second run reads no note (a note changed with its size and time kept is not seen);
 // a changed note is read again.

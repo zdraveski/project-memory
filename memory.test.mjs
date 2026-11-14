@@ -2331,9 +2331,6 @@ if (!quick) {
   r = await run(['enforce', 'status', '--store', pm]);
   ok(/^_shared\/all-projects\.md +1 hit in 30 days \(1 main, 0 subagent\)/m.test(r.stdout), `a rule of the shared store is listed as _shared/<file> (got ${r.stdout})`);
   rmSync(join(shared, 'all-projects.md'));
-  writeFileSync(join(pm, '.enforce-log'), ' '.repeat(300 * 1024));
-  r = await run(['enforce', 'status', '--store', pm]);
-  ok(/log full, delete it to restart/.test(r.stdout), 'a log over 256 KB is said to be full');
   rmSync(join(pm, '.enforce-log'));
   r = await run(['enforce', 'status', '--store', pm]);
   ok(r.status === 0 && /^stage-by-name\.md +no hits in 30 days$/m.test(r.stdout), 'no log at all: no hits, no crash');

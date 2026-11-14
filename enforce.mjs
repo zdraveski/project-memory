@@ -182,11 +182,22 @@ export function ruleSet(payload) {
   return { store, rules: [...rules, ...shared] };
 }
 
-// True when the transcript carries the private-session mark; an unreadable transcript counts as private (no path: not).
-// shortcut: same pattern as handoff-log.mjs PRIVATE_SESSION (not imported: the hook must start fast), on the raw file.
+// True when something the user typed carries the private-session mark (assistant text and tool results are skipped: they
+// quote it); an unreadable transcript counts as private (no path: not).
+// shortcut: same pattern as handoff-log.mjs PRIVATE_SESSION (not imported: the hook must start fast), on typed text only.
 export function privateTurn(payload) {
   if (!payload?.transcript_path) return false;
-  try { return /<\s*private[-_]session\b[^>]{0,200}>/i.test(readFileSync(payload.transcript_path, 'utf8')); } catch { return true; }
+  const RE = /<\s*private[-_]session\b[^>]{0,200}>/i;
+  try {
+    for (const l of readFileSync(payload.transcript_path, 'utf8').split('\n')) {
+      if (!RE.test(l)) continue;
+      try {
+        const r = JSON.parse(l), c = r.message?.content;
+        if (r.type === 'user' && (Array.isArray(c) ? c.some((b) => b?.type === 'text' && RE.test(b.text)) : RE.test(String(c)))) return true;
+      } catch {}
+    }
+    return false;
+  } catch { return true; }
 }
 
 // One line of the log (dropped if over 1 KB or the store has no folder). Over LOG_MAX, the oldest half of the log goes first.
@@ -203,12 +214,11 @@ export function record(store, entry) {
 }
 
 // What `memory enforce status` shows of a store: its rule notes (and the shared store's, as `_shared/<file>`), each with the
-// log's hits since `from` (ms) split main and sub-agent, and whether the log has stopped growing. Never throws.
+// log's hits since `from` (ms) split main and sub-agent. Never throws.
 export function tally(dir, from) {
-  const lines = []; let full = false;
+  const lines = [];
   try {
     const f = join(dir, LOG);
-    full = statSync(f).size > LOG_MAX;
     for (const l of readFileSync(f, 'utf8').split('\n')) try { const j = JSON.parse(l), t = Date.parse(j.t); if (t >= from) lines.push({ note: String(j.note), t, sub: !!j.agent }); } catch {}
   } catch {}
   const shared = sharedStore() === dir ? [] : rulesOf(sharedStore()).map((x) => ({ ...x, file: `_shared/${x.file}` }));
@@ -216,5 +226,5 @@ export function tally(dir, from) {
     const mine = lines.filter((l) => l.note === file);
     return { file, bad, main: mine.filter((l) => !l.sub).length, sub: mine.filter((l) => l.sub).length, last: Math.max(0, ...mine.map((l) => l.t)) };
   });
-  return { notes, full };
+  return { notes };
 }
