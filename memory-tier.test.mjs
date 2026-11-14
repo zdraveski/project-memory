@@ -8,6 +8,7 @@ import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import assert from 'node:assert';
+import { createHash } from 'node:crypto';
 import { tool, tempDir, tempHome, pointers, quick, capture } from './harness.mjs';
 
 const TOOL = tool('memory-tier.mjs');
@@ -1866,9 +1867,9 @@ require('node:module').syncBuiltinESMExports();
     const lineBytes = bytesOf(runLines().at(-1)) + 1;
     ok(JSON.parse(runLines().at(-1)).s === 'abcdefgh', `--stop: the run log names a conversation by its first eight characters (got ${runLines().at(-1)})`);
     // And the reply by a fingerprint: two quick replies of one conversation read as hooks wired twice (audit H-F10).
-    const { hash } = await import('./handoff-log.mjs');
+    const { keyed } = await import('./store.mjs');
     await call(['--stop'], JSON.stringify({ ...payload, last_assistant_message: 'a reply to tell apart' }));
-    ok(JSON.parse(runLines().at(-1)).m === hash('a reply to tell apart').slice(0, 8), `--stop: the run log carries the reply's fingerprint (got ${runLines().at(-1)})`);
+    ok(JSON.parse(runLines().at(-1)).m === keyed('a reply to tell apart', 8), `--stop: the run log carries the reply's fingerprint (got ${runLines().at(-1)})`);
     const fill = 8192 - lineBytes, whole100 = Math.floor(fill / 100) - 1, rest = fill - whole100 * 100;
     writeFileSync(ran, ('j'.repeat(99) + '\n').repeat(whole100) + 'j'.repeat(rest - 1) + '\n');
     await stopRan();
@@ -2105,6 +2106,20 @@ Deploy with the token from the vault
   utimesSync(f, tenMin, tenMin);
   await stop();
   ok(!git('ls-files').includes(GH2), 'a note with a token in its file name is not in the snapshot history');
+}
+
+// The reply's fingerprint in .stop-ran is not a plain hash of it, and the files and the snapshot repository are private.
+{
+  const pw = ['Zx9', 'Qv', '7!', 'mT3', 'kLp'].join('');
+  await call(['--stop'], JSON.stringify({ ...JSON.parse(stopInput('proj-one')), hook_event_name: 'Stop', last_assistant_message: pw }));
+  const sha = createHash('sha256').update(pw).digest('hex');
+  ok(!readFileSync(join(root, '.stop-ran'), 'utf8').includes(sha.slice(0, 8)), '.stop-ran holds no plain hash of the reply');
+  if (process.platform !== 'win32') {
+    ok((statSync(join(root, '.stop-ran')).mode & 0o077) === 0 && (statSync(join(root, '.git')).mode & 0o077) === 0, 'the proof-of-life file and the snapshot .git are private');
+  } else {
+    const src = ['store.mjs', 'memory-tier.mjs', 'journal.mjs'].map((f) => readFileSync(join(dirname(TOOL), f), 'utf8')).join('\n');
+    ok(/mode:\s*0o600/.test(src) && /mode:\s*0o700/.test(src) && /chmodSync\(join\(root, '\.git'\)/.test(src), 'the hooks ask for private modes (0600 files, 0700 dirs, a private .git)');
+  }
 }
 
 rmSync(home, { recursive: true, force: true });

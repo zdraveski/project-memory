@@ -677,7 +677,7 @@ export function handoff(input, sink = null) {
   // Recursive: two sessions starting in a new project at once both make it.
   if (!existsSync(dir)) {
     if (!inProjects(input.transcript_path)) return false;
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
   // The transcript is read outside the lock: it is the slow part, and this session's alone.
   const s = tag(input.session_id);

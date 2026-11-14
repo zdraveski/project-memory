@@ -8,12 +8,12 @@
 // As the Stop hook (and before a manual /compact) it runs with `--stop`, the
 // payload on stdin, and tiers that session's own store; a manual run walks them all.
 
-import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { redact } from './handoff-log.mjs';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
+import { keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -410,7 +410,7 @@ function snapshot() {
     // A new repository gets this tool's .gitignore first, then git: one cut off
     // between the two is still known for this tool's by it, and adopted below.
     // Marked only after the init, a cut-off one read as the user's for good.
-    if (fresh) { replaceIfUnchanged(ignorePath, raw(ignorePath), gitignore()); git('init', '-q'); }
+    if (fresh) { replaceIfUnchanged(ignorePath, raw(ignorePath), gitignore()); git('init', '-q'); try { chmodSync(join(root, '.git'), 0o700); } catch {} }
     // Only a repository this tool made: one the user made there is theirs, and
     // its .gitignore, its lock, its index and its history are not this tool's.
     const ours = /^\[project-memory\]/m.test(raw(join(root, '.git', 'config')) ?? '');
@@ -646,7 +646,7 @@ export async function main(argv, input) {
     // over the same store at once) must not also skip the nudge -- that was
     // the one Stop the nudge exists for.
     try {
-      const { handoff, hash } = await import(new URL('./handoff-log.mjs', import.meta.url));
+      const { handoff } = await import(new URL('./handoff-log.mjs', import.meta.url));
       // Proof of life for the startup line (handoff-log's stalled()), once the
       // handoff has loaded: Stop output reaches nobody, so a hook that stopped
       // running was silence.
@@ -662,7 +662,7 @@ export async function main(argv, input) {
         // hash: two quick replies of one conversation read as two wirings (audit H-F10).
         // On a line of its own: before 1.0.7 the file was one time and no newline.
         const prev = raw(ran);
-        appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: hash(String(payload?.last_assistant_message ?? '')).slice(0, 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
+        appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: keyed(payload?.last_assistant_message ?? '', 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n', { mode: 0o600 });
         // The cut goes to a temp copy that replaces the log only if it is no longer than when read:
         // another session's line appended in between was lost (audit #13).
         // shortcut: an append between the size check and the rename (well under a millisecond) is
@@ -670,7 +670,7 @@ export async function main(argv, input) {
         const size = statSync(ran).size, cut = `${ran}.tmp${process.pid}`;
         if (size > 8192) {
           try {
-            writeFileSync(cut, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
+            writeFileSync(cut, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n', { mode: 0o600 });
             if (statSync(ran).size === size) renameSync(cut, ran);
           } finally { rmSync(cut, { force: true }); }
         }

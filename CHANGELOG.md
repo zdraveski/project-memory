@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `memory forget --purge` also removes the forgotten entry from the snapshot history.
+- Journal keys and the Stop run log no longer hold a plain hash of your prompt or reply (a short password could be guessed from it).
+- On Linux and macOS the memory files are private (0600, folders 0700, snapshot `.git` 0700).
+
 - A note with a secret in its file name is kept out of the snapshots too, and `memory history`, `restore` and `promote` print no secret from a note's name.
 - A note that holds a key, token or password is kept out of the memory snapshots, and `status` and the startup line say which one.
 - `memory promote` refuses a note that holds a key, token or password; `--force` copies it anyway.
