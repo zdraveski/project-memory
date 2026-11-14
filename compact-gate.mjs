@@ -33,7 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { goesOn, readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF } from './handoff-log.mjs';
+import { goesOn, readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF, redact } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, isOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -351,7 +351,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const i = process.argv.indexOf('--state');
   if (i !== -1) {
     const s = state(process.argv[i + 1]);
-    console.log(JSON.stringify({ ...s, running: [...s.running], edited: [...s.edited] }, null, 1));
+    // clip() scrubs each text; a secret in what was asked or run was printed whole.
+    console.log(JSON.stringify({ ...s, running: [...s.running], edited: [...s.edited] }, (k, v) => (typeof v === 'string' ? clip(v, Infinity) : v), 1));
     process.exit(0);
   }
   // A payload it cannot read, or a gate that throws, lets the compaction run:
@@ -368,7 +369,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   else if (payload) { try { r = gate(payload); } catch (e) { r = { code: 0, why: `gate failed, not deferred: ${e.message}` }; } }
   // Always said, so the hooks debug log shows why a compaction ran or waited;
   // Claude Code shows exit-2 stderr to the user only for a manual /compact.
-  process.stderr.write(`compaction gate: ${r.why}\n`);
+  process.stderr.write(`compaction gate: ${redact(r.why)}\n`);
   // Not process.exit(): on macOS a pipe is written asynchronously, and an
   // exit right after a write can cut it (CI 2026-10-29).
   process.exitCode = r.code;

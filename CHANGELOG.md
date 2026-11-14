@@ -3,6 +3,15 @@
 ## Unreleased
 
 - Enforce log: it no longer stops at 256 KB (the oldest half is dropped instead), one line is capped in size, nothing is logged in a private-session turn, and a missing plugin file no longer makes the hook print an error.
+- A note with a secret in its file name is kept out of the snapshots too, and `memory history`, `restore` and `promote` print no secret from a note's name.
+- A note that holds a key, token or password is kept out of the memory snapshots, and `status` and the startup line say which one.
+- `memory promote` refuses a note that holds a key, token or password; `--force` copies it anyway.
+- Index lines for notes without an entry no longer copy a secret from the description or file name.
+- `memory search` and `memory status` no longer print a secret that sits in a note's file name or `[[link]]`.
+- `compact-gate --state` and the gate's messages no longer print secrets.
+- Stored failure reasons no longer keep a secret that an error message quoted.
+- README and FAQ: the redaction promise now says which saved files it covers.
+- A very long or hostile prompt, command or answer no longer stalls the memory hooks: a slash command's name, `memory.mjs` options, a JWT-like run, a value with many slashes and a long `SetEnvironmentVariable` value are read in linear time, and saved text is cut to 64 KB before secrets are removed.
 - Enforce rules: a rule after a long description is no longer ignored; a note with a long run of blanks can no longer stall every git call; a command with many unclosed heredocs is read in linear time.
 - Enforce rules now see a command after an escaped quote, after git options like `--no-optional-locks`, inside `{ }` or `( )`, after a line continuation, after a quoted `<<`, and behind `env`, `sudo`, `command`, `rtk`, `git.exe` or a full path to git.
 

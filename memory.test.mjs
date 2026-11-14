@@ -2345,7 +2345,7 @@ if (!quick) {
   // doctor: one line for the enforce hook of the plugin copy that runs, even when memory is off.
   const efHome = join(home, '.claude', 'plugins', 'cache', 'ef', '1.4.0');
   mkdirSync(join(efHome, 'hooks'), { recursive: true });
-  for (const f of ['enforce-hook.mjs', 'enforce.mjs', 'store.mjs']) writeFileSync(join(efHome, f), readFileSync(tool(f)));
+  for (const f of ['enforce-hook.mjs', 'enforce.mjs', 'store.mjs', 'handoff-log.mjs']) writeFileSync(join(efHome, f), readFileSync(tool(f)));
   writeFileSync(join(efHome, 'hooks', 'hooks.json'), readFileSync(join(dirname(tool('memory.mjs')), 'hooks', 'hooks.json')));
   installed('project-memory@project-memory', efHome, { source: 'github', repo: 'zdraveski/project-memory' });
   const doc = async () => (await cli('doctor')).stdout;
@@ -2364,6 +2364,40 @@ if (!quick) {
   writeFileSync(hj, JSON.stringify({ hooks: { Stop: [] } }));
   ok(/^PROBLEM [^\n]*no PreToolUse group/m.test(await doc()), 'doctor: hooks.json without the PreToolUse group is a problem');
   writeFileSync(hj, hjText);
+}
+
+// Fake secrets, built from pieces so no scanner sees a literal.
+const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = ['Zx9', 'Qv', '7!', 'mT3', 'kLp'].join('');
+// Secrets in a note (1.4.1 J): promote refuses it, search and status print no secret from names or links.
+{
+  const sd = join(root, 'C--mem-secret', 'memory'); mkdirSync(sd, { recursive: true });
+  writeFileSync(join(sd, 'lesson.md'), `---
+name: lesson
+description: "deploy"
+metadata:
+  type: project
+---
+Token ${GH}
+password: ${PW}
+See [[nonexist-${GH}]]
+`);
+  writeFileSync(join(sd, `token-${GH}.md`), 'no frontmatter\n');
+  writeFileSync(join(sd, 'MEMORY.md'), `# Index
+
+- [lesson](lesson.md) deploy
+`);
+  let r = await run(['promote', 'lesson', '--store', sd]);
+  ok(r.status === 1 && !existsSync(join(shared, 'lesson.md')) && existsSync(join(sd, 'lesson.md')) && /nothing moved/.test(r.stdout), 'promote refuses a note that holds a secret');
+  for (const a of [['search', 'deploy'], ['status'], ['status', '--all']]) {
+    r = await run([...a, '--store', sd]);
+    ok(!(r.stdout + r.stderr).includes(GH), `memory ${a.join(' ')} prints no token from a name or link`);
+  }
+  for (const a of [['history', `token-${GH}`], ['restore', `token-${GH}`], ['promote', `token-${GH}`]]) {
+    r = await run([...a, '--store', sd]);
+    ok(!(r.stdout + r.stderr).includes(GH), `memory ${a[0]} of a note named with a token prints no token`);
+  }
+  r = await run(['promote', 'lesson', '--force', '--store', sd]);
+  ok(r.status === 0 && existsSync(join(shared, 'lesson.md')), 'promote --force copies it anyway');
 }
 
 console.log(`memory: ${checks} checks passed`);
