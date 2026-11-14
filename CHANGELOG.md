@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.1 (2026-11-14)
 
 - A message another session or a subagent sends (cross-session-message, agent-message) is no longer saved as something you asked, and a forked session no longer lists its parent's turns again in handoff.md.
 
