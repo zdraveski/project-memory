@@ -5,6 +5,7 @@
 - Saved text no longer keeps tokens from about 40 more vendors (Terraform, Vault, Doppler, DigitalOcean, Heroku, Cloudflare, Sentry, Grafana, New Relic, Okta, Splunk, CircleCI, 1Password and more), including the ones given to `doctl -t`, `netlify --auth`, `ngrok add-authtoken`, `cargo login`, `composer config` and `bundle config`.
 - Authorization headers of any scheme (Digest, Hawk, OAuth1, AWS Signature V4, Negotiate, NTLM, SSWS, ApiKey), unsigned JWTs, webhook signature headers and `?auth=`, `?token=` and `?Authorization=` in a URL are redacted.
 - Docker `config.json` auth and identity tokens, `httpie -a`, Flask `SECRET_KEY`, HMAC, Fernet and hex keys in code, `aws configure set --profile p ...`, a bare 40-character AWS secret key, seed phrases, Bitcoin WIF keys, Solana keypair arrays, base64 private keys without a header, `oathtool` secrets, sops and ansible-vault blobs are redacted.
+- Known limits: a bare 32-hex Rails `master.key` with no keyword, and a key given as `key=<hex>` with no vendor or secret word, are kept; a long list of small numbers in code is cut as a possible Solana key.
 - Saved text no longer keeps tokens from about 30 more vendors (GitLab, Discord, Teams, Twilio, Sidekiq, Dropbox, Azure, AI keys and more); the secret catalog lists them.
 - `memory forget --purge` also removes the forgotten entry from the snapshot history.
 - Journal keys and the Stop run log no longer hold a plain hash of your prompt or reply (a short password could be guessed from it).

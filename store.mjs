@@ -552,7 +552,7 @@ const SECRETS = [
   [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?(?:Digest|Hawk|OAuth|AWS4-HMAC-SHA\d+)\b)([^\n]{0,1000})/gi, (m, pre, rest) => pre + rest.replace(/\b(response|mac|signature|oauth_(?:token|token_secret|signature|verifier|consumer_secret))(["']?=["']?)[^"',\s]{6,}/gi, '$1$2[redacted]')],
   [/(\boauth_(?:signature|verifier|token_secret)["']?[ \t]*[:=][ \t]*["']?)[^"'&,\s]{6,}/gi, '$1[redacted]'],
   // A webhook's signature header (X-Hub-Signature-256: sha256=...).
-  [/(\bx-[\w-]{0,30}signature(?:-256)?["']?[ \t]*[:=][ \t]*["']?(?:sha\d+=)?)[A-Za-z0-9+/=]{40,}/gi, '$1[redacted]'],
+  [/(\b(?:x-[\w-]{0,30}|stripe-)signature(?:-256)?["']?[ \t]*[:=][ \t]*["']?(?:sha\d+=|t=\d+,v\d=)?)[A-Za-z0-9+/=]{40,}/gi, '$1[redacted]'],
   [/(\bredis-cli\b[^\n|;&]{0,200}?\s-a[ \t]+["']?)(?:(?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, '$1[redacted]'],
   // The curl rule first: the header rule reads to the next quote, which may be the one that opens a -b value.
   [/(\bcurl\b[^\n|;&]{0,300}?\s(?:-b|--cookie)[ =]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (v.includes('=') ? `${pre}[redacted]` : m)],
@@ -594,7 +594,7 @@ const SECRETS = [
   [/(\bbundle\s+config\s+(?:set\s+)?(?:--?[\w-]+\s+){0,3}[\w-]+(?:\.[\w-]+)+\s+["']?)(?!-)([^\s"']{10,2000})/g, (m, pre, v) => (arg(v) || code(v) ? m : `${pre}[redacted]`)],
   [/(\boathtool\b[^\n|;&]{0,100}?\s["']?)(?!-)[A-Za-z0-9=]{12,}\b/g, '$1[redacted]'],
   // A keyword before a long key with no colon: `secret <base64>`, `key <40 hex>`, `private key <64 hex>` (the name alone is too common, so the value must read as a key).
-  [/(\b(?:secret|key|private[ _-]?key|token)(?:[ _-]?(?:key|access[ _-]?key))?[ \t]+(?:is[ \t]+)?["']?)(?=[A-Za-z0-9+/]{0,200}\d)(?=[A-Za-z0-9+/]{0,200}[A-Za-z])([A-Za-z0-9+/]{32,200}={0,2})(?![\w+/=-])/gi, (m, pre, v) => (/^[0-9a-f]+$/i.test(v) || (/[A-Z]/.test(v) && /[a-z]/.test(v) && /\d/.test(v)) ? `${pre}[redacted]` : m)],
+  [/((?<![A-Za-z0-9])(?:secret|key|private[ _-]?key|token)(?:[ _-]?(?:key|access[ _-]?key))?[ \t]+(?:is[ \t]+)?["']?)(?=[A-Za-z0-9+/]{0,200}\d)(?=[A-Za-z0-9+/]{0,200}[A-Za-z])([A-Za-z0-9+/]{32,200}={0,2})(?![\w+/=-])/gi, (m, pre, v) => (/^[0-9a-f]+$/i.test(v) || (/[A-Z]/.test(v) && /[a-z]/.test(v) && /\d/.test(v)) ? `${pre}[redacted]` : m)],
   // Vendor names that precede a key in a setting or a variable (Cloudflare, Datadog, Algolia, Mapbox, Honeycomb, PagerDuty's routing key): 32 characters or more with a digit.
   [/(\b(?:cloudflare|datadog|algolia|mapbox|honeycomb|routing)[\w.-]{0,30}[ \t]*[:=][ \t]*["']?)(?=[A-Za-z0-9_-]{0,100}\d)[A-Za-z0-9_-]{32,}/gi, '$1[redacted]'],
   // Key literals: a seed phrase, a Bitcoin WIF, a Solana keypair array, a base64 private key with no header, sops and ansible-vault blobs, PuTTY's private lines.
@@ -607,7 +607,7 @@ const SECRETS = [
   [/(\$ANSIBLE_VAULT;[\d.]{1,10};AES256[ \t]*\r?\n?)(?:[0-9a-f]{20,}\r?\n?)+/g, '$1[redacted]'],
   [/(\bPrivate-Lines:[ \t]*\d{1,3}(?:\\n|[\s\\])*)(?:[A-Za-z0-9+/=]{16,}(?:\\n|[\s\\])*)+/g, '$1[redacted]'],
   // The key of a signing or encryption call in code: hmac.new(b"..."), createHmac("sha256", "..."), bytes.fromhex("<hex>"), Fernet(b"..."), and AWS's "AWS4" + secret.
-  [/(\bhmac\.(?:new|HMAC)\(\s*b?["']|\bcreateHmac\(\s*["'][\w-]{1,20}["']\s*,\s*["']|\b(?:bytes\.fromhex|fromhex|unhexlify|a2b_hex)\(\s*b?["']|\bFernet\(\s*b?["'])((?:(?!["']).){8,200})(?=["'])/g, (m, pre, v) => (arg(v) || code(v) || /\$\{/.test(v) ? m : `${pre}[redacted]`)],
+  [/(\bhmac\.(?:new|HMAC)\(\s*(?:key\s*=\s*)?b?["']|\bcreateHmac\(\s*["'][\w-]{1,20}["']\s*,\s*["']|\b(?:bytes\.fromhex|fromhex|unhexlify|a2b_hex)\(\s*b?["']|\bFernet\(\s*b?["'])((?:(?!["']).){8,200})(?=["'])/gi, (m, pre, v) => (arg(v) || code(v) || /\$\{/.test(v) ? m : `${pre}[redacted]`)],
   [/(["']?AWS4["']?[ \t]*\+[ \t]*["']?)[A-Za-z0-9+/]{30,}/g, '$1[redacted]'],
   // A secret as a command's argument, which the journal's Ran field keeps (P1
   // hunt, 2026-10-29): `aws configure set` of a secret, key or token; a

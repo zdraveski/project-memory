@@ -3188,6 +3188,10 @@ if (!quick) {
     ["Flask SECRET_KEY","app.config['SECRET_KEY'] = '«{m32}»'"],
     ["webhook shared secret (header)","X-Hub-Signature-256: sha256=«{x64}»"],
     ["HMAC secret in code","hmac.new(b\"«{m32}»\", msg, hashlib.sha256)"],
+    ["HMAC key= keyword","hmac.new(key=b\"«{m32}»\", msg=m, digestmod=hashlib.sha256)"],
+    ["HMAC upper case (PyCryptodome)","HMAC.new(b\"«{m32}»\", msg, SHA256)"],
+    ["prefixed secret name","jwt_secret «{m32}»"],
+    ["Stripe-Signature header","Stripe-Signature: t=1700000000,v1=«{x64}»"],
     ["AES key hex in code","key = bytes.fromhex(\"«{x64}»\")"],
     ["Fernet key","Fernet(b\"«{w43}=»\")"],
     ["base64 blob next to \"secret\" word","secret «{b43}=»"],
@@ -3213,6 +3217,8 @@ if (!quick) {
     'cargo login --help', 'datadog_site = "datadoghq.com"', 'https://x/v1?auth=basic', 'the key backup procedure is in the runbook and the secret santa list is done', '[1, 2, 3, 4, 5, 6, 7, 8]',
     'composer config --global process-timeout 2000', 'mnemonic: a short word that helps you remember the order of the planets', 'Authorization: Bearer authentication-header', 'doctl compute droplet list',
     'netlify deploy --prod --dir dist', 'ngrok http 8080', 'secret_rotation_policy_document_for_the_whole_organisation_v2', 'x-request-id: 4f9c2a7e1b6d4f9c2a7e1b6d4f9c2a7e']) ok(clip(benign, 2000) === benign, `a look-alike is kept: ${benign.slice(0, 30)}`);
+  // Known limit (shortcut in store.mjs): a long list of small numbers is taken for a Solana keypair.
+  ok(clip(`[${Array.from({ length: 40 }, (_, i) => i).join(', ')}]`, 2000).includes('[redacted]'), 'a long byte array is cut (known limit)');
   ok(!leaked.length, `vendor tokens part 2, headers, URLs and key literals are redacted (kept: ${[...new Set(leaked)].join(', ')})`);
 }
 
