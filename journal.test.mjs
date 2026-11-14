@@ -6,6 +6,7 @@ import { join, dirname, basename } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
+import { createHash } from 'node:crypto';
 import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
@@ -23,6 +24,14 @@ const stripe = (kind, mode) => [kind, mode, '51Habcdefghijklmnopqrstuv'].join('_
 const T = '/x/projects/C--proj/0123456789abcdef.jsonl';
 const turn = (over) => ({ at: '2026-10-28 14:05', ask: 'a question', raw: 'a question', did: 'an answer', changed: [], ran: [], id: 'u-1', branch: 'main', cwd: 'C:\\proj', ...over });
 const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
+
+// A turn with no uuid is keyed by a fingerprint: of a prompt that is only a password it must not be a plain SHA-256 prefix.
+{
+  const pw = ['Zx9', 'Qv', '7!', 'mT3', 'kLp'].join(''), plain = createHash('sha256').update(pw).digest('hex').slice(0, 12);
+  const k = entryOf(turn({ id: '', ask: pw, raw: pw }), T).key;
+  ok(!k.includes(plain) && /[0-9a-f]{12}$/.test(k), 'the key of a turn with no uuid is not an unsalted hash of the prompt');
+  ok(entryOf(turn({ id: '', ask: pw, raw: pw }), T).key === k, 'and stays the same for the same prompt');
+}
 
 {
   const e = entryOf(turn({ ask: 'q'.repeat(5000), did: 'h'.repeat(5000) + 't'.repeat(5000),

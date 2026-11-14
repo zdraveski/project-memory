@@ -1203,7 +1203,7 @@ if (!quick) {
   r = await fcli('forget', 'Zebra', 'mango', '--yes');
   ok(r.status === 0 && file('2025-10-20') === page('2025-10-20', [es[1]]) && gone('2025-10-21') && kept(today),
     `forget --yes removes only the matches, the rest byte for byte (got ${r.stdout}${r.stderr})`);
-  ok(r.stdout.startsWith(zm) && r.stdout.endsWith(`\nremoved 2 from ${fd}\n`) && /^the snapshots still hold the journal of 2025-10-20, 2025-10-21: deleting .*[\\/]\.git removes /m.test(r.stdout),
+  ok(r.stdout.startsWith(zm) && r.stdout.endsWith(`\nremoved 2 from ${fd}\n`) && /^the snapshots still hold the journal of 2025-10-20, 2025-10-21: forget --purge removes it from them, or deleting .*[\\/]\.git removes /m.test(r.stdout),
     `and lists what went, says the snapshots still hold the days before today, and ends with the count (got ${r.stdout})`);
   // And that Claude Code's own conversation files still hold them, as PRIVACY.md says: unsaid, it read as gone everywhere (audit C-6).
   ok(r.stdout.endsWith(`\n${cc}removed 2 from ${fd}\n`), `forget --yes says Claude Code's conversation files still hold what it removed (got ${r.stdout})`);
@@ -2398,6 +2398,33 @@ See [[nonexist-${GH}]]
   }
   r = await run(['promote', 'lesson', '--force', '--store', sd]);
   ok(r.status === 0 && existsSync(join(shared, 'lesson.md')), 'promote --force copies it anyway');
+}
+
+// forget --purge: the finished day is in the snapshots; --yes alone leaves it there, --purge drops it from every commit.
+{
+  const { render } = await import('./journal.mjs');
+  const pd = join(root, 'C--purge', 'memory'), word = 'zebrafish-' + 'purge';
+  mkdirSync(join(pd, 'journal'), { recursive: true });
+  const e = { key: 'pk1', at: '2020-01-02 10:00', s: 'c0ffee12', t: 'C--purge/c0ffee12-full', branch: 'main', asked: `remember ${word}`, answered: 'noted', changed: [], ran: [] };
+  const writeDay = () => writeFileSync(join(pd, 'journal', '2020-01-02.md'), `# Journal 2020-01-02\n\n${render(e)}\n`);
+  writeDay();
+  writeFileSync(join(pd, 'MEMORY.md'), '# Memory Index\n');
+  tier(); tier();
+  const held = () => spawnSync('git', ['-C', root, 'log', '--all', '-S' + word, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
+  ok(held(), 'fixture: the snapshots hold the finished day');
+  let r = await run(['forget', word, '--yes', '--store', pd]);
+  ok(/removed 1/.test(r.stdout) && held(), 'forget --yes alone leaves the snapshot history');
+  writeDay();
+  r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
+  ok(/removed 1/.test(r.stdout) && /purged from the snapshots/.test(r.stdout) && !held(), `forget --purge drops it from the history (got ${r.stdout})`);
+  ok(spawnSync('git', ['-C', root, 'status', '--porcelain'], { encoding: 'utf8' }).status === 0 && !existsSync(join(root, '.git', 'refs', 'original')), 'the purge leaves a working repository and no backup refs');
+  ok(!existsSync(join(root, '.git', 'config.lock')), 'the purge frees its lock when done');
+  // A snapshot in flight (git's own lock, fresh): the purge would overwrite its commit, so it refuses and changes nothing.
+  writeDay(); tier();
+  writeFileSync(join(root, '.git', 'config.lock'), '');
+  r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
+  ok(/could not be purged/.test(r.stdout) && /snapshot/.test(r.stdout) && existsSync(join(root, '.git', 'config.lock')), `forget --purge refuses while a snapshot holds the repository (got ${r.stdout})`);
+  unlinkSync(join(root, '.git', 'config.lock'));
 }
 
 console.log(`memory: ${checks} checks passed`);

@@ -5,12 +5,22 @@
 import { lstatSync, mkdirSync, rmdirSync, rmSync, statSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, readdirSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, resolve, basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
+import { createHmac, randomBytes } from 'node:crypto';
 
 // Claude Code's folder: ~/.claude, or CLAUDE_CONFIG_DIR when that is set
 // (read by its fixed name). Under it, the hooks wrote nothing and said nothing.
 // Resolved: a relative one put a root of its own under each hook's cwd (1.3.1 audit C-3).
 export const configDir = () => resolve(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'));
 export const projectsRoot = () => join(configDir(), 'projects');
+// A keyed fingerprint of raw text for dedup keys and proof-of-life lines: an unsalted hash of a short prompt that is just a
+// password falls to a dictionary run. The salt is a random per-machine file in the projects folder (never snapshotted, 0600);
+// when it cannot be kept, a one-off salt: keys then differ between runs, and nothing else breaks.
+export const keyed = (text, n) => {
+  const f = join(projectsRoot(), '.hash-salt');
+  let salt = ''; try { salt = readFileSync(f, 'utf8'); } catch {}
+  if (salt.length < 32) { salt = randomBytes(32).toString('hex'); try { mkdirSync(projectsRoot(), { recursive: true, mode: 0o700 }); writeFileSync(f, salt, { mode: 0o600, flag: 'wx' }); } catch { try { salt = readFileSync(f, 'utf8') || salt; } catch {} } }
+  return createHmac('sha256', salt).update(String(text)).digest('hex').slice(0, n);
+};
 // What a Stop could not save, `<projects>/<this><project folder>`: memory-tier writes it, the briefing and status read it. One
 // name for the three: spelt in four places, a change to one would have left the warning silent (release review).
 export const HANDOFF_FAILED = '.handoff-failed-';
@@ -340,7 +350,7 @@ export function withLock(dir, fn) {
   const token = `${process.pid}.${Math.random().toString(36).slice(2)}`;
   let refused = 0, held = false, signed = false;
   for (const until = t0 + Math.min(LOCK_WAIT, left ?? LOCK_WAIT); ;) {
-    try { mkdirSync(lock); held = true; try { writeFileSync(owner, token); signed = true; } catch {} break; }
+    try { mkdirSync(lock, { mode: 0o700 }); held = true; try { writeFileSync(owner, token, { mode: 0o600 }); signed = true; } catch {} break; }
     catch (e) {
       // The last holder's rmdir still settling: the same codes a rename retries.
       if (e.code !== 'EEXIST' && !BUSY.includes(e.code)) throw e;
@@ -430,7 +440,7 @@ export function replaceIfUnchanged(path, expected, next) {
   try {
     // Inside the try: a write cut short (a full disk) left its half-copy of
     // the handoff or a journal day, where forget never reaches.
-    writeFileSync(tmp, next);
+    writeFileSync(tmp, next, { mode: 0o600 });
     for (let i = 0; ; i++) {
       // ponytail: the check and the rename are two calls; an edit landing in
       // the gap between them (well under a millisecond) is the race left.
