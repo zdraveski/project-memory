@@ -3275,5 +3275,35 @@ if (!quick) {
   }
 }
 
+// 1.4.1 F: database, broker, protocol, Windows, network, config-file and hash shapes (redaction-corpus-24, -25, -27, -28, -29, -32, -33, -37).
+{
+  const V = 'Zq8xK2mP9vL4nR7tB3wY';
+  const H = (...p) => p.join('');
+  const hashes = [H('$apr1', '$xyz12345', '$Abcdefghij', 'klmnopqrstuv'), H('$2y', '$10', '\\$pY1UYrztFnzW0FvoA8c6yk', 'SlnihSNwdKBK32QFBtgRRDbTEKmU5s2'), H('$6', '\\$xn3lny3z', '\\$FnzW0FvoA8c6ykSlnihSNwdKBK32QFBtgRRDbTEKmU5s25gBSGHDYH5Y'), H('$6', '$xn3lny3z', '$FnzW0FvoA8c6ykSlnihSNwdKBK32QFBtgRRDbTEKmU5s25gBSGHDYH5Y'),
+    H('$argon2id', '$v=19', '$m=65536,t=3,p=4', '\\$pY1UYrztFnzW0FvoA8c6yk', '\\$SlnihSNwdKBK32QFBtgRRDbTEKmU5s25gBSGHDYH5Yg'), H('aad3b435b51404ee', 'aad3b435b51404ee', ':', 'a6d56acb19c5d1ba0f7ec94998843c72'),
+    H('01000000d08c9ddf0115d1118c7a00c04fc297eb', '0123456789abcdef0123456789abcdef0123')];
+  const lines = [[`sqlplus scott/${V}@orcl`], [`sqlplus -L system/${V}@//h:1521/xe`], [`expdp system/${V}@orcl directory=d dumpfile=x.dmp`], [`rman target sys/${V}@orcl`], [`ALTER USER scott IDENTIFIED BY ${V};`],
+    [`jdbc:oracle:thin:u/${V}@h:1521/svc`], [`CREATE LOGIN app WITH PASSWORD = N'${V}'`], [`SET PASSWORD FOR 'u'@'%' = '${V}';`], [`db.changeUserPassword("u", "${V}")`], [`127.0.0.1:6379> AUTH ${V}`],
+    [`mosquitto_passwd -b pw.txt me ${V}`], [`confluent kafka cluster use; api-key store ${V} ${V}x`], [`[smtp.x.org]:587 me:${V}`], [`a1 LOGIN me ${V}`], [`PASS ${V}`], [`lftp -u me,${V} ftp.x.org`], [`lftp -e 'open -u me,${V} h'`],
+    [`user = "me:${V}"`], [`xfreerdp /v:h /u:me "/p:${V}"`], [`rdesktop -u me -p ${V} h`], [`net user bob ${V} /add`], [`net user Administrator ${V}`], [`net use Z: \\h\s /user:me ${V}`], [`psexec \\h -u me -p ${V} cmd`],
+    [`    Key Content            : ${V}`], [`nmcli con modify c wifi-sec.psk ${V}`], [`network={ ssid="x" psk="${V}" }`], [`wpa_passphrase SSID ${V}`], [`<auth-user-pass>\\\nme\\\n${V}\\\n</auth-user-pass>`], [`me : PSK "${V}"`], [`: PSK "${V}"`],
+    [`Publish-Module -NuGetApiKey ${V}`], [`Set-Item -Path Env:DB_PASSWORD -Value "${V}"`], [`db.example.com:5432:mydb:me:${V}`], [`_auth = ${V}=`], [`AUTH_SALT=${V}`], [`MQ_PSW=${V}`], [`p4 -P ${V} login`], [`ldappasswd -s ${V} uid=u,dc=x`],
+    [`bindpw ${V}`], [`ldap_default_authtok = ${V}`], [`echo ${V} | realm join -U admin d.x`], [`java -jar jenkins-cli.jar -s h -auth me:${V} list-jobs`], [`validationKey="${V}${V}" decryptionKey="${V}"`],
+    [`openssl enc -aes-256-cbc -k ${V} -in a`], [`openssl passwd -1 ${V}`], [`gpg-preset-passphrase --preset -P ${V} KEYGRIP`], [`rclone obscure ${V}`], [`New value: ${V}`], [`useradd -p ${V} me`], [`mkpasswd -m sha-512 ${V}`],
+    ...hashes.flatMap((h) => [[`me:${h}`, h], [`root:${h}:19000:0:99999:7:::`, h], [`usermod -p '${h}' me`, h]])];
+  const bad = [];
+  for (const [t, v = V] of lines) for (const s of [t, `$ ${t}`, `look at this: ${t} thanks`, `echo start && ${t} # note`]) if (redact(s).includes(v) || clip(s, 2000).includes(v)) bad.push(s);
+  ok(!bad.length, `database, protocol, Windows, network, config and hash secrets are redacted (leaked: ${bad.join(' | ')})`);
+  // Look-alikes stay.
+  for (const k of ['sqlplus /nolog', 'sqlplus -S @script.sql', 'PASS src/app.test.js', 'PASS 12 tests', 'net user bob', 'net user bob /domain', 'net use Z: \\h\s', 'ALTER USER x IDENTIFIED BY the admin', 'echo $1$2$3',
+    'openssl x509 -in c.pem', 'New value: 5', 'user = root', 'host.example.com:5432:db']) ok(redact(k) === k, `kept: ${k}`);
+  // No ReDoS: hostile 1 MB inputs for the new rules stay in seconds.
+  for (const unit of ['sqlplus a ', 'net user a ', 'mkpasswd -a b ', 'nmcli a ', '$6$', 'a:5432:b:c:', '<auth-user-pass>', 'lftp -u ']) {
+    const big = unit.repeat(Math.ceil(1e6 / unit.length)), t0 = Date.now();
+    redact(big); clip(big, 2000);
+    ok(Date.now() - t0 < 20000, `redact and clip of 1 MB of "${unit}" are fast (${Date.now() - t0} ms)`);
+  }
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
