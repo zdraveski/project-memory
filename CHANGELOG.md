@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 (2026-11-14)
 
 - A new hook watches git commands against the `enforce:` rules in your notes and logs which note matched (`.enforce-log` in the store, no command text). It blocks nothing, prints nothing, and does nothing while memory is off or the conversation is private.
 - `memory enforce status`: per rule note, its hits of the last 30 days from the live log (main and sub-agent), bad rules with the reason, and whether the log is full or memory is off. `memory doctor` gets a line that runs the enforce hook of the installed plugin and checks it is wired, even when memory is off.
