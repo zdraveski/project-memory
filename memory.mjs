@@ -42,7 +42,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
-import { hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
+import { redact, hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
