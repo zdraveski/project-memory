@@ -61,7 +61,7 @@ for (const c of ['git add -A && git init', 'git add file', 'git add src/a.mjs', 
   ok(!hit(c), `no hit: ${c}`);
 ok(hits(rule, 'git add file').on && !hits(rule, 'git status').on, 'on says whether the command is the subcommand at all');
 // known misses
-for (const c of ['bash -c "git add -A"', 'git add -- -A', 'echo "$(git add -A)"', 'sudo git add -A']) ok(!hit(c), `known miss: ${c}`);
+for (const c of ['bash -c "git add -A"', 'git add -- -A', 'echo "$(git add -A)"']) ok(!hit(c), `known miss: ${c}`);
 const push = ruleOf(note('enforce:\n  on: git push\n  has: --force\n')).rule;
 ok(hits(push, 'git push --force').hit && hits(push, 'git push origin main --force').hit, 'git push --force');
 ok(!hits(push, 'git push --force-with-lease').hit && !hits(push, 'echo "git push --force"').hit, 'not --force-with-lease, not an echo');
@@ -96,5 +96,29 @@ commandsOf(tf, chunk, 4096, (c) => seen.push(c.command));
 ok(seen.join('|') === 'git add -A|git status|git push', `commands past a line longer than the chunk (got ${seen.join('|')})`);
 ok(new Date(0) && (() => { let t; commandsOf(tf, chunk, 1 << 20, (c) => { t ??= c.t; }); return t === Date.parse('2026-11-10T10:00:00.000Z'); })(), 'the line time is in ms');
 { const fd = openSync(tf, 'r'); const n = fstatSync(fd).size; closeSync(fd); ok(n > 4096, 'the fixture is longer than one chunk'); }
+
+// 1.4.1 L: parsing
+const BS = String.fromCharCode(92), A = (c) => hits({ on: 'add', has: ['-A', '--all'], unless: [] }, c);
+const t0 = Date.now(); ruleOf(note('enforce:\n  on: git add\n  has: [-A]\n  unless: x' + ' '.repeat(60000) + 'y\n'));
+ok(Date.now() - t0 < 500, 'ruleOf is not quadratic on a long run of blanks');
+for (const c of [`git commit -m "a ${BS}" b"; git add -A`, `git commit -m "say ${BS}"hi${BS}" now" && git add -A`, `git commit -m it${BS}'s; git add -A`, `echo "x ${BS}" y"\ngit add -A`])
+  ok(A(c).hit, `escaped quote: ${c}`);
+ok(!A(`git commit -m 'C:${BS}dir${BS}' ; echo hi`).hit, 'a backslash before a closing single quote is no escape');
+ok(tokens(`echo a${BS}`).join('|') === `echo|a${BS}`, 'a trailing backslash stays');
+for (const c of ['git --no-optional-locks add -A', 'git -p add -A', 'git --bare add -A', 'git --exec-path=/x add -A', 'git --namespace n add -A', 'git --config-env=a=B add -A', 'git -c a=b --no-optional-locks -C d add -A'])
+  ok(A(c).hit, `global option: ${c}`);
+ok(!A('git --no-optional-locks status -A').hit, 'status -A is no hit');
+for (const c of ['if ($?) { git add -A }', 'try { git add -A } catch { }', 'Get-ChildItem | ForEach-Object { git add -A }', '(cd x && git add -A)', '{git add -A}', 'a && (b; git add -A)', '$x = (git add -A)'])
+  ok(A(c).hit, `block: ${c}`);
+ok(!A('echo "if (x) { git add -A }"').hit, 'braces inside quotes are no separator');
+for (const c of [`git add ${BS}\n  -A`, `git add ${BS}\r\n  -A`, `git ${BS}\n  add -A`, 'git add `\n  -A']) ok(A(c).hit, `continuation: ${JSON.stringify(c)}`);
+ok(!A(`echo hi${BS}\ngit status`).hit, 'a continuation is no false hit');
+ok(A("echo '<<EOF'\ngit add -A\nEOF").hit && A('git commit -m "docs: show <<EOF usage"\ngit add -A\nEOF').hit, 'a quoted << is no heredoc');
+ok(!A('cat <<EOF\ngit add -A\nEOF').hit, 'a real heredoc body is still dropped');
+for (const c of ['env FOO=1 git add -A', 'command git add -A', '/usr/bin/git add -A', 'git.exe add -A', 'rtk git add -A', 'sudo git add -A', 'time git add -A', '& git add -A', '& "C:/Program Files/Git/cmd/git.exe" add -A'])
+  ok(A(c).hit, `wrapped: ${c}`);
+ok(!A('echo git add -A').hit && !A('git-lfs add -A').hit && !A('gitk add -A').hit, 'echo, git-lfs, gitk are no hit');
+const t1 = Date.now(), long = A('git add -A\n' + 'cat <<EOF\n'.repeat(20000)), t2 = Date.now(); segments('git status\n' + 'cat <<A\nx\n'.repeat(60000));
+ok(long.hit && t2 - t1 < 500 && Date.now() - t2 < 500, 'unclosed heredocs are linear');
 
 console.log(`enforce: ${checks} checks passed`);

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor } from './harness.mjs';
-import { ruleSet, record, LOG, CACHE, LOG_MAX } from './enforce.mjs';
+import { ruleSet, record, LOG, CACHE, CACHE_V, LOG_MAX } from './enforce.mjs';
 import { QUIET, OFF, PROJECT_OFF, sharedStore } from './store.mjs';
 import { tag as tagOf, hushed } from './handoff-log.mjs';
 import { gitignore } from './memory-tier.mjs';
@@ -102,7 +102,7 @@ quiet(run(p.payload('git add -B')), 'fourth run'); ok(lines(p.store).length === 
 { const q = project(); quiet(run(q.payload('git add -A')), 'build'); const c = JSON.parse(readFileSync(join(q.store, CACHE), 'utf8'));
   c.v = 0; c.files['stage.md'].r = { on: 'ls', has: ['x'], unless: [] }; writeFileSync(join(q.store, CACHE), JSON.stringify(c));
   quiet(run(q.payload('git add -A')), 'old cache version'); ok(lines(q.store).length === 2, 'a cache of another version is rebuilt from the notes');
-  ok(JSON.parse(readFileSync(join(q.store, CACHE), 'utf8')).v === 1, 'and written with the current version'); }
+  ok(JSON.parse(readFileSync(join(q.store, CACHE), 'utf8')).v === CACHE_V, 'and written with the current version'); }
 // No file is read or made before the `git` check: a non-git command leaves no cache.
 { const q = project(); quiet(run(q.payload('ls -la')), 'non-git'); ok(!existsSync(join(q.store, CACHE)), 'a non-git command builds no cache'); }
 // The hook's private test agrees with handoff-log's hushed() on odd tag files.
@@ -129,5 +129,9 @@ ok(pre[0].hooks.every((h) => h.timeout === 5 && !('onFailure' in h) && !('status
 mkdirSync(join(home, '.claude', 'projects', 'x', 'memory'), { recursive: true });
 const ig = gitignore();
 ok(ig.split('\n').includes('*') && !ig.includes('enforce'), 'the snapshot ignores everything but an allow list of notes');
+
+// 1.4.1 L: a rule after a description over 2 KB is read
+{ const q = project(); writeFileSync(join(q.store, 'stage.md'), note('Stage files by name', ADD).replace('Never run git add -A.', 'x'.repeat(5000)));
+  ok(ruleSet(q.payload('git add -A')).rules.length === 1, 'a rule after a long description is cached'); }
 
 console.log(`enforce-hook: ${checks} checks passed`);
