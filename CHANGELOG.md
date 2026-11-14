@@ -9,6 +9,8 @@
 - `compact-gate --state` and the gate's messages no longer print secrets.
 - Stored failure reasons no longer keep a secret that an error message quoted.
 - README and FAQ: the redaction promise now says which saved files it covers.
+- Enforce rules: a rule after a long description is no longer ignored; a note with a long run of blanks can no longer stall every git call; a command with many unclosed heredocs is read in linear time.
+- Enforce rules now see a command after an escaped quote, after git options like `--no-optional-locks`, inside `{ }` or `( )`, after a line continuation, after a quoted `<<`, and behind `env`, `sudo`, `command`, `rtk`, `git.exe` or a full path to git.
 
 ## 1.4.0 (2026-11-14)
 
