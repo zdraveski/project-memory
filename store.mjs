@@ -502,6 +502,11 @@ const envNamed = (n) => /(?:^|_)(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|PASS|PWD|AUT
 // name such as `apiKey`, `tls-cert` or `production`); under `tokens:` a token's length too, 16 or more with a letter and a digit
 // (not a colour, `blue-500`, a model's name or a count).
 const yamlSecret = (v, tok) => (tok ? v.length >= 16 && /\d/.test(v) && /[A-Za-z]/.test(v) : /[\d!@#$%^&*+=?~]/.test(v));
+// 1.4.1 F: a rule for the value after a command's flag or word (`pre`), quoted or bare. Kept: a reference or path, a switch (`/add`), an expression
+// (`(ConvertTo-SecureString`), and with `need` a word with no digit or symbol (prose after `net user NAME`).
+const VAL = String.raw`((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,200})`;
+const after = (pre, flags = 'gi', need = false) => [new RegExp(`(${pre})["']?${VAL}`, flags),
+  (m, p, v) => (arg(v) || /^[(@]|^\/[\w:]+$/.test(v) || (need && !/[\d!@#$%^&*]/.test(v)) ? m : `${p}[redacted]`)];
 const SECRETS = [
   // From the first opener to the last closer: nested, the text after the inner
   // closer was saved. Self-closed or unclosed, to the end.
@@ -584,7 +589,7 @@ const SECRETS = [
   // keytool and jarsigner: -storepass, -keypass (and -srcstorepass, -destkeypass...). Not -storepass:env VAR.
   [/(\s-(?:(?:src|dest)?(?:store|key)pass(?:wd)?)[ \t]+["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,200})/g, (m, pre, v) => (arg(v) ? m : pre + '[redacted]')],
   // A password piped in (shortcut: a value with no digit or symbol is kept unless the reader is --password-stdin or chpasswd, so `echo hello | sudo -S true` stays; the here-string and send rules keep that limit too): echo / printf of it into a command that reads one from stdin (docker login --password-stdin, sudo -S, kinit, chpasswd, passwd --stdin, ssh-add, gpg --passphrase-fd, openconnect, runas, az devops login, gh secret set, gcloud secrets).
-  [/\b((?:echo|printf)(?:[ \t]+-[neE]+)?(?:[ \t]+'%s[^']{0,10}')?[ \t]+)("[^"\n]{3,200}"|'[^'\n]{3,200}'|(?![-$~])[^\s"'|;&<>]{3,200})(?=[ \t]*\|[ \t]*(?:[A-Z_]+=\S+[ \t]+)*(?:(?:\/\S*\/)?sudo\b[^\n|;&]{0,100}?\s-S\b|(?:(?:\/\S*\/)?sudo\s+(?:-\S+\s+)*|\/\S*\/)?(?:(?:docker|podman|helm\s+registry|crane\s+auth|oras|skopeo|az\s+acr)(?:\s+-{1,2}[\w-]+(?:[ =][^\s-]\S*)?)*\s+login\b|az\s+devops\s+login\b|gh\s+(?:secret\s+set|auth\s+login)\b|gcloud\s+(?:secrets|auth)\b|kinit\b|chpasswd\b|passwd\b|openconnect\b|runas\b|ssh-add\b|gpg\b[^\n|;&]{0,100}?--passphrase-fd|vault\s+login\b|npm\s+login\b)))/g, (m, pre, v, at, all) => (arg(v.replace(/^["']/, '')) || (!/[0-9!@#$%^&*]/.test(v) && !/^[ \t]*\|[^\n|;&]*?(?:--password-stdin|\bchpasswd\b)/.test(all.slice(at + m.length))) ? m : pre + '[redacted]')],
+  [/\b((?:echo|printf)(?:[ \t]+-[neE]+)?(?:[ \t]+'%s[^']{0,10}')?[ \t]+)("[^"\n]{3,200}"|'[^'\n]{3,200}'|(?![-$~])[^\s"'|;&<>]{3,200})(?=[ \t]*\|[ \t]*(?:[A-Z_]+=\S+[ \t]+)*(?:(?:\/\S*\/)?sudo\b[^\n|;&]{0,100}?\s-S\b|(?:(?:\/\S*\/)?sudo\s+(?:-\S+\s+)*|\/\S*\/)?(?:(?:docker|podman|helm\s+registry|crane\s+auth|oras|skopeo|az\s+acr)(?:\s+-{1,2}[\w-]+(?:[ =][^\s-]\S*)?)*\s+login\b|az\s+devops\s+login\b|gh\s+(?:secret\s+set|auth\s+login)\b|gcloud\s+(?:secrets|auth)\b|kinit\b|chpasswd\b|passwd\b|openconnect\b|runas\b|ssh-add\b|gpg\b[^\n|;&]{0,100}?--passphrase-fd|vault\s+login\b|npm\s+login\b|realm\s+join\b|adcli\b)))/g, (m, pre, v, at, all) => (arg(v.replace(/^["']/, '')) || (!/[0-9!@#$%^&*]/.test(v) && !/^[ \t]*\|[^\n|;&]*?(?:--password-stdin|\bchpasswd\b)/.test(all.slice(at + m.length))) ? m : pre + '[redacted]')],
   // A password given to a prompt: a here-string into a login-like command, and expect's send "pass\r".
   [/(\b(?:mysql|mariadb|psql|sudo|su|kinit|ssh|ssh-add|passwd|chpasswd|openconnect|runas|docker\s+login)\b[^\n|;&]{0,200}?<<<[ \t]*)("[^"\n]{3,200}"|'[^'\n]{3,200}'|[^\s"'|;&<>]{3,200})/g, (m, pre, v) => (arg(v.replace(/^["']/, '')) || !/[0-9!@#$%^&*]/.test(v) ? m : pre + '[redacted]')],
   [/((?:^|[\s;{])send[ \t]+(?:--[ \t]+)?")((?:[^"\n\\]|\\(?!r"|n"))[^"\n]{2,200}?)(?=\\[rn]")/g, (m, pre, v) => (arg(v) || !/[0-9!@#$%^&*]/.test(v) ? m : pre + '[redacted]')],
@@ -595,7 +600,7 @@ const SECRETS = [
   [/(\bterraform\b[^\n|;&]{0,300}?\s-var[ =]+["']?[\w.-]{1,100}=["']?)(?=[^\s"']*[A-Z])(?=[^\s"']*[a-z])(?=[^\s"']*\d)[^\s"']{10,200}/g, '$1[redacted]'],
   // secret-paths-8: smbclient -U user%pass, xfreerdp /p:pass, rabbitmqctl add_user, dotnet user-secrets set, redis ACL SETUSER >pass, reg add /v Password /d pass.
   [/(\s-U[ \t]*["']?[\w.\\@-]{1,100}%)[^\s"']{1,200}/g, '$1[redacted]'],
-  [/(\b[wx]?freerdp\d*\b[^\n|;&]{0,200}?\s\/(?:p|password):["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,200})/gi, (m, pre, v) => (arg(v) ? m : pre + '[redacted]')],
+  [/(\b[wx]?freerdp\d*\b[^\n|;&]{0,200}?\s["']?\/(?:p|password):["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,200})/gi, (m, pre, v) => (arg(v) ? m : pre + '[redacted]')],
   [/(\brabbitmqctl\s+(?:add_user|change_password)\s+\S+\s+["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,200})/g, (m, pre, v) => (arg(v) ? m : pre + '[redacted]')],
   [/(\buser-secrets\s+set\s+["']?[\w:.-]{1,100}["']?\s+["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,200})/g, (m, pre, v) => (arg(v) ? m : pre + '[redacted]')],
   [/(\bACL\s+SETUSER\b[^\n|;&]{0,300}?[ \t]["']?[>#])[^\s"']{1,200}/gi, '$1[redacted]'],
@@ -659,7 +664,7 @@ const SECRETS = [
   [/(-[ \t]+name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]{0,100})["']?[ \t]*\r?\n[ \t]+value:[ \t]*["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,2000})/g,
     (m, pre, n, v) => (envNamed(n.toUpperCase()) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
   [/(\bgh\s+secret\s+set\b[^\n|;&]{0,200}?\s(?:--body|-b)[ =]["']?)([^\s"']{1,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
-  [/((?<![A-Za-z0-9])_auth(?:Token)?[ =]["']?)([^\s"']{1,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  [/((?<![A-Za-z0-9])_auth(?:Token)?(?:[ \t]*=[ \t]*|[ \t])["']?)([^\s"']{1,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
   // In the mysql command only: `; find . -print` after it was cut. 7z as a command, not a `*.7z` file name before -print.
   [/((?:\b(?:mysql|mysqldump|mysqladmin|mariadb)|(?<![\w.*])7za?)\b[^\n|;&]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
@@ -709,9 +714,61 @@ const SECRETS = [
   // A quoted value goes whole, blanks and all, as in a command; it is never a key. Unquoted, a value ends at its first blank
   // (`password: p@ss w0rd` keeps all of it: `p@ss` is under 6), since prose follows a value as often as a second word does.
   // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret|preshared)[ _-]?key|identitytoken|registrytoken|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pw(?![a-z])|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\]?\s{0,20}(?::=|[:=\uFF1A])\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:(?:\\*["']){1,2}|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret|preshared)[ _-]?key|identitytoken|registrytoken|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])(?:psw|salt)(?![a-z])|(?<![A-Za-z0-9])pw(?![a-z])|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\]?\s{0,20}(?::=|[:=\uFF1A])\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:(?:\\*["']){1,2}|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
   [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=\uFF1A]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  // 1.4.1 F: databases, brokers, mail and file protocols, Windows tools, Wi-Fi and VPN, config files, password hashes (redaction-corpus-24, -25, -27, -28, -29, -32, -33, -37).
+  // A hash first, whole (`$6$salt$hash`, with a `\$` as a shell escape shows it): 25 characters or more, so `$1$2$3` stays.
+  [/(?<![\w$])\$(?:apr1|2[abxy]|argon2(?:id|i|d)|[156y])(?:\\?\$[\w./,=+-]{1,100}){2,6}/g, (m) => (m.length >= 25 ? '[redacted]' : m)],
+  [/(?<![\w-])[0-9a-f]{32}:[0-9a-f]{32}(?![\w-])/gi, '[redacted]'],
+  [/\b01000000d08c9ddf0115d1118c7a00c04fc297eb[0-9a-f]{20,}/gi, '[redacted]'],
+  // Oracle: user/pass@db after sqlplus and friends, and in a JDBC URL; IDENTIFIED BY with no quotes (a digit or symbol in it, as prose says "identified by the admin").
+  [/(\b(?:sqlplus|sqlldr|impdp|expdp|rman|tnsping)\b[^\n|;&]{0,200}?\s["']?[\w$#.-]{1,60}\/"?)([^\s"'@/]{3,200})(?=@|["'\s]|$)/gi, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
+  [/(\bjdbc:oracle:[a-z]{2,5}\d*:["']?[\w$#.-]{1,60}\/)([^\s"'@/]{3,200})(?=@)/gi, '$1[redacted]'],
+  [/(\bidentified\s{1,5}(?:with\s{1,5}\w{1,40}\s{1,5})?by\s{1,5})(?=[^\s"';,()[]*[\d!@#$%^&*])([^\s"';,()[]{3,200})/gi, (m, p, v) => (arg(v) || code(v) ? m : `${p}[redacted]`)],
+  [/(\b(?:set\s{1,5}password\b[^\n;=]{0,100}?|password)\s{0,5}=\s{0,5}N?)(["'])([^"'\n]{1,200})(?=\2)/gi, (m, pre, q, v) => (arg(v) || code(v) ? m : `${pre}${q}[redacted]`)],
+  [/(\bchangeUserPassword\(\s*["'][^"'\n]{1,100}["']\s*,\s*["'])([^"'\n]{1,200})/g, (m, p, v) => (arg(v) || code(v) ? m : `${p}[redacted]`)],
+  // A redis-cli session's prompt line (`127.0.0.1:6379> AUTH [user] pass`), Mosquitto's -b, Confluent's key and secret.
+  [/(\d{1,5}(?:\[\d+\])?>[ \t]*AUTH[ \t]+)(?!\[redacted\])((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g, (m, p, v) => (v.split(/\s+/).every(arg) ? m : `${p}[redacted]`)],
+  after(String.raw`\bmosquitto_passwd\b[^\n|;&]{0,100}?\s-b\s+\S+\s+\S+\s+`),
+  [/(\bapi-key\s+store\s+)["']?[\w+/=-]{8,}["']?(?:\s+["']?[\w+/=-]{8,}["']?)?/g, '$1[redacted]'],
+  // Mail and file transfer: postfix's sasl_passwd (`[host]:587 user:pass`), IMAP LOGIN, POP3 and FTP PASS (6 or more characters, a digit or symbol, no path or file name), lftp -u user,pass, curl's -K file `user = "me:pass"`.
+  [/(\[?[\w.-]{1,100}\]?:\d{1,5}[ \t]+[^\s:@[]{1,100}:)(?!\[redacted\])([^\s]{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
+  after(String.raw`\b[A-Za-z]{0,3}\d{1,5}[ \t]+LOGIN[ \t]+(?:"[^"\n]{1,100}"|[^\s"']{1,100})[ \t]+`, 'g', true),
+  [/((?<![\w.-])PASS[ \t]+)([^\s"'/\\]{6,200})(?=\s|$)/g, (m, p, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) && !code(v) && !/\.[A-Za-z]\w{0,6}$/.test(v) ? `${p}[redacted]` : m)],
+  [/(\b(?:lftp|open)\b[^\n|;&]{0,200}?\s-u[ \t]*["']?[^\s,"']{1,100},)([^\s"']{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
+  [/((?<![\w.?&-])user[ \t]*=[ \t]*["']?[^\s:"']{1,100}:)([^\s"']{3,200})/g, (m, p, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) ? `${p}[redacted]` : m)],
+  // Windows: rdesktop -p, net user NAME PASS, net use ... /user:NAME PASS, psexec -p, a Wi-Fi profile's Key Content and netsh's key=.
+  after(String.raw`\brdesktop\b[^\n|;&]{0,200}?\s-p\s+`),
+  after(String.raw`\bnet1?\s+user\s+(?:"[^"\n]{1,100}"|[^\s"'/*]{1,100})\s+`, 'gi', true),
+  after(String.raw`\bnet\s+use\b[^\n|;&]{0,300}?\s\/user:\S+\s+`, 'gi'),
+  after(String.raw`\bpsexec6?4?(?:\.exe)?\b[^\n|;&]{0,200}?\s-p\s+`, 'gi'),
+  after(String.raw`\bKey Content[ \t]*:[ \t]*`, 'gi'),
+  [/(\bnetsh\b[^\n|;&]{0,200}?\skey=)(?!(?:clear|material)\b)["']?[^\s"']{3,200}/gi, '$1[redacted]'],
+  // Wi-Fi and VPN: nmcli's wifi-sec.psk, wpa_supplicant's psk=, wpa_passphrase, an OpenVPN inline login, ipsec.secrets.
+  after(String.raw`\bnmcli\b[^\n|;&]{0,200}?\s[\w-]+\.(?:psk|password|wep-key\d?|private-key-password|secrets?)\s+`),
+  after(String.raw`(?<![\w-])(?:psk|wep_key\d|private_key_passwd)[ \t]*=[ \t]*`, 'g'),
+  after(String.raw`\bwpa_passphrase\s+(?:"[^"\n]{1,32}"|[^\s"']{1,32})\s+`, 'g'),
+  [/((?:<|&lt;)auth-user-pass>)[^<]{1,400}?(?=(?:<|&lt;)\/auth-user-pass)/g, '$1[redacted]'],
+  after(String.raw`:[ \t]*(?:PSK|XAUTH)[ \t]+`, 'g'),
+  // PowerShell: -ApiKey, -Token, -Password... given a plain word, and Set-Item of a secret's variable.
+  after(String.raw`(?<![\w-])-[A-Za-z]*(?:ApiKey|Token|Secret|Password|Passphrase|AccessKey)[ \t]+`, 'g'),
+  after(String.raw`\bSet-Item\b[^\n|;&]{0,200}?Env:\w*(?:PASS|PWD|SECRET|TOKEN|KEY)\w*[^\n|;&]{0,100}?-Value[ \t]+`, 'gi'),
+  // Config files and tools: .pgpass, p4 -P, ldappasswd, slapd and sssd's bind password, Jenkins -auth, ASP.NET machineKey.
+  [/((?<![\w.:*-])[\w.*-]{1,100}:(?:\d{4,5}|\*):[\w.*-]{1,100}:[\w.*-]{1,100}:)(?!\[redacted\])([^\s]{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
+  after(String.raw`\bp4\b[^\n|;&]{0,100}?\s-P\s+`, 'g'),
+  after(String.raw`\bldappasswd\b[^\n|;&]{0,200}?\s-[swa]\s*`, 'g'),
+  after(String.raw`(?<![\w-])(?:bindpw|rootpw|ldap_default_authtok)(?:[ \t]*=[ \t]*|[ \t]+)`, 'g'),
+  after(String.raw`\bjenkins[\w.-]*\b[^\n|;&]{0,200}?\s-auth\s+["']?[^\s:"']{1,100}:`, 'g'),
+  [/(\b(?:validation|decryption)Key\s*=\s*["']?)(?!AutoGenerate)[^"'\s>]{16,}/gi, '$1[redacted]'],
+  // Password tools: openssl enc -k and passwd, gpg-preset-passphrase -P, rclone obscure, elasticsearch-reset-password's output, useradd and usermod -p, mkpasswd.
+  after(String.raw`\bopenssl\b[^\n|;&]{0,200}?\s-k\s+`, 'g'),
+  after(String.raw`\bopenssl\s+passwd\b(?:\s+(?:-salt\s+\S+|-\w+))*\s+`, 'g'),
+  after(String.raw`\bgpg-preset-passphrase\b[^\n|;&]{0,100}?\s-P\s+`, 'g'),
+  after(String.raw`\brclone\s+obscure\s+`, 'g'),
+  after(String.raw`\bNew value:[ \t]+`, 'g', true),
+  after(String.raw`\b(?:useradd|usermod)\b[^\n|;&]{0,200}?\s(?:-p|--password)[ \t]+`, 'g'),
+  after(String.raw`\bmkpasswd\b(?:\s+-{1,2}[\w-]+(?:=\S+|\s+[A-Za-z0-9][A-Za-z0-9-]{1,11}(?=\s+[^\s-]))?){0,6}\s+`, 'g'),
 ];
 const redactRaw = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
 // A backslash line wrap is joined first (it cuts a secret in two), then the raw rules run, then the same rules on a folded copy of that:
