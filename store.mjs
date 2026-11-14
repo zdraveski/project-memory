@@ -476,11 +476,23 @@ export const OFF = '.memory-off';
 // a looser rule let those through.
 // A member whose last name is the secret's own word (`user.password`,
 // `this.apiKey`, `settings.SECRET_KEY`) is a reference to one, not one.
-const code = (v) => /^\$[{(]|^(?:process\.env[.[]|os\.environ|os\.getenv|System\.getenv|ENV\[)/.test(v)
+const code = (v, ui) => /^\$[{(]|^(?:process\.env[.[]|os\.environ|os\.getenv|System\.getenv|ENV\[)/.test(v)
   || (!/\d/.test(v) && /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(v) && /(?:pass|secret|token|key|pwd|auth|cred)\w*$/i.test(v))
   || /^[A-Za-z_$][\w$.]*\(\)$/.test(v)
   || /^(?:string|number|boolean|str|int|bytes|any|unknown|null|undefined|none|true|false|object|bool|float|char|optional|secretstr)$/i.test(v)
-  || (!/\d/.test(v) && (/^[A-Za-z_$][\w$.]*[([]/.test(v) || /^(?:\/|~\/|[A-Za-z]:[\\/])[^\s/\\]+[\\/]/.test(v)));
+  || (!/\d/.test(v) && (/^[A-Za-z_$][\w$.]*[([]/.test(v) || /^(?:\/|~\/|[A-Za-z]:[\\/])[^\s/\\]+[\\/]/.test(v)))
+  // 1.4.1 I: a call with a digit in its arguments (`secrets.token_hex(16)`, `uuid.uuid4().hex`, `z.string().min(8)`, `String::new()`), a
+  // schema type (`PropTypes.string.isRequired`), a YAML tag, a template, a markup tag, a regex literal, a URL with no login in it, an ARN, a
+  // k8s secret's name, a shell variable in capitals, and the secret's own word as a label (`password`, `Password`).
+  || (!/["'\s]/.test(v) && v.length <= 80 && ((c) => c && /^(?:secrets|uuid|crypto|random|os|Math|String|Number|Buffer|Joi|z|yup|hashlib|base64|bcrypt|JSON|Object|Array|Column|Field)(?:\.|::|$)|_|::|[a-z][A-Z]/.test(c))((/^((?:[A-Za-z_$][\w$]*(?:\.|::))*[A-Za-z_$][\w$]*)\(/.exec(v) ?? [])[1]))
+  || /^(?:PropTypes|Joi|z|yup|v|t|T|types|Types)(?:\.[A-Za-z_$][\w$]*)*\.(?:isRequired|required|optional|nullable|string|number|boolean|object|array|func|bool)$/.test(v)
+  || /^!{1,2}(?:vault|secret|encrypted|ref|env|include|str|binary)$/.test(v)
+  || /^(?:\{\{|\{%|<%|(?:<|&lt;)\/?[A-Za-z][\w-]*>|\/\^)/.test(v)
+  || ((/^[A-Za-z][\w+.-]{1,20}:\/\/[^\s@]*$/.test(v) || /^\.{1,2}[\\/][^\s@]*$/.test(v)) && !/[A-Za-z0-9]{10,}|(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{6,}/.test(v)) || /^arn:aws[\w-]*:/.test(v)
+  || (ui && (/^(?:password|passwd|passphrase|secret|token|apikey|key|pass|pwd)$/i.test(v) || (/^[A-Z][A-Za-z' ]*[?:!.]?$/.test(v) && /\s/.test(v) && /pass|secret|token|\bkey|\bpin\b/i.test(v))))
+  || /^\$[A-Z_][A-Z0-9_]*$/.test(v)
+  || /^(?:none|nil|null)[)\]:;]+$/i.test(v);
+// `ui` (a quoted JSON key's value, or `self.password`) keeps a label: "password": "Password", "Mot de passe"; elsewhere `password: password` is a real weak password.
 // A command's argument that is no secret itself: a reference ($TOKEN,
 // ${TOKEN}, $(cat pw): the shell expands it) or a path (~/.ssh/id_ed25519,
 // ./pw.txt, /etc/x/y, certs/key.pem). Cut, the word a search would find was
@@ -512,6 +524,8 @@ const after = (pre, flags = 'gi', need = false) => [new RegExp(`(${pre})["']?${V
   (m, p, v) => (arg(v) || /^[(@]|^\/[\w:]+$/.test(v) || (need && !/[\d!@#$%^&*]/.test(v)) ? m : `${p}[redacted]`)];
 // Words that make a run of lowercase words a sentence, not a passphrase.
 export const FUNC = new Set('a an the and or but so if then than that this those these which who what when where why how because since as at by for from in into of off on onto to too with without not no now is are was were be been being am it its you your i my we our they them he she has have had do does did can could will would shall should may might must also only just still always never very more most less than there here incorrect required encrypted different unchanged mandatory important expired stored invalid available confidential sensitive hashed salted'.split(' '));
+// A k8s secret's name after a colon (`secret: my-app-secret`; with `=` it stays cut). A lowercase word that a sentence goes on about (`password: required`, `secret: scanning is on`): a function word, or one right after it.
+const prose = (v, rest) => /^[a-z]{4,}$/.test(v) && (FUNC.has(v) || (/(?:ed|ing)$/.test(v) && FUNC.has((/^ ([a-z]+)\b/.exec(rest) ?? [])[1])));
 const SECRETS = [
   // From the first opener to the last closer: nested, the text after the inner
   // closer was saved. Self-closed or unclosed, to the end.
@@ -566,7 +580,9 @@ const SECRETS = [
   [/(\bredis-cli\b[^\n|;&]{0,200}?\s-a[ \t]+["']?)(?:(?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, '$1[redacted]'],
   // The curl rule first: the header rule reads to the next quote, which may be the one that opens a -b value.
   [/(\bcurl\b[^\n|;&]{0,300}?\s(?:-b|--cookie)[ =]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (v.includes('=') ? `${pre}[redacted]` : m)],
-  [/((?:^|[\s'"])(?:set-)?cookie["']?[ \t]*:[ \t]*["']?)[\w.%!#$&*+^~-]{1,100}=[^\s;'"]*(?:;[ \t]*[\w.%!#$&*+^~-]{1,100}=[^\s;'"]*)*/gim, '$1[redacted]'],
+  [/((?:^|[\s'"])(?:set-)?cookie["']?[ \t]*:[ \t]*["']?)[\w.%!#$&*+^~-]{1,100}=[^\s;'"]*(?:;[ \t]*[\w.%!#$&*+^~-]{1,100}=[^\s;'"]*)*/gim,
+    // Only a session-like pair (a name that says so, or a long value with a letter and a digit) goes; `theme=dark; lang=en` stays.
+    (m, pre) => (m.slice(pre.length).split(';').some((x) => { const [n, ...r] = x.trim().split('='), v = r.join('='); return !/^(?:path|domain|max-age|expires|samesite|secure|httponly)$/i.test(n) && (/sess|(?:^|[_.-])sid(?:$|[_.-])|auth|tok|jwt|login|key|secret|pass|csrf|xsrf|remember|user/i.test(n) || (v.length >= 12 && /\d/.test(v) && /[A-Za-z]/.test(v))); }) ? `${pre}[redacted]` : m)],
   // Docker's config.json: "auth" is base64 of user:password.
   [/("auth"[ \t]*:[ \t]*")(?=[A-Za-z0-9+/]{0,300}[\d=+/])[A-Za-z0-9+/]{20,300}={0,2}(?=")/g, '$1[redacted]'],
   // A signed URL's signature is the credential (Azure SAS, S3, GCS).
@@ -668,7 +684,7 @@ const SECRETS = [
   [/(\{[^{}\n]{0,200}?["']?(?:name|key)["']?[ \t]*:[ \t]*["']([\w.-]{1,100})["'][^{}\n]{0,200}?,[ \t]*["']?value["']?[ \t]*:[ \t]*["'])([^"'\n]{4,2000})/g,
     (m, pre, n, v) => (/sess|(?:^|[_.-])(?:sid|key|secret|token|password|passwd|pass|pwd|auth|credentials?|cookie)(?:$|[_.-])|apikey|password|secret|token/i.test(n) && !/^(?:\{\{|<|%)/.test(v) && !/(?:^|[_.-])(?:policy|file|path|dir|type|url|length|label|hint)$/i.test(n) && !arg(v) && !code(v) ? pre + '[redacted]' : m)],
   // A JSON password of any length, an escaped quote in it too: to the quote that ends the value (before , } ] or the line's end).
-  [/("(?:password|passwd|pwd|pass|passphrase)"[ \t]*:[ \t]*")((?:[^"\\\n]|\\.|"(?![ \t]*(?:[,}\]]|\r?$)))+)(?=")/gim, (m, pre, v) => (v.length < 3 || arg(v) || code(v) ? m : pre + '[redacted]')],
+  [/("(?:password|passwd|pwd|pass|passphrase)"[ \t]*:[ \t]*")((?:[^"\\\n]|\\.|"(?![ \t]*(?:[,}\]]|\r?$)))+)(?=")/gim, (m, pre, v) => (v.length < 3 || arg(v) || code(v, true) ? m : pre + '[redacted]')],
   // A long mixed value under a bare key, in JSON or YAML (key, credentials, auth, session): a letter, a digit, 20 or more characters, no path.
   [/((?<![A-Za-z0-9_-])(?:key|credentials?|auth|session)["']?[ \t]*[:=][ \t]*["']?)(?=[A-Za-z0-9+_=-]{0,200}\d)(?=[A-Za-z0-9+_=-]{0,200}[a-z])(?=[A-Za-z0-9+_=-]{0,200}[A-Z])([A-Za-z0-9+_=-]{20,})(?![\w/.-])/g, (m, pre, v) => (code(v) ? m : pre + '[redacted]')],
   [/(::add-mask::)\S+/g, '$1[redacted]'],
@@ -755,7 +771,7 @@ const SECRETS = [
   // A quoted value goes whole, blanks and all, as in a command; it is never a key. Unquoted, a value ends at its first blank
   // (`password: p@ss w0rd` keeps all of it: `p@ss` is under 6), since prose follows a value as often as a second word does.
   // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:j|php|asp\.net_)?sess(?:ion)?[_-]?id|connect\.sid|(?:api|account|private|secret|preshared)[ _-]?key|identitytoken|registrytoken|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])(?:psw|salt)(?![a-z])|pw(?![a-z])|passwort|kennwort|mot[ _]de[ _]passe|contrase[nñ]a|wachtwoord|senha|has[lł]o|heslo|salasana|jelsz[oó]|[sş]ifre|пароль|l[öo]senord|adgangskode|kodeord|パスワード|密码|密碼|비밀번호|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\]?\s{0,20}(?::=|[:=\uFF1A])\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:(?:\\*["']){1,2}|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:j|php|asp\.net_)?sess(?:ion)?[_-]?id|connect\.sid|(?:api|account|private|secret|preshared)[ _-]?key|identitytoken|registrytoken|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])(?:psw|salt)(?![a-z])|pw(?![a-z])|passwort|kennwort|mot[ _]de[ _]passe|contrase[nñ]a|wachtwoord|senha|has[lł]o|heslo|salasana|jelsz[oó]|[sş]ifre|пароль|l[öo]senord|adgangskode|kodeord|パスワード|密码|密碼|비밀번호|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\]?\s{0,20}(?::=|[:=\uFF1A])\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:(?:\\*["']){1,2}|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v, at, all) => (code(v, /["']\s*:\s*["']$/.test(pre) || /\b(?:self|this)\.$/.test(all.slice(Math.max(0, at - 5), at))) || prose(v, all.slice(at + m.length)) || ((/:\s*["']*$/.test(pre) || /(?:name|ref)["']?\]?\s*[:=]/i.test(pre)) && /^[a-z]+(?:-[a-z]+)*-(?:secret|credentials?|token|key)s?$/.test(v)) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
   [/((?<![A-Za-z0-9])tokens?["']?[ \t]{0,20}[:=\uFF1A]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // 1.4.1 F: databases, brokers, mail and file protocols, Windows tools, Wi-Fi and VPN, config files, password hashes (redaction-corpus-24, -25, -27, -28, -29, -32, -33, -37).
