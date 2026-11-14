@@ -723,18 +723,18 @@ const SECRETS = [
   [/(?<![\w-])[0-9a-f]{32}:[0-9a-f]{32}(?![\w-])/gi, '[redacted]'],
   [/\b01000000d08c9ddf0115d1118c7a00c04fc297eb[0-9a-f]{20,}/gi, '[redacted]'],
   // Oracle: user/pass@db after sqlplus and friends, and in a JDBC URL; IDENTIFIED BY with no quotes (a digit or symbol in it, as prose says "identified by the admin").
-  [/(\b(?:sqlplus|sqlldr|impdp|expdp|rman|tnsping)\b[^\n|;&]{0,200}?\s["']?[\w$#.-]{1,60}\/)([^\s"'@/]{3,200})(?=@|["'\s]|$)/gi, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
+  [/(\b(?:sqlplus|sqlldr|impdp|expdp|rman|tnsping)\b[^\n|;&]{0,200}?\s["']?[\w$#.-]{1,60}\/"?)([^\s"'@/]{3,200})(?=@|["'\s]|$)/gi, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
   [/(\bjdbc:oracle:[a-z]{2,5}\d*:["']?[\w$#.-]{1,60}\/)([^\s"'@/]{3,200})(?=@)/gi, '$1[redacted]'],
   [/(\bidentified\s{1,5}(?:with\s{1,5}\w{1,40}\s{1,5})?by\s{1,5})(?=[^\s"';,()[]*[\d!@#$%^&*])([^\s"';,()[]{3,200})/gi, (m, p, v) => (arg(v) || code(v) ? m : `${p}[redacted]`)],
   [/(\b(?:set\s{1,5}password\b[^\n;=]{0,100}?|password)\s{0,5}=\s{0,5}N?)(["'])([^"'\n]{1,200})(?=\2)/gi, (m, pre, q, v) => (arg(v) || code(v) ? m : `${pre}${q}[redacted]`)],
   [/(\bchangeUserPassword\(\s*["'][^"'\n]{1,100}["']\s*,\s*["'])([^"'\n]{1,200})/g, (m, p, v) => (arg(v) || code(v) ? m : `${p}[redacted]`)],
   // A redis-cli session's prompt line (`127.0.0.1:6379> AUTH [user] pass`), Mosquitto's -b, Confluent's key and secret.
-  [/(\d{1,5}>[ \t]*AUTH[ \t]+)(?!\[redacted\])((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g, (m, p, v) => (v.split(/\s+/).every(arg) ? m : `${p}[redacted]`)],
+  [/(\d{1,5}(?:\[\d+\])?>[ \t]*AUTH[ \t]+)(?!\[redacted\])((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g, (m, p, v) => (v.split(/\s+/).every(arg) ? m : `${p}[redacted]`)],
   after(String.raw`\bmosquitto_passwd\b[^\n|;&]{0,100}?\s-b\s+\S+\s+\S+\s+`),
   [/(\bapi-key\s+store\s+)["']?[\w+/=-]{8,}["']?(?:\s+["']?[\w+/=-]{8,}["']?)?/g, '$1[redacted]'],
   // Mail and file transfer: postfix's sasl_passwd (`[host]:587 user:pass`), IMAP LOGIN, POP3 and FTP PASS (6 or more characters, a digit or symbol, no path or file name), lftp -u user,pass, curl's -K file `user = "me:pass"`.
-  [/(\[[\w.-]{1,100}\]:\d{1,5}[ \t]+[^\s:@[]{1,100}:)(?!\[redacted\])([^\s]{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
-  after(String.raw`\b[A-Za-z]{0,3}\d{1,5}[ \t]+LOGIN[ \t]+(?:"[^"\n]{1,100}"|[^\s"']{1,100})[ \t]+`, 'g'),
+  [/(\[?[\w.-]{1,100}\]?:\d{1,5}[ \t]+[^\s:@[]{1,100}:)(?!\[redacted\])([^\s]{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
+  after(String.raw`\b[A-Za-z]{0,3}\d{1,5}[ \t]+LOGIN[ \t]+(?:"[^"\n]{1,100}"|[^\s"']{1,100})[ \t]+`, 'g', true),
   [/((?<![\w.-])PASS[ \t]+)([^\s"'/\\]{6,200})(?=\s|$)/g, (m, p, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) && !code(v) && !/\.[A-Za-z]\w{0,6}$/.test(v) ? `${p}[redacted]` : m)],
   [/(\b(?:lftp|open)\b[^\n|;&]{0,200}?\s-u[ \t]*["']?[^\s,"']{1,100},)([^\s"']{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
   [/((?<![\w.?&-])user[ \t]*=[ \t]*["']?[^\s:"']{1,100}:)([^\s"']{3,200})/g, (m, p, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) ? `${p}[redacted]` : m)],
@@ -766,7 +766,7 @@ const SECRETS = [
   after(String.raw`\bopenssl\s+passwd\b(?:\s+(?:-salt\s+\S+|-\w+))*\s+`, 'g'),
   after(String.raw`\bgpg-preset-passphrase\b[^\n|;&]{0,100}?\s-P\s+`, 'g'),
   after(String.raw`\brclone\s+obscure\s+`, 'g'),
-  after(String.raw`\bNew value:[ \t]+`, 'g'),
+  after(String.raw`\bNew value:[ \t]+`, 'g', true),
   after(String.raw`\b(?:useradd|usermod)\b[^\n|;&]{0,200}?\s(?:-p|--password)[ \t]+`, 'g'),
   after(String.raw`\bmkpasswd\b(?:\s+-{1,2}[\w-]+(?:=\S+|\s+[A-Za-z0-9][A-Za-z0-9-]{1,11}(?=\s+[^\s-]))?){0,6}\s+`, 'g'),
 ];

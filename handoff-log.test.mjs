@@ -3271,7 +3271,7 @@ if (!quick) {
   for (const unit of ['7z -p ', 'docker --a ', 'echo "a" | ', 'htpasswd -b ', 'reg add /v Key ', 'ssh-keygen -P ', "echo 'a", 'sqlcmd -P ']) {
     const big = unit.repeat(Math.ceil(1e6 / unit.length)), t0 = Date.now();
     redact(big); clip(big, 2000);
-    ok(Date.now() - t0 < 20000, `redact and clip of 1 MB of "${unit}" are fast (${Date.now() - t0} ms)`);
+    ok(Date.now() - t0 < 3000, `redact and clip of 1 MB of "${unit}" are fast (${Date.now() - t0} ms)`);
   }
 }
 
@@ -3284,7 +3284,7 @@ if (!quick) {
     H('01000000d08c9ddf0115d1118c7a00c04fc297eb', '0123456789abcdef0123456789abcdef0123')];
   const lines = [[`sqlplus scott/${V}@orcl`], [`sqlplus -L system/${V}@//h:1521/xe`], [`expdp system/${V}@orcl directory=d dumpfile=x.dmp`], [`rman target sys/${V}@orcl`], [`ALTER USER scott IDENTIFIED BY ${V};`],
     [`jdbc:oracle:thin:u/${V}@h:1521/svc`], [`CREATE LOGIN app WITH PASSWORD = N'${V}'`], [`SET PASSWORD FOR 'u'@'%' = '${V}';`], [`db.changeUserPassword("u", "${V}")`], [`127.0.0.1:6379> AUTH ${V}`],
-    [`mosquitto_passwd -b pw.txt me ${V}`], [`confluent kafka cluster use; api-key store ${V} ${V}x`], [`[smtp.x.org]:587 me:${V}`], [`a1 LOGIN me ${V}`], [`PASS ${V}`], [`lftp -u me,${V} ftp.x.org`], [`lftp -e 'open -u me,${V} h'`],
+    [`mosquitto_passwd -b pw.txt me ${V}`], [`confluent kafka cluster use; api-key store ${V} ${V}x`], [`[smtp.x.org]:587 me:${V}`], [`smtp.x.org:587 me:${V}`], [`sqlplus scott/"${V}"@orcl`], [`127.0.0.1:6379[1]> AUTH ${V}`], [`a1 LOGIN me ${V}`], [`PASS ${V}`], [`lftp -u me,${V} ftp.x.org`], [`lftp -e 'open -u me,${V} h'`],
     [`user = "me:${V}"`], [`xfreerdp /v:h /u:me "/p:${V}"`], [`rdesktop -u me -p ${V} h`], [`net user bob ${V} /add`], [`net user Administrator ${V}`], [`net use Z: \\h\s /user:me ${V}`], [`psexec \\h -u me -p ${V} cmd`],
     [`    Key Content            : ${V}`], [`nmcli con modify c wifi-sec.psk ${V}`], [`network={ ssid="x" psk="${V}" }`], [`wpa_passphrase SSID ${V}`], [`<auth-user-pass>\\\nme\\\n${V}\\\n</auth-user-pass>`], [`me : PSK "${V}"`], [`: PSK "${V}"`],
     [`Publish-Module -NuGetApiKey ${V}`], [`Set-Item -Path Env:DB_PASSWORD -Value "${V}"`], [`db.example.com:5432:mydb:me:${V}`], [`_auth = ${V}=`], [`AUTH_SALT=${V}`], [`MQ_PSW=${V}`], [`p4 -P ${V} login`], [`ldappasswd -s ${V} uid=u,dc=x`],
@@ -3296,9 +3296,9 @@ if (!quick) {
   ok(!bad.length, `database, protocol, Windows, network, config and hash secrets are redacted (leaked: ${bad.join(' | ')})`);
   // Look-alikes stay.
   for (const k of ['sqlplus /nolog', 'sqlplus -S @script.sql', 'PASS src/app.test.js', 'PASS 12 tests', 'net user bob', 'net user bob /domain', 'net use Z: \\h\s', 'ALTER USER x IDENTIFIED BY the admin', 'echo $1$2$3',
-    'openssl x509 -in c.pem', 'New value: 5', 'user = root', 'host.example.com:5432:db']) ok(redact(k) === k, `kept: ${k}`);
+    'openssl x509 -in c.pem', 'New value: 5', 'user = root', 'host.example.com:5432:db', 'New value: the default', 'a1 LOGIN fails with timeout', '12 LOGIN attempts failed for admin']) ok(redact(k) === k, `kept: ${k}`);
   // No ReDoS: hostile 1 MB inputs for the new rules stay in seconds.
-  for (const unit of ['sqlplus a ', 'net user a ', 'mkpasswd -a b ', 'nmcli a ', '$6$', 'a:5432:b:c:', '<auth-user-pass>', 'lftp -u ']) {
+  for (const unit of ['sqlplus a ', 'sqlplus ', 'net user a ', 'mkpasswd -a b ', 'nmcli a ', '$6$', 'a:5432:b:c:', '<auth-user-pass>', 'lftp -u ']) {
     const big = unit.repeat(Math.ceil(1e6 / unit.length)), t0 = Date.now();
     redact(big); clip(big, 2000);
     ok(Date.now() - t0 < 20000, `redact and clip of 1 MB of "${unit}" are fast (${Date.now() - t0} ms)`);
