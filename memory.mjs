@@ -41,7 +41,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
-import { redact, hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
+import { hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -807,7 +807,7 @@ function replay(here, args, all, label, failed) {
   }
   found.sort((a, b) => a.t - b.t);
   const by = {}; for (const f of found) by[f.name] = (by[f.name] || 0) + 1;
-  return { ok: true, lines: [...found.map((f) => `${local(f.t)}  ${f.name}  ${f.s}${f.sub ? '  [subagent]' : ''}  ${clip(redact(f.command).replace(/\s+/g, ' '), 160)}`),
+  return { ok: true, lines: [...found.map((f) => `${local(f.t)}  ${f.name}  ${f.s}${f.sub ? '  [subagent]' : ''}  ${clip(f.command, 160)}`),
     `checked ${pl(checked, 'git command')}, ${matched} are git ${r.rule.on}, ${pl(found.length, 'hit')} in ${pl(new Set(found.map((f) => f.s)).size, 'session')}, ${pl(Object.keys(by).length, 'project')}`,
     ...(found.length ? [`hits by project: ${Object.entries(by).map(([k, n]) => `${k} ${n}`).join(', ')}`] : []),
     'Read each hit. A hit is a catch only if you agree the command broke the lesson.'] };
