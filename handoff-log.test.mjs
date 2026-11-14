@@ -499,7 +499,7 @@ ok(/^Memory hooks changed outside deploy\.mjs, live and untested: store\.mjs in 
 // nine-minute check to reach; tested at the end of this file, with stubs for the check.
 const gated = join(home, 'gated');
 mkdirSync(gated, { recursive: true });
-for (const f of ['deploy.mjs', 'store.mjs', 'handoff-log.mjs', 'memory.mjs', 'compact-gate.mjs']) writeFileSync(join(gated, f), readFileSync(join(dirname(HOOK), f)));
+for (const f of ['deploy.mjs', 'store.mjs', 'handoff-log.mjs', 'memory.mjs', 'compact-gate.mjs', 'enforce.mjs']) writeFileSync(join(gated, f), readFileSync(join(dirname(HOOK), f)));
 const g = (...a) => execFileSync('git', ['-C', gated, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { env, encoding: 'utf8' });
 g('init', '-q', '-b', 'master'); g('add', '-A'); g('commit', '-qm', 'base'); g('checkout', '-qb', 'other');
 let gate = spawnSync(process.execPath, [join(gated, 'deploy.mjs')], { env, encoding: 'utf8' });
@@ -2752,13 +2752,13 @@ require('node:module').syncBuiltinESMExports();
   }
 }
 
-// The whole run, in a repo of its own: the six suites, the mutants, the soak and the
+// The whole run, in a repo of its own: the seven suites, the mutants, the soak and the
 // break harness are stubs that obey a control file (what they print, whether they
 // fail, what they do to the repo), and HOME is the throwaway one, so nothing here
 // can reach the real hooks-live or the real repo.
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = dirname(HOOK);
-  const FILES_ = ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs',
+  const FILES_ = ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs', 'enforce.mjs',
     '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'deploy.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
@@ -2775,13 +2775,13 @@ if (s.err) process.stderr.write(s.err);
 if (s.out) process.stdout.write(s.out);
 process.exit(s.code || 0);
 `;
-  for (const f of ['store', 'handoff-log', 'journal', 'compact-gate', 'memory-tier', 'memory'].map((t) => `${t}.test.mjs`).concat(['mutate.mjs', 'memory-tier.soak.mjs', 'memory-tier.break.mjs', 'memory-tier.mjs'])) writeFileSync(join(dep, f), STUB);
+  for (const f of ['store', 'handoff-log', 'journal', 'compact-gate', 'memory-tier', 'memory', 'enforce'].map((t) => `${t}.test.mjs`).concat(['mutate.mjs', 'memory-tier.soak.mjs', 'memory-tier.break.mjs', 'memory-tier.mjs'])) writeFileSync(join(dep, f), STUB);
   const g2 = (...a) => execFileSync('git', ['-C', dep, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8' }).trim();
   g2('init', '-q', '-b', 'master'); g2('add', '-A'); g2('commit', '-qm', 'base');
   const deploy = (c, ...args) => {
     writeFileSync(ctl, JSON.stringify(c)); rmSync(`${ctl}.log`, { force: true });
     const r = spawnSync(process.execPath, [join(dep, 'deploy.mjs'), ...args], { encoding: 'utf8' });
-    // what the stubs were run with, minus the six suites
+    // what the stubs were run with, minus the seven suites
     r.calls = (existsSync(`${ctl}.log`) ? readFileSync(`${ctl}.log`, 'utf8').trim().split('\n') : []).map((x) => x.trimEnd()).filter((x) => !x.includes('.test.mjs'));
     return r;
   };
@@ -2793,12 +2793,12 @@ process.exit(s.code || 0);
     writeFileSync(join(plug, 'known_marketplaces.json'), JSON.stringify({ 'project-memory': { source: marketplace } }));
   };
   const sum = (r) => `${r.status} ${JSON.stringify(r.stdout)} ${JSON.stringify(r.stderr)}`;
-  const ALL = 'the six suites ... ok\nmutation check ... skipped\n';
+  const ALL = 'the seven suites ... ok\nmutation check ... skipped\n';
   process.env.DEPLOY_CTL = ctl;
   try {
     // A failing suite stops the deploy, its last three lines named (stderr, then stdout).
     let r = deploy({ 'store.test.mjs': [{ code: 1, err: 'e1\ne2\n', out: 'o1\no2\no3\n' }] });
-    ok(r.status === 1 && r.stdout === 'the six suites ... FAILED\n' && r.stderr === 'deploy: store.test: o1 | o2 | o3\n', `a failing suite stops the deploy (${sum(r)})`);
+    ok(r.status === 1 && r.stdout === 'the seven suites ... FAILED\n' && r.stderr === 'deploy: store.test: o1 | o2 | o3\n', `a failing suite stops the deploy (${sum(r)})`);
     // A failing step: the last three lines of its stderr then stdout.
     r = deploy({ 'memory-tier.soak.mjs': [{ code: 1, err: 'e1\ne2\ne3\n', out: 'o1\no2\n' }] });
     ok(r.status === 1 && r.stdout === `${ALL}soak ... FAILED\n` && r.stderr === 'deploy: soak: e3 | o1 | o2\n' && !existsSync(liveD), `a failing soak stops the deploy, its last lines named (${sum(r)})`);
@@ -2831,7 +2831,7 @@ process.exit(s.code || 0);
     writeFileSync(join(home, 'cache-b', '.deployed.json'), JSON.stringify({ commit: 'old1234' }));
     installed(join(home, 'cache-b'), { source: 'github' });
     r = deploy({}, '--full', '--tiering-change');
-    ok(r.status === 0 && r.stdout === `the six suites ... ok\nmutation check (all, ~65 min) ... ok\nsoak ... ok\nbreak harness ... ok\ndeployed ${c} to ${liveD}\nwarning: the plugin runs old1234 from ${join(home, 'cache-b')}, not ${c}: node memory.mjs doctor says why\n`, `--full checks every mutant, --tiering-change skips the dry run, an older plugin copy is named (${sum(r)})`);
+    ok(r.status === 0 && r.stdout === `the seven suites ... ok\nmutation check (all, ~65 min) ... ok\nsoak ... ok\nbreak harness ... ok\ndeployed ${c} to ${liveD}\nwarning: the plugin runs old1234 from ${join(home, 'cache-b')}, not ${c}: node memory.mjs doctor says why\n`, `--full checks every mutant, --tiering-change skips the dry run, an older plugin copy is named (${sum(r)})`);
     ok(r.calls.join('|') === 'mutate.mjs|memory-tier.soak.mjs|memory-tier.break.mjs', `no dry run, every mutant (${r.calls})`);
     // A dry run that differs once and agrees on the second look passes; a plugin copy with no manifest is unknown.
     installed(join(home, 'cache-c'), { source: 'github' });

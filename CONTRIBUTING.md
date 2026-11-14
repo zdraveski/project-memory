@@ -24,7 +24,7 @@ cd project-memory
 node check.mjs
 ```
 
-then the six suites below. To try your copy in Claude Code, first remove
+then the seven suites below. To try your copy in Claude Code, first remove
 the plugin and its marketplace if you installed them from GitHub (both are
 named `project-memory`), then add your folder as the marketplace:
 `/plugin marketplace add <folder>`, then
@@ -43,6 +43,7 @@ node handoff-log.test.mjs
 node memory-tier.test.mjs
 node memory.test.mjs
 node journal.test.mjs
+node enforce.test.mjs
 ```
 
 A suite that passes ends with one line, `<suite>: <n> checks passed`. One
@@ -50,7 +51,7 @@ that fails stops at the first failed check, prints that check's message
 (what it checks, and often what it got), and exits non-zero.
 
 CI ([`test.yml`](.github/workflows/test.yml)) runs `node check.mjs`, all
-six suites and `node survive.mjs` (which facts of a session the briefing after
+seven suites and `node survive.mjs` (which facts of a session the briefing after
 a compaction still carries; it exits 1 if one is lost) on every pull request
 and every push to `master`, in three jobs:
 Linux with Node 22, Windows with Node 24 and macOS with Node 26. A pull request
@@ -114,8 +115,8 @@ Beyond the suites:
   job waits for one of the account's 5 slots), and a failing machine uploads
   its kept files as the artifact `fuzz-kept-<machine>`: for a bug hunt; no
   release needs it.
-- `node coverage.mjs [--suites] [--fuzz <seconds>]` runs the six suites
-  and/or the fuzz under Node's own coverage and prints, for each of the six
+- `node coverage.mjs [--suites] [--fuzz <seconds>]` runs the seven suites
+  and/or the fuzz under Node's own coverage and prints, for each of the seven
   plugin files, the share of its code that ran, the functions that never
   ran and the first lines of the larger blocks that never ran: where the
   fuzz cannot find a bug because it never goes. Nothing runs it
@@ -269,7 +270,7 @@ The maintainer's steps:
 
 The author keeps this repository at `~/.claude/hooks` and runs the hooks from
 a checked copy. `node deploy.mjs` runs only on `master` with nothing
-uncommitted. It runs the six suites, the soak and the break harness
+uncommitted. It runs the seven suites, the soak and the break harness
 (with `--full`, the mutation check too), then compares a dry run of the tidy-up
 with the live copy's, and copies the plugin to `~/.claude/hooks-live`, which also serves as a local
 marketplace the plugin is installed from. It doesn't run the validator or the

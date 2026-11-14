@@ -1072,7 +1072,7 @@ if (!quick) {
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'store.mjs', 'handoff-log.mjs']) writeFileSync(join(nj, f), readFileSync(tool(f)));
+  for (const f of ['memory.mjs', 'store.mjs', 'handoff-log.mjs', 'enforce.mjs']) writeFileSync(join(nj, f), readFileSync(tool(f)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   const njs = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'status', '--store', jd], { env, encoding: 'utf8' });
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
@@ -2251,6 +2251,59 @@ if (!quick) {
   syncBuiltinESMExports();
   try { r = await go('on'); } finally { fs.unlinkSync = realUnlink; syncBuiltinESMExports(); }
   ok(r.status === 1 && /memory on NOT applied/.test(r.stdout) && existsSync(join(ofd, '.project-off')), `a marker that cannot be removed: NOT applied, exit 1 (got ${r.stdout.trim()})`);
+}
+
+// Checked lessons: replay reads the project's transcripts of the last 30 days, the sub-agents' too, and writes nothing.
+{
+  const day = 86400000, at = (d) => new Date(Date.now() - d * day).toISOString();
+  const tl = (command, d = 1, extra = {}) => JSON.stringify({ type: 'assistant', isSidechain: false, timestamp: at(d), cwd: 'C:/enf/proj', sessionId: 'sess1234-aaaa',
+    message: { content: [{ type: 'tool_use', name: 'Bash', id: 'tu1', input: { command } }] }, ...extra }) + '\n';
+  const proj = join(root, 'C--enf-proj'), other = join(root, 'C--enf-other'), pm = join(proj, 'memory');
+  mkdirSync(join(proj, 'sess1234-aaaa', 'subagents'), { recursive: true }); mkdirSync(pm, { recursive: true }); mkdirSync(join(other, 'memory'), { recursive: true });
+  const huge = JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: 'git '.repeat(2300000) }] } }) + '\n';
+  writeFileSync(join(proj, 'sess1234-aaaa.jsonl'), tl('git add -A') + tl('git add keep.txt') + tl('export API_TOKEN=supersecretvalue123 && git add -A') + tl('git add -A', 40) + huge + tl('cd x && git add --all   # sssss'));
+  writeFileSync(join(proj, 'sess1234-aaaa', 'subagents', 'agent-1.jsonl'), tl('git add .', 2, { isSidechain: true, agentId: 'a1' }));
+  writeFileSync(join(proj, 'oldsess0-bbbb.jsonl'), tl('git add -A', 31));
+  const old = new Date(Date.now() - 31 * day); utimesSync(join(proj, 'oldsess0-bbbb.jsonl'), old, old);
+  writeFileSync(join(other, 'othersess-cccc.jsonl'), tl('git add -A', 3, { cwd: 'C:/enf/other' }));
+  const rule = '---\nname: Stage files by name\ndescription: Never run git add -A.\ntype: feedback\nenforce:\n  on: git add\n  has: [-A, --all, .]\n---\n\nbody\n';
+  writeFileSync(join(pm, 'stage-by-name.md'), rule);
+  const snap = () => JSON.stringify([pm, proj].map((d) => readdirSync(d).map((n) => [n, statSync(join(d, n)).mtimeMs])));
+  const before = snap();
+  r = await run(['enforce', 'replay', 'stage-by-name', '--store', pm]);
+  const hitLines = r.stdout.split('\n').filter((l) => /\d{4}-\d\d-\d\d \d\d:\d\d/.test(l));
+  ok(r.status === 0 && hitLines.length === 4, 'replay lists each hit once: 4 in the project (one a sub-agent), old ones not read (got ' + r.stdout + r.stderr + ')');
+  ok(hitLines.filter((l) => /\[subagent\]/.test(l)).length === 1, 'the sub-agent hit is marked');
+  ok(hitLines.some((l) => l.endsWith('git add --all # sssss')), 'a command is printed with its blanks collapsed and its letters kept');
+  ok(!/supersecretvalue123/.test(r.stdout) && /sess1234/.test(r.stdout), 'a secret in a command is redacted, the session is named');
+  ok(/checked 5 git commands/.test(r.stdout) && /5 are git add/.test(r.stdout) && /4 hits/.test(r.stdout) && /Read each hit\. A hit is a catch only if you agree the command broke the lesson\./.test(r.stdout), 'the summary counts commands, matches and hits (got ' + r.stdout + ')');
+  ok(snap() === before, 'replay changes nothing');
+  r = await run(['enforce', 'replay', join(pm, 'stage-by-name.md'), '--all']);
+  ok(r.status === 0 && /C--enf-other/.test(r.stdout) && /2 projects/.test(r.stdout), 'a path works, and --all reads every project (got ' + r.stdout + ')');
+  // Private sessions and projects with memory off are not printed, even by --all.
+  const priv = join(root, 'C--enf-priv'), offp = join(root, 'C--enf-off');
+  mkdirSync(join(priv, 'memory'), { recursive: true }); mkdirSync(join(offp, 'memory'), { recursive: true });
+  writeFileSync(join(priv, 'memory', '.private-sessions'), 'hushed01\n');
+  writeFileSync(join(priv, 'hushed01-aaaa.jsonl'), tl('git add -A # hushedcmd'));
+  writeFileSync(join(priv, 'public01-bbbb.jsonl'), tl('git add -A # publiccmd'));
+  writeFileSync(join(offp, 'memory', '.project-off'), '{}');
+  writeFileSync(join(offp, 'offsess1-cccc.jsonl'), tl('git add -A # offcmd'));
+  r = await run(['enforce', 'replay', join(pm, 'stage-by-name.md'), '--all']);
+  ok(/publiccmd/.test(r.stdout) && !/hushedcmd|offcmd/.test(r.stdout), 'a private session and a project with memory off are skipped (got ' + r.stdout + ')');
+  rmSync(priv, { recursive: true }); rmSync(offp, { recursive: true });
+  writeFileSync(join(home, 'rule.md'), rule); renameSync(root, root + '.bak');
+  try { r = await run(['enforce', 'replay', join(home, 'rule.md'), '--all']); } finally { renameSync(root + '.bak', root); }
+  ok(r.status === 1 && /no projects folder/.test(r.stdout), 'no projects folder: one line, exit 1 (got ' + r.stdout + r.stderr + ')');
+  writeFileSync(join(pm, 'bad.md'), rule.replace('on: git add', 'on: npm i'));
+  r = await run(['enforce', 'replay', 'bad', '--store', pm]);
+  ok(r.status === 1 && /must start with git/.test(r.stdout), 'a bad rule prints its reason and exits 1');
+  r = await run(['enforce', 'replay', 'nothere', '--store', pm]);
+  ok(r.status === 1 && /no note/.test(r.stdout), 'a missing note exits 1');
+  writeFileSync(join(pm, 'plain.md'), '---\nname: plain\n---\n\nbody\n');
+  r = await run(['enforce', 'replay', 'plain', '--store', pm]);
+  ok(r.status === 1 && /no enforce/.test(r.stdout), 'a note with no rule says so');
+  r = await run(['enforce']);
+  ok(r.status === 1 && /replay/.test(r.stdout), 'enforce alone prints the usage');
 }
 
 console.log(`memory: ${checks} checks passed`);

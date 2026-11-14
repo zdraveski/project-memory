@@ -559,7 +559,7 @@ function candidates(dir, skip) {
 const ours = (dir, p) => same(storeOf({ transcript_path: p }), dir);
 
 // Past the line that runs on at `pos`: its newline found in 1 MB reads, never decoded.
-function past(fd, pos, size) {
+export function past(fd, pos, size) {
   const buf = Buffer.allocUnsafe(1 << 20);
   for (; pos < size; pos += buf.length) {
     const i = buf.subarray(0, readSync(fd, buf, 0, Math.min(buf.length, size - pos), pos)).indexOf(10);
@@ -570,7 +570,7 @@ function past(fd, pos, size) {
 
 // The whole lines in the `seg` bytes from `pos`, and where they start (`pos`):
 // a line longer than `seg` is passed over unread. null at the end.
-function chunk(fd, pos, seg, size) {
+export function chunk(fd, pos, seg, size) {
   while (pos < size) {
     const buf = Buffer.allocUnsafe(Math.min(seg, size - pos)), n = readSync(fd, buf, 0, buf.length, pos);
     if (!n) return null;

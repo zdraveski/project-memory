@@ -25,7 +25,7 @@ import { SHARED } from './deploy.mjs';
 
 const repo = dirname(fileURLToPath(import.meta.url));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
-// What every suite stands on (SHARED): changed, all six run. The list is deploy.mjs's own, so the quick check and the deploy agree
+// What every suite stands on (SHARED): changed, all seven run. The list is deploy.mjs's own, so the quick check and the deploy agree
 // (audit #16); handoff-log.mjs is left out on purpose: store.mjs and memory-tier.mjs do not import it, so it is not under every suite.
 const ALL = [...new Set(Object.values(suites).map(([t]) => t))];
 

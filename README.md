@@ -179,6 +179,25 @@ Everything it reads and saves, and how to delete it, is in the
 - **Your files.** It writes only inside Claude Code's own folder, never in
   your project.
 
+## Checked lessons
+
+A note can carry a rule that a computer checks on a git command. Add an `enforce:` block to the note's front matter, indented two spaces:
+
+```
+enforce:
+  on: git add
+  has: [-A, --all, .]
+  unless: [mktemp, init]
+```
+
+`on` is `git <subcommand>`. `has` is one word or up to 8 (a command matches when it has one of them as a whole word). `unless` is optional: if any of its words is in the same command, the rule does not match. Words are exact and case-sensitive.
+
+Try the rule before you trust it: `memory enforce replay <note>` lists what it would have caught in the last 30 days of this project's conversations (sub-agents included); `--all` reads every project, and can take about a minute on 2.7 GB of history. It reads only; read each hit yourself, because a hit is a catch only if you agree the command broke the lesson.
+
+Few lessons fit this form. Of 115 feedback notes in one real store, about 1 can be written as a git rule. This is a test of the idea, not a promise. What a rule does not see:
+
+- `$(...)` inside quotes, `bash -c "git add -A"`, and words after `--` (`git add -- -A`); git aliases and scripts; joined short flags (`-Av`); `&` alone as a separator, `#` comments, and a rule with `unless:` words that a comment holds. Replay skips private sessions and projects with memory off.
+
 ## Long conversations
 
 When a conversation fills up, Claude Code shortens it to a summary, and the
