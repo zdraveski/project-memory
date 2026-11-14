@@ -515,11 +515,16 @@ const SECRETS = [
   // Vendor tokens by prefix (1.4.1): GitLab (all kinds, routable ones with dots), Stripe-style ElevenLabs, Square, Facebook, Plaid, Salesforce, Dropbox, Twitter's bearer (before the Bearer rule),
   // AWS Bedrock, Google refresh, Firebase, Azure AD and DevOps, and the AI keys (HF org, Fireworks, Cerebras, Tavily, Pinecone, LangSmith, Voyage).
   [/\bgl(?:pat|dt|rt|cbt|ft|imt|agent|oas|soat|ptt)-[\w.-]{20,}|\bAC[0-9a-f]{32}:[0-9a-f]{32}\b|\bGR1348941[\w-]{20,}|\b_gitlab_session=[\w-]{20,}|(?<![A-Za-z0-9])sk_[a-f0-9]{48}\b|\bsq0(?:atp|csp)-[\w-]{22,}|\bEAA[A-Za-z][\w-]{50,}|\baccess-(?:sandbox|development|production)-[0-9a-f-]{36}|\b00D[A-Za-z0-9]{12,15}![\w.-]{40,}|(?<![\w.])sl\.(?:u\.)?[\w-]{60,}|(?<![A-Za-z0-9])A{15,}[A-Za-z0-9%_-]{40,}|\bABSK[A-Za-z0-9+/=]{100,}|\bbedrock-api-key-[A-Za-z0-9+/=_-]{40,}|(?<![\w/])1\/\/0[\w-]{40,}|\bAAAA[\w-]{7}:APA91b[\w-]{100,}|(?<![\w-])[\w-]{3}8Q~[\w.~-]{30,}|(?<![\w/+.=-])(?=[a-z0-9]{0,51}\d)(?=[a-z0-9]{0,51}[a-z])[a-z0-9]{52}(?![\w/+.=-])|\bapi_org_[A-Za-z]{20,}|\bfw_[A-Za-z0-9]{24}\b|\bcsk-[a-z0-9]{48}\b|\btvly-[A-Za-z0-9]{32}\b|\bpcsk_[A-Za-z0-9]{50,}|\blsv2_(?:pt|sk)_[0-9a-f]{32}_[0-9a-f]{10}\b|(?<![A-Za-z0-9])pa-(?=[\w-]{0,42}\d)[\w-]{43}(?![\w-])/g, '[redacted]'],
+  // Vendor tokens by prefix, part 2 (1.4.1 D): Terraform, Vault batch, Doppler, Pulumi, DigitalOcean, Heroku, Render, Supabase, Neon, Cloudflare, Brevo, Mailchimp, Resend, Notion,
+  // Bitbucket, JFrog, Sentry, Grafana, New Relic, Honeycomb, 1Password, OpenShift, CircleCI, Buildkite, SonarQube, Sourcegraph, Cargo, Figma, JetBrains, Mapbox.
+  [/\b[A-Za-z0-9]{14}\.atlasv1\.[\w-]{60,}|\bhvb\.[\w-]{100,}|\bdp\.(?:pt|st|sa|ct|scim|audit)\.[A-Za-z0-9]{40,}|\bpul-[0-9a-f]{40}\b|\bdo[opr]_v1_[a-f0-9]{64}|\bHRKU-[\w-]{30,}|(?<![A-Za-z0-9])rnd_[A-Za-z0-9]{32}\b|\bsb_secret_[\w-]{20,}|\bnapi_[a-z0-9]{50,}|\bv1\.0-[0-9a-f]{24}-[0-9a-f]{146}\b|\bcf(?:ut|k)_[A-Za-z0-9]{40,}|\bxkeysib-[0-9a-f]{64}-[A-Za-z0-9]{16}|\b[0-9a-f]{32}-us\d{1,2}\b|(?<![\w-])re_(?=[A-Za-z0-9_-]{0,40}\d)(?=[A-Za-z0-9_-]{0,40}[a-z])[A-Za-z0-9_-]{30,}(?![\w-])|\bapi-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\bsecret_[A-Za-z0-9]{43}\b|\bATBB[\w=-]{28,}|\bAKCp[A-Za-z0-9]{60,}|\bcmVmd[A-Za-z0-9]{50,}|\bsntryu_[0-9a-f]{64}|\bglsa_[A-Za-z0-9]{32}_[0-9a-f]{8}\b|\beyJrIjoi[A-Za-z0-9+/=]{60,}|\bNR(?:AK|II|JS|SP|XX)-[A-Za-z0-9]{20,}|\bhc[abx]ik_[a-z0-9]{26}\b|\bops_eyJ[\w+/=-]{100,}|\bA3-[A-Z0-9]{6}-[A-Z0-9]{11}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}\b|\bsha256~[\w-]{43}|\bCCIPAT_[A-Za-z0-9]{22}_[0-9a-f]{40}|\bbkua_[0-9a-f]{40}|\bsq[pua]_[0-9a-f]{40}\b|\bsgp_(?:[0-9a-f]{16}_)?[0-9a-f]{40}\b|\bcio[A-Za-z0-9]{32}\b|\bfigd_[\w-]{40,}|\bperm:[A-Za-z0-9+/=._-]{40,}|\bpk\.eyJ[\w-]{10,}\.[\w-]{10,}/g, '[redacted]'],
   [/\bxox[abeprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}/g, '[redacted]'],
   // AWS keys, long-lived and STS.
   [/(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, '[redacted]'],
   [/\bAIza[0-9A-Za-z_-]{35}/g, '[redacted]'],
   [/(?<![A-Za-z0-9_]|eyJ-)eyJ[A-Za-z0-9_-]{10,300}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[redacted]'],
+  // An unsigned JWT, or one with its signature cut: two eyJ parts (1.4.1 D).
+  [/(?<![A-Za-z0-9_]|eyJ-)eyJ[A-Za-z0-9_-]{10,300}\.eyJ[A-Za-z0-9_-]{10,}\.?/g, '[redacted]'],
   // With a digit in it, or 32 characters or more: "Basic implementation/approach" and "Bearer authentication-header" were prose,
   // and were cut; a long one with no digit (1 in 400 random ones) was kept (audit #7). A hidden character after the word, as
   // redact() sees the raw text, does not hide the value. The long one has no . or /, so "basic tests/integration/x.rb" is kept.
@@ -541,13 +546,22 @@ const SECRETS = [
   [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?)(?=[A-Za-z0-9._~+/=-]{0,200}\d)[A-Za-z0-9._~+/=-]{20,}/gi, '$1[redacted]'],
   // Authorization: Basic with a short credential (8+ base64 characters), as the rule above wants 20 and a digit. A word in lower case is prose.
   [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?basic[ \t]+)([A-Za-z0-9+/=]{8,200})/gi, (m, pre, v) => (/^[a-z]+$/.test(v) ? m : `${pre}[redacted]`)],
+  // 1.4.1 D: any other scheme (SSWS, Splunk, ApiKey, Negotiate, NTLM, Digest...): its credential, as long and with a digit as the Bearer rule wants.
+  [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?[A-Za-z][\w-]{1,30}[ \t]+)(?=[A-Za-z0-9._~+/=-]{0,300}\d|[A-Za-z0-9_~+=-]{32})[A-Za-z0-9._~+/=-]{20,}/gi, '$1[redacted]'],
+  // A Digest, Hawk or OAuth1 header's response, mac, signature and token values; an AWS Signature V4's Signature; and OAuth1's signature anywhere.
+  [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?(?:Digest|Hawk|OAuth|AWS4-HMAC-SHA\d+)\b)([^\n]{0,1000})/gi, (m, pre, rest) => pre + rest.replace(/\b(response|mac|signature|oauth_(?:token|token_secret|signature|verifier|consumer_secret))(["']?=["']?)[^"',\s]{6,}/gi, '$1$2[redacted]')],
+  [/(\boauth_(?:signature|verifier|token_secret)["']?[ \t]*[:=][ \t]*["']?)[^"'&,\s]{6,}/gi, '$1[redacted]'],
+  // A webhook's signature header (X-Hub-Signature-256: sha256=...).
+  [/(\b(?:x-[\w-]{0,30}|stripe-)signature(?:-256)?["']?[ \t]*[:=][ \t]*["']?(?:sha\d+=|t=\d+,v\d=)?)[A-Za-z0-9+/=]{40,}/gi, '$1[redacted]'],
   [/(\bredis-cli\b[^\n|;&]{0,200}?\s-a[ \t]+["']?)(?:(?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, '$1[redacted]'],
   // The curl rule first: the header rule reads to the next quote, which may be the one that opens a -b value.
   [/(\bcurl\b[^\n|;&]{0,300}?\s(?:-b|--cookie)[ =]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (v.includes('=') ? `${pre}[redacted]` : m)],
   [/((?:^|[\s'"])(?:set-)?cookie["']?[ \t]*:[ \t]*["']?)[\w.%!#$&*+^~-]{1,100}=[^\s;'"]*(?:;[ \t]*[\w.%!#$&*+^~-]{1,100}=[^\s;'"]*)*/gim, '$1[redacted]'],
+  // Docker's config.json: "auth" is base64 of user:password.
+  [/("auth"[ \t]*:[ \t]*")(?=[A-Za-z0-9+/]{0,300}[\d=+/])[A-Za-z0-9+/]{20,300}={0,2}(?=")/g, '$1[redacted]'],
   // A signed URL's signature is the credential (Azure SAS, S3, GCS).
   [/([?&](?:sig|X-Amz-Signature|X-Goog-Signature)=)[^&\s]{16,}/gi, '$1[redacted]'],
-  [/([?&](?:key|code)=)(?=[^&\s"']{0,200}\d)[^&\s"']{12,}/gi, '$1[redacted]'],
+  [/([?&](?:key|code|auth|authorization|access_token|token)=)(?=[^&\s"']{0,200}\d)[^&\s"']{12,}/gi, '$1[redacted]'],
   // The password in a URL: postgres://user:it@host, redis://:it@host (no
   // user), one with an @ in it (to the last one). Not a query: a port
   // before `?user=me@x` was cut as a password.
@@ -562,7 +576,7 @@ const SECRETS = [
   // command's own; nor "the --token flag", in prose.
   // Quoted, as a value with symbols or blanks must be, to its closing quote: the opening quote refused, each was kept (e2e audit,
   // 2026-11-01). A quoted one may start with `-`; a bare one that does is the next option (review, 2026-11-01).
-  [/(--(?!no-|ask-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|oauth2-bearer|requirepass|masterauth|pass)[ =]["']?|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload|mongo(?:sh|dump|restore|export|import)?)\b[^\n|;&]{0,200}?\s-p\s+["']?|\b(?:zip|mosquitto_(?:pub|sub|rr)|ldap(?:search|modify|add|delete|compare))\b[^\n|;&]{0,200}?\s-[Pw]\s+["']?|\b(?:requirepass|masterauth)[ \t]+["']?(?=[^\s"']{4})|\bssh-keygen\b[^\n|;&]{0,200}?\s-N\s+["']?)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")(?:[^"\n\\]|\\.){1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  [/(--(?!no-|ask-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|oauth2-bearer|requirepass|masterauth|pass|private-key|mnemonic)[ =]["']?|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload|mongo(?:sh|dump|restore|export|import)?)\b[^\n|;&]{0,200}?\s-p\s+["']?|\b(?:zip|mosquitto_(?:pub|sub|rr)|ldap(?:search|modify|add|delete|compare))\b[^\n|;&]{0,200}?\s-[Pw]\s+["']?|\b(?:requirepass|masterauth)[ \t]+["']?(?=[^\s"']{4})|\bssh-keygen\b[^\n|;&]{0,200}?\s-N\s+["']?)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")(?:[^"\n\\]|\\.){1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // redis-cli AUTH [user] pass: both words, each quoted or bare; the user name is no secret worth the parsing (1.3.1 fix
   // review: `> out.txt`, `2>/dev/null`, a quoted pass with a blank and CRLF each kept the password). Two words, not to the
   // end: clip() joins lines first, and the rest of the entry went with it. Not an AUTH already [redacted]: clip() redacts
@@ -574,6 +588,27 @@ const SECRETS = [
   // here (two readings again), and at most 40 options: `-a redis-cli` repeated made each redis-cli a fresh start.
   [/(\bredis-cli(?:(?:[ \t]|\\\r?\n)+-[\w-]+(?:(?:[ \t=]|\\\r?\n)+(?:"[^"\n]*"|'[^'\n]*'|[^\s|;&<>"'=-])\S*)?){0,40}(?:[ \t]|\\\r?\n)+AUTH\s+)(?!\[redacted\])(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g,
     (m, pre, v) => (v.split(/\s+/).every(arg) ? m : `${pre}[redacted]`)],
+  // 1.4.1 D: a token a vendor's command takes as a flag or word: doctl -t, netlify --auth, ngrok add-authtoken, cargo login, httpie -a / --auth, composer config, bundle config.
+  [/(\bdoctl\b[^\n|;&]{0,200}?\s(?:-t|--access-token)[ =]["']?|\bnetlify\b[^\n|;&]{0,200}?\s--auth[ =]["']?|\bngrok\s+(?:config\s+)?(?:add-)?authtoken\s+["']?|\bcargo\s+login\s+(?:--registry[ =]\S+\s+)?["']?|\bhttps?(?=[ \t])[^\n|;&]{0,200}?\s(?:-a|--auth)[ =]+["']?|\bcomposer\s+config\s+(?:-[\w-]+\s+){0,3}(?:(?:github-oauth|gitlab-oauth|gitlab-token|bearer)\.[\w.-]+\s+|http-basic\.[\w.-]+\s+[^\s"']+\s+)["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) || /^[^:]*:\$/.test(v) ? m : `${pre}[redacted]`)],
+  // bundle config of a gem source's credential, with or without `set` and `--global`: a dotted name, then user:password or a token.
+  [/(\bbundle\s+config\s+(?:set\s+)?(?:--?[\w-]+\s+){0,3}[\w-]+(?:\.[\w-]+)+\s+["']?)(?!-)([^\s"']{10,2000})/g, (m, pre, v) => (arg(v) || code(v) ? m : `${pre}[redacted]`)],
+  [/(\boathtool\b[^\n|;&]{0,100}?\s["']?)(?!-)[A-Za-z0-9=]{12,}\b/g, '$1[redacted]'],
+  // A keyword before a long key with no colon: `secret <base64>`, `key <40 hex>`, `private key <64 hex>` (the name alone is too common, so the value must read as a key).
+  [/((?<![A-Za-z0-9])(?:secret|key|private[ _-]?key|token)(?:[ _-]?(?:key|access[ _-]?key))?[ \t]+(?:is[ \t]+)?["']?)(?=[A-Za-z0-9+/]{0,200}\d)(?=[A-Za-z0-9+/]{0,200}[A-Za-z])([A-Za-z0-9+/]{32,200}={0,2})(?![\w+/=-])/gi, (m, pre, v) => (/^[0-9a-f]+$/i.test(v) || (/[A-Z]/.test(v) && /[a-z]/.test(v) && /\d/.test(v)) ? `${pre}[redacted]` : m)],
+  // Vendor names that precede a key in a setting or a variable (Cloudflare, Datadog, Algolia, Mapbox, Honeycomb, PagerDuty's routing key): 32 characters or more with a digit.
+  [/(\b(?:cloudflare|datadog|algolia|mapbox|honeycomb|routing)[\w.-]{0,30}[ \t]*[:=][ \t]*["']?)(?=[A-Za-z0-9_-]{0,100}\d)[A-Za-z0-9_-]{32,}/gi, '$1[redacted]'],
+  // Key literals: a seed phrase, a Bitcoin WIF, a Solana keypair array, a base64 private key with no header, sops and ansible-vault blobs, PuTTY's private lines.
+  [/\b((?:seed[ _-]?(?:phrase|words?)|mnemonic|recovery[ _-]phrase)["']?[ \t]*[:=]?[ \t]*["']?)(?:[a-z]{3,8}[ \t]+){11,23}[a-z]{3,8}\b/gi, '$1[redacted]'],
+  [/(?<![A-Za-z0-9])[5KL][1-9A-HJ-NP-Za-km-z]{50,51}(?![A-Za-z0-9])/g, (m) => (/\d/.test(m) && /[A-Z]/.test(m) && /[a-z]/.test(m) ? '[redacted]' : m)],
+  // shortcut: a list of 32 or more numbers under 256 is taken for a Solana keypair, so a long byte array in code is cut too; narrow it if that is ever a problem.
+  [/\[\s*(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\s*,\s*){31,}(?:25[0-5]|2[0-4]\d|1?\d?\d)\s*\]/g, '[redacted]'],
+  [/(?<![A-Za-z0-9+/])(?:MII[A-Z][A-Za-z0-9+/]{200,}|MHcCAQEEI[A-Za-z0-9+/]{60,}|MC4CAQAwBQYDK2VwBCIEI[A-Za-z0-9+/]{40,})={0,2}/g, '[redacted]'],
+  [/\bENC\[AES256_GCM,[^\]\n]{20,2000}\]/g, '[redacted]'],
+  [/(\$ANSIBLE_VAULT;[\d.]{1,10};AES256[ \t]*\r?\n?)(?:[0-9a-f]{20,}\r?\n?)+/g, '$1[redacted]'],
+  [/(\bPrivate-Lines:[ \t]*\d{1,3}(?:\\n|[\s\\])*)(?:[A-Za-z0-9+/=]{16,}(?:\\n|[\s\\])*)+/g, '$1[redacted]'],
+  // The key of a signing or encryption call in code: hmac.new(b"..."), createHmac("sha256", "..."), bytes.fromhex("<hex>"), Fernet(b"..."), and AWS's "AWS4" + secret.
+  [/(\bhmac\.(?:new|HMAC)\(\s*(?:key\s*=\s*)?b?["']|\bcreateHmac\(\s*["'][\w-]{1,20}["']\s*,\s*["']|\b(?:bytes\.fromhex|fromhex|unhexlify|a2b_hex)\(\s*b?["']|\bFernet\(\s*b?["'])((?:(?!["']).){8,200})(?=["'])/gi, (m, pre, v) => (arg(v) || code(v) || /\$\{/.test(v) ? m : `${pre}[redacted]`)],
+  [/(["']?AWS4["']?[ \t]*\+[ \t]*["']?)[A-Za-z0-9+/]{30,}/g, '$1[redacted]'],
   // A secret as a command's argument, which the journal's Ran field keeps (P1
   // hunt, 2026-10-29): `aws configure set` of a secret, key or token; a
   // SetEnvironmentVariable or setx of one; htpasswd -b's password, after its
@@ -581,7 +616,7 @@ const SECRETS = [
   // follows: `> .htpasswd` was taken for the password); an exported name whose
   // word is a key's; gh secret set's body; an npm registry's _authToken.
   // Quoted values here and below to the closing quote, as above (review, 2026-11-01).
-  [/(\baws\s+configure\s+set\s+[\w.-]{0,100}(?:secret|key|token)[\w.-]{0,100}\s+["']?)(?!-)(?:(?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,2000})/gi, '$1[redacted]'],
+  [/(\baws\s+configure\s+set\s+(?:--[\w-]+(?:[ =](?!-)\S{1,100})?\s+){0,5}[\w.-]{0,100}(?:secret|key|token)[\w.-]{0,100}\s+["']?)(?!-)(?:(?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,2000})/gi, '$1[redacted]'],
   [/(SetEnvironmentVariable\(\s*["']([^"'\n]{1,100})["']\s*,\s*["'])([^"'\n]{1,2000})/gi, (m, pre, name, v) => (named(name) && !arg(v) && !counted(name, v) ? `${pre}[redacted]` : m)],
   [/(\bhtpasswd(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+(?:[^\s<>-]\S*\s+)?[^\s<>]+\s+)(?!\d*>)[^\s;|&<>]+/g, '$1[redacted]'],
   // The name read whole, then judged: as words in one pattern, KEY_ repeated
@@ -647,7 +682,7 @@ const SECRETS = [
   // A quoted value goes whole, blanks and all, as in a command; it is never a key. Unquoted, a value ends at its first blank
   // (`password: p@ss w0rd` keeps all of it: `p@ss` is under 6), since prose follows a value as often as a second word does.
   // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret)[ _-]?key|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\s{0,20}[:=\uFF1A]\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:\\*["']|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret|preshared)[ _-]?key|identitytoken|registrytoken|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\]?\s{0,20}[:=\uFF1A]\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:\\*["']|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
   [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=\uFF1A]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
 ];

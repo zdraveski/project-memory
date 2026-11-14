@@ -3107,5 +3107,120 @@ if (!quick) {
   ok(!leaked.length, `vendor token shapes are redacted (kept: ${[...new Set(leaked)].join(', ')})`);
 }
 
+
+// 1.4.1 hardening D (redaction-corpus-7, 13..18, 34, 38, 44): vendor tokens part 2, Authorization schemes, URL query keys, key literals. Same
+// harness as C (templates filled with seeded fake pieces, § stripped). z is base58 (a Bitcoin WIF has no 0, O, I, l, + or /).
+{
+  const AL = { a: 'abcdefghijklmnopqrstuvwxyz0123456789', A: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', x: '0123456789abcdef', X: '0123456789ABCDEF', d: '0123456789', l: 'abcdefghijklmnopqrstuvwxyz',
+    q: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', z: '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
+    m: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', w: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-', b: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/' };
+  const vendor = [
+    ["AWS secret access key (bare)","secret «{b40}»"],
+    ["Docker config auth","{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"«{b40}=»\"}}}"],
+    ["Docker config identitytoken","\"identitytoken\": \"«{w60}»\""],
+    ["Terraform Cloud token","«{a14}.atlas§v1.{w64}»"],
+    ["Vault batch token","hv§b.«{w140}»"],
+    ["Doppler token","dp.§pt.«{a43}»"],
+    ["Pulumi token","pul-§«{x40}»"],
+    ["DigitalOcean OAuth","doo_§v1_«{x64}»"],
+    ["doctl flag","doctl -t «{x64}» compute droplet list"],
+    ["Heroku v2 key","HR§KU-AA«{w58}»"],
+    ["Netlify token","netlify deploy --auth «{w43}»"],
+    ["Render API key","rn§d_«{m32}»"],
+    ["Supabase secret key","sb_§secret_«{w28}»"],
+    ["Neon API key","na§pi_«{a60}»"],
+    ["Cloudflare Origin CA key","v1.0-§«{x24}-{x146}»"],
+    ["Cloudflare token cfut","cf§ut_«{m48}»"],
+    ["Cloudflare global key (keyword)","cloudflare_global = \"«{x37}»\""],
+    ["Brevo/Sendinblue","xkeysib-§«{x64}-{a16}»"],
+    ["Mailchimp key","mailchimp «{x32}-us12»"],
+    ["Resend key","re§_«{w32}»"],
+    ["Notion legacy secret","secr§et_«{m43}»"],
+    ["Bitbucket app password","AT§BB«{w28}»"],
+    ["JFrog/Artifactory API key","AK§Cp«{m69}»"],
+    ["Artifactory reference token","cmV§md«{m59}»"],
+    ["Sentry user token","sntryu_§«{x64}»"],
+    ["Grafana service account","gls§a_«{m32}_{x8}»"],
+    ["Grafana legacy key","eyJ§rIjoi«{m80}=»"],
+    ["New Relic user key","NR§AK-«{A27}»"],
+    ["New Relic insert key","NR§II-«{m32}»"],
+    ["Datadog (keyword, no secret word)","datadog = \"«{a40}»\""],
+    ["Honeycomb key","hc§aik_«{a26}»"],
+    ["PagerDuty routing key","routing_key: «{x32}»"],
+    ["Splunk HEC auth","Authorization: Splunk «{x8}-{x4}-{x4}-{x4}-{x12}»"],
+    ["Okta SSWS","Authorization: SSWS «00{w40}»"],
+    ["Elastic ApiKey","Authorization: ApiKey «{b60}==»"],
+    ["LaunchDarkly key","api-§«{x8}-{x4}-{x4}-{x4}-{x12}»"],
+    ["ngrok authtoken","ngrok config add-authtoken «{d2}{m40}»"],
+    ["ngrok authtoken legacy form","ngrok authtoken «{m40}»"],
+    ["CircleCI PAT","CCI§PAT_«{m22}_{x40}»"],
+    ["Buildkite agent token","bk§ua_«{x40}»"],
+    ["SonarQube token","sonar-scanner -Dsonar.login=«sq§p_{x40}»"],
+    ["Sourcegraph token","sg§p_«{x40}»"],
+    ["Cargo token","cargo login «{m32}»"],
+    ["Composer github-oauth","composer config github-oauth.github.com «{x40}»"],
+    ["Composer http-basic","composer config http-basic.repo.example.org me «{q20}»"],
+    ["Figma token","fig§d_«{w40}»"],
+    ["JetBrains token","perm:«{b60}»"],
+    ["1Password service account","ops_§eyJ«{b260}»"],
+    ["1Password secret key","A3§-«{A6}-{A11}-{A5}-{A5}-{A5}»"],
+    ["OpenShift token","sha§256~«{w43}»"],
+    ["Mapbox/Algolia/other keyword (X_KEY_ID style)","ALGOLIA_APP=«{a32}»"],
+    ["WireGuard PresharedKey","PresharedKey = «{b43}=»"],
+    ["JWT 2 parts (unsigned)","«eyJ§hbGciOiJub25lIn0.eyJzdWIiOiIxMjM0NTY3ODkwIn0.»"],
+    ["Authorization: Digest","Authorization: Digest username=\"u\", realm=\"r\", nonce=\"n\", uri=\"/\", response=\"«{x32}»\""],
+    ["?auth= URL","https://x/v1?auth=«{m32}»"],
+    ["httpie auth","http -a me:«{q12}» https://x"],
+    ["httpie --auth long","http --auth me:«{q12}» https://x"],
+    ["httpie bearer","http -A bearer -a «{m32}» https://x"],
+    ["aws configure set --profile","aws configure set --profile p aws_secret_access_key «{b40}»"],
+    ["oathtool secret","oathtool --totp -b «{A32}»"],
+    ["BIP39 mnemonic (crypto seed)","seed phrase: «abandon ability able about above absent absorb abstract absurd abuse access accident»"],
+    ["Ethereum private key bare hex","private key «{x64}»"],
+    ["Bitcoin WIF","«5Kb{z48}»"],
+    ["Solana keypair JSON array","[«12,34,56,78,90,12,34,56,78,90,12,34,56,78,90,12,34,56,78,90,12,34,56,78,90,12,34,56,78,90,12,34»]"],
+    ["hardhat/foundry --private-key","forge create --private-key «0x{x64}» C"],
+    ["cast send --private-key","cast send --private-key «{x64}» 0xabc \"f()\""],
+    ["PEM private key pasted without header (base64 body only)","«MII§EvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC{b300}»"],
+    ["PuTTY .ppk private lines","Private-Lines: 14\n«{b64}»"],
+    ["PKCS12/PFX base64","«MII§J{b300}»"],
+    ["ansible-vault encrypted blob","$§ANSIBLE_VAULT;1.1;AES256\n«{x60}»"],
+    ["Flask SECRET_KEY","app.config['SECRET_KEY'] = '«{m32}»'"],
+    ["webhook shared secret (header)","X-Hub-Signature-256: sha256=«{x64}»"],
+    ["HMAC secret in code","hmac.new(b\"«{m32}»\", msg, hashlib.sha256)"],
+    ["HMAC key= keyword","hmac.new(key=b\"«{m32}»\", msg=m, digestmod=hashlib.sha256)"],
+    ["HMAC upper case (PyCryptodome)","HMAC.new(b\"«{m32}»\", msg, SHA256)"],
+    ["prefixed secret name","jwt_secret «{m32}»"],
+    ["Stripe-Signature header","Stripe-Signature: t=1700000000,v1=«{x64}»"],
+    ["AES key hex in code","key = bytes.fromhex(\"«{x64}»\")"],
+    ["Fernet key","Fernet(b\"«{w43}=»\")"],
+    ["base64 blob next to \"secret\" word","secret «{b43}=»"],
+    ["40 hex after \"key\" word","key «{x40}»"],
+    ["AWS SigV4 Authorization header","Authorization: AWS4-HMAC-SHA256 Credential=AKIA{A16}/20260101/us-east-1/s3/aws4_request, SignedHeaders=host, Signature=«{x64}»"],
+    ["Hawk/OAuth1 header","Authorization: OAuth oauth_consumer_key=\"k\", oauth_token=\"«{m40}»\", oauth_signature=\"«{m27}%3D»\""],
+    ["Negotiate/Kerberos header","Authorization: Negotiate «YII{b200}»"],
+    ["NTLM header","Authorization: NTLM «TlRMTVNTUAAD{b100}»"],
+    ["AWS4 signing key (kSecret) derivation code","\"AWS4\" + \"«{b40}»\""],
+  ];
+  const leaked = [];
+  for (let seed of [11, 4242, 98765]) for (const [name, tpl] of vendor) {
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff), secrets = [];
+    const gen = (c, n) => { let s = ''; while (s.length < n) s += AL[c][Math.floor(rnd() * AL[c].length)]; return /[abmwqz]/.test(c) ? s.replace(/^[^0-9]*$/, (z) => z.slice(0, -1) + '7') : s; };
+    const text = tpl.replace(/§/g, '').replace(/\{([a-zA-Z])(\d+)\}/g, (_, c, n) => gen(c, +n)).replace(/«([^»]*)»/g, (_, v) => { secrets.push(v); return v; });
+    for (const wrap of [(x) => x, (x) => `$ ${x}`, (x) => `look at this: ${x} thanks`, (x) => `echo start && ${x} # note`]) {
+      const out = clip(wrap(text), 20000);
+      if (secrets.some((v) => v.split(/\n/).some((p) => p.length >= 8 && (out.includes(p) || out.includes(p.slice(2, 10)) && out.includes(p.slice(-8)))))) leaked.push(name);
+    }
+  }
+  // Look-alikes that are not secrets stay as they are.
+  for (const benign of ['bundle config set --local path vendor/bundle', 'bundle config set --local build.nokogiri --use-system-libraries', 'oathtool --totp --window 100 --help', 'http -a me:$PW https://x',
+    'cargo login --help', 'datadog_site = "datadoghq.com"', 'https://x/v1?auth=basic', 'the key backup procedure is in the runbook and the secret santa list is done', '[1, 2, 3, 4, 5, 6, 7, 8]',
+    'composer config --global process-timeout 2000', 'mnemonic: a short word that helps you remember the order of the planets', 'Authorization: Bearer authentication-header', 'doctl compute droplet list',
+    'netlify deploy --prod --dir dist', 'ngrok http 8080', 'secret_rotation_policy_document_for_the_whole_organisation_v2', 'x-request-id: 4f9c2a7e1b6d4f9c2a7e1b6d4f9c2a7e']) ok(clip(benign, 2000) === benign, `a look-alike is kept: ${benign.slice(0, 30)}`);
+  // Known limit (shortcut in store.mjs): a long list of small numbers is taken for a Solana keypair.
+  ok(clip(`[${Array.from({ length: 40 }, (_, i) => i).join(', ')}]`, 2000).includes('[redacted]'), 'a long byte array is cut (known limit)');
+  ok(!leaked.length, `vendor tokens part 2, headers, URLs and key literals are redacted (kept: ${[...new Set(leaked)].join(', ')})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
