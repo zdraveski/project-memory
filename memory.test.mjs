@@ -2418,6 +2418,13 @@ See [[nonexist-${GH}]]
   r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
   ok(/removed 1/.test(r.stdout) && /purged from the snapshots/.test(r.stdout) && !held(), `forget --purge drops it from the history (got ${r.stdout})`);
   ok(spawnSync('git', ['-C', root, 'status', '--porcelain'], { encoding: 'utf8' }).status === 0 && !existsSync(join(root, '.git', 'refs', 'original')), 'the purge leaves a working repository and no backup refs');
+  ok(!existsSync(join(root, '.git', 'config.lock')), 'the purge frees its lock when done');
+  // A snapshot in flight (git's own lock, fresh): the purge would overwrite its commit, so it refuses and changes nothing.
+  writeDay(); tier();
+  writeFileSync(join(root, '.git', 'config.lock'), '');
+  r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
+  ok(/could not be purged/.test(r.stdout) && /snapshot/.test(r.stdout) && existsSync(join(root, '.git', 'config.lock')), `forget --purge refuses while a snapshot holds the repository (got ${r.stdout})`);
+  unlinkSync(join(root, '.git', 'config.lock'));
 }
 
 console.log(`memory: ${checks} checks passed`);

@@ -366,12 +366,14 @@ privacy problem privately, see [SECURITY.md](SECURITY.md).
 
 ## Removing a forgotten entry from the snapshots
 
-`forget --yes` leaves the snapshots of days already over as they are. Add `--purge` to also rewrite the snapshot history without
+`forget --yes` alone does not remove the entry from the snapshot history: the text stays in git until you purge it. Add `--purge` to also rewrite the snapshot history without
 those days' older versions (the journal day files that held the entry, expired from the reflog and collected). Run it only on
-a snapshot repository this plugin made. Other days, notes and the current files are untouched; the next snapshot adds the
-cleaned day back.
+a snapshot repository this plugin made. A purged day loses its older versions whole, so other conversations' entries of that
+day go from the history too (the current files are untouched; the next snapshot adds the cleaned day back). Only the branches
+are rewritten: a branch, stash or tag you added to that repository yourself still keeps the old text. It refuses while a
+snapshot is being taken; run it again a moment later.
 
 On Linux and macOS the files the hooks write are mode 0600, their folders 0700 and the snapshot `.git` 0700, so other users
-of the computer cannot read them. The fingerprints used as a journal key (for a turn with no id) and in `.stop-ran` are
+of the computer cannot read them. An older install is tightened at its next Stop. The fingerprints used as a journal key (for a turn with no id) and in `.stop-ran` are
 keyed with a random per-computer salt (`.hash-salt` in the projects folder, never snapshotted), so a short prompt or reply
 cannot be recovered from them by a dictionary run.

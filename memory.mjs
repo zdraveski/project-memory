@@ -35,7 +35,7 @@ The store is this session's own (outside a session: the cwd's project, or the ne
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
 reads its transcript. After --, every word is a term, one that starts with -- too.`;
-import { appendFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, realpathSync } from 'node:fs';
+import { appendFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -456,15 +456,20 @@ const purge = (dir, days) => {
   // filter-branch refuses a repository with unstaged changes, and a store always has some (notes edited since the last snapshot):
   // it rewrites a bare copy, which is fetched back over the branches (the work tree and its files stay as they are), and the
   // index is reset to the new HEAD so it holds no old blob.
+  // The snapshot hook takes no lock but git's own, and reads a fresh config.lock (nothing here writes config) as busy: the purge
+  // holds that one for its whole run, and gives way to a commit already in flight, whose work the stale copy would overwrite.
+  const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), busy = new Error('a snapshot is being taken; try again in a moment');
+  if (['index.lock', 'HEAD.lock'].some((f) => existsSync(join(g, f)))) throw busy;
+  try { writeFileSync(lock, '', { flag: 'wx', mode: 0o600 }); } catch (e) { throw e.code === 'EEXIST' ? busy : e; }
   const tmp = mkdtempSync(join(tmpdir(), 'pm-purge-')), copy = join(tmp, 'copy.git');
   try {
     git('clone', '-q', '--mirror', '--no-hardlinks', projectsRoot(), copy);
     execFileSync('git', ['-C', copy, 'filter-branch', '-f', '--index-filter', `git rm --cached --ignore-unmatch -q -r -- ${paths.map(q).join(' ')}`, '--', '--all'], { env: { ...process.env, FILTER_BRANCH_SQUELCH_WARNING: '1' }, stdio: 'pipe', timeout: 300_000 });
     git('fetch', '-q', '--update-head-ok', '--force', copy, '+refs/heads/*:refs/heads/*');
-  } finally { rmSync(tmp, { recursive: true, force: true }); }
-  git('reset', '-q');
-  for (const ref of git('for-each-ref', '--format=%(refname)', 'refs/original/').split('\n').filter(Boolean)) git('update-ref', '-d', ref);
-  git('reflog', 'expire', '--expire=now', '--all'); git('gc', '-q', '--prune=now');
+    git('reset', '-q');
+    for (const ref of git('for-each-ref', '--format=%(refname)', 'refs/original/').split('\n').filter(Boolean)) git('update-ref', '-d', ref);
+    git('reflog', 'expire', '--expire=now', '--all'); git('gc', '-q', '--prune=now');
+  } finally { rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
 };
 
 // Why no snapshot can be read, in plain words, or '' when one can: git's own ("fatal: not a git repository", "cannot change
@@ -556,7 +561,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
       if (line) break;
     }
   }
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   const r = withLock(dir, () => {
     const cur = raw(path), curB = cur === null ? null : readFileSync(path);   // bytes too: a string loses a non-UTF-8 note's letters
     if (cur !== null && !force) return `${path} appeared meanwhile; nothing written`;
@@ -595,7 +600,7 @@ export function promote(dir, file, { force = false } = {}) {
   if (!existsSync(src)) return no(`no ${src}`);
   if (!statSync(src).isFile()) return no(`${src} is a folder, not a memory`);
   if (existsSync(dst)) return no(`the shared store has a ${file} already: rename one, or merge them by hand`);
-  mkdirSync(to, { recursive: true });
+  mkdirSync(to, { recursive: true, mode: 0o700 });
   // Project, then shared: whatever takes both locks takes them in this order.
   const r = withLock(dir, () => withLock(to, () => {
     const text = raw(src);
@@ -761,7 +766,7 @@ function incognito(opt) {
   const dir = storeOf({ transcript_path: path }), s = tag(session);
   let got;
   try {
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     got = withLock(dir, () => {
       if (hushed(dir, s, true) !== true) return { marked: false };
       try { takeBack(dir, transcriptKey(path), s, true, true); return { marked: true }; } catch (e) { return { marked: true, why: reason(e) }; }
@@ -781,7 +786,7 @@ function projectSwitch(dir, off) {
   try {
     if (off) {
       if (was && !was.unread) return { ok: true, lines: [`memory is already off in this project since ${offSince(was)}`] };
-      mkdirSync(dir, { recursive: true });
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
       if (replaceIfUnchanged(marker, raw(marker), JSON.stringify({ t: Date.now() })) === 'conflict') return no('memory off NOT applied: the marker was changed meanwhile; try again');
       return { ok: true, lines: [`memory is off in this project (${dir}): nothing is saved, tiered or snapshotted here until memory on. Off stops adding; it doesn't hide: search and show still answer. ${STILL}`] };
     }

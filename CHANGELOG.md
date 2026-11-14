@@ -5,7 +5,7 @@
 - `memory forget --purge` also removes the forgotten entry from the snapshot history.
 - Journal keys and the Stop run log no longer hold a plain hash of your prompt or reply (a short password could be guessed from it).
 - On Linux and macOS the memory files are private (0600, folders 0700, snapshot `.git` 0700).
-
+- An older install on Linux and macOS is made private too at the next Stop, and `forget --purge` waits for a snapshot in progress instead of overwriting it.
 - Enforce log: it no longer stops at 256 KB (the oldest half is dropped instead), one line is capped in size, nothing is logged in a private-session turn, and a missing plugin file no longer makes the hook print an error.
 - A note with a secret in its file name is kept out of the snapshots too, and `memory history`, `restore` and `promote` print no secret from a note's name.
 - A note that holds a key, token or password is kept out of the memory snapshots, and `status` and the startup line say which one.

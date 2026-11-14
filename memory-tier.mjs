@@ -331,7 +331,7 @@ function tier(dir, now, seen = null) {
     // Whole, so a note deleted leaves it too; under the store's lock, and a cache: a write that fails costs the next pass a read.
     const facts = JSON.stringify(memo.now);
     // Not after a conflict: the pass that still sees a 1.3.0 entry is the one that brings a misread line back.
-    if (!conflict && facts !== JSON.stringify(memo.was)) try { writeFileSync(join(dir, FACTS), facts); } catch {}
+    if (!conflict && facts !== JSON.stringify(memo.was)) try { writeFileSync(join(dir, FACTS), facts, { mode: 0o600 }); } catch {}
   }
 
   return { dir, budget, before, after: Buffer.byteLength(nextMain), hot: hot.length, cold: cold.length,
@@ -415,6 +415,16 @@ function snapshot() {
     // its .gitignore, its lock, its index and its history are not this tool's.
     const ours = /^\[project-memory\]/m.test(raw(join(root, '.git', 'config')) ?? '');
     if (!ours && !(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)) return `off: ${root} is a git repository project-memory did not make, so it commits nothing there`;
+    // An install from before the modes: its .git is still open to others, so the files are too. Tightened once, when found so.
+    if (process.platform !== 'win32' && (statSync(join(root, '.git')).mode & 0o077)) {
+      const to = (p, m) => { try { chmodSync(p, m); } catch {} };
+      to(join(root, '.git'), 0o700); to(join(root, '.stop-ran'), 0o600);
+      for (const d of allStores()) {
+        to(join(d, 'journal'), 0o700); to(join(d, 'journal.md'), 0o600); to(join(d, 'handoff.md'), 0o600);
+        let days = []; try { days = readdirSync(join(d, 'journal')); } catch {}
+        for (const f of days) to(join(d, 'journal', f), 0o600);
+      }
+    }
     // A fresh lock is another session's commit in flight: busy, not a failure
     // -- the next turn retries. One older than ten minutes outlived the git
     // that made it, and would refuse every commit from now on: index.lock, and
@@ -448,7 +458,7 @@ function snapshot() {
     const stage = () => {
       if (have !== want || raw(applied) !== want) {
         for (const l of want.split('\n').filter((x) => x && x !== '*' && !x.startsWith('!'))) git('rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', l);
-        writeFileSync(applied, want);
+        writeFileSync(applied, want, { mode: 0o600 });
       }
       // A history's first add, of every note at once, was killed at GIT_TIMEOUT on a large store (~6 ms a file on Windows,
       // 5,000 files): it left index.lock, and no snapshot ever started (audit H-F1). With no index yet, or after an add that
@@ -465,7 +475,7 @@ function snapshot() {
           .sort((a, b) => /(^|\/)MEMORY[^/]*$/.test(b) - /(^|\/)MEMORY[^/]*$/.test(a));
         if (todo.length > batch) {
           gitIn(todo.slice(0, batch).join('\0'), 'update-index', '--add', '--remove', '-z', '--stdin');
-          writeFileSync(parts, '');
+          writeFileSync(parts, '', { mode: 0o600 });
           return todo.length - batch;
         }
         try { unlinkSync(parts); } catch {}
@@ -536,7 +546,7 @@ function snapshot() {
     if (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn')) return 'off: git is not installed';
     // Killed at its timeout: from the next run the history is taken in parts. Its lock stays, for GIT_LOCK_STALE: a git
     // that outlived the kill (a wrapper's child) may still hold it. No note is touched: git only reads them.
-    if (e.code === 'ETIMEDOUT') { try { writeFileSync(parts, ''); } catch {} return `snapshot failed: git took longer than ${gitWait / 1000} s; the next replies take the history in parts`; }
+    if (e.code === 'ETIMEDOUT') { try { writeFileSync(parts, '', { mode: 0o600 }); } catch {} return `snapshot failed: git took longer than ${gitWait / 1000} s; the next replies take the history in parts`; }
     const why = gitWhy(e);   // git's reason, not a warning before it, nor 'Command failed'
     // This session runs two or three git commands, and another session's commit can
     // take a lock in a gap between them, or move HEAD under this one's: busy,
@@ -595,7 +605,7 @@ const owed = () => { try { return JSON.parse(readFileSync(join(projectsRoot(), '
 function ensureIndex(d) {
   try {
     if (existsSync(join(d, 'MEMORY.md')) || !(existsSync(join(d, 'handoff.md')) || existsSync(join(d, 'journal')))) return;
-    writeFileSync(join(d, 'MEMORY.md'), '# Memory Index\n', { flag: 'wx' });
+    writeFileSync(join(d, 'MEMORY.md'), '# Memory Index\n', { flag: 'wx', mode: 0o600 });
   } catch {}
 }
 
@@ -631,7 +641,7 @@ export async function main(argv, input) {
     } catch (e) {
       // A tag that could not be kept is said at the next start with memory on, as a handoff that could not be saved is (R67), in its
       // own words (`off`): nothing was to be saved, and the journal may take the conversation in later (release review).
-      if (p) try { writeFileSync(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(storeOf(p)))}`), JSON.stringify({ at: new Date().toISOString(), error: reason(e), off: true })); } catch {}
+      if (p) try { writeFileSync(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(storeOf(p)))}`), JSON.stringify({ at: new Date().toISOString(), error: reason(e), off: true }), { mode: 0o600 }); } catch {}
     }
     return 0;
   }
@@ -690,7 +700,7 @@ export async function main(argv, input) {
         if (payload && handoff(payload, sink) === 'busy' && stop) { sleep(200 + Math.random() * 600); lockBudget(true); handoff(payload, sink); }
         try { unlinkSync(failed); } catch {}
       }
-      catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); }
+      catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) }), { mode: 0o600 }); }
       // The index of a store the plugin writes to, in the same Stop that wrote its handoff; the nudge below must not skip it.
       if (payload && !dry) ensureIndex(storeOf(payload));
       // The temp copies a killed Stop left here (store.mjs).
@@ -803,7 +813,7 @@ export async function main(argv, input) {
   // edited mid-pass or waiting on a writer: without a stamp the next turn
   // retries. A snapshot that did not go through is owed (snapshotHealth), and
   // retried alone: left unstamped for it, every Stop redid the whole pass.
-  if (gated) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen); } catch {}
+  if (gated) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen, { mode: 0o600 }); } catch {}
   return 0;
 }
 

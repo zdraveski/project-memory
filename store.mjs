@@ -350,7 +350,7 @@ export function withLock(dir, fn) {
   const token = `${process.pid}.${Math.random().toString(36).slice(2)}`;
   let refused = 0, held = false, signed = false;
   for (const until = t0 + Math.min(LOCK_WAIT, left ?? LOCK_WAIT); ;) {
-    try { mkdirSync(lock); held = true; try { writeFileSync(owner, token); signed = true; } catch {} break; }
+    try { mkdirSync(lock, { mode: 0o700 }); held = true; try { writeFileSync(owner, token, { mode: 0o600 }); signed = true; } catch {} break; }
     catch (e) {
       // The last holder's rmdir still settling: the same codes a rename retries.
       if (e.code !== 'EEXIST' && !BUSY.includes(e.code)) throw e;

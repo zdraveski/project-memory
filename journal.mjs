@@ -380,7 +380,7 @@ function fault(dir, e, from = '') {
     mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });
     const before = raw(f);
     replaceIfUnchanged(f, before, [line, ...own(before, !from)].join('\n') + '\n');
-  } catch { if (!from) try { writeFileSync(aside(dir), line + '\n'); } catch {} }
+  } catch { if (!from) try { writeFileSync(aside(dir), line + '\n', { mode: 0o600 }); } catch {} }
 }
 // The failures kept, in the journal and beside the projects: one line each.
 const failures = (dir) => [raw(join(dir, JOURNAL, FAILED)), raw(aside(dir))].flatMap((t) => (t ?? '').split(/\r?\n/).filter(Boolean));

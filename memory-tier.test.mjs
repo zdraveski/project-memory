@@ -2,7 +2,7 @@
 // the tiering rules that would silently lose or duplicate a pointer. Part two
 // builds a throwaway HOME with two stores and breaks the git snapshot path and
 // the --stop gate. Run: node memory-tier.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, unlinkSync, utimesSync, rmdirSync, renameSync, symlinkSync, copyFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, unlinkSync, utimesSync, rmdirSync, renameSync, symlinkSync, copyFileSync, readdirSync, chmodSync } from 'node:fs';
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -2119,6 +2119,14 @@ Deploy with the token from the vault
   } else {
     const src = ['store.mjs', 'memory-tier.mjs', 'journal.mjs'].map((f) => readFileSync(join(dirname(TOOL), f), 'utf8')).join('\n');
     ok(/mode:\s*0o600/.test(src) && /mode:\s*0o700/.test(src) && /chmodSync\(join\(root, '\.git'\)/.test(src), 'the hooks ask for private modes (0600 files, 0700 dirs, a private .git)');
+  }
+  // An install from before the modes: found open, the next Stop closes .git, the journal folder and its files, once.
+  if (process.platform !== 'win32') {
+    const jd = join(root, 'proj-one', 'memory', 'journal'), day = join(jd, '2020-01-01.md');
+    mkdirSync(jd, { recursive: true }); writeFileSync(day, '# Journal 2020-01-01\n');
+    for (const [p, m] of [[join(root, '.git'), 0o755], [jd, 0o755], [day, 0o644], [join(root, '.stop-ran'), 0o644]]) chmodSync(p, m);
+    await stop();
+    ok([join(root, '.git'), jd, day, join(root, '.stop-ran')].every((p) => (statSync(p).mode & 0o077) === 0), 'an older install is made private at the next Stop');
   }
 }
 
