@@ -153,6 +153,7 @@ export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 // typed, the command's with them, and a forget run from it was saved whole.
 // A flag with no value can take the next word as one, so a search for
 // "forget" after `--shared` is read as a forget: hidden, the safe way to err.
+// shortcut: more than 64 options before forget is not caught (a fallback scan was quadratic); upgrade if such commands appear.
 export const FORGETS = /memory\.mjs["']?(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?){0,64}\s+(?:forget\b|'forget'|"forget")/;
 // Text read the same in any width and without hidden characters: a fullwidth
 // ＜private＞, or a zero-width space inside the tag, kept what it should hide.
@@ -360,7 +361,7 @@ const SECRETS = [
   // AWS keys, long-lived and STS.
   [/(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, '[redacted]'],
   [/\bAIza[0-9A-Za-z_-]{35}/g, '[redacted]'],
-  [/(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[redacted]'],
+  [/(?<![A-Za-z0-9_]|eyJ-)eyJ[A-Za-z0-9_-]{10,300}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[redacted]'],
   // With a digit in it, or 32 characters or more: "Basic implementation/approach" and "Bearer authentication-header" were prose,
   // and were cut; a long one with no digit (1 in 400 random ones) was kept (audit #7). A hidden character after the word, as
   // redact() sees the raw text, does not hide the value. The long one has no . or /, so "basic tests/integration/x.rb" is kept.
@@ -523,6 +524,8 @@ let clippedSize = 0;
 export const clip = (s, n) => {
   // A few times n is all that can show, and the rules cost 0.2 to 1.3 s a megabyte: 64 KB or 4n first, not at a split surrogate.
   const lim = Math.max(65536, 4 * n);
+  // Squeeze blanks first (cut() does too): a long blank run must not use up the cut.
+  if (typeof s === 'string' && s.length > lim) s = s.replace(/\s+/g, ' ');
   if (typeof s === 'string' && s.length > lim) s = s.slice(0, /[\uD800-\uDBFF]/.test(s[lim - 1]) ? lim - 1 : lim);
   // Text only: anything else spelt as a text kept here fails in cut(), as it always did.
   const k = typeof s === 'string' ? `${n}\0${s}` : null;
