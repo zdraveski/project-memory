@@ -85,7 +85,13 @@ writeFileSync(join(sharedStore(), 'shared-rule.md'), 'x');
 
 // A log over 256 KB stops growing.
 p = project(); writeFileSync(join(p.store, LOG), 'x'.repeat(LOG_MAX + 1) + '\n');
-quiet(run(p.payload('git add -A')), 'log full'); ok(statSync(join(p.store, LOG)).size === LOG_MAX + 2, 'a full log gets no new line');
+quiet(run(p.payload('git add -A', { tool_use_id: 'new1' })), 'log full'); ok(lines(p.store).some((l) => l.id === 'new1') && statSync(join(p.store, LOG)).size < LOG_MAX, 'a full log drops its oldest half and takes the new line');
+p = project(); quiet(run(p.payload('git add -A', { agent_type: 'A'.repeat(2e6), tool_use_id: 'T'.repeat(2e6) })), 'huge fields'); ok(statSync(join(p.store, LOG)).size < 1024, 'one log line is bounded');
+{ const d = join(home, 'nohook'); mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'enforce-hook.mjs'), readFileSync(HOOK));
+  quiet(spawnSync(process.execPath, [join(d, 'enforce-hook.mjs')], { input: '{}', encoding: 'utf8' }), 'enforce.mjs missing'); }
+p = project(); { const tp = join(home, 'priv.jsonl'); writeFileSync(tp, '{"type":"user","message":{"content":"x <private-session>"}}\n');
+  quiet(run(p.payload('git add -A', { transcript_path: tp })), 'private transcript'); ok(lines(p.store).length === 0, 'no hit logged in a private-session turn');
+  quiet(run(p.payload('git add -A', { transcript_path: join(home, 'gone.jsonl') })), 'unreadable transcript'); ok(lines(p.store).length === 0, 'unreadable transcript counts as private'); }
 
 // The cache: built on first run; a second run reads no note (a note changed with its size and time kept is not seen);
 // a changed note is read again.

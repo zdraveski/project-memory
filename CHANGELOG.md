@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Enforce log: it no longer stops at 256 KB (the oldest half is dropped instead), one line is capped in size, nothing is logged in a private-session turn, and a missing plugin file no longer makes the hook print an error.
 - Enforce rules: a rule after a long description is no longer ignored; a note with a long run of blanks can no longer stall every git call; a command with many unclosed heredocs is read in linear time.
 - Enforce rules now see a command after an escaped quote, after git options like `--no-optional-locks`, inside `{ }` or `( )`, after a line continuation, after a quoted `<<`, and behind `env`, `sudo`, `command`, `rtk`, `git.exe` or a full path to git.
 

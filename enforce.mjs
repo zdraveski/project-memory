@@ -182,13 +182,23 @@ export function ruleSet(payload) {
   return { store, rules: [...rules, ...shared] };
 }
 
-// One line of the log, unless the log is over LOG_MAX (it stops growing; status says so) or the store has no folder.
+// True when the transcript carries the private-session mark; an unreadable transcript counts as private (no path: not).
+// shortcut: same pattern as handoff-log.mjs PRIVATE_SESSION (not imported: the hook must start fast), on the raw file.
+export function privateTurn(payload) {
+  if (!payload?.transcript_path) return false;
+  try { return /<\s*private[-_]session\b[^>]{0,200}>/i.test(readFileSync(payload.transcript_path, 'utf8')); } catch { return true; }
+}
+
+// One line of the log (dropped if over 1 KB or the store has no folder). Over LOG_MAX, the oldest half of the log goes first.
 // shortcut: no lock, so a line can be lost under heavy parallel use (said in the docs).
 export function record(store, entry) {
   try {
     const f = join(store, LOG);
+    const line = JSON.stringify(entry) + '\n';
+    if (line.length > 1024) return;
     let size = 0; try { size = statSync(f).size; } catch {}
-    if (size <= LOG_MAX) appendFileSync(f, JSON.stringify(entry) + '\n');
+    if (size > LOG_MAX) { const t = readFileSync(f, 'utf8'), cut = t.indexOf('\n', t.length >> 1); writeFileSync(f, cut < 0 ? '' : t.slice(cut + 1)); }
+    appendFileSync(f, line);
   } catch {}
 }
 
