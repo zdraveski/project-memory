@@ -3376,5 +3376,27 @@ if (!quick) {
   ok(turnsOf(askQ, V)[0].ask === '[redacted]', '1.4.1 H review: a bare password after an AskUserQuestion is not kept');
 }
 
+// 1.4.1 I: false positives (redaction-corpus-45..49, evasion-14..16): harmless code, names, references and prose stay readable.
+{
+  const keep = [
+    'export TOKEN_URL=https://auth.example.com/oauth/token', 'export AUTH_TOKEN_PATH=./token.txt', 'export API_KEY_URL=https://example.com/keys', 'setx TOKEN_URL https://auth.example.com/oauth/token',
+    'secretName: my-app-secret', 'tokenSecretRef: github-token-secret', 'passwordSecretName: db-credentials-secret', 'secret: my-app-secret',
+    'token = secrets.token_urlsafe(32)', 'token = uuid.uuid4().hex', 'token = crypto.randomBytes(32).toString("hex")', 'let password = String::new();', 'def login(username, password, token=None):',
+    'self.password = password', 'password = generate_password(length=16)', 'const passwordRegex = /^(?=.*[A-Z])(?=.*\\d).{8,}$/',
+    'cookie: theme=dark; lang=en', 'Set-Cookie: theme=dark; Path=/; HttpOnly', 'Set-Cookie: lang=en; Max-Age=31536000; Path=/',
+    '"password": "Password"', '"password": "Mot de passe"', '"forgotPassword": "Forgot your password?"', '<label for="pw">Password: </label>',
+    'password: PropTypes.string.isRequired', 'password: Joi.string().min(8).required()', 'password: z.string().min(8)', 'password = Column(String(255), nullable=False)',
+    'PASSWORD=$DB_PASS node x', 'password: "{{ vault_password }}"', 'password: file:///run/secrets/db_password', 'password: ref+vault://secret/data/db#password',
+    'secret: arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-AbCdEf', 'password: !vault |',
+    'secret: scanning is on', 'api_key: required in headers', 'password: required', 'password: hashed with bcrypt', 'secret: handled by the vault',
+  ];
+  const { defuse } = await import("./handoff-log.mjs"), cut = keep.filter((t) => clip(t, 2000) !== defuse(t));
+  ok(!cut.length, `1.4.1 I: harmless lines are kept whole (cut: ${cut.join(' | ')})`);
+  const P = ['Zq8x', 'K2mP', '9vL4n'].join('');
+  const leak = [`secret: ${P}`, `export API_TOKEN=${P}`, `password: Passw0rd(1)`, `cookie: sessionid=${P}`, `Cookie: theme=dark; sid=${P}`, `Set-Cookie: ${P}=${P}`, `password: ${P}`, `"password": "${P}"`, `password: sunshine`]
+    .filter((t) => clip(t, 2000).includes(P) || (/sunshine/.test(t) && clip(t, 2000).includes('sunshine')));
+  ok(!leak.length, `1.4.1 I: real secrets still cut (leaked: ${leak.join(' | ')})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

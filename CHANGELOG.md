@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Saved text keeps harmless lines that were cut as secrets: URL and path settings (`TOKEN_URL=https://...`), a secret's name or reference (`secretName: x`), code that makes a token (`secrets.token_hex(16)`), schema types (`password: z.string().min(8)`), variable and template references, `theme=dark` cookies, "Password" labels, and prose after a key (`password: required`).
+
 - A password typed alone as the answer to a password question (one token, or a passphrase of plain words) is no longer kept in the compaction note, or after a question asked with AskUserQuestion; "Passwort ist x", "mot de passe est x" and quoted passphrases are cut, and one-time-code prose and `creds: file.js:42` are kept.
 - Saved text no longer keeps a password written in chat (`pw: x`, `DBPW=x`, `credential=x`, `creds: bob / x`, `set the password to x`, `the PIN is 123456`, backup codes, `the password is correct horse battery staple`), one in German, French, Spanish, Russian, Swedish, Danish, Dutch, Portuguese, Polish, Japanese, Chinese or Korean (`Passwort: x`), or a password typed alone as the answer to "what is the password?".
 
