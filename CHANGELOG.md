@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Saved text no longer keeps session ids and cookies outside the Cookie header (sessionid, JSESSIONID, connect.sid, PHPSESSID, cookie-jar lines, HAR, Chrome and Playwright cookie objects), secrets in JSON and YAML keys (token, credentials, key, short passwords, Postman, `::add-mask::`), secrets in code (Python, JS, PHP, Java, Go, C#), `.env` lines after a `$ ` prompt or in chat and log lines, a base64 credential piped to `base64 -d`, and echoed password and passphrase prompts.
+
 - Saved text no longer keeps passwords and keys from database logins (Oracle, SQL Server, MongoDB, Redis, Mosquitto, Confluent), mail and file protocols (IMAP, POP3, FTP, lftp, postfix, curl -K), Windows tools (net user, net use, psexec, rdesktop, Wi-Fi keys), Wi-Fi and VPN settings, PowerShell parameters, .pgpass, LDAP, Jenkins and machineKey settings, openssl and similar commands, or password hashes (apr1, bcrypt, SHA-crypt, argon2, NTLM, DPAPI blobs).
 
 - Saved text no longer keeps passwords given to more command-line tools: ssh-keygen -P, a password piped to docker login, sudo -S, kinit, chpasswd and similar, helm, skopeo, crane, oras, mc, rclone, az, aws and gcloud secret flags, terraform -var, sqlcmd, bcp, mycli, cqlsh, keytool, jarsigner, 7z, unzip, rar, ccrypt, plink, pscp, sshpass, smbclient, xfreerdp, rabbitmqctl, dotnet user-secrets, redis ACL SETUSER, reg add, curl `pw=` and HTTPie `password:=` fields, and htpasswd -nb.

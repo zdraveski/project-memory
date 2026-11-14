@@ -689,6 +689,28 @@ ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 's
   ok(['mysql -u root -p\nmydatabase_name', 'mysql -u root -p\n  SELECT 1;', 'password: "\nsome prose here\nthen "quoted" text'].every((s) => !/mydatabase|SELECT|prose/.test(s) || redact(s).includes(s.match(/mydatabase_name|SELECT 1|some prose here/)[0])), 'a -p on its own line keeps the next word, a quote opened at a line end is not a value');
   ok(redact('the Basic\nauthentication scheme') === 'the Basic\nauthentication scheme', 'prose ending in Basic keeps the next line');
   ok(redact(plainText) === plainText, 'text with no secret is returned exactly as written, accents, escapes and line wraps included');
+  // 1.4.1 G: session ids and cookie objects, JSON/YAML keys, code literals, .env lines after a prompt, base64 into a decoder, echoed prompts.
+  {
+    const P = 'Zq7' + 'Hk2Lm9' + 'Xw4Rt8', T = 'oXzTYqyrEmyV' + 'yFunA6b4wjRkmhgSMuc7', b64 = Buffer.from('password=' + P).toString('base64');
+    const g = [
+      ['sessionid=', `sessionid=${T}`, T], ['JSESSIONID', `JSESSIONID=${T.toUpperCase()}`, T.toUpperCase()], ['connect.sid', `connect.sid=s%3A${T}.BK32QFBtgRRDbTEKmU5s25gBSGHDYH5Y`, T],
+      ['PHPSESSID in a URL', `https://x/index.php?PHPSESSID=${T}`, T], ['cookie jar line', `.example.com\tTRUE\t/\tTRUE\t0\tsession\t${T}`, T],
+      ['Playwright cookie', `{name: 'session', value: '${T}', domain: 'x'}`, T], ['HAR cookie', `{"name": "sid", "value": "${T}"}`, T], ['Postman key/value', `{"key": "password", "value": "${P}"}`, P],
+      ['json token', `{"token": "${T}"}`, T], ['json credentials', `{"credentials": "${T}"}`, T], ['yaml key', `key: ${T}`, T], ['yaml credentials', `credentials: ${T}`, T],
+      ['json password short', '{"password": "pw1"}', 'pw1'], ['json password escaped quote', `{"password": "ab\\"${P}"}`, P], ['add-mask', `::add-mask::${P}`, P],
+      ['os.environ.setdefault', `os.environ.setdefault("DB_PASSWORD", "${P}")`, P], ['requests auth tuple', `requests.get(u, auth=("me", "${P}"))`, P],
+      ['getpass lambda', `getpass.getpass = lambda *a: "${P}"`, P], ['localStorage', `localStorage.setItem('token', '${T}')`, T], ['php array', `'password' => '${P}',`, P],
+      ['php define', `define('DB_PASSWORD', '${P}');`, P], ['mysqli_connect', `mysqli_connect('h','u','${P}','d');`, P], ['setPassword', `ds.setPassword("${P}");`, P],
+      ['getConnection', `DriverManager.getConnection(url, "u", "${P}");`, P], ['PlainAuth', `smtp.PlainAuth("", "u", "${P}", "h")`, P], ['NetworkCredential', `new NetworkCredential("u", "${P}")`, P],
+      ['.env after a prompt', `$ APP_KEY=base64:${T}=`, T], ['.env in chat', `see SERVICE_CREDENTIAL=${T} thanks`, T], ['NEO4J_AUTH in a log', `x executing NEO4J_AUTH=neo4j/${P}`, P],
+      ['base64 -d pipe', `echo ${b64} | base64 -d`, b64], ['base64 --decode here-string', `base64 --decode <<< ${b64}`, b64],
+      ['sudo prompt', `[sudo] password for bob: ${P}`, P], ['ssh key passphrase prompt', `Enter passphrase for key '/home/bob/.ssh/id_ed25519': ${P}`, P],
+    ];
+    const lost = g.filter(([, s, n]) => clip(s, 2000).includes(n)).map(([n]) => n);
+    ok(lost.length === 0, `1.4.1 G: a secret in a cookie, JSON/YAML key, code literal, .env line, decoder pipe or echoed prompt is redacted: ${lost.join('; ')}`);
+    const kept = ['{"name": "theme", "value": "dark-mode-on"}', "define('DB_HOST', 'localhost');", 'localStorage.setItem(\'theme\', \'dark\')', 'key: src/components/Button1', 'FOO=bar baz', 'echo SGVsbG8gd29ybGQ= | base64 -d', '{"password": null}'];
+    ok(kept.every((s) => clip(s, 2000) === s), '1.4.1 G: ordinary settings, names and values stay as written');
+  }
   const [fast, how] = linear((m) => { redact('password: "' + 'a "\\'.repeat(2_000 * m)); redact('password=' + 'x,'.repeat(5_000 * m)); redact('pass​'.repeat(2_000 * m)); redact('\\'.repeat(2_000 * m)); }, 1000);
   ok(fast, `the quoting and folding rules are linear (${how})`);
 }

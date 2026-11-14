@@ -648,7 +648,7 @@ const SECRETS = [
   // word is a key's; gh secret set's body; an npm registry's _authToken.
   // Quoted values here and below to the closing quote, as above (review, 2026-11-01).
   [/(\baws\s+configure\s+set\s+(?:--[\w-]+(?:[ =](?!-)\S{1,100})?\s+){0,5}[\w.-]{0,100}(?:secret|key|token)[\w.-]{0,100}\s+["']?)(?!-)(?:(?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,2000})/gi, '$1[redacted]'],
-  [/(SetEnvironmentVariable\(\s*["']([^"'\n]{1,100})["']\s*,\s*["'])([^"'\n]{1,2000})/gi, (m, pre, name, v) => (named(name) && !arg(v) && !counted(name, v) ? `${pre}[redacted]` : m)],
+  [/(\b(?:SetEnvironmentVariable|setdefault|putenv|setenv|setItem|define|setProperty)\(\s*["']([^"'\n]{1,100})["']\s*,\s*["'])([^"'\n]{1,2000})/gi, (m, pre, name, v) => (named(name) && !arg(v) && !counted(name, v) ? `${pre}[redacted]` : m)],
   [/(\bhtpasswd(?=(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*n)(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+\d+)?(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+[^\s<>-]\S*\s+)(?!\d*>)[^\s;|&<>]+/g, '$1[redacted]'],
   [/(\bhtpasswd(?!(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*n)(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+\d+)?(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+(?:[^\s<>-]\S*\s+)?[^\s<>]+\s+)(?!\d*>)[^\s;|&<>]+/g, '$1[redacted]'],
   // The name read whole, then judged: as words in one pattern, KEY_ repeated
@@ -658,7 +658,27 @@ const SECRETS = [
   // last part is the secret's word (envNamed). Any `name = value` was read as one, and Python's `key = item.name`, `CACHE_KEY =
   // "x"` and `TOKEN_URL=https://…` were cut (review, 2026-11-01). Its close relatives too: a compose list item's `- NAME=…`, cmd's
   // `set NAME=…`, and one after a shell's `&&`, `||`, `;` or `|` (an inline variable before a command).
-  [/((?:^[ \t]*(?:-[ \t]+)?|(?:&&|\|\||[;|])[ \t]*)(?:(?:export|set|SET)[ \t]+)?([A-Z][A-Z0-9_]{0,100})=(?:\$?["'])?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]{1,2000})/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
+  [/((?:^[ \t]*(?:-[ \t]+)?|(?:&&|\|\||[;|])[ \t]*|(?<=[ \t]))(?:(?:export|set|SET)[ \t]+)?([A-Z][A-Z0-9_]{0,100})=(?:\$?["'])?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]{1,2000})/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
+  // 1.4.1 G: a cookie or setting written as a name/value object ({name: 'session', value: '...'}, HAR, Chrome, Postman's {"key": "token", "value": ...}): the name says what the value is.
+  [/(\{[^{}\n]{0,200}?["']?(?:name|key)["']?[ \t]*:[ \t]*["']([\w.-]{1,100})["'][ \t]*,[ \t]*["']?value["']?[ \t]*:[ \t]*["'])([^"'\n]{4,2000})/g,
+    (m, pre, n, v) => (/sess|(?:^|[_.-])(?:sid|key|secret|token|password|passwd|pass|pwd|auth|credentials?|cookie)(?:$|[_.-])|apikey|password|secret|token/i.test(n) && !arg(v) && !code(v) ? pre + '[redacted]' : m)],
+  // A JSON password of any length, an escaped quote in it too: to the quote that ends the value (before , } ] or the line's end).
+  [/("(?:password|passwd|pwd|pass|passphrase)"[ \t]*:[ \t]*")((?:[^"\\\n]|\\.|"(?![ \t]*(?:[,}\]]|\r?$)))+)(?=")/gim, (m, pre, v) => (v.length < 3 || arg(v) || code(v) ? m : pre + '[redacted]')],
+  // A long mixed value under a bare key, in JSON or YAML (key, credentials, auth, session): a letter, a digit, 20 or more characters, no path.
+  [/((?<![A-Za-z0-9_-])(?:key|credentials?|auth|session)["']?[ \t]*[:=][ \t]*["']?)(?=[A-Za-z0-9+_=-]{0,200}\d)(?=[A-Za-z0-9+_=-]{0,200}[a-z])(?=[A-Za-z0-9+_=-]{0,200}[A-Z])([A-Za-z0-9+_=-]{20,})(?![\w/.-])/g, (m, pre, v) => (code(v) ? m : pre + '[redacted]')],
+  [/(::add-mask::)\S+/g, '$1[redacted]'],
+  // A Netscape cookie jar's line: domain, flag, path, secure, expiry, name, value.
+  [/((?<!\S)\S{1,255}[ \t]+(?:TRUE|FALSE)[ \t]+\S+[ \t]+(?:TRUE|FALSE)[ \t]+\d+[ \t]+\S+[ \t]+)[^\s]{6,}/g, '$1[redacted]'],
+  // A literal in code: a PHP 'password' => 'x', a setter (setPassword("x")), the 2nd string of a credential class or auth=("u", "x"), the 3rd of a connect call, a patched getpass.
+  [/((["'])([\w.-]{1,100})\2[ \t]*=>[ \t]*["'])([^"'\n]{3,500})/g, (m, pre, q, n, v) => (named(n) && !arg(v) && !code(v) ? pre + '[redacted]' : m)],
+  [/(\.set(?:Password|Passwd|Secret|SecretKey|ApiKey|Token|AccessKey|Passphrase)\(\s*["'])([^"'\n]{3,500})/g, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
+  [/(\b(?:NetworkCredential|HTTPBasicAuth|HTTPDigestAuth|UsernamePasswordCredentials|PasswordAuthentication|auth[ \t]*=[ \t]*)\(?[ \t]*(?:"[^"\n]{0,100}"|'[^'\n]{0,100}')[ \t]*,[ \t]*["'])([^"'\n]{3,500})/g, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
+  [/(\b(?:mysqli_connect|new[ \t]+mysqli|PlainAuth|getConnection|new[ \t]+PDO)\([ \t]*(?:"[^"\n]*"|'[^'\n]*'|[^,\n()"']{0,200}),[ \t]*(?:"[^"\n]*"|'[^'\n]*'|[^,\n()"']{0,100}),[ \t]*["'])([^"'\n]{3,500})/g, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
+  [/(\bgetpass\b[^\n]{0,60}?\blambda\b[^:\n]{0,40}:[ \t]*["'])([^"'\n]{3,500})/g, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
+  // A base64 credential fed to a decoder: echo X | base64 -d, base64 --decode <<< X (16 or more characters).
+  [/(\b(?:echo|printf)(?:[ \t]+-[neE]+)?[ \t]+["']?)[A-Za-z0-9+/]{16,}={0,2}(?=["']?[ \t]*\|[ \t]*base64[ \t]+(?:-[dD]|--decode)\b)|(\bbase64[ \t]+(?:-[dD]|--decode)\b[^\n|;&<]{0,50}?<<<[ \t]*["']?)[A-Za-z0-9+/]{16,}={0,2}/g, (m, a, b) => (a ?? b) + '[redacted]'],
+  // An echoed prompt: "[sudo] password for bob: X", "Enter passphrase for key '/path': X".
+  [/(\b(?:password|passphrase)[ \t]+for[ \t]+(?:key[ \t]+)?(?:'[^'\n]{1,300}'|"[^"\n]{1,300}"|[^\s:'"]{1,100})[ \t]*:[ \t]*)([^\s"']{4,200})/gi, (m, pre, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) && !code(v) ? pre + '[redacted]' : m)],
   // A Kubernetes env entry, `- name: NAME` then `value: …` on the next line, judged by the name as a .env line is (review,
   // 2026-11-01).
   [/(-[ \t]+name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]{0,100})["']?[ \t]*\r?\n[ \t]+value:[ \t]*["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,2000})/g,
@@ -714,9 +734,9 @@ const SECRETS = [
   // A quoted value goes whole, blanks and all, as in a command; it is never a key. Unquoted, a value ends at its first blank
   // (`password: p@ss w0rd` keeps all of it: `p@ss` is under 6), since prose follows a value as often as a second word does.
   // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret|preshared)[ _-]?key|identitytoken|registrytoken|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])(?:psw|salt)(?![a-z])|(?<![A-Za-z0-9])pw(?![a-z])|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\]?\s{0,20}(?::=|[:=\uFF1A])\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:(?:\\*["']){1,2}|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:j|php|asp\.net_)?sess(?:ion)?[_-]?id|connect\.sid|(?:api|account|private|secret|preshared)[ _-]?key|identitytoken|registrytoken|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])(?:psw|salt)(?![a-z])|(?<![A-Za-z0-9])pw(?![a-z])|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\]?\s{0,20}(?::=|[:=\uFF1A])\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:(?:\\*["']){1,2}|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
-  [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=\uFF1A]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?<![A-Za-z0-9])tokens?["']?[ \t]{0,20}[:=\uFF1A]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // 1.4.1 F: databases, brokers, mail and file protocols, Windows tools, Wi-Fi and VPN, config files, password hashes (redaction-corpus-24, -25, -27, -28, -29, -32, -33, -37).
   // A hash first, whole (`$6$salt$hash`, with a `\$` as a shell escape shows it): 25 characters or more, so `$1$2$3` stays.
   [/(?<![\w$])\$(?:apr1|2[abxy]|argon2(?:id|i|d)|[156y])(?:\\?\$[\w./,=+-]{1,100}){2,6}/g, (m) => (m.length >= 25 ? '[redacted]' : m)],
