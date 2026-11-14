@@ -2068,5 +2068,44 @@ if (!quick) {
   ok(git('show', 'HEAD:proj-off/memory/a.md').includes('EDITED while off'), 'back on, the next snapshot takes what changed meanwhile');
 }
 
+// A note holding a secret stays out of the snapshot history until it is gone (1.4.1 J).
+{
+  const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
+  const f = join(root, 'proj-one', 'memory', 'leaky.md');
+  writeFileSync(f, `---
+name: leaky
+description: "leaky"
+metadata:
+  type: project
+---
+Deploy with token ${GH}
+`);
+  utimesSync(f, tenMin, tenMin);
+  await stop();
+  const inHistory = () => { try { return execFileSync('git', ['-C', root, 'grep', '-F', '-l', GH, ...git('rev-list', '--all').split('\n')], { encoding: 'utf8' }).trim() !== ''; } catch { return false; } };
+  ok(!inHistory() && !tracked().includes('proj-one/memory/leaky.md'), 'a note holding a token is not in the snapshot history');
+  ok(JSON.parse(readFileSync(join(root, '.snapshot-health'), 'utf8')).held?.includes('proj-one/memory/leaky.md'), '.snapshot-health names the note held back');
+  writeFileSync(f, `---
+name: leaky
+description: "leaky"
+metadata:
+  type: project
+---
+Deploy with the token from the vault
+`);
+  await stop();
+  ok(tracked().includes('proj-one/memory/leaky.md') && !JSON.parse(readFileSync(join(root, '.snapshot-health'), 'utf8')).held, 'once the secret is gone, the note is snapshotted');
+}
+
+// A secret in a note's file name is held back too (1.4.1 J review).
+{
+  const GH2 = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
+  const f = join(root, 'proj-one', 'memory', `tok-${GH2}.md`);
+  writeFileSync(f, 'clean text\n');
+  utimesSync(f, tenMin, tenMin);
+  await stop();
+  ok(!git('ls-files').includes(GH2), 'a note with a token in its file name is not in the snapshot history');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

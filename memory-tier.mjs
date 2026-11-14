@@ -11,6 +11,7 @@
 import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { redact } from './handoff-log.mjs';
 import { execFileSync } from 'node:child_process';
 import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
 
@@ -382,6 +383,7 @@ export function gitignore() {
 // this tool made before it marked them.
 const IGNORE_HEAD = '*\n!*/\n!*/memory/*.md\n';
 
+let held = [];     // notes left out of the commit for holding a secret: set by snapshot(), kept by snapshotHealth()
 let missed = [];   // stores the snapshot cannot reach: set by snapshot(), kept by snapshotHealth(), emptied by main()
 function snapshot() {
   const root = projectsRoot();
@@ -499,6 +501,14 @@ function snapshot() {
       try { if (within(top, realpathSync(d))) return false; } catch { return false; }
       try { return !git('ls-files', '--', `${d.slice(root.length + 1).replace(/\\/g, '/')}/MEMORY.md`).trim(); } catch { return true; }
     });
+    // The history is never rewritten, and the model's own Write tool saves a note no hook scrubs: one that holds a key, token or
+    // password stays out of it (unstaged, so its last clean version stays) until the secret is gone. Told in .snapshot-health.
+    held = [];
+    for (const f of git('diff', '--cached', '--name-only', '-z').split('\0').filter((x) => /^[^/]+\/memory\/(?!handoff\.md$|journal\.md$)[^/]+\.md$/.test(x))) {   // not the journal or handoff: scrubbed as written
+      let t = null;   // the staged blob is what a commit keeps, not the working file a session may have cleaned since the add
+      try { t = git('show', `:${f}`); } catch { t = raw(join(root, f)); }
+      if (redact(f) !== f || (t !== null && redact(t) !== t)) { git('reset', '-q', '--', `:(literal)${f}`); held.push(redact(f)); }
+    }
     // Straight to the commit, which says so when nothing changed: a `git status`
     // first was one more git start on every snapshot, ~80-300 ms on this box.
     try {
@@ -574,6 +584,7 @@ function snapshotHealth(s) {
     : off ? { lastOk: h.lastOk || null, failures: 0, off: s.slice('off: '.length) }
     : { lastOk: new Date().toISOString(), failures: 0, ...(rest && { partial: rest, pending: true }) };
   if (missed.length) next.missed = missed;
+  if (held.length) next.held = held;
   // Through a temp file: one torn by a parallel Stop parsed as {}, and the owed snapshot and failure count were lost (audit D-5).
   try { replaceIfUnchanged(p, text, JSON.stringify(next)); } catch {}
 }
@@ -597,7 +608,7 @@ export async function main(argv, input) {
   PAUSE = pauseAt === -1 ? 0 : Number(argv[pauseAt + 1]) || 0;
   const arg = (flag, or) => (argv.includes(flag) ? Number(argv[argv.indexOf(flag) + 1]) || or : or);
   batch = arg('--batch', BATCH); gitWait = arg('--git-timeout', GIT_TIMEOUT);
-  missed = [];
+  missed = []; held = [];
   // `--now <ms>` exists so a month of use can be simulated in one run
   // (memory-tier.soak.mjs). Nothing else sets it.
   const nowAt = argv.indexOf('--now');

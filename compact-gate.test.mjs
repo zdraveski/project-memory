@@ -630,4 +630,14 @@ const noted = readFileSync(join(dir, 'handoff.md'), 'utf8');
 ok(noted.slice(noted.indexOf('**cut mid-turn**')).includes('open \uFF46\uFF49\uFF4C\uFF45 \uFB01le a\u200Bb'), 'a plain ask with fullwidth, ligature and zero-width characters is noted as typed in the in-flight note');
 }
 
+// Fake secrets, built from pieces so no scanner sees a literal.
+const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = ['Zx9', 'Qv', '7!', 'mT3', 'kLp'].join('');
+// --state prints no secret from what was asked, run or said (1.4.1 J).
+{
+  const t = join(dir, 'secret-state.jsonl');
+  writeFileSync(t, [user(`use token ${GH} please`), rec('assistant', [{ type: 'tool_use', id: 'q', name: 'Bash', input: { command: `curl -H "X-Thing: ${GH}" https://x.io` } }]), rec('assistant', [{ type: 'text', text: `done with ${GH}` }])].join('\n') + '\n');
+  const r = spawnSync(process.execPath, [GATE, '--state', t], { env, encoding: 'utf8' });
+  ok(r.status === 0 && /"ask"/.test(r.stdout) && !(r.stdout + r.stderr).includes(GH), '--state output holds no token');
+}
+
 console.log(`compact-gate: ${checks} checks passed`);
