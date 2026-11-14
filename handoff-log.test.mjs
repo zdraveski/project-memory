@@ -3222,5 +3222,58 @@ if (!quick) {
   ok(!leaked.length, `vendor tokens part 2, headers, URLs and key literals are redacted (kept: ${[...new Set(leaked)].join(', ')})`);
 }
 
+// 1.4.1 E: passwords as command-line flags and words of more tools (redaction-corpus-8, -20 to -23, -26, -30, -31, -41, -43, secret-paths-8). The same text
+// in a few surrounds, as the journal sees it: bare, after a prompt sign, in a chat line, after `&&`.
+{
+  const V = 'Zq8xK2mP9vL4nR7tB3wY';
+  const gaps = (what, texts, keeps = []) => {
+    const bad = texts.filter((t) => { const [s, v] = [].concat(t, V); return redact(s).includes(v) || clip(s, 2000).includes(v); });
+    ok(!bad.length, `${what} are redacted (leaked: ${bad.join(' | ')})`);
+    ok(keeps.every((s) => redact(s) === s), `${what}: ordinary lines are kept`);
+  };
+  const around = (t) => [t, `$ ${t}`, `look at this: ${t} thanks`, `echo start && ${t} # note`];
+  // A [text, value] pair keeps its own value through the surrounds.
+  const E = (what, texts, keeps = []) => gaps(what, texts.flatMap((t) => (Array.isArray(t) ? around(t[0]).map((x) => [x, t[1]]) : around(t))), keeps);
+  E('ssh-keygen -P and -N passphrases', [`ssh-keygen -p -P ${V} -N ${V}x -f k`, `ssh-keygen -p -P '${V}' -f k`], ['ssh-keygen -t ed25519 -N "" -f k']);
+  E('a password piped to a command', [`echo ${V} | docker login -u me --password-stdin reg.io`, `printf '%s' '${V}' | docker login -u me --password-stdin`, `echo ${V} | sudo -S apt update`,
+    `printf '%s\n' '${V}' | sudo -S cmd`, `echo "me:${V}" | chpasswd`, `echo ${V} | passwd --stdin me`, `echo ${V} | kinit me@X.ORG`, `echo ${V} | runas /user:me cmd`,
+    `echo ${V} | SSH_ASKPASS_REQUIRE=force ssh-add k`, `echo ${V} | gpg --batch --passphrase-fd 0 -d f`, `echo ${V} | openconnect --user=me --passwd-on-stdin h`,
+    `echo -n ${V} | az devops login --organization https://dev.azure.com/o`, `echo -n ${V} | gcloud secrets create s --data-file=-`, `echo -n ${V} | gh secret set NAME`,
+    `mysql -u r <<< "${V}"`, `send "${V}\\r"`],
+  ['echo hello | sudo -S true', 'echo $PW | docker login --password-stdin', 'echo done | tee log.txt', 'echo build-ready | kinit', 'send "ls\\r"']);
+  E('registry and storage logins', [`helm registry login r.io -u me -p ${V}`, `skopeo copy --src-creds me:${V} docker://a docker://b`, `skopeo copy --dest-creds=me:${V} docker://a docker://b`,
+    `crane auth login r.io -u me -p ${V}`, `oras login -u me -p ${V} r.io`, `az acr login -n r -u me -p ${V}`, `mc alias set m https://m:9000 admin ${V}`,
+    `rclone ls --s3-access-key-id AKIAXN3LNY3ZCW3M3D0W --s3-secret-access-key ${V} :s3:b`, `az storage blob list --account-name a --account-key ${V}== -c c`],
+  ['docker run -p 8080:80 img', 'oras push r.io/x:1', 'az acr list', 'mc ls m/bucket']);
+  E('cloud CLI secrets', [`aws secretsmanager put-secret-value --secret-id s --secret-string '${V}!'`, `aws ssm put-parameter --name /p --type SecureString --value ${V}`,
+    `az keyvault secret set --vault-name v -n n --value ${V}`, `terraform apply -var="admin=${V}"`, `terraform apply -var 'db_password=${V}'`, [`aws sts get-session-token --serial-number s --token-code 638336`, '638336']],
+  ['terraform apply -var="region=us-east-1"', 'aws ssm put-parameter --name /p --value $VALUE', 'aws s3 ls --region eu-west-1']);
+  E('database CLI passwords', [`mycli -u me -p ${V} db`, `sqlcmd -S s -U sa -P ${V} -Q "select 1"`, `sqlcmd -S s -U sa -P '${V}'`, `bcp db.dbo.t out f.dat -S s -U sa -P ${V} -c`,
+    `rabbitmqadmin -u me -p ${V} list queues`, `cqlsh -u me -p ${V} h`, `cypher-shell -u neo4j -p ${V}`, `rabbitmqctl add_user bob ${V}`, `redis-cli ACL SETUSER bob on '>${V}' '~*' +@all`],
+  ['sqlcmd -S s -E -Q "select 1"', 'cqlsh -u me', 'psql -p 5432 -h localhost db']);
+  E('keystore, archive and remote shell passwords', [`keytool -importcert -keystore k.jks -storepass ${V} -file c.pem`, `keytool -genkeypair -keystore k -storepass x1y2z3 -keypass ${V}`,
+    `jarsigner -keystore k -storepass ${V} a.jar alias`, `7z x -p ${V} x.7z`, `unzip -P ${V} a.zip`, `rar a -p${V} a.rar f`, `rar a -hp${V} a.rar f`, `unrar x -p${V} a.rar`,
+    `ccrypt -K ${V} f`, `SSHPASS=${V} sshpass -e ssh me@h`, `plink -ssh me@h -pw ${V}`, `pscp -pw ${V} f me@h:/t`],
+  ['keytool -list -keystore k.jks', 'keytool -storepass:env STOREPW -list', '7z x -p backup.7z', 'unzip a.zip -d out', 'rar a a.rar f', 'unrar x a.rar']);
+  E('form and HTTPie password fields, htpasswd -n', [`curl -d "user=me&pw=${V}" https://x`, `http POST https://x password:="\\"${V}\\""`, `htpasswd -nb me ${V}`, `htpasswd -nbB me ${V}`,
+    `smbclient -U bob%${V} //host/share`, `xfreerdp /v:host /u:bob /p:${V}`, `dotnet user-secrets set "Db:Password" "${V}"`, `reg add HKLM\\Software\\App /v Password /d ${V} /f`],
+  ['smbclient -L //host -U bob', 'curl -d "user=me&page=2" https://x']);
+  // Review of E: sudo or a path before the reader, docker's global flags, glued -pPASS, htpasswd's cost, more reg names.
+  const W = 'correcthorsebatterystaple';
+  E('piped passwords through sudo, a path or docker flags', [`echo "me:${V}" | sudo chpasswd`, `echo ${V} | sudo kinit me@X.ORG`, `echo ${V} | sudo passwd --stdin me`, `echo ${V} | /usr/bin/sudo -S x`,
+    `echo ${V} | docker --config c login -u me --password-stdin r.io`, [`echo ${W} | docker login -u me --password-stdin`, W], [`echo "me:${W}" | chpasswd`, W]]);
+  E('docker flags before login', [`docker --debug login -u me -p ${V} r.io`, `docker --config c login -u me -p ${V} r.io`, `podman --log-level debug login -u me -p ${V} r.io`]);
+  E('glued password flags', [`mycli -u me -p${V} db`, `mysql -u me -p${V} db`, `sqlcmd -S s -U sa -P${V}`, `sqlcmd -S s -U sa -P"${V}"`, `unzip -P${V} a.zip`, `zip -P${V} a.zip f`,
+    `ssh-keygen -p -P${V} -f k`, `ssh-keygen -N'${V}' -f k`], ['mysql -u me -p', 'sqlcmd -S s -E', 'psql -p5432 db']);
+  E('htpasswd with a cost and more reg names', [`htpasswd -nbC 10 me ${V}`, `htpasswd -bnBC 10 me ${V}`, `reg add HKLM\S /v ApiKey /d ${V} /f`, `reg add HKLM\S /v Key /d ${V} /f`,
+    `reg add HKLM\S /v Passphrase /d ${V} /f`]);
+  // No ReDoS: hostile 1 MB inputs for the new rules stay in seconds (measured: under 3 s each).
+  for (const unit of ['7z -p ', 'docker --a ', 'echo "a" | ', 'htpasswd -b ', 'reg add /v Key ', 'ssh-keygen -P ', "echo 'a", 'sqlcmd -P ']) {
+    const big = unit.repeat(Math.ceil(1e6 / unit.length)), t0 = Date.now();
+    redact(big); clip(big, 2000);
+    ok(Date.now() - t0 < 20000, `redact and clip of 1 MB of "${unit}" are fast (${Date.now() - t0} ms)`);
+  }
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
