@@ -8,12 +8,12 @@
 // As the Stop hook (and before a manual /compact) it runs with `--stop`, the
 // payload on stdin, and tiers that session's own store; a manual run walks them all.
 
-import { readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { redact } from './handoff-log.mjs';
 import { execFileSync } from 'node:child_process';
-import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
+import { keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -331,7 +331,7 @@ function tier(dir, now, seen = null) {
     // Whole, so a note deleted leaves it too; under the store's lock, and a cache: a write that fails costs the next pass a read.
     const facts = JSON.stringify(memo.now);
     // Not after a conflict: the pass that still sees a 1.3.0 entry is the one that brings a misread line back.
-    if (!conflict && facts !== JSON.stringify(memo.was)) try { writeFileSync(join(dir, FACTS), facts); } catch {}
+    if (!conflict && facts !== JSON.stringify(memo.was)) try { writeFileSync(join(dir, FACTS), facts, { mode: 0o600 }); } catch {}
   }
 
   return { dir, budget, before, after: Buffer.byteLength(nextMain), hot: hot.length, cold: cold.length,
@@ -410,11 +410,21 @@ function snapshot() {
     // A new repository gets this tool's .gitignore first, then git: one cut off
     // between the two is still known for this tool's by it, and adopted below.
     // Marked only after the init, a cut-off one read as the user's for good.
-    if (fresh) { replaceIfUnchanged(ignorePath, raw(ignorePath), gitignore()); git('init', '-q'); }
+    if (fresh) { replaceIfUnchanged(ignorePath, raw(ignorePath), gitignore()); git('init', '-q'); try { chmodSync(join(root, '.git'), 0o700); } catch {} }
     // Only a repository this tool made: one the user made there is theirs, and
     // its .gitignore, its lock, its index and its history are not this tool's.
     const ours = /^\[project-memory\]/m.test(raw(join(root, '.git', 'config')) ?? '');
     if (!ours && !(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)) return `off: ${root} is a git repository project-memory did not make, so it commits nothing there`;
+    // An install from before the modes: its .git is still open to others, so the files are too. Tightened once, when found so.
+    if (process.platform !== 'win32' && (statSync(join(root, '.git')).mode & 0o077)) {
+      const to = (p, m) => { try { chmodSync(p, m); } catch {} };
+      to(join(root, '.git'), 0o700); to(join(root, '.stop-ran'), 0o600);
+      for (const d of allStores()) {
+        to(join(d, 'journal'), 0o700); to(join(d, 'journal.md'), 0o600); to(join(d, 'handoff.md'), 0o600);
+        let days = []; try { days = readdirSync(join(d, 'journal')); } catch {}
+        for (const f of days) to(join(d, 'journal', f), 0o600);
+      }
+    }
     // A fresh lock is another session's commit in flight: busy, not a failure
     // -- the next turn retries. One older than ten minutes outlived the git
     // that made it, and would refuse every commit from now on: index.lock, and
@@ -448,7 +458,7 @@ function snapshot() {
     const stage = () => {
       if (have !== want || raw(applied) !== want) {
         for (const l of want.split('\n').filter((x) => x && x !== '*' && !x.startsWith('!'))) git('rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', l);
-        writeFileSync(applied, want);
+        writeFileSync(applied, want, { mode: 0o600 });
       }
       // A history's first add, of every note at once, was killed at GIT_TIMEOUT on a large store (~6 ms a file on Windows,
       // 5,000 files): it left index.lock, and no snapshot ever started (audit H-F1). With no index yet, or after an add that
@@ -465,7 +475,7 @@ function snapshot() {
           .sort((a, b) => /(^|\/)MEMORY[^/]*$/.test(b) - /(^|\/)MEMORY[^/]*$/.test(a));
         if (todo.length > batch) {
           gitIn(todo.slice(0, batch).join('\0'), 'update-index', '--add', '--remove', '-z', '--stdin');
-          writeFileSync(parts, '');
+          writeFileSync(parts, '', { mode: 0o600 });
           return todo.length - batch;
         }
         try { unlinkSync(parts); } catch {}
@@ -536,7 +546,7 @@ function snapshot() {
     if (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn')) return 'off: git is not installed';
     // Killed at its timeout: from the next run the history is taken in parts. Its lock stays, for GIT_LOCK_STALE: a git
     // that outlived the kill (a wrapper's child) may still hold it. No note is touched: git only reads them.
-    if (e.code === 'ETIMEDOUT') { try { writeFileSync(parts, ''); } catch {} return `snapshot failed: git took longer than ${gitWait / 1000} s; the next replies take the history in parts`; }
+    if (e.code === 'ETIMEDOUT') { try { writeFileSync(parts, '', { mode: 0o600 }); } catch {} return `snapshot failed: git took longer than ${gitWait / 1000} s; the next replies take the history in parts`; }
     const why = gitWhy(e);   // git's reason, not a warning before it, nor 'Command failed'
     // This session runs two or three git commands, and another session's commit can
     // take a lock in a gap between them, or move HEAD under this one's: busy,
@@ -595,7 +605,7 @@ const owed = () => { try { return JSON.parse(readFileSync(join(projectsRoot(), '
 function ensureIndex(d) {
   try {
     if (existsSync(join(d, 'MEMORY.md')) || !(existsSync(join(d, 'handoff.md')) || existsSync(join(d, 'journal')))) return;
-    writeFileSync(join(d, 'MEMORY.md'), '# Memory Index\n', { flag: 'wx' });
+    writeFileSync(join(d, 'MEMORY.md'), '# Memory Index\n', { flag: 'wx', mode: 0o600 });
   } catch {}
 }
 
@@ -631,7 +641,7 @@ export async function main(argv, input) {
     } catch (e) {
       // A tag that could not be kept is said at the next start with memory on, as a handoff that could not be saved is (R67), in its
       // own words (`off`): nothing was to be saved, and the journal may take the conversation in later (release review).
-      if (p) try { writeFileSync(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(storeOf(p)))}`), JSON.stringify({ at: new Date().toISOString(), error: reason(e), off: true })); } catch {}
+      if (p) try { writeFileSync(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(storeOf(p)))}`), JSON.stringify({ at: new Date().toISOString(), error: reason(e), off: true }), { mode: 0o600 }); } catch {}
     }
     return 0;
   }
@@ -646,7 +656,7 @@ export async function main(argv, input) {
     // over the same store at once) must not also skip the nudge -- that was
     // the one Stop the nudge exists for.
     try {
-      const { handoff, hash } = await import(new URL('./handoff-log.mjs', import.meta.url));
+      const { handoff } = await import(new URL('./handoff-log.mjs', import.meta.url));
       // Proof of life for the startup line (handoff-log's stalled()), once the
       // handoff has loaded: Stop output reaches nobody, so a hook that stopped
       // running was silence.
@@ -662,7 +672,7 @@ export async function main(argv, input) {
         // hash: two quick replies of one conversation read as two wirings (audit H-F10).
         // On a line of its own: before 1.0.7 the file was one time and no newline.
         const prev = raw(ran);
-        appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: hash(String(payload?.last_assistant_message ?? '')).slice(0, 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n');
+        appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: keyed(payload?.last_assistant_message ?? '', 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n', { mode: 0o600 });
         // The cut goes to a temp copy that replaces the log only if it is no longer than when read:
         // another session's line appended in between was lost (audit #13).
         // shortcut: an append between the size check and the rename (well under a millisecond) is
@@ -670,7 +680,7 @@ export async function main(argv, input) {
         const size = statSync(ran).size, cut = `${ran}.tmp${process.pid}`;
         if (size > 8192) {
           try {
-            writeFileSync(cut, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n');
+            writeFileSync(cut, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n', { mode: 0o600 });
             if (statSync(ran).size === size) renameSync(cut, ran);
           } finally { rmSync(cut, { force: true }); }
         }
@@ -690,7 +700,7 @@ export async function main(argv, input) {
         if (payload && handoff(payload, sink) === 'busy' && stop) { sleep(200 + Math.random() * 600); lockBudget(true); handoff(payload, sink); }
         try { unlinkSync(failed); } catch {}
       }
-      catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) })); }
+      catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) }), { mode: 0o600 }); }
       // The index of a store the plugin writes to, in the same Stop that wrote its handoff; the nudge below must not skip it.
       if (payload && !dry) ensureIndex(storeOf(payload));
       // The temp copies a killed Stop left here (store.mjs).
@@ -803,7 +813,7 @@ export async function main(argv, input) {
   // edited mid-pass or waiting on a writer: without a stamp the next turn
   // retries. A snapshot that did not go through is owed (snapshotHealth), and
   // retried alone: left unstamped for it, every Stop redid the whole pass.
-  if (gated) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen); } catch {}
+  if (gated) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen, { mode: 0o600 }); } catch {}
   return 0;
 }
 

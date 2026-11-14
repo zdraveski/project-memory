@@ -11,10 +11,10 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           dates with no terms list those days' requests
   show <key...> [--same] [--all]          journal entries whole, by the key a search hit prints;
                                           --same: every entry that asked the same
-  forget [<words...>] [--key K]... [--same] [--since D] [--until D] [--conversation ID] [--yes]
+  forget [<words...>] [--key K]... [--same] [--since D] [--until D] [--conversation ID] [--yes] [--purge]
                                           the journal entries holding every word (with those keys, of
                                           that conversation): listed with their keys, up to 200; with
-                                          --yes removed
+                                          --yes removed; --purge also drops those days from the snapshot history
   incognito                               stop saving this conversation and sweep what it already saved
                                           (needs --session: the command passes it)
   off | on                                turn this project's memory off (nothing saved, snapshotted or
@@ -35,9 +35,9 @@ The store is this session's own (outside a session: the cwd's project, or the ne
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
 reads its transcript. After --, every word is a term, one that starts with -- too.`;
-import { appendFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, unlinkSync, realpathSync } from 'node:fs';
+import { appendFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
@@ -447,6 +447,31 @@ const ever = (dir) => {
   catch { return []; }
 };
 
+// forget --purge: drop the days that held a forgotten entry from every snapshot, then expire the reflog and collect, so no
+// old commit keeps the text. The current files stay; the next snapshot adds them back without the entry.
+// shortcut: a purged day loses its older versions whole, not just the entry; upgrade to a line filter if that is missed.
+const purge = (dir, days) => {
+  const paths = days.flatMap((d) => tracked(dir, `journal/${d}.md`));
+  const q = (p) => `'${p.replace(/'/g, "'\\''")}'`;
+  // filter-branch refuses a repository with unstaged changes, and a store always has some (notes edited since the last snapshot):
+  // it rewrites a bare copy, which is fetched back over the branches (the work tree and its files stay as they are), and the
+  // index is reset to the new HEAD so it holds no old blob.
+  // The snapshot hook takes no lock but git's own, and reads a fresh config.lock (nothing here writes config) as busy: the purge
+  // holds that one for its whole run, and gives way to a commit already in flight, whose work the stale copy would overwrite.
+  const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), busy = new Error('a snapshot is being taken; try again in a moment');
+  if (['index.lock', 'HEAD.lock'].some((f) => existsSync(join(g, f)))) throw busy;
+  try { writeFileSync(lock, '', { flag: 'wx', mode: 0o600 }); } catch (e) { throw e.code === 'EEXIST' ? busy : e; }
+  const tmp = mkdtempSync(join(tmpdir(), 'pm-purge-')), copy = join(tmp, 'copy.git');
+  try {
+    git('clone', '-q', '--mirror', '--no-hardlinks', projectsRoot(), copy);
+    execFileSync('git', ['-C', copy, 'filter-branch', '-f', '--index-filter', `git rm --cached --ignore-unmatch -q -r -- ${paths.map(q).join(' ')}`, '--', '--all'], { env: { ...process.env, FILTER_BRANCH_SQUELCH_WARNING: '1' }, stdio: 'pipe', timeout: 300_000 });
+    git('fetch', '-q', '--update-head-ok', '--force', copy, '+refs/heads/*:refs/heads/*');
+    git('reset', '-q');
+    for (const ref of git('for-each-ref', '--format=%(refname)', 'refs/original/').split('\n').filter(Boolean)) git('update-ref', '-d', ref);
+    git('reflog', 'expire', '--expire=now', '--all'); git('gc', '-q', '--prune=now');
+  } finally { rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
+};
+
 // Why no snapshot can be read, in plain words, or '' when one can: git's own ("fatal: not a git repository", "cannot change
 // to") read as a fault, and without git, restore offered to replace a note "with the snapshot" (audit C-3, C-4).
 const unsnapped = () => {
@@ -536,7 +561,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
       if (line) break;
     }
   }
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   const r = withLock(dir, () => {
     const cur = raw(path), curB = cur === null ? null : readFileSync(path);   // bytes too: a string loses a non-UTF-8 note's letters
     if (cur !== null && !force) return `${path} appeared meanwhile; nothing written`;
@@ -575,7 +600,7 @@ export function promote(dir, file, { force = false } = {}) {
   if (!existsSync(src)) return no(`no ${src}`);
   if (!statSync(src).isFile()) return no(`${src} is a folder, not a memory`);
   if (existsSync(dst)) return no(`the shared store has a ${file} already: rename one, or merge them by hand`);
-  mkdirSync(to, { recursive: true });
+  mkdirSync(to, { recursive: true, mode: 0o700 });
   // Project, then shared: whatever takes both locks takes them in this order.
   const r = withLock(dir, () => withLock(to, () => {
     const text = raw(src);
@@ -741,7 +766,7 @@ function incognito(opt) {
   const dir = storeOf({ transcript_path: path }), s = tag(session);
   let got;
   try {
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     got = withLock(dir, () => {
       if (hushed(dir, s, true) !== true) return { marked: false };
       try { takeBack(dir, transcriptKey(path), s, true, true); return { marked: true }; } catch (e) { return { marked: true, why: reason(e) }; }
@@ -761,7 +786,7 @@ function projectSwitch(dir, off) {
   try {
     if (off) {
       if (was && !was.unread) return { ok: true, lines: [`memory is already off in this project since ${offSince(was)}`] };
-      mkdirSync(dir, { recursive: true });
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
       if (replaceIfUnchanged(marker, raw(marker), JSON.stringify({ t: Date.now() })) === 'conflict') return no('memory off NOT applied: the marker was changed meanwhile; try again');
       return { ok: true, lines: [`memory is off in this project (${dir}): nothing is saved, tiered or snapshotted here until memory on. Off stops adding; it doesn't hide: search and show still answer. ${STILL}`] };
     }
@@ -842,7 +867,7 @@ export function main(given) {
   const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation', '--key']);
   // One it does not know is refused: dropped, `--from 2026-10-27` searched for
   // "2026", and `--after=2026-10-28` listed what came before it.
-  const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--help'].includes(a));
+  const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--purge', '--help'].includes(a));
   if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); return 1; }
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
@@ -1025,12 +1050,17 @@ export function main(given) {
         const ours = /^\[project-memory\]/m.test(read(join(projectsRoot(), '.git', 'config')) ?? '');
         // Not an unwritten turn's day: no snapshot holds what no day did.
         const old = ours ? [...new Set(gone.filter((e) => !e.unsaid && e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
+        let purged = null;
+        if (ours && got && rest.includes('--purge')) {
+          try { purge(here, [...new Set(tried.map((e) => e.day))]); purged = 'purged from the snapshots too'; }
+          catch (e) { purged = `the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)})`; }
+        }
         r = !got ? no(`${here} is busy (another hook holds it); try again`)
           // Past LOOK (a range's), the count, not every line.
-          : { ok: true, lines: [...(gone.length > LOOK ? [] : gone.map(line)), ...(old.length ? [`the snapshots still hold the journal of ${more(old, 6)}: deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : []),
+          : { ok: true, lines: [...(gone.length > LOOK ? [] : gone.map(line)), ...(old.length && purged === null ? [`the snapshots still hold the journal of ${more(old, 6)}: forget --purge removes it from them, or deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : []),
             // As PRIVACY.md says it: forget empties project-memory's files, and said nothing of Claude Code's own (audit C-6).
             ...(gone.length ? [`Claude Code still keeps these exchanges in its own conversation files (the .jsonl files in ${projectsRoot()}): forget does not change them`] : []),
-            `removed ${gone.length}${gone.length === tried.length ? '' : ` of ${tried.length}`} from ${here}`] };
+            `removed ${gone.length}${gone.length === tried.length ? '' : ` of ${tried.length}`} from ${here}${purged ? `; ${purged}` : ''}`] };
       }
       r.lines.splice(-1, 0, ...again);
       if (lost.length) { r.lines.splice(-1, 0, ...lost); r.ok = false; }

@@ -5,8 +5,8 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
-import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, hash, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
-import { replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only } from './store.mjs';
+import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
+import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only } from './store.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -66,7 +66,7 @@ export function entryOf(turn, transcriptPath, when = local()) {
   const quiet = forgets || PRIVATE.test(userText(turn));
   let room = 50000;
   return {
-    key: turn.id || `${s} ${turn.at} ${hash(turn.raw ?? turn.ask).slice(0, 12)}`,
+    key: turn.id || `${s} ${turn.at} ${keyed(turn.raw ?? turn.ask, 12)}`,
     at: TIME.test(turn.at) ? turn.at : when, s,
     t: transcriptKey(transcriptPath),
     branch: clip(turn.branch || '', J_BRANCH),
@@ -139,7 +139,7 @@ export function record(dir, transcriptPath, turns, when) {
   each(byDay.keys(), (d) => {
     const file = dayFile(dir, d), fresh = byDay.get(d);
     const mine = new Set(fresh.map((e) => e.key));
-    mkdirSync(join(dir, JOURNAL), { recursive: true });
+    mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });
     let landed = false;
     for (let i = 0; i < 3; i++) {
       const before = raw(file);
@@ -343,7 +343,7 @@ export function forget(dir, terms, { since, until, conversation, keys: only, mor
   const live = ([, t]) => !t || (seen.has(t) ? seen.get(t) : seen.set(t, there(t)).get(t));
   return withLock(dir, () => {
     // An unwritten turn's store may have no journal folder yet: a new project whose first Stop was busy.
-    mkdirSync(join(dir, JOURNAL), { recursive: true });
+    mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });
     for (let i = 0; i < 3; i++) {
       const before = raw(f), lines = new Map([...forgotten(before), ...matched.map((e) => [e.key, e.t, e.at])].filter(live).map((l) => [l[0], l.join('\t')]));
       if (replaceIfUnchanged(f, before, [...lines.values()].map((l) => l + '\n').join('')) !== 'conflict') break;
@@ -377,10 +377,10 @@ const aside = (dir) => join(projectsRoot(), JOURNAL_FAILED + basename(dirname(di
 function fault(dir, e, from = '') {
   const f = join(dir, JOURNAL, FAILED), line = JSON.stringify({ at: new Date().toISOString(), error: from + reason(e) });
   try {
-    mkdirSync(join(dir, JOURNAL), { recursive: true });
+    mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });
     const before = raw(f);
     replaceIfUnchanged(f, before, [line, ...own(before, !from)].join('\n') + '\n');
-  } catch { if (!from) try { writeFileSync(aside(dir), line + '\n'); } catch {} }
+  } catch { if (!from) try { writeFileSync(aside(dir), line + '\n', { mode: 0o600 }); } catch {} }
 }
 // The failures kept, in the journal and beside the projects: one line each.
 const failures = (dir) => [raw(join(dir, JOURNAL, FAILED)), raw(aside(dir))].flatMap((t) => (t ?? '').split(/\r?\n/).filter(Boolean));
@@ -468,7 +468,7 @@ const looked = (dir) => { const noted = new Set(folders(dir).map(pathKey)); retu
 // The list as `edit` makes it of the one there; given back the same, no write.
 function refold(dir, edit) {
   const file = join(dir, JOURNAL, FOLDERS);
-  mkdirSync(join(dir, JOURNAL), { recursive: true });
+  mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });
   for (let i = 0; i < 3; i++) {
     const before = raw(file), have = listOf(before), next = edit(have);
     if (next === have || replaceIfUnchanged(file, before, next.map((f) => f + '\n').join('')) !== 'conflict') return;
@@ -502,7 +502,7 @@ const FAILING = / \d+ failed\b/;
 function mark(dir, lines, keep = null, list = IMPORTED) {
   const key = (l) => { const k = LINE.exec(l)?.[1]; return k && pathKey(k); };
   const f = join(dir, JOURNAL, list), ks = new Set(lines.map(key));
-  mkdirSync(join(dir, JOURNAL), { recursive: true });
+  mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });
   for (let i = 0; i < 3; i++) {
     const before = raw(f), kept = (before ?? '').split(/\r?\n/).filter((l) => { const k = key(l); return l && !ks.has(k) && (!keep || keep.has(k)); });
     if (replaceIfUnchanged(f, before, [...kept, ...lines].join('\n') + '\n') !== 'conflict') return;
@@ -759,7 +759,7 @@ export function backfill(dir, { budgetMs = IMPORT_BUDGET_MS, skip = null, segmen
   else if ((n || (all.seen && !left && !stuck)) && !FAILING.test(raw(join(dir, JOURNAL, IMPORTED)) ?? '')) clear(dir, true);
   // The next look: the next Stop while the budget left some, else in ACTIVE (a
   // failure too: retried every Stop, it would cost every Stop a look).
-  try { mkdirSync(join(dir, JOURNAL), { recursive: true }); replaceIfUnchanged(look, raw(look), String(left && !err ? t0 - ACTIVE : Date.now())); } catch {}
+  try { mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 }); replaceIfUnchanged(look, raw(look), String(left && !err ? t0 - ACTIVE : Date.now())); } catch {}
   return { imported: n, left };
 }
 
