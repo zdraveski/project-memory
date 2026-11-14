@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Saved text no longer keeps these vendor tokens: every GitLab kind (not only `glpat-`), GitHub fine-grained tokens, Discord, Teams, Zapier, IFTTT and Mattermost webhooks, Twilio auth tokens, Sidekiq gem-server credentials, Twitter bearers, Stripe `sk_prod_`, ElevenLabs, Square, Plaid, Salesforce, Facebook and Dropbox tokens, AWS Bedrock, Google refresh, Firebase, Azure AD and Azure DevOps keys, and the Hugging Face org, Fireworks, Cerebras, Tavily, Pinecone, LangSmith and Voyage keys.
+- Saved text no longer keeps tokens from about 30 more vendors (GitLab, Discord, Teams, Twilio, Sidekiq, Dropbox, Azure, AI keys and more); the secret catalog lists them.
 - Enforce log: it no longer stops at 256 KB (the oldest half is dropped instead), one line is capped in size, nothing is logged in a private-session turn, and a missing plugin file no longer makes the hook print an error.
 - A note with a secret in its file name is kept out of the snapshots too, and `memory history`, `restore` and `promote` print no secret from a note's name.
 - A note that holds a key, token or password is kept out of the memory snapshots, and `status` and the startup line say which one.

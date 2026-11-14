@@ -504,7 +504,7 @@ const SECRETS = [
   [/(?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[\w-]{22,}/g, '[redacted]'],
   // Vendor tokens by prefix (1.4.1): GitLab (all kinds, routable ones with dots), Stripe-style ElevenLabs, Square, Facebook, Plaid, Salesforce, Dropbox, Twitter's bearer (before the Bearer rule),
   // AWS Bedrock, Google refresh, Firebase, Azure AD and DevOps, and the AI keys (HF org, Fireworks, Cerebras, Tavily, Pinecone, LangSmith, Voyage).
-  [/\bgl(?:pat|dt|rt|cbt|ft|imt|agent|oas|soat|ptt)-[\w.-]{20,}|\bAC[0-9a-f]{32}:[0-9a-f]{32}\b|\bGR1348941[\w-]{20,}|\b_gitlab_session=[\w-]{20,}|(?<![A-Za-z0-9])sk_[a-f0-9]{48}\b|\bsq0(?:atp|csp)-[\w-]{22,}|\bEAA[A-Za-z][\w-]{50,}|\baccess-(?:sandbox|development|production)-[0-9a-f-]{36}|\b00D[A-Za-z0-9]{12,15}![\w.-]{40,}|(?<![\w.])sl\.[\w-]{60,}|(?<![A-Za-z0-9])A{15,}[A-Za-z0-9%_-]{40,}|\bABSK[A-Za-z0-9+/=]{100,}|\bbedrock-api-key-[A-Za-z0-9+/=_-]{40,}|(?<![\w/])1\/\/0[\w-]{40,}|\bAAAA[\w-]{7}:APA91b[\w-]{100,}|(?<![\w-])[\w-]{3}8Q~[\w.~-]{30,}|(?<![\w/+.=-])(?=[a-z0-9]{0,51}\d)(?=[a-z0-9]{0,51}[a-z])[a-z0-9]{52}(?![\w/+.=-])|\bapi_org_[A-Za-z]{20,}|\bfw_[A-Za-z0-9]{24}\b|\bcsk-[a-z0-9]{48}\b|\btvly-[A-Za-z0-9]{32}\b|\bpcsk_[A-Za-z0-9]{50,}|\blsv2_(?:pt|sk)_[0-9a-f]{32}_[0-9a-f]{10}\b|(?<![A-Za-z0-9])pa-(?=[\w-]{0,60}\d)[\w-]{40,}/g, '[redacted]'],
+  [/\bgl(?:pat|dt|rt|cbt|ft|imt|agent|oas|soat|ptt)-[\w.-]{20,}|\bAC[0-9a-f]{32}:[0-9a-f]{32}\b|\bGR1348941[\w-]{20,}|\b_gitlab_session=[\w-]{20,}|(?<![A-Za-z0-9])sk_[a-f0-9]{48}\b|\bsq0(?:atp|csp)-[\w-]{22,}|\bEAA[A-Za-z][\w-]{50,}|\baccess-(?:sandbox|development|production)-[0-9a-f-]{36}|\b00D[A-Za-z0-9]{12,15}![\w.-]{40,}|(?<![\w.])sl\.(?:u\.)?[\w-]{60,}|(?<![A-Za-z0-9])A{15,}[A-Za-z0-9%_-]{40,}|\bABSK[A-Za-z0-9+/=]{100,}|\bbedrock-api-key-[A-Za-z0-9+/=_-]{40,}|(?<![\w/])1\/\/0[\w-]{40,}|\bAAAA[\w-]{7}:APA91b[\w-]{100,}|(?<![\w-])[\w-]{3}8Q~[\w.~-]{30,}|(?<![\w/+.=-])(?=[a-z0-9]{0,51}\d)(?=[a-z0-9]{0,51}[a-z])[a-z0-9]{52}(?![\w/+.=-])|\bapi_org_[A-Za-z]{20,}|\bfw_[A-Za-z0-9]{24}\b|\bcsk-[a-z0-9]{48}\b|\btvly-[A-Za-z0-9]{32}\b|\bpcsk_[A-Za-z0-9]{50,}|\blsv2_(?:pt|sk)_[0-9a-f]{32}_[0-9a-f]{10}\b|(?<![A-Za-z0-9])pa-(?=[\w-]{0,42}\d)[\w-]{43}(?![\w-])/g, '[redacted]'],
   [/\bxox[abeprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}/g, '[redacted]'],
   // AWS keys, long-lived and STS.
   [/(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, '[redacted]'],
@@ -523,9 +523,9 @@ const SECRETS = [
   [/(hooks\.slack\.com\/services\/)[A-Za-z0-9/]+/g, '$1[redacted]'],
   [/(discord(?:app)?\.com\/api\/webhooks\/)[\w-]+(?:\/[\w-]+)?/g, '$1[redacted]'],
   // Webhooks whose path is the secret: Teams, Zapier, IFTTT, Mattermost (26 characters).
-  [/(\.webhook\.office(?:365)?\.com\/webhook(?:b2)?\/)[^\s\"'<>]+|(hooks\.zapier\.com\/hooks\/catch\/\d+\/)[\w-]+|(maker\.ifttt\.com\/trigger\/[^/\s]+\/with\/key\/)[\w-]+|(\/hooks\/)(?=[a-z0-9]{0,25}\d)(?=[a-z0-9]{0,25}[a-z])[a-z0-9]{26}\b/g, (m, a, b, c, d) => `${a ?? b ?? c ?? d}[redacted]`],
+  [/((?:\.webhook\.office|\boutlook\.office)(?:365)?\.com\/webhook(?:b2)?\/)[^\s\"'<>]+|(hooks\.zapier\.com\/hooks\/catch\/\d+\/)[\w-]+|(maker\.ifttt\.com\/trigger\/[^/\s]+\/with\/key\/)[\w-]+|(\/hooks\/)(?=[a-z0-9]{0,25}\d)(?=[a-z0-9]{0,25}[a-z])[a-z0-9]{26}\b/g, (m, a, b, c, d) => `${a ?? b ?? c ?? d}[redacted]`],
   // Sidekiq Enterprise's gem server: the user:password in the URL, or in the BUNDLE_ setting.
-  [/(\/\/)[^\s:@/]{1,100}:[^\s@]{1,200}(?=@gems\.contribsys\.com)|(\bBUNDLE_GEMS__CONTRIBSYS__COM[=:][ \t]*[\"']?)[^\s\"']+/g, (m, a, b) => `${a ?? b}[redacted]`],
+  [/(\/\/)[^\s:@/]{1,100}:[^\s@]{1,200}(?=@gems\.contribsys\.com)|(\bBUNDLE_GEMS__CONTRIBSYS__COM[=:][ \t]*[\"']?)[^\s\"']+|(\bgems\.contribsys\.com[ \t]+)[^\s\"']+/g, (m, a, b, c) => `${a ?? b ?? c}[redacted]`],
   // A session cookie logs anyone in: a Cookie / Set-Cookie header's name=value pairs (nothing after them), and curl's -b / --cookie value (not a jar file).
   // An Authorization value with no scheme word: 20+ characters with a digit. And redis-cli's -a password.
   [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?)(?=[A-Za-z0-9._~+/=-]{0,200}\d)[A-Za-z0-9._~+/=-]{20,}/gi, '$1[redacted]'],

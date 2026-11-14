@@ -3061,6 +3061,8 @@ if (!quick) {
     ["Discord webhook","https://discord§.com/api/webhooks/«{d18}/{w68}»"],
     ["Microsoft Teams webhook","https://x{a5}.webhook.office§.com/webhookb2/«{x8}-{x4}-{x4}-{x4}-{x12}@{x8}-{x4}-{x4}-{x4}-{x12}»/IncomingWebhook/«{x32}/{x8}-{x4}-{x4}-{x4}-{x12}»"],
     ["Zapier hook","https://hooks.zapier§.com/hooks/catch/{d7}/«{a8}»/"],
+    ["Teams webhook (old connector)","https://outlook.office§.com/webhook/«{x8}-{x4}-{x4}-{x4}-{x12}@{x8}-{x4}-{x4}-{x4}-{x12}»/IncomingWebhook/«{x32}/{x8}-{x4}-{x4}-{x4}-{x12}»"],
+    ["Teams webhook (plain)","https://x{a5}.webhook.office§.com/webhook/«{x8}-{x4}-{x4}-{x4}-{x12}@{x8}-{x4}-{x4}-{x4}-{x12}»/IncomingWebhook/«{x32}/{x8}-{x4}-{x4}-{x4}-{x12}»"],
     ["IFTTT maker","https://maker.ifttt§.com/trigger/evt/with/key/«{m22}»"],
     ["Mattermost webhook","https://mm.example.org/hooks/«{a26}»"],
     ["AWS Bedrock long-lived key","AB§SK«{b120}»"],
@@ -3073,12 +3075,14 @@ if (!quick) {
     ["Hugging Face org token","api_§org_«{l34}»"],
     ["Twilio account SID and auth token","curl -u AC«{x32}»:«{x32}» https://api.twilio.com/2010-04-01/Accounts.json"],
     ["Sidekiq URL","https://«{x8}:{x8}»@gems.contribsys§.com/"],
+    ["Sidekiq bundle config","bundle config gems.contribsys§.com «{x8}:{x8}»"],
+    ["Sidekiq env","BUNDLE_GEMS__CONTRIBSYS§__COM=«{x8}:{x8}»"],
     ["Fireworks key","fw§_«{m24}»"],
     ["Cerebras key","cs§k-«{a48}»"],
     ["Tavily key","tvl§y-«{m32}»"],
     ["Pinecone key","pcs§k_«{m60}»"],
     ["LangSmith key","lsv§2_pt_«{x32}_{x10}»"],
-    ["Voyage key","p§a-«{w40}»"],
+    ["Voyage key","p§a-«{w43}»"],
     ["Plaid secret","plaid_secret = \"«{x30}»\""],
     ["Plaid access token","access-§sandbox-«{x8}-{x4}-{x4}-{x4}-{x12}»"],
     ["Facebook page token","EAA§M«{a120}»"],
@@ -3086,6 +3090,7 @@ if (!quick) {
     ["Twitter bearer header","Authorization: Bearer AAAAAAAAAAAAAAAAAAAAA§«{m60}%3D{m40}»"],
     ["Salesforce session id","«00D{a12}!AQ{w80}»"],
     ["Dropbox long-lived","sl.§«{w100}»"],
+    ["Dropbox short-lived u","sl.§u.«{w100}»"],
   ];
   const leaked = [];
   for (let seed of [11, 4242]) for (const [name, tpl] of vendor) {
@@ -3097,6 +3102,8 @@ if (!quick) {
       if (secrets.some((v) => out.includes(v) || (v.length >= 8 && out.includes(v.slice(2, 10)) && out.includes(v.slice(-8))))) leaked.push(name);
     }
   }
+  // Look-alikes that are not secrets stay as they are.
+  for (const benign of ['src/pa-parser-extension-handler-v2-implementation-details-for-the-docs.md', 'class="pa-column-layout-with-sticky-header-and-footer-v2-grid-fallbacks"', 'see https://example.org/hooks/status for the hooks docs', 'branch release-candidate-for-the-new-parser-implementation-v2-final-build-1']) ok(clip(benign, 2000) === benign, `a look-alike is kept: ${benign.slice(0, 30)}`);
   ok(!leaked.length, `vendor token shapes are redacted (kept: ${[...new Set(leaked)].join(', ')})`);
 }
 
