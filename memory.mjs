@@ -25,6 +25,9 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
   history <memory> [--all] [--limit N]    the snapshots that changed it, the newest 30
   restore <memory> [--rev <commit>] [--force]   back from the snapshots, with its index line
   promote <memory>                        move it to the shared store, for every project
+  enforce replay <note> [--all]           what the enforce: rule in a note (or in any .md file) would have
+                                          caught in the last 30 days of this project's conversations, or
+                                          every project's; read-only
   doctor                                  wiring, live copy, Stop hook, locks, git
 The store is this session's own (outside a session: the cwd's project, or the nearest
 folder above it with one) unless --store or --shared says otherwise. --session names
@@ -36,13 +39,14 @@ import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
-import { hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
+import { ruleOf, hits, commandsOf } from './enforce.mjs';
+import { redact, hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
 // (handoff-log's deploy gate test, 2026-10-28).
-let entries, forget, holds, summary, unwritten, takeBack;
-try { ({ entries, forget, holds, summary, unwritten, takeBack } = await import('./journal.mjs')); }
+let entries, forget, holds, summary, unwritten, takeBack, chunk;
+try { ({ entries, forget, holds, summary, unwritten, takeBack, chunk } = await import('./journal.mjs')); }
 catch (e) {
   const why = reason(e);
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: why }); return []; };
@@ -748,6 +752,48 @@ function projectSwitch(dir, off) {
   } catch (e) { return no(`memory ${off ? 'off' : 'on'} NOT applied: ${reason(e)}${off ? '' : "; memory stays off"}`); }
 }
 
+// What the rule in a note would have caught: every git command of the last 30 local days in the folders' conversations
+// (the sub-agents' files too), read-only. A line longer than REPLAY_SEG is a tool result, passed over.
+const REPLAY_SEG = 8 << 20, pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+function replay(here, args, all, label, failed) {
+  const w = args.slice(1).join(' ');
+  if (args[0] !== 'replay' || !w) return { ok: false, lines: ['enforce takes replay <note> [--all]', USAGE] };
+  if (!chunk) return { ok: false, lines: ['replay needs journal.mjs, which did not load'] };
+  const p = /\.md$/i.test(w) && existsSync(w) && statSync(w).isFile() ? w : join(here, onDisk(here, basename(w).replace(/(\.md)?$/i, '.md')));
+  let text; try { text = readFileSync(p, 'utf8'); } catch { return { ok: false, lines: [`no note ${w} in ${here}`] }; }
+  const r = ruleOf(text);
+  if (!r) return { ok: false, lines: [`${p} has no enforce: block`] };
+  if (r.bad) return { ok: false, lines: [`the rule in ${p} is bad: ${r.bad}`] };
+  const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 30);
+  const folders = all ? readdirSync(projectsRoot(), { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== '_shared').map((e) => join(projectsRoot(), e.name)) : [dirname(here)];
+  const found = []; let checked = 0, matched = 0;
+  const jsonl = (d) => { try { return readdirSync(d, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.jsonl')).map((e) => join(d, e.name)); } catch { return []; } };
+  for (const folder of folders) {
+    let subs = []; try { subs = readdirSync(folder, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(folder, e.name)); } catch {}
+    if (process.stderr.isTTY) process.stderr.write(`reading ${folder}\n`);
+    const name = label(join(folder, 'memory'));
+    for (const [file, sub] of [...jsonl(folder).map((f) => [f, false]), ...subs.flatMap((d) => jsonl(join(d, 'subagents')).map((f) => [f, true]))]) {
+      try {
+        if (statSync(file).mtimeMs < from) continue;
+        const s = tag(sub ? basename(dirname(dirname(file))) : basename(file, '.jsonl'));
+        commandsOf(file, chunk, REPLAY_SEG, (c) => {
+          if (!(c.t >= from)) return;
+          checked++;
+          const h = hits(r.rule, c.command);
+          if (h.on) matched++;
+          if (h.hit) found.push({ t: c.t, name, s, sub, command: c.command });
+        });
+      } catch (e) { failed.push({ path: file, code: e.code }); }
+    }
+  }
+  found.sort((a, b) => a.t - b.t);
+  const by = {}; for (const f of found) by[f.name] = (by[f.name] || 0) + 1;
+  return { ok: true, lines: [...found.map((f) => `${local(f.t)}  ${f.name}  ${f.s}${f.sub ? '  [subagent]' : ''}  ${clip(redact(f.command).replace(/\s+/g, ' '), 160)}`),
+    `checked ${pl(checked, 'git command')}, ${matched} are git ${r.rule.on}, ${pl(found.length, 'hit')} in ${pl(new Set(found.map((f) => f.s)).size, 'session')}, ${pl(Object.keys(by).length, 'project')}`,
+    ...(found.length ? [`hits by project: ${Object.entries(by).map(([k, n]) => `${k} ${n}`).join(', ')}`] : []),
+    'Read each hit. A hit is a catch only if you agree the command broke the lesson.'] };
+}
+
 // The command line, its words as given; returns the exit code. Callable in
 // the same process: memory.test runs it so, where a process a call was 0.2 s
 // of its 50 s, 256 times (2026-10-30). Each call starts with no session.
@@ -956,7 +1002,8 @@ export function main(given) {
       r.lines.splice(-1, 0, ...again);
       if (lost.length) { r.lines.splice(-1, 0, ...lost); r.ok = false; }
     } catch (e) { if (!e.code) throw e; r = no(`${join(here, 'journal')} could not be listed (${e.code}); nothing removed`); }
-  } else if (cmd === 'incognito') r = incognito(opt('--session'));
+  } else if (cmd === 'enforce') r = replay(here, args, rest.includes('--all'), project, failed);
+  else if (cmd === 'incognito') r = incognito(opt('--session'));
   else if (cmd === 'off' || cmd === 'on') r = projectSwitch(here, cmd === 'off');
   else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
