@@ -585,7 +585,7 @@ const SECRETS = [
   // In the mysql command only: `; find . -print` after it was cut. 7z as a command, not a `*.7z` file name before -print.
   [/((?:\b(?:mysql|mysqldump|mysqladmin|mariadb)|(?<![\w.*])7za?)\b[^\n|;&]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
   // The same with a line break, a here-string or a non-ASCII blank between the flag and the value; a plain blank is mysql asking for the password, and what follows is a database name.
-  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n|;&]{0,200}?\s-p(?:[ \t]*<<<[ \t]*|[ \t]*\r?\n\s*|[^\S \t\r\n]+)["']?)(?![-<])((?<=")[^"\n]{3,2000}(?=")|(?<=')[^'\n]{3,2000}(?=')|[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n|;&]{0,200}?\s-p(?:[ \t]*<<<[ \t]*|[^\S \t\r\n]+)["']?)(?![-<])((?<=")[^"\n]{3,2000}(?=")|(?<=')[^'\n]{3,2000}(?=')|[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // -p'x' with no command before it, and an HTML password input.
   [/((?:^|[\s;|&])-p)(?:"[^"\n]{3,2000}"|'[^'\n]{3,2000}')/g, '$1[redacted]'],
   [/(<input\b[^>]{0,200}?\btype=["']?password["']?[^>]{0,200}?\bvalue=["']?)[^"'>\s]{1,2000}/gi, '$1[redacted]'],
@@ -630,7 +630,7 @@ const SECRETS = [
   // A quoted value goes whole, blanks and all, as in a command; it is never a key. Unquoted, a value ends at its first blank
   // (`password: p@ss w0rd` keeps all of it: `p@ss` is under 6), since prose follows a value as often as a second word does.
   // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret)[ _-]?key|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\s{0,20}[:=\uFF1A]\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:\\*["']|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret)[ _-]?key|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\s{0,20}[:=\uFF1A]\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:\\*["']|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
   [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=\uFF1A]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
 ];
@@ -641,8 +641,8 @@ const redactRaw = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
 // shortcut: homoglyphs from another script (Cyrillic o for Latin o) are not folded; there is no safe map, add one if one is ever seen used.
 const fold = (s) => s.normalize('NFKD').replace(/\p{M}|\p{Default_Ignorable_Code_Point}/gu, '')
   .replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|(quot|apos));/gi, (m, d, h, n) => { const c = n ? (n.toLowerCase() === 'quot' ? 34 : 39) : parseInt(d ?? h, d ? 10 : 16); return c > 31 && c < 127 ? String.fromCharCode(c) : m; })
-  .replace(/\\+u00([2-7][0-9a-f])|%([2-7][0-9a-f])/gi, (m, a, b) => String.fromCharCode(parseInt(a ?? b, 16)));
+  .replace(/\\{1,8}u00([2-7][0-9a-f])|%([2-7][0-9a-f])/gi, (m, a, b) => String.fromCharCode(parseInt(a ?? b, 16)));
 export const redact = (s) => {
   const u = s.replace(/\\\r?\n[ \t]*/g, ''), r = redactRaw(u), f = fold(r), g = f === r ? r : redactRaw(f);
-  return r === u && g === f ? s : g;
+  return g === f ? (r === u ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
 };

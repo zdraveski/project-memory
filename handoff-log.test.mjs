@@ -672,7 +672,7 @@ ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 's
     ['comma in password', `password=Zq7Hk2,${TAIL}`, TAIL], ['semicolon in password', `password=Zq7Hk2;${TAIL}`, TAIL], ['colon-style comma', `password: Zq7Hk2,${TAIL}`, TAIL],
     ['escaped quote in json value', `{"password": "Zq7Hk2\\"${TAIL}"}`, TAIL], ['escaped quote in shell dq', `mysql --password="Zq7Hk2\\"${TAIL}"`, TAIL], ['odbc braces', `Driver={SQL};PWD={Zq7;Hk2${TAIL}};`, TAIL],
     ['backslash continued value', `password=Zq7Hk2\\\n${TAIL}`, TAIL], ['backslash continued env', `API_KEY=${T}\\\n${T}`, T + '\n'], ['--password then continuation', `mysql --password \\\n  ${S}`],
-    ['-p then newline', `mysql -u root -p\n${S}`], ['key newline = value', `password\n= ${S}`], ['Bearer newline token', `Bearer\n${S}${S}`, S],
+    ['key newline = value', `password\n= ${S}`], ['Bearer newline token', `Bearer\n${S}${S}`, S],
     ['nbsp around =', `password\u00a0=\u00a0${S}`], ['ideographic space around :', `password\u3000:\u3000${S}`], ['nbsp after -p', `mysql -p\u00a0${S}`],
     ['block scalar', `password: |\n  ${S}`], ['folded scalar', `password: >-\n  ${S}`], ['anchor', `password: &pw ${S}`], ['quoted multi-line', `password: "first Zq9 part\n  second ${TAIL}"`, TAIL],
     ['json array', `{"password": ["${S}"]}`], ['CDATA', `<password><![CDATA[${S}]]></password>`], ["ANSI-C quotes", `PASSWORD=$'${S}'`], ['js concat', `const password = "Zq7Hk2" + "${TAIL}";`, TAIL],
@@ -684,8 +684,12 @@ ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 's
   const lost = must.filter(([, s, n = S]) => redact(s).includes(n)).map(([n]) => n);
   ok(lost.length === 0, `redact keeps a secret behind a look-alike, escape or wrapper: ${lost.join('; ')}`);
   const plainText = 'café résumé 100%25 done, a\\\nb; the \\"quoted\\" word &amp; more';
+  const mixed = 'password=' + 'Zq7Hk2' + 'Xv9Lm4Qa ' + 'café résumé &amp; 100%25 ü й';
+  ok(redact(mixed) === 'password=[redacted] café résumé &amp; 100%25 ü й', 'a secret found in the raw text leaves the rest of the entry as written (accents, entities, escapes)');
+  ok(['mysql -u root -p\nmydatabase_name', 'mysql -u root -p\n  SELECT 1;', 'password: "\nsome prose here\nthen "quoted" text'].every((s) => !/mydatabase|SELECT|prose/.test(s) || redact(s).includes(s.match(/mydatabase_name|SELECT 1|some prose here/)[0])), 'a -p on its own line keeps the next word, a quote opened at a line end is not a value');
+  ok(redact('the Basic\nauthentication scheme') === 'the Basic\nauthentication scheme', 'prose ending in Basic keeps the next line');
   ok(redact(plainText) === plainText, 'text with no secret is returned exactly as written, accents, escapes and line wraps included');
-  const [fast, how] = linear((m) => { redact('password: "' + 'a "\\'.repeat(2_000 * m)); redact('password=' + 'x,'.repeat(5_000 * m)); redact('pass​'.repeat(2_000 * m)); }, 1000);
+  const [fast, how] = linear((m) => { redact('password: "' + 'a "\\'.repeat(2_000 * m)); redact('password=' + 'x,'.repeat(5_000 * m)); redact('pass​'.repeat(2_000 * m)); redact('\\'.repeat(2_000 * m)); }, 1000);
   ok(fast, `the quoting and folding rules are linear (${how})`);
 }
 {
