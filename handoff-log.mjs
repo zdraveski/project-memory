@@ -976,6 +976,7 @@ function health(dir) {
   try {
     const s = JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8'));
     if (s.failures >= 3) out.push(`Memory snapshots have failed ${s.failures} times in a row, last ok ${s.lastOk ? local(s.lastOk) : 'never'}: ${s.error}`);
+    if (s.held?.length) out.push(`Memory snapshots skip ${s.held.join(', ')}: it holds what looks like a key, token or password. Remove the secret and the next reply snapshots it.`);
     if (s.missed?.length) out.push(`Memory snapshots leave out ${s.missed.join(', ')}: ${MISSED}`);
   } catch {}
   return out;

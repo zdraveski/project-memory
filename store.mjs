@@ -5,6 +5,7 @@
 import { lstatSync, mkdirSync, rmdirSync, rmSync, statSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, readdirSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, resolve, basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
+import { redact } from './handoff-log.mjs';
 
 // Claude Code's folder: ~/.claude, or CLAUDE_CONFIG_DIR when that is set
 // (read by its fixed name). Under it, the hooks wrote nothing and said nothing.
@@ -163,7 +164,7 @@ export const isIndex = (f) => f === 'MEMORY.md' || f === ARCHIVE;
 // description's first 140 characters, each one billed at every session start,
 // and never half an emoji: a cut through one wrote U+FFFD into the index.
 export const pointerLine = (file, desc) =>
-  `- [${file.replace(/\.md$/, '').replace(/-/g, ' ').replace(/[[\]]/g, '')}](${file}) — ${desc.slice(0, 140).replace(/[\uD800-\uDBFF]$/, '')}`;
+  `- [${redact(file).replace(/\.md$/, '').replace(/-/g, ' ').replace(/[[\]]/g, '')}](${redact(file)}) — ${redact(desc).slice(0, 140).replace(/[\uD800-\uDBFF]$/, '')}`;
 
 // The listed name an index line's file opens, from one listing of the store,
 // for tiering and the CLI alike: on Windows (Kase.md) is kase.md's. A name the
@@ -298,13 +299,13 @@ export const gitArgs = (...a) => (LOCAL_GIT_ENV.forEach((k) => delete process.en
 
 // A failure's reason, as stored for status and the briefing: the message's first line, with a refused write's `<path>.tmp<pid>` cut from
 // it (status printed it as a leftover file).
-export const reason = (e) => String(e?.message).split('\n')[0].replace(/\.tmp\d+/g, '');
+export const reason = (e) => redact(String(e?.message).split('\n')[0].replace(/\.tmp\d+/g, ''));
 // git's reason for a failure: stderr's first line that is not a warning -- a
 // repack Windows could not finish leaves an .idx with no .pack, and git warns
 // of it on every command (2026-10-27) -- else the message's, which only says
 // which command failed (reason()). The stderr line loses a temp file's name too.
-export const gitWhy = (e) => (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn') ? 'git is not installed'
-  : String(e.stderr || '').split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('warning:')) || reason(e)).replace(/\.tmp\d+/g, '');
+export const gitWhy = (e) => redact((e.code === 'ENOENT' && String(e.syscall).startsWith('spawn') ? 'git is not installed'
+  : String(e.stderr || '').split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('warning:')) || reason(e)).replace(/\.tmp\d+/g, ''));
 
 // A file's text, or null when there is none: what replaceIfUnchanged compares.
 export const raw = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);

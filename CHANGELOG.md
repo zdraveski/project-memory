@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- A note that holds a key, token or password is kept out of the memory snapshots, and `status` and the startup line say which one.
+- `memory promote` refuses a note that holds a key, token or password; `--force` copies it anyway.
+- Index lines for notes without an entry no longer copy a secret from the description or file name.
+- `memory search` and `memory status` no longer print a secret that sits in a note's file name or `[[link]]`.
+- `compact-gate --state` and the gate's messages no longer print secrets.
+- Stored failure reasons no longer keep a secret that an error message quoted.
+- README and FAQ: the redaction promise now says which saved files it covers.
+
 ## 1.4.0 (2026-11-14)
 
 - A new hook watches git commands against the `enforce:` rules in your notes and logs which note matched (`.enforce-log` in the store, no command text). It blocks nothing, prints nothing, and does nothing while memory is off or the conversation is private.

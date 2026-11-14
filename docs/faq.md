@@ -33,9 +33,11 @@ Code's own memory. [Privacy policy](../PRIVACY.md).
   yesterday."* It lists the journal entries that match and removes the ones
   you confirm.
 
-Keys, tokens and passwords are replaced with `[redacted]` before anything is
-saved, but no tool catches every secret, so use the tags for anything
-sensitive.
+Keys, tokens and passwords in the journal and the handoff are replaced with
+`[redacted]` before they are saved. Notes Claude writes itself are not
+rewritten: a note that holds one is kept out of the snapshots, and `memory
+promote` refuses it. No tool catches every secret, so use the tags for
+anything sensitive.
 
 ## How much disk space does it use?
 

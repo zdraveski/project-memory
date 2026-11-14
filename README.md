@@ -126,9 +126,11 @@ memory folder. The journal is its `journal` folder, one file per day.
 - The journal keeps each exchange whole: your message, Claude's reply, every
   file it changed and every command it ran. It stays until
   you delete it or ask Claude to forget part of it.
-- Keys, tokens and passwords are replaced with `[redacted]` before anything
-  is saved. No tool catches every secret, so use the tags below for anything
-  else.
+- Keys, tokens and passwords in the journal and the handoff are replaced with
+  `[redacted]` before they are saved. Notes Claude writes itself (and
+  `MEMORY.md`) are not rewritten: a note that holds one is kept out of the
+  snapshots, and `memory promote` refuses it. No tool catches every secret,
+  so use the tags below for anything else.
 - Put text between `<private>` and `</private>` to keep it out. Type
   `<private-session>` in any message to keep the whole conversation out; what
   was saved of it before is removed, except the history's copy of days that
