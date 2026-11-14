@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, rea
 import { join } from 'node:path';
 import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, isOff, tag, QUIET, OFF, listOf } from './store.mjs';
 
-const KEYS = ['on', 'has', 'unless'], MAX = 8;
+const BSL = String.fromCharCode(92), KEYS = ['on', 'has', 'unless'], MAX = 8;
 
 // The note's rule: { rule: { on, has, unless } }, { bad: reason }, or null when it has no enforce: block.
 // Only the front matter is read. Never throws.
@@ -19,12 +19,12 @@ export function ruleOf(text) {
   for (const l of lines.slice(at + 1)) {
     if (!/\S/.test(l)) continue;
     if (!/^[ \t]/.test(l)) break;
-    const m = l.match(/^[ \t]+([^:\s]+):[ \t]*(.*?)[ \t]*$/);
+    const m = l.match(/^[ \t]+([^:\s]+):[ \t]*(.*)$/);
     if (!m) return { bad: l.trim().startsWith('-') ? 'a block list is not read; write a flow list like [a, b]' : `cannot read the line "${l.trim().slice(0, 40)}"` };
     if (m[1] === 'true') return { bad: 'key `on` was rewritten to `true`; write it as on: git add' };
     if (!KEYS.includes(m[1])) return { bad: `unknown key \`${m[1]}\`` };
     if (m[1] in got) return { bad: `\`${m[1]}\` is given twice` };
-    got[m[1]] = m[2];
+    got[m[1]] = m[2].trimEnd(); // trimEnd, not a lazy `(.*?)[ \t]*$` in the match: that was quadratic on a long run of blanks
   }
   const words = (key, needed) => {
     const v = got[key];
@@ -52,42 +52,47 @@ export function rulesOf(dir) {
   try { names = readdirSync(dir).filter((n) => n.endsWith('.md') && !isIndex(n)).sort(); } catch {}
   return names.flatMap((file) => {
     try {
-      const text = readFileSync(join(dir, file), 'utf8'), r = front(text).tier === 'archive' ? null : ruleOf(text);
+      const text = readFileSync(join(dir, file)).subarray(0, HEAD).toString('utf8'), r = front(text).tier === 'archive' ? null : ruleOf(text);
       return r ? [{ file, ...r }] : [];
     } catch { return []; }
   });
 }
 
-// A command's segments: split at && || ; | and newlines outside quotes, heredoc bodies dropped first
-// (a commit message that says "git add -A" is no command). A backslash is a character (Windows paths).
+// A command's segments: split at && || ; | { } ( ) and newlines outside quotes, heredoc bodies dropped (a commit
+// message that says "git add -A" is no command), a line ending in \ or ` joined to the next. Outside single quotes a
+// backslash escapes the next character; elsewhere it is a character (Windows paths).
 export function segments(command) {
-  const lines = String(command).split(/\r?\n/), kept = [];
-  for (let i = 0; i < lines.length; i++) {
-    kept.push(lines[i]);
-    const h = lines[i].match(/(?<!<)<<(?!<)-?[ \t]*(["']?)([A-Za-z_]\w*)\1/);
-    // No closing word: the "heredoc" was a quoted `<<EOF`, and the lines stay.
-    const end = h ? lines.findIndex((l, j) => j > i && l.trim() === h[2]) : -1;
-    if (end !== -1) i = end;
-  }
+  const lines = String(command).split(/\r?\n/), last = new Map(), HD = /<<-?[ \t]*(["']?)([A-Za-z_]\w*)\1/y;
+  lines.forEach((l, j) => last.set(l.trim(), j)); // the closing word's last line: an unclosed opener costs O(1), not a scan
   const out = []; let cur = '', q = '';
   const cut = () => { if (cur.trim()) out.push(cur.trim()); cur = ''; };
-  const s = kept.join('\n');
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (q) { cur += c; if (c === q) q = ''; }
-    else if (c === '"' || c === "'") { q = c; cur += c; }
-    else if (c === '\n' || c === ';' || c === '|' || c === '&' && s[i + 1] === '&') { cut(); if (s[i + 1] === c && c !== '\n' && c !== ';') i++; }
-    else cur += c;
+  for (let n = 0; n < lines.length; n++) {
+    const l = lines[n], docs = []; let join = false, m;
+    for (let i = 0; i < l.length; i++) {
+      const c = l[i];
+      if (c === BSL && q !== "'") { if (i + 1 < l.length) cur += c + l[++i]; else if (!q) join = true; }
+      else if (q) { cur += c; if (c === q) q = ''; }
+      else if (c === '"' || c === "'") { q = c; cur += c; }
+      else if (c === '`' && i + 1 === l.length) join = true;
+      else if (c === '<' && l[i - 1] !== '<' && l[i + 1] === '<' && l[i + 2] !== '<' && (HD.lastIndex = i, m = HD.exec(l))) { docs.push(m[2]); cur += c; }
+      else if (';|{}()'.includes(c) || c === '&' && l[i + 1] === '&') { cut(); if (c === '&' || c === '|' && l[i + 1] === '|') i++; }
+      else cur += c;
+    }
+    if (n === lines.length - 1) break;
+    if (q) cur += '\n'; else if (join) cur += ' '; else cut();
+    if (!q && !join) for (const w of docs) { const j = last.get(w) > n ? lines.findIndex((x, k) => k > n && x.trim() === w) : -1; if (j !== -1) n = j; }
   }
   cut();
   return out;
 }
 
-// A segment's words: blanks split them outside quotes, quotes group and are dropped.
+// A segment's words: blanks split them outside quotes, quotes group and are dropped, \" and \' are the quote itself.
 export function tokens(segment) {
   const out = []; let cur = '', q = '', has = false;
-  for (const c of segment) {
-    if (q) { if (c === q) q = ''; else cur += c; }
+  for (let i = 0; i < segment.length; i++) {
+    const c = segment[i];
+    if (c === BSL && q !== "'" && i + 1 < segment.length) { const d = segment[++i]; cur += d === '"' || d === "'" ? d : c + d; }
+    else if (q) { if (c === q) q = ''; else cur += c; }
     else if (c === '"' || c === "'") { q = c; has = true; }
     else if (/\s/.test(c)) { if (cur || has) out.push(cur); cur = ''; has = false; }
     else cur += c;
@@ -96,8 +101,8 @@ export function tokens(segment) {
   return out;
 }
 
-const LEAD = ['!', '{', 'do', 'then', 'else', 'elif', 'if', 'while', 'until'];
-const OPTS_WITH_VALUE = ['-C', '-c', '--git-dir', '--work-tree'], OPTS = ['--no-pager', '-P', '--literal-pathspecs'];
+const LEAD = ['!', 'do', 'then', 'else', 'elif', 'if', 'while', 'until', 'env', 'command', 'sudo', 'time', 'rtk', 'exec', 'nohup', '&'];
+const OPTS_WITH_VALUE = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix', '--attr-source'];
 // Whether `command` is the rule's git subcommand (`on`), and whether it also holds a word of `has` and none of `unless`.
 // shortcut: `bash -c "..."`, `$(...)`, aliases and anything after `--` are not seen (said in the README).
 export function hits(rule, command) {
@@ -105,14 +110,9 @@ export function hits(rule, command) {
   let on = false, hit = false;
   for (const toks of segs) {
     let i = 0;
-    // A group or loop opener before the command: `(git ...)`, `do git ...`, `then git ...`.
-    if (toks[0]?.startsWith('(')) { toks[0] = toks[0].replace(/^\(+/, ''); toks[toks.length - 1] = toks[toks.length - 1].replace(/\)+$/, ''); }
     while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || LEAD.includes(toks[i]) || !toks[i])) i++;
-    if (toks[i++] !== 'git') continue;
-    for (; i < toks.length; i++) {
-      if (OPTS_WITH_VALUE.includes(toks[i])) i++;
-      else if (!(OPTS.includes(toks[i]) || /^--(?:git-dir|work-tree)=/.test(toks[i]))) break;
-    }
+    if (!/^(?:.*[\\/])?git(?:\.exe)?$/i.test(toks[i++] ?? '')) continue;
+    while (toks[i]?.startsWith('-')) i += OPTS_WITH_VALUE.includes(toks[i]) ? 2 : 1;
     if (toks[i] !== rule.on) continue;
     on = true;
     const args = toks.slice(i + 1), stop = args.indexOf('--');
@@ -139,10 +139,10 @@ export function commandsOf(file, chunk, seg, got) {
   } finally { closeSync(fd); }
 }
 
-export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024, CACHE_V = 1;
+export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024, CACHE_V = 2, HEAD = 64 * 1024;
 
 // A store's rules through its cache `.enforce.json` ({ v, files: { file: { mtime, size, r } } }; another v is rebuilt, as ruleOf may read differently): only a note that is new or changed since
-// is read, and then only its first 2 KB unless that holds `enforce:`. A cache that does not read is rebuilt. Never throws.
+// is read, and then only its first 64 KB, and ruleOf only if that holds `enforce:`. A cache that does not read is rebuilt. Never throws.
 function cached(dir) {
   let old = {}, names = [], changed = false;
   try { const j = JSON.parse(readFileSync(join(dir, CACHE), 'utf8')); if (j?.v === CACHE_V && j.files && typeof j.files === 'object' && !Array.isArray(j.files)) old = j.files; } catch {}
@@ -155,10 +155,10 @@ function cached(dir) {
       if (was && was.mtime === mtime && was.size === size) r = was.r;
       else {
         changed = true;
-        const fd = openSync(join(dir, file), 'r'), head = Buffer.alloc(2048);
-        let got = 0; try { got = readSync(fd, head, 0, 2048, 0); } finally { closeSync(fd); }
-        if (!head.toString('utf8', 0, got).includes('enforce:')) r = null;
-        else { const text = readFileSync(join(dir, file), 'utf8'); r = front(text).tier === 'archive' ? null : ruleOf(text); }
+        const fd = openSync(join(dir, file), 'r'), head = Buffer.alloc(Math.min(size, HEAD));
+        let got = 0; try { got = readSync(fd, head, 0, head.length, 0); } finally { closeSync(fd); }
+        const text = head.toString('utf8', 0, got);
+        r = text.includes('enforce:') && front(text).tier !== 'archive' ? ruleOf(text) : null;
       }
       now[file] = { mtime, size, r: r ?? null };
       if (r) out.push({ file, ...r });
