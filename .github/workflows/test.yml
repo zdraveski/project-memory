@@ -24,7 +24,7 @@ jobs:
     # Windows holds a file another program opened here; the memory-tier test must prove it.
     env:
       REAL_LOCKS: "${{ matrix.os == 'windows-latest' && '1' || '' }}"
-    # The seven suites take ~3 minutes; a hang would otherwise hold a runner for 6 hours.
+    # The eight suites take ~3 minutes; a hang would otherwise hold a runner for 6 hours.
     timeout-minutes: 20
     steps:
       # A pull request's code runs here: the checkout keeps no token for it to read.
@@ -43,6 +43,7 @@ jobs:
       - run: node memory.test.mjs
       - run: node journal.test.mjs
       - run: node enforce.test.mjs
+      - run: node enforce-hook.test.mjs
       # What a compaction keeps: the journal every fact, the print after it the start of each exchange it shows.
       - run: node survive.mjs
 

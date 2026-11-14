@@ -1,9 +1,9 @@
 // A note can carry a rule a computer checks on a git command (`enforce:` in its
 // front matter). This file reads the rule and matches it; it never runs, blocks
 // or writes anything. Imports store.mjs only, so a hook can load it fast.
-import { readFileSync, readdirSync, openSync, closeSync, fstatSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { frontEnd, front, isIndex } from './store.mjs';
+import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, isOff, tag, QUIET, OFF, listOf } from './store.mjs';
 
 const KEYS = ['on', 'has', 'unless'], MAX = 8;
 
@@ -137,4 +137,57 @@ export function commandsOf(file, chunk, seg, got) {
       }
     }
   } finally { closeSync(fd); }
+}
+
+export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024, CACHE_V = 1;
+
+// A store's rules through its cache `.enforce.json` ({ v, files: { file: { mtime, size, r } } }; another v is rebuilt, as ruleOf may read differently): only a note that is new or changed since
+// is read, and then only its first 2 KB unless that holds `enforce:`. A cache that does not read is rebuilt. Never throws.
+function cached(dir) {
+  let old = {}, names = [], changed = false;
+  try { const j = JSON.parse(readFileSync(join(dir, CACHE), 'utf8')); if (j?.v === CACHE_V && j.files && typeof j.files === 'object' && !Array.isArray(j.files)) old = j.files; } catch {}
+  try { names = readdirSync(dir).filter((n) => n.endsWith('.md') && !isIndex(n)).sort(); } catch { return []; }
+  const now = {}, out = [];
+  for (const file of names) {
+    try {
+      const { mtimeMs: mtime, size } = statSync(join(dir, file)), was = old[file];
+      let r;
+      if (was && was.mtime === mtime && was.size === size) r = was.r;
+      else {
+        changed = true;
+        const fd = openSync(join(dir, file), 'r'), head = Buffer.alloc(2048);
+        let got = 0; try { got = readSync(fd, head, 0, 2048, 0); } finally { closeSync(fd); }
+        if (!head.toString('utf8', 0, got).includes('enforce:')) r = null;
+        else { const text = readFileSync(join(dir, file), 'utf8'); r = front(text).tier === 'archive' ? null : ruleOf(text); }
+      }
+      now[file] = { mtime, size, r: r ?? null };
+      if (r) out.push({ file, ...r });
+    } catch {}
+  }
+  if (changed || Object.keys(old).length !== Object.keys(now).length) try { writeFileSync(join(dir, CACHE), JSON.stringify({ v: CACHE_V, files: now })); } catch {}
+  return out;
+}
+
+// What the hook needs for a payload: { store, rules } with the project's and the shared store's rules that read
+// (a shared one is named `_shared/<file>`), or { store, off } when memory is off or the conversation is private.
+// An unreadable marker or tag list counts as private: no log is safer than a log of a private conversation.
+export function ruleSet(payload) {
+  if (memoryOff()) return { off: true, rules: [] };
+  const store = storeOf(payload);
+  if (isOff(store)) return { store, off: true, rules: [] };
+  const s = tag(payload.session_id), tagged = (dir, list) => { try { return listOf(readFileSync(join(dir, list), 'utf8')).includes(s); } catch (e) { return e.code !== 'ENOENT'; } };
+  if (s && (tagged(store, QUIET) || tagged(projectsRoot(), OFF))) return { store, off: true, rules: [] };
+  const rules = cached(store).filter((x) => x.rule);
+  const shared = sharedStore() === store ? [] : cached(sharedStore()).filter((x) => x.rule).map((x) => ({ ...x, file: `_shared/${x.file}` }));
+  return { store, rules: [...rules, ...shared] };
+}
+
+// One line of the log, unless the log is over LOG_MAX (it stops growing; status says so) or the store has no folder.
+// shortcut: no lock, so a line can be lost under heavy parallel use (said in the docs).
+export function record(store, entry) {
+  try {
+    const f = join(store, LOG);
+    let size = 0; try { size = statSync(f).size; } catch {}
+    if (size <= LOG_MAX) appendFileSync(f, JSON.stringify(entry) + '\n');
+  } catch {}
 }

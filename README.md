@@ -194,8 +194,11 @@ enforce:
 
 Try the rule before you trust it: `memory enforce replay <note>` lists what it would have caught in the last 30 days of this project's conversations (sub-agents included); `--all` reads every project, and can take about a minute on 2.7 GB of history. It reads only; read each hit yourself, because a hit is a catch only if you agree the command broke the lesson.
 
+Once a rule is in a note, a hook watches your git calls (sub-agents included) and logs which note matched, to `.enforce-log` in the project's store: the note's name, the session, the sub-agent type and the tool-call id, never the command. It blocks nothing and prints nothing. It does nothing while memory is off or the conversation is private, and a failure lets the call go on. The log stops growing at 256 KB (delete it to restart), and a line can be lost when many sessions write at once. The hook adds about 40 ms to each git call on a store of 194 notes (measured once, a copy of the largest store here; the first call after a note changes takes about 180 ms more): the rules are cached in `.enforce.json`, and only a changed note is read again.
+
 Few lessons fit this form. Of 115 feedback notes in one real store, about 1 can be written as a git rule. This is a test of the idea, not a promise. What a rule does not see:
 
+- Wrapped commands the hook is never started for, because Claude Code's `if` filter skips them: `env FOO=1 git add -A`, `command git add -A`, `/usr/bin/git add -A`, `git.exe add -A`, `rtk git add -A`. (`FOO=1 git add -A` and `cd x && git add -A` are seen.) Replay reads the saved commands and does see these.
 - `$(...)` inside quotes, `bash -c "git add -A"`, and words after `--` (`git add -- -A`); git aliases and scripts; joined short flags (`-Av`); `&` alone as a separator, `#` comments, and a rule with `unless:` words that a comment holds. Replay skips private sessions and projects with memory off.
 
 ## Long conversations

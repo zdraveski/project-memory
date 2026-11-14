@@ -445,3 +445,10 @@ export function replaceIfUnchanged(path, expected, next) {
     }
   } finally { try { unlinkSync(tmp); } catch {} }
 }
+
+// A session's short tag: enough to tell parallel sessions apart in one file.
+export const tag = (id) => String(id || '').slice(0, 8);
+// The conversations marked private, by tag (handoff-log.mjs's hushed() writes and reads them): in a store.
+export const QUIET = '.private-sessions';
+// The conversations held with auto memory off, kept the same way beside the projects.
+export const OFF = '.memory-off';

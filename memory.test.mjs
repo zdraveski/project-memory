@@ -458,19 +458,26 @@ r = spawnSync(process.execPath, [join(home, 'linked-cli', 'memory.mjs'), 'status
 ok(r.stdout.includes(dir), `the CLI run through a symlinked folder still runs (got ${JSON.stringify(r.stdout + r.stderr)})`);
 
 // The plugin's own wiring, hooks/hooks.json: the four hooks, each with its
-// matcher and its flag, run by node from the plugin's folder.
+// matcher and its flag, run by node from the plugin's folder. PreToolUse has two handlers, one per `if` rule.
 const hookFile = JSON.parse(readFileSync(tool('hooks/hooks.json'), 'utf8'));
 const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((e) => e.hooks.map((x) =>
   `${ev} | ${e.matcher || ''} | ${x.command} ${(x.args || []).join(' ')}`))).sort();
 ok(JSON.stringify(wiring) === JSON.stringify(['PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop',
+  'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs', 'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs',
   'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/handoff-log.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
-  `the plugin wires the four hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
+  `the plugin wires its hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
+{
+  const { HOOKS } = await import('./deploy.mjs');
+  const named = wiring.map((w) => w.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/(\S+)/)[1]);
+  ok(named.every((f) => HOOKS.includes(f)), `every script hooks.json runs is deployed (HOOKS lacks ${named.filter((f) => !HOOKS.includes(f))})`);
+}
 // A hook with no timeout gets Claude Code's 10 minutes; a real Stop took 45.7 s. A timed-out hook's output is discarded.
-const hooksOf = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.map((e) => ({ ev, matcher: e.matcher || '', ...e.hooks[0] })));
+const hooksOf = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((e) => e.hooks.map((x) => ({ ev, matcher: e.matcher || '', ...x }))));
 const timeouts = Object.fromEntries(hooksOf.map((h) => [`${h.ev}|${h.matcher}`, h.timeout]));
-ok(JSON.stringify(timeouts) === JSON.stringify({ 'Stop|': 120, 'SessionStart|startup|resume|clear|compact': 30, 'PreCompact|manual': 120, 'PreCompact|auto': 60 }),
+ok(JSON.stringify(timeouts) === JSON.stringify({ 'Stop|': 120, 'SessionStart|startup|resume|clear|compact': 30, 'PreToolUse|Bash|PowerShell': 5, 'PreCompact|manual': 120, 'PreCompact|auto': 60 }),
   `each hook has its timeout in seconds (got ${JSON.stringify(timeouts)})`);
-ok(hooksOf.every((h) => typeof h.statusMessage === 'string' && h.statusMessage), 'each hook has a statusMessage');
+// The PreToolUse hook has none: a status line on every git call is noise.
+ok(hooksOf.filter((h) => h.ev !== 'PreToolUse').every((h) => typeof h.statusMessage === 'string' && h.statusMessage), 'each hook has a statusMessage');
 ok(new Set(hooksOf.filter((h) => h.ev === 'PreCompact').map((h) => h.statusMessage)).size === 2, 'the two PreCompact messages differ');
 // A fork inherits its conversation, so it needs no briefing of its own.
 ok(!/fork/.test(hookFile.hooks.SessionStart[0].matcher), 'the SessionStart matcher leaves fork out');

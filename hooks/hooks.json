@@ -6,6 +6,12 @@
     "SessionStart": [
       { "matcher": "startup|resume|clear|compact", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/handoff-log.mjs", "--print"], "timeout": 30, "statusMessage": "Briefing" }] }
     ],
+    "PreToolUse": [
+      { "matcher": "Bash|PowerShell", "hooks": [
+        { "type": "command", "if": "Bash(git *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs"], "timeout": 5 },
+        { "type": "command", "if": "PowerShell(git *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs"], "timeout": 5 }
+      ] }
+    ],
     "PreCompact": [
       { "matcher": "manual", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs", "--stop"], "timeout": 120, "statusMessage": "Saving before compaction" }] },
       { "matcher": "auto", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/compact-gate.mjs"], "timeout": 60, "statusMessage": "Checking before compaction" }] }

@@ -34,10 +34,13 @@ This page says what it reads, what it saves, and how to remove it.
   to see where the plugin is installed. It never reads your Claude Code
   settings file, which can hold keys.
 
+The git-rule watcher (a PreToolUse hook) reads the notes that hold an `enforce:` rule, the first bytes of the conversation's record to find its store, and the git command about to run, to compare it with the rules. It sends nothing anywhere.
+
 ## What it saves
 
 All of it stays in `~/.claude/projects` on your computer:
 
+- `.enforce-log` and `.enforce.json` in a store: which note's rule a git command matched (note name, session tag, sub-agent type, tool-call id; never the command) and a cache of the rules. Nothing is written for a private conversation or while memory is off.
 - A record of where you left off (`handoff.md`): the start of your latest
   messages (up to 500 characters each) and of Claude's replies (up to 900),
   and the names of the files Claude changed, for the last 10 exchanges of each
