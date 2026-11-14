@@ -3331,5 +3331,50 @@ if (!quick) {
   }
 }
 
+// 1.4.1 H: prose, other languages, a password typed as the answer (redaction-corpus-39, -40, secret-paths-7, -9).
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const V = ['Zq8x', 'K2mP', '9vL4n'].join(''), W = ['correct', 'horse', 'battery', 'staple'];
+  const lines = [[`connect with pw: ${V}`], [`export DBPW=${V}`], [`credential=${V} for the vpn`], [`login with user admin and pass ${V}`], [`creds: bob / ${V}`], [`login with me / ${V}`],
+    [`the credentials are me:${V}`], [`set the password to ${V}`], [`change my password to ${V}`], [`PW ${V}`], [`my PIN is 638336`, '638336'], [`backup codes: 63833687 06838076 09497525`, '06838076'],
+    [`recovery code: xn3l-ny3z-cw3m`, 'xn3l-ny3z'], [`the password is ${W.join(' ')}, remember it`, 'horse battery'], [`the password is ${W.join('')}, remember it`, W.join('')],
+    ...['Passwort', 'mot de passe', 'contrase\u00f1a', '\u043f\u0430\u0440\u043e\u043b\u044c', 'l\u00f6senord', '\u30d1\u30b9\u30ef\u30fc\u30c9', 'adgangskode', 'wachtwoord'].map((w) => [`${w}: ${V}`])];
+  const bad = [];
+  for (const [t, v = V] of lines) for (const s of [t, `$ ${t}`, `look at this: ${t} thanks`, `echo start && ${t} # note`]) if (redact(s).includes(v) || clip(s, 2000).includes(v)) bad.push(s);
+  ok(clip('the password is sunshine', 2000) === 'the password is [redacted]', '1.4.1 H: one word after "the password is" is redacted');
+  ok(!bad.length, `1.4.1 H: prose, chat and other-language passwords are redacted (leaked: ${bad.join(' | ')})`);
+  for (const k of ['the password is hashed', 'the password is not stored in the vault.', 'the password is incorrect.', 'the password is correct and the user exists, ok', 'my password is wrong again', "credentials: 'include'",
+    'login: http://h.example.com/a1b2c3', 'login with google', 'creds: bob / alice', 'the pin is stuck', 'PW is short', 'backup codes: none', 'set the password to something stronger']) ok(clip(k, 2000) === k, `1.4.1 H: kept: ${k}`);
+  // A bare answer to a question that asks for a secret is not saved; one to any other question is.
+  const turnsOf = (q, a) => turns([asst(q), user(a), asst('ok')].join('\n'));
+  ok(turnsOf('What is the database password I should use?', V)[0].ask === '[redacted]', '1.4.1 H: a bare password after a password question is not kept');
+  ok(turnsOf('Please paste the API token and I will add it.', V)[0].ask === '[redacted]', '1.4.1 H: a bare token after a token question is not kept');
+  ok(turnsOf('Which branch should I use?', 'release-1.4')[0].ask === 'release-1.4', '1.4.1 H: a bare answer to another question is kept');
+  ok(turnsOf('What is the database password I should use?', 'use the one in vault')[0].ask === 'use the one in vault', '1.4.1 H: a sentence after a password question is kept');
+}
+
+// 1.4.1 H review: other-language prose, quoted passphrases, fewer false cuts, a typed passphrase, a cheap one-time-code rule.
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const V = ['Zq8x', 'K2mP', '9vL4n'].join('');
+  const bad = [];
+  for (const t of [`Passwort ist ${V}`, `Das Passwort lautet ${V}`, `mot de passe est ${V}`, `la contrase\u00f1a es ${V}`, `\u043f\u0430\u0440\u043e\u043b\u044c ${V}`, `heslo: ${V}`, `salasana: ${V}`, `jelsz\u00f3: ${V}`, `\u015fifre: ${V}`,
+    'the password is "correct horse battery staple"', 'pw is correct horse battery', 'the passphrase is \'correct horse battery staple\'']) {
+    const v = /correct/.test(t) ? 'horse battery' : V;
+    if (clip(t, 2000).includes(v)) bad.push(t);
+  }
+  ok(!bad.length, `1.4.1 H review: prose, other-language and quoted passwords are redacted (leaked: ${bad.join(' | ')})`);
+  for (const k of ['The reset key is held by the bastion host 2 days after rotation.', 'the verification code is sent by email in 5 minutes.', 'Use the reset code: sent to user within 24h', 'creds: foo/bar.js:42', 'creds: src/v2/auth.js']) ok(clip(k, 2000) === k, `1.4.1 H review: kept: ${k}`);
+  for (const unit of ['recovery codes: ', 'reset code is ']) {
+    const big = unit.repeat(Math.ceil(1e6 / unit.length)), t0 = Date.now();
+    clip(big, 2000);
+    ok(Date.now() - t0 < 3000, `1.4.1 H review: clip of 1 MB of "${unit}" is fast (${Date.now() - t0} ms)`);
+  }
+  const turnsOf = (q, a) => turns([q, user(a), asst('ok')].join('\n'));
+  ok(turnsOf(asst('What is the passphrase?'), 'correct horse battery staple')[0].ask === '[redacted]', '1.4.1 H review: a passphrase typed alone is not kept');
+  const askQ = rec('assistant', [{ type: 'tool_use', id: 'q1', name: 'AskUserQuestion', input: { questions: [{ question: 'What is the database password?' }] } }]);
+  ok(turnsOf(askQ, V)[0].ask === '[redacted]', '1.4.1 H review: a bare password after an AskUserQuestion is not kept');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
