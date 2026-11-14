@@ -148,6 +148,8 @@ export function record(dir, transcriptPath, turns, when) {
       let changed = 0;
       for (const e of fresh) {
         const was = have.get(e.key);
+        // A fork's copy of a parent's turn (same uuid, another transcript): the parent's entry stays.
+        if (was && was.t !== e.t) continue;
         if (!was || render(was) !== render(e)) changed++;
         have.set(e.key, was?.after ? { ...e, after: was.after } : e);
       }

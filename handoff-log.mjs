@@ -100,7 +100,7 @@ const unwrap = (s) => {
 // answer filed under the ask before: then only a name Claude Code itself uses
 // (task-notification, command-name, local-command-stdout, ide_opened_file,
 // agent-message, ...) is taken off, and the element is the ask. Any case: <PRIVATE> too.
-const lead = (known) => new RegExp(`^(?:\\s*<(?!private|pasted)(?=${known ? '(?:task-|command-|local-command-|bash-|ide_|agent-message|teammate-message|user-prompt-submit-hook)\\w' : '[A-Za-z]\\w{0,62}[_-]'})([A-Za-z][\\w-]{0,63})(?=[\\s>])[^>]{0,2000}>[\\s\\S]*?<\\/\\1>)+`, 'i');
+const lead = (known) => new RegExp(`^(?:\\s*<(?!private|pasted)(?=${known ? '(?:task-|command-|local-command-|bash-|ide_|agent-message|cross-session-message|teammate-message|user-prompt-submit-hook)\\w' : '[A-Za-z]\\w{0,62}[_-]'})([A-Za-z][\\w-]{0,63})(?=[\\s>])[^>]{0,2000}>[\\s\\S]*?<\\/\\1>)+`, 'i');
 const LEAD = lead(false), KNOWN = lead(true);
 export const own = (s) => { const u = unwrap(s); return u.replace(LEAD, '').trim() || u.replace(KNOWN, '').trim(); };
 // A slash command's record opens with its tags. Quoted anywhere else in a
@@ -268,7 +268,8 @@ export function turns(tail) {
     const t = text(r).trim(), n = r.type === 'user' ? norm(t) : '', told = heard(r);   // n only for a user record: nothing else reads it
     // A message typed while Claude worked has no user record, only this attachment: it opens a turn too (1.3.2). A private one
     // keeps the older way below (it freezes the turn it came into).
-    const q = r.type === 'attachment' && r.attachment?.type === 'queued_command' ? queuedText(r).trim() : '';
+    // Not another session's or a subagent's message (origin.kind peer, isMeta): it is no ask of the user's.
+    const q = r.type === 'attachment' && r.attachment?.type === 'queued_command' && !r.attachment.isMeta && [undefined, 'human', 'sdk'].includes(r.attachment.origin?.kind) ? queuedText(r).trim() : '';
     let ask = r.type === 'user' ? prompt(r, t) : q && !PRIVATE.test(norm(q)) && asked(r, q) ? own(q) : '';
     // A user record that repeats the queued message just opened is the same ask.
     if (ask && r.type === 'user' && pending?.queued && !pending.did && ask === pending.ask) continue;
@@ -759,7 +760,17 @@ export function handoff(input, sink = null) {
     // handoff.md by minute, and one listed under another zone's minute stayed (fuzz, 2026-10-30).
     const gone = fresh.filter(forgot);
     const drop = quiet ? (t) => t.s === s : gone.length ? (t) => t.s === s && gone.some((g) => g.ask === t.ask && g.did === t.did) : null;
-    const w = put(dir, quiet ? [] : fresh.filter((t) => !forgot(t)), drop, s, got.whole);
+    // A fork's copy of its parent's turn (the journal, written just above, holds that uuid under the parent's transcript) is
+    // listed under the parent already. shortcut: found by the journal's day of the turn only; a clock moved across midnight lists it again.
+    const mineT = transcriptKey(input.transcript_path), days = new Map();
+    const copy = (t) => {
+      const d = (t.at ?? '').slice(0, 10); if (!t.id || !d) return false;
+      // An unreadable day (the journal's own failure, kept elsewhere) is no copy: the handoff is still written.
+      if (!days.has(d)) days.set(d, (() => { try { return raw(join(dir, 'journal', `${d}.md`)) ?? ''; } catch { return ''; } })());
+      const bytes = days.get(d), i = bytes.indexOf(`<!-- j:${t.id} t:`);
+      return i !== -1 && !bytes.startsWith(`${mineT} d:`, i + `<!-- j:${t.id} t:`.length);
+    };
+    const w = put(dir, quiet ? [] : fresh.filter((t) => !forgot(t) && !copy(t)), drop, s, got.whole);
     return quiet ? 'private' : w;
   });
   return r ?? 'busy';

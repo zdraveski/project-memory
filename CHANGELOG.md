@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A message another session or a subagent sends (cross-session-message, agent-message) is no longer saved as something you asked, and a forked session no longer lists its parent's turns again in handoff.md.
+
 - Saved text keeps harmless lines that were cut as secrets: URL and path settings (`TOKEN_URL=https://...`), a secret's name or reference (`secretName: x`), code that makes a token (`secrets.token_hex(16)`), schema types (`password: z.string().min(8)`), variable and template references, `theme=dark` cookies, "Password" labels, and prose after a key (`password: required`).
 
 - A password typed alone as the answer to a password question (one token, or a passphrase of plain words) is no longer kept in the compaction note, or after a question asked with AskUserQuestion; "Passwort ist x", "mot de passe est x" and quoted passphrases are cut, and one-time-code prose and `creds: file.js:42` are kept.
