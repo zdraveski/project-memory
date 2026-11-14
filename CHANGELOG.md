@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Saved text no longer keeps passwords given to more command-line tools: ssh-keygen -P, a password piped to docker login, sudo -S, kinit, chpasswd and similar, helm, skopeo, crane, oras, mc, rclone, az, aws and gcloud secret flags, terraform -var, sqlcmd, bcp, mycli, cqlsh, keytool, jarsigner, 7z, unzip, rar, ccrypt, plink, pscp, sshpass, smbclient, xfreerdp, rabbitmqctl, dotnet user-secrets, redis ACL SETUSER, reg add, curl `pw=` and HTTPie `password:=` fields, and htpasswd -nb.
 - Saved text no longer keeps tokens from about 40 more vendors (Terraform, Vault, Doppler, DigitalOcean, Heroku, Cloudflare, Sentry, Grafana, New Relic, Okta, Splunk, CircleCI, 1Password and more), including the ones given to `doctl -t`, `netlify --auth`, `ngrok add-authtoken`, `cargo login`, `composer config` and `bundle config`.
 - Authorization headers of any scheme (Digest, Hawk, OAuth1, AWS Signature V4, Negotiate, NTLM, SSWS, ApiKey), unsigned JWTs, webhook signature headers and `?auth=`, `?token=` and `?Authorization=` in a URL are redacted.
 - Docker `config.json` auth and identity tokens, `httpie -a`, Flask `SECRET_KEY`, HMAC, Fernet and hex keys in code, `aws configure set --profile p ...`, a bare 40-character AWS secret key, seed phrases, Bitcoin WIF keys, Solana keypair arrays, base64 private keys without a header, `oathtool` secrets, sops and ansible-vault blobs are redacted.
