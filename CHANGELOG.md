@@ -11,6 +11,8 @@
 - `compact-gate --state` and the gate's messages no longer print secrets.
 - Stored failure reasons no longer keep a secret that an error message quoted.
 - README and FAQ: the redaction promise now says which saved files it covers.
+- Secrets are now redacted behind look-alike spellings (full-width letters, hidden characters, accents, HTML entities, percent and unicode escapes), in JSON inside strings, in values with commas, semicolons, escaped quotes, braces, line wraps or blank lines, in long quoted values, and behind wrappers such as arrays, CDATA, shell quotes and `-p'..'`; a Cyrillic or Greek look-alike letter is still not caught.
+- When a secret is found, the rest of the entry keeps its accents, entities and escapes as written; a long run of backslashes no longer slows redaction.
 - A very long or hostile prompt, command or answer no longer stalls the memory hooks: a slash command's name, `memory.mjs` options, a JWT-like run, a value with many slashes and a long `SetEnvironmentVariable` value are read in linear time, and saved text is cut to 64 KB before secrets are removed.
 - Enforce rules: a rule after a long description is no longer ignored; a note with a long run of blanks can no longer stall every git call; a command with many unclosed heredocs is read in linear time.
 - Enforce rules now see a command after an escaped quote, after git options like `--no-optional-locks`, inside `{ }` or `( )`, after a line continuation, after a quoted `<<`, and behind `env`, `sudo`, `command`, `rtk`, `git.exe` or a full path to git.

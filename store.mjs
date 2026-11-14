@@ -510,7 +510,7 @@ const SECRETS = [
   // With a digit in it, or 32 characters or more: "Basic implementation/approach" and "Bearer authentication-header" were prose,
   // and were cut; a long one with no digit (1 in 400 random ones) was kept (audit #7). A hidden character after the word, as
   // redact() sees the raw text, does not hide the value. The long one has no . or /, so "basic tests/integration/x.rb" is kept.
-  [/\b(Bearer|Basic|Token)[ \p{Default_Ignorable_Code_Point}]+(?=[A-Za-z0-9._~+/=-]{0,200}\d|[A-Za-z0-9_~+=-]{32})[A-Za-z0-9._~+/=-]{20,}/giu, '$1 [redacted]'],
+  [/\b(Bearer|Basic|Token)[\s\p{Default_Ignorable_Code_Point}]+(?=[A-Za-z0-9._~+/=-]{0,200}\d|[A-Za-z0-9_~+=-]{32})[A-Za-z0-9._~+/=-]{20,}/giu, '$1 [redacted]'],
   // GitLab, npm and Hugging Face tokens; a Slack webhook is its own secret.
   [/\bglpat-[A-Za-z0-9_-]{20,}|\bnpm_[A-Za-z0-9]{36}\b|\bhf_[A-Za-z0-9]{30,}/g, '[redacted]'],
   // PyPI, Stripe webhooks, SendGrid, Google OAuth, Groq, xAI, Shopify,
@@ -536,7 +536,7 @@ const SECRETS = [
   // before `?user=me@x` was cut as a password.
   // A token alone as a URL's user (git clone https://<token>@github.com/…): long, with a digit (1.3.1 audit B-6).
   [/(\/\/)(?=[A-Za-z0-9_-]{0,200}\d)[A-Za-z0-9_-]{30,200}@/g, '$1[redacted]@'],
-  [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)(?!\d{1,5}[/?#])[^\s"'<>]{1,200}@/gi, '$1[redacted]@'],
+  [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)(?!\d{1,5}[/?#])[^\s"'<>]{1,2000}@/gi, '$1[redacted]@'],
   // curl -u user:it, --user user:it, quoted too, to the closing quote (review, 2026-11-01). Not `docker run -u 1000:1000`, a user
   // and group.
   [/((?:^|\s)(?:-[uU]|--(?:proxy-)?user)[ =]+["']?(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)(?:(?<="[^\s:'"]{1,100}:)[^"\n]{1,200}(?=")|(?<='[^\s:'"]{1,100}:)[^'\n]{1,200}(?=')|(?<=:)"[^"\n]{1,200}(?=")|(?<=:)'[^'\n]{1,200}(?=')|[^\s'"]{1,200})/g, '$1[redacted]'],
@@ -545,7 +545,7 @@ const SECRETS = [
   // command's own; nor "the --token flag", in prose.
   // Quoted, as a value with symbols or blanks must be, to its closing quote: the opening quote refused, each was kept (e2e audit,
   // 2026-11-01). A quoted one may start with `-`; a bare one that does is the next option (review, 2026-11-01).
-  [/(--(?!no-|ask-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|oauth2-bearer|requirepass|masterauth|pass)[ =]["']?|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload|mongo(?:sh|dump|restore|export|import)?)\b[^\n|;&]{0,200}?\s-p\s+["']?|\b(?:zip|mosquitto_(?:pub|sub|rr)|ldap(?:search|modify|add|delete|compare))\b[^\n|;&]{0,200}?\s-[Pw]\s+["']?|\b(?:requirepass|masterauth)[ \t]+["']?(?=[^\s"']{4})|\bssh-keygen\b[^\n|;&]{0,200}?\s-N\s+["']?)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  [/(--(?!no-|ask-)(?:[a-z]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|oauth2-bearer|requirepass|masterauth|pass)[ =]["']?|\b(?:(?:docker|podman|az|oc)\s+login|sshpass|twine\s+upload|mongo(?:sh|dump|restore|export|import)?)\b[^\n|;&]{0,200}?\s-p\s+["']?|\b(?:zip|mosquitto_(?:pub|sub|rr)|ldap(?:search|modify|add|delete|compare))\b[^\n|;&]{0,200}?\s-[Pw]\s+["']?|\b(?:requirepass|masterauth)[ \t]+["']?(?=[^\s"']{4})|\bssh-keygen\b[^\n|;&]{0,200}?\s-N\s+["']?)(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")(?:[^"\n\\]|\\.){1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // redis-cli AUTH [user] pass: both words, each quoted or bare; the user name is no secret worth the parsing (1.3.1 fix
   // review: `> out.txt`, `2>/dev/null`, a quoted pass with a blank and CRLF each kept the password). Two words, not to the
   // end: clip() joins lines first, and the rest of the entry went with it. Not an AUTH already [redacted]: clip() redacts
@@ -574,7 +574,7 @@ const SECRETS = [
   // last part is the secret's word (envNamed). Any `name = value` was read as one, and Python's `key = item.name`, `CACHE_KEY =
   // "x"` and `TOKEN_URL=https://…` were cut (review, 2026-11-01). Its close relatives too: a compose list item's `- NAME=…`, cmd's
   // `set NAME=…`, and one after a shell's `&&`, `||`, `;` or `|` (an inline variable before a command).
-  [/((?:^[ \t]*(?:-[ \t]+)?|(?:&&|\|\||[;|])[ \t]*)(?:(?:export|set|SET)[ \t]+)?([A-Z][A-Z0-9_]{0,100})=["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]{1,2000})/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
+  [/((?:^[ \t]*(?:-[ \t]+)?|(?:&&|\|\||[;|])[ \t]*)(?:(?:export|set|SET)[ \t]+)?([A-Z][A-Z0-9_]{0,100})=(?:\$?["'])?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]{1,2000})/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
   // A Kubernetes env entry, `- name: NAME` then `value: …` on the next line, judged by the name as a .env line is (review,
   // 2026-11-01).
   [/(-[ \t]+name:[ \t]*["']?([A-Za-z_][A-Za-z0-9_]{0,100})["']?[ \t]*\r?\n[ \t]+value:[ \t]*["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,2000})/g,
@@ -584,6 +584,11 @@ const SECRETS = [
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
   // In the mysql command only: `; find . -print` after it was cut. 7z as a command, not a `*.7z` file name before -print.
   [/((?:\b(?:mysql|mysqldump|mysqladmin|mariadb)|(?<![\w.*])7za?)\b[^\n|;&]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
+  // The same with a line break, a here-string or a non-ASCII blank between the flag and the value; a plain blank is mysql asking for the password, and what follows is a database name.
+  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n|;&]{0,200}?\s-p(?:[ \t]*<<<[ \t]*|[^\S \t\r\n]+)["']?)(?![-<])((?<=")[^"\n]{3,2000}(?=")|(?<=')[^'\n]{3,2000}(?=')|[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
+  // -p'x' with no command before it, and an HTML password input.
+  [/((?:^|[\s;|&])-p)(?:"[^"\n]{3,2000}"|'[^'\n]{3,2000}')/g, '$1[redacted]'],
+  [/(<input\b[^>]{0,200}?\btype=["']?password["']?[^>]{0,200}?\bvalue=["']?)[^"'>\s]{1,2000}/gi, '$1[redacted]'],
   // "my password is IT": one with a digit or a symbol, as a password has --
   // "the password is hashed" names none.
   // Also "the password for the prod db is IT", "the api key is IT", and
@@ -593,7 +598,7 @@ const SECRETS = [
   // SQL: `WITH PASSWORD 'x'`, `PASSWORD('x')`, `IDENTIFIED [WITH plugin] BY 'x'`; the value quoted, to its closing quote (1.3.2).
   [/(\b(?:password(?:\s{1,5}\(?|\()|identified\s{1,5}(?:with\s{1,5}\w{1,40}\s{1,5})?by)\s{0,5})(["'])([^"'\n]{1,200})(?=\2)/gi, (m, pre, q, v) => (arg(v) || code(v) ? m : `${pre}${q}[redacted]`)],
   // XML: `<password>x</password>` (the tag's name ends in the word), and `<add key="DbPassword" value="x"/>` (1.3.2).
-  [/(<[\w.:-]{0,40}(?:password|passwd|pwd|secret|apikey|token)(?=[\s>])[^>]{0,100}>)([^<\n]{3,500})(?=<)/gi, (m, pre, v) => (arg(v) || code(v) ? m : `${pre}[redacted]`)],
+  [/(<[\w.:-]{0,40}(?:password|passwd|pwd|secret|apikey|token)(?=[\s>])[^>]{0,100}>(?:<!\[CDATA\[)?)([^<\n]{3,500})(?=<)/gi, (m, pre, v) => (arg(v) || code(v) ? m : `${pre}[redacted]`)],
   [/(\bkey=["'][\w.-]{0,40}(?:password|passwd|pwd|secret|apikey|token)["']\s{1,5}value=["'])[^"'\n]{3,500}/gi, '$1[redacted]'],
   // Windows: PowerShell's ConvertTo-SecureString "x" and `$pw = "x"`, `net use Z: \\host\share x`, `schtasks /rp x` (1.3.2).
   [/(\bConvertTo-SecureString\s{1,5}(?:-String\s{1,5})?)("[^"\n]{1,200}"|'[^'\n]{1,200}'|[^\s"'-]\S{0,200})/gi, (m, pre, v) => (arg(v.replace(/^["']/, '')) ? m : `${pre}[redacted]`)],
@@ -625,8 +630,19 @@ const SECRETS = [
   // A quoted value goes whole, blanks and all, as in a command; it is never a key. Unquoted, a value ends at its first blank
   // (`password: p@ss w0rd` keeps all of it: `p@ss` is under 6), since prose follows a value as often as a second word does.
   // An Azure connection string's SharedAccessKey too, not its SharedAccessKeyName (e2e audit, 2026-11-01).
-  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret)[ _-]?key|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}["']?[ \t]{0,20}[:=\uFF1A]\s{0,20}["']?)((?<=")[^"\n]{6,200}(?=")|(?<=')[^'\n]{6,200}(?=')|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))[^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?:api|account|private|secret)[ _-]?key|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\s{0,20}[:=\uFF1A]\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:\\*["']|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
   [/((?<![A-Za-z0-9])tokens?[ \t]{0,20}[:=\uFF1A]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
 ];
-export const redact = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
+const redactRaw = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
+// A backslash line wrap is joined first (it cuts a secret in two), then the raw rules run, then the same rules on a folded copy of that:
+// look-alike letters, marks and hidden characters gone (NFKD, no marks, no Default_Ignorable), and an entity, a \u00XX or a %XX that
+// spells printable ASCII decoded. Text with no secret is returned as written.
+// shortcut: homoglyphs from another script (Cyrillic o for Latin o) are not folded; there is no safe map, add one if one is ever seen used.
+const fold = (s) => s.normalize('NFKD').replace(/\p{M}|\p{Default_Ignorable_Code_Point}/gu, '')
+  .replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|(quot|apos));/gi, (m, d, h, n) => { const c = n ? (n.toLowerCase() === 'quot' ? 34 : 39) : parseInt(d ?? h, d ? 10 : 16); return c > 31 && c < 127 ? String.fromCharCode(c) : m; })
+  .replace(/\\{1,8}u00([2-7][0-9a-f])|%([2-7][0-9a-f])/gi, (m, a, b) => String.fromCharCode(parseInt(a ?? b, 16)));
+export const redact = (s) => {
+  const u = s.replace(/\\\r?\n[ \t]*/g, ''), r = redactRaw(u), f = fold(r), g = f === r ? r : redactRaw(f);
+  return g === f ? (r === u ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
+};

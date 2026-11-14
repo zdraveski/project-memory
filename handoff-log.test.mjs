@@ -652,6 +652,46 @@ for (const l of shapes) ok(!/hunter2|s3cr3t|wJalr|abc123def|51Habc|lQOYBF|abcdef
 // redact() on its own too: clip's second pass, after the blanks are squeezed, takes a next-line value even when the first missed it (F23).
 for (const l of [fake('pass', 'word:\n  ', 'hunter2secret'), fake('tok', 'en:\n  ', 'hunter2tok3n')]) ok(!/hunter2/.test(redact(l)), `redact alone takes a value on the next line: ${JSON.stringify(redact(l))}`);
 ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 'sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6', 'ordinary text is left alone');
+// 1.4.1 B: look-alike spellings, escaped and wrapped values, long quoted values (hardening evasion-1..13, secret-paths-10).
+{
+  const S = 'Zq7' + 'Hk2Lm9' + 'Xw4Rt8', T = 'a1B2c3D4e5', TAIL = 'Lm9' + 'Xw4Rt8', W = 'tailMarkerQz9';
+  const words = (n) => Array.from({ length: n }, (_, i) => 'w' + i + 'Qz9').join(' ');
+  const must = [
+    ['zwsp in key', `pass\u200bword: ${S}`], ['soft hyphen in key', `pass\u00adword: ${S}`], ['zwnj in dashed key', `client-secret\u200c=${S}`],
+    ['zwsp in api key', `api\u200bkey=${S}${S}`, S], ['zwj inside ghp token', `ghp_${T.repeat(2)}\u200d${T.repeat(2)}`, T.repeat(2)],
+    ['zwsp in ghp prefix', `g\u200bhp_${T.repeat(4)}`, T.repeat(3)], ['rtl override after colon', `password:\u202e ${S}`], ['combining mark after colon', `password:\u0301 ${S}`],
+    ['fullwidth key', '\uff50\uff41\uff53\uff53\uff57\uff4f\uff52\uff44: ' + S], ['fullwidth equals', `password\uff1d${S}`], ['fullwidth underscore in ghp', `ghp\uff3f${T.repeat(4)}`, T.repeat(3)],
+    ['math bold p', `\u{1D429}assword: ${S}`], ['NFD accent in key', `pa\u0301ssword: ${S}`],
+    ['curl -d escaped', `curl -d "{\\"password\\":\\"${S}\\"}" https://x`], ['curl -d escaped, 2 fields', `curl -d "{\\"user\\":\\"bob\\", \\"password\\": \\"${S}\\"}" https://x`],
+    ['echo escaped api_key', `echo "{\\"api_key\\": \\"${S}${S}\\"}" > x.json`, S], ['json in json', JSON.stringify({ content: JSON.stringify({ password: S }) })],
+    ['json in json access_token', JSON.stringify({ content: JSON.stringify({ access_token: S + S }) }), S], ['double-escaped', `{\\\\"password\\\\":\\\\"${S}\\\\"}`],
+    ['nested string field', `{"cfg": "{\\"password\\": \\"${S}\\"}"}`],
+    ['json u-escaped key', `{"\\u0070assword": "${S}"}`], ['percent-encoded key letter', `pass%77ord=${S}`], ['percent-encoded brackets key', `https://x/login?user=bob&pass%5Bword%5D=${S}`],
+    ['slack webhook percent-encoded', `url=https%3A%2F%2Fhooks.slack.com%2Fservices%2FT00000000%2FB00000000%2F${T}${T}`, T + T],
+    ['entity colon', `password&#58; ${S}`], ['entity json', `{&quot;password&quot;: &quot;${S}&quot;}`], ['entity equals', `password&#x3D;${S}`], ['html password input', `<input type="password" value="${S}">`],
+    ['comma in password', `password=Zq7Hk2,${TAIL}`, TAIL], ['semicolon in password', `password=Zq7Hk2;${TAIL}`, TAIL], ['colon-style comma', `password: Zq7Hk2,${TAIL}`, TAIL],
+    ['escaped quote in json value', `{"password": "Zq7Hk2\\"${TAIL}"}`, TAIL], ['escaped quote in shell dq', `mysql --password="Zq7Hk2\\"${TAIL}"`, TAIL], ['odbc braces', `Driver={SQL};PWD={Zq7;Hk2${TAIL}};`, TAIL],
+    ['backslash continued value', `password=Zq7Hk2\\\n${TAIL}`, TAIL], ['backslash continued env', `API_KEY=${T}\\\n${T}`, T + '\n'], ['--password then continuation', `mysql --password \\\n  ${S}`],
+    ['key newline = value', `password\n= ${S}`], ['Bearer newline token', `Bearer\n${S}${S}`, S],
+    ['nbsp around =', `password\u00a0=\u00a0${S}`], ['ideographic space around :', `password\u3000:\u3000${S}`], ['nbsp after -p', `mysql -p\u00a0${S}`],
+    ['block scalar', `password: |\n  ${S}`], ['folded scalar', `password: >-\n  ${S}`], ['anchor', `password: &pw ${S}`], ['quoted multi-line', `password: "first Zq9 part\n  second ${TAIL}"`, TAIL],
+    ['json array', `{"password": ["${S}"]}`], ['CDATA', `<password><![CDATA[${S}]]></password>`], ["ANSI-C quotes", `PASSWORD=$'${S}'`], ['js concat', `const password = "Zq7Hk2" + "${TAIL}";`, TAIL],
+    ["-p'x' attached", `-p'${S}'`], ['here-string', `mysql -u root -p <<< '${S}'`],
+    ['dq password 200+ chars', `password: "${'a'.repeat(190)} 9 ${W}"`, W], ['dq 60 words', `password: "${words(60)} ${W}"`, W], ['json 60 words', `{"password": "${words(60)} ${W}"}`, W],
+    ['sq 60 words', `password='${words(60)} ${W}'`, W], ['--password dq 60 words', `mysql --password="${words(60)} ${W}"`, W], ['sshpass -p 60 words', `sshpass -p '${words(60)} ${W}' ssh x`, W],
+    ['url password 400+', `https://bob:${'A1b2'.repeat(100)}${W}@host/x`, W], ['multi-line dq', `password: "line1Zq9\nline2${W}"`, W],
+  ];
+  const lost = must.filter(([, s, n = S]) => redact(s).includes(n)).map(([n]) => n);
+  ok(lost.length === 0, `redact keeps a secret behind a look-alike, escape or wrapper: ${lost.join('; ')}`);
+  const plainText = 'café résumé 100%25 done, a\\\nb; the \\"quoted\\" word &amp; more';
+  const mixed = 'password=' + 'Zq7Hk2' + 'Xv9Lm4Qa ' + 'café résumé &amp; 100%25 ü й';
+  ok(redact(mixed) === 'password=[redacted] café résumé &amp; 100%25 ü й', 'a secret found in the raw text leaves the rest of the entry as written (accents, entities, escapes)');
+  ok(['mysql -u root -p\nmydatabase_name', 'mysql -u root -p\n  SELECT 1;', 'password: "\nsome prose here\nthen "quoted" text'].every((s) => !/mydatabase|SELECT|prose/.test(s) || redact(s).includes(s.match(/mydatabase_name|SELECT 1|some prose here/)[0])), 'a -p on its own line keeps the next word, a quote opened at a line end is not a value');
+  ok(redact('the Basic\nauthentication scheme') === 'the Basic\nauthentication scheme', 'prose ending in Basic keeps the next line');
+  ok(redact(plainText) === plainText, 'text with no secret is returned exactly as written, accents, escapes and line wraps included');
+  const [fast, how] = linear((m) => { redact('password: "' + 'a "\\'.repeat(2_000 * m)); redact('password=' + 'x,'.repeat(5_000 * m)); redact('pass​'.repeat(2_000 * m)); redact('\\'.repeat(2_000 * m)); }, 1000);
+  ok(fast, `the quoting and folding rules are linear (${how})`);
+}
 {
   const [good, how] = linear((m) => { redact('_secret'.repeat(2_000 * m)); redact('password' + ' '.repeat(10_000 * m)); }, 1000);
   ok(good, `a name-and-value pattern cannot be made to backtrack (${how})`);
