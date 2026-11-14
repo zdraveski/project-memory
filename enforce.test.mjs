@@ -1,6 +1,6 @@
 // Self-check for enforce.mjs: the rule in a note's front matter, and what it
 // matches in a git command. Run: node enforce.test.mjs
-import { mkdirSync, writeFileSync, openSync, closeSync, fstatSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, openSync, closeSync, fstatSync } from 'node:fs';
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome } from './harness.mjs';
@@ -120,5 +120,10 @@ for (const c of ['env FOO=1 git add -A', 'command git add -A', '/usr/bin/git add
 ok(!A('echo git add -A').hit && !A('git-lfs add -A').hit && !A('gitk add -A').hit, 'echo, git-lfs, gitk are no hit');
 const t1 = Date.now(), long = A('git add -A\n' + 'cat <<EOF\n'.repeat(20000)), t2 = Date.now(); segments('git status\n' + 'cat <<A\nx\n'.repeat(60000));
 ok(long.hit && t2 - t1 < 500 && Date.now() - t2 < 500, 'unclosed heredocs are linear');
+
+ok(!segments('echo "x\\').join('|').includes('undefined') && segments('git commit -m "a\\\ngit add -A"').length === 1, 'a backslash ending the last line in a quote adds no text');
+{ const d = join(home, 'big'); mkdirSync(d); const rule = 'enforce:\n  on: git\n  has:\n    - x\n';
+  writeFileSync(join(d, 'long.md'), '---\ndescription: ' + 'a'.repeat(70000) + '\n' + rule + '---\n');
+  ok(rulesOf(d).length === 0, 'front matter that ends after 64 KB is no rule in status, as in the hook'); }
 
 console.log(`enforce: ${checks} checks passed`);

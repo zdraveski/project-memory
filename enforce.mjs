@@ -52,7 +52,7 @@ export function rulesOf(dir) {
   try { names = readdirSync(dir).filter((n) => n.endsWith('.md') && !isIndex(n)).sort(); } catch {}
   return names.flatMap((file) => {
     try {
-      const text = readFileSync(join(dir, file), 'utf8'), r = front(text).tier === 'archive' ? null : ruleOf(text);
+      const text = readFileSync(join(dir, file)).subarray(0, HEAD).toString('utf8'), r = front(text).tier === 'archive' ? null : ruleOf(text);
       return r ? [{ file, ...r }] : [];
     } catch { return []; }
   });
@@ -70,7 +70,7 @@ export function segments(command) {
     const l = lines[n], docs = []; let join = false, m;
     for (let i = 0; i < l.length; i++) {
       const c = l[i];
-      if (c === BSL && q !== "'") { if (i + 1 === l.length && !q) join = true; else cur += c + l[++i]; }
+      if (c === BSL && q !== "'") { if (i + 1 < l.length) cur += c + l[++i]; else if (!q) join = true; }
       else if (q) { cur += c; if (c === q) q = ''; }
       else if (c === '"' || c === "'") { q = c; cur += c; }
       else if (c === '`' && i + 1 === l.length) join = true;

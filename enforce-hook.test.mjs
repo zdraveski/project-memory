@@ -100,7 +100,7 @@ quiet(run(p.payload('git add -B')), 'fourth run'); ok(lines(p.store).length === 
 
 // A cache written by another version is not trusted: its parsed rule (a bogus one here) is rebuilt from the note.
 { const q = project(); quiet(run(q.payload('git add -A')), 'build'); const c = JSON.parse(readFileSync(join(q.store, CACHE), 'utf8'));
-  c.v = 0; c.files['stage.md'].r = { on: 'ls', has: ['x'], unless: [] }; writeFileSync(join(q.store, CACHE), JSON.stringify(c));
+  c.v = CACHE_V - 1; c.files['stage.md'].r = { on: 'ls', has: ['x'], unless: [] }; writeFileSync(join(q.store, CACHE), JSON.stringify(c));
   quiet(run(q.payload('git add -A')), 'old cache version'); ok(lines(q.store).length === 2, 'a cache of another version is rebuilt from the notes');
   ok(JSON.parse(readFileSync(join(q.store, CACHE), 'utf8')).v === CACHE_V, 'and written with the current version'); }
 // No file is read or made before the `git` check: a non-git command leaves no cache.
