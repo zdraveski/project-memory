@@ -2270,8 +2270,8 @@ if (!quick) {
   const huge = JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: 'git '.repeat(2300000) }] } }) + '\n';
   writeFileSync(join(proj, 'sess1234-aaaa.jsonl'), tl('git add -A') + tl('git add keep.txt') + tl('export API_TOKEN=supersecretvalue123 && git add -A') + tl('git add -A', 40) + huge + tl('cd x && git add --all   # sssss'));
   writeFileSync(join(proj, 'sess1234-aaaa', 'subagents', 'agent-1.jsonl'), tl('git add .', 2, { isSidechain: true, agentId: 'a1' }));
-  writeFileSync(join(proj, 'oldsess0-bbbb.jsonl'), tl('git add -A', 31));
-  const old = new Date(Date.now() - 31 * day); utimesSync(join(proj, 'oldsess0-bbbb.jsonl'), old, old);
+  writeFileSync(join(proj, 'oldsess0-bbbb.jsonl'), tl('git add -A', 32));
+  const old = new Date(Date.now() - 32 * day); utimesSync(join(proj, 'oldsess0-bbbb.jsonl'), old, old);
   writeFileSync(join(other, 'othersess-cccc.jsonl'), tl('git add -A', 3, { cwd: 'C:/enf/other' }));
   const rule = '---\nname: Stage files by name\ndescription: Never run git add -A.\ntype: feedback\nenforce:\n  on: git add\n  has: [-A, --all, .]\n---\n\nbody\n';
   writeFileSync(join(pm, 'stage-by-name.md'), rule);
@@ -2311,6 +2311,62 @@ if (!quick) {
   ok(r.status === 1 && /no enforce/.test(r.stdout), 'a note with no rule says so');
   r = await run(['enforce']);
   ok(r.status === 1 && /replay/.test(r.stdout), 'enforce alone prints the usage');
+
+  // status: per rule note, the hits of the last 30 days from the live log (main and sub-agent), bad rules with their reason.
+  rmSync(join(pm, 'plain.md'));
+  writeFileSync(join(pm, 'quiet-rule.md'), rule.replace('Stage files by name', 'Quiet'));
+  const logLine = (note, d, agent = '') => JSON.stringify({ t: at(d), note, s: 'sess1234', agent, id: 'tu' }) + '\n';
+  writeFileSync(join(pm, '.enforce-log'), logLine('stage-by-name.md', 1) + logLine('stage-by-name.md', 3) + logLine('stage-by-name.md', 2, 'Explore') + logLine('stage-by-name.md', 40) + 'garbage\n' + logLine('gone.md', 1));
+  r = await run(['enforce', 'status', '--store', pm]);
+  const st = r.stdout.trim().split('\n');
+  ok(r.status === 0 && st.some((l) => /^stage-by-name\.md +3 hits in 30 days \(2 main, 1 subagent\), last \d{4}-\d\d-\d\d \d\d:\d\d$/.test(l)), `status counts the hits of the last 30 days, main and sub-agent (got ${r.stdout})`);
+  ok(st.some((l) => /^quiet-rule\.md +no hits in 30 days$/.test(l)) && !/gone\.md/.test(r.stdout), 'a rule with no hits says so, and a log line of a note with no rule is not listed');
+  ok(st.some((l) => /^bad\.md +bad rule: .*must start with git/.test(l)), 'a bad rule is listed with its reason');
+  ok(st.at(-1) === 'To see the commands, run `memory enforce replay <note>`.', 'the last line points to replay');
+  ok(!/log full|paused/.test(r.stdout), 'no warning when the log is small and memory is on');
+  const shared = join(root, '_shared', 'memory');
+  mkdirSync(shared, { recursive: true });
+  writeFileSync(join(shared, 'all-projects.md'), rule.replace('Stage files by name', 'Shared'));
+  appendFileSync(join(pm, '.enforce-log'), logLine('_shared/all-projects.md', 1));
+  r = await run(['enforce', 'status', '--store', pm]);
+  ok(/^_shared\/all-projects\.md +1 hit in 30 days \(1 main, 0 subagent\)/m.test(r.stdout), `a rule of the shared store is listed as _shared/<file> (got ${r.stdout})`);
+  rmSync(join(shared, 'all-projects.md'));
+  writeFileSync(join(pm, '.enforce-log'), ' '.repeat(300 * 1024));
+  r = await run(['enforce', 'status', '--store', pm]);
+  ok(/log full, delete it to restart/.test(r.stdout), 'a log over 256 KB is said to be full');
+  rmSync(join(pm, '.enforce-log'));
+  r = await run(['enforce', 'status', '--store', pm]);
+  ok(r.status === 0 && /^stage-by-name\.md +no hits in 30 days$/m.test(r.stdout), 'no log at all: no hits, no crash');
+  writeFileSync(join(pm, '.project-off'), '{}');
+  r = await run(['enforce', 'status', '--store', pm]);
+  ok(/memory is off here: watch is paused/.test(r.stdout) && /stage-by-name\.md/.test(r.stdout), `memory off is said, the rules still listed (got ${r.stdout})`);
+  rmSync(join(pm, '.project-off'));
+  for (const f of ['bad.md', 'quiet-rule.md', 'stage-by-name.md']) rmSync(join(pm, f));
+  r = await run(['enforce', 'status', '--store', pm]);
+  ok(r.status === 0 && /no enforce: rules/.test(r.stdout), `a store with no rule says so (got ${r.stdout})`);
+
+  // doctor: one line for the enforce hook of the plugin copy that runs, even when memory is off.
+  const efHome = join(home, '.claude', 'plugins', 'cache', 'ef', '1.4.0');
+  mkdirSync(join(efHome, 'hooks'), { recursive: true });
+  for (const f of ['enforce-hook.mjs', 'enforce.mjs', 'store.mjs']) writeFileSync(join(efHome, f), readFileSync(tool(f)));
+  writeFileSync(join(efHome, 'hooks', 'hooks.json'), readFileSync(join(dirname(tool('memory.mjs')), 'hooks', 'hooks.json')));
+  installed('project-memory@project-memory', efHome, { source: 'github', repo: 'zdraveski/project-memory' });
+  const doc = async () => (await cli('doctor')).stdout;
+  ok(/^ok +the enforce hook runs and is wired \(PreToolUse\)/m.test(await doc()), `doctor: a good copy passes (got ${await doc()})`);
+  process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+  try { ok(/^ok +the enforce hook runs/m.test(await doc()), 'doctor: the line shows when memory is off'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  const hookFile = join(efHome, 'enforce-hook.mjs'), good = readFileSync(hookFile);
+  writeFileSync(hookFile, 'process.exitCode = 1;\n');
+  ok(/^PROBLEM [^\n]*enforce hook[^\n]*exit code 1/m.test(await doc()), 'doctor: a hook that exits 1 is a problem');
+  writeFileSync(hookFile, "console.log('allow');\n");
+  ok(/^PROBLEM [^\n]*enforce hook[^\n]*printed/m.test(await doc()), 'doctor: a hook that prints is a problem');
+  rmSync(hookFile);
+  ok(/^PROBLEM [^\n]*enforce-hook\.mjs is missing/m.test(await doc()), 'doctor: a missing hook file is a problem');
+  writeFileSync(hookFile, good);
+  const hj = join(efHome, 'hooks', 'hooks.json'), hjText = readFileSync(hj, 'utf8');
+  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [] } }));
+  ok(/^PROBLEM [^\n]*no PreToolUse group/m.test(await doc()), 'doctor: hooks.json without the PreToolUse group is a problem');
+  writeFileSync(hj, hjText);
 }
 
 console.log(`memory: ${checks} checks passed`);
