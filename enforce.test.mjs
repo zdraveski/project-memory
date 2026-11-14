@@ -1,6 +1,6 @@
 // Self-check for enforce.mjs: the rule in a note's front matter, and what it
 // matches in a git command. Run: node enforce.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, openSync, closeSync, fstatSync } from 'node:fs';
+import { mkdirSync, writeFileSync, openSync, closeSync, fstatSync } from 'node:fs';
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome } from './harness.mjs';
