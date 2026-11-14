@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Enforce rules: a rule after a long description is no longer ignored; a note with a long run of blanks can no longer stall every git call; a command with many unclosed heredocs is read in linear time.
+- Enforce rules now see a command after an escaped quote, after git options like `--no-optional-locks`, inside `{ }` or `( )`, after a line continuation, after a quoted `<<`, and behind `env`, `sudo`, `command`, `rtk`, `git.exe` or a full path to git.
+
 ## 1.4.0 (2026-11-14)
 
 - A new hook watches git commands against the `enforce:` rules in your notes and logs which note matched (`.enforce-log` in the store, no command text). It blocks nothing, prints nothing, and does nothing while memory is off or the conversation is private.
