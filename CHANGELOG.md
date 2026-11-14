@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- A very long or hostile prompt, command or answer no longer stalls the memory hooks: a slash command's name, `memory.mjs` options, a JWT-like run, a value with many slashes and a long `SetEnvironmentVariable` value are read in linear time, and saved text is cut to 64 KB before secrets are removed.
+
 ## 1.4.0 (2026-11-14)
 
 - A new hook watches git commands against the `enforce:` rules in your notes and logs which note matched (`.enforce-log` in the store, no command text). It blocks nothing, prints nothing, and does nothing while memory is off or the conversation is private.

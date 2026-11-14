@@ -2962,5 +2962,34 @@ if (!quick) {
   ok(printO('startup') !== '' && !/project-memory is off/.test(printO('startup')) , 'with the marker gone, the startup briefs again');
 }
 
+// 1.4.1 A (regex-speed-1, -2, -3, -4, -6, -7): hostile text must cost time in proportion to its size, and clip() must cap its input.
+{
+  const { prompt, FORGETS } = await import('./handoff-log.mjs');
+  const lin = (name, f, floor = 1500) => { const [good, how] = linear(f, floor); ok(good, `${name} is linear: ${how}`); };
+  lin('blanks after <command-name>', (m) => { const s = '<command-name>' + ' '.repeat(400 * m) + 'x'; prompt({ message: { content: s } }, s); });
+  lin('newlines after <command-name>', (m) => { const s = '<command-name>' + '\n'.repeat(400 * m) + 'x'; prompt({ message: { content: s } }, s); });
+  ok(prompt({ message: { content: '<command-name>  /foo \n</command-name>' } }, '<command-name>  /foo \n</command-name>') === '/foo', 'a command name is read trimmed');
+  ok(prompt({ message: { content: '<command-name>foo</command-name><command-args> a </command-args>' } }, '<command-name>foo</command-name><command-args> a </command-args>') === '/foo a', 'a name without a slash gets one, and its args');
+  lin('FORGETS on repeated options', (m) => { FORGETS.test('memory.mjs --a '.repeat(1500 * m)); FORGETS.test('memory.mjs "--a" '.repeat(1200 * m)); });
+  ok(FORGETS.test('memory.mjs --session X forget') && FORGETS.test('memory.mjs "--a" "--b" 1 forget'), 'FORGETS still reads a forget after options');
+  ok(!FORGETS.test('memory.mjs search forget'), 'FORGETS: a search for forget is no forget');
+  lin('JWT rule on repeated eyJ-', (m) => { redact('eyJ-'.repeat(2000 * m)); });
+  const jwt = 'ey' + 'JhbGciOiJIUzI1NiJ9.' + 'eyJzdWIiOiIxMjM0NTY3ODkwIn0.' + 'abcdefghijklmnop';
+  ok(redact(`Authorization: ${jwt}`).includes('[redacted]') && !redact(`x ${jwt} y`).includes('JhbGci'), 'a JWT is still redacted');
+  lin('arg() on many slashes', (m) => { redact(('export A_KEY=' + '/'.repeat(1990) + '\n').repeat(3 * m)); redact('export A_KEY=' + 'a/'.repeat(1000) + '\n'.repeat(1) + ('--password ' + '/'.repeat(1990) + '\n').repeat(3 * m)); }, 1000);
+  lin('SetEnvironmentVariable value', (m) => { redact('SetEnvironmentVariable("A_KEY","' + '/'.repeat(5000 * m)); });
+  ok(redact('SetEnvironmentVariable("A_KEY","hunter2xyz9")').includes('[redacted]') && !redact('SetEnvironmentVariable("A_KEY","hunter2xyz9")').includes('hunter2'), 'SetEnvironmentVariable still redacts a value');
+  // clip() cuts its input before the rules: 3 MB of hostile text costs as much as 64 KB of it.
+  // Also what regex-speed-7's openers cost: one redact() pass on them is 2 to 9 times prose, so the cap is what contains them (the
+  // enforce replay line now goes through clip too).
+  const t0 = performance.now();
+  for (const s of ['curl -u ' + '='.repeat(3e6), 'redis-cli -'.repeat(3e5), '?key=a'.repeat(5e5), '--token=\\'.repeat(4e5), '_auth=\\'.repeat(4e5), '?key=;'.repeat(5e5), 'curl -'.repeat(5e5)]) clip(s, 2000);
+  ok(performance.now() - t0 < 3000, `clip caps hostile input first: ${(performance.now() - t0).toFixed(0)} ms for 20 MB`);
+  const big = clip('😀'.repeat(40000) + ' ' + 'x'.repeat(100000), 400);
+  ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(big) && big.length <= 400, 'a clip of a long text has no lone surrogate');
+  const cut = clip('a'.repeat(64000) + ' sk' + '-' + 'z'.repeat(40) + ' ' + 'b'.repeat(200000), 2000);
+  ok(!cut.includes('zzzz'), 'a secret just inside the cap is still redacted');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
