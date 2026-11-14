@@ -24,7 +24,8 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           the memories changed in the last 7 days
   history <memory> [--all] [--limit N]    the snapshots that changed it, the newest 30
   restore <memory> [--rev <commit>] [--force]   back from the snapshots, with its index line
-  promote <memory>                        move it to the shared store, for every project
+  promote <memory> [--force]              move it to the shared store, for every project; refused when
+                                          it holds a key, token or password, unless --force
   enforce status                          each rule note: hits in the last 30 days from the live log
   enforce replay <note> [--all]           what the enforce: rule in a note (or in any .md file) would have
                                           caught in the last 30 days of this project's conversations, or
@@ -41,7 +42,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
-import { hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
+import { redact, hushed, MISSED, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -378,6 +379,7 @@ function snapshots() {
     `The user's fix: run git -C "${projectsRoot()}" status in a terminal to see git's own message; if git says the repository is damaged, rename its .git folder and the next reply starts a new history`
     : h.partial ? `snapshots: the first is being taken in parts, ${h.partial} file(s) still to add; each reply adds more${waiting}`
     : !h.lastOk ? `snapshots: none taken yet${waiting}`
+    : h.held?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they skip ${h.held.join(', ')}: it holds what looks like a key, token or password`
     : h.missed?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they leave out ${h.missed.join(', ')}: ${MISSED}`
     : `snapshots: ok, last ${local(h.lastOk)}${waiting}`;
 }
@@ -565,7 +567,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
 
 // Copy, index, and only then remove: a failure part-way leaves the memory in
 // both stores, never in neither.
-export function promote(dir, file) {
+export function promote(dir, file, { force = false } = {}) {
   const to = sharedStore(), src = join(dir, file), dst = join(to, file);
   if (isShared(dir)) return no(`${file} is in the shared store already`);
   // Nor the journal's pointer: promoted, the next Stop wrote it again, and it was in both stores (audit C-1).
@@ -583,6 +585,8 @@ export function promote(dir, file) {
     const its = (x) => { const t = target(x); return !!t && (t === file || same(join(dir, t), src)); };
     // Not through a string if it is no UTF-8: the shared copy would hold U+FFFD, and the original be deleted.
     try { utf8Only(src, text); } catch (e) { return e.message; }
+    // Every project reads the shared store: a secret copied there is read by all of them and kept in its git history.
+    if (!force && redact(text) !== text) return `${file} holds what looks like a key, token or password, and every project reads the shared store; nothing moved. Remove it, or promote --force to copy it as it is`;
     for (const p of [join(dir, 'MEMORY.md'), join(dir, ARCHIVE)]) {
       const t = raw(p), l = t && take(t, its).line;
       if (l) { home = p; homeText = t; line = l; break; }
@@ -816,9 +820,9 @@ function replay(here, args, all, label, failed) {
 // Each rule note with the hits the live log holds for it in the last 30 local days, and what the log cannot say.
 function enforceStatus(here) {
   const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 30);
-  const { notes, full } = tally(here, from.getTime()), n = (x) => x.main + x.sub;
+  const { notes } = tally(here, from.getTime()), n = (x) => x.main + x.sub;
   const off = memoryOff() || isOff(here);
-  return { ok: true, lines: [...(off ? ['memory is off here: watch is paused'] : []), ...(full ? ['log full, delete it to restart'] : []),
+  return { ok: true, lines: [...(off ? ['memory is off here: watch is paused'] : []),
     ...(notes.length ? notes.map((x) => x.bad ? `${x.file}  bad rule: ${x.bad}` : n(x) ? `${x.file}  ${pl(n(x), 'hit')} in 30 days (${x.main} main, ${x.sub} subagent), last ${local(x.last)}` : `${x.file}  no hits in 30 days`) : [`no enforce: rules in ${here}`]),
     'To see the commands, run `memory enforce replay <note>`.'] };
 }
@@ -1039,7 +1043,7 @@ export function main(given) {
     r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined);
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
-  else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file));
+  else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
   else if (cmd === 'doctor') r = doctor(here);
   // The usage, after why: a misspelt command, or one with no word after it,
   // printed the usage alone.
@@ -1050,7 +1054,8 @@ export function main(given) {
   r.lines.splice(cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
   // A --session no transcript has: the store came from the folder this runs in, and status reported it in silence (audit C-10).
   if (opt('--session') !== undefined && cmd !== 'incognito' && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);
-  console.log(r.lines.join('\n'));
+  // A note's file name or [[link]] can hold a secret the model wrote: read-only listings scrub what they print.
+  console.log(r.lines.map(redact).join('\n'));
   // A forget that failed anywhere fails: exit 0 read as all gone.
   return r.ok && !(cmd === 'forget' && failed.length) ? 0 : 1;
 }

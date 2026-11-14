@@ -126,9 +126,11 @@ memory folder. The journal is its `journal` folder, one file per day.
 - The journal keeps each exchange whole: your message, Claude's reply, every
   file it changed and every command it ran. It stays until
   you delete it or ask Claude to forget part of it.
-- Keys, tokens and passwords are replaced with `[redacted]` before anything
-  is saved. No tool catches every secret, so use the tags below for anything
-  else.
+- Keys, tokens and passwords in the journal and the handoff are replaced with
+  `[redacted]` before they are saved. Notes Claude writes itself (and
+  `MEMORY.md`) are not rewritten: a note whose text or file name holds one (or that only mentions a password, such as `password: required`) is kept out of the
+  snapshots, and `memory promote` refuses it. `MEMORY.md` lines keep the file name. No tool catches every secret,
+  so use the tags below for anything else.
 - Put text between `<private>` and `</private>` to keep it out. Type
   `<private-session>` in any message to keep the whole conversation out; what
   was saved of it before is removed, except the history's copy of days that
@@ -194,9 +196,9 @@ enforce:
 
 Try the rule before you trust it: `memory enforce replay <note>` lists what it would have caught in the last 30 days of this project's conversations (sub-agents included); `--all` reads every project, and can take about a minute on 2.7 GB of history. It reads only; read each hit yourself, because a hit is a catch only if you agree the command broke the lesson.
 
-To write a rule, run `replay` and read the hits, in three lines: add the block to a note, run `memory enforce replay <note>`, read each hit. Once the hook has logged some, `memory enforce status` shows per note the hits of the last 30 days (main and sub-agent), the last one, bad rules with the reason, and whether the log is full or memory is off. The live log keeps no command text, so run `replay` to see the commands. `memory doctor` has one line for the hook: it runs the copy the plugin runs and says what is wrong, even when memory is off in this project.
+To write a rule, run `replay` and read the hits, in three lines: add the block to a note, run `memory enforce replay <note>`, read each hit. Once the hook has logged some, `memory enforce status` shows per note the hits of the last 30 days (main and sub-agent), the last one, bad rules with the reason, and whether memory is off. The live log keeps no command text, so run `replay` to see the commands. `memory doctor` has one line for the hook: it runs the copy the plugin runs and says what is wrong, even when memory is off in this project.
 
-Once a rule is in a note, a hook watches your git calls (sub-agents included) and logs which note matched, to `.enforce-log` in the project's store: the note's name, the session, the sub-agent type and the tool-call id, never the command. It blocks nothing and prints nothing. It does nothing while memory is off or the conversation is private, and a failure lets the call go on. The log stops growing at 256 KB (delete it to restart), and a line can be lost when many sessions write at once. The hook adds about 40 ms to each git call on a store of 194 notes (measured once, a copy of the largest store here; the first call after a note changes takes about 180 ms more): the rules are cached in `.enforce.json`, and only a changed note is read again.
+Once a rule is in a note, a hook watches your git calls (sub-agents included) and logs which note matched, to `.enforce-log` in the project's store: the note's name, the session, the sub-agent type and the tool-call id, never the command. It blocks nothing and prints nothing. It does nothing while memory is off or the conversation is private, and a failure lets the call go on. Past 256 KB the log drops its oldest half, and a line can be lost when many sessions write at once. The hook adds about 40 ms to each git call on a store of 194 notes (measured once, a copy of the largest store here; the first call after a note changes takes about 180 ms more): the rules are cached in `.enforce.json`, and only a changed note is read again.
 
 Few lessons fit this form. Of 115 feedback notes in one real store, about 1 can be written as a git rule. This is a test of the idea, not a promise. What a rule does not see:
 

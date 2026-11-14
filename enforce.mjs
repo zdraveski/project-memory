@@ -182,23 +182,43 @@ export function ruleSet(payload) {
   return { store, rules: [...rules, ...shared] };
 }
 
-// One line of the log, unless the log is over LOG_MAX (it stops growing; status says so) or the store has no folder.
+// True when something the user typed carries the private-session mark (assistant text and tool results are skipped: they
+// quote it); an unreadable transcript counts as private (no path: not).
+// shortcut: same pattern as handoff-log.mjs PRIVATE_SESSION (not imported: the hook must start fast), on typed text only.
+export function privateTurn(payload) {
+  if (!payload?.transcript_path) return false;
+  const RE = /<\s*private[-_]session\b[^>]{0,200}>/i;
+  try {
+    for (const l of readFileSync(payload.transcript_path, 'utf8').split('\n')) {
+      if (!RE.test(l)) continue;
+      try {
+        const r = JSON.parse(l), c = r.message?.content;
+        if (r.type === 'user' && (Array.isArray(c) ? c.some((b) => b?.type === 'text' && RE.test(b.text)) : RE.test(String(c)))) return true;
+      } catch {}
+    }
+    return false;
+  } catch { return true; }
+}
+
+// One line of the log (dropped if over 1 KB or the store has no folder). Over LOG_MAX, the oldest half of the log goes first.
 // shortcut: no lock, so a line can be lost under heavy parallel use (said in the docs).
 export function record(store, entry) {
   try {
     const f = join(store, LOG);
+    const line = JSON.stringify(entry) + '\n';
+    if (line.length > 1024) return;
     let size = 0; try { size = statSync(f).size; } catch {}
-    if (size <= LOG_MAX) appendFileSync(f, JSON.stringify(entry) + '\n');
+    if (size > LOG_MAX) { const t = readFileSync(f, 'utf8'), cut = t.indexOf('\n', t.length >> 1); writeFileSync(f, cut < 0 ? '' : t.slice(cut + 1)); }
+    appendFileSync(f, line);
   } catch {}
 }
 
 // What `memory enforce status` shows of a store: its rule notes (and the shared store's, as `_shared/<file>`), each with the
-// log's hits since `from` (ms) split main and sub-agent, and whether the log has stopped growing. Never throws.
+// log's hits since `from` (ms) split main and sub-agent. Never throws.
 export function tally(dir, from) {
-  const lines = []; let full = false;
+  const lines = [];
   try {
     const f = join(dir, LOG);
-    full = statSync(f).size > LOG_MAX;
     for (const l of readFileSync(f, 'utf8').split('\n')) try { const j = JSON.parse(l), t = Date.parse(j.t); if (t >= from) lines.push({ note: String(j.note), t, sub: !!j.agent }); } catch {}
   } catch {}
   const shared = sharedStore() === dir ? [] : rulesOf(sharedStore()).map((x) => ({ ...x, file: `_shared/${x.file}` }));
@@ -206,5 +226,5 @@ export function tally(dir, from) {
     const mine = lines.filter((l) => l.note === file);
     return { file, bad, main: mine.filter((l) => !l.sub).length, sub: mine.filter((l) => l.sub).length, last: Math.max(0, ...mine.map((l) => l.t)) };
   });
-  return { notes, full };
+  return { notes };
 }
