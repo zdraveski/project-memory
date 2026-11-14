@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- `memory enforce replay <note>`: lists what a rule in a note would have caught in the last 30 days of your conversations. Read-only.
+- `memory enforce replay <note>`: lists what a rule in a note would have caught in the last 30 days of your conversations. Read-only; private sessions and projects with memory off are skipped.
 
 ## 1.3.3 (2026-11-14)
 

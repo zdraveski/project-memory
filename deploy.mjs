@@ -16,7 +16,7 @@ import { hash } from './handoff-log.mjs';
 import { BUSY, sleep } from './store.mjs';
 import { LIVE, installPath, pluginRoot, deployedCommit } from './memory.mjs';
 
-// What every suite stands on: check.mjs runs all six after a change to one.
+// What every suite stands on: check.mjs runs all seven after a change to one.
 export const SHARED = ['store.mjs', 'harness.mjs', 'mutate.mjs'];
 
 // The hooks, the CLI, and the plugin around them: the live copy is also the

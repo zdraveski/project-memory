@@ -116,7 +116,7 @@ Beyond the suites:
   its kept files as the artifact `fuzz-kept-<machine>`: for a bug hunt; no
   release needs it.
 - `node coverage.mjs [--suites] [--fuzz <seconds>]` runs the seven suites
-  and/or the fuzz under Node's own coverage and prints, for each of the six
+  and/or the fuzz under Node's own coverage and prints, for each of the seven
   plugin files, the share of its code that ran, the functions that never
   ran and the first lines of the larger blocks that never ran: where the
   fuzz cannot find a bug because it never goes. Nothing runs it

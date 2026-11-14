@@ -12,8 +12,9 @@ const KEYS = ['on', 'has', 'unless'], MAX = 8;
 export function ruleOf(text) {
   const t = String(text).replace(/^﻿/, '').replace(/\r\n?/g, '\n'), end = frontEnd(t);
   if (end === -1) return null;
-  const lines = t.slice(0, end).split('\n'), at = lines.findIndex((l) => /^enforce:[ \t]*$/.test(l));
+  const lines = t.slice(0, end).split('\n'), at = lines.findIndex((l) => /^enforce:/.test(l));
   if (at === -1) return null;
+  if (!/^enforce:[ \t]*$/.test(lines[at])) return { bad: 'write `enforce:` alone on its line, with on:, has: indented below it' };
   const got = {};
   for (const l of lines.slice(at + 1)) {
     if (!/\S/.test(l)) continue;
@@ -22,6 +23,7 @@ export function ruleOf(text) {
     if (!m) return { bad: l.trim().startsWith('-') ? 'a block list is not read; write a flow list like [a, b]' : `cannot read the line "${l.trim().slice(0, 40)}"` };
     if (m[1] === 'true') return { bad: 'key `on` was rewritten to `true`; write it as on: git add' };
     if (!KEYS.includes(m[1])) return { bad: `unknown key \`${m[1]}\`` };
+    if (m[1] in got) return { bad: `\`${m[1]}\` is given twice` };
     got[m[1]] = m[2];
   }
   const words = (key, needed) => {
@@ -29,6 +31,7 @@ export function ruleOf(text) {
     if (v === undefined) return needed ? { bad: `needs \`${key}\`` } : [];
     if (/["']/.test(v)) return { bad: `\`${key}\` has quotes; write the words bare` };
     if (v === '') return { bad: `\`${key}\` must be a word or a flow list like [a, b], not a block list` };
+    if (v.startsWith('[') && !v.endsWith(']')) return { bad: `\`${key}\` list is not closed with ]` };
     const w = /^\[.*\]$/.test(v) ? v.slice(1, -1).split(',').map((x) => x.trim()) : [v];
     if (w.length === 1 && w[0] === '' && /^\[/.test(v)) return needed ? { bad: `\`${key}\` is empty` } : [];
     if (w.some((x) => !x || /\s/.test(x))) return { bad: `\`${key}\` holds an empty word or a word with a space` };
@@ -61,8 +64,10 @@ export function segments(command) {
   const lines = String(command).split(/\r?\n/), kept = [];
   for (let i = 0; i < lines.length; i++) {
     kept.push(lines[i]);
-    const h = lines[i].match(/<<-?[ \t]*(["']?)([A-Za-z_]\w*)\1/);
-    if (h) { while (++i < lines.length && lines[i].trim() !== h[2]); }
+    const h = lines[i].match(/(?<!<)<<(?!<)-?[ \t]*(["']?)([A-Za-z_]\w*)\1/);
+    // No closing word: the "heredoc" was a quoted `<<EOF`, and the lines stay.
+    const end = h ? lines.findIndex((l, j) => j > i && l.trim() === h[2]) : -1;
+    if (end !== -1) i = end;
   }
   const out = []; let cur = '', q = '';
   const cut = () => { if (cur.trim()) out.push(cur.trim()); cur = ''; };
@@ -91,7 +96,8 @@ export function tokens(segment) {
   return out;
 }
 
-const OPTS_WITH_VALUE = ['-C', '-c'], OPTS = ['--no-pager', '-P', '--literal-pathspecs'];
+const LEAD = ['!', '{', 'do', 'then', 'else', 'elif', 'if', 'while', 'until'];
+const OPTS_WITH_VALUE = ['-C', '-c', '--git-dir', '--work-tree'], OPTS = ['--no-pager', '-P', '--literal-pathspecs'];
 // Whether `command` is the rule's git subcommand (`on`), and whether it also holds a word of `has` and none of `unless`.
 // shortcut: `bash -c "..."`, `$(...)`, aliases and anything after `--` are not seen (said in the README).
 export function hits(rule, command) {
@@ -99,7 +105,9 @@ export function hits(rule, command) {
   let on = false, hit = false;
   for (const toks of segs) {
     let i = 0;
-    while (i < toks.length && /^[A-Za-z_]\w*=/.test(toks[i])) i++;
+    // A group or loop opener before the command: `(git ...)`, `do git ...`, `then git ...`.
+    if (toks[0]?.startsWith('(')) { toks[0] = toks[0].replace(/^\(+/, ''); toks[toks.length - 1] = toks[toks.length - 1].replace(/\)+$/, ''); }
+    while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || LEAD.includes(toks[i]) || !toks[i])) i++;
     if (toks[i++] !== 'git') continue;
     for (; i < toks.length; i++) {
       if (OPTS_WITH_VALUE.includes(toks[i])) i++;

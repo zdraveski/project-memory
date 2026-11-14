@@ -765,17 +765,20 @@ function replay(here, args, all, label, failed) {
   if (!r) return { ok: false, lines: [`${p} has no enforce: block`] };
   if (r.bad) return { ok: false, lines: [`the rule in ${p} is bad: ${r.bad}`] };
   const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 30);
-  const folders = all ? readdirSync(projectsRoot(), { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== '_shared').map((e) => join(projectsRoot(), e.name)) : [dirname(here)];
+  let entries = []; try { if (all) entries = readdirSync(projectsRoot(), { withFileTypes: true }); } catch { return { ok: false, lines: ['no projects folder'] }; }
+  const folders = all ? entries.filter((e) => e.isDirectory() && e.name !== '_shared').map((e) => join(projectsRoot(), e.name)) : [dirname(here)];
   const found = []; let checked = 0, matched = 0;
   const jsonl = (d) => { try { return readdirSync(d, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.jsonl')).map((e) => join(d, e.name)); } catch { return []; } };
   for (const folder of folders) {
     let subs = []; try { subs = readdirSync(folder, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(folder, e.name)); } catch {}
     if (process.stderr.isTTY) process.stderr.write(`reading ${folder}\n`);
     const name = label(join(folder, 'memory'));
+    if (isOff(join(folder, 'memory'))) continue; // memory off: that project's commands are not copied into this conversation
     for (const [file, sub] of [...jsonl(folder).map((f) => [f, false]), ...subs.flatMap((d) => jsonl(join(d, 'subagents')).map((f) => [f, true]))]) {
       try {
         if (statSync(file).mtimeMs < from) continue;
         const s = tag(sub ? basename(dirname(dirname(file))) : basename(file, '.jsonl'));
+        if (hushed(join(folder, 'memory'), s) !== false) continue; // incognito, or the list unread: not printed
         commandsOf(file, chunk, REPLAY_SEG, (c) => {
           if (!(c.t >= from)) return;
           checked++;

@@ -2280,6 +2280,20 @@ if (!quick) {
   ok(snap() === before, 'replay changes nothing');
   r = await run(['enforce', 'replay', join(pm, 'stage-by-name.md'), '--all']);
   ok(r.status === 0 && /C--enf-other/.test(r.stdout) && /2 projects/.test(r.stdout), 'a path works, and --all reads every project (got ' + r.stdout + ')');
+  // Private sessions and projects with memory off are not printed, even by --all.
+  const priv = join(root, 'C--enf-priv'), offp = join(root, 'C--enf-off');
+  mkdirSync(join(priv, 'memory'), { recursive: true }); mkdirSync(join(offp, 'memory'), { recursive: true });
+  writeFileSync(join(priv, 'memory', '.private-sessions'), 'hushed01\n');
+  writeFileSync(join(priv, 'hushed01-aaaa.jsonl'), tl('git add -A # hushedcmd'));
+  writeFileSync(join(priv, 'public01-bbbb.jsonl'), tl('git add -A # publiccmd'));
+  writeFileSync(join(offp, 'memory', '.project-off'), '{}');
+  writeFileSync(join(offp, 'offsess1-cccc.jsonl'), tl('git add -A # offcmd'));
+  r = await run(['enforce', 'replay', join(pm, 'stage-by-name.md'), '--all']);
+  ok(/publiccmd/.test(r.stdout) && !/hushedcmd|offcmd/.test(r.stdout), 'a private session and a project with memory off are skipped (got ' + r.stdout + ')');
+  rmSync(priv, { recursive: true }); rmSync(offp, { recursive: true });
+  writeFileSync(join(home, 'rule.md'), rule); renameSync(root, root + '.bak');
+  try { r = await run(['enforce', 'replay', join(home, 'rule.md'), '--all']); } finally { renameSync(root + '.bak', root); }
+  ok(r.status === 1 && /no projects folder/.test(r.stdout), 'no projects folder: one line, exit 1 (got ' + r.stdout + r.stderr + ')');
   writeFileSync(join(pm, 'bad.md'), rule.replace('on: git add', 'on: npm i'));
   r = await run(['enforce', 'replay', 'bad', '--store', pm]);
   ok(r.status === 1 && /must start with git/.test(r.stdout), 'a bad rule prints its reason and exits 1');

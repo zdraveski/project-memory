@@ -66,6 +66,14 @@ const push = ruleOf(note('enforce:\n  on: git push\n  has: --force\n')).rule;
 ok(hits(push, 'git push --force').hit && hits(push, 'git push origin main --force').hit, 'git push --force');
 ok(!hits(push, 'git push --force-with-lease').hit && !hits(push, 'echo "git push --force"').hit, 'not --force-with-lease, not an echo');
 
+// review fixes: here-string and unclosed heredoc word keep the rest; compound forms; bad flow list and inline block
+for (const c of ['cat <<< hi\ngit add -A', 'echo "x <<EOF"\ngit add -A', '(git add -A)', '{ git add -A; }', 'for f in x; do git add -A; done', 'if true; then git add -A; fi', '! git add -A'])
+  ok(hit(c), `hit: ${c}`);
+ok(!hit("git commit -F - <<-'EOF'\n\tgit add -A\nEOF"), 'a <<- heredoc body is still dropped');
+bad(note('enforce:\n  on: git add\n  has: [-A\n'), /closed/, 'an unclosed flow list');
+bad(note('enforce: {on: git add, has: [-A]}\n'), /enforce/, 'an inline enforce block');
+bad(note('enforce:\n  on: git add\n  has: [-A]\n  has: [-B]\n'), /twice|repeat/, 'a repeated key');
+
 // rulesOf: the store's notes, archive and indexes left out, a bad block listed with its reason
 const store = join(home, 'store'); mkdirSync(store);
 writeFileSync(join(store, 'a.md'), note(ADD));

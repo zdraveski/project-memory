@@ -196,7 +196,7 @@ Try the rule before you trust it: `memory enforce replay <note>` lists what it w
 
 Few lessons fit this form. Of 115 feedback notes in one real store, about 1 can be written as a git rule. This is a test of the idea, not a promise. What a rule does not see:
 
-- `$(...)` inside quotes, `bash -c "git add -A"`, and words after `--` (`git add -- -A`); git aliases and scripts; joined short flags (`-Av`).
+- `$(...)` inside quotes, `bash -c "git add -A"`, and words after `--` (`git add -- -A`); git aliases and scripts; joined short flags (`-Av`); `&` alone as a separator, `#` comments, and a rule with `unless:` words that a comment holds. Replay skips private sessions and projects with memory off.
 
 ## Long conversations
 
