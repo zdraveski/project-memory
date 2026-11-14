@@ -3396,6 +3396,13 @@ if (!quick) {
   const leak = [`secret: ${P}`, `export API_TOKEN=${P}`, `password: Passw0rd(1)`, `cookie: sessionid=${P}`, `Cookie: theme=dark; sid=${P}`, `Set-Cookie: ${P}=${P}`, `password: ${P}`, `"password": "${P}"`, `password: sunshine`]
     .filter((t) => clip(t, 2000).includes(P) || (/sunshine/.test(t) && clip(t, 2000).includes('sunshine')));
   ok(!leak.length, `1.4.1 I: real secrets still cut (leaked: ${leak.join(' | ')})`);
+  // review: adversarial shapes of the new exemptions are still cut
+  const R = ['Zq8x', 'K2mP', '9vL4n'].join('');
+  const adv = ['password: hunter(2)', 'password: correct.horse.battery(1)', 'password: horse.battery.string', 'password: correct.horse.required', 'password: sunshine and more', 'password: letmein then login',
+    'my password: sunshine is what i use', `secret: https://hooks.example.com/services/${R}${R}`, `api_key: s3://bucket/${R}`, `secret: file:///${R}`, `password: ./${R}`, `password: ftp://${R}`, 'password: password', 'password=Password',
+    `secret_name: ${R}`, `api_key_ref: ${R}`, `secretFile: ${R}`, `client_secret_url: ${R}`, `jwt_secret_ref=${R}`, `export DB_PASSWORD_REF=${R}`, `export SECRET_URL=${R}`, 'password: ab://hunter2']
+    .filter((t) => { const o = clip(t, 2000); return o.includes(R) || /hunter|horse|sunshine|letmein|password: password|=Password/.test(o); });
+  ok(!adv.length, `1.4.1 I review: adversarial shapes are still cut (leaked: ${adv.join(' | ')})`);
 }
 
 rmSync(home, { recursive: true, force: true });
