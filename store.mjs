@@ -475,7 +475,7 @@ const code = (v) => /^\$[{(]|^(?:process\.env[.[]|os\.environ|os\.getenv|System\
 // ./pw.txt, /etc/x/y, certs/key.pem). Cut, the word a search would find was
 // lost (review, 2026-10-29). Not a number: after --password or TOKEN= it is a
 // PIN (R34).
-const arg = (v) => /^\$[{(A-Za-z_]|^~|^\.{1,2}[\\/]|^\/[^\s/]+\/|[\\/]\S*\.[A-Za-z]\w{0,7}$/.test(v);
+const arg = (v) => /^\$[{(A-Za-z_]|^~|^\.{1,2}[\\/]|^\/[^\s/]+\/|[\\/][^\s\\/]*\.[A-Za-z]\w{0,7}$/.test(v);
 // A variable's name that holds a secret: one of its _-parts is the word (not
 // KEYBOARD or MONKEY), and it doesn't name a file (KEY_FILE, PUBLIC_KEY_PATH).
 const named = (n) => {
@@ -506,7 +506,7 @@ const SECRETS = [
   // AWS keys, long-lived and STS.
   [/(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, '[redacted]'],
   [/\bAIza[0-9A-Za-z_-]{35}/g, '[redacted]'],
-  [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[redacted]'],
+  [/(?<![A-Za-z0-9_]|eyJ-)eyJ[A-Za-z0-9_-]{10,300}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[redacted]'],
   // With a digit in it, or 32 characters or more: "Basic implementation/approach" and "Bearer authentication-header" were prose,
   // and were cut; a long one with no digit (1 in 400 random ones) was kept (audit #7). A hidden character after the word, as
   // redact() sees the raw text, does not hide the value. The long one has no . or /, so "basic tests/integration/x.rb" is kept.
@@ -565,7 +565,7 @@ const SECRETS = [
   // word is a key's; gh secret set's body; an npm registry's _authToken.
   // Quoted values here and below to the closing quote, as above (review, 2026-11-01).
   [/(\baws\s+configure\s+set\s+[\w.-]{0,100}(?:secret|key|token)[\w.-]{0,100}\s+["']?)(?!-)(?:(?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,2000})/gi, '$1[redacted]'],
-  [/(SetEnvironmentVariable\(\s*["']([^"'\n]{1,100})["']\s*,\s*["'])([^"'\n]+)/gi, (m, pre, name, v) => (named(name) && !arg(v) && !counted(name, v) ? `${pre}[redacted]` : m)],
+  [/(SetEnvironmentVariable\(\s*["']([^"'\n]{1,100})["']\s*,\s*["'])([^"'\n]{1,2000})/gi, (m, pre, name, v) => (named(name) && !arg(v) && !counted(name, v) ? `${pre}[redacted]` : m)],
   [/(\bhtpasswd(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+(?:[^\s<>-]\S*\s+)?[^\s<>]+\s+)(?!\d*>)[^\s;|&<>]+/g, '$1[redacted]'],
   // The name read whole, then judged: as words in one pattern, KEY_ repeated
   // took 28 s. PowerShell's `$env:NAME = …` too, in any case, as export's is (e2e audit, 2026-11-01).

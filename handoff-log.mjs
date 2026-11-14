@@ -119,12 +119,14 @@ export const asked = (r, s) => {
 // both. Read as no ask, its reply was saved as the answer to the ask before.
 const command = (s) => {
   if (!isCommand(s)) return '';
-  const n = s.match(/<command-name>\s*([^<]{1,200}?)\s*<\/command-name>/);
-  if (!n) return '';
+  // By index too: two adjacent \s* made a run of blanks after the opener quadratic (8 KB took 14 s).
+  const o = s.indexOf('<command-name>'), e = o === -1 ? -1 : s.indexOf('</command-name>', o);
+  const name = e === -1 ? '' : s.slice(o + '<command-name>'.length, e).trim();
+  if (!name || name.length > 200 || name.includes('<')) return '';
   // By index: a regex read on to the end from every opener, 20 s a megabyte.
   const i = s.indexOf('<command-args>'), j = i === -1 ? -1 : s.indexOf('</command-args>', i);
   const a = (j === -1 ? '' : s.slice(i + '<command-args>'.length, j)).trim();
-  return `${n[1].startsWith('/') ? '' : '/'}${n[1]}${a ? ` ${a}` : ''}`;
+  return `${name.startsWith('/') ? '' : '/'}${name}${a ? ` ${a}` : ''}`;
 };
 // The prompt a user record opens a turn with, or '' when it opens none. One of
 // images only has no words, and opens a turn all the same: read as none, its
@@ -152,7 +154,8 @@ export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 // typed, the command's with them, and a forget run from it was saved whole.
 // A flag with no value can take the next word as one, so a search for
 // "forget" after `--shared` is read as a forget: hidden, the safe way to err.
-export const FORGETS = /memory\.mjs["']?(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?)*\s+(?:forget\b|'forget'|"forget")/;
+// shortcut: more than 64 options before forget is not caught (a fallback scan was quadratic); upgrade if such commands appear.
+export const FORGETS = /memory\.mjs["']?(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?){0,64}\s+(?:forget\b|'forget'|"forget")/;
 // Text read the same in any width and without hidden characters: a fullwidth
 // ＜private＞, or a zero-width space inside the tag, kept what it should hide.
 // Every character Unicode says to show as nothing (Default_Ignorable_Code_Point): with the five zero-width ones alone, a soft
@@ -344,6 +347,11 @@ export const defuse = (s) => s.replace(/[<\uFF1C\uFE64](?=[\u200B-\u200D\u2060\u
 const clipped = new Map();
 let clippedSize = 0;
 export const clip = (s, n) => {
+  // A few times n is all that can show, and the rules cost 0.2 to 1.3 s a megabyte: 64 KB or 4n first, not at a split surrogate.
+  const lim = Math.max(65536, 4 * n);
+  // Squeeze blanks first (cut() does too): a long blank run must not use up the cut.
+  if (typeof s === 'string' && s.length > lim) s = s.replace(/\s+/g, ' ');
+  if (typeof s === 'string' && s.length > lim) s = s.slice(0, /[\uD800-\uDBFF]/.test(s[lim - 1]) ? lim - 1 : lim);
   // Text only: anything else spelt as a text kept here fails in cut(), as it always did.
   const k = typeof s === 'string' ? `${n}\0${s}` : null;
   if (clipped.has(k)) return clipped.get(k);
@@ -801,7 +809,6 @@ function health(dir) {
   try {
     const s = JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8'));
     if (s.failures >= 3) out.push(`Memory snapshots have failed ${s.failures} times in a row, last ok ${s.lastOk ? local(s.lastOk) : 'never'}: ${s.error}`);
-    if (s.held?.length) out.push(`Memory snapshots skip ${s.held.join(', ')}: it holds what looks like a key, token or password. Remove the secret and the next reply snapshots it.`);
     if (s.missed?.length) out.push(`Memory snapshots leave out ${s.missed.join(', ')}: ${MISSED}`);
   } catch {}
   return out;
