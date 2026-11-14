@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Saved text no longer keeps tokens from about 30 more vendors (GitLab, Discord, Teams, Twilio, Sidekiq, Dropbox, Azure, AI keys and more); the secret catalog lists them.
 - `memory forget --purge` also removes the forgotten entry from the snapshot history.
 - Journal keys and the Stop run log no longer hold a plain hash of your prompt or reply (a short password could be guessed from it).
 - On Linux and macOS the memory files are private (0600, folders 0700, snapshot `.git` 0700).
