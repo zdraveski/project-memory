@@ -154,8 +154,30 @@ export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 // typed, the command's with them, and a forget run from it was saved whole.
 // A flag with no value can take the next word as one, so a search for
 // "forget" after `--shared` is read as a forget: hidden, the safe way to err.
-// shortcut: more than 64 options before forget is not caught (a fallback scan was quadratic); upgrade if such commands appear.
-export const FORGETS = /memory\.mjs["']?(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?){0,64}\s+(?:forget\b|'forget'|"forget")/;
+// Read token by token, not with one regex: 64 options was the most a regex could take before it went quadratic, and a command with more
+// went unseen. A bare value ends a token the same way wherever the scan starts, so a "memory.mjs" that an earlier scan already took as a
+// value is not scanned again (a run of 'memory.mjs --a ' was 64 options per start); one inside a quoted value is, and the steps are capped
+// at 8 per character, past which the command counts as a forget (hidden, the safe way to err).
+const F_OPT = /\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1/y, F_VAL = /\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*)/y, F_END = /\s+(?:forget\b|'forget'|"forget")/y;
+const F_BARE = /\s+[^\s"'-]\S*/y;
+const stick = (re, s, at) => { re.lastIndex = at; return re.test(s) ? re.lastIndex : -1; };
+export const FORGETS = { test(s) {
+  const done = new Set(); let steps = 8 * s.length + 64;
+  for (const m of s.matchAll(/memory\.mjs["']?/g)) {
+    let p = m.index + m[0].length;
+    if (done.has(p)) continue;
+    for (;;) {
+      if (--steps < 0 || stick(F_END, s, p) >= 0) return true;
+      const o = stick(F_OPT, s, p);
+      if (o < 0) break;
+      if (stick(F_END, s, o) >= 0) return true;
+      const v = stick(F_VAL, s, o);
+      p = v < 0 ? o : v;
+      if (v >= 0 && stick(F_BARE, s, o) === v) done.add(v);
+    }
+  }
+  return false;
+} };
 // Text read the same in any width and without hidden characters: a fullwidth
 // ＜private＞, or a zero-width space inside the tag, kept what it should hide.
 // Every character Unicode says to show as nothing (Default_Ignorable_Code_Point): with the five zero-width ones alone, a soft
