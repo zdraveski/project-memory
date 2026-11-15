@@ -564,7 +564,7 @@ const SECRETS = [
   // Webhooks whose path is the secret: Teams, Zapier, IFTTT, Mattermost (26 characters).
   [/((?:\.webhook\.office|\boutlook\.office)(?:365)?\.com\/webhook(?:b2)?\/)[^\s\"'<>]+|(hooks\.zapier\.com\/hooks\/catch\/\d+\/)[\w-]+|(maker\.ifttt\.com\/trigger\/[^/\s]+\/with\/key\/)[\w-]+|(\/hooks\/)(?=[a-z0-9]{0,25}\d)(?=[a-z0-9]{0,25}[a-z])[a-z0-9]{26}\b/g, (m, a, b, c, d) => `${a ?? b ?? c ?? d}[redacted]`],
   // Sidekiq Enterprise's gem server: the user:password in the URL, or in the BUNDLE_ setting.
-  [/(\/\/)[^\s:@/]{1,100}:[^\s@]{1,200}(?=@gems\.contribsys\.com)|(\bBUNDLE_GEMS__CONTRIBSYS__COM[=:][ \t]*[\"']?)[^\s\"']+|(\bgems\.contribsys\.com[ \t]+)[^\s\"']+/g, (m, a, b, c) => `${a ?? b ?? c}[redacted]`],
+  [/(\/\/)[^\s:@/]{1,100}:(?:(?!\/\/)[^\s@]){1,200}(?=@gems\.contribsys\.com)|(\bBUNDLE_GEMS__CONTRIBSYS__COM[=:][ \t]*[\"']?)[^\s\"']+|(\bgems\.contribsys\.com[ \t]+)[^\s\"']+/g, (m, a, b, c) => `${a ?? b ?? c}[redacted]`],
   // A session cookie logs anyone in: a Cookie / Set-Cookie header's name=value pairs (nothing after them), and curl's -b / --cookie value (not a jar file).
   // An Authorization value with no scheme word: 20+ characters with a digit. And redis-cli's -a password.
   [/(\bauthorization["']?[ \t]*[:=][ \t]*["']?)(?=[A-Za-z0-9._~+/=-]{0,200}\d)[A-Za-z0-9._~+/=-]{20,}/gi, '$1[redacted]'],
@@ -577,9 +577,9 @@ const SECRETS = [
   [/(\boauth_(?:signature|verifier|token_secret)["']?[ \t]*[:=][ \t]*["']?)[^"'&,\s]{6,}/gi, '$1[redacted]'],
   // A webhook's signature header (X-Hub-Signature-256: sha256=...).
   [/(\b(?:x-[\w-]{0,30}|stripe-)signature(?:-256)?["']?[ \t]*[:=][ \t]*["']?(?:sha\d+=|t=\d+,v\d=)?)[A-Za-z0-9+/=]{40,}/gi, '$1[redacted]'],
-  [/(\bredis-cli\b(?:(?!redis-cli(?![\w.-]))[^\n|;&]){0,200}?\s-a[ \t]+["']?)(?:(?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, '$1[redacted]'],
+  [/(\bredis-cli\b(?:(?!\bredis-cli(?![\w.-]))[^\n|;&]){0,200}?\s-a[ \t]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (arg(v) ? m : pre + '[redacted]')],
   // The curl rule first: the header rule reads to the next quote, which may be the one that opens a -b value.
-  [/(\bcurl\b(?:(?!curl\b)[^\n|;&]){0,300}?\s(?:-b|--cookie)[ =]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (v.includes('=') ? `${pre}[redacted]` : m)],
+  [/(\bcurl\b(?:(?!\bcurl\b)[^\n|;&]){0,300}?\s(?:-b|--cookie)[ =]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (v.includes('=') ? `${pre}[redacted]` : m)],
   [/((?:^|[\s'"])(?:set-)?cookie["']?[ \t]*:[ \t]*["']?)[\w.%!#$&*+^~-]{1,100}=[^\s;'"]*(?:;[ \t]*[\w.%!#$&*+^~-]{1,100}=[^\s;'"]*)*/gim,
     // Only a session-like pair (a name that says so, or a long value with a letter and a digit) goes; `theme=dark; lang=en` stays.
     (m, pre) => (m.slice(pre.length).split(';').some((x) => { const [n, ...r] = x.trim().split('='), v = r.join('='); return !/^(?:path|domain|max-age|expires|samesite|secure|httponly)$/i.test(n) && (/sess|(?:^|[_.-])sid(?:$|[_.-])|auth|tok|jwt|login|key|secret|pass|csrf|xsrf|remember|user/i.test(n) || (v.length >= 12 && /\d/.test(v) && /[A-Za-z]/.test(v))); }) ? `${pre}[redacted]` : m)],
@@ -597,7 +597,7 @@ const SECRETS = [
   [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)(?!\d{1,5}[/?#])(?:(?!:\/\/)[^\s"'<>]){1,2000}@/gi, '$1[redacted]@'],
   // curl -u user:it, --user user:it, quoted too, to the closing quote (review, 2026-11-01). Not `docker run -u 1000:1000`, a user
   // and group.
-  [/((?:^|\s)(?:-[uU]|--(?:proxy-)?user)[ =]+(?!=)["']?(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)(?:(?<="[^\s:'"]{1,100}:)[^"\n]{1,200}(?=")|(?<='[^\s:'"]{1,100}:)[^'\n]{1,200}(?=')|(?<=:)"[^"\n]{1,200}(?=")|(?<=:)'[^'\n]{1,200}(?=')|[^\s'"]{1,200})/g, '$1[redacted]'],
+  [/((?:^|\s)(?:-[uU]|--(?:proxy-)?user)[ =]+(?!=)["']?(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)((?<="[^\s:'"]{1,100}:)[^"\n]{1,200}(?=")|(?<='[^\s:'"]{1,100}:)[^'\n]{1,200}(?=')|(?<=:)"[^"\n]{1,200}(?=")|(?<=:)'[^'\n]{1,200}(?=')|[^\s'"]{1,200})/g, (m, pre, v) => (arg(v.replace(/^["']/, '')) ? m : pre + '[redacted]')],
   // --password it (--token, --client-secret); docker login, az login, sshpass
   // and twine take it as -p it. Not --no-password, whose next word is the
   // command's own; nor "the --token flag", in prose.
@@ -639,7 +639,7 @@ const SECRETS = [
   // Each option one way only (-[\w-]+, not -{1,2}): read two ways, a line of --options took 2^n tries and stalled the Stop.
   // A blank may be a `\` line wrap; an option's value may be quoted. A value never starts with `=`, which is also a blank
   // here (two readings again), and at most 40 options: `-a redis-cli` repeated made each redis-cli a fresh start.
-  [/(\bredis-cli(?:(?:[ \t]|\\\r?\n)+-(?!redis-cli(?![\w.-]))[\w-]+(?:(?:[ \t=]|\\\r?\n)+(?:"[^"\n]*"|'[^'\n]*'|(?!redis-cli(?![\w.-]))[^\s|;&<>"'=-])\S*)?){0,40}(?:[ \t]|\\\r?\n)+AUTH\s+)(?!\[redacted\])(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g,
+  [/(\bredis-cli(?:(?:[ \t]|\\\r?\n)+-(?!\bredis-cli(?![\w.-]))[\w-]+(?:(?:[ \t=]|\\\r?\n)+(?:"[^"\n]*"|'[^'\n]*'|(?!\bredis-cli(?![\w.-]))[^\s|;&<>"'=-])\S*)?){0,40}(?:[ \t]|\\\r?\n)+AUTH\s+)(?!\[redacted\])(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g,
     (m, pre, v) => (v.split(/\s+/).every(arg) ? m : `${pre}[redacted]`)],
   // 1.4.1 D: a token a vendor's command takes as a flag or word: doctl -t, netlify --auth, ngrok add-authtoken, cargo login, httpie -a / --auth, composer config, bundle config.
   [/(\bdoctl\b[^\n|;&]{0,200}?\s(?:-t|--access-token)[ =]["']?|\bnetlify\b[^\n|;&]{0,200}?\s--auth[ =]["']?|\bngrok\s+(?:config\s+)?(?:add-)?authtoken\s+["']?|\bcargo\s+login\s+(?:--registry[ =]\S+\s+)?["']?|\bhttps?(?=[ \t])[^\n|;&]{0,200}?\s(?:-a|--auth)[ =]+["']?|\bcomposer\s+config\s+(?:-[\w-]+\s+){0,3}(?:(?:github-oauth|gitlab-oauth|gitlab-token|bearer)\.[\w.-]+\s+|http-basic\.[\w.-]+\s+[^\s"']+\s+)["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) || /^[^:]*:\$/.test(v) ? m : `${pre}[redacted]`)],
@@ -711,6 +711,8 @@ const SECRETS = [
   // `mysql -pIT`: the password glued to the flag. Case kept: -P is the port.
   // In the mysql command only: `; find . -print` after it was cut. 7z as a command, not a `*.7z` file name before -print.
   [/((?:\b(?:mysql|mysqldump|mysqladmin|mariadb)|(?<![\w.*])7za?)\b[^\n|;&]{0,200}?\s-p)[^\s-][^\s]{2,}/g, '$1[redacted]'],
+  // mysql -p at the end of a line: the password typed at the prompt is the next non-empty line (its first word, when it has a digit or symbol: a plain word is a database name or a command).
+  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n|;&]{0,200}?\s-p[ \t]*\r?\n(?:[ \t]*\r?\n)*[ \t]*)([^\s"']{3,200})/g, (m, pre, v) => (arg(v) || !/[0-9!@#$%^&*]/.test(v) ? m : pre + '[redacted]')],
   // The same with a line break, a here-string or a non-ASCII blank between the flag and the value; a plain blank is mysql asking for the password, and what follows is a database name.
   [/(\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n|;&]{0,200}?\s-p(?:[ \t]*<<<[ \t]*|[^\S \t\r\n]+)["']?)(?![-<])((?<=")[^"\n]{3,2000}(?=")|(?<=')[^'\n]{3,2000}(?=')|[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) ? m : `${pre}[redacted]`)],
   // -p'x' with no command before it, and an HTML password input.
@@ -792,8 +794,8 @@ const SECRETS = [
   after(String.raw`\bmosquitto_passwd\b[^\n|;&]{0,100}?\s-b\s+\S+\s+\S+\s+`),
   [/(\bapi-key\s+store\s+)["']?[\w+/=-]{8,}["']?(?:\s+["']?[\w+/=-]{8,}["']?)?/g, '$1[redacted]'],
   // Mail and file transfer: postfix's sasl_passwd (`[host]:587 user:pass`), IMAP LOGIN, POP3 and FTP PASS (6 or more characters, a digit or symbol, no path or file name), lftp -u user,pass, curl's -K file `user = "me:pass"`.
-  // shortcut: a host name over 253 characters is not matched whole (not a valid host), upgrade if one is seen.
-  [/(?<![\w.-])(\[?[\w.-]{1,253}\]?:\d{1,5}[ \t]+[^\s:@[]{1,100}:)(?!\[redacted\])([^\s]{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
+  // A clock time, ratio, score or file:line (digits only, or a source file name) before a label is not a host. shortcut: a host name over 253 characters is not matched whole (not a valid host), upgrade if one is seen.
+  [/(?<![\w.-])(?!\d+:)(?![\w.-]{0,253}\.(?:m?js|cjs|[jt]sx?|py|go|rs|java|rb|c|h|cpp|cs|php|md|json|ya?ml|txt|sh):)(\[?[\w.-]{1,253}\]?:\d{1,5}[ \t]+[^\s:@[]{1,100}:)(?!\[redacted\])([^\s]{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
   after(String.raw`\b[A-Za-z]{0,3}\d{1,5}[ \t]+LOGIN[ \t]+(?:"[^"\n]{1,100}"|[^\s"']{1,100})[ \t]+`, 'g', true),
   [/((?<![\w.-])PASS[ \t]+)([^\s"'/\\]{6,200})(?=\s|$)/g, (m, p, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) && !code(v) && !/\.[A-Za-z]\w{0,6}$/.test(v) ? `${p}[redacted]` : m)],
   [/(\b(?:lftp|open)\b[^\n|;&]{0,200}?\s-u[ \t]*["']?[^\s,"']{1,100},)([^\s"']{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],

@@ -3088,6 +3088,23 @@ if (!quick) {
   ok(!redact('htpasswd -nb bob hunter2pass').includes('hunter2') && !redact('postgres://bob:hunter2pass@db/x').includes('hunter2') && !redact('x key=Abcdefghij1234567890Klmnop').includes('Klmnop'), 'htpasswd, URL userinfo and key= still redact');
   ok(!redact('redis-cli -h redis-cli.local -p 1 AUTH hunter2pass').includes('hunter2'), 'a host named like the command does not hide its password');
 }
+{
+  // 1.4.2 re-hunt: L1/L2 a word ending in curl or redis-cli between the command and the flag; L3 mysql -p with the password on the next line;
+  // FP-1 clock times, ratios, scores and file:line before a label; FP-2 a shell reference as the password; SP-1 the contribsys URL rule.
+  const S = ['Zq7', 'Rk2xW9', 'mT4vB8', 'nL3pY'].join('');
+  for (const t of [`curl -A "pycurl/7.43" -b sid=${S} https://x.test`, `curl -H "User-Agent: libcurl" -b sid=${S} https://x.test`, `curl -o libcurl.so https://x.test -b sid=${S}`,
+    `redis-cli -h myredis-cli -a ${S}`, `redis-cli -h prod-myredis-cli -p 6379 -a ${S}`, `redis-cli -h myredis-cli -p 6379 AUTH ${S}`,
+    `mysql -u root -p\n${S}`, `$ mysql -u root -p\r\n${S}\r\nshow databases;`]) ok(!redact(t).includes(S), 'still redacted: ' + JSON.stringify(t));
+  ok(redact('mysql -u root -p mydb\nselect 1;') === 'mysql -u root -p mydb\nselect 1;', 'a bare -p keeps what follows when it is not a password line');
+  for (const t of ['at 14:05 Deploy:started', 'ratio 16:9 Aspect:widescreen', 'score 3:1 Winner:Arsenal', 'app.js:42:7 Error:Unexpected', 'src/app.js:42 Error:Unexpected token', 'foo.py:10 Warning:unused import',
+    'redis-cli -a $REDIS_PASS ping', 'curl -u $USER:$PASS https://x', 'curl -u admin:${API_PASS} https://x']) ok(redact(t) === t, 'kept: ' + t);
+  ok(!redact(`x db.example.com:587 bob:${S}`).includes(S), 'a real host:port user:pass is still redacted');
+  if (!quick) {
+    const best = (s) => { redact(s.slice(0, 20000)); let m = 1e9; for (let k = 0; k < 3; k++) { const t = performance.now(); redact(s); m = Math.min(m, performance.now() - t); } return m; };
+    const ms = best('//a:'.repeat(250000)), floor = best('the quick brown fox '.repeat(5e4));   // the floor: a pass over plain prose
+    ok(ms < 3 * floor + 50, `repeated //x: costs ${ms.toFixed(0)} ms per MB (plain text ${floor.toFixed(0)})`);
+  }
+}
 
 // 1.4.1 hardening C (redaction-corpus-1..6, 9..12): vendor token shapes, each template filled with seeded fake pieces (§ is stripped, so no
 // source line is a token; the secret is between « and ») and run through clip() bare and in three sentences; none of it may survive.
