@@ -450,6 +450,12 @@
   .faq details[open] summary .pi { transform: rotate(45deg); }
   .faq .answer { padding: 0 0 1.3rem; color: var(--body); }
   .faq .answer p { margin: 0; }
+  /* Answers grow open in 200 ms and shut in 150 ms. Browsers without ::details-content keep the instant open. */
+  @media (prefers-reduced-motion: no-preference) {
+    .faq { interpolate-size: allow-keywords; }
+    .faq details::details-content { block-size: 0; overflow: clip; transition: block-size 150ms var(--ease-out), content-visibility 150ms allow-discrete; }
+    .faq details[open]::details-content { block-size: auto; transition-duration: 200ms; }
+  }
 
   /* Closing */
   .closing { text-align: center; }
