@@ -4,15 +4,48 @@ This page is the technical side of the [README](../README.md): what runs when,
 which files it writes, and the numbers it works to. You don't need any of it
 to use the plugin.
 
+## Using it
+
+There is nothing to learn. Ask in your own words:
+
+| You say | What happens |
+|---|---|
+| *"What did we decide about the logo in September?"* | Claude searches your notes and the journal, and answers with the date. |
+| *"What did I work on last week?"* | Claude lists what you asked each day, from the journal. |
+| *"Where did we leave off?"* | Claude already knows: each new conversation starts with the last one's latest exchanges, as many as fit in a short briefing. For more, it reads the record of your last conversation. |
+| *"Remember that I prefer short answers."* | Claude saves a note. |
+| *"I deleted the note about pricing by mistake. Bring it back."* | Claude restores it from the history. |
+| *"Forget the password I pasted yesterday."* | Claude lists the journal entries that match, and removes the ones you confirm from project-memory's files. Claude Code's own conversation files still hold them. |
+| *"Remember for all my projects that I like plain language."* | Claude saves it to the shared notebook. |
+
+If you would rather type a command, start with `/project-memory:memory`:
+
+| Type after it | What it does |
+|---|---|
+| `search logo colors` | Finds notes and journal entries about "logo colors". An entry shows as a short headline: what you asked, how it ended, and the lines with your words |
+| `show 'key'` | Shows one journal entry in full, by the key `search` printed |
+| `forget password` | Lists the journal entries that mention "password" and removes the ones you confirm (Claude Code's own conversation files still hold them) |
+| `history pricing` / `restore pricing` | Shows when the note "pricing" changed / brings it back |
+| `promote pricing` | Moves the note "pricing" to the shared notebook |
+| `status` / `doctor` | A health check of this project's notes / of project-memory itself |
+| `incognito`, `off`, `on` | Stop saving this conversation / turn this project off / turn it back on ([Turning it off](#turning-it-off)); also available as `/project-memory:incognito`, `/project-memory:memory-off` and `/project-memory:memory-on` |
+| `enforce status`, `enforce replay <note>` | Checked lessons, experimental ([Checked lessons](#checked-lessons-experimental)) |
+
+The full list of commands and options is [below](#the-memory-tool-from-a-terminal).
+
+To read your notes yourself, type `/memory` in Claude Code and open the auto
+memory folder. The journal is its `journal` folder, one file per day.
+
 ## When it runs
 
-Claude Code runs project-memory on three of its events, declared in
+Claude Code runs project-memory on four of its events, declared in
 `hooks/hooks.json`, and gives Claude one skill, `skills/memory/SKILL.md`.
 
 | Moment | Claude Code event | What runs |
 |---|---|---|
 | Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, writes the journal and imports a few other conversations into it, takes a snapshot, and reminds Claude to save notes when a compaction is close |
 | A conversation starts, is resumed, is cleared with `/clear`, or goes on after a compaction | `SessionStart` | `handoff-log.mjs --print`: the startup briefing (none for a resumed conversation) |
+| Claude is about to run a `git` command in Bash or PowerShell | `PreToolUse` | `enforce-hook.mjs`: logs which note's rule matched, if a note holds one (see [Checked lessons](#checked-lessons-experimental)). It blocks nothing and prints nothing |
 | You run `/compact` | `PreCompact` (manual) | `memory-tier.mjs --stop`, so the notebook is tidy and the handoff current before the summary is made |
 | Claude Code compacts on its own | `PreCompact` (auto) | `compact-gate.mjs`: may ask Claude Code to wait for the end of the turn (see [Compaction](#compaction)) |
 
@@ -20,8 +53,8 @@ The skill is `memory` (`/project-memory:memory`). It runs `memory.mjs`, the
 command-line tool described [below](#the-memory-tool-from-a-terminal).
 
 Each hook has a time limit, which Claude Code enforces by stopping the hook:
-120 seconds for Stop and for `/compact`, 60 for the automatic compaction check
-and 30 for the startup briefing. Without a limit Claude Code waits 10 minutes.
+120 seconds for Stop and for `/compact`, 60 for the automatic compaction check,
+30 for the startup briefing and 5 for the git-rule watcher. Without a limit Claude Code waits 10 minutes.
 A real Stop took up to 46 seconds. A hook stopped at its limit has its output
 thrown away, so a startup briefing that runs past 30 seconds is lost without a
 word. A Stop stopped while git runs has already written the journal and the
@@ -87,6 +120,7 @@ Windows device names such as `con` and `nul`.
 | `…/memory/.lock` | the store's lock, a folder that exists while a write is in progress |
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
 | `…/memory/.facts` | what the tidy-up read at the top of each note (its type, its `tier:` and its date), with the note's size and time, so a note is read again only once it changes |
+| `…/memory/.enforce-log`, `.enforce.json` | the git-rule watcher's log (note name, conversation tag, sub-agent type and tool-call id, never the command) and its cache of the rules (see [Checked lessons](#checked-lessons-experimental)) |
 | `…/memory/.private-sessions` | the tags of conversations marked private (the newest 1,000) |
 | `…/memory/.project-off`, `.off-periods` | the marker while `memory off` holds, and the times it was off before, whose turns are never written |
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
@@ -96,6 +130,15 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, or with auto memory off a conversation's tag that could not be written (`off`), and why (a list that won't read is named there); read at the next start and by `status` |
 | `~/.claude/projects/.journal-failed-<project folder>` | a journal write that failed after a reply when the `journal` folder wouldn't take `.failed` either, and why; read at the next start and by `status`, removed by the next write that goes through |
 | `~/.claude/projects/.memory-off` | the tags of conversations held with auto memory off, which the journal never imports: kept while the transcript is on disk, and the newest 100 in any case, 10,000 at most |
+
+`~/.claude/projects/.hash-salt` holds a random per-computer key used for the
+fingerprints in journal keys and `.stop-ran`, so that a short prompt cannot be
+recovered from them; it is never snapshotted.
+
+On Linux and macOS the files the hooks write are mode 0600 and their folders
+0700, and so is the snapshot's `.git`. An older install is made private at its
+next Stop. Windows has no such modes: the files are protected by your user
+account's own permissions.
 
 Uninstalling the plugin leaves all of these, and the history, in place; you
 may delete them.
@@ -271,15 +314,51 @@ Before any of it is written, these are taken out:
   setting (`hash_algorithm: bcrypt`), a colour or a count stays. The same
   for each string in a JSON object under such a key (`"secrets": {"db":
   "…"}`), one level deep. Not read: a deeper JSON object
-  (`"secrets": {"db": {"main": "…"}}`), and a variable set mid-command whose
-  name no rule above reads, such as `docker run -e SIGNING_KEY=…`.
+  (`"secrets": {"db": {"main": "…"}}`).
+- since 1.4.1 and 1.4.2, much more: the keys and tokens of about 70 more
+  services (Terraform, Vault, Doppler, DigitalOcean, Heroku, Cloudflare,
+  Sentry, Grafana, New Relic, Okta, Splunk, CircleCI, 1Password, GitLab,
+  Discord, Teams, Twilio, Dropbox, Azure, Voyage AI and more); long tokens
+  in Authorization headers of any scheme (Digest, Hawk, OAuth1, AWS SigV4, Negotiate, NTLM,
+  SSWS, ApiKey) and unsigned JWTs; session ids and cookies, in a `Cookie` or
+  `Set-Cookie` header, after `curl -b`, as `sessionid`, `JSESSIONID` or
+  `PHPSESSID`, and in cookie jars and HAR files; passwords typed in chat
+  (`pw: …`, `credential=…`, "set the password to …", "the PIN is 123456",
+  backup codes, a passphrase of plain words) in German, French, Spanish,
+  Russian, Swedish, Danish, Dutch, Portuguese, Polish, Japanese, Chinese and
+  Korean as well as English, and a password typed alone as the answer to
+  "what is the password?"; passwords given to dozens of command-line tools
+  and to database, mail, Windows, Wi-Fi and VPN logins; password hashes
+  (`apr1`, bcrypt, SHA-crypt, argon2, NTLM, DPAPI); seed phrases, Bitcoin WIF
+  keys, Solana keypair arrays, a bare 40-character AWS secret key and base64
+  private keys without a header; and a variable set mid-command whose name
+  says key, secret, token or password (`docker run -e SIGNING_KEY=…`);
+- the same secrets behind look-alike spellings: full-width letters, hidden
+  characters, accents, HTML entities, and percent and unicode escapes.
+
+Text is cut to 64 KB before the secrets are removed, so one huge paste is
+read in linear time. Kept on purpose, since they are not secrets: references
+such as `$API_TOKEN` and `${API_PASS}`, URL settings (`TOKEN_URL=…`), schema
+types (`password: z.string()`), labels, and times and `file.js:42`.
+
+Not read, a known limit: a value with blanks and no quotes past its first
+word, a JSON object more than one level under a secret's key, a bare
+32-character hex key with no keyword (a Rails `master.key`), `key=<hex>` with
+no vendor or secret word, a value under 6 characters (`password=abc`), a
+short token in an Authorization header (Basic aside: under 20 characters,
+or under 32 with no digit), and a Cyrillic or Greek letter that looks like a
+Latin one. A long list of small numbers in code is cut as a possible Solana
+key, which is a false alarm the other way.
 
 No list of patterns finds every secret: anything these rules miss belongs
 between `<private>` tags. The same rules apply to everything the startup
 briefing and the compaction recovery note print, the shared index and the
 health lines included.
 
-What is recorded as your message is your own words: Claude Code's
+What is recorded as your message is your own words. A message that another
+conversation or a sub-agent sent in (a cross-session or agent message) is not
+saved as something you asked, and a fork does not list its parent's turns
+again. Claude Code's
 `<system-reminder>` blocks, and tags it puts before them (a task notification,
 an IDE's note of the open file), are left out. Text you pasted is yours and
 stays.
@@ -404,7 +483,9 @@ journal is the detailed record, and `search` reads headlines of it.
   refuses writes) is kept in `~/.claude/projects/.journal-failed-<project
   folder>`, and the startup briefing and `status` say it all the same.
 
-An entry has no size limit. With the limits it had until 1.2.4 (2,000
+An entry is kept whole. One huge request, reply or command is cut at 20 to
+50 KB (since 1.3.2), and saved text is cut to 64 KB before secrets are removed
+(since 1.4.1). With the limits it had until 1.2.4 (2,000
 characters of the request, 6,000 of the reply, 20 commands of 400), measured
 on 2026-10-29 by importing the 293 transcripts on the author's computer (362
 entries): half the entries were under 2,660 bytes, nine in ten under 6,723,
@@ -593,7 +674,48 @@ those, also put the size in `CLAUDE_CODE_AUTO_COMPACT_WINDOW` under `env` in
 your Claude Code settings, for example `"200k"`. Otherwise the reminder
 never fires.
 
+### If your model holds 200,000 tokens
+
+The reminder to save notes never comes, because project-memory assumes a
+window of 1,000,000 tokens. Ask Claude: *"Is my context window 200,000
+tokens?"* If it is, ask: *"Add CLAUDE_CODE_AUTO_COMPACT_WINDOW set to 200k
+under env in my Claude Code settings,"* then restart Claude Code. With a
+window of 200,000, the reminder comes at about 66% (60,000 tokens stay free),
+and the gate can wait only if the compaction window is set below the model's.
+
 ## Turning it off
+
+There are four levels, from narrowest to widest. None of them reaches Claude
+Code's own files: Claude Code by default still keeps its own transcript of
+every conversation (30 days unless you change that), and its own auto memory
+may still save notes. Those are Claude Code's settings, not project-memory's.
+Per message, `<private>…</private>` keeps one piece of text out.
+
+1. **One conversation:** `/project-memory:incognito`. It stops saving that
+   conversation and sweeps what it already saved from the journal and
+   `handoff.md`; snapshots of days already over keep a copy. It holds if you
+   resume the conversation; `/clear` starts a new one, so run it again
+   there. If it says `incognito NOT applied`, it did not work.
+2. **One project:** `/project-memory:memory-off`, and
+   `/project-memory:memory-on` to come back. While it is off, nothing is added
+   to that project's journal, handoff or history, and its notes are not
+   tidied; the startup says it is off. What you say meanwhile stays out after
+   it is back on, and the same conversation's turns before and after are
+   kept. Claude can still write a note if you ask. Off stops adding; it does
+   not hide: search and show still answer from what is there.
+3. **All projects on this machine:** set `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to
+   `1`, `true`, `yes` or `on`, or disable the plugin (below). Claude Code's own
+   `/memory` setting and `autoMemoryEnabled` do not stop project-memory,
+   because it never reads Claude Code's settings.
+4. **Claude Code itself:** `autoMemoryEnabled: false` stops its auto memory,
+   `CLAUDE_CODE_SKIP_PROMPT_HISTORY` its transcripts (with none, the journal
+   records nothing either), and `claude purge` deletes what it keeps.
+   project-memory does not read or change any of these.
+
+The git-rule watcher does nothing while memory is off or the conversation is
+private.
+
+### How the project switch works
 
 Two commands stop it, and each is checked first thing in the hook that would
 have saved something.
@@ -625,6 +747,19 @@ Checked by hand on 2026-11-09: each ran when typed by its full name,
 `/incognito` got the real session id, resuming keeps that id, and `/clear`
 starts a new one, in a new transcript. So incognito holds across a resume, and
 after `/clear` the new conversation is not incognito.
+
+### Pausing or removing it
+
+To pause it everywhere, run `claude plugin disable project-memory@project-memory`
+in a terminal and restart Claude Code; `enable` turns it back on. To remove it,
+type `/plugin uninstall project-memory@project-memory` in Claude Code. If you
+added it from claude.ai, use `/plugin` in Claude Code for both.
+
+Your notes, the journal and the history stay either way, and so do the lines
+project-memory added to each `MEMORY.md`: the ones pointing at `handoff.md`
+and `journal.md` keep being loaded, so delete them when you remove it. The
+privacy policy lists what to delete by hand:
+[Deleting it](../PRIVACY.md#deleting-it).
 
 ## Snapshots
 
@@ -680,12 +815,21 @@ names snapshots that failed three times in a row.
   notes are not in the history, and `doctor` and the startup briefing say so.
   To have them snapshotted, keep the folder in `~/.claude/projects` and make
   the link the other way round.
+- A note that holds a key, token or password, in its text or its file name,
+  is kept out of the snapshots (since 1.4.1). `status` and the startup line
+  name it and say how to release it: remove the secret. Prose after a key
+  word, such as `password: required`, is not a secret. A note
+  already snapshotted before that keeps its text in the history.
+- `forget --purge` also removes the forgotten entries from the snapshot
+  history, for the days before today. It waits for a snapshot in progress.
 - Without git there are no snapshots, everything else works, and `doctor` says
   so.
 
 To drop the history, delete `~/.claude/projects/.git`. The next change to a
-note, or the next day, starts a new one. It is also the only way to remove
-an entry from a finished day's committed version.
+note, or the next day, starts a new one. For journal entries, `forget --purge`
+does the same job for the entries you forgot. Deleting `.git` is the only way
+to remove anything else from a finished day's committed version, such as a
+note, which `--purge` does not touch.
 
 ## The shared notebook
 
@@ -700,7 +844,10 @@ the index, no longer shows them; `tier: hot` keeps a lesson in view.
 shared index, then removes both from the project. If anything fails part-way,
 the note is in both places, never in neither. When the shared index is
 already full, `promote` says so and suggests `tier: hot`. It refuses an
-index, `handoff.md` and `journal.md`, which are project-memory's own. The
+index, `handoff.md` and `journal.md`, which are project-memory's own, a
+folder, a file that is not UTF-8, and a note that holds a key, token or
+password (`--force` copies it anyway; the shared notebook is read by every
+project). The
 skill tells Claude to ask you before promoting.
 
 ## Several conversations at once
@@ -852,6 +999,98 @@ failure of the live write and of the import, if any. When `journal.mjs`
 won't load, the line says so. A day file that can't be read or isn't
 UTF-8 gets a line of its own (`journal: could not read <file>: <why>`).
 
+## Checked lessons (experimental)
+
+This part is a test of an idea, not a promise. A note can carry a rule that a
+computer checks on a git command. The hook only watches and logs: it never
+blocks a command and never prints anything. It works on git commands only.
+
+### Writing a rule
+
+Add an `enforce:` block to the note's front matter. `enforce:` stands alone on
+its line, and its three keys are indented two spaces:
+
+```
+enforce:
+  on: git add
+  has: [-A, --all, .]
+  unless: [mktemp, init]
+```
+
+- `on` is `git <subcommand>` and nothing more.
+- `has` is one word or a list of up to 8, written as `[a, b, c]` on one line.
+  A command matches when it holds one of them as a whole word.
+- `unless` is optional. If any of its words is in the same command, the rule
+  does not match.
+- Words are exact and case-sensitive: no patterns, no quotes, no spaces. A
+  list written as `- x` lines is not read. One rule per note.
+- A bad rule is reported with the reason by `memory enforce status` and by
+  `memory doctor`. Archived notes are skipped.
+
+### Try a rule before you trust it
+
+`memory enforce replay <note>` lists what the rule would have caught in the
+last 30 days of this project's conversations, sub-agents included. `--all`
+reads every project and can take about a minute on 2.7 GB of history
+(measured once). It only reads. Read each hit yourself: a hit is a catch only
+if you agree the command broke the lesson. Replay skips private sessions and
+projects with memory off.
+
+To write a rule in three steps: add the block to a note, run `memory enforce
+replay <note>`, read each hit.
+
+### What the hook does
+
+Once a rule is in a note, `enforce-hook.mjs` (the `PreToolUse` hook, 5 second
+limit) runs when Claude is about to run a Bash or PowerShell command that
+holds `git`. It compares the command with the rules and, on a match, adds one
+line to `.enforce-log` in the project's store: the note's name, the first 8
+characters of the conversation's tag, the sub-agent type and the tool-call id.
+It never logs the command.
+
+- It blocks nothing and prints nothing. Any failure lets the call go on.
+- It does nothing while memory is off or the conversation is private.
+- The log stops at 256 KB, then drops its oldest half. A line can be lost when
+  many conversations write at once.
+- The rules are cached in `.enforce.json`, and only a changed note is read
+  again.
+- Cost, measured once on a copy of the largest store here (194 notes): about
+  40 ms added to each git call, and about 180 ms more on the first call after
+  a note changes.
+
+### Status and doctor
+
+`memory enforce status` shows per note the hits of the last 30 days (main and
+sub-agent), the last one, bad rules with the reason, and whether the log is
+full or memory is off. The live log keeps no command text, so run `replay`
+to see commands. `memory doctor` has one line for the hook: it runs the copy
+the plugin runs and says what is wrong, even when memory is off in this
+project.
+
+### What a rule sees and what it does not
+
+It sees a command after an escaped quote, after git options such as
+`--no-optional-locks`, inside `{ }` or `( )`, after a line continuation, behind
+`env`, `sudo`, `command`, `rtk`, `git.exe` or a full path to git, and after
+`FOO=1` or `cd x &&`. A heredoc body is not a command.
+
+It does not see:
+
+- Wrapped commands that Claude Code's `if` filter (`Bash(git *)`) may keep the
+  hook from starting for: `env FOO=1 git add -A`, `command git add -A`,
+  `/usr/bin/git add -A`, `git.exe add -A`, `rtk git add -A`. This was not
+  re-checked against a live Claude Code, so read it as "may". Replay reads
+  the saved commands and does see these.
+- `$(...)` inside quotes, `bash -c "git add -A"`, and words after `--`
+  (`git add -- -A`); git aliases and scripts; joined short flags (`-Av`); `&`
+  alone as a separator; `#` comments; and a rule with `unless:` words that a
+  comment holds.
+
+### The honest numbers
+
+Few lessons fit this form. Of 115 feedback notes in one real store, about 1
+could be written as a git rule (measured once by the author, not repeated).
+
 ## The memory tool from a terminal
 
 The skill runs `memory.mjs`, and so can you:
@@ -864,12 +1103,14 @@ node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory
 |---|---|
 | `search <words…>` | `--since D`, `--until D`, `--all`, `--limit N` |
 | `show <key…>` | `--same`, `--all` |
-| `forget [<words…>]` | `--key K` (again for each key), `--same`, `--since D`, `--until D`, `--conversation <tag or id>`, `--yes` |
+| `forget [<words…>]` | `--key K` (again for each key), `--same`, `--since D`, `--until D`, `--conversation <tag or id>`, `--yes`, `--purge` (also remove from the snapshot history) |
 | `status` | `--all` |
 | `history <note>` | `--all`, `--limit N` (the newest 30 by default) |
 | `restore <note>` | `--rev <commit>`, `--force` |
-| `promote <note>` | |
+| `promote <note>` | `--force` (copy a note that holds a secret) |
 | `doctor` | |
+| `enforce status` | per rule note: hits in the last 30 days, bad rules (see [Checked lessons](#checked-lessons-experimental)) |
+| `enforce replay <note>` | `--all` (every project); what the rule would have caught in the last 30 days |
 | `incognito` | needs `--session <id>` (see [Turning it off](#turning-it-off)) |
 | `off`, `on` | turn this project off or back on (see [Turning it off](#turning-it-off)) |
 | `help` | (also `--help` and `-h`) |
@@ -902,16 +1143,71 @@ When two names read alike (`Twin.md` and `twin.md` in the snapshots, typed
 name with `[`, `*` or `?` in it works. A write the disk refuses is reported in
 one line that says what was left behind.
 
+## Good to know
+
+### Room
+
+Each conversation starts with a short briefing for Claude. The last
+conversation's exchanges fill it up to 3,500 characters (at most 3,499 on 13
+real projects). A long list of shared lessons or warnings can pass that, but
+never 9,500. After a compaction it is larger: 8,481 characters at the median
+and 9,366 at most on 8 projects, never over 9,500. The journal is not loaded,
+only searched when needed. What the hooks do after each reply runs outside the
+conversation and uses none of its room. See also
+[The startup briefing](#the-startup-briefing).
+
+### Disk space
+
+The journal keeps each exchange whole, so an entry is as long as what was
+said: half are under about 5 KB, and one in a hundred is over about 60 KB. A
+very busy project adds up to about 110 MB a year. The snapshot history only
+grows.
+
+### Your notes
+
+The first run may move older lines of the table of contents to an archive, so
+it stays short without dropping a note. The
+plugin deletes no note (Claude Code's own cleanup might), and Claude can still
+search them.
+
+### MEMORY.md is the plugin's to tidy
+
+It rewrites the file as a plain file in place (so a link to it becomes a copy)
+and keeps the lines, not your `##` headings. Put what you want kept in a
+note, not in the headings. A line keeps the file name of its note, and a file
+name that holds a key is not added to the index ([privacy policy](../PRIVACY.md)).
+
+### Where it works
+
+Windows, macOS and Linux, with Claude Code only. Notes stay on the computer
+they were made on, and do not sync. Do not sync the memory folder yourself
+(Dropbox, OneDrive): each computer would undo the other's *"forget"*.
+
+### A moved memory folder
+
+The Claude Code setting `autoMemoryDirectory` is not followed: notes in the
+moved folder are not tidied, snapshotted or briefed. `doctor` warns when it is
+set.
+
+### Your files
+
+It writes only inside Claude Code's own folder (`~/.claude/projects`, or the
+folder `CLAUDE_CONFIG_DIR` names), never in your project.
+
 ## Requirements and limits
 
 - Node.js 22 or newer. No other dependencies.
-- Git, for snapshots.
+- Git, for snapshots (optional: without it everything else works).
+- Claude Code only, on Windows, macOS or Linux.
 - Paths follow `CLAUDE_CONFIG_DIR`, and `CLAUDE_CODE_PROJECT_DIR_NAME` only
   when `CLAUDE_CONFIG_DIR` is set too (see [Where things live](#where-things-live)).
   The `autoMemoryDirectory` setting is not followed: the plugin reads no
   settings, and `doctor` only warns when it is set.
 - Tested on Linux with Node 22, Windows with Node 24 and macOS with Node 26.
 - The snapshot repository only grows.
+- The suite is 8 test files and about 2,500 checks. Each pull request runs
+  them on all three systems, with a sign-off check; the mutation tests and
+  the long fuzz run by hand.
 
 The design documents, with the measurements behind these numbers, are in
 [`docs/specs/`](specs/).
@@ -922,6 +1218,11 @@ The design documents, with the measurements behind these numbers, are in
 the setup. Most of its `PROBLEM` lines end with what to do. The ones people
 meet most:
 
+- **Claude doesn't remember the last conversation.** Ask *"Where did we leave
+  off?"*, then run the check. Right after installing, one line says the plugin
+  is waiting for Claude's first reply, which is normal.
+- **A note seems to be gone.** It may have moved to the archive. Ask Claude to
+  search for it, or to bring it back from the history.
 - **"not installed".** The plugin isn't installed and has never run. If it
   was added on claude.ai rather than with `/plugin`, let Claude finish one
   reply and run the check again. Otherwise install it again.

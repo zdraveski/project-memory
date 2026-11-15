@@ -5,13 +5,14 @@
 <link href="style.css" rel="stylesheet">
 <script src="icons.js"></script>
 <style>
-  /* Six tiles, each a small picture of how it works and a few words */
-  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-  .tile { padding: 10px 10px 12px; display: grid; grid-template-rows: auto 1fr; gap: 10px; }
-  .label { padding: 0 .3em; font-weight: 700; line-height: 1.25; text-wrap: balance; }
+  /* Eight tiles, each a small picture of how it works and a few words.
+     The tiles are written once, in the template, and copied into both pictures. */
+  .grid { display: grid; gap: 14px; }
+  .tile { padding: 10px 10px 12px; display: grid; grid-template-rows: 1fr auto; gap: 10px; }
+  .label { padding: 0 .3em; font-weight: 700; line-height: 1.22; text-wrap: balance; }
   .note { display: block; font-weight: 500; color: var(--muted); }
   .mini { position: relative; isolation: isolate; display: grid; gap: .4em; align-content: center; justify-items: center;
-    padding: .5em .6em; border-radius: .55em; background: rgba(6, 11, 36, .7); border: 1px solid rgba(130, 170, 255, .18); color: #c9d6f5; }
+    padding: .5em .5em; border-radius: .55em; background: rgba(6, 11, 36, .7); border: 1px solid rgba(130, 170, 255, .18); color: #c9d6f5; }
   .mini .pi { width: 1.15em; height: 1.15em; }
   .pill { display: inline-flex; align-items: center; gap: .35em; padding: .15em .5em; border-radius: .45em; white-space: nowrap;
     background: rgba(80, 125, 255, .1); border: 1px solid rgba(130, 170, 255, .25); color: #dbe7ff; }
@@ -24,14 +25,15 @@
   .search .box { display: flex; align-items: center; gap: .45em; padding: .3em .55em; border-radius: .45em;
     background: rgba(8, 14, 40, .85); border: 1px solid rgba(34, 211, 238, .45); color: #fff; }
   .hit { display: flex; align-items: center; gap: .5em; color: var(--body); padding: 0 .2em; }
-  .hit time { font: 600 1em/1.3 var(--mono); color: var(--cyan); }
+  .hit time { font: 600 1em/1.3 var(--mono); color: var(--cyan); white-space: nowrap; }
   .hit i { flex: 1; height: .45em; border-radius: 99px; background: rgba(130, 170, 255, .25); }
   /* Monday's last words, kept, then Tuesday */
-  .pick { grid-auto-flow: column; align-items: center; gap: .3em; }
-  .arrow { width: 1.1em; height: 2px; background: linear-gradient(90deg, var(--pink), var(--cyan)); position: relative; }
-  .arrow::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left-color: var(--cyan); border-right: 0; }
-  .handoff { display: grid; justify-items: center; gap: .15em; color: var(--cyan-ink); font: 500 1em/1.2 var(--mono); }
+  .pick { grid-auto-flow: column; align-items: center; justify-content: space-evenly; gap: .3em; }
+  .pick::before { content: ""; position: absolute; z-index: -1; left: 22%; right: 22%; top: 50%; height: 2px;
+    background: linear-gradient(90deg, var(--pink), var(--cyan)); }
+  .handoff { display: grid; justify-items: center; padding: .1em; border-radius: .4em; background: #0a1030; color: var(--cyan-ink); }
   .handoff .pi { width: 1.5em; height: 1.5em; }
+  .pick .pill { background: #0c1640; }
   /* versions: Thursday's delete undone */
   .tl { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: .5em; justify-items: center; }
   .tl::before { content: ""; position: absolute; z-index: -1; left: 12.5%; right: 12.5%; top: calc(.5em + .4em - 1px); height: 2px;
@@ -40,10 +42,11 @@
   .v i { width: .8em; height: .8em; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
   .v.gone i { background: #0a1030; border: 2px solid var(--pink); box-shadow: 0 0 10px rgba(244, 114, 182, .6); }
   .v.gone { color: var(--pink-ink); }
+  .v small { font-size: 1em; }
   .back { grid-column: 1 / -1; color: var(--cyan-ink); background: rgba(34, 211, 238, .1); border-color: rgba(34, 211, 238, .45); border-radius: 99px; }
   /* long tasks: three gauges */
   .gauges { justify-items: stretch; }
-  .lt { display: grid; grid-template-columns: 4.2em minmax(0, 1fr); align-items: center; gap: .55em; }
+  .lt { direction: ltr; display: grid; grid-template-columns: minmax(0, 1fr) 5.6em; align-items: center; gap: .55em; white-space: nowrap; }
   .lt.hot { color: var(--pink-ink); }
   .lt.lit { color: var(--cyan-ink); }
   .gauge { position: relative; height: .6em; border-radius: 99px; background: rgba(20, 30, 80, .9); box-shadow: inset 0 0 0 1px rgba(130, 170, 255, .3); }
@@ -54,101 +57,44 @@
   .sh { gap: 0; }
   .sh-lines { display: block; width: 100%; height: 1.3em; }
   .sh-row { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); justify-items: center; }
-  .proj { padding: .1em .45em; border-radius: .4em; background: #0c1640; border: 1px solid rgba(130, 170, 255, .3); color: #dbe7ff; }
+  .proj { width: 1.6em; height: 1.2em; border-radius: .4em; background: #0c1640; border: 1px solid rgba(130, 170, 255, .3); }
   /* two windows, one lock */
   .tw { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .5em; }
   .tw::before { content: ""; position: absolute; z-index: -1; left: 18%; right: 18%; top: 50%; height: 2px;
     background: linear-gradient(90deg, #22d3ee, #a78bfa 50%, rgba(130, 170, 255, .35)); }
-  .w { display: grid; justify-items: center; gap: .1em; width: 100%; padding: .35em .2em; border-radius: .5em;
-    background: #0c1640; border: 1px solid rgba(130, 170, 255, .25); font-weight: 600; color: #dbe7ff; }
-  .w small { font: 500 1em/1.2 var(--mono); color: var(--muted); }
+  .w { display: grid; justify-items: center; gap: .1em; width: 100%; padding: .1em; border-radius: .5em;
+    background: #0c1640; border: 1px solid rgba(130, 170, 255, .25); font: 700 1.3em/1.2 var(--mono); color: #dbe7ff; }
+  .w::before { content: ""; width: 1.5em; height: 4px; border-radius: 2px; background: rgba(130, 170, 255, .35); margin: .15em 0 .1em; }
   .w.on { border-color: rgba(34, 211, 238, .6); box-shadow: 0 0 14px rgba(34, 211, 238, .25); }
-  .w.on small { color: var(--cyan-ink); }
+  .w.on::before { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
   .lockbox { display: grid; justify-items: center; padding: .35em .4em; border-radius: .55em; background: #0a1030; border: 1px solid rgba(167, 139, 250, .55); }
   .lockbox .pi { width: 1.4em; height: 1.4em; }
+  /* a secret becomes [redacted] */
+  .sec .tok { font-size: 1em; }
+  .down { width: 2px; height: .9em; background: linear-gradient(180deg, var(--pink), var(--cyan)); position: relative; }
+  .down::after { content: ""; position: absolute; left: -4px; bottom: -1px; border: 5px solid transparent; border-top-color: var(--cyan); border-bottom: 0; }
+  .sec .bad { color: var(--pink-ink); border-color: rgba(244, 114, 182, .45); }
+  /* you decide: two switches */
+  .dec { gap: .5em; }
+  .dec .tok { font-size: 1em; }
 
   .wide { padding: 24px 28px; }
+  .wide .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .wide .tile { font-size: 17px; }
-  .wide .mini { font-size: 15px; min-height: 94px; }
-
+  .wide .mini { font-size: 15px; min-height: 110px; }
   .narrow { padding: 22px; }
-  .narrow .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .narrow .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .narrow .tile { padding: 12px 12px 14px; }
   .narrow .mini { min-height: 112px; padding: .35em .4em; }
-  .narrow .pick { justify-content: space-evenly; }
-  .narrow .pick::before { content: ""; position: absolute; z-index: -1; left: 22%; right: 22%; top: 50%; height: 2px;
-    background: linear-gradient(90deg, var(--pink), var(--cyan)); }
-  .narrow .handoff { padding: .1em; border-radius: .4em; background: #0a1030; }
-  .narrow .pick .pill { background: #0c1640; }
-  .narrow .label { line-height: 1.22; }
-  .narrow .w { padding: .1em; font: 700 1.3em/1.2 var(--mono); }
-  .narrow .w::before { content: ""; width: 1.5em; height: 4px; border-radius: 2px; background: rgba(130, 170, 255, .35); margin: .15em 0 .1em; }
-  .narrow .w.on::before { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
-  .narrow .proj { width: 1.6em; height: 1.2em; padding: 0; }
+  .narrow .w-only { display: none; }
 </style>
 
-<div class="art wide">
-  <i class="stars"></i>
-  <div class="grid">
-    <div class="glass tile">
-      <div class="mini search">
-        <p class="box"><svg class="pi"><use href="#p-magnifying-glass"/></svg>logo colours</p>
-        <p class="hit"><time>12 Sep</time><i></i></p>
-        <p class="hit"><time>11 Sep</time><i style="flex: .7"></i></p>
-      </div>
-      <p class="label">A journal you can ask</p>
-    </div>
-    <div class="glass tile">
-      <div class="mini pick">
-        <span class="pill past"><span class="day">Mon</span></span>
-        <i class="arrow"></i>
-        <span class="handoff"><svg class="pi"><use href="#p-file-text"/></svg>handoff.md</span>
-        <i class="arrow"></i>
-        <span class="pill"><span class="day">Tue</span></span>
-      </div>
-      <p class="label">Picks up where you left off</p>
-    </div>
-    <div class="glass tile">
-      <div class="mini tl">
-        <span class="v"><i></i>Mon</span><span class="v"><i></i>Tue</span><span class="v"><i></i>Wed</span><span class="v gone"><i></i>Thu</span>
-        <span class="pill back"><svg class="pi"><use href="#p-clock-counter-clockwise"/></svg>Wed's version is back</span>
-      </div>
-      <p class="label">Old versions come back <span class="note">(needs Git)</span></p>
-    </div>
-    <div class="glass tile">
-      <div class="mini gauges">
-        <span class="lt"><span class="gauge"><b style="--w:85%"></b></span>85%: notes saved</span>
-        <span class="lt hot"><span class="gauge full"><b style="--w:100%"></b></span>full: a summary</span>
-        <span class="lt lit"><span class="gauge"><b style="--w:22%"></b></span>told where it was</span>
-      </div>
-      <p class="label">Long tasks stay on track</p>
-    </div>
-    <div class="glass tile">
-      <div class="mini sh">
-        <span class="pill back"><svg class="pi"><use href="#p-notebook"/></svg>Shared notebook</span>
-        <svg class="sh-lines" viewBox="0 0 300 30" preserveAspectRatio="none" aria-hidden="true"><path d="M150 0 C 150 18, 50 12, 50 30 M150 0 V 30 M150 0 C 150 18, 250 12, 250 30" fill="none" stroke="#60a5fa" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
-        <span class="sh-row"><span class="proj">shop</span><span class="proj">blog</span><span class="proj">app</span></span>
-      </div>
-      <p class="label">Lessons shared across projects</p>
-    </div>
-    <div class="glass tile">
-      <div class="mini tw">
-        <span class="w on">Window 1<small>writing</small></span>
-        <span class="lockbox"><svg class="pi"><use href="#p-lock-key"/></svg></span>
-        <span class="w">Window 2<small>waits</small></span>
-      </div>
-      <p class="label">Two windows, no clashes</p>
-    </div>
-  </div>
-</div>
-
-<div class="art narrow">
-  <i class="stars"></i>
-  <div class="grid">
+<template id="tiles">
     <div class="glass tile">
       <div class="mini search">
         <p class="box"><svg class="pi"><use href="#p-magnifying-glass"/></svg>pricing</p>
         <p class="hit"><time>12 Sep</time><i></i></p>
+        <p class="hit w-only"><time>11 Sep</time><i style="flex: .7"></i></p>
       </div>
       <p class="label">A journal you can ask</p>
     </div>
@@ -162,16 +108,16 @@
     </div>
     <div class="glass tile">
       <div class="mini tl">
-        <span class="v"><i></i>Mon</span><span class="v"><i></i>Tue</span><span class="v"><i></i>Wed</span><span class="v gone"><i></i>Thu</span>
+        <span class="v"><i></i>Mon</span><span class="v"><i></i>Tue</span><span class="v"><i></i>Wed</span><span class="v gone"><i></i>Thu<small>gone</small></span>
         <span class="pill back"><svg class="pi"><use href="#p-clock-counter-clockwise"/></svg>needs Git</span>
       </div>
-      <p class="label">Old versions come back</p>
+      <p class="label">Old versions of notes come back</p>
     </div>
     <div class="glass tile">
       <div class="mini gauges">
-        <span class="lt"><span class="gauge"><b style="--w:85%"></b></span>85%</span>
-        <span class="lt hot"><span class="gauge full"><b style="--w:100%"></b></span>full</span>
-        <span class="lt lit"><span class="gauge"><b style="--w:22%"></b></span>after</span>
+        <span class="lt"><span class="gauge"><b style="--w:85%"></b></span>notes saved</span>
+        <span class="lt hot"><span class="gauge full"><b style="--w:100%"></b></span>summary</span>
+        <span class="lt lit"><span class="gauge"><b style="--w:22%"></b></span>told</span>
       </div>
       <p class="label">Long tasks stay on track</p>
     </div>
@@ -191,5 +137,25 @@
       </div>
       <p class="label">Two windows, no clashes</p>
     </div>
-  </div>
-</div>
+    <div class="glass tile">
+      <div class="mini sec">
+        <span class="tok bad">ghp_8fK…</span>
+        <i class="down"></i>
+        <span class="tok">[redacted]</span>
+      </div>
+      <p class="label">Secrets kept out</p>
+    </div>
+    <div class="glass tile">
+      <div class="mini dec">
+        <span class="tok">&lt;private&gt;</span>
+        <span class="tok">/memory-off</span>
+      </div>
+      <p class="label">You decide what is saved</p>
+    </div>
+</template>
+
+<div class="art wide"><i class="stars"></i><div class="grid"></div></div>
+<div class="art narrow"><i class="stars"></i><div class="grid"></div></div>
+<script>
+  for (const g of document.querySelectorAll('.grid')) g.append(document.getElementById('tiles').content.cloneNode(true));
+</script>

@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Turning it off</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=block" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+<script src="icons.js"></script>
+<style>
+  /* Four ways to stop it saving, from narrow to wide, and what is still kept.
+     The content is written once, in the template, and copied into both pictures. */
+  .levels { display: grid; gap: 12px; }
+  .level { display: grid; align-items: center; padding: .7em .9em .8em; gap: .45em .8em; }
+  .num { width: 1.9em; height: 1.9em; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 800; color: #04121f;
+    background: linear-gradient(160deg, #67e8f9, #3b82f6); box-shadow: 0 0 16px rgba(34, 211, 238, .6); }
+  .what { font-weight: 700; line-height: 1.2; }
+  .how { display: flex; flex-wrap: wrap; align-items: center; gap: .4em .6em; color: var(--body); }
+  .how .tok { font-size: 1em; }
+  /* how far it reaches */
+  .reach { height: .5em; border-radius: 99px; background: rgba(20, 30, 80, .9); box-shadow: inset 0 0 0 1px rgba(130, 170, 255, .3); position: relative; }
+  .reach b { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(var(--w) - 4px); border-radius: 99px;
+    background: linear-gradient(90deg, #22d3ee, #3b82f6 70%, #8b5cf6); box-shadow: 0 0 8px rgba(56, 189, 248, .6); }
+  .keeps { display: flex; align-items: center; gap: .75em; padding: .65em .85em; line-height: 1.35; }
+  .art .keeps { margin-top: 14px; }
+
+  .wide { padding: 24px 28px; }
+  .wide .level { grid-template-columns: 2em 215px minmax(0, 1fr) 150px; font-size: 17px; }
+  .wide .how { font-size: 15px; }
+  .wide .keeps { font-size: 16px; }
+
+  .narrow { padding: 22px; }
+  .narrow .level { grid-template-columns: 2em minmax(0, 1fr); padding: .5em .6em .6em; }
+  .narrow .how, .narrow .reach { grid-column: 1 / -1; }
+  .narrow .how .tok { font-size: 1em; }
+  .narrow .keeps { font-size: 1em; padding: .55em .65em; }
+</style>
+
+<template id="body">
+  <div class="levels">
+    <div class="glass level">
+      <span class="num">1</span>
+      <p class="what">One conversation</p>
+      <p class="how"><span class="tok">/project-memory:incognito</span></p>
+      <i class="reach"><b style="--w:25%"></b></i>
+    </div>
+    <div class="glass level">
+      <span class="num">2</span>
+      <p class="what">One project</p>
+      <p class="how"><span class="tok">/project-memory:memory-off</span><span class="tok">memory-on</span></p>
+      <i class="reach"><b style="--w:50%"></b></i>
+    </div>
+    <div class="glass level">
+      <span class="num">3</span>
+      <p class="what">All projects on this computer</p>
+      <p class="how"><span class="w-only">An environment setting, or disable the plugin</span></p>
+      <i class="reach"><b style="--w:75%"></b></i>
+    </div>
+    <div class="glass level">
+      <span class="num">4</span>
+      <p class="what">Claude Code itself</p>
+      <p class="how"><span class="w-only">Claude Code's own settings</span></p>
+      <i class="reach"><b style="--w:100%"></b></i>
+    </div>
+  </div>
+  <p class="glass hot keeps"><span class="ico warn"><svg class="pi warn"><use href="#p-hard-drives"/></svg></span><span>Claude Code still keeps its own transcripts of conversations, for 30 days unless you change it.</span></p>
+</template>
+
+<div class="art wide"><i class="stars"></i></div>
+<div class="art narrow"><i class="stars"></i></div>
+<script>
+  for (const a of document.querySelectorAll('.art')) a.append(document.getElementById('body').content.cloneNode(true));
+</script>

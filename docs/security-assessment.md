@@ -2,7 +2,7 @@
 
 What could go wrong with project-memory, how likely and how bad it would be,
 and what in the code and the tests guards against it. It covers version
-1.3.0 and the project around it, and was written in November 2026. A change
+1.4.2 and the project around it, and was written in November 2026. A change
 that reads, saves or sends anything new updates this page, as
 [CONTRIBUTING.md](../CONTRIBUTING.md#sending-a-change) says. The facts here
 come from [PRIVACY.md](../PRIVACY.md) and [How it works](how-it-works.md),
@@ -10,7 +10,7 @@ which have the details.
 
 ## What it is
 
-A Claude Code plugin: three hook scripts that Claude Code runs on its own
+A Claude Code plugin: four hook scripts that Claude Code runs on its own
 events, and a command-line tool that its skill runs. It is plain JavaScript
 run by Node.js, with no dependencies. It runs with the rights of the user
 who runs Claude Code, on their computer. It has no server, no account and
@@ -26,7 +26,8 @@ no network code.
 | The Stop hook (`memory-tier.mjs --stop`) | After every reply: tidies the indexes, writes the handoff and the journal, imports other conversations, takes a snapshot, and may remind Claude to save notes. |
 | The SessionStart hook (`handoff-log.mjs --print`) | Prints the startup briefing. |
 | The compaction gate (`compact-gate.mjs`) | Before an automatic compaction: may ask Claude Code to wait for the turn to end, or writes a note of the work in progress. |
-| The memory tool (`memory.mjs`) | `search`, `show`, `forget`, `status`, `history`, `restore`, `promote`, `doctor`, and `off`, `on` and `incognito` ([commands](how-it-works.md#the-memory-tool-from-a-terminal)). |
+| The git-rule watcher (`enforce-hook.mjs`) | Before a git command: logs which note's `enforce:` rule matched. Blocks nothing, prints nothing. |
+| The memory tool (`memory.mjs`) | `search`, `show`, `forget`, `status`, `history`, `restore`, `promote`, `doctor`, `enforce`, and `off`, `on` and `incognito` ([commands](how-it-works.md#the-memory-tool-from-a-terminal)). |
 | git | Run by the hooks and the tool, as a program, for the snapshot repository. |
 | Other processes | Another Claude Code window on the same project, Claude's own edits, a virus scanner or a sync tool holding a file. |
 | The maintainer and GitHub | Write, review and release the code; GitHub hosts it, runs CI and serves it to Claude Code's `/plugin`. |
@@ -88,15 +89,20 @@ Claude runs can hold them. Impact: a secret in a plain file, and in the
 history.
 
 - Before anything is saved or printed, `redact()` replaces the secrets it
-  knows with `[redacted]`: dozens of key and token prefixes, private key
-  blocks, passwords in web addresses and on command lines, and values after
-  names such as `password=` ([The handoff](how-it-works.md#the-handoff)).
+  knows with `[redacted]`: the keys and tokens of many services, private key
+  blocks, passwords in web addresses and on command lines, values after
+  names such as `password=`, passwords typed in chat in several languages,
+  cookies and session ids, and look-alike spellings of these
+  ([The handoff](how-it-works.md#the-handoff)). Text is cut to 64 KB first.
+- A note that holds a secret is kept out of the snapshots, and `promote`
+  refuses it. On Linux and macOS the files are private to the user (mode
+  0600, folders 0700).
 - `<private>` keeps text out, and `<private-session>` a whole conversation,
   in any letter case and in the other forms
   [The handoff](how-it-works.md#the-handoff) lists.
 - `forget` removes journal entries, and names the finished days the
   history still holds.
-- The tests and the fuzzer send secrets in every shape `redact()` knows, and
+- The tests and the fuzzer (run by hand) send secrets in every shape `redact()` knows, and
   check that none is written, briefed or printed.
 
 What remains: no list of patterns finds every secret. The README and
@@ -261,7 +267,7 @@ encrypted. What Claude Code sends to Anthropic is Claude Code's.
 
 ## How this stays true
 
-- Six test suites run on every pull request and every push to `master`, on
+- Eight test suites run on every pull request and every push to `master`, on
   Linux, macOS and Windows; before each release the changes get one code
   review ([CONTRIBUTING.md](../CONTRIBUTING.md#tests)).
 - CodeQL scans the code and the workflows every week

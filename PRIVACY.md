@@ -46,12 +46,20 @@ All of it stays in `~/.claude/projects` on your computer:
   and the names of the files Claude changed, for the last 10 exchanges of each
   of your 3 most recent conversations. Older entries are replaced as you go,
   and the record is not part of the history below.
-  - Common kinds of keys, tokens and passwords (API keys, access tokens,
-    passwords in web addresses, settings such as `password=`, and the
-    entries under a settings key such as `passwords:` or `secrets:`) are
-    replaced with `[redacted]` first. So are passwords and tokens Claude
-    passes to a command, in quotes or not: after `--password`, `--token` or
-    `--secret`, after `-p` in `docker login` and the like, in `export`, `setx`,
+  - Keys, tokens and passwords are replaced with `[redacted]` first: the
+    keys and tokens of many services (cloud, AI, payment, code hosting, chat,
+    monitoring and more), long tokens in Authorization headers, passwords in web
+    addresses, settings such as `password=`, and the entries under a settings
+    key such as `passwords:` or `secrets:`. Since 1.4.1 that also covers
+    passwords you type in chat (`pw: …`, "the PIN is …", backup codes, in
+    English, German, French, Spanish, Russian, Swedish, Danish, Dutch,
+    Portuguese, Polish, Japanese, Chinese and Korean), passwords given to
+    command-line and database tools, cookies and session ids, seed phrases,
+    password hashes, and look-alike spellings of all of these (full-width
+    letters, hidden characters, accents, HTML entities, percent and unicode
+    escapes). Passwords and tokens Claude passes to a command are replaced
+    too, in quotes or not: after `--password`, `--token` or `--secret`, after
+    `-p` in `docker login` and the like, in `export`, `setx`,
     `SetEnvironmentVariable`, PowerShell's `$env:`, a `.env` line (and
     cmd's `set`, a compose or Kubernetes env entry) or `aws configure set`
     of a name that says key, secret, token or password,
@@ -60,14 +68,24 @@ All of it stays in `~/.claude/projects` on your computer:
     path are kept. A number is kept only under a name that counts something,
     such as `TOKEN_LIMIT=4096`; after a password or token option, or under a
     secret's name, it is replaced, since it can be a PIN. A value in quotes
-    is replaced whole, blanks and all. Not found:
+    is replaced whole, blanks and all. Text is cut to 64 KB before the
+    secrets are removed, so one huge paste cannot stall a hook. Not found:
     - a value with blanks and no quotes, past its first word (in
       `password: p@ss w0rd` nothing is replaced, since `p@ss` is under 6
       characters);
     - a JSON object more than one level under a secret's key
       (`"secrets": {"db": {"main": …}}`);
-    - a variable set mid-command whose name says no password or token,
-      such as `docker run -e SIGNING_KEY=…`.
+    - a bare 32-character hex key with no keyword (a Rails `master.key`), and
+      `key=<hex>` with no vendor or secret word;
+    - a value under 6 characters (`password=abc` stays as typed), and a
+      short token in an Authorization header, Basic aside: under 20
+      characters, or under 32 with no digit (`Bearer abcdef1234567890`
+      stays);
+    - a Cyrillic or Greek letter that looks like a Latin one, used to spell
+      the word that names the secret.
+
+    Going the other way, a long list of small numbers in code can be cut as a
+    possible Solana key.
 
     No tool recognizes every secret, so put such text between `<private>`
     tags.
@@ -93,17 +111,22 @@ All of it stays in `~/.claude/projects` on your computer:
     sees it, Claude Code keeps it in its own conversation files, and a note
     Claude writes about it is kept in the history like any other note.
   - Notes are saved and snapshotted as Claude writes them: secrets are
-    replaced in the journal and handoff, not in notes. A key pasted into a
-    note stays in the history after the note is deleted, and `promote`
-    copies the note whole into the shared store, where every project reads
-    it.
+    replaced in the journal and handoff, not in notes. Since 1.4.1, a note
+    that holds a key, token or password (in its text or its file name) is
+    kept out of the snapshots, `status` and the startup line name it, and
+    `promote` refuses it unless you add `--force`. A note whose file name
+    holds a key is not added to `MEMORY.md`, and `doctor` says to rename it.
+    A key pasted into a note that was snapshotted before that stays in the
+    history after the note is deleted (`forget --purge` removes forgotten
+    journal entries from the history, not notes).
 - A journal of every exchange, one file per day in a project's `memory`
   folder (`journal/YYYY-MM-DD.md`), with a file `journal.md` beside it that
   tells Claude the journal is there. Each entry holds your message and
   Claude's reply whole, the paths of every file Claude changed, and every
   command it ran, whole, with the time, the conversation's short tag and
-  the git branch. An entry has no size limit, so a long pasted text or a
-  long command is kept in full; secrets in it are still replaced.
+  the git branch. An entry is kept whole: a long pasted text or a long command
+  is kept in full, up to 20 to 50 KB for one request, reply or command, and
+  secrets in it are still replaced.
   - The rules above apply to it too: secrets are replaced with `[redacted]`,
     commands included, a `<private>` message's reply is saved as `[private]`
     with no files or commands, and a conversation marked `<private-session>`
@@ -204,7 +227,7 @@ follows. Turning auto memory off in Claude Code itself, with `/memory` or the
 `autoMemoryEnabled` setting, doesn't reach it, because it never reads Claude
 Code's settings: it goes on saving and briefing as above. To stop it, use one
 of the switches below or disable the plugin
-([Turning it off](README.md#turning-it-off)).
+([Turning it off](docs/how-it-works.md#turning-it-off)).
 
 | Switch | Set by | What stops | What stays |
 |---|---|---|---|
