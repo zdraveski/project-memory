@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- A note with a key or token in its file name is no longer listed in MEMORY.md; it is left unlisted and doctor tells you to rename it.
+
+- A note held out of the snapshots because it holds a secret is now named at startup too, with how to release it (remove the secret).
+
+- A broken handoff-log.mjs no longer stops the memory tidy-up (tiering).
+
 ## 1.4.1 (2026-11-14)
 
 - A message another session or a subagent sends (cross-session-message, agent-message) is no longer saved as something you asked, and a forked session no longer lists its parent's turns again in handoff.md.
