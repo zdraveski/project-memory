@@ -23,7 +23,10 @@
 
   .wide { padding: 24px 28px; }
   .wide .cols { display: grid; grid-template-columns: 398px 1fr; gap: 16px; }
-  .wide .term-bar, .wide .tree { font-size: 15px; }
+  .wide .term-bar, .wide .tree { font-size: 16px; }
+  /* the panel is as tall as the five cards: spread the rows over it instead of leaving a gap */
+  .wide .tree { flex: 1; display: flex; flex-direction: column; padding-bottom: .4em; }
+  .wide .tree p { flex: 1; }
   .wide .offline { font-size: 17px; }
   .wide .item { font-size: 17px; }
   .wide .item span { font-size: 15px; }
@@ -48,17 +51,20 @@
       <div class="term-bar"><i></i><i></i><i></i><b>Your computer</b></div>
       <div class="tree">
         <p><svg class="pi"><use href="#p-folder-lock"/></svg><span>~/.claude/projects/<wbr><span class="nw"><em>your-project</em>/memory</span></span></p>
-        <p class="in"><svg class="pi"><use href="#p-notebook"/></svg>journal/2026-11-01.md</p>
+        <p class="in"><svg class="pi"><use href="#p-notebook"/></svg>journal/2026-11-15.md</p>
         <p class="in"><svg class="pi"><use href="#p-file-text"/></svg>handoff.md</p>
         <p class="in"><svg class="pi"><use href="#p-file-text"/></svg>MEMORY.md and your notes</p>
+        <p class="in"><svg class="pi"><use href="#p-file-text"/></svg>MEMORY-archive.md</p>
+        <p><svg class="pi"><use href="#p-share-network"/></svg><span>~/.claude/projects/<wbr><span class="nw"><em>_shared</em>/memory</span></span></p>
       </div>
-      <p class="offline"><svg class="pi warn"><use href="#p-cloud-slash"/></svg>Nothing is sent anywhere</p>
+      <p class="offline"><svg class="pi warn"><use href="#p-cloud-slash"/></svg>project-memory sends nothing anywhere</p>
     </div>
     <div class="items">
       <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-hard-drives"/></svg></span><span><b>Never goes online</b>No account, no API key, no servers.</span></p>
+      <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-folder-lock"/></svg></span><span><b>Private to you</b>On Linux and macOS only your user can read the files.</span></p>
       <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-key"/></svg></span><span><b>Secrets are blanked out</b>Keys and passwords become <span class="tok">[redacted]</span></span></p>
-      <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-eye-slash"/></svg></span><span><b>Keep text out</b>Put it in <span class="tok">&lt;private&gt;</span> and <span class="tok">&lt;/private&gt;</span></span></p>
-      <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-lock-key"/></svg></span><span><b>Keep a conversation out</b>Type <span class="tok">&lt;private-session&gt;</span></span></p>
+      <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-eye-slash"/></svg></span><span><b>Keep text out</b><span class="tok">&lt;private&gt;</span> for a passage, <span class="tok">&lt;private-session&gt;</span> for a conversation</span></p>
+      <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-link-break"/></svg></span><span><b>Stop saving</b><span class="tok">incognito</span> for a conversation, <span class="tok">memory-off</span> for a project</span></p>
     </div>
   </div>
 </div>
@@ -69,16 +75,20 @@
     <div class="term-bar"><i></i><i></i><i></i><b>Your computer</b></div>
     <div class="tree">
       <p><svg class="pi"><use href="#p-folder-lock"/></svg><span>~/.claude/projects/<wbr><span class="nw"><em>your-project</em>/memory</span></span></p>
-      <p class="in"><svg class="pi"><use href="#p-notebook"/></svg>journal/2026-11-01.md</p>
+      <p class="in"><svg class="pi"><use href="#p-notebook"/></svg>journal/2026-11-15.md</p>
       <p class="in"><svg class="pi"><use href="#p-file-text"/></svg>handoff.md</p>
       <p class="in"><svg class="pi"><use href="#p-file-text"/></svg>MEMORY.md and your notes</p>
+        <p class="in"><svg class="pi"><use href="#p-file-text"/></svg>MEMORY-archive.md</p>
+        <p><svg class="pi"><use href="#p-share-network"/></svg><span>~/.claude/projects/<wbr><span class="nw"><em>_shared</em>/memory</span></span></p>
     </div>
-    <p class="offline"><svg class="pi warn"><use href="#p-cloud-slash"/></svg>Nothing is sent anywhere</p>
+    <p class="offline"><svg class="pi warn"><use href="#p-cloud-slash"/></svg>project-memory sends nothing anywhere</p>
   </div>
   <div class="items">
     <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-hard-drives"/></svg></span><b>Never goes online</b></p>
+    <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-folder-lock"/></svg></span><span class="txt"><b>Private to you</b> on Linux, macOS</span></p>
     <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-key"/></svg></span><span class="txt"><b>Secrets become</b> <span class="tok">[redacted]</span></span></p>
     <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-eye-slash"/></svg></span><span class="txt"><b>Keep text out:</b> <span class="tok">&lt;private&gt;</span></span></p>
     <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-lock-key"/></svg></span><span class="txt"><b>Keep a conversation out:</b> <span class="tok">&lt;private-session&gt;</span></span></p>
+    <p class="glass item"><span class="ico"><svg class="pi"><use href="#p-link-break"/></svg></span><span class="txt"><b>Stop saving:</b> <span class="tok">incognito</span>, <span class="tok">memory-off</span></span></p>
   </div>
 </div>
