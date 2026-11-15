@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Redaction: a password on the line after `mysql -p` is redacted (a database name or statement there is kept); Voyage AI keys of 40 to 46 characters are redacted while long `pa-` kebab-case names are kept; IFTTT `/use/<key>` and `/json/with/key/<key>` URLs and Zapier `/hooks/standard/` URLs are redacted; `glft-` branch names and base32 hashes (52 characters) are no longer erased.
+- Redaction: a password on the line after `mysql -p` is redacted (a database name or statement there is kept); Voyage AI keys of 40 to 46 characters are redacted while long `pa-` kebab-case names are kept; IFTTT `/use/<key>` and `/json/with/key/<key>` URLs and Zapier `/hooks/standard/` URLs are redacted; `glft-` branch names and Nix store hashes (52 characters) are no longer erased.
 
 ## 1.4.1 (2026-11-14)
 
