@@ -111,7 +111,7 @@
   .tok { font: 500 0.9em/1.4 var(--mono); color: #A5F3FC; background: rgb(8 14 40 / .75); border: 1px solid rgb(34 211 238 / .3); border-radius: 0.45rem; padding: 0.1em 0.45em; white-space: nowrap; }
 
   /* Header */
-  .bar { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid transparent; transition: background-color var(--fast), border-color var(--fast); }
+  .bar { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid transparent; transition: background-color var(--fast), border-color var(--fast), -webkit-backdrop-filter var(--fast), backdrop-filter var(--fast); }
   .bar.scrolled { background: rgb(5 10 35 / .82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom-color: var(--line); }
   /* Wrap is the safety net: if the links can't fit beside the name, they drop to a second line instead of off the screen. */
   .bar .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 1rem; min-height: 4.25rem; }
@@ -178,8 +178,11 @@
   @keyframes drift { 50% { transform: translateY(-6px); } }
   .tabs { display: none; gap: 0.35rem; margin: 1rem 0 0; flex-wrap: wrap; justify-content: center; }
   .js .tabs { display: flex; }
-  .js .demo .panel:not(.show) { display: none; }
-  .demo .panel + .panel { border-top: 1px solid var(--line); }
+  /* The panels share one grid cell, so the box keeps the tallest one's height and the tabs under it never move. */
+  .js .demo .term { display: grid; }
+  .js .demo .panel { grid-area: 2 / 1; }
+  .js .demo .panel:not(.show) { visibility: hidden; }
+  :root:not(.js) .demo .panel + .panel { border-top: 1px solid var(--line); }
   /* Solid pills: the orbit passes behind them, not through their words. */
   .tab { display: inline-flex; align-items: center; gap: 0.4rem; font: 600 0.9rem var(--sans); color: var(--body); background: #0B1236; border: 0; border-radius: 99px; min-height: 2.75rem; padding: 0 1rem; cursor: pointer; box-shadow: inset 0 0 0 1px rgb(130 170 255 / .16); transition: color var(--fast), background-color var(--fast), box-shadow var(--fast); }
   .tab .pi { width: 1.1rem; height: 1.1rem; filter: none; }
@@ -310,9 +313,12 @@
   .step.hot .step-top span:last-child { color: #F9A8D4; }
   @media (prefers-reduced-motion: no-preference) {
     .js .track b { transform-origin: left; transform: scaleX(0); transition: transform 1.1s cubic-bezier(.2, .7, .2, 1); }
-    .js .track-wrap.seen .track b { transform: none; }
-    .js .track-wrap.seen .step:nth-child(2) .track b { transition-delay: 0.25s; }
-    .js .track-wrap.seen .step:nth-child(3) .track b { transition-delay: 0.5s; }
+    .js .step.seen .track b { transform: none; }
+  }
+  /* Side by side, the three steps come into view together, so their bars fill one after another. */
+  @media (prefers-reduced-motion: no-preference) and (width > 62.5em) {
+    .js .step.seen:nth-child(2) .track b { transition-delay: 0.25s; }
+    .js .step.seen:nth-child(3) .track b { transition-delay: 0.5s; }
   }
   .footnote { margin: 1.5rem 0 0; color: var(--muted); font-size: 0.95rem; max-width: 46rem; }
 
@@ -1086,10 +1092,12 @@
     });
   });
 
-  // The three bars fill once they're on screen.
-  const wrap = document.querySelector('.track-wrap');
-  if ('IntersectionObserver' in window) new IntersectionObserver((es, o) => { if (es.some((e) => e.isIntersecting)) { wrap.classList.add('seen'); o.disconnect(); } }, { threshold: 0.4 }).observe(wrap);
-  else wrap.classList.add('seen');
+  // Each bar fills once its step is above the bottom 15% of the screen, so on a phone all three fill in view.
+  const steps = document.querySelectorAll('.track-wrap .step');
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { e.target.classList.add('seen'); io.unobserve(e.target); } }, { rootMargin: '0px 0px -15% 0px' });
+    steps.forEach((s) => io.observe(s));
+  } else steps.forEach((s) => s.classList.add('seen'));
 
   // A copy button beside each command, added only when the browser can copy.
   const status = document.getElementById('copied');
@@ -1100,10 +1108,11 @@
     b.innerHTML = '<svg class="pi plain" aria-hidden="true"><use href="#p-copy"/></svg><span>Copy</span>';
     b.setAttribute('aria-label', two ? 'Copy both lines' : 'Copy the command');
     const say = (s) => { b.lastChild.textContent = s; };
+    let reset;
     b.addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(code.textContent); say('Copied'); status.textContent = 'Copied to the clipboard.'; }
       catch { say('Select and copy'); status.textContent = 'Could not copy. Select the text and copy it.'; }
-      setTimeout(() => { say('Copy'); status.textContent = ''; }, 1800);
+      clearTimeout(reset); reset = setTimeout(() => { say('Copy'); status.textContent = ''; }, 1800);
     });
     box.append(b);
   }
