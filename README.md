@@ -1,6 +1,6 @@
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/banner-narrow.webp">
-  <img src="docs/banner.webp" width="880" alt="project-memory: Give Claude Code a memory. Remember, restore, continue.">
+  <img src="docs/banner.webp" width="880" alt="project-memory: Stop re-explaining your project to Claude Code. Remember, restore, continue.">
 </picture></p>
 
 # project-memory
@@ -33,7 +33,9 @@ needs Node.js 22 or newer; the full steps are under [Install](#install).
 /plugin install project-memory@project-memory
 ```
 
-It adds a short briefing (about 900 tokens) at the start of a conversation.
+It adds a short briefing at the start of a conversation: about 900 tokens on
+your last conversation, and never more than about 2,400 in all (the note
+after a summary is usually near that).
 What it does after each reply runs outside the conversation, and every step
 has a time limit, so a stuck step cannot hold Claude up
 ([details](docs/faq.md#does-it-slow-claude-down-or-fill-the-conversation)).
@@ -90,7 +92,10 @@ If you'd rather type a command, start with `/project-memory:memory`:
 All the commands are in [How it works](docs/how-it-works.md#using-it). To read
 your notes yourself, type `/memory` in Claude Code and open the auto memory
 folder. The journal is its `journal` folder, one file per day. The notebook's
-table of contents (`MEMORY.md`) is kept short without dropping a note.
+table of contents (`MEMORY.md`) is kept short without dropping a note. It
+keeps your index lines but not your own headings, and it does not follow a
+memory folder moved with `autoMemoryDirectory`: see
+[Good to know](docs/how-it-works.md#good-to-know).
 
 ## Install
 
@@ -205,10 +210,12 @@ afterwards tells Claude what you asked and what it last said.
   <img src="docs/long-conversations.webp" width="880" alt="Three steps around a compaction. Before, at about 85% of the window: Claude is asked to save its notes. During, when the window is nearly full: Claude Code can be asked to wait, so the step in progress finishes. After the summary: Claude is told what you asked, its last words, tasks still running and files it edited.">
 </picture></p>
 
-One setting matters if your model holds 200,000 tokens (a token is a small
-piece of a word): see
+The wait only happens when the setting `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is
+below your model's window. By default Claude Code goes ahead, and the note
+afterwards does the work. One setting matters if your model holds 200,000
+tokens (a token is a small piece of a word): see
 [If your model holds 200,000 tokens](docs/how-it-works.md#if-your-model-holds-200000-tokens).
-The other tuning is in [Compaction](docs/how-it-works.md#compaction).
+The rest of the tuning is in [Compaction](docs/how-it-works.md#compaction).
 
 ## Checked lessons (experimental)
 

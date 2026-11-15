@@ -48,7 +48,7 @@ All of it stays in `~/.claude/projects` on your computer:
   and the record is not part of the history below.
   - Keys, tokens and passwords are replaced with `[redacted]` first: the
     keys and tokens of many services (cloud, AI, payment, code hosting, chat,
-    monitoring and more), Authorization headers of any kind, passwords in web
+    monitoring and more), long tokens in Authorization headers, passwords in web
     addresses, settings such as `password=`, and the entries under a settings
     key such as `passwords:` or `secrets:`. Since 1.4.1 that also covers
     passwords you type in chat (`pw: …`, "the PIN is …", backup codes, in
@@ -77,6 +77,10 @@ All of it stays in `~/.claude/projects` on your computer:
       (`"secrets": {"db": {"main": …}}`);
     - a bare 32-character hex key with no keyword (a Rails `master.key`), and
       `key=<hex>` with no vendor or secret word;
+    - a value under 6 characters (`password=abc` stays as typed), and a
+      short token in an Authorization header, Basic aside: under 20
+      characters, or under 32 with no digit (`Bearer abcdef1234567890`
+      stays);
     - a Cyrillic or Greek letter that looks like a Latin one, used to spell
       the word that names the secret.
 

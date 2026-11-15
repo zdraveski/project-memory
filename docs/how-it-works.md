@@ -318,8 +318,8 @@ Before any of it is written, these are taken out:
 - since 1.4.1 and 1.4.2, much more: the keys and tokens of about 70 more
   services (Terraform, Vault, Doppler, DigitalOcean, Heroku, Cloudflare,
   Sentry, Grafana, New Relic, Okta, Splunk, CircleCI, 1Password, GitLab,
-  Discord, Teams, Twilio, Dropbox, Azure, Voyage AI and more); Authorization
-  headers of any scheme (Digest, Hawk, OAuth1, AWS SigV4, Negotiate, NTLM,
+  Discord, Teams, Twilio, Dropbox, Azure, Voyage AI and more); long tokens
+  in Authorization headers of any scheme (Digest, Hawk, OAuth1, AWS SigV4, Negotiate, NTLM,
   SSWS, ApiKey) and unsigned JWTs; session ids and cookies, in a `Cookie` or
   `Set-Cookie` header, after `curl -b`, as `sessionid`, `JSESSIONID` or
   `PHPSESSID`, and in cookie jars and HAR files; passwords typed in chat
@@ -344,7 +344,9 @@ types (`password: z.string()`), labels, and times and `file.js:42`.
 Not read, a known limit: a value with blanks and no quotes past its first
 word, a JSON object more than one level under a secret's key, a bare
 32-character hex key with no keyword (a Rails `master.key`), `key=<hex>` with
-no vendor or secret word, and a Cyrillic or Greek letter that looks like a
+no vendor or secret word, a value under 6 characters (`password=abc`), a
+short token in an Authorization header (Basic aside: under 20 characters,
+or under 32 with no digit), and a Cyrillic or Greek letter that looks like a
 Latin one. A long list of small numbers in code is cut as a possible Solana
 key, which is a false alarm the other way.
 
