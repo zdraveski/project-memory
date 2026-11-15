@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.4.2 (2026-11-15)
+
+- A cookie after `curl -b` and a password after `redis-cli -a` are cut again when a word that ends in curl or redis-cli comes before them (`pycurl`, `libcurl.so`, `-h myredis-cli`), and a password typed on the line after `mysql -u root -p` is cut.
+
+- A time, ratio, score or `file.js:42` before a label (`at 14:05 Deploy:started`) is no longer taken for `host:port user:pass`, and a shell reference after `redis-cli -a` or `curl -u user:` (`$PASS`, `${API_PASS}`) is kept. A run of `//x:` is no longer slow to save.
+
+- A tracked note edited to hold a secret is no longer reported as "busy" on every reply, and no longer counted as "still to add" after a good snapshot.
 
 - Redaction: a password on the line after `mysql -p` is redacted (a database name or statement there is kept); Voyage AI keys of 40 to 46 characters are redacted while long `pa-` kebab-case names are kept; IFTTT `/use/<key>` and `/json/with/key/<key>` URLs and Zapier `/hooks/standard/` URLs are redacted; `glft-` branch names and Nix store hashes (52 characters) are no longer erased.
 
