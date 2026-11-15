@@ -220,48 +220,11 @@
   .ask { color: #fff; background: linear-gradient(transparent 62%, rgb(244 114 182 / .35) 62%); }
   .knows { color: #fff; background: linear-gradient(transparent 62%, rgb(34 211 238 / .3) 62%); }
 
-  /* Why context memory matters: the window fills, is shortened, starts empty; then what carries across */
-  .ctx { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; margin: 0; padding: 0; list-style: none; }
-  .ctx > li { min-width: 0; }
-  .ctx h3 { display: flex; align-items: center; gap: 0.65rem; margin: 1.25rem 0 0.4rem; }
-  .ctx .num { width: 2rem; height: 2rem; font-size: 0.95rem; }
-  .ctx p { margin: 0; color: var(--body); }
-  .win { overflow: hidden; background: var(--solid); }
-  .win .term-bar i { display: none; }
-  .win .term-bar b { margin: 0; }
-  .win-body { height: 8.8rem; padding: 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.45rem; }
-  .m { display: block; flex: none; height: 0.6rem; width: var(--w); border-radius: 99px; background: rgb(219 231 255 / .5); }
-  .m.c { margin-left: 0.9rem; background: linear-gradient(90deg, #22D3EE, #3B82F6); }
-  .m.f { margin-left: 0.9rem; background: linear-gradient(90deg, #8B5CF6, #A78BFA); }
-  .m.lost { background: none; border: 1px dashed rgb(244 114 182 / .75); }
-  .m.lost:nth-child(odd) { transform: translateX(0.8rem) rotate(2deg); }
-  .sum, .nb { display: flex; align-items: center; gap: 0.5rem; border-radius: 0.55rem; font: 600 0.8rem/1 var(--mono); }
-  .sum { padding: 0.6rem 0.7rem; color: #DBE7FF; background: linear-gradient(90deg, rgb(34 211 238 / .22), rgb(139 92 246 / .2)); border: 1px solid rgb(34 211 238 / .5); }
-  .nb { align-self: flex-start; padding: 0.4rem 0.6rem; color: #DDD6FE; background: rgb(139 92 246 / .16); border: 1px solid rgb(167 139 250 / .5); }
-  .nb.lit { color: #A5F3FC; background: rgb(34 211 238 / .12); border-color: rgb(34 211 238 / .55); }
-  .sum .pi, .nb .pi { width: 1.05rem; height: 1.05rem; }
-  .empty { flex: 1; border: 1px dashed rgb(130 170 255 / .22); border-radius: 0.55rem; }
+  /* Small fill gauge, used in the tiles */
   .gauge { position: relative; height: 0.6rem; border-radius: 99px; background: rgb(20 30 80 / .9); box-shadow: inset 0 0 0 1px rgb(130 170 255 / .3); }
   .gauge b { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(var(--w) - 4px); border-radius: 99px; background: linear-gradient(90deg, #22D3EE, #3B82F6 70%, #8B5CF6); }
   .gauge.full b { background: linear-gradient(90deg, #3B82F6, #8B5CF6 60%, #F472B6); }
-  .win .gauge { margin: 0 1rem 1rem; }
   .sub { font-size: 1.35rem; margin: 3.5rem 0 1.1rem; }
-  .costs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
-  .cost { display: flex; align-items: flex-start; gap: 1rem; padding: 1.25rem; }
-  .cost .ico { width: 2.75rem; height: 2.75rem; border-radius: 0.8rem; }
-  .cost .ico .pi { width: 1.45rem; height: 1.45rem; }
-  .cost strong { display: block; margin: 0 0 0.25rem; }
-  .cost p { margin: 0; color: var(--body); font-size: 0.97rem; }
-  /* The bridge: the ended window, what project-memory keeps, the new window; a line of light joins them */
-  .carry { isolation: isolate; margin: 1rem 0 0; padding: 1.75rem; display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.6fr) minmax(0, 0.8fr); align-items: center; gap: 2rem; }
-  .carry .win-body { height: 6.4rem; }
-  .carry .old .m { opacity: 0.55; }
-  .carry ul { position: relative; list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
-  .carry ul::before { content: ""; position: absolute; z-index: -1; left: -2rem; right: -2rem; top: 50%; height: 2px; background: linear-gradient(90deg, #F472B6, #22D3EE 30%, #60A5FA 70%, #A78BFA); box-shadow: 0 0 12px rgb(34 211 238 / .6); }
-  .carry li { display: flex; align-items: flex-start; gap: 0.85rem; padding: 0.85rem 1rem; border-radius: 0.85rem; background: #0A1438; border: 1px solid rgb(34 211 238 / .35); }
-  .carry li .pi { margin-top: 0.1rem; }
-  .carry li b { margin-right: 0.35rem; }
-  .carry li p { margin: 0.25rem 0 0; color: var(--body); font-size: 0.95rem; }
 
   /* How it works: four moments joined by a line of light */
   .flow { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem; margin: 0; padding: 0; list-style: none; }
@@ -372,43 +335,13 @@
   .aside { display: flex; gap: 0.75rem; align-items: flex-start; color: var(--body); max-width: 52rem; margin: 2rem 0 1.75rem; }
   .aside .pi { width: 1.4rem; height: 1.4rem; margin-top: 0.15rem; }
 
-  /* Built with care: each check, a picture of it, and why it protects your notes */
-  .care { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
-  .check { display: grid; grid-template-columns: 13.5rem minmax(0, 1fr); align-items: center; gap: 1.5rem; padding: 1.5rem; }
-  .check > * { min-width: 0; }
-  .check h3 { font-size: 1.05rem; margin: 0 0 0.4rem; }
-  .check .big { display: block; margin: 0 0 0.45rem; font: 800 clamp(2.3rem, 3.6vw, 2.9rem)/1 var(--sans); letter-spacing: -0.03em; }
-  .check p { margin: 0; color: var(--body); font-size: 0.95rem; }
-  .check .why { display: flex; gap: 0.55rem; margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--line); color: #DBE7FF; }
-  .why .pi { width: 1.15rem; height: 1.15rem; margin-top: 0.2rem; }
-  .art { display: grid; align-content: center; gap: 0.45rem; min-height: 10rem; padding: 0.9rem; border-radius: 0.9rem; background: rgb(6 11 36 / .7); border: 1px solid rgb(130 170 255 / .18); font: 600 0.75rem/1.2 var(--mono); color: #C9D6F5; }
-  .matrix { grid-template-columns: auto repeat(3, minmax(0, 1fr)); align-items: center; justify-items: center; gap: 0.45rem 0.4rem; }
-  .matrix .os { justify-self: start; color: #DBE7FF; }
-  .matrix .h { color: var(--cyan); }
-  .matrix .ok, .matrix .off { width: 100%; max-width: 2rem; aspect-ratio: 1; border-radius: 0.45rem; display: grid; place-items: center; }
-  .matrix .ok { background: linear-gradient(160deg, #67E8F9, #3B82F6); box-shadow: 0 0 12px rgb(34 211 238 / .45); }
-  .matrix .ok::after { content: ""; width: 0.55rem; height: 0.3rem; margin-top: -0.12rem; border: solid #04121F; border-width: 0 0 2px 2px; transform: rotate(-45deg); }
-  .matrix .off { border: 1px dashed rgb(130 170 255 / .3); }
-  .ln { display: flex; align-items: center; gap: 0.45rem; min-height: 1.2rem; }
-  .ln::before { content: ""; order: 1; flex: 0 1 var(--w); height: 0.45rem; border-radius: 99px; background: rgb(219 231 255 / .28); }
-  .ln:not(.bug) { padding-left: 1.5rem; }
-  .ln.bug::before { background: rgb(244 114 182 / .55); }
-  .ln .pi { width: 1.05rem; height: 1.05rem; }
-  .ln b { order: 2; margin-left: auto; padding: 0.15rem 0.45rem; border-radius: 99px; color: #04121F; background: linear-gradient(135deg, #67E8F9, #3B82F6); }
-  .ins { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-  .ins span { padding: 0.2rem 0.45rem; border-radius: 0.4rem; color: #F9A8D4; background: rgb(244 114 182 / .1); border: 1px solid rgb(244 114 182 / .4); }
-  .fleet { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 0.3rem; max-width: 17rem; margin-top: 0.35rem; }
-  .fleet i { aspect-ratio: 1; border-radius: 0.3rem; border: 1px solid rgb(34 211 238 / .45); background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), #67E8F9 0 16%, transparent 22%), rgb(34 211 238 / .1); }
-  .fleet i:nth-child(3n) { --x: 30%; --y: 68%; }
-  .fleet i:nth-child(3n+1) { --x: 70%; --y: 32%; }
-  .fleet i:nth-child(4n) { --x: 34%; --y: 30%; }
-  .art .cap { color: var(--muted); }
-  .deps { justify-items: center; gap: 0.6rem; }
-  .badge { display: inline-flex; border-radius: 0.45rem; overflow: hidden; border: 1px solid rgb(34 211 238 / .4); }
-  .badge span { padding: 0.32rem 0.55rem; color: #DBE7FF; background: rgb(20 30 80 / .9); }
-  .badge b { padding: 0.32rem 0.55rem; color: #04121F; background: linear-gradient(135deg, #67E8F9, #3B82F6); }
-  /* Breakpoints are in em, so a visitor with a bigger browser text size gets the narrower layout sooner (1em = 16px at the default). */
-  @media (max-width: 68.75em) { .check { grid-template-columns: 1fr; align-items: start; } .art { min-height: 8.5rem; } }
+  /* Tested: one band, the count and what it covers; the breakdown lives on GitHub */
+  .tested { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 2.5rem; padding: 1.75rem 2rem; }
+  .tested > div { flex: 1 1 24rem; min-width: 0; }
+  .tested p { margin: 0; color: var(--body); }
+  .tested .big { font: 800 clamp(3rem, 6vw, 4.5rem)/1 var(--sans); letter-spacing: -0.03em; }
+  .tested h2 { font-size: clamp(1.5rem, 2.6vw, 2rem); margin: 0 0 0.6rem; }
+  .tested .more { margin-top: 0.8rem; }
 
   /* Compared: one row per need, a mark on each side */
   .vs-box { padding: 0.25rem 0; overflow: hidden; }
@@ -482,7 +415,7 @@
   .level > * { min-width: 0; }
   .level .what { margin: 0; font-weight: 700; line-height: 1.25; }
   .level .how { margin: 0; color: var(--body); font-size: 0.97rem; }
-  .level .how .tok { margin-right: 0.3rem; white-space: normal; overflow-wrap: anywhere; }
+  .level .how .tok:first-child { margin-right: 0.3rem; white-space: normal; overflow-wrap: anywhere; }
   .reach { height: 0.6rem; border-radius: 99px; background: rgb(20 30 80 / .9); box-shadow: inset 0 0 0 1px rgb(130 170 255 / .3); position: relative; }
   .reach b { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(var(--w) - 4px); border-radius: 99px; background: linear-gradient(90deg, #22D3EE, #3B82F6 70%, #8B5CF6); box-shadow: 0 0 8px rgb(56 189 248 / .6); }
   .stays { display: flex; align-items: center; gap: 0.9rem; margin: 1rem 0 0; padding: 1rem 1.2rem; color: #F9D5E8; }
@@ -500,14 +433,6 @@
   .rule { margin: 0; padding: 1rem 1.1rem; border-radius: 0.75rem; overflow-x: auto; background: rgb(8 14 40 / .85); border: 1px solid rgb(167 139 250 / .35); color: #DDD6FE; }
   .rule code { font-size: 0.88rem; line-height: 1.75; }
   .rule-cap { margin: 0.7rem 0 0; color: var(--muted); font-size: 0.9rem; }
-
-  /* Built with care: the time limits and the test suites */
-  .clock { gap: 0.6rem; }
-  .clock .lt { grid-template-columns: 7.8rem minmax(0, 1fr); font: 600 0.75rem/1.2 var(--mono); }
-  .suites { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; font-size: 0.7rem; }
-  .suites > span { display: flex; justify-content: space-between; gap: 0.4rem; padding: 0.15rem 0.5rem; border-radius: 0.4rem; background: rgb(34 211 238 / .08); border: 1px solid rgb(34 211 238 / .3); color: #DBE7FF; }
-  .suites > span b { color: #A5F3FC; font-weight: 700; }
-  .suites .cap { display: block; padding: 0.2rem 0 0; background: none; border: 0; color: var(--muted); }
 
   /* Questions */
   .faq { max-width: 52rem; display: grid; gap: 0.75rem; }
@@ -533,6 +458,7 @@
   footer a:hover { color: var(--ink); text-decoration: underline; }
   footer p { margin: 0; align-self: center; }
 
+  /* Breakpoints are in em, so a visitor with a bigger browser text size gets the narrower layout sooner (1em = 16px at the default). */
   @media (max-width: 62.5em) {
     .hero, .install, .privacy-grid { grid-template-columns: 1fr; }
     .hero { gap: 3.5rem; padding-top: 2.5rem; }
@@ -542,15 +468,7 @@
     .tile.big, .bento > :last-child { grid-column: span 2; grid-row: auto; }
     .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 2.5rem; }
     .flow::before, .flow::after { display: none; }
-    .track-wrap, .costs, .limits { grid-template-columns: 1fr; }
-    .ctx { grid-template-columns: 1fr; }
-    .ctx > li { display: grid; grid-template-columns: 15rem minmax(0, 1fr); column-gap: 1.5rem; align-items: center; }
-    .ctx .win { grid-row: span 2; }
-    .ctx h3 { margin-top: 0; align-self: end; }
-    .ctx p { align-self: start; }
-    .carry { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
-    .carry ul { grid-column: 1 / -1; order: 3; }
-    .carry ul::before { display: none; }
+    .track-wrap, .limits { grid-template-columns: 1fr; }
   }
   @media (max-width: 62.5em) {
     .keeps { grid-template-columns: 1fr; }
@@ -565,7 +483,7 @@
   }
   @media (max-width: 42.5em) {
     body { font-size: 1rem; }
-    .lesson { padding: 1.25rem; }
+    .lesson, .tested { padding: 1.25rem; }
     .stays { align-items: flex-start; }
     .level .how .tok { font-size: 0.72rem; }
     .level .how > .tok:first-child { display: block; width: fit-content; max-width: 100%; margin: 0 0 0.4rem; }
@@ -574,13 +492,9 @@
     .bar nav a.gh span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     .bar nav a.gh { min-width: 2.75rem; justify-content: center; padding: 0; }
     .part { padding: 4.25rem 0; }
-    .bento, .care, .flow { grid-template-columns: 1fr; }
+    .bento, .flow { grid-template-columns: 1fr; }
     .tile.big { grid-column: auto; grid-template-columns: 1fr; }
     .bento > :last-child { grid-column: auto; }
-    .ctx > li { display: block; }
-    .ctx h3 { margin-top: 1.1rem; }
-    .carry { padding: 1.25rem; }
-    .carry .win-body { height: 4.6rem; }
     .story { grid-template-columns: 1fr; row-gap: 1.5rem; }
     .fork { display: none; }
     .demo .panel { min-height: 0; font-size: 0.86rem; }
@@ -622,11 +536,7 @@
   </defs>
   <symbol id="gh-mark" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
   <!--PHOSPHOR-->
-  <symbol id="p-arrow-counter-clockwise" viewBox="0 0 256 256"><path d="M216,128a88,88,0,1,1-88-88A88,88,0,0,1,216,128Z" opacity="0.2"/><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></symbol>
-  <symbol id="p-arrows-in-line-vertical" viewBox="0 0 256 256"><path d="M216,32V224a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V32A16,16,0,0,1,56,16H200A16,16,0,0,1,216,32Z" opacity="0.2"/><path d="M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM122.34,101.66a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32L136,76.69V16a8,8,0,0,0-16,0V76.69L101.66,58.34A8,8,0,0,0,90.34,69.66Zm11.32,52.68a8,8,0,0,0-11.32,0l-32,32a8,8,0,0,0,11.32,11.32L120,179.31V240a8,8,0,0,0,16,0V179.31l18.34,18.35a8,8,0,0,0,11.32-11.32Z"/></symbol>
-  <symbol id="p-brain" viewBox="0 0 256 256"><path d="M240,124a48,48,0,0,1-32,45.27h0V176a40,40,0,0,1-80,0,40,40,0,0,1-80,0v-6.73h0a48,48,0,0,1,0-90.54V72a40,40,0,0,1,80,0,40,40,0,0,1,80,0v6.73A48,48,0,0,1,240,124Z" opacity="0.2"/><path d="M248,124a56.11,56.11,0,0,0-32-50.61V72a48,48,0,0,0-88-26.49A48,48,0,0,0,40,72v1.39a56,56,0,0,0,0,101.2V176a48,48,0,0,0,88,26.49A48,48,0,0,0,216,176v-1.41A56.09,56.09,0,0,0,248,124ZM88,208a32,32,0,0,1-31.81-28.56A55.87,55.87,0,0,0,64,180h8a8,8,0,0,0,0-16H64A40,40,0,0,1,50.67,86.27,8,8,0,0,0,56,78.73V72a32,32,0,0,1,64,0v68.26A47.8,47.8,0,0,0,88,128a8,8,0,0,0,0,16,32,32,0,0,1,0,64Zm104-44h-8a8,8,0,0,0,0,16h8a55.87,55.87,0,0,0,7.81-.56A32,32,0,1,1,168,144a8,8,0,0,0,0-16,47.8,47.8,0,0,0-32,12.26V72a32,32,0,0,1,64,0v6.73a8,8,0,0,0,5.33,7.54A40,40,0,0,1,192,164Zm16-52a8,8,0,0,1-8,8h-4a36,36,0,0,1-36-36V80a8,8,0,0,1,16,0v4a20,20,0,0,0,20,20h4A8,8,0,0,1,208,112ZM60,120H56a8,8,0,0,1,0-16h4A20,20,0,0,0,80,84V80a8,8,0,0,1,16,0v4A36,36,0,0,1,60,120Z"/></symbol>
   <symbol id="p-browsers" viewBox="0 0 256 256"><path d="M224,56V168a8,8,0,0,1-8,8H192V88a8,8,0,0,0-8-8H64V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z" opacity="0.2"/><path d="M216,40H72A16,16,0,0,0,56,56V72H40A16,16,0,0,0,24,88V200a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V184h16a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,88H184v16H40ZM184,200H40V120H184v80Zm32-32H200V88a16,16,0,0,0-16-16H72V56H216Z"/></symbol>
-  <symbol id="p-bug" viewBox="0 0 256 256"><path d="M208,128v16a80,80,0,0,1-160,0V128Z" opacity="0.2"/><path d="M144,92a12,12,0,1,1,12,12A12,12,0,0,1,144,92ZM100,80a12,12,0,1,0,12,12A12,12,0,0,0,100,80Zm116,64A87.76,87.76,0,0,1,213,167l22.24,9.72A8,8,0,0,1,232,192a7.89,7.89,0,0,1-3.2-.67L207.38,182a88,88,0,0,1-158.76,0L27.2,191.33A7.89,7.89,0,0,1,24,192a8,8,0,0,1-3.2-15.33L43,167A87.76,87.76,0,0,1,40,144v-8H16a8,8,0,0,1,0-16H40v-8a87.76,87.76,0,0,1,3-23L20.8,79.33a8,8,0,1,1,6.4-14.66L48.62,74a88,88,0,0,1,158.76,0l21.42-9.36a8,8,0,0,1,6.4,14.66L213,89.05a87.76,87.76,0,0,1,3,23v8h24a8,8,0,0,1,0,16H216ZM56,120H200v-8a72,72,0,0,0-144,0Zm64,95.54V136H56v8A72.08,72.08,0,0,0,120,215.54ZM200,144v-8H136v79.54A72.08,72.08,0,0,0,200,144Z"/></symbol>
   <symbol id="p-chat-teardrop-text" viewBox="0 0 256 256"><path d="M224,124h0a92,92,0,0,1-92,92H48a8,8,0,0,1-8-8V124a92,92,0,0,1,92-92h0A92,92,0,0,1,224,124Z" opacity="0.2"/><path d="M172,112a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h68A8,8,0,0,1,172,112Zm-8,24H96a8,8,0,0,0,0,16h68a8,8,0,0,0,0-16Zm68-12A100.11,100.11,0,0,1,132,224H48a16,16,0,0,1-16-16V124a100,100,0,0,1,200,0Zm-16,0a84,84,0,0,0-168,0v84h84A84.09,84.09,0,0,0,216,124Z"/></symbol>
   <symbol id="p-check-circle" viewBox="0 0 256 256"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" opacity="0.2"/><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></symbol>
   <symbol id="p-clock-counter-clockwise" viewBox="0 0 256 256"><path d="M216,128a88,88,0,1,1-88-88A88,88,0,0,1,216,128Z" opacity="0.2"/><path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/></symbol>
@@ -646,10 +556,8 @@
   <symbol id="p-magnifying-glass" viewBox="0 0 256 256"><path d="M192,112a80,80,0,1,1-80-80A80,80,0,0,1,192,112Z" opacity="0.2"/><path d="M229.66,218.34,179.6,168.28a88.21,88.21,0,1,0-11.32,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></symbol>
   <symbol id="p-minus-circle" viewBox="0 0 256 256"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" opacity="0.2"/><path d="M176,128a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,128Zm56,0A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></symbol>
   <symbol id="p-notebook" viewBox="0 0 256 256"><path d="M80,40V216H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8Z" opacity="0.2"/><path d="M184,112a8,8,0,0,1-8,8H112a8,8,0,0,1,0-16h64A8,8,0,0,1,184,112Zm-8,24H112a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16Zm48-88V208a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H72V48H48Zm160,0V48H88V208H208Z"/></symbol>
-  <symbol id="p-package" viewBox="0 0 256 256"><path d="M128,129.09V232a8,8,0,0,1-3.84-1l-88-48.18a8,8,0,0,1-4.16-7V80.18a8,8,0,0,1,.7-3.25Z" opacity="0.2"/><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,32l80.34,44-29.77,16.3-80.35-44ZM128,120,47.66,76l33.9-18.56,80.34,44ZM40,90l80,43.78v85.79L40,175.82Zm176,85.78h0l-80,43.79V133.82l32-17.51V152a8,8,0,0,0,16,0V107.55L216,90v85.77Z"/></symbol>
   <symbol id="p-play-circle" viewBox="0 0 256 256"><path d="M128,32a96,96,0,1,0,96,96A96,96,0,0,0,128,32ZM108,168V88l64,40Z" opacity="0.2"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48.24-94.78-64-40A8,8,0,0,0,100,88v80a8,8,0,0,0,12.24,6.78l64-40a8,8,0,0,0,0-13.56ZM116,153.57V102.43L156.91,128Z"/></symbol>
   <symbol id="p-plus" viewBox="0 0 256 256"><path d="M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z" opacity="0.2"/><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></symbol>
-  <symbol id="p-question" viewBox="0 0 256 256"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" opacity="0.2"/><path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></symbol>
   <symbol id="p-share-network" viewBox="0 0 256 256"><path d="M208,200a32,32,0,1,1-32-32A32,32,0,0,1,208,200ZM176,88a32,32,0,1,0-32-32A32,32,0,0,0,176,88Z" opacity="0.2"/><path d="M176,160a39.89,39.89,0,0,0-28.62,12.09l-46.1-29.63a39.8,39.8,0,0,0,0-28.92l46.1-29.63a40,40,0,1,0-8.66-13.45l-46.1,29.63a40,40,0,1,0,0,55.82l46.1,29.63A40,40,0,1,0,176,160Zm0-128a24,24,0,1,1-24,24A24,24,0,0,1,176,32ZM64,152a24,24,0,1,1,24-24A24,24,0,0,1,64,152Zm112,72a24,24,0,1,1,24-24A24,24,0,0,1,176,224Z"/></symbol>
   <symbol id="p-shield-check" viewBox="0 0 256 256"><path d="M216,56v56c0,96-88,120-88,120S40,208,40,112V56a8,8,0,0,1,8-8H208A8,8,0,0,1,216,56Z" opacity="0.2"/><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/></symbol>
   <symbol id="p-sun-horizon" viewBox="0 0 256 256"><path d="M192,144a64.33,64.33,0,0,1-2,16H66a64,64,0,1,1,126-16Z" opacity="0.2"/><path d="M240,152H199.55a73.54,73.54,0,0,0,.45-8,72,72,0,0,0-144,0,73.54,73.54,0,0,0,.45,8H16a8,8,0,0,0,0,16H240a8,8,0,0,0,0-16ZM72,144a56,56,0,1,1,111.41,8H72.59A56.13,56.13,0,0,1,72,144Zm144,56a8,8,0,0,1-8,8H48a8,8,0,0,1,0-16H208A8,8,0,0,1,216,200ZM72.84,43.58a8,8,0,0,1,14.32-7.16l8,16a8,8,0,0,1-14.32,7.16Zm-56,48.84a8,8,0,0,1,10.74-3.57l16,8a8,8,0,0,1-7.16,14.31l-16-8A8,8,0,0,1,16.84,92.42Zm192,15.16a8,8,0,0,1,3.58-10.73l16-8a8,8,0,1,1,7.16,14.31l-16,8a8,8,0,0,1-10.74-3.58Zm-48-55.16,8-16a8,8,0,0,1,14.32,7.16l-8,16a8,8,0,1,1-14.32-7.16Z"/></symbol>
@@ -792,7 +700,7 @@
           <div>
             <span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-magnifying-glass"/></svg></span>
             <h3>A journal you can ask</h3>
-            <p>Every exchange is kept whole, one file per day. Ask about earlier work in your own words, and Claude searches the journal and your notes, and tells you when it happened. The journal isn't loaded into the conversation; it's only searched when you ask. Search goes by words, not by meaning.</p>
+            <p>Every exchange is kept whole, one file per day. Ask about earlier work, and Claude searches the journal and your notes and tells you when it happened. It isn't loaded into the conversation, only searched when you ask, and search goes by words, not meaning.</p>
           </div>
           <div class="search" aria-label="An example search">
             <div class="box"><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>logo colors</div>
@@ -850,61 +758,6 @@
     </div>
   </section>
 
-  <section class="part" id="context" aria-labelledby="context-h">
-    <div class="wrap">
-      <p class="eyebrow">Why context memory matters</p>
-      <h2 id="context-h">Claude sees only <span class="grad">what fits in its window.</span></h2>
-      <p class="intro">Claude can only see a limited amount at once: your messages, its replies and the files it has read. When that fills up, Claude Code shortens the conversation to a summary.</p>
-      <ol class="ctx">
-        <li>
-          <div class="glass win" aria-hidden="true">
-            <div class="term-bar"><b>Conversation</b><span>nearly full</span></div>
-            <div class="win-body"><i class="m" style="--w:55%"></i><i class="m c" style="--w:78%"></i><i class="m f" style="--w:62%"></i><i class="m" style="--w:40%"></i><i class="m c" style="--w:84%"></i><i class="m f" style="--w:70%"></i><i class="m c" style="--w:58%"></i></div>
-            <div class="gauge full"><b style="--w:92%"></b></div>
-          </div>
-          <h3><span class="num" aria-hidden="true">1</span>It fills up</h3>
-          <p>Every message, every reply and every file Claude reads takes room. A long conversation fills the window.</p>
-        </li>
-        <li>
-          <div class="glass hot win" aria-hidden="true">
-            <div class="term-bar"><b>Conversation</b><span>a summary</span></div>
-            <div class="win-body"><span class="sum"><svg class="pi"><use href="#p-arrows-in-line-vertical"/></svg>summary</span><i class="m lost" style="--w:70%"></i><i class="m lost" style="--w:52%"></i><i class="m lost" style="--w:64%"></i></div>
-            <div class="gauge"><b style="--w:24%"></b></div>
-          </div>
-          <h3><span class="num" aria-hidden="true">2</span>It's shortened to a summary</h3>
-          <p>Claude Code then shortens the conversation to a summary. It reloads your notes afterwards, but the details of a task in progress can get lost.</p>
-        </li>
-        <li>
-          <div class="glass win" aria-hidden="true">
-            <div class="term-bar"><b>New conversation</b><span>empty</span></div>
-            <div class="win-body"><span class="nb"><svg class="pi"><use href="#p-notebook"/></svg>MEMORY.md</span><span class="empty"></span></div>
-            <div class="gauge"><b style="--w:8%"></b></div>
-          </div>
-          <h3><span class="num" aria-hidden="true">3</span>The next one starts empty</h3>
-          <p>A new conversation starts with an empty window. Claude Code's own memory brings along only the notes Claude chose to write in its notebook, <span class="tok">MEMORY.md</span>.</p>
-        </li>
-      </ol>
-
-      <h3 class="sub">What project-memory carries across</h3>
-      <div class="glass lit carry">
-        <div class="glass win old" aria-hidden="true">
-          <div class="term-bar"><b>Monday</b><span>ended</span></div>
-          <div class="win-body"><i class="m" style="--w:55%"></i><i class="m c" style="--w:80%"></i><i class="m f" style="--w:62%"></i><i class="m c" style="--w:66%"></i></div>
-        </div>
-        <ul>
-          <li><svg class="pi" aria-hidden="true"><use href="#p-file-text"/></svg><div><b>The handoff</b><span class="tok">handoff.md</span><p>After every reply, a record of the latest exchanges: where you stopped.</p></div></li>
-          <li><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg><div><b>The journal</b><span class="tok">journal/</span><p>Every exchange, one file per day. It isn't loaded, only searched when you ask about earlier work.</p></div></li>
-          <li><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg><div><b>The briefing</b><p>A new conversation starts with the last exchanges, a short briefing. After a summary the note is longer: what you asked, what Claude last said, tasks still running and files it edited.</p></div></li>
-        </ul>
-        <div class="glass lit win" aria-hidden="true">
-          <div class="term-bar"><b>Tuesday</b><span>new</span></div>
-          <div class="win-body"><span class="nb lit"><svg class="pi"><use href="#p-sun-horizon"/></svg>briefing</span><span class="empty"></span></div>
-        </div>
-      </div>
-      <p class="footnote">Claude is reminded to save its notes before a long conversation is shortened. If your model has a 200,000-token limit, it needs <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">one setting</a> (the details are on GitHub).</p>
-    </div>
-  </section>
-
   <section class="part" id="how" aria-labelledby="how-h">
     <div class="wrap">
       <p class="eyebrow">How it works</p>
@@ -916,14 +769,9 @@
         <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-file-text"/></svg></div><h3>Where you stopped</h3><p>The last exchanges are kept for next time.</p><span class="tok file">handoff.md</span></li>
         <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg></div><h3>The next conversation</h3><p>Claude starts with a short briefing on where you stopped, about 900 tokens.</p></li>
       </ol>
-    </div>
-  </section>
 
-  <section class="part" id="long" aria-labelledby="long-h">
-    <div class="wrap">
-      <p class="eyebrow">Long conversations</p>
-      <h2 id="long-h">Kept <span class="grad">on track.</span></h2>
-      <p class="intro">When a conversation fills up, Claude Code shortens it to a summary, and the details of a task in progress can get lost.</p>
+      <h3 class="sub">When a long conversation fills up</h3>
+      <p class="intro">Claude can only see so much at once: your messages, its replies and the files it reads. When that fills up, Claude Code shortens the conversation to a summary, and the details of a task in progress can get lost.</p>
       <div class="track-wrap">
         <div class="glass step">
           <div class="step-top"><span class="num" aria-hidden="true">1</span><b>Before</b><span>85% full</span></div>
@@ -941,7 +789,7 @@
           <p>Claude is told what you asked, what it last said, tasks still running and files it edited.</p>
         </div>
       </div>
-      <p class="footnote">Room to wait needs one setting, <span class="tok">CLAUDE_CODE_AUTO_COMPACT_WINDOW</span>; with the default settings there is none. Claude Code doesn't always wait when asked. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">How it works</a>.</p>
+      <p class="footnote">One setting matters here, <span class="tok">CLAUDE_CODE_AUTO_COMPACT_WINDOW</span>. A model with a 200,000-token window needs it for step 1 (the questions below say how). Step 2 only happens on a bigger model with it set lower than the model's window, such as 800k on a 1,000,000-token model, and even then Claude Code doesn't always wait. Step 3 needs nothing. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">The details</a>.</p>
     </div>
   </section>
 
@@ -964,7 +812,6 @@
         <ul class="items">
           <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-hard-drives"/></svg></span><div><h3>Never goes online</h3><p>No account, no API key, no servers.</p></div></li>
           <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-eye-slash"/></svg></span><div><h3>Keep text out</h3><p>Put it in <span class="tok">&lt;private&gt;</span> and <span class="tok">&lt;/private&gt;</span>. Claude's reply to it stays out too.</p></div></li>
-          <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-lock-key"/></svg></span><div><h3>Keep a conversation out</h3><p>Type <span class="tok">&lt;private-session&gt;</span>. What was saved before is removed, except the history's copy of days already over.</p></div></li>
           <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-clock-counter-clockwise"/></svg></span><div><h3>Forget on request</h3><p>Ask Claude to forget something. It lists the journal entries and removes the ones you confirm.</p></div></li>
         </ul>
       </div>
@@ -1018,12 +865,12 @@
     <div class="wrap">
       <p class="eyebrow">You decide</p>
       <h2 id="control-h">You choose <span class="grad">what is saved.</span></h2>
-      <p class="intro">Four ways to stop project-memory saving, from narrow to wide. To leave out a single message, use <span class="tok">&lt;private&gt;</span>.</p>
+      <p class="intro">Four ways to stop project-memory saving, from narrow to wide.</p>
       <ol class="levels">
         <li class="glass level">
           <span class="num" aria-hidden="true">1</span>
           <p class="what">One conversation</p>
-          <p class="how"><span class="tok">/project-memory:incognito</span>Stops saving this conversation and removes what it already saved. If it says NOT applied, it did not work.</p>
+          <p class="how"><span class="tok">/project-memory:incognito</span>Stops saving this conversation and removes what it already saved, except the history's copy of days already over. Typing <span class="tok">&lt;private-session&gt;</span> does the same. If it says NOT applied, it did not work.</p>
           <i class="reach" aria-hidden="true"><b style="--w:25%"></b></i>
         </li>
         <li class="glass level">
@@ -1070,40 +917,16 @@
     </div>
   </section>
 
-  <section class="part" aria-labelledby="care-h">
+  <section class="part slim" aria-labelledby="care-h">
     <div class="wrap">
-      <p class="eyebrow">Tested</p>
-      <h2 id="care-h">Tested <span class="grad">before every release.</span></h2>
-      <p class="intro">The tests run on every change. The code is scanned for problems every week, and each release gets one review.</p>
-      <ul class="care">
-        <li class="glass check">
-          <div class="art suites" aria-hidden="true">
-            <span>handoff-log<b>901</b></span><span>memory<b>492</b></span>
-            <span>memory-tier<b>289</b></span><span>journal<b>285</b></span>
-            <span>store<b>184</b></span><span>compact-gate<b>125</b></span>
-            <span>enforce<b>115</b></span><span>enforce-hook<b>98</b></span>
-            <span class="cap">8 suites, all passing</span>
-          </div>
-          <div>
-            <h3><span class="big grad">2,489</span> checks on Windows, macOS and Linux, all passing</h3>
-            <p>Eight test suites cover the journal, the handoff, search, the tidy-up, secrets and the hooks. The slow ones, with planted bugs and random input, are run by hand when the code changes a lot.</p>
-            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>A change that breaks one of these is stopped before it reaches a release.</span></p>
-          </div>
-        </li>
-        <li class="glass check">
-          <div class="art clock" aria-hidden="true">
-            <span class="lt"><span>120 s saving</span><span class="gauge"><b style="--w:100%"></b></span></span>
-            <span class="lt"><span>60 s compaction</span><span class="gauge"><b style="--w:50%"></b></span></span>
-            <span class="lt"><span>30 s briefing</span><span class="gauge"><b style="--w:25%"></b></span></span>
-            <span class="lt lit"><span>5 s git watcher</span><span class="gauge"><b style="--w:6%"></b></span></span>
-          </div>
-          <div>
-            <h3><span class="big grad">5 to 120 s</span> time limit on every step</h3>
-            <p>Saving after a reply gets 120 seconds, the check before a summary 60, the briefing 30 and the git watcher 5. Claude Code stops a step that runs over and carries on.</p>
-            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>Every step has a time limit, so a stuck step can't hold Claude up.</span></p>
-          </div>
-        </li>
-      </ul>
+      <div class="glass lit tested">
+        <span class="big grad" aria-hidden="true">2,489</span>
+        <div>
+          <h2 id="care-h">Tested before every release</h2>
+          <p>2,489 checks run on Windows, macOS and Linux with every change, all passing. The code is scanned for problems every week, and each release gets one review. Every step has a time limit of 5 to 120 seconds, so a stuck step can't hold Claude up.</p>
+          <p class="more">The <a href="https://github.com/zdraveski/project-memory/actions/workflows/test.yml">test runs</a> and the <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#when-it-runs">time limits</a> are on GitHub.</p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1119,38 +942,33 @@
           <tbody>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-play-circle"/></svg>Picking up</span></th>
-              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>A new conversation doesn't know where the last one stopped.</span></span></td>
-              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Claude starts already knowing where the last conversation stopped.</span></span></td>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>Doesn't know where the last conversation stopped.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Starts knowing where you stopped.</span></span></td>
             </tr>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>Finding past work</span></th>
-              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>There's no journal, so work from a few weeks ago is hard to find again.</span></span></td>
-              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Every exchange is kept in a journal, and Claude finds it when you ask, with the date.</span></span></td>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>No journal, so older work is hard to find.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>A journal of every exchange, found with the date.</span></span></td>
             </tr>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-clock-counter-clockwise"/></svg>Undoing mistakes</span></th>
-              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>A note deleted or overwritten by mistake is gone.</span></span></td>
-              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Every version of your notes is kept, and Claude brings an old one back. Needs Git.</span></span></td>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>A deleted or overwritten note is gone.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Old versions of notes come back. Needs Git.</span></span></td>
             </tr>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-list-checks"/></svg>Long tasks</span></th>
-              <td role="cell"><span class="cell"><svg class="pi half mk" aria-hidden="true"><use href="#p-minus-circle"/></svg><span><span class="hidden">Partly. </span>Cut down to a summary. Your notes and recent files are reloaded, but the task in progress can get lost.</span></span></td>
-              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Claude saves its notes first, and afterwards it's told what you asked and what it last said.</span></span></td>
+              <td role="cell"><span class="cell"><svg class="pi half mk" aria-hidden="true"><use href="#p-minus-circle"/></svg><span><span class="hidden">Partly. </span>Shortened to a summary. Notes and recent files come back; the task in progress can get lost.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Notes saved first; afterwards Claude is told where it was.</span></span></td>
             </tr>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-share-network"/></svg>Many projects</span></th>
-              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>Its notebook is kept per project, so lessons aren't shared between projects.</span></span></td>
-              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Lessons that apply everywhere are shared with all your projects.</span></span></td>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>One notebook per project; lessons aren't shared.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Lessons that apply everywhere reach every project.</span></span></td>
             </tr>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-browsers"/></svg>Two windows</span></th>
-              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>Nothing keeps two windows on one project from overwriting each other.</span></span></td>
-              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Safe with several windows open: writes take turns, and each conversation keeps its own record.</span></span></td>
-            </tr>
-            <tr role="row">
-              <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-hard-drives"/></svg>Privacy</span></th>
-              <td role="cell"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Its notebook stays on your computer.</span></span></td>
-              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>The journal and the history stay there too, with no account, and keys and passwords are removed before saving. You can switch it off per conversation or project. Either way, Anthropic sees the conversation.</span></span></td>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>Two windows on one project can overwrite each other.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Writes take turns; each conversation keeps its own record.</span></span></td>
             </tr>
           </tbody>
         </table>
@@ -1204,12 +1022,8 @@
       <h2 id="faq-h">Questions <span class="grad">people ask.</span></h2>
       <div class="faq">
         <details class="glass"><summary>Does it cost anything?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No. It is free and open source under the MIT license, with no account and no API key.</p></div></details>
-        <details class="glass"><summary>Does it work on Windows?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes: Windows, macOS and Linux. It needs Node.js 22 or newer.</p></div></details>
-        <details class="glass"><summary>Does it send anything over the internet?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No. It makes no internet connections, and what it saves stays in Claude Code's own folder in your home folder. What Claude reads during a conversation goes to Anthropic with the rest of it, as with Claude Code's own memory.</p></div></details>
-        <details class="glass"><summary>Does it slow Claude down or fill the conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, about 900 tokens (3,500 characters) on your last conversation, and never more than about 2,400 tokens in all; the note after a summary is usually near that. The journal isn't loaded; Claude searches it only when you ask about earlier work.</p></div></details>
+        <details class="glass"><summary>Does it slow Claude down or fill the conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, about 900 tokens (3,500 characters) on your last conversation, and never more than about 2,400 tokens in all; the note after a summary is usually near that.</p></div></details>
         <details class="glass"><summary>How much disk space does it use?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Half of the journal entries are under about 5 KB. A very busy project adds up to about 110 MB a year.</p></div></details>
-        <details class="glass"><summary>What if I paste a password or a key?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>It is replaced with [redacted] before anything is saved, for keys from many services, passwords typed in chat and cookies. No tool catches every secret, so put anything sensitive in <code>&lt;private&gt;</code> tags.</p></div></details>
-        <details class="glass"><summary>Can I turn it off for one conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes. Type <code>/project-memory:incognito</code> for one conversation, or <code>/project-memory:memory-off</code> for one project. Claude Code still keeps its own transcripts, for 30 days unless you change that, and these switches do not reach them.</p></div></details>
         <details class="glass"><summary>Can I use it on two computers?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each computer keeps its own notes and journal; they don't sync. Don't sync the memory folder yourself (Dropbox, OneDrive): each computer would undo the other's "forget".</p></div></details>
         <details class="glass"><summary>My model holds 200,000 tokens. Do I need to change anything?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes, for long conversations. It assumes a window of 1,000,000 tokens, so the reminder to save notes never comes. Ask Claude: "Is my context window 200,000 tokens?" If it is, ask: "Add CLAUDE_CODE_AUTO_COMPACT_WINDOW set to 200k under env in my Claude Code settings," then restart Claude Code.</p></div></details>
         <details class="glass"><summary>How do I pause or remove it?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>To pause it, run <code>claude plugin disable project-memory@project-memory</code> in a terminal and restart Claude Code. To remove it, type <code>/plugin uninstall project-memory@project-memory</code> in Claude Code. Your notes and the journal stay either way; the <a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#deleting-it">privacy policy</a> says what to delete by hand.</p></div></details>
