@@ -3,14 +3,24 @@
 Short answers, with a link to the full one. Something missing? Ask in
 [Discussions](https://github.com/zdraveski/project-memory/discussions).
 
-## Claude doesn't remember the last conversation. Why?
+## What is project-memory?
 
-Ask *"Where did we leave off?"*: Claude reads the record of your last
-conversation in this project. If that finds nothing, type
-`/project-memory:memory doctor` in Claude Code. A line that starts with
-`PROBLEM` says what to do. Right after installing, one line says it's waiting
-for Claude's first reply, which is normal: the record is written after each
-reply. [What each message means](how-it-works.md#when-something-seems-wrong).
+A free plugin for Claude Code that remembers your work for you. After each
+reply it saves a journal of the exchange, a short "where we left off" record
+and a tidy index of Claude's own notes. A new conversation starts already
+knowing where the last one stopped, and you can ask Claude about earlier work
+in your own words. It runs on your computer only. The
+[README](../README.md) has the tour.
+
+## How is it different from Claude Code's own memory?
+
+Claude Code's memory is a set of notes that Claude writes. project-memory keeps
+those notes tidy and adds what they lack: a journal of every exchange you do
+not mark private, a briefing about where the last conversation stopped, a
+history so a deleted or overwritten note comes back, a shared notebook for
+lessons that hold in every project, and safe use of two windows at once. It
+needs no account. It searches by words, not by meaning, and works in Claude
+Code only. [Comparison](comparison.md).
 
 ## Does it send anything over the internet?
 
@@ -19,32 +29,12 @@ Claude Code's own folder (`.claude`, in your home folder). What Claude reads
 during a conversation goes to Anthropic with the rest of it, as with Claude
 Code's own memory. [Privacy policy](../PRIVACY.md).
 
-## How do I keep something out of it?
+## What does it cost?
 
-- Put text between `<private>` and `</private>`.
-- Type `<private-session>` in any message to keep the whole conversation out.
-  What was saved of it before is removed, except the history's copy of days
-  that are already over.
-- Type `/project-memory:incognito` to stop saving the current conversation and
-  sweep what it already saved. `/project-memory:memory-off` turns it off for a
-  whole project until `/project-memory:memory-on`.
-  [Turning it off](../README.md#turning-it-off).
-- Ask Claude to forget something: *"Forget the password I pasted
-  yesterday."* It lists the journal entries that match and removes the ones
-  you confirm.
-
-Keys, tokens and passwords in the journal and the handoff are replaced with
-`[redacted]` before they are saved. Notes Claude writes itself are not
-rewritten: a note whose text or file name holds one (or only mentions a password, such as `password: required`) is kept out of the snapshots, and `memory
-promote` refuses it. No tool catches every secret, so use the tags for
-anything sensitive.
-
-## How much disk space does it use?
-
-The journal keeps each exchange whole, so an entry is as long as what was
-said: half are under about 5 KB, and one in a hundred is over about 60 KB. A
-very busy project adds up to about 110 MB a year. The journal stays until
-you delete it or ask Claude to forget part of it.
+Nothing. It is free (MIT license), needs no account and no API key, and uses no
+AI model of its own. The short briefing at the start of a conversation is read
+by Claude like any other text, so it uses a little of the conversation's room
+(see below).
 
 ## Does it slow Claude down or fill the conversation?
 
@@ -53,14 +43,74 @@ conversation's exchanges fill it up to 3,500 characters (at most 3,499 on 13
 real projects). A long list of shared lessons or warnings can pass that, but
 never 9,500. After a compaction it is larger: 8,481 characters at the median
 and 9,366 at most on 8 projects, never over 9,500. The journal isn't loaded;
-Claude searches it only when you ask about earlier work. What it does after
-each reply runs outside the conversation and uses none of its room.
+Claude searches it only when you ask about earlier work. What the plugin does
+after each reply runs outside the conversation and uses none of its room.
+Every hook has a time limit, and a hook that fails never blocks Claude Code
+([When it runs](how-it-works.md#when-it-runs)).
+
+## What if I paste a password or a key?
+
+Before anything is saved, passwords, keys and tokens are replaced with
+`[redacted]`: those of many services, passwords you type in chat (in several
+languages), cookies and session ids, and look-alike spellings of them. A note
+Claude writes itself is not rewritten, but a note that holds one is kept out of
+the history and cannot be moved to the shared notebook by accident. No tool
+catches every secret, so put anything sensitive between `<private>` tags. To
+take back something already saved, ask: *"Forget the password I pasted
+yesterday."* [Secrets in detail](how-it-works.md#the-handoff),
+[Privacy policy](../PRIVACY.md).
+
+## How do I stop it saving a conversation or a project?
+
+- Put text between `<private>` and `</private>` to keep that text out.
+- Type `<private-session>` in any message to keep the whole conversation out.
+  What was saved of it before is removed, except the history's copy of days
+  that are already over.
+- Type `/project-memory:incognito` to stop saving the current conversation and
+  sweep what it already saved.
+- Type `/project-memory:memory-off` to turn it off for a whole project, and
+  `/project-memory:memory-on` to turn it back on.
+- Ask Claude to forget something: *"Forget the password I pasted
+  yesterday."* It lists the journal entries that match and removes the ones
+  you confirm.
+
+None of these reaches Claude Code's own conversation files. All four levels,
+including the setting for every project: [Turning it
+off](how-it-works.md#turning-it-off).
+
+## Does it work on Windows, macOS and Linux?
+
+Yes, all three. It needs [Node.js](https://nodejs.org) 22 or newer and Claude
+Code. It does not work in other tools.
 
 ## Do I need Git?
 
 No. Without Git everything works except bringing back an old version of a
 note. With Git, a version of your notes is saved after each reply that
 changes them.
+
+## What are "checked lessons"?
+
+An experimental small extra. You can add a rule to a note, such as "do not
+`git add -A`", and a hook logs when a git command matches it. It only
+watches: it never blocks a command. Few lessons fit the form.
+[Checked lessons](how-it-works.md#checked-lessons-experimental).
+
+## How much disk space does it use?
+
+The journal keeps each exchange whole, so an entry is as long as what was
+said: half are under about 5 KB, and one in a hundred is over about 60 KB. A
+very busy project adds up to about 110 MB a year. The journal stays until
+you delete it or ask Claude to forget part of it.
+
+## Claude doesn't remember the last conversation. Why?
+
+Ask *"Where did we leave off?"*: Claude reads the record of your last
+conversation in this project. If that finds nothing, type
+`/project-memory:memory doctor` in Claude Code. A line that starts with
+`PROBLEM` says what to do. Right after installing, one line says it's waiting
+for Claude's first reply, which is normal: the record is written after each
+reply. [What each message means](how-it-works.md#when-something-seems-wrong).
 
 ## Can I use it on two computers?
 
@@ -99,19 +149,23 @@ Turning auto memory off in Claude Code itself, with `/memory` or the
 Claude Code's settings, so it keeps its journal, its record of where you
 left off and its briefing. To stop it, use `/project-memory:memory-off` for
 one project, or disable the plugin
-([Pausing or removing it](../README.md#pausing-or-removing-it)).
+([Pausing or removing it](how-it-works.md#pausing-or-removing-it)).
 
 ## Does search understand meaning?
 
-It searches by words, not by meaning: ask with words that were used, and
+No. It searches by words, not by meaning: ask with words that were used, and
 Claude can try a few. It covers your notes, the shared notebook, the archive
-and the journal.
+and the journal. Words of two Chinese or Japanese characters are found; in
+other scripts a two-letter word is found only standing alone.
 
-## How do I pause it, or remove it?
+## How do I update it, pause it, or remove it?
 
-To pause it, run `claude plugin disable project-memory@project-memory` in a
-terminal and restart Claude Code; `enable` turns it back on. To remove it,
-type `/plugin uninstall project-memory@project-memory` in Claude Code. Your
-notes and the journal stay either way, and so do the lines it added to each
+To update, run `claude plugin marketplace update project-memory` and then
+`claude plugin update project-memory@project-memory` in a terminal, and
+restart Claude Code. To pause it, run
+`claude plugin disable project-memory@project-memory` and restart; `enable`
+turns it back on. To remove it, type
+`/plugin uninstall project-memory@project-memory` in Claude Code. Your notes
+and the journal stay either way, and so do the lines it added to each
 `MEMORY.md`, which keep being loaded.
 [Deleting it](../PRIVACY.md#deleting-it) lists what to delete by hand.

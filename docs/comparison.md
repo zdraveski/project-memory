@@ -6,9 +6,11 @@ Claude Code's own memory keeps improving. It now asks Claude to shorten the
 table of contents when it nears its limit, and after a compaction it reloads
 your notes, re-reads recent files and reminds Claude of jobs still running.
 project-memory adds what it still doesn't do: a new conversation that starts
-knowing where the last one stopped, a journal of every exchange you do not mark private that Claude
-searches when you ask about earlier work, a history of every note, a shared
-notebook for all your projects, and safe use of several windows at once.
+knowing where the last one stopped, a journal of every exchange you do not mark
+private that Claude searches when you ask about earlier work, a history of
+every note, a shared notebook for all your projects, safe use of several
+windows at once, and switches to stop it saving one conversation or one
+project, with keys, tokens and passwords replaced before anything is saved.
 
 project-memory isn't the only add-on either. This table compares it with five
 popular tools, going only by each one's own documentation on 27 October 2026.
@@ -21,7 +23,7 @@ so check their pages before you choose.
 | Main job | Looking after Claude Code's own memory | Recording and summarising sessions | Memory in the cloud | Memory in the cloud | A knowledge base of notes | Saving context window space |
 | Where your memories live | Claude Code's own notebook, on your computer | Its own database, on your computer | Mem0's servers | Supermemory's servers | Text files on your computer, or a paid cloud | A database on your computer, cleared after 14 days |
 | Account or API key | No | Optional | Required | Required | No, unless you use the paid cloud | No |
-| Extra software | Node.js (Git optional, for snapshots) | Node.js, Bun, uv and a background service | Python and Git | Node.js | Python | Node.js |
+| Extra software | Node.js 22 or newer (Git optional, for snapshots) | Node.js, Bun, uv and a background service | Python and Git | Node.js | Python | Node.js |
 | Uses an AI model to write memories | No | Yes: your Claude plan, your own key, or its paid service | Yes, on Mem0's side | Yes, on Supermemory's side | No | No |
 | How memories are made | Claude writes notes, and every exchange you do not mark private is saved to a journal after every reply | Automatically, from everything Claude does | Automatically, from your conversations | Automatically, from your conversations | Claude writes notes when asked | Automatically, from what happens in a session |
 | Search | By words | By words and by meaning | By meaning | By meaning | By words and by meaning, plus links between notes | By words |
@@ -40,8 +42,11 @@ In plain words:
 - **project-memory** suits you if you want Claude Code's own memory kept
   tidy, safe from mistakes and intact through long conversations, with nothing
   to sign up for and nothing leaving your computer. It keeps a journal of
-  every exchange you do not mark private for Claude to search. It searches by words only, works in
-  Claude Code only, and doesn't sync between computers or teammates.
+  every exchange you do not mark private for Claude to search, and you can turn
+  it off for one conversation or one project. It replaces keys, tokens and
+  passwords before saving, though no tool catches every secret. It searches by
+  words only, works in Claude Code only, and doesn't sync between computers or
+  teammates.
 - **claude-mem** records everything Claude does and searches it by meaning. It
   runs a background service, and an AI model writes its summaries, which uses
   your Claude plan, your own key or its paid service.
