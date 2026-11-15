@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- A note with a key or token in its file name is no longer listed in MEMORY.md; it is left unlisted and doctor tells you to rename it.
+- A note the tidy-up finds with a key or token in its file name is no longer added to MEMORY.md; doctor tells you to rename it. A line already in MEMORY.md, and the name shown by search and status, are not changed yet.
 
 - A note held out of the snapshots because it holds a secret is now named at startup too, with how to release it (remove the secret).
 

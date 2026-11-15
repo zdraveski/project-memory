@@ -848,6 +848,12 @@ ok(Buffer.byteLength(readFileSync(join(six, 'MEMORY.md'), 'utf8')) > 3000, 'a pr
   await call(['--dir', nine]);
   const all = ['MEMORY.md', 'MEMORY-archive.md', '.health'].map((f) => existsSync(join(nine, f)) ? readFileSync(join(nine, f), 'utf8') : '').join('\n');
   ok(!all.includes(GH3) && /cannot point at/.test(all), `a secret in a note's file name is neither listed nor named in the index or health (got ${all.slice(0, 300)})`);
+  // Everyday long names are not secrets: they stay listed.
+  const note = ['---', 'name: t', 'description: "a note"', 'metadata:', '  type: project', '---', 'body', ''].join(String.fromCharCode(10));
+  for (const n of ['reference-api-key-rotation-notes.md', 'note-0123456789abcdef0123456789abcdef01234567.md']) { writeFileSync(join(nine, n), note); utimesSync(join(nine, n), tenMin, tenMin); }
+  await call(['--dir', nine]);
+  const listed = readFileSync(join(nine, 'MEMORY.md'), 'utf8') + (existsSync(join(nine, 'MEMORY-archive.md')) ? readFileSync(join(nine, 'MEMORY-archive.md'), 'utf8') : '');
+  ok(listed.includes('reference-api-key-rotation-notes.md') && listed.includes('note-0123456789abcdef0123456789abcdef01234567.md'), 'a normal long note name stays listed');
   rmSync(join(root, 'proj-secretname'), { recursive: true });   // the later snapshot tests read the root's held list
 }
 // Notes of one date: every pass evicts the same lines. In index order, the
