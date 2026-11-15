@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Saving a long run of hostile text is faster: the redaction rules for `curl -u`, `curl -b`, `redis-cli`, `?key=`, a `host:port user:pass` line and a run of `eyJ-` no longer cost 300 to 900 ms per MB, and a `forget` after more than 64 options of `memory.mjs` is now seen, so that turn stays out of the journal.
+- Saving a long run of hostile text is faster: the redaction rules for `curl -u`, `curl -b`, `redis-cli`, `htpasswd`, `?key=` and a `host:port user:pass` line no longer cost 300 to 900 ms per MB, and a `forget` after more than 64 options of `memory.mjs` is now seen, so that turn stays out of the journal.
 
 ## 1.4.1 (2026-11-14)
 

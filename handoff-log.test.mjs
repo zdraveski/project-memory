@@ -3054,24 +3054,30 @@ if (!quick) {
   const t0 = performance.now();
   for (const s of ['curl -u ' + '='.repeat(3e6), 'redis-cli -'.repeat(3e5), '?key=a'.repeat(5e5), '--token=\\'.repeat(4e5), '_auth=\\'.repeat(4e5), '?key=;'.repeat(5e5), 'curl -'.repeat(5e5)]) clip(s, 2000);
   ok(performance.now() - t0 < 15000, `clip caps hostile input first: ${(performance.now() - t0).toFixed(0)} ms for 20 MB`);
-  // 1.4.2 S: each rule costs under 200 ms/MB on its own hostile opener run (bound here 450, generous for a loaded machine), and a forget
+  const big = clip('😀'.repeat(40000) + ' ' + 'x'.repeat(100000), 400);
+  ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(big) && big.length <= 400, 'a clip of a long text has no lone surrogate');
+  const cut = clip('a'.repeat(64000) + ' sk' + '-' + 'z'.repeat(40) + ' ' + 'b'.repeat(200000), 2000);
+  ok(!cut.includes('zzzz'), 'a secret just inside the cap is still redacted');
+}
+{
+  const { FORGETS } = await import('./handoff-log.mjs');
+  // 1.4.2 S: each rule costs under 200 ms/MB on its own hostile opener run (bound: 3 times a pass over plain prose), and a forget
   // after more than 64 options is seen.
-  const perMB = (s, f) => { f(s.slice(0, 20000)); const t = performance.now(); f(s); return (performance.now() - t) / (s.length / 1e6); };
-  const base = perMB('the quick brown fox '.repeat(5e4), redact); // a pass over plain prose, the floor
-  for (const [name, s, f] of [['curl -u =', 'curl -u ' + '='.repeat(1e6), redact], ['redis-cli -', 'redis-cli -'.repeat(1e5), redact], ['redis-cli -a redis-cli', 'redis-cli -a '.repeat(8e4), redact],
-    ['?key=;', '?key=;'.repeat(1.6e5), redact], ['curl -', 'curl -'.repeat(1.6e5), redact], ['eyJ-', 'eyJ-'.repeat(2.5e5), redact], ['htpasswd -b -', 'htpasswd -b -'.repeat(4e4), redact], ['postgres://', 'postgres://'.repeat(5e4), redact], ['key=', 'key='.repeat(1.2e5), redact], ['curl -b', 'curl -b '.repeat(1.2e5), redact],
-    ['memory.mjs --a', 'memory.mjs --a '.repeat(3e4), (x) => FORGETS.test(x)], ['memory.mjs "--a"', 'memory.mjs "--a" '.repeat(25000), (x) => FORGETS.test(x)]]) {
-    const ms = perMB(s, f); ok(ms < Math.max(450, 2 * base), `${name}: ${ms.toFixed(0)} ms/MB (plain text ${base.toFixed(0)})`);
+  if (!quick) {
+    const perMB = (s, f) => { f(s.slice(0, 20000)); const t = performance.now(); f(s); return (performance.now() - t) / (s.length / 1e6); };
+    const prose = 'the quick brown fox '.repeat(5e4), base = Math.min(perMB(prose, redact), perMB(prose, redact), perMB(prose, redact)); // a pass over plain prose, the floor (best of 3)
+    for (const [name, s, f] of [['curl -u =', 'curl -u ' + '='.repeat(1e6), redact], ['redis-cli -', 'redis-cli -'.repeat(1e5), redact], ['redis-cli -a redis-cli', 'redis-cli -a '.repeat(8e4), redact],
+      ['?key=;', '?key=;'.repeat(1.6e5), redact], ['curl -', 'curl -'.repeat(1.6e5), redact], ['eyJ-', 'eyJ-'.repeat(2.5e5), redact], ['htpasswd -b -', 'htpasswd -b -'.repeat(4e4), redact], ['postgres://', 'postgres://'.repeat(5e4), redact], ['key=', 'key='.repeat(1.2e5), redact], ['curl -b', 'curl -b '.repeat(1.2e5), redact],
+      ['memory.mjs --a', 'memory.mjs --a '.repeat(3e4), (x) => FORGETS.test(x)], ['memory.mjs "--a"', 'memory.mjs "--a" '.repeat(25000), (x) => FORGETS.test(x)]]) {
+      const ms = perMB(s, f); ok(ms < 3 * base + 50, `${name}: ${ms.toFixed(0)} ms/MB (plain text ${base.toFixed(0)})`);
+    }
   }
   ok(FORGETS.test('node memory.mjs' + ' --a'.repeat(100) + ' forget x') && FORGETS.test('node memory.mjs' + ' --a 1'.repeat(100) + ' "forget" x') && !FORGETS.test('node memory.mjs' + ' --a 1'.repeat(100) + ' search forget'), 'FORGETS reads past 64 options');
   ok(FORGETS.test('memory.mjs --a memory.mjs --b forget') && FORGETS.test('memory.mjs --a "x memory.mjs --b forget"') && !FORGETS.test('memory.mjs --a memory.mjs --b 1 search forget'), 'FORGETS: a second memory.mjs inside the first one\'s options');
   ok(!redact('curl -u bob:hunter2pass https://x').includes('hunter2') && !redact('redis-cli -h h -p 1 AUTH hunter2pass').includes('hunter2') && !redact('curl -b "sid=hunter2pass" x').includes('hunter2')
     && !redact('GET /a?key=hunter2pass9876 HTTP').includes('hunter2') && !redact('x ' + 'h'.repeat(150) + '.example.com:587 bob:hunter2pass').includes('hunter2'), 'the opener rules still redact');
   ok(!redact('htpasswd -nb bob hunter2pass').includes('hunter2') && !redact('postgres://bob:hunter2pass@db/x').includes('hunter2') && !redact('x key=Abcdefghij1234567890Klmnop').includes('Klmnop'), 'htpasswd, URL userinfo and key= still redact');
-  const big = clip('😀'.repeat(40000) + ' ' + 'x'.repeat(100000), 400);
-  ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(big) && big.length <= 400, 'a clip of a long text has no lone surrogate');
-  const cut = clip('a'.repeat(64000) + ' sk' + '-' + 'z'.repeat(40) + ' ' + 'b'.repeat(200000), 2000);
-  ok(!cut.includes('zzzz'), 'a secret just inside the cap is still redacted');
+  ok(!redact('redis-cli -h redis-cli.local -p 1 AUTH hunter2pass').includes('hunter2'), 'a host named like the command does not hide its password');
 }
 
 // 1.4.1 hardening C (redaction-corpus-1..6, 9..12): vendor token shapes, each template filled with seeded fake pieces (§ is stripped, so no

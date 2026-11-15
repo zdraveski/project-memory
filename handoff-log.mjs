@@ -161,6 +161,7 @@ export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 const F_OPT = /\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1/y, F_VAL = /\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*)/y, F_END = /\s+(?:forget\b|'forget'|"forget")/y;
 const F_BARE = /\s+[^\s"'-]\S*/y;
 const stick = (re, s, at) => { re.lastIndex = at; return re.test(s) ? re.lastIndex : -1; };
+// Only .test is supported (not .exec or .source): every caller uses .test.
 export const FORGETS = { test(s) {
   const done = new Set(); let steps = 8 * s.length + 64;
   for (const m of s.matchAll(/memory\.mjs["']?/g)) {

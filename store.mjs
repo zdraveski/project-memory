@@ -577,7 +577,7 @@ const SECRETS = [
   [/(\boauth_(?:signature|verifier|token_secret)["']?[ \t]*[:=][ \t]*["']?)[^"'&,\s]{6,}/gi, '$1[redacted]'],
   // A webhook's signature header (X-Hub-Signature-256: sha256=...).
   [/(\b(?:x-[\w-]{0,30}|stripe-)signature(?:-256)?["']?[ \t]*[:=][ \t]*["']?(?:sha\d+=|t=\d+,v\d=)?)[A-Za-z0-9+/=]{40,}/gi, '$1[redacted]'],
-  [/(\bredis-cli\b(?:(?!redis-cli\b)[^\n|;&]){0,200}?\s-a[ \t]+["']?)(?:(?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, '$1[redacted]'],
+  [/(\bredis-cli\b(?:(?!redis-cli(?![\w.-]))[^\n|;&]){0,200}?\s-a[ \t]+["']?)(?:(?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, '$1[redacted]'],
   // The curl rule first: the header rule reads to the next quote, which may be the one that opens a -b value.
   [/(\bcurl\b(?:(?!curl\b)[^\n|;&]){0,300}?\s(?:-b|--cookie)[ =]+["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|[^\s"']+)/g, (m, pre, v) => (v.includes('=') ? `${pre}[redacted]` : m)],
   [/((?:^|[\s'"])(?:set-)?cookie["']?[ \t]*:[ \t]*["']?)[\w.%!#$&*+^~-]{1,100}=[^\s;'"]*(?:;[ \t]*[\w.%!#$&*+^~-]{1,100}=[^\s;'"]*)*/gim,
@@ -587,6 +587,7 @@ const SECRETS = [
   [/("auth"[ \t]*:[ \t]*")(?=[A-Za-z0-9+/]{0,300}[\d=+/])[A-Za-z0-9+/]{20,300}={0,2}(?=")/g, '$1[redacted]'],
   // A signed URL's signature is the credential (Azure SAS, S3, GCS).
   [/([?&](?:sig|X-Amz-Signature|X-Goog-Signature)=)[^&\s]{16,}/gi, '$1[redacted]'],
+  // shortcut: a secret holding a ? is cut at it when judged (the lookahead stops there to stay linear), upgrade if such a key appears.
   [/([?&](?:key|code|auth|authorization|access_token|token)=)(?=[^&\s"'?]{0,200}\d)[^&\s"']{12,}/gi, '$1[redacted]'],
   // The password in a URL: postgres://user:it@host, redis://:it@host (no
   // user), one with an @ in it (to the last one). Not a query: a port
@@ -638,7 +639,7 @@ const SECRETS = [
   // Each option one way only (-[\w-]+, not -{1,2}): read two ways, a line of --options took 2^n tries and stalled the Stop.
   // A blank may be a `\` line wrap; an option's value may be quoted. A value never starts with `=`, which is also a blank
   // here (two readings again), and at most 40 options: `-a redis-cli` repeated made each redis-cli a fresh start.
-  [/(\bredis-cli(?:(?:[ \t]|\\\r?\n)+-(?!redis-cli\b)[\w-]+(?:(?:[ \t=]|\\\r?\n)+(?:"[^"\n]*"|'[^'\n]*'|(?!redis-cli\b)[^\s|;&<>"'=-])\S*)?){0,40}(?:[ \t]|\\\r?\n)+AUTH\s+)(?!\[redacted\])(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g,
+  [/(\bredis-cli(?:(?:[ \t]|\\\r?\n)+-(?!redis-cli(?![\w.-]))[\w-]+(?:(?:[ \t=]|\\\r?\n)+(?:"[^"\n]*"|'[^'\n]*'|(?!redis-cli(?![\w.-]))[^\s|;&<>"'=-])\S*)?){0,40}(?:[ \t]|\\\r?\n)+AUTH\s+)(?!\[redacted\])(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|[^\s"'|;&<>]+))?)/g,
     (m, pre, v) => (v.split(/\s+/).every(arg) ? m : `${pre}[redacted]`)],
   // 1.4.1 D: a token a vendor's command takes as a flag or word: doctl -t, netlify --auth, ngrok add-authtoken, cargo login, httpie -a / --auth, composer config, bundle config.
   [/(\bdoctl\b[^\n|;&]{0,200}?\s(?:-t|--access-token)[ =]["']?|\bnetlify\b[^\n|;&]{0,200}?\s--auth[ =]["']?|\bngrok\s+(?:config\s+)?(?:add-)?authtoken\s+["']?|\bcargo\s+login\s+(?:--registry[ =]\S+\s+)?["']?|\bhttps?(?=[ \t])[^\n|;&]{0,200}?\s(?:-a|--auth)[ =]+["']?|\bcomposer\s+config\s+(?:-[\w-]+\s+){0,3}(?:(?:github-oauth|gitlab-oauth|gitlab-token|bearer)\.[\w.-]+\s+|http-basic\.[\w.-]+\s+[^\s"']+\s+)["']?)((?<=")[^"\n]{1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) || /^[^:]*:\$/.test(v) ? m : `${pre}[redacted]`)],
@@ -670,6 +671,7 @@ const SECRETS = [
   // Quoted values here and below to the closing quote, as above (review, 2026-11-01).
   [/(\baws\s+configure\s+set\s+(?:--[\w-]+(?:[ =](?!-)\S{1,100})?\s+){0,5}[\w.-]{0,100}(?:secret|key|token)[\w.-]{0,100}\s+["']?)(?!-)(?:(?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"']{1,2000})/gi, '$1[redacted]'],
   [/(\b(?:SetEnvironmentVariable|setdefault|putenv|setenv|setItem|define|setProperty)\(\s*["']([^"'\n]{1,100})["']\s*,\s*["'])([^"'\n]{1,2000})/gi, (m, pre, name, v) => (named(name) && !arg(v) && !counted(name, v) ? `${pre}[redacted]` : m)],
+  // shortcut: more than 8 flags between htpasswd and its password are not caught (an open-ended run was quadratic), upgrade if such commands appear.
   [/(\bhtpasswd(?=(?:\s+-[A-Za-z]+(?:\s+\d+)?){0,8}?\s+-[A-Za-z]*n)(?:\s+-[A-Za-z]+(?:\s+\d+)?){0,8}?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+\d+)?(?:\s+-[A-Za-z]+(?:\s+\d+)?){0,8}\s+[^\s<>-]\S*\s+)(?!\d*>)[^\s;|&<>]+/g, '$1[redacted]'],
   [/(\bhtpasswd(?!(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*n)(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+\d+)?(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+(?:[^\s<>-]\S*\s+)?[^\s<>]+\s+)(?!\d*>)[^\s;|&<>]+/g, '$1[redacted]'],
   // The name read whole, then judged: as words in one pattern, KEY_ repeated
@@ -790,6 +792,7 @@ const SECRETS = [
   after(String.raw`\bmosquitto_passwd\b[^\n|;&]{0,100}?\s-b\s+\S+\s+\S+\s+`),
   [/(\bapi-key\s+store\s+)["']?[\w+/=-]{8,}["']?(?:\s+["']?[\w+/=-]{8,}["']?)?/g, '$1[redacted]'],
   // Mail and file transfer: postfix's sasl_passwd (`[host]:587 user:pass`), IMAP LOGIN, POP3 and FTP PASS (6 or more characters, a digit or symbol, no path or file name), lftp -u user,pass, curl's -K file `user = "me:pass"`.
+  // shortcut: a host name over 253 characters is not matched whole (not a valid host), upgrade if one is seen.
   [/(?<![\w.-])(\[?[\w.-]{1,253}\]?:\d{1,5}[ \t]+[^\s:@[]{1,100}:)(?!\[redacted\])([^\s]{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
   after(String.raw`\b[A-Za-z]{0,3}\d{1,5}[ \t]+LOGIN[ \t]+(?:"[^"\n]{1,100}"|[^\s"']{1,100})[ \t]+`, 'g', true),
   [/((?<![\w.-])PASS[ \t]+)([^\s"'/\\]{6,200})(?=\s|$)/g, (m, p, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) && !code(v) && !/\.[A-Za-z]\w{0,6}$/.test(v) ? `${p}[redacted]` : m)],
