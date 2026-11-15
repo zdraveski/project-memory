@@ -905,7 +905,7 @@
         <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-chat-teardrop-text"/></svg></div><h3>Claude replies</h3><p>You work with Claude Code as you always do.</p></li>
         <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg></div><h3>The journal grows</h3><p>The exchange is saved, one file per day.</p><span class="tok file">journal/2026-11-01.md</span></li>
         <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-file-text"/></svg></div><h3>Where you stopped</h3><p>The last exchanges are kept for next time.</p><span class="tok file">handoff.md</span></li>
-        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg></div><h3>The next conversation</h3><p>Claude starts with a short briefing, about 900 tokens.</p></li>
+        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg></div><h3>The next conversation</h3><p>Claude starts with a short briefing on where you stopped, about 900 tokens.</p></li>
       </ol>
     </div>
   </section>
@@ -1197,7 +1197,7 @@
         <details class="glass"><summary>Does it cost anything?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No. It is free and open source under the MIT license, with no account and no API key.</p></div></details>
         <details class="glass"><summary>Does it work on Windows?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes: Windows, macOS and Linux. It needs Node.js 22 or newer.</p></div></details>
         <details class="glass"><summary>Does it send anything over the internet?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No. It makes no internet connections, and what it saves stays in Claude Code's own folder in your home folder. What Claude reads during a conversation goes to Anthropic with the rest of it, as with Claude Code's own memory.</p></div></details>
-        <details class="glass"><summary>Does it slow Claude down or fill the conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, about 900 tokens (3,500 characters), and a little longer after a summary. The journal isn't loaded; Claude searches it only when you ask about earlier work.</p></div></details>
+        <details class="glass"><summary>Does it slow Claude down or fill the conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, about 900 tokens (3,500 characters) on your last conversation, and never more than about 2,400 tokens in all; the note after a summary is usually near that. The journal isn't loaded; Claude searches it only when you ask about earlier work.</p></div></details>
         <details class="glass"><summary>How much disk space does it use?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Half of the journal entries are under about 5 KB. A very busy project adds up to about 110 MB a year.</p></div></details>
         <details class="glass"><summary>What if I paste a password or a key?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>It is replaced with [redacted] before anything is saved, for keys from many services, passwords typed in chat and cookies. No tool catches every secret, so put anything sensitive in <code>&lt;private&gt;</code> tags.</p></div></details>
         <details class="glass"><summary>Can I turn it off for one conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes. Type <code>/project-memory:incognito</code> for one conversation, or <code>/project-memory:memory-off</code> for one project. Claude Code still keeps its own transcripts, for 30 days unless you change that, and these switches do not reach them.</p></div></details>
@@ -1213,8 +1213,8 @@
     <i class="stars" aria-hidden="true"></i>
     <div class="wrap">
       <img class="logo" src="brain.png" alt="" width="148" height="136">
-      <h2 id="end-h">Give Claude Code <span class="grad">a memory.</span></h2>
-      <p>Free, no account, and nothing leaves your computer. Two lines in Claude Code, and it works in every project.</p>
+      <h2 id="end-h">Stop re-explaining your project <span class="grad">to Claude Code.</span></h2>
+      <p>Free, no account, and saved only on your computer. Two lines in Claude Code, and it works in every project.</p>
       <div class="actions">
         <a class="button primary" href="#install">Install in a minute</a>
         <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
