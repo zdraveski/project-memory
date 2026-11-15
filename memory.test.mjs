@@ -796,6 +796,11 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   const d14 = await run14('doctor');
   writeFileSync(sh14, was14);
   ok(d14.status === 1 && /PROBLEM\s+snapshots: ok, last [^\n]*but they leave out \/x\/C--y\/memory: it is reached through a link/.test(d14.stdout), `doctor names a store the snapshots leave out (got ${d14.stdout})`);
+  const sh14b = join(root, '.snapshot-health'), was14b = readFileSync(sh14b, 'utf8');
+  writeFileSync(sh14b, JSON.stringify({ lastOk: new Date().toISOString(), failures: 0, held: ['p/memory/leaky.md'] }));
+  const d14b = await run14('doctor');
+  writeFileSync(sh14b, was14b);
+  ok(/but they skip p\/memory\/leaky\.md[^\n]*remove the secret from the note[^\n]*next reply snapshots it/.test(d14b.stdout), `doctor says how to release a held note (got ${d14b.stdout})`);
 }
 
 // Round 6. A huge index (300,000 lines naming no note) takes status a second

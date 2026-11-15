@@ -4,6 +4,14 @@
 
 - Redaction: a password on the line after `mysql -p` is redacted (a database name or statement there is kept); Voyage AI keys of 40 to 46 characters are redacted while long `pa-` kebab-case names are kept; IFTTT `/use/<key>` and `/json/with/key/<key>` URLs and Zapier `/hooks/standard/` URLs are redacted; `glft-` branch names and Nix store hashes (52 characters) are no longer erased.
 
+- A note the tidy-up finds with a key or token in its file name is no longer added to MEMORY.md; doctor tells you to rename it. A line already in MEMORY.md, and the name shown by search and status, are not changed yet.
+
+- A note held out of the snapshots because it holds a secret is now named at startup too, with how to release it (remove the secret).
+
+- A broken handoff-log.mjs no longer stops the memory tidy-up (tiering).
+
+- Saving a long run of hostile text is faster: the redaction rules for `curl -u`, `curl -b`, `redis-cli`, `htpasswd`, `?key=` and a `host:port user:pass` line no longer cost 300 to 900 ms per MB, and a `forget` after more than 64 options of `memory.mjs` is now seen, so that turn stays out of the journal.
+
 ## 1.4.1 (2026-11-14)
 
 - A message another session or a subagent sends (cross-session-message, agent-message) is no longer saved as something you asked, and a forked session no longer lists its parent's turns again in handoff.md.

@@ -154,8 +154,31 @@ export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 // typed, the command's with them, and a forget run from it was saved whole.
 // A flag with no value can take the next word as one, so a search for
 // "forget" after `--shared` is read as a forget: hidden, the safe way to err.
-// shortcut: more than 64 options before forget is not caught (a fallback scan was quadratic); upgrade if such commands appear.
-export const FORGETS = /memory\.mjs["']?(?:\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1(?:\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*))?){0,64}\s+(?:forget\b|'forget'|"forget")/;
+// Read token by token, not with one regex: 64 options was the most a regex could take before it went quadratic, and a command with more
+// went unseen. A bare value ends a token the same way wherever the scan starts, so a "memory.mjs" that an earlier scan already took as a
+// value is not scanned again (a run of 'memory.mjs --a ' was 64 options per start); one inside a quoted value is, and the steps are capped
+// at 8 per character, past which the command counts as a forget (hidden, the safe way to err).
+const F_OPT = /\s+(["']?)--[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"']*))?\1/y, F_VAL = /\s+(?:"(?!--)[^"]*"|'(?!--)[^']*'|-\d+(?!\S)|[^\s"'-]\S*)/y, F_END = /\s+(?:forget\b|'forget'|"forget")/y;
+const F_BARE = /\s+[^\s"'-]\S*/y;
+const stick = (re, s, at) => { re.lastIndex = at; return re.test(s) ? re.lastIndex : -1; };
+// Only .test is supported (not .exec or .source): every caller uses .test.
+export const FORGETS = { test(s) {
+  const done = new Set(); let steps = 8 * s.length + 64;
+  for (const m of s.matchAll(/memory\.mjs["']?/g)) {
+    let p = m.index + m[0].length;
+    if (done.has(p)) continue;
+    for (;;) {
+      if (--steps < 0 || stick(F_END, s, p) >= 0) return true;
+      const o = stick(F_OPT, s, p);
+      if (o < 0) break;
+      if (stick(F_END, s, o) >= 0) return true;
+      const v = stick(F_VAL, s, o);
+      p = v < 0 ? o : v;
+      if (v >= 0 && stick(F_BARE, s, o) === v) done.add(v);
+    }
+  }
+  return false;
+} };
 // Text read the same in any width and without hidden characters: a fullwidth
 // ＜private＞, or a zero-width space inside the tag, kept what it should hide.
 // Every character Unicode says to show as nothing (Default_Ignorable_Code_Point): with the five zero-width ones alone, a soft
@@ -490,6 +513,8 @@ export const newest = (xs, n, older = 'more') => (xs.length > n ? `${xs.slice(-n
 const ENTRY = /^- \*\*asked\*\* (\S+ \S+?)(?: \[([\w-]+)\])?: (.*?)\r?\n  \*\*did:\*\* (.*?)\r?$(?:\n  \*\*changed:\*\* (.*?)\r?$)?/gm;
 // Why a store is not in the snapshots, and the user's fix. Shared with doctor.
 export const MISSED = 'it is reached through a link to a folder outside ~/.claude/projects, and git does not follow that link, so no old version of a note there can be brought back. The fix: keep the folder in ~/.claude/projects and make the link the other way round';
+// A held note is checked again at every snapshot, so removing the secret is all it takes.
+export const HELD = 'it holds what looks like a key, token or password, so it stays out of the history. To release it: remove the secret from the note (or its file name, or delete the note); the next reply snapshots it';
 export const parse = (section) => [...section.matchAll(ENTRY)].map((m) => ({ at: m[1], s: m[2] || '', ask: m[3], did: m[4], changed: m[5] || '' }));
 // The LAST START that has an END after it, and the first END after it.
 // Searching for the first START let a stray START -- one whose END was lost --
@@ -832,6 +857,7 @@ function health(dir) {
   try {
     const s = JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8'));
     if (s.failures >= 3) out.push(`Memory snapshots have failed ${s.failures} times in a row, last ok ${s.lastOk ? local(s.lastOk) : 'never'}: ${s.error}`);
+    if (s.held?.length) out.push(`Memory snapshots skip ${s.held.join(', ')}: ${HELD}`);
     if (s.missed?.length) out.push(`Memory snapshots leave out ${s.missed.join(', ')}: ${MISSED}`);
   } catch {}
   return out;

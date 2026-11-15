@@ -2296,6 +2296,15 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   } finally { if (was13 === null) rmSync(sh13, { force: true }); else writeFileSync(sh13, was13); }
 }
 
+// 1.4.2 T. A note held out of the snapshots is named at startup too.
+{
+  const sh13b = join(home, '.claude', 'projects', '.snapshot-health'), was13b = existsSync(sh13b) ? readFileSync(sh13b, 'utf8') : null;
+  writeFileSync(sh13b, JSON.stringify({ lastOk: new Date().toISOString(), failures: 0, held: ['p/memory/leaky.md'] }));
+  try {
+    ok(/Memory snapshots skip p\/memory\/leaky\.md: .*remove the secret from the note/.test(printX('startup')), 'the startup names a note the snapshots hold back');
+  } finally { if (was13b === null) rmSync(sh13b, { force: true }); else writeFileSync(sh13b, was13b); }
+}
+
 // Round 6. A conversation started in a repository's subfolder, with none yet
 // at its root and no note saved, is recorded in the repository's store; a
 // payload naming only a cwd still makes no project folder.
@@ -3058,6 +3067,26 @@ if (!quick) {
   ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(big) && big.length <= 400, 'a clip of a long text has no lone surrogate');
   const cut = clip('a'.repeat(64000) + ' sk' + '-' + 'z'.repeat(40) + ' ' + 'b'.repeat(200000), 2000);
   ok(!cut.includes('zzzz'), 'a secret just inside the cap is still redacted');
+}
+{
+  const { FORGETS } = await import('./handoff-log.mjs');
+  // 1.4.2 S: each rule costs under 200 ms/MB on its own hostile opener run (bound: 3 times a pass over plain prose), and a forget
+  // after more than 64 options is seen.
+  if (!quick) {
+    const perMB = (s, f) => { f(s.slice(0, 20000)); const t = performance.now(); f(s); return (performance.now() - t) / (s.length / 1e6); };
+    const prose = 'the quick brown fox '.repeat(5e4), base = Math.min(perMB(prose, redact), perMB(prose, redact), perMB(prose, redact)); // a pass over plain prose, the floor (best of 3)
+    for (const [name, s, f] of [['curl -u =', 'curl -u ' + '='.repeat(1e6), redact], ['redis-cli -', 'redis-cli -'.repeat(1e5), redact], ['redis-cli -a redis-cli', 'redis-cli -a '.repeat(8e4), redact],
+      ['?key=;', '?key=;'.repeat(1.6e5), redact], ['curl -', 'curl -'.repeat(1.6e5), redact], ['eyJ-', 'eyJ-'.repeat(2.5e5), redact], ['htpasswd -b -', 'htpasswd -b -'.repeat(4e4), redact], ['postgres://', 'postgres://'.repeat(5e4), redact], ['key=', 'key='.repeat(1.2e5), redact], ['curl -b', 'curl -b '.repeat(1.2e5), redact],
+      ['memory.mjs --a', 'memory.mjs --a '.repeat(3e4), (x) => FORGETS.test(x)], ['memory.mjs "--a"', 'memory.mjs "--a" '.repeat(25000), (x) => FORGETS.test(x)]]) {
+      const ms = perMB(s, f); ok(ms < 3 * base + 50, `${name}: ${ms.toFixed(0)} ms/MB (plain text ${base.toFixed(0)})`);
+    }
+  }
+  ok(FORGETS.test('node memory.mjs' + ' --a'.repeat(100) + ' forget x') && FORGETS.test('node memory.mjs' + ' --a 1'.repeat(100) + ' "forget" x') && !FORGETS.test('node memory.mjs' + ' --a 1'.repeat(100) + ' search forget'), 'FORGETS reads past 64 options');
+  ok(FORGETS.test('memory.mjs --a memory.mjs --b forget') && FORGETS.test('memory.mjs --a "x memory.mjs --b forget"') && !FORGETS.test('memory.mjs --a memory.mjs --b 1 search forget'), 'FORGETS: a second memory.mjs inside the first one\'s options');
+  ok(!redact('curl -u bob:hunter2pass https://x').includes('hunter2') && !redact('redis-cli -h h -p 1 AUTH hunter2pass').includes('hunter2') && !redact('curl -b "sid=hunter2pass" x').includes('hunter2')
+    && !redact('GET /a?key=hunter2pass9876 HTTP').includes('hunter2') && !redact('x ' + 'h'.repeat(150) + '.example.com:587 bob:hunter2pass').includes('hunter2'), 'the opener rules still redact');
+  ok(!redact('htpasswd -nb bob hunter2pass').includes('hunter2') && !redact('postgres://bob:hunter2pass@db/x').includes('hunter2') && !redact('x key=Abcdefghij1234567890Klmnop').includes('Klmnop'), 'htpasswd, URL userinfo and key= still redact');
+  ok(!redact('redis-cli -h redis-cli.local -p 1 AUTH hunter2pass').includes('hunter2'), 'a host named like the command does not hide its password');
 }
 
 // 1.4.1 hardening C (redaction-corpus-1..6, 9..12): vendor token shapes, each template filled with seeded fake pieces (§ is stripped, so no
