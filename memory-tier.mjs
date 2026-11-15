@@ -514,11 +514,14 @@ function snapshot() {
     // The history is never rewritten, and the model's own Write tool saves a note no hook scrubs: one that holds a key, token or
     // password stays out of it (unstaged, so its last clean version stays) until the secret is gone. Told in .snapshot-health.
     held = [];
+    const heldRaw = new Set();
     for (const f of git('diff', '--cached', '--name-only', '-z').split('\0').filter((x) => /^[^/]+\/memory\/(?!handoff\.md$|journal\.md$)[^/]+\.md$/.test(x))) {   // not the journal or handoff: scrubbed as written
       let t = null;   // the staged blob is what a commit keeps, not the working file a session may have cleaned since the add
       try { t = git('show', `:${f}`); } catch { t = raw(join(root, f)); }
-      if (redact(f) !== f || (t !== null && redact(t) !== t)) { git('reset', '-q', '--', `:(literal)${f}`); held.push(redact(f)); }
+      if (redact(f) !== f || (t !== null && redact(t) !== t)) { git('reset', '-q', '--', `:(literal)${f}`); held.push(redact(f)); heldRaw.add(f); }
     }
+    // Tracked files changed and not added, a held note (it stays modified, for good) not counted: what is still owed.
+    const owed = () => git('diff', '--name-only', '-z', ...(offs.length ? ['--', '.', ...offs] : [])).split(' ').filter((x) => x && !heldRaw.has(x)).length;
     // Straight to the commit, which says so when nothing changed: a `git status`
     // first was one more git start on every snapshot, ~80-300 ms on this box.
     try {
@@ -531,13 +534,14 @@ function snapshot() {
       // Another session's commit took what this one staged, and a file changed
       // again since: busy, and the next turn commits it. Read as a failure, it
       // counted against the history's health.
-      if (/no changes added to commit/.test(String(e.stdout))) return 'busy';
+      // A held note alone is nothing to commit, not another session's commit.
+      if (/no changes added to commit/.test(String(e.stdout))) { if (held.length) { let n = 1; try { n = owed(); } catch {} if (!n) return null; } return 'busy'; }
       throw e;
     }
     // Changed since the add (another session's write, whose own snapshot went busy): still owed, or its pending mark is
     // cleared by this success and the file stays out of every snapshot until it changes again.
     // `diff --name-only`, not `status`: tracked files only, no scan of untracked ones (80-300 ms), and a path `add -A` can never add (nul.md) never shows.
-    if (!rest) { try { rest = git('diff', '--name-only', ...(offs.length ? ['--', '.', ...offs] : [])).split('\n').filter(Boolean).length; } catch {} }
+    if (!rest) { try { rest = owed(); } catch {} }
     return rest ? `in parts: ${rest} file(s) still to add; each reply adds more` : fresh ? 'initialised' : 'committed';
   } catch (e) {
     // No git is a setup, not a failure: everything but the history works.

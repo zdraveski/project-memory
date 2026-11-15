@@ -2157,5 +2157,24 @@ Deploy with the token from the vault
   }
 }
 
+// 1.4.2 re-hunt NT-1/NT-2: a tracked note edited to hold a secret is held, and that is neither "busy" (alone) nor "still to add" (with other changes).
+{
+  const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
+  const h = tempDir('held-tracked-'), r = join(h, '.claude', 'projects'), d = join(r, 'pa', 'memory');
+  const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, HOME: h, USERPROFILE: h };
+  const mk = (n, extra = '') => { const f = join(d, n); writeFileSync(f, `---\nname: ${n}\ndescription: "a note"\nmetadata:\n  type: project\n---\nbody\n${extra}`); utimesSync(f, tenMin, tenMin); return f; };
+  mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'MEMORY.md'), '# Index\n'); const clean = mk('clean.md');
+  const stop = () => { const t = join(r, 'pa', 's.jsonl'); writeFileSync(t, ''); return spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: t, session_id: 'x' }) }).stdout; };
+  const health = () => JSON.parse(readFileSync(join(r, '.snapshot-health'), 'utf8'));
+  stop();
+  writeFileSync(clean, readFileSync(clean, 'utf8') + `token ${GH}\n`);
+  const o1 = stop(), h1 = health();
+  ok(!/busy/.test(o1) && !h1.busySince && !h1.pending && h1.held?.length === 1, `a held tracked note alone is not busy or pending (got ${o1} ${JSON.stringify(h1)})`);
+  mk('fresh.md');
+  const o2 = stop(), h2 = health();
+  ok(!/in parts/.test(o2) && !h2.partial && !h2.pending && h2.held?.length === 1, `a held tracked note is not counted as still to add (got ${o2.slice(-100)} ${JSON.stringify(h2)})`);
+  ok(execFileSync('git', ['-C', r, 'ls-files', '--', 'pa/memory/fresh.md']).toString().trim() === 'pa/memory/fresh.md', 'the clean note was committed');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);
