@@ -2,7 +2,7 @@
   "name": "project-memory",
   "version": "1.4.2",
   "displayName": "Project Memory",
-  "description": "It remembers everything so you never lose your work and your ideas. It picks up where you left off, keeps old versions of its notes so a lost one can come back, and shares lessons across all your projects.",
+  "description": "Gives Claude Code a journal of your work, so a new conversation starts where the last one stopped. It keeps old versions of its notes so a lost one can come back, shares lessons across your projects and keeps secrets out. Everything stays on your computer.",
   "author": { "name": "zdraveski", "url": "https://github.com/zdraveski" },
   "homepage": "https://github.com/zdraveski/project-memory",
   "icon": "./.claude-plugin/icon.svg",
@@ -11,5 +11,5 @@
   "privacyPolicyUrl": "https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md",
   "repository": "https://github.com/zdraveski/project-memory",
   "license": "MIT",
-  "keywords": ["memory", "handoff", "compaction", "recall", "parallel-sessions", "hooks"]
+  "keywords": ["memory", "journal", "handoff", "compaction", "recall", "privacy", "parallel-sessions", "hooks"]
 }
