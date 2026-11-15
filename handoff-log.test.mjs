@@ -2296,6 +2296,15 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   } finally { if (was13 === null) rmSync(sh13, { force: true }); else writeFileSync(sh13, was13); }
 }
 
+// 1.4.2 T. A note held out of the snapshots is named at startup too.
+{
+  const sh13b = join(home, '.claude', 'projects', '.snapshot-health'), was13b = existsSync(sh13b) ? readFileSync(sh13b, 'utf8') : null;
+  writeFileSync(sh13b, JSON.stringify({ lastOk: new Date().toISOString(), failures: 0, held: ['p/memory/leaky.md'] }));
+  try {
+    ok(/Memory snapshots skip p\/memory\/leaky\.md: .*remove the secret from the note/.test(printX('startup')), 'the startup names a note the snapshots hold back');
+  } finally { if (was13b === null) rmSync(sh13b, { force: true }); else writeFileSync(sh13b, was13b); }
+}
+
 // Round 6. A conversation started in a repository's subfolder, with none yet
 // at its root and no note saved, is recorded in the repository's store; a
 // payload naming only a cwd still makes no project folder.

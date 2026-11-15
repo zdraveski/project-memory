@@ -522,6 +522,13 @@ for (const f of ['memory-tier.mjs', 'store.mjs', 'compact-gate.mjs']) copyFileSy
 writeFileSync(join(broken, 'handoff-log.mjs'), 'this is not javascript (');
 const ranBroken = statSync(join(root, '.stop-ran')).mtimeMs;
 spawnSync(process.execPath, [join(broken, 'memory-tier.mjs'), '--stop'], { env, input: JSON.stringify({ transcript_path: join(root, 'proj-one', 'session.jsonl'), session_id: 'tst' }) });
+const tierBroken = join(broken, 'proj', 'memory');
+mkdirSync(tierBroken, { recursive: true });
+writeFileSync(join(tierBroken, 'orphan.md'), '---\nname: orphan\ndescription: "found by a tier pass"\nmetadata:\n  type: project\n---\nbody\n');
+utimesSync(join(tierBroken, 'orphan.md'), tenMin, tenMin);
+writeFileSync(join(tierBroken, 'MEMORY.md'), '# Index\n');
+spawnSync(process.execPath, [join(broken, 'memory-tier.mjs'), '--dir', tierBroken], { env });
+ok(/orphan\.md/.test(readFileSync(join(tierBroken, 'MEMORY.md'), 'utf8')), 'a handoff-log.mjs that cannot load does not stop the tiering');
 rmSync(broken, { recursive: true, force: true });
 ok(statSync(join(root, '.stop-ran')).mtimeMs === ranBroken, '--stop: a handoff-log.mjs that cannot load leaves no proof of life');
 r = await stop();
@@ -829,6 +836,25 @@ ok(Buffer.byteLength(readFileSync(join(six, 'MEMORY.md'), 'utf8')) > 3000, 'a pr
   ok(/github\.com/.test(m7) && !/pointers with no file/.test(h7) && /cannot point at[^\n]*lesson \(1\)\.md/.test(h7)
     && readFileSync(join(seven, 'MEMORY.md'), 'utf8') === m7 && readFileSync(join(seven, 'MEMORY-archive.md'), 'utf8') === a7,
     `a web link stays as prose, and a name no line can carry is reported, not added each pass (health: ${h7.trim()})`);
+}
+// A secret in a note's file name must not reach MEMORY.md through its pointer: the note is left unlisted and said (1.4.2 T).
+{
+  const GH3 = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
+  const nine = join(root, 'proj-secretname', 'memory');
+  mkdirSync(nine, { recursive: true });
+  writeFileSync(join(nine, `tok-${GH3}.md`), '---\nname: t\ndescription: "a note"\nmetadata:\n  type: project\n---\nbody\n');
+  utimesSync(join(nine, `tok-${GH3}.md`), tenMin, tenMin);
+  writeFileSync(join(nine, 'MEMORY.md'), '# Index\n');
+  await call(['--dir', nine]);
+  const all = ['MEMORY.md', 'MEMORY-archive.md', '.health'].map((f) => existsSync(join(nine, f)) ? readFileSync(join(nine, f), 'utf8') : '').join('\n');
+  ok(!all.includes(GH3) && /cannot point at/.test(all), `a secret in a note's file name is neither listed nor named in the index or health (got ${all.slice(0, 300)})`);
+  // Everyday long names are not secrets: they stay listed.
+  const note = ['---', 'name: t', 'description: "a note"', 'metadata:', '  type: project', '---', 'body', ''].join(String.fromCharCode(10));
+  for (const n of ['reference-api-key-rotation-notes.md', 'note-0123456789abcdef0123456789abcdef01234567.md']) { writeFileSync(join(nine, n), note); utimesSync(join(nine, n), tenMin, tenMin); }
+  await call(['--dir', nine]);
+  const listed = readFileSync(join(nine, 'MEMORY.md'), 'utf8') + (existsSync(join(nine, 'MEMORY-archive.md')) ? readFileSync(join(nine, 'MEMORY-archive.md'), 'utf8') : '');
+  ok(listed.includes('reference-api-key-rotation-notes.md') && listed.includes('note-0123456789abcdef0123456789abcdef01234567.md'), 'a normal long note name stays listed');
+  rmSync(join(root, 'proj-secretname'), { recursive: true });   // the later snapshot tests read the root's held list
 }
 // Notes of one date: every pass evicts the same lines. In index order, the
 // lines a pass brought back went last, and each pass evicted different ones.
@@ -2125,8 +2151,9 @@ Deploy with the token from the vault
     const jd = join(root, 'proj-one', 'memory', 'journal'), day = join(jd, '2020-01-01.md');
     mkdirSync(jd, { recursive: true }); writeFileSync(day, '# Journal 2020-01-01\n');
     for (const [p, m] of [[join(root, '.git'), 0o755], [jd, 0o755], [day, 0o644], [join(root, '.stop-ran'), 0o644]]) chmodSync(p, m);
+    rmSync(join(root, 'proj-one', 'memory', '.tiered'), { force: true });   // nothing changed since the last Stop: without this the gate skips the snapshot that tightens
     await stop();
-    ok([join(root, '.git'), jd, day, join(root, '.stop-ran')].every((p) => (statSync(p).mode & 0o077) === 0), 'an older install is made private at the next Stop');
+    ok([join(root, '.git'), jd, day, join(root, '.stop-ran')].every((p) => (statSync(p).mode & 0o077) === 0), `an older install is made private at the next Stop (modes ${[join(root, '.git'), jd, day, join(root, '.stop-ran')].map((p) => (statSync(p).mode & 0o777).toString(8))})`);
   }
 }
 

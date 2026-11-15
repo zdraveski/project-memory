@@ -11,9 +11,8 @@
 import { chmodSync, readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { redact } from './handoff-log.mjs';
 import { execFileSync } from 'node:child_process';
-import { keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED } from './store.mjs';
+import { keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED, redact } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -238,7 +237,8 @@ function tier(dir, now, seen = null) {
     if (f !== 'handoff.md' && f !== 'journal.md' && Math.abs(now - statSync(join(dir, f)).mtimeMs) < ORPHAN_GRACE) { waiting = true; continue; }
     // A name no index line can point at (`lesson (1).md`): its line, read back,
     // named another file, and a new one was added on every pass.
-    if ((`- [x](${f})`.match(POINTER) || [])[1] !== f) { odd.push(f); continue; }
+    // Nor one whose name holds a secret: the pointer links the real name, so it would reach MEMORY.md (named redacted here).
+    if ((`- [x](${f})`.match(POINTER) || [])[1] !== f || redact(f) !== f) { odd.push(redact(f)); continue; }
     const facts = factsFor(dir, f);
     if (!facts) continue;
     // Filed by its age like any line, so a note written today is not hidden from the next session; the ceiling evicts it
