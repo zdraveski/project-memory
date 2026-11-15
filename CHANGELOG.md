@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.4.2 (2026-11-15)
+
+- A cookie after `curl -b` and a password after `redis-cli -a` are cut again when a word that ends in curl or redis-cli comes before them (`pycurl`, `libcurl.so`, `-h myredis-cli`), and a password typed on the line after `mysql -u root -p` is cut.
+
+- A time, ratio, score or `file.js:42` before a label (`at 14:05 Deploy:started`) is no longer taken for `host:port user:pass`, and a shell reference after `redis-cli -a` or `curl -u user:` (`$PASS`, `${API_PASS}`) is kept. A run of `//x:` is no longer slow to save.
+
+- A tracked note edited to hold a secret is no longer reported as "busy" on every reply, and no longer counted as "still to add" after a good snapshot.
 
 - A note the tidy-up finds with a key or token in its file name is no longer added to MEMORY.md; doctor tells you to rename it. A line already in MEMORY.md, and the name shown by search and status, are not changed yet.
 
