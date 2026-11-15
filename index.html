@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>project-memory: give Claude Code a memory</title>
-<meta name="description" content="A free plugin for Claude Code. It keeps a journal of your work and a record of where you stopped, so the next conversation starts where the last one ended. Everything stays on your computer.">
+<meta name="description" content="A free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, so a new conversation starts where the last one ended. Secrets stay out, you choose what is saved, and everything stays on your computer.">
 <meta name="theme-color" content="#050A23">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="brain.png" type="image/png">
@@ -12,12 +12,12 @@
 <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <meta property="og:type" content="website">
 <meta property="og:title" content="project-memory: give Claude Code a memory">
-<meta property="og:description" content="Remember, restore, continue. A journal of your work, a record of where you stopped, every change to your notes kept. Free, no account, never goes online.">
+<meta property="og:description" content="Remember, restore, continue. A journal you can ask, a note of where you stopped, old versions of your notes, secrets kept out. Free, no account, never goes online.">
 <meta property="og:url" content="https://zdraveski.github.io/project-memory/">
-<meta property="og:image" content="https://zdraveski.github.io/project-memory/banner.png">
-<meta property="og:image:width" content="1177">
-<meta property="og:image:height" content="325">
-<meta property="og:image:alt" content="project-memory: give Claude Code a memory. Remember, restore, continue.">
+<meta property="og:image" content="https://zdraveski.github.io/project-memory/social-card.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="project-memory: a brain logo above the words 'A journal you can ask', 'Picks up where you left off', 'Secrets kept out' and 'Stays on your computer'.">
 <meta name="twitter:card" content="summary_large_image">
 <script>document.documentElement.classList.add('js');</script>
 <style>
@@ -352,7 +352,7 @@
   .footnote { margin: 1.5rem 0 0; color: var(--muted); font-size: 0.95rem; max-width: 46rem; }
 
   /* Privacy: the computer it stays on, and the four promises */
-  .privacy-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 2rem; align-items: start; }
+  .privacy-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 2rem; align-items: center; }
   .privacy-grid > * { min-width: 0; }
   .device { overflow: hidden; background: var(--solid); }
   .tree { padding: 1.2rem 1.3rem 0.4rem; font: 500 0.88rem/1.4 var(--mono); }
@@ -450,6 +450,62 @@
   .needs li .pi { width: 1.3rem; height: 1.3rem; margin-top: 0.1rem; }
   .needs strong { color: var(--ink); font-weight: 600; }
 
+  /* Secrets stay out: what you typed, and what is kept */
+  .swap-heads, .swap { display: grid; grid-template-columns: 11.5rem minmax(0, 1fr) 2rem minmax(0, 1fr); align-items: center; gap: 0.8rem; }
+  .swap-heads { padding: 0 1.2rem; margin: 0 0 0.7rem; font: 700 0.9rem/1.2 var(--sans); }
+  .swap-heads span { display: flex; align-items: center; gap: 0.5rem; }
+  .swap-heads .b { grid-column: 2; color: #F9A8D4; }
+  .swap-heads .a { grid-column: 4; color: #A5F3FC; }
+  .swap-heads i { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; flex: none; }
+  .swaps { display: grid; gap: 0.8rem; margin: 0; padding: 0; list-style: none; }
+  .swap { padding: 0.95rem 1.2rem; }
+  .swap > * { min-width: 0; }
+  .swap .what { display: flex; align-items: center; gap: 0.6rem; margin: 0; font-weight: 700; line-height: 1.25; }
+  .cd { margin: 0; padding: 0.5rem 0.7rem; border-radius: 0.5rem; border: 1px solid; background: rgb(6 11 36 / .75); font: 500 0.85rem/1.45 var(--mono); overflow-wrap: anywhere; }
+  .cd.bad { color: #F9A8D4; border-color: rgb(244 114 182 / .45); }
+  .cd.ok { color: #A5F3FC; border-color: rgb(34 211 238 / .45); }
+  .go { position: relative; height: 2px; background: linear-gradient(90deg, var(--pink), var(--cyan)); }
+  .go::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left-color: var(--cyan); border-right: 0; }
+  .covers { margin: 2rem 0 0; }
+  .keeps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 1.5rem 0 0; padding: 0; list-style: none; }
+  .keep { display: flex; align-items: flex-start; gap: 0.9rem; padding: 1.1rem 1.2rem; color: var(--body); font-size: 0.97rem; }
+  .keep p { margin: 0; }
+  .keep .ico { width: 2.75rem; height: 2.75rem; border-radius: 0.8rem; }
+  .keep .ico .pi { width: 1.45rem; height: 1.45rem; }
+
+  /* You decide what is saved: four levels, narrow to wide */
+  .levels { display: grid; gap: 0.8rem; margin: 0; padding: 0; list-style: none; }
+  .level { display: grid; grid-template-columns: 2.6rem 12.5rem minmax(0, 1fr) 9rem; align-items: center; gap: 0.5rem 1.1rem; padding: 1rem 1.3rem; }
+  .level > * { min-width: 0; }
+  .level .what { margin: 0; font-weight: 700; line-height: 1.25; }
+  .level .how { margin: 0; color: var(--body); font-size: 0.97rem; }
+  .level .how .tok { margin-right: 0.3rem; white-space: normal; overflow-wrap: anywhere; }
+  .reach { height: 0.6rem; border-radius: 99px; background: rgb(20 30 80 / .9); box-shadow: inset 0 0 0 1px rgb(130 170 255 / .3); position: relative; }
+  .reach b { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(var(--w) - 4px); border-radius: 99px; background: linear-gradient(90deg, #22D3EE, #3B82F6 70%, #8B5CF6); box-shadow: 0 0 8px rgb(56 189 248 / .6); }
+  .stays { display: flex; align-items: center; gap: 0.9rem; margin: 1rem 0 0; padding: 1rem 1.2rem; color: #F9D5E8; }
+  .stays p { margin: 0; }
+  .stays .ico { width: 2.75rem; height: 2.75rem; border-radius: 0.8rem; }
+
+  /* Checked lessons: a small card, marked experimental */
+  .part.slim { padding: 1rem 0 5rem; }
+  .lesson { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 2rem; align-items: center; padding: 1.75rem; border-color: rgb(167 139 250 / .5); }
+  .lesson > * { min-width: 0; }
+  .chip.exp { color: #DDD6FE; background: rgb(139 92 246 / .16); border-color: rgb(167 139 250 / .5); }
+  .chip.exp::before { background: var(--lilac); box-shadow: 0 0 8px var(--lilac); }
+  .lesson h2.small { font-size: clamp(1.5rem, 2.6vw, 2rem); margin: 0.9rem 0 0.6rem; }
+  .lesson p { margin: 0 0 0.9rem; color: var(--body); }
+  .rule { margin: 0; padding: 1rem 1.1rem; border-radius: 0.75rem; overflow-x: auto; background: rgb(8 14 40 / .85); border: 1px solid rgb(167 139 250 / .35); color: #DDD6FE; }
+  .rule code { font-size: 0.88rem; line-height: 1.75; }
+  .rule-cap { margin: 0.7rem 0 0; color: var(--muted); font-size: 0.9rem; }
+
+  /* Built with care: the time limits and the test suites */
+  .clock { gap: 0.6rem; }
+  .clock .lt { grid-template-columns: 7.8rem minmax(0, 1fr); font: 600 0.75rem/1.2 var(--mono); }
+  .suites { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; font-size: 0.7rem; }
+  .suites > span { display: flex; justify-content: space-between; gap: 0.4rem; padding: 0.15rem 0.5rem; border-radius: 0.4rem; background: rgb(34 211 238 / .08); border: 1px solid rgb(34 211 238 / .3); color: #DBE7FF; }
+  .suites > span b { color: #A5F3FC; font-weight: 700; }
+  .suites .cap { display: block; padding: 0.2rem 0 0; background: none; border: 0; color: var(--muted); }
+
   /* Questions */
   .faq { max-width: 52rem; display: grid; gap: 0.75rem; }
   .faq details { padding: 0 1.4rem; }
@@ -493,8 +549,23 @@
     .carry ul { grid-column: 1 / -1; order: 3; }
     .carry ul::before { display: none; }
   }
+  @media (max-width: 1000px) {
+    .keeps { grid-template-columns: 1fr; }
+    .lesson { grid-template-columns: 1fr; gap: 1.25rem; }
+    .level { grid-template-columns: 2.6rem minmax(0, 1fr); }
+    .level .how, .level .reach { grid-column: 2; }
+    .swap-heads { display: none; }
+    .swap { grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
+    .go { width: 2px; height: 1.4rem; margin-left: 1rem; background: linear-gradient(180deg, var(--pink), var(--cyan)); }
+    .go::after { right: auto; left: -4px; top: auto; bottom: -1px; border: 5px solid transparent; border-top-color: var(--cyan); border-bottom: 0; }
+    .swap .cd .hidden { position: static; width: auto; height: auto; clip-path: none; display: block; white-space: normal; font: 600 0.72rem/1.4 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  }
   @media (max-width: 680px) {
     body { font-size: 1rem; }
+    .lesson { padding: 1.25rem; }
+    .stays { align-items: flex-start; }
+    .level .how .tok { font-size: 0.72rem; }
+    .level .how > .tok:first-child { display: block; width: fit-content; max-width: 100%; margin: 0 0 0.4rem; }
     .bar nav a.wide { display: none; }
     /* On a phone the GitHub link keeps its name for screen readers and shows only the mark. */
     .bar nav a.gh span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -605,7 +676,7 @@
         <div>
           <img class="logo" src="brain.png" alt="" width="148" height="136">
           <h1>Give Claude Code <span class="grad">a memory.</span></h1>
-          <p class="lede">project-memory is a free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, so the next conversation starts where the last one ended.</p>
+          <p class="lede">project-memory is a free plugin for Claude Code (Windows, macOS and Linux). After every reply it keeps a journal of your work and a note of where you stopped, so the next conversation starts where the last one ended. Secrets stay out, and you decide what is saved.</p>
           <ul class="motto" aria-label="What it does">
             <li>Remember</li><li>Restore</li><li>Continue</li>
           </ul>
@@ -614,7 +685,7 @@
             <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
           </div>
           <ul class="chips" aria-label="In short">
-            <li class="chip">Free</li><li class="chip">No account</li><li class="chip">Never goes online</li>
+            <li class="chip">Free</li><li class="chip">No account</li><li class="chip">Never goes online</li><li class="chip">Windows, macOS, Linux</li>
           </ul>
         </div>
 
@@ -700,82 +771,6 @@
     </div>
   </section>
 
-  <section class="part" id="context" aria-labelledby="context-h">
-    <div class="wrap">
-      <p class="eyebrow">Why context memory matters</p>
-      <h2 id="context-h">Claude sees only <span class="grad">what fits in its window.</span></h2>
-      <p class="intro">Claude doesn't remember the way you do. In a conversation it works from its <strong>context window</strong>: everything it can see right now, from your messages and its replies to the files it has read. The window has a budget, counted in tokens, small pieces of words.</p>
-      <ol class="ctx">
-        <li>
-          <div class="glass win" aria-hidden="true">
-            <div class="term-bar"><b>Conversation</b><span>nearly full</span></div>
-            <div class="win-body"><i class="m" style="--w:55%"></i><i class="m c" style="--w:78%"></i><i class="m f" style="--w:62%"></i><i class="m" style="--w:40%"></i><i class="m c" style="--w:84%"></i><i class="m f" style="--w:70%"></i><i class="m c" style="--w:58%"></i></div>
-            <div class="gauge full"><b style="--w:92%"></b></div>
-          </div>
-          <h3><span class="num" aria-hidden="true">1</span>It fills up</h3>
-          <p>Every message, every reply and every file Claude reads takes room. A long conversation fills the window.</p>
-        </li>
-        <li>
-          <div class="glass hot win" aria-hidden="true">
-            <div class="term-bar"><b>Conversation</b><span>a summary</span></div>
-            <div class="win-body"><span class="sum"><svg class="pi"><use href="#p-arrows-in-line-vertical"/></svg>summary</span><i class="m lost" style="--w:70%"></i><i class="m lost" style="--w:52%"></i><i class="m lost" style="--w:64%"></i></div>
-            <div class="gauge"><b style="--w:24%"></b></div>
-          </div>
-          <h3><span class="num" aria-hidden="true">2</span>It's shortened to a summary</h3>
-          <p>Claude Code then shortens the conversation to a summary. It reloads your notes afterwards, but the details of a task in progress can get lost.</p>
-        </li>
-        <li>
-          <div class="glass win" aria-hidden="true">
-            <div class="term-bar"><b>New conversation</b><span>empty</span></div>
-            <div class="win-body"><span class="nb"><svg class="pi"><use href="#p-notebook"/></svg>MEMORY.md</span><span class="empty"></span></div>
-            <div class="gauge"><b style="--w:8%"></b></div>
-          </div>
-          <h3><span class="num" aria-hidden="true">3</span>The next one starts empty</h3>
-          <p>A new conversation starts with an empty window. Claude Code's own memory brings along only the notes Claude chose to write in its notebook, <span class="tok">MEMORY.md</span>.</p>
-        </li>
-      </ol>
-
-      <h3 class="sub">Why it matters</h3>
-      <ul class="costs">
-        <li class="glass hot cost"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-chat-teardrop-text"/></svg></span><div><strong>You explain it again</strong><p>A new conversation asks what you were working on, and you go over the project once more.</p></div></li>
-        <li class="glass hot cost"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-question"/></svg></span><div><strong>Decisions get lost</strong><p>What you decided, and why, leaves with the old conversation, unless Claude wrote a note about it.</p></div></li>
-        <li class="glass hot cost"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-arrow-counter-clockwise"/></svg></span><div><strong>A task starts over</strong><p>A long task cut down to a summary can lose the details of where it was, and may start again from the top.</p></div></li>
-      </ul>
-
-      <h3 class="sub">What project-memory carries across</h3>
-      <div class="glass lit carry">
-        <div class="glass win old" aria-hidden="true">
-          <div class="term-bar"><b>Monday</b><span>ended</span></div>
-          <div class="win-body"><i class="m" style="--w:55%"></i><i class="m c" style="--w:80%"></i><i class="m f" style="--w:62%"></i><i class="m c" style="--w:66%"></i></div>
-        </div>
-        <ul>
-          <li><svg class="pi" aria-hidden="true"><use href="#p-file-text"/></svg><div><b>The handoff</b><span class="tok">handoff.md</span><p>After every reply, a record of the latest exchanges: where you stopped.</p></div></li>
-          <li><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg><div><b>The journal</b><span class="tok">journal/</span><p>Every exchange, one file per day. It isn't loaded, only searched when you ask about earlier work.</p></div></li>
-          <li><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg><div><b>The briefing</b><p>A new conversation starts with a short note of where the last one stopped, usually under 1,000 tokens. After a summary, Claude is told what you asked and what it last said.</p></div></li>
-        </ul>
-        <div class="glass lit win" aria-hidden="true">
-          <div class="term-bar"><b>Tuesday</b><span>new</span></div>
-          <div class="win-body"><span class="nb lit"><svg class="pi"><use href="#p-sun-horizon"/></svg>briefing</span><span class="empty"></span></div>
-        </div>
-      </div>
-      <p class="footnote">Claude is reminded to save its notes when the window is 85% full. project-memory assumes a window of 1,000,000 tokens; if your model holds 200,000, the reminder needs <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">one setting</a>.</p>
-    </div>
-  </section>
-
-  <section class="part" id="how" aria-labelledby="how-h">
-    <div class="wrap">
-      <p class="eyebrow">How it works</p>
-      <h2 id="how-h">You work. <span class="grad">It keeps track.</span></h2>
-      <p class="intro">There's nothing to learn and nothing to run. It works on its own after every reply.</p>
-      <ol class="flow">
-        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-chat-teardrop-text"/></svg></div><h3>Claude replies</h3><p>You work with Claude Code as you always do.</p></li>
-        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg></div><h3>The journal grows</h3><p>The exchange is saved, one file per day.</p><span class="tok file">journal/2026-11-01.md</span></li>
-        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-file-text"/></svg></div><h3>Where you stopped</h3><p>The last exchanges are kept for next time.</p><span class="tok file">handoff.md</span></li>
-        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg></div><h3>The next conversation</h3><p>Claude starts with a short briefing, usually under 1,000 tokens.</p></li>
-      </ol>
-    </div>
-  </section>
-
   <section class="part" id="get" aria-labelledby="get-h">
     <div class="wrap">
       <p class="eyebrow">What you get</p>
@@ -786,14 +781,14 @@
           <div>
             <span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-magnifying-glass"/></svg></span>
             <h3>A journal you can ask</h3>
-            <p>Every exchange is kept, one file per day. Ask about earlier work in your own words, and Claude searches the journal and your notes, and tells you when it happened. The journal isn't loaded into the conversation; it's only searched when you ask.</p>
+            <p>Every exchange is kept whole, one file per day. Ask about earlier work in your own words, and Claude searches the journal and your notes, and tells you when it happened. The journal isn't loaded into the conversation; it's only searched when you ask. Search goes by words, not by meaning.</p>
           </div>
           <div class="search" aria-label="An example search">
-            <div class="box"><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>logo colours</div>
+            <div class="box"><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>logo colors</div>
             <ul>
               <li><time>12 Sep</time><span>Kept the brain with the code mark</span></li>
               <li><time>11 Sep</time><span>Green version hard to read, dropped</span></li>
-              <li><time>9 Sep</time><span>First logo sketches, three colours</span></li>
+              <li><time>9 Sep</time><span>First logo sketches, three colors</span></li>
             </ul>
             <p class="cl found">On 12 September we kept the brain with the code mark, and <b>dropped the green version because it was hard to read.</b></p>
           </div>
@@ -838,9 +833,78 @@
             <span class="lockbox"><svg class="pi"><use href="#p-lock-key"/></svg>notes</span>
             <span class="w">Window 2<small>waits its turn</small></span>
           </div>
-          <div><h3>Two windows, no clashes</h3><p>The hooks write the notes one window at a time, and a new conversation is told what the other windows are working on.</p></div>
+          <div><h3>Two windows, no clashes</h3><p>The hooks write one window at a time, and the record keeps each conversation apart.</p></div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section class="part" id="context" aria-labelledby="context-h">
+    <div class="wrap">
+      <p class="eyebrow">Why context memory matters</p>
+      <h2 id="context-h">Claude sees only <span class="grad">what fits in its window.</span></h2>
+      <p class="intro">Claude can only see a limited amount at once: your messages, its replies and the files it has read. When that fills up, Claude Code shortens the conversation to a summary.</p>
+      <ol class="ctx">
+        <li>
+          <div class="glass win" aria-hidden="true">
+            <div class="term-bar"><b>Conversation</b><span>nearly full</span></div>
+            <div class="win-body"><i class="m" style="--w:55%"></i><i class="m c" style="--w:78%"></i><i class="m f" style="--w:62%"></i><i class="m" style="--w:40%"></i><i class="m c" style="--w:84%"></i><i class="m f" style="--w:70%"></i><i class="m c" style="--w:58%"></i></div>
+            <div class="gauge full"><b style="--w:92%"></b></div>
+          </div>
+          <h3><span class="num" aria-hidden="true">1</span>It fills up</h3>
+          <p>Every message, every reply and every file Claude reads takes room. A long conversation fills the window.</p>
+        </li>
+        <li>
+          <div class="glass hot win" aria-hidden="true">
+            <div class="term-bar"><b>Conversation</b><span>a summary</span></div>
+            <div class="win-body"><span class="sum"><svg class="pi"><use href="#p-arrows-in-line-vertical"/></svg>summary</span><i class="m lost" style="--w:70%"></i><i class="m lost" style="--w:52%"></i><i class="m lost" style="--w:64%"></i></div>
+            <div class="gauge"><b style="--w:24%"></b></div>
+          </div>
+          <h3><span class="num" aria-hidden="true">2</span>It's shortened to a summary</h3>
+          <p>Claude Code then shortens the conversation to a summary. It reloads your notes afterwards, but the details of a task in progress can get lost.</p>
+        </li>
+        <li>
+          <div class="glass win" aria-hidden="true">
+            <div class="term-bar"><b>New conversation</b><span>empty</span></div>
+            <div class="win-body"><span class="nb"><svg class="pi"><use href="#p-notebook"/></svg>MEMORY.md</span><span class="empty"></span></div>
+            <div class="gauge"><b style="--w:8%"></b></div>
+          </div>
+          <h3><span class="num" aria-hidden="true">3</span>The next one starts empty</h3>
+          <p>A new conversation starts with an empty window. Claude Code's own memory brings along only the notes Claude chose to write in its notebook, <span class="tok">MEMORY.md</span>.</p>
+        </li>
+      </ol>
+
+      <h3 class="sub">What project-memory carries across</h3>
+      <div class="glass lit carry">
+        <div class="glass win old" aria-hidden="true">
+          <div class="term-bar"><b>Monday</b><span>ended</span></div>
+          <div class="win-body"><i class="m" style="--w:55%"></i><i class="m c" style="--w:80%"></i><i class="m f" style="--w:62%"></i><i class="m c" style="--w:66%"></i></div>
+        </div>
+        <ul>
+          <li><svg class="pi" aria-hidden="true"><use href="#p-file-text"/></svg><div><b>The handoff</b><span class="tok">handoff.md</span><p>After every reply, a record of the latest exchanges: where you stopped.</p></div></li>
+          <li><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg><div><b>The journal</b><span class="tok">journal/</span><p>Every exchange, one file per day. It isn't loaded, only searched when you ask about earlier work.</p></div></li>
+          <li><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg><div><b>The briefing</b><p>A new conversation starts with the last exchanges, a short briefing. After a summary the note is longer: what you asked, what Claude last said, tasks still running and files it edited.</p></div></li>
+        </ul>
+        <div class="glass lit win" aria-hidden="true">
+          <div class="term-bar"><b>Tuesday</b><span>new</span></div>
+          <div class="win-body"><span class="nb lit"><svg class="pi"><use href="#p-sun-horizon"/></svg>briefing</span><span class="empty"></span></div>
+        </div>
+      </div>
+      <p class="footnote">Claude is reminded to save its notes before a long conversation is shortened. If your model has a 200,000-token limit, it needs <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">one setting</a> (the details are on GitHub).</p>
+    </div>
+  </section>
+
+  <section class="part" id="how" aria-labelledby="how-h">
+    <div class="wrap">
+      <p class="eyebrow">How it works</p>
+      <h2 id="how-h">You work. <span class="grad">It keeps track.</span></h2>
+      <p class="intro">There's nothing to learn and nothing to run. It works on its own after every reply.</p>
+      <ol class="flow">
+        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-chat-teardrop-text"/></svg></div><h3>Claude replies</h3><p>You work with Claude Code as you always do.</p></li>
+        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg></div><h3>The journal grows</h3><p>The exchange is saved, one file per day.</p><span class="tok file">journal/2026-11-01.md</span></li>
+        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-file-text"/></svg></div><h3>Where you stopped</h3><p>The last exchanges are kept for next time.</p><span class="tok file">handoff.md</span></li>
+        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg></div><h3>The next conversation</h3><p>Claude starts with a short briefing, about 900 tokens.</p></li>
+      </ol>
     </div>
   </section>
 
@@ -856,14 +920,14 @@
           <p>Claude saves its notes.</p>
         </div>
         <div class="glass step hot">
-          <div class="step-top"><span class="num" aria-hidden="true">2</span><b>During</b><span>100%</span></div>
+          <div class="step-top"><span class="num" aria-hidden="true">2</span><b>During</b><span>nearly full</span></div>
           <div class="track full" aria-hidden="true"><b style="--w: calc(100% - 6px)"></b></div>
           <p>Claude Code is asked to let the step finish. With no room to wait, the step is written down.</p>
         </div>
         <div class="glass step lit">
           <div class="step-top"><span class="num" aria-hidden="true">3</span><b>After</b><span>summary</span></div>
           <div class="track" aria-hidden="true"><b style="--w: 22%"></b></div>
-          <p>Claude is told what you asked and what it last said.</p>
+          <p>Claude is told what you asked, what it last said, tasks still running and files it edited.</p>
         </div>
       </div>
       <p class="footnote">Room to wait needs one setting, <span class="tok">CLAUDE_CODE_AUTO_COMPACT_WINDOW</span>; with the default settings there is none. Claude Code doesn't always wait when asked. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">How it works</a>.</p>
@@ -888,72 +952,144 @@
         </div>
         <ul class="items">
           <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-hard-drives"/></svg></span><div><h3>Never goes online</h3><p>No account, no API key, no servers.</p></div></li>
-          <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-key"/></svg></span><div><h3>Secrets are blanked out</h3><p>Common kinds of keys and passwords become <span class="tok">[redacted]</span> before anything is saved.</p></div></li>
-          <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-eye-slash"/></svg></span><div><h3>Keep text out</h3><p>Put it in <span class="tok">&lt;private&gt;</span> and <span class="tok">&lt;/private&gt;</span>.</p></div></li>
+          <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-eye-slash"/></svg></span><div><h3>Keep text out</h3><p>Put it in <span class="tok">&lt;private&gt;</span> and <span class="tok">&lt;/private&gt;</span>. Claude's reply to it stays out too.</p></div></li>
           <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-lock-key"/></svg></span><div><h3>Keep a conversation out</h3><p>Type <span class="tok">&lt;private-session&gt;</span>. What was saved before is removed, except the history's copy of days already over.</p></div></li>
+          <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-clock-counter-clockwise"/></svg></span><div><h3>Forget on request</h3><p>Ask Claude to forget something. It lists the journal entries and removes the ones you confirm.</p></div></li>
         </ul>
       </div>
-      <p class="aside"><svg class="pi" aria-hidden="true"><use href="#p-info"/></svg><span>Anthropic still sees your conversation, as with Claude Code's own memory. No tool catches every secret, so use the tags for anything sensitive. Ask Claude to forget something, and it removes the journal entries you confirm.</span></p>
+      <p class="aside"><svg class="pi" aria-hidden="true"><use href="#p-info"/></svg><span>Anthropic still sees your conversation, as with Claude Code's own memory, and Claude Code keeps its own transcripts, which "forget" does not touch. The tags keep text out of project-memory's files only.</span></p>
       <a class="button quiet" href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg>Read the privacy policy</a>
+    </div>
+  </section>
+
+  <section class="part" id="secrets" aria-labelledby="secrets-h">
+    <div class="wrap">
+      <p class="eyebrow">Secrets stay out</p>
+      <h2 id="secrets-h">Keys and passwords <span class="grad">are not saved.</span></h2>
+      <p class="intro">Sooner or later you paste a key or type a password in chat. Before anything goes into the journal, the handoff or the note kept for after a summary, project-memory replaces it with <span class="tok">[redacted]</span>.</p>
+      <div class="swap-heads" aria-hidden="true">
+        <span class="b"><i></i>What you typed or ran</span>
+        <span class="a"><i></i>What is saved</span>
+      </div>
+      <ul class="swaps">
+        <li class="glass swap">
+          <p class="what"><svg class="pi" aria-hidden="true"><use href="#p-key"/></svg>A key in a command</p>
+          <p class="cd bad"><span class="hidden">You typed: </span>export API_KEY=ghp_8fK…</p>
+          <i class="go" aria-hidden="true"></i>
+          <p class="cd ok"><span class="hidden">Saved as: </span>export API_KEY=[redacted]</p>
+        </li>
+        <li class="glass swap">
+          <p class="what"><svg class="pi" aria-hidden="true"><use href="#p-lock-key"/></svg>A password typed in chat</p>
+          <p class="cd bad"><span class="hidden">You typed: </span>the password is plum-42…</p>
+          <i class="go" aria-hidden="true"></i>
+          <p class="cd ok"><span class="hidden">Saved as: </span>the password is [redacted]</p>
+        </li>
+        <li class="glass swap">
+          <p class="what"><svg class="pi" aria-hidden="true"><use href="#p-browsers"/></svg>A cookie</p>
+          <p class="cd bad"><span class="hidden">You typed: </span>Cookie: sessionid=a1b2c3…</p>
+          <i class="go" aria-hidden="true"></i>
+          <p class="cd ok"><span class="hidden">Saved as: </span>Cookie: [redacted]</p>
+        </li>
+      </ul>
+      <ul class="chips covers" aria-label="What it looks for">
+        <li class="chip">Keys from many services</li><li class="chip">Passwords typed in chat, in many languages</li><li class="chip">Database and command-line passwords</li><li class="chip">Cookies and session ids</li><li class="chip">Look-alike spellings</li>
+      </ul>
+      <ul class="keeps">
+        <li class="glass lit keep"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-folder-lock"/></svg></span><p>A note that holds a secret stays out of the snapshots, and startup names it. Promoting it to the shared store is refused.</p></li>
+        <li class="glass lit keep"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-lock-key"/></svg></span><p>On Linux and macOS, the files it writes can be read only by you.</p></li>
+        <li class="glass hot keep"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-eye-slash"/></svg></span><p>No tool catches every secret. A look-alike Cyrillic or Greek letter gets through, for one. Put the rest in <span class="tok">&lt;private&gt;</span>.</p></li>
+      </ul>
+      <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md">What it removes, and what it misses</a>.</p>
+    </div>
+  </section>
+
+  <section class="part" id="control" aria-labelledby="control-h">
+    <div class="wrap">
+      <p class="eyebrow">You decide</p>
+      <h2 id="control-h">You choose <span class="grad">what is saved.</span></h2>
+      <p class="intro">Four ways to stop project-memory saving, from narrow to wide. To leave out a single message, use <span class="tok">&lt;private&gt;</span>.</p>
+      <ol class="levels">
+        <li class="glass level">
+          <span class="num" aria-hidden="true">1</span>
+          <p class="what">One conversation</p>
+          <p class="how"><span class="tok">/project-memory:incognito</span>Stops saving this conversation and removes what it already saved. If it says NOT applied, it did not work.</p>
+          <i class="reach" aria-hidden="true"><b style="--w:25%"></b></i>
+        </li>
+        <li class="glass level">
+          <span class="num" aria-hidden="true">2</span>
+          <p class="what">One project</p>
+          <p class="how"><span class="tok">/project-memory:memory-off</span>Saves nothing for this project. Search still finds what was saved before. Resume with <span class="tok">memory-on</span></p>
+          <i class="reach" aria-hidden="true"><b style="--w:50%"></b></i>
+        </li>
+        <li class="glass level">
+          <span class="num" aria-hidden="true">3</span>
+          <p class="what">All projects on this computer</p>
+          <p class="how">Set <span class="tok">CLAUDE_CODE_DISABLE_AUTO_MEMORY</span>or disable the plugin.</p>
+          <i class="reach" aria-hidden="true"><b style="--w:75%"></b></i>
+        </li>
+        <li class="glass level">
+          <span class="num" aria-hidden="true">4</span>
+          <p class="what">Claude Code itself</p>
+          <p class="how">Claude Code's own settings. project-memory does not read or change them, so Claude Code's own memory switch does not stop it.</p>
+          <i class="reach" aria-hidden="true"><b style="--w:100%"></b></i>
+        </li>
+      </ol>
+      <p class="glass hot stays"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-hard-drives"/></svg></span><span>None of these reaches Claude Code's own files. It keeps its own transcript of every conversation, for 30 days unless you change that.</span></p>
+      <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#turning-it-off">Turning it off, in detail</a>.</p>
+    </div>
+  </section>
+
+  <section class="part slim" aria-labelledby="lessons-h">
+    <div class="wrap">
+      <div class="glass lesson">
+        <div>
+          <span class="chip exp">Experimental</span>
+          <h2 id="lessons-h" class="small">Checked lessons</h2>
+          <p>A note can carry a rule for git commands. A hook then watches your git calls and logs which note matched. It only watches and logs: it blocks nothing and prints nothing. Few lessons fit this form, and some commands it does not see. It is a test of the idea, not a promise.</p>
+          <p><a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#checked-lessons-experimental">Syntax, limits and how to try a rule on past conversations</a></p>
+        </div>
+        <div>
+          <pre class="rule" tabindex="0"><code>enforce:
+  on: git add
+  has: [-A, --all, .]
+  unless: [mktemp, init]</code></pre>
+          <p class="rule-cap">In a note's header. It logs a hit when a <code>git add</code> command holds <code>-A</code>, <code>--all</code> or a bare dot.</p>
+        </div>
+      </div>
     </div>
   </section>
 
   <section class="part" aria-labelledby="care-h">
     <div class="wrap">
-      <p class="eyebrow">Built with care</p>
-      <h2 id="care-h">It runs on your notes, <span class="grad">so it has to be right.</span></h2>
-      <p class="intro">These checks run on every change, and the biggest before every release.</p>
+      <p class="eyebrow">Tested</p>
+      <h2 id="care-h">Tested <span class="grad">before every release.</span></h2>
+      <p class="intro">The tests run on every change. The code is scanned for problems every week, and each release gets one review.</p>
       <ul class="care">
         <li class="glass check">
-          <div class="art matrix" aria-hidden="true">
-            <span class="cap">Node.js</span><span class="h">22</span><span class="h">24</span><span class="h">26</span>
-            <span class="os">Windows</span><span class="off"></span><span class="ok"></span><span class="ok"></span>
-            <span class="os">macOS</span><span class="off"></span><span class="ok"></span><span class="ok"></span>
-            <span class="os">Linux</span><span class="ok"></span><span class="ok"></span><span class="ok"></span>
+          <div class="art suites" aria-hidden="true">
+            <span>handoff-log<b>901</b></span><span>memory<b>492</b></span>
+            <span>memory-tier<b>289</b></span><span>journal<b>285</b></span>
+            <span>store<b>184</b></span><span>compact-gate<b>125</b></span>
+            <span>enforce<b>115</b></span><span>enforce-hook<b>98</b></span>
+            <span class="cap">8 suites, all passing</span>
           </div>
           <div>
-            <h3><span class="big grad">3</span> systems, on every change</h3>
-            <p>The tests run on Windows, macOS and Linux with Node.js 24 and 26, and on Linux with 22 too.</p>
-            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>Each system handles files and times its own way. A mistake that shows on only one of them turns up in the tests before it reaches you.</span></p>
+            <h3><span class="big grad">2,489</span> checks on Windows, macOS and Linux, all passing</h3>
+            <p>Eight test suites cover the journal, the handoff, search, the tidy-up, secrets and the hooks. The slow ones, with planted bugs and random input, are run by hand when the code changes a lot.</p>
+            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>A change that breaks one of these is stopped before it reaches a release.</span></p>
           </div>
         </li>
         <li class="glass check">
-          <div class="art mut" aria-hidden="true">
-            <span class="ln" style="--w:80%"></span>
-            <span class="ln bug" style="--w:56%"><svg class="pi warn"><use href="#p-bug"/></svg><b>caught</b></span>
-            <span class="ln" style="--w:68%"></span>
-            <span class="ln" style="--w:48%"></span>
-            <span class="ln bug" style="--w:62%"><svg class="pi warn"><use href="#p-bug"/></svg><b>caught</b></span>
-            <span class="ln" style="--w:72%"></span>
+          <div class="art clock" aria-hidden="true">
+            <span class="lt"><span>120 s saving</span><span class="gauge"><b style="--w:100%"></b></span></span>
+            <span class="lt"><span>60 s compaction</span><span class="gauge"><b style="--w:50%"></b></span></span>
+            <span class="lt"><span>30 s briefing</span><span class="gauge"><b style="--w:25%"></b></span></span>
+            <span class="lt lit"><span>5 s git watcher</span><span class="gauge"><b style="--w:6%"></b></span></span>
           </div>
           <div>
-            <h3><span class="big grad">3,000+</span> planted bugs, all caught</h3>
-            <p>Before a release, more than 3,000 small bugs are planted in the code, one at a time, and the tests must catch every one.</p>
-            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>It shows the tests notice when the code stops doing its job, before that job is looking after your notes.</span></p>
-          </div>
-        </li>
-        <li class="glass check">
-          <div class="art fuzz" aria-hidden="true">
-            <span class="ins"><span>random chats</span><span>time zones</span><span>disk errors</span><span>cut-off runs</span></span>
-            <span class="fleet"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-            <span class="cap">17 machines, 10 minutes each</span>
-          </div>
-          <div>
-            <h3><span class="big grad">17</span> machines at once</h3>
-            <p>Before a release, ten minutes of random conversations, time-zone changes, disk errors and interrupted runs, sent through the real code.</p>
-            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>Every run checks that each note keeps its text and that nothing private is written down.</span></p>
-          </div>
-        </li>
-        <li class="glass check">
-          <div class="art deps" aria-hidden="true">
-            <span class="ico"><svg class="pi"><use href="#p-package"/></svg></span>
-            <span class="badge"><span>dependencies</span><b>0</b></span>
-            <span class="badge"><span>licence</span><b>MIT</b></span>
-          </div>
-          <div>
-            <h3><span class="big grad">0</span> dependencies</h3>
-            <p>Nothing extra to download, and the code is open for anyone to read. MIT licence.</p>
-            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>No packages from other people come with it, so a change in one of them can't break it or reach your notes.</span></p>
+            <h3><span class="big grad">5 to 120 s</span> time limit on every step</h3>
+            <p>Saving after a reply gets 120 seconds, the check before a summary 60, the briefing 30 and the git watcher 5. Claude Code stops a step that runs over and carries on.</p>
+            <p class="why"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg><span>Every step has a time limit, so a stuck step can't hold Claude up.</span></p>
           </div>
         </li>
       </ul>
@@ -998,12 +1134,12 @@
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-browsers"/></svg>Two windows</span></th>
               <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>Nothing keeps two windows on one project from overwriting each other.</span></span></td>
-              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Safe with several windows open, and each window is told about the others.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Safe with several windows open: writes take turns, and each conversation keeps its own record.</span></span></td>
             </tr>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-hard-drives"/></svg>Privacy</span></th>
               <td role="cell"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Its notebook stays on your computer.</span></span></td>
-              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>The journal and the history stay there too, with no account. Either way, Anthropic sees the conversation.</span></span></td>
+              <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>The journal and the history stay there too, with no account, and keys and passwords are removed before saving. You can switch it off per conversation or project. Either way, Anthropic sees the conversation.</span></span></td>
             </tr>
           </tbody>
         </table>
@@ -1056,9 +1192,13 @@
       <p class="eyebrow">Questions</p>
       <h2 id="faq-h">Questions <span class="grad">people ask.</span></h2>
       <div class="faq">
+        <details class="glass"><summary>Does it cost anything?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No. It is free and open source under the MIT license, with no account and no API key.</p></div></details>
+        <details class="glass"><summary>Does it work on Windows?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes: Windows, macOS and Linux. It needs Node.js 22 or newer.</p></div></details>
         <details class="glass"><summary>Does it send anything over the internet?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No. It makes no internet connections, and what it saves stays in Claude Code's own folder in your home folder. What Claude reads during a conversation goes to Anthropic with the rest of it, as with Claude Code's own memory.</p></div></details>
-        <details class="glass"><summary>Does it slow Claude down or fill the conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, usually under 1,000 tokens. The journal isn't loaded; Claude searches it only when you ask about earlier work.</p></div></details>
-        <details class="glass"><summary>How much disk space does it use?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>A journal entry is usually under 3 KB. A very busy project adds up to about 40 MB a year.</p></div></details>
+        <details class="glass"><summary>Does it slow Claude down or fill the conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, about 900 tokens (3,500 characters), and a little longer after a summary. The journal isn't loaded; Claude searches it only when you ask about earlier work.</p></div></details>
+        <details class="glass"><summary>How much disk space does it use?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Half of the journal entries are under about 5 KB. A very busy project adds up to about 110 MB a year.</p></div></details>
+        <details class="glass"><summary>What if I paste a password or a key?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>It is replaced with [redacted] before anything is saved, for keys from many services, passwords typed in chat and cookies. No tool catches every secret, so put anything sensitive in <code>&lt;private&gt;</code> tags.</p></div></details>
+        <details class="glass"><summary>Can I turn it off for one conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes. Type <code>/project-memory:incognito</code> for one conversation, or <code>/project-memory:memory-off</code> for one project. Claude Code still keeps its own transcripts, for 30 days unless you change that, and these switches do not reach them.</p></div></details>
         <details class="glass"><summary>Can I use it on two computers?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each computer keeps its own notes and journal; they don't sync. Don't sync the memory folder yourself (Dropbox, OneDrive): each computer would undo the other's "forget".</p></div></details>
         <details class="glass"><summary>My model holds 200,000 tokens. Do I need to change anything?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes, for long conversations. It assumes a window of 1,000,000 tokens, so the reminder to save notes never comes. Ask Claude: "Is my context window 200,000 tokens?" If it is, ask: "Add CLAUDE_CODE_AUTO_COMPACT_WINDOW set to 200k under env in my Claude Code settings," then restart Claude Code.</p></div></details>
         <details class="glass"><summary>How do I pause or remove it?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>To pause it, run <code>claude plugin disable project-memory@project-memory</code> in a terminal and restart Claude Code. To remove it, type <code>/plugin uninstall project-memory@project-memory</code> in Claude Code. Your notes and the journal stay either way; the <a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#deleting-it">privacy policy</a> says what to delete by hand.</p></div></details>
@@ -1086,12 +1226,13 @@
   <div class="wrap">
     <ul aria-label="More">
       <li><a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md">How it works, in detail</a></li>
+      <li><a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md">Privacy policy</a></li>
       <li><a href="https://github.com/zdraveski/project-memory/blob/master/CHANGELOG.md">Changelog</a></li>
       <li><a href="https://github.com/zdraveski/project-memory/releases/latest">Latest release</a></li>
       <li><a href="https://github.com/zdraveski/project-memory/issues">Report a problem</a></li>
       <li><a href="https://github.com/zdraveski/project-memory/blob/master/SECURITY.md">Security</a></li>
     </ul>
-    <p>MIT licence. Icons: Phosphor. This page loads nothing from anywhere else.</p>
+    <p>MIT license. Icons: Phosphor. This page loads nothing from anywhere else.</p>
   </div>
 </footer>
 
