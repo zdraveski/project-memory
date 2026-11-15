@@ -2151,6 +2151,7 @@ Deploy with the token from the vault
     const jd = join(root, 'proj-one', 'memory', 'journal'), day = join(jd, '2020-01-01.md');
     mkdirSync(jd, { recursive: true }); writeFileSync(day, '# Journal 2020-01-01\n');
     for (const [p, m] of [[join(root, '.git'), 0o755], [jd, 0o755], [day, 0o644], [join(root, '.stop-ran'), 0o644]]) chmodSync(p, m);
+    rmSync(join(root, 'proj-one', 'memory', '.tiered'), { force: true });   // nothing changed since the last Stop: without this the gate skips the snapshot that tightens
     await stop();
     ok([join(root, '.git'), jd, day, join(root, '.stop-ran')].every((p) => (statSync(p).mode & 0o077) === 0), `an older install is made private at the next Stop (modes ${[join(root, '.git'), jd, day, join(root, '.stop-ran')].map((p) => (statSync(p).mode & 0o777).toString(8))})`);
   }
