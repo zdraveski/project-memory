@@ -8,6 +8,8 @@
 
 - A tracked note edited to hold a secret is no longer reported as "busy" on every reply, and no longer counted as "still to add" after a good snapshot.
 
+- Redaction: a password on the line after `mysql -p` is redacted (a database name or statement there is kept); Voyage AI keys of 40 to 46 characters are redacted while long `pa-` kebab-case names are kept; IFTTT `/use/<key>` and `/json/with/key/<key>` URLs and Zapier `/hooks/standard/` URLs are redacted; `glft-` branch names and Nix store hashes (52 characters) are no longer erased.
+
 - A note the tidy-up finds with a key or token in its file name is no longer added to MEMORY.md; doctor tells you to rename it. A line already in MEMORY.md, and the name shown by search and status, are not changed yet.
 
 - A note held out of the snapshots because it holds a secret is now named at startup too, with how to release it (remove the secret).

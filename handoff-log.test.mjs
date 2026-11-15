@@ -3483,5 +3483,23 @@ if (!quick) {
   ok(jN.split('j:n2-u1 t:').length === 2 && jN.includes('j:n2-u1 t:' + basename(dirN) + '/n2parent0'), 'and the journal keeps the copy under the parent');
 }
 
+{ // 1.4.2 R: redaction rules
+  const P = 'Zq7' + 'Hk2Lm9' + 'Xw4Rt8', has = (s, n) => redact(s).includes(n);
+  const vk = 'Ab1-Cd2-Ef3-Gh4-' + 'Ij5Kl6Mn7'.repeat(3);
+  const nix = '0123456789abcdfghijklmnpqrsvwxyz0123456789abcdfghijklmnpq'.slice(0, 52), b32 = 'abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwxyz'.slice(0, 52);
+  const key = 'a1B2c3D4e5'.repeat(4), ifk = 'Nz1Lii' + 'nWmHlAm' + 'vZuUSFhLg', pat = '9kynu5xjn15vr0zt0v6x' + 'qzfigxalvptph4e5owp9bx7vrjs948mf'.slice(0, 32);
+  ok(!has(`mysql -u root -p\n${P}`, 'Xw4Rt8') && !has(`mysql -u root -p\r\n  ${P}\n`, 'Xw4Rt8'), 'mysql -p then the password on the next line is redacted');
+  ok(has('mysql -u root -p\nmydatabase_name', 'mydatabase_name') && has(`mysql -u root -p\nSELECT ${P};`, 'SELECT') && has('mysql -u root -p\nprod db', 'prod db'), 'but a database name or a statement after a bare -p is kept');
+  ok(!has(`key pa-${key}`, key) && !has(`key pa-${key}${'Qz'}`, key), 'a Voyage key of 40 to 46 characters is redacted');
+  ok(has('see pa-' + 'some-long-kebab-case-name-for-the-dashboard-v2', 'dashboard-v2'), 'a long kebab-case name starting pa- is kept');
+  ok(!has(`https://maker.ifttt.com/use/${ifk}`, ifk) && !has(`https://maker.ifttt.com/trigger/evt/json/with/key/${ifk}`, ifk) && !has(`https://maker.ifttt.com/trigger/evt/with/key/${ifk}`, ifk), 'IFTTT maker keys are redacted');
+  ok(!has('https://hooks.zapier.com/hooks/standard/4768864/' + 'abcdef0123456789abcdef0123456789/', 'abcdef0123456789'), 'a Zapier standard hook is redacted');
+  ok(has('git checkout glft-add-new-feature-branch-name', 'branch-name') && !has('glft-eJiUezeZ09' + 'fYb0j699Hm', 'eJiUezeZ09'), 'a glft- branch name is kept, a feed token is not');
+  ok(has(`sha ${nix}`, nix) && !has(`sha ${b32}`, b32) && !has(`pat ${pat}`, pat), 'a Nix base32 hash survives the Azure DevOps rule; a real base32 PAT (a-z, 2-7) does not');
+  ok(!has(`pa-${vk}`, vk), 'a Voyage key with 3 or more hyphens is still redacted');
+  ok(has('mysql -u root -p\ntest1', 'test1') === false && has('mysql -u root -p\nCorrectHorseBattery', 'CorrectHorseBattery'), 'known limits of the mysql -p rule: a database name with a digit is redacted, a password with no digit or symbol is kept');
+  ok(has('glft-' + 'abcdefghijklmnopqrstuvwx', 'abcdefghijklmnopqrstuvwx') && !has('glft-add-v2-branchnamexyz', 'branchnamexyz'), 'known limits of the glft rule: an all-lowercase no-digit token is kept, a branch with a digit and under 3 hyphens is erased');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
