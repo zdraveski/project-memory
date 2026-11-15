@@ -176,11 +176,6 @@
   .float .ico .pi { width: 1.25rem; height: 1.25rem; }
   .float.a { top: 0; right: -1.5rem; }
   .float.b { bottom: -1.4rem; left: -1.5rem; }
-  @media (prefers-reduced-motion: no-preference) {
-    .float.a { animation: drift 7s ease-in-out infinite; }
-    .float.b { animation: drift 8s ease-in-out -3s infinite; }
-  }
-  @keyframes drift { 50% { transform: translateY(-6px); } }
   .tabs { display: none; gap: 0.35rem; margin: 1rem 0 0; flex-wrap: wrap; justify-content: center; }
   .js .tabs { display: flex; }
   /* The panels share one grid cell, so the box keeps the tallest one's height and the tabs under it never move. */
