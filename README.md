@@ -14,7 +14,8 @@
 [![License: MIT](https://img.shields.io/github/license/zdraveski/project-memory?label=license)](LICENSE)
 [![Node.js 22 or newer](https://img.shields.io/badge/node-%E2%89%A5%2022-3c873a)](#install)
 
-**Gives Claude Code a journal of your work, so a new conversation starts where the last one stopped.**
+**Stop re-explaining your project to Claude Code.**<br>
+Your work, remembered between conversations. Saved only on your computer.
 
 project-memory is a free add-on (a "plugin", MIT license) for Claude Code, the
 coding assistant from Anthropic. Claude Code forgets everything when a

@@ -1,12 +1,12 @@
 {
   "name": "project-memory",
   "owner": { "name": "zdraveski" },
-  "description": "project-memory: gives Claude Code a journal of your work, so a new conversation starts where the last one stopped.",
+  "description": "project-memory: stop re-explaining your project to Claude Code. Your work, remembered between conversations. Saved only on your computer.",
   "plugins": [
     {
       "name": "project-memory",
       "source": "./",
-      "description": "Gives Claude Code a journal of your work, so a new conversation starts where the last one stopped. It keeps long tasks on track when a conversation is compacted, keeps old versions of its notes so a lost one can come back, shares lessons across your projects and keeps secrets out. Everything stays on your computer."
+      "description": "Stop re-explaining your project to Claude Code. Your work, remembered between conversations. Saved only on your computer. It keeps a journal of your work so a new conversation starts where the last one stopped, keeps long tasks on track when a conversation is compacted, keeps old versions of its notes so a lost one can come back, shares lessons across your projects and keeps secrets out."
     }
   ]
 }
