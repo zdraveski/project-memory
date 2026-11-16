@@ -10,7 +10,8 @@ knowing where the last one stopped, a journal of every exchange you do not mark
 private that Claude searches when you ask about earlier work, a history of
 every note, a shared notebook for all your projects, safe use of several
 windows at once, and switches to stop it saving one conversation or one
-project, with keys, tokens and passwords replaced before anything is saved.
+project, with keys, tokens and passwords replaced before the journal or the handoff
+saves them.
 
 **In short**
 

@@ -37,7 +37,7 @@ to install it for you (user scope), then restart Claude Code:
 It needs [Node.js](https://nodejs.org) 22 or newer, and no account or API key.
 A new conversation starts with a short briefing of about 900 tokens, never
 more than about 2,400. Its work runs after each reply, with a time limit on
-every step, so it can't hold Claude up
+every step, so a stuck step can't hold Claude up
 ([details](docs/faq.md#does-it-slow-claude-down-or-fill-the-conversation)).
 
 <p><picture>
@@ -224,7 +224,8 @@ Claude Code's own memory keeps no journal, no history of your notes and no
 shared notebook. project-memory adds those, with nothing it saves leaving your
 computer. Claude Code's `/resume` reopens one earlier conversation with its
 whole history; project-memory starts a fresh one with a short briefing, and
-its journal covers every conversation since you installed it.
+its journal covers every conversation you don't keep private, not only the one
+you reopen.
 [Comparison](docs/comparison.md) puts it side by side with claude-mem, Mem0,
 Supermemory and others.
 
