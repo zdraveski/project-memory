@@ -888,7 +888,15 @@ export function transcripts(dir, me, t) {
 // max_tokens, stop_sequence and refusal end the turn (the user is next).
 export const goesOn = (m) => !m?.stop_reason || m.stop_reason === 'tool_use' || m.stop_reason === 'pause_turn';
 export function lastTurn(p) {
-  const tail = readTail(p, TAIL).text;
+  let end, seen, known, open;
+  // Grown as latest() does, only while the tail holds no whole message: a last record over 512 KB (a screenshot) filled it.
+  for (let bytes = TAIL; ; bytes *= 4) {
+    const { text: tail, whole } = readTail(p, bytes);
+    ({ end, seen, known, open } = scan(tail));
+    if (seen || whole || bytes >= 32e6) return { end, seen, known, open };
+  }
+}
+function scan(tail) {
   let end = NaN, seen = 0, known = 0, open = false;
   for (const line of tail.split('\n')) {
     if (!line.startsWith('{')) continue;
