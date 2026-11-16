@@ -67,7 +67,7 @@
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   }
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 5rem; background: #040719; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 5rem; background: #040719; color-scheme: dark; scrollbar-color: #33437E #040719; }
   @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
   body { margin: 0; font: 400 1.0625rem/1.65 var(--sans); color: var(--ink);
     background:
@@ -78,6 +78,7 @@
   /* Hover styles only for a mouse: on a phone a tap would leave them stuck on. */
   @media (hover: hover) and (pointer: fine) { a:hover { text-decoration-thickness: 2px; } }
   :focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; border-radius: 6px; }
+  ::selection { background: rgb(34 211 238 / .3); color: #fff; }
   code { font-family: var(--mono); font-size: 0.88em; }
   .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 1.5rem; position: relative; }
   .hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -132,14 +133,17 @@
   .tok { font: 500 0.9em/1.4 var(--mono); color: #A5F3FC; background: rgb(8 14 40 / .75); border: 1px solid rgb(34 211 238 / .3); border-radius: 0.45rem; padding: 0.1em 0.45em; white-space: nowrap; }
 
   /* Header */
-  .bar { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid transparent; transition: background-color var(--fast), border-color var(--fast), -webkit-backdrop-filter var(--fast), backdrop-filter var(--fast); }
-  .bar.scrolled { background: rgb(5 10 35 / .82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom-color: var(--line); }
+  .bar { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid transparent; transition: background-color var(--fast) var(--ease-out), border-color var(--fast) var(--ease-out), -webkit-backdrop-filter var(--fast) var(--ease-out), backdrop-filter var(--fast) var(--ease-out); }
+  .bar.scrolled { background: rgb(5 10 35 / .82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+  /* Once the page scrolls, the glass ends in a soft shadow rather than a hard line. */
+  .bar::after { content: ""; position: absolute; inset: 100% 0 auto; height: 1.25rem; pointer-events: none; background: linear-gradient(rgb(3 6 25 / .5), transparent); opacity: 0; transition: opacity var(--fast) var(--ease-out); }
+  .bar.scrolled::after { opacity: 1; }
   /* Visitors who ask for less see-through or more contrast get solid panels; more contrast also gets stronger lines. */
   @media (prefers-reduced-transparency: reduce) {
     :root { --glass: var(--solid); }
     .bar.scrolled { background: #050A23; -webkit-backdrop-filter: none; backdrop-filter: none; }
   }
-  @media (prefers-contrast: more) { :root { --line: rgb(130 170 255 / .6); --glass: var(--solid); } }
+  @media (prefers-contrast: more) { :root { --line: rgb(130 170 255 / .6); --glass: var(--solid); } .bar.scrolled { border-bottom-color: var(--line); } }
   /* Wrap is the safety net: if the links can't fit beside the name, they drop to a second line instead of off the screen. */
   .bar .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 1rem; min-height: 4.25rem; }
   .brand { display: flex; align-items: center; min-height: 2.75rem; gap: 0.6rem; font-weight: 800; font-size: 1.15rem; letter-spacing: -0.02em; text-decoration: none; white-space: nowrap; }
@@ -159,7 +163,8 @@
     .button.primary:hover { box-shadow: 0 0 0 1px rgb(103 232 249 / .7), 0 12px 38px -6px rgb(34 211 238 / .8); }
     .button.quiet:hover { box-shadow: inset 0 0 0 1px rgb(130 170 255 / .6); }
   }
-  /* Buttons, demo tabs and Copy shrink a little while pressed, on touch screens too. */
+  /* Buttons, demo tabs and Copy shrink a little while pressed, on touch screens too, in place of the browser's grey tap flash. */
+  .button, .tab, .copy { -webkit-tap-highlight-color: transparent; }
   .button:active, .tab:active, .copy:active { transform: scale(0.97); }
 
   /* Opening, after the banner */
@@ -175,6 +180,19 @@
   .motto li + li::before { content: ""; display: inline-block; width: 0.42rem; height: 0.42rem; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); margin-right: 1.1rem; vertical-align: 0.15em; }
   .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 2rem 0 0; padding: 0; list-style: none; }
+  /* The opening rises in once, line by line, then the demo plays its first answer.
+     The logo and headline start at once, so the headline paints as early as it would without motion.
+     Fill is backwards only: once played, nothing is left on the layer (see the glint note under How it works). */
+  @media (prefers-reduced-motion: no-preference) {
+    .js .hero > :first-child > * { animation: rise 600ms var(--ease-out) backwards; }
+    .js .hero > :first-child > :nth-child(3) { animation-delay: 60ms; }
+    .js .hero > :first-child > :nth-child(4) { animation-delay: 120ms; }
+    .js .hero > :first-child > :nth-child(5) { animation-delay: 180ms; }
+    .js .hero > :first-child > :nth-child(6) { animation-delay: 240ms; }
+    .js .hero > :first-child > :nth-child(7) { animation-delay: 300ms; }
+    .js .hero .demo { animation: rise 700ms var(--ease-out) 120ms backwards; }
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 
   /* The demo: a glass terminal inside the banner's orbit, with its floating cards */
   .demo { position: relative; isolation: isolate; padding: 2.5rem 0 3.5rem; }
@@ -199,7 +217,7 @@
   .float { position: absolute; z-index: 2; display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 0.95rem 0.65rem 0.7rem; font: 600 0.88rem/1.2 var(--sans); color: #DBE7FF; background: var(--solid); border-radius: 0.85rem; }
   .float .ico { width: 2.2rem; height: 2.2rem; border-radius: 0.65rem; }
   .float .ico .pi { width: 1.25rem; height: 1.25rem; }
-  .float.a { top: 0; right: -1.5rem; }
+  .float.a { top: -1rem; right: -1.5rem; }
   .float.b { bottom: -1.4rem; left: -1.5rem; }
   .tabs { display: none; gap: 0.35rem; margin: 1rem 0 0; flex-wrap: wrap; justify-content: center; }
   .js .tabs { display: flex; }
@@ -224,10 +242,10 @@
     .js .demo .panel > :nth-child(3) { transition-delay: 100ms; }
     .js .demo .panel > :nth-child(4) { transition-delay: 150ms; }
     /* Until a tab is picked, the first panel plays the slower line-by-line reveal once. */
-    .js .demo:not(.picked) .panel.show > * { animation: line 0.35s ease-out both; }
-    .js .demo:not(.picked) .panel.show > :nth-child(2) { animation-delay: 0.35s; }
-    .js .demo:not(.picked) .panel.show > :nth-child(3) { animation-delay: 0.7s; }
-    .js .demo:not(.picked) .panel.show > :nth-child(4) { animation-delay: 1.05s; }
+    .js .demo:not(.picked) .panel.show > * { animation: line 0.35s var(--ease-out) 0.3s backwards; }
+    .js .demo:not(.picked) .panel.show > :nth-child(2) { animation-delay: 0.65s; }
+    .js .demo:not(.picked) .panel.show > :nth-child(3) { animation-delay: 1s; }
+    .js .demo:not(.picked) .panel.show > :nth-child(4) { animation-delay: 1.35s; }
   }
   @keyframes line { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 
@@ -272,6 +290,7 @@
   .flow::after { content: ""; position: absolute; left: 12.5%; right: 12.5%; top: calc(2.4rem - 1px); height: 4px; border-radius: 4px; pointer-events: none;
     background: linear-gradient(90deg, transparent 0 40%, #A5F3FC 50%, transparent 60% 100%) 0 0 / 250% 100% no-repeat; filter: drop-shadow(0 0 6px #22D3EE); opacity: 0.9; }
   @media (prefers-reduced-motion: no-preference) { .flow::after { animation: pulse 3.6s linear infinite; } }
+  .flow.away::after { animation-play-state: paused; }
   @media (prefers-reduced-motion: reduce) { .flow::after { display: none; } }
   @keyframes pulse { from { background-position: 100% 0; } to { background-position: 0% 0; } }
   .flow li { position: relative; text-align: center; padding: 0 0.25rem; }
@@ -483,7 +502,7 @@
   .faq details { padding: 0 1.4rem; }
   .faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 3.75rem; padding: 0.9rem 0; font-weight: 600; font-size: 1.05rem; }
   .faq summary::-webkit-details-marker { display: none; }
-  .faq summary .pi { width: 1.25rem; height: 1.25rem; transition: transform var(--fast); }
+  .faq summary .pi { width: 1.25rem; height: 1.25rem; transition: transform var(--fast) var(--ease-out); }
   .faq details[open] { border-color: rgb(34 211 238 / .45); }
   .faq details[open] summary .pi { transform: rotate(45deg); }
   .faq .answer { padding: 0 0 1.3rem; color: var(--body); }
@@ -519,8 +538,6 @@
     .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 2.5rem; }
     .flow::before, .flow::after { display: none; }
     .track-wrap, .limits { grid-template-columns: 1fr; }
-  }
-  @media (max-width: 62.5em) {
     .keeps { grid-template-columns: 1fr; }
     .lesson { grid-template-columns: 1fr; gap: 1.25rem; }
     .level { grid-template-columns: 2.6rem minmax(0, 1fr); }
@@ -926,13 +943,13 @@
         <li class="glass level">
           <span class="num" aria-hidden="true">2</span>
           <p class="what">One project</p>
-          <p class="how"><span class="tok">/project-memory:memory-off</span>Saves nothing for this project. Search still finds what was saved before. Resume with <span class="tok">memory-on</span></p>
+          <p class="how"><span class="tok">/project-memory:memory-off</span>Saves nothing for this project. Search still finds what was saved before. Resume with <span class="tok">memory-on</span>.</p>
           <i class="reach" aria-hidden="true"><b style="--w:50%"></b></i>
         </li>
         <li class="glass level">
           <span class="num" aria-hidden="true">3</span>
           <p class="what">All projects on this computer</p>
-          <p class="how">Set <span class="tok">CLAUDE_CODE_DISABLE_AUTO_MEMORY</span>or disable the plugin.</p>
+          <p class="how"><span class="tok">CLAUDE_CODE_<wbr>DISABLE_<wbr>AUTO_MEMORY=1</span>Set this environment variable, or disable the plugin.</p>
           <i class="reach" aria-hidden="true"><b style="--w:75%"></b></i>
         </li>
         <li class="glass level">
@@ -1145,6 +1162,10 @@
     const io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { e.target.classList.add('seen'); io.unobserve(e.target); } }, { rootMargin: '0px 0px -15% 0px' });
     steps.forEach((s) => io.observe(s));
   } else steps.forEach((s) => s.classList.add('seen'));
+
+  // The line of light in How it works repaints every frame, so it pauses while off screen.
+  const flow = document.querySelector('.flow');
+  if (flow && 'IntersectionObserver' in window) new IntersectionObserver(([e]) => flow.classList.toggle('away', !e.isIntersecting)).observe(flow);
 
   // A copy button beside each command, added only when the browser can copy.
   const status = document.getElementById('copied');
