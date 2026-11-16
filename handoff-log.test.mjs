@@ -714,6 +714,9 @@ ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 's
       "'password' => 'required|min:8'", "'password' => 'confirmed'", 'echo /usr/local/lib/node/ | base64 -d', "echo 'abcdefghijklmnopqrstuvwxyz' | base64 -d", 'session_id = uuid.uuid4()',
       '{"name":"password_policy","value":"strong-enough"}', '{"key":"password","value":"{{pw}}"}'];
     ok(kept.every((s) => clip(s, 2000) === s), '1.4.1 G: ordinary settings, names and values stay as written');
+    // Claude Code writes `originSessionId: <uuid>` into a note's front matter. Cut, it held every edited note out of the snapshots.
+    const origin = ['originSessionId: 4b16b5e4-939e-46a1-a832-db5ea3ad0427', '  originSessionId: "4b16b5e4-939e-46a1-a832-db5ea3ad0427"'];
+    ok(origin.every((s) => redact(s) === s) && clip(`sessionid=${T}`, 2000) !== `sessionid=${T}`, "a note's originSessionId stays, a session cookie still goes");
   }
   const [fast, how] = linear((m) => { redact('password: "' + 'a "\\'.repeat(2_000 * m)); redact('password=' + 'x,'.repeat(5_000 * m)); redact('pass​'.repeat(2_000 * m)); redact('\\'.repeat(2_000 * m)); }, 1000);
   ok(fast, `the quoting and folding rules are linear (${how})`);
