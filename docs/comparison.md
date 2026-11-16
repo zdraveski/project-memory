@@ -10,7 +10,16 @@ knowing where the last one stopped, a journal of every exchange you do not mark
 private that Claude searches when you ask about earlier work, a history of
 every note, a shared notebook for all your projects, safe use of several
 windows at once, and switches to stop it saving one conversation or one
-project, with keys, tokens and passwords replaced before anything is saved.
+project, with keys, tokens and passwords replaced before the journal or the handoff
+saves them.
+
+**In short**
+
+- Your memories stay in Claude Code's own notebook on your computer. project-memory itself never goes online.
+- It needs no account and no API key.
+- It uses no AI model of its own to write memories.
+- It searches by words, not by meaning. Mem0, Supermemory and claude-mem can also search by meaning.
+- It works in Claude Code only, and it does not share memories with a team.
 
 project-memory isn't the only add-on either. This table compares it with five
 popular tools, going only by each one's own documentation on 27 October 2026.

@@ -4,6 +4,8 @@ This page is the technical side of the [README](../README.md): what runs when,
 which files it writes, and the numbers it works to. You don't need any of it
 to use the plugin.
 
+**On this page:** [Using it](#using-it) · [When it runs](#when-it-runs) · [Where things live](#where-things-live) · [The index](#the-index) · [The handoff](#the-handoff) · [The journal](#the-journal) · [The startup briefing](#the-startup-briefing) · [Compaction](#compaction) · [Turning it off](#turning-it-off) · [Snapshots](#snapshots) · [The shared notebook](#the-shared-notebook) · [Several conversations at once](#several-conversations-at-once) · [Search and forget](#search-and-forget) · [Checked lessons (experimental)](#checked-lessons-experimental) · [The memory tool from a terminal](#the-memory-tool-from-a-terminal) · [Good to know](#good-to-know) · [Requirements and limits](#requirements-and-limits) · [When something seems wrong](#when-something-seems-wrong)
+
 ## Using it
 
 There is nothing to learn. Ask in your own words:
