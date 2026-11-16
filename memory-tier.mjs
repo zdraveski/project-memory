@@ -234,7 +234,10 @@ function tier(dir, now, seen = null) {
     // Its writer is about to point at it. A recovered line placed now would
     // beat the hand-written one to the index. Not handoff.md: this same Stop
     // just rewrote it, and its writer never adds a pointer. Nor journal.md's.
-    if (f !== 'handoff.md' && f !== 'journal.md' && Math.abs(now - statSync(join(dir, f)).mtimeMs) < ORPHAN_GRACE) { waiting = true; continue; }
+    if (f !== 'handoff.md' && f !== 'journal.md') {
+      let at; try { at = statSync(join(dir, f)).mtimeMs; } catch { continue; }   // a dangling link, or deleted since the listing: no note
+      if (Math.abs(now - at) < ORPHAN_GRACE) { waiting = true; continue; }
+    }
     // A name no index line can point at (`lesson (1).md`): its line, read back,
     // named another file, and a new one was added on every pass.
     // Nor one whose name holds a secret: the pointer links the real name, so it would reach MEMORY.md (named redacted here).
@@ -752,7 +755,9 @@ export async function main(argv, input) {
   // its store, so sessions of different projects never share one.
   const stampOf = (d) => join(d, '.tiered');
   // Each note is stat'ed once a Stop: the gate, the pass and its stamp each did it, three stats of every note (audit H-F2).
-  const scan = (d) => new Map(readdirSync(d).filter((f) => f.endsWith('.md') && f !== 'handoff.md').map((f) => [f, statSync(join(d, f))]));
+  // One that cannot be stat'ed (a dangling link) is left out, or the store was never stamped and re-tiered on every turn.
+  const scan = (d) => new Map(readdirSync(d).filter((f) => f.endsWith('.md') && f !== 'handoff.md')
+    .flatMap((f) => { try { return [[f, statSync(join(d, f))]]; } catch { return []; } }));
   const fingerprint = (s) => new Date().toDateString() + JSON.stringify([...s].map(([f, st]) => [f, st.size, st.mtimeMs]));
   const seen = new Map();
   // The stamp: what the pass saw, with the index and archive as it left them. A note written while it ran is not in it, and
