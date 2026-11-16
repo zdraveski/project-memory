@@ -34,7 +34,13 @@ Code only. [Comparison](comparison.md).
 
 ### Claude Code can already resume a conversation. Why add this?
 
-`/resume` (or `claude --continue`) reopens one earlier conversation with its whole history, so it starts as long as it ended. project-memory starts a fresh conversation with a short briefing on where you stopped, about 900 tokens, and its journal covers every conversation since you installed it, not only the one you reopen. Claude Code also deletes its own conversation files after 30 days unless you change that setting; the journal keeps each exchange until you delete it.
+`/resume` (or `claude --continue`) reopens one earlier conversation with its
+whole history, so it comes back as long as it was when it ended. project-memory
+starts a fresh conversation with a short briefing on where you stopped, about
+900 tokens, and its journal covers every conversation you don't keep private,
+not only the one you reopen. Claude Code also deletes its own conversation
+files after 30 days unless you change that setting; the journal keeps each
+exchange until you delete it.
 
 ### What does it cost?
 

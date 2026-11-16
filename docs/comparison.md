@@ -14,7 +14,7 @@ project, with keys, tokens and passwords replaced before anything is saved.
 
 **In short**
 
-- Your memories stay in Claude Code's own notebook on your computer, and nothing is sent anywhere.
+- Your memories stay in Claude Code's own notebook on your computer. project-memory itself never goes online.
 - It needs no account and no API key.
 - It uses no AI model of its own to write memories.
 - It searches by words, not by meaning. Mem0, Supermemory and claude-mem can also search by meaning.
