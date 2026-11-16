@@ -193,6 +193,7 @@
   p { text-wrap: pretty; }
   .hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 3.25rem; }
   h1 { font-size: clamp(2.3rem, 6vw, 5.25rem); line-height: 1; letter-spacing: -0.04em; max-width: 13em; margin: 0 auto 1.2rem; }
+  .tagline .nw { white-space: nowrap; } /* keeps "project-memory" whole on phones */
   .tagline { font-size: 1.4rem; line-height: 1.45; font-weight: 600; color: var(--ink); max-width: 34rem; margin: 0 auto 0.5rem; }
   .lede { font-size: 1.1rem; line-height: 1.6; color: var(--body); max-width: 38rem; margin: 0 auto 1.75rem; }
   .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
@@ -711,7 +712,7 @@
       <div class="hero">
         <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"></span>
         <h1>Ask Claude Code <span class="grad">what you decided last month.</span></h1>
-        <p class="tagline">Claude Code forgets. <span style="white-space:nowrap">project-memory</span> remembers. Saved only on your computer.</p>
+        <p class="tagline">Claude Code forgets. <span class="nw">project-memory</span> remembers. Saved only on your computer.</p>
         <p class="lede">A free plugin for Claude Code. After every reply it saves a journal of your work and a note of where you stopped.</p>
         <div class="actions">
           <a class="button primary" href="#install">Install in a minute</a>
