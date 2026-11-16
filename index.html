@@ -216,10 +216,34 @@
       .logo-orbit::before, .logo-orbit::after { animation: orbit 40s linear infinite;
         background: radial-gradient(circle, #CFFAFE 0 2.5px, rgb(34 211 238 / .45) 3.5px, transparent 8px) no-repeat;
         background-size: 1rem 1rem; background-position: calc(50% + var(--kx) * cos(var(--orbit, 47deg))) calc(50% + var(--ky) * sin(var(--orbit, 47deg))); }
-      .logo-orbit.away::before, .logo-orbit.away::after { animation-play-state: paused; }
     }
+    .nn .t2 { animation: trail 12s linear var(--d) infinite; }
+    .nn .hd2 { animation: head 12s linear var(--d) infinite; }
+    .nn .b2 { animation: ask 12s linear var(--d) infinite; }
+    .nn .c2 { animation: found 12s linear var(--d) infinite; }
+    .nn .r2 { animation: ripple 12s linear var(--d) infinite; }
+    .logo-orbit.away::before, .logo-orbit.away::after, .logo-orbit.away .nn * { animation-play-state: paused; }
   }
   @keyframes orbit { to { --orbit: 407deg; } }
+  /* The recall trace over the logo, drawn in the logo's own pixels (the brain sits at 0..148 x 0..136 of the viewBox, which
+     covers the whole orbit box). A spark leaves the > of the code sign, runs back through the brain to one memory point,
+     and that point ripples. Three routes take turns. Without motion only the memory points show. */
+  .nn { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  .nn .glow { filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 5px rgb(34 211 238 / .95)); }
+  /* A navy rim keeps the white points visible where they sit on the logo's bright lines. */
+  .nn .dot { fill: #F0FDFF; stroke: #071033; stroke-width: .9; opacity: .95; }
+  .nn .c2 { fill: #CFFAFE; opacity: 0; transform-box: fill-box; transform-origin: center; }
+  .nn .b2, .nn .r2 { fill: none; stroke: #CFFAFE; stroke-width: 1.6; opacity: 0; transform-box: fill-box; transform-origin: center; }
+  /* On a path of length 100 the trail draws from start to end; the head is a short dash just ahead of it. */
+  .nn .t2 { fill: none; stroke: #E6FDFF; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 101 120; stroke-dashoffset: 101; opacity: 0; }
+  .nn .hd2 { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 5 200; stroke-dashoffset: 7; opacity: 0; }
+  @media (prefers-contrast: more) { .nn { display: none; } }
+  /* Travel takes 0-16% of the 12 s cycle (about 2 s); the memory lights and ripples at 16-34%. */
+  @keyframes trail { 0% { stroke-dashoffset: 101; opacity: .95; } 16% { stroke-dashoffset: 0; opacity: .95; } 30%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+  @keyframes head { 0% { stroke-dashoffset: 7; opacity: 1; } 16% { stroke-dashoffset: -95; opacity: 1; } 20%, 100% { stroke-dashoffset: -95; opacity: 0; } }
+  @keyframes ask { 0% { opacity: 1; transform: scale(.6); } 6%, 100% { opacity: 0; transform: scale(2.4); } }
+  @keyframes found { 0%, 15% { opacity: 0; transform: scale(.5); } 17.5% { opacity: 1; transform: scale(1.5); } 25% { opacity: 1; transform: scale(1.1); } 34%, 100% { opacity: 0; transform: scale(1); } }
+  @keyframes ripple { 0%, 16% { opacity: 0; transform: scale(.6); } 17% { opacity: .9; transform: scale(.8); } 31%, 100% { opacity: 0; transform: scale(3.6); } }
   /* The planet: a huge circle whose top edge catches the light, brightest where the demo sits. */
   .land { position: relative; display: flex; flex-direction: column; align-items: center; margin-top: 5rem; padding-top: 3.5rem; }
   .land::before { content: ""; position: absolute; z-index: -1; left: 50%; top: 0; width: 240rem; height: 240rem; margin-left: -120rem; border-radius: 50%; pointer-events: none;
@@ -709,7 +733,7 @@
     <i class="stars" aria-hidden="true"></i>
     <div class="wrap">
       <div class="hero">
-        <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"></span>
+        <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"><svg class="nn" viewBox="-103.6 -20.8 355.2 177.6" aria-hidden="true"><circle class="dot" cx="38" cy="9" r="2"/><circle class="dot" cx="63" cy="12" r="2"/><circle class="dot" cx="64" cy="63" r="2"/><circle class="dot" cx="15" cy="40" r="2"/><circle class="dot" cx="5" cy="75" r="2"/><circle class="dot" cx="41" cy="47" r="2"/><circle class="dot" cx="28" cy="66" r="2"/><circle class="dot" cx="48" cy="92" r="2"/><circle class="dot" cx="22" cy="110" r="2"/><circle class="dot" cx="52" cy="127" r="2"/><circle class="dot" cx="80" cy="9" r="2"/><circle class="dot" cx="80" cy="54" r="2"/><circle class="dot" cx="108" cy="13" r="2"/><circle class="dot" cx="112" cy="42" r="2"/><circle class="dot" cx="138" cy="52" r="2"/><g class="glow"><g style="--d:0.8s"><path class="t2" pathLength="100" d="M141 92 L103 92 L66 90 L48 92 L22 110"/><path class="hd2" pathLength="100" d="M141 92 L103 92 L66 90 L48 92 L22 110"/><circle class="b2" cx="141" cy="92" r="3.6"/><circle class="c2" cx="22" cy="110" r="4.4"/><circle class="r2" cx="22" cy="110" r="5"/></g><g style="--d:4.8s"><path class="t2" pathLength="100" d="M141 92 L138 52 L108 13 L80 9 L63 12 L38 9"/><path class="hd2" pathLength="100" d="M141 92 L138 52 L108 13 L80 9 L63 12 L38 9"/><circle class="b2" cx="141" cy="92" r="3.6"/><circle class="c2" cx="38" cy="9" r="4.4"/><circle class="r2" cx="38" cy="9" r="5"/></g><g style="--d:8.8s"><path class="t2" pathLength="100" d="M141 92 L103 92 L80 54 L64 63 L41 47 L15 40"/><path class="hd2" pathLength="100" d="M141 92 L103 92 L80 54 L64 63 L41 47 L15 40"/><circle class="b2" cx="141" cy="92" r="3.6"/><circle class="c2" cx="15" cy="40" r="4.4"/><circle class="r2" cx="15" cy="40" r="5"/></g></g></svg></span>
         <h1>Ask Claude Code <span class="grad">what you decided last month.</span></h1>
         <p class="tagline">Your work, remembered between conversations. Saved only on your computer.</p>
         <p class="lede">A free plugin for Claude Code. After every reply it saves a journal of your work and a note of where you stopped.</p>
@@ -1081,6 +1105,7 @@
   <section class="part closing" aria-labelledby="end-h">
     <i class="stars" aria-hidden="true"></i>
     <div class="wrap">
+      <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"></span>
       <h2 id="end-h">Stop re-explaining your project <span class="grad">to Claude Code.</span></h2>
       <p>Free, no account, and saved only on your computer. Two lines in Claude Code, and it works in every project.</p>
       <div class="actions">
@@ -1141,7 +1166,11 @@
     shows.forEach((s) => io.observe(s));
   } else shows.forEach((s) => s.classList.add('seen'));
 
-  // The line of light in How it works and the moon round the logo repaint every frame, so they pause while off screen.
+  // The closing logo gets the hero's recall trace too (one copy in the markup to keep in step).
+  const nn = document.querySelector('.hero .nn'), bookend = document.querySelector('.closing .logo-orbit');
+  if (nn && bookend) bookend.append(nn.cloneNode(true));
+
+  // The line of light in How it works and the logos' moon and trace repaint every frame, so they pause while off screen.
   for (const el of document.querySelectorAll('.flow, .logo-orbit'))
     if ('IntersectionObserver' in window) new IntersectionObserver((es) => el.classList.toggle('away', !es[es.length - 1].isIntersecting)).observe(el);
 
