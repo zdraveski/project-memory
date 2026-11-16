@@ -1165,7 +1165,7 @@
 
   // The line of light in How it works repaints every frame, so it pauses while off screen.
   const flow = document.querySelector('.flow');
-  if (flow && 'IntersectionObserver' in window) new IntersectionObserver(([e]) => flow.classList.toggle('away', !e.isIntersecting)).observe(flow);
+  if (flow && 'IntersectionObserver' in window) new IntersectionObserver((es) => flow.classList.toggle('away', !es[es.length - 1].isIntersecting)).observe(flow);
 
   // A copy button beside each command, added only when the browser can copy.
   const status = document.getElementById('copied');
