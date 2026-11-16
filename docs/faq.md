@@ -72,7 +72,9 @@ yesterday."* [Secrets in detail](how-it-works.md#the-handoff),
   `/project-memory:memory-on` to turn it back on.
 - Ask Claude to forget something: *"Forget the password I pasted
   yesterday."* It lists the journal entries that match and removes the ones
-  you confirm.
+  you confirm. A copy in the history of days that are already over stays
+  unless you ask for `forget --purge`, which drops those days from the history
+  too.
 
 None of these reaches Claude Code's own conversation files. All four levels,
 including the setting for every project: [Turning it
