@@ -235,7 +235,7 @@ function tier(dir, now, seen = null) {
     // beat the hand-written one to the index. Not handoff.md: this same Stop
     // just rewrote it, and its writer never adds a pointer. Nor journal.md's.
     if (f !== 'handoff.md' && f !== 'journal.md') {
-      let at; try { at = statSync(join(dir, f)).mtimeMs; } catch { continue; }   // a dangling link, or deleted since the listing: no note
+      let at; try { at = statSync(join(dir, f)).mtimeMs; } catch (e) { if (BUSY.includes(e.code)) throw e; continue; }   // a dangling link, or deleted since the listing: no note; a held file fails the pass, as in factsFor
       if (Math.abs(now - at) < ORPHAN_GRACE) { waiting = true; continue; }
     }
     // A name no index line can point at (`lesson (1).md`): its line, read back,
