@@ -1065,6 +1065,12 @@ writeFileSync(join(projW, 'hhhhhhhh-4.jsonl'), [user('wrap up', { ts: minAgo(4) 
   user('<command-name>/exit</command-name>\n<command-message>exit</command-message>\n<command-args></command-args>', { ts: minAgo(2) }),
   user('<local-command-stdout>Goodbye!</local-command-stdout>', { ts: minAgo(2) })].join('\n') + '\n');
 ok(!/Another session is working[^\n]*\[hhhhhhhh\]/.test(printOf(cwdW, 'gggggggg-3', 'startup')), 'one closed with /exit is not');
+// A last record over 512 KB (a screenshot's base64) leaves no whole record in the first tail: still mid-turn (defect hunt 1.4.3, L2-1).
+writeFileSync(join(projW, 'iiiiiiii-5.jsonl'), [user('browse and shoot', { ts: minAgo(2) }),
+  rec('assistant', [], { ts: minAgo(2), message: { content: [{ type: 'tool_use', id: 's', name: 'Bash', input: {} }], stop_reason: 'tool_use', usage: { input_tokens: 1 } } }),
+  JSON.stringify({ type: 'user', timestamp: minAgo(1), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 's', content: [{ type: 'image', source: { type: 'base64', data: 'A'.repeat(900000) } }] }] } })].join('\n') + '\n');
+const pbig = printOf(cwdW, 'gggggggg-3', 'startup');
+ok(/Another session is working in this project: [^\n]*\[iiiiiiii\]/.test(pbig) && !/Last session here ended[^\n]*browse and shoot/.test(pbig), 'a session whose last record is over 512 KB still reads as mid-turn, not ended');
 // After a compaction the briefing fits the 10,000 characters Claude Code passes
 // whole: the oldest exchanges go first, and the shared lessons stay.
 const cwdB = 'C:\\handoff-budget', dirB = storeFor(home, cwdB), tb = join(dirB, 'b.jsonl');
