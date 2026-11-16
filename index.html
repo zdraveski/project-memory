@@ -188,11 +188,21 @@
   .tab .pi { width: 1.1rem; height: 1.1rem; filter: none; }
   @media (hover: hover) and (pointer: fine) { .tab:hover { color: var(--ink); background: #16204F; } }
   .tab[aria-selected="true"] { color: #DBE7FF; background: #17306E; box-shadow: inset 0 0 0 1px rgb(34 211 238 / .55), 0 0 18px rgb(34 211 238 / .25); }
+  /* A clicked tab fades its lines in. Arrow keys switch at once (.instant): people press them over and over. */
+  .js .demo .panel > * { transition: opacity 150ms var(--ease-out); }
+  .js .demo .panel:not(.show) > * { opacity: 0; }
+  .js .demo.instant .panel > * { transition: none; }
   @media (prefers-reduced-motion: no-preference) {
-    .js .demo .panel.show > * { animation: line 0.35s ease-out both; }
-    .js .demo .panel.show > :nth-child(2) { animation-delay: 0.35s; }
-    .js .demo .panel.show > :nth-child(3) { animation-delay: 0.7s; }
-    .js .demo .panel.show > :nth-child(4) { animation-delay: 1.05s; }
+    .js .demo .panel > * { transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out); }
+    .js .demo .panel:not(.show) > * { transform: translateY(4px); }
+    .js .demo .panel > :nth-child(2) { transition-delay: 50ms; }
+    .js .demo .panel > :nth-child(3) { transition-delay: 100ms; }
+    .js .demo .panel > :nth-child(4) { transition-delay: 150ms; }
+    /* Until a tab is picked, the first panel plays the slower line-by-line reveal once. */
+    .js .demo:not(.picked) .panel.show > * { animation: line 0.35s ease-out both; }
+    .js .demo:not(.picked) .panel.show > :nth-child(2) { animation-delay: 0.35s; }
+    .js .demo:not(.picked) .panel.show > :nth-child(3) { animation-delay: 0.7s; }
+    .js .demo:not(.picked) .panel.show > :nth-child(4) { animation-delay: 1.05s; }
   }
   @keyframes line { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 
@@ -1085,6 +1095,8 @@
   // The demo's tabs: arrow keys move between them, as tabs do everywhere.
   const tabs = [...document.querySelectorAll('[role="tab"]')];
   const pick = (t, focus) => {
+    const demo = t.closest('.demo');
+    demo.classList.add('picked'); demo.classList.toggle('instant', !!focus);
     for (const o of tabs) {
       const on = o === t;
       o.setAttribute('aria-selected', on); o.tabIndex = on ? 0 : -1;
