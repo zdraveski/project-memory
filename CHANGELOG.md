@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.3 (2026-11-16)
+
+- A note Claude Code has edited is no longer held out of the snapshots as a secret. Claude Code writes `originSessionId:` into a note it edits, and 1.4.1's session-cookie rule read that line as a cookie. A real session cookie (`sessionid=`, `JSESSIONID`, `connect.sid`) is still cut.
+
+- A note that only explains the `<private>` tag, such as "wrap a secret in `<private>` and `</private>`", is no longer held out of the snapshots, and `promote` no longer refuses it. Anything else inside the tag, such as a PIN or a password, still holds the note, and so does text after a self-closing `<private/>`.
+
+- The first snapshot of a big store no longer outlasts the Stop hook. It checked each staged note for secrets with its own git process: 80 notes took 14 seconds, and 1500 notes ran past the 120-second limit, so the snapshot was cut off. All notes are now read by one git process.
+
+- The startup briefing no longer says another session "ended" while it is still working, when that session's newest transcript record is very large (a screenshot over 512 KB).
+
+- A broken link or a note deleted mid-tidy in a memory folder no longer stops that folder's tidy-up on every reply. A note another program holds open still fails the tidy-up, and the next reply tries again.
+
+- `promote <note> --shared` on a project note now says the note is not in the shared store and to drop `--shared`, instead of claiming it is there already. `incognito` without `--session` names the command that passes it: `/project-memory:incognito`.
+
+- The FAQ and the memory skill now name `forget --purge`, the skill says `promote --force` moves a note that holds a secret, and the docs give the watcher's time limit as 5 seconds.
+
+- `forget <words> --yes --purge` now works after a plain `forget <words> --yes`. The plain forget says the snapshots still hold the entry and to run `forget --purge`, but that run found no entry left in the journal and purged nothing. It now finds the days in the snapshots that held every word, in any case, and purges those. With `--key`, `--conversation`, `--since` or `--until` it still purges only what matches.
+
 ## 1.4.2 (2026-11-15)
 
 - A cookie after `curl -b` and a password after `redis-cli -a` are cut again when a word that ends in curl or redis-cli comes before them (`pycurl`, `libcurl.so`, `-h myredis-cli`), and a password typed on the line after `mysql -u root -p` is cut.
