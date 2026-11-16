@@ -12,7 +12,7 @@ import { chmodSync, readFileSync, writeFileSync, writeSync, appendFileSync, unli
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED, redact } from './store.mjs';
+import { holdsSecret, keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED, redact } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -540,7 +540,7 @@ function snapshot() {
     for (const f of staged) {
       // the staged blob is what a commit keeps, not the working file a session may have cleaned since the add
       const t = blobs.has(f) ? blobs.get(f) : raw(join(root, f));
-      if (redact(f) !== f || (t !== null && redact(t) !== t)) { git('reset', '-q', '--', `:(literal)${f}`); held.push(redact(f)); heldRaw.add(f); }
+      if (redact(f) !== f || (t !== null && holdsSecret(t))) { git('reset', '-q', '--', `:(literal)${f}`); held.push(redact(f)); heldRaw.add(f); }
     }
     // Tracked files changed and not added, a held note (it stays modified, for good) not counted: what is still owed.
     const owed = () => git('diff', '--name-only', '-z', ...(offs.length ? ['--', '.', ...offs] : [])).split(' ').filter((x) => x && !heldRaw.has(x)).length;

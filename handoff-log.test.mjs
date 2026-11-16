@@ -15,7 +15,7 @@ const { home, env } = tempHome('hl-test-');
 // The hooks in this process too, under the same throwaway HOME (tempHome set
 // it here): a check that needs no stdin or exit code calls handoff() itself,
 // not a node start per turn.
-const { handoff, edited, plain, redact, clip } = await import('./handoff-log.mjs');
+const { handoff, edited, plain, redact, clip, holdsSecret } = await import('./handoff-log.mjs');
 const cwd = 'C:\\handoff-log-selftest';
 const dir = storeFor(home, cwd);
 const transcript = join(dir, 'transcript.jsonl');
@@ -717,6 +717,8 @@ ok(redact('sk-learn and commit 3a0d0802f6e1c9d8b7a6f5e4d3c2b1a0f9e8d7c6') === 's
     // Claude Code writes `originSessionId: <uuid>` into a note's front matter. Cut, it held every edited note out of the snapshots.
     const origin = ['originSessionId: 4b16b5e4-939e-46a1-a832-db5ea3ad0427', '  originSessionId: "4b16b5e4-939e-46a1-a832-db5ea3ad0427"'];
     ok(origin.every((s) => redact(s) === s) && clip(`sessionid=${T}`, 2000) !== `sessionid=${T}`, "a note's originSessionId stays, a session cookie still goes");
+    // A note that only mentions the <private> tag is no secret and stays in the snapshots; a real token beside the mention still holds it (defect hunt 1.4.3, L3-3).
+    ok(!holdsSecret('Wrap it in <private>x</private> or <private> to hide it.') && holdsSecret(`<private>x</private> sessionid=${T}`) && redact('a <private>x</private> b') === 'a [private] b', "a note that mentions the <private> tag is kept, a real secret still holds it, and redact still cuts a private span");
   }
   const [fast, how] = linear((m) => { redact('password: "' + 'a "\\'.repeat(2_000 * m)); redact('password=' + 'x,'.repeat(5_000 * m)); redact('pass​'.repeat(2_000 * m)); redact('\\'.repeat(2_000 * m)); }, 1000);
   ok(fast, `the quoting and folding rules are linear (${how})`);
