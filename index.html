@@ -69,8 +69,15 @@
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; scroll-padding-top: 5rem; background: #040719; color-scheme: dark; scrollbar-color: #33437E #040719; }
   @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+  /* Stars down the whole page: five tiles of different odd sizes, so the pattern never visibly repeats.
+     They stay faint because they also fall between words, where a bright one reads as a stray full stop. */
   body { margin: 0; font: 400 1.0625rem/1.65 var(--sans); color: var(--ink);
     background:
+      radial-gradient(circle at 41px 67px, rgb(255 255 255 / .26) 0 .8px, transparent 1.4px) 0 0 / 233px 233px,
+      radial-gradient(circle at 199px 23px, rgb(186 230 253 / .24) 0 .8px, transparent 1.4px) 0 0 / 307px 307px,
+      radial-gradient(circle at 97px 311px, rgb(196 181 253 / .22) 0 .8px, transparent 1.4px) 0 0 / 419px 419px,
+      radial-gradient(circle at 331px 157px, rgb(255 255 255 / .2) 0 1px, transparent 1.6px) 0 0 / 521px 521px,
+      radial-gradient(circle at 13px 487px, rgb(255 255 255 / .34) 0 1px, transparent 1.8px) 0 0 / 613px 613px,
       radial-gradient(70rem 40rem at 0% -10%, rgb(37 99 235 / 0.38), transparent 60%),
       radial-gradient(60rem 36rem at 105% 30%, rgb(124 58 237 / 0.26), transparent 62%),
       linear-gradient(180deg, #081133 0%, #050A23 22%, #040719 100%); }
@@ -114,6 +121,16 @@
     box-shadow: inset 0 1px 0 rgb(255 255 255 / .08), 0 22px 44px -18px rgb(0 0 0 / .7); }
   .glass.lit { border-color: rgb(34 211 238 / .6); box-shadow: 0 0 0 1px rgb(34 211 238 / .25), 0 0 34px rgb(34 211 238 / .22), inset 0 0 30px rgb(34 211 238 / .07), inset 0 1px 0 rgb(255 255 255 / .1); }
   .glass.hot { border-color: rgb(244 114 182 / .5); box-shadow: 0 0 0 1px rgb(244 114 182 / .18), 0 0 34px rgb(244 114 182 / .16), 0 22px 44px -18px rgb(0 0 0 / .7); }
+  /* On a mouse, a soft light follows the pointer across a glass panel (not in #problem, which stays as it is). It fades by a registered property, not opacity,
+     so the browser repaints the panel and gives it no layer of its own (see the glint note under How it works). */
+  @property --spot { syntax: "<number>"; inherits: false; initial-value: 0; }
+  @media (hover: hover) and (pointer: fine) {
+    .glass { isolation: isolate; }
+    .glass:not(details, #problem *)::after { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; pointer-events: none;
+      background: radial-gradient(24rem circle at var(--mx, 50%) var(--my, 50%), rgb(96 165 250 / calc(var(--spot) * .13)), transparent 65%); }
+    .glass:hover::after { --spot: 1; }
+    @media (prefers-reduced-motion: no-preference) { .glass:not(details)::after { transition: --spot 300ms var(--ease-out); } }
+  }
   .ico { flex: none; width: 3.4rem; height: 3.4rem; border-radius: 1rem; display: grid; place-items: center;
     background: linear-gradient(160deg, rgb(34 211 238 / .2), rgb(139 92 246 / .16));
     box-shadow: inset 0 0 0 1px rgb(34 211 238 / .38), 0 0 24px rgb(34 211 238 / .2); }
@@ -152,12 +169,18 @@
 
   /* Buttons */
   .button { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; min-height: 3.1rem; padding: 0 1.45rem; border-radius: 0.75rem; font-weight: 700; text-decoration: none; cursor: pointer; transition: box-shadow var(--fast), transform 160ms var(--ease-out); }
-  .button.primary { color: #04121F; background: linear-gradient(135deg, #67E8F9, #3B82F6); box-shadow: 0 0 0 1px rgb(103 232 249 / .4), 0 10px 30px -8px rgb(34 211 238 / .6); }
+  /* The first layer is a band of light parked just off the button's left edge; on hover it sweeps across to the right. */
+  .button.primary { color: #04121F; box-shadow: 0 0 0 1px rgb(103 232 249 / .4), 0 10px 30px -8px rgb(34 211 238 / .6);
+    background: linear-gradient(110deg, transparent 38%, rgb(255 255 255 / .5) 50%, transparent 62%) 150% 0 / 250% 100% no-repeat, linear-gradient(135deg, #67E8F9, #3B82F6); }
   .button.quiet { color: var(--ink); background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); }
   .button .pi { width: 1.2rem; height: 1.2rem; }
   @media (hover: hover) and (pointer: fine) {
     .button.primary:hover { box-shadow: 0 0 0 1px rgb(103 232 249 / .7), 0 12px 38px -6px rgb(34 211 238 / .8); }
     .button.quiet:hover { box-shadow: inset 0 0 0 1px rgb(130 170 255 / .6); }
+  }
+  @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+    .button.primary { transition: box-shadow var(--fast), transform 160ms var(--ease-out), background-position 750ms var(--ease-out); }
+    .button.primary:hover { background-position: -50% 0, 0 0; }
   }
   /* Buttons, demo tabs and Copy shrink a little while pressed, on touch screens too, in place of the browser's grey tap flash. */
   .button, .tab, .copy { -webkit-tap-highlight-color: transparent; }
@@ -183,6 +206,20 @@
     border: 1px solid rgb(125 211 252 / .4); border-radius: 50%; transform: rotate(-12deg); pointer-events: none; }
   .logo-orbit::after { clip-path: inset(50% 0 0 0); background: radial-gradient(circle at 84% 86%, #CFFAFE 0 2.5px, rgb(34 211 238 / .45) 3.5px, transparent 8px); }
   .logo-orbit img { position: relative; width: 5rem; height: auto; filter: drop-shadow(0 0 18px rgb(34 211 238 / .55)); }
+  /* The moon goes round once every 40 s: behind the brain on the far half (::before), in front on the near half (::after).
+     It moves by background-position, worked out with cos() and sin() from one animated angle, so it leaves no layer behind.
+     --kx and --ky turn the ring's size into background-position percentages for a 1rem moon. */
+  @property --orbit { syntax: "<angle>"; inherits: false; initial-value: 47deg; }
+  .logo-orbit { --kx: 54.5%; --ky: 70%; }
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (width: calc(1px * cos(1deg))) {
+      .logo-orbit::before, .logo-orbit::after { animation: orbit 40s linear infinite;
+        background: radial-gradient(circle, #CFFAFE 0 2.5px, rgb(34 211 238 / .45) 3.5px, transparent 8px) no-repeat;
+        background-size: 1rem 1rem; background-position: calc(50% + var(--kx) * cos(var(--orbit, 47deg))) calc(50% + var(--ky) * sin(var(--orbit, 47deg))); }
+      .logo-orbit.away::before, .logo-orbit.away::after { animation-play-state: paused; }
+    }
+  }
+  @keyframes orbit { to { --orbit: 407deg; } }
   /* The planet: a huge circle whose top edge catches the light, brightest where the demo sits. */
   .land { position: relative; display: flex; flex-direction: column; align-items: center; margin-top: 5rem; padding-top: 3.5rem; }
   .land::before { content: ""; position: absolute; z-index: -1; left: 50%; top: 0; width: 240rem; height: 240rem; margin-left: -120rem; border-radius: 50%; pointer-events: none;
@@ -250,6 +287,30 @@
   /* Parts */
   .part { position: relative; isolation: isolate; padding: 6rem 0; }
   .part.closing { overflow: hidden; padding-bottom: 9rem; }
+  /* Each part sits in its own soft pool of light, placed by --at and tinted by --hue. #problem keeps its plain sky. */
+  :is(#get, #how, #privacy, #compared, #install, #faq)::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none;
+    background: radial-gradient(52rem 32rem at var(--at), var(--hue), transparent 70%); }
+  #get { --at: 100% 18%; --hue: rgb(34 211 238 / .1); }
+  #how { --at: 0% 30%; --hue: rgb(59 130 246 / .14); }
+  #privacy { --at: 100% 12%; --hue: rgb(139 92 246 / .13); }
+  #compared { --at: 0% 40%; --hue: rgb(34 211 238 / .08); }
+  #install { --at: 60% 0%; --hue: rgb(59 130 246 / .14); }
+  #faq { --at: 100% 60%; --hue: rgb(139 92 246 / .1); }
+  /* A faint orbit like the logo's crosses three parts. Install and the closing part park a small moon on it, at 45° on
+     the ellipse: 50% ± 50% × cos 45° = 85.36% or 14.64%. How it works has none: there it would land in the intro text.
+     overflow: clip trims the wide ring without making a scroll box, so the sticky panel in Install still sticks;
+     a browser without it gets no rings rather than a page that scrolls sideways. */
+  @supports (overflow: clip) {
+  #how, #install { overflow: clip; }
+  :is(#how, #install, .closing)::after { content: ""; position: absolute; z-index: -1; pointer-events: none; left: var(--rx); top: var(--ry); width: 64rem; height: 20rem; border-radius: 50%;
+    border: 1px solid rgb(130 170 255 / .13); transform: rotate(-12deg);
+    background: radial-gradient(circle at var(--moon, 85.36% 85.36%), #A5F3FC 0 2px, rgb(34 211 238 / .4) 3px, transparent 7px); }
+  #how { --rx: -30rem; --ry: 1rem; }
+  #how::after { background: none; }
+  #install { --rx: calc(100% - 30rem); --ry: -3rem; --moon: 14.64% 85.36%; }
+  .closing { --rx: calc(50% - 32rem); --ry: 2.5rem; }
+  }
+  @media (prefers-contrast: more) { :is(#get, #how, #privacy, #compared, #install, #faq)::before, :is(#how, #install, .closing)::after { display: none; } }
   h2 { font-size: clamp(2.1rem, 4vw, 3.1rem); line-height: 1.08; margin: 0 0 1rem; }
   .intro { max-width: 40rem; color: var(--body); font-size: 1.12rem; margin: 0 0 3rem; }
   h3 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 0.35rem; }
@@ -352,6 +413,28 @@
     .js .step.seen:nth-child(2) .track b { transition-delay: 0.25s; }
     .js .step.seen:nth-child(3) .track b { transition-delay: 0.5s; }
   }
+  /* Three demos play once as they come into view: the search returns its results, the week's versions line up and
+     Wednesday's comes back, and each secret crosses the arrow before its safe form shows. The hidden start is set only
+     when the script runs and motion is welcome, so without either the demos simply sit there finished. */
+  @media (prefers-reduced-motion: no-preference) {
+    .js :is(.search li, .search .found, .tl .v, .tl .back, .swap .cd.ok) { transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out); }
+    .js .search:not(.seen) :is(li, .found), .js .tl:not(.seen) :is(.v, .back), .js .swap:not(.seen) .cd.ok { opacity: 0; transform: translateY(6px); }
+    .js .search.seen li:nth-child(1) { transition-delay: 150ms; }
+    .js .search.seen li:nth-child(2) { transition-delay: 230ms; }
+    .js .search.seen li:nth-child(3) { transition-delay: 310ms; }
+    .js .search.seen .found { transition-delay: 550ms; }
+    .js .tl.seen .v:nth-child(2) { transition-delay: 120ms; }
+    .js .tl.seen .v:nth-child(3) { transition-delay: 240ms; }
+    .js .tl.seen .v:nth-child(4) { transition-delay: 420ms; }
+    .js .tl.seen .back { transition-delay: 700ms; }
+    .js .swap .go { transform-origin: left; transition: transform 400ms var(--ease-out); }
+    .js .swap:not(.seen) .go { transform: scaleX(0); }
+    .js .swap.seen .cd.ok { transition-delay: 300ms; }
+  }
+  @media (prefers-reduced-motion: no-preference) and (max-width: 62.5em) {
+    .js .swap .go { transform-origin: top; }
+    .js .swap:not(.seen) .go { transform: scaleY(0); }
+  }
 
   /* Privacy: the computer it stays on, and the four promises */
   .privacy-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 2rem; align-items: center; }
@@ -373,7 +456,12 @@
   .aside .pi { width: 1.4rem; height: 1.4rem; margin-top: 0.15rem; }
 
   /* Tested: one band, the count and what it covers; the breakdown lives on GitHub */
-  .band { position: relative; padding: 3.5rem 0; border-block: 1px solid var(--line); background: linear-gradient(90deg, rgb(34 211 238 / .07), rgb(59 130 246 / .05) 50%, rgb(139 92 246 / .1)); }
+  .band { position: relative; isolation: isolate; padding: 3.5rem 0; border-block: 1px solid var(--line); background: linear-gradient(90deg, rgb(34 211 238 / .07), rgb(59 130 246 / .05) 50%, rgb(139 92 246 / .1)); }
+  /* A grid of points behind the count, one for every check in spirit, brightest under the number and fading out. */
+  .band::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none;
+    background: radial-gradient(circle, rgb(130 170 255 / .3) 0 1px, transparent 1.5px) 0 0 / 1.25rem 1.25rem;
+    -webkit-mask-image: radial-gradient(40rem 100% at 18% 50%, #000, transparent 75%); mask-image: radial-gradient(40rem 100% at 18% 50%, #000, transparent 75%); }
+  @media (prefers-contrast: more) { .band::before { display: none; } }
   .tested { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 3rem; }
   .tested > div { flex: 1 1 24rem; min-width: 0; max-width: 44rem; }
   .tested p { margin: 0; color: var(--body); }
@@ -534,7 +622,7 @@
     .demo .panel { min-height: 0; font-size: 0.86rem; }
     .hero { padding-top: 1.5rem; }
     .hero .code code { white-space: pre-wrap; overflow-wrap: anywhere; }
-    .logo-orbit { width: 9rem; height: 4.75rem; margin-bottom: 1rem; }
+    .logo-orbit { width: 9rem; height: 4.75rem; margin-bottom: 1rem; --kx: 56.25%; --ky: 81.25%; }
     .logo-orbit::before, .logo-orbit::after { width: 9rem; height: 2.6rem; margin: -1.3rem 0 0 -4.5rem; }
     .logo-orbit img { width: 3.75rem; }
     .land { margin-top: 3.5rem; padding-top: 2.5rem; }
@@ -862,7 +950,7 @@
     </div>
   </section>
 
-  <section class="part" aria-labelledby="cmp-h">
+  <section class="part" id="compared" aria-labelledby="cmp-h">
     <div class="wrap">
       <p class="eyebrow">Compared</p>
       <h2 id="cmp-h">Claude Code, <span class="grad">with and without it.</span></h2>
@@ -1046,16 +1134,25 @@
     });
   });
 
-  // Each bar fills once its step is above the bottom 15% of the screen, so on a phone all three fill in view.
-  const steps = document.querySelectorAll('.track-wrap .step');
+  // Each bar and demo plays once it is above the bottom 15% of the screen, so on a phone all three bars fill in view.
+  const shows = document.querySelectorAll('.track-wrap .step, .search, .tl, .swap');
   if ('IntersectionObserver' in window) {
     const io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { e.target.classList.add('seen'); io.unobserve(e.target); } }, { rootMargin: '0px 0px -15% 0px' });
-    steps.forEach((s) => io.observe(s));
-  } else steps.forEach((s) => s.classList.add('seen'));
+    shows.forEach((s) => io.observe(s));
+  } else shows.forEach((s) => s.classList.add('seen'));
 
-  // The line of light in How it works repaints every frame, so it pauses while off screen.
-  const flow = document.querySelector('.flow');
-  if (flow && 'IntersectionObserver' in window) new IntersectionObserver((es) => flow.classList.toggle('away', !es[es.length - 1].isIntersecting)).observe(flow);
+  // The line of light in How it works and the moon round the logo repaint every frame, so they pause while off screen.
+  for (const el of document.querySelectorAll('.flow, .logo-orbit'))
+    if ('IntersectionObserver' in window) new IntersectionObserver((es) => el.classList.toggle('away', !es[es.length - 1].isIntersecting)).observe(el);
+
+  // The soft light on glass panels follows a mouse; touch screens never get it.
+  if (matchMedia('(hover: hover) and (pointer: fine)').matches) document.addEventListener('pointermove', (e) => {
+    const g = e.target.closest('.glass');
+    if (!g) return;
+    const r = g.getBoundingClientRect();
+    g.style.setProperty('--mx', `${e.clientX - r.left}px`);
+    g.style.setProperty('--my', `${e.clientY - r.top}px`);
+  }, { passive: true });
 
   // A copy button beside each command, added only when the browser can copy.
   const status = document.getElementById('copied');
