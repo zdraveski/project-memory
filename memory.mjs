@@ -1032,6 +1032,15 @@ export function main(given) {
         const none = left ? terms.filter((t) => !all.some((e) => holds(e, t.toLowerCase()))) : [];
         const why = !terms.length || !left ? '' : `: no entry holds ${none.length ? none.map((t) => `"${t}"`).join(', ') : 'every word'}`;
         r = { ok: true, lines: [`nothing in ${here} matches${why}`] };
+        // The journal no longer holds it (forgotten before) but the snapshots may: the days whose versions held every word go.
+        // shortcut: words are looked up as plain text, exact case, per day; a day holding them in different entries is purged too.
+        if (yes && terms.length && rest.includes('--purge') && /^\[project-memory\]/m.test(read(join(projectsRoot(), '.git', 'config')) ?? '')) {
+          try {
+            const days = terms.map((t) => new Set(tracked(here, 'journal').flatMap((at) => git('log', '--all', '--format=', '--name-only', '-S' + t, '--', at).split('\n')).map((p) => p.split('/').pop().replace(/\.md$/, '')).filter((d) => /^\d{4}-\d\d-\d\d$/.test(d))));
+            const hit = [...days[0]].filter((d) => days.every((s) => s.has(d)));
+            if (hit.length) { purge(here, hit); r.lines.push(`purged the journal of ${more(hit, 6)} from the snapshots`); }
+          } catch (e) { r = no(`the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)})`); }
+        }
       } else if (!yes) {
         r = { ok: true, lines: [...shown.map(line), ...(m.length > shown.length ? [`and ${m.length - shown.length} more`] : []),
           `${m.length} entr${m.length === 1 ? 'y' : 'ies'} in ${here}${byRange ? ` from ${ds[0]} to ${ds.at(-1)}` : ''} would go; run again with --yes to remove them`] };
