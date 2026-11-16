@@ -1,43 +1,43 @@
-<p><picture>
+<div align="center">
+
+<picture>
   <source media="(max-width: 700px)" srcset="docs/banner-narrow.webp">
   <img src="docs/banner.webp" width="880" alt="project-memory: Stop re-explaining your project to Claude Code. Remember, restore, continue.">
-</picture></p>
+</picture>
 
 # project-memory
 
-[Using it](#using-it) · [Install](#install) · [Secrets and privacy](#secrets-stay-out) ·
-[Questions](docs/faq.md) ·
-[Project page](https://zdraveski.github.io/project-memory/)
+**Stop re-explaining your project to Claude Code.**<br>
+Your work, remembered between conversations. Saved only on your computer.
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/zdraveski/project-memory/test.yml?branch=master&label=tests)](https://github.com/zdraveski/project-memory/actions/workflows/test.yml)
 [![Latest release](https://img.shields.io/github/v/release/zdraveski/project-memory?label=release)](https://github.com/zdraveski/project-memory/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/zdraveski/project-memory?label=license)](LICENSE)
 [![Node.js 22 or newer](https://img.shields.io/badge/node-%E2%89%A5%2022-3c873a)](#install)
 
-**Stop re-explaining your project to Claude Code.**<br>
-Your work, remembered between conversations. Saved only on your computer.
+[Install](#install) · [Using it](#using-it) · [Privacy](#privacy-and-control) ·
+[Questions](docs/faq.md) · [Project page](https://zdraveski.github.io/project-memory/)
 
-project-memory is a free add-on (a "plugin", MIT license) for Claude Code, the
-coding assistant from Anthropic. Claude Code forgets everything when a
-conversation ends. This add-on saves a journal of your work on your own
-computer, so the next conversation starts where the last one stopped. It
-helps most when you return to the same project over days or weeks. It works on
-its own after every reply, and needs no account or API key.
+</div>
 
-To try it, type these two lines in Claude Code. When the second one opens a
-menu, choose to install it for you (user scope), then restart Claude Code. It
-needs Node.js 22 or newer; the full steps are under [Install](#install).
+Claude Code forgets everything when a conversation ends. project-memory is a
+free plugin (MIT license) that keeps a journal of your work on your own
+computer, so the next conversation starts where the last one stopped. It runs
+on its own after every reply, and it helps most when you come back to the
+same project over days or weeks.
+
+Two lines in Claude Code install it. When the second one opens a menu, choose
+to install it for you (user scope), then restart Claude Code:
 
 ```
 /plugin marketplace add zdraveski/project-memory
 /plugin install project-memory@project-memory
 ```
 
-It adds a short briefing at the start of a conversation: about 900 tokens on
-your last conversation, and never more than about 2,400 in all (the note
-after a summary is usually near that).
-What it does after each reply runs outside the conversation, and every step
-has a time limit, so a stuck step cannot hold Claude up
+It needs [Node.js](https://nodejs.org) 22 or newer, and no account or API key.
+A new conversation starts with a short briefing of about 900 tokens, never
+more than about 2,400. Its work runs after each reply, with a time limit on
+every step, so it can't hold Claude up
 ([details](docs/faq.md#does-it-slow-claude-down-or-fill-the-conversation)).
 
 <p><picture>
@@ -51,17 +51,15 @@ Claude Code keeps a notebook of notes for each project (it calls this *auto
 memory*). project-memory looks after that notebook and adds a journal of
 everything you did.
 
-| Without project-memory | With project-memory |
+| Claude Code alone | With project-memory |
 |---|---|
-| Work from a few weeks ago is hard to find again. | Every exchange is kept in a journal on your computer. Ask about earlier work in your own words, and Claude finds it and tells you when it happened. |
-| Each new conversation starts from zero. | Claude starts already knowing where the last conversation stopped. |
-| A note deleted or overwritten by mistake is gone. | Every version of your notes is kept, and Claude brings an old one back when you ask. |
-| Claude Code shortens a very long conversation to a summary, and the task in progress can get lost. | Claude saves its notes first, and afterwards it's told what you asked and what it last said. |
-| You teach Claude your habits again in every project. | Lessons that apply everywhere are shared with all your projects. |
-| A key or password you paste can end up in saved files. | Keys, tokens and passwords are replaced with `[redacted]` in the journal and the handoff. |
-| There is no way to keep a passage or a project out. | You choose: keep a passage out, a conversation, or a whole project. |
-
-For a quick one-off question, you won't notice much difference.
+| Each new conversation starts from zero. | **Picks up where you left off.** Claude starts already knowing where the last conversation stopped. |
+| Work from a few weeks ago is hard to find again. | **A journal you can ask.** Every exchange is kept on your computer. Ask in your own words, and Claude finds it and tells you when it happened. |
+| A note deleted or overwritten by mistake is gone. | **Old versions come back.** Every version of your notes is kept, and Claude restores one when you ask. |
+| A very long conversation is shortened to a summary, and the task in progress can get lost. | **Long tasks stay on track.** Claude saves its notes first, and afterwards it's told what you asked and what it last said. |
+| You teach Claude your habits again in every project. | **Lessons shared across projects.** What applies everywhere goes in a notebook every project reads. |
+| A key or password you paste can end up in saved files. | **Secrets kept out.** Keys, tokens and passwords become `[redacted]` before they reach the journal or the handoff. |
+| There is no way to keep a passage or a project out. | **You decide what is saved.** Keep out a passage, a conversation or a whole project. |
 
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/what-you-get-narrow.webp">
@@ -74,8 +72,8 @@ There's nothing to learn. Ask in your own words:
 
 | You say | What happens |
 |---|---|
-| *"What did we decide about the logo in September?"* | Claude searches your notes and the journal, and answers with the date. |
 | *"Where did we leave off?"* | Claude already knows: each new conversation starts with the last one's latest exchanges. |
+| *"What did we decide about the logo in September?"* | Claude searches your notes and the journal, and answers with the date. |
 | *"I deleted the note about pricing by mistake. Bring it back."* | Claude restores it from the history. |
 | *"Forget the password I pasted yesterday."* | Claude lists the journal entries that match, and removes the ones you confirm from project-memory's files. Claude Code's own conversation files still hold them. |
 | *"Remember for all my projects that I like plain language."* | Claude saves it to the shared notebook. |
@@ -89,21 +87,21 @@ If you'd rather type a command, start with `/project-memory:memory`:
 | `/project-memory:memory doctor` | Checks that project-memory itself works. |
 | `/project-memory:incognito`, `/project-memory:memory-off` | Stop saving a conversation, or a project (see [Turning it off](#turning-it-off)). |
 
-All the commands are in [How it works](docs/how-it-works.md#using-it). To read
-your notes yourself, type `/memory` in Claude Code and open the auto memory
-folder. The journal is its `journal` folder, one file per day. The notebook's
-table of contents (`MEMORY.md`) is kept short without dropping a note. It
-keeps your index lines but not your own headings, and it does not follow a
-memory folder moved with `autoMemoryDirectory`: see
-[Good to know](docs/how-it-works.md#good-to-know).
+To read your notes yourself, type `/memory` in Claude Code and open the auto
+memory folder; the journal is its `journal` folder, one file per day. Every
+command is in [How it works](docs/how-it-works.md#using-it).
 
 ## Install
 
-You need Claude Code with its built-in memory on (it is, unless you turned it
-off) and [Node.js](https://nodejs.org) 22 or newer (choose the LTS version).
-[Git](https://git-scm.com) is optional: without it, everything works except
-bringing back old versions of notes. It works on Windows, macOS and Linux, in
-Claude Code only. Not sure? Ask Claude: *"Do I have Node.js 22 or newer, and Git?"*
+You need:
+
+- **Claude Code** with its built-in memory on. It is, unless you turned it off.
+- **[Node.js](https://nodejs.org) 22 or newer.** Choose the LTS version.
+- **[Git](https://git-scm.com), optional.** Without it, everything works except
+  bringing back old versions of notes.
+
+It works on Windows, macOS and Linux, in Claude Code only. Not sure what you
+have? Ask Claude: *"Do I have Node.js 22 or newer, and Git?"*
 
 1. In Claude Code, type these two lines. When the second one opens a menu,
    choose to install it for you (user scope), so it works in every project.
@@ -137,53 +135,50 @@ type `/plugin uninstall project-memory@project-memory` in Claude Code. Your
 notes, the journal and the history stay either way. What to delete by hand:
 [Deleting it](PRIVACY.md#deleting-it).
 
-## Secrets stay out
-
-Before project-memory saves to the journal or the handoff (the short record of
-where you stopped), it replaces secrets with `[redacted]`: keys and tokens
-from many services, passwords in commands and chat (in several languages),
-cookies and look-alike spellings of these.
-
-<p><picture>
-  <source media="(max-width: 700px)" srcset="docs/secrets-narrow.webp">
-  <img src="docs/secrets.webp" width="880" alt="What happens to a secret. A key in a command, export API_KEY=ghp_8fK…, is kept in the journal as export API_KEY=[redacted]. A password typed in chat, the password is plum-42…, is kept as the password is [redacted]. A cookie, Cookie: sessionid=a1b2c3…, is kept as Cookie: [redacted]. A note that holds a secret stays out of the snapshots, and startup names it. No tool catches every secret: put the rest in &lt;private&gt;.">
-</picture></p>
-
-A note that holds a secret is kept out of history snapshots. **No tool catches
-every secret:** put anything else between `<private>` tags. Details:
-[How it works](docs/how-it-works.md#the-handoff), [privacy policy](PRIVACY.md).
-
-## Your privacy
+## Privacy and control
 
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/privacy-narrow.webp">
   <img src="docs/privacy.webp" width="880" alt="Your computer: the memory folder under ~/.claude/projects holds the journal, handoff.md, MEMORY.md, MEMORY-archive.md and your notes, and a shared notebook sits in the _shared folder. Nothing is sent anywhere. It never goes online, on Linux and macOS only your user can read the files, secrets become [redacted], &lt;private&gt; keeps a passage out and &lt;private-session&gt; keeps a conversation out, and incognito and memory-off stop saving for a conversation or a project.">
 </picture></p>
 
-- project-memory never goes online. What it saves stays in Claude Code's own
-  folder (`.claude`, in your home folder). What Claude reads during a
+### Stays on your computer
+
+- **project-memory never goes online.** What it saves stays in Claude Code's
+  own folder (`.claude`, in your home folder). What Claude reads during a
   conversation goes to Anthropic with the rest of it, as with Claude Code's
   own memory.
-- The journal keeps each exchange whole: your message, Claude's reply, every
-  file it changed and every command it ran, until you delete it or ask Claude
-  to forget part of it.
-- Put text between `<private>` and `</private>` to keep it out. Type
+- **The journal keeps each exchange whole:** your message, Claude's reply,
+  every file it changed and every command it ran, until you delete it or ask
+  Claude to forget part of it.
+- **Keep text out** by putting it between `<private>` and `</private>`. Type
   `<private-session>` in any message to keep the whole conversation out; what
   was saved of it before is removed, except the history's copy of days
   already over.
-- *"Forget …"* removes the journal entries you confirm. A copy of days that are
-  already over stays in the history unless you use `forget --purge`.
+- ***"Forget …"*** removes the journal entries you confirm. A copy of days that
+  are already over stays in the history unless you use `forget --purge`.
 
 Everything it reads and saves, and how to delete it: [privacy policy](PRIVACY.md).
+
+### Secrets stay out
+
+Before project-memory saves to the journal or the handoff (the short record of
+where you stopped), it replaces secrets with `[redacted]`: keys and tokens
+from many services, passwords in commands and chat (in several languages),
+cookies, and look-alike spellings of these. A note that holds a secret is kept
+out of history snapshots.
+
+<p><picture>
+  <source media="(max-width: 700px)" srcset="docs/secrets-narrow.webp">
+  <img src="docs/secrets.webp" width="880" alt="What happens to a secret. A key in a command, export API_KEY=ghp_8fK…, is kept in the journal as export API_KEY=[redacted]. A password typed in chat, the password is plum-42…, is kept as the password is [redacted]. A cookie, Cookie: sessionid=a1b2c3…, is kept as Cookie: [redacted]. A note that holds a secret stays out of the snapshots, and startup names it. No tool catches every secret: put the rest in &lt;private&gt;.">
+</picture></p>
+
+**No tool catches every secret:** put anything else between `<private>` tags.
+Details: [How it works](docs/how-it-works.md#the-handoff).
 
 ### Turning it off
 
 Four ways, from narrow to wide:
-
-<p><picture>
-  <source media="(max-width: 700px)" srcset="docs/turning-off-narrow.webp">
-  <img src="docs/turning-off.webp" width="880" alt="Four ways to stop it saving, from narrow to wide. 1, one conversation: /project-memory:incognito. 2, one project: /project-memory:memory-off, and memory-on to turn it back on. 3, all projects on this computer: an environment setting, or disable the plugin. 4, Claude Code itself: Claude Code's own settings. Claude Code still keeps its own transcripts of conversations, for 30 days unless you change it.">
-</picture></p>
 
 1. **One conversation:** `/project-memory:incognito`. If it says `NOT applied`,
    it did not work.
@@ -193,6 +188,11 @@ Four ways, from narrow to wide:
    disable the plugin.
 4. **Claude Code itself:** its own settings, which project-memory does not read
    or change.
+
+<p><picture>
+  <source media="(max-width: 700px)" srcset="docs/turning-off-narrow.webp">
+  <img src="docs/turning-off.webp" width="880" alt="Four ways to stop it saving, from narrow to wide. 1, one conversation: /project-memory:incognito. 2, one project: /project-memory:memory-off, and memory-on to turn it back on. 3, all projects on this computer: an environment setting, or disable the plugin. 4, Claude Code itself: Claude Code's own settings. Claude Code still keeps its own transcripts of conversations, for 30 days unless you change it.">
+</picture></p>
 
 None of these reaches Claude Code's own files: by default it still keeps its
 own transcript of every conversation, for 30 days unless you change that.
@@ -210,12 +210,35 @@ afterwards tells Claude what you asked and what it last said.
   <img src="docs/long-conversations.webp" width="880" alt="Three steps around a compaction. Before, at about 85% of the window: Claude is asked to save its notes. During, when the window is nearly full: Claude Code can be asked to wait, so the step in progress finishes. After the summary: Claude is told what you asked, its last words, tasks still running and files it edited.">
 </picture></p>
 
-The wait only happens when the setting `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is
-below your model's window. By default Claude Code goes ahead, and the note
-afterwards does the work. One setting matters if your model holds 200,000
-tokens (a token is a small piece of a word): see
+**If your model holds 200,000 tokens, one setting matters** (a token is a
+small piece of a word): see
 [If your model holds 200,000 tokens](docs/how-it-works.md#if-your-model-holds-200000-tokens).
-The rest of the tuning is in [Compaction](docs/how-it-works.md#compaction).
+The wait in the middle only happens when the setting
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` is below your model's window. By default
+Claude Code goes ahead, and the note afterwards does the work. The rest of
+the tuning is in [Compaction](docs/how-it-works.md#compaction).
+
+## Compared with other tools
+
+Claude Code's own memory keeps no journal, no history of your notes and no
+shared notebook. project-memory adds those, with nothing it saves leaving your
+computer. Claude Code's `/resume` reopens one earlier conversation with its
+whole history; project-memory starts a fresh one with a short briefing, and
+its journal covers every conversation since you installed it.
+[Comparison](docs/comparison.md) puts it side by side with claude-mem, Mem0,
+Supermemory and others.
+
+## Good to know
+
+- **For a quick one-off question, you won't notice much difference.** It earns
+  its keep when you come back to a project.
+- **Search goes by words, not by meaning.**
+- **It works in Claude Code only**, and each computer keeps its own memory:
+  nothing syncs between computers or teammates.
+- **It tidies Claude's table of contents** (`MEMORY.md`) so it stays short
+  without dropping a note. Your index lines stay; your own headings don't.
+  It does not follow a memory folder moved with `autoMemoryDirectory`. See
+  [Good to know](docs/how-it-works.md#good-to-know).
 
 ## Checked lessons (experimental)
 
@@ -255,18 +278,11 @@ what to do; if `node` is not found, install Node.js and restart Claude Code.
 What each message means:
 [When something seems wrong](docs/how-it-works.md#when-something-seems-wrong).
 
-## Compared with other tools
-
-Claude Code's own memory keeps no journal, no history of your notes and no
-shared notebook. project-memory adds those, with nothing leaving your
-computer. It searches by words, not by meaning, and works in Claude Code only.
-[Comparison](docs/comparison.md) has the side-by-side.
-
 ## More
 
 - [Project page](https://zdraveski.github.io/project-memory/): the short tour.
-- [Questions people ask](docs/faq.md) and [How it works](docs/how-it-works.md):
-  short answers, and the technical details.
+- [Documentation](docs/README.md): [questions people ask](docs/faq.md),
+  [how it works](docs/how-it-works.md) and the [comparison](docs/comparison.md).
 - [Privacy policy](PRIVACY.md), [Contributing](CONTRIBUTING.md),
   [Governance](GOVERNANCE.md), [License](LICENSE) (MIT).
 - Ask in [Discussions](https://github.com/zdraveski/project-memory/discussions),
