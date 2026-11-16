@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>project-memory: stop re-explaining your project to Claude Code</title>
-<meta name="description" content="A free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, so a new conversation starts where the last one ended. Secrets stay out, you choose what is saved, and everything stays on your computer.">
+<meta name="description" content="A free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, so a new conversation starts where the last one ended. Secrets stay out, you choose what is saved, and what it saves stays on your computer.">
 <meta name="theme-color" content="#050A23">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="brain.png" type="image/png">
@@ -19,6 +19,25 @@
 <meta property="og:image:height" content="640">
 <meta property="og:image:alt" content="project-memory, with a brain logo: 'Stop re-explaining your project to Claude Code. Your work, remembered between conversations. Saved only on your computer.' Below it: 'A journal you can ask', 'Picks up where you left off', 'Secrets kept out' and 'Stays on your computer'.">
 <meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "project-memory",
+  "description": "A free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, on your own computer, so the next conversation starts where the last one ended.",
+  "url": "https://zdraveski.github.io/project-memory/",
+  "image": "https://zdraveski.github.io/project-memory/social-card.png",
+  "applicationCategory": "DeveloperApplication",
+  "applicationSubCategory": "Claude Code plugin",
+  "operatingSystem": "Windows, macOS, Linux",
+  "softwareRequirements": "Claude Code; Node.js 22 or newer",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "zdraveski", "url": "https://github.com/zdraveski" },
+  "sameAs": ["https://github.com/zdraveski/project-memory"]
+}
+</script>
 <script>document.documentElement.classList.add('js');</script>
 <style>
   /* Inter and JetBrains Mono, served from this site (SIL Open Font License, fonts/*-OFL.txt).
@@ -626,7 +645,7 @@
           <img class="logo" src="brain.png" alt="" width="148" height="136">
           <h1>Stop re-explaining your project <span class="grad">to Claude Code.</span></h1>
           <p class="tagline">Your work, remembered between conversations. Saved only on your computer.</p>
-          <p class="lede">project-memory is a free plugin for Claude Code (Windows, macOS and Linux). After every reply it keeps a journal of your work and a note of where you stopped, so the next conversation starts where the last one ended. Secrets stay out, and you decide what is saved.</p>
+          <p class="lede">project-memory is a free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, so the next conversation starts where the last one ended.</p>
           <ul class="motto" aria-label="What it does">
             <li>Remember</li><li>Restore</li><li>Continue</li>
           </ul>
@@ -928,26 +947,6 @@
     </div>
   </section>
 
-  <section class="part slim" aria-labelledby="lessons-h">
-    <div class="wrap">
-      <div class="glass lesson">
-        <div>
-          <span class="chip exp">Experimental</span>
-          <h2 id="lessons-h" class="small">Checked lessons</h2>
-          <p>A note can carry a rule for git commands. A hook then watches your git calls and logs which note matched. It only watches and logs: it blocks nothing and prints nothing. Few lessons fit this form, and some commands it does not see. It is a test of the idea, not a promise.</p>
-          <p><a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#checked-lessons-experimental">Syntax, limits and how to try a rule on past conversations</a></p>
-        </div>
-        <div>
-          <pre class="rule" tabindex="0"><code>enforce:
-  on: git add
-  has: [-A, --all, .]
-  unless: [mktemp, init]</code></pre>
-          <p class="rule-cap">In a note's header. It logs a hit when a <code>git add</code> command holds <code>-A</code>, <code>--all</code> or a bare dot.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <section class="part slim" aria-labelledby="care-h">
     <div class="wrap">
       <div class="glass lit tested">
@@ -1053,6 +1052,7 @@
       <h2 id="faq-h">Questions <span class="grad">people ask.</span></h2>
       <div class="faq">
         <details class="glass"><summary>Does it cost anything?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No. It is free and open source under the MIT license, with no account and no API key.</p></div></details>
+        <details class="glass"><summary>Claude Code can already resume a conversation. Why add this?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p><code>/resume</code> reopens one earlier conversation with its whole history, as long as it was when it ended. project-memory starts a fresh conversation with a short briefing on where you stopped, and its journal covers every conversation you don't keep private, not only the one you reopen. Claude Code also deletes its own conversation files after 30 days unless you change that; the journal keeps each exchange until you delete it.</p></div></details>
         <details class="glass"><summary>Does it slow Claude down or fill the conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, about 900 tokens (3,500 characters) on your last conversation, and never more than about 2,400 tokens in all; the note after a summary is usually near that.</p></div></details>
         <details class="glass"><summary>How much disk space does it use?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Half of the journal entries are under about 5 KB. A very busy project adds up to about 110 MB a year.</p></div></details>
         <details class="glass"><summary>Can I use it on two computers?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each computer keeps its own notes and journal; they don't sync. Don't sync the memory folder yourself (Dropbox, OneDrive): each computer would undo the other's "forget".</p></div></details>
@@ -1060,6 +1060,26 @@
         <details class="glass"><summary>How do I pause or remove it?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>To pause it, run <code>claude plugin disable project-memory@project-memory</code> in a terminal and restart Claude Code. To remove it, type <code>/plugin uninstall project-memory@project-memory</code> in Claude Code. Your notes and the journal stay either way; the <a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#deleting-it">privacy policy</a> says what to delete by hand.</p></div></details>
       </div>
       <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/docs/faq.md">All questions and answers</a>. Something missing? <a href="https://github.com/zdraveski/project-memory/discussions">Ask in Discussions</a>.</p>
+    </div>
+  </section>
+
+  <section class="part slim" aria-labelledby="lessons-h">
+    <div class="wrap">
+      <div class="glass lesson">
+        <div>
+          <span class="chip exp">Experimental</span>
+          <h2 id="lessons-h" class="small">Checked lessons</h2>
+          <p>A note can carry a rule for git commands. A hook then watches your git calls and logs which note matched. It only watches and logs: it blocks nothing and prints nothing. Few lessons fit this form, and some commands it does not see. It is a test of the idea, not a promise.</p>
+          <p><a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#checked-lessons-experimental">Syntax, limits and how to try a rule on past conversations</a></p>
+        </div>
+        <div>
+          <pre class="rule" tabindex="0"><code>enforce:
+  on: git add
+  has: [-A, --all, .]
+  unless: [mktemp, init]</code></pre>
+          <p class="rule-cap">In a note's header. It logs a hit when a <code>git add</code> command holds <code>-A</code>, <code>--all</code> or a bare dot.</p>
+        </div>
+      </div>
     </div>
   </section>
 
