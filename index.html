@@ -92,7 +92,7 @@
   .pi.warn { fill: url(#iw); filter: drop-shadow(0 0 6px rgb(244 114 182 / .7)); }
   .pi.plain { fill: currentColor; filter: none; }
 
-  /* Space around everything: stars, a fading grid, light streaks, a planet's edge */
+  /* Space around everything: stars and a planet's edge */
   .stars { position: absolute; z-index: -1; width: 2px; height: 2px; border-radius: 50%; top: 0; left: 0; pointer-events: none;
     box-shadow:
       8vw 60px rgb(255 255 255 / .55), 21vw 180px rgb(255 255 255 / .35), 38vw 40px rgb(255 255 255 / .45),
@@ -101,10 +101,6 @@
       46vw 300px rgb(255 255 255 / .25), 89vw 480px rgb(196 181 253 / .45), 12vw 610px rgb(255 255 255 / .25),
       60vw 560px rgb(255 255 255 / .2), 97vw 700px rgb(255 255 255 / .3), 30vw 780px rgb(186 230 253 / .3),
       77vw 860px rgb(255 255 255 / .25), 5vw 960px rgb(196 181 253 / .35), 68vw 1020px rgb(255 255 255 / .2); }
-  .grid-bg { position: absolute; inset: 0; z-index: -1; pointer-events: none;
-    background-image: linear-gradient(rgb(120 160 255 / .06) 1px, transparent 1px), linear-gradient(90deg, rgb(120 160 255 / .06) 1px, transparent 1px);
-    background-size: 44px 44px; -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 80%); mask-image: linear-gradient(180deg, #000 0%, transparent 80%); }
-  .streaks { position: absolute; top: 0; right: 0; width: min(60rem, 100%); height: 26rem; z-index: -1; pointer-events: none; }
   .horizon { position: absolute; z-index: -1; left: -20%; right: -20%; bottom: -24rem; height: 25rem; border-radius: 50%; pointer-events: none;
     border-top: 1.5px solid rgb(125 211 252 / .55);
     background: radial-gradient(ellipse at 50% 0%, rgb(56 189 248 / .30), rgb(37 99 235 / .10) 35%, transparent 60%);
@@ -167,36 +163,45 @@
   .button, .tab, .copy { -webkit-tap-highlight-color: transparent; }
   .button:active, .tab:active, .copy:active { transform: scale(0.97); }
 
-  /* Opening, after the banner */
+  /* Opening, after the banner: the headline alone in the sky with the logo in orbit above it,
+     and the conversation on a planet's lit edge below. */
   .top { position: relative; isolation: isolate; overflow: hidden; padding-bottom: 3rem; }
-  .hero { display: grid; grid-template-columns: 1fr 1.05fr; gap: 3.5rem; align-items: center; padding: 4rem 0 2rem; }
-  .hero > * { min-width: 0; }
   h1, h2 { font-weight: 800; letter-spacing: -0.025em; text-wrap: balance; }
   p { text-wrap: pretty; }
-  h1 { font-size: clamp(2.4rem, 4.4vw, 3.6rem); line-height: 1.06; margin: 0 0 1rem; }
-  .tagline { font-size: 1.4rem; line-height: 1.45; font-weight: 600; color: var(--ink); max-width: 32rem; margin: 0 0 1.2rem; }
-  .lede { font-size: 1.22rem; line-height: 1.6; color: var(--body); max-width: 32rem; margin: 0 0 1.5rem; }
+  .hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 3.25rem; }
+  h1 { font-size: clamp(2.3rem, 6vw, 5.25rem); line-height: 1; letter-spacing: -0.04em; max-width: 13em; margin: 0 auto 1.2rem; }
+  .nw { white-space: nowrap; }
+  .tagline { font-size: 1.4rem; line-height: 1.45; font-weight: 600; color: var(--ink); max-width: 34rem; margin: 0 auto 0.5rem; }
+  .lede { font-size: 1.1rem; line-height: 1.6; color: var(--body); max-width: 38rem; margin: 0 auto 1.75rem; }
   .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+  .hero .actions { justify-content: center; }
+  .hero .cmd { width: min(100%, 34rem); margin: 1.25rem 0 0; text-align: left; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1.5rem 0 0; padding: 0; list-style: none; }
-  .hero .cmd { margin: 1.25rem 0 0; max-width: 34rem; }
-  /* The opening rises in once, line by line, then the demo plays its first answer.
-     The headline starts at once, so it paints as early as it would without motion.
+  /* The logo in orbit. The ring is drawn twice: its back half behind the brain, its front half (clipped) over it,
+     carrying one small moon. brain.png is 148 px wide, so it stays at 80 CSS px here and 60 on phones. */
+  .logo-orbit { position: relative; display: grid; place-items: center; width: 12rem; height: 6rem; margin: 0 auto 1.25rem; }
+  .logo-orbit::before, .logo-orbit::after { content: ""; position: absolute; left: 50%; top: 50%; width: 12rem; height: 3.5rem; margin: -1.75rem 0 0 -6rem;
+    border: 1px solid rgb(125 211 252 / .4); border-radius: 50%; transform: rotate(-12deg); pointer-events: none; }
+  .logo-orbit::after { clip-path: inset(50% 0 0 0); background: radial-gradient(circle at 84% 86%, #CFFAFE 0 2.5px, rgb(34 211 238 / .45) 3.5px, transparent 8px); }
+  .logo-orbit img { position: relative; width: 5rem; height: auto; filter: drop-shadow(0 0 18px rgb(34 211 238 / .55)); }
+  /* The planet: a huge circle whose top edge catches the light, brightest where the demo sits. */
+  .land { position: relative; display: flex; flex-direction: column; align-items: center; margin-top: 5rem; padding-top: 3.5rem; }
+  .land::before { content: ""; position: absolute; z-index: -1; left: 50%; top: 0; width: 240rem; height: 240rem; margin-left: -120rem; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle at 50% 0, #10205C 0, #081033 6%, #050A23 18%, #040719 40%);
+    box-shadow: 0 0 0 1.5px rgb(125 211 252 / .7), 0 -18px 60px rgb(56 189 248 / .35), 0 -70px 180px rgb(99 102 241 / .22), inset 0 40px 110px rgb(56 189 248 / .16); }
+  .land::after { content: ""; position: absolute; z-index: -1; left: 50%; top: 0; width: 40rem; height: 7rem; margin: -3.5rem 0 0 -20rem; pointer-events: none;
+    background: radial-gradient(closest-side, rgb(186 240 255 / .55), rgb(56 189 248 / .18) 45%, transparent); }
+  .land .chips { justify-content: center; margin-top: 2rem; }
+  /* The opening rises in once, the headline block first and the planet 90 ms later, then the demo plays its first answer.
      Fill is backwards only: once played, nothing is left on the layer (see the glint note under How it works). */
   @media (prefers-reduced-motion: no-preference) {
-    .js .hero > :first-child > * { animation: rise 600ms var(--ease-out) backwards; }
-    .js .hero > :first-child > :nth-child(2) { animation-delay: 60ms; }
-    .js .hero > :first-child > :nth-child(3) { animation-delay: 120ms; }
-    .js .hero > :first-child > :nth-child(4) { animation-delay: 180ms; }
-    .js .hero > :first-child > :nth-child(5) { animation-delay: 240ms; }
-    .js .hero > :first-child > :nth-child(6) { animation-delay: 300ms; }
-    .js .hero .demo { animation: rise 700ms var(--ease-out) 120ms backwards; }
+    .js .hero, .js .land { animation: rise 600ms var(--ease-out) backwards; }
+    .js .land { animation-delay: 90ms; }
   }
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 
-  /* The demo: a glass terminal inside the banner's orbit */
-  .demo { position: relative; isolation: isolate; padding: 2.5rem 0 3.5rem; }
-  .orbit { position: absolute; z-index: -1; left: -8%; right: -8%; top: 14%; bottom: 10%; pointer-events: none; }
-  .orbit svg { width: 100%; height: 100%; overflow: visible; }
+  /* The demo: a glass terminal on the planet's edge */
+  .demo { position: relative; isolation: isolate; width: min(100%, 44rem); }
   .term { overflow: hidden; }
   .demo .term { background: var(--solid); }
   .term-bar { display: flex; align-items: center; gap: 0.55rem; padding: 0.8rem 1.1rem; border-bottom: 1px solid var(--line); background: rgb(10 18 50 / .55); font: 600 0.88rem/1 var(--sans); color: var(--muted); }
@@ -499,8 +504,7 @@
 
   /* Breakpoints are in em, so a visitor with a bigger browser text size gets the narrower layout sooner (1em = 16px at the default). */
   @media (max-width: 62.5em) {
-    .hero, .install, .privacy-grid { grid-template-columns: 1fr; }
-    .hero { gap: 3.5rem; padding-top: 2.5rem; }
+    .install, .privacy-grid { grid-template-columns: 1fr; }
     .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 2.5rem; }
     .flow::before, .flow::after { display: none; }
     .track-wrap, .limits { grid-template-columns: 1fr; }
@@ -514,9 +518,9 @@
   }
   @media (max-width: 42.5em) {
     body { font-size: 1rem; }
-    h1 { font-size: 2.2rem; }
+    h1 { font-size: 2.3rem; }
     .tagline { font-size: 1.25rem; }
-    .lede { font-size: 1.1rem; line-height: 1.55; }
+    .lede { line-height: 1.55; }
     .lesson, .tile { padding: 1.25rem; }
     .actions > .button { flex: 1 1 auto; }
     .bar nav a.wide { display: none; }
@@ -529,8 +533,14 @@
     .story { grid-template-columns: 1fr; row-gap: 1.5rem; }
     .fork { display: none; }
     .demo .panel { min-height: 0; font-size: 0.86rem; }
-    .orbit { display: none; }
-    .demo { padding-top: 0; }
+    .hero { padding-top: 1.5rem; }
+    .hero .code code { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .logo-orbit { width: 9rem; height: 4.75rem; margin-bottom: 1rem; }
+    .logo-orbit::before, .logo-orbit::after { width: 9rem; height: 2.6rem; margin: -1.3rem 0 0 -4.5rem; }
+    .logo-orbit img { width: 3.75rem; }
+    .land { margin-top: 3.5rem; padding-top: 2.5rem; }
+    .land::before { width: 80rem; height: 80rem; margin-left: -40rem; }
+    .land::after { width: 22rem; margin-left: -11rem; }
     /* On a phone each need becomes a card; the hidden header still names the columns for screen readers. */
     .vs-box { padding: 0 1.1rem; }
     .vs thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -557,8 +567,6 @@
   <defs>
     <linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset=".55" stop-color="#60A5FA"/><stop offset="1" stop-color="#A78BFA"/></linearGradient>
     <linearGradient id="iw" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F9A8D4"/><stop offset="1" stop-color="#A78BFA"/></linearGradient>
-    <linearGradient id="sk" x1="0" x2="1"><stop offset="0" stop-color="#22D3EE" stop-opacity="0"/><stop offset=".55" stop-color="#38BDF8" stop-opacity=".6"/><stop offset="1" stop-color="#A78BFA" stop-opacity="0"/></linearGradient>
-    <linearGradient id="ring" x1="0" x2="1"><stop offset="0" stop-color="#22D3EE" stop-opacity="0"/><stop offset=".3" stop-color="#38BDF8"/><stop offset=".7" stop-color="#60A5FA"/><stop offset="1" stop-color="#A78BFA" stop-opacity="0"/></linearGradient>
     <linearGradient id="fork-l" x1="1" x2="0"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="#F472B6"/></linearGradient>
     <linearGradient id="fork-r" x1="0" x2="1"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="#22D3EE"/></linearGradient>
     <filter id="bl" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
@@ -611,37 +619,22 @@
 
 <main id="main">
   <div class="top">
-    <div class="grid-bg" aria-hidden="true"></div>
     <i class="stars" aria-hidden="true"></i>
-    <svg class="streaks" viewBox="0 0 600 260" preserveAspectRatio="xMaxYMin slice" aria-hidden="true">
-      <path d="M220 -20 C 360 90, 480 60, 620 -10" stroke="url(#sk)" stroke-width="7" fill="none" filter="url(#bl)" opacity=".55"/>
-      <path d="M220 -20 C 360 90, 480 60, 620 -10" stroke="url(#sk)" stroke-width="1.5" fill="none"/>
-      <path d="M330 -20 C 450 120, 540 110, 620 40" stroke="url(#sk)" stroke-width="1" fill="none" opacity=".6"/>
-    </svg>
     <div class="wrap">
       <div class="hero">
-        <div>
-          <h1>Stop re-explaining your project <span class="grad">to Claude Code.</span></h1>
-          <p class="tagline">Your work, remembered between conversations. Saved only on your computer.</p>
-          <p class="lede">A free plugin for Claude Code. After every reply it saves a journal of your work and a note of where you stopped.</p>
-          <div class="actions">
-            <a class="button primary" href="#install">Install in a minute</a>
-            <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
-          </div>
-          <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add zdraveski/project-memory
-/plugin install project-memory@project-memory</code></pre></div>
-          <ul class="chips" aria-label="In short">
-            <li class="chip">Free, MIT license</li><li class="chip">No account</li><li class="chip">No servers of its own</li><li class="chip">About 900 tokens at start</li>
-          </ul>
+        <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"></span>
+        <h1>Stop <span class="nw">re-explaining</span> your project <span class="grad">to Claude Code.</span></h1>
+        <p class="tagline">Your work, remembered between conversations. Saved only on your computer.</p>
+        <p class="lede">A free plugin for Claude Code. After every reply it saves a journal of your work and a note of where you stopped.</p>
+        <div class="actions">
+          <a class="button primary" href="#install">Install in a minute</a>
+          <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
         </div>
-
+        <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add zdraveski/<wbr>project-memory
+/plugin install project-memory@<wbr>project-memory</code></pre></div>
+      </div>
+      <div class="land">
         <div class="demo">
-          <div class="orbit" aria-hidden="true">
-            <svg viewBox="0 0 600 400" preserveAspectRatio="none">
-              <ellipse cx="300" cy="230" rx="310" ry="120" fill="none" stroke="url(#ring)" stroke-width="6" filter="url(#bl)" opacity=".7" transform="rotate(-12 300 230)"/>
-              <ellipse cx="300" cy="230" rx="310" ry="120" fill="none" stroke="url(#ring)" stroke-width="1.6" transform="rotate(-12 300 230)"/>
-            </svg>
-          </div>
           <div class="glass lit term">
             <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>Claude Code</b><span>~/shop</span></div>
             <div class="panel show" role="tabpanel" id="p-pick" aria-labelledby="t-pick" tabindex="0">
@@ -673,9 +666,11 @@
             <button class="tab" role="tab" id="t-forget" aria-controls="p-forget" aria-selected="false" tabindex="-1"><svg class="pi plain" aria-hidden="true"><use href="#p-eye-slash"/></svg>Forget</button>
           </div>
         </div>
+        <ul class="chips" aria-label="In short">
+          <li class="chip">Free, MIT license</li><li class="chip">No account</li><li class="chip">No servers of its own</li><li class="chip">About 900 tokens at start</li>
+        </ul>
       </div>
     </div>
-    <i class="horizon" aria-hidden="true"></i>
   </div>
 
   <section class="part" id="problem" aria-labelledby="problem-h">
