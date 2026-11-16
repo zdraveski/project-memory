@@ -171,7 +171,6 @@
   .top { position: relative; isolation: isolate; overflow: hidden; padding-bottom: 6rem; }
   .hero { display: grid; grid-template-columns: 1fr 1.05fr; gap: 3.5rem; align-items: center; padding: 4rem 0 2rem; }
   .hero > * { min-width: 0; }
-  .logo { width: 5.5rem; height: auto; margin: 0 0 1.4rem; filter: drop-shadow(0 0 18px rgb(34 211 238 / .55)); }
   h1, h2 { font-weight: 800; letter-spacing: -0.025em; text-wrap: balance; }
   p { text-wrap: pretty; }
   h1 { font-size: clamp(2.4rem, 4.4vw, 3.6rem); line-height: 1.06; margin: 0 0 1rem; }
@@ -181,20 +180,20 @@
   .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1.5rem 0 0; padding: 0; list-style: none; }
   .hero .cmd { margin: 1.25rem 0 0; max-width: 34rem; }
   /* The opening rises in once, line by line, then the demo plays its first answer.
-     The logo and headline start at once, so the headline paints as early as it would without motion.
+     The headline starts at once, so it paints as early as it would without motion.
      Fill is backwards only: once played, nothing is left on the layer (see the glint note under How it works). */
   @media (prefers-reduced-motion: no-preference) {
     .js .hero > :first-child > * { animation: rise 600ms var(--ease-out) backwards; }
-    .js .hero > :first-child > :nth-child(3) { animation-delay: 60ms; }
-    .js .hero > :first-child > :nth-child(4) { animation-delay: 120ms; }
-    .js .hero > :first-child > :nth-child(5) { animation-delay: 180ms; }
-    .js .hero > :first-child > :nth-child(6) { animation-delay: 240ms; }
-    .js .hero > :first-child > :nth-child(7) { animation-delay: 300ms; }
+    .js .hero > :first-child > :nth-child(2) { animation-delay: 60ms; }
+    .js .hero > :first-child > :nth-child(3) { animation-delay: 120ms; }
+    .js .hero > :first-child > :nth-child(4) { animation-delay: 180ms; }
+    .js .hero > :first-child > :nth-child(5) { animation-delay: 240ms; }
+    .js .hero > :first-child > :nth-child(6) { animation-delay: 300ms; }
     .js .hero .demo { animation: rise 700ms var(--ease-out) 120ms backwards; }
   }
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 
-  /* The demo: a glass terminal inside the banner's orbit, with its floating cards */
+  /* The demo: a glass terminal inside the banner's orbit */
   .demo { position: relative; isolation: isolate; padding: 2.5rem 0 3.5rem; }
   .orbit { position: absolute; z-index: -1; left: -8%; right: -8%; top: 14%; bottom: 10%; pointer-events: none; }
   .orbit svg { width: 100%; height: 100%; overflow: visible; }
@@ -214,11 +213,6 @@
   .cl::before { content: "\25CF" / ""; position: absolute; left: 0; color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
   .cl b { color: #fff; font-weight: 500; }
   .aside-note { color: var(--muted); font: 400 0.82rem/1.5 var(--sans); }
-  .float { position: absolute; z-index: 2; display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 0.95rem 0.65rem 0.7rem; font: 600 0.88rem/1.2 var(--sans); color: #DBE7FF; background: var(--solid); border-radius: 0.85rem; }
-  .float .ico { width: 2.2rem; height: 2.2rem; border-radius: 0.65rem; }
-  .float .ico .pi { width: 1.25rem; height: 1.25rem; }
-  .float.a { top: -1rem; right: -1.5rem; }
-  .float.b { bottom: -1.4rem; left: -1.5rem; }
   .tabs { display: none; gap: 0.35rem; margin: 1rem 0 0; flex-wrap: wrap; justify-content: center; }
   .js .tabs { display: flex; }
   /* The panels share one grid cell, so the box keeps the tallest one's height and the tabs under it never move. */
@@ -227,7 +221,7 @@
   .js .demo .panel:not(.show) { visibility: hidden; }
   :root:not(.js) .demo .panel + .panel { border-top: 1px solid var(--line); }
   /* Solid pills: the orbit passes behind them, not through their words. */
-  .tab { display: inline-flex; align-items: center; gap: 0.4rem; font: 600 0.9rem var(--sans); color: var(--body); background: #0B1236; border: 0; border-radius: 99px; min-height: 2.75rem; padding: 0 1rem; cursor: pointer; box-shadow: inset 0 0 0 1px rgb(130 170 255 / .16); transition: color var(--fast), background-color var(--fast), box-shadow var(--fast), transform 160ms var(--ease-out); }
+  .tab { display: inline-flex; align-items: center; gap: 0.4rem; font: 600 0.9rem var(--sans); color: var(--body); background: #0B1236; border: 0; border-radius: 99px; min-height: 2.75rem; padding: 0 0.8rem; cursor: pointer; box-shadow: inset 0 0 0 1px rgb(130 170 255 / .16); transition: color var(--fast), background-color var(--fast), box-shadow var(--fast), transform 160ms var(--ease-out); }
   .tab .pi { width: 1.1rem; height: 1.1rem; filter: none; }
   @media (hover: hover) and (pointer: fine) { .tab:hover { color: var(--ink); background: #16204F; } }
   .tab[aria-selected="true"] { color: #DBE7FF; background: #17306E; box-shadow: inset 0 0 0 1px rgb(34 211 238 / .55), 0 0 18px rgb(34 211 238 / .25); }
@@ -507,8 +501,6 @@
   @media (max-width: 62.5em) {
     .hero, .install, .privacy-grid { grid-template-columns: 1fr; }
     .hero { gap: 3.5rem; padding-top: 2.5rem; }
-    .float.a { right: 0; }
-    .float.b { left: 0; }
     .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 2.5rem; }
     .flow::before, .flow::after { display: none; }
     .track-wrap, .limits { grid-template-columns: 1fr; }
@@ -522,6 +514,9 @@
   }
   @media (max-width: 42.5em) {
     body { font-size: 1rem; }
+    h1 { font-size: 2.2rem; }
+    .tagline { font-size: 1.25rem; }
+    .lede { font-size: 1.1rem; line-height: 1.55; }
     .lesson { padding: 1.25rem; }
     .bar nav a.wide { display: none; }
     /* On a phone the GitHub link keeps its name for screen readers and shows only the mark. */
@@ -533,7 +528,7 @@
     .story { grid-template-columns: 1fr; row-gap: 1.5rem; }
     .fork { display: none; }
     .demo .panel { min-height: 0; font-size: 0.86rem; }
-    .orbit, .float { display: none; }
+    .orbit { display: none; }
     .demo { padding-top: 0; }
     /* On a phone each need becomes a card; the hidden header still names the columns for screen readers. */
     .vs-box { padding: 0 1.1rem; }
@@ -625,10 +620,9 @@
     <div class="wrap">
       <div class="hero">
         <div>
-          <img class="logo" src="brain.png" alt="" width="148" height="136">
           <h1>Stop re-explaining your project <span class="grad">to Claude Code.</span></h1>
           <p class="tagline">Your work, remembered between conversations. Saved only on your computer.</p>
-          <p class="lede">project-memory is a free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, so the next conversation starts where the last one ended.</p>
+          <p class="lede">A free plugin for Claude Code. After every reply it saves a journal of your work and a note of where you stopped.</p>
           <div class="actions">
             <a class="button primary" href="#install">Install in a minute</a>
             <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
@@ -636,7 +630,7 @@
           <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add zdraveski/project-memory
 /plugin install project-memory@project-memory</code></pre></div>
           <ul class="chips" aria-label="In short">
-            <li class="chip">Free, MIT license</li><li class="chip">No account</li><li class="chip">No servers of its own</li><li class="chip">Windows, macOS, Linux</li>
+            <li class="chip">Free, MIT license</li><li class="chip">No account</li><li class="chip">No servers of its own</li><li class="chip">About 900 tokens at start</li>
           </ul>
         </div>
 
@@ -647,8 +641,6 @@
               <ellipse cx="300" cy="230" rx="310" ry="120" fill="none" stroke="url(#ring)" stroke-width="1.6" transform="rotate(-12 300 230)"/>
             </svg>
           </div>
-          <div class="float a glass" aria-hidden="true"><span class="ico"><svg class="pi"><use href="#p-clock-counter-clockwise"/></svg></span>Restore past work</div>
-          <div class="float b glass" aria-hidden="true"><span class="ico"><svg class="pi"><use href="#p-notebook"/></svg></span>Keep important notes</div>
           <div class="glass lit term">
             <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>Claude Code</b><span>~/shop</span></div>
             <div class="panel show" role="tabpanel" id="p-pick" aria-labelledby="t-pick" tabindex="0">
