@@ -2,21 +2,29 @@
 
 ## 1.4.3 (2026-11-16)
 
-- A note Claude Code has edited is no longer held out of the snapshots as a secret. Claude Code writes `originSessionId:` into a note it edits, and 1.4.1's session-cookie rule read that line as a cookie. A real session cookie (`sessionid=`, `JSESSIONID`, `connect.sid`) is still cut.
+This release fixes problems found in a full review of 1.4.2. Three of them kept some of your notes out of the snapshots, the backups project-memory uses to bring back a lost or overwritten note. Updating is recommended. Nothing changes in how you use the plugin, and your existing memory works as it is.
 
-- A note that only explains the `<private>` tag, such as "wrap a secret in `<private>` and `</private>`", is no longer held out of the snapshots, and `promote` no longer refuses it. Anything else inside the tag, such as a PIN or a password, still holds the note, and so does text after a self-closing `<private/>`.
+### Snapshots
 
-- The first snapshot of a big store no longer outlasts the Stop hook. It checked each staged note for secrets with its own git process: 80 notes took 14 seconds, and 1500 notes ran past the 120-second limit, so the snapshot was cut off. All notes are now read by one git process.
+- **Notes that Claude Code edits are backed up again.** When Claude Code edits a memory note, it adds a line with its session ID (`originSessionId:`). Since 1.4.1, project-memory took that line for a login cookie and left the note out of the snapshots. Real session cookies, such as `sessionid=` or `JSESSIONID`, are still kept out.
 
-- The startup briefing no longer says another session "ended" while it is still working, when that session's newest transcript record is very large (a screenshot over 512 KB).
+- **Notes that only explain the `<private>` tag are backed up.** A note that describes the tag, for example "wrap a secret in `<private>` and `</private>`", was treated as if it held a secret. It is now snapshotted like any other note, and `promote` shares it without asking for `--force`. A note with anything real between the tags, such as a PIN or a password, is still kept out, and so is text after a self-closing `<private/>`.
 
-- A broken link or a note deleted mid-tidy in a memory folder no longer stops that folder's tidy-up on every reply. A note another program holds open still fails the tidy-up, and the next reply tries again.
+- **The first snapshot of a large memory finishes in time.** It used to check each note for secrets one at a time. Checking 80 notes took 14 seconds, and with about 1,500 notes the snapshot ran past its two-minute time limit and was cut off. It now checks all the notes in one pass.
 
-- `promote <note> --shared` on a project note now says the note is not in the shared store and to drop `--shared`, instead of claiming it is there already. `incognito` without `--session` names the command that passes it: `/project-memory:incognito`.
+### Everyday use
 
-- The FAQ and the memory skill now name `forget --purge`, the skill says `promote --force` moves a note that holds a secret, and the docs give the watcher's time limit as 5 seconds.
+- **The session briefing no longer calls a busy session finished.** When another session's latest transcript entry was very large, such as a screenshot over 512 KB, the briefing at the start of a session said that session had ended while it was still working.
 
-- `forget <words> --yes --purge` now works after a plain `forget <words> --yes`. The plain forget says the snapshots still hold the entry and to run `forget --purge`, but that run found no entry left in the journal and purged nothing. It now finds the days in the snapshots that held every word, in any case, and purges those. With `--key`, `--conversation`, `--since` or `--until` it still purges only what matches.
+- **A broken file no longer stops the memory tidy-up.** A broken link in a memory folder, or a note deleted while the tidy-up was running, made the tidy-up of that folder fail after every reply. It now carries on. A note that another program has open still stops it, and it tries again after the next reply.
+
+- **`forget --purge` works after a plain `forget`.** After `forget <words> --yes`, project-memory says the snapshots still hold the entry and suggests `forget --purge`. That command then found nothing, because the entry was already gone from the journal. It now searches the snapshots for the days that contain all of your words, in upper or lower case, and removes those. With `--key`, `--conversation`, `--since` or `--until`, it still removes only what matches.
+
+### Messages and documentation
+
+- `promote <note> --shared` on a note that exists only in the project now says the note isn't in the shared store and that you can drop `--shared`. Before, it said the note was already there.
+- `incognito` without `--session` now tells you to use `/project-memory:incognito`, which passes it for you.
+- The FAQ and the memory skill now mention `forget --purge`. The skill explains that `promote --force` moves a note that holds a secret, and the docs give the watcher's time limit as 5 seconds.
 
 ## 1.4.2 (2026-11-15)
 
