@@ -2124,6 +2124,27 @@ Deploy with the token from the vault
   ok(tracked().includes('proj-one/memory/leaky.md') && !JSON.parse(readFileSync(join(root, '.snapshot-health'), 'utf8')).held, 'once the secret is gone, the note is snapshotted');
 }
 
+// Many staged notes are read in one git process, not one each: 80 took 14 s, 1500 past the Stop's 120 s (defect hunt 1.4.3, L1-1).
+{
+  const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
+  const dir = join(root, 'proj-one', 'memory'), note = (b) => `---
+name: bulk
+description: "bulk"
+metadata:
+  type: project
+---
+${b}
+`;
+  for (let i = 0; i < 60; i++) { writeFileSync(join(dir, `bulk-${i}.md`), note(`café ${i}`)); utimesSync(join(dir, `bulk-${i}.md`), tenMin, tenMin); }
+  writeFileSync(join(dir, 'bulk-leaky.md'), note(`token ${GH}`)); utimesSync(join(dir, 'bulk-leaky.md'), tenMin, tenMin);
+  let shows = 0;
+  await swap('node:child_process', 'execFileSync', (real) => (...a) => { if (a[0] === 'git' && a[1].includes('show')) shows++; return real(...a); }, () => stop());
+  ok(shows < 5, `staged notes are not read one git process each (${shows} git show runs for 61 notes)`);
+  ok(tracked().includes('proj-one/memory/bulk-59.md') && !tracked().includes('proj-one/memory/bulk-leaky.md'), 'in a big batch the clean notes are committed and the one holding a token is held');
+  for (let i = 0; i < 60; i++) rmSync(join(dir, `bulk-${i}.md`)); rmSync(join(dir, 'bulk-leaky.md'));
+  await stop();
+}
+
 // A secret in a note's file name is held back too (1.4.1 J review).
 {
   const GH2 = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');

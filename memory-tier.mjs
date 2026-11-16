@@ -515,9 +515,22 @@ function snapshot() {
     // password stays out of it (unstaged, so its last clean version stays) until the secret is gone. Told in .snapshot-health.
     held = [];
     const heldRaw = new Set();
-    for (const f of git('diff', '--cached', '--name-only', '-z').split('\0').filter((x) => /^[^/]+\/memory\/(?!handoff\.md$|journal\.md$)[^/]+\.md$/.test(x))) {   // not the journal or handoff: scrubbed as written
-      let t = null;   // the staged blob is what a commit keeps, not the working file a session may have cleaned since the add
-      try { t = git('show', `:${f}`); } catch { t = raw(join(root, f)); }
+    const staged = git('diff', '--cached', '--name-only', '-z').split('\0').filter((x) => /^[^/]+\/memory\/(?!handoff\.md$|journal\.md$)[^/]+\.md$/.test(x));   // not the journal or handoff: scrubbed as written
+    // One git process for every staged blob (one per note took 14 s for 80 notes): the output is "<oid> blob <bytes>", the bytes, a newline, per
+    // path, or "<path> missing", read by byte length because a note can hold UTF-8.
+    const blobs = new Map();
+    if (staged.length) {
+      const out = execFileSync('git', gitArgs('cat-file', '--batch'), { input: staged.map((f) => `:${f}\n`).join(''), stdio: ['pipe', 'pipe', 'pipe'], timeout: gitWait, maxBuffer: 256 << 20 });
+      let at = 0;
+      for (const f of staged) {
+        const eol = out.indexOf(10, at), head = out.toString('utf8', at, eol).split(' ');
+        at = eol + 1;
+        if (head[1] === 'blob') { const n = Number(head[2]); blobs.set(f, out.toString('utf8', at, at + n)); at += n + 1; }
+      }
+    }
+    for (const f of staged) {
+      // the staged blob is what a commit keeps, not the working file a session may have cleaned since the add
+      const t = blobs.has(f) ? blobs.get(f) : raw(join(root, f));
       if (redact(f) !== f || (t !== null && redact(t) !== t)) { git('reset', '-q', '--', `:(literal)${f}`); held.push(redact(f)); heldRaw.add(f); }
     }
     // Tracked files changed and not added, a held note (it stays modified, for good) not counted: what is still owed.
