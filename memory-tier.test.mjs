@@ -2145,6 +2145,49 @@ ${b}
   await stop();
 }
 
+// The batch read must stay in step with its replies, or a note with a secret reads as clean (review of #90). The secret is only
+// in the staged blob: the working file is cleaned right after the staged list is read, as a session editing it would.
+{
+  const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
+  const dir = join(root, 'proj-one', 'memory'), head = '---\nname: bulk\ndescription: "bulk"\nmetadata:\n  type: project\n---\n';
+  const put = (n, body) => { writeFileSync(join(dir, n), head + body + '\n'); utimesSync(join(dir, n), tenMin, tenMin); };
+  const held = () => JSON.parse(readFileSync(join(root, '.snapshot-health'), 'utf8')).held ?? [];
+  // Run a Stop in which the notes in `leaky` are staged with a secret and then cleaned on disk.
+  const run = (leaky) => swap('node:child_process', 'execFileSync', (real) => (...a) => {
+    const r = real(...a);
+    if (a[0] === 'git' && a[1].includes('--cached') && a[1].includes('--name-only')) for (const n of leaky) put(n, 'token from the vault');
+    return r;
+  }, () => stop());
+  const clean = (...ns) => { for (const n of ns) rmSync(join(dir, n), { force: true }); };
+
+  // Notes of different byte lengths with multi-byte text ahead of the secret one: a wrong byte count shifts every later read.
+  put('m1.md', 'é'.repeat(3)); put('m2.md', '日本語'.repeat(7)); put('m3.md', 'plain');
+  put('m5.md', '日'.repeat(40)); put('m6.md', 'tail');
+  put('m4-mid.md', `token ${GH}`);
+  await run(['m4-mid.md']);
+  ok(!tracked().includes('proj-one/memory/m4-mid.md') && held().includes('proj-one/memory/m4-mid.md'), 'a secret only in the staged blob is held, after multi-byte notes of different lengths');
+  ok(tracked().includes('proj-one/memory/m2.md') && tracked().includes('proj-one/memory/m6.md'), 'the clean notes around it are committed');
+  clean('m1.md', 'm2.md', 'm3.md', 'm4-mid.md', 'm5.md', 'm6.md'); await stop();
+
+  // A staged deletion whose name reads like a blob reply (":path blob notes.md missing") ahead of the secret note.
+  // Its body is long and unlike the others, so git does not show the deletion as a rename into one of them.
+  put('a blob notes.md', 'long and unlike the rest '.repeat(40)); await stop();
+  rmSync(join(dir, 'a blob notes.md'));
+  put('n1.md', 'clean one'); put('n2-secret.md', `token ${GH}`); put('n3.md', 'clean three');
+  await run(['n2-secret.md']);
+  ok(!tracked().includes('proj-one/memory/n2-secret.md') && held().includes('proj-one/memory/n2-secret.md'), 'a staged deletion named like a blob reply does not make the secret note after it read as clean');
+  ok(tracked().includes('proj-one/memory/n1.md') && tracked().includes('proj-one/memory/n3.md'), 'and the snapshot still commits the clean ones');
+  clean('n1.md', 'n2-secret.md', 'n3.md'); await stop();
+
+  // A name with a line break would split git's input in two; not allowed on Windows, so skipped there.
+  if (process.platform !== 'win32') {
+    put('q1\nx.md', 'clean'); put('q2-secret.md', `token ${GH}`);
+    await run(['q2-secret.md']);
+    ok(!tracked().includes('proj-one/memory/q2-secret.md') && held().includes('proj-one/memory/q2-secret.md'), 'a note name with a line break does not shift the reads of the notes after it');
+    clean('q1\nx.md', 'q2-secret.md'); await stop();
+  }
+}
+
 // A secret in a note's file name is held back too (1.4.1 J review).
 {
   const GH2 = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
