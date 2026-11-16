@@ -846,5 +846,6 @@ export const redact = (s) => {
   const u = s.replace(/\\\r?\n[ \t]*/g, ''), r = redactRaw(u), f = fold(r), g = f === r ? r : redactRaw(f);
   return g === f ? (r === u ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
 };
-// Does a note's own text hold a secret? Not the <private> tag: that rule cuts conversation, and a note that mentions the tag is no secret (defect hunt 1.4.3, L3-3).
-export const holdsSecret = (t) => { const n = t.replace(/<(?=\s*\/?\s*private)/gi, '&lt;'); return redact(n) !== n; };
+// Does a note's own text hold a secret? The <private> tag alone is none: a note may explain it (defect hunt 1.4.3, L3-3).
+// So the tags are unwrapped, not escaped: what they hold is still checked, and "password: <private>x</private>" still holds.
+export const holdsSecret = (t) => { const n = t.replace(/<\s*\/?\s*private(?![-_\w])([^>]*)>?/gi, ' $1 '); return redact(n) !== n; };
