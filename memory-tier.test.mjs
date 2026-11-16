@@ -2137,6 +2137,13 @@ Deploy with the token from the vault
   writeFileSync(f, readFileSync(f, 'utf8') + 'Wrap a secret in <private>...</private> and it is not saved.\n');
   await stop();
   ok(git('show', 'HEAD:proj-one/memory/leaky.md').includes('<private>') && !JSON.parse(readFileSync(join(root, '.snapshot-health'), 'utf8')).held, 'a note that mentions the <private> tag is snapshotted');
+  // A password whose value sits in the tag is still a secret: held, and the snapshot keeps the version before it.
+  const clean = readFileSync(f, 'utf8');
+  writeFileSync(f, clean + 'password: <private>hunter2xx</private>\n');
+  await stop();
+  ok(!git('show', 'HEAD:proj-one/memory/leaky.md').includes('hunter2xx') && JSON.parse(readFileSync(join(root, '.snapshot-health'), 'utf8')).held?.includes('proj-one/memory/leaky.md'), 'a password inside the <private> tag holds the note out of the snapshot');
+  writeFileSync(f, clean);
+  await stop();
 }
 
 // Many staged notes are read in one git process, not one each: 80 took 14 s, 1500 past the Stop's 120 s (defect hunt 1.4.3, L1-1).
