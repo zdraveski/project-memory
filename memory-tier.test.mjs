@@ -703,6 +703,17 @@ r = await call(['--dry-run']);
 ok((r.stdout.match(/proj-(one|link)[\\/]memory: \d+ hot/g) || []).length === 1, `a junctioned store is tiered once (got: ${r.stdout.trim()})`);
 await plain();
 ok(tracked().some((f) => f.startsWith('proj-one/')) && !tracked().some((f) => f.startsWith('proj-link/')), 'and committed once, by its real path');
+// A `*.md` link whose target is gone cannot be stat'ed: it skipped the whole store's tidy-up, every Stop (defect hunt 1.4.3, L1-2).
+{
+  const d = store('proj-dangle'), gone = join(root, 'proj-dangle', 'gone');
+  mkdirSync(gone); symlinkSync(gone, join(d, 'link.md'), 'junction'); rmdirSync(gone);
+  r = await call(['--dry-run']);
+  ok(/proj-dangle[\\/]memory: \d+ hot/.test(r.stdout) && !/skipped/.test(r.stdout), `a dangling *.md link does not stop its store's tidy-up (got: ${r.stdout.trim()})`);
+  writeFileSync(join(root, 'proj-dangle', 'session.jsonl'), '');
+  await stop('proj-dangle');
+  ok(existsSync(stamp('proj-dangle')), 'and the store is stamped, so the next turn skips it');
+  rmSync(join(root, 'proj-dangle'), { recursive: true });
+}
 // A memory another program holds open for one Stop is not missing. Read as
 // missing, its alarm was stamped with the store and stayed until the date
 // changed (audit, 2026-10-26); now the pass fails unstamped and the next Stop heals.
