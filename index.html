@@ -1135,11 +1135,11 @@
     b.innerHTML = '<svg class="pi plain" aria-hidden="true"><use href="#p-copy"/></svg><span>Copy</span>';
     b.setAttribute('aria-label', two ? 'Copy both lines' : 'Copy the command');
     const icon = b.querySelector('use');
+    let swap, reset;
     const say = (s, i = '#p-copy') => {
       b.classList.add('changing');
-      setTimeout(() => { b.lastChild.textContent = s; icon.setAttribute('href', i); b.classList.remove('changing'); }, 75);
+      clearTimeout(swap); swap = setTimeout(() => { b.lastChild.textContent = s; icon.setAttribute('href', i); b.classList.remove('changing'); }, 75);
     };
-    let reset;
     b.addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(code.textContent); say('Copied', '#p-check-circle'); status.textContent = 'Copied to the clipboard.'; }
       catch { say('Select and copy'); status.textContent = 'Could not copy. Select the text and copy it.'; }
