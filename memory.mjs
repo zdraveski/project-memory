@@ -1032,6 +1032,16 @@ export function main(given) {
         const none = left ? terms.filter((t) => !all.some((e) => holds(e, t.toLowerCase()))) : [];
         const why = !terms.length || !left ? '' : `: no entry holds ${none.length ? none.map((t) => `"${t}"`).join(', ') : 'every word'}`;
         r = { ok: true, lines: [`nothing in ${here} matches${why}`] };
+        // The journal no longer holds it (forgotten before) but the snapshots may: the days whose versions held every word go.
+        // Plain words only: a key, conversation or date range that matched nothing must not widen into every day holding the words.
+        // shortcut: words are looked up as plain text in any case (git folds ASCII letters only), per day; a day holding them in different entries is purged too.
+        if (yes && terms.length && !named.length && !conversation && !range.since && !range.until && rest.includes('--purge') && /^\[project-memory\]/m.test(read(join(projectsRoot(), '.git', 'config')) ?? '')) {
+          try {
+            const days = terms.map((t) => new Set(tracked(here, 'journal').flatMap((at) => git('log', '--all', '-i', '--format=', '--name-only', '-S' + t, '--', at).split('\n')).map((p) => p.split('/').pop().replace(/\.md$/, '')).filter((d) => /^\d{4}-\d\d-\d\d$/.test(d))));
+            const hit = [...days[0]].filter((d) => days.every((s) => s.has(d)));
+            if (hit.length) { purge(here, hit); r.lines = [`the journal of ${here} no longer holds it; purged the journal of ${more(hit, 6)} from the snapshots`]; }
+          } catch (e) { r = no(`the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)})`); }
+        }
       } else if (!yes) {
         r = { ok: true, lines: [...shown.map(line), ...(m.length > shown.length ? [`and ${m.length - shown.length} more`] : []),
           `${m.length} entr${m.length === 1 ? 'y' : 'ies'} in ${here}${byRange ? ` from ${ds[0]} to ${ds.at(-1)}` : ''} would go; run again with --yes to remove them`] };

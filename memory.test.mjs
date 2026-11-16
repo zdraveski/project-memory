@@ -2433,6 +2433,15 @@ See [[nonexist-${GH}]]
   ok(held(), 'fixture: the snapshots hold the finished day');
   let r = await run(['forget', word, '--yes', '--store', pd]);
   ok(/removed 1/.test(r.stdout) && held(), 'forget --yes alone leaves the snapshot history');
+  // A narrowed forget that matches nothing purges nothing: the range must not widen into every day holding the word (1.4.3 review).
+  r = await run(['forget', word, '--until', '2019-12-31', '--yes', '--purge', '--store', pd]);
+  ok(/nothing in .* matches/.test(r.stdout) && !/purged/.test(r.stdout) && held(), `forget --purge with a range that matches nothing purges nothing (got ${r.stdout})`);
+  // The hint's own next step: the entry is gone from the journal now, yet --purge still finds the day in the snapshots (defect hunt 1.4.3, L3-2),
+  // in another case too, as forget itself matches.
+  r = await run(['forget', word.toUpperCase(), '--yes', '--purge', '--store', pd]);
+  ok(/purged the journal of 2020-01-02/.test(r.stdout) && !/nothing in/.test(r.stdout) && !held(), `forget --purge after a plain forget still drops it from the history (got ${r.stdout})`);
+  writeDay(); tier(); tier();
+  r = await run(['forget', word, '--yes', '--store', pd]);
   writeDay();
   r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
   ok(/removed 1/.test(r.stdout) && /purged from the snapshots/.test(r.stdout) && !held(), `forget --purge drops it from the history (got ${r.stdout})`);
