@@ -54,7 +54,7 @@ command-line tool described [below](#the-memory-tool-from-a-terminal).
 
 Each hook has a time limit, which Claude Code enforces by stopping the hook:
 120 seconds for Stop and for `/compact`, 60 for the automatic compaction check,
-30 for the startup briefing and 5 for the git-rule watcher. Without a limit Claude Code waits 10 minutes.
+30 for the startup briefing and 5 seconds for the git-rule watcher. Without a limit Claude Code waits 10 minutes.
 A real Stop took up to 46 seconds. A hook stopped at its limit has its output
 thrown away, so a startup briefing that runs past 30 seconds is lost without a
 word. A Stop stopped while git runs has already written the journal and the
