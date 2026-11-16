@@ -741,10 +741,10 @@ have saved something.
   the sweep fails the tag stays and the next Stop retries; the command says
   so and exits 1.
 
-The `/incognito`, `/memory-off` and `/memory-on` slash commands are three files
-in `commands/` that run the `memory` CLI with `--session ${CLAUDE_SESSION_ID}`.
+The `/project-memory:incognito`, `/project-memory:memory-off` and
+`/project-memory:memory-on` slash commands are three files in `commands/` that run the `memory` CLI with `--session ${CLAUDE_SESSION_ID}`.
 Checked by hand on 2026-11-09: each ran when typed by its full name,
-`/incognito` got the real session id, resuming keeps that id, and `/clear`
+`/project-memory:incognito` got the real session id, resuming keeps that id, and `/clear`
 starts a new one, in a new transcript. So incognito holds across a resume, and
 after `/clear` the new conversation is not incognito.
 

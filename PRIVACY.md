@@ -238,7 +238,7 @@ of the switches below or disable the plugin
 Off stops adding; it doesn't hide. A marker that can't be read counts as off,
 and the startup and `status` say memory is paused there.
 
-`/incognito` (the `incognito` command) is narrower: it adds the conversation's
+`/project-memory:incognito` (the `incognito` command) is narrower: it adds the conversation's
 tag to `.private-sessions`, then removes that conversation's entries from the
 journal and from `handoff.md`. It does not touch notes already written,
 snapshots of days already over keep a copy, and Claude Code by default still

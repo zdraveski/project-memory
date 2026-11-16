@@ -594,7 +594,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
 // both stores, never in neither.
 export function promote(dir, file, { force = false } = {}) {
   const to = sharedStore(), src = join(dir, file), dst = join(to, file);
-  if (isShared(dir)) return no(existsSync(src) ? `${file} is in the shared store already` : 'promote moves a project memory into the shared store: drop --shared');
+  if (isShared(dir)) return no(existsSync(src) ? `${file} is in the shared store already` : `${file} is not in the shared store: promote moves a project memory into it, so drop --shared`);
   // Nor the journal's pointer: promoted, the next Stop wrote it again, and it was in both stores (audit C-1).
   if (isIndex(file) || file === 'handoff.md' || file === 'journal.md') return no('only a memory is shared, not an index, the handoff or the journal');
   if (!existsSync(src)) return no(`no ${src}`);
