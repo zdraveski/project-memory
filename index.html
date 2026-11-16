@@ -384,6 +384,9 @@
   .copy { position: absolute; top: 0.4rem; right: 0.4rem; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.75rem; padding: 0 0.9rem; font: 600 0.88rem var(--sans); color: #DBE7FF; background: rgb(59 130 246 / .18); border: 1px solid rgb(96 165 250 / .35); border-radius: 0.55rem; cursor: pointer; transition: background-color var(--fast), transform 160ms var(--ease-out); }
   @media (hover: hover) and (pointer: fine) { .copy:hover { background: rgb(59 130 246 / .3); } }
   .copy .pi { width: 1.05rem; height: 1.05rem; filter: none; }
+  /* When the label changes, the old one blurs out and the new one blurs in, 75 ms each way. */
+  .copy > * { transition: opacity 75ms var(--ease-out), filter 75ms var(--ease-out); }
+  .copy.changing > * { opacity: 0; filter: blur(2px); }
   .needs { padding: 1.5rem; }
   .needs h3 { margin-bottom: 1rem; }
   .needs ul { margin: 0; padding: 0; list-style: none; }
@@ -1113,10 +1116,14 @@
     b.className = 'copy'; b.type = 'button';
     b.innerHTML = '<svg class="pi plain" aria-hidden="true"><use href="#p-copy"/></svg><span>Copy</span>';
     b.setAttribute('aria-label', two ? 'Copy both lines' : 'Copy the command');
-    const say = (s) => { b.lastChild.textContent = s; };
+    const icon = b.querySelector('use');
+    const say = (s, i = '#p-copy') => {
+      b.classList.add('changing');
+      setTimeout(() => { b.lastChild.textContent = s; icon.setAttribute('href', i); b.classList.remove('changing'); }, 75);
+    };
     let reset;
     b.addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(code.textContent); say('Copied'); status.textContent = 'Copied to the clipboard.'; }
+      try { await navigator.clipboard.writeText(code.textContent); say('Copied', '#p-check-circle'); status.textContent = 'Copied to the clipboard.'; }
       catch { say('Select and copy'); status.textContent = 'Could not copy. Select the text and copy it.'; }
       clearTimeout(reset); reset = setTimeout(() => { say('Copy'); status.textContent = ''; }, 1800);
     });
