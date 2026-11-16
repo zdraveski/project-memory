@@ -594,7 +594,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
 // both stores, never in neither.
 export function promote(dir, file, { force = false } = {}) {
   const to = sharedStore(), src = join(dir, file), dst = join(to, file);
-  if (isShared(dir)) return no(`${file} is in the shared store already`);
+  if (isShared(dir)) return no(existsSync(src) ? `${file} is in the shared store already` : `${file} is not in the shared store: promote moves a project memory into it, so drop --shared`);
   // Nor the journal's pointer: promoted, the next Stop wrote it again, and it was in both stores (audit C-1).
   if (isIndex(file) || file === 'handoff.md' || file === 'journal.md') return no('only a memory is shared, not an index, the handoff or the journal');
   if (!existsSync(src)) return no(`no ${src}`);
@@ -760,7 +760,7 @@ const STILL = "Claude Code by default still keeps its own transcript (30 days un
 // retries a sweep that failed). Nothing is marked unless the whole of it can be: the failure says which part is left.
 function incognito(opt) {
   const path = session && transcriptOf(session);
-  if (!opt) return no('incognito needs --session <id>: the /incognito command passes it, and nothing was marked');
+  if (!opt) return no('incognito needs --session <id>: the /project-memory:incognito command passes it, and nothing was marked');
   if (!session) return no(`incognito NOT applied: "${clip(opt, 100)}" is not a session id; nothing was marked`);
   if (!path) return no(`incognito NOT applied: no conversation ${session} on this machine; nothing was marked`);
   const dir = storeOf({ transcript_path: path }), s = tag(session);
