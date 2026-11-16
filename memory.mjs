@@ -40,7 +40,7 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir, tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
+import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
@@ -611,7 +611,7 @@ export function promote(dir, file, { force = false } = {}) {
     // Not through a string if it is no UTF-8: the shared copy would hold U+FFFD, and the original be deleted.
     try { utf8Only(src, text); } catch (e) { return e.message; }
     // Every project reads the shared store: a secret copied there is read by all of them and kept in its git history.
-    if (!force && redact(text) !== text) return `${file} holds what looks like a key, token or password, and every project reads the shared store; nothing moved. Remove it, or promote --force to copy it as it is`;
+    if (!force && holdsSecret(text)) return `${file} holds what looks like a key, token or password, and every project reads the shared store; nothing moved. Remove it, or promote --force to copy it as it is`;
     for (const p of [join(dir, 'MEMORY.md'), join(dir, ARCHIVE)]) {
       const t = raw(p), l = t && take(t, its).line;
       if (l) { home = p; homeText = t; line = l; break; }

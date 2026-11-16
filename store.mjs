@@ -846,3 +846,7 @@ export const redact = (s) => {
   const u = s.replace(/\\\r?\n[ \t]*/g, ''), r = redactRaw(u), f = fold(r), g = f === r ? r : redactRaw(f);
   return g === f ? (r === u ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
 };
+// Does a note's own text hold a secret? The <private> tag alone is none: a note may explain it (defect hunt 1.4.3, L3-3).
+// So the tags are unwrapped, not escaped: what they hold is checked like any other text, and "password: <private>x</private>" or
+// "<private/>" before it still holds. A plain-word secret inside the tag (a PIN) no longer holds the note: no rule names it.
+export const holdsSecret = (t) => { const n = t.replace(/<\s*\/?\s*private(?![-_\w])([^>]*)>?/gi, (_, a) => ` ${a.replace(/\/\s*$/, '')} `); return redact(n) !== n; };

@@ -2410,6 +2410,13 @@ See [[nonexist-${GH}]]
   }
   r = await run(['promote', 'lesson', '--force', '--store', sd]);
   ok(r.status === 0 && existsSync(join(shared, 'lesson.md')), 'promote --force copies it anyway');
+  // The <private> tag alone is no secret; a password wrapped in it still is (defect hunt 1.4.3, L3-3).
+  writeFileSync(join(sd, 'tag-howto.md'), '---\nname: tag-howto\ndescription: "t"\n---\nWrap a secret in <private>...</private> and it is not saved.\n');
+  writeFileSync(join(sd, 'tag-pass.md'), '---\nname: tag-pass\ndescription: "t"\n---\npassword: <private>hunter2xx</private>\n');
+  r = await run(['promote', 'tag-howto', '--store', sd]);
+  ok(r.status === 0 && existsSync(join(shared, 'tag-howto.md')), `promote moves a note that mentions the <private> tag (got ${r.stdout.trim()})`);
+  r = await run(['promote', 'tag-pass', '--store', sd]);
+  ok(r.status === 1 && /nothing moved/.test(r.stdout) && !existsSync(join(shared, 'tag-pass.md')), `promote refuses a password wrapped in the <private> tag (got ${r.stdout.trim()})`);
 }
 
 // forget --purge: the finished day is in the snapshots; --yes alone leaves it there, --purge drops it from every commit.
