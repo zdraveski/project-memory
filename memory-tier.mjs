@@ -530,7 +530,10 @@ function snapshot() {
       }
       if (at !== out.length) throw new Error('cat-file reply out of step');
     }
-    for (const f of staged) if (!lined.includes(f)) { try { blobs.set(f, git('show', `:${f}`)); } catch {} }
+    // Only a path gone from the index (a staged deletion) falls back to the working file; a timeout or other failure throws, and a throw commits nothing.
+    for (const f of staged.filter((x) => /[\n\r]/.test(x))) {
+      try { blobs.set(f, git('show', `:${f}`)); } catch (e) { if (!/does not exist|not in the index/.test(String(e.stderr))) throw e; }
+    }
     for (const f of staged) {
       // the staged blob is what a commit keeps, not the working file a session may have cleaned since the add
       const t = blobs.has(f) ? blobs.get(f) : raw(join(root, f));
