@@ -324,6 +324,11 @@ writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\ndescription: "The ro
 ok((await cli('promote', 'MEMORY')).status === 1 && (await cli('promote', 'handoff')).status === 1 && existsSync(join(dir, 'handoff.md')), 'an index or the handoff is not a memory to share');
 r = await cli('promote', 'shared-rule', '--shared');
 ok(r.status === 1 && /in the shared store already/.test(r.stdout), 'nor is a memory already shared');
+// A project memory named with --shared was "in the shared store already", a store it never reached (defect hunt 1.4.3, L5-3).
+memory(dir, 'xylophone-only', 'a xylophone lesson');
+r = await cli('promote', 'xylophone-only', '--shared');
+ok(r.status === 1 && /drop --shared/.test(r.stdout) && !/already/.test(r.stdout) && existsSync(join(dir, 'xylophone-only.md')), `promote --shared of a project memory says to drop --shared (got: ${r.stdout.trim()})`);
+rmSync(join(dir, 'xylophone-only.md'));
 // A name with brackets and no index line: the line made for it reads back.
 // Words no later search uses: a hit they added changed its count.
 memory(dir, '[draft] okapi', 'an okapi still in draft');
@@ -2178,6 +2183,8 @@ if (!quick) {
     r = await run(['incognito', '--store', d, ...a]);
     ok(r.status === 1 && /incognito/.test(r.stdout) && listing() === frozen && !existsSync(join(d, '.private-sessions')), `incognito ${a.join(' ')} is refused and writes nothing (got ${r.status} ${r.stdout.trim()})`);
   }
+  // A plugin's command is namespaced: there is no /incognito (defect hunt 1.4.3, L5-4).
+  ok(/\/project-memory:incognito /.test((await run(['incognito', '--store', d])).stdout), 'a missing --session names the command that passes it: /project-memory:incognito');
   // A held lock: not applied, said so.
   mkdirSync(join(d, '.lock'));
   r = await run(['incognito', '--session', SID]);
