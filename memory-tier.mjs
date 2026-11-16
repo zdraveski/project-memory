@@ -529,7 +529,7 @@ function snapshot() {
         const eol = out.indexOf(10, at), line = out.toString('utf8', at, eol), head = line.split(' ');
         at = eol + 1;
         if (head.length === 3 && head[1] === 'blob' && /^\d+$/.test(head[2])) { const n = Number(head[2]); blobs.set(f, out.toString('utf8', at, at + n)); at += n + 1; }
-        else if (!line.endsWith(' missing')) throw new Error('cat-file reply out of step');   // a throw commits nothing
+        else if (!line.endsWith(' missing')) throw new Error(`cat-file reply out of step at ${redact(f)}`);   // a throw commits nothing; the path, not the line, which may be a note's text
       }
       if (at !== out.length) throw new Error('cat-file reply out of step');
     }

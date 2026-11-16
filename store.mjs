@@ -846,7 +846,24 @@ export const redact = (s) => {
   const u = s.replace(/\\\r?\n[ \t]*/g, ''), r = redactRaw(u), f = fold(r), g = f === r ? r : redactRaw(f);
   return g === f ? (r === u ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
 };
-// Does a note's own text hold a secret? The <private> tag alone is none: a note may explain it (defect hunt 1.4.3, L3-3).
-// So the tags are unwrapped, not escaped: what they hold is checked like any other text, and "password: <private>x</private>" or
-// "<private/>" before it still holds. A plain-word secret inside the tag (a PIN) no longer holds the note: no rule names it.
-export const holdsSecret = (t) => { const n = t.replace(/<\s*\/?\s*private(?![-_\w])([^>]*)>?/gi, (_, a) => ` ${a.replace(/\/\s*$/, '')} `); return redact(n) !== n; };
+// Does a note's own text hold a secret? Anything inside the <private> tag does, closed or not ("<private/>" opens one too): the
+// tag is where a user puts what no rule names, such as a PIN (1.4.3 review). A note that only explains the tag holds none (defect
+// hunt 1.4.3, L3-3): a tag in backticks, a tag followed by the word "tag" and then a word with no digit ("tag 4821" is a
+// PIN, "tag is new in 1.4.2" is prose), or the tag around nothing, "and" or a placeholder ("...", "x", "your secret"), quotes
+// and backticks aside. Then the tags are unwrapped and the whole text checked like any other, so a key beside a mention still
+// holds. shortcut: a secret of letters only that starts with the word "tag" passes; a word list can't tell it from prose.
+// One "\s*" before the optional "/": two in a row made a "<" before 100,000 spaces take 13 s. A placeholder is short, so a long
+// span is never tested against them.
+const TAG = /<\s*(\/\s*)?private(?![-_\w])([^>]*)>?/gi;
+const mention = (s) => /^\s*tags?\b(?!\W*\w*\d)/i.test(s) ||
+  (s.length < 40 && /^(?:\.{3}|…|x|and|or|(?:your|the|a|my)?(?:text|secret|value|key|password)s?)?$/i.test(s.replace(/[\s`'"]/g, '')));
+export const holdsSecret = (t) => {
+  let open = -1;
+  for (const m of t.matchAll(TAG)) {
+    if (t[m.index - 1] === '`' && t[m.index + m[0].length] === '`') continue;   // `<private>` as inline code names the tag
+    if (!m[1]) { if (open < 0) open = m.index + m[0].length; }
+    else if (open >= 0) { if (!mention(t.slice(open, m.index))) return true; open = -1; }
+  }
+  if (open >= 0 && !mention(t.slice(open))) return true;
+  const n = t.replace(TAG, (_, c, a) => ` ${a.replace(/\/\s*$/, '')} `); return redact(n) !== n;
+};

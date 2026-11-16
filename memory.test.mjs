@@ -2416,6 +2416,9 @@ See [[nonexist-${GH}]]
   r = await run(['promote', 'tag-howto', '--store', sd]);
   ok(r.status === 0 && existsSync(join(shared, 'tag-howto.md')), `promote moves a note that mentions the <private> tag (got ${r.stdout.trim()})`);
   r = await run(['promote', 'tag-pass', '--store', sd]);
+  { const pin = join(sd, 'tag-pin.md'); writeFileSync(pin, '---\nname: tag-pin\ndescription: "t"\n---\nOffice alarm code: <private>4821</private>\n');
+    const p = await run(['promote', 'tag-pin', '--store', sd]);
+    ok(!existsSync(join(shared, 'tag-pin.md')), `promote refuses a note with a word the rules miss wrapped in <private> (got ${p.stdout.trim()})`); }
   ok(r.status === 1 && /nothing moved/.test(r.stdout) && !existsSync(join(shared, 'tag-pass.md')), `promote refuses a password wrapped in the <private> tag (got ${r.stdout.trim()})`);
 }
 
