@@ -2608,4 +2608,10 @@ See [[nonexist-${GH}]]
   ok(/nothing found/.test(r.stdout) && nb() === nb2, 'a clean store makes no backup');
 }
 
+// 1.5.0 P39: the skill's description makes Claude search before answering, relative dates included.
+{
+  const d = readFileSync(new URL('./skills/memory/SKILL.md', import.meta.url), 'utf8').match(/^description: (.*)$/m)[1];
+  ok(/before answering/i.test(d) && /last week/.test(d) && /earlier work/.test(d), `the skill description names answering and relative dates (got ${d})`);
+}
+
 console.log(`memory: ${checks} checks passed`);

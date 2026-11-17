@@ -24,6 +24,11 @@ Entries saved before this version are not rewritten.
 - **A question made only of small words still searches.** `memory search what did we do` looks for those words instead of giving up.
 - **Search reads what you wrote in handoff.md.** The automatic log in that file repeats the journal and is still left out.
 
+### Claude checks memory first
+
+- **Claude looks in the journal before answering a question you may have settled before.** This includes advice questions ("should I", "is it worth") and relative dates ("last week"). In a test of 14 questions, it searched on 4 of 5 advice questions, up from 2 of 5, and still left plain questions alone.
+- **The briefing tells Claude to trust the code over an old note, and to save a correction you give.** One short line, shown at startup and after a compaction.
+
 ### The briefing and compaction
 
 - **The startup briefing names your last session for 30 days, not 7.** Coming back to a project after a few weeks still shows where you left off.

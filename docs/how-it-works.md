@@ -604,7 +604,9 @@ At the start of a conversation, and after `/clear`, Claude is told:
 - when the project's journal has an entry, one line: "Earlier work in this
   project since <first day> is in its journal: when asked about the past,
   search it with the memory skill before saying you don't know." The
-  journal itself is never loaded;
+  journal itself is never loaded; a second line says the code wins when a
+  note and the code disagree, and that a correction you give is saved as a
+  feedback note;
 - anything failing: the Stop hook not running, snapshots failing three times
   in a row, a notebook that needs attention;
 - the shared notebook's index, up to 3,000 bytes.
@@ -615,6 +617,8 @@ After a compaction, Claude is told:
 - this conversation's own latest exchanges, never another's;
 - which other conversations are working here, when there is a recovery note or
   this conversation has exchanges of its own;
+- the journal line and the code-wins line, as at startup, when the journal has
+  an entry;
 - the shared notebook's index.
 
 A conversation that is resumed gets no briefing: its history already holds

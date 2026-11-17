@@ -2396,11 +2396,14 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   mkdirSync(join(dirJ2, 'journal'), { recursive: true });
   const brief = (source = 'startup') => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source }), env }).toString();
   ok(!/is in its journal/.test(brief()), 'a store with no journal day has no journal line in the briefing');
+  ok(!/the code wins/.test(brief()), 'no journal, no rules line');
   writeFileSync(join(dirJ2, 'journal', '2026-09-01.md'), '# Journal 2026-09-01\n');   // emptied: no day
   ok(!/is in its journal/.test(brief()), 'an emptied day is no journal');
   writeFileSync(join(dirJ2, 'journal', '2026-09-03.md'), '# Journal 2026-09-03\n\n<!-- j:k1 t:C--x/aaaaaaaa-1 d:2026-09-03 -->\n## 09:00 · conversation aaaaaaaa\n**Asked:** one\n');
   ok(/^Earlier work in this project since 2026-09-03 is in its journal: when asked about the past, search it with the memory skill before saying you don't know\.$/m.test(brief()), `the startup briefing names the journal and its first day (got ${brief()})`);
   ok(/since 2026-09-03 is in its journal/.test(brief('clear')), 'and so does the clear briefing');
+  // 1.5.0 B1: two rules ride with the journal line, at startup and after a compaction.
+  for (const src of ['startup', 'compact']) ok(/^When a note and the code disagree about what exists, the code wins\. When the user corrects how you work, save it as a feedback note before going on\.$/m.test(brief(src)), `the ${src} briefing carries the two rules (got ${brief(src)})`);
   // 1.5.0 B2: after a compaction too, not only at startup.
   ok(/^Earlier work in this project since 2026-09-03 is in its journal/m.test(brief('compact')), `the briefing after a compaction names the journal too (got ${brief('compact')})`);
   // 1.5.0 B3: the plugin starts the briefing through brief.mjs, which says in one line when it cannot load, and has an off switch.

@@ -1085,10 +1085,11 @@ export const fit = (s, line = Infinity) => {
 };
 
 // The journal's pointer, at every start and after a compaction too (the model that lost its context loses this line with it).
-// A broken journal.mjs costs the line, never the briefing. Loaded here: journal.mjs imports this module.
+// It carries the two rules too, so no journal means no rules. A broken journal.mjs costs the line, never the briefing. Loaded here: journal.mjs imports this module.
 async function journalLine(dir) {
   let first = null; try { first = (await import(new URL('./journal.mjs', import.meta.url))).firstDay(dir); } catch {}
-  return first ? [`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`] : [];
+  return first ? [`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`,
+    'When a note and the code disagree about what exists, the code wins. When the user corrects how you work, save it as a feedback note before going on.'] : [];
 }
 
 // The SessionStart hook. After a compaction (source "compact"): the note on a
