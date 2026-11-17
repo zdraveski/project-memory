@@ -2392,7 +2392,7 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   ok(/^Earlier work in this project since 2026-09-03 is in its journal/m.test(brief('compact')), `the briefing after a compaction names the journal too (got ${brief('compact')})`);
   // 1.5.0 B3: the plugin starts the briefing through brief.mjs, which says in one line when it cannot load, and has an off switch.
   const BRIEF = join(dirname(HOOK), 'brief.mjs');
-  const viaStarter = (extra = {}, file = BRIEF) => spawnSync(process.execPath, [file, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source: 'startup' }), env: { ...env, ...extra }, encoding: 'utf8' });
+  const viaStarter = (extra = {}, file = BRIEF) => spawnSync(process.execPath, [file, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source: 'startup' }), env: { ...process.env, ...extra }, encoding: 'utf8' });
   { const v = viaStarter(), w = brief(); ok(v.stdout === w && v.status === 0, `the starter prints the same briefing as handoff-log.mjs --print (starter ${v.status} ${JSON.stringify(v.stdout.slice(0, 300))} ${JSON.stringify(v.stderr.slice(0, 300))}; direct ${JSON.stringify(w.slice(0, 300))})`); }
   ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }).stdout === '', 'PROJECT_MEMORY_BRIEFING=0 prints nothing');
   const broken = join(home, 'broken-starter'); mkdirSync(broken, { recursive: true });
