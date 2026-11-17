@@ -1175,7 +1175,7 @@ const small = { segment: 1024, budgetMs: 0 };
   const es = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries), five = es.find((e) => e.asked === 'question 5');
   ok(es.length === 12 && es.every((e) => e === five || e.answered.startsWith(`answer ${e.asked.split(' ')[1]} `)) && line() === `${slug(r)}/${W} ${statSync(p).size}`,
     `Stop by Stop, every exchange is journaled whole, and the list says the transcript is read (got ${es.map((e) => `${e.asked}: ${e.answered.slice(0, 9)}`)}; ${line()})`);
-  ok(five?.answered === 'a first look the final word' && five.ran.length === 4 && five.ran.every((c, k) => c.startsWith(`ls ${k + 1} `)),
+  ok(five?.answered === 'a first look ⁣the final word' && five.ran.length === 4 && five.ran.every((c, k) => c.startsWith(`ls ${k + 1} `)),
     `an exchange longer than a segment keeps all its text and every command, from every part (got ${JSON.stringify(five)})`);
 }
 {
@@ -1782,7 +1782,7 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   ok(Buffer.byteLength(long) > 2 * seg, 'the fixture: an exchange longer than two segments');
   fill(d, { segment: seg, budgetMs: 4000 /* a bound, ~1000x the real cost; a loop spends all of it */ });
   const es = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries);
-  ok(es.length === 2 && es.find((e) => e.asked === 'question 0')?.answered === 'a first look the final word', `an exchange after a blank line at a segment's start keeps its last reply (got ${es.map((e) => `${e.asked}: ${e.answered.slice(0, 20)}`)})`);
+  ok(es.length === 2 && es.find((e) => e.asked === 'question 0')?.answered === 'a first look ⁣the final word', `an exchange after a blank line at a segment's start keeps its last reply (got ${es.map((e) => `${e.asked}: ${e.answered.slice(0, 20)}`)})`);
   // A segment that is a newline alone, the line after it longer than a segment: passed over, the import done (a hang spent the budget).
   const [r2, d2] = repo('blankonly'), C = sid('xf'), q = join(projects, slug(r2), `${C}.jsonl`);
   writeFileSync(q, '\n' + 'J'.repeat(seg + 5) + '\n' + exchange(C, r2, 0)); utimesSync(q, ago(2), ago(2));

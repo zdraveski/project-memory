@@ -45,7 +45,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
-import { redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
+import { BLOCK, redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -81,9 +81,9 @@ const RANGE_SHOWN = 20;
 // lead-in, cut before the word. HIT_HEAD: the reply's first sentence, what
 // came of it, which a stretch from the middle never says (2026-10-31).
 const HIT_ASK = 200, HIT_SPAN = 30, HIT_MORE = 240, HIT_HEAD = 140;
-// The first sentence of a reply, HIT_HEAD at most: one of 20 characters or
+// The first sentence of a reply's last text block (after the last BLOCK marker; an old entry has none: its first), HIT_HEAD at most: one of 20 characters or
 // more, so a lone "Done." or "**Yes.**" is not taken for the whole outcome.
-const result = (a) => { const t = clip(a, HIT_HEAD); return /^.{20,}?[.!?](?=\s|$)/u.exec(t)?.[0] ?? t; };
+const result = (a) => { const t = clip(a.slice(a.lastIndexOf(BLOCK) + 1), HIT_HEAD); return /^.{20,}?[.!?](?=\s|$)/u.exec(t)?.[0] ?? t; };
 // A request this long (normalized) asked again is one hit: a script's prompt,
 // a retry. A shorter one ("continue", "yes") is different work each time, and
 // collapsed, its reply could not be read (review, 2026-10-29).
@@ -1093,9 +1093,10 @@ export function main(given) {
     const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (isVer(t) ? verRe(t).source : plain(t) ? (terms.as.get(t) !== t ? starts(t).source : t) : alone(t).source)).join('|'), 'giu');
     // NFC, as the scoring reads it: a decomposed "é" scored the entry, and its stretch must show too.
     const nfc = (v) => clip(v, Infinity).normalize('NFC');
+    const unmark = (a) => a.split(BLOCK).join('');
     const entry = (h, also) => {
-      const hold = [['Answered', h.answered], ['Changed', h.changed.join(', ')], ['Ran', h.ran.join(' · ')]].filter(([, v]) => nfc(v).search(find) !== -1);
-      const ds = [h, ...also].map((x) => x.day).sort(), at = nfc(h.answered).search(find);
+      const hold = [['Answered', unmark(h.answered)], ['Changed', h.changed.join(', ')], ['Ran', h.ran.join(' · ')]].filter(([, v]) => nfc(v).search(find) !== -1);
+      const ds = [h, ...also].map((x) => x.day).sort(), at = nfc(unmark(h.answered)).search(find);
       // Redacted before it is cut: a stretch must not cut a secret in two. The
       // copies' keys are named: a forget of the one shown left them (review).
       // No Result when the reply's stretch already starts at its start.
@@ -1120,7 +1121,7 @@ export function main(given) {
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).
     const es = told(scope, { failed }), got = args.map((k) => es.find((e) => e.key === k)), seen = new Set();
     const whole = (e) => [head(e), `     key: ${clip(e.key, Infinity)}`,
-      ...[['Asked', e.asked], ['Answered', e.answered], ['Changed', e.changed.join(', ')], ['Ran', e.ran.join(' · ')]].filter(([, v]) => v).map(([k, v]) => `     ${k}: ${clip(v, Infinity)}`),
+      ...[['Asked', e.asked], ['Answered', e.answered.split(BLOCK).join('')], ['Changed', e.changed.join(', ')], ['Ran', e.ran.join(' · ')]].filter(([, v]) => v).map(([k, v]) => `     ${k}: ${clip(v, Infinity)}`),
       `     Day file: ${e.path}`, ...full(e)];
     // --same: every entry asking what this one asked, the copies a hit counts.
     const alike = (e) => (rest.includes('--same') ? es.filter((x) => sameKey(x.asked) === sameKey(e.asked)) : [e]).filter((x) => !seen.has(x) && seen.add(x));
