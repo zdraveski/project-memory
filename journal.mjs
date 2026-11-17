@@ -190,6 +190,7 @@ export function record(dir, transcriptPath, turns, when) {
 // 1.5.0 item 10: a subagent's report, saved as an entry of its own (SubagentStop). Claude Code 2.1.271+ delivers the report through the
 // SubagentHandback tool, so it is that call's input in the agent's transcript; last_assistant_message is the fallback. Never throws.
 const J_REPORT = 8000;
+// shortcut: last 8 MB only, a handback earlier than that is missed; a resumed agent (same agent_id) replaces its earlier report.
 const handback = (path) => {
   let last = '';
   for (const l of readTail(path, 8_000_000).text.split('\n')) {
@@ -229,7 +230,7 @@ export function subagent(input) {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
       if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) return false;
       const rep = clip(report, J_REPORT);
-      return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64)}`, ask: `Subagent ${type.trim()}: ${clip(ask, 500)}`.replace(/: $/, ''),
+      return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
         raw: rep, said: rep, did: rep, changed: [], ran: [], cwd: input.cwd }]) > 0;
     }) ?? false;
   } catch { return false; }

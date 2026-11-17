@@ -35,7 +35,7 @@ no network code.
 ## External interfaces
 
 - **Hook events**, declared in [`hooks/hooks.json`](../hooks/hooks.json):
-  `Stop`, `StopFailure`, `SessionStart` (`startup`, `resume`, `clear`, `compact`) and
+  `Stop`, `StopFailure`, `SubagentStop`, `SessionStart` (`startup`, `resume`, `clear`, `compact`) and
   `PreCompact` (`manual`, `auto`), and `PreToolUse` (`Bash|PowerShell`, filtered to `git *`; the git-rule watcher). Input: Claude Code's JSON payload on
   stdin. The fields read are `session_id`, `transcript_path`, `cwd`,
   `hook_event_name`, `stop_hook_active`, `last_assistant_message`, `source`

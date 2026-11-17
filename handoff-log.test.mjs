@@ -422,6 +422,8 @@ const liveDir = join(home, 'hooks-live');
 install(dirname(HOOK), liveDir, 'test');
 const printLive = () => execFileSync(process.execPath, [join(liveDir, 'handoff-log.mjs'), '--print'], { input: JSON.stringify({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString();
 ok(!/outside deploy/.test(printLive()), 'a deployed copy as deployed: nothing said');
+install(dirname(HOOK), join(home, 'hooks-live-node'), 'test', undefined, 'C:/x/node.exe');
+ok(JSON.parse(readFileSync(join(home, 'hooks-live-node', 'hooks', 'hooks.json'), 'utf8')).hooks.SubagentStop[0].hooks[0].command === 'C:/x/node.exe', 'a deploy rewrites the SubagentStop command to the node path');
 // A damaged manifest says nothing, and costs nothing else: thrown, it took the
 // whole startup line with it, the other-session warning too (review, 2026-10-26).
 const asDeployed = readFileSync(join(liveDir, '.deployed.json'), 'utf8'), whole = printLive();

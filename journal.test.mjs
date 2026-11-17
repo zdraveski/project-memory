@@ -1990,6 +1990,11 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   ok(subagent({ ...input, agent_id: 'a3', agent_type: '' }) === false, 'an agent with no type is not saved');
   subagent({ ...input, agent_id: 'a4', agent_transcript_path: undefined, last_assistant_message: 'z'.repeat(20000) + ' end' });
   ok(entries([sd]).some((x) => /^z{100}/.test((x.e ?? x).answered) && (x.e ?? x).answered.length <= 8001), 'a report is cut at 8,000 characters');
+  // No agent_id: two reports are two entries. A newline in the type stays on one line.
+  subagent({ ...input, agent_id: undefined, agent_type: 'a\nb', agent_transcript_path: undefined, last_assistant_message: 'first okapi' });
+  subagent({ ...input, agent_id: undefined, agent_transcript_path: undefined, last_assistant_message: 'second okapi' });
+  ok(entries([sd]).filter((x) => /okapi/.test((x.e ?? x).answered)).length === 2, 'two reports with no agent_id are two entries');
+  ok(entries([sd]).some((x) => (x.e ?? x).asked === 'Subagent a b'), 'a newline in the agent type is cleaned');
   ok(subagent({ cwd: 1 }) === false, 'a bad payload never throws');
 }
 
