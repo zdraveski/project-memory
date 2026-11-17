@@ -25,8 +25,8 @@ This release fixes what the 1.5.0 review found: search that joined words that on
 
 ### Private conversations and secrets
 
-- **A private turn saves no subagent report and no pick.** Before, a report from a subagent that a private turn started, and your answer to a question in a private turn, were saved.
-- **A failed command's error is checked for secrets from its start**, and each pick of a multi-question answer is checked against its own question.
+- **A subagent that ends while a private turn is open saves no report, and a private turn saves no pick.** Before, a report from such a subagent, and your answer to a question in a private turn, were saved.
+- **A failed command's error is checked for secrets in its last 20,000 characters** (1.5.0 checked 2,000), and each pick of a multi-question answer is checked against its own question.
 - **Two things that were cut as secrets are kept:** `same pass: worked` (a word like "pass" in a sentence) and IPv6 addresses.
 - **`memory rescan` no longer reports a marker it wrote earlier** (`[redacted]` or `***REMOVED***`) as a new secret. `rescan --apply --yes` now writes `[redacted]`, as the rest of the plugin does, instead of `***REMOVED***`.
 - **`forget --purge` and `rescan --apply --yes` keep their working copy of the snapshot history inside the snapshot repository's own `.git` folder**, not in the computer's temporary folder, and remove it when they finish.
@@ -38,7 +38,7 @@ This release fixes what the 1.5.0 review found: search that joined words that on
 - **Tagging in a project where memory is off no longer advises a reinstall.**
 - **If saving the "wait" mark for a compaction fails, the compaction goes ahead** instead of being held.
 - **Claude Code compacts 33,000 tokens short of its window, and the reminder to save notes now follows that.** In a window of 200,000 it comes at about 107,000 tokens, where it came at about 132,000. `memory doctor` prints a line with the compaction window.
-- **`CLAUDE_CODE_MAX_CONTEXT_TOKENS` counts only when `DISABLE_COMPACT` is set, or when `ANTHROPIC_MODEL` names a model that is not a Claude one**, as Claude Code does.
+- **`CLAUDE_CODE_MAX_CONTEXT_TOKENS` counts only when `DISABLE_COMPACT` is set, or when `ANTHROPIC_MODEL` names a model that is not a Claude one**, as Claude Code does. If you use a non-Claude model, also set `ANTHROPIC_MODEL`.
 - **The briefing keeps room for the last session's exchanges.** When the shared lessons fill it, 1,500 characters are kept for them.
 
 ### Checked lessons
