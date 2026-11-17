@@ -5,7 +5,7 @@
 import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
-import { clip, text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable, BLOCK } from './handoff-log.mjs';
+import { clip, text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable, promptBefore, BLOCK } from './handoff-log.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only } from './store.mjs';
 
 export const JOURNAL = 'journal';
