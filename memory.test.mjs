@@ -983,6 +983,11 @@ if (!quick) {
   ok(r.status === 0 && new RegExp(`^ *\\d+  journal   2026-10-15 14:30  conversation c0ffee12 · branch main\\n     key: ${fix.key}\\n     Asked: fix the deploy error\\n`).test(r.stdout),
     `search finds a journal entry by its request: first, labelled journal, with its date and key (got ${r.stdout})`);
   ok(/^ *\d+ +\w+ +\d{4}-\d\d-\d\d +.*[\\/]deploy\.md$/m.test(r.stdout) && /^ *\d+  journal   2026-10-15 09:00 /m.test(r.stdout), `a note and an entry rank together (got ${r.stdout})`);
+  // 1.5.1 PR 9: a search with hits ends on one fixed line; a miss and the day list do not carry it.
+  const AGAIN = 'Not the entry you meant? Search again with other words.';
+  ok(r.stdout.trimEnd().split('\n').at(-1) === AGAIN, `a search with hits ends with the search-again line (got ${r.stdout})`);
+  ok(!(await jcli('search', 'zzzqqq')).stdout.includes(AGAIN) && !(await jcli('search', '--since', '2026-10-21', '--until', '2026-10-27')).stdout.includes(AGAIN),
+    'no hits, and the day list, do not print the search-again line');
   // A hit is its request, cut, and of the rest only what holds a search word.
   const blocks = (out) => out.split(/\n(?= *\d+  )/), of = (out, asked) => blocks(out).find((b) => b.includes(`\n     Asked: ${asked}`)) ?? '';
   ok(!/Answered/.test(of(r.stdout, 'fix the deploy error')) && /^     Answered: the deploy error, the deploy error again, and the deploy error once more$/m.test(of(r.stdout, 'tidy the readme')),
@@ -1056,7 +1061,7 @@ if (!quick) {
   ok(!/ibex herd|fed twice/.test(shut + shutShow) && /^could not read .*[\\/]journal[\\/]\.forgotten: E[A-Z]+$/m.test(shut) && /^could not read .*[\\/]journal[\\/]\.forgotten: E[A-Z]+$/m.test(shutShow),
     `with the list of forgotten keys unreadable, the journal shows nothing and says why (got ${shut}${shutShow})`);
   r = await jcli('search', 'zeppelin');
-  const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
+  const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n.*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
   ok(z.length < 800 && zask.length <= 200 && zask.length > 180 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
     `an entry at every cap: a headline, its request cut by 200 at a word's end, its result, the rest the stretches around the word, under 800 characters in all (got ${z.length}: ${z})`);
   // A stretch never starts or ends on half an emoji, nor does the cap cut one:
@@ -1124,7 +1129,7 @@ if (!quick) {
   ok(quokkas === 'quokka-since,quokka-until', `a note dated on either bound is found, one a day outside is not (got ${quokkas})`);
   // A note's date is its last change: one written in the range and edited since is out of it, and said.
   const outside = (k) => `${k} notes match outside the range (a note's date is its last change); search without --since/--until`;
-  ok(r.stdout.includes(`\n${outside(2)}\n`) && /^2 of 2 match\(es\)/m.test(r.stdout.trim().split('\n').pop()), `a ranged search says how many notes match outside it, before the count (got ${r.stdout})`);
+  ok(r.stdout.includes(`\n${outside(2)}\n`) && /^2 of 2 match\(es\)/m.test(r.stdout.trim().split('\n').at(-2)), `a ranged search says how many notes match outside it, before the count (got ${r.stdout})`);
   r = await jcli('search', 'quokka', '--since', '2026-11-01');
   ok(r.stdout.startsWith(`${outside(4)}\nnothing matches "quokka" in `), `a ranged miss says so too (got ${r.stdout})`);
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
@@ -1213,8 +1218,8 @@ if (!quick) {
     `a date range alone lists 30 by default, and says how many it left out (got ${r.stdout.split('\n').length} lines, ending ${r.stdout.trim().split('\n').pop()})`);
   rmSync(join(big, 'journal', `${year[0]}.md`)); mkdirSync(join(big, 'journal', `${year[0]}.md`));
   r = await bcli('search', 'needle');
-  ok(r.status === 0 && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && new RegExp(`^could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(r.stdout) && /^1 of 1 match\(es\)/.test(r.stdout.trim().split('\n').pop()),
-    `a day that cannot be read is named, the rest still found, and the count is still the last line (got ${r.stdout.slice(-300)})`);
+  ok(r.status === 0 && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && new RegExp(`^could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(r.stdout) && /^1 of 1 match\(es\)/.test(r.stdout.trim().split('\n').at(-2)),
+    `a day that cannot be read is named, the rest still found, and the count is still the last line before the search-again line (got ${r.stdout.slice(-300)})`);
   r = await bcli('search', 'needle', '--since', year.at(-7));
   ok(r.status === 0 && !r.stderr && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && !/could not read/.test(r.stdout), `with --since the last week, a day outside it is never opened (got ${r.stdout}${r.stderr})`);
   // A day saved as UTF-16 (PowerShell 5.1's Out-File) read as a day with no
