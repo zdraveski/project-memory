@@ -66,7 +66,7 @@ ok(r.status === 0 && order(r.stdout)[0] === 'deploy-notes' && order(r.stdout).in
 ok(order(r.stdout).indexOf('spam-log') > order(r.stdout).indexOf('release-checklist'), 'and saying it twenty times in the body earns no more than twice');
 r = await cli('search', 'deploy', 'steps');
 ok(order(r.stdout)[0] === 'release-checklist', `every term in the description is the strong match (got ${order(r.stdout).join(', ')})`);
-ok(order(r.stdout).indexOf('deploy-notes') < order(r.stdout).indexOf('a-long-log'), 'and a log that mentions every term in passing does not outrank a named one');
+ok(order(r.stdout).indexOf('a-long-log') < order(r.stdout).indexOf('deploy-notes'), 'and a log that mentions both terms outranks a note named for only the common one: the rarer term (steps) counts for more');
 ok(/^ *\d+ +archived +\d{4}-\d\d-\d\d +\S*old-thing\.md$/m.test((await cli('search', 'archived')).stdout), 'an archived memory is found, and labelled with its date');
 { // A note that opens with a ---- rule has no frontmatter: its first lines are searched, as front() reads it (a ---x line closes nothing).
   const fm = join(root, 'C--fm-probe', 'memory'); mkdirSync(fm, { recursive: true });
@@ -403,8 +403,8 @@ memory(dir, 'linky', 'a memory with many links', [1, 2, 3, 4, 5, 6, 7].map((i) =
 ok(!/the-plans-are-the-brand/.test((await cli('search', 'how', 'the', 'deploy')).stdout), '"the" and "how" score nothing, not even in a file name');
 ok(!/handoff\.md/.test((await cli('search', 'rolling', 'handoff')).stdout), 'the handoff is not a search hit');
 ok(/^ +links: l1, l2, l3, l4, l5, and 2 more$/m.test((await cli('search', 'linky')).stdout), 'a hit lists five links and counts the rest');
-r = await cli('search', 'what did I do');
-ok(r.status === 0 && /^nothing to search for: "what did I do" has no word that says which memory$/m.test(r.stdout), `a query of short and stop words says so, not "nothing matches" (got ${r.stdout})`);
+r = await cli('search', 'a ? I');
+ok(r.status === 0 && /^nothing to search for: "a \? I" has no word that says which memory$/m.test(r.stdout), `a query with no word at all says so, not "nothing matches" (got ${r.stdout})`);
 
 // 4b. Promote and restore take the store's lock: one held by a hook is busy, and nothing moves.
 if (!quick) {
@@ -1560,6 +1560,65 @@ if (!quick) {
   ok(!/no note or entry holds/.test(r.stdout), `no line when every word is held (got ${r.stdout})`);
   r = await jcli('search', 'hetznerqq', 'vultrqq');
   ok(/^nothing matches /m.test(r.stdout) && !/no note or entry holds/.test(r.stdout), `no word held still prints only "nothing matches" (got ${r.stdout})`);
+
+  // 1.5.0 item 24: a version is one word, matched whole: 1.4.3 is not 1.4.30, and "v1.4.3" is 1.4.3.
+  memory(jm, 'ver-a', 'release log', 'we shipped 1.4.3 on a Monday. Then 1.4.30 was only a plan.');
+  memory(jm, 'ver-b', 'other log', 'only 1.4.30 here, and v1.40.3 and 21.4.3');
+  r = await jcli('search', '1.4.3');
+  ok(/ver-a\.md/.test(r.stdout) && !/ver-b\.md/.test(r.stdout) && !/nothing to search for/.test(r.stdout), `a version is searched whole (got ${r.stdout})`);
+  r = await jcli('search', 'what', 'changed', 'in', 'v1.4.3');
+  ok(/ver-a\.md/.test(r.stdout) && !/ver-b\.md/.test(r.stdout), `a leading v is the same version (got ${r.stdout})`);
+  // 1.5.0 items 2 and 25: word forms, English and Macedonian, found by the stem; a missing word is named as typed.
+  memory(jm, 'forms-a', 'database moves', 'we were migrating the database, a release, and the releases after it');
+  for (const q of ['migrated', 'migration', 'releasing', 'releases']) {
+    r = await jcli('search', q);
+    ok(/forms-a\.md/.test(r.stdout), `${q} finds the note holding another form of it (got ${r.stdout})`);
+  }
+  r = await jcli('search', 'migrated', 'vultrqqs');
+  ok(/^no note or entry holds: vultrqqs$/m.test(r.stdout), `a word nothing holds is named as typed, not as its stem (got ${r.stdout})`);
+  memory(jm, 'forms-mk', 'mk note', 'Одлучивме да ја смениме базата. Тестовите паднаа.');
+  for (const q of ['базите', 'база', 'тестот']) {
+    r = await jcli('search', q);
+    ok(/forms-mk\.md/.test(r.stdout), `a Macedonian form of ${q} finds the note (got ${r.stdout})`);
+  }
+  // A query of only stop words still finds something, when nothing says which memory.
+  memory(jm, 'stop-only', 'qqzzstop', 'what did we do here');
+  r = await jcli('search', 'what', 'did', 'we', 'do');
+  ok(/stop-only\.md/.test(r.stdout) && !/nothing to search for/.test(r.stdout), `a query of only stop words searches them (got ${r.stdout})`);
+  // A rare word outweighs a common one: 30 notes say "schedule", one names "quokka".
+  {
+    const rk = mdir('C--rank');
+    for (let i = 0; i < 30; i++) memory(rk, `sched-${i}`, 'filler', 'schedule schedule');
+    memory(rk, 'schedule-notes', 'filler', 'nothing');
+    memory(rk, 'rare-one', 'quokka');
+    r = await run(['search', 'quokka', 'schedule', '--store', rk]);
+    ok(r.stdout.split('\n').find((l) => /\d+ +unindexed/.test(l))?.includes('rare-one.md'), `a word few notes hold ranks above one nearly all hold (got ${r.stdout.slice(0, 300)})`);
+  }
+  // 1.5.0 item 38: the hand-written part of handoff.md is searched, once; its automatic log is not.
+  {
+    const hd = mdir('C--hand');
+    writeFileSync(join(hd, 'handoff.md'), `---
+name: handoff
+description: "The rolling handoff"
+---
+
+Hand note: the zebrafinch cage key is in the blue drawer.
+
+<!-- auto:start -->
+_Written._
+
+an automatic line about the gnuqq paddock
+<!-- auto:end -->
+
+After the log: narwhalqq stays.
+`);
+    r = await run(['search', 'zebrafinch', '--store', hd]);
+    ok(/handoff\.md/.test(r.stdout) && /^1 of 1 match/m.test(r.stdout), `a word in the hand-written part of handoff.md is found once (got ${r.stdout})`);
+    ok(/handoff\.md/.test((await run(['search', 'narwhalqq', '--store', hd])).stdout), 'the hand-written part after the log is found too');
+    r = await run(['search', 'gnuqq', '--store', hd]);
+    ok(!/handoff\.md/.test(r.stdout) && /nothing matches/.test(r.stdout), `its automatic log is not searched (got ${r.stdout})`);
+    ok(!/handoff\.md/.test((await run(['search', 'rolling', 'handoff', '--store', hd])).stdout), 'its frontmatter is not searched');
+  }
 
   // A stretch: matches 60 apart are one stretch (the 30-character windows
   // touch): no " … " where the second window starts, and it is cut at the room (240).

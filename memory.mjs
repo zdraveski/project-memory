@@ -216,16 +216,47 @@ export function memories(dir) {
 // and "how do we deploy the site" filled its last places with them (review).
 const STOP = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'with', 'was', 'are', 'not', 'this', 'that', 'from',
   'when', 'where', 'who', 'did', 'does', 'have', 'has', 'can', 'you', 'our', 'about', 'into', 'there', 'their', 'then', 'than',
-  'am', 'an', 'as', 'at', 'be', 'by', 'do', 'he', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or', 'so', 'to', 'up', 'us', 'we']);
+  'am', 'an', 'as', 'at', 'be', 'by', 'do', 'he', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or', 'so', 'to', 'up', 'us', 'we',
+  // Question filler: "which design skill did I put in all projects" ranked the real entry 7th (1.5.0 audit).
+  'which', 'will', 'many', 'all', 'any', 'last', 'month', 'new', 'make', 'take', 'ever', 'just', 'before', 'after', 'some', 'get', 'got',
+  'should', 'would', 'could', 'been', 'were', 'one', 'them', 'they', 'your', 'its', 'also', 'very', 'much', 'more', 'most', 'need',
+  'want', 'like', 'use', 'used', 'put', 'tell', 'remind', 'again', 'time', 'week', 'day', 'today', 'yesterday', 'ago']);
 // Two letters are a word too: CI, PR, DB were never found. But only standing
 // alone: `ci` is in "decision".
 // Combining marks (\p{M}) belong to the word (Hindi), and both sides are NFC so a decomposed "e" + accent is "é".
-const words = (q) => [...new Set(q.normalize('NFC').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => t.length >= 2 && !STOP.has(t)))];
+// A version (1.4.3, v1.4.3) is one word, matched whole: split at the dots, its pieces were all dropped, and 1.4.3 is not 1.4.30.
+const VERSION = /(?<![\p{L}\p{N}.])v?(\d+(?:\.\d+)+)/gu;
+const isVer = (t) => /^\d+(?:\.\d+)+$/.test(t);
+const verRe = (t) => new RegExp(`(?<![\\p{L}\\p{N}.])v?${t.replaceAll('.', '\\.')}(?!\\p{N}|\\.\\p{N})`, 'gu');
+// Word forms: the query's word loses one regular ending, and the substring match finds the longer forms (the index is not stemmed).
+// shortcut: regular endings only (run and ran, or decide and decision, are not one word); a stem under 4 letters is never cut.
+const EN_SUF = ['ational', 'ations', 'ation', 'ments', 'ment', 'ingly', 'ings', 'ing', 'edly', 'ies', 'ied', 'ures', 'ure', 'ed', 'es', 's', 'ly'];
+// Macedonian: articles, plurals and common verb endings; the stem stays 3 letters or more.
+const MK_SUF = ['ињата', 'ијата', 'ување', 'увања', 'ите', 'ата', 'ото', 'ета', 'ови', 'еви', 'ања', 'ање', 'вме', 'вте', 'ше', 'ме', 'те', 'та', 'то', 'от', 'ов', 'ва', 'во', 'ве', 'он', 'на', 'но', 'не', 'ат', 'ам', 'аш', 'и', 'а', 'е', 'о', 'у'];
+function stem(t) {
+  if (/^[a-z]+$/.test(t)) {
+    let x = t;
+    for (const f of EN_SUF) if (x.endsWith(f) && x.length - f.length >= 4 && !(f === 's' && x.endsWith('ss'))) { x = x.slice(0, -f.length); break; }
+    if (x.length > 4 && (/([b-df-hj-np-tv-z])\1$/.test(x) && !/(ll|ss|zz|ff)$/.test(x) || /[^aeiou][ye]$/.test(x))) x = x.slice(0, -1);
+    return x;
+  }
+  if (/^[Ѐ-ӿ]+$/.test(t)) for (const f of MK_SUF) if (t.endsWith(f) && t.length - f.length >= 3) return t.slice(0, -f.length);
+  return t;
+}
+// The search words of a query, each as its stem; `.as` gives the word as typed. `any`: a query of only stop words
+// searches them rather than nothing. Without it, only words that say which memory (a date range alone lists the days).
+const words = (q, any = false) => {
+  const n = q.normalize('NFC').toLowerCase();
+  const all = [...[...n.matchAll(VERSION)].map((m) => m[1]), ...n.replace(VERSION, ' ').split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => t.length >= 2)];
+  const kept = all.filter((t) => !STOP.has(t)), as = new Map();
+  for (const t of kept.length || !any ? kept : all) if (!as.has(stem(t))) as.set(stem(t), t);
+  return Object.assign([...as.keys()], { as });
+};
 const alone = (t) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${t}(?![\\p{L}\\p{M}\\p{N}])`, 'gu');
 // Chinese and Japanese have no spaces round a word, so a two-character one is looked for as a substring.
 const plain = (t) => t.length > 2 || /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]+$/u.test(t);
-const count = (hay, t) => (plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
-const has = (hay, t) => (plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
+const count = (hay, t) => (isVer(t) ? (hay.match(verRe(t)) ?? []).length : plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
+const has = (hay, t) => (isVer(t) ? verRe(t).test(hay) : plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
 // The stretches of `text` around each match of `find`, joined, `room` characters
 // at most; no cut leaves half an emoji, which prints as U+FFFD.
 function around(text, find, room) {
@@ -256,46 +287,60 @@ const told = (dirs, o) => {
 // match; every term somewhere in the body is a weak one, or a month-long log
 // that mentions everything outranked the memory named for the thing ("deploy
 // checklist", 2026-10-27).
+// Rare words win: each term is weighted by how few notes and entries hold it (1 + ln of N over df), so "476" or "quokka"
+// outranks "first" or "schedule". The score a hit prints stays the plain sum; the weights only order the hits.
 // `outside`: the notes that match but are dated out of the range.
 export function search(dirs, query, { since, until, failed } = {}) {
-  const terms = words(query), hits = [], held = new Set();
-  let outside = 0;
-  for (const dir of terms.length ? dirs : []) for (const m of memories(dir)) {
-    // A log the startup line prints, and the journal's pointer: neither is a memory.
-    if (m.file === 'handoff.md' || m.file === 'journal.md') continue;
+  const terms = words(query, true), hits = [], held = new Set(), df = terms.map(() => 0);
+  let outside = 0, docs = 0;
+  // `parts`: what each term scored, in terms' order; `bonus`: the +5 or +2 for every term.
+  const add = (h, parts, bonus) => hits.push({ ...h, score: parts.reduce((a, p) => a + p, 0) + bonus, parts, bonus });
+  for (const dir of terms.length ? dirs : []) for (let m of memories(dir)) {
+    // The journal's pointer is no memory; handoff.md is searched in its hand-written part, not its automatic log (which repeats the journal).
+    if (m.file === 'journal.md') continue;
+    const hand = m.file === 'handoff.md';
+    if (hand) {
+      const { a, b } = sectionOf(m.body);
+      const body = a === -1 ? m.body : m.body.slice(0, a) + m.body.slice(b).replace(/^[^\n]*/, '');
+      if (!body.trim()) continue;
+      m = { ...m, file: '', name: '', desc: '', body };   // its name is no match: only what a person wrote
+    }
+    docs++;
     const name = `${m.file} ${m.name}`.toLowerCase(), desc = m.desc.toLowerCase(), body = m.body.toLowerCase();
-    let score = 0, strong = true, every = true;
-    const got = [];
-    for (const t of terms) {
+    let strong = true, every = true;
+    const got = [], parts = terms.map((t, i) => {
       const s = (has(name, t) ? 3 : 0) + (has(desc, t) ? 2 : 0);
       const b = Math.min(2, count(body, t));
       if (!s) strong = false;
-      if (!s && !b) every = false; else got.push(t);
-      score += s + b;
-    }
-    if (!score) continue;
+      if (!s && !b) every = false; else { got.push(t); df[i]++; }
+      return s + b;
+    });
+    if (!parts.some((p) => p)) continue;
     const d = local(m.modified).slice(0, 10);   // the date its hit line shows
     // A note's date is its last change: written in September and edited since,
     // a September search left it out, and the miss read as no record.
     if ((since && d < since) || (until && d > until)) { outside++; continue; }
     got.forEach((t) => held.add(t));
-    hits.push({ ...m, kind: 'note', score: score + (strong ? 5 : every ? 2 : 0) });
+    add({ ...m, kind: 'note', ...(hand && { file: 'handoff.md', desc: 'the hand-written part of the handoff' }) }, parts, strong ? 5 : every ? 2 : 0);
   }
   // An entry by what was asked, then what it changed and ran (and its branch),
   // then the reply: a reply that names everything must not outrank the request.
   for (const e of terms.length ? told(dirs, { since, until, failed }) : []) {
+    docs++;
     const asked = e.asked.toLowerCase(), did = [...e.changed, ...e.ran].join('\n').toLowerCase(), branch = e.branch.toLowerCase(), answered = e.answered.toLowerCase();
-    let score = 0, strong = true, every = true;
-    for (const t of terms) {
+    let strong = true, every = true;
+    const parts = terms.map((t, i) => {
       // A branch is named on every entry of its work: below a file or command that names the word.
       const s = (has(asked, t) ? 3 : 0) + (has(did, t) ? 2 : has(branch, t) ? 1 : 0) + Math.min(2, count(answered, t));
       if (!has(asked, t)) strong = false;
-      if (!s) every = false; else held.add(t);
-      score += s;
-    }
-    if (score) hits.push({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')), score: score + (strong ? 5 : every ? 2 : 0) });
+      if (!s) every = false; else { held.add(t); df[i]++; }
+      return s;
+    });
+    if (parts.some((p) => p)) add({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')) }, parts, strong ? 5 : every ? 2 : 0);
   }
-  return Object.assign(hits.sort((a, b) => b.score - a.score || b.modified - a.modified), { outside, missing: terms.filter((t) => !held.has(t)) });
+  const w = df.map((n) => 1 + Math.log((docs + 1) / (n + 1))), avg = w.reduce((a, x) => a + x, 0) / (w.length || 1);
+  for (const h of hits) h.rank = h.parts.reduce((a, p, i) => a + p * w[i], 0) + h.bonus * avg;
+  return Object.assign(hits.sort((a, b) => b.rank - a.rank || b.modified - a.modified), { outside, missing: terms.filter((t) => !held.has(t)).map((t) => terms.as.get(t)) });
 }
 
 // What a [[link]] may name: a memory's file name without `.md`, or its `name:`.
@@ -924,7 +969,7 @@ export function main(given) {
   const full = (e, conv = join(projectsRoot(), `${e.t}.jsonl`)) => (e.answered !== '[private]' && existsSync(conv) ? [`     Full conversation: ${conv}`] : []);
   // Words that say nothing of which memory ("what did I do") with a range: the range's listing.
   if (cmd === 'search' && args.length && (words(args.join(' ')).length || !(range.since || range.until))) {
-    const q = args.join(' '), terms = words(q), found = search(scope, q, { ...range, failed });
+    const q = args.join(' '), terms = words(q, true), found = search(scope, q, { ...range, failed });
     const out = found.outside ? [`${found.outside} note${found.outside === 1 ? ' matches' : 's match'} outside the range (a note's date is its last change); search without --since/--until`] : [];
     // One long request asked again and again (a prompt a script sends, a retry)
     // is one hit with a count: its copies filled the list (recall test, 2026-10-29).
@@ -934,7 +979,7 @@ export function main(given) {
       if (k !== null && like.has(k)) like.get(k).push(h);
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
-    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (plain(t) ? t : alone(t).source)).join('|'), 'giu');
+    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (isVer(t) ? verRe(t).source : plain(t) ? t : alone(t).source)).join('|'), 'giu');
     // NFC, as the scoring reads it: a decomposed "é" scored the entry, and its stretch must show too.
     const nfc = (v) => clip(v, Infinity).normalize('NFC');
     const entry = (h, also) => {
@@ -949,7 +994,7 @@ export function main(given) {
         ...(also.length ? [`     ${also.length} more like this, ${ds[0]}..${ds.at(-1)}: ${more(also.map((x) => clip(x.key, Infinity)), 5)}; --same takes them all`] : [])];
     };
     const wider = rest.includes('--all') ? '' : '; --all searches every project';
-    r = { ok: true, lines: !words(q).length ? [`nothing to search for: "${q}" has no word that says which memory`]
+    r = { ok: true, lines: !terms.length ? [`nothing to search for: "${q}" has no word that says which memory`]
       : shown.length ? [...shown.flatMap(([h, ...also]) => h.kind === 'journal' ? entry(h, also) : [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
         `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...(found.missing.length ? [`no note or entry holds: ${found.missing.join(', ')}`] : []), ...out,
