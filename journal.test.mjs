@@ -1336,6 +1336,12 @@ const small = { segment: 1024, budgetMs: 0 };
 // T's transcript is on disk, as a recorded turn's is: a key no transcript
 // could bring back is not listed.
 mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(projects, 'C--proj', '0123456789abcdef.jsonl'), '');
+// A reply of two text blocks, copied from show as one phrase.
+{
+  const d = storeFor(home, 'C:\\forget-blocks');
+  record(d, T, [turn({ at: '2026-10-21 11:00', id: 'f-5', ask: 'wombat plan', raw: 'wombat plan', said: 'The wombat is done.\n\n\u2063Next the burrow.', did: 'Next the burrow.' })]);
+  ok(forget(d, ['done. next']).matched.length === 1, 'a phrase across two text blocks matches as show prints it');
+}
 {
   const d = storeFor(home, 'C:\\forget-selftest'), O = '/x/projects/C--proj/bbbbbbbb.jsonl', list = join(d, 'journal', '.forgotten');
   const put = (at, id, ask, t = T) => record(d, t, [turn({ at, id, ask, raw: ask })]);

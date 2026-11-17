@@ -5,7 +5,7 @@
 import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
-import { clip, text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
+import { clip, text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable, BLOCK } from './handoff-log.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only } from './store.mjs';
 
 export const JOURNAL = 'journal';
@@ -391,7 +391,7 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
 // from handoff.md too, which the next startup's briefing prints (R36).
 // An entry holds a word (lower case) when any of its fields does, in any case.
 // Both sides NFC, as search reads them: a composed "é" finds a decomposed one, in the entry or in the word.
-export const holds = (e, t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.normalize('NFC').toLowerCase().includes(t.normalize('NFC')));
+export const holds = (e, t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.split(BLOCK).join('').normalize('NFC').toLowerCase().includes(t.normalize('NFC')));
 export function forget(dir, terms, { since, until, conversation, keys: only, more = [], apply = false, failed = [] } = {}) {
   // The keys as a set: looked up in the list once an entry, a range forget of
   // 15,000 entries spent 5 s here.
