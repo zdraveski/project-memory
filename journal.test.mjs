@@ -2004,6 +2004,16 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   const priv = join(dirname(sd), 'bbbb2222-private.jsonl');
   writeFileSync(priv, prompt('<private>my PIN is 4821, ask an agent to check the vault</private>', 'p1') + '\n');
   const pin = { ...input, agent_id: 'p1', transcript_path: priv, agent_transcript_path: undefined, last_assistant_message: 'The vault PIN is 4821 quokka' };
+  // 1.5.1 PR 4 (finding 14): a report past the cap keeps its start and its end, where the result usually is.
+  subagent({ ...input, agent_id: 'a5', agent_transcript_path: undefined, last_assistant_message: 'Start of the quagga report. ' + 'y'.repeat(20000) + ' The final verdict is pangolin.' });
+  ok(entries([sd]).some((x) => /quagga/.test((x.e ?? x).answered) && (x.e ?? x).answered.endsWith('The final verdict is pangolin.') && (x.e ?? x).answered.length <= 8000), 'a long report keeps its start and its last sentence');
+  // 1.5.1 PR 4 (finding 10): a report that finds the store's lock busy says so in the journal's failure file, and is not silently lost.
+  {
+    const lock = join(sd, '.lock'); mkdirSync(lock, { recursive: true });
+    const t = Date.now(); const r = subagent({ ...input, agent_id: 'busy', agent_transcript_path: undefined, last_assistant_message: 'busy report axolotl' });
+    rmSync(lock, { recursive: true, force: true });
+    ok(r === false && /busy|lock/i.test(readFileSync(join(sd, 'journal', '.failed'), 'utf8')), `a report that met a busy lock leaves a failure line (took ${Date.now() - t} ms)`);
+  }
   ok(subagent(pin) === false && !entries([sd]).some((x) => /4821/.test(JSON.stringify(x))), 'a subagent report in a private turn is not saved');
   appendFileSync(priv, prompt('now something plain', 'p2') + '\n');
   ok(subagent({ ...pin, agent_id: 'p2', last_assistant_message: 'plain report tapir' }) === true, 'after a plain prompt the subagent report is saved again');
