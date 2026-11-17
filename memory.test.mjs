@@ -1016,6 +1016,27 @@ if (!quick) {
     `a Result is the first sentence after the last marker; an old entry keeps its first sentence; no marker is printed (got ${r.stdout})`);
   const shown = await jcli('show', two.key);
   ok(shown.stdout.includes('marmot pagination bug') && !shown.stdout.includes(BM), `show prints no marker (got ${shown.stdout})`);
+  // 1.5.1 PR 8: hits 6 and later print the request, Result and key only.
+  const quag = [1, 2, 3, 4, 5, 6, 7].map((i) => entry(`2026-10-18 0${i}:00`, `quagga job ${i}`, { answered: `Done. ${'filler '.repeat(12)}the quagga part ${i}.`, ran: [`quagga run ${i}`] }));
+  day(jd, '2026-10-18', quag);
+  r = await jcli('search', 'quagga');
+  rmSync(join(jd, 'journal', '2026-10-18.md'));
+  const cnt = (re) => (r.stdout.match(re) || []).length;
+  ok(cnt(/^     key: /gm) === 7 && cnt(/^     Asked: quagga job/gm) === 7 && cnt(/^     Result: /gm) === 7 && cnt(/^     Answered: /gm) === 5 && cnt(/^     Ran: /gm) === 5,
+    `hits 6 and 7 print only the request, Result and key; the first five keep their stretches (got ${r.stdout})`);
+  // A short request shows the reply before it, in show and the day list; a long one and the first of a conversation do not; a subagent's report is no reply.
+  const BIG = 'x'.repeat(300), pre = entry('2026-10-19 09:00', 'explain the okapi plan please, at length', { answered: `${BIG} ... the end of the okapi plan.` }),
+    sub = entry('2026-10-19 09:30', 'Subagent Explore: look up okapi', { key: 'subagent-abc123', answered: 'helper report' }),
+    yes = entry('2026-10-19 10:00', 'yes', { answered: 'ok' }), lng = entry('2026-10-19 11:00', 'now do the whole okapi migration plan', { answered: 'fine' });
+  day(jd, '2026-10-19', [pre, sub, yes, lng]);
+  const yShow = (await jcli('show', yes.key)).stdout, pShow = (await jcli('show', pre.key)).stdout, lShow = (await jcli('show', lng.key)).stdout, dList = (await jcli('search', '--since', '2026-10-19', '--until', '2026-10-19')).stdout;
+  const dSearch = (await jcli('search', 'okapi')).stdout;
+  rmSync(join(jd, 'journal', '2026-10-19.md'));
+  ok(yShow.includes(`\n     Reply to key ${pre.key}: …`) && yShow.includes('the end of the okapi plan.\n') && !yShow.includes('helper report') && !/Reply to key/.test(pShow + lShow),
+    `show gives a short request the previous entry's key and its reply's last 200 characters, and no other entry (got ${yShow}${pShow}${lShow})`);
+  ok(/  yes\n     Reply to key k\d+: …x*/.test(dList) && (dList.match(/Reply to key/g) || []).length === 1 && !/subagent|helper/i.test(dList) && /^3 of 3 journal entries/m.test(dList),
+    `the day list adds it for a short request and leaves subagent entries out (got ${dList})`);
+  ok(/subagent-abc123/.test(dSearch) && !/Reply to key/.test(dSearch), `search by words still finds the subagent entry and adds no reply line (got ${dSearch})`);
   // Nor is a hit, a day's listing or show ever an entry forget listed: one whose
   // day would not be written still holds it, until forget runs again.
   const fgList = join(jd, 'journal', '.forgotten'), fgHad = existsSync(fgList) ? readFileSync(fgList, 'utf8') : '';
