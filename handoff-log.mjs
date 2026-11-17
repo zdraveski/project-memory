@@ -208,20 +208,23 @@ export const queuedText = (r) => {
 // answer is not read; carry the ids across if a question and its answer are ever found apart.
 const SAID = 'the user said:';
 const resultText = (b) => (typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => (x?.type === 'text' ? String(x.text ?? '') : '')).join(' ') : '');
-const answersOf = (r) => { const a = r.toolUseResult?.answers; return a && typeof a === 'object' ? Object.values(a).map(String).join('\n') : null; };
+const picksOf = (r) => { const a = r.toolUseResult?.answers; return a && typeof a === 'object' ? Object.values(a).map(String) : null; };
 export const toolAnswers = () => {
   const asks = new Set();
-  return (r) => {
+  // heard.picks: the answers of AskUserQuestion read by the last call, one a pick.
+  const heard = (r) => {
+    heard.picks = [];
     const c = Array.isArray(r?.message?.content) ? r.message.content : [];
     if (r.type === 'assistant') for (const b of c) if (b?.type === 'tool_use' && b.name === 'AskUserQuestion') asks.add(b.id);
     if (r.type !== 'user') return '';
     return c.filter((b) => b?.type === 'tool_result').map((b) => {
-      if (asks.has(b.tool_use_id)) return answersOf(r) ?? resultText(b);
+      if (asks.has(b.tool_use_id)) { const a = picksOf(r); heard.picks = a ?? []; return a ? a.join('\n') : resultText(b); }
       if (r.toolUseResult !== 'User rejected tool use') return '';
       const s = resultText(b), i = s.indexOf(SAID);
       return i === -1 ? '' : s.slice(i + SAID.length);
     }).filter(Boolean).join('\n');
   };
+  return heard;
 };
 export const unquote = (s) => {
   let out = '', i = 0;
@@ -252,6 +255,10 @@ export const BARE = (a, q) => (/^\S{4,200}$/.test(a) && /[^A-Za-z]/.test(a) || /
 // What an assistant record asked: its AskUserQuestion questions as text.
 const questions = (r) => (Array.isArray(r.message?.content) ? r.message.content.filter((b) => b?.type === 'tool_use' && b.name === 'AskUserQuestion').map((b) => JSON.stringify(b.input?.questions ?? '')).join(' ') : '');
 
+// The most of a turn's text kept while reading: the journal cuts it to its own cap from the start, so the end must be there.
+const SAID_KEEP = 100000;
+// Redacted before it is cut: a cut inside a <private> block or a key would leave the rest of it unmarked.
+const tailOf = (s) => (s.length > SAID_KEEP ? clip(s, Infinity).slice(-SAID_KEEP) : s);
 export function turns(tail) {
   const out = [];
   let pending = null;
@@ -260,6 +267,8 @@ export function turns(tail) {
   // (frozen: true) holds it to the next prompt.
   const hold = (p) => { if (p.frozen !== true) { p.frozen = 'nudge'; p.ended = false; } };
   const heard = toolAnswers();
+  // A turn with edits or commands but no reply (Escape, an API error) is still saved: what it changed is true.
+  const keep = (p) => { if (p && !p.frozen && (p.changed.length || p.ran.length) && out[out.length - 1] !== p) { p.did ||= '[stopped before a reply]'; out.push(p); } };
   for (const line of tail.split('\n')) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
     // A record whose first key is a type nothing here reads (api-request-blob: 7 of 32 MB): no parse.
@@ -288,7 +297,11 @@ export function turns(tail) {
     // Read as typed; normalized (fullwidth, hidden characters) only to find the
     // private tags. Written normalized, `…` and CJK punctuation became ASCII,
     // and every entry an older version wrote was added again beside it.
+    // An API error is written as an assistant record of the model "<synthetic>": no reply, so no text of ours.
+    if (r.type === 'assistant' && r.message?.model === '<synthetic>') { keep(pending); continue; }
     const t = text(r).trim(), n = r.type === 'user' ? norm(t) : '', told = heard(r);   // n only for a user record: nothing else reads it
+    // A pick answering a question that asks for a secret is redacted like a typed answer (BARE); `said` is still the question.
+    if (pending && !pending.frozen && heard.picks.length) pending.picked.push(...heard.picks.map((p) => (BARE(p, said) ? '[redacted]' : p)));
     // A message typed while Claude worked has no user record, only this attachment: it opens a turn too (1.3.2). A private one
     // keeps the older way below (it freezes the turn it came into).
     // Not another session's or a subagent's message (origin.kind peer, isMeta): it is no ask of the user's.
@@ -329,7 +342,7 @@ export function turns(tail) {
     if (!t && !ask && !typed) continue;
     if (r.type === 'assistant' && t) said = t;
     if (ask && r.type === 'user' && BARE(ask, said)) ask = '[redacted]';
-    if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [],
+    if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [], said: '', picked: [],
       id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '' };
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
@@ -337,8 +350,12 @@ export function turns(tail) {
     // with the answer unsaved (1.3.2). Any other isMeta record that names the tag still freezes it.
     else if ((r.type === 'user' || typed) && pending && !(r.isMeta && /^Base directory for this skill:/.test(t)) && /<\s*private/i.test(typed || mine)) pending.frozen = true;
     else if (r.type === 'user' && pending && nudged(t)) hold(pending);
+    else if (r.type === 'user' && /^\[Request interrupted by user/.test(t)) keep(pending);
     else if (r.type === 'assistant' && pending) {
-      if (!pending.frozen) { pending.did = t; pending.reopened = false; }     // last text block of the turn wins, unless a nudge froze it
+      // did: the last text block of the turn (the briefing's), said: all of them (the journal's); neither once a nudge froze it
+      if (!pending.frozen) { pending.did = t; pending.said = (pending.said ? `${pending.said}
+
+${t}` : t); pending.said = tailOf(pending.said); pending.reopened = false; }
       if (out[out.length - 1] !== pending) out.push(pending);
     }
   }
@@ -733,7 +750,14 @@ export function handoff(input, sink = null) {
   const open = got.open, last = input.last_assistant_message;
   if (open && !open.frozen && !open.reopened && input.hook_event_name === 'Stop' && !input.stop_hook_active && typeof last === 'string' && last.trim()) {
     open.did = last.trim();
+    if (!open.said.endsWith(open.did)) open.said = (open.said ? `${open.said}
+
+${open.did}` : open.did); open.said = tailOf(open.said);
     if (got.at(-1) !== open) got.push(open);
+  } else if (open && !open.frozen && input.hook_event_name === 'StopFailure' && (open.changed.length || open.ran.length) && got.at(-1) !== open) {
+    // The error record may not be in the transcript yet: save the open turn's edits and commands without waiting for it.
+    open.did ||= '[stopped before a reply]';
+    got.push(open);
   }
   // File names, not paths; none for a private message's turn, read by what the
   // user typed as well as the ask made of it (userText): a wrapper own()

@@ -149,7 +149,7 @@ notes, the journal and the history stay either way. What to delete by hand:
   conversation goes to Anthropic with the rest of it, as with Claude Code's
   own memory.
 - **The journal keeps each exchange whole:** your message, Claude's reply,
-  every file it changed and every command it ran, until you delete it or ask
+  every file it changed and every command it ran (up to 50 KB of commands a turn, newest first), and your pick when you answer one of its multiple-choice questions, until you delete it or ask
   Claude to forget part of it.
 - **Keep text out** by putting it between `<private>` and `</private>`. Type
   `<private-session>` in any message to keep the whole conversation out; what

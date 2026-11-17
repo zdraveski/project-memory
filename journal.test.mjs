@@ -42,7 +42,19 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   ok(e.changed.length === 30 && e.changed[0] === 'f0.js' && e.changed[29] === 'f29.js', `every file, relative to cwd (got ${e.changed[0]}..${e.changed.at(-1)} of ${e.changed.length})`);
   ok(e.ran.length === 25 && e.ran[0] === 'cmd0' && e.ran[24] === 'cmd24', `every command (got ${e.ran})`);
   ok(entryOf(turn({ ran: ['x'.repeat(5000)] }), T).ran[0].length === 5000, 'a command is kept whole');
+  // 1.5.0 items 21, 19, 20.
+  { const cmds = Array.from({ length: 60 }, (_, i) => (i === 59 ? 'git push' : `echo ${i} ${'y'.repeat(1000)}`));
+    const r = entryOf(turn({ ran: cmds }), T).ran;
+    ok(r.at(-1) === 'git push' && /^\[\d+ earlier commands not kept\]$/.test(r[0]) && r.join(' · ').length < 51000, `past the cap the newest commands stay, with a count line (got ${r[0]})`);
+    ok(entryOf(turn({ ran: ['a', 'b'] }), T).ran.join() === 'a,b', 'under the cap no line is added'); }
+  ok(entryOf(turn({ did: 'last', said: 'first lines. last' }), T).answered === 'first lines. last', 'the whole text of a turn is saved');
+  { const e = entryOf(turn({ said: 'S'.repeat(40000) + 'E'.repeat(40000) }), T); ok(e.answered.endsWith('E'.repeat(100)) && !e.answered.startsWith('SSSS' + 'E'), 'past the cap the start is cut, the final answer stays'); }
+  { const e = entryOf(turn({ picked: ['Vermilion'] }), T); ok(/^a question Picked: Vermilion$/.test(e.asked), `a pick is in Asked (got ${e.asked})`);
+    ok(holds(e, 'vermilion'), 'and a search or forget finds the entry by a word only in the pick'); }
   ok(entryOf(turn({ ran: ['echo one\n\n  echo two\r\necho three'] }), T).ran[0] === 'echo one echo two echo three', 'a command over several lines is one line');
+  { const e = entryOf(turn({ said: 'a '.repeat(30000) + '<private>TOPSECRETWORDS ' + 'zq '.repeat(20000) + '</private> and BBB' }), T); ok(!/TOPSECRET|zq zq zq/.test(e.answered), `a private block cut by the 50 KB tail is not saved (got ${e.answered.slice(0, 50)})`); }
+  ok(entryOf(turn({ ran: Array.from({ length: 3 }, () => 'x'.repeat(30000)) }), T).ran[0] === '[1 earlier command not kept]', 'one earlier command is counted in the singular');
+  ok(entryOf(turn({ ask: 'q'.repeat(60000), picked: ['p'.repeat(60000)] }), T).asked.length <= 50000, 'Asked with a pick is cut once, at the field cap');
   // B8: a field has a ceiling (a pasted log or a 5 MB command would be written, indexed and searched whole every time).
   const big = entryOf(turn({ ask: 'q '.repeat(100000), did: 'a '.repeat(100000), ran: Array.from({ length: 10 }, () => 'x'.repeat(40000)) }), T);
   ok(big.asked.length <= 50000 && big.answered.length <= 50000, `a request and a reply are cut at 50 KB (got ${big.asked.length}, ${big.answered.length})`);
@@ -1160,8 +1172,8 @@ const small = { segment: 1024, budgetMs: 0 };
   const es = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries), five = es.find((e) => e.asked === 'question 5');
   ok(es.length === 12 && es.every((e) => e === five || e.answered.startsWith(`answer ${e.asked.split(' ')[1]} `)) && line() === `${slug(r)}/${W} ${statSync(p).size}`,
     `Stop by Stop, every exchange is journaled whole, and the list says the transcript is read (got ${es.map((e) => `${e.asked}: ${e.answered.slice(0, 9)}`)}; ${line()})`);
-  ok(five?.answered === 'the final word' && five.ran.length === 4 && five.ran.every((c, k) => c.startsWith(`ls ${k + 1} `)),
-    `an exchange longer than a segment keeps its last reply and every command, from every part (got ${JSON.stringify(five)})`);
+  ok(five?.answered === 'a first look the final word' && five.ran.length === 4 && five.ran.every((c, k) => c.startsWith(`ls ${k + 1} `)),
+    `an exchange longer than a segment keeps all its text and every command, from every part (got ${JSON.stringify(five)})`);
 }
 {
   // A <private-session> mark anywhere is found before anything of the
@@ -1767,7 +1779,7 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   ok(Buffer.byteLength(long) > 2 * seg, 'the fixture: an exchange longer than two segments');
   fill(d, { segment: seg, budgetMs: 4000 /* a bound, ~1000x the real cost; a loop spends all of it */ });
   const es = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries);
-  ok(es.length === 2 && es.find((e) => e.asked === 'question 0')?.answered === 'the final word', `an exchange after a blank line at a segment's start keeps its last reply (got ${es.map((e) => `${e.asked}: ${e.answered.slice(0, 20)}`)})`);
+  ok(es.length === 2 && es.find((e) => e.asked === 'question 0')?.answered === 'a first look the final word', `an exchange after a blank line at a segment's start keeps its last reply (got ${es.map((e) => `${e.asked}: ${e.answered.slice(0, 20)}`)})`);
   // A segment that is a newline alone, the line after it longer than a segment: passed over, the import done (a hang spent the budget).
   const [r2, d2] = repo('blankonly'), C = sid('xf'), q = join(projects, slug(r2), `${C}.jsonl`);
   writeFileSync(q, '\n' + 'J'.repeat(seg + 5) + '\n' + exchange(C, r2, 0)); utimesSync(q, ago(2), ago(2));

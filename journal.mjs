@@ -64,17 +64,24 @@ export function entryOf(turn, transcriptPath, when = local()) {
   // Every command: a forget among a turn's first ones counts.
   const forgets = turn.ran.some((c) => FORGETS.test(c));
   const quiet = forgets || PRIVATE.test(userText(turn));
+  // Past the cap the newest commands stay (a git push is the last thing a turn did), the earlier ones are counted.
   let room = 50000;
+  const cmds = quiet ? [] : turn.ran.map((c) => clip(c, J_RAN));
+  let from = cmds.length;
+  while (from > 0 && (room -= cmds[from - 1].length) >= 0) from--;
+  const ran = quiet ? [] : [...(from ? [`[${from} earlier command${from > 1 ? 's' : ''} not kept]`] : []), ...cmds.slice(from)];
   return {
     key: turn.id || `${s} ${turn.at} ${keyed(turn.raw ?? turn.ask, 12)}`,
     at: TIME.test(turn.at) ? turn.at : when, s,
     t: transcriptKey(transcriptPath),
     branch: clip(turn.branch || '', J_BRANCH),
     // Redacted, and squeezed to one line: a day file is one entry a line per field.
-    asked: forgets ? '[private]' : clip(turn.ask, J_TEXT),
-    answered: quiet ? '[private]' : clip(turn.did, J_TEXT),
+    // A pick (the answer to a multiple-choice question) goes into Asked, so search and forget reach it.
+    asked: forgets ? '[private]' : clip(turn.ask + (turn.picked?.length ? ` Picked: ${turn.picked.join('; ')}` : ''), J_TEXT),
+    // All the turn's text; past the cap the start goes, so the final answer stays.
+    answered: quiet ? '[private]' : clip(clip(turn.said || turn.did, Infinity).slice(-J_TEXT), J_TEXT),
     changed: quiet ? [] : turn.changed.map((p) => clip(rel(p, turn.cwd), J_PATH)),
-    ran: quiet ? [] : turn.ran.map((c) => clip(c, J_RAN)).filter((c) => (room -= c.length) >= 0),
+    ran,
   };
 }
 
@@ -595,7 +602,7 @@ export function chunk(fd, pos, seg, size) {
 // end (its rest unread), and only a transcript of 64 MB has two segments.
 const so = (t) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [
   ...t.ran.map((command) => ({ type: 'tool_use', name: 'Bash', input: { command } })),
-  ...t.changed.map((file_path) => ({ type: 'tool_use', name: 'Edit', input: { file_path } })), { type: 'text', text: t.did }] } }) + '\n'
+  ...t.changed.map((file_path) => ({ type: 'tool_use', name: 'Edit', input: { file_path } })), { type: 'text', text: t.said || t.did }] } }) + '\n'
   // Its freeze (a private message queued meanwhile, or a nudge's memory update) too, or the reply to it is journaled (F17, R40).
   + (t.frozen === true ? JSON.stringify({ type: 'attachment', attachment: { type: 'queued_command', prompt: '<private></private>' } }) + '\n'
     : t.frozen === 'nudge' ? JSON.stringify({ type: 'user', message: { role: 'user', content: NUDGE_TAG } }) + '\n'

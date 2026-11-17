@@ -46,6 +46,7 @@ Claude Code runs project-memory on four of its events, declared in
 | Moment | Claude Code event | What runs |
 |---|---|---|
 | Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, writes the journal and imports a few other conversations into it, takes a snapshot, and reminds Claude to save notes when a compaction is close |
+| Claude stops because of an error (an API error, for example) | `StopFailure` | `memory-tier.mjs --stop`, the same as `Stop`, so the turn is saved at once and not at the next reply |
 | A conversation starts, is resumed, is cleared with `/clear`, or goes on after a compaction | `SessionStart` | `handoff-log.mjs --print`: the startup briefing (none for a resumed conversation) |
 | Claude is about to run a `git` command in Bash or PowerShell | `PreToolUse` | `enforce-hook.mjs`: logs which note's rule matched, if a note holds one (see [Checked lessons](#checked-lessons-experimental)). It blocks nothing and prints nothing |
 | You run `/compact` | `PreCompact` (manual) | `memory-tier.mjs --stop`, so the notebook is tidy and the handoff current before the summary is made |

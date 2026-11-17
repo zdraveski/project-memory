@@ -2554,6 +2554,18 @@ require('node:module').syncBuiltinESMExports();
     ok((s2.match(/\*\*asked\*\*/g) || []).length === 1 && s2.includes('the newer text') && !s2.includes('the older text'), 'a turn with a reply already is written once, with the reply Stop passed');
   }
 
+  // 1.5.0 item 29: a StopFailure saves the open turn's edits without waiting for the error record.
+  {
+    const dF = store('C:\hl-A-sfail'), tr = join(dF, 't.jsonl');
+    writeFileSync(tr, lines(user('change the walrus', { ts: '2026-09-12T08:00:00Z' }), rec('assistant', [{ type: 'tool_use', id: 'u1', name: 'Edit', input: { file_path: '/w/walrus.js' } }])));
+    handoff({ cwd: 'C:\hl-A-sfail', transcript_path: tr, session_id: 'sfailses', hook_event_name: 'StopFailure' });
+    ok(/change the walrus/.test(sectionOfFile(dF)) && /stopped before a reply/.test(sectionOfFile(dF)), 'a StopFailure saves a turn with edits and no reply yet');
+    const dG = store('C:\hl-A-sfail2'), tr2 = join(dG, 't.jsonl');
+    writeFileSync(tr2, lines(user('only look', { ts: '2026-09-12T08:00:00Z' }), rec('assistant', [{ type: 'tool_use', id: 'u1', name: 'Read', input: { file_path: '/w/a' } }])));
+    handoff({ cwd: 'C:\hl-A-sfail2', transcript_path: tr2, session_id: 'sfailse2', hook_event_name: 'StopFailure' });
+    ok(!existsSync(join(dG, 'handoff.md')) || !/only look/.test(sectionOfFile(dG)), 'and a StopFailure with no edits and no commands saves nothing');
+  }
+
   // Forget takes out the exchange it names from this session's entries, and only that one.
   {
     const cw = 'C:\\hl-A-forget', dF = store(cw), tS = join(dF, 's.jsonl'), tO = join(dF, 'o.jsonl');
@@ -3513,6 +3525,48 @@ if (!quick) {
   ok(!has(`pa-${vk}`, vk), 'a Voyage key with 3 or more hyphens is still redacted');
   ok(has('mysql -u root -p\ntest1', 'test1') === false && has('mysql -u root -p\nCorrectHorseBattery', 'CorrectHorseBattery'), 'known limits of the mysql -p rule: a database name with a digit is redacted, a password with no digit or symbol is kept');
   ok(has('glft-' + 'abcdefghijklmnopqrstuvwx', 'abcdefghijklmnopqrstuvwx') && !has('glft-add-v2-branchnamexyz', 'branchnamexyz'), 'known limits of the glft rule: an all-lowercase no-digit token is kept, a branch with a digit and under 3 hyphens is erased');
+}
+
+// 1.5.0 PR 1: what a turn saves is true. Items 29, 19, 18 and 20 read through turns().
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const use = (name, input, id = 'tu1') => rec('assistant', [{ type: 'tool_use', id, name, input }]);
+  const T0 = (m) => `2026-11-17T10:0${m}:00Z`;
+  const end = (s, m) => asst(s, { ts: T0(m), message: { content: [{ type: 'text', text: s }], stop_reason: 'end_turn' } });
+  // 29: an API error is a synthetic assistant record; it is no reply.
+  let got = turns([user('fix it', { ts: T0(0) }), asst('Fixed the bug in parse.', { ts: T0(1) }),
+    asst('API Error: 500 overloaded', { ts: T0(2), message: { model: '<synthetic>', content: [{ type: 'text', text: 'API Error: 500 overloaded' }] } })].join('\n'));
+  ok(got.length === 1 && got[0].did === 'Fixed the bug in parse.' && got[0].said === 'Fixed the bug in parse.', `a synthetic API error does not replace the real answer (got ${JSON.stringify(got)})`);
+  got = turns([user('fix it', { ts: T0(0) }), use('Edit', { file_path: '/a/b.js' }), asst('API Error: 500', { ts: T0(2), message: { model: '<synthetic>', content: [{ type: 'text', text: 'API Error: 500' }] } })].join('\n'));
+  ok(got.length === 1 && got[0].changed.join() === '/a/b.js' && !/API Error/.test(got[0].said + got[0].did), 'a turn that only ended in an API error keeps its edits, not the error text');
+  // 19: all of a turn's text; a reply after a background task adds, it does not replace.
+  got = turns([user('look at it', { ts: T0(0) }), asst('Let me read the file.', { ts: T0(1) }), use('Read', { file_path: '/a' }), end('The file is fine.', 2)].join('\n'));
+  ok(got[0].said === 'Let me read the file.\n\nThe file is fine.' && got[0].did === 'The file is fine.', `both text blocks of a turn are kept (got ${JSON.stringify(got[0])})`);
+  const nudge = JSON.stringify({ type: 'attachment', timestamp: T0(3), attachment: { type: 'hook_additional_context', hookEvent: 'Stop', content: ['[project-memory: compaction gate] Context is at 86%'] } });
+  const done = JSON.stringify({ type: 'attachment', timestamp: T0(5), attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: '<task-notification><task-id>b1</task-id></task-notification>' } });
+  got = turns([user('run the job', { ts: T0(0) }), end('Started the job.', 1), nudge, end('Saved my notes.', 4), done, end('The job finished.', 6)].join('\n'));
+  ok(got[0].said === 'Started the job.\n\nThe job finished.', `a background reply is added to the answer, the memory update's text is not (got ${JSON.stringify(got[0].said)})`);
+  // 18: Escape before any text keeps the edits and commands.
+  got = turns([user('change it', { ts: T0(0) }), use('Edit', { file_path: '/a/c.js' }, 't1'), use('Bash', { command: 'npm test' }, 't2'), user('[Request interrupted by user]', { ts: T0(2) })].join('\n'));
+  ok(got.length === 1 && got[0].changed.join() === '/a/c.js' && got[0].ran.join() === 'npm test', `a turn stopped with Escape keeps its edits and commands (got ${JSON.stringify(got)})`);
+  ok(turns([user('only look', { ts: T0(0) }), use('Read', { file_path: '/a' }), user('[Request interrupted by user]', { ts: T0(2) })].join('\n')).length === 0, 'a stopped turn with no edits and no commands saves nothing');
+  // 20: the user's pick is kept with the ask.
+  const q = rec('assistant', [{ type: 'tool_use', id: 'ask1', name: 'AskUserQuestion', input: { questions: [{ question: 'Which colour?' }] } }]);
+  const picked = rec('user', [{ type: 'tool_result', tool_use_id: 'ask1', content: 'ok' }], { toolUseResult: { answers: { 'Which colour?': 'Vermilion' } } });
+  got = turns([user('paint it', { ts: T0(0) }), q, picked, end('Painted it.', 2)].join('\n'));
+  ok(got[0].picked?.join() === 'Vermilion', `an answer to Claude's question is kept as a pick (got ${JSON.stringify(got[0].picked)})`);
+  // A pick that answers a question asking for a secret is redacted like a typed answer.
+  const qs = rec('assistant', [{ type: 'tool_use', id: 'ask2', name: 'AskUserQuestion', input: { questions: [{ question: 'Paste the database password?' }] } }]);
+  const pw = rec('user', [{ type: 'tool_result', tool_use_id: 'ask2', content: 'ok' }], { toolUseResult: { answers: { 'Paste the database password?': 'hunter2x9QzPlm' } } });
+  got = turns([user('set up the db', { ts: T0(0) }), qs, pw, end('Done.', 2)].join('\n'));
+  ok(got[0].picked.join() === '[redacted]', `a bare pick to a password question is redacted (got ${JSON.stringify(got[0].picked)})`);
+  // A frozen turn followed by an interrupt saves nothing.
+  got = turns([user('do it', { ts: T0(0) }), use('Edit', { file_path: '/a/z.js' }), nudge, user('[Request interrupted by user]', { ts: T0(4) })].join('\n'));
+  ok(got.length === 0, `a frozen turn is not kept by an interrupt (got ${got.length})`);
+  // A reply over the cap is redacted before it is cut: a private block that straddles the cut is not saved.
+  const big = 'TOPSECRETWORDS ' + 'zq '.repeat(60000);
+  got = turns([user('long one', { ts: T0(0) }), asst('<private>' + big + '</private> AFTER', { ts: T0(1) })].join('\n'));
+  ok(got[0].said.length < 100001 && !/TOPSECRET|zq zq zq/.test(got[0].said), `a private block cut by the 100 KB tail is not saved (got ${got[0].said.slice(0, 60)})`);
 }
 
 rmSync(home, { recursive: true, force: true });
