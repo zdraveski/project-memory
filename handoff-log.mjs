@@ -271,7 +271,12 @@ const questions = (r) => (Array.isArray(r.message?.content) ? r.message.content.
 // The most of a turn's text kept while reading: the journal cuts it to its own cap from the start, so the end must be there.
 const SAID_KEEP = 100000;
 // Redacted before it is cut: a cut inside a <private> block or a key would leave the rest of it unmarked.
-const tailOf = (s) => (s.length > SAID_KEEP ? clip(s, Infinity).slice(-SAID_KEEP) : s);
+// Cut once past twice that: a cut per block redacted the whole text each time (finding 5, a long turn's Stop). turns() cuts to SAID_KEEP at the end.
+const tailOf = (s, keep = 2 * SAID_KEEP) => (s.length > keep ? clip(s, Infinity).slice(-SAID_KEEP) : s);
+// Between a turn's text blocks in `said` (U+2063, invisible, not \s, so clip keeps it): search takes its Result from the text after the last one.
+// Entries written before it have none. Every reader that prints `said` or an entry's Answered strips it (memory.mjs unmark).
+export const BLOCK = '\u2063';
+const joined = (said, t) => (said ? `${said}\n\n${BLOCK}${t}` : t);
 export function turns(tail) {
   const out = [];
   let pending = null;
@@ -383,12 +388,12 @@ export function turns(tail) {
     else if (r.type === 'user' && /^\[Request interrupted by user/.test(t)) keep(pending);
     else if (r.type === 'assistant' && pending) {
       // did: the last text block of the turn (the briefing's), said: all of them (the journal's); neither once a nudge froze it
-      if (!pending.frozen) { pending.did = t; pending.said = (pending.said ? `${pending.said}
-
-${t}` : t); pending.said = tailOf(pending.said); pending.reopened = false; }
+      if (!pending.frozen) { pending.did = t; pending.said = tailOf(joined(pending.said, t)); pending.reopened = false; }
       if (out[out.length - 1] !== pending) out.push(pending);
     }
   }
+  // A turn saved: the strict cut, redacted (its blocks were cut at twice this, unredacted).
+  for (const p of out) if (p.said.length > SAID_KEEP) p.said = tailOf(p.said, SAID_KEEP);
   out.open = pending;   // the turn the transcript ends in
   return out;
 }
@@ -785,9 +790,7 @@ export function handoff(input, sink = null) {
   const open = got.open, last = input.last_assistant_message;
   if (open && !open.frozen && !open.reopened && input.hook_event_name === 'Stop' && !input.stop_hook_active && typeof last === 'string' && last.trim()) {
     open.did = last.trim();
-    if (!open.said.endsWith(open.did)) open.said = (open.said ? `${open.said}
-
-${open.did}` : open.did); open.said = tailOf(open.said);
+    if (!open.said.endsWith(open.did)) open.said = tailOf(joined(open.said, open.did));
     if (got.at(-1) !== open) got.push(open);
   } else if (open && !open.frozen && input.hook_event_name === 'StopFailure' && (open.changed.length || open.ran.length) && got.at(-1) !== open) {
     // The error record may not be in the transcript yet: save the open turn's edits and commands without waiting for it.

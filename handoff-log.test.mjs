@@ -3611,11 +3611,24 @@ if (!quick) {
   ok(got.length === 1 && got[0].changed.join() === '/a/b.js' && !/API Error/.test(got[0].said + got[0].did), 'a turn that only ended in an API error keeps its edits, not the error text');
   // 19: all of a turn's text; a reply after a background task adds, it does not replace.
   got = turns([user('look at it', { ts: T0(0) }), asst('Let me read the file.', { ts: T0(1) }), use('Read', { file_path: '/a' }), end('The file is fine.', 2)].join('\n'));
-  ok(got[0].said === 'Let me read the file.\n\nThe file is fine.' && got[0].did === 'The file is fine.', `both text blocks of a turn are kept (got ${JSON.stringify(got[0])})`);
+  ok(got[0].said === 'Let me read the file.\n\n\u2063The file is fine.' && got[0].did === 'The file is fine.', `both text blocks of a turn are kept (got ${JSON.stringify(got[0])})`);
   const nudge = JSON.stringify({ type: 'attachment', timestamp: T0(3), attachment: { type: 'hook_additional_context', hookEvent: 'Stop', content: ['[project-memory: compaction gate] Context is at 86%'] } });
   const done = JSON.stringify({ type: 'attachment', timestamp: T0(5), attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: '<task-notification><task-id>b1</task-id></task-notification>' } });
   got = turns([user('run the job', { ts: T0(0) }), end('Started the job.', 1), nudge, end('Saved my notes.', 4), done, end('The job finished.', 6)].join('\n'));
-  ok(got[0].said === 'Started the job.\n\nThe job finished.', `a background reply is added to the answer, the memory update's text is not (got ${JSON.stringify(got[0].said)})`);
+  ok(got[0].said === 'Started the job.\n\n\u2063The job finished.', `a background reply is added to the answer, the memory update's text is not (got ${JSON.stringify(got[0].said)})`);
+  // 21: Stop speed. A turn of 300 blocks of 2 KB is cut and redacted a few times, not at every block past 100 KB.
+  {
+    const key = ['sk', 'live', 'longturnlongturnlongturn01'].join('_');
+    const lines = [user('write a lot', { ts: T0(0) })];
+    for (let i = 0; i < 300; i++) lines.push(asst(`block ${i} ${i === 7 ? key : ''} ${'lorem ipsum '.repeat(170)}`, { ts: T0(1) }), use('Read', { file_path: '/a' }, `r${i}`));
+    const sym = Symbol.replace, orig = RegExp.prototype[sym]; let calls = 0;
+    RegExp.prototype[sym] = function (...a) { calls++; return orig.apply(this, a); };
+    try { got = turns(lines.join('\n')); } finally { RegExp.prototype[sym] = orig; }
+    ok(calls < 20000, `a long turn is redacted a few times, not at every block (${calls} regexp replaces; 163000 before the fix, 7600 after)`);
+    ok(got[0].said.length <= 100000 && got[0].said.endsWith('lorem ipsum') && got[0].said.includes('block 299'), `the saved text of a long turn is at most 100 KB and ends the turn (got ${got[0].said.length})`);
+    got = turns([user('write a lot', { ts: T0(0) }), asst(`${key} ${'lorem ipsum '.repeat(9000)}${'x '.repeat(5)}`, { ts: T0(1) }), asst(`${'lorem ipsum '.repeat(9000)}${key}`, { ts: T0(2) }), use('Read', { file_path: '/a' })].join('\n'));
+    ok(got[0].said.length <= 100000 && !got[0].said.includes(key.slice(8)), `a turn over 100 KB is saved redacted (got ${got[0].said.length})`);
+  }
   // 18: Escape before any text keeps the edits and commands.
   got = turns([user('change it', { ts: T0(0) }), use('Edit', { file_path: '/a/c.js' }, 't1'), use('Bash', { command: 'npm test' }, 't2'), user('[Request interrupted by user]', { ts: T0(2) })].join('\n'));
   ok(got.length === 1 && got[0].changed.join() === '/a/c.js' && got[0].ran.join() === 'npm test', `a turn stopped with Escape keeps its edits and commands (got ${JSON.stringify(got)})`);
