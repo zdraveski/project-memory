@@ -139,7 +139,7 @@ All of it stays in `~/.claude/projects` on your computer:
   tells Claude the journal is there. Each entry holds your message and
   all the text Claude wrote in the turn, not only its last block, the paths
   of every file Claude changed, and the commands it ran, each whole, up to
-  50 KB a turn, newest first, with the time, the conversation's short tag
+  20,000 characters for one command and 50,000 for a turn, newest first, with the time, the conversation's short tag
   and the git branch. When you answer one of Claude's multiple-choice
   questions, your pick is saved with your message, as `Picked: ...`. A turn
   you stop with Escape, or one that ends in an API error, still keeps what
@@ -150,7 +150,8 @@ All of it stays in `~/.claude/projects` on your computer:
   with secrets replaced. Commands run through context-mode's ctx_execute
   and ctx_batch tools are listed too, with their code. An entry is kept
   whole: a long pasted text or a long command
-  is kept in full, up to 20 to 50 KB for one request, reply or command, and
+  is kept in full, up to 50,000 characters for one request or reply and 20,000
+  for one command, and
   secrets in it are still replaced. Entries saved before 1.5.0 are not
   rewritten: they keep the form they were saved in.
   - The rules above apply to it too: secrets are replaced with `[redacted]`,
@@ -426,8 +427,10 @@ those days' older versions (the journal day files that held the entry, expired f
 a snapshot repository this plugin made. A purged day loses its older versions whole, so other conversations' entries of that
 day go from the history too (the current files are untouched; the next snapshot adds the cleaned day back). Only the branches
 are rewritten: a branch, stash or tag you added to that repository yourself still keeps the old text. It refuses while a
-snapshot is being taken; run it again a moment later. While it runs, it keeps a full copy of the snapshot history in your
-computer's temporary folder, and removes it when it finishes.
+snapshot is being taken; run it again a moment later. While it runs, it keeps a full copy of the snapshot history in a `pm-purge-...`
+folder inside the snapshot repository's own `.git` (in Claude Code's projects
+folder), and removes it when it finishes. `rescan --apply --yes` does the same
+when it rewrites the snapshots.
 
 On Linux and macOS the files the hooks write are mode 0600, their folders 0700 and the snapshot `.git` 0700, so other users
 of the computer cannot read them. An older install is tightened at its next Stop. The fingerprints used as a journal key (for a turn with no id) and in `.stop-ran` are

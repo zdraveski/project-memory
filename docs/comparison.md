@@ -50,7 +50,9 @@ In plain words:
 
 - **project-memory** suits you if you want Claude Code's own memory kept
   tidy, safe from mistakes and intact through long conversations, with nothing
-  to sign up for and nothing leaving your computer. It keeps a journal of
+  to sign up for and no server of its own: what it saves stays on your computer,
+  and only what Claude reads of it goes to Anthropic with the rest of the
+  conversation. It keeps a journal of
   every exchange you do not mark private for Claude to search, and you can turn
   it off for one conversation or one project. It replaces keys, tokens and
   passwords before saving, though no tool catches every secret. It searches by

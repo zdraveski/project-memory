@@ -48,7 +48,7 @@ Claude Code runs project-memory on five of its events, declared in
 | Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, writes the journal and imports a few other conversations into it, takes a snapshot, and reminds Claude to save notes when a compaction is close |
 | A subagent finishes | `SubagentStop` | `memory-tier.mjs --stop`, which saves the subagent's final report, with the first line of its task, as its own journal entry |
 | Claude stops because of an error (an API error, for example) | `StopFailure` | `memory-tier.mjs --stop`, the same as `Stop`, so the turn is saved at once and not at the next reply |
-| A conversation starts, is resumed, is cleared with `/clear`, or goes on after a compaction | `SessionStart` | `handoff-log.mjs --print`: the startup briefing (none for a resumed conversation) |
+| A conversation starts, is resumed, is cleared with `/clear`, or goes on after a compaction | `SessionStart` | `brief.mjs --print`: the startup briefing (none for a resumed conversation) |
 | Claude is about to run a `git` command in Bash or PowerShell | `PreToolUse` | `enforce-hook.mjs`: logs which note's rule matched, if a note holds one (see [Checked lessons](#checked-lessons-experimental)). It blocks nothing and prints nothing |
 | You run `/compact` | `PreCompact` (manual) | `memory-tier.mjs --stop`, so the notebook is tidy and the handoff current before the summary is made |
 | Claude Code compacts on its own | `PreCompact` (auto) | `compact-gate.mjs`: may ask Claude Code to wait for the end of the turn (see [Compaction](#compaction)) |
@@ -57,8 +57,8 @@ The skill is `memory` (`/project-memory:memory`). It runs `memory.mjs`, the
 command-line tool described [below](#the-memory-tool-from-a-terminal).
 
 Each hook has a time limit, which Claude Code enforces by stopping the hook:
-120 seconds for Stop and for `/compact`, 60 for the automatic compaction check,
-30 for the startup briefing and 5 seconds for the git-rule watcher. Without a limit Claude Code waits 10 minutes.
+120 seconds for Stop, StopFailure and `/compact`, 60 for the automatic compaction check,
+30 for SubagentStop and for the startup briefing and 5 seconds for the git-rule watcher. Without a limit Claude Code waits 10 minutes.
 A real Stop took up to 46 seconds. A hook stopped at its limit has its output
 thrown away, so a startup briefing that runs past 30 seconds is lost without a
 word. A Stop stopped while git runs has already written the journal and the
@@ -489,8 +489,8 @@ journal is the detailed record, and `search` reads headlines of it.
   refuses writes) is kept in `~/.claude/projects/.journal-failed-<project
   folder>`, and the startup briefing and `status` say it all the same.
 
-An entry is kept whole. One huge request, reply or command is cut at 20 to
-50 KB (since 1.3.2), and saved text is cut to 64 KB before secrets are removed
+An entry is kept whole. A request or reply is cut at 50,000 characters and a
+command at 20,000 (since 1.3.2), and saved text is cut to 64 KB before secrets are removed
 (since 1.4.1). With the limits it had until 1.2.4 (2,000
 characters of the request, 6,000 of the reply, 20 commands of 400), measured
 on 2026-10-29 by importing the 293 transcripts on the author's computer (362
@@ -642,8 +642,8 @@ checks before every step, so a long task can be cut in the middle. Three
 things soften that.
 
 - **A reminder.** When a conversation passes 85% of the compaction window
-  (less in a small window, so at least 60k tokens stay free: about 66% of
-  200k), the
+  (less in a small window, so that 60k tokens stay free before the compaction
+  point, which is 33k short of the window: about 54% of 200k, or 107,000 tokens), the
   Stop hook asks Claude once to write its notes now. It asks again only after
   a compaction, and never in a private conversation or one held with auto
   memory off (its tag in `.memory-off`), which gets no cut-turn note
@@ -683,7 +683,7 @@ Claude Code compacts 33,000 tokens short of its window, so the reminder comes 60
 (at 850,000 tokens in a 1,000,000 window, at about 107,000 in a 200,000 one). `memory doctor` names both windows and the point.
 
 A window chosen with `/autocompact`, `autoCompactWindow` or `--autocompact`
-is kept in Claude Code's settings, which the plugin doesn't read. With one of
+is kept in Claude Code's settings, which the plugin doesn't read (it reads only `autoMemoryEnabled`, and `autoMemoryDirectory` in `doctor`). With one of
 those, also put the size in `CLAUDE_CODE_AUTO_COMPACT_WINDOW` under `env` in
 your Claude Code settings, for example `"200k"`. Otherwise the reminder
 never fires.
@@ -699,7 +699,7 @@ The reminder to save notes never comes, because project-memory assumes a
 window of 1,000,000 tokens. Ask Claude: *"Is my context window 200,000
 tokens?"* If it is, ask: *"Add CLAUDE_CODE_AUTO_COMPACT_WINDOW set to 200k
 under env in my Claude Code settings,"* then restart Claude Code. With a
-window of 200,000, the reminder comes at about 66% (60,000 tokens stay free),
+window of 200,000, the reminder comes at about 54% (107,000 tokens; 60,000 stay free before the compaction point),
 and the gate can wait only if the compaction window is set below the model's.
 
 ## Turning it off
@@ -729,7 +729,7 @@ Per message, `<private>…</private>` keeps one piece of text out.
 4. **Claude Code itself:** `autoMemoryEnabled: false` stops its auto memory,
    `CLAUDE_CODE_SKIP_PROMPT_HISTORY` its transcripts (with none, the journal
    records nothing either), and `claude purge` deletes what it keeps.
-   project-memory does not read or change any of these.
+   project-memory does not read or change any of these three.
 
 The git-rule watcher does nothing while memory is off or the conversation is
 private.
@@ -1223,9 +1223,10 @@ set.
 ### Your files
 
 It writes only inside Claude Code's own folder (`~/.claude/projects`, or the
-folder `CLAUDE_CONFIG_DIR` names), never in your project. The one exception is
-`forget --purge`, which works on a full copy of the snapshot history in your
-computer's temporary folder and removes it afterwards. A shorter
+folder `CLAUDE_CONFIG_DIR` names), never in your project. Two commands, `forget --purge` and
+`rescan --apply --yes`, also work on a full copy of the snapshot history. It sits in a
+`pm-purge-...` folder inside the snapshot repository's own `.git` (in that same
+projects folder) and is removed afterwards. A shorter
 `cleanupPeriodDays` in Claude Code's settings shortens the time the journal can
 catch up on conversations Claude Code has not yet deleted.
 

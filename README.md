@@ -155,8 +155,8 @@ notes, the journal and the history stay either way. What to delete by hand:
   conversation goes to Anthropic with the rest of it, as with Claude Code's
   own memory.
 - **The journal keeps each exchange whole:** your message, everything Claude
-  wrote in the turn, every file it changed and every command it ran (up to 50
-  KB of commands a turn, newest first), and your pick when you answer one of
+  wrote in the turn, every file it changed and every command it ran (up to
+  20,000 characters for one command and 50,000 for a turn, newest first), and your pick when you answer one of
   its multiple-choice questions, until you delete it or ask Claude to forget
   part of it. The code Claude runs through context-mode's ctx_execute is kept
   with the commands, the last 300 characters of an error that was never fixed
@@ -240,8 +240,9 @@ the tuning is in [Compaction](docs/how-it-works.md#compaction).
 ## Compared with other tools
 
 Claude Code's own memory keeps no journal, no history of your notes and no
-shared notebook. project-memory adds those, with nothing it saves leaving your
-computer. Claude Code's `/resume` reopens one earlier conversation with its
+shared notebook. project-memory adds those, and keeps what it saves on your computer, with
+no server of its own. What Claude reads of it goes to Anthropic with the rest
+of the conversation. Claude Code's `/resume` reopens one earlier conversation with its
 whole history; project-memory starts a fresh one with a short briefing, and
 its journal covers every conversation you don't keep private, not only the one
 you reopen.
