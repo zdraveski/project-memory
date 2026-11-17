@@ -2,13 +2,18 @@
 
 ## 1.5.1 (2026-11-18)
 
-This release fixes what the 1.5.0 review found: search that joined words that only look alike, a few things that were saved or kept when they should not have been, and a Stop that took seconds on a very long turn. Updating is recommended. Your existing memory works as it is.
+This release fixes what the 1.5.0 review found: search that joined words that only look alike, a few things that were saved or kept when they should not have been, and a Stop that took seconds on a very long turn. Search also puts the right entry first more often, and prints less. Updating is recommended. Your existing memory works as it is.
 
 ### Search
 
 - **Search no longer joins words that only look alike.** `git` no longer finds `github`, `cat` no longer finds `concatenated`, `stores` no longer finds `storage`, and `story` and `ready` no longer match inside `history` or `already`. `library` still finds `libraries`.
 - **A hit's Result line shows the outcome.** It is the first sentence of Claude's last message in the turn, not the first words it said.
-<!-- PRs 7-9 go here -->
+- **The right entry comes first more often.** Long pasted requests and long notes rank lower, so they stop crowding the top, and an entry that holds your whole phrase ranks higher. On 95 test questions, the right entry came first in 63 instead of 58. The score a hit shows is unchanged; only the order moves.
+- **`1.4` finds 1.4.1 but no longer 1.45.** A three-part version still matches only itself.
+- **Search results are shorter.** From the 6th journal hit on, a hit prints only its request, its Result line and its key.
+- **A short request shows what it answered.** In `show` and the day list, a request of 25 characters or less (like "yes" or "go") gets a `Reply to key <key>: …` line with the end of the reply before it.
+- **The day list with no search words leaves out subagent reports.** Searching by words still finds them.
+- **A search that finds something ends with "Not the entry you meant? Search again with other words."**, so a first search with the wrong words gets a second try.
 
 ### Saving
 
