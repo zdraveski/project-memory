@@ -1336,6 +1336,12 @@ const small = { segment: 1024, budgetMs: 0 };
 // T's transcript is on disk, as a recorded turn's is: a key no transcript
 // could bring back is not listed.
 mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(projects, 'C--proj', '0123456789abcdef.jsonl'), '');
+// A reply of two text blocks, copied from show as one phrase.
+{
+  const d = storeFor(home, 'C:\\forget-blocks');
+  record(d, T, [turn({ at: '2026-10-21 11:00', id: 'f-5', ask: 'wombat plan', raw: 'wombat plan', said: 'The wombat is done.\n\n\u2063Next the burrow.', did: 'Next the burrow.' })]);
+  ok(forget(d, ['done. next']).matched.length === 1, 'a phrase across two text blocks matches as show prints it');
+}
 {
   const d = storeFor(home, 'C:\\forget-selftest'), O = '/x/projects/C--proj/bbbbbbbb.jsonl', list = join(d, 'journal', '.forgotten');
   const put = (at, id, ask, t = T) => record(d, t, [turn({ at, id, ask, raw: ask })]);
@@ -2017,6 +2023,11 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   ok(subagent(pin) === false && !entries([sd]).some((x) => /4821/.test(JSON.stringify(x))), 'a subagent report in a private turn is not saved');
   appendFileSync(priv, prompt('now something plain', 'p2') + '\n');
   ok(subagent({ ...pin, agent_id: 'p2', last_assistant_message: 'plain report tapir' }) === true, 'after a plain prompt the subagent report is saved again');
+  // A private turn with over 512 KB of tool output after its prompt: the tail cuts the prompt off, and the report is still not saved.
+  const big = join(dirname(sd), 'cccc3333-private.jsonl');
+  writeFileSync(big, prompt('<private>my PIN is 7733, ask an agent to check the vault</private>', 'q1') + '\n');
+  for (let i = 0; i < 8; i++) appendFileSync(big, JSON.stringify({ type: 'user', uuid: `q-r${i}`, timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${i}`, content: 'z'.repeat(100000) }] } }) + '\n');
+  ok(subagent({ ...pin, agent_id: 'q1', transcript_path: big, last_assistant_message: 'The vault PIN is 7733 lemur' }) === false && !entries([sd]).some((x) => /7733/.test(JSON.stringify(x))), 'a subagent report after a long private turn is not saved');
 }
 
 // holds() reads both spellings of an accent: a term typed either way finds an entry written either way.

@@ -1029,6 +1029,20 @@ if (!quick) {
   const cnt = (re) => (r.stdout.match(re) || []).length;
   ok(cnt(/^     key: /gm) === 7 && cnt(/^     Asked: quagga job/gm) === 7 && cnt(/^     Result: /gm) === 7 && cnt(/^     Answered: /gm) === 5 && cnt(/^     Ran: /gm) === 5,
     `hits 6 and 7 print only the request, Result and key; the first five keep their stretches (got ${r.stdout})`);
+  // Notes above the journal hits do not use up the five full ones.
+  const lemur = [1, 2].map((i) => entry(`2026-10-20 0${i}:00`, `lemur job ${i}`, { answered: `Done. ${'filler '.repeat(12)}the lemur part ${i}.`, ran: [`lemur run ${i}`] }));
+  day(jd, '2026-10-20', lemur);
+  const notes = [1, 2, 3, 4, 5, 6].map((i) => join(jd, `lemur-note-${i}.md`));
+  notes.forEach((f, i) => writeFileSync(f, `---
+name: lemur-note-${i + 1}
+description: lemur lemur lemur
+---
+lemur lemur lemur lemur
+`));
+  r = await jcli('search', 'lemur');
+  notes.forEach((f) => rmSync(f));
+  rmSync(join(jd, 'journal', '2026-10-20.md'));
+  ok((r.stdout.match(/^     Answered: /gm) || []).length === 2, `notes above do not cut a journal hit to the short form (got ${r.stdout})`);
   // A short request shows the reply before it, in show and the day list; a long one and the first of a conversation do not; a subagent's report is no reply.
   const BIG = 'x'.repeat(300), pre = entry('2026-10-19 09:00', 'explain the okapi plan please, at length', { answered: `${BIG} ... the end of the okapi plan.` }),
     sub = entry('2026-10-19 09:30', 'Subagent Explore: look up okapi', { key: 'subagent-abc123', answered: 'helper report' }),

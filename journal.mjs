@@ -5,7 +5,7 @@
 import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
-import { clip, text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
+import { clip, text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable, promptBefore, BLOCK } from './handoff-log.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only } from './store.mjs';
 
 export const JOURNAL = 'journal';
@@ -231,11 +231,14 @@ export function subagent(input) {
     if (!report.trim()) return false;
     const dir = storeOf(input), s = tag(basename(tp, '.jsonl'));
     if (!existsSync(dir)) { if (!inProjects(tp)) return false; mkdirSync(dir, { recursive: true, mode: 0o700 }); }
+    let t = null;
+    // Read before the lock; a tail that cuts the prompt off (a long private turn) gets the look back, as latest() does.
+    try { const r = readTail(tp, TAIL); t = turns(r.text).open; if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = p ? turns(`${p}\n${r.text}`).open : null; } } catch {}
     const saved = withLock(dir, () => {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
       if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) return false;
-      // The parent's open turn is private: so is its subagent's report (a tail that cuts the prompt off reads as plain).
-      try { const t = turns(readTail(tp, TAIL).text).open; if (t && (t.frozen === true || PRIVATE.test(userText(t)))) return false; } catch {}
+      // The parent's open turn is private: so is its subagent's report.
+      if (t && (t.frozen === true || PRIVATE.test(userText(t)))) return false;
       // Past the cap, the start and the end stay: the end usually holds the result.
       const all = clip(report, Infinity), rep = all.length <= J_REPORT ? all : `${all.slice(0, 5000)} … (${all.length - 7900} chars cut) … ${all.slice(-2900)}`;
       return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
@@ -391,7 +394,7 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
 // from handoff.md too, which the next startup's briefing prints (R36).
 // An entry holds a word (lower case) when any of its fields does, in any case.
 // Both sides NFC, as search reads them: a composed "é" finds a decomposed one, in the entry or in the word.
-export const holds = (e, t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.normalize('NFC').toLowerCase().includes(t.normalize('NFC')));
+export const holds = (e, t) => [e.asked, e.answered, e.branch, ...e.changed, ...e.ran].some((v) => v.split(BLOCK).join('').normalize('NFC').toLowerCase().includes(t.normalize('NFC')));
 export function forget(dir, terms, { since, until, conversation, keys: only, more = [], apply = false, failed = [] } = {}) {
   // The keys as a set: looked up in the list once an entry, a range forget of
   // 15,000 entries spent 5 s here.

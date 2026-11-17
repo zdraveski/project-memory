@@ -1160,8 +1160,9 @@ export function main(given) {
     const wider = rest.includes('--all') ? '' : '; --all searches every project';
     // A miss while the first import runs is not yet a miss: what is left to import is counted only then (summary() reads every day file).
     const importing = shown.length || !terms.length ? 0 : scope.reduce((t, d) => { try { return t + (summary(d).left || 0); } catch { return t; } }, 0);
+    let journals = 0;   // the short form counts journal hits only, not the notes above them
     r = { ok: true, lines: !terms.length ? [`nothing to search for: "${q}" has no word that says which memory`]
-      : shown.length ? [...shown.flatMap(([h, ...also], i) => h.kind === 'journal' ? entry(h, also, i >= LOW_FROM) : [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
+      : shown.length ? [...shown.flatMap(([h, ...also]) => h.kind === 'journal' ? entry(h, also, journals++ >= LOW_FROM) : [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
         `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...(found.missing.length ? [`no note or entry holds: ${found.missing.join(', ')}`] : []), ...out,
         // A hit's date, and what was not shown or not searched.
