@@ -1604,6 +1604,8 @@ if (!quick) {
   memory(jm, 'forms-butcher', 'butcher note', 'the butcher of the town');
   r = await jcli('search', 'butt');
   ok(!/forms-butcher\.md/.test(r.stdout), `butt is not cut to but (got ${r.stdout})`);
+  r = await jcli('search', 'butts');
+  ok(!/forms-butcher\.md/.test(r.stdout), `butts is not cut to but either (got ${r.stdout})`);
   // A cut stem starts a word: "store" is not found inside "history", and still finds "stores".
   memory(jm, 'stem-hist', 'history', 'the history of the defeat of the team');
   memory(jm, 'stem-real', 'plain', 'we store data and feature flags');

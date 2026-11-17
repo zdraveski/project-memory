@@ -2423,6 +2423,9 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   // The real main, not a stub: a bad payload on stdin is reported, not left as an empty briefing.
   const bad3 = spawnSync(process.execPath, [BRIEF, '--print'], { input: 'not json', env: process.env, encoding: 'utf8' });
   ok(bad3.status === 0 && /^Memory briefing failed \(/.test(bad3.stdout), `the real handoff-log.mjs failing at run time gives the line (got ${JSON.stringify(bad3.stdout)})`);
+  // Valid JSON that is not an object gets past the parse and fails in the run path.
+  const bad4 = spawnSync(process.execPath, [BRIEF, '--print'], { input: 'null', env: process.env, encoding: 'utf8' });
+  ok(bad4.status === 0 && /^Memory briefing failed \(/.test(bad4.stdout), `a failure after the parse gives the line (got ${JSON.stringify(bad4.stdout)})`);
 }
 
 
