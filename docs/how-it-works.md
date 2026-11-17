@@ -629,9 +629,8 @@ environment to turn the briefing off.
 The briefing stays under 9,500 characters, inside the 10,000 Claude Code
 passes on whole. After a compaction, the oldest exchanges are left out first,
 until it fits. At the start of a conversation, the last conversation's
-exchanges fill the briefing up to 3,500 characters, the oldest left out first, and never past that: with a full shared index (3,000
-bytes) there is often room for none, and the briefing is what it was
-without them. Each line is cut to 1,000 characters, then the end is cut, so
+exchanges fill the briefing up to 3,500 characters, the oldest left out first; with a full shared index (3,000
+bytes) they get a reserve of about 1,500 characters of their own, so the newest is still shown. Each line is cut to 1,000 characters, then the end is cut, so
 the shared index goes first. A `<` that starts a
 tag is written `&lt;`, so text from an earlier conversation can't pose as part
 of Claude Code's own message.
@@ -674,11 +673,14 @@ things soften that.
 
 The plugin reads the window sizes from the environment, as Claude Code does:
 
-- the model's window: 1,000,000 tokens, or `CLAUDE_CODE_MAX_CONTEXT_TOKENS`,
-  or 200,000 when `CLAUDE_CODE_DISABLE_1M_CONTEXT` is set;
+- the model's window: 1,000,000 tokens, or 200,000 when `CLAUDE_CODE_DISABLE_1M_CONTEXT` is set. `CLAUDE_CODE_MAX_CONTEXT_TOKENS` counts
+  only with `DISABLE_COMPACT` set, or when `ANTHROPIC_MODEL` names a model that is not a Claude one (Claude Code ignores it for its own models);
 - the compaction window: `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`800000`, `800k`
   and `0.8M` all work), never more than the model's;
 - `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` moves the reminder earlier to match.
+
+Claude Code compacts 33,000 tokens short of its window, so the reminder comes 60,000 tokens before that point
+(at 850,000 tokens in a 1,000,000 window, at about 107,000 in a 200,000 one). `memory doctor` names both windows and the point.
 
 A window chosen with `/autocompact`, `autoCompactWindow` or `--autocompact`
 is kept in Claude Code's settings, which the plugin doesn't read. With one of
@@ -688,7 +690,7 @@ never fires.
 
 With a gateway or a model that is not a Claude model, the real window is often
 between 200,000 and 900,000 tokens, and the plugin still assumes 1,000,000.
-Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to the real window (also under `env`), so
+Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to the real window and `ANTHROPIC_MODEL` to its id (also under `env`), so
 the reminder and the wait come at the right time.
 
 ### If your model holds 200,000 tokens
@@ -1171,8 +1173,9 @@ one line that says what was left behind.
 
 Each conversation starts with a short briefing for Claude. The last
 conversation's exchanges fill it up to 3,500 characters (at most 3,499 on 13
-real projects). A long list of shared lessons or warnings can pass that, but
-never 9,500. After a compaction it is larger: 8,481 characters at the median
+real projects), and when the shared lessons already take that, the newest
+exchanges still get about 1,500 characters of their own. A long list of shared
+lessons or warnings can pass 3,500, but never 9,500. After a compaction it is larger: 8,481 characters at the median
 and 9,366 at most on 8 projects, never over 9,500. The journal is not loaded,
 only searched when needed. What the hooks do after each reply runs outside the
 conversation and uses none of its room. See also

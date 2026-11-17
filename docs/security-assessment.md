@@ -202,7 +202,7 @@ run, or instructions placed in a later briefing.
   read without failing; the fuzzer sends all of them. Text saved in
   `handoff.md` is cut to fixed sizes; a journal entry is kept whole, a line
   a field. The briefing is held to 9,500 characters, and the last
-  conversation's exchanges at startup to a briefing of 3,500.
+  conversation's exchanges at startup to a briefing of 3,500 (with a reserve of 1,500 for them when the shared lessons fill it).
 
 What remains: text saved from one conversation is shown to Claude in a
 later one, as with Claude Code's own memory. The briefing holds only the

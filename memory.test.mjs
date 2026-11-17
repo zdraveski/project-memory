@@ -1106,7 +1106,7 @@ if (!quick) {
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'store.mjs', 'handoff-log.mjs', 'enforce.mjs']) writeFileSync(join(nj, f), readFileSync(tool(f)));
+  for (const f of ['memory.mjs', 'store.mjs', 'handoff-log.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(f)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   const njs = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'status', '--store', jd], { env, encoding: 'utf8' });
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
@@ -2021,6 +2021,7 @@ After the log: narwhalqq stays.
   ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
   r = await cli('doctor');
   ok(r.status === 0 && !/^PROBLEM/m.test(r.stdout) && /^ok +installed as project-memory@project-memory$/m.test(r.stdout) && /^ok +git on PATH$/m.test(r.stdout) && !/locks a killed hook left/.test(r.stdout), `a healthy doctor says ok and exits 0 (got ${r.stdout})`);
+  ok(/^ok +compaction window 1000k of the model's 1000k: Claude Code compacts at 967k, the memory reminder comes at 850k$/m.test(r.stdout), `doctor names the compaction and model windows (got ${r.stdout})`);
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
   try { r = await cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   ok(r.status === 0 && /^ok +auto memory is off \(CLAUDE_CODE_DISABLE_AUTO_MEMORY\)/m.test(r.stdout), `auto memory off is said, and is no problem (got ${r.stdout})`);

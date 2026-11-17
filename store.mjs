@@ -45,7 +45,7 @@ export function autoMemory({ managed = MANAGED, cwd = process.env.CLAUDE_PROJECT
   if (/^(0|false|no|off)$/i.test(env || '')) return { off: false };
   let d = []; try { d = readdirSync(join(managed, 'managed-settings.d')).filter((f) => f.endsWith('.json')).sort().reverse().map((f) => join(managed, 'managed-settings.d', f)); } catch {}
   for (const f of [...d, join(managed, 'managed-settings.json'), join(cwd, '.claude', 'settings.local.json'), join(cwd, '.claude', 'settings.json'), join(configDir(), 'settings.json')]) {
-    let v; try { v = JSON.parse(readFileSync(f, 'utf8'))?.autoMemoryEnabled; } catch { continue; }
+    let v; try { v = JSON.parse(readFileSync(f, 'utf8').replace(/^\uFEFF/, ''))?.autoMemoryEnabled; } catch { continue; }
     if (typeof v === 'boolean') return v ? { off: false } : { off: true, why: `autoMemoryEnabled is false in ${f}` };
   }
   return { off: false };

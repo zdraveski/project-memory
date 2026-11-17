@@ -47,21 +47,27 @@ export const tokens = (v) => {
 // the user set another (CLAUDE_CODE_MAX_CONTEXT_TOKENS, read by its name) or
 // held them at 200K. Taken as 1M under a 400K window, the gate deferred a
 // compaction at 390k into the context-limit error it exists to avoid.
-export const MODEL_WINDOW = tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) || (envOn(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) ? 200_000 : 1_000_000);
+// Claude Code ignores that variable for a Claude model (live check, 2026-11-17: the window stayed 1M); it applies with
+// DISABLE_COMPACT set, or for a model it does not know. The model is ANTHROPIC_MODEL: shortcut: one chosen with /model is not seen.
+export const MAX_CONTEXT_USED = envOn(process.env.DISABLE_COMPACT) || (!!process.env.ANTHROPIC_MODEL && !/claude|sonnet|opus|haiku|fable/i.test(process.env.ANTHROPIC_MODEL));
+export const MODEL_WINDOW = (MAX_CONTEXT_USED && tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS)) || (envOn(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) ? 200_000 : 1_000_000);
 // The window Claude Code compacts against, as the environment sets it; one
 // set with /autocompact or autoCompactWindow lives in settings, which the
 // plugin does not read (README says so). Never past the model's.
 export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW, MODEL_WINDOW);
-// Claude Code compacts at ~0.959 of its window (863,324 of 900,000; 767,072 of
-// 800,000). The nudge has to land a whole turn before that, and a turn above
+// Claude Code compacts 33,000 tokens short of its window (863,324 of 900,000; 767,072 of 800,000: ~0.959 there; 0.835 of 200k).
+// The nudge has to land a whole turn before that, and a turn above
 // 300k adds 18k tokens at the median, 46k at p75 and 148k at p90 (2026-10-26):
 // at 0.95 the room was 7k and no nudge was ever seen. 0.85 leaves ~87k.
 // Lower when CLAUDE_AUTOCOMPACT_PCT_OVERRIDE makes it compact earlier.
 const PCT = Number(process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE);
 // And 60k of room before the compaction point, in any window (0.85 of a 200k window left 31k, under one p75 turn),
 // but never before half of it: a 50k window would nudge at once.
-const AT = 0.959 * (PCT > 0 && PCT < 96 ? PCT / 96 : 1);
-export const TRIGGER = Math.max(AT / 2, Math.min(0.85 / 0.959 * AT, AT - 60_000 / WINDOW));
+// shortcut: a window under 66k is taken as compacting at half of it.
+const BASE = Math.max(0.5, 1 - 33_000 / WINDOW), CUT = PCT > 0 && PCT < 96 ? PCT / 96 : 1;
+const AT = BASE * CUT;
+export const TRIGGER = Math.max(AT / 2, Math.min(0.85 * CUT, AT - 60_000 / WINDOW));
+export const COMPACTS_AT = BASE;
 // Over this share of the model's window a mid-turn compaction goes through.
 // The API refuses a call when input + max output exceeds the window, so the
 // margin must hold the response budget (32k+) and one more tool result: 10 %.
@@ -272,7 +278,7 @@ export function gate(payload) {
     if (s.last) {
       let was = ''; try { was = readFileSync(mark, 'utf8'); } catch {}
       again = was === s.last;
-      if (!again) try { mkdirSync(NUDGES(), { recursive: true }); writeFileSync(mark, s.last); } catch {}
+      if (!again) try { mkdirSync(NUDGES(), { recursive: true }); writeFileSync(mark, s.last); } catch { again = true; }   // unwritable: the rule is kept by running it, not by never deferring it twice
     }
     // The second time it runs, and the cut turn still gets its handoff and in-flight note below.
     if (!again) return { code: 2, why: `deferred: mid-turn at ${pct}% of the model window; it runs when this turn ends` };

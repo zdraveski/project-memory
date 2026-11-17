@@ -478,6 +478,11 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
       ok(am().off === true, 'project false over user true: off');
       put(shared, { autoMemoryEnabled: 'false' }); put(user, '{ broken');
       ok(am().off === false, 'a string and a broken file are ignored');
+      // Claude Code reads a settings file that starts with a UTF-8 BOM (live check 7), and skips one with comments.
+      put(user, '\uFEFF' + JSON.stringify({ autoMemoryEnabled: false }));
+      ok(am().off === true, 'a settings file with a BOM is read');
+      put(user, '// off\n' + JSON.stringify({ autoMemoryEnabled: false }));
+      ok(am().off === false, 'a settings file with comments is skipped, as Claude Code skips it');
       put(user, { autoMemoryEnabled: false });
       process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '0';
       ok(am().off === false, 'env 0 over a file false: on');

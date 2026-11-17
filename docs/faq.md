@@ -138,8 +138,9 @@ you delete it or ask Claude to forget part of it.
 
 Each conversation starts with a short briefing for Claude. The last
 conversation's exchanges fill it up to 3,500 characters (at most 3,499 on 13
-real projects). A long list of shared lessons or warnings can pass that, but
-never 9,500. After a compaction it is larger: 8,481 characters at the median
+real projects), and when the shared lessons already take that, the newest
+exchanges still get about 1,500 characters of their own. A long list of shared
+lessons or warnings can pass 3,500, but never 9,500. After a compaction it is larger: 8,481 characters at the median
 and 9,366 at most on 8 projects, never over 9,500. The journal isn't loaded;
 Claude searches it only when you ask about earlier work. What the plugin does
 after each reply runs outside the conversation and uses none of its room.
