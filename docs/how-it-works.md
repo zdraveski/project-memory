@@ -919,7 +919,8 @@ when the reply's own stretch below starts there). Of its
 reply, files and commands it shows only those that hold a search word, and
 of each only the stretches 30 characters either side of a match, 240
 characters in all a hit. Every field is redacted before it is cut, so a
-stretch never shows part of a secret. A hit is a headline: `show <key>`
+stretch never shows part of a secret. From the 6th journal hit on, only the
+request, the `Result:` line and the key are printed. A hit is a headline: `show <key>`
 prints the entry whole, with its day file and, while it is still on disk,
 its transcript's path, unless the entry is private (its reply is
 `[private]`): the transcript is where the private part still is. A request
@@ -942,7 +943,12 @@ only `nothing matches`.
 heading, the key, every field, the day file and, when it's still on disk
 and the entry isn't private, the transcript. `--same` adds every entry whose request is the same, as a
 hit's "more like this" counts them; `--all` and `--store` reach another
-project. A key no entry has is named, and the tool exits with 1.
+project. A key no entry has is named, and the tool exits with 1. When the
+entry's request is 25 characters or less ("yes", "go"), `show` and the day
+list add one line, `Reply to key <key>: …`, with the end (200 characters) of
+the reply before it in that conversation, so the short request reads in
+context. The day list with no search words leaves out subagent reports
+(`subagent-` keys); a search by words still finds them.
 
 `search`, `show` and a day's listing never show an entry whose key is in
 `journal/.forgotten`: when `forget` couldn't rewrite its day file, the entry
