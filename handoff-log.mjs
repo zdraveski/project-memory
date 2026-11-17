@@ -882,13 +882,14 @@ function backup(dir) {
 // 'unchanged', false nothing to write.
 function put(dir, fresh, drop, me, whole) {
   const file = join(dir, 'handoff.md');
+  // The copy holds what a sweep takes out of the file, so it goes with it, even when the file has nothing left to drop (the
+  // exchange rolled out of it); the next Stop of a day makes a clean one.
+  if (drop) try { rmSync(join(dir, PREV), { force: true }); } catch {}
   for (let i = 0; i < 3; i++) {
     const before = raw(file);
     const next = build(before, fresh, drop, me, whole);
     if (next === null || next === 'unchanged') return next ?? false;
     const w = replaceIfUnchanged(file, before, next);
-    // The copy holds what a sweep takes out of the file, so it goes with it; the next Stop of a day makes a clean one.
-    if (w === true && drop) try { rmSync(join(dir, PREV), { force: true }); } catch {}
     if (w !== 'conflict') return w || 'unchanged';
   }
   return false;

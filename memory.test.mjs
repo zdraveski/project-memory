@@ -2670,12 +2670,15 @@ See [[nonexist-${GH}]]
   // 1.5.1 finding 6: the history copy sits inside the snapshot repo's .git (a snapshot never commits it), not in the OS temp folder.
   {
     writeDay(); tier(); tier();
+    // 1.5.1 finding 8: a purge killed earlier left its full-history copy in .git; the next one removes it.
+    const stale = join(root, '.git', 'pm-purge-stale'); mkdirSync(join(stale, 'copy.git'), { recursive: true });
     const made = [], realMk = fs.mkdtempSync;
     fs.mkdtempSync = (...a) => { const d = realMk(...a); made.push(d); return d; };
     syncBuiltinESMExports();
     try { r = await run(['forget', word, '--yes', '--purge', '--store', pd]); } finally { fs.mkdtempSync = realMk; syncBuiltinESMExports(); }
     const where = made.filter((d) => /pm-purge-/.test(d));
     ok(/purged from the snapshots/.test(r.stdout) && where.length === 1 && where[0].replace(/\\/g, '/').startsWith(join(root, '.git').replace(/\\/g, '/') + '/') && !existsSync(where[0]), `the purge's history copy lives under the snapshot repo's .git and is gone after (got ${where} ${r.stdout})`);
+    ok(!existsSync(stale), 'a purge removes a pm-purge copy an earlier killed one left');
   }
   // A snapshot in flight (git's own lock, fresh): the purge would overwrite its commit, so it refuses and changes nothing.
   writeDay(); tier();
@@ -2736,6 +2739,12 @@ See [[nonexist-${GH}]]
   const nb2 = nb();
   r = await run(['rescan', '--apply', '--yes']);
   ok(/nothing found/.test(r.stdout) && nb() === nb2, 'a clean store makes no backup');
+  // 1.5.1 finding 2: handoff.md.prev, the copy beside handoff.md, is counted by the dry run and cleaned by --apply --yes.
+  writeFileSync(join(rd, 'handoff.md.prev'), `old handoff ${key}\n`);
+  r = await run(['rescan']);
+  ok(r.stdout.includes('C--rescan/memory/handoff.md.prev (1)') && !r.stdout.includes(key), `the dry run counts a secret in handoff.md.prev (got ${r.stdout})`);
+  r = await run(['rescan', '--apply', '--yes']);
+  ok(r.status === 0 && !readFileSync(join(rd, 'handoff.md.prev'), 'utf8').includes(key) && readFileSync(join(rd, 'handoff.md.prev'), 'utf8').includes('[redacted]'), `--apply --yes redacts handoff.md.prev (got ${r.stdout})`);
 }
 
 // 1.5.0 P39: the skill's description makes Claude search before answering, relative dates included.
