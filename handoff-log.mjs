@@ -243,12 +243,10 @@ export { unwrap };
 // tag, QUIET and OFF live in store.mjs, so the enforce hook can read them without loading this file.
 export { tag, OFF };
 
-// The file a tool call edits, or '': the one list of the edit tools, for the
-// handoff and the compaction note alike. NotebookEdit names its file differently.
 // A result that says the call was refused or blocked and never ran. Claude Code's own first words on a result with is_error true
 // (read from real transcripts, 2026-11-17): the user's refusal (also toolUseResult "User rejected tool use"), a PreToolUse hook's
 // block, the auto-mode classifier's denial or its outage, and the permission prompt's "multiple operations" stop.
-const REFUSED = /^(?:The user doesn't want to proceed with this tool use|Permission for this action was denied|The server-side auto mode classifier gave no verdict|PreToolUse:\S+ hook error|This Bash command contains multiple operations)/;
+const REFUSED = /^(?:The user doesn't want to proceed with this tool use|Permission for this action was denied|The server-side auto mode classifier gave no verdict|PreToolUse:\S+ hook error|This Bash command contains multiple operations|<tool_use_error>(?:Blocked:|InputValidationError))/;
 export const refused = (r, b) => b?.is_error === true && (r?.toolUseResult === 'User rejected tool use' || REFUSED.test(resultText(b)));
 // What a call ran: the command of a shell tool, the code of context-mode's ctx_execute, the commands of its ctx_batch.
 const ranOf = (b) => {
@@ -258,6 +256,8 @@ const ranOf = (b) => {
   if (/__ctx_execute$/.test(b.name)) return i?.code ? String(i.code) : '';
   return /__ctx_batch$/.test(b.name) && Array.isArray(i?.commands) ? i.commands.map((c) => String(c?.command ?? c)).join('\n') : '';
 };
+// The file a tool call edits, or '': the one list of the edit tools, for the
+// handoff and the compaction note alike. NotebookEdit names its file differently.
 export const editedFile = (b) => (b?.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path)) || '';
 
 // A reply that is one token with a digit or a symbol, to a question that asks for a password, token or key: the value alone, with no
@@ -318,7 +318,7 @@ export function turns(tail) {
         if (refused(r, b)) { pending.ids.splice(i, 1); pending.base.splice(i, 1); pending.ran.splice(i, 1); }
         else {
           pending.base.forEach((c, j) => { if (c === pending.base[i]) pending.ran[j] = c; });   // the earlier tries' tails go: only the last result counts
-          if (err) pending.ran[i] = `${pending.base[i]} → failed: ${clip(resultText(b), Infinity).slice(-300)}`;
+          if (err) pending.ran[i] = `${pending.base[i]} → failed: ${clip(resultText(b).slice(-2000), Infinity).slice(-300)}`;
         }
       }
       const f = pending.edits.get(b.tool_use_id);

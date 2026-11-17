@@ -9,7 +9,6 @@
 - **A turn you stop with Escape keeps what it changed and ran.** Before, a turn with no reply saved nothing.
 - **An API error no longer replaces the real answer.** A failed turn is saved at once, instead of 19 to 157 minutes later.
 - **Your answers to Claude's multiple-choice questions are saved with your message** as `Picked: ...`, so search and forget find the entry by a word only in your pick.
-
 - **A command you refused, or one a hook or the auto-mode check blocked, is no longer saved as run.** An edit that failed is no longer listed as changed, in the journal or in the note made before a compaction. A command that ran and failed stays.
 - **A command that failed and was never fixed keeps the end of its error** (the last 300 characters) after it, so the next session sees what went wrong. If a later try of the same command worked, nothing extra is saved.
 - **Code run through context-mode's ctx_execute and ctx_batch is saved with the commands**, where only Bash and PowerShell were before.

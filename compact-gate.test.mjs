@@ -99,6 +99,9 @@ ok(doc.indexOf('cut mid-turn') < doc.indexOf('<!-- auto:end -->'), 'the note sit
   ok(gate().code === 0, 'over the ceiling the compaction runs (edit results)');
   const note1 = readFileSync(join(dir, 'handoff.md'), 'utf8');
   ok(/edited this turn:\*\* good\.py/.test(note1) && !/bad\.py/.test(note1), `an edit with an error result is not in the edited list (got ${(note1.match(/edited this turn[^\n]*/) || [''])[0]})`);
+  write(user('edit again'), e('e1', 'C:\\repo\\same.py'), r('e1', false), e('e2', 'C:\\repo\\same.py'), r('e2', true), asst('editing', 965_000, 'tool_use'));
+  ok(gate().code === 0, 'over the ceiling the compaction runs (second edit)');
+  ok(/edited this turn:\*\* same\.py/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a failed second edit of a file the first changed keeps it listed');
 }
 
 // A password typed alone as the answer to a password question is not written into the note (1.4.1 H review).

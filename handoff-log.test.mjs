@@ -3583,6 +3583,7 @@ if (!quick) {
     ["The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).", { toolUseResult: 'User rejected tool use' }],
     ["The user doesn't want to proceed with this tool use. The tool use was rejected.", {}],
     ['PreToolUse:Bash hook error: context-mode: curl/wget redirected. Call ctx_execute instead.', {}],
+    ['<tool_use_error>Blocked: sleep 45 followed by: echo x. To wait for a condition, use Monitor.</tool_use_error>', {}],
     ['Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Auto-Mode Bypass].', {}],
     ['The server-side auto mode classifier gave no verdict (error), so auto mode cannot determine the safety of Bash.', {}],
   ];
