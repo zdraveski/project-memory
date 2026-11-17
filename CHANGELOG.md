@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### The journal records what happened
+
+- **Everything Claude said in a turn is saved, not only its last message.** The lines in between ("Let me read the file.") are kept, and a reply after a background task adds to the answer instead of replacing it. When a reply is very long, the start is cut and the final answer stays.
+- **A turn that hit a very long list of commands keeps the newest ones.** The earlier ones are replaced by one line, `[N earlier commands not kept]`, so the last command (a `git push`, say) is never the one lost.
+- **A turn you stop with Escape keeps what it changed and ran.** Before, a turn with no reply saved nothing.
+- **An API error no longer replaces the real answer.** A failed turn is saved at once, instead of 19 to 157 minutes later.
+- **Your answers to Claude's multiple-choice questions are saved with your message** as `Picked: ...`, so search and forget find the entry by a word only in your pick.
+
+Entries saved before this version are not rewritten.
+
 ## 1.4.3 (2026-11-16)
 
 This release fixes problems found in a full review of 1.4.2. Three of them kept some of your notes out of the snapshots, the backups project-memory uses to bring back a lost or overwritten note. Updating is recommended. Nothing changes in how you use the plugin, and your existing memory works as it is.

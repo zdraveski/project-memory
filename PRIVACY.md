@@ -122,9 +122,13 @@ All of it stays in `~/.claude/projects` on your computer:
 - A journal of every exchange, one file per day in a project's `memory`
   folder (`journal/YYYY-MM-DD.md`), with a file `journal.md` beside it that
   tells Claude the journal is there. Each entry holds your message and
-  Claude's reply whole, the paths of every file Claude changed, and every
-  command it ran, whole, with the time, the conversation's short tag and
-  the git branch. An entry is kept whole: a long pasted text or a long command
+  all the text Claude wrote in the turn, not only its last block, the paths
+  of every file Claude changed, and the commands it ran, each whole, up to
+  50 KB a turn, newest first, with the time, the conversation's short tag
+  and the git branch. When you answer one of Claude's multiple-choice
+  questions, your pick is saved with your message, as `Picked: ...`. A turn
+  you stop with Escape, or one that ends in an API error, still keeps what
+  it changed and ran. An entry is kept whole: a long pasted text or a long command
   is kept in full, up to 20 to 50 KB for one request, reply or command, and
   secrets in it are still replaced.
   - The rules above apply to it too: secrets are replaced with `[redacted]`,
