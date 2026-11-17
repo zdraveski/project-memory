@@ -35,7 +35,7 @@ Entries saved before this version are not rewritten.
 
 - **The startup briefing names your last session for 30 days, not 7.** Coming back to a project after a few weeks still shows where you left off.
 - **The pointer to your journal is also shown after a compaction**, so Claude still knows it can search earlier work.
-- **If the briefing cannot load, it says so in one line** instead of showing nothing. Set `PROJECT_MEMORY_BRIEFING=0` to turn the briefing off.
+- **If the briefing cannot load, it says so in one line** instead of showing nothing. Set `PROJECT_MEMORY_BRIEFING=0` to turn the briefing off. This now covers a failure while the briefing is being printed, not only a failed load.
 - **A search that finds nothing during the first import says the journal is still importing**, instead of "nothing matches".
 - **A compaction is put off at most once for the same point in a turn, and not at all once you have sent a new prompt.** A stuck turn can no longer hold a compaction until the context is full.
 

@@ -1194,7 +1194,7 @@ export async function main({ rethrow = false } = {}) {
     else if (process.argv.includes('--print')) { if (input.source !== 'resume') { try { process.stdout.write(await print(input)); } catch (e) { if (rethrow) throw e; } } }
     else handoff(input);
   } catch (e) {
-    if (rethrow && e?.rethrown !== false && e?.printFailed) throw e;
+    if (rethrow) throw e;
     // A hook that throws on every turn is worse than one that misses a turn.
   }
 }
