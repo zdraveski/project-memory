@@ -3569,5 +3569,50 @@ if (!quick) {
   ok(got[0].said.length < 100001 && !/TOPSECRET|zq zq zq/.test(got[0].said), `a private block cut by the 100 KB tail is not saved (got ${got[0].said.slice(0, 60)})`);
 }
 
+// 1.5.0 PR 2: a refused call is not Ran, a failed edit is not Changed, a failure left unfixed keeps its tail, ctx_execute is Ran.
+// The marks are the ones real transcripts carry (read 2026-11-17): the rejection's toolUseResult, the hook block's and the auto-mode
+// denial's own first words, all with is_error true.
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const use = (name, input, id) => rec('assistant', [{ type: 'tool_use', id, name, input }]);
+  const res = (id, content, isErr, extra = {}) => rec('user', [{ type: 'tool_result', tool_use_id: id, content, ...(isErr ? { is_error: true } : {}) }], extra);
+  const T = (m) => `2026-11-17T11:0${m}:00Z`;
+  const END = asst('Done.', { ts: T(9), message: { content: [{ type: 'text', text: 'Done.' }], stop_reason: 'end_turn' } });
+  // 17: refused (user, hook, auto-mode denial, classifier outage) is not Ran; an Edit with an error result is not Changed.
+  const refusals = [
+    ["The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).", { toolUseResult: 'User rejected tool use' }],
+    ["The user doesn't want to proceed with this tool use. The tool use was rejected.", {}],
+    ['PreToolUse:Bash hook error: context-mode: curl/wget redirected. Call ctx_execute instead.', {}],
+    ['<tool_use_error>Blocked: sleep 45 followed by: echo x. To wait for a condition, use Monitor.</tool_use_error>', {}],
+    ['Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Auto-Mode Bypass].', {}],
+    ['The server-side auto mode classifier gave no verdict (error), so auto mode cannot determine the safety of Bash.', {}],
+  ];
+  for (const [msg, extra] of refusals) {
+    const got = turns([user('go', { ts: T(0) }), use('Bash', { command: 'rm -rf build' }, 'b1'), res('b1', msg, true, extra), use('Bash', { command: 'npm test' }, 'b2'), res('b2', 'ok', false), END].join('\n'));
+    ok(got[0].ran.join() === 'npm test', `a refused call is not listed under Ran (${msg.slice(0, 30)}; got ${JSON.stringify(got[0].ran)})`);
+  }
+  let got = turns([user('go', { ts: T(0) }), use('Edit', { file_path: '/a/x.js' }, 'e1'), res('e1', '<tool_use_error>File has not been read yet.</tool_use_error>', true),
+    use('Edit', { file_path: '/a/y.js' }, 'e2'), res('e2', 'updated', false), use('Edit', { file_path: '/a/z.js' }, 'e3'), res('e3', "The user doesn't want to proceed with this tool use.", true, { toolUseResult: 'User rejected tool use' }), END].join('\n'));
+  ok(got[0].changed.join() === '/a/y.js', `an edit with an error result is not Changed (got ${JSON.stringify(got[0].changed)})`);
+  // The same file edited twice, the second failing: the first still changed it.
+  got = turns([user('go', { ts: T(0) }), use('Edit', { file_path: '/a/x.js' }, 'e1'), res('e1', 'updated', false), use('Edit', { file_path: '/a/x.js' }, 'e2'), res('e2', 'String to replace not found', true), END].join('\n'));
+  ok(got[0].changed.join() === '/a/x.js', 'a failed second edit of a file the first one changed leaves it listed');
+  // A command that ran and exited 1 stays under Ran.
+  got = turns([user('go', { ts: T(0) }), use('Bash', { command: 'npm test' }, 'b1'), res('b1', 'Exit code 1\n3 tests failed', true), END].join('\n'));
+  ok(got[0].ran.length === 1 && got[0].ran[0].startsWith('npm test'), 'a command that exited 1 stays under Ran');
+  // 9: fixed later in the turn, no tail; unfixed, the last 300 characters, redacted.
+  got = turns([user('go', { ts: T(0) }), use('Bash', { command: 'npm test' }, 'b1'), res('b1', 'Exit code 1\nboom', true), use('Bash', { command: 'npm test' }, 'b2'), res('b2', 'all passed', false), END].join('\n'));
+  ok(got[0].ran.join('|') === 'npm test|npm test', `a failure fixed by a later success has no tail (got ${JSON.stringify(got[0].ran)})`);
+  const secret = 'sk-' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6';
+  got = turns([user('go', { ts: T(0) }), use('Bash', { command: 'deploy.sh' }, 'b1'), res('b1', `Exit code 2\n${'x'.repeat(500)} token=${secret} the end`, true), END].join('\n'));
+  const r0 = got[0].ran[0];
+  ok(r0.startsWith('deploy.sh') && r0.endsWith('the end') && r0.length <= 'deploy.sh'.length + 340 && !r0.includes(secret), `an unfixed failure keeps its last 300 characters, redacted (got ${JSON.stringify(r0)})`);
+  // 39: an MCP ctx_execute call is Ran with its code.
+  got = turns([user('go', { ts: T(0) }), use('mcp__plugin_context-mode_context-mode__ctx_execute', { language: 'shell', code: 'git push origin main' }, 'c1'), res('c1', 'pushed', false), END].join('\n'));
+  ok(got[0].ran.join() === 'git push origin main', `a ctx_execute call is listed under Ran (got ${JSON.stringify(got[0].ran)})`);
+  got = turns([user('go', { ts: T(0) }), use('mcp__plugin_context-mode_context-mode__ctx_batch', { commands: [{ label: 'a', command: 'ls' }, { label: 'b', command: 'pwd' }], queries: ['q'] }, 'c1'), END].join('\n'));
+  ok(got[0].ran.join() === 'ls\npwd', `a ctx_batch call is listed under Ran with its commands (got ${JSON.stringify(got[0].ran)})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

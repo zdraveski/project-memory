@@ -128,7 +128,13 @@ All of it stays in `~/.claude/projects` on your computer:
   and the git branch. When you answer one of Claude's multiple-choice
   questions, your pick is saved with your message, as `Picked: ...`. A turn
   you stop with Escape, or one that ends in an API error, still keeps what
-  it changed and ran. An entry is kept whole: a long pasted text or a long command
+  it changed and ran.
+  A command you refused or a hook blocked is not listed, and an edit that
+  failed is not listed as changed. When a command failed and no later try
+  of it worked, the last 300 characters of its error are saved after it,
+  with secrets replaced. Commands run through context-mode's ctx_execute
+  and ctx_batch tools are listed too, with their code. An entry is kept
+  whole: a long pasted text or a long command
   is kept in full, up to 20 to 50 KB for one request, reply or command, and
   secrets in it are still replaced.
   - The rules above apply to it too: secrets are replaced with `[redacted]`,
