@@ -909,7 +909,9 @@ to 2): every word in the request gets +5, every word somewhere +2, so a
 reply that names everything can't outrank the request for the thing. Equal
 scores show the newest first.
 
-It shows the top 10 (`--limit N` for more), then how many matched. A journal
+It shows the top 10 (`--limit N` for more), then how many matched, then a last
+fixed line, `Not the entry you meant? Search again with other words.` (a
+search with no hits and the day list do not print it). A journal
 hit shows its day and time, conversation tag and branch (and under `--all`
 its project: the folder its conversations started in, then in brackets its
 folder in `~/.claude/projects`, which `--store` takes), then its key and its

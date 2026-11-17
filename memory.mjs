@@ -82,6 +82,7 @@ const RANGE_SHOWN = 20;
 // lead-in, cut before the word. HIT_HEAD: the reply's first sentence, what
 // came of it, which a stretch from the middle never says (2026-10-31).
 // Hits from the 6th on print the request, Result and key only; a short request ("go", "yes") is shown with the reply before it.
+const AGAIN = 'Not the entry you meant? Search again with other words.';   // the last line of a search with hits; failure notices stay above the count
 const LOW_FROM = 5, SHORT_ASK = 25, BEFORE = 200;
 const HIT_ASK = 200, HIT_SPAN = 30, HIT_MORE = 240, HIT_HEAD = 140;
 // The first sentence of a reply's last text block (after the last BLOCK marker; an old entry has none: its first), HIT_HEAD at most: one of 20 characters or
@@ -1162,7 +1163,7 @@ export function main(given) {
         `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...(found.missing.length ? [`no note or entry holds: ${found.missing.join(', ')}`] : []), ...out,
         // A hit's date, and what was not shown or not searched.
-        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}${shown.some(([h]) => h.kind === 'journal') ? "; show '<key>' prints an entry whole" : ''}`]
+        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}${shown.some(([h]) => h.kind === 'journal') ? "; show '<key>' prints an entry whole" : ''}`, AGAIN]
       : [...out, importing ? `no match yet for "${q}" in ${where}${span && ` ${span}`}: the journal is still importing ${importing} older conversation${importing === 1 ? '' : 's'}, so search again in a few minutes${wider}`
         : `nothing matches "${q}" in ${where}${span && ` ${span}`}${wider}`] };
   } else if (cmd === 'show' && args.length) {
@@ -1303,7 +1304,7 @@ export function main(given) {
   // A day that could not be read or written: what it holds is missing from, or
   // still in, the lines above. Before the last line of a search or a forget,
   // which is its count, as the skill says. Once: a forget reads a day twice.
-  r.lines.splice(cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
+  r.lines.splice(r.lines.at(-1) === AGAIN ? -2 : cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
   // A --session no transcript has: the store came from the folder this runs in, and status reported it in silence (audit C-10).
   if (opt('--session') !== undefined && cmd !== 'incognito' && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);
   // A note's file name or [[link]] can hold a secret the model wrote: read-only listings scrub what they print.
