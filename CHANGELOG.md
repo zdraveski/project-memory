@@ -32,6 +32,13 @@ Entries saved before this version are not rewritten.
 - **A search that finds nothing during the first import says the journal is still importing**, instead of "nothing matches".
 - **A compaction is put off at most once for the same point in a turn, and not at all once you have sent a new prompt.** A stuck turn can no longer hold a compaction until the context is full.
 
+### Settings and size
+
+- **Turning auto memory off in Claude Code now turns project-memory off too.** It follows `autoMemoryEnabled: false` in the settings files Claude Code reads, and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=0` turns it back on. `doctor` and `status` say where they found the switch.
+- **`status` and `doctor` warn when a project's `handoff.md` is over 64 KB**, and say how to trim it.
+- **A long request or reply that was cut now ends with how much was lost,** like `… (+1,240 chars)`, in the journal and in `handoff.md`.
+- **`doctor` says whether auto-update is on for the plugin's marketplace**, and where to switch it on.
+
 ## 1.4.3 (2026-11-16)
 
 This release fixes problems found in a full review of 1.4.2. Three of them kept some of your notes out of the snapshots, the backups project-memory uses to bring back a lost or overwritten note. Updating is recommended. Nothing changes in how you use the plugin, and your existing memory works as it is.
