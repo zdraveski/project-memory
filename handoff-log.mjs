@@ -22,7 +22,7 @@ import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, rea
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { holdsSecret, tag, QUIET, OFF, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED, redact, FUNC } from './store.mjs';
+import { holdsSecret, tag, QUIET, OFF, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, autoMemory, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED, redact, FUNC } from './store.mjs';
 export { redact, holdsSecret };
 
 const TURNS = 10;         // how many exchanges to keep, per session
@@ -1068,6 +1068,8 @@ const SAY = 9500;
 // startup briefing up to it, the oldest left out first, and never past it. What is there without them (the shared index alone can be 3,000 B) is
 // as before.
 const BRIEF = 3500;
+// The exchanges' own room when the rest (the shared index can be 3,000 B) takes the 3,500: the newest one is ~1,000 characters.
+const EXCHANGES = 1500;
 // Defused, then held to SAY at a line's end, on both paths: the startup's
 // health lists and the compaction note's task lists had no bound, and `<`
 // grows fourfold as `&lt;`. What is cut is cut from the end, the shared
@@ -1157,7 +1159,9 @@ async function print(input) {
     // The most that fit, from the newest back; none when not even it does.
     // Found, not looped: a while on the length, its && made ||, never ended
     // when the rest alone was over BRIEF, and no test could fail it (a mutant).
-    const from = theirs.findIndex((_, i) => say(theirs.slice(i)).length <= BRIEF);
+    // The budget is BRIEF, or what is there without them plus a reserve of their own: a full shared index left no room for any.
+    const room = Math.max(BRIEF, say([]).length + EXCHANGES);
+    const from = theirs.findIndex((_, i) => say(theirs.slice(i)).length <= room);
     return say(from === -1 ? [] : theirs.slice(from));
   }
   let note = '';
@@ -1190,7 +1194,13 @@ export async function main({ rethrow = false } = {}) {
     const gone = isOff(storeOf(input));
     if (gone) { if (input.source === 'startup' && process.argv.includes('--print')) process.stdout.write(`${offLine(gone)}
 `); }
-    else if (memoryOff()) off(input);
+    else if (memoryOff()) {
+      // Settings turned it off, which no one is told otherwise: said at a startup (the environment variable is the user's own).
+      const am = autoMemory();
+      if (am.why?.startsWith('autoMemoryEnabled') && input.source === 'startup' && process.argv.includes('--print')) process.stdout.write(`Auto memory is off (${am.why}): project-memory saves and briefs nothing in this project until it is on.\n`);
+      // A tag that could not be written is the next start's to write: thrown, brief.mjs advised a reinstall.
+      try { off(input); } catch {}
+    }
     else if (process.argv.includes('--print')) { if (input.source !== 'resume') process.stdout.write(await print(input)); }
     else handoff(input);
   } catch (e) {

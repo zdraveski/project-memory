@@ -1242,7 +1242,11 @@ ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`sta
   const penv = { ...process.env, CLAUDE_PROJECT_DIR: pj };
   execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdS, transcript_path: ts, session_id: 'so000000-0000' }), env: penv });
   const brief = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdS, session_id: 'so111111-0000', source: 'startup' }), env: penv }).toString();
-  ok(!existsSync(join(ds, 'handoff.md')) && brief === '' && tags().includes('so111111'), `settings off: a Stop writes no handoff, a start prints nothing and keeps its tag (got ${brief.length} chars, handoff ${existsSync(join(ds, 'handoff.md'))}, ${tags()})`);
+  ok(!existsSync(join(ds, 'handoff.md')) && /^Auto memory is off \(autoMemoryEnabled is false in [^)]*settings\.json\): project-memory saves and briefs nothing[^\n]*\n$/.test(brief) && tags().includes('so111111'), `settings off: a Stop writes no handoff, a start prints one line naming the file and keeps its tag (got ${JSON.stringify(brief)}, handoff ${existsSync(join(ds, 'handoff.md'))}, ${tags()})`);
+  // The tag cannot be written (the projects folder is a file): the line still shows, and the starter does not say "reinstall".
+  const cfg = join(home, 'broken-config'); mkdirSync(cfg, { recursive: true }); writeFileSync(join(cfg, 'projects'), 'in the way');
+  const bad = spawnSync(process.execPath, [tool('brief.mjs'), '--print'], { input: JSON.stringify({ cwd: cwdS, session_id: 'so222222-0000', source: 'startup' }), env: { ...penv, CLAUDE_CONFIG_DIR: cfg }, encoding: 'utf8' });
+  ok(bad.status === 0 && /^Auto memory is off/.test(bad.stdout) && !/briefing failed|reinstall/.test(bad.stdout), `an off() failure at a settings-off start is not "reinstall" (got ${bad.status} ${JSON.stringify(bad.stdout)})`);
 }
 // A resumed conversation, auto memory on: nothing printed (it was read as a compaction).
 ok(started('resume', 'nnnnnnnn-1') === '', 'a resumed conversation gets no briefing');
@@ -2703,11 +2707,12 @@ require('node:module').syncBuiltinESMExports();
           ...Array.from({ length: n }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(size)}`))));
         return print_(cw4, 'pppppppp-1', 'startup', at4);
       };
-      // Under 1,000 tokens (3,500 characters): the shared index at its
-      // 3,000 B ceiling leaves no room for an exchange of 900, and every lesson stays.
+      // The shared index at its 3,000 B ceiling takes the 3,500 characters; the exchanges have a reserve of their own (1,500), the
+      // oldest dropped first, so the newest is printed and every lesson stays (1.5.0 audit: the exchanges almost never showed).
       const crowded = startup(10, 899);
-      ok(!/^- \*\*asked\*\*/m.test(crowded) && !crowded.includes('Its last exchanges') && crowded.split('\n').filter((l) => l.startsWith('- [Pad')).length === 30
-        && /Last session here ended 2026-10-01 10:09 on: ask-9 here/.test(crowded), `with the shared index full, no exchange fits, and every shared lesson stays (${crowded.length} characters)`);
+      ok(/^- \*\*asked\*\* 2026-10-01 10:09 \[ssssssss\]: ask-9 here/m.test(crowded) && !crowded.includes('ask-0 here') && crowded.split('\n').filter((l) => l.startsWith('- [Pad')).length === 30
+        && /Last session here ended 2026-10-01 10:09 on: ask-9 here/.test(crowded), `with the shared index full, the newest exchange is still printed, and every shared lesson stays (${crowded.length} characters)`);
+      ok(crowded.length <= 3500 + 1500 && crowded.split('\n').filter((l) => /^- \*\*asked\*\*/.test(l)).length < 3, 'and the exchanges take no more than their reserve');
       writeFileSync(shared, '');
       const few = startup(3, 50);
       ok(/Last session here ended 2026-10-01 10:02 on: ask-2 here[^\n]*\nIts last exchanges, oldest first:\n- \*\*asked\*\* 2026-10-01 10:00 \[ssssssss\]: ask-0 here\n {2}\*\*did:\*\* did-0 /.test(few)
