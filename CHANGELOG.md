@@ -21,7 +21,7 @@ This release fixes what the 1.5.0 review found: search that joined words that on
 - **A command that Claude Code's safety check blocked no longer shows under Ran**, and nor does a subagent's refused report-file write.
 - **A subagent report that is lost to a busy lock leaves a line in `journal/.failed`**, so `status` shows it.
 - **A subagent report over 8,000 characters keeps its first 5,000 and its last 2,900**, with `(N chars cut)` between, so the conclusion at the end stays.
-- **`handoff.md` is copied to `handoff.md.prev` at the first Stop of each day**, so one bad overwrite never loses it all. A private conversation makes no copy, and a sweep that drops entries (private, forget) deletes the old one.
+- **`handoff.md` is copied to `handoff.md.prev` at the first Stop of each day**, so one bad overwrite never loses it all. A private conversation makes no copy, a sweep (private, forget) deletes the old one, and `memory rescan` checks it.
 
 ### Private conversations and secrets
 
@@ -29,7 +29,7 @@ This release fixes what the 1.5.0 review found: search that joined words that on
 - **A failed command's error is checked for secrets in its last 20,000 characters** (1.5.0 checked 2,000), and each pick of a multi-question answer is checked against its own question.
 - **Two things that were cut as secrets are kept:** `same pass: worked` (a word like "pass" in a sentence) and IPv6 addresses.
 - **`memory rescan` no longer reports a marker it wrote earlier** (`[redacted]` or `***REMOVED***`) as a new secret. `rescan --apply --yes` now writes `[redacted]`, as the rest of the plugin does, instead of `***REMOVED***`.
-- **`forget --purge` and `rescan --apply --yes` keep their working copy of the snapshot history inside the snapshot repository's own `.git` folder**, not in the computer's temporary folder, and remove it when they finish.
+- **`forget --purge` and `rescan --apply --yes` keep their working copy of the snapshot history inside the snapshot repository's own `.git` folder**, not in the computer's temporary folder, and remove it when they finish. The next run removes one that a stopped run left.
 
 ### Settings, briefing and compaction
 
