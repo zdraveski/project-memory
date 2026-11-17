@@ -45,6 +45,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
+import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
@@ -838,6 +839,7 @@ export function doctor(site = sessionStore()) {
   const am = autoMemory();
   if (am.off) { say(true, `auto memory is off (${am.why}): the hooks save and brief nothing until it is on again. Not seen by doctor: --settings, --bare, safe mode, server-managed settings`); return { ok: !bad, lines }; }
   const big = handoffBig(site); if (big) say(true, big);
+  { const k = (n) => `${Math.round(n / 1000)}k`; say(true, `compaction window ${k(WINDOW)} of the model's ${k(MODEL_WINDOW)}: Claude Code compacts at ${k(COMPACTS_AT * WINDOW)}, the memory reminder comes at ${k(TRIGGER * WINDOW)}`); }
   // The one setting doctor reads (never printed but for its presence): the hooks keep the default folder, and a note in the moved one is
   // never tiered, snapshotted or briefed.
   if (typeof json(join(configDir(), 'settings.json'))?.autoMemoryDirectory === 'string') say(false, 'the autoMemoryDirectory setting is set, and project-memory does not follow it: notes in that folder are not tiered, snapshotted or briefed (the hooks work on the default memory folder). Remove the setting to use project-memory');

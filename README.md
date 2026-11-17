@@ -231,7 +231,7 @@ afterwards tells Claude what you asked and what it last said.
 small piece of a word): see
 [If your model holds 200,000 tokens](docs/how-it-works.md#if-your-model-holds-200000-tokens).
 If you use a gateway or a model that is not a Claude model, also set
-`CLAUDE_CODE_MAX_CONTEXT_TOKENS` to its real window, or the plugin assumes
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS` to its real window and `ANTHROPIC_MODEL` to its id, or the plugin assumes
 1,000,000 tokens. The wait in the middle only happens when the setting
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is below your model's window. By default
 Claude Code goes ahead, and the note afterwards does the work. The rest of

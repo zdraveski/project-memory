@@ -40,9 +40,9 @@ const gate = (trigger = 'auto') => {
 const { nudge, TRIGGER, WINDOW } = await import('./compact-gate.mjs');
 // The trigger moves with CLAUDE_CODE_AUTO_COMPACT_WINDOW: sizes are relative to it.
 const T = Math.round(TRIGGER * WINDOW);
-// The nudge must land a turn before Claude Code compacts (~0.959 of the window):
+// The nudge must land a turn before Claude Code compacts (33k short of the window):
 // a turn above 300k adds 46k at p75 (2026-10-26). At 0.95 the room was 7k.
-ok(0.959 * WINDOW - TRIGGER * WINDOW >= 60_000, `the nudge leaves at least 60k of room (${Math.round(0.959 * WINDOW - TRIGGER * WINDOW)})`);
+ok(WINDOW - 33_000 - TRIGGER * WINDOW >= 60_000, `the nudge leaves at least 60k of room (${Math.round(WINDOW - 33_000 - TRIGGER * WINDOW)})`);
 const stop = (session = 's1', extra = {}) => nudge({ hook_event_name: 'Stop', cwd, transcript_path: transcript, session_id: session, ...extra });
 
 // 1. A finished turn: the compaction may run, whatever the size.
@@ -90,6 +90,14 @@ ok(gate().code === 0, 'a user prompt after an unfinished turn ends it: the compa
   ok(/cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'the second one, under the ceiling, writes the in-flight note');
   write(user('long job'), au('rec-1'), au('rec-2'));
   ok(gate().code === 2, 'a newer assistant record is put off once again');
+  // A mark that cannot be written (the folder is a file): a deferral that could not be remembered would be repeated at every check
+  // (a PreCompact that exits 2 fires again), so the compaction runs.
+  const nd = join(dirname(dirname(dir)), '.nudge');
+  rmSync(nd, { recursive: true, force: true }); writeFileSync(nd, 'in the way');
+  try {
+    write(user('long job'), au('rec-9'));
+    ok(gate().code === 0 && gate().code === 0, 'with the mark unwritable, the compaction runs rather than being put off for ever');
+  } finally { rmSync(nd, { force: true }); }
 }
 
 // 3. Mid-turn over the ceiling: allowed, and the handoff says what was in flight.
@@ -477,22 +485,28 @@ const windowWith = (vars) => {
 const w1 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200k' });
 ok(w1.WINDOW === 200_000 && w1.MODEL_WINDOW === 1_000_000, `a 200k window is read as 200,000 (got ${JSON.stringify(w1)})`);
 // The 60k of room holds in any window: 0.85 of 200k left 31k, under a p75 turn (46k).
-ok(w1.TRIGGER * w1.WINDOW <= 0.959 * w1.WINDOW - 60_000 + 1e-6 && w1.TRIGGER > 0.6, `a 200k window keeps 60k of room before the compaction (got ${JSON.stringify(w1)})`);
+ok(w1.TRIGGER * w1.WINDOW <= w1.WINDOW - 33_000 - 60_000 + 1e-6 && w1.TRIGGER > 0.4, `a 200k window keeps 60k of room before the compaction (got ${JSON.stringify(w1)})`);
 ok(windowWith({}).TRIGGER === 0.85, 'a 1M window keeps the 0.85 trigger');
-const w2 = windowWith({ CLAUDE_CODE_MAX_CONTEXT_TOKENS: '400000', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '800k' });
+const w2 = windowWith({ CLAUDE_CODE_MAX_CONTEXT_TOKENS: '400000', DISABLE_COMPACT: '1', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '800k' });
 ok(w2.MODEL_WINDOW === 400_000 && w2.WINDOW === 400_000, `the model's window from CLAUDE_CODE_MAX_CONTEXT_TOKENS, and no compaction window past it (got ${JSON.stringify(w2)})`);
 const w3 = windowWith({ CLAUDE_CODE_DISABLE_1M_CONTEXT: '1', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50' });
 ok(w3.MODEL_WINDOW === 200_000 && w3.TRIGGER < 0.5, `200K held, and an earlier compaction moves the nudge earlier (got ${JSON.stringify(w3)})`);
 // Compacting at 50% of 200k (~100k), the room is counted from there: half of it, since 60k would leave 40k for the conversation.
-ok(Math.abs(w3.TRIGGER - 0.959 * 50 / 96 / 2) < 1e-6, `an earlier compaction keeps its room too (got ${JSON.stringify(w3)})`);
+ok(Math.abs(w3.TRIGGER - (1 - 33_000 / 200_000) * 50 / 96 / 2) < 1e-6, `an earlier compaction keeps its room too (got ${JSON.stringify(w3)})`);
+// Finding 9: the variable is ignored for a Claude model, used with DISABLE_COMPACT or for another model's id.
+{
+  const m = (v) => windowWith({ CLAUDE_CODE_MAX_CONTEXT_TOKENS: '400000', ...v }).MODEL_WINDOW;
+  ok(m({}) === 1_000_000 && m({ ANTHROPIC_MODEL: 'claude-sonnet-5-5' }) === 1_000_000, 'CLAUDE_CODE_MAX_CONTEXT_TOKENS is ignored for a Claude model');
+  ok(m({ DISABLE_COMPACT: '1' }) === 400_000 && m({ ANTHROPIC_MODEL: 'my-gateway-model' }) === 400_000, 'it applies with DISABLE_COMPACT, or for a model that is not a Claude one');
+}
 const w4 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '50k' });
-ok(Math.abs(w4.TRIGGER - 0.959 / 2) < 1e-6, `a window under 120k nudges at half the compaction point, never below 0 (got ${JSON.stringify(w4)})`);
+ok(Math.abs(w4.TRIGGER - 0.25) < 1e-6, `a window under 66k nudges at a quarter of it, never below 0 (got ${JSON.stringify(w4)})`);
 const w5 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400k', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '80' });
-ok(Math.abs(w5.TRIGGER * 400_000 - (0.959 * 80 / 96 * 400_000 - 60_000)) < 1, `an earlier compaction in a mid-size window keeps 60k of room (got ${JSON.stringify(w5)})`);
+ok(Math.abs(w5.TRIGGER * 400_000 - ((1 - 33_000 / 400_000) * 80 / 96 * 400_000 - 60_000)) < 1, `an earlier compaction in a mid-size window keeps 60k of room (got ${JSON.stringify(w5)})`);
 // Under a 400K model window, mid-turn at 390k is not deferred: past it the API refuses the call.
-process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '400000';
+process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '400000'; process.env.DISABLE_COMPACT = '1';
 let g4;
-try { write(user('build it'), asst('running', 390_000, 'tool_use')); g4 = gate(); } finally { delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS; }
+try { write(user('build it'), asst('running', 390_000, 'tool_use')); g4 = gate(); } finally { delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS; delete process.env.DISABLE_COMPACT; }
 ok(g4.code === 0, `under a 400K window a compaction at 390k mid-turn runs (got ${g4.code}: ${g4.err})`);
 // Auto memory turned off: the gate defers nothing and writes nothing.
 process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
@@ -607,7 +621,7 @@ const triggerWith = (pct) => {
   finally { delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE; }
 };
 const near = (a, b) => Math.abs(a - b) < 1e-9;
-ok(near(triggerWith('48'), 0.959 * 48 / 96 - 0.06) && near(triggerWith('1'), 0.959 / 96 / 2) && triggerWith('0') === 0.85 && triggerWith('100') === 0.85 && triggerWith('-5') === 0.85,
+ok(near(triggerWith('48'), 0.967 * 48 / 96 - 0.06) && near(triggerWith('1'), 0.967 / 96 / 2) && triggerWith('0') === 0.85 && triggerWith('100') === 0.85 && triggerWith('-5') === 0.85,
   'the trigger follows an override of 1 to 95 percent and ignores 0, a negative and one over 95');
 
 // The first read grows 4x: a prompt 600 KB from the end is held by the second read (1,024,000 bytes),
