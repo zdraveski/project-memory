@@ -218,7 +218,9 @@ writeFileSync(join(dirname(dirL), 'ffffffff-1.jsonl'), user('the cleared ask', {
 ok(/Another session is working/.test(startup()) && !/Another session|Last session here/.test(clearL()), 'a /clear names neither the conversation it cleared nor its ask');
 rmSync(join(dirname(dirL), 'ffffffff-1.jsonl'));
 handoffAt(10);
-ok(bare(startup()) === '', 'and nothing about one ten days old');
+ok(/^Last session here ended \S+ \S+ on: the old question/m.test(startup()), 'a session of ten days ago still shows where you left off (1.5.0: 30 days)');
+handoffAt(40);
+ok(bare(startup()) === '', 'and nothing about one forty days old');
 writeFileSync(join(dirL, '.health'), 'over budget: 9000B > 7000B\n');
 writeFileSync(join(home, '.claude', 'projects', '.snapshot-health'), JSON.stringify({ lastOk: '2026-10-01T00:00:00Z', failures: 3, error: 'git not found' }));
 mkdirSync(join(dirL, 'journal'), { recursive: true });
@@ -2621,11 +2623,12 @@ require('node:module').syncBuiltinESMExports();
     ok(!/Another session is working/.test(print_(cw, 'pppppppp-1', 'startup', M + ACTIVE)), 'one changed exactly ACTIVE ago is not');
     rmSync(tw);
 
-    // The last session's line is for a week, not a week and a moment.
+    // The last session's line is for 30 days, not 30 days and a moment.
     const cw2 = 'C:\\hl-A-print2', dP2 = store(cw2), at = Date.UTC(2026, 9, 1, 10, 0);
     writeFileSync(join(dP2, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'zzzzzzzz', 'the last ask', 'the last answer')));
-    ok(/Last session here ended 2026-10-01 10:00 on: the last ask/.test(print_(cw2, 'pppppppp-1', 'startup', at + 7 * 86400000 - 1)), `a session that ended just under a week ago is named (${print_(cw2, 'pppppppp-1', 'startup', at + 7 * 86400000 - 1).slice(0, 300)})`);
-    ok(!/Last session here ended/.test(print_(cw2, 'pppppppp-1', 'startup', at + 7 * 86400000)), 'one that ended exactly a week ago is not');
+    ok(/Last session here ended 2026-10-01 10:00 on: the last ask/.test(print_(cw2, 'pppppppp-1', 'startup', at + 30 * 86400000 - 1)), `a session that ended just under 30 days ago is named (${print_(cw2, 'pppppppp-1', 'startup', at + 30 * 86400000 - 1).slice(0, 300)})`);
+    ok(/Last session here ended 2026-10-01 10:00/.test(print_(cw2, 'pppppppp-1', 'startup', at + 10 * 86400000)), 'a session that ended 10 days ago still shows where you left off');
+    ok(!/Last session here ended/.test(print_(cw2, 'pppppppp-1', 'startup', at + 30 * 86400000)), 'one that ended exactly 30 days ago is not');
 
     // The shared index is held to 3000 B: a set of lines that fills it exactly is printed whole.
     const shared = join(root_, '_shared', 'memory', 'MEMORY.md'), had = existsSync(shared) ? readFileSync(shared) : null;
