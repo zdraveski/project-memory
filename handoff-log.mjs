@@ -35,7 +35,7 @@ const CHANGED = 8;        // files an entry names: the turn's last
 export const TAIL = 512_000;     // first read; grown 4× until it reaches the latest prompt
 export const ACTIVE = 30 * 60000;    // a transcript this recently changed: its session is still working
 export const GRACE = 60000;   // the Stop hook runs seconds after a turn ends
-const RECENT = 7 * 86400000;  // older than this, the startup line has nothing to say
+const RECENT = 30 * 86400000;  // older than this, the startup line has nothing to say
 // What compact-gate's Stop nudge opens with. `asked()` skips it, and `turns()`
 // freezes the turn's answer at it: the words written after it are the memory
 // update, not what the turn did. Named for the plugin: `[SYSTEM: ...]`, its
@@ -1079,6 +1079,13 @@ export const fit = (s, line = Infinity) => {
   return d.length <= SAY ? d : `${d.slice(0, SAY - 60).replace(/[^\n]*$/, '')}(the rest cut to fit Claude Code's startup limit)\n`;
 };
 
+// The journal's pointer, at every start and after a compaction too (the model that lost its context loses this line with it).
+// A broken journal.mjs costs the line, never the briefing. Loaded here: journal.mjs imports this module.
+async function journalLine(dir) {
+  let first = null; try { first = (await import(new URL('./journal.mjs', import.meta.url))).firstDay(dir); } catch {}
+  return first ? [`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`] : [];
+}
+
 // The SessionStart hook. After a compaction (source "compact"): the note on a
 // turn the compaction cut, then this session's own exchanges -- a parallel
 // session's asks are never taken for this one's -- then who else is working
@@ -1126,9 +1133,6 @@ async function print(input) {
     // A project with no handoff is not judged: its sessions were never the
     // Stop hook's to record (from before the plugin, or `claude --bare` runs,
     // which load no hooks).
-    // A broken journal.mjs costs the line, never the briefing. Loaded here:
-    // journal.mjs imports this module.
-    let first = null; try { first = (await import(new URL('./journal.mjs', import.meta.url))).firstDay(dir); } catch {}
     // Where it stopped in its own words: its last exchanges, oldest first, the
     // oldest dropped until the whole briefing is within BRIEF, so they never
     // cost the shared lessons at its end (2026-10-31). None forget listed, by
@@ -1142,8 +1146,7 @@ async function print(input) {
     const gone = new Set(forgotten(list).filter(([, t]) => t).map(([, t, at]) => `${tag(basename(t))} ${at}`));
     const theirs = lines.length && last && !others.length && !shut && hushed(projectsRoot(), last.s, false, OFF) === false
       ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).map(render) : [];
-    const rest = [...(first ? [`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`] : []),
-      ...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];
+    const rest = [...await journalLine(dir), ...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];
     const say = (ex) => fit([...lines, ...(ex.length ? ['Its last exchanges, oldest first:', ...ex] : []), ...rest].join('\n') + '\n', 1000);
     // The most that fit, from the newest back; none when not even it does.
     // Found, not looped: a while on the length, its && made ||, never ended
@@ -1155,7 +1158,7 @@ async function print(input) {
   try { note = (await import(new URL('./compact-gate.mjs', import.meta.url))).recover(input); } catch {}
   // Its own exchanges only. None yet (cut in its first turn, or a private
   // conversation) is none: another session's, shown here, read as its own.
-  const mine = all.filter((t) => t.s === me).map(render), tail = shared();
+  const mine = all.filter((t) => t.s === me).map(render), tail = [...await journalLine(dir), ...shared()];
   const say = () => [...(note || mine.length ? ['The last exchanges before this compaction, from handoff.md:', ...(note ? [note] : []), ...mine, ...others] : []), ...tail].join('\n') + '\n';
   // The oldest exchanges go first, until it fits.
   let out = say();
@@ -1170,26 +1173,32 @@ async function print(input) {
 // back -- Node gives up with "unsettled top-level await".
 // Node names the script by its real path: compared with the path it was
 // given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
+// The hook's whole run: also called by brief.mjs, the plugin's SessionStart starter, with the same `--print`.
+export async function main({ rethrow = false } = {}) {
+  try {
+    const input = JSON.parse(readFileSync(0, 'utf8'));
+    // Auto memory off: no record, no briefing; the tag at every start, so no
+    // backfill imports a conversation whose first reply got no Stop (P1 hunt,
+    // 2026-10-29). A resumed conversation has its history: no briefing.
+    // A project turned off (memory off): one line at a startup, nothing at any other start, nothing written.
+    const gone = isOff(storeOf(input));
+    if (gone) { if (input.source === 'startup' && process.argv.includes('--print')) process.stdout.write(`${offLine(gone)}
+`); }
+    else if (memoryOff()) off(input);
+    else if (process.argv.includes('--print')) { if (input.source !== 'resume') { try { process.stdout.write(await print(input)); } catch (e) { if (rethrow) throw e; } } }
+    else handoff(input);
+  } catch (e) {
+    if (rethrow && e?.rethrown !== false && e?.printFailed) throw e;
+    // A hook that throws on every turn is worse than one that misses a turn.
+  }
+}
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   // A reader gone before the write (Claude Code ended the hook): its EPIPE,
   // thrown with no listener, exited 1 with a stack trace once process.exit()
   // no longer came first (P1 hunt, 2026-10-29).
   process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
   (async () => {
-    try {
-      const input = JSON.parse(readFileSync(0, 'utf8'));
-      // Auto memory off: no record, no briefing; the tag at every start, so no
-      // backfill imports a conversation whose first reply got no Stop (P1 hunt,
-      // 2026-10-29). A resumed conversation has its history: no briefing.
-      // A project turned off (memory off): one line at a startup, nothing at any other start, nothing written.
-      const gone = isOff(storeOf(input));
-      if (gone) { if (input.source === 'startup' && process.argv.includes('--print')) process.stdout.write(`${offLine(gone)}\n`); }
-      else if (memoryOff()) off(input);
-      else if (process.argv.includes('--print')) { if (input.source !== 'resume') process.stdout.write(await print(input)); }
-      else handoff(input);
-    } catch {
-      // A hook that throws on every turn is worse than one that misses a turn.
-    }
+    await main();
     // Not process.exit(): on macOS a pipe is written asynchronously, and
     // exiting cut a briefing of up to 9,500 characters at 8 KB (as memory.mjs's
     // search, CI 2026-10-29).

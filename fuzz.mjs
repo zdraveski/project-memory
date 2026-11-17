@@ -353,7 +353,7 @@ function generate(seed) {
   if (cx() < 0.4) steps.push({ type: 'promote', name: aim(), tz: cpick(ZONES) });
   if (cx() < 0.4) steps.push({ type: 'doctor', tz: cpick(ZONES) });
   // big (10 %): a store whose health lines are so long and many that the briefing meets both limits (never late: the "last session"
-  // line is part of its size); late (30 %): the fresh startup is judged 12 days after the last entry, not 2. Streams of their own.
+  // line is part of its size); late (30 %): the fresh startup is judged 32 days after the last entry, not 2. Streams of their own.
   const bx = rng(seed ^ 0xB16B), big = bx() < 0.1, late = bx() < 0.3 && !big;
   return { steps, meta: { u, cwd, tz, big, late, briefing: { session: sessions[0].id, source: pick(['startup', 'resume', 'compact', 'clear']) } } };
 }
@@ -738,14 +738,14 @@ async function execute(steps, meta) {
   if (brief.out.length > SAY) problems.push(`the ${briefing.source} briefing is ${brief.out.length} characters, over ${SAY}`);
   if (['startup', 'clear'].includes(briefing.source) && brief.out.split('\n').some((l) => l.length > LINE)) problems.push(`a line of the ${briefing.source} briefing is over ${LINE} characters`);
   // A startup of a conversation the round does not hold: the briefing names where the last session ended, the ask of the
-  // newest exchange of the conversation handoff.md lists last -- when that is under a week old (RECENT, by the hook's own Date.now).
+  // newest exchange of the conversation handoff.md lists last -- when that is under 30 days old (RECENT, by the hook's own Date.now).
   // The rule must not expire with the calendar, and the round's clock is fixed in 2026: so the hook is given a Date.now of the
-  // round's own (o.now), 2 days after the last entry (30 % of rounds, meta.late: 12 days, when no line is due). Local minutes
-  // are off UTC by at most 14 h, so the age it judges is 1.4-2.6 days, or 11.4-12.6, whatever day this runs. (The other option,
+  // round's own (o.now), 2 days after the last entry (30 % of rounds, meta.late: 32 days, when no line is due). Local minutes
+  // are off UTC by at most 14 h, so the age it judges is 1.4-2.6 days, or 31.4-32.6, whatever day this runs. (The other option,
   // INSTANTS relative to the real clock, would move every round's daylight-saving shape.)
   const doc = existsSync(join(dir, 'handoff.md')) ? readFileSync(join(dir, 'handoff.md'), 'utf8') : '', { a, b } = sectionOf(doc);
   const listed = a === -1 ? [] : parse(doc.slice(a + '<!-- auto:start -->'.length, b)), last = listed.at(-1);
-  const now = last && Date.parse(`${last.at.replace(' ', 'T')}:00Z`) + (meta.late ? 12 : 2) * 86400_000;
+  const now = last && Date.parse(`${last.at.replace(' ', 'T')}:00Z`) + (meta.late ? 32 : 2) * 86400_000;
   const fresh = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: 'zzbrief0-1', source: 'startup' }), lastTz, { now });
   if (fresh.status !== 0) problems.push(`the startup briefing of a new conversation exited ${fresh.status ?? fresh.signal}`);
   if (fresh.out.length > SAY) problems.push(`the startup briefing of a new conversation is ${fresh.out.length} characters, over ${SAY}`);
@@ -899,7 +899,7 @@ const LONE = [['turn', [plain]], ['note', [lone.steps.find((x) => x.type === 'no
   ['auto memory off', [{ type: 'off', s: plain.s, tz: 'UTC' }]], ['turn, Stop, auto memory off', [plain, { type: 'stop', s: plain.s, tz: 'UTC' }, { type: 'off', s: plain.s, tz: 'UTC' }]],
   ['history (no such note: a failure path)', [{ type: 'history', name: 'no-such-note', tz: 'UTC', all: true, limit: 2 }]], ['restore (no such note)', [{ type: 'restore', name: 'no-such-note', tz: 'UTC', rev: true, force: true, pick: 0.5 }]],
   ['promote (no such note)', [{ type: 'promote', name: 'no-such-note', tz: 'UTC' }]], ['doctor', [{ type: 'doctor', tz: 'UTC' }]],
-  ['turn, Stop, the fresh briefing names it', [plain, stopOf]], ['turn, Stop, the fresh briefing 12 days on', [plain, stopOf], { late: true }], ['a big store: both limits of the briefing', [plain, stopOf], { big: true }],
+  ['turn, Stop, the fresh briefing names it', [plain, stopOf]], ['turn, Stop, the fresh briefing 32 days on', [plain, stopOf], { late: true }], ['a big store: both limits of the briefing', [plain, stopOf], { big: true }],
   ['note, edit, Stop, restore', [oneNote, { type: 'edit', name: oneNote.name, text: 'edited' }, plain, stopOf, { type: 'restore', name: oneNote.name, tz: 'UTC', rev: true, force: true, pick: 0 }, { type: 'history', name: oneNote.name, tz: 'UTC', all: false, limit: 1 }]],
   ['note, Stop, promote', [oneNote, plain, stopOf, { type: 'promote', name: oneNote.name, tz: 'UTC' }, { type: 'restore', name: oneNote.name, tz: 'UTC', rev: false, force: true, pick: 0 }]],
   ['half answer a private message froze, then forget by key', [{ ...plain, half: true, did: `${plain.did} ZQXQhalf`, queued: { blocks: false, secret: 'ZQXQhalf', text: '<private>ZQXQhalf</private> words' } }, stopOf,

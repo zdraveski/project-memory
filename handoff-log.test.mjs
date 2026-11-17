@@ -218,7 +218,9 @@ writeFileSync(join(dirname(dirL), 'ffffffff-1.jsonl'), user('the cleared ask', {
 ok(/Another session is working/.test(startup()) && !/Another session|Last session here/.test(clearL()), 'a /clear names neither the conversation it cleared nor its ask');
 rmSync(join(dirname(dirL), 'ffffffff-1.jsonl'));
 handoffAt(10);
-ok(bare(startup()) === '', 'and nothing about one ten days old');
+ok(/^Last session here ended \S+ \S+ on: the old question/m.test(startup()), 'a session of ten days ago still shows where you left off (1.5.0: 30 days)');
+handoffAt(40);
+ok(bare(startup()) === '', 'and nothing about one forty days old');
 writeFileSync(join(dirL, '.health'), 'over budget: 9000B > 7000B\n');
 writeFileSync(join(home, '.claude', 'projects', '.snapshot-health'), JSON.stringify({ lastOk: '2026-10-01T00:00:00Z', failures: 3, error: 'git not found' }));
 mkdirSync(join(dirL, 'journal'), { recursive: true });
@@ -2386,6 +2388,22 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   writeFileSync(join(dirJ2, 'journal', '2026-09-03.md'), '# Journal 2026-09-03\n\n<!-- j:k1 t:C--x/aaaaaaaa-1 d:2026-09-03 -->\n## 09:00 · conversation aaaaaaaa\n**Asked:** one\n');
   ok(/^Earlier work in this project since 2026-09-03 is in its journal: when asked about the past, search it with the memory skill before saying you don't know\.$/m.test(brief()), `the startup briefing names the journal and its first day (got ${brief()})`);
   ok(/since 2026-09-03 is in its journal/.test(brief('clear')), 'and so does the clear briefing');
+  // 1.5.0 B2: after a compaction too, not only at startup.
+  ok(/^Earlier work in this project since 2026-09-03 is in its journal/m.test(brief('compact')), `the briefing after a compaction names the journal too (got ${brief('compact')})`);
+  // 1.5.0 B3: the plugin starts the briefing through brief.mjs, which says in one line when it cannot load, and has an off switch.
+  const BRIEF = join(dirname(HOOK), 'brief.mjs');
+  const viaStarter = (extra = {}, file = BRIEF) => spawnSync(process.execPath, [file, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source: 'startup' }), env: { ...process.env, ...extra }, encoding: 'utf8' });
+  { const v = viaStarter(), w = brief(); ok(v.stdout === w && v.status === 0, `the starter prints the same briefing as handoff-log.mjs --print (starter ${v.status} ${JSON.stringify(v.stdout.slice(0, 300))} ${JSON.stringify(v.stderr.slice(0, 300))}; direct ${JSON.stringify(w.slice(0, 300))})`); }
+  ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }).stdout === '', 'PROJECT_MEMORY_BRIEFING=0 prints nothing');
+  const broken = join(home, 'broken-starter'); mkdirSync(broken, { recursive: true });
+  writeFileSync(join(broken, 'brief.mjs'), readFileSync(BRIEF)); writeFileSync(join(broken, 'handoff-log.mjs'), 'export const = ;');
+  const bad = viaStarter({}, join(broken, 'brief.mjs'));
+  ok(bad.status === 0 && /^Memory briefing failed \(.*\)\. Run "memory doctor", or reinstall the project-memory plugin\.\n$/.test(bad.stdout), `a handoff-log.mjs that does not load gives one line (got ${JSON.stringify(bad.stdout)})`);
+  ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }, join(broken, 'brief.mjs')).stdout === '', 'and the off switch silences that line too');
+  // A handoff-log.mjs that loads but throws while printing is reported too, not left as an empty briefing.
+  writeFileSync(join(broken, 'handoff-log.mjs'), "export async function main(o) { if (o?.rethrow) throw new Error('boom while printing'); }");
+  const bad2 = viaStarter({}, join(broken, 'brief.mjs'));
+  ok(bad2.status === 0 && /^Memory briefing failed \(boom while printing\)/.test(bad2.stdout), `a failure while running gives the line too (got ${JSON.stringify(bad2.stdout)})`);
 }
 
 
@@ -2621,11 +2639,12 @@ require('node:module').syncBuiltinESMExports();
     ok(!/Another session is working/.test(print_(cw, 'pppppppp-1', 'startup', M + ACTIVE)), 'one changed exactly ACTIVE ago is not');
     rmSync(tw);
 
-    // The last session's line is for a week, not a week and a moment.
+    // The last session's line is for 30 days, not 30 days and a moment.
     const cw2 = 'C:\\hl-A-print2', dP2 = store(cw2), at = Date.UTC(2026, 9, 1, 10, 0);
     writeFileSync(join(dP2, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'zzzzzzzz', 'the last ask', 'the last answer')));
-    ok(/Last session here ended 2026-10-01 10:00 on: the last ask/.test(print_(cw2, 'pppppppp-1', 'startup', at + 7 * 86400000 - 1)), `a session that ended just under a week ago is named (${print_(cw2, 'pppppppp-1', 'startup', at + 7 * 86400000 - 1).slice(0, 300)})`);
-    ok(!/Last session here ended/.test(print_(cw2, 'pppppppp-1', 'startup', at + 7 * 86400000)), 'one that ended exactly a week ago is not');
+    ok(/Last session here ended 2026-10-01 10:00 on: the last ask/.test(print_(cw2, 'pppppppp-1', 'startup', at + 30 * 86400000 - 1)), `a session that ended just under 30 days ago is named (${print_(cw2, 'pppppppp-1', 'startup', at + 30 * 86400000 - 1).slice(0, 300)})`);
+    ok(/Last session here ended 2026-10-01 10:00/.test(print_(cw2, 'pppppppp-1', 'startup', at + 10 * 86400000)), 'a session that ended 10 days ago still shows where you left off');
+    ok(!/Last session here ended/.test(print_(cw2, 'pppppppp-1', 'startup', at + 30 * 86400000)), 'one that ended exactly 30 days ago is not');
 
     // The shared index is held to 3000 B: a set of lines that fills it exactly is printed whole.
     const shared = join(root_, '_shared', 'memory', 'MEMORY.md'), had = existsSync(shared) ? readFileSync(shared) : null;
@@ -2860,7 +2879,7 @@ require('node:module').syncBuiltinESMExports();
 // can reach the real hooks-live or the real repo.
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = dirname(HOOK);
-  const FILES_ = ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
+  const FILES_ = ['store.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
     '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'deploy.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';

@@ -23,6 +23,14 @@ Entries saved before this version are not rewritten.
 - **A question made only of small words still searches.** `memory search what did we do` looks for those words instead of giving up.
 - **Search reads what you wrote in handoff.md.** The automatic log in that file repeats the journal and is still left out.
 
+### The briefing and compaction
+
+- **The startup briefing names your last session for 30 days, not 7.** Coming back to a project after a few weeks still shows where you left off.
+- **The pointer to your journal is also shown after a compaction**, so Claude still knows it can search earlier work.
+- **If the briefing cannot load, it says so in one line** instead of showing nothing. Set `PROJECT_MEMORY_BRIEFING=0` to turn the briefing off.
+- **A search that finds nothing during the first import says the journal is still importing**, instead of "nothing matches".
+- **A compaction is put off at most once for the same point in a turn, and not at all once you have sent a new prompt.** A stuck turn can no longer hold a compaction until the context is full.
+
 ## 1.4.3 (2026-11-16)
 
 This release fixes problems found in a full review of 1.4.2. Three of them kept some of your notes out of the snapshots, the backups project-memory uses to bring back a lost or overwritten note. Updating is recommended. Nothing changes in how you use the plugin, and your existing memory works as it is.

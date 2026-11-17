@@ -106,7 +106,7 @@ function state(path, { ask = true } = {}) {
 }
 
 function walk(raw) {
-  const s = { ctx: 0, midTurn: false, ask: '', raw: '', said: '', hidden: false, forgot: false, at: '', running: new Map(), edited: new Set(), editIds: new Map(), launchers: new Set() };
+  const s = { ctx: 0, last: '', midTurn: false, ask: '', raw: '', said: '', hidden: false, forgot: false, at: '', running: new Map(), edited: new Set(), editIds: new Map(), launchers: new Set() };
   const heard = toolAnswers();
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;
@@ -134,7 +134,7 @@ function walk(raw) {
       let ask = prompt(r, t);
       if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
       if (ask && BARE(ask, s.said)) ask = '[redacted]';   // a password typed alone as the answer: handoff-log's turns() does the same
-      if (ask) { s.ask = ask; s.raw = unwrap(norm(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.forgot = false; s.edited.clear(); s.editIds.clear(); }
+      if (ask) { s.ask = ask; s.raw = unwrap(norm(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.forgot = false; s.midTurn = false; s.edited.clear(); s.editIds.clear(); }
       // Not in what the harness quotes: an agent's report quoting the tag hid
       // the last words said. Nor in a compaction summary, a recap: one that
       // named the tag hid them, and the nudge, for the rest of the turn.
@@ -166,6 +166,7 @@ function walk(raw) {
         const u = m.usage;
         s.ctx = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
         s.midTurn = goesOn(m);
+        s.last = r.uuid || '';
       }
       for (const b of c) {
         if (b?.type === 'tool_use' && /^(Bash|Agent|Task)$/.test(b.name)) s.launchers.add(b.id);
@@ -263,7 +264,19 @@ export function gate(payload) {
   const pct = Math.round(100 * s.ctx / MODEL_WINDOW);
   if (!s.midTurn) return { code: 0, why: `turn boundary at ${pct}%` };
   if (s.ctx < FLOOR) return { code: 0, why: `mid-turn at ${Math.round(s.ctx / 1000)}k, under the smallest window any model has: not deferred` };
-  if (s.ctx < CEILING * MODEL_WINDOW) return { code: 2, why: `deferred: mid-turn at ${pct}% of the model window; it runs when this turn ends` };
+  if (s.ctx < CEILING * MODEL_WINDOW) {
+    // Put off once per last assistant record: a turn that never moves on is not held until the ceiling. The uuid sits in a .defer file beside
+    // the nudge's file (a second file per session, in the directory arm() prunes weekly).
+    const mark = join(NUDGES(), `${tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''))}.defer`);
+    let again = false;
+    if (s.last) {
+      let was = ''; try { was = readFileSync(mark, 'utf8'); } catch {}
+      again = was === s.last;
+      if (!again) try { mkdirSync(NUDGES(), { recursive: true }); writeFileSync(mark, s.last); } catch {}
+    }
+    // The second time it runs, and the cut turn still gets its handoff and in-flight note below.
+    if (!again) return { code: 2, why: `deferred: mid-turn at ${pct}% of the model window; it runs when this turn ends` };
+  }
   s = state(payload.transcript_path);
   // One writer, in order: the handoff first (the turn's ask and last words as
   // an entry), then the note inside it. As two hooks on the same event they

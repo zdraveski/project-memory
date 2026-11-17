@@ -469,7 +469,7 @@ const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((
   `${ev} | ${e.matcher || ''} | ${x.command} ${(x.args || []).join(' ')}`))).sort();
 ok(JSON.stringify(wiring) === JSON.stringify(['PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop',
   'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs', 'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs',
-  'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/handoff-log.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
+  'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/brief.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
   `the plugin wires its hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
 {
   const { HOOKS } = await import('./deploy.mjs');
@@ -1478,6 +1478,12 @@ if (!quick) {
   ok(/; last write failed: disk full$/m.test(out), `status says the last write failed (got ${out})`);
   for (const d of ['2026-10-05', '2026-10-06']) unlinkSync(join(st, 'journal', `${d}.md`));
   ok(/^  journal: no days yet; importing 1 older conversations; last write failed: disk full$/m.test(await cli()), 'a journal that failed from its first write still says so');
+  // 1.5.0 item 32: a search that finds nothing while older conversations are still being imported says so, not "nothing matches".
+  out = (await run(['search', 'zzzunmatched', '--store', st])).stdout;
+  ok(/still importing 1 older conversation/.test(out) && !/^nothing matches/m.test(out), `a miss during the import says it is still importing (got ${out})`);
+  unlinkSync(tp);
+  out = (await run(['search', 'zzzunmatched', '--store', st])).stdout;
+  ok(/^nothing matches "zzzunmatched"/m.test(out) && !/importing/.test(out), `with nothing left to import it says nothing matches (got ${out})`);
   // A store whose only memory is its journal (no index, no journal.md yet) is a store.
   const lone = join(root, 'C--jonly', 'memory');
   mkdirSync(join(lone, 'journal'), { recursive: true });
