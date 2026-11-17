@@ -208,7 +208,7 @@ export const queuedText = (r) => {
 // answer is not read; carry the ids across if a question and its answer are ever found apart.
 const SAID = 'the user said:';
 const resultText = (b) => (typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => (x?.type === 'text' ? String(x.text ?? '') : '')).join(' ') : '');
-const picksOf = (r) => { const a = r.toolUseResult?.answers; return a && typeof a === 'object' ? Object.values(a).map(String) : null; };
+const picksOf = (r) => { const a = r.toolUseResult?.answers; return a && typeof a === 'object' ? Object.entries(a).map(([q, v]) => [q, String(v)]) : null; };
 export const toolAnswers = () => {
   const asks = new Set();
   // heard.picks: the answers of AskUserQuestion read by the last call, one a pick.
@@ -218,7 +218,7 @@ export const toolAnswers = () => {
     if (r.type === 'assistant') for (const b of c) if (b?.type === 'tool_use' && b.name === 'AskUserQuestion') asks.add(b.id);
     if (r.type !== 'user') return '';
     return c.filter((b) => b?.type === 'tool_result').map((b) => {
-      if (asks.has(b.tool_use_id)) { const a = picksOf(r); heard.picks = a ?? []; return a ? a.join('\n') : resultText(b); }
+      if (asks.has(b.tool_use_id)) { const a = picksOf(r); heard.picks = a ?? []; return a ? a.map((e) => e[1]).join('\n') : resultText(b); }
       if (r.toolUseResult !== 'User rejected tool use') return '';
       const s = resultText(b), i = s.indexOf(SAID);
       return i === -1 ? '' : s.slice(i + SAID.length);
@@ -318,7 +318,7 @@ export function turns(tail) {
         if (refused(r, b)) { pending.ids.splice(i, 1); pending.base.splice(i, 1); pending.ran.splice(i, 1); }
         else {
           pending.base.forEach((c, j) => { if (c === pending.base[i]) pending.ran[j] = c; });   // the earlier tries' tails go: only the last result counts
-          if (err) pending.ran[i] = `${pending.base[i]} → failed: ${clip(resultText(b).slice(-2000), Infinity).slice(-300)}`;
+          if (err) pending.ran[i] = `${pending.base[i]} → failed: ${clip(resultText(b).slice(-20000), Infinity).slice(-300)}`;
         }
       }
       const f = pending.edits.get(b.tool_use_id);
@@ -331,7 +331,7 @@ export function turns(tail) {
     if (r.type === 'assistant' && r.message?.model === '<synthetic>') { keep(pending); continue; }
     const t = text(r).trim(), n = r.type === 'user' ? norm(t) : '', told = heard(r);   // n only for a user record: nothing else reads it
     // A pick answering a question that asks for a secret is redacted like a typed answer (BARE); `said` is still the question.
-    if (pending && !pending.frozen && heard.picks.length) pending.picked.push(...heard.picks.map((p) => (BARE(p, said) ? '[redacted]' : p)));
+    if (pending && !pending.frozen && heard.picks.length) pending.picked.push(...heard.picks.map(([q, p]) => (BARE(p, q) ? '[redacted]' : p)));
     // A message typed while Claude worked has no user record, only this attachment: it opens a turn too (1.3.2). A private one
     // keeps the older way below (it freezes the turn it came into).
     // Not another session's or a subagent's message (origin.kind peer, isMeta): it is no ask of the user's.
