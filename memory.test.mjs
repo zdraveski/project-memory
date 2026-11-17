@@ -1060,8 +1060,11 @@ if (!quick) {
   ok((r.stdout.match(/^     Asked: feed the wombat its evening/gim) || []).length === 1 && r.stdout.includes(`\n     2 more like this, 2026-10-04..2026-10-06: ${w2.key}, ${w1.key}; --same takes them all\n`) &&
     /^     Asked: wombat feed schedule$/m.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout),
     `identical long requests, in any case and spacing, print once with how many more, their days and keys (got ${r.stdout})`);
+  // The short request ranks first now (a long one counts less), so the limit of 1 shows it alone; a limit of 2 shows both requests, the long one with its repeats.
   r = await jcli('search', 'wombat', 'feed', '--limit', '1');
-  ok(/^     2 more like this/m.test(r.stdout) && !/schedule/.test(r.stdout) && /^1 of 2 match\(es\) in .+; --limit N shows more/m.test(r.stdout), `--limit counts the requests, not their repeats (got ${r.stdout})`);
+  ok(/^     Asked: wombat feed schedule$/m.test(r.stdout) && !/more like this/.test(r.stdout) && /^1 of 2 match\(es\) in .+; --limit N shows more/m.test(r.stdout), `--limit cuts the requests (got ${r.stdout})`);
+  r = await jcli('search', 'wombat', 'feed', '--limit', '2');
+  ok(/^     2 more like this/m.test(r.stdout) && /schedule/.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout), `--limit counts the requests, not their repeats (got ${r.stdout})`);
   // --same: show and forget take every copy of a request by one key.
   r = await jcli('show', w3.key, '--same');
   ok(r.status === 0 && [w1, w2, w3].every((w) => r.stdout.includes(`\n     key: ${w.key}\n`)) && !/schedule/.test(r.stdout), `show --same prints every entry that asked the same (got ${r.stdout})`);
@@ -1591,6 +1594,25 @@ if (!quick) {
   ok(/ver-a\.md/.test(r.stdout) && !/ver-b\.md/.test(r.stdout) && !/nothing to search for/.test(r.stdout), `a version is searched whole (got ${r.stdout})`);
   r = await jcli('search', 'what', 'changed', 'in', 'v1.4.3');
   ok(/ver-a\.md/.test(r.stdout) && !/ver-b\.md/.test(r.stdout), `a leading v is the same version (got ${r.stdout})`);
+  // 1.5.1 W3: a one-dot version is every release of it: "1.4" finds 1.4.1, not 1.45 (a three-part version stays whole, above).
+  memory(jm, 'ver-c', 'third log', 'shipped 1.4.1 today');
+  memory(jm, 'ver-d', 'fourth log', 'only 1.45 here');
+  r = await jcli('search', '1.4');
+  ok(/ver-c\.md/.test(r.stdout) && !/ver-d\.md/.test(r.stdout), `1.4 finds 1.4.1 and not 1.45 (got ${r.stdout})`);
+  // 1.5.1 W2: the whole phrase in an entry ranks it above one holding the words apart, even one with more of them.
+  memory(jm, 'ph-a', 'plain', 'qwurt qwurt zorbx zorbx');
+  memory(jm, 'ph-b', 'plain', 'zorbx qwurt');
+  r = await jcli('search', 'zorbx', 'qwurt');
+  ok(r.stdout.indexOf('ph-b.md') !== -1 && r.stdout.indexOf('ph-b.md') < r.stdout.indexOf('ph-a.md'), `an exact phrase ranks first (got ${r.stdout})`);
+  // 1.5.1 W1: a long note or pasted request counts less than a short one with the same hits.
+  memory(jm, 'ln-short', 'plain', 'okapi okapi');
+  memory(jm, 'ln-long', 'plain', `okapi okapi ${'filler '.repeat(3000)}`);
+  utimesSync(join(jm, 'ln-long.md'), new Date(), new Date());
+  r = await jcli('search', 'okapi');
+  ok(r.stdout.indexOf('ln-short.md') !== -1 && r.stdout.indexOf('ln-short.md') < r.stdout.indexOf('ln-long.md'), `a long note ranks below a short one (got ${r.stdout})`);
+  day(jm, '2026-10-23', [entry('2026-10-23 10:00', 'wombat zebra short'), entry('2026-10-23 10:05', `wombat zebra long ${'lorem '.repeat(400)}`)]);
+  r = await jcli('search', 'wombat', 'zebra');
+  ok(r.stdout.indexOf('zebra short') !== -1 && r.stdout.indexOf('zebra short') < r.stdout.indexOf('zebra long'), `a long request ranks below a short one (got ${r.stdout})`);
   // 1.5.0 items 2 and 25: word forms, English and Macedonian, found by the stem; a missing word is named as typed.
   memory(jm, 'forms-a', 'database moves', 'we were migrating the database, a release, and the releases after it');
   for (const q of ['migrated', 'migration', 'releasing', 'releases']) {
