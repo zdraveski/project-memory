@@ -1677,7 +1677,7 @@ After the log: narwhalqq stays.
     const rows = [
       // [query, a word that must not be found, then forms that must]
       ['butts', 'button'], ['indeed', 'index'], ['proceed', 'process'], ['exceed', 'exce'], ['applied', 'apple'], ['supply', 'sup'],
-      ['logged', 'login'], ['planned', 'planet'], ['settings', 'setup'], ['log', 'login'], ['ready', 'read'], ['steady', 'stead'],
+      ['logged', 'login'], ['planned', 'planet'], ['settings', 'setup'], ['log', 'login'], ['ready', 'read'], ['steady', 'stead'], ['story', 'store'],
     ];
     rows.forEach(([, w], i) => memory(wf, `wf-no-${i}`, 'wf', `the word ${w}`));
     for (const [i, [q, w]] of rows.entries()) {
@@ -1686,7 +1686,7 @@ After the log: narwhalqq stays.
     }
     const yes = [['log', 'logs'], ['log', 'logged'], ['log', 'logging'], ['logs', 'log'], ['logged', 'logging'], ['fixed', 'fix'], ['fixed', 'fixing'], ['fixing', 'fixes'], ['fix', 'fixed'],
       ['keys', 'key'], ['key', 'keys'], ['ready', 'ready'], ['steady', 'steady'], ['release', 'released'], ['released', 'release'], ['released', 'releases'], ['planned', 'plan'],
-      ['settings', 'setting'], ['butts', 'butt'], ['applied', 'applied'], ['supply', 'supply'], ['indeed', 'indeed'], ['proceed', 'proceed'], ['exceed', 'exceed'], ['stores', 'store'], ['running', 'run']];
+      ['settings', 'setting'], ['butts', 'butt'], ['applied', 'applied'], ['supply', 'supply'], ['indeed', 'indeed'], ['proceed', 'proceed'], ['exceed', 'exceed'], ['stores', 'store'], ['running', 'run'], ['library', 'libraries'], ['story', 'stories'], ['copy', 'copied']];
     for (const [i, [, w]] of yes.entries()) memory(wf, `wf-yes-${i}`, 'wf', `the word ${w}`);
     for (const [i, [q, w]] of yes.entries()) {
       r = await run(['search', q, '--store', wf]);
