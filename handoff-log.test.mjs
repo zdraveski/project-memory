@@ -1235,14 +1235,14 @@ finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
 ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`start00${i}`)), `every SessionStart with auto memory off prints nothing and keeps the tag (got ${JSON.stringify(said)}, ${tags()})`);
 // Item 28: autoMemoryEnabled false in the project's settings.json: a Stop writes no handoff and a start briefs nothing, and the start tags itself.
 {
-  const pj = join(home, 'settings-off-proj'), cwdS = 'C:/settings-off', ds = storeFor(home, cwdS), ts = join(ds, 'so000000-0000.jsonl');
+  const pj = join(home, 'settings-off-proj'), cwdS = 'C:\\settings-off', ds = storeFor(home, cwdS), ts = join(ds, 'so000000-0000.jsonl');
   mkdirSync(join(pj, '.claude'), { recursive: true }); mkdirSync(ds, { recursive: true });
   writeFileSync(join(pj, '.claude', 'settings.json'), JSON.stringify({ autoMemoryEnabled: false }));
   writeFileSync(ts, [user('please fix the thing', { ts: '2026-09-11T07:00:00Z' }), asst('fixed it')].join('\n') + '\n');
   const penv = { ...env, CLAUDE_PROJECT_DIR: pj };
   execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdS, transcript_path: ts, session_id: 'so000000-0000' }), env: penv });
   const brief = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdS, session_id: 'so111111-0000', source: 'startup' }), env: penv }).toString();
-  ok(!existsSync(join(ds, 'handoff.md')) && brief === '' && tags().includes('so111111'), `settings off: a Stop writes no handoff, a start prints nothing and keeps its tag (got ${brief.length} chars, ${tags()})`);
+  ok(!existsSync(join(ds, 'handoff.md')) && brief === '' && tags().includes('so111111'), `settings off: a Stop writes no handoff, a start prints nothing and keeps its tag (got ${brief.length} chars, handoff ${existsSync(join(ds, 'handoff.md'))}, ${tags()})`);
 }
 // A resumed conversation, auto memory on: nothing printed (it was read as a compaction).
 ok(started('resume', 'nnnnnnnn-1') === '', 'a resumed conversation gets no briefing');
