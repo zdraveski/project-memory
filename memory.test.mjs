@@ -2070,6 +2070,10 @@ After the log: narwhalqq stays.
   r = await cli('doctor');
   ok(r.status === 0 && !/^PROBLEM/m.test(r.stdout) && /^ok +installed as project-memory@project-memory$/m.test(r.stdout) && /^ok +git on PATH$/m.test(r.stdout) && !/locks a killed hook left/.test(r.stdout), `a healthy doctor says ok and exits 0 (got ${r.stdout})`);
   ok(/^ok +compaction window 1000k of the model's 1000k: Claude Code compacts at 967k, the memory reminder comes at 850k$/m.test(r.stdout), `doctor names the compaction and model windows (got ${r.stdout})`);
+  process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = '50';
+  // a process of its own: the windows are read when compact-gate loads
+  try { r = spawnSync(process.execPath, [CLI, 'doctor', '--store', dir], { encoding: 'utf8' }); } finally { delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE; }
+  ok(/Claude Code compacts at 504k, the memory reminder comes at 443k$/m.test(r.stdout), `doctor shows the point moved by CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (got ${r.stdout})`);
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
   try { r = await cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   ok(r.status === 0 && /^ok +auto memory is off \(CLAUDE_CODE_DISABLE_AUTO_MEMORY\)/m.test(r.stdout), `auto memory off is said, and is no problem (got ${r.stdout})`);
