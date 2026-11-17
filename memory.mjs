@@ -559,6 +559,8 @@ const rewrite = (work) => {
   const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), busy = new Error('a snapshot is being taken; try again in a moment');
   if (['index.lock', 'HEAD.lock'].some((f) => existsSync(join(g, f)))) throw busy;
   try { writeFileSync(lock, '', { flag: 'wx', mode: 0o600 }); } catch (e) { throw e.code === 'EEXIST' ? busy : e; }
+  // A run that was killed left its copy, the full unscrubbed history, behind; holding the lock, no other run is using one.
+  try { for (const n of readdirSync(g)) if (n.startsWith('pm-purge-')) rmSync(join(g, n), { recursive: true, force: true }); } catch {}
   // The copy sits in the repository's own .git, which no snapshot commits; the OS temp folder was outside the store.
   const tmp = mkdtempSync(join(g, 'pm-purge-')), copy = join(tmp, 'copy.git');
   try {
@@ -618,7 +620,7 @@ const rescan = (stores, apply, yes) => {
   const root = projectsRoot(), found = [];
   for (const dir of stores) for (const sub of ['', 'journal']) {
     let names = []; try { names = readdirSync(join(dir, sub)); } catch {}
-    for (const n of names.filter((x) => x.endsWith('.md'))) {
+    for (const n of names.filter((x) => x.endsWith('.md') || (!sub && x === 'handoff.md.prev'))) {
       const f = join(dir, sub, n); let text;
       try { text = readFileSync(f, 'utf8'); } catch { continue; }   // a folder named x.md, or a file that cannot be read
       const [to, c] = scrub(text);
