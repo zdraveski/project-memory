@@ -583,7 +583,7 @@ At the start of a conversation, and after `/clear`, Claude is told:
   transcript changed in the last 30 minutes and has a turn still open), and
   the last request recorded for each, said as such: what it works on now may
   be newer; if none, where the last conversation stopped, if
-  that was in the last 7 days, followed by that conversation's own exchanges
+  that was in the last 30 days, followed by that conversation's own exchanges
   from the handoff, oldest first (request, answer and files, as the handoff
   keeps them), as many as fit (see below). After `/clear` neither, since the conversation
   just cleared is the newest. It names at most two, and only conversations
@@ -622,7 +622,9 @@ After a compaction, Claude is told:
 - the shared notebook's index.
 
 A conversation that is resumed gets no briefing: its history already holds
-the one it got when it started.
+the one it got when it started. When the briefing cannot load, it says so in
+one line instead of showing nothing. Set `PROJECT_MEMORY_BRIEFING=0` in the
+environment to turn the briefing off.
 
 The briefing stays under 9,500 characters, inside the 10,000 Claude Code
 passes on whole. After a compaction, the oldest exchanges are left out first,
@@ -683,6 +685,11 @@ is kept in Claude Code's settings, which the plugin doesn't read. With one of
 those, also put the size in `CLAUDE_CODE_AUTO_COMPACT_WINDOW` under `env` in
 your Claude Code settings, for example `"200k"`. Otherwise the reminder
 never fires.
+
+With a gateway or a model that is not a Claude model, the real window is often
+between 200,000 and 900,000 tokens, and the plugin still assumes 1,000,000.
+Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to the real window (also under `env`), so
+the reminder and the wait come at the right time.
 
 ### If your model holds 200,000 tokens
 
@@ -884,7 +891,11 @@ yours named like `x.tmp5` stays.
 
 `search` looks at notes in this project and the shared notebook, archive
 included, and at this project's journal (`--all`: every project). Common
-words such as "the", "how", "what" and "is" are ignored. A word of two
+words such as "the", "how", "what" and "is" are ignored (a question made only
+of such words still searches). Other forms of a word match: `migrated` finds
+`migrating` and `migration`, and the same works for common Macedonian
+endings. Irregular forms (`run` and `ran`) do not match. A version number is
+one word, so `1.4.3` does not find `1.4.30`. A word of two
 letters (CI, PR) counts only standing alone, so `ci` doesn't match
 "decision".
 For each word: +3 if it's in the note's name, +2 in its description, +1 per
@@ -1203,7 +1214,11 @@ set.
 ### Your files
 
 It writes only inside Claude Code's own folder (`~/.claude/projects`, or the
-folder `CLAUDE_CONFIG_DIR` names), never in your project.
+folder `CLAUDE_CONFIG_DIR` names), never in your project. The one exception is
+`forget --purge`, which works on a full copy of the snapshot history in your
+computer's temporary folder and removes it afterwards. A shorter
+`cleanupPeriodDays` in Claude Code's settings shortens the time the journal can
+catch up on conversations Claude Code has not yet deleted.
 
 ## Requirements and limits
 
@@ -1212,8 +1227,9 @@ folder `CLAUDE_CONFIG_DIR` names), never in your project.
 - Claude Code only, on Windows, macOS or Linux.
 - Paths follow `CLAUDE_CONFIG_DIR`, and `CLAUDE_CODE_PROJECT_DIR_NAME` only
   when `CLAUDE_CONFIG_DIR` is set too (see [Where things live](#where-things-live)).
-  The `autoMemoryDirectory` setting is not followed: the plugin reads no
-  settings, and `doctor` only warns when it is set.
+  The `autoMemoryDirectory` setting is not followed: `doctor` only warns when
+  it is set. The plugin reads Claude Code's settings for two values only,
+  `autoMemoryEnabled` and `autoMemoryDirectory`.
 - Tested on Linux with Node 22, Windows with Node 24 and macOS with Node 26.
 - The snapshot repository only grows.
 - The suite is 8 test files and about 2,500 checks. Each pull request runs

@@ -23,8 +23,9 @@ This page says what it reads, what it saves, and how to remove it.
 - The git information of the folder a conversation starts in (its `.git`
   folder or file, and those of the folders above it), to find the repository
   whose notebook Claude Code uses, as Claude Code does.
-- Seven settings from the environment, by name, the same ones Claude Code
-  reads: `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME` and
+- Eight settings from the environment, by name: `PROJECT_MEMORY_BRIEFING`
+  (set to `0`, the startup briefing is not shown), and seven that Claude Code
+  reads too: `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME` and
   `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (where the notes are, and whether they're
   on), and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_DISABLE_1M_CONTEXT`,
   `CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
@@ -32,9 +33,12 @@ This page says what it reads, what it saves, and how to remove it.
 - Claude Code's lists of installed plugins and marketplaces, and the plugin's
   own manifest, in `~/.claude/plugins`, only when you run the `doctor` check,
   to see where the plugin is installed and whether its auto-update is on.
-- Claude Code's settings files, for two values only: `autoMemoryEnabled` (hooks
-  and `doctor`) and `autoMemoryDirectory` (`doctor`). The files can hold keys;
-  nothing else in them is read or printed.
+- Claude Code's settings files, for two values only: `autoMemoryEnabled` (the
+  hooks and `doctor` read it from the managed settings, the project's
+  `.claude/settings.local.json` and `.claude/settings.json`, and
+  `settings.json` in Claude Code's folder) and `autoMemoryDirectory` (`doctor`,
+  from that last file only). The files can hold keys; nothing else in them is
+  read or printed.
 
 The git-rule watcher (a PreToolUse hook) reads the notes that hold an `enforce:` rule, the first bytes of the conversation's record to find its store, and the git command about to run, to compare it with the rules. It sends nothing anywhere.
 
@@ -142,7 +146,8 @@ All of it stays in `~/.claude/projects` on your computer:
   and ctx_batch tools are listed too, with their code. An entry is kept
   whole: a long pasted text or a long command
   is kept in full, up to 20 to 50 KB for one request, reply or command, and
-  secrets in it are still replaced.
+  secrets in it are still replaced. Entries saved before 1.5.0 are not
+  rewritten: they keep the form they were saved in.
   - The rules above apply to it too: secrets are replaced with `[redacted]`,
     commands included, a `<private>` message's reply is saved as `[private]`
     with no files or commands, and a conversation marked `<private-session>`
@@ -320,7 +325,10 @@ Uninstalling the plugin leaves all of this in place. To delete:
   project-memory is installed, a deleted `journal` folder is filled again
   from the conversations Claude Code still keeps. To empty the journal
   instead, use `forget` as below.
-- the bookkeeping files: in `~/.claude/projects`, `.gitignore`, `.stop-ran`,
+- a backup that `memory rescan --apply --yes` made: the folder
+  `project-memory-rescan-backup-<date>` in Claude Code's folder (`~/.claude`).
+  It still holds the secrets it removed, and is never deleted for you.
+- the bookkeeping files: in `~/.claude/projects`, `.hash-salt`, `.gitignore`, `.stop-ran`,
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
   `.journal-failed-…` file and the folder `.nudge`; in each project's
   `memory` folder, `.tiered`, `.facts`, `.health`, `.private-sessions`,
@@ -412,7 +420,8 @@ those days' older versions (the journal day files that held the entry, expired f
 a snapshot repository this plugin made. A purged day loses its older versions whole, so other conversations' entries of that
 day go from the history too (the current files are untouched; the next snapshot adds the cleaned day back). Only the branches
 are rewritten: a branch, stash or tag you added to that repository yourself still keeps the old text. It refuses while a
-snapshot is being taken; run it again a moment later.
+snapshot is being taken; run it again a moment later. While it runs, it keeps a full copy of the snapshot history in your
+computer's temporary folder, and removes it when it finishes.
 
 On Linux and macOS the files the hooks write are mode 0600, their folders 0700 and the snapshot `.git` 0700, so other users
 of the computer cannot read them. An older install is tightened at its next Stop. The fingerprints used as a journal key (for a turn with no id) and in `.stop-ran` are

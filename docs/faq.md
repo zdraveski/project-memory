@@ -149,7 +149,8 @@ Every hook has a time limit, and a hook that fails never blocks Claude Code
 ### Does search understand meaning?
 
 No. It searches by words, not by meaning: ask with words that were used, and
-Claude can try a few. It covers your notes, the shared notebook, the archive
+Claude can try a few. Other forms of a word match (`migrated` finds
+`migration`; Macedonian endings too), but a synonym does not. It covers your notes, the shared notebook, the archive
 and the journal. Words of two Chinese or Japanese characters are found; in
 other scripts a two-letter word is found only standing alone.
 

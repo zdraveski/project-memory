@@ -1,8 +1,10 @@
 # Security
 
 project-memory runs only on your computer. It makes no internet connections,
-never opens a credentials or settings file, and writes only inside Claude
-Code's own folder (`~/.claude/projects`). It does read your conversations,
+opens no credentials file, reads Claude Code's settings files only for two
+values (`autoMemoryEnabled` and `autoMemoryDirectory`), and writes only inside
+Claude Code's own folder (`~/.claude`), apart from a temporary copy of the
+snapshot history that `forget --purge` makes and removes. It does read your conversations,
 which can hold secrets you pasted: [PRIVACY.md](PRIVACY.md) says what it
 reads and saves, and what it removes first. What could go wrong, and what
 guards against it, is in the
