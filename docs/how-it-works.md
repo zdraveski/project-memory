@@ -1044,7 +1044,10 @@ enforce:
 - `has` is one word or a list of up to 8, written as `[a, b, c]` on one line.
   A command matches when it holds one of them as a whole word.
 - `unless` is optional. If any of its words is in the same command, the rule
-  does not match.
+  does not match. It also matches a folder or file name inside a path, split
+  at `/` and `\`: `unless: [scratchpad]` spares `cd /tmp/x/scratchpad/repo &&
+  git add -A`, but not a folder called `scratchpad-old`. `has` is not split: a
+  path like `src/.` or `a/--all` is not a match.
 - Words are exact and case-sensitive: no patterns, no quotes, no spaces. A
   list written as `- x` lines is not read. One rule per note.
 - A bad rule is reported with the reason by `memory enforce status` and by
@@ -1095,15 +1098,18 @@ project.
 It sees a command after an escaped quote, after git options such as
 `--no-optional-locks`, inside `{ }` or `( )`, after a line continuation, behind
 `env`, `sudo`, `command`, `rtk`, `git.exe` or a full path to git, and after
-`FOO=1` or `cd x &&`. A heredoc body is not a command.
+`FOO=1` or `cd x &&`. A heredoc body is not a command. That is what the rule
+engine reads, and what `replay` reads in saved commands.
 
 It does not see:
 
-- Wrapped commands that Claude Code's `if` filter (`Bash(git *)`) may keep the
-  hook from starting for: `env FOO=1 git add -A`, `command git add -A`,
-  `/usr/bin/git add -A`, `git.exe add -A`, `rtk git add -A`. This was not
-  re-checked against a live Claude Code, so read it as "may". Replay reads
-  the saved commands and does see these.
+- Git commands that never start the hook, because Claude Code's `if` filter
+  (`Bash(git *)`) skips them: `env FOO=1 git add -A`, `command git add -A`,
+  `/usr/bin/git add -A`, `git.exe add -A`, `rtk git add -A`. A live Claude
+  Code run confirmed this for Bash; the `PowerShell(git *)` filter was not
+  tried. In 30 days of one user's real commands, about 0.4% of git calls
+  were of these forms. `replay` reads the saved commands, so it does see
+  them, and the log will show fewer hits than `replay` does for them.
 - `$(...)` inside quotes, `bash -c "git add -A"`, and words after `--`
   (`git add -- -A`); git aliases and scripts; joined short flags (`-Av`); `&`
   alone as a separator; `#` comments; and a rule with `unless:` words that a
