@@ -186,8 +186,8 @@ Four ways, from narrow to wide:
    to come back.
 3. **All projects on this computer:** set `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to `1`, or
    disable the plugin.
-4. **Claude Code itself:** its own settings, which project-memory does not read
-   or change.
+4. **Claude Code itself:** its own `autoMemoryEnabled: false` setting also turns
+   project-memory off; it reads that one value and changes nothing.
 
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/turning-off-narrow.webp">

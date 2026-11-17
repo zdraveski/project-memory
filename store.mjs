@@ -33,12 +33,24 @@ export const inProjects = (t) => same(dirname(dirname(resolve(t))), projectsRoot
 export const same = (a, b) => (process.platform === 'win32'
   ? resolve(a).toLowerCase() === resolve(b).toLowerCase()
   : resolve(a) === resolve(b));
-// Auto memory turned off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): the hooks do
-// nothing. They recorded and briefed all the same. Off in settings
-// (autoMemoryEnabled) they cannot see: the plugin reads no settings file.
+// Auto memory turned off: the hooks do nothing. Claude Code reads it from CLAUDE_CODE_DISABLE_AUTO_MEMORY (1 off, 0 on, over any
+// file) and else from the first autoMemoryEnabled in managed, project-local, project, then user settings. Only a boolean counts;
+// a file that is not valid JSON is skipped. Not seen: --settings, --bare, safe mode, the registry, a plist, server-managed settings.
 // A switch in the environment is on as Claude Code reads one: 1, true, yes, on.
 export const envOn = (v) => /^(1|true|yes|on)$/i.test(v || '');
-export const memoryOff = () => envOn(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY);
+const MANAGED = process.platform === 'win32' ? 'C:/Program Files/ClaudeCode' : process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode' : '/etc/claude-code';
+export function autoMemory({ managed = MANAGED, cwd = process.env.CLAUDE_PROJECT_DIR || process.cwd() } = {}) {
+  const env = process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY;
+  if (envOn(env)) return { off: true, why: 'CLAUDE_CODE_DISABLE_AUTO_MEMORY' };
+  if (/^(0|false|no|off)$/i.test(env || '')) return { off: false };
+  let d = []; try { d = readdirSync(join(managed, 'managed-settings.d')).filter((f) => f.endsWith('.json')).sort().reverse().map((f) => join(managed, 'managed-settings.d', f)); } catch {}
+  for (const f of [...d, join(managed, 'managed-settings.json'), join(cwd, '.claude', 'settings.local.json'), join(cwd, '.claude', 'settings.json'), join(configDir(), 'settings.json')]) {
+    let v; try { v = JSON.parse(readFileSync(f, 'utf8'))?.autoMemoryEnabled; } catch { continue; }
+    if (typeof v === 'boolean') return v ? { off: false } : { off: true, why: `autoMemoryEnabled is false in ${f}` };
+  }
+  return { off: false };
+}
+export const memoryOff = (o) => autoMemory(o).off;
 
 const slugOf = (p) => String(p).replace(/[^A-Za-z0-9]/g, '-');
 
