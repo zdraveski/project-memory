@@ -273,13 +273,17 @@ const plain = (t) => t.length > 2 || /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Kataka
 // A short English root (see stem()) is a whole word with its endings instead; `w` is the word as typed.
 const starts = (t, w = t) => {
   const [r, f, d] = /^[a-z]+$/.test(w) ? cutEn(w) : [], B = '(?<![\\p{L}\\p{N}])';
-  if (!r || r.length > 4 || !(f ? INFL.has(f) : r.length === 3)) return new RegExp(`${B}${t}`, 'gu');
+  if (!r || r.length > 4 || !(f ? INFL.has(f) : r.length === 3)) {
+    // An uncut consonant + y word also finds its plural and past: library, libraries; story, stories (not store).
+    const y = !f && /[^aeiou]y$/.test(t) ? `|${t.slice(0, -1)}i(?:es|ed)` : '';
+    return new RegExp(`${B}(?:${t}${y})`, 'gu');
+  }
   const l = r.at(-1), o = [`e?(?:s|es|d|ed|ing|ings|ies|ied|${l}ed|${l}ing|${l}ings)`];
   if (!d && !(f === 'ed' && r.endsWith('e'))) o.push(['s', 'es', 'ed', 'ing', 'ings'].includes(f) ? 'e?' : '');
   return new RegExp(`${B}(?:${w}|${r}(?:${o.join('|')}))(?![\\p{L}\\p{N}])`, 'gu');
 };
-// A term is matched as word forms when it was cut, or is a 3-letter English word.
-const forms = (t, cut) => (cut || /^[a-z]{3}$/.test(t)) && plain(t);
+// A term is matched as word forms when it was cut, is a 3-letter English word, or ends in a consonant and y (library: libraries).
+const forms = (t, cut) => (cut || /^[a-z]{3}$/.test(t) || /^[a-z]*[^aeiou]y$/.test(t)) && plain(t);
 const count = (hay, t, cut) => (isVer(t) ? (hay.match(verRe(t)) ?? []).length : forms(t, cut) ? (hay.normalize('NFC').match(starts(t, cut || t)) ?? []).length : plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
 const has = (hay, t, cut) => (isVer(t) ? verRe(t).test(hay) : forms(t, cut) ? starts(t, cut || t).test(hay.normalize('NFC')) : plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
 // The stretches of `text` around each match of `find`, joined, `room` characters
