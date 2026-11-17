@@ -2461,6 +2461,11 @@ require('node:module').syncBuiltinESMExports();
   // Fifty quoted blocks are taken out and no more: the rest is left as it is.
   const quoted = '<task-notification>a</task-notification>';
   ok(unquote(quoted.repeat(51)) === quoted && unquote(`x${quoted}y`) === 'xy', 'unquote stops after fifty blocks');
+  { // Item 7: a clip of a stored ask or answer says how much it lost, counted after redaction, and stays within its limit.
+    const sentence = 'This sentence is long enough. '; const t = sentence.repeat(40); const c = clip(t, 500), left = t.trim().length - c.slice(0, c.indexOf('…')).length;
+    ok(c.length <= 500 && c.endsWith(`… (+${left} chars)`) && clip(c, 500) === c, `a clipped text ends with its lost count and clips to itself (got ${c.slice(-40)})`);
+    ok(clip('a'.repeat(450), 500) === 'a'.repeat(450) && clip('x'.repeat(50), 20) === 'x'.repeat(19) + '…', 'a text that fits, and a short screen line, get no count');
+  }
   ok(clip('abc', 3) === 'abc' && clip('abcd', 3) === 'ab…', 'a text exactly as long as the limit is not clipped');
   ok(newest(['a', 'b'], 2) === 'a, b' && newest(['a', 'b', 'c'], 2) === 'b, c, and 1 more', 'newest names every one of a list as long as its limit');
 
@@ -2687,7 +2692,7 @@ require('node:module').syncBuiltinESMExports();
       const many = startup(10, 899), kept = many.split('\n').filter((l) => /^- \*\*asked\*\*/.test(l)).length;
       ok(many.length <= 3500 && many.includes('ask-9 here') && !many.includes('ask-0 here') && kept >= 2 && kept < 10,
         `a long session's oldest exchanges go until the briefing is within 3,500 characters, its newest stay (${kept} kept, ${many.length} characters)`);
-      ok(/^ {2}\*\*did:\*\* did-9 .{890,}$/m.test(many), 'an exchange keeps up to 900 characters of its answer');
+      ok(/^ {2}\*\*did:\*\* did-9 .{850,}… \(\+\d+ chars\)$/m.test(many), 'an exchange keeps up to 900 characters of its answer');
       // Exactly 3,500 characters keeps the oldest exchange; one more, and it goes.
       const edge = (last) => {
         writeFileSync(join(dP4, 'handoff.md'), docOf(...Array.from({ length: 5 }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(i === 4 ? last : 600)}`))));
@@ -2698,7 +2703,7 @@ require('node:module').syncBuiltinESMExports();
       ok(!edge(need + 1).includes('ask-0 here'), 'one character more, and the oldest exchange goes');
       writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'ssssssss', `long-ask ${mk(700)}`, 'done')));
       const asked = print_(cw4, 'pppppppp-1', 'startup', at4).match(/^- \*\*asked\*\* \S+ \S+ \[ssssssss\]: (long-ask .*)$/m)?.[1] ?? '';
-      ok(asked.length <= 500 && asked.length > 450 && asked.endsWith('…'), `an exchange keeps up to 500 characters of its request, to a word's end (got ${asked.length})`);
+      ok(asked.length <= 500 && asked.length > 450 && /… \(\+\d+ chars\)$/.test(asked), `an exchange keeps up to 500 characters of its request, to a word's end (got ${asked.length})`);
 
       // Never an exchange forget took out, nor a conversation marked private,
       // though handoff.md still holds it (a sweep that failed, tried again at
