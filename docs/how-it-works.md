@@ -40,12 +40,13 @@ memory folder. The journal is its `journal` folder, one file per day.
 
 ## When it runs
 
-Claude Code runs project-memory on four of its events, declared in
+Claude Code runs project-memory on five of its events, declared in
 `hooks/hooks.json`, and gives Claude one skill, `skills/memory/SKILL.md`.
 
 | Moment | Claude Code event | What runs |
 |---|---|---|
 | Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, writes the journal and imports a few other conversations into it, takes a snapshot, and reminds Claude to save notes when a compaction is close |
+| A subagent finishes | `SubagentStop` | `memory-tier.mjs --stop`, which saves the subagent's final report, with the first line of its task, as its own journal entry |
 | Claude stops because of an error (an API error, for example) | `StopFailure` | `memory-tier.mjs --stop`, the same as `Stop`, so the turn is saved at once and not at the next reply |
 | A conversation starts, is resumed, is cleared with `/clear`, or goes on after a compaction | `SessionStart` | `handoff-log.mjs --print`: the startup briefing (none for a resumed conversation) |
 | Claude is about to run a `git` command in Bash or PowerShell | `PreToolUse` | `enforce-hook.mjs`: logs which note's rule matched, if a note holds one (see [Checked lessons](#checked-lessons-experimental)). It blocks nothing and prints nothing |

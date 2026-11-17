@@ -678,6 +678,8 @@ export async function main(argv, input) {
     try { payload = JSON.parse(input); } catch {}
     // A project turned off (memory off): nothing is written, not even .stop-ran.
     try { if (payload && isOff(storeOf(payload))) return 0; } catch {}
+    // SubagentStop: the agent's report goes to the journal, nothing else runs (no tiering, no nudge, no handoff).
+    if (payload?.hook_event_name === 'SubagentStop') { try { (await import(new URL('./journal.mjs', import.meta.url))).subagent(payload); } catch {} return 0; }
     // Two tries, not one: a handoff that fails to write (two sessions renaming
     // over the same store at once) must not also skip the nudge -- that was
     // the one Stop the nudge exists for.

@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./journal.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./journal.mjs');
 const { ACTIVE, TAIL, NUDGE_TAG } = await import('./handoff-log.mjs');
 const { local, withLock } = await import('./store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
@@ -1966,6 +1966,36 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   write(dT, pT, boom, {});
   const stored = readFileSync(join(dT, 'journal', '.failed'), 'utf8'), said = summary(dT).failed;
   ok(stored.includes('EPERM') && !/\.tmp\d+/.test(stored) && !/\.tmp\d+/.test(said), "a journal failure's reason names no temp file, in .failed or in status (got " + stored.trim() + ')');
+}
+
+// 1.5.0 item 10: a subagent's report is its own entry: the last SubagentHandback call, else last_assistant_message; capped, redacted.
+{
+  const sd = storeFor(home, 'C:\\journal-subagent'), main = join(dirname(sd), 'aaaa1111-main.jsonl'), at = join(dirname(sd), 'agent-a1.jsonl');
+  mkdirSync(sd, { recursive: true });
+  const rec = (type, content) => JSON.stringify({ type, message: { content } });
+  const call = (input) => rec('assistant', [{ type: 'tool_use', name: 'SubagentHandback', input }]);
+  writeFileSync(at, [rec('user', 'Find the quokka leak\nand more detail'), call({ report: 'early draft' }), rec('assistant', [{ type: 'text', text: 'Done.' }]),
+    call({ report: `Found it: the marmoset cache. ${stripe('sk', 'live')}` })].join('\n') + '\n');
+  const input = { agent_type: 'Explore', agent_id: 'a1', agent_transcript_path: at, transcript_path: main, cwd: 'C:\\journal-subagent', last_assistant_message: 'Done.' };
+  ok(subagent(input) === true, 'a subagent report is saved');
+  const all = entries([sd]).map((x) => x.e ?? x);
+  const e = all.find((x) => /marmoset/.test(x.answered));
+  ok(e && e.asked === 'Subagent Explore: Find the quokka leak' && !/early draft|Done\.$/.test(e.answered), `the last SubagentHandback call is the report, the task's first line the ask (got ${JSON.stringify(e)})`);
+  ok(!e.answered.includes(stripe('sk', 'live')) && holds(e, 'marmoset'), 'a secret in a report is redacted, and a word only in the report finds it');
+  ok(forget(sd, ['marmoset']).matched.length === 1, 'forget finds it by a word only in the report');
+  subagent(input);
+  ok(entries([sd]).filter((x) => /marmoset/.test((x.e ?? x).answered)).length === 1, 'the same agent saved twice is one entry');
+  // No handback call: last_assistant_message. No type (an internal agent): nothing. A long report is capped at 8,000.
+  ok(subagent({ ...input, agent_id: 'a2', agent_transcript_path: join(dirname(sd), 'none.jsonl'), last_assistant_message: 'plain fallback walrus' }) === true && entries([sd]).some((x) => /walrus/.test((x.e ?? x).answered)), 'without a handback call the last message is saved');
+  ok(subagent({ ...input, agent_id: 'a3', agent_type: '' }) === false, 'an agent with no type is not saved');
+  subagent({ ...input, agent_id: 'a4', agent_transcript_path: undefined, last_assistant_message: 'z'.repeat(20000) + ' end' });
+  ok(entries([sd]).some((x) => /^z{100}/.test((x.e ?? x).answered) && (x.e ?? x).answered.length <= 8001), 'a report is cut at 8,000 characters');
+  // No agent_id: two reports are two entries. A newline in the type stays on one line.
+  subagent({ ...input, agent_id: undefined, agent_type: 'a\nb', agent_transcript_path: undefined, last_assistant_message: 'first okapi' });
+  subagent({ ...input, agent_id: undefined, agent_transcript_path: undefined, last_assistant_message: 'second okapi' });
+  ok(entries([sd]).filter((x) => /okapi/.test((x.e ?? x).answered)).length === 2, 'two reports with no agent_id are two entries');
+  ok(entries([sd]).some((x) => (x.e ?? x).asked === 'Subagent a b'), 'a newline in the agent type is cleaned');
+  ok(subagent({ cwd: 1 }) === false, 'a bad payload never throws');
 }
 
 // holds() reads both spellings of an accent: a term typed either way finds an entry written either way.

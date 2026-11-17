@@ -6,6 +6,9 @@
     "StopFailure": [
       { "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs", "--stop"], "timeout": 120, "statusMessage": "Saving memory" }] }
     ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs", "--stop"], "timeout": 30, "statusMessage": "Saving subagent report" }] }
+    ],
     "SessionStart": [
       { "matcher": "startup|resume|clear|compact", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/brief.mjs", "--print"], "timeout": 30, "statusMessage": "Briefing" }] }
     ],

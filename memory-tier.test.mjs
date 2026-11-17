@@ -595,6 +595,15 @@ if (!quick) {
   ok(r.status === 0 && readFileSync(join(root, 'proj-two', 'memory', 'handoff.md'), 'utf8').includes('held-turn question'), `--stop: a store held a little longer than one wait still gets the turn (got ${r.stdout})`);
   await new Promise((done) => holder.once('close', done));
 }
+// 1.5.0 item 10: a SubagentStop saves the report in the journal and runs nothing else (no tiering, no output).
+{
+  const at = join(root, 'proj-two', 'agent-sub1.jsonl'), mainT = join(root, 'proj-two', 'session.jsonl');
+  writeFileSync(at, JSON.stringify({ type: 'user', message: { content: 'Count the narwhals' } }) + '\n' + JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'SubagentHandback', input: { report: 'Seven narwhals, all in the harbour' } }] } }) + '\n');
+  const r = await call(['--stop'], JSON.stringify({ cwd: 'C:\\\\nowhere', transcript_path: mainT, session_id: 'tst', hook_event_name: 'SubagentStop', agent_type: 'general-purpose', agent_id: 'sub1', agent_transcript_path: at, last_assistant_message: 'Done.' }));
+  const days = readdirSync(join(root, 'proj-two', 'memory', 'journal')).filter((f) => /^\d{4}-\d\d-\d\d\.md$/.test(f)).map((f) => readFileSync(join(root, 'proj-two', 'memory', 'journal', f), 'utf8')).join('\n');
+  ok(r.status === 0 && r.stdout === '' && /Subagent general-purpose: Count the narwhals/.test(days) && /Seven narwhals/.test(days), `SubagentStop: the report is journaled and nothing printed (got ${r.stdout})`);
+  ok((await call(['--stop'], JSON.stringify({ transcript_path: mainT, hook_event_name: 'SubagentStop', agent_type: 'x', agent_transcript_path: join(root, 'nope') }))).status === 0, 'SubagentStop: a missing transcript and no message is a quiet exit 0');
+}
 // PreCompact's stdout becomes the compaction's instructions, so the tidy-up's report must not reach it.
 const preCompact = (proj = 'proj-two') => call(['--stop'], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, proj, 'session.jsonl'), session_id: 'tst', hook_event_name: 'PreCompact', trigger: 'manual' }));
 note('proj-two', 'pc1');

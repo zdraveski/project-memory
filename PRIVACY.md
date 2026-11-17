@@ -36,6 +36,8 @@ This page says what it reads, what it saves, and how to remove it.
 
 The git-rule watcher (a PreToolUse hook) reads the notes that hold an `enforce:` rule, the first bytes of the conversation's record to find its store, and the git command about to run, to compare it with the rules. It sends nothing anywhere.
 
+When a subagent finishes, the plugin reads the end of that subagent's own conversation record and saves its final report and the first line of its task in the journal. The report is cut at 8,000 characters and cleaned of secrets, and `forget` removes it.
+
 ## What it saves
 
 All of it stays in `~/.claude/projects` on your computer:

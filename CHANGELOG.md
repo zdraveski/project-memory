@@ -12,6 +12,7 @@
 - **A command you refused, or one a hook or the auto-mode check blocked, is no longer saved as run.** An edit that failed is no longer listed as changed, in the journal or in the note made before a compaction. A command that ran and failed stays.
 - **A command that failed and was never fixed keeps the end of its error** (the last 300 characters) after it, so the next session sees what went wrong. If a later try of the same command worked, nothing extra is saved.
 - **Code run through context-mode's ctx_execute and ctx_batch is saved with the commands**, where only Bash and PowerShell were before.
+- **What a subagent reports back is saved.** Each report becomes its own journal entry ("Subagent <type>: <the task's first line>"), cut at 8,000 characters and cleaned of keys and passwords like everything else, so search and forget find it by a word only in the report.
 
 Entries saved before this version are not rewritten.
 

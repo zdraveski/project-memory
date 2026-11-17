@@ -469,7 +469,7 @@ const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((
   `${ev} | ${e.matcher || ''} | ${x.command} ${(x.args || []).join(' ')}`))).sort();
 ok(JSON.stringify(wiring) === JSON.stringify(['PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop',
   'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs', 'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs',
-  'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/brief.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
+  'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/brief.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop', 'SubagentStop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
   `the plugin wires its hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
 {
   const { HOOKS } = await import('./deploy.mjs');
@@ -479,7 +479,7 @@ ok(JSON.stringify(wiring) === JSON.stringify(['PreCompact | auto | node ${CLAUDE
 // A hook with no timeout gets Claude Code's 10 minutes; a real Stop took 45.7 s. A timed-out hook's output is discarded.
 const hooksOf = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((e) => e.hooks.map((x) => ({ ev, matcher: e.matcher || '', ...x }))));
 const timeouts = Object.fromEntries(hooksOf.map((h) => [`${h.ev}|${h.matcher}`, h.timeout]));
-ok(JSON.stringify(timeouts) === JSON.stringify({ 'Stop|': 120, 'StopFailure|': 120, 'SessionStart|startup|resume|clear|compact': 30, 'PreToolUse|Bash|PowerShell': 5, 'PreCompact|manual': 120, 'PreCompact|auto': 60 }),
+ok(JSON.stringify(timeouts) === JSON.stringify({ 'Stop|': 120, 'StopFailure|': 120, 'SubagentStop|': 30, 'SessionStart|startup|resume|clear|compact': 30, 'PreToolUse|Bash|PowerShell': 5, 'PreCompact|manual': 120, 'PreCompact|auto': 60 }),
   `each hook has its timeout in seconds (got ${JSON.stringify(timeouts)})`);
 // The PreToolUse hook has none: a status line on every git call is noise.
 ok(hooksOf.filter((h) => h.ev !== 'PreToolUse').every((h) => typeof h.statusMessage === 'string' && h.statusMessage), 'each hook has a statusMessage');
@@ -2453,6 +2453,8 @@ After the log: narwhalqq stays.
   const hj = join(efHome, 'hooks', 'hooks.json'), hjText = readFileSync(hj, 'utf8');
   writeFileSync(hj, JSON.stringify({ hooks: { Stop: [] } }));
   ok(/^PROBLEM [^\n]*no PreToolUse group/m.test(await doc()), 'doctor: hooks.json without the PreToolUse group is a problem');
+  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], PreToolUse: [{}] } }));
+  ok(/^PROBLEM [^\n]*no SubagentStop group/m.test(await doc()), 'doctor: hooks.json without the SubagentStop group is a problem');
   writeFileSync(hj, hjText);
 }
 
