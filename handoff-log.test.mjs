@@ -2393,7 +2393,7 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   // 1.5.0 B3: the plugin starts the briefing through brief.mjs, which says in one line when it cannot load, and has an off switch.
   const BRIEF = join(dirname(HOOK), 'brief.mjs');
   const viaStarter = (extra = {}, file = BRIEF) => spawnSync(process.execPath, [file, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source: 'startup' }), env: { ...env, ...extra }, encoding: 'utf8' });
-  ok(viaStarter().stdout === brief() && viaStarter().status === 0, 'the starter prints the same briefing as handoff-log.mjs --print');
+  { const v = viaStarter(), w = brief(); ok(v.stdout === w && v.status === 0, `the starter prints the same briefing as handoff-log.mjs --print (starter ${v.status} ${JSON.stringify(v.stdout.slice(0, 300))} ${JSON.stringify(v.stderr.slice(0, 300))}; direct ${JSON.stringify(w.slice(0, 300))})`); }
   ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }).stdout === '', 'PROJECT_MEMORY_BRIEFING=0 prints nothing');
   const broken = join(home, 'broken-starter'); mkdirSync(broken, { recursive: true });
   writeFileSync(join(broken, 'brief.mjs'), readFileSync(BRIEF)); writeFileSync(join(broken, 'handoff-log.mjs'), 'export const = ;');
