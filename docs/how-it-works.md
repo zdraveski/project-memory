@@ -679,8 +679,8 @@ The plugin reads the window sizes from the environment, as Claude Code does:
   and `0.8M` all work), never more than the model's;
 - `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` moves the reminder earlier to match.
 
-Claude Code compacts 33,000 tokens short of its window, so the reminder comes 60,000 tokens before that point
-(at 850,000 tokens in a 1,000,000 window, at about 107,000 in a 200,000 one). `memory doctor` names both windows and the point.
+Claude Code compacts 33,000 tokens short of its window. The reminder comes at 85% of the window, or 60,000 tokens before
+that compaction point when that is earlier (at 850,000 tokens in a 1,000,000 window, at about 107,000 in a 200,000 one). `memory doctor` names both windows and the point.
 
 A window chosen with `/autocompact`, `autoCompactWindow` or `--autocompact`
 is kept in Claude Code's settings, which the plugin doesn't read (it reads only `autoMemoryEnabled`, and `autoMemoryDirectory` in `doctor`). With one of
@@ -729,7 +729,7 @@ Per message, `<private>…</private>` keeps one piece of text out.
 4. **Claude Code itself:** `autoMemoryEnabled: false` stops its auto memory,
    `CLAUDE_CODE_SKIP_PROMPT_HISTORY` its transcripts (with none, the journal
    records nothing either), and `claude purge` deletes what it keeps.
-   project-memory does not read or change any of these three.
+   project-memory reads only `autoMemoryEnabled` (item 3) and changes none of the three.
 
 The git-rule watcher does nothing while memory is off or the conversation is
 private.

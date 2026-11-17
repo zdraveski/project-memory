@@ -67,7 +67,7 @@ const PCT = Number(process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE);
 const BASE = Math.max(0.5, 1 - 33_000 / WINDOW), CUT = PCT > 0 && PCT < 96 ? PCT / 96 : 1;
 const AT = BASE * CUT;
 export const TRIGGER = Math.max(AT / 2, Math.min(0.85 * CUT, AT - 60_000 / WINDOW));
-export const COMPACTS_AT = BASE;
+export const COMPACTS_AT = AT;
 // Over this share of the model's window a mid-turn compaction goes through.
 // The API refuses a call when input + max output exceeds the window, so the
 // margin must hold the response budget (32k+) and one more tool result: 10 %.
