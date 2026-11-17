@@ -231,18 +231,29 @@ const STOP = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'with', 'was', 
 const VERSION = /(?<![\p{L}\p{N}.])v?(\d+(?:\.\d+)+)/gu;
 const isVer = (t) => /^\d+(?:\.\d+)+$/.test(t);
 const verRe = (t) => new RegExp(`(?<![\\p{L}\\p{N}.])v?${t.replaceAll('.', '\\.')}(?!\\p{N}|\\.\\p{N})`, 'gu');
-// Word forms: the query's word loses one regular ending, and the substring match finds the longer forms (the index is not stemmed).
-// shortcut: regular endings only (run and ran, or decide and decision, are not one word); a stem under 4 letters is never cut.
+// Word forms: the query's word loses one regular ending, and the match finds the longer forms (the index is not stemmed).
+// shortcut: regular endings only (run and ran, or decide and decision, are not one word; no irregular-verb table).
+// A root of 5 letters or more matches at the start of a word (migrat: migrate, migration). A root of 3 or 4 letters from
+// s, es, ed, ing, ies or ied (and a 3-letter word as typed) matches only itself and those endings, so "log" finds logs, logged
+// and logging but not login, and "planned" finds plan but not planet. A 3-letter root needs a vowel and one of s, es, ed, ing.
+// A final y or e is dropped only when an ending was cut, so "ready" is not "read". "-us" and "-is" words (status) keep their s.
 const EN_SUF = ['ational', 'ations', 'ation', 'ments', 'ment', 'ingly', 'ings', 'ing', 'edly', 'ies', 'ied', 'ures', 'ure', 'ed', 'es', 's', 'ly'];
 // Macedonian: articles, plurals and common verb endings; the stem stays 3 letters or more.
 const MK_SUF = ['ињата', 'ијата', 'ување', 'увања', 'ите', 'ата', 'ото', 'ета', 'ови', 'еви', 'ања', 'ање', 'вме', 'вте', 'ше', 'ме', 'те', 'та', 'то', 'от', 'ов', 'ва', 'во', 'ве', 'он', 'на', 'но', 'не', 'ат', 'ам', 'аш', 'и', 'а', 'е', 'о', 'у'];
-function stem(t) {
-  if (/^[a-z]+$/.test(t)) {
-    let x = t, cut = '';
-    for (const f of EN_SUF) if (x.endsWith(f) && x.length - f.length >= 4 && !(f === 's' && x.endsWith('ss'))) { x = x.slice(0, -f.length); cut = f; break; }
-    if (cut && cut !== 's' && x.length >= 4 && /([b-df-hj-np-tv-z])\1$/.test(x) && !/(ll|ss|zz|ff)$/.test(x) || x.length > 4 && /[^aeiou][ye]$/.test(x)) x = x.slice(0, -1);
-    return x;
+const INFL = new Set(['s', 'es', 'ed', 'ing', 'ings', 'ies', 'ied']), DOUBLED = new Set(['ed', 'ing', 'ings', 'edly', 'ingly']);
+// An English word as [root, the ending cut, the final y or e dropped].
+function cutEn(t) {
+  let x = t, cut = '', drop = '';
+  for (const f of EN_SUF) {
+    const n = x.length - f.length;
+    if (x.endsWith(f) && (n >= 4 || n === 3 && ['s', 'es', 'ed', 'ing'].includes(f) && /[aeiou]/.test(x.slice(0, 3))) && !(f === 's' && /(ss|us|is)$/.test(x))) { x = x.slice(0, -f.length); cut = f; break; }
   }
+  if (DOUBLED.has(cut) && x.length >= 4 && /([b-df-hj-np-tv-z])\1$/.test(x) && !/(ll|ss|zz|ff)$/.test(x)) x = x.slice(0, -1);
+  else if (cut && x.length > 4 && /[^aeiou][ye]$/.test(x)) { drop = x.at(-1); x = x.slice(0, -1); }
+  return [x, cut, drop];
+}
+function stem(t) {
+  if (/^[a-z]+$/.test(t)) return cutEn(t)[0];
   if (/^[Ѐ-ӿ]+$/.test(t)) for (const f of MK_SUF) if (t.endsWith(f) && t.length - f.length >= 3) return t.slice(0, -f.length);
   return t;
 }
@@ -259,9 +270,18 @@ const alone = (t) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${t}(?![\\p{L}\\p{M}\\
 // Chinese and Japanese have no spaces round a word, so a two-character one is looked for as a substring.
 const plain = (t) => t.length > 2 || /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]+$/u.test(t);
 // A cut stem counts only at the start of a word: "stor" finds "store" and "storage", not "history" (`cut`: the term was shortened).
-const starts = (t) => new RegExp(`(?<![\\p{L}\\p{N}])${t}`, 'gu');
-const count = (hay, t, cut) => (isVer(t) ? (hay.match(verRe(t)) ?? []).length : cut && plain(t) ? (hay.normalize('NFC').match(starts(t)) ?? []).length : plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
-const has = (hay, t, cut) => (isVer(t) ? verRe(t).test(hay) : cut && plain(t) ? starts(t).test(hay.normalize('NFC')) : plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
+// A short English root (see stem()) is a whole word with its endings instead; `w` is the word as typed.
+const starts = (t, w = t) => {
+  const [r, f, d] = /^[a-z]+$/.test(w) ? cutEn(w) : [], B = '(?<![\\p{L}\\p{N}])';
+  if (!r || r.length > 4 || !(f ? INFL.has(f) : r.length === 3)) return new RegExp(`${B}${t}`, 'gu');
+  const l = r.at(-1), o = [`e?(?:s|es|d|ed|ing|ings|ies|ied|${l}ed|${l}ing|${l}ings)`];
+  if (!d && !(f === 'ed' && r.endsWith('e'))) o.push(['s', 'es', 'ed', 'ing', 'ings'].includes(f) ? 'e?' : '');
+  return new RegExp(`${B}(?:${w}|${r}(?:${o.join('|')}))(?![\\p{L}\\p{N}])`, 'gu');
+};
+// A term is matched as word forms when it was cut, or is a 3-letter English word.
+const forms = (t, cut) => (cut || /^[a-z]{3}$/.test(t)) && plain(t);
+const count = (hay, t, cut) => (isVer(t) ? (hay.match(verRe(t)) ?? []).length : forms(t, cut) ? (hay.normalize('NFC').match(starts(t, cut || t)) ?? []).length : plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
+const has = (hay, t, cut) => (isVer(t) ? verRe(t).test(hay) : forms(t, cut) ? starts(t, cut || t).test(hay.normalize('NFC')) : plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
 // The stretches of `text` around each match of `find`, joined, `room` characters
 // at most; no cut leaves half an emoji, which prints as U+FFFD.
 function around(text, find, room) {
@@ -296,7 +316,7 @@ const told = (dirs, o) => {
 // outranks "first" or "schedule". The score a hit prints stays the plain sum; the weights only order the hits.
 // `outside`: the notes that match but are dated out of the range.
 export function search(dirs, query, { since, until, failed } = {}) {
-  const terms = words(query, true), cut = (t) => terms.as.get(t) !== t, hits = [], held = new Set(), df = terms.map(() => 0);
+  const terms = words(query, true), cut = (t) => terms.as.get(t) !== t && terms.as.get(t), hits = [], held = new Set(), df = terms.map(() => 0);
   let outside = 0, docs = 0;
   // `parts`: what each term scored, in terms' order; `bonus`: the +5 or +2 for every term.
   const add = (h, parts, bonus) => hits.push({ ...h, score: parts.reduce((a, p) => a + p, 0) + bonus, parts, bonus });
@@ -306,9 +326,14 @@ export function search(dirs, query, { since, until, failed } = {}) {
     const hand = m.file === 'handoff.md';
     if (hand) {
       // A start marker with no end marker (a half-written file): the log runs to the end of the file.
-      const { a, b } = [m.body, `${m.body}
+      // Every block is cut, last first (sectionOf finds the last one); each cut shortens the text, so the loop ends.
+      let body = m.body;
+      for (;;) {
+        const { a, b } = [body, `${body}
 <!-- auto:end -->`].map(sectionOf).find((x) => x.a !== -1) ?? { a: -1 };
-      const body = a === -1 ? m.body : m.body.slice(0, a) + m.body.slice(b).replace(/^[^\n]*/, '');
+        if (a === -1) break;
+        body = body.slice(0, a) + body.slice(b).replace(/^[^\n]*/, '');
+      }
       if (!body.trim()) continue;
       m = { ...m, file: '', name: '', desc: '', body };   // its name is no match: only what a person wrote
     }
@@ -1090,7 +1115,7 @@ export function main(given) {
       if (k !== null && like.has(k)) like.get(k).push(h);
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
-    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (isVer(t) ? verRe(t).source : plain(t) ? (terms.as.get(t) !== t ? starts(t).source : t) : alone(t).source)).join('|'), 'giu');
+    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (isVer(t) ? verRe(t).source : plain(t) ? (forms(t, terms.as.get(t) !== t && terms.as.get(t)) ? starts(t, terms.as.get(t)).source : t) : alone(t).source)).join('|'), 'giu');
     // NFC, as the scoring reads it: a decomposed "é" scored the entry, and its stretch must show too.
     const nfc = (v) => clip(v, Infinity).normalize('NFC');
     const entry = (h, also) => {
