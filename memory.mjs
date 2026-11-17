@@ -361,7 +361,6 @@ export function status(dir, sharedNames = []) {
   const lines = [`${dir}${isShared(dir) ? '  (shared by every project)' : ''}`];
   const gone = isOff(dir);
   if (gone) lines.push(`  ${offText(gone)}`);
-  const am = autoMemory(); if (am.off) lines.push(`  auto memory is off (${am.why}): nothing is saved or briefed`);
   // A journal alone is a store: search finds its entries.
   if (main === null && !ms.length && !existsSync(join(dir, 'journal'))) return [...lines, '  no store here yet'];
   const n = (w) => ms.filter((m) => m.where === w).length;
@@ -745,7 +744,7 @@ export function doctor(site = sessionStore()) {
   // Auto memory turned off: the hooks do nothing, so nothing below applies.
   const am = autoMemory();
   if (am.off) { say(true, `auto memory is off (${am.why}): the hooks save and brief nothing until it is on again. Not seen by doctor: --settings, --bare, safe mode, server-managed settings`); return { ok: !bad, lines }; }
-  const big = handoffBig(site); if (big) say(false, big);
+  const big = handoffBig(site); if (big) say(true, big);
   // The one setting doctor reads (never printed but for its presence): the hooks keep the default folder, and a note in the moved one is
   // never tiered, snapshotted or briefed.
   if (typeof json(join(configDir(), 'settings.json'))?.autoMemoryDirectory === 'string') say(false, 'the autoMemoryDirectory setting is set, and project-memory does not follow it: notes in that folder are not tiered, snapshotted or briefed (the hooks work on the default memory folder). Remove the setting to use project-memory');
@@ -1147,7 +1146,8 @@ export function main(given) {
   else if (cmd === 'off' || cmd === 'on') r = projectSwitch(here, cmd === 'off');
   else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
-    r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
+    const am = autoMemory();
+    r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined);
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });

@@ -1233,6 +1233,17 @@ let said = [];
 try { said = ['startup', 'resume', 'clear', 'compact'].map((source, i) => started(source, `start00${i}-0000`)); }
 finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
 ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`start00${i}`)), `every SessionStart with auto memory off prints nothing and keeps the tag (got ${JSON.stringify(said)}, ${tags()})`);
+// Item 28: autoMemoryEnabled false in the project's settings.json: a Stop writes no handoff and a start briefs nothing, and the start tags itself.
+{
+  const pj = join(home, 'settings-off-proj'), cwdS = 'C:/settings-off', ds = storeFor(home, cwdS), ts = join(ds, 'so000000-0000.jsonl');
+  mkdirSync(join(pj, '.claude'), { recursive: true }); mkdirSync(ds, { recursive: true });
+  writeFileSync(join(pj, '.claude', 'settings.json'), JSON.stringify({ autoMemoryEnabled: false }));
+  writeFileSync(ts, [user('please fix the thing', { ts: '2026-09-11T07:00:00Z' }), asst('fixed it')].join('\n') + '\n');
+  const penv = { ...env, CLAUDE_PROJECT_DIR: pj };
+  execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdS, transcript_path: ts, session_id: 'so000000-0000' }), env: penv });
+  const brief = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdS, session_id: 'so111111-0000', source: 'startup' }), env: penv }).toString();
+  ok(!existsSync(join(ds, 'handoff.md')) && brief === '' && tags().includes('so111111'), `settings off: a Stop writes no handoff, a start prints nothing and keeps its tag (got ${brief.length} chars, ${tags()})`);
+}
 // A resumed conversation, auto memory on: nothing printed (it was read as a compaction).
 ok(started('resume', 'nnnnnnnn-1') === '', 'a resumed conversation gets no briefing');
 // Twelve at once lose none.
@@ -2465,8 +2476,11 @@ require('node:module').syncBuiltinESMExports();
     const sentence = 'This sentence is long enough. '; const t = sentence.repeat(40); const c = clip(t, 500), left = t.trim().length - c.slice(0, c.indexOf('…')).length;
     ok(c.length <= 500 && c.endsWith(`… (+${left} chars)`) && clip(c, 500) === c, `a clipped text ends with its lost count and clips to itself (got ${c.slice(-40)})`);
     ok(clip('a'.repeat(450), 500) === 'a'.repeat(450) && clip('x'.repeat(50), 20) === 'x'.repeat(19) + '…', 'a text that fits, and a short screen line, get no count');
+    // The count is the whole text's, not what is left after the 64 KB pre-cut.
+    const big = 'word '.repeat(60000), cb = clip(big, 500), lost = big.trim().length - cb.slice(0, cb.indexOf('…')).length;
+    const said = +cb.match(/\(\+(\d+) chars\)$/)?.[1]; ok(cb.length <= 500 && Math.abs(said - lost) <= 2 && said > 290000, `a 300 KB text counts all it lost (got ${cb.slice(-30)})`);
   }
-  ok(clip('abc', 3) === 'abc' && clip('abcd', 3) === 'ab…', 'a text exactly as long as the limit is not clipped');
+  ok(clip('abc', 3) === 'abc'&& clip('abcd', 3) === 'ab…', 'a text exactly as long as the limit is not clipped');
   ok(newest(['a', 'b'], 2) === 'a, b' && newest(['a', 'b', 'c'], 2) === 'b, c, and 1 more', 'newest names every one of a list as long as its limit');
 
   // Only the Bash and PowerShell commands a turn ran are kept: forget is looked for in them.

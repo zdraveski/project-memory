@@ -1983,6 +1983,10 @@ After the log: narwhalqq stays.
     writeFileSync(sp, JSON.stringify({ autoMemoryEnabled: false }));
     try { r = await cli('doctor'); } finally { if (was === null) rmSync(sp); else writeFileSync(sp, was); }
     ok(r.status === 0 && /^ok +auto memory is off \(autoMemoryEnabled is false in [^)]*settings\.json\)/m.test(r.stdout), `doctor says auto memory is off in settings, and where (got ${r.stdout})`); }
+  // A big handoff.md is advice, not a broken install: doctor says it on an ok line and still exits 0.
+  { const hp = join(dir, 'handoff.md'); writeFileSync(hp, 'x'.repeat(70 * 1024));
+    try { r = await cli('doctor'); } finally { rmSync(hp, { force: true }); }
+    ok(r.status === 0 && /^ok +handoff\.md is 70 KB \(over 64 KB\)/m.test(r.stdout), `doctor names a big handoff.md and still exits 0 (got ${r.status} ${r.stdout})`); }
   // Item 11: the marketplace's auto-update, as known_marketplaces.json keeps it.
   { const kp = join(home, '.claude', 'plugins', 'known_marketplaces.json'), src = { source: 'github', repo: 'zdraveski/project-memory' };
     ok(/^ok +marketplace auto-update is off: .*Enable auto-update/m.test((await cli('doctor')).stdout), 'doctor says auto-update is off for a GitHub marketplace with no autoUpdate');

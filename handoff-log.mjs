@@ -434,16 +434,18 @@ export const clip = (s, n) => {
   const lim = Math.max(65536, 4 * n);
   // Squeeze blanks first (cut() does too): a long blank run must not use up the cut.
   if (typeof s === 'string' && s.length > lim) s = s.replace(/\s+/g, ' ');
-  if (typeof s === 'string' && s.length > lim) s = s.slice(0, /[\uD800-\uDBFF]/.test(s[lim - 1]) ? lim - 1 : lim);
+  // The pre-cut's loss is added to the (+N chars) count, so a 1 MB paste does not say it lost 64 KB.
+  let extra = 0;
+  if (typeof s === 'string' && s.length > lim) { const was = s.length; s = s.slice(0, /[\uD800-\uDBFF]/.test(s[lim - 1]) ? lim - 1 : lim); extra = was - s.length; }
   // Text only: anything else spelt as a text kept here fails in cut(), as it always did.
-  const k = typeof s === 'string' ? `${n}\0${s}` : null;
+  const k = typeof s === 'string' ? `${n}\0${extra}\0${s}` : null;
   if (clipped.has(k)) return clipped.get(k);
-  let out = cut(s, n);
+  let out = cut(s, n, extra);
   for (let i = 0; i < 6; i++) { const again = cut(out, n); if (again === out) break; out = again; }
   if (k !== null) { if ((clippedSize += k.length) > 8e6) { clipped.clear(); clippedSize = k.length; } clipped.set(k, out); }
   return out;
 };
-const cut = (s, n) => {
+const cut = (s, n, extra = 0) => {
   // Redacted before the blanks are squeezed and after. After only, a bare flag that ends a line took the next line's keyword as its value,
   // and that line's own secret was kept whole (F23, R59); before only, a secret after two blanks or a tab was redacted only when the entry
   // was clipped again (F19). U+0085 is made a line break first: it is not \s in JavaScript, and the first pass took it for a value.
@@ -452,7 +454,7 @@ const cut = (s, n) => {
   // Ends at the last sentence, else the last word, in the second half of the room: a cut mid-sentence kept
   // a claim and dropped the condition after it ("deploy" without "only on Windows"; survive.mjs).
   // A clip of 400 or more (a stored ask or answer, not a screen line) ends "… (+N chars)", N counted after redaction; the whole stays within n, so a second clip leaves it be.
-  const long = n >= 400, tail = (k) => (long ? `… (+${one.length - k.length} chars)` : '…');
+  const long = n >= 400, tail = (k) => (long ? `… (+${one.length - k.length + extra} chars)` : '…');
   const room = one.slice(0, long ? n - 20 : n), half = n / 2;
   const sentence = room.match(/^.*[.!?](?=\s)/)?.[0], word = room.match(/^(.*) /)?.[1];
   if (sentence?.length >= half) return sentence + tail(sentence);
