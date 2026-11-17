@@ -106,7 +106,7 @@ const OPTS_WITH_VALUE = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', 
 // Whether `command` is the rule's git subcommand (`on`), and whether it also holds a word of `has` and none of `unless`.
 // shortcut: `bash -c "..."`, `$(...)`, aliases and anything after `--` are not seen (said in the README).
 export function hits(rule, command) {
-  const segs = segments(command).map(tokens), all = segs.flat();
+  const segs = segments(command).map(tokens), all = segs.flat().flatMap((w) => [w, ...w.split(/[\\/]/)]); // `unless` also sees each part of a path; `has` stays whole words
   let on = false, hit = false;
   for (const toks of segs) {
     let i = 0;

@@ -99,6 +99,15 @@ ok(new Date(0) && (() => { let t; commandsOf(tf, chunk, 1 << 20, (c) => { t ??= 
 
 // 1.4.1 L: parsing
 const BS = String.fromCharCode(92), A = (c) => hits({ on: 'add', has: ['-A', '--all'], unless: [] }, c);
+// 1.5.1 L2: `unless` also matches a folder name inside a path; `has` still matches whole words only
+const STAGE = { on: 'add', has: ['-A', '--all', '.'], unless: ['mktemp', 'init', 'scratchpad'] }, S = (c) => hits(STAGE, c).hit;
+for (const c of ['cd /tmp/claude/abc/scratchpad/repo-c && git add -A', `git -C C:${BS}Users${BS}me${BS}scratchpad${BS}repo add -A`, `git -C "C:${BS}Temp${BS}scratchpad${BS}r b" add .`, 'cd ~/x/scratchpad && git add --all'])
+  ok(!S(c), `scratchpad path exempts: ${c}`);
+for (const c of ['cd ~/.claude/hooks && git add -A && git status --short', 'git -C ~/scratchpad-old/r add -A', 'git -C ~/my_scratchpad add -A', 'git add -A && cat ~/notes/init.txt', 'git add -A'])
+  ok(S(c), `still a hit: ${c}`);
+for (const c of ['git add src/.', 'git add ./', 'git add a/--all', `git add C:${BS}x${BS}.`, 'git add ./-A'])
+  ok(!S(c), `a path is not a has word: ${c}`);
+
 const t0 = Date.now(); ruleOf(note('enforce:\n  on: git add\n  has: [-A]\n  unless: x' + ' '.repeat(60000) + 'y\n'));
 ok(Date.now() - t0 < 500, 'ruleOf is not quadratic on a long run of blanks');
 for (const c of [`git commit -m "a ${BS}" b"; git add -A`, `git commit -m "say ${BS}"hi${BS}" now" && git add -A`, `git commit -m it${BS}'s; git add -A`, `echo "x ${BS}" y"\ngit add -A`])
