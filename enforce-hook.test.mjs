@@ -67,6 +67,12 @@ for (const [what, input] of [['empty stdin', ''], ['garbage', 'not json {'], ['n
 
 // Memory off: the env var, the project marker, a .memory-off tag: no log. Incognito: no log, no crash.
 p = project(); quiet(run(p.payload('git add -A'), { ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }), 'memory off by env'); ok(lines(p.store).length === 0, 'env off: no log');
+// Item 28: autoMemoryEnabled false in the project's own settings.json: no log, whether Claude Code names the project (CLAUDE_PROJECT_DIR) or starts the hook in it.
+for (const [how, opts] of [['CLAUDE_PROJECT_DIR', (q) => ({ env: { ...process.env, CLAUDE_PROJECT_DIR: q.cwd } })], ['the hook folder', (q) => ({ cwd: q.cwd })]]) {
+  p = project(); mkdirSync(join(p.cwd, '.claude')); writeFileSync(join(p.cwd, '.claude', 'settings.json'), JSON.stringify({ autoMemoryEnabled: false }));
+  quiet(spawnSync(process.execPath, [HOOK], { input: JSON.stringify(p.payload('git add -A')), encoding: 'utf8', ...opts(p) }), `memory off in settings (${how})`);
+  ok(lines(p.store).length === 0, `settings off, found by ${how}: no log`);
+}
 p = project(); writeFileSync(join(p.store, PROJECT_OFF), JSON.stringify({ t: 1 })); quiet(run(p.payload('git add -A')), 'project off'); ok(lines(p.store).length === 0, 'project marker: no log');
 p = project(); mkdirSync(join(home, '.claude', 'projects'), { recursive: true }); writeFileSync(join(home, '.claude', 'projects', OFF), 'cafe0000\n');
 quiet(run(p.payload('git add -A', { session_id: 'cafe0000-1111' })), 'off tag'); ok(lines(p.store).length === 0, 'a .memory-off tag: no log');

@@ -459,6 +459,38 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
     try { ok(memoryOff() === want, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=${JSON.stringify(v)} is ${want ? 'off' : 'on'}`); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   }
 
+  // Settings Claude Code reads (item 28): the first autoMemoryEnabled in managed, project local, project, user; the env var over all.
+  {
+    const { autoMemory } = await import('./store.mjs');
+    const lab = join(home, 'lab28'), mg = join(lab, 'managed'), pr = join(lab, 'proj'), cf = join(lab, 'cfg');
+    for (const d of [join(mg, 'managed-settings.d'), join(pr, '.claude'), cf]) mkdirSync(d, { recursive: true });
+    const put = (f, v) => writeFileSync(f, typeof v === 'string' ? v : JSON.stringify(v));
+    const user = join(cf, 'settings.json'), local_ = join(pr, '.claude', 'settings.local.json'), shared = join(pr, '.claude', 'settings.json');
+    const was = process.env.CLAUDE_CONFIG_DIR; process.env.CLAUDE_CONFIG_DIR = cf;
+    const am = () => autoMemory({ managed: mg, cwd: pr });
+    try {
+      ok(am().off === false, 'no setting: on');
+      put(user, { autoMemoryEnabled: false });
+      ok(am().off === true && /autoMemoryEnabled is false in .*settings\.json/.test(am().why), 'user false: off, and says where');
+      put(local_, { autoMemoryEnabled: true });
+      ok(am().off === false, 'project local true over user false: on');
+      put(local_, {}); put(shared, { autoMemoryEnabled: false }); put(user, { autoMemoryEnabled: true });
+      ok(am().off === true, 'project false over user true: off');
+      put(shared, { autoMemoryEnabled: 'false' }); put(user, '{ broken');
+      ok(am().off === false, 'a string and a broken file are ignored');
+      put(user, { autoMemoryEnabled: false });
+      process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '0';
+      ok(am().off === false, 'env 0 over a file false: on');
+      put(user, { autoMemoryEnabled: true }); process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+      ok(am().off === true && am().why === 'CLAUDE_CODE_DISABLE_AUTO_MEMORY', 'env 1 over a file true: off');
+      delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY;
+      put(join(mg, 'managed-settings.json'), { autoMemoryEnabled: false });
+      ok(am().off === true, 'managed false beats the files below it');
+      put(join(mg, 'managed-settings.d', '10.json'), { autoMemoryEnabled: true });
+      ok(am().off === false, 'a managed .d file overrides the managed base');
+    } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = was; }
+  }
+
   // Valid YAML in every spelling: quoted either way, any case, a comment after
   // it, a list, a folded description. Read only bare, a pin aged out.
   const f1 = front('---\ntier: "hot"\ntype: Feedback\n---\nbody tier: archive');

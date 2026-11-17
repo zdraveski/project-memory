@@ -31,8 +31,10 @@ This page says what it reads, what it saves, and how to remove it.
   (how big a conversation can get). Nothing else in the environment.
 - Claude Code's lists of installed plugins and marketplaces, and the plugin's
   own manifest, in `~/.claude/plugins`, only when you run the `doctor` check,
-  to see where the plugin is installed. It never reads your Claude Code
-  settings file, which can hold keys.
+  to see where the plugin is installed and whether its auto-update is on.
+- Claude Code's settings files, for two values only: `autoMemoryEnabled` (hooks
+  and `doctor`) and `autoMemoryDirectory` (`doctor`). The files can hold keys;
+  nothing else in them is read or printed.
 
 The git-rule watcher (a PreToolUse hook) reads the notes that hold an `enforce:` rule, the first bytes of the conversation's record to find its store, and the git command about to run, to compare it with the rules. It sends nothing anywhere.
 
@@ -234,11 +236,13 @@ goes through. If it can't be written after any of that conversation's
 replies, the conversation has no tag, and the journal may take it in later.
 The memory skill still reads or changes your notes when you ask it to.
 
-That variable, and the two switches below, are the only ones project-memory
-follows. Turning auto memory off in Claude Code itself, with `/memory` or the
-`autoMemoryEnabled` setting, doesn't reach it, because it never reads Claude
-Code's settings: it goes on saving and briefing as above. To stop it, use one
-of the switches below or disable the plugin
+That variable, Claude Code's own `autoMemoryEnabled: false` setting, and the
+two switches below, are the ones project-memory follows. It reads that single
+value from the settings files Claude Code reads (managed, the project's
+`.claude/settings.local.json` and `.claude/settings.json`, and
+`~/.claude/settings.json`) and nothing else in them. It cannot see `--settings`,
+`--bare`, safe mode or server-managed settings. To stop it in those cases, use
+one of the switches below or disable the plugin
 ([Turning it off](docs/how-it-works.md#turning-it-off)).
 
 | Switch | Set by | What stops | What stays |

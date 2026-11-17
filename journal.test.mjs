@@ -48,6 +48,7 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
     ok(r.at(-1) === 'git push' && /^\[\d+ earlier commands not kept\]$/.test(r[0]) && r.join(' · ').length < 51000, `past the cap the newest commands stay, with a count line (got ${r[0]})`);
     ok(entryOf(turn({ ran: ['a', 'b'] }), T).ran.join() === 'a,b', 'under the cap no line is added'); }
   ok(entryOf(turn({ did: 'last', said: 'first lines. last' }), T).answered === 'first lines. last', 'the whole text of a turn is saved');
+  { const e = entryOf(turn({ said: 'S'.repeat(10000) + 'E'.repeat(50000) }), T); ok(e.answered.length <= 50000 && /^… \(\d+ chars before\) E{100}/.test(e.answered) && e.answered.endsWith('E'.repeat(100)), `a reply over 50 KB says how much of its start went (got ${e.answered.slice(0, 40)})`); }
   { const e = entryOf(turn({ said: 'S'.repeat(40000) + 'E'.repeat(40000) }), T); ok(e.answered.endsWith('E'.repeat(100)) && !e.answered.startsWith('SSSS' + 'E'), 'past the cap the start is cut, the final answer stays'); }
   { const e = entryOf(turn({ picked: ['Vermilion'] }), T); ok(/^a question Picked: Vermilion$/.test(e.asked), `a pick is in Asked (got ${e.asked})`);
     ok(holds(e, 'vermilion'), 'and a search or forget finds the entry by a word only in the pick'); }

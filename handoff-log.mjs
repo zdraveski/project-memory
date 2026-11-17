@@ -434,16 +434,18 @@ export const clip = (s, n) => {
   const lim = Math.max(65536, 4 * n);
   // Squeeze blanks first (cut() does too): a long blank run must not use up the cut.
   if (typeof s === 'string' && s.length > lim) s = s.replace(/\s+/g, ' ');
-  if (typeof s === 'string' && s.length > lim) s = s.slice(0, /[\uD800-\uDBFF]/.test(s[lim - 1]) ? lim - 1 : lim);
+  // The pre-cut's loss is added to the (+N chars) count, so a 1 MB paste does not say it lost 64 KB.
+  let extra = 0;
+  if (typeof s === 'string' && s.length > lim) { const was = s.length; s = s.slice(0, /[\uD800-\uDBFF]/.test(s[lim - 1]) ? lim - 1 : lim); extra = was - s.length; }
   // Text only: anything else spelt as a text kept here fails in cut(), as it always did.
-  const k = typeof s === 'string' ? `${n}\0${s}` : null;
+  const k = typeof s === 'string' ? `${n}\0${extra}\0${s}` : null;
   if (clipped.has(k)) return clipped.get(k);
-  let out = cut(s, n);
+  let out = cut(s, n, extra);
   for (let i = 0; i < 6; i++) { const again = cut(out, n); if (again === out) break; out = again; }
   if (k !== null) { if ((clippedSize += k.length) > 8e6) { clipped.clear(); clippedSize = k.length; } clipped.set(k, out); }
   return out;
 };
-const cut = (s, n) => {
+const cut = (s, n, extra = 0) => {
   // Redacted before the blanks are squeezed and after. After only, a bare flag that ends a line took the next line's keyword as its value,
   // and that line's own secret was kept whole (F23, R59); before only, a secret after two blanks or a tab was redacted only when the entry
   // was clipped again (F19). U+0085 is made a line break first: it is not \s in JavaScript, and the first pass took it for a value.
@@ -451,11 +453,14 @@ const cut = (s, n) => {
   if (one.length <= n) return one;
   // Ends at the last sentence, else the last word, in the second half of the room: a cut mid-sentence kept
   // a claim and dropped the condition after it ("deploy" without "only on Windows"; survive.mjs).
-  const room = one.slice(0, n), half = n / 2;
+  // A clip of 400 or more (a stored ask or answer, not a screen line) ends "… (+N chars)", N counted after redaction; the whole stays within n, so a second clip leaves it be.
+  const long = n >= 400, tail = (k) => (long ? `… (+${one.length - k.length + extra} chars)` : '…');
+  const room = one.slice(0, long ? n - 20 : n), half = n / 2;
   const sentence = room.match(/^.*[.!?](?=\s)/)?.[0], word = room.match(/^(.*) /)?.[1];
-  if (sentence?.length >= half) return sentence + '…';
-  if (word?.length >= half) return word + '…';
-  return one.slice(0, n - 1).replace(/[\uD800-\uDBFF]$/, '') + '…';
+  if (sentence?.length >= half) return sentence + tail(sentence);
+  if (word?.length >= half) return word + tail(word);
+  const k = one.slice(0, long ? n - 20 : n - 1).replace(/[\uD800-\uDBFF]$/, '');
+  return k + tail(k);
 };
 
 // An answer is markdown, and its marks carry no words: heading hashes, bold,
@@ -631,7 +636,7 @@ function build(before, fresh, drop = null, me = fresh[0]?.s, whole = false) {
   // trailing reminder before 1.0.6, its leading element cut in 1.0.6-1.0.7)
   // is the turn re-read when the session and minute match and one ask holds
   // the other. Kept beside it, an upgrade doubled every resumed turn.
-  const ask = (t) => clip(t.ask, ASK).replace(/…$/, '');
+  const ask = (t) => clip(t.ask, ASK).replace(/… \(\+\d+ chars\)$|…$/, '');
   // Only over a minute the read covered whole (the file, or a turn of this
   // session before it): then every real turn of that minute is fresh, and a
   // leftover is an old spelling. Not so, "fix it" was taken for an old

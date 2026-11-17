@@ -57,6 +57,11 @@ const rel = (p, cwd) => {
   return c && p.length > c.length + 1 && /[\\/]/.test(p[c.length]) && fold(p.slice(0, c.length)) === fold(c) ? p.slice(c.length + 1) : p;
 };
 
+// All the text, redacted whole first; past the cap the start goes, so the final answer stays, and a lead says how much went.
+const answer = (text) => {
+  const all = clip(text, Infinity);
+  return all.length <= J_TEXT ? clip(all, J_TEXT) : clip(`… (${all.length - (J_TEXT - 40)} chars before) ${all.slice(-(J_TEXT - 40))}`, J_TEXT);
+};
 // `when`: the time of a turn whose own won't parse (a transcript another tool
 // wrote): NaN-NaN-Na.md was its day file, which nothing lists or sweeps.
 export function entryOf(turn, transcriptPath, when = local()) {
@@ -79,7 +84,7 @@ export function entryOf(turn, transcriptPath, when = local()) {
     // A pick (the answer to a multiple-choice question) goes into Asked, so search and forget reach it.
     asked: forgets ? '[private]' : clip(turn.ask + (turn.picked?.length ? ` Picked: ${turn.picked.join('; ')}` : ''), J_TEXT),
     // All the turn's text; past the cap the start goes, so the final answer stays.
-    answered: quiet ? '[private]' : clip(clip(turn.said || turn.did, Infinity).slice(-J_TEXT), J_TEXT),
+    answered: quiet ? '[private]' : answer(turn.said || turn.did),
     changed: quiet ? [] : turn.changed.map((p) => clip(rel(p, turn.cwd), J_PATH)),
     ran,
   };

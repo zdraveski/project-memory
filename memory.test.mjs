@@ -98,6 +98,15 @@ ok((await cli('search')).status === 1, 'search with no terms is a usage error');
 r = await cli('status');
 ok(r.status === 0 && /index \d+ \/ 7000 B · 7 hot · 1 archived/.test(r.stdout), `status counts the store against its budget (got ${r.stdout.split('\n')[1]})`);
 ok(/links to no memory: crlf-note\.md → \[\[ghost\]\]$/m.test(r.stdout), 'a link to no memory is named; one the shared store resolves is not');
+// Item 5: a handoff.md past 64 KB is named in status, with how to trim it.
+{
+  const hp = join(dir, 'handoff.md'), keep = existsSync(hp) ? readFileSync(hp) : null;
+  writeFileSync(hp, 'x'.repeat(70 * 1024));
+  const big = await cli('status');
+  if (keep === null) rmSync(hp); else writeFileSync(hp, keep);
+  ok(/needs attention: handoff\.md is 70 KB \(over 64 KB\)\. To trim it: delete the finished topics/.test(big.stdout), `status warns of a big handoff.md (got ${big.stdout})`);
+  ok(!/handoff\.md is \d+ KB/.test((await cli('status')).stdout), 'a handoff.md under the size gets no warning');
+}
 ok(/frontmatter without a description or type: bare\.md/.test(r.stdout), 'a memory with no description is named');
 ok(/_shared[\\/]memory  \(shared by every project\)\n  index \d+ \/ 3000 B/.test(r.stdout), 'and the shared store is reported against its 3000 B budget');
 
@@ -1969,6 +1978,21 @@ After the log: narwhalqq stays.
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
   try { r = await cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   ok(r.status === 0 && /^ok +auto memory is off \(CLAUDE_CODE_DISABLE_AUTO_MEMORY\)/m.test(r.stdout), `auto memory off is said, and is no problem (got ${r.stdout})`);
+  // Item 28: auto memory off in settings is said by doctor, with where. The default config here is the lab's HOME.
+  { const sp = join(home, '.claude', 'settings.json'), was = existsSync(sp) ? readFileSync(sp) : null;
+    writeFileSync(sp, JSON.stringify({ autoMemoryEnabled: false }));
+    try { r = await cli('doctor'); } finally { if (was === null) rmSync(sp); else writeFileSync(sp, was); }
+    ok(r.status === 0 && /^ok +auto memory is off \(autoMemoryEnabled is false in [^)]*settings\.json\)/m.test(r.stdout), `doctor says auto memory is off in settings, and where (got ${r.stdout})`); }
+  // A big handoff.md is advice, not a broken install: doctor says it on an ok line and still exits 0.
+  { const hp = join(dir, 'handoff.md'); writeFileSync(hp, 'x'.repeat(70 * 1024));
+    try { r = await cli('doctor'); } finally { rmSync(hp, { force: true }); }
+    ok(r.status === 0 && /^ok +handoff\.md is 70 KB \(over 64 KB\)/m.test(r.stdout), `doctor names a big handoff.md and still exits 0 (got ${r.status} ${r.stdout})`); }
+  // Item 11: the marketplace's auto-update, as known_marketplaces.json keeps it.
+  { const kp = join(home, '.claude', 'plugins', 'known_marketplaces.json'), src = { source: 'github', repo: 'zdraveski/project-memory' };
+    ok(/^ok +marketplace auto-update is off: .*Enable auto-update/m.test((await cli('doctor')).stdout), 'doctor says auto-update is off for a GitHub marketplace with no autoUpdate');
+    writeFileSync(kp, JSON.stringify({ 'project-memory': { source: src, autoUpdate: true } }));
+    ok(/^ok +marketplace auto-update is on/m.test((await cli('doctor')).stdout), 'doctor says auto-update is on');
+    writeFileSync(kp, JSON.stringify({ 'project-memory': { source: src } })); }
   writeFileSync(join(live, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: {} }));
   r = await cli('doctor');
   ok(r.status === 0 && r.stdout.includes(`ok      ${live} matches what deploy.mjs checked\n`), `a live copy that matches its deploy says so (got ${r.stdout})`);

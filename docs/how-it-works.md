@@ -83,10 +83,12 @@ the compaction gate can ask Claude Code to wait (exit status 2). While
 `CLAUDE_CODE_DISABLE_AUTO_MEMORY` is `1`, `true`, `yes` or `on` (in any case),
 every hook (the git-rule watcher too, which then logs nothing) does nothing, except that the SessionStart and Stop hooks note
 the conversation's tag in `.memory-off` so the journal never imports it; the
-memory tool still works when you run it yourself. That variable is the only
-switch the hooks see: Claude Code's own (`autoMemoryEnabled` in its
-settings, which `/memory` sets) is not, since they never read its settings,
-and with it off they go on as usual. Disabling the plugin stops them.
+memory tool still works when you run it yourself. Claude Code's own switch
+(`autoMemoryEnabled: false`, which `/memory` sets) counts too: the hooks read
+that one value from the managed, project-local, project and user settings
+files, in that order, and the variable wins over them (`0` means on). They
+cannot see `--settings`, `--bare`, safe mode or server-managed settings.
+Disabling the plugin stops them.
 
 ## Where things live
 
@@ -709,8 +711,8 @@ Per message, `<private>…</private>` keeps one piece of text out.
    not hide: search and show still answer from what is there.
 3. **All projects on this machine:** set `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to
    `1`, `true`, `yes` or `on`, or disable the plugin (below). Claude Code's own
-   `/memory` setting and `autoMemoryEnabled` do not stop project-memory,
-   because it never reads Claude Code's settings.
+   `/memory` setting (`autoMemoryEnabled: false`) stops project-memory too;
+   it reads only that value, from the settings files Claude Code reads.
 4. **Claude Code itself:** `autoMemoryEnabled: false` stops its auto memory,
    `CLAUDE_CODE_SKIP_PROMPT_HISTORY` its transcripts (with none, the journal
    records nothing either), and `claude purge` deletes what it keeps.

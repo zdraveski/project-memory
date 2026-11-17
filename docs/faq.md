@@ -194,8 +194,11 @@ briefing with auto memory on says so, and until it is written the journal
 may take that conversation in. [Privacy policy](../PRIVACY.md).
 
 Turning auto memory off in Claude Code itself, with `/memory` or the
-`autoMemoryEnabled` setting, doesn't stop project-memory: it never reads
-Claude Code's settings, so it keeps its journal, its record of where you
-left off and its briefing. To stop it, use `/project-memory:memory-off` for
-one project, or disable the plugin
+`autoMemoryEnabled` setting, stops project-memory too. It reads that one
+setting (`false`) from the settings files Claude Code reads: managed, the
+project's `.claude/settings.local.json` and `.claude/settings.json`, and
+`~/.claude/settings.json`. The environment variable wins over all of them
+(`0` turns it back on). It cannot see `--settings`, `--bare`, safe mode or
+server-managed settings; `doctor` says where it found the switch. To stop it
+for one project, use `/project-memory:memory-off`, or disable the plugin
 ([Pausing or removing it](how-it-works.md#pausing-or-removing-it)).

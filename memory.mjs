@@ -40,7 +40,7 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir, tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, memoryOff, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
+import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
@@ -350,6 +350,12 @@ export function search(dirs, query, { since, until, failed } = {}) {
 // What a [[link]] may name: a memory's file name without `.md`, or its `name:`.
 const names = (ms) => ms.flatMap((m) => [m.file.replace(/\.md$/, ''), m.name].filter(Boolean));
 
+// handoff.md past this is hard to read, for people and for Claude (audit: 89 to 204 KB in real projects, +25 to 35 KB a week).
+const HANDOFF_WARN = 64 * 1024;
+export function handoffBig(dir) {
+  let n = 0; try { n = statSync(join(dir, 'handoff.md')).size; } catch { return null; }
+  return n > HANDOFF_WARN ? `handoff.md is ${Math.round(n / 1024)} KB (over ${HANDOFF_WARN / 1024} KB). To trim it: delete the finished topics from the part you wrote by hand, above the automatic log; the journal keeps every exchange, so nothing is lost from search` : null;
+}
 export function status(dir, sharedNames = []) {
   const ms = memories(dir), main = read(join(dir, 'MEMORY.md'));
   const lines = [`${dir}${isShared(dir) ? '  (shared by every project)' : ''}`];
@@ -373,6 +379,7 @@ export function status(dir, sharedNames = []) {
   if (dangling.length) lines.push(`  links to no memory: ${dangling.join(', ')}`);
   const bare = ms.filter((m) => !m.desc || !m.type).map((m) => m.file);
   if (bare.length) lines.push(`  frontmatter without a description or type: ${bare.join(', ')}`);
+  const big = handoffBig(dir); if (big) lines.push(`  needs attention: ${big}`);
   const doc = read(join(dir, 'handoff.md'));
   const { a, b } = sectionOf(doc ?? '');
   const all = a === -1 ? [] : parse(doc.slice(a, b));
@@ -719,6 +726,10 @@ export function doctor(site = sessionStore()) {
   // No install record: added from claude.ai (`project-memory@synced`), or wired by hand.
   else if (runs.length) say(true, `the hooks run from ${runs.at(-1).from} (no install record: added from claude.ai, or wired by hand)`);
   else say(false, `not installed: the project-memory plugin is not installed, and its hooks have never run. The user's fix: claude plugin marketplace add zdraveski/project-memory, then claude plugin install ${PLUGIN}`);
+  // Auto-update of this plugin's marketplace, as Claude Code keeps it in known_marketplaces.json (autoUpdate: true once switched on; a
+  // GitHub marketplace other than the official one is off until then). A folder marketplace is the developer's own: not said.
+  { const m = id && plugins('known_marketplaces.json')?.[id.split('@')[1]];
+    if (m?.source?.source === 'github') say(true, m.autoUpdate === true ? 'marketplace auto-update is on: Claude Code fetches new versions at startup' : 'marketplace auto-update is off: new versions arrive only after you update by hand. To turn it on: /plugin, Marketplaces, project-memory, Enable auto-update'); }
   // Two runs for one reply, seconds apart: two wirings answered one Stop.
   const twice = runs.slice(-10).find((r, i, rs) => i > 0 && twin(r, rs[i - 1]));
   // Two enabled plugins of one name run one's hooks only (Claude Code leaves
@@ -731,7 +742,9 @@ export function doctor(site = sessionStore()) {
   // A copy with no hooks.json at all is not one doctor can judge (the Stop checks below name a plugin that wires nothing).
   if (root && existsSync(join(root, 'hooks', 'hooks.json'))) say(...enforceHook(root));
   // Auto memory turned off: the hooks do nothing, so nothing below applies.
-  if (memoryOff()) { say(true, 'auto memory is off (CLAUDE_CODE_DISABLE_AUTO_MEMORY): the hooks save and brief nothing until it is on again'); return { ok: !bad, lines }; }
+  const am = autoMemory();
+  if (am.off) { say(true, `auto memory is off (${am.why}): the hooks save and brief nothing until it is on again. Not seen by doctor: --settings, --bare, safe mode, server-managed settings`); return { ok: !bad, lines }; }
+  const big = handoffBig(site); if (big) say(true, big);
   // The one setting doctor reads (never printed but for its presence): the hooks keep the default folder, and a note in the moved one is
   // never tiered, snapshotted or briefed.
   if (typeof json(join(configDir(), 'settings.json'))?.autoMemoryDirectory === 'string') say(false, 'the autoMemoryDirectory setting is set, and project-memory does not follow it: notes in that folder are not tiered, snapshotted or briefed (the hooks work on the default memory folder). Remove the setting to use project-memory');
@@ -896,7 +909,7 @@ function replay(here, args, all, label, failed) {
 function enforceStatus(here) {
   const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 30);
   const { notes } = tally(here, from.getTime()), n = (x) => x.main + x.sub;
-  const off = memoryOff() || isOff(here);
+  const off = autoMemory().off || isOff(here);
   return { ok: true, lines: [...(off ? ['memory is off here: watch is paused'] : []),
     ...(notes.length ? notes.map((x) => x.bad ? `${x.file}  bad rule: ${x.bad}` : n(x) ? `${x.file}  ${pl(n(x), 'hit')} in 30 days (${x.main} main, ${x.sub} subagent), last ${local(x.last)}` : `${x.file}  no hits in 30 days`) : [`no enforce: rules in ${here}`]),
     'To see the commands, run `memory enforce replay <note>`.'] };
@@ -1133,7 +1146,8 @@ export function main(given) {
   else if (cmd === 'off' || cmd === 'on') r = projectSwitch(here, cmd === 'off');
   else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
-    r = { ok: true, lines: [...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
+    const am = autoMemory();
+    r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined);
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
