@@ -2593,6 +2593,19 @@ See [[nonexist-${GH}]]
   ok(spawnSync('git', ['-C', root, 'fsck', '--no-dangling'], { encoding: 'utf8' }).status === 0 && !existsSync(join(root, '.git', 'refs', 'original')) && !existsSync(join(root, '.git', 'config.lock')), 'the history is sound and the lock is freed');
   r = await run(['rescan']);
   ok(/nothing found; nothing changed/.test(r.stdout), `a second run finds nothing (got ${r.stdout})`);
+  // a busy snapshot lock: a clean line, exit 1, nothing changed, no backup made
+  writeFileSync(join(rd, 'handoff.md'), `handoff ${key}
+`);
+  writeFileSync(join(root, '.git', 'config.lock'), '');
+  const nb = () => readdirSync(join(home, '.claude')).filter((n) => n.startsWith('project-memory-rescan-backup')).length;
+  r = await run(['rescan', '--apply', '--yes']);
+  ok(r.status === 1 && /snapshot is being taken/.test(r.stdout) && !/at .*memory\.mjs:\d+/.test(r.stderr) && nb() === 1 && readFileSync(join(rd, 'handoff.md'), 'utf8').includes(key), `rescan --apply --yes with a busy lock stops cleanly (got ${r.stdout}${r.stderr.slice(0, 300)})`);
+  unlinkSync(join(root, '.git', 'config.lock'));
+  r = await run(['rescan', '--apply', '--yes']);
+  ok(r.status === 0 && !readFileSync(join(rd, 'handoff.md'), 'utf8').includes(key) && /backup: /.test(r.stdout), `a secret in handoff.md is redacted (got ${r.stdout})`);
+  const nb2 = nb();
+  r = await run(['rescan', '--apply', '--yes']);
+  ok(/nothing found/.test(r.stdout) && nb() === nb2, 'a clean store makes no backup');
 }
 
 console.log(`memory: ${checks} checks passed`);

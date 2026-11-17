@@ -566,6 +566,7 @@ const walk = (buf) => {
   }
   return { out: Buffer.concat(out), hits, blobs, commits: commits + hit, files };
 };
+// shortcut: the whole history is read into one buffer (1 GiB cap) and only branches come back from the rewrite, so a hand-made tag keeps old text; upgrade to streaming or fetch all refs if that is hit.
 const FAST = { maxBuffer: 1 << 30, timeout: 300_000 }, QUIET_FAST = { ...FAST, stdio: ['ignore', 'pipe', 'ignore'] };   // git warns about a ref that names a blob
 // restore keeps the note it replaces under a ref that names a blob, which fast-export skips.
 const blobRefs = () => git('for-each-ref', '--format=%(objecttype) %(objectname) %(refname)').split('\n').map((l) => l.split(' ')).filter((p) => p[0] === 'blob').flatMap(([, sha, ref]) => {
@@ -596,18 +597,24 @@ const rescan = (stores, apply, yes) => {
     `First a backup is made at ${backup}. The backup still holds the secrets, on purpose. Delete it when you have checked the result; it is not deleted for you.`,
     "Copies this cannot clean: Claude Code's own conversation files, other copies of this folder, and synced folders. Delete old copies, or they bring the old text back."];
   if (!yes) return { ok: true, lines: [...warn, ...lines, 'nothing has been changed; add --yes to go on'] };
+  const g = join(root, '.git');
+  if (['index.lock', 'HEAD.lock', 'config.lock'].some((f) => existsSync(join(g, f)))) return no('a snapshot is being taken; try again in a moment; nothing changed');
   mkdirSync(join(backup, 'files'), { recursive: true, mode: 0o700 });
+  console.log(warn.join('\n'));   // before the rewrite: a failure or a timeout must not lose where the backup is
   if (hist) git('bundle', 'create', join(backup, 'snapshots.bundle'), '--all');
   for (const x of found) { const to = join(backup, 'files', relative(root, x.f)); mkdirSync(dirname(to), { recursive: true }); writeFileSync(to, x.text, { mode: 0o600 }); }
-  kept.forEach((x, i) => writeFileSync(join(backup, 'files', `kept-${i}.md`), x.text, { mode: 0o600 }));
-  const out = [...warn];
-  for (const x of kept) git('update-ref', x.ref, execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: x.to, encoding: 'utf8' }).trim());
-  if (nh) rewrite((copy) => execFileSync('git', ['-C', copy, 'fast-import', '--force', '--quiet'], { ...FAST, input: walk(execFileSync('git', ['-C', copy, 'fast-export', '--all', '--signed-tags=strip'], QUIET_FAST)).out }));
+  kept.forEach((x) => writeFileSync(join(backup, 'files', `kept-${basename(x.ref)}.md`), x.text, { mode: 0o600 }));
+  const out = [];
   let left = 0;
+  // Files first: a snapshot taken while the history is rewritten then commits redacted text.
   for (const dir of new Set(found.map((x) => x.dir))) {
     const r = withLock(dir, () => found.filter((x) => x.dir === dir).map((x) => replaceIfUnchanged(x.f, x.text, x.to)));
     if (!r) { out.push(`${dir} is busy; its files were not changed, run again`); left++; } else if (r.includes('conflict')) { out.push(`a file in ${dir} changed while this ran; run again for it`); left++; }
   }
+  try {
+    for (const x of kept) git('update-ref', x.ref, execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: x.to, encoding: 'utf8' }).trim());
+    if (nh) rewrite((copy) => execFileSync('git', ['-C', copy, 'fast-import', '--force', '--quiet'], { ...FAST, input: walk(execFileSync('git', ['-C', copy, 'fast-export', '--all', '--signed-tags=strip'], QUIET_FAST)).out }));
+  } catch (e) { return { ok: false, lines: [...out, `the snapshots could not be rewritten (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); backup: ${backup}`] }; }
   const after = nh && walk(execFileSync('git', gitArgs('fast-export', '--all', '--signed-tags=strip'), QUIET_FAST)).hits + blobRefs().length;
   out.push(`redacted ${nf} in files and ${nh} in the snapshots; ${after ? `${after} still found in the snapshots` : 'the snapshots hold none now'}`, `backup: ${backup}`);
   return { ok: !left && !after, lines: out };

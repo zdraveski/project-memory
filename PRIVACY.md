@@ -122,7 +122,9 @@ All of it stays in `~/.claude/projects` on your computer:
     holds a key is not added to `MEMORY.md`, and `doctor` says to rename it.
     A key pasted into a note that was snapshotted before that stays in the
     history after the note is deleted (`forget --purge` removes forgotten
-    journal entries from the history, not notes).
+    journal entries from the history, not notes). `rescan --apply --yes` redacts
+    such a key in notes, the journal, the handoff and the snapshots; it first
+    makes a backup folder that still holds the key, which you delete yourself).
 - A journal of every exchange, one file per day in a project's `memory`
   folder (`journal/YYYY-MM-DD.md`), with a file `journal.md` beside it that
   tells Claude the journal is there. Each entry holds your message and

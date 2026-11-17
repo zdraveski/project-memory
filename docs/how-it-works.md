@@ -1112,6 +1112,7 @@ node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory
 | `forget [<words…>]` | `--key K` (again for each key), `--same`, `--since D`, `--until D`, `--conversation <tag or id>`, `--yes`, `--purge` (also remove from the snapshot history) |
 | `status` | `--all` |
 | `history <note>` | `--all`, `--limit N` (the newest 30 by default) |
+| `rescan` | `--apply`, `--yes` (redact secrets saved before a rule existed, in files and snapshots; makes a backup that still holds them) |
 | `restore <note>` | `--rev <commit>`, `--force` |
 | `promote <note>` | `--force` (copy a note that holds a secret) |
 | `doctor` | |
