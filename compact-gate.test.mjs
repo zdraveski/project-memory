@@ -90,6 +90,16 @@ ok(/ag1 → C:\\Temp\\tasks\\ag1\.output/.test(doc), 'an agent launch is found a
 ok(/edited this turn:\*\* a\.py/.test(doc) && !/C:\\repo/.test(doc), 'files edited this turn are listed, by name: a path names the user\'s folders');
 ok(/last said:\*\* running the suites/.test(doc), 'the last words said are kept');
 ok(doc.indexOf('cut mid-turn') < doc.indexOf('<!-- auto:end -->'), 'the note sits inside the auto section, so the next Stop drops it');
+// 1.5.0: the edited list leaves out an edit whose result is an error (refused, or not applied), as the handoff's Changed does.
+{
+  const e = (id, file) => rec('assistant', [{ type: 'tool_use', id, name: 'Edit', input: { file_path: file } }]);
+  const r = (id, isErr) => rec('user', [{ type: 'tool_result', tool_use_id: id, content: isErr ? 'File has not been read yet.' : 'updated', ...(isErr ? { is_error: true } : {}) }]);
+  writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+  write(user('edit two'), e('e1', 'C:\\repo\\bad.py'), r('e1', true), e('e2', 'C:\\repo\\good.py'), r('e2', false), asst('editing', 965_000, 'tool_use'));
+  ok(gate().code === 0, 'over the ceiling the compaction runs (edit results)');
+  const note1 = readFileSync(join(dir, 'handoff.md'), 'utf8');
+  ok(/edited this turn:\*\* good\.py/.test(note1) && !/bad\.py/.test(note1), `an edit with an error result is not in the edited list (got ${(note1.match(/edited this turn[^\n]*/) || [''])[0]})`);
+}
 
 // A password typed alone as the answer to a password question is not written into the note (1.4.1 H review).
 const SECRET = ['Zq8x', 'K2mP', '9vL4n'].join('');

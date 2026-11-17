@@ -106,7 +106,7 @@ function state(path, { ask = true } = {}) {
 }
 
 function walk(raw) {
-  const s = { ctx: 0, midTurn: false, ask: '', raw: '', said: '', hidden: false, forgot: false, at: '', running: new Map(), edited: new Set(), launchers: new Set() };
+  const s = { ctx: 0, midTurn: false, ask: '', raw: '', said: '', hidden: false, forgot: false, at: '', running: new Map(), edited: new Set(), editIds: new Map(), launchers: new Set() };
   const heard = toolAnswers();
   for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;
@@ -134,7 +134,7 @@ function walk(raw) {
       let ask = prompt(r, t);
       if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);   // any private tag in any spelling: with a plain one too, a fullwidth one was saved
       if (ask && BARE(ask, s.said)) ask = '[redacted]';   // a password typed alone as the answer: handoff-log's turns() does the same
-      if (ask) { s.ask = ask; s.raw = unwrap(norm(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.forgot = false; s.edited.clear(); }
+      if (ask) { s.ask = ask; s.raw = unwrap(norm(t)); s.at = local(r.timestamp); s.said = ''; s.hidden = false; s.forgot = false; s.edited.clear(); s.editIds.clear(); }
       // Not in what the harness quotes: an agent's report quoting the tag hid
       // the last words said. Nor in a compaction summary, a recap: one that
       // named the tag hid them, and the nudge, for the rest of the turn.
@@ -145,6 +145,9 @@ function walk(raw) {
       // tool result, a fetched page that spelt one out put its words, and any
       // instruction in them, into the note printed after the compaction.
       for (const b of c) {
+        // An edit whose result is an error (refused, or not applied) changed nothing: as turns() lists a turn's Changed.
+        const f = b?.type === 'tool_result' && b.is_error === true ? s.editIds.get(b.tool_use_id) : '';
+        if (f) { s.editIds.delete(b.tool_use_id); if (![...s.editIds.values()].includes(f)) s.edited.delete(f); }
         if (b?.type !== 'tool_result' || !s.launchers.has(b.tool_use_id)) continue;
         const body = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => x?.text || '').join(' ') : '';
         for (const hit of body.matchAll(LAUNCH)) {
@@ -171,7 +174,7 @@ function walk(raw) {
         const file = editedFile(b);
         // The name, not the path: the path names the user's folders, and the
         // project says where it is.
-        if (file) s.edited.add(String(file).split(/[\\/]/).pop());
+        if (file) { const n = String(file).split(/[\\/]/).pop(); s.edited.add(n); s.editIds.set(b.id, n); }
       }
     }
   }

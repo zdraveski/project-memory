@@ -245,6 +245,19 @@ export { tag, OFF };
 
 // The file a tool call edits, or '': the one list of the edit tools, for the
 // handoff and the compaction note alike. NotebookEdit names its file differently.
+// A result that says the call was refused or blocked and never ran. Claude Code's own first words on a result with is_error true
+// (read from real transcripts, 2026-11-17): the user's refusal (also toolUseResult "User rejected tool use"), a PreToolUse hook's
+// block, the auto-mode classifier's denial or its outage, and the permission prompt's "multiple operations" stop.
+const REFUSED = /^(?:The user doesn't want to proceed with this tool use|Permission for this action was denied|The server-side auto mode classifier gave no verdict|PreToolUse:\S+ hook error|This Bash command contains multiple operations)/;
+export const refused = (r, b) => b?.is_error === true && (r?.toolUseResult === 'User rejected tool use' || REFUSED.test(resultText(b)));
+// What a call ran: the command of a shell tool, the code of context-mode's ctx_execute, the commands of its ctx_batch.
+const ranOf = (b) => {
+  if (b?.type !== 'tool_use') return '';
+  const i = b.input;
+  if (/^(Bash|PowerShell)$/.test(b.name)) return i?.command ? String(i.command) : '';
+  if (/__ctx_execute$/.test(b.name)) return i?.code ? String(i.code) : '';
+  return /__ctx_batch$/.test(b.name) && Array.isArray(i?.commands) ? i.commands.map((c) => String(c?.command ?? c)).join('\n') : '';
+};
 export const editedFile = (b) => (b?.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path)) || '';
 
 // A reply that is one token with a digit or a symbol, to a question that asks for a password, token or key: the value alone, with no
@@ -284,15 +297,32 @@ export function turns(tail) {
     if (r.type === 'assistant' && pending && Array.isArray(r.message?.content)) {
       for (const b of r.message.content) {
         // Frozen: only a forget is kept, so a turn that ran one still says nothing (F14); a quiet turn lists no commands.
-        if (b?.type === 'tool_use' && /^(Bash|PowerShell)$/.test(b.name) && b.input?.command && (!pending.frozen || FORGETS.test(String(b.input.command)))) pending.ran.push(String(b.input.command));
+        const cmd = ranOf(b);
+        if (cmd && (!pending.frozen || FORGETS.test(cmd))) { pending.ran.push(cmd); pending.base.push(cmd); pending.ids.push(b.id); }
         const f = pending.frozen ? null : editedFile(b);
         if (!f) continue;
+        pending.edits.set(b.id, String(f));
         // The newest edit last, and by path: two index.ts files are two, and
         // a file edited first and last is one of the turn's last.
         const at = pending.changed.indexOf(String(f));
         if (at !== -1) pending.changed.splice(at, 1);
         pending.changed.push(String(f));
       }
+    }
+    // A call's result: a refused call never ran, an edit that errored changed nothing, and a command that failed keeps the end of
+    // its output unless a later call of the same command succeeded (1.5.0). Calls are read optimistically, so one with no result stays.
+    if (r.type === 'user' && pending && Array.isArray(r.message?.content)) for (const b of r.message.content) {
+      if (b?.type !== 'tool_result') continue;
+      const i = pending.ids.indexOf(b.tool_use_id), err = b.is_error === true;
+      if (i !== -1) {
+        if (refused(r, b)) { pending.ids.splice(i, 1); pending.base.splice(i, 1); pending.ran.splice(i, 1); }
+        else {
+          pending.base.forEach((c, j) => { if (c === pending.base[i]) pending.ran[j] = c; });   // the earlier tries' tails go: only the last result counts
+          if (err) pending.ran[i] = `${pending.base[i]} → failed: ${clip(resultText(b), Infinity).slice(-300)}`;
+        }
+      }
+      const f = pending.edits.get(b.tool_use_id);
+      if (f && err) { pending.edits.delete(b.tool_use_id); if (![...pending.edits.values()].includes(f)) { const at = pending.changed.indexOf(f); if (at !== -1) pending.changed.splice(at, 1); } }
     }
     // Read as typed; normalized (fullwidth, hidden characters) only to find the
     // private tags. Written normalized, `…` and CJK punctuation became ASCII,
@@ -342,7 +372,7 @@ export function turns(tail) {
     if (!t && !ask && !typed) continue;
     if (r.type === 'assistant' && t) said = t;
     if (ask && r.type === 'user' && BARE(ask, said)) ask = '[redacted]';
-    if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [], said: '', picked: [],
+    if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [], base: [], ids: [], edits: new Map(), said: '', picked: [],
       id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '' };
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
