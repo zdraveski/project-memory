@@ -23,13 +23,14 @@ This page says what it reads, what it saves, and how to remove it.
 - The git information of the folder a conversation starts in (its `.git`
   folder or file, and those of the folders above it), to find the repository
   whose notebook Claude Code uses, as Claude Code does.
-- Eight settings from the environment, by name: `PROJECT_MEMORY_BRIEFING`
-  (set to `0`, the startup briefing is not shown), and seven that Claude Code
-  reads too: `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME` and
+- Nine settings from the environment, by name: `PROJECT_MEMORY_BRIEFING`
+  (set to `0`, the startup briefing is not shown), and eight that Claude Code
+  reads too: `CLAUDE_PROJECT_DIR` (the project folder), `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME` and
   `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (where the notes are, and whether they're
   on), and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_DISABLE_1M_CONTEXT`,
   `CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
-  (how big a conversation can get). Nothing else in the environment.
+  (how big a conversation can get). The home folder (`HOME` or `USERPROFILE`)
+  is read to find `~/.claude`. Nothing else in the environment.
 - Claude Code's lists of installed plugins and marketplaces, and the plugin's
   own manifest, in `~/.claude/plugins`, only when you run the `doctor` check,
   to see where the plugin is installed and whether its auto-update is on.

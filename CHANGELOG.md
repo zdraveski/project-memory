@@ -2,7 +2,7 @@
 
 ## 1.5.0 "Maat" (2026-11-17)
 
-This release makes the journal true, then easier to search. It now records what happened and only that: the whole of what Claude said in a turn, the commands and errors that were real, and the reports of subagents, while a command you refused is no longer saved as run. Search finds other forms of a word, Claude is told to look in the journal before it answers, the briefing covers 30 days, and a new command finds secrets that were saved before a rule for them existed. Updating is recommended. Your existing memory works as it is.
+This release makes the journal true, then easier to search. It records what happened and only that: all of what Claude said in a turn, the real commands and errors, and subagent reports, and a command you refused is no longer saved as run. Search finds other forms of a word, and a new command finds secrets saved before a rule for them existed. Updating is recommended. Your existing memory works as it is.
 
 ### The journal records what happened
 
@@ -54,7 +54,7 @@ Entries saved before this version are not rewritten.
 ### Documentation
 
 - **The README now says that a marketplace you add yourself has auto-update off**, and how to turn it on.
-- **The privacy policy lists every setting the plugin reads**: eight names from the environment and two values (`autoMemoryEnabled`, `autoMemoryDirectory`) from Claude Code's settings files. It also names each new kind of saved text and the backup that `memory rescan --apply --yes` makes.
+- **The privacy policy lists every setting the plugin reads**: nine names from the environment and two values (`autoMemoryEnabled`, `autoMemoryDirectory`) from Claude Code's settings files. It also names each new kind of saved text and the backup that `memory rescan --apply --yes` makes.
 - **Gateway and non-Claude model users are told to set `CLAUDE_CODE_MAX_CONTEXT_TOKENS`** to the real window, so the reminder to save notes comes at the right time.
 - **The docs say that `forget --purge` works on a temporary copy of the history**, that `.hash-salt` is one of the files to delete, and that a shorter `cleanupPeriodDays` shortens what the journal can catch up on.
 
