@@ -2562,4 +2562,37 @@ See [[nonexist-${GH}]]
   unlinkSync(join(root, '.git', 'config.lock'));
 }
 
+// rescan: a secret saved before a rule existed is found in the files and the snapshots; the dry run prints counts, never the value;
+// --apply needs --yes; --apply --yes backs up, redacts the files, and rewrites the history so no snapshot holds it.
+{
+  const rd = join(root, 'C--rescan', 'memory'), key = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8';
+  mkdirSync(join(rd, 'journal'), { recursive: true });
+  writeFileSync(join(rd, 'MEMORY.md'), '# Memory Index\n');
+  writeFileSync(join(rd, 'old.md'), `---\nname: old\n---\nthe token was ${key} then\npassword=***REMOVED*** stays\n`);
+  writeFileSync(join(rd, 'journal', '2020-02-03.md'), `# Journal 2020-02-03\n\nran with ${key}\n`);
+  tier(); tier();
+  // restore keeps a replaced note under a ref that names a blob
+  const blob = spawnSync('git', ['-C', root, 'hash-object', '-w', '--stdin'], { input: `old note ${key}
+`, encoding: 'utf8' }).stdout.trim();
+  spawnSync('git', ['-C', root, 'update-ref', 'refs/project-memory/replaced/lab', blob]);
+  const kept = () => spawnSync('git', ['-C', root, 'cat-file', 'blob', 'refs/project-memory/replaced/lab'], { encoding: 'utf8' }).stdout;
+  const held = () => spawnSync('git', ['-C', root, 'log', '--all', '-S' + key, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
+  const head = () => spawnSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+  ok(held(), 'fixture: the snapshots hold the key');
+  const before = head();
+  let r = await run(['rescan']);
+  ok(r.status === 0 && r.stdout.includes('C--rescan/memory/old.md (1)') && r.stdout.includes('C--rescan/memory/journal/2020-02-03.md (1)') && /snapshots: \d+ secrets? in \d+ saved versions?/.test(r.stdout) && !r.stdout.includes(key) && held() && readFileSync(join(rd, 'old.md'), 'utf8').includes(key), `rescan prints counts and places, never the value, and changes nothing (got ${r.stdout}${r.stderr.slice(0, 400)})`);
+  r = await run(['rescan', '--apply']);
+  ok(/revoke or rotate/.test(r.stdout) && /still holds the secrets/.test(r.stdout) && /add --yes/.test(r.stdout) && held() && head() === before && !readdirSync(join(home, '.claude')).some((n) => n.startsWith('project-memory-rescan-backup')), `rescan --apply alone only says what it would do (got ${r.stdout})`);
+  r = await run(['rescan', '--apply', '--yes']);
+  const bk = readdirSync(join(home, '.claude')).find((n) => n.startsWith('project-memory-rescan-backup'));
+  ok(r.status === 0 && bk && /the snapshots hold none now/.test(r.stdout) && !r.stdout.includes(key), `rescan --apply --yes redacts (got ${r.stdout})`);
+  const old = readFileSync(join(rd, 'old.md'), 'utf8');
+  ok(!old.includes(key) && old.includes('***REMOVED***') && old.includes('password=***REMOVED*** stays') && !held() && head() !== before && !kept().includes(key) && kept().includes('***REMOVED***'), 'the file, every snapshot and the kept copy lose the key; the history has new IDs');
+  ok(readFileSync(join(home, '.claude', bk, 'files', 'C--rescan', 'memory', 'old.md'), 'utf8').includes(key) && existsSync(join(home, '.claude', bk, 'snapshots.bundle')), 'the backup holds the old file and a bundle of the old history');
+  ok(spawnSync('git', ['-C', root, 'fsck', '--no-dangling'], { encoding: 'utf8' }).status === 0 && !existsSync(join(root, '.git', 'refs', 'original')) && !existsSync(join(root, '.git', 'config.lock')), 'the history is sound and the lock is freed');
+  r = await run(['rescan']);
+  ok(/nothing found; nothing changed/.test(r.stdout), `a second run finds nothing (got ${r.stdout})`);
+}
+
 console.log(`memory: ${checks} checks passed`);

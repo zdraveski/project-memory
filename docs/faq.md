@@ -84,7 +84,9 @@ yesterday."* [Secrets in detail](how-it-works.md#the-handoff),
   yesterday."* It lists the journal entries that match and removes the ones
   you confirm. A copy in the history of days that are already over stays
   unless you ask for `forget --purge`, which drops those days from the history
-  too.
+  too. To clean out a secret saved before a redaction rule existed, ask for
+  `memory rescan`: it counts first and changes nothing until you add
+  `--apply --yes`.
 
 None of these reaches Claude Code's own conversation files. All four levels,
 including the setting for every project: [Turning it

@@ -32,6 +32,11 @@ Entries saved before this version are not rewritten.
 - **A search that finds nothing during the first import says the journal is still importing**, instead of "nothing matches".
 - **A compaction is put off at most once for the same point in a turn, and not at all once you have sent a new prompt.** A stuck turn can no longer hold a compaction until the context is full.
 
+### Old secrets
+
+- **`memory rescan` finds secrets that were saved before a redaction rule existed.** It checks your notes, journal days, handoff and every snapshot with today's rules, and prints counts and file names, never the text. Nothing changes unless you add `--apply --yes`.
+- **`memory rescan --apply --yes` replaces each one with `***REMOVED***` and removes it from the snapshot history.** It first saves a backup (a copy of the old history and the changed files) and tells you where it is. The backup still holds the secrets, so delete it when you have checked the result. Revoke the secret with the service that issued it first; every snapshot that held one gets a new ID.
+
 ### Settings and size
 
 - **Turning auto memory off in Claude Code now turns project-memory off too.** It follows `autoMemoryEnabled: false` in the settings files Claude Code reads, and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=0` turns it back on. `doctor` and `status` say where they found the switch.
