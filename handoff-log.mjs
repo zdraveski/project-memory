@@ -1191,7 +1191,7 @@ export async function main({ rethrow = false } = {}) {
     if (gone) { if (input.source === 'startup' && process.argv.includes('--print')) process.stdout.write(`${offLine(gone)}
 `); }
     else if (memoryOff()) off(input);
-    else if (process.argv.includes('--print')) { if (input.source !== 'resume') { try { process.stdout.write(await print(input)); } catch (e) { if (rethrow) throw e; } } }
+    else if (process.argv.includes('--print')) { if (input.source !== 'resume') process.stdout.write(await print(input)); }
     else handoff(input);
   } catch (e) {
     if (rethrow) throw e;

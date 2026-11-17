@@ -1600,6 +1600,10 @@ if (!quick) {
   memory(jm, 'forms-run', 'run note', 'the job runs nightly; we run it by hand too');
   r = await jcli('search', 'running');
   ok(/forms-run\.md/.test(r.stdout), `running finds a note that says run (got ${r.stdout})`);
+  // A real 4-letter word keeps its doubled letter: butt does not become but and list butcher.
+  memory(jm, 'forms-butcher', 'butcher note', 'the butcher of the town');
+  r = await jcli('search', 'butt');
+  ok(!/forms-butcher\.md/.test(r.stdout), `butt is not cut to but (got ${r.stdout})`);
   // A cut stem starts a word: "store" is not found inside "history", and still finds "stores".
   memory(jm, 'stem-hist', 'history', 'the history of the defeat of the team');
   memory(jm, 'stem-real', 'plain', 'we store data and feature flags');
