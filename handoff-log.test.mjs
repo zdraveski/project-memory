@@ -2420,6 +2420,9 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   writeFileSync(join(broken, 'handoff-log.mjs'), "export async function main(o) { if (o?.rethrow) throw new Error('boom while printing'); }");
   const bad2 = viaStarter({}, join(broken, 'brief.mjs'));
   ok(bad2.status === 0 && /^Memory briefing failed \(boom while printing\)/.test(bad2.stdout), `a failure while running gives the line too (got ${JSON.stringify(bad2.stdout)})`);
+  // The real main, not a stub: a bad payload on stdin is reported, not left as an empty briefing.
+  const bad3 = spawnSync(process.execPath, [BRIEF, '--print'], { input: 'not json', env: process.env, encoding: 'utf8' });
+  ok(bad3.status === 0 && /^Memory briefing failed \(/.test(bad3.stdout), `the real handoff-log.mjs failing at run time gives the line (got ${JSON.stringify(bad3.stdout)})`);
 }
 
 

@@ -240,7 +240,7 @@ function stem(t) {
   if (/^[a-z]+$/.test(t)) {
     let x = t;
     for (const f of EN_SUF) if (x.endsWith(f) && x.length - f.length >= 4 && !(f === 's' && x.endsWith('ss'))) { x = x.slice(0, -f.length); break; }
-    if (x.length > 4 && (/([b-df-hj-np-tv-z])\1$/.test(x) && !/(ll|ss|zz|ff)$/.test(x) || /[^aeiou][ye]$/.test(x))) x = x.slice(0, -1);
+    if (x.length >= 4 && /([b-df-hj-np-tv-z])\1$/.test(x) && !/(ll|ss|zz|ff)$/.test(x) || x.length > 4 && /[^aeiou][ye]$/.test(x)) x = x.slice(0, -1);
     return x;
   }
   if (/^[Ѐ-ӿ]+$/.test(t)) for (const f of MK_SUF) if (t.endsWith(f) && t.length - f.length >= 3) return t.slice(0, -f.length);

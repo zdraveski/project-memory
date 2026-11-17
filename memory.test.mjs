@@ -1596,6 +1596,10 @@ if (!quick) {
     r = await jcli('search', q);
     ok(/forms-mk\.md/.test(r.stdout), `a Macedonian form of ${q} finds the note (got ${r.stdout})`);
   }
+  // A doubled consonant is trimmed on a 4-letter stem too: running finds run.
+  memory(jm, 'forms-run', 'run note', 'the job runs nightly; we run it by hand too');
+  r = await jcli('search', 'running');
+  ok(/forms-run\.md/.test(r.stdout), `running finds a note that says run (got ${r.stdout})`);
   // A cut stem starts a word: "store" is not found inside "history", and still finds "stores".
   memory(jm, 'stem-hist', 'history', 'the history of the defeat of the team');
   memory(jm, 'stem-real', 'plain', 'we store data and feature flags');
