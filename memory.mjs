@@ -238,9 +238,9 @@ const EN_SUF = ['ational', 'ations', 'ation', 'ments', 'ment', 'ingly', 'ings', 
 const MK_SUF = ['ињата', 'ијата', 'ување', 'увања', 'ите', 'ата', 'ото', 'ета', 'ови', 'еви', 'ања', 'ање', 'вме', 'вте', 'ше', 'ме', 'те', 'та', 'то', 'от', 'ов', 'ва', 'во', 'ве', 'он', 'на', 'но', 'не', 'ат', 'ам', 'аш', 'и', 'а', 'е', 'о', 'у'];
 function stem(t) {
   if (/^[a-z]+$/.test(t)) {
-    let x = t, cut = false;
-    for (const f of EN_SUF) if (x.endsWith(f) && x.length - f.length >= 4 && !(f === 's' && x.endsWith('ss'))) { x = x.slice(0, -f.length); cut = true; break; }
-    if (cut && x.length >= 4 && /([b-df-hj-np-tv-z])\1$/.test(x) && !/(ll|ss|zz|ff)$/.test(x) || x.length > 4 && /[^aeiou][ye]$/.test(x)) x = x.slice(0, -1);
+    let x = t, cut = '';
+    for (const f of EN_SUF) if (x.endsWith(f) && x.length - f.length >= 4 && !(f === 's' && x.endsWith('ss'))) { x = x.slice(0, -f.length); cut = f; break; }
+    if (cut && cut !== 's' && x.length >= 4 && /([b-df-hj-np-tv-z])\1$/.test(x) && !/(ll|ss|zz|ff)$/.test(x) || x.length > 4 && /[^aeiou][ye]$/.test(x)) x = x.slice(0, -1);
     return x;
   }
   if (/^[Ѐ-ӿ]+$/.test(t)) for (const f of MK_SUF) if (t.endsWith(f) && t.length - f.length >= 3) return t.slice(0, -f.length);
