@@ -3515,5 +3515,35 @@ if (!quick) {
   ok(has('glft-' + 'abcdefghijklmnopqrstuvwx', 'abcdefghijklmnopqrstuvwx') && !has('glft-add-v2-branchnamexyz', 'branchnamexyz'), 'known limits of the glft rule: an all-lowercase no-digit token is kept, a branch with a digit and under 3 hyphens is erased');
 }
 
+// 1.5.0 PR 1: what a turn saves is true. Items 29, 19, 18 and 20 read through turns().
+{
+  const { turns } = await import('./handoff-log.mjs');
+  const use = (name, input, id = 'tu1') => rec('assistant', [{ type: 'tool_use', id, name, input }]);
+  const T0 = (m) => `2026-11-17T10:0${m}:00Z`;
+  const end = (s, m) => asst(s, { ts: T0(m), message: { content: [{ type: 'text', text: s }], stop_reason: 'end_turn' } });
+  // 29: an API error is a synthetic assistant record; it is no reply.
+  let got = turns([user('fix it', { ts: T0(0) }), asst('Fixed the bug in parse.', { ts: T0(1) }),
+    asst('API Error: 500 overloaded', { ts: T0(2), message: { model: '<synthetic>', content: [{ type: 'text', text: 'API Error: 500 overloaded' }] } })].join('\n'));
+  ok(got.length === 1 && got[0].did === 'Fixed the bug in parse.' && got[0].said === 'Fixed the bug in parse.', `a synthetic API error does not replace the real answer (got ${JSON.stringify(got)})`);
+  got = turns([user('fix it', { ts: T0(0) }), use('Edit', { file_path: '/a/b.js' }), asst('API Error: 500', { ts: T0(2), message: { model: '<synthetic>', content: [{ type: 'text', text: 'API Error: 500' }] } })].join('\n'));
+  ok(got.length === 1 && got[0].changed.join() === '/a/b.js' && !/API Error/.test(got[0].said + got[0].did), 'a turn that only ended in an API error keeps its edits, not the error text');
+  // 19: all of a turn's text; a reply after a background task adds, it does not replace.
+  got = turns([user('look at it', { ts: T0(0) }), asst('Let me read the file.', { ts: T0(1) }), use('Read', { file_path: '/a' }), end('The file is fine.', 2)].join('\n'));
+  ok(got[0].said === 'Let me read the file.\n\nThe file is fine.' && got[0].did === 'The file is fine.', `both text blocks of a turn are kept (got ${JSON.stringify(got[0])})`);
+  const nudge = JSON.stringify({ type: 'attachment', timestamp: T0(3), attachment: { type: 'hook_additional_context', hookEvent: 'Stop', content: ['[project-memory: compaction gate] Context is at 86%'] } });
+  const done = JSON.stringify({ type: 'attachment', timestamp: T0(5), attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: '<task-notification><task-id>b1</task-id></task-notification>' } });
+  got = turns([user('run the job', { ts: T0(0) }), end('Started the job.', 1), nudge, end('Saved my notes.', 4), done, end('The job finished.', 6)].join('\n'));
+  ok(got[0].said === 'Started the job.\n\nThe job finished.', `a background reply is added to the answer, the memory update's text is not (got ${JSON.stringify(got[0].said)})`);
+  // 18: Escape before any text keeps the edits and commands.
+  got = turns([user('change it', { ts: T0(0) }), use('Edit', { file_path: '/a/c.js' }, 't1'), use('Bash', { command: 'npm test' }, 't2'), user('[Request interrupted by user]', { ts: T0(2) })].join('\n'));
+  ok(got.length === 1 && got[0].changed.join() === '/a/c.js' && got[0].ran.join() === 'npm test', `a turn stopped with Escape keeps its edits and commands (got ${JSON.stringify(got)})`);
+  ok(turns([user('only look', { ts: T0(0) }), use('Read', { file_path: '/a' }), user('[Request interrupted by user]', { ts: T0(2) })].join('\n')).length === 0, 'a stopped turn with no edits and no commands saves nothing');
+  // 20: the user's pick is kept with the ask.
+  const q = rec('assistant', [{ type: 'tool_use', id: 'ask1', name: 'AskUserQuestion', input: { questions: [{ question: 'Which colour?' }] } }]);
+  const picked = rec('user', [{ type: 'tool_result', tool_use_id: 'ask1', content: 'ok' }], { toolUseResult: { answers: { 'Which colour?': 'Vermilion' } } });
+  got = turns([user('paint it', { ts: T0(0) }), q, picked, end('Painted it.', 2)].join('\n'));
+  ok(got[0].picked?.join() === 'Vermilion', `an answer to Claude's question is kept as a pick (got ${JSON.stringify(got[0].picked)})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

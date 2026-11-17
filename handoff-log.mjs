@@ -252,6 +252,8 @@ export const BARE = (a, q) => (/^\S{4,200}$/.test(a) && /[^A-Za-z]/.test(a) || /
 // What an assistant record asked: its AskUserQuestion questions as text.
 const questions = (r) => (Array.isArray(r.message?.content) ? r.message.content.filter((b) => b?.type === 'tool_use' && b.name === 'AskUserQuestion').map((b) => JSON.stringify(b.input?.questions ?? '')).join(' ') : '');
 
+// The most of a turn's text kept while reading: the journal cuts it to its own cap from the start, so the end must be there.
+const SAID_KEEP = 100000;
 export function turns(tail) {
   const out = [];
   let pending = null;
@@ -260,6 +262,9 @@ export function turns(tail) {
   // (frozen: true) holds it to the next prompt.
   const hold = (p) => { if (p.frozen !== true) { p.frozen = 'nudge'; p.ended = false; } };
   const heard = toolAnswers();
+  const askIds = new Set();   // AskUserQuestion calls, to read their answers as picks
+  // A turn with edits or commands but no reply (Escape, an API error) is still saved: what it changed is true.
+  const keep = (p) => { if (p && !p.frozen && (p.changed.length || p.ran.length) && out[out.length - 1] !== p) { p.did ||= '[stopped before a reply]'; out.push(p); } };
   for (const line of tail.split('\n')) {
     if (!line.startsWith('{')) continue;        // a tail starts mid-line
     // A record whose first key is a type nothing here reads (api-request-blob: 7 of 32 MB): no parse.
@@ -288,6 +293,13 @@ export function turns(tail) {
     // Read as typed; normalized (fullwidth, hidden characters) only to find the
     // private tags. Written normalized, `…` and CJK punctuation became ASCII,
     // and every entry an older version wrote was added again beside it.
+    // An API error is written as an assistant record of the model "<synthetic>": no reply, so no text of ours.
+    if (r.type === 'assistant' && r.message?.model === '<synthetic>') { keep(pending); continue; }
+    if (r.type === 'assistant' && Array.isArray(r.message?.content)) for (const b of r.message.content) if (b?.type === 'tool_use' && b.name === 'AskUserQuestion') askIds.add(b.id);
+    if (r.type === 'user' && pending && !pending.frozen && Array.isArray(r.message?.content) && r.message.content.some((b) => b?.type === 'tool_result' && askIds.has(b.tool_use_id))) {
+      const a = r.toolUseResult?.answers;
+      if (a && typeof a === 'object') pending.picked.push(...Object.values(a).map(String));
+    }
     const t = text(r).trim(), n = r.type === 'user' ? norm(t) : '', told = heard(r);   // n only for a user record: nothing else reads it
     // A message typed while Claude worked has no user record, only this attachment: it opens a turn too (1.3.2). A private one
     // keeps the older way below (it freezes the turn it came into).
@@ -329,7 +341,7 @@ export function turns(tail) {
     if (!t && !ask && !typed) continue;
     if (r.type === 'assistant' && t) said = t;
     if (ask && r.type === 'user' && BARE(ask, said)) ask = '[redacted]';
-    if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [],
+    if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [], said: '', picked: [],
       id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '' };
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
@@ -337,8 +349,12 @@ export function turns(tail) {
     // with the answer unsaved (1.3.2). Any other isMeta record that names the tag still freezes it.
     else if ((r.type === 'user' || typed) && pending && !(r.isMeta && /^Base directory for this skill:/.test(t)) && /<\s*private/i.test(typed || mine)) pending.frozen = true;
     else if (r.type === 'user' && pending && nudged(t)) hold(pending);
+    else if (r.type === 'user' && /^\[Request interrupted by user/.test(t)) keep(pending);
     else if (r.type === 'assistant' && pending) {
-      if (!pending.frozen) { pending.did = t; pending.reopened = false; }     // last text block of the turn wins, unless a nudge froze it
+      // did: the last text block of the turn (the briefing's), said: all of them (the journal's); neither once a nudge froze it
+      if (!pending.frozen) { pending.did = t; pending.said = (pending.said ? `${pending.said}
+
+${t}` : t).slice(-SAID_KEEP); pending.reopened = false; }
       if (out[out.length - 1] !== pending) out.push(pending);
     }
   }
@@ -733,6 +749,9 @@ export function handoff(input, sink = null) {
   const open = got.open, last = input.last_assistant_message;
   if (open && !open.frozen && !open.reopened && input.hook_event_name === 'Stop' && !input.stop_hook_active && typeof last === 'string' && last.trim()) {
     open.did = last.trim();
+    if (!open.said.endsWith(open.did)) open.said = (open.said ? `${open.said}
+
+${open.did}` : open.did).slice(-SAID_KEEP);
     if (got.at(-1) !== open) got.push(open);
   }
   // File names, not paths; none for a private message's turn, read by what the
