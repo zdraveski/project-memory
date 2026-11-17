@@ -7,8 +7,8 @@
 
 # project-memory
 
-**Stop re-explaining your project to Claude Code.**<br>
-Your work, remembered between conversations. Saved only on your computer.
+**Claude Code forgets. project-memory remembers.**<br>
+Saved only on your computer.
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/zdraveski/project-memory/test.yml?branch=master&label=tests)](https://github.com/zdraveski/project-memory/actions/workflows/test.yml)
 [![Latest release](https://img.shields.io/github/v/release/zdraveski/project-memory?label=release)](https://github.com/zdraveski/project-memory/releases/latest)
@@ -35,7 +35,8 @@ to install it for you (user scope), then restart Claude Code:
 ```
 
 It needs [Node.js](https://nodejs.org) 22 or newer, and no account or API key.
-A new conversation starts with a short briefing of about 900 tokens, never
+A new conversation starts with a short briefing (it names your last session
+if it was in the last 30 days) of about 900 tokens, never
 more than about 2,400. Its work runs after each reply, with a time limit on
 every step, so a stuck step can't hold Claude up
 ([details](docs/faq.md#does-it-slow-claude-down-or-fill-the-conversation)).
@@ -127,6 +128,11 @@ claude plugin marketplace update project-memory
 claude plugin update project-memory@project-memory
 ```
 
+A marketplace you add yourself has auto-update off, so new versions do not
+arrive on their own. To turn it on, type `/plugin` in Claude Code, open
+Marketplaces, choose project-memory and select Enable auto-update.
+`/project-memory:memory doctor` says whether it is on.
+
 ### Pausing or removing it
 
 To pause it, run `claude plugin disable project-memory@project-memory` in a
@@ -148,9 +154,15 @@ notes, the journal and the history stay either way. What to delete by hand:
   own folder (`.claude`, in your home folder). What Claude reads during a
   conversation goes to Anthropic with the rest of it, as with Claude Code's
   own memory.
-- **The journal keeps each exchange whole:** your message, Claude's reply,
-  every file it changed and every command it ran (up to 50 KB of commands a turn, newest first), and your pick when you answer one of its multiple-choice questions, until you delete it or ask
-  Claude to forget part of it.
+- **The journal keeps each exchange whole:** your message, everything Claude
+  wrote in the turn, every file it changed and every command it ran (up to 50
+  KB of commands a turn, newest first), and your pick when you answer one of
+  its multiple-choice questions, until you delete it or ask Claude to forget
+  part of it. The code Claude runs through context-mode's ctx_execute is kept
+  with the commands, the last 300 characters of an error that was never fixed
+  are kept after its command, and what a subagent reports back is kept as its
+  own entry (up to 8,000 characters). All of it passes the secret filter
+  first. Entries saved before 1.5.0 are not rewritten.
 - **Keep text out** by putting it between `<private>` and `</private>`. Type
   `<private-session>` in any message to keep the whole conversation out; what
   was saved of it before is removed, except the history's copy of days
@@ -166,7 +178,9 @@ Before project-memory saves to the journal or the handoff (the short record of
 where you stopped), it replaces secrets with `[redacted]`: keys and tokens
 from many services, passwords in commands and chat (in several languages),
 cookies, and look-alike spellings of these. A note that holds a secret is kept
-out of history snapshots.
+out of history snapshots. A secret saved before a rule for it existed is found
+by `/project-memory:memory rescan`, which counts first and changes nothing
+until you add `--apply --yes`.
 
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/secrets-narrow.webp">
@@ -188,6 +202,9 @@ Four ways, from narrow to wide:
    disable the plugin.
 4. **Claude Code itself:** its own `autoMemoryEnabled: false` setting also turns
    project-memory off; it reads that one value and changes nothing.
+
+To turn off only the startup briefing, set `PROJECT_MEMORY_BRIEFING` to `0`.
+Everything else keeps saving.
 
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/turning-off-narrow.webp">
@@ -213,7 +230,9 @@ afterwards tells Claude what you asked and what it last said.
 **If your model holds 200,000 tokens, one setting matters** (a token is a
 small piece of a word): see
 [If your model holds 200,000 tokens](docs/how-it-works.md#if-your-model-holds-200000-tokens).
-The wait in the middle only happens when the setting
+If you use a gateway or a model that is not a Claude model, also set
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS` to its real window, or the plugin assumes
+1,000,000 tokens. The wait in the middle only happens when the setting
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is below your model's window. By default
 Claude Code goes ahead, and the note afterwards does the work. The rest of
 the tuning is in [Compaction](docs/how-it-works.md#compaction).
@@ -233,7 +252,8 @@ Supermemory and others.
 
 - **For a quick one-off question, you won't notice much difference.** It earns
   its keep when you come back to a project.
-- **Search goes by words, not by meaning.**
+- **Search goes by words, not by meaning.** It matches other forms of a word
+  (`migrated` finds `migration`, in English and Macedonian), not synonyms.
 - **It works in Claude Code only**, and each computer keeps its own memory:
   nothing syncs between computers or teammates.
 - **It tidies Claude's table of contents** (`MEMORY.md`) so it stays short
