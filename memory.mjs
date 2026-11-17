@@ -852,7 +852,7 @@ export function doctor(site = sessionStore()) {
   const lines = [];
   let bad = 0;
   const say = (fine, text) => { lines.push(`${fine ? 'ok     ' : 'PROBLEM'} ${text}`); if (!fine) bad++; };
-  // What is installed and what ran, never what settings.json says: that file
+  // What is installed and what ran, never what settings.json says (but the two values read below): that file
   // can hold the user's keys, and the plugin directory holds a plugin that
   // reads it. The Stop hook logs each run in .stop-ran (memory-tier.mjs).
   const id = installedId(), runs = stopRuns();

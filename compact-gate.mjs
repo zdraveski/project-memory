@@ -53,7 +53,7 @@ export const MAX_CONTEXT_USED = envOn(process.env.DISABLE_COMPACT) || (!!process
 export const MODEL_WINDOW = (MAX_CONTEXT_USED && tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS)) || (envOn(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) ? 200_000 : 1_000_000);
 // The window Claude Code compacts against, as the environment sets it; one
 // set with /autocompact or autoCompactWindow lives in settings, which the
-// plugin does not read (README says so). Never past the model's.
+// plugin does not read (how-it-works says so; it reads only autoMemoryEnabled and autoMemoryDirectory). Never past the model's.
 export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW, MODEL_WINDOW);
 // Claude Code compacts 33,000 tokens short of its window (863,324 of 900,000; 767,072 of 800,000: ~0.959 there; 0.835 of 200k).
 // The nudge has to land a whole turn before that, and a turn above

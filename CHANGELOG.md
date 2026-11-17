@@ -1,5 +1,64 @@
 # Changelog
 
+## 1.5.1 (2026-11-18)
+
+This release fixes what the 1.5.0 review found: search that joined words that only look alike, a few things that were saved or kept when they should not have been, and a Stop that took seconds on a very long turn. Search also puts the right entry first more often, and prints less. Updating is recommended. Your existing memory works as it is.
+
+### Search
+
+- **Search no longer joins words that only look alike.** `git` no longer finds `github`, `cat` no longer finds `concatenated`, `stores` no longer finds `storage`, and `story` and `ready` no longer match inside `history` or `already`. `library` still finds `libraries`.
+- **A hit's Result line shows the outcome.** It is the first sentence of Claude's last message in the turn, not the first words it said.
+- **The right entry comes first more often.** Long pasted requests and long notes rank lower, so they stop crowding the top, and an entry that holds your whole phrase ranks higher. On 95 test questions, the right entry came first in 63 instead of 58. The score a hit shows is unchanged; only the order moves.
+- **`1.4` finds 1.4.1 but no longer 1.45.** A three-part version still matches only itself.
+- **Search results are shorter.** From the 6th journal hit on, a hit prints only its request, its Result line and its key.
+- **A short request shows what it answered.** In `show` and the day list, a request of 25 characters or less (like "yes" or "go") gets a `Reply to key <key>: …` line with the end of the reply before it.
+- **The day list with no search words leaves out subagent reports.** Searching by words still finds them.
+- **A search that finds something ends with "Not the entry you meant? Search again with other words."**, so a first search with the wrong words gets a second try.
+
+### Saving
+
+- **A turn with hundreds of text blocks is saved in about a tenth of the time.** On a 300-block turn the Stop went from about 30 seconds to 3, so it no longer runs into its time limit. A Stop that saves nothing is also about 15% faster.
+- **A command that Claude Code's safety check blocked no longer shows under Ran**, and nor does a subagent's refused report-file write.
+- **A subagent report that is lost to a busy lock leaves a line in `journal/.failed`**, so `status` shows it.
+- **A subagent report over 8,000 characters keeps its first 5,000 and its last 2,900**, with `(N chars cut)` between, so the conclusion at the end stays.
+- **`handoff.md` is copied to `handoff.md.prev` at the first Stop of each day**, so one bad overwrite never loses it all. A private conversation makes no copy, and a sweep that drops entries (private, forget) deletes the old one.
+
+### Private conversations and secrets
+
+- **A private turn saves no subagent report and no pick.** Before, a report from a subagent that a private turn started, and your answer to a question in a private turn, were saved.
+- **A failed command's error is checked for secrets from its start**, and each pick of a multi-question answer is checked against its own question.
+- **Two things that were cut as secrets are kept:** `same pass: worked` (a word like "pass" in a sentence) and IPv6 addresses.
+- **`memory rescan` no longer reports a marker it wrote earlier** (`[redacted]` or `***REMOVED***`) as a new secret. `rescan --apply --yes` now writes `[redacted]`, as the rest of the plugin does, instead of `***REMOVED***`.
+- **`forget --purge` and `rescan --apply --yes` keep their working copy of the snapshot history inside the snapshot repository's own `.git` folder**, not in the computer's temporary folder, and remove it when they finish.
+
+### Settings, briefing and compaction
+
+- **When auto memory is turned off in the settings, the startup line says so**, and where it found the switch. The environment variable gets no such line.
+- **A settings.json that starts with a byte-order mark is read.**
+- **Tagging in a project where memory is off no longer advises a reinstall.**
+- **If saving the "wait" mark for a compaction fails, the compaction goes ahead** instead of being held.
+- **Claude Code compacts 33,000 tokens short of its window, and the reminder to save notes now follows that.** In a window of 200,000 it comes at about 107,000 tokens, where it came at about 132,000. `memory doctor` prints a line with the compaction window.
+- **`CLAUDE_CODE_MAX_CONTEXT_TOKENS` counts only when `DISABLE_COMPACT` is set, or when `ANTHROPIC_MODEL` names a model that is not a Claude one**, as Claude Code does.
+- **The briefing keeps room for the last session's exchanges.** When the shared lessons fill it, 1,500 characters are kept for them.
+
+### Checked lessons
+
+- **Checked lessons are a 30-day trial.** On 2026-12-18 the plugin's author checks whether the git rules caught anything useful (`memory enforce status`), and keeps the feature or cuts it.
+- **A rule's `unless` word also matches one folder of a path.** `unless: [scratchpad]` now lets `cd .../scratchpad/repo && git add -A` through. `has` words are not split.
+
+### Documentation
+
+- **The docs name exactly which settings are read:** `autoMemoryEnabled` from the managed, project-local, project and user settings files, `autoMemoryDirectory` in `doctor`, and the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` variable. Nothing else in a settings file is read.
+- **The docs say where `forget --purge` and `rescan --apply --yes` keep their working copy**, and that a command is cut at 20,000 characters and a request or reply at 50,000.
+- **The reminder in a 200,000 window is stated as about 54%, not 66%**, and the SessionStart and Stop timeouts match the hooks.
+- **The README and the comparison no longer say that "nothing leaves your computer".** What it saves stays there, but what Claude reads of it goes to Anthropic with the conversation.
+- **A long reply that was cut begins `… (N chars before)`**, as the 1.5.0 notes now say.
+
+### To rebuild older journal entries
+
+Entries saved before 1.5.0 lack the failed-command marks, the multiple-choice picks and the middle of replies. To rebuild them: once, in each store, delete `journal/.imported` and `journal/.looked`. The next Stops read your transcripts again, replace the entries and redact them under the newer rules. Forgotten entries stay gone and private conversations stay swept.
+
+
 ## 1.5.0 "Maat" (2026-11-17)
 
 This release makes the journal true, then easier to search. It records what happened and only that: all of what Claude said in a turn, the real commands and errors, and subagent reports, and a command you refused is no longer saved as run. Search finds other forms of a word, and a new command finds secrets saved before a rule for them existed. Updating is recommended. Your existing memory works as it is.
@@ -48,7 +107,7 @@ Entries saved before this version are not rewritten.
 
 - **Turning auto memory off in Claude Code now turns project-memory off too.** It follows `autoMemoryEnabled: false` in the settings files Claude Code reads, and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=0` turns it back on. `doctor` and `status` say where they found the switch.
 - **`status` and `doctor` warn when a project's `handoff.md` is over 64 KB**, and say how to trim it.
-- **A long request or reply that was cut now ends with how much was lost,** like `… (+1,240 chars)`, in the journal and in `handoff.md`.
+- **A long request or reply that was cut now says how much was lost.** A request ends `… (+1,240 chars)`; a reply, cut at its start so the final answer stays, begins `… (1,240 chars before)`.
 - **`doctor` says whether auto-update is on for the plugin's marketplace**, and where to switch it on.
 
 ### Documentation
