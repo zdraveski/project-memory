@@ -231,7 +231,8 @@ const STOP = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'with', 'was', 
 // A version (1.4.3, v1.4.3) is one word, matched whole: split at the dots, its pieces were all dropped, and 1.4.3 is not 1.4.30.
 const VERSION = /(?<![\p{L}\p{N}.])v?(\d+(?:\.\d+)+)/gu;
 const isVer = (t) => /^\d+(?:\.\d+)+$/.test(t);
-const verRe = (t) => new RegExp(`(?<![\\p{L}\\p{N}.])v?${t.replaceAll('.', '\\.')}(?!\\p{N}|\\.\\p{N})`, 'gu');
+// A one-dot version (1.4) is every release of it (1.4.1), so only a three-part version refuses a further .N.
+const verRe = (t) => new RegExp(`(?<![\\p{L}\\p{N}.])v?${t.replaceAll('.', '\\.')}(?!\\p{N}${t.split('.').length > 2 ? '|\\.\\p{N}' : ''})`, 'gu');
 // Word forms: the query's word loses one regular ending, and the match finds the longer forms (the index is not stemmed).
 // shortcut: regular endings only (run and ran, or decide and decision, are not one word; no irregular-verb table).
 // A root of 5 letters or more matches at the start of a word (migrat: migrate, migration). A root of 3 or 4 letters from
@@ -376,7 +377,14 @@ export function search(dirs, query, { since, until, failed } = {}) {
     if (parts.some((p) => p)) add({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')) }, parts, strong ? 5 : every ? 2 : 0);
   }
   const w = df.map((n) => 1 + Math.log((docs + 1) / (n + 1))), avg = w.reduce((a, x) => a + x, 0) / (w.length || 1);
-  for (const h of hits) h.rank = h.parts.reduce((a, p, i) => a + p * w[i], 0) + h.bonus * avg;
+  // A long entry or note says more of everything: its rank falls with its length (a pasted request, the big handoff). A phrase
+  // typed as is, in the entry's text, earns a bonus; the marker between a turn's text blocks is a space.
+  const flat = (x) => x.toLowerCase().normalize('NFC').replace(/[\s⁣]+/g, ' '), phrase = terms.length > 1 && flat(query).trim();
+  for (const h of hits) {
+    const long = h.kind === 'journal' ? h.asked.length / 200 : h.body.length / 1000;   // a note's body is longer than a request: it counts from 1,000 characters
+    h.rank = (h.parts.reduce((a, p, i) => a + p * w[i], 0) + h.bonus * avg) / (1 + 0.5 * Math.log(Math.max(1, long)));
+    if (phrase && flat((h.kind === 'journal' ? [h.asked, h.answered, ...h.changed, ...h.ran] : [h.name, h.desc, h.body]).join('\n')).includes(phrase)) h.rank += 4 * avg;
+  }
   return Object.assign(hits.sort((a, b) => b.rank - a.rank || b.modified - a.modified), { outside, missing: terms.filter((t) => !held.has(t)).map((t) => terms.as.get(t)) });
 }
 
