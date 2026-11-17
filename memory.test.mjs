@@ -1581,6 +1581,13 @@ if (!quick) {
     r = await jcli('search', q);
     ok(/forms-mk\.md/.test(r.stdout), `a Macedonian form of ${q} finds the note (got ${r.stdout})`);
   }
+  // A cut stem starts a word: "store" is not found inside "history", and still finds "stores".
+  memory(jm, 'stem-hist', 'history', 'the history of the defeat of the team');
+  memory(jm, 'stem-real', 'plain', 'we store data and feature flags');
+  r = await jcli('search', 'store');
+  ok(/stem-real\.md/.test(r.stdout) && !/stem-hist\.md/.test(r.stdout), `a stem is not found inside another word (got ${r.stdout})`);
+  r = await jcli('search', 'feature');
+  ok(/stem-real\.md/.test(r.stdout) && !/stem-hist\.md/.test(r.stdout), `feat is not found inside defeat (got ${r.stdout})`);
   // A query of only stop words still finds something, when nothing says which memory.
   memory(jm, 'stop-only', 'qqzzstop', 'what did we do here');
   r = await jcli('search', 'what', 'did', 'we', 'do');
@@ -1618,6 +1625,12 @@ After the log: narwhalqq stays.
     r = await run(['search', 'gnuqq', '--store', hd]);
     ok(!/handoff\.md/.test(r.stdout) && /nothing matches/.test(r.stdout), `its automatic log is not searched (got ${r.stdout})`);
     ok(!/handoff\.md/.test((await run(['search', 'rolling', 'handoff', '--store', hd])).stdout), 'its frontmatter is not searched');
+    // A half-written file: a start marker and no end marker. Its log is still left out.
+    const hh = mdir('C--halfhand');
+    writeFileSync(join(hh, 'handoff.md'), '---\nname: handoff\n---\n\nHand note: the okapiqq stall.\n\n<!-- auto:start -->\nan automatic line about the gnuqq paddock\n');
+    ok(/handoff\.md/.test((await run(['search', 'okapiqq', '--store', hh])).stdout), 'a half-written handoff.md still has its hand-written part searched');
+    r = await run(['search', 'gnuqq', '--store', hh]);
+    ok(!/handoff\.md/.test(r.stdout), `a start marker with no end marker still leaves its log out (got ${r.stdout})`);
   }
 
   // A stretch: matches 60 apart are one stretch (the 30-character windows

@@ -19,7 +19,7 @@ Entries saved before this version are not rewritten.
 
 - **A version number is one word.** `memory search 1.4.3` finds entries that say 1.4.3 (and v1.4.3), not 1.4.30. Before, it said there was nothing to search for.
 - **Search finds other forms of a word.** `migrated` finds `migrating` and `migration`, `releases` finds `release`, and the same works for common Macedonian endings (`базите` finds `базата`).
-- **Rare words count for more.** A word only a few notes hold now ranks above one that nearly every note holds, and filler words such as "which", "many" and "last" no longer count. On a real store, questions put in other words find the right entry more often (12 of 25 in the top five, up from 10), and questions in your own words still find it (25 of 25).
+- **Rare words count for more.** A word only a few notes hold now ranks above one that nearly every note holds, and filler words such as "which", "many", "last" and "new" no longer count (unless the question is only such words). The number printed by each hit is its plain score: hits are ordered by how rare the words are, so the numbers can look out of order. On a real store, questions put in other words find the right entry more often (12 of 25 in the top five, up from 10), and questions in your own words still find it (25 of 25).
 - **A question made only of small words still searches.** `memory search what did we do` looks for those words instead of giving up.
 - **Search reads what you wrote in handoff.md.** The automatic log in that file repeats the journal and is still left out.
 

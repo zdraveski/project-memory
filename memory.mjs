@@ -255,8 +255,10 @@ const words = (q, any = false) => {
 const alone = (t) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${t}(?![\\p{L}\\p{M}\\p{N}])`, 'gu');
 // Chinese and Japanese have no spaces round a word, so a two-character one is looked for as a substring.
 const plain = (t) => t.length > 2 || /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]+$/u.test(t);
-const count = (hay, t) => (isVer(t) ? (hay.match(verRe(t)) ?? []).length : plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
-const has = (hay, t) => (isVer(t) ? verRe(t).test(hay) : plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
+// A cut stem counts only at the start of a word: "stor" finds "store" and "storage", not "history" (`cut`: the term was shortened).
+const starts = (t) => new RegExp(`(?<![\\p{L}\\p{N}])${t}`, 'gu');
+const count = (hay, t, cut) => (isVer(t) ? (hay.match(verRe(t)) ?? []).length : cut && plain(t) ? (hay.normalize('NFC').match(starts(t)) ?? []).length : plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
+const has = (hay, t, cut) => (isVer(t) ? verRe(t).test(hay) : cut && plain(t) ? starts(t).test(hay.normalize('NFC')) : plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
 // The stretches of `text` around each match of `find`, joined, `room` characters
 // at most; no cut leaves half an emoji, which prints as U+FFFD.
 function around(text, find, room) {
@@ -291,7 +293,7 @@ const told = (dirs, o) => {
 // outranks "first" or "schedule". The score a hit prints stays the plain sum; the weights only order the hits.
 // `outside`: the notes that match but are dated out of the range.
 export function search(dirs, query, { since, until, failed } = {}) {
-  const terms = words(query, true), hits = [], held = new Set(), df = terms.map(() => 0);
+  const terms = words(query, true), cut = (t) => terms.as.get(t) !== t, hits = [], held = new Set(), df = terms.map(() => 0);
   let outside = 0, docs = 0;
   // `parts`: what each term scored, in terms' order; `bonus`: the +5 or +2 for every term.
   const add = (h, parts, bonus) => hits.push({ ...h, score: parts.reduce((a, p) => a + p, 0) + bonus, parts, bonus });
@@ -300,7 +302,9 @@ export function search(dirs, query, { since, until, failed } = {}) {
     if (m.file === 'journal.md') continue;
     const hand = m.file === 'handoff.md';
     if (hand) {
-      const { a, b } = sectionOf(m.body);
+      // A start marker with no end marker (a half-written file): the log runs to the end of the file.
+      const { a, b } = [m.body, `${m.body}
+<!-- auto:end -->`].map(sectionOf).find((x) => x.a !== -1) ?? { a: -1 };
       const body = a === -1 ? m.body : m.body.slice(0, a) + m.body.slice(b).replace(/^[^\n]*/, '');
       if (!body.trim()) continue;
       m = { ...m, file: '', name: '', desc: '', body };   // its name is no match: only what a person wrote
@@ -309,8 +313,8 @@ export function search(dirs, query, { since, until, failed } = {}) {
     const name = `${m.file} ${m.name}`.toLowerCase(), desc = m.desc.toLowerCase(), body = m.body.toLowerCase();
     let strong = true, every = true;
     const got = [], parts = terms.map((t, i) => {
-      const s = (has(name, t) ? 3 : 0) + (has(desc, t) ? 2 : 0);
-      const b = Math.min(2, count(body, t));
+      const s = (has(name, t, cut(t)) ? 3 : 0) + (has(desc, t, cut(t)) ? 2 : 0);
+      const b = Math.min(2, count(body, t, cut(t)));
       if (!s) strong = false;
       if (!s && !b) every = false; else { got.push(t); df[i]++; }
       return s + b;
@@ -331,8 +335,8 @@ export function search(dirs, query, { since, until, failed } = {}) {
     let strong = true, every = true;
     const parts = terms.map((t, i) => {
       // A branch is named on every entry of its work: below a file or command that names the word.
-      const s = (has(asked, t) ? 3 : 0) + (has(did, t) ? 2 : has(branch, t) ? 1 : 0) + Math.min(2, count(answered, t));
-      if (!has(asked, t)) strong = false;
+      const s = (has(asked, t, cut(t)) ? 3 : 0) + (has(did, t, cut(t)) ? 2 : has(branch, t, cut(t)) ? 1 : 0) + Math.min(2, count(answered, t, cut(t)));
+      if (!has(asked, t, cut(t))) strong = false;
       if (!s) every = false; else { held.add(t); df[i]++; }
       return s;
     });
@@ -979,7 +983,7 @@ export function main(given) {
       if (k !== null && like.has(k)) like.get(k).push(h);
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
-    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (isVer(t) ? verRe(t).source : plain(t) ? t : alone(t).source)).join('|'), 'giu');
+    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (isVer(t) ? verRe(t).source : plain(t) ? (terms.as.get(t) !== t ? starts(t).source : t) : alone(t).source)).join('|'), 'giu');
     // NFC, as the scoring reads it: a decomposed "é" scored the entry, and its stretch must show too.
     const nfc = (v) => clip(v, Infinity).normalize('NFC');
     const entry = (h, also) => {
