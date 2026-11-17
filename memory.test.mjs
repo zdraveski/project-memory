@@ -1656,6 +1656,34 @@ After the log: narwhalqq stays.
     ok(/handoff\.md/.test((await run(['search', 'okapiqq', '--store', hh])).stdout), 'a half-written handoff.md still has its hand-written part searched');
     r = await run(['search', 'gnuqq', '--store', hh]);
     ok(!/handoff\.md/.test(r.stdout), `a start marker with no end marker still leaves its log out (got ${r.stdout})`);
+    // 1.5.1 finding 15: a second auto block is no hand-written text either.
+    const h2 = mdir('C--twoauto');
+    writeFileSync(join(h2, 'handoff.md'), '---\nname: handoff\n---\n\nHand note: the lemurqq perch.\n\n<!-- auto:start -->\nfirst log line about the gnuqq paddock\n<!-- auto:end -->\n\nMiddle note: the tapirqq pen.\n\n<!-- auto:start -->\nsecond log line about the wombatqq burrow\n<!-- auto:end -->\n\nLast note: the yakqq shed.\n');
+    for (const w of ['lemurqq', 'tapirqq', 'yakqq']) ok(/handoff\.md/.test((await run(['search', w, '--store', h2])).stdout), `${w}, hand-written, is found with two auto blocks`);
+    for (const w of ['gnuqq', 'wombatqq']) ok(!/handoff\.md/.test((await run(['search', w, '--store', h2])).stdout), `${w}, in an auto block, is not found when there are two`);
+  }
+
+  // 1.5.1 finding 11: a short stem matches its own word forms, not other words that start with it.
+  {
+    const wf = mdir('C--wordforms');
+    const rows = [
+      // [query, a word that must not be found, then forms that must]
+      ['butts', 'button'], ['indeed', 'index'], ['proceed', 'process'], ['exceed', 'exce'], ['applied', 'apple'], ['supply', 'sup'],
+      ['logged', 'login'], ['planned', 'planet'], ['settings', 'setup'], ['log', 'login'], ['ready', 'read'], ['steady', 'stead'],
+    ];
+    rows.forEach(([, w], i) => memory(wf, `wf-no-${i}`, 'wf', `the word ${w}`));
+    for (const [i, [q, w]] of rows.entries()) {
+      r = await run(['search', q, '--store', wf]);
+      ok(!new RegExp(`wf-no-${i}\\.md`).test(r.stdout), `${q} does not find ${w} (got ${r.stdout.slice(0, 200)})`);
+    }
+    const yes = [['log', 'logs'], ['log', 'logged'], ['log', 'logging'], ['logs', 'log'], ['logged', 'logging'], ['fixed', 'fix'], ['fixed', 'fixing'], ['fixing', 'fixes'], ['fix', 'fixed'],
+      ['keys', 'key'], ['key', 'keys'], ['ready', 'ready'], ['steady', 'steady'], ['release', 'released'], ['released', 'release'], ['released', 'releases'], ['planned', 'plan'],
+      ['settings', 'setting'], ['butts', 'butt'], ['applied', 'applied'], ['supply', 'supply'], ['indeed', 'indeed'], ['proceed', 'proceed'], ['exceed', 'exceed'], ['stores', 'store'], ['running', 'run']];
+    for (const [i, [, w]] of yes.entries()) memory(wf, `wf-yes-${i}`, 'wf', `the word ${w}`);
+    for (const [i, [q, w]] of yes.entries()) {
+      r = await run(['search', q, '--store', wf]);
+      ok(new RegExp(`wf-yes-${i}\\.md`).test(r.stdout), `${q} finds ${w} (got ${r.stdout.slice(0, 200)})`);
+    }
   }
 
   // A stretch: matches 60 apart are one stretch (the 30-character windows
@@ -1884,12 +1912,12 @@ After the log: narwhalqq stays.
   }
 
   // Part B: the numbers. A note's body starts where its frontmatter ends, and a note with none is all body.
-  memory(jm, 'mn-aa', 'concatenated', 'x');
-  memory(jm, 'mn-bb', 'plain', 'concatenated');
+  memory(jm, 'mn-aa', 'cats', 'x');
+  memory(jm, 'mn-bb', 'plain', 'cat');
   writeFileSync(join(jm, 'mn-nofront.md'), 'quokka lives here\nsecond line\n');
   writeFileSync(join(jm, 'mn-tight.md'), '---\nname: mn-tight\ndescription: "tight"\n---\nzebu starts the body\n');
   r = await jcli('search', 'cat');
-  ok(scoreOf(r.stdout, 'mn-aa.md') === 7 && scoreOf(r.stdout, 'mn-bb.md') === 3, `a three-letter term is found inside a longer word, in a description (+2, strong) and in a body (got ${r.stdout})`);
+  ok(scoreOf(r.stdout, 'mn-aa.md') === 7 && scoreOf(r.stdout, 'mn-bb.md') === 3, `a three-letter term is found as a word or with its endings (cats), in a description (+2, strong) and in a body (got ${r.stdout})`);
   ok(/mn-nofront\.md/.test((await jcli('search', 'quokka')).stdout), 'a note with no frontmatter is searched from its first line');
   ok(/mn-tight\.md/.test((await jcli('search', 'zebu')).stdout), 'a body that starts right after the closing --- is searched from its first character');
   // The closing --- is the file's last bytes: the body is empty, not the whole file with its frontmatter.
@@ -1917,13 +1945,13 @@ After the log: narwhalqq stays.
 
   // A stretch that ends before the text does ends with an ellipsis; one past the room is cut to the room exactly; a three-letter term shows its stretch.
   const tail = fill(100) + 'omega' + fill(300), cutme = fill(100) + 'omega' + [1, 2, 3, 4, 5].map(() => fill(400) + 'omega').join('');
-  day(jm, '2026-10-25', [entry('2026-10-25 10:00', 'omega tail', { answered: tail }), entry('2026-10-25 10:01', 'omega cut', { answered: cutme }), entry('2026-10-25 10:02', 'plain request', { answered: 'a concatenated string' })]);
+  day(jm, '2026-10-25', [entry('2026-10-25 10:00', 'omega tail', { answered: tail }), entry('2026-10-25 10:01', 'omega cut', { answered: cutme }), entry('2026-10-25 10:02', 'plain request', { answered: 'a cats string' })]);
   r = await jcli('search', 'omega');
   const ans = (out, marker) => (blocks(out).find((b) => b.includes(marker))?.split('\n').find((l) => l.startsWith('     Answered: ')) ?? '').slice('     Answered: '.length);
   ok(ans(r.stdout, 'Asked: omega tail') === `…${tail.slice(70, 135)}…`, `a stretch that stops before the end of the text ends with an ellipsis (got ${ans(r.stdout, 'Asked: omega tail')})`);
   const cut = ans(r.stdout, 'Asked: omega cut');
   ok(cut.length === 240 && cut.startsWith('…') && cut.endsWith('…'), `stretches past the room are cut to 240 characters, ellipsis included (got ${cut.length})`);
-  ok(ans((await jcli('search', 'cat')).stdout, 'Asked: plain request').includes('concatenated'), 'a three-letter term shows its stretch inside a longer word');
+  ok(ans((await jcli('search', 'cat')).stdout, 'Asked: plain request').includes('cats string'), 'a three-letter term shows its stretch with its ending');
 
   // The first column: a score is right-aligned to 3, the kind padded to 9. A note no run has filed yet is the unindexed one.
   memory(jm, 'mn-unfiled', 'zork', 'quux');
