@@ -17,7 +17,7 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           --yes removed; --purge also drops those days from the snapshot history
   rescan [--apply [--yes]]                today's redaction rules over what is already saved (notes, journal,
                                           handoff, snapshots): counts and places only; --apply --yes backs up,
-                                          then writes ***REMOVED*** and rewrites the snapshot history
+                                          then writes [redacted] and rewrites the snapshot history
   incognito                               stop saving this conversation and sweep what it already saved
                                           (needs --session: the command passes it)
   off | on                                turn this project's memory off (nothing saved, snapshotted or
@@ -40,7 +40,7 @@ the conversation asking (the skill passes it): its store is this session's, and 
 reads its transcript. After --, every word is a term, one that starts with -- too.`;
 import { appendFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:path';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
@@ -518,7 +518,8 @@ const rewrite = (work) => {
   const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), busy = new Error('a snapshot is being taken; try again in a moment');
   if (['index.lock', 'HEAD.lock'].some((f) => existsSync(join(g, f)))) throw busy;
   try { writeFileSync(lock, '', { flag: 'wx', mode: 0o600 }); } catch (e) { throw e.code === 'EEXIST' ? busy : e; }
-  const tmp = mkdtempSync(join(tmpdir(), 'pm-purge-')), copy = join(tmp, 'copy.git');
+  // The copy sits in the repository's own .git, which no snapshot commits; the OS temp folder was outside the store.
+  const tmp = mkdtempSync(join(g, 'pm-purge-')), copy = join(tmp, 'copy.git');
   try {
     git('clone', '-q', '--mirror', '--no-hardlinks', projectsRoot(), copy);
     work(copy);
@@ -535,12 +536,12 @@ const purge = (dir, days) => {
 };
 
 // rescan: today's redaction rules over what is already saved (notes, journal, handoff, every snapshot): counts and places, never a
-// value. --apply --yes backs up first, then writes ***REMOVED*** over each hit and rewrites the history. Markers already in the
+// value. --apply --yes backs up first, then writes [redacted] over each hit and rewrites the history. Markers already in the
 // text are set aside, so a second run finds nothing new.
 const REMOVED = '***REMOVED***';
 const scrub = (s) => {
-  const p = s.replaceAll('[redacted]', '\u0001').replaceAll(REMOVED, '\u0002'), t = redact(p);
-  return t === p ? [s, 0] : [t.replaceAll('[redacted]', REMOVED).replaceAll('\u0001', '[redacted]').replaceAll('\u0002', REMOVED), Math.max(1, t.split('[redacted]').length - 1)];
+  const p = s.replaceAll(REMOVED, '[redacted]'), t = redact(p), n = t.split('[redacted]').length - p.split('[redacted]').length;
+  return n > 0 ? [t, n] : [s, 0];
 };
 // A git fast-export stream with every text blob, commit and tag message scrubbed and its length prefix recomputed; a blob that is
 // not UTF-8 stays as it is. shortcut: file names in the stream are not scanned; a secret in a file name stays.

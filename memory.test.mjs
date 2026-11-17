@@ -2564,6 +2564,16 @@ See [[nonexist-${GH}]]
   ok(/removed 1/.test(r.stdout) && /purged from the snapshots/.test(r.stdout) && !held(), `forget --purge drops it from the history (got ${r.stdout})`);
   ok(spawnSync('git', ['-C', root, 'status', '--porcelain'], { encoding: 'utf8' }).status === 0 && !existsSync(join(root, '.git', 'refs', 'original')), 'the purge leaves a working repository and no backup refs');
   ok(!existsSync(join(root, '.git', 'config.lock')), 'the purge frees its lock when done');
+  // 1.5.1 finding 6: the history copy sits inside the snapshot repo's .git (a snapshot never commits it), not in the OS temp folder.
+  {
+    writeDay(); tier(); tier();
+    const made = [], realMk = fs.mkdtempSync;
+    fs.mkdtempSync = (...a) => { const d = realMk(...a); made.push(d); return d; };
+    syncBuiltinESMExports();
+    try { r = await run(['forget', word, '--yes', '--purge', '--store', pd]); } finally { fs.mkdtempSync = realMk; syncBuiltinESMExports(); }
+    const where = made.filter((d) => /pm-purge-/.test(d));
+    ok(/purged from the snapshots/.test(r.stdout) && where.length === 1 && where[0].replace(/\\/g, '/').startsWith(join(root, '.git').replace(/\\/g, '/') + '/') && !existsSync(where[0]), `the purge's history copy lives under the snapshot repo's .git and is gone after (got ${where} ${r.stdout})`);
+  }
   // A snapshot in flight (git's own lock, fresh): the purge would overwrite its commit, so it refuses and changes nothing.
   writeDay(); tier();
   writeFileSync(join(root, '.git', 'config.lock'), '');
@@ -2598,11 +2608,18 @@ See [[nonexist-${GH}]]
   const bk = readdirSync(join(home, '.claude')).find((n) => n.startsWith('project-memory-rescan-backup'));
   ok(r.status === 0 && bk && /the snapshots hold none now/.test(r.stdout) && !r.stdout.includes(key), `rescan --apply --yes redacts (got ${r.stdout})`);
   const old = readFileSync(join(rd, 'old.md'), 'utf8');
-  ok(!old.includes(key) && old.includes('***REMOVED***') && old.includes('password=***REMOVED*** stays') && !held() && head() !== before && !kept().includes(key) && kept().includes('***REMOVED***'), 'the file, every snapshot and the kept copy lose the key; the history has new IDs');
+  ok(!old.includes(key) && old.includes('[redacted]') && old.includes('password=[redacted] stays') && !held() && head() !== before && !kept().includes(key) && kept().includes('[redacted]'), 'the file, every snapshot and the kept copy lose the key; the history has new IDs');
   ok(readFileSync(join(home, '.claude', bk, 'files', 'C--rescan', 'memory', 'old.md'), 'utf8').includes(key) && existsSync(join(home, '.claude', bk, 'snapshots.bundle')), 'the backup holds the old file and a bundle of the old history');
   ok(spawnSync('git', ['-C', root, 'fsck', '--no-dangling'], { encoding: 'utf8' }).status === 0 && !existsSync(join(root, '.git', 'refs', 'original')) && !existsSync(join(root, '.git', 'config.lock')), 'the history is sound and the lock is freed');
   r = await run(['rescan']);
   ok(/nothing found; nothing changed/.test(r.stdout), `a second run finds nothing (got ${r.stdout})`);
+  // 1.5.1 finding 1: a store holding only markers (old or new) is clean, on the first run and the second.
+  const md = join(root, 'C--rescan-marks', 'memory');
+  mkdirSync(md, { recursive: true });
+  writeFileSync(join(md, 'MEMORY.md'), '# Memory Index\n');
+  writeFileSync(join(md, 'marks.md'), '---\nname: marks\n---\nAPI_KEY=[redacted]\nexport DB_PASSWORD=[redacted]\ncurl -u admin:[redacted]\npostgres://u:[redacted]@h/db\nAPI_KEY=***REMOVED***\n');
+  for (const n of [1, 2]) { r = await run(['rescan']); ok(/nothing found; nothing changed/.test(r.stdout), `markers alone are no finding, run ${n} (got ${r.stdout})`); }
+  rmSync(join(root, 'C--rescan-marks'), { recursive: true });
   // a busy snapshot lock: a clean line, exit 1, nothing changed, no backup made
   writeFileSync(join(rd, 'handoff.md'), `handoff ${key}
 `);
