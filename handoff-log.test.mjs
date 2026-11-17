@@ -2388,6 +2388,18 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   writeFileSync(join(dirJ2, 'journal', '2026-09-03.md'), '# Journal 2026-09-03\n\n<!-- j:k1 t:C--x/aaaaaaaa-1 d:2026-09-03 -->\n## 09:00 · conversation aaaaaaaa\n**Asked:** one\n');
   ok(/^Earlier work in this project since 2026-09-03 is in its journal: when asked about the past, search it with the memory skill before saying you don't know\.$/m.test(brief()), `the startup briefing names the journal and its first day (got ${brief()})`);
   ok(/since 2026-09-03 is in its journal/.test(brief('clear')), 'and so does the clear briefing');
+  // 1.5.0 B2: after a compaction too, not only at startup.
+  ok(/^Earlier work in this project since 2026-09-03 is in its journal/m.test(brief('compact')), `the briefing after a compaction names the journal too (got ${brief('compact')})`);
+  // 1.5.0 B3: the plugin starts the briefing through brief.mjs, which says in one line when it cannot load, and has an off switch.
+  const BRIEF = join(dirname(HOOK), 'brief.mjs');
+  const viaStarter = (extra = {}, file = BRIEF) => spawnSync(process.execPath, [file, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source: 'startup' }), env: { ...env, ...extra }, encoding: 'utf8' });
+  ok(viaStarter().stdout === brief() && viaStarter().status === 0, 'the starter prints the same briefing as handoff-log.mjs --print');
+  ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }).stdout === '', 'PROJECT_MEMORY_BRIEFING=0 prints nothing');
+  const broken = join(home, 'broken-starter'); mkdirSync(broken, { recursive: true });
+  writeFileSync(join(broken, 'brief.mjs'), readFileSync(BRIEF)); writeFileSync(join(broken, 'handoff-log.mjs'), 'export const = ;');
+  const bad = viaStarter({}, join(broken, 'brief.mjs'));
+  ok(bad.status === 0 && /^Memory briefing failed to load \(.*\)\. Run "memory doctor", or reinstall the project-memory plugin\.\n$/.test(bad.stdout), `a handoff-log.mjs that does not load gives one line (got ${JSON.stringify(bad.stdout)})`);
+  ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }, join(broken, 'brief.mjs')).stdout === '', 'and the off switch silences that line too');
 }
 
 
@@ -2863,7 +2875,7 @@ require('node:module').syncBuiltinESMExports();
 // can reach the real hooks-live or the real repo.
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = dirname(HOOK);
-  const FILES_ = ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
+  const FILES_ = ['store.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
     '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'deploy.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';

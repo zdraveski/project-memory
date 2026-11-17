@@ -23,7 +23,7 @@ export const SHARED = ['store.mjs', 'harness.mjs', 'mutate.mjs'];
 // project-memory plugin's root and its marketplace. Installed from there, the
 // plugin is read in place, and Claude Code keeps a copy per version in
 // ~/.claude/plugins/cache that only a new version refreshes (2026-10-27).
-export const HOOKS = ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
+export const HOOKS = ['store.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
   '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
 
 // Each file by rename, so a hook starting mid-deploy reads a whole file. Every

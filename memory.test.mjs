@@ -469,7 +469,7 @@ const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((
   `${ev} | ${e.matcher || ''} | ${x.command} ${(x.args || []).join(' ')}`))).sort();
 ok(JSON.stringify(wiring) === JSON.stringify(['PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop',
   'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs', 'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs',
-  'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/handoff-log.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
+  'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/brief.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/memory-tier.mjs --stop']),
   `the plugin wires its hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
 {
   const { HOOKS } = await import('./deploy.mjs');
