@@ -2,10 +2,10 @@
 // turn, kept apart from handoff.md so what was done last month is still
 // findable. Entries are capped and redacted here, the one place a turn's
 // files and commands (uncapped in turns()) are shortened.
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
+import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
-import { clip, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
+import { clip, text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable } from './handoff-log.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only } from './store.mjs';
 
 export const JOURNAL = 'journal';
@@ -185,6 +185,54 @@ export function record(dir, transcriptPath, turns, when) {
   });
   pin(dir);
   return n;
+}
+
+// 1.5.0 item 10: a subagent's report, saved as an entry of its own (SubagentStop). Claude Code 2.1.271+ delivers the report through the
+// SubagentHandback tool, so it is that call's input in the agent's transcript; last_assistant_message is the fallback. Never throws.
+const J_REPORT = 8000;
+const handback = (path) => {
+  let last = '';
+  for (const l of readTail(path, 8_000_000).text.split('\n')) {
+    if (!l.includes('SubagentHandback')) continue;
+    try {
+      for (const b of JSON.parse(l).message?.content ?? []) if (b?.type === 'tool_use' && b.name === 'SubagentHandback') {
+        const i = b.input, v = typeof i === 'string' ? i : Object.values(i ?? {}).filter((x) => typeof x === 'string').sort((a, c) => c.length - a.length)[0];
+        if (v?.trim()) last = v;
+      }
+    } catch {}
+  }
+  return last;
+};
+// The task prompt's first line: the agent transcript's first user record.
+const taskLine = (path) => {
+  const fd = openSync(path, 'r');
+  try {
+    const b = Buffer.alloc(262144), n = readSync(fd, b, 0, b.length, 0);
+    for (const l of b.toString('utf8', 0, n).split('\n')) {
+      try { const r = JSON.parse(l); if (r.type === 'user') return text(r).split('\n').map((x) => x.trim()).find(Boolean) ?? ''; } catch {}
+    }
+  } finally { closeSync(fd); }
+  return '';
+};
+export function subagent(input) {
+  try {
+    const { agent_type: type, agent_id: id, agent_transcript_path: ap, transcript_path: tp } = input;
+    // Internal agents (prompt suggestions, /btw) come with no type.
+    if (typeof type !== 'string' || !type.trim() || typeof tp !== 'string') return false;
+    let report = '', ask = '';
+    if (typeof ap === 'string') { try { report = handback(ap); } catch {} try { ask = taskLine(ap); } catch {} }
+    if (!report.trim() && typeof input.last_assistant_message === 'string') report = input.last_assistant_message;
+    if (!report.trim()) return false;
+    const dir = storeOf(input), s = tag(basename(tp, '.jsonl'));
+    if (!existsSync(dir)) { if (!inProjects(tp)) return false; mkdirSync(dir, { recursive: true, mode: 0o700 }); }
+    return withLock(dir, () => {
+      // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
+      if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) return false;
+      const rep = clip(report, J_REPORT);
+      return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64)}`, ask: `Subagent ${type.trim()}: ${clip(ask, 500)}`.replace(/: $/, ''),
+        raw: rep, said: rep, did: rep, changed: [], ran: [], cwd: input.cwd }]) > 0;
+    }) ?? false;
+  } catch { return false; }
 }
 
 // journal.md is the note tiering gives a pinned index line, as it does handoff.md.
