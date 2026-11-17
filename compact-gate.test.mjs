@@ -76,6 +76,19 @@ ok(gate().code === 2, 'pause_turn is mid-turn');
 write(user('q'), asst('x', 870_000, 'tool_use'), rec('user', [{ type: 'text', text: '[Request interrupted by user for tool use]' }]));
 ok(gate().code === 0, 'Escape after a tool call ends the turn: the compaction runs');
 
+// 1.5.0 item 30: a new prompt ends the turn (the deferral is for work in flight, not for a turn the user has moved on from).
+write(user('build it'), asst('running the suites', 870_000, 'tool_use'), user('never mind, something else'));
+ok(gate().code === 0, 'a user prompt after an unfinished turn ends it: the compaction runs');
+// And a compaction is put off once for the same last assistant record, never twice (a stuck turn would hold it past the ceiling).
+{
+  const au = (id) => rec('assistant', [{ type: 'text', text: 'working' }], { uuid: id, message: { stop_reason: 'tool_use', usage: { input_tokens: 3, cache_read_input_tokens: 870_000, cache_creation_input_tokens: 0, output_tokens: 9 } } });
+  write(user('long job'), au('rec-1'));
+  ok(gate().code === 2, 'the first compaction for a record is put off');
+  ok(gate().code === 0, 'the second one for the same record runs');
+  write(user('long job'), au('rec-1'), au('rec-2'));
+  ok(gate().code === 2, 'a newer assistant record is put off once again');
+}
+
 // 3. Mid-turn over the ceiling: allowed, and the handoff says what was in flight.
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** 2026-09-13 12:00: earlier\n  **did:** earlier answer\n<!-- auto:end -->\n');
 // A long turn: the prompt is past the first tail, so the note's own read has to grow.
