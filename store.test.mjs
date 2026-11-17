@@ -10,7 +10,7 @@ import assert from 'node:assert';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, wasOff, OFF_PERIODS } = await import('./store.mjs');
+const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, wasOff, OFF_PERIODS } = await import('./store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -784,6 +784,21 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = [
   const e = Object.assign(new Error('Command failed: git push'), { stderr: `fatal: unable to access 'https://bob:${PW}@example.com/r.git/': Could not resolve host
 ` });
   ok(!gitWhy(e).includes(PW), 'gitWhy() of a credentialed URL holds no password');
+}
+
+// 1.5.1 PR 10: redact remembers a text of 64 characters or more by its exact text; the count of regexp replaces shows it.
+{
+  const sym = Symbol.replace, orig = RegExp.prototype[sym];
+  const count = (f) => { let n = 0; RegExp.prototype[sym] = function (...a) { n++; return orig.apply(this, a); }; try { f(); } finally { RegExp.prototype[sym] = orig; } return n; };
+  const long = `note one ${GH} then ${'plain words '.repeat(8)}`, short = `short ${GH}`;
+  let first; const a = count(() => { first = redact(long); });
+  let again; const b = count(() => { again = redact(long); });
+  ok(a > 0 && b === 0 && again === first && !first.includes(GH), `a repeated text of 64 or more is redacted once (${a} replaces, then ${b})`);
+  redact(short); ok(count(() => redact(short)) > 0 && !redact(short).includes(GH), 'a short text is not remembered');
+  // Cleared once it holds 8 MB: nine 1 MB texts, then the first costs replaces again and the last none.
+  const mb = (i) => `${i} ${'abcdefg '.repeat(131072)}`;
+  for (let i = 0; i < 9; i++) redact(mb(i));
+  ok(count(() => redact(mb(8))) === 0 && count(() => redact(mb(0))) > 0, 'the memory is cleared at 8 MB');
 }
 
 console.log(`store: ${checks} checks passed`);

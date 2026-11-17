@@ -415,6 +415,11 @@ writeFileSync(join(root, '.gitignore'), '*\n!*/\n!*/memory/*.md\n!.gitignore\n')
 git('add', '-f', 'proj-one/memory/handoff.md'); git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'an older version');
 r = await plain();
 ok(!tracked().includes('proj-one/memory/handoff.md') && readFileSync(join(root, '.gitignore'), 'utf8').includes('*/memory/handoff.md'), `handoff.md leaves the snapshots (tracked: ${tracked().join(', ')})`);
+// 1.5.1 PR 10: the day-old copy of the handoff stays out of the snapshots, as the handoff does.
+note('proj-one', 'beside-the-backup');
+writeFileSync(join(root, 'proj-one', 'memory', 'handoff.md.prev'), 'yesterday\'s exchanges\n');
+r = await plain();
+ok(tracked().includes('proj-one/memory/beside-the-backup.md') && !tracked().some((f) => f.endsWith('handoff.md.prev')), `handoff.md.prev is never snapshotted (tracked: ${tracked().join(', ')})`);
 // A repository the user made there is theirs: nothing committed into it, its
 // .gitignore untouched. One this tool made before it marked them is adopted.
 {

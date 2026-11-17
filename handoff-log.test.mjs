@@ -3153,7 +3153,8 @@ if (!quick) {
   // 1.4.2 S: each rule costs under 200 ms/MB on its own hostile opener run (bound: 3 times a pass over plain prose), and a forget
   // after more than 64 options is seen.
   if (!quick) {
-    const perMB = (s, f) => { f(s.slice(0, 20000)); const t = performance.now(); f(s); return (performance.now() - t) / (s.length / 1e6); };
+    let nth = 0; // redact remembers a repeated text (1.5.1), so each timed call gets a text of its own
+    const perMB = (s, f) => { f(s.slice(0, 20000)); const t = performance.now(); f(`${s} ${++nth}`); return (performance.now() - t) / (s.length / 1e6); };
     const prose = 'the quick brown fox '.repeat(5e4), base = Math.min(perMB(prose, redact), perMB(prose, redact), perMB(prose, redact)); // a pass over plain prose, the floor (best of 3)
     for (const [name, s, f] of [['curl -u =', 'curl -u ' + '='.repeat(1e6), redact], ['redis-cli -', 'redis-cli -'.repeat(1e5), redact], ['redis-cli -a redis-cli', 'redis-cli -a '.repeat(8e4), redact],
       ['?key=;', '?key=;'.repeat(1.6e5), redact], ['curl -', 'curl -'.repeat(1.6e5), redact], ['eyJ-', 'eyJ-'.repeat(2.5e5), redact], ['htpasswd -b -', 'htpasswd -b -'.repeat(4e4), redact], ['postgres://', 'postgres://'.repeat(5e4), redact], ['key=', 'key='.repeat(1.2e5), redact], ['curl -b', 'curl -b '.repeat(1.2e5), redact],
@@ -3180,7 +3181,7 @@ if (!quick) {
     'redis-cli -a $REDIS_PASS ping', 'curl -u $USER:$PASS https://x', 'curl -u admin:${API_PASS} https://x']) ok(redact(t) === t, 'kept: ' + t);
   ok(!redact(`x db.example.com:587 bob:${S}`).includes(S), 'a real host:port user:pass is still redacted');
   if (!quick) {
-    const best = (s) => { redact(s.slice(0, 20000)); let m = 1e9; for (let k = 0; k < 3; k++) { const t = performance.now(); redact(s); m = Math.min(m, performance.now() - t); } return m; };
+    const best = (s) => { redact(s.slice(0, 20000)); let m = 1e9; for (let k = 0; k < 3; k++) { const t = performance.now(); redact(`${s} ${k}`); m = Math.min(m, performance.now() - t); } return m; };
     const ms = best('//a:'.repeat(250000)), floor = best('the quick brown fox '.repeat(5e4));   // the floor: a pass over plain prose
     ok(ms < 3 * floor + 50, `repeated //x: costs ${ms.toFixed(0)} ms per MB (plain text ${floor.toFixed(0)})`);
   }
@@ -3697,6 +3698,33 @@ if (!quick) {
   ok(got[0].ran.join() === 'git push origin main', `a ctx_execute call is listed under Ran (got ${JSON.stringify(got[0].ran)})`);
   got = turns([user('go', { ts: T(0) }), use('mcp__plugin_context-mode_context-mode__ctx_batch', { commands: [{ label: 'a', command: 'ls' }, { label: 'b', command: 'pwd' }], queries: ['q'] }, 'c1'), END].join('\n'));
   ok(got[0].ran.join() === 'ls\npwd', `a ctx_batch call is listed under Ran with its commands (got ${JSON.stringify(got[0].ran)})`);
+}
+
+// 1.5.1 PR 10: handoff.md.prev, a copy of the file beside it, made on the first Stop of a day and not again that day; none for a private conversation.
+{
+  const cwdB = 'C:\handoff-backup', dirB = storeFor(home, cwdB), tb = join(dirB, 'b.jsonl'), prev = join(dirB, 'handoff.md.prev');
+  mkdirSync(dirB, { recursive: true });
+  const turn = (n) => { writeFileSync(tb, [user(`ask ${n}`, { ts: `2026-10-28T09:0${n}:00Z` }), asst(`reply ${n}`, { ts: `2026-10-28T09:0${n}:30Z` })].join('\n') + '\n', { flag: 'a' }); return handoff({ cwd: cwdB, transcript_path: tb, session_id: 'bbbbbbbb-1' }); };
+  const hand = () => readFileSync(join(dirB, 'handoff.md'), 'utf8');
+  turn(1);
+  ok(!existsSync(prev), 'no copy while there is no handoff.md to copy');
+  const one = hand(); turn(2);
+  ok(existsSync(prev) && readFileSync(prev, 'utf8') === one, 'the first Stop of a day copies the handoff.md it finds to handoff.md.prev');
+  turn(3);
+  ok(readFileSync(prev, 'utf8') === one && hand() !== one, 'a second Stop the same day leaves the copy alone');
+  const three = hand(), old = new Date(Date.now() - 2 * 86400e3); utimesSync(prev, old, old);
+  turn(4);
+  ok(readFileSync(prev, 'utf8') === three, 'the next day\'s first Stop copies again');
+  // A private conversation: no new copy, and the old one (it holds what the conversation wrote) is removed with the entries.
+  const four = hand(); utimesSync(prev, old, old);
+  writeFileSync(tb, [user('<private-session> keep this out', { ts: '2026-10-28T09:05:00Z' }), asst('ok', { ts: '2026-10-28T09:05:30Z' })].join('\n') + '\n', { flag: 'a' });
+  ok(handoff({ cwd: cwdB, transcript_path: tb, session_id: 'bbbbbbbb-1' }) === 'private' && !existsSync(prev), 'a private conversation makes no copy, and its sweep removes the one that held its entries');
+  const cwdP = 'C:\handoff-backup-private', dirP = storeFor(home, cwdP), tp = join(dirP, 'p.jsonl');
+  mkdirSync(dirP, { recursive: true });
+  writeFileSync(join(dirP, 'handoff.md'), four);
+  writeFileSync(tp, [user('<private-session> secret plans', { ts: '2026-10-28T10:00:00Z' }), asst('ok', { ts: '2026-10-28T10:00:30Z' })].join('\n') + '\n');
+  handoff({ cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-2' });
+  ok(!existsSync(join(dirP, 'handoff.md.prev')), 'a private conversation\'s Stop makes no copy of handoff.md');
 }
 
 rmSync(home, { recursive: true, force: true });

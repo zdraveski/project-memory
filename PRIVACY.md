@@ -54,7 +54,11 @@ All of it stays in `~/.claude/projects` on your computer:
   messages (up to 500 characters each) and of Claude's replies (up to 900),
   and the names of the files Claude changed, for the last 10 exchanges of each
   of your 3 most recent conversations. Older entries are replaced as you go,
-  and the record is not part of the history below.
+  and the record is not part of the history below. A copy of the file as the
+  first reply of each day found it sits beside it as `handoff.md.prev`, so a
+  bad edit can be undone. It is not part of the history either, and none is
+  made for a private conversation (one made earlier goes when a conversation
+  is marked private, or an exchange is forgotten).
   - Keys, tokens and passwords are replaced with `[redacted]` first: the
     keys and tokens of many services (cloud, AI, payment, code hosting, chat,
     monitoring and more), long tokens in Authorization headers, passwords in web
@@ -296,7 +300,8 @@ a conversation.
 
 - The record of where you left off: until newer exchanges replace it. Lines
   Claude writes in `handoff.md` outside the record: until Claude or you
-  change them.
+  change them. Its daily copy, `handoff.md.prev`: until the next day's first
+  reply replaces it.
 - The note of a task in progress: until Claude's next reply.
 - Your notes: until you or Claude delete them. A deleted note's old versions
   stay in the history.
@@ -313,8 +318,8 @@ Uninstalling the plugin leaves all of this in place. To delete:
   inside `~/.claude/projects`. That removes the history of every project at
   once. While project-memory is on and Git is installed, the next change to a
   note, or the next day, starts a new one.
-- the record of where you left off: `handoff.md` in a project's `memory`
-  folder, and the line that points to it in its `MEMORY.md`.
+- the record of where you left off: `handoff.md` and its daily copy
+  `handoff.md.prev` in a project's `memory` folder, and the line that points to it in its `MEMORY.md`.
 - the archive: `MEMORY-archive.md` in a project's `memory` folder, and the
   `Archive` line in its `MEMORY.md`. It holds the pointers to older notes:
   move any you want loaded again back into `MEMORY.md` first. The shared

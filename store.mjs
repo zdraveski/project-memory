@@ -858,7 +858,21 @@ const redactRaw = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
 const fold = (s) => s.normalize('NFKD').replace(/\p{M}|\p{Default_Ignorable_Code_Point}/gu, '')
   .replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|(quot|apos));/gi, (m, d, h, n) => { const c = n ? (n.toLowerCase() === 'quot' ? 34 : 39) : parseInt(d ?? h, d ? 10 : 16); return c > 31 && c < 127 ? String.fromCharCode(c) : m; })
   .replace(/\\{1,8}u00([2-7][0-9a-f])|%([2-7][0-9a-f])/gi, (m, a, b) => String.fromCharCode(parseInt(a ?? b, 16)));
+// Kept by exact text for the process: a Stop redacts the same 80 texts about four times over (clip at each length, and again on what
+// it cut). Pure, so a kept result is the result. Emptied once its texts pass 8 M characters; a text under 64 is cheaper to redo.
+const kept = new Map();
+let keptSize = 0;
 export const redact = (s) => {
+  if (s.length < 64) return redactOnce(s);
+  let out = kept.get(s);
+  if (out === undefined) {
+    out = redactOnce(s);
+    if ((keptSize += s.length) > 8e6) { kept.clear(); keptSize = s.length; }
+    kept.set(s, out);
+  }
+  return out;
+};
+const redactOnce = (s) => {
   const u = s.replace(/\\\r?\n[ \t]*/g, ''), r = redactRaw(u), f = fold(r), g = f === r ? r : redactRaw(f);
   return g === f ? (r === u ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
 };
