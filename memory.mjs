@@ -81,6 +81,9 @@ const RANGE_SHOWN = 20;
 // HIT_SPAN fits a third of HIT_MORE: at 80, three fields' stretches were all
 // lead-in, cut before the word. HIT_HEAD: the reply's first sentence, what
 // came of it, which a stretch from the middle never says (2026-10-31).
+// Hits from the 6th on print the request, Result and key only; a short request ("go", "yes") is shown with the reply before it.
+const AGAIN = 'Not the entry you meant? Search again with other words.';   // the last line of a search with hits; failure notices stay above the count
+const LOW_FROM = 5, SHORT_ASK = 25, BEFORE = 200;
 const HIT_ASK = 200, HIT_SPAN = 30, HIT_MORE = 240, HIT_HEAD = 140;
 // The first sentence of a reply's last text block (after the last BLOCK marker; an old entry has none: its first), HIT_HEAD at most: one of 20 characters or
 // more, so a lone "Done." or "**Yes.**" is not taken for the whole outcome.
@@ -231,7 +234,8 @@ const STOP = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'with', 'was', 
 // A version (1.4.3, v1.4.3) is one word, matched whole: split at the dots, its pieces were all dropped, and 1.4.3 is not 1.4.30.
 const VERSION = /(?<![\p{L}\p{N}.])v?(\d+(?:\.\d+)+)/gu;
 const isVer = (t) => /^\d+(?:\.\d+)+$/.test(t);
-const verRe = (t) => new RegExp(`(?<![\\p{L}\\p{N}.])v?${t.replaceAll('.', '\\.')}(?!\\p{N}|\\.\\p{N})`, 'gu');
+// A one-dot version (1.4) is every release of it (1.4.1), so only a three-part version refuses a further .N.
+const verRe = (t) => new RegExp(`(?<![\\p{L}\\p{N}.])v?${t.replaceAll('.', '\\.')}(?!\\p{N}${t.split('.').length > 2 ? '|\\.\\p{N}' : ''})`, 'gu');
 // Word forms: the query's word loses one regular ending, and the match finds the longer forms (the index is not stemmed).
 // shortcut: regular endings only (run and ran, or decide and decision, are not one word; no irregular-verb table).
 // A root of 5 letters or more matches at the start of a word (migrat: migrate, migration). A root of 3 or 4 letters from
@@ -376,7 +380,14 @@ export function search(dirs, query, { since, until, failed } = {}) {
     if (parts.some((p) => p)) add({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')) }, parts, strong ? 5 : every ? 2 : 0);
   }
   const w = df.map((n) => 1 + Math.log((docs + 1) / (n + 1))), avg = w.reduce((a, x) => a + x, 0) / (w.length || 1);
-  for (const h of hits) h.rank = h.parts.reduce((a, p, i) => a + p * w[i], 0) + h.bonus * avg;
+  // A long entry or note says more of everything: its rank falls with its length (a pasted request, the big handoff). A phrase
+  // typed as is, in the entry's text, earns a bonus; the marker between a turn's text blocks is a space.
+  const flat = (x) => x.toLowerCase().normalize('NFC').replace(/[\s⁣]+/g, ' '), phrase = terms.length > 1 && flat(query).trim();
+  for (const h of hits) {
+    const long = h.kind === 'journal' ? h.asked.length / 200 : h.body.length / 1000;   // a note's body is longer than a request: it counts from 1,000 characters
+    h.rank = (h.parts.reduce((a, p, i) => a + p * w[i], 0) + h.bonus * avg) / (1 + 0.5 * Math.log(Math.max(1, long)));
+    if (phrase && flat((h.kind === 'journal' ? [h.asked, h.answered, ...h.changed, ...h.ran] : [h.name, h.desc, h.body]).join('\n')).includes(phrase)) h.rank += 4 * avg;
+  }
   return Object.assign(hits.sort((a, b) => b.rank - a.rank || b.modified - a.modified), { outside, missing: terms.filter((t) => !held.has(t)).map((t) => terms.as.get(t)) });
 }
 
@@ -1108,6 +1119,14 @@ export function main(given) {
   const head = (e) => `${e.at}  conversation ${clip(e.s, 100)}${e.branch ? ` · branch ${clip(e.branch, 100)}` : ''}${rest.includes('--all') ? ` · project ${project(e.dir)}` : ''}`;
   // Its transcript, for detail; not a private turn's: the only detail it has
   // is the private part, and the transcript still holds it (final review).
+  // A short request answers the reply before it: the conversation's previous entry (not a subagent's report), its key and its reply's end.
+  const short = (e) => e.asked.trim().length <= SHORT_ASK;
+  const replyTo = (all, e) => {
+    if (!short(e)) return [];
+    const same = all.filter((x) => x.t === e.t && !x.key.startsWith('subagent-')).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+    const p = same[same.findIndex((x) => x.key === e.key) - 1], tail = p && p.answered.split(BLOCK).join('').replace(/\s+/g, ' ').trim();
+    return tail ? [`     Reply to key ${clip(p.key, Infinity)}: ${tail.length > BEFORE ? `…${tail.slice(-BEFORE).replace(/^[\uDC00-\uDFFF]/, '')}` : tail}`] : [];
+  };
   const full = (e, conv = join(projectsRoot(), `${e.t}.jsonl`)) => (e.answered !== '[private]' && existsSync(conv) ? [`     Full conversation: ${conv}`] : []);
   // Words that say nothing of which memory ("what did I do") with a range: the range's listing.
   if (cmd === 'search' && args.length && (words(args.join(' ')).length || !(range.since || range.until))) {
@@ -1125,14 +1144,14 @@ export function main(given) {
     // NFC, as the scoring reads it: a decomposed "é" scored the entry, and its stretch must show too.
     const nfc = (v) => clip(v, Infinity).normalize('NFC');
     const unmark = (a) => a.split(BLOCK).join('');
-    const entry = (h, also) => {
-      const hold = [['Answered', unmark(h.answered)], ['Changed', h.changed.join(', ')], ['Ran', h.ran.join(' · ')]].filter(([, v]) => nfc(v).search(find) !== -1);
+    const entry = (h, also, low) => {
+      const hold = low ? [] : [['Answered', unmark(h.answered)], ['Changed', h.changed.join(', ')], ['Ran', h.ran.join(' · ')]].filter(([, v]) => nfc(v).search(find) !== -1);
       const ds = [h, ...also].map((x) => x.day).sort(), at = nfc(unmark(h.answered)).search(find);
       // Redacted before it is cut: a stretch must not cut a secret in two. The
       // copies' keys are named: a forget of the one shown left them (review).
       // No Result when the reply's stretch already starts at its start.
       return [`${String(h.score).padStart(3)}  journal   ${head(h)}`, `     key: ${clip(h.key, Infinity)}`, `     Asked: ${clip(h.asked, HIT_ASK)}`,
-        ...(h.answered && !(at !== -1 && at <= HIT_SPAN) ? [`     Result: ${result(h.answered)}`] : []),
+        ...(h.answered && (low || !(at !== -1 && at <= HIT_SPAN)) ? [`     Result: ${result(h.answered)}`] : []),
         ...hold.map(([k, v]) => `     ${k}: ${around(nfc(v), find, Math.floor(HIT_MORE / hold.length))}`),
         ...(also.length ? [`     ${also.length} more like this, ${ds[0]}..${ds.at(-1)}: ${more(also.map((x) => clip(x.key, Infinity)), 5)}; --same takes them all`] : [])];
     };
@@ -1140,18 +1159,18 @@ export function main(given) {
     // A miss while the first import runs is not yet a miss: what is left to import is counted only then (summary() reads every day file).
     const importing = shown.length || !terms.length ? 0 : scope.reduce((t, d) => { try { return t + (summary(d).left || 0); } catch { return t; } }, 0);
     r = { ok: true, lines: !terms.length ? [`nothing to search for: "${q}" has no word that says which memory`]
-      : shown.length ? [...shown.flatMap(([h, ...also]) => h.kind === 'journal' ? entry(h, also) : [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
+      : shown.length ? [...shown.flatMap(([h, ...also], i) => h.kind === 'journal' ? entry(h, also, i >= LOW_FROM) : [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
         `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...(found.missing.length ? [`no note or entry holds: ${found.missing.join(', ')}`] : []), ...out,
         // A hit's date, and what was not shown or not searched.
-        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}${shown.some(([h]) => h.kind === 'journal') ? "; show '<key>' prints an entry whole" : ''}`]
+        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}${shown.some(([h]) => h.kind === 'journal') ? "; show '<key>' prints an entry whole" : ''}`, AGAIN]
       : [...out, importing ? `no match yet for "${q}" in ${where}${span && ` ${span}`}: the journal is still importing ${importing} older conversation${importing === 1 ? '' : 's'}, so search again in a few minutes${wider}`
         : `nothing matches "${q}" in ${where}${span && ` ${span}`}${wider}`] };
   } else if (cmd === 'show' && args.length) {
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).
     const es = told(scope, { failed }), got = args.map((k) => es.find((e) => e.key === k)), seen = new Set();
-    const whole = (e) => [head(e), `     key: ${clip(e.key, Infinity)}`,
+    const whole = (e) => [head(e), `     key: ${clip(e.key, Infinity)}`, ...replyTo(es, e),
       ...[['Asked', e.asked], ['Answered', e.answered.split(BLOCK).join('')], ['Changed', e.changed.join(', ')], ['Ran', e.ran.join(' · ')]].filter(([, v]) => v).map(([k, v]) => `     ${k}: ${clip(v, Infinity)}`),
       `     Day file: ${e.path}`, ...full(e)];
     // --same: every entry asking what this one asked, the copies a hit counts.
@@ -1159,8 +1178,9 @@ export function main(given) {
     r = { ok: got.every(Boolean), lines: got.flatMap((e, i) => e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${args[i]} in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
   } else if (cmd === 'search' && (range.since || range.until)) {
     // What was asked on those days, newest first: "what did we do last week".
-    const es = told(scope, { ...range, failed }).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
-    r = { ok: true, lines: es.length ? [...shown.map((e) => `${head(e)}  ${clip(e.asked, 200)}`), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
+    const es = told(scope, { ...range, failed }).filter((e) => !e.key.startsWith('subagent-')).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
+    const all = shown.some(short) ? told(scope, { failed }) : [];   // the reply before a short request may be on an earlier day
+    r = { ok: true, lines: es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [`no journal entry ${span} in ${where}`] };
   } else if (cmd === 'forget') {
     // A blank term is in every entry: `forget "" --yes` would empty the journal.
@@ -1284,7 +1304,7 @@ export function main(given) {
   // A day that could not be read or written: what it holds is missing from, or
   // still in, the lines above. Before the last line of a search or a forget,
   // which is its count, as the skill says. Once: a forget reads a day twice.
-  r.lines.splice(cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
+  r.lines.splice(r.lines.at(-1) === AGAIN ? -2 : cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
   // A --session no transcript has: the store came from the folder this runs in, and status reported it in silence (audit C-10).
   if (opt('--session') !== undefined && cmd !== 'incognito' && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);
   // A note's file name or [[link]] can hold a secret the model wrote: read-only listings scrub what they print.

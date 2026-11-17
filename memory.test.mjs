@@ -983,6 +983,11 @@ if (!quick) {
   ok(r.status === 0 && new RegExp(`^ *\\d+  journal   2026-10-15 14:30  conversation c0ffee12 · branch main\\n     key: ${fix.key}\\n     Asked: fix the deploy error\\n`).test(r.stdout),
     `search finds a journal entry by its request: first, labelled journal, with its date and key (got ${r.stdout})`);
   ok(/^ *\d+ +\w+ +\d{4}-\d\d-\d\d +.*[\\/]deploy\.md$/m.test(r.stdout) && /^ *\d+  journal   2026-10-15 09:00 /m.test(r.stdout), `a note and an entry rank together (got ${r.stdout})`);
+  // 1.5.1 PR 9: a search with hits ends on one fixed line; a miss and the day list do not carry it.
+  const AGAIN = 'Not the entry you meant? Search again with other words.';
+  ok(r.stdout.trimEnd().split('\n').at(-1) === AGAIN, `a search with hits ends with the search-again line (got ${r.stdout})`);
+  ok(!(await jcli('search', 'zzzqqq')).stdout.includes(AGAIN) && !(await jcli('search', '--since', '2026-10-21', '--until', '2026-10-27')).stdout.includes(AGAIN),
+    'no hits, and the day list, do not print the search-again line');
   // A hit is its request, cut, and of the rest only what holds a search word.
   const blocks = (out) => out.split(/\n(?= *\d+  )/), of = (out, asked) => blocks(out).find((b) => b.includes(`\n     Asked: ${asked}`)) ?? '';
   ok(!/Answered/.test(of(r.stdout, 'fix the deploy error')) && /^     Answered: the deploy error, the deploy error again, and the deploy error once more$/m.test(of(r.stdout, 'tidy the readme')),
@@ -1016,6 +1021,27 @@ if (!quick) {
     `a Result is the first sentence after the last marker; an old entry keeps its first sentence; no marker is printed (got ${r.stdout})`);
   const shown = await jcli('show', two.key);
   ok(shown.stdout.includes('marmot pagination bug') && !shown.stdout.includes(BM), `show prints no marker (got ${shown.stdout})`);
+  // 1.5.1 PR 8: hits 6 and later print the request, Result and key only.
+  const quag = [1, 2, 3, 4, 5, 6, 7].map((i) => entry(`2026-10-18 0${i}:00`, `quagga job ${i}`, { answered: `Done. ${'filler '.repeat(12)}the quagga part ${i}.`, ran: [`quagga run ${i}`] }));
+  day(jd, '2026-10-18', quag);
+  r = await jcli('search', 'quagga');
+  rmSync(join(jd, 'journal', '2026-10-18.md'));
+  const cnt = (re) => (r.stdout.match(re) || []).length;
+  ok(cnt(/^     key: /gm) === 7 && cnt(/^     Asked: quagga job/gm) === 7 && cnt(/^     Result: /gm) === 7 && cnt(/^     Answered: /gm) === 5 && cnt(/^     Ran: /gm) === 5,
+    `hits 6 and 7 print only the request, Result and key; the first five keep their stretches (got ${r.stdout})`);
+  // A short request shows the reply before it, in show and the day list; a long one and the first of a conversation do not; a subagent's report is no reply.
+  const BIG = 'x'.repeat(300), pre = entry('2026-10-19 09:00', 'explain the okapi plan please, at length', { answered: `${BIG} ... the end of the okapi plan.` }),
+    sub = entry('2026-10-19 09:30', 'Subagent Explore: look up okapi', { key: 'subagent-abc123', answered: 'helper report' }),
+    yes = entry('2026-10-19 10:00', 'yes', { answered: 'ok' }), lng = entry('2026-10-19 11:00', 'now do the whole okapi migration plan', { answered: 'fine' });
+  day(jd, '2026-10-19', [pre, sub, yes, lng]);
+  const yShow = (await jcli('show', yes.key)).stdout, pShow = (await jcli('show', pre.key)).stdout, lShow = (await jcli('show', lng.key)).stdout, dList = (await jcli('search', '--since', '2026-10-19', '--until', '2026-10-19')).stdout;
+  const dSearch = (await jcli('search', 'okapi')).stdout;
+  rmSync(join(jd, 'journal', '2026-10-19.md'));
+  ok(yShow.includes(`\n     Reply to key ${pre.key}: …`) && yShow.includes('the end of the okapi plan.\n') && !yShow.includes('helper report') && !/Reply to key/.test(pShow + lShow),
+    `show gives a short request the previous entry's key and its reply's last 200 characters, and no other entry (got ${yShow}${pShow}${lShow})`);
+  ok(/  yes\n     Reply to key k\d+: …x*/.test(dList) && (dList.match(/Reply to key/g) || []).length === 1 && !/subagent|helper/i.test(dList) && /^3 of 3 journal entries/m.test(dList),
+    `the day list adds it for a short request and leaves subagent entries out (got ${dList})`);
+  ok(/subagent-abc123/.test(dSearch) && !/Reply to key/.test(dSearch), `search by words still finds the subagent entry and adds no reply line (got ${dSearch})`);
   // Nor is a hit, a day's listing or show ever an entry forget listed: one whose
   // day would not be written still holds it, until forget runs again.
   const fgList = join(jd, 'journal', '.forgotten'), fgHad = existsSync(fgList) ? readFileSync(fgList, 'utf8') : '';
@@ -1035,7 +1061,7 @@ if (!quick) {
   ok(!/ibex herd|fed twice/.test(shut + shutShow) && /^could not read .*[\\/]journal[\\/]\.forgotten: E[A-Z]+$/m.test(shut) && /^could not read .*[\\/]journal[\\/]\.forgotten: E[A-Z]+$/m.test(shutShow),
     `with the list of forgotten keys unreadable, the journal shows nothing and says why (got ${shut}${shutShow})`);
   r = await jcli('search', 'zeppelin');
-  const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
+  const z = blocks(r.stdout)[0].replace(/\n\d+ of \d+ match\(es\) in .*\n.*\n$/, ''), zask = z.match(/^     Asked: (.*)$/m)?.[1] ?? '';
   ok(z.length < 800 && zask.length <= 200 && zask.length > 180 && zask.startsWith('zeppelin plan') && /^     Answered: …[^\n]*zeppelin[^\n]*…$/m.test(z) && /^     Changed: [^\n]*zeppelin/m.test(z) && /^     Ran: [^\n]*zeppelin/m.test(z),
     `an entry at every cap: a headline, its request cut by 200 at a word's end, its result, the rest the stretches around the word, under 800 characters in all (got ${z.length}: ${z})`);
   // A stretch never starts or ends on half an emoji, nor does the cap cut one:
@@ -1060,8 +1086,11 @@ if (!quick) {
   ok((r.stdout.match(/^     Asked: feed the wombat its evening/gim) || []).length === 1 && r.stdout.includes(`\n     2 more like this, 2026-10-04..2026-10-06: ${w2.key}, ${w1.key}; --same takes them all\n`) &&
     /^     Asked: wombat feed schedule$/m.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout),
     `identical long requests, in any case and spacing, print once with how many more, their days and keys (got ${r.stdout})`);
+  // The short request ranks first now (a long one counts less), so the limit of 1 shows it alone; a limit of 2 shows both requests, the long one with its repeats.
   r = await jcli('search', 'wombat', 'feed', '--limit', '1');
-  ok(/^     2 more like this/m.test(r.stdout) && !/schedule/.test(r.stdout) && /^1 of 2 match\(es\) in .+; --limit N shows more/m.test(r.stdout), `--limit counts the requests, not their repeats (got ${r.stdout})`);
+  ok(/^     Asked: wombat feed schedule$/m.test(r.stdout) && !/more like this/.test(r.stdout) && /^1 of 2 match\(es\) in .+; --limit N shows more/m.test(r.stdout), `--limit cuts the requests (got ${r.stdout})`);
+  r = await jcli('search', 'wombat', 'feed', '--limit', '2');
+  ok(/^     2 more like this/m.test(r.stdout) && /schedule/.test(r.stdout) && /^2 of 2 match\(es\)/m.test(r.stdout), `--limit counts the requests, not their repeats (got ${r.stdout})`);
   // --same: show and forget take every copy of a request by one key.
   r = await jcli('show', w3.key, '--same');
   ok(r.status === 0 && [w1, w2, w3].every((w) => r.stdout.includes(`\n     key: ${w.key}\n`)) && !/schedule/.test(r.stdout), `show --same prints every entry that asked the same (got ${r.stdout})`);
@@ -1100,7 +1129,7 @@ if (!quick) {
   ok(quokkas === 'quokka-since,quokka-until', `a note dated on either bound is found, one a day outside is not (got ${quokkas})`);
   // A note's date is its last change: one written in the range and edited since is out of it, and said.
   const outside = (k) => `${k} notes match outside the range (a note's date is its last change); search without --since/--until`;
-  ok(r.stdout.includes(`\n${outside(2)}\n`) && /^2 of 2 match\(es\)/m.test(r.stdout.trim().split('\n').pop()), `a ranged search says how many notes match outside it, before the count (got ${r.stdout})`);
+  ok(r.stdout.includes(`\n${outside(2)}\n`) && /^2 of 2 match\(es\)/m.test(r.stdout.trim().split('\n').at(-2)), `a ranged search says how many notes match outside it, before the count (got ${r.stdout})`);
   r = await jcli('search', 'quokka', '--since', '2026-11-01');
   ok(r.stdout.startsWith(`${outside(4)}\nnothing matches "quokka" in `), `a ranged miss says so too (got ${r.stdout})`);
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
@@ -1189,8 +1218,8 @@ if (!quick) {
     `a date range alone lists 30 by default, and says how many it left out (got ${r.stdout.split('\n').length} lines, ending ${r.stdout.trim().split('\n').pop()})`);
   rmSync(join(big, 'journal', `${year[0]}.md`)); mkdirSync(join(big, 'journal', `${year[0]}.md`));
   r = await bcli('search', 'needle');
-  ok(r.status === 0 && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && new RegExp(`^could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(r.stdout) && /^1 of 1 match\(es\)/.test(r.stdout.trim().split('\n').pop()),
-    `a day that cannot be read is named, the rest still found, and the count is still the last line (got ${r.stdout.slice(-300)})`);
+  ok(r.status === 0 && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && new RegExp(`^could not read .*[\\\\/]${year[0]}\\.md: \\w+$`, 'm').test(r.stdout) && /^1 of 1 match\(es\)/.test(r.stdout.trim().split('\n').at(-2)),
+    `a day that cannot be read is named, the rest still found, and the count is still the last line before the search-again line (got ${r.stdout.slice(-300)})`);
   r = await bcli('search', 'needle', '--since', year.at(-7));
   ok(r.status === 0 && !r.stderr && new RegExp(`journal   ${last} 18:00`).test(r.stdout) && !/could not read/.test(r.stdout), `with --since the last week, a day outside it is never opened (got ${r.stdout}${r.stderr})`);
   // A day saved as UTF-16 (PowerShell 5.1's Out-File) read as a day with no
@@ -1591,6 +1620,25 @@ if (!quick) {
   ok(/ver-a\.md/.test(r.stdout) && !/ver-b\.md/.test(r.stdout) && !/nothing to search for/.test(r.stdout), `a version is searched whole (got ${r.stdout})`);
   r = await jcli('search', 'what', 'changed', 'in', 'v1.4.3');
   ok(/ver-a\.md/.test(r.stdout) && !/ver-b\.md/.test(r.stdout), `a leading v is the same version (got ${r.stdout})`);
+  // 1.5.1 W3: a one-dot version is every release of it: "1.4" finds 1.4.1, not 1.45 (a three-part version stays whole, above).
+  memory(jm, 'ver-c', 'third log', 'shipped 1.4.1 today');
+  memory(jm, 'ver-d', 'fourth log', 'only 1.45 here');
+  r = await jcli('search', '1.4');
+  ok(/ver-c\.md/.test(r.stdout) && !/ver-d\.md/.test(r.stdout), `1.4 finds 1.4.1 and not 1.45 (got ${r.stdout})`);
+  // 1.5.1 W2: the whole phrase in an entry ranks it above one holding the words apart, even one with more of them.
+  memory(jm, 'ph-a', 'plain', 'qwurt qwurt zorbx zorbx');
+  memory(jm, 'ph-b', 'plain', 'zorbx qwurt');
+  r = await jcli('search', 'zorbx', 'qwurt');
+  ok(r.stdout.indexOf('ph-b.md') !== -1 && r.stdout.indexOf('ph-b.md') < r.stdout.indexOf('ph-a.md'), `an exact phrase ranks first (got ${r.stdout})`);
+  // 1.5.1 W1: a long note or pasted request counts less than a short one with the same hits.
+  memory(jm, 'ln-short', 'plain', 'okapi okapi');
+  memory(jm, 'ln-long', 'plain', `okapi okapi ${'filler '.repeat(3000)}`);
+  utimesSync(join(jm, 'ln-long.md'), new Date(), new Date());
+  r = await jcli('search', 'okapi');
+  ok(r.stdout.indexOf('ln-short.md') !== -1 && r.stdout.indexOf('ln-short.md') < r.stdout.indexOf('ln-long.md'), `a long note ranks below a short one (got ${r.stdout})`);
+  day(jm, '2026-10-23', [entry('2026-10-23 10:00', 'wombat zebra short'), entry('2026-10-23 10:05', `wombat zebra long ${'lorem '.repeat(400)}`)]);
+  r = await jcli('search', 'wombat', 'zebra');
+  ok(r.stdout.indexOf('zebra short') !== -1 && r.stdout.indexOf('zebra short') < r.stdout.indexOf('zebra long'), `a long request ranks below a short one (got ${r.stdout})`);
   // 1.5.0 items 2 and 25: word forms, English and Macedonian, found by the stem; a missing word is named as typed.
   memory(jm, 'forms-a', 'database moves', 'we were migrating the database, a release, and the releases after it');
   for (const q of ['migrated', 'migration', 'releasing', 'releases']) {
