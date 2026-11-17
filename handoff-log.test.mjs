@@ -3725,6 +3725,13 @@ if (!quick) {
   writeFileSync(tp, [user('<private-session> secret plans', { ts: '2026-10-28T10:00:00Z' }), asst('ok', { ts: '2026-10-28T10:00:30Z' })].join('\n') + '\n');
   handoff({ cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-2' });
   ok(!existsSync(join(dirP, 'handoff.md.prev')), 'a private conversation\'s Stop makes no copy of handoff.md');
+  // 1.5.1 finding 1: a sweep that finds nothing left in handoff.md (the exchange had rolled out of it) still removes the copy that holds it.
+  const cwdR = 'C:\\handoff-roll', dirR = storeFor(home, cwdR), prevR = join(dirR, 'handoff.md.prev');
+  mkdirSync(dirR, { recursive: true });
+  const say = (c, n, ask) => { const t = join(dirR, `${c}.jsonl`); writeFileSync(t, [user(ask, { ts: `2026-10-28T09:0${n}:00Z` }), asst(`reply ${n}`, { ts: `2026-10-28T09:0${n}:30Z` })].join('\n') + '\n', { flag: 'a' }); return handoff({ cwd: cwdR, transcript_path: t, session_id: `${c.repeat(8)}-1` }); };
+  say('a', 0, 'zebra plan details'); say('b', 1, 'ask b'); say('c', 2, 'ask c'); say('d', 3, 'ask d');
+  ok(!readFileSync(join(dirR, 'handoff.md'), 'utf8').includes('zebra') && readFileSync(prevR, 'utf8').includes('zebra'), 'fixture: the exchange rolled out of handoff.md but the copy holds it');
+  ok(say('a', 4, '<private-session> hide this') === 'private' && !existsSync(prevR), 'a sweep that finds nothing in handoff.md still removes the copy holding the swept exchange');
 }
 
 rmSync(home, { recursive: true, force: true });
