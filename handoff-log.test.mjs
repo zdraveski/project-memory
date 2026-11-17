@@ -3669,6 +3669,8 @@ if (!quick) {
     ['<tool_use_error>Blocked: sleep 45 followed by: echo x. To wait for a condition, use Monitor.</tool_use_error>', {}],
     ['Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Auto-Mode Bypass].', {}],
     ['The server-side auto mode classifier gave no verdict (error), so auto mode cannot determine the safety of Bash.', {}],
+    ['Permission for this command was denied by a built-in Claude Code safety check. Reason: [Sensitive path].', {}],
+    ['<tool_use_error>Subagents should return findings as text, not write report files. Include this content in your final response instead.</tool_use_error>', {}],
   ];
   for (const [msg, extra] of refusals) {
     const got = turns([user('go', { ts: T(0) }), use('Bash', { command: 'rm -rf build' }, 'b1'), res('b1', msg, true, extra), use('Bash', { command: 'npm test' }, 'b2'), res('b2', 'ok', false), END].join('\n'));

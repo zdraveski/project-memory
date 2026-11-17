@@ -246,7 +246,7 @@ export { tag, OFF };
 // A result that says the call was refused or blocked and never ran. Claude Code's own first words on a result with is_error true
 // (read from real transcripts, 2026-11-17): the user's refusal (also toolUseResult "User rejected tool use"), a PreToolUse hook's
 // block, the auto-mode classifier's denial or its outage, and the permission prompt's "multiple operations" stop.
-const REFUSED = /^(?:The user doesn't want to proceed with this tool use|Permission for this action was denied|The server-side auto mode classifier gave no verdict|PreToolUse:\S+ hook error|This Bash command contains multiple operations|<tool_use_error>(?:Blocked:|InputValidationError))/;
+const REFUSED = /^(?:The user doesn't want to proceed with this tool use|Permission for this (?:action|command) was denied|The server-side auto mode classifier gave no verdict|PreToolUse:\S+ hook error|This Bash command contains multiple operations|<tool_use_error>(?:Blocked:|InputValidationError|Subagents should return findings as text))/;
 export const refused = (r, b) => b?.is_error === true && (r?.toolUseResult === 'User rejected tool use' || REFUSED.test(resultText(b)));
 // What a call ran: the command of a shell tool, the code of context-mode's ctx_execute, the commands of its ctx_batch.
 const ranOf = (b) => {

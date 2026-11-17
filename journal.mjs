@@ -231,15 +231,19 @@ export function subagent(input) {
     if (!report.trim()) return false;
     const dir = storeOf(input), s = tag(basename(tp, '.jsonl'));
     if (!existsSync(dir)) { if (!inProjects(tp)) return false; mkdirSync(dir, { recursive: true, mode: 0o700 }); }
-    return withLock(dir, () => {
+    const saved = withLock(dir, () => {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
       if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) return false;
       // The parent's open turn is private: so is its subagent's report (a tail that cuts the prompt off reads as plain).
       try { const t = turns(readTail(tp, TAIL).text).open; if (t && (t.frozen === true || PRIVATE.test(userText(t)))) return false; } catch {}
-      const rep = clip(report, J_REPORT);
+      // Past the cap, the start and the end stay: the end usually holds the result.
+      const all = clip(report, Infinity), rep = all.length <= J_REPORT ? all : `${all.slice(0, 5000)} … (${all.length - 7900} chars cut) … ${all.slice(-2900)}`;
       return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
         raw: rep, said: rep, did: rep, changed: [], ran: [], cwd: input.cwd }]) > 0;
-    }) ?? false;
+    });
+    // The lock stayed busy (many agents ending at once): the report is lost, and the failure file says so.
+    if (saved === null) fault(dir, new Error('a subagent report was not saved: the store was busy'));
+    return saved ?? false;
   } catch { return false; }
 }
 
