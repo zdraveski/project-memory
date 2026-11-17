@@ -1478,6 +1478,12 @@ if (!quick) {
   ok(/; last write failed: disk full$/m.test(out), `status says the last write failed (got ${out})`);
   for (const d of ['2026-10-05', '2026-10-06']) unlinkSync(join(st, 'journal', `${d}.md`));
   ok(/^  journal: no days yet; importing 1 older conversations; last write failed: disk full$/m.test(await cli()), 'a journal that failed from its first write still says so');
+  // 1.5.0 item 32: a search that finds nothing while older conversations are still being imported says so, not "nothing matches".
+  out = (await run(['search', 'zzzunmatched', '--store', st])).stdout;
+  ok(/still importing 1 older conversation/.test(out) && !/^nothing matches/m.test(out), `a miss during the import says it is still importing (got ${out})`);
+  unlinkSync(tp);
+  out = (await run(['search', 'zzzunmatched', '--store', st])).stdout;
+  ok(/^nothing matches "zzzunmatched"/m.test(out) && !/importing/.test(out), `with nothing left to import it says nothing matches (got ${out})`);
   // A store whose only memory is its journal (no index, no journal.md yet) is a store.
   const lone = join(root, 'C--jonly', 'memory');
   mkdirSync(join(lone, 'journal'), { recursive: true });
