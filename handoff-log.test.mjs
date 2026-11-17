@@ -1242,7 +1242,8 @@ ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`sta
   const penv = { ...env, CLAUDE_PROJECT_DIR: pj };
   execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdS, transcript_path: ts, session_id: 'so000000-0000' }), env: penv });
   const brief = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdS, session_id: 'so111111-0000', source: 'startup' }), env: penv }).toString();
-  ok(!existsSync(join(ds, 'handoff.md')) && brief === '' && tags().includes('so111111'), `settings off: a Stop writes no handoff, a start prints nothing and keeps its tag (got ${brief.length} chars, handoff ${existsSync(join(ds, 'handoff.md'))}, ${tags()})`);
+  const probe = execFileSync(process.execPath, ['--input-type=module', '-e', `import { autoMemory } from ${JSON.stringify(pathToFileURL(HOOK).href.replace('handoff-log', 'store'))}; console.log(JSON.stringify(autoMemory()), process.env.CLAUDE_PROJECT_DIR, process.env.HOME)`], { env: penv }).toString();
+  ok(!existsSync(join(ds, 'handoff.md')) && brief === '' && tags().includes('so111111'), `settings off: a Stop writes no handoff, a start prints nothing and keeps its tag (got ${brief.length} chars, handoff ${existsSync(join(ds, 'handoff.md'))}, ${tags()}, probe ${probe})`);
 }
 // A resumed conversation, auto memory on: nothing printed (it was read as a compaction).
 ok(started('resume', 'nnnnnnnn-1') === '', 'a resumed conversation gets no briefing');
