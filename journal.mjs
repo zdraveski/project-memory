@@ -82,7 +82,7 @@ export function entryOf(turn, transcriptPath, when = local()) {
     branch: clip(turn.branch || '', J_BRANCH),
     // Redacted, and squeezed to one line: a day file is one entry a line per field.
     // A pick (the answer to a multiple-choice question) goes into Asked, so search and forget reach it.
-    asked: forgets ? '[private]' : clip(turn.ask + (turn.picked?.length ? ` Picked: ${turn.picked.join('; ')}` : ''), J_TEXT),
+    asked: forgets ? '[private]' : clip(turn.ask + (!quiet && turn.picked?.length ? ` Picked: ${turn.picked.join('; ')}` : ''), J_TEXT),
     // All the turn's text; past the cap the start goes, so the final answer stays.
     answered: quiet ? '[private]' : answer(turn.said || turn.did),
     changed: quiet ? [] : turn.changed.map((p) => clip(rel(p, turn.cwd), J_PATH)),
@@ -234,6 +234,8 @@ export function subagent(input) {
     return withLock(dir, () => {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
       if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) return false;
+      // The parent's open turn is private: so is its subagent's report (a tail that cuts the prompt off reads as plain).
+      try { const t = turns(readTail(tp, TAIL).text).open; if (t && (t.frozen === true || PRIVATE.test(userText(t)))) return false; } catch {}
       const rep = clip(report, J_REPORT);
       return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
         raw: rep, said: rep, did: rep, changed: [], ran: [], cwd: input.cwd }]) > 0;

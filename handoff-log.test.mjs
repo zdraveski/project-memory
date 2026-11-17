@@ -3495,6 +3495,22 @@ if (!quick) {
   ok(turnsOf(asst('What is the passphrase?'), 'correct horse battery staple')[0].ask === '[redacted]', '1.4.1 H review: a passphrase typed alone is not kept');
   const askQ = rec('assistant', [{ type: 'tool_use', id: 'q1', name: 'AskUserQuestion', input: { questions: [{ question: 'What is the database password?' }] } }]);
   ok(turnsOf(askQ, V)[0].ask === '[redacted]', '1.4.1 H review: a bare password after an AskUserQuestion is not kept');
+  // 1.5.1 4: with several questions each pick is checked against its own question.
+  { const qs = ['Which color?', 'What is the database password?', 'Which size?'], pw = 'Zk9mQ2xw7';
+    const call3 = rec('assistant', [{ type: 'tool_use', id: 'q3', name: 'AskUserQuestion', input: { questions: qs.map((question) => ({ question })) } }]);
+    const ans3 = rec('user', [{ type: 'tool_result', tool_use_id: 'q3', content: 'ok' }], { toolUseResult: { answers: { [qs[0]]: 'Vermilion', [qs[1]]: pw, [qs[2]]: 'Large' } } });
+    const t = turns([user('set it up'), call3, ans3, asst('ok')].join('\n'));
+    ok(!JSON.stringify(t).includes(pw) && t[0].picked.join() === 'Vermilion,[redacted],Large', `a secret picked as question 2 of 3 is redacted (got ${t[0]?.picked})`); }
+  // 1.5.1 3: a failed command's output is cut to its last 300 characters after redaction, so a private key's BEGIN line must reach the redaction.
+  { const body = Array.from({ length: 60 }, (_, i) => `MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC${i}`).join('\n');
+    const pem = `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`;
+    const bash = rec('assistant', [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'cat k.pem && false' } }]);
+    const fail = rec('user', [{ type: 'tool_result', tool_use_id: 'b1', content: pem, is_error: true }]);
+    const t = turns([user('go'), bash, fail, asst('done')].join('\n'));
+    ok(t[0].ran.length === 1 && !/MIIEvQ|AASCBK/.test(t[0].ran[0]), `the end of a failing command's private key is not saved (got ${t[0].ran[0]})`); }
+  // 1.5.1 fix 5: "pass" the noun and an IPv6 address are no secrets; a real pass or password still is.
+  for (const k of ['ALL PASS = healthy only', 'same pass: worked fetch', 'audit pass: checked PDFs', 'inet6 89dd:6359:e614:3541:4530:f20e:dc94:5ca5/64 up', 'gw af04:1349:ad9d:fa64:8a09:c186::1', 'x 841a:8798:c07c:41b2:44bb:ee5a:ae3b:a7a9%eth0 y']) ok(clip(k, 2000) === k, `1.5.1 fix 5: kept: ${k}`);
+  for (const s of ['pass: hunter2xyz', 'password: correcthorse', 'the pass: letmeinplease', 'same pass: Xk9mq2zz', 'ALL PASS = healthy1', 'db.example.com:5432:app:admin:Zk9mQ2xw7']) ok(/\[redacted\]/.test(clip(s, 2000)), `1.5.1 fix 5: still redacted: ${s}`);
 }
 
 // 1.4.1 I: false positives (redaction-corpus-45..49, evasion-14..16): harmless code, names, references and prose stay readable.
