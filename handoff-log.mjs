@@ -18,7 +18,7 @@
 // secrets (SECRETS), the answer to a <private> message and the files its turn
 // changed (answer()), and every entry of a conversation marked
 // <private-session> (hushed()).
-import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, statfsSync, realpathSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, statfsSync, realpathSync, mkdirSync, copyFileSync, renameSync, rmSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -857,10 +857,24 @@ export function handoff(input, sink = null) {
       const bytes = days.get(d), i = bytes.indexOf(`<!-- j:${t.id} t:`);
       return i !== -1 && !bytes.startsWith(`${mineT} d:`, i + `<!-- j:${t.id} t:`.length);
     };
+    if (!quiet) backup(dir);
     const w = put(dir, quiet ? [] : fresh.filter((t) => !forgot(t) && !copy(t)), drop, s, got.whole);
     return quiet ? 'private' : w;
   });
   return r ?? 'busy';
+}
+
+// A copy of handoff.md beside it, made at the first Stop of a day (by the copy's own date) and never for a private conversation: the
+// file is kept out of the snapshots, so a bad edit or a failed write lost what was written by hand. Under the lock. Best effort.
+const PREV = 'handoff.md.prev';
+function backup(dir) {
+  const file = join(dir, 'handoff.md'), prev = join(dir, PREV);
+  try {
+    if (!existsSync(file)) return;
+    let at = 0; try { at = statSync(prev).mtimeMs; } catch {}
+    if (new Date(at).toDateString() === new Date().toDateString()) return;
+    copyFileSync(file, `${prev}.tmp`); renameSync(`${prev}.tmp`, prev);
+  } catch {}
 }
 
 // handoff.md with these entries merged in, and without those `drop` takes (a
@@ -873,6 +887,8 @@ function put(dir, fresh, drop, me, whole) {
     const next = build(before, fresh, drop, me, whole);
     if (next === null || next === 'unchanged') return next ?? false;
     const w = replaceIfUnchanged(file, before, next);
+    // The copy holds what a sweep takes out of the file, so it goes with it; the next Stop of a day makes a clean one.
+    if (w === true && drop) try { rmSync(join(dir, PREV), { force: true }); } catch {}
     if (w !== 'conflict') return w || 'unchanged';
   }
   return false;
