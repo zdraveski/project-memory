@@ -1008,6 +1008,14 @@ if (!quick) {
   r = await jcli('search', 'dugong');
   ok(lead('rotate the dugong key') === 'Stored [redacted] as the new deploy key of the dugong, then restarted.' &&/^ab ab .*\[redacted\]/.test(lead('rotate the dugong cert') ?? '') && !r.stdout.includes(sk.slice(8, 20)),
     `a Result shows no part of a secret (got ${r.stdout})`);
+  // The marker between a turn's text blocks: the Result is the last block's first sentence; an entry without one keeps its first; no marker is printed.
+  const BM = '\u2063', two = entry('2026-10-16 09:00', 'tune the marmot cache', { answered: `I will read those sections first. ${BM}Fixed the marmot pagination bug in the cache layer, and the tests pass. Then a closing line, which a hit leaves out.` });
+  day(jd, '2026-10-16', [two, entry('2026-10-16 10:00', 'size the marmot pool', { answered: 'I will read those sections first. Then the pool was resized, a marmot at a time.' })]);
+  r = await jcli('search', 'marmot');
+  ok(lead('tune the marmot cache') === 'Fixed the marmot pagination bug in the cache layer, and the tests pass.' && lead('size the marmot pool') === 'I will read those sections first.' && !r.stdout.includes(BM),
+    `a Result is the first sentence after the last marker; an old entry keeps its first sentence; no marker is printed (got ${r.stdout})`);
+  const shown = await jcli('show', two.key);
+  ok(shown.stdout.includes('marmot pagination bug') && !shown.stdout.includes(BM), `show prints no marker (got ${shown.stdout})`);
   // Nor is a hit, a day's listing or show ever an entry forget listed: one whose
   // day would not be written still holds it, until forget runs again.
   const fgList = join(jd, 'journal', '.forgotten'), fgHad = existsSync(fgList) ? readFileSync(fgList, 'utf8') : '';
