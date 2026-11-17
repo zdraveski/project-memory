@@ -52,6 +52,9 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   { const e = entryOf(turn({ picked: ['Vermilion'] }), T); ok(/^a question Picked: Vermilion$/.test(e.asked), `a pick is in Asked (got ${e.asked})`);
     ok(holds(e, 'vermilion'), 'and a search or forget finds the entry by a word only in the pick'); }
   ok(entryOf(turn({ ran: ['echo one\n\n  echo two\r\necho three'] }), T).ran[0] === 'echo one echo two echo three', 'a command over several lines is one line');
+  { const e = entryOf(turn({ said: 'a '.repeat(30000) + '<private>TOPSECRETWORDS ' + 'zq '.repeat(20000) + '</private> and BBB' }), T); ok(!/TOPSECRET|zq zq zq/.test(e.answered), `a private block cut by the 50 KB tail is not saved (got ${e.answered.slice(0, 50)})`); }
+  ok(entryOf(turn({ ran: Array.from({ length: 3 }, () => 'x'.repeat(30000)) }), T).ran[0] === '[1 earlier command not kept]', 'one earlier command is counted in the singular');
+  ok(entryOf(turn({ ask: 'q'.repeat(60000), picked: ['p'.repeat(60000)] }), T).asked.length <= 50000, 'Asked with a pick is cut once, at the field cap');
   // B8: a field has a ceiling (a pasted log or a 5 MB command would be written, indexed and searched whole every time).
   const big = entryOf(turn({ ask: 'q '.repeat(100000), did: 'a '.repeat(100000), ran: Array.from({ length: 10 }, () => 'x'.repeat(40000)) }), T);
   ok(big.asked.length <= 50000 && big.answered.length <= 50000, `a request and a reply are cut at 50 KB (got ${big.asked.length}, ${big.answered.length})`);

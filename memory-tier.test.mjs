@@ -640,6 +640,16 @@ cp.execFileSync = function (cmd, args, ...rest) {
   ok(r.status === 0 && tracked().includes('proj-two/memory/k1.md') && !existsSync(lock), `with the lock stale, the following Stop snapshots (got ${r.stdout.trim()})`);
   rmSync(tp);
 }
+// 1.5.0 item 29: a StopFailure runs the same hook; an edit-only turn with no reply, and an error record that may not be written yet.
+{
+  const tp = join(root, 'proj-two', 'sfail.jsonl'), at = new Date().toISOString();
+  const rec = (type, uuid, content) => JSON.stringify({ type, uuid, sessionId: 'sfail1234', cwd: 'C:\nowhere', timestamp: at, message: { role: type, content } });
+  writeFileSync(tp, [rec('user', 'sf-1', 'edit the walrus file'), rec('assistant', 'sf-2', [{ type: 'tool_use', id: 'sf-t', name: 'Edit', input: { file_path: 'C:\nowhere\walrus.js' } }])].join('\n') + '\n');
+  const jd = join(root, 'proj-two', 'memory', 'journal'), all = () => readdirSync(jd).filter((f) => f.endsWith('.md')).map((f) => readFileSync(join(jd, f), 'utf8')).join('');
+  const r = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: 'C:\nowhere', transcript_path: tp, session_id: 'sfail1234', hook_event_name: 'StopFailure' }), timeout: 60000 });
+  ok(r.status === 0 && /edit the walrus file/.test(all()) && /walrus\.js/.test(all()) && /stopped before a reply/.test(all()), `a StopFailure writes the journal entry for an edit-only turn (got ${r.status} ${r.stderr})`);
+  rmSync(tp);
+}
 // An index.lock a dead git left behind would refuse every commit from now on.
 note('proj-two', 'g');
 writeFileSync(join(root, '.git', 'index.lock'), '');

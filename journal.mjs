@@ -69,7 +69,7 @@ export function entryOf(turn, transcriptPath, when = local()) {
   const cmds = quiet ? [] : turn.ran.map((c) => clip(c, J_RAN));
   let from = cmds.length;
   while (from > 0 && (room -= cmds[from - 1].length) >= 0) from--;
-  const ran = quiet ? [] : [...(from ? [`[${from} earlier commands not kept]`] : []), ...cmds.slice(from)];
+  const ran = quiet ? [] : [...(from ? [`[${from} earlier command${from > 1 ? 's' : ''} not kept]`] : []), ...cmds.slice(from)];
   return {
     key: turn.id || `${s} ${turn.at} ${keyed(turn.raw ?? turn.ask, 12)}`,
     at: TIME.test(turn.at) ? turn.at : when, s,
@@ -77,9 +77,9 @@ export function entryOf(turn, transcriptPath, when = local()) {
     branch: clip(turn.branch || '', J_BRANCH),
     // Redacted, and squeezed to one line: a day file is one entry a line per field.
     // A pick (the answer to a multiple-choice question) goes into Asked, so search and forget reach it.
-    asked: forgets ? '[private]' : clip(turn.ask, J_TEXT) + (turn.picked?.length ? ' ' + clip(`Picked: ${turn.picked.join('; ')}`, J_TEXT) : ''),
+    asked: forgets ? '[private]' : clip(turn.ask + (turn.picked?.length ? ` Picked: ${turn.picked.join('; ')}` : ''), J_TEXT),
     // All the turn's text; past the cap the start goes, so the final answer stays.
-    answered: quiet ? '[private]' : clip((turn.said || turn.did).slice(-J_TEXT), J_TEXT),
+    answered: quiet ? '[private]' : clip(clip(turn.said || turn.did, Infinity).slice(-J_TEXT), J_TEXT),
     changed: quiet ? [] : turn.changed.map((p) => clip(rel(p, turn.cwd), J_PATH)),
     ran,
   };

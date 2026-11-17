@@ -2554,6 +2554,18 @@ require('node:module').syncBuiltinESMExports();
     ok((s2.match(/\*\*asked\*\*/g) || []).length === 1 && s2.includes('the newer text') && !s2.includes('the older text'), 'a turn with a reply already is written once, with the reply Stop passed');
   }
 
+  // 1.5.0 item 29: a StopFailure saves the open turn's edits without waiting for the error record.
+  {
+    const dF = store('C:\hl-A-sfail'), tr = join(dF, 't.jsonl');
+    writeFileSync(tr, lines(user('change the walrus', { ts: '2026-09-12T08:00:00Z' }), rec('assistant', [{ type: 'tool_use', id: 'u1', name: 'Edit', input: { file_path: '/w/walrus.js' } }])));
+    handoff({ cwd: 'C:\hl-A-sfail', transcript_path: tr, session_id: 'sfailses', hook_event_name: 'StopFailure' });
+    ok(/change the walrus/.test(sectionOfFile(dF)) && /stopped before a reply/.test(sectionOfFile(dF)), 'a StopFailure saves a turn with edits and no reply yet');
+    const dG = store('C:\hl-A-sfail2'), tr2 = join(dG, 't.jsonl');
+    writeFileSync(tr2, lines(user('only look', { ts: '2026-09-12T08:00:00Z' }), rec('assistant', [{ type: 'tool_use', id: 'u1', name: 'Read', input: { file_path: '/w/a' } }])));
+    handoff({ cwd: 'C:\hl-A-sfail2', transcript_path: tr2, session_id: 'sfailse2', hook_event_name: 'StopFailure' });
+    ok(!existsSync(join(dG, 'handoff.md')) || !/only look/.test(sectionOfFile(dG)), 'and a StopFailure with no edits and no commands saves nothing');
+  }
+
   // Forget takes out the exchange it names from this session's entries, and only that one.
   {
     const cw = 'C:\\hl-A-forget', dF = store(cw), tS = join(dF, 's.jsonl'), tO = join(dF, 'o.jsonl');
@@ -3543,6 +3555,18 @@ if (!quick) {
   const picked = rec('user', [{ type: 'tool_result', tool_use_id: 'ask1', content: 'ok' }], { toolUseResult: { answers: { 'Which colour?': 'Vermilion' } } });
   got = turns([user('paint it', { ts: T0(0) }), q, picked, end('Painted it.', 2)].join('\n'));
   ok(got[0].picked?.join() === 'Vermilion', `an answer to Claude's question is kept as a pick (got ${JSON.stringify(got[0].picked)})`);
+  // A pick that answers a question asking for a secret is redacted like a typed answer.
+  const qs = rec('assistant', [{ type: 'tool_use', id: 'ask2', name: 'AskUserQuestion', input: { questions: [{ question: 'Paste the database password?' }] } }]);
+  const pw = rec('user', [{ type: 'tool_result', tool_use_id: 'ask2', content: 'ok' }], { toolUseResult: { answers: { 'Paste the database password?': 'hunter2x9QzPlm' } } });
+  got = turns([user('set up the db', { ts: T0(0) }), qs, pw, end('Done.', 2)].join('\n'));
+  ok(got[0].picked.join() === '[redacted]', `a bare pick to a password question is redacted (got ${JSON.stringify(got[0].picked)})`);
+  // A frozen turn followed by an interrupt saves nothing.
+  got = turns([user('do it', { ts: T0(0) }), use('Edit', { file_path: '/a/z.js' }), nudge, user('[Request interrupted by user]', { ts: T0(4) })].join('\n'));
+  ok(got.length === 0, `a frozen turn is not kept by an interrupt (got ${got.length})`);
+  // A reply over the cap is redacted before it is cut: a private block that straddles the cut is not saved.
+  const big = 'TOPSECRETWORDS ' + 'zq '.repeat(60000);
+  got = turns([user('long one', { ts: T0(0) }), asst('<private>' + big + '</private> AFTER', { ts: T0(1) })].join('\n'));
+  ok(got[0].said.length < 100001 && !/TOPSECRET|zq zq zq/.test(got[0].said), `a private block cut by the 100 KB tail is not saved (got ${got[0].said.slice(0, 60)})`);
 }
 
 rmSync(home, { recursive: true, force: true });
