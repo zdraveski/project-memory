@@ -265,14 +265,17 @@ export function gate(payload) {
   if (!s.midTurn) return { code: 0, why: `turn boundary at ${pct}%` };
   if (s.ctx < FLOOR) return { code: 0, why: `mid-turn at ${Math.round(s.ctx / 1000)}k, under the smallest window any model has: not deferred` };
   if (s.ctx < CEILING * MODEL_WINDOW) {
-    // Put off once per last assistant record: a turn that never moves on is not held until the ceiling. The uuid sits beside the nudge's file.
+    // Put off once per last assistant record: a turn that never moves on is not held until the ceiling. The uuid sits in a .defer file beside
+    // the nudge's file (a second file per session, in the directory arm() prunes weekly).
     const mark = join(NUDGES(), `${tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''))}.defer`);
+    let again = false;
     if (s.last) {
       let was = ''; try { was = readFileSync(mark, 'utf8'); } catch {}
-      if (was === s.last) return { code: 0, why: `mid-turn at ${pct}%: already put off once for this record, so it runs` };
-      try { mkdirSync(NUDGES(), { recursive: true }); writeFileSync(mark, s.last); } catch {}
+      again = was === s.last;
+      if (!again) try { mkdirSync(NUDGES(), { recursive: true }); writeFileSync(mark, s.last); } catch {}
     }
-    return { code: 2, why: `deferred: mid-turn at ${pct}% of the model window; it runs when this turn ends` };
+    // The second time it runs, and the cut turn still gets its handoff and in-flight note below.
+    if (!again) return { code: 2, why: `deferred: mid-turn at ${pct}% of the model window; it runs when this turn ends` };
   }
   s = state(payload.transcript_path);
   // One writer, in order: the handoff first (the turn's ask and last words as

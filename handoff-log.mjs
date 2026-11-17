@@ -1174,7 +1174,7 @@ async function print(input) {
 // Node names the script by its real path: compared with the path it was
 // given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
 // The hook's whole run: also called by brief.mjs, the plugin's SessionStart starter, with the same `--print`.
-export async function main() {
+export async function main({ rethrow = false } = {}) {
   try {
     const input = JSON.parse(readFileSync(0, 'utf8'));
     // Auto memory off: no record, no briefing; the tag at every start, so no
@@ -1185,9 +1185,10 @@ export async function main() {
     if (gone) { if (input.source === 'startup' && process.argv.includes('--print')) process.stdout.write(`${offLine(gone)}
 `); }
     else if (memoryOff()) off(input);
-    else if (process.argv.includes('--print')) { if (input.source !== 'resume') process.stdout.write(await print(input)); }
+    else if (process.argv.includes('--print')) { if (input.source !== 'resume') { try { process.stdout.write(await print(input)); } catch (e) { if (rethrow) throw e; } } }
     else handoff(input);
-  } catch {
+  } catch (e) {
+    if (rethrow && e?.rethrown !== false && e?.printFailed) throw e;
     // A hook that throws on every turn is worse than one that misses a turn.
   }
 }

@@ -2398,8 +2398,12 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   const broken = join(home, 'broken-starter'); mkdirSync(broken, { recursive: true });
   writeFileSync(join(broken, 'brief.mjs'), readFileSync(BRIEF)); writeFileSync(join(broken, 'handoff-log.mjs'), 'export const = ;');
   const bad = viaStarter({}, join(broken, 'brief.mjs'));
-  ok(bad.status === 0 && /^Memory briefing failed to load \(.*\)\. Run "memory doctor", or reinstall the project-memory plugin\.\n$/.test(bad.stdout), `a handoff-log.mjs that does not load gives one line (got ${JSON.stringify(bad.stdout)})`);
+  ok(bad.status === 0 && /^Memory briefing failed \(.*\)\. Run "memory doctor", or reinstall the project-memory plugin\.\n$/.test(bad.stdout), `a handoff-log.mjs that does not load gives one line (got ${JSON.stringify(bad.stdout)})`);
   ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }, join(broken, 'brief.mjs')).stdout === '', 'and the off switch silences that line too');
+  // A handoff-log.mjs that loads but throws while printing is reported too, not left as an empty briefing.
+  writeFileSync(join(broken, 'handoff-log.mjs'), "export async function main(o) { if (o?.rethrow) throw new Error('boom while printing'); }");
+  const bad2 = viaStarter({}, join(broken, 'brief.mjs'));
+  ok(bad2.status === 0 && /^Memory briefing failed \(boom while printing\)/.test(bad2.stdout), `a failure while running gives the line too (got ${JSON.stringify(bad2.stdout)})`);
 }
 
 

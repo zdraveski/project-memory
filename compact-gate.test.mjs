@@ -82,9 +82,12 @@ ok(gate().code === 0, 'a user prompt after an unfinished turn ends it: the compa
 // And a compaction is put off once for the same last assistant record, never twice (a stuck turn would hold it past the ceiling).
 {
   const au = (id) => rec('assistant', [{ type: 'text', text: 'working' }], { uuid: id, message: { stop_reason: 'tool_use', usage: { input_tokens: 3, cache_read_input_tokens: 870_000, cache_creation_input_tokens: 0, output_tokens: 9 } } });
+  writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
   write(user('long job'), au('rec-1'));
   ok(gate().code === 2, 'the first compaction for a record is put off');
   ok(gate().code === 0, 'the second one for the same record runs');
+  // ...and it still leaves the in-flight note: the cut turn needs it.
+  ok(/cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'the second one, under the ceiling, writes the in-flight note');
   write(user('long job'), au('rec-1'), au('rec-2'));
   ok(gate().code === 2, 'a newer assistant record is put off once again');
 }
