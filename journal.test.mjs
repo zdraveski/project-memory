@@ -52,6 +52,8 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   { const e = entryOf(turn({ said: 'S'.repeat(40000) + 'E'.repeat(40000) }), T); ok(e.answered.endsWith('E'.repeat(100)) && !e.answered.startsWith('SSSS' + 'E'), 'past the cap the start is cut, the final answer stays'); }
   { const e = entryOf(turn({ picked: ['Vermilion'] }), T); ok(/^a question Picked: Vermilion$/.test(e.asked), `a pick is in Asked (got ${e.asked})`);
     ok(holds(e, 'vermilion'), 'and a search or forget finds the entry by a word only in the pick'); }
+  // 1.5.1 2b: a pick in a private turn is not saved.
+  { const e = entryOf(turn({ ask: 'my vault', raw: '<private>my vault</private>', picked: ['Vermilion7'] }), T); ok(!/Vermilion7/.test(JSON.stringify(e)), `a pick in a private turn is not saved (got ${e.asked})`); }
   ok(entryOf(turn({ ran: ['echo one\n\n  echo two\r\necho three'] }), T).ran[0] === 'echo one echo two echo three', 'a command over several lines is one line');
   { const e = entryOf(turn({ said: 'a '.repeat(30000) + '<private>TOPSECRETWORDS ' + 'zq '.repeat(20000) + '</private> and BBB' }), T); ok(!/TOPSECRET|zq zq zq/.test(e.answered), `a private block cut by the 50 KB tail is not saved (got ${e.answered.slice(0, 50)})`); }
   ok(entryOf(turn({ ran: Array.from({ length: 3 }, () => 'x'.repeat(30000)) }), T).ran[0] === '[1 earlier command not kept]', 'one earlier command is counted in the singular');
@@ -1997,6 +1999,14 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   ok(entries([sd]).filter((x) => /okapi/.test((x.e ?? x).answered)).length === 2, 'two reports with no agent_id are two entries');
   ok(entries([sd]).some((x) => (x.e ?? x).asked === 'Subagent a b'), 'a newline in the agent type is cleaned');
   ok(subagent({ cwd: 1 }) === false, 'a bad payload never throws');
+  // 1.5.1 2a: the parent's open turn is private, so its subagent's report is not saved; a later plain prompt saves again.
+  const prompt = (t, uuid) => JSON.stringify({ type: 'user', uuid, timestamp: new Date().toISOString(), cwd: 'C:\\journal-subagent', message: { role: 'user', content: t } });
+  const priv = join(dirname(sd), 'bbbb2222-private.jsonl');
+  writeFileSync(priv, prompt('<private>my PIN is 4821, ask an agent to check the vault</private>', 'p1') + '\n');
+  const pin = { ...input, agent_id: 'p1', transcript_path: priv, agent_transcript_path: undefined, last_assistant_message: 'The vault PIN is 4821 quokka' };
+  ok(subagent(pin) === false && !entries([sd]).some((x) => /4821/.test(JSON.stringify(x))), 'a subagent report in a private turn is not saved');
+  appendFileSync(priv, prompt('now something plain', 'p2') + '\n');
+  ok(subagent({ ...pin, agent_id: 'p2', last_assistant_message: 'plain report tapir' }) === true, 'after a plain prompt the subagent report is saved again');
 }
 
 // holds() reads both spellings of an accent: a term typed either way finds an entry written either way.
