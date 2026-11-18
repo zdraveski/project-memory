@@ -245,6 +245,21 @@ ok(r.status === 0 && /match\(es\) in/.test(r.stdout), `an option before the comm
 r = await cli('search', 'deploy', '--from', '2026-10-27');
 const after = await cli('search', 'deploy', '--after=2026-10-28');
 ok(r.status === 1 && r.stdout === 'unknown option --from; help lists the options\n' && after.status === 1 && after.stdout === 'unknown option --after=2026-10-28; help lists the options\n', `an unknown option is refused (got ${r.stdout}${after.stdout})`);
+// An option the command does not take is refused, not ignored (audit 5).
+const given = [['search', 'x', '--conversation', 'beef0001'], ['show', 'k', '--key', 'k'], ['search', 'x', '--rev', 'abc'], ['status', '--yes']];
+for (const g of given) {
+  const o = g.find((a, i) => a.startsWith('--') && i > 0 && g[0] !== a);
+  r = await cli(...g);
+  ok(r.status === 1 && r.stdout === `${g[0]} does not take ${o}; help lists the options\n`, `${g[0]} refuses ${o} (got ${r.stdout})`);
+}
+// 1.5.2 review: a command named like a built-in object (constructor, toString) is an unknown command, not a crash.
+for (const g of [['constructor', '--all'], ['toString', '--session', 'abc']]) {
+  r = await cli(...g);
+  ok(r.status === 1 && r.stdout.startsWith(`no command "${g[0]}"`), `${g[0]} is an unknown command (got ${r.stdout}${r.stderr})`);
+}
+// --since after --until matches no day: refused, not "nothing matches" (audit 17).
+r = await cli('search', '--since', '2026-11-12', '--until', '2026-11-01');
+ok(r.status === 1 && r.stdout === '--since 2026-11-12 is after --until 2026-11-01\n', `--since after --until is refused (got ${r.stdout})`);
 const helped = [];
 for (const h of ['--help', '-h', 'help']) helped.push(await cli(h));
 ok(helped.every((u) => u.status === 0 && u.stdout.startsWith('node memory.mjs <command>')), '--help and -h print the usage, as help does');
@@ -610,6 +625,11 @@ ok(/^ok +1 pack index file\(s\) [^\n]*have no pack[^\n]*pack-dead\.idx$/m.test((
   { const t = new Date(Date.now() - 120000); utimesSync(d, t, t); }
   const o = await cli('doctor');
   ok(o.status === 1 && new RegExp(`^PROBLEM .*pm-purge-x.*forget`, 'm').test(o.stdout), `doctor: an old pm-purge folder is a problem, named, with the command that clears it (got ${o.stdout})`);
+  // Named past LOCK_STALE, not at it (the same edge as a lock's).
+  { const { LOCK_STALE } = await import('./store.mjs'), realNow = Date.now, old = new Date(realNow() - 3600_000); utimesSync(d, old, old);
+    const mt = statSync(d).mtimeMs; let edge, past;
+    try { Date.now = () => mt + LOCK_STALE; edge = await cli('doctor'); Date.now = () => mt + LOCK_STALE + 1; past = await cli('doctor'); } finally { Date.now = realNow; }
+    ok(!/pm-purge/.test(edge.stdout) && /pm-purge-x/.test(past.stdout), `doctor: a pm-purge folder exactly LOCK_STALE old is not named, one ms more is (got ${edge.stdout} / ${past.stdout})`); }
   rmSync(d, { recursive: true, force: true }); }
 // No git is a setup the README allows: a note, not a problem. Snapshots off say
 // what is lost; failing ones come with what to do.
@@ -1102,6 +1122,18 @@ lemur lemur lemur lemur
   ok(r.status === 0 && /^     Asked: fix the deploy error$/m.test(r.stdout) && /^     Answered: stored \[redacted\] as the config token$/m.test(r.stdout) && !r.stdout.includes(key), `show takes several keys, and redacts (got ${r.stdout})`);
   r = await jcli('show', 'no-such-key');
   ok(r.status === 1 && /^no journal entry has the key no-such-key in .+; --all looks in every project$/m.test(r.stdout), `a key that is no entry's says so, and fails (got ${r.stdout})`);
+  // A key typed without quotes is its words: none a key, so the words joined by one space are tried (audit 17).
+  const spaced = entry('2026-10-13 11:00', 'feed the okapi', { key: 'c0ffee12 2026-10-13 11:00 a1b2c3d4e5f6' });
+  day(jd, '2026-10-13', [spaced]);
+  r = await jcli('show', ...spaced.key.split(' '));
+  rmSync(join(jd, 'journal', '2026-10-13.md'));   // a day no other check uses
+  ok(r.status === 0 && /^     Asked: feed the okapi$/m.test(r.stdout), `show takes an unquoted key as its words (got ${r.stdout})`);
+  // Two words are enough: a key of one space, typed without quotes.
+  const twoW = entry('2026-10-13 12:00', 'feed the tapir', { key: 'c0ffee13 a1b2c3d4e5f7' });
+  day(jd, '2026-10-13', [twoW]);
+  r = await jcli('show', ...twoW.key.split(' '));
+  rmSync(join(jd, 'journal', '2026-10-13.md'));
+  ok(r.status === 0 && /^     Asked: feed the tapir$/m.test(r.stdout), `show takes an unquoted key of two words (got ${r.stdout})`);
   // One long request asked again and again is one hit, with its count, days and the copies' keys.
   r = await jcli('search', 'wombat', 'feed');
   ok((r.stdout.match(/^     Asked: feed the wombat its evening/gim) || []).length === 1 && r.stdout.includes(`\n     2 more like this, 2026-10-04..2026-10-06: ${w2.key}, ${w1.key}; --same takes them all\n`) &&
@@ -2719,6 +2751,21 @@ See [[nonexist-${GH}]]
   ok(/could not be purged/.test(r.stdout) && /snapshot/.test(r.stdout) && existsSync(join(root, '.git', 'config.lock')), `forget --purge refuses while a snapshot holds the repository (got ${r.stdout})`);
   unlinkSync(join(root, '.git', 'config.lock'));
   ok(/still hold/.test(r.stdout) && /--purge/.test(r.stdout), `a failed purge says the snapshots still hold the text and what to run (got ${r.stdout})`);
+}
+
+// git writes a path with bytes past ASCII as "..." with octal escapes (a store folder named with an accent): the purge reads them back.
+{
+  const { render } = await import('./journal.mjs');
+  const pd = join(root, 'C--pürge', 'memory'), word = 'okapi-' + 'quoted';
+  mkdirSync(join(pd, 'journal'), { recursive: true });
+  const e = { key: 'pk2', at: '2020-01-03 10:00', s: 'c0ffee13', t: 'C--pürge/c0ffee13-full', branch: 'main', asked: `remember ${word}`, answered: 'noted', changed: [], ran: [] };
+  writeFileSync(join(pd, 'journal', '2020-01-03.md'), `# Journal 2020-01-03\n\n${render(e)}\n`);
+  writeFileSync(join(pd, 'MEMORY.md'), '# Memory Index\n');
+  tier(); tier();
+  const held = () => spawnSync('git', ['-C', root, 'log', '--all', '-S' + word, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
+  ok(held(), 'fixture: the snapshots hold the day of a store with an accent in its name');
+  const r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
+  ok(/purged from the snapshots/.test(r.stdout) && !held(), `forget --purge drops a day whose path git wrote with octal escapes (got ${r.stdout})`);
 }
 
 // 1.5.2 finding 3: the purge rewrites a long history in one stream, not one shell and one git rm per commit (0.7 s each: 507 s for 709).

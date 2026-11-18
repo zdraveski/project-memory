@@ -82,6 +82,8 @@ for (const c of ['git add -A && git init', 'git add file', 'git add src/a.mjs', 
   ok(!hit(c), `no hit: ${c}`);
 for (const c of ['rtk bypass git add -A', 'rtk proxy git add -A', 'rtk git add -A', 'sudo -u bob git add -A', 'sudo -E git add -A', 'cmd /c git add -A', 'env -i FOO=1 git add -A', 'time -p git add -A'])
   ok(hit(c), `hit through a lead word's options: ${c}`);
+for (const c of ['exec -a name git add -A', 'cmd.exe /c git add -A'])
+  ok(hit(c), `hit through a lead word's options (1.5.2 review): ${c}`);
 for (const c of ['rtk bypass git add file.txt', 'sudo -u bob git add file.txt', 'cmd /c git add file.txt', 'rtk bypass ls -A', 'sudo -u bob ls -A'])
   ok(!hit(c), `no hit: ${c}`);
 ok(hits(rule, 'git add file').on && !hits(rule, 'git status').on, 'on says whether the command is the subcommand at all');

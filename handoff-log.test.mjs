@@ -438,6 +438,12 @@ ok(JSON.parse(readFileSync(join(home, 'hooks-live-node', 'hooks', 'hooks.json'),
   install(dirname(HOOK), to, 'two');
   ok(!existsSync(join(to, 'cut-feature.mjs')) && !existsSync(join(to, 'sub', 'old.md')), 'a file the old manifest listed and the new one does not is deleted');
   ok(readFileSync(outside, 'utf8') === 'keep' && existsSync(home) && existsSync(join(to, 'store.mjs')), 'a manifest path that leaves the deploy folder deletes nothing');
+  // 1.5.2 review: a manifest entry that names a folder is skipped; it does not stop the deploy before the new manifest is written.
+  mkdirSync(join(to, 'adir')); writeFileSync(join(to, 'adir', 'keep.txt'), 'k'); writeFileSync(join(to, 'zfile.txt'), 'old');
+  m.files = { adir: 'x', 'zfile.txt': 'x' };
+  writeFileSync(join(to, '.deployed.json'), JSON.stringify(m));
+  install(dirname(HOOK), to, 'three');
+  ok(JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8')).commit === 'three' && existsSync(join(to, 'adir', 'keep.txt')) && !existsSync(join(to, 'zfile.txt')), 'a folder named in the old manifest does not abort the deploy');
 }
 // A damaged manifest says nothing, and costs nothing else: thrown, it took the
 // whole startup line with it, the other-session warning too (review, 2026-10-26).
@@ -2550,6 +2556,10 @@ require('node:module').syncBuiltinESMExports();
   const qd = (...l) => turns(lines(user('first'), endTurn('a1'), att({ type: 'queued_command', prompt: 'second', commandMode: 'prompt' }), ...l, endTurn('a2'))).map((x) => `${x.ask}>${x.did}`).join('|');
   ok(qd() === 'first>a1|second>a2', `a queued message opens a turn (got ${qd()})`);
   ok(qd(user('second')) === 'first>a1|second>a2', 'a user record repeating it is the same turn');
+  // Opened turns are counted, not only the ones with a reply: the repeat of a queued message opens none, the repeat of a typed one does.
+  const opened = (...l) => turns(lines(...l)).opened.length;
+  ok(opened(user('first'), endTurn('a1'), att({ type: 'queued_command', prompt: 'second', commandMode: 'prompt' }), user('second'), endTurn('a2')) === 2, 'a user record repeating a queued message opens no turn of its own');
+  ok(opened(user('same'), user('same'), endTurn('a1')) === 2, 'a typed message sent twice before any reply is two turns');
   ok(turns(lines(user('first'), endTurn('a1'), att({ type: 'queued_command', prompt: '<task-notification>x</task-notification>', commandMode: 'task-notification' }), endTurn('a2'))).length === 1, 'a task\'s end queued meanwhile is no ask');
 
   // A skill's body (isMeta) that names <private> is no message of the user's: it must not freeze the turn (1.3.2 B2).

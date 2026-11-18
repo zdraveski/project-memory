@@ -67,7 +67,7 @@ export function install(from, to, commit, patch, node, origin) {
   // A file an earlier release shipped and this one dropped. Only paths inside `to`: the old manifest is a file anyone can edit.
   for (const f of Object.keys(before)) {
     const p = resolve(to, f);
-    if (!HOOKS.includes(f) && p.startsWith(resolve(to) + sep)) rmSync(p, { force: true });
+    if (!HOOKS.includes(f) && p.startsWith(resolve(to) + sep)) try { rmSync(p, { force: true }); } catch {} // a folder or a locked file: one bad entry never stops the deploy
   }
   const stat = Object.fromEntries(HOOKS.map((f) => { const s = statSync(join(to, f)); return [f, [s.size, s.mtimeMs]]; }));
   writeFileSync(join(to, '.deployed.json'), JSON.stringify({ commit, repo: from, origin, at: new Date().toISOString(), files, stat }) + '\n');

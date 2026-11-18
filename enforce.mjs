@@ -101,9 +101,9 @@ export function tokens(segment) {
   return out;
 }
 
-const LEAD = ['!', 'do', 'then', 'else', 'elif', 'if', 'while', 'until', 'env', 'command', 'sudo', 'time', 'rtk', 'exec', 'nohup', '&', 'cmd'];
+const LEAD = ['!', 'do', 'then', 'else', 'elif', 'if', 'while', 'until', 'env', 'command', 'sudo', 'time', 'rtk', 'exec', 'nohup', '&', 'cmd', 'cmd.exe'];
 // Options of a lead word that take a value in the next word (`sudo -u bob`); other options, and `cmd /c`, are one word.
-const LEAD_VALUE = { sudo: ['-u', '-g', '-h', '-p', '-r', '-t', '-C', '-D', '-R', '-T', '-U'], env: ['-u', '-C', '-S'] };
+const LEAD_VALUE = { sudo: ['-u', '-g', '-h', '-p', '-r', '-t', '-C', '-D', '-R', '-T', '-U'], env: ['-u', '-C', '-S'], exec: ['-a'] };
 const OPTS_WITH_VALUE = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix', '--attr-source'];
 // Whether `command` is the rule's git subcommand (`on`), and whether it also holds a word of `has` and none of `unless`.
 // shortcut: `bash -c "..."`, `$(...)`, aliases and anything after `--` are not seen (said in the README).
