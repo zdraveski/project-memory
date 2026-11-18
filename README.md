@@ -59,12 +59,13 @@ everything you did.
 | A note deleted or overwritten by mistake is gone. | **Old versions come back.** Every version of your notes is kept, and Claude restores one when you ask. |
 | A very long conversation is shortened to a summary, and the task in progress can get lost. | **Long tasks stay on track.** Claude saves its notes first, and afterwards it's told what you asked and what it last said. |
 | You teach Claude your habits again in every project. | **Lessons shared across projects.** What applies everywhere goes in a notebook every project reads. |
+| Two windows open on one project can clash. | **Two windows are safe to use.** Each store has a lock. A hook waits up to 2 seconds for it, skips that part if it is still busy, and catches up after the next reply. |
 | A key or password you paste can end up in saved files. | **Secrets kept out.** Keys, tokens and passwords become `[redacted]` before they reach the journal or the handoff. |
 | There is no way to keep a passage or a project out. | **You decide what is saved.** Keep out a passage, a conversation or a whole project. |
 
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/what-you-get-narrow.webp">
-  <img src="docs/what-you-get.webp" width="880" alt="Eight tiles, each with a small diagram: a journal you can ask, picks up where you left off, old versions of notes come back (needs Git), long tasks stay on track, lessons shared across projects, two windows with no clashes, secrets kept out (a key such as ghp_8fK… becomes [redacted]), and you decide what is saved (&lt;private&gt; and /memory-off).">
+  <img src="docs/what-you-get.webp" width="880" alt="Eight tiles, each with a small diagram: a journal you can ask, picks up where you left off, old versions of notes come back (needs Git), long tasks stay on track, lessons shared across projects, two windows that are safe to use, secrets kept out (a key such as ghp_8fK… becomes [redacted]), and you decide what is saved (&lt;private&gt; and /memory-off).">
 </picture></p>
 
 ## Using it
@@ -158,11 +159,16 @@ notes, the journal and the history stay either way. What to delete by hand:
   wrote in the turn, every file it changed and every command it ran (up to
   20,000 characters for one command and 50,000 for a turn, newest first), and your pick when you answer one of
   its multiple-choice questions, until you delete it or ask Claude to forget
-  part of it. The code Claude runs through context-mode's ctx_execute is kept
+  part of it. The code Claude runs through context-mode's ctx_execute or ctx_batch is kept
   with the commands, the last 300 characters of an error that was never fixed
   are kept after its command, and what a subagent reports back is kept as its
   own entry (up to 8,000 characters). All of it passes the secret filter
-  first. Entries saved before 1.5.0 are not rewritten.
+  first. Entries saved before 1.5.0 are not rewritten, but you can rebuild
+  them: once per store, delete `journal/.imported` and `journal/.looked`. The
+  next replies read your transcripts again and redact under the newer rules.
+  This only works for conversations whose transcript is still on disk (Claude
+  Code keeps them 30 days unless you change that); older entries stay as
+  saved. Forgotten entries stay gone and private conversations stay swept.
 - **Keep text out** by putting it between `<private>` and `</private>`. Type
   `<private-session>` in any message to keep the whole conversation out; what
   was saved of it before is removed, except the history's copy of days
@@ -198,8 +204,9 @@ Four ways, from narrow to wide:
    it did not work.
 2. **One project:** `/project-memory:memory-off`, and `/project-memory:memory-on`
    to come back.
-3. **All projects on this computer:** set `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to `1`, or
-   disable the plugin.
+3. **All projects on this computer:** set the environment variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to `1`
+   (for example in the `env` block of Claude Code's `settings.json`), or disable
+   the plugin.
 4. **Claude Code itself:** its own `autoMemoryEnabled: false` setting also turns
    project-memory off; it reads that one value and changes nothing.
 
@@ -224,7 +231,7 @@ afterwards tells Claude what you asked and what it last said.
 
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/long-conversations-narrow.webp">
-  <img src="docs/long-conversations.webp" width="880" alt="Three steps around a compaction. Before, at about 85% of the window: Claude is asked to save its notes. During, when the window is nearly full: Claude Code can be asked to wait, so the step in progress finishes. After the summary: Claude is told what you asked, its last words, tasks still running and files it edited.">
+  <img src="docs/long-conversations.webp" width="880" alt="Three steps around a compaction. Before, when the window is getting full (about 54% of a 200,000-token window, later in a bigger one): Claude is asked to save its notes. During, when the window is nearly full: Claude Code can be asked to wait, so the step in progress finishes. After the summary: Claude is told what you asked, its last words, tasks still running and files it edited.">
 </picture></p>
 
 **If your model holds 200,000 tokens, one setting matters** (a token is a
@@ -278,7 +285,9 @@ enforce:
 A hook then watches your git calls and logs which note matched. It only
 watches and logs: it blocks nothing and prints nothing. Few lessons fit this
 form, and some commands it does not see. This is a test of the idea, not a
-promise. Syntax, limits and how to try a rule on past conversations:
+promise. It is a 30-day trial (see the changelog for the end date). The author checks
+`memory enforce status` (hits per rule in the last 30 days) and keeps or cuts it.
+Syntax, limits and how to try a rule on past conversations:
 [Checked lessons](docs/how-it-works.md#checked-lessons-experimental).
 
 ## Security and trust
