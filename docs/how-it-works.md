@@ -539,7 +539,8 @@ once it is through, `<bytes looked at> at <offset>` while an import is under
 way, `other`, or `failed <time>` when it wouldn't open (it is tried again a
 day later, grown or not). One that has grown since and been quiet for 30
 minutes is read on from where the last read ended (keys keep a repeat
-harmless). A transcript gone from disk loses its line. To rebuild entries saved before 1.5.0, delete `journal/.imported` and `journal/.looked` once per store: the next Stops read the transcripts again, replace the entries and redact them under the current rules (forgotten entries stay gone, private conversations stay swept). `journal/.looked`
+harmless). A transcript gone from disk loses its line.
+`journal/.looked`
 holds the time of the last look: when the budget left work, the next Stop
 looks again; otherwise the next look is 30 minutes later, and a Stop
 before then doesn't take the store's lock for it. Every look first redoes
@@ -564,6 +565,13 @@ the sweeps listed in `.sweeps`. A conversation never imported:
 Keys listed in `journal/.forgotten` are never written again, by an import or
 a live Stop, and the exchanges they name are never written to `handoff.md`
 again, by a Stop or the compaction gate.
+
+To rebuild entries saved before 1.5.0, delete `journal/.imported` and
+`journal/.looked` once per store. The next Stops read the transcripts again,
+replace the entries and redact them under the current rules (forgotten
+entries stay gone, private conversations stay swept). This only works for
+conversations whose transcript is still on disk. Claude Code keeps
+transcripts 30 days unless you change that, and older entries stay as saved.
 
 **In the history.** Today's file grows with every reply, so it stays out of
 the snapshots: committed, every version would stay in the history. The
@@ -1098,7 +1106,7 @@ It never logs the command.
 
 `memory enforce status` shows per note the hits of the last 30 days (main and
 sub-agent), the last one, bad rules with the reason, and whether the log is
-full or memory is off. Checked lessons are a 30-day trial: on 2026-12-18 the
+full or memory is off. Checked lessons are a 30-day trial (the changelog has the end date): the
 author reads this output and keeps the feature or cuts it. The live log keeps no command text, so run `replay`
 to see commands. `memory doctor` has one line for the hook: it runs the copy
 the plugin runs and says what is wrong, even when memory is off in this
