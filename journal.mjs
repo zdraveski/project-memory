@@ -215,30 +215,33 @@ const taskLine = (path) => {
   try {
     const b = Buffer.alloc(262144), n = readSync(fd, b, 0, b.length, 0);
     for (const l of b.toString('utf8', 0, n).split('\n')) {
-      try { const r = JSON.parse(l); if (r.type === 'user') return text(r).split('\n').map((x) => x.trim()).find(Boolean) ?? ''; } catch {}
+      try { const r = JSON.parse(l); if (r.type === 'user') return { ask: text(r).split('\n').map((x) => x.trim()).find(Boolean) ?? '', ms: Date.parse(r.timestamp) }; } catch {}
     }
   } finally { closeSync(fd); }
-  return '';
+  return { ask: '', ms: NaN };
 };
 export function subagent(input) {
   try {
     const { agent_type: type, agent_id: id, agent_transcript_path: ap, transcript_path: tp } = input;
     // Internal agents (prompt suggestions, /btw) come with no type.
     if (typeof type !== 'string' || !type.trim() || typeof tp !== 'string') return false;
-    let report = '', ask = '';
-    if (typeof ap === 'string') { try { report = handback(ap); } catch {} try { ask = taskLine(ap); } catch {} }
+    let report = '', ask = '', start = NaN;
+    if (typeof ap === 'string') { try { report = handback(ap); } catch {} try { ({ ask, ms: start } = taskLine(ap)); } catch {} }
     if (!report.trim() && typeof input.last_assistant_message === 'string') report = input.last_assistant_message;
     if (!report.trim()) return false;
     const dir = storeOf(input), s = tag(basename(tp, '.jsonl'));
     if (!existsSync(dir)) { if (!inProjects(tp)) return false; mkdirSync(dir, { recursive: true, mode: 0o700 }); }
-    let t = null;
+    let t = null, hush = false;
     // Read before the lock; a tail that cuts the prompt off (a long private turn) gets the look back, as latest() does.
-    try { const r = readTail(tp, TAIL); t = turns(r.text).open; if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = p ? turns(`${p}\n${r.text}`).open : null; } } catch {}
+    // The turn that counts is the one open when the agent started (its first record's time), else the open one; a <private-session>
+    // typed anywhere in the tail hushes it. shortcut: a start older than the tail falls back to the open turn.
+    const pick = (all) => { hush ||= all.hush === true; return (Number.isFinite(start) && [...all, all.open].filter(Boolean).filter((x) => x.ms <= start).pop()) || all.open; };
+    try { const r = readTail(tp, TAIL); t = pick(turns(r.text)); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = p ? pick(turns(`${p}\n${r.text}`)) : null; } } catch {}
     const saved = withLock(dir, () => {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
       if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) return false;
       // The parent's open turn is private: so is its subagent's report.
-      if (t && (t.frozen === true || PRIVATE.test(userText(t)))) return false;
+      if (hush || t && (t.frozen === true || PRIVATE.test(userText(t)))) return false;
       // Past the cap, the start and the end stay: the end usually holds the result.
       const all = clip(report, Infinity), rep = all.length <= J_REPORT ? all : `${all.slice(0, 5000)} … (${all.length - 7900} chars cut) … ${all.slice(-2900)}`;
       return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
