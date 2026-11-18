@@ -252,6 +252,9 @@ for (const g of given) {
   r = await cli(...g);
   ok(r.status === 1 && r.stdout === `${g[0]} does not take ${o}; help lists the options\n`, `${g[0]} refuses ${o} (got ${r.stdout})`);
 }
+// --since after --until matches no day: refused, not "nothing matches" (audit 17).
+r = await cli('search', '--since', '2026-11-12', '--until', '2026-11-01');
+ok(r.status === 1 && r.stdout === '--since 2026-11-12 is after --until 2026-11-01\n', `--since after --until is refused (got ${r.stdout})`);
 const helped = [];
 for (const h of ['--help', '-h', 'help']) helped.push(await cli(h));
 ok(helped.every((u) => u.status === 0 && u.stdout.startsWith('node memory.mjs <command>')), '--help and -h print the usage, as help does');
@@ -1102,6 +1105,12 @@ lemur lemur lemur lemur
   ok(r.status === 0 && /^     Asked: fix the deploy error$/m.test(r.stdout) && /^     Answered: stored \[redacted\] as the config token$/m.test(r.stdout) && !r.stdout.includes(key), `show takes several keys, and redacts (got ${r.stdout})`);
   r = await jcli('show', 'no-such-key');
   ok(r.status === 1 && /^no journal entry has the key no-such-key in .+; --all looks in every project$/m.test(r.stdout), `a key that is no entry's says so, and fails (got ${r.stdout})`);
+  // A key typed without quotes is its words: none a key, so the words joined by one space are tried (audit 17).
+  const spaced = entry('2026-10-13 11:00', 'feed the okapi', { key: 'c0ffee12 2026-10-13 11:00 a1b2c3d4e5f6' });
+  day(jd, '2026-10-13', [spaced]);
+  r = await jcli('show', ...spaced.key.split(' '));
+  rmSync(join(jd, 'journal', '2026-10-13.md'));   // a day no other check uses
+  ok(r.status === 0 && /^     Asked: feed the okapi$/m.test(r.stdout), `show takes an unquoted key as its words (got ${r.stdout})`);
   // One long request asked again and again is one hit, with its count, days and the copies' keys.
   r = await jcli('search', 'wombat', 'feed');
   ok((r.stdout.match(/^     Asked: feed the wombat its evening/gim) || []).length === 1 && r.stdout.includes(`\n     2 more like this, 2026-10-04..2026-10-06: ${w2.key}, ${w1.key}; --same takes them all\n`) &&
