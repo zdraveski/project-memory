@@ -1878,6 +1878,12 @@ After the log: narwhalqq stays.
   try { r = await run(['history', 'hist-two', '--store', join(lk, 'memory')]); } finally { rmSync(lk, { recursive: true, force: true }); }
   ok(/^  a change: git -C "[^"]+" --literal-pathspecs show <commit> -- "C--mutA-rs\/memory\/hist-two\.md"$/m.test(r.stdout), `a store linked from another folder is tracked by its one real path (got ${r.stdout})`);
   ok(history([rs], 'ghost-xyz.md').lines[0].endsWith('; --all looks in every project') && !history([rs], 'ghost-xyz.md', true).lines[0].includes('--all looks'), 'history called alone hints --all');
+  // --all names every project that has the memory, not only the first.
+  const rs2 = mdir('C--mutA-rs2');
+  memory(rs2, 'hist-two', 'two snapshots', 'other project');
+  tier();
+  const all = history([rs, rs2], 'hist-two.md', true).lines;
+  ok(all.includes(join(rs, 'hist-two.md')) && all.includes(join(rs2, 'hist-two.md')) && history([rs, rs2], 'hist-two.md').lines.length < all.length, `history --all prints a block for each project that has the memory (got ${all.join(' / ')})`);
 
   // Restore: never over a newer memory unless told; into a store whose folder is gone; the index line it brings back.
   writeFileSync(join(rs, 'kept.md'), 'a newer kept');
