@@ -1611,6 +1611,12 @@ lemur lemur lemur lemur
     r = await jcli('search', q);
     ok(r.stdout.includes(f) && !/nothing matches/.test(r.stdout), `${q}, two characters, is found (got ${r.stdout})`);
   }
+  // 1.5.2 (finding 4): a Latin word next to Japanese or Chinese text is found, and a one-character word is a word.
+  memory(jm, 'cjk-mix', 'mix-note', 'CIが落ちたので直して PRを出しました。bugを直した。鍵をなくした');
+  for (const q of ['CI', 'PR', 'bug', '鍵']) {
+    r = await jcli('search', q);
+    ok(r.stdout.includes('cjk-mix.md') && !/nothing/.test(r.stdout), `${q} next to Japanese text is found (got ${r.stdout})`);
+  }
   r = await jcli('search', 'volcano', 'penguin', 'saxophone');
   ok(/^nothing matches /m.test(r.stdout) && !/\.md/.test(r.stdout), `a query of words nothing holds finds nothing, as on 1.2.7 (got ${r.stdout})`);
   // Idea 4: the words no note or entry holds are named after the hits.
