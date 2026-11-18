@@ -658,12 +658,13 @@ things soften that.
   90% there may be no room for one more step, so the compaction goes ahead,
   and the gate first writes the handoff and the turn's in-flight note into
   `handoff.md`. Under 200,000 tokens, or at the end of a turn, it goes ahead
-  and nothing is written. Claude Code compacts at about 96% of its compaction
-  window, so the gate can wait only when `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is
-  set below the model's window: set to `800000` on a 1M model, Claude Code
-  compacts at about 767,000 tokens, and the turn can finish first. With the
-  default settings the compaction goes ahead, and the recovery note below
-  does the work. Claude Code doesn't always honour the request either.
+  and nothing is written. Claude Code compacts about 33,000 tokens short of its
+  compaction window, so the gate waits only for a window of about 233,000 to
+  933,000 tokens (on a 1M model): set `CLAUDE_CODE_AUTO_COMPACT_WINDOW` to
+  `800000`, and Claude Code compacts at about 767,000 tokens, so the turn can
+  finish first. Under about 233,000 (a 200,000-token model) or over about
+  933,000 (the 1M default), the compaction goes ahead, and the recovery note
+  below does the work. Claude Code doesn't always honour the request either.
 - **A recovery note.** When a turn is cut anyway, the briefing right after
   the compaction gives Claude what it had in flight: what you asked, its last
   words, background tasks still running with their output files, and the

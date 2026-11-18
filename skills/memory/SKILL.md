@@ -41,7 +41,7 @@ node "${CLAUDE_PLUGIN_ROOT}/memory.mjs" <command> --session ${CLAUDE_SESSION_ID}
 
 Before answering a question about earlier work, search. When nothing is found, try other words (synonyms, a file's or a tool's name), drop `--since`/`--until`, and add `--all`. For "what did I do last week", search with `--since`/`--until` alone. Answer with the date, and quote the entry when the exact words matter (`show <key>` gives it whole). Never say there is no record until notes, journal and `--all` were searched. Run `forget --yes` only after the user confirms exactly what it removes.
 
-Writing a rule: when the user wants a lesson about a git command checked by the computer, add this to that note's front matter, indented two spaces (git only; one rule per note; words are exact, no patterns):
+Writing a rule: when the user wants a lesson about a git command checked by the computer, add this at the top level of the note's front matter (not under `metadata:`), with the lines under `enforce:` indented two spaces (git only; one rule per note; words are exact, no patterns):
 
 ```
 enforce:
