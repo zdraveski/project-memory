@@ -832,7 +832,7 @@
           <div>
             <span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-magnifying-glass"/></svg></span>
             <h3>A journal you can ask</h3>
-            <p>Every exchange is kept whole, one file per day. Ask about earlier work, and Claude searches the journal and your notes and tells you when it happened. It isn't loaded into the conversation, only searched when you ask, and search goes by words, not meaning.</p>
+            <p>Every exchange is kept in full up to a size limit, one file per day. Ask about earlier work, and Claude searches the journal and your notes and tells you when it happened. It isn't loaded into the conversation, only searched when you ask, and search goes by words, not meaning.</p>
           </div>
           <div class="search" aria-label="An example search">
             <div class="box"><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>logo colors</div>
@@ -882,7 +882,7 @@
       <p class="intro">Claude can only see so much at once: your messages, its replies and the files it reads. When that fills up, Claude Code shortens the conversation to a summary, and the details of a task in progress can get lost.</p>
       <div class="track-wrap">
         <div class="glass step">
-          <div class="step-top"><span class="num" aria-hidden="true">1</span><b>Before</b><span>85% full</span></div>
+          <div class="step-top"><span class="num" aria-hidden="true">1</span><b>Before</b><span>Getting full</span></div>
           <div class="track" aria-hidden="true"><b style="--w: calc(85% - 6px)"></b></div>
           <p>Claude saves its notes.</p>
         </div>
@@ -958,17 +958,18 @@
         <li class="glass lit keep"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-lock-key"/></svg></span><p>On Linux and macOS, the files it writes can be read only by you.</p></li>
         <li class="glass hot keep"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-eye-slash"/></svg></span><p>No tool catches every secret. A look-alike Cyrillic or Greek letter gets through, for one. Put the rest in <span class="tok">&lt;private&gt;</span>.</p></li>
       </ul>
-      <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md">What it removes, and what it misses</a>.</p>
+      <p class="more">Anything saved before a newer version (notes, journal, handoff, snapshots) can be re-checked with <code>/project-memory:memory rescan</code>. It counts first and changes nothing unless you add <code>--apply --yes</code>. It then makes a backup that still holds the old text.</p>
+      <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#what-it-saves">What it removes, and what it misses</a>.</p>
     </div>
   </section>
 
   <section class="band" aria-labelledby="care-h">
     <div class="wrap">
       <div class="tested">
-        <span class="big grad" aria-hidden="true">2,489</span>
+        <span class="big grad" aria-hidden="true">~2,500</span>
         <div>
           <h2 id="care-h">Tested before every release</h2>
-          <p>2,489 checks run on Windows, macOS and Linux with every change, all passing. The code is scanned for problems every week, and each release gets one review. Every step has a time limit of 5 to 120 seconds, so a stuck step can't hold Claude up.</p>
+          <p>About 2,500 checks run on Windows, macOS and Linux with every change, all passing. The code is scanned for problems every week, and each release gets one review. Every step has a time limit of 5 to 120 seconds, so a stuck step can't hold Claude up.</p>
           <p class="more">The <a href="https://github.com/zdraveski/project-memory/actions/workflows/test.yml">test runs</a> and the <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#when-it-runs">time limits</a> are on GitHub.</p>
         </div>
       </div>
@@ -1042,13 +1043,18 @@
           </li>
           <li><p>Close Claude Code and open it again.</p></li>
           <li>
-            <p>Check it's working. Every line should start with <code>ok</code>.</p>
+            <p>Check it's working. No line should start with <code>PROBLEM</code>. A line that starts with <code>note</code> is fine, such as when Git isn't installed.</p>
             <div class="cmd"><pre class="code" tabindex="0"><code>/project-memory:memory doctor</code></pre></div>
             <p class="small">Until Claude finishes its first reply, one line says it's waiting for that reply. That's normal.</p>
           </li>
           <li>
             <p>Start a conversation tomorrow. Claude begins with a short note on where you stopped, something like this:</p>
             <div class="glass term next"><div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>Where you stopped</b><span>handoff.md</span></div><div class="panel"><p><b>asked</b> Finish the pricing table</p><p><b>did</b> Pricing table done. The checkout copy is next.</p><p><b>changed</b> pricing.md</p></div></div>
+          </li>
+          <li>
+            <p>To update later, run these two lines in a terminal, then restart Claude Code. A marketplace you add yourself does not update on its own. To turn that on, type <code>/plugin</code>, open Marketplaces, choose project-memory and select Enable auto-update.</p>
+            <div class="cmd"><pre class="code" tabindex="0"><code>claude plugin marketplace update project-memory
+claude plugin update project-memory@project-memory</code></pre></div>
           </li>
         </ol>
         <div class="glass needs">
@@ -1089,7 +1095,7 @@
         <div>
           <span class="chip exp">Experimental</span>
           <h2 id="lessons-h" class="small">Checked lessons</h2>
-          <p>A note can carry a rule for git commands. A hook then watches your git calls and logs which note matched. It only watches and logs: it blocks nothing and prints nothing. Few lessons fit this form, and some commands it does not see. It is a test of the idea, not a promise.</p>
+          <p>A note can carry a rule for git commands. A hook then watches your git calls and logs which note matched. It only watches and logs: it blocks nothing and prints nothing. Few lessons fit this form, and some commands it does not see. It is a 30-day trial, with a keep-or-cut decision on 2026-12-18. A test of the idea, not a promise.</p>
           <p><a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#checked-lessons-experimental">Syntax, limits and how to try a rule on past conversations</a></p>
         </div>
         <div>
@@ -1097,7 +1103,7 @@
   on: git add
   has: [-A, --all, .]
   unless: [mktemp, init]</code></pre>
-          <p class="rule-cap">In a note's header. It logs a hit when a <code>git add</code> command holds <code>-A</code>, <code>--all</code> or a bare dot.</p>
+          <p class="rule-cap">At the top level of a note's front matter (not under <code>metadata:</code>). It logs a hit when a <code>git add</code> command holds <code>-A</code>, <code>--all</code> or a bare dot.</p>
         </div>
       </div>
     </div>
