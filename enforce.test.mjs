@@ -80,6 +80,10 @@ for (const c of ['git add -A', 'git add .', 'git -C x add --all', 'git --git-dir
   ok(hit(c), `hit: ${c}`);
 for (const c of ['git add -A && git init', 'git add file', 'git add src/a.mjs', 'git commit -m "git add -A"', "git commit -F - <<'EOF'\ngit add -A\nEOF", 'echo "git add -A"', 'git status', 'git add ./-A', 'mktemp; git add -A'])
   ok(!hit(c), `no hit: ${c}`);
+for (const c of ['rtk bypass git add -A', 'rtk proxy git add -A', 'rtk git add -A', 'sudo -u bob git add -A', 'sudo -E git add -A', 'cmd /c git add -A', 'env -i FOO=1 git add -A', 'time -p git add -A'])
+  ok(hit(c), `hit through a lead word's options: ${c}`);
+for (const c of ['rtk bypass git add file.txt', 'sudo -u bob git add file.txt', 'cmd /c git add file.txt', 'rtk bypass ls -A', 'sudo -u bob ls -A'])
+  ok(!hit(c), `no hit: ${c}`);
 ok(hits(rule, 'git add file').on && !hits(rule, 'git status').on, 'on says whether the command is the subcommand at all');
 // known misses
 for (const c of ['bash -c "git add -A"', 'git add -- -A', 'echo "$(git add -A)"']) ok(!hit(c), `known miss: ${c}`);

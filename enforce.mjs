@@ -101,7 +101,9 @@ export function tokens(segment) {
   return out;
 }
 
-const LEAD = ['!', 'do', 'then', 'else', 'elif', 'if', 'while', 'until', 'env', 'command', 'sudo', 'time', 'rtk', 'exec', 'nohup', '&'];
+const LEAD = ['!', 'do', 'then', 'else', 'elif', 'if', 'while', 'until', 'env', 'command', 'sudo', 'time', 'rtk', 'exec', 'nohup', '&', 'cmd'];
+// Options of a lead word that take a value in the next word (`sudo -u bob`); other options, and `cmd /c`, are one word.
+const LEAD_VALUE = { sudo: ['-u', '-g', '-h', '-p', '-r', '-t', '-C', '-D', '-R', '-T', '-U'], env: ['-u', '-C', '-S'] };
 const OPTS_WITH_VALUE = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix', '--attr-source'];
 // Whether `command` is the rule's git subcommand (`on`), and whether it also holds a word of `has` and none of `unless`.
 // shortcut: `bash -c "..."`, `$(...)`, aliases and anything after `--` are not seen (said in the README).
@@ -110,7 +112,12 @@ export function hits(rule, command) {
   let on = false, hit = false;
   for (const toks of segs) {
     let i = 0;
-    while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || LEAD.includes(toks[i]) || !toks[i])) i++;
+    while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || LEAD.includes(toks[i]) || !toks[i])) {
+      const lead = toks[i++];
+      if (!LEAD.includes(lead)) continue;
+      while (/^-|^\/[ck]$/i.test(toks[i] ?? '')) i += LEAD_VALUE[lead]?.includes(toks[i]) ? 2 : 1;
+      if (lead === 'rtk' && ['bypass', 'proxy'].includes(toks[i])) i++;
+    }
     if (!/^(?:.*[\\/])?git(?:\.exe)?$/i.test(toks[i++] ?? '')) continue;
     while (toks[i]?.startsWith('-')) i += OPTS_WITH_VALUE.includes(toks[i]) ? 2 : 1;
     if (toks[i] !== rule.on) continue;
