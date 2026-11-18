@@ -12,6 +12,8 @@ Guides for people using project-memory, a free plugin that gives Claude Code a m
 | Fix a problem | [When something seems wrong](how-it-works.md#when-something-seems-wrong) |
 | Read the privacy policy | [Privacy](../PRIVACY.md) |
 | Check security | [Security assessment](security-assessment.md), [Security policy](../SECURITY.md) |
+| See what changed | [Changelog](../CHANGELOG.md) |
+| Get help | [Support](../SUPPORT.md) |
 | Contribute | [Contributing](../CONTRIBUTING.md) |
 
 The `plans/` and `specs/` folders are dated design notes for contributors.
