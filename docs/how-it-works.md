@@ -40,8 +40,10 @@ memory folder. The journal is its `journal` folder, one file per day.
 
 ## When it runs
 
-Claude Code runs project-memory on five of its events, declared in
-`hooks/hooks.json`, and gives Claude one skill, `skills/memory/SKILL.md`.
+Claude Code runs project-memory on six of its events, declared in
+`hooks/hooks.json`. It gives Claude one skill, `skills/memory/SKILL.md`, and
+three slash commands in `commands/`: `/project-memory:incognito`,
+`/project-memory:memory-off` and `/project-memory:memory-on`.
 
 | Moment | Claude Code event | What runs |
 |---|---|---|
@@ -64,7 +66,8 @@ thrown away, so a startup briefing that runs past 30 seconds is lost without a
 word. A Stop stopped while git runs has already written the journal and the
 handoff, because the snapshot comes last; the next Stop reports the snapshot as
 busy until the lock git left is ten minutes old, then takes it. Each hook shows
-a short status message while it runs. Nothing is printed during `/compact`:
+a short status message while it runs, except the git-rule watcher, which runs
+silently. Nothing is printed during `/compact`:
 what a PreCompact hook prints becomes part of the instructions for the summary,
 so that run stays silent whatever it finds.
 
@@ -118,6 +121,7 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/<project>/memory/MEMORY.md` | the index: one line per note, worth loading every session |
 | `…/memory/MEMORY-archive.md` | lines moved out of the index; not loaded, still searchable |
 | `…/memory/handoff.md` | the rolling handoff (see [The handoff](#the-handoff)) |
+| `…/memory/handoff.md.prev` | a copy of the handoff made at the first reply of each day, so one bad overwrite does not lose all of it (see [The handoff](#the-handoff)) |
 | `…/memory/journal/YYYY-MM-DD.md` | the journal, one file per day (see [The journal](#the-journal)) |
 | `…/memory/journal.md` | the journal's note, so the index has a pinned line for it |
 | `…/memory/journal/.imported`, `.looked`, `.folders` | the transcripts imported and how far, the time of the last look for them, the worktree folders looked in too (see [The journal](#the-journal)) |
@@ -133,7 +137,7 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
 | `~/.claude/projects/.git/project-memory-ignored`, `project-memory-parts` | bookkeeping for the snapshot's ignore list; a first snapshot still being taken in parts |
 | `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran (with each reply's fingerprint, 8 characters of its hash), the snapshot's state, the reminder's state per conversation tag |
-| `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, or with auto memory off a conversation's tag that could not be written (`off`), and why (a list that won't read is named there); read at the next start and by `status` |
+| `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, or with auto memory off a conversation's tag that could not be written (`off`), and why (a list that won't read is named there). It is also written when a reply could not be saved because another window held the store through two tries; read at the next start and by `status` |
 | `~/.claude/projects/.journal-failed-<project folder>` | a journal write that failed after a reply when the `journal` folder wouldn't take `.failed` either, and why; read at the next start and by `status`, removed by the next write that goes through |
 | `~/.claude/projects/.memory-off` | the tags of conversations held with auto memory off, which the journal never imports: kept while the transcript is on disk, and the newest 100 in any case, 10,000 at most |
 
@@ -225,6 +229,12 @@ The conversation's file is read from its end, up to 32 MB, back to the
 turn's request. A request further back than that (a long browser task's
 screenshots) is looked for line by line, up to 256 MB more, and the turn is
 recorded with the files changed in its last 32 MB.
+
+At the first reply of each day, `handoff.md` is copied to `handoff.md.prev`
+beside it, because the file is kept out of the snapshots. A private
+conversation never makes the copy. Sweeping a private or forgotten
+conversation out of `handoff.md` deletes the copy too, and `rescan`
+checks it for the same text.
 
 Entries carry your local time and are ordered by it, so changing time zones
 shows up here. After you move west, new turns rank before the newest entries
@@ -342,8 +352,11 @@ Before any of it is written, these are taken out:
 - the same secrets behind look-alike spellings: full-width letters, hidden
   characters, accents, HTML entities, and percent and unicode escapes.
 
-Text is cut to 64 KB before the secrets are removed, so one huge paste is
-read in linear time. Kept on purpose, since they are not secrets: references
+Text is cut before the secrets are removed, so one huge paste is read in
+linear time: blank runs are squeezed first, then it is cut to 64 KB, or to
+four times the final limit when that is more (200,000 characters for a
+request, 80,000 for a command). A journal reply is not cut first: it is
+cleaned whole, then capped at 50,000. Kept on purpose, since they are not secrets: references
 such as `$API_TOKEN` and `${API_PASS}`, URL settings (`TOKEN_URL=…`), schema
 types (`password: z.string()`), labels, and times and `file.js:42`.
 
@@ -417,13 +430,21 @@ notebook has none. An entry, with a blank line between entries:
 <!-- j:<key> t:<project folder>/<session id> d:2026-10-28 -->
 ## 14:05 · conversation 551dc2d3 · branch master
 **Asked:** your message, whole
-**Answered:** Claude's reply, whole
+**Answered:** all the text Claude wrote in the turn
 **Changed:** every file edited or written in the turn
-**Ran:** every Bash and PowerShell command, whole
+**Ran:** every command Claude ran in the turn
 ```
 
-Each field is kept whole, on one line (line breaks become spaces): the
-journal is the detailed record, and `search` reads headlines of it.
+Each field is kept whole, on one line (line breaks become spaces), up to the
+limits at the end of this section: the journal is the detailed record, and
+`search` reads headlines of it.
+
+- When you answered a multiple-choice question Claude asked, `Asked` ends
+  with ` Picked:` and your choices. `Ran` lists Bash and PowerShell commands
+  and the code Claude sent to context-mode's `ctx_execute` and `ctx_batch`.
+  A command that Claude Code refused or a hook blocked never ran, so it is
+  not listed. A turn that ends with Escape or an API error is saved too, with
+  what it changed and ran.
 
 - The time is local, as in the handoff. The branch is the one Claude Code
   recorded with the message (`gitBranch`): the branch at the time of the
@@ -436,10 +457,20 @@ journal is the detailed record, and `search` reads headlines of it.
   entry: twin Stops, retries and a killed hook write nothing twice, and a
   turn seen again with more in it replaces its entry. A turn skipped while
   another window held the lock is written after the next reply, as the
-  handoff catches up. A key written to a day leaves the day before and the
+  handoff catches up. A Stop that finds the store busy waits a moment and
+  tries once more. If it is still busy, that reply is not saved, and
+  `~/.claude/projects/.handoff-failed-<project folder>` says so; the startup
+  briefing and `status` warn about it. A key written to a day leaves the day before and the
   day after: read again after a time-zone change, a turn gets the new
   zone's time, and so can fall on the next or the previous day. Daylight
   saving time ending, or a clock set back, acts the same way.
+- A subagent's final report is an entry of its own, with the key
+  `subagent-<id>` and `Asked:` set to the subagent's type and the first
+  line of its task. A report over 8,000 characters keeps its first 5,000 and
+  last 2,900, with `(N chars cut)` between them. Nothing is saved when the
+  conversation's turn is private or memory is off. A subagent that is
+  resumed and finishes again replaces its earlier report, since the key is
+  the same.
 - Writes go under the store's lock through the same unchanged-file check as
   every other write. Entries are kept in time order. A line in a day file
   that isn't part of an entry (a note you wrote) stays under the entry it
@@ -489,9 +520,13 @@ journal is the detailed record, and `search` reads headlines of it.
   refuses writes) is kept in `~/.claude/projects/.journal-failed-<project
   folder>`, and the startup briefing and `status` say it all the same.
 
-An entry is kept whole. A request or reply is cut at 50,000 characters and a
-command at 20,000 (since 1.3.2), and saved text is cut to 64 KB before secrets are removed
-(since 1.4.1). With the limits it had until 1.2.4 (2,000
+An entry is kept whole, within limits. A request or reply is cut at 50,000
+characters (a reply that long keeps its end, and is cut at its start) and a
+command at 20,000 (since 1.3.2). All the commands of a turn together are
+kept up to 50,000 characters, keeping the latest; a line such as `[3 earlier
+commands not kept]` stands for the rest. Saved text is cut before secrets
+are removed, to 64 KB or four times the limit, whichever is more (since
+1.4.1). With the limits it had until 1.2.4 (2,000
 characters of the request, 6,000 of the reply, 20 commands of 400), measured
 on 2026-10-29 by importing the 293 transcripts on the author's computer (362
 entries): half the entries were under 2,660 bytes, nine in ten under 6,723,
@@ -539,7 +574,8 @@ once it is through, `<bytes looked at> at <offset>` while an import is under
 way, `other`, or `failed <time>` when it wouldn't open (it is tried again a
 day later, grown or not). One that has grown since and been quiet for 30
 minutes is read on from where the last read ended (keys keep a repeat
-harmless). A transcript gone from disk loses its line. `journal/.looked`
+harmless). A transcript gone from disk loses its line.
+`journal/.looked`
 holds the time of the last look: when the budget left work, the next Stop
 looks again; otherwise the next look is 30 minutes later, and a Stop
 before then doesn't take the store's lock for it. Every look first redoes
@@ -564,6 +600,13 @@ the sweeps listed in `.sweeps`. A conversation never imported:
 Keys listed in `journal/.forgotten` are never written again, by an import or
 a live Stop, and the exchanges they name are never written to `handoff.md`
 again, by a Stop or the compaction gate.
+
+To rebuild entries saved before 1.5.0, delete `journal/.imported` and
+`journal/.looked` once per store. The next Stops read the transcripts again,
+replace the entries and redact them under the current rules (forgotten
+entries stay gone, private conversations stay swept). This only works for
+conversations whose transcript is still on disk. Claude Code keeps
+transcripts 30 days unless you change that, and older entries stay as saved.
 
 **In the history.** Today's file grows with every reply, so it stays out of
 the snapshots: committed, every version would stay in the history. The
@@ -607,8 +650,10 @@ At the start of a conversation, and after `/clear`, Claude is told:
   journal itself is never loaded; a second line says the code wins when a
   note and the code disagree, and that a correction you give is saved as a
   feedback note;
-- anything failing: the Stop hook not running, snapshots failing three times
-  in a row, a notebook that needs attention;
+- anything failing, such as the Stop hook not running, snapshots failing
+  three times in a row, a notebook that needs attention, hook files changed
+  outside the installer, a full disk, a reply that could not be saved, or
+  auto memory switched off. A Node older than 22 gets its own line first;
 - the shared notebook's index, up to 3,000 bytes.
 
 After a compaction, Claude is told:
@@ -723,8 +768,9 @@ Per message, `<private>…</private>` keeps one piece of text out.
    it is back on, and the same conversation's turns before and after are
    kept. Claude can still write a note if you ask. Off stops adding; it does
    not hide: search and show still answer from what is there.
-3. **All projects on this machine:** set `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to
-   `1`, `true`, `yes` or `on`, or disable the plugin (below). Claude Code's own
+3. **All projects on this machine:** set the environment variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to
+   `1`, `true`, `yes` or `on` (for example in the `env` block of Claude Code's
+   `settings.json`), or disable the plugin (below). Claude Code's own
    `/memory` setting (`autoMemoryEnabled: false`) stops project-memory too;
    it reads only that value, from the settings files Claude Code reads.
 4. **Claude Code itself:** `autoMemoryEnabled: false` stops its auto memory,
@@ -907,8 +953,13 @@ description gets +5; one that has every word somewhere gets +2. A journal
 entry is scored the same way on its request (+3), its files and commands
 (+2), or failing those its branch (+1), and its reply (+1 per mention, up
 to 2): every word in the request gets +5, every word somewhere +2, so a
-reply that names everything can't outrank the request for the thing. Equal
-scores show the newest first.
+reply that names everything can't outrank the request for the thing.
+
+Hits are ordered by a weighted rank built from these scores: rarer words
+count more, long entries count less, and an entry that holds your whole
+search text word for word gets a bonus. The newest first only breaks a tie
+on that rank. The score printed beside a hit is the plain sum above, so hits can print out of score
+order.
 
 It shows the top 10 (`--limit N` for more), then how many matched, then a last
 fixed line, `Not the entry you meant? Search again with other words.` (a
@@ -936,8 +987,9 @@ its last change.
 
 A word of two letters is found only standing alone (`ci` is not in
 "decision"), but a word made only of Chinese or Japanese characters is
-found anywhere in the text, at two characters too, since those languages put
-no spaces round words. When some of the search words are held by no note or
+found anywhere in the text, even a single character, since those languages
+put no spaces round words. A Latin word touching such text counts as standing
+alone, so `ci` finds `CIが落ちた`. When some of the search words are held by no note or
 entry in the stores and range searched, one line after the hits names them:
 `no note or entry holds: hetzner`. A search where no word is held still says
 only `nothing matches`.
@@ -1033,14 +1085,16 @@ UTF-8 gets a line of its own (`journal: could not read <file>: <why>`).
 
 ## Checked lessons (experimental)
 
-This part is a test of an idea, not a promise. A note can carry a rule that a
+This part is a test of an idea, not a promise. It is a 30-day trial, and on
+2026-12-18 it is decided whether to keep it or cut it. A note can carry a rule that a
 computer checks on a git command. The hook only watches and logs: it never
 blocks a command and never prints anything. It works on git commands only.
 
 ### Writing a rule
 
 Add an `enforce:` block to the note's front matter. `enforce:` stands alone on
-its line, and its three keys are indented two spaces:
+its line, and its three keys are indented two spaces. A rule written under
+`metadata:`, or with any indented `enforce:`, is reported as a bad rule:
 
 ```
 enforce:
@@ -1097,7 +1151,8 @@ It never logs the command.
 
 `memory enforce status` shows per note the hits of the last 30 days (main and
 sub-agent), the last one, bad rules with the reason, and whether the log is
-full or memory is off. The live log keeps no command text, so run `replay`
+full or memory is off. On 2026-12-18 the author reads this output and keeps
+checked lessons or cuts them. The live log keeps no command text, so run `replay`
 to see commands. `memory doctor` has one line for the hook: it runs the copy
 the plugin runs and says what is wrong, even when memory is off in this
 project.
@@ -1106,7 +1161,7 @@ project.
 
 It sees a command after an escaped quote, after git options such as
 `--no-optional-locks`, inside `{ }` or `( )`, after a line continuation, behind
-`env`, `sudo` (with options such as `-u bob`), `cmd /c`, `command`, `rtk` (also `rtk bypass`), `git.exe` or a full path to git, and after
+`env`, `sudo` (with options such as `-u bob`), `time`, `nohup`, `exec -a`, `cmd /c`, `cmd.exe`, `command`, `rtk` (also `rtk bypass` and `rtk proxy`), `git.exe` or a full path to git, and after
 `FOO=1` or `cd x &&`. A heredoc body is not a command. That is what the rule
 engine reads, and what `replay` reads in saved commands.
 
@@ -1249,7 +1304,8 @@ catch up on conversations Claude Code has not yet deleted.
   The `autoMemoryDirectory` setting is not followed: `doctor` only warns when
   it is set. The plugin reads Claude Code's settings for two values only,
   `autoMemoryEnabled` and `autoMemoryDirectory`.
-- Tested on Linux with Node 22, Windows with Node 24 and macOS with Node 26.
+- Tested on Linux with Node 22, Windows with Node 22 and 24, and macOS with
+  Node 26.
 - The snapshot repository only grows.
 - The suite is 8 test files and about 2,500 checks. Each pull request runs
   them on all three systems, with a sign-off check; the mutation tests and
@@ -1296,5 +1352,15 @@ meet most:
   reply, check that Node.js is installed and on the `PATH`. A `disableAllHooks`
   setting, `--bare`, `--settings` or `CLAUDE_CODE_SKIP_PROMPT_HISTORY` would
   cause this too.
+- **"the record of where you left off could not be saved"**, in the briefing
+  or from `status`. A reply was not saved: another window held the store
+  through two tries, or the write failed. The line says when and why. The
+  journal takes in what was missed from Claude Code's own conversation files.
+- **A leftover `pm-purge-…` folder**, from `doctor`, listed once it is a few minutes old. It sits inside `~/.claude/projects/.git`. A `forget --purge` was
+  killed half way and left a copy of the snapshot history, which may hold
+  text you meant to forget. Run `forget <word> --purge` again, or delete the
+  folder.
+- **"project-memory needs Node 22 or newer"**, at the start of a
+  conversation. Update Node.js; the hooks may fail until then.
 - **"node" is not found.** Install Node.js 22 or newer and restart Claude
   Code.
