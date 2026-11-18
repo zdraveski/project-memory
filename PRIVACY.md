@@ -86,8 +86,9 @@ All of it stays in `~/.claude/projects` on your computer:
     such as `TOKEN_LIMIT=4096`; after a password or token option, or under a
     secret's name, it is replaced, since it can be a PIN. A value in quotes
     is replaced whole, blanks and all. For the handoff, text is cut to 64 KB
-    before the secrets are removed, so one huge paste cannot stall a hook; the
-    journal cleans the whole text first and then caps it. Not found:
+    before the secrets are removed, so one huge paste cannot stall a hook. The
+    journal cleans a reply whole before it caps it; a request over 200,000
+    characters is cut to that length first. Not found:
     - a value with blanks and no quotes, past its first word (in
       `password: p@ss w0rd` nothing is replaced, since `p@ss` is under 6
       characters);
@@ -157,9 +158,9 @@ All of it stays in `~/.claude/projects` on your computer:
   of it worked, the last 300 characters of its error are saved after it,
   with secrets replaced. Commands run through context-mode's ctx_execute
   and ctx_batch tools are listed too, with their code. A long pasted text or a long command
-  is kept in full up to a cap, and secrets in it are still replaced. The cap is 50,000 characters for one request or reply (past it, the start is
-  dropped, the last 50,000 are kept, and a note says how many came before) and 20,000
-  for one command. Entries saved before 1.5.0 are not
+  is kept in full up to a cap, and secrets in it are still replaced. The cap is 50,000 characters. For a reply, past it the start is dropped
+  and the end kept, with a note of how many characters came before. For a request, the
+  start is kept and the end is cut, with a note of how many were cut. A command is cut at 20,000. Entries saved before 1.5.0 are not
   rewritten: they keep the form they were saved in.
   - The rules above apply to it too: secrets are replaced with `[redacted]`,
     commands included, a `<private>` message's reply is saved as `[private]`

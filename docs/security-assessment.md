@@ -99,7 +99,8 @@ history.
   names such as `password=`, passwords typed in chat in several languages,
   cookies and session ids, and look-alike spellings of these
   ([The handoff](how-it-works.md#the-handoff)). Handoff text is cut to 64 KB
-  first; the journal's text is cleaned whole and then capped.
+  first. The journal cleans a reply whole and then caps it; a request over
+  200,000 characters is cut to that length first.
 - A note that holds a secret is kept out of the snapshots, and `promote`
   refuses it. On Linux and macOS the files are private to the user (mode
   0600, folders 0700).
@@ -209,8 +210,8 @@ run, or instructions placed in a later briefing.
   file is followed only when the main repository names it back.
 - Broken lines, half-written lines, odd encodings and huge replies are
   read without failing; the fuzzer sends all of them. Text saved in
-  `handoff.md` is cut to fixed sizes; a journal request or reply is capped at 50,000
-  characters (the start is dropped, the end kept), a command at 20,000 and
+  `handoff.md` is cut to fixed sizes; a journal reply keeps its last 50,000
+  characters and a request its first 50,000, a command at 20,000 and
   a turn's commands at 50,000. The briefing is held to 9,500 characters, and the last
   conversation's exchanges at startup to a briefing of 3,500 (with a reserve of 1,500 for them when the shared lessons fill it).
 
