@@ -266,18 +266,20 @@ function stem(t) {
 // searches them rather than nothing. Without it, only words that say which memory (a date range alone lists the days).
 const words = (q, any = false) => {
   const n = q.normalize('NFC').toLowerCase();
-  const all = [...[...n.matchAll(VERSION)].map((m) => m[1]), ...n.replace(VERSION, ' ').split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => t.length >= 2)];
+  const all = [...[...n.matchAll(VERSION)].map((m) => m[1]), ...n.replace(VERSION, ' ').split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => t.length >= 2 || CJK.test(t))];
   const kept = all.filter((t) => !STOP.has(t)), as = new Map();
   for (const t of kept.length || !any ? kept : all) if (!as.has(stem(t))) as.set(stem(t), t);
   return Object.assign([...as.keys()], { as });
 };
-const alone = (t) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${t}(?![\\p{L}\\p{M}\\p{N}])`, 'gu');
+// Han, Hiragana and Katakana have no spaces round a word, so they are not the letters a Latin word must not touch.
+const CJK = /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]$/u, NC = '(?![\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}])';
+const alone = (t) => new RegExp(`(?<!${NC}[\\p{L}\\p{M}\\p{N}])${t}(?!${NC}[\\p{L}\\p{M}\\p{N}])`, 'gu');
 // Chinese and Japanese have no spaces round a word, so a two-character one is looked for as a substring.
 const plain = (t) => t.length > 2 || /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]+$/u.test(t);
 // A cut stem counts only at the start of a word: "stor" finds "store" and "storage", not "history" (`cut`: the term was shortened).
 // A short English root (see stem()) is a whole word with its endings instead; `w` is the word as typed.
 const starts = (t, w = t) => {
-  const [r, f, d] = /^[a-z]+$/.test(w) ? cutEn(w) : [], B = '(?<![\\p{L}\\p{N}])';
+  const [r, f, d] = /^[a-z]+$/.test(w) ? cutEn(w) : [], B = `(?<!${NC}[\\p{L}\\p{N}])`;
   if (!r || r.length > 4 || !(f ? INFL.has(f) : r.length === 3)) {
     // An uncut consonant + y word also finds its plural and past: library, libraries; story, stories (not store).
     const y = !f && /[^aeiou]y$/.test(t) ? `|${t.slice(0, -1)}i(?:es|ed)` : '';
@@ -285,7 +287,7 @@ const starts = (t, w = t) => {
   }
   const l = r.at(-1), o = [`e?(?:s|es|d|ed|ing|ings|ies|ied|${l}ed|${l}ing|${l}ings)`];
   if (!d && !(f === 'ed' && r.endsWith('e'))) o.push(['s', 'es', 'ed', 'ing', 'ings'].includes(f) ? 'e?' : '');
-  return new RegExp(`${B}(?:${w}|${r}(?:${o.join('|')}))(?![\\p{L}\\p{N}])`, 'gu');
+  return new RegExp(`${B}(?:${w}|${r}(?:${o.join('|')}))(?!${NC}[\\p{L}\\p{N}])`, 'gu');
 };
 // A term is matched as word forms when it was cut, is a 3-letter English word, or ends in a consonant and y (library: libraries).
 const forms = (t, cut) => (cut || /^[a-z]{3}$/.test(t) || /^[a-z]*[^aeiou]y$/.test(t)) && plain(t);
