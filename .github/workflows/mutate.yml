@@ -48,7 +48,8 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.shards) }}
     runs-on: windows-latest
-    timeout-minutes: 60
+    # 17 shards of ~740 mutants (regex kinds, 1.5.3) take ~75-105 min; 60 cut them off.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
