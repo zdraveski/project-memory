@@ -13,7 +13,7 @@ export function ruleOf(text) {
   const t = String(text).replace(/^﻿/, '').replace(/\r\n?/g, '\n'), end = frontEnd(t);
   if (end === -1) return null;
   const lines = t.slice(0, end).split('\n'), at = lines.findIndex((l) => /^enforce:/.test(l));
-  if (at === -1) return null;
+  if (at === -1) return lines.some((l) => /^[ 	]+enforce:/.test(l)) ? { bad: 'write `enforce:` at the start of a line, not under metadata:' } : null;
   if (!/^enforce:[ \t]*$/.test(lines[at])) return { bad: 'write `enforce:` alone on its line, with on:, has: indented below it' };
   const got = {};
   for (const l of lines.slice(at + 1)) {
@@ -101,7 +101,9 @@ export function tokens(segment) {
   return out;
 }
 
-const LEAD = ['!', 'do', 'then', 'else', 'elif', 'if', 'while', 'until', 'env', 'command', 'sudo', 'time', 'rtk', 'exec', 'nohup', '&'];
+const LEAD = ['!', 'do', 'then', 'else', 'elif', 'if', 'while', 'until', 'env', 'command', 'sudo', 'time', 'rtk', 'exec', 'nohup', '&', 'cmd'];
+// Options of a lead word that take a value in the next word (`sudo -u bob`); other options, and `cmd /c`, are one word.
+const LEAD_VALUE = { sudo: ['-u', '-g', '-h', '-p', '-r', '-t', '-C', '-D', '-R', '-T', '-U'], env: ['-u', '-C', '-S'] };
 const OPTS_WITH_VALUE = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix', '--attr-source'];
 // Whether `command` is the rule's git subcommand (`on`), and whether it also holds a word of `has` and none of `unless`.
 // shortcut: `bash -c "..."`, `$(...)`, aliases and anything after `--` are not seen (said in the README).
@@ -110,7 +112,12 @@ export function hits(rule, command) {
   let on = false, hit = false;
   for (const toks of segs) {
     let i = 0;
-    while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || LEAD.includes(toks[i]) || !toks[i])) i++;
+    while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || LEAD.includes(toks[i]) || !toks[i])) {
+      const lead = toks[i++];
+      if (!LEAD.includes(lead)) continue;
+      while (/^-|^\/[ck]$/i.test(toks[i] ?? '')) i += LEAD_VALUE[lead]?.includes(toks[i]) ? 2 : 1;
+      if (lead === 'rtk' && ['bypass', 'proxy'].includes(toks[i])) i++;
+    }
     if (!/^(?:.*[\\/])?git(?:\.exe)?$/i.test(toks[i++] ?? '')) continue;
     while (toks[i]?.startsWith('-')) i += OPTS_WITH_VALUE.includes(toks[i]) ? 2 : 1;
     if (toks[i] !== rule.on) continue;
@@ -139,7 +146,7 @@ export function commandsOf(file, chunk, seg, got) {
   } finally { closeSync(fd); }
 }
 
-export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024, CACHE_V = 2, HEAD = 64 * 1024;
+export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024, CACHE_V = 3, HEAD = 64 * 1024;
 
 // A store's rules through its cache `.enforce.json` ({ v, files: { file: { mtime, size, r } } }; another v is rebuilt, as ruleOf may read differently): only a note that is new or changed since
 // is read, and then only its first 64 KB, and ruleOf only if that holds `enforce:`. A cache that does not read is rebuilt. Never throws.

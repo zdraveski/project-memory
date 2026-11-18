@@ -44,6 +44,27 @@ bad(note('enforce:\n  has: [-A]\n'), /on/, 'missing on');
 const withBlock = note('enforce:\n  on: git add\n  has: [type: archive, tier: archive]\n');
 ok(JSON.stringify(front(withBlock)) === JSON.stringify(front(note(''))), 'front() ignores the enforce block');
 
+// An enforce: block indented under metadata: is no rule, and says why (it used to be skipped without a word)
+bad(`---
+name: x
+metadata:
+  type: feedback
+  enforce:
+    on: git add
+    has: [-A]
+---
+
+body
+`, /start of a line, not under metadata:/, 'an indented enforce: block');
+ok(ruleOf(`---
+name: x
+metadata:
+  type: feedback
+---
+
+  enforce:
+`) === null, 'an indented enforce: in the body is no rule');
+
 // segments and tokens
 ok(segments('a && b || c; d | e\nf').join('|') === 'a|b|c|d|e|f'.split('|').map((s) => s).join('|'), 'split at && || ; | newline');
 ok(segments('echo "a && b"; git x').length === 2, 'not inside quotes');
@@ -58,6 +79,10 @@ for (const c of ['git add -A', 'git add .', 'git -C x add --all', 'git --git-dir
   'FOO=1 git add -A', 'cd x && git add -A', 'git status; git add -A', 'git add -A -n', 'git add -A; git status', 'git -C C:\\Users\\me\\repo add -A', 'git -C "C:\\Program Files\\r" add .'])
   ok(hit(c), `hit: ${c}`);
 for (const c of ['git add -A && git init', 'git add file', 'git add src/a.mjs', 'git commit -m "git add -A"', "git commit -F - <<'EOF'\ngit add -A\nEOF", 'echo "git add -A"', 'git status', 'git add ./-A', 'mktemp; git add -A'])
+  ok(!hit(c), `no hit: ${c}`);
+for (const c of ['rtk bypass git add -A', 'rtk proxy git add -A', 'rtk git add -A', 'sudo -u bob git add -A', 'sudo -E git add -A', 'cmd /c git add -A', 'env -i FOO=1 git add -A', 'time -p git add -A'])
+  ok(hit(c), `hit through a lead word's options: ${c}`);
+for (const c of ['rtk bypass git add file.txt', 'sudo -u bob git add file.txt', 'cmd /c git add file.txt', 'rtk bypass ls -A', 'sudo -u bob ls -A'])
   ok(!hit(c), `no hit: ${c}`);
 ok(hits(rule, 'git add file').on && !hits(rule, 'git status').on, 'on says whether the command is the subcommand at all');
 // known misses

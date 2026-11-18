@@ -2536,6 +2536,9 @@ After the log: narwhalqq stays.
   writeFileSync(join(pm, 'plain.md'), '---\nname: plain\n---\n\nbody\n');
   r = await run(['enforce', 'replay', 'plain', '--store', pm]);
   ok(r.status === 1 && /no enforce/.test(r.stdout), 'a note with no rule says so');
+  // A journal.mjs that will not load: replay says so on one line and exits 1 (it threw a TypeError).
+  r = spawnSync(process.execPath, [join(home, 'cli-nojournal', 'memory.mjs'), 'enforce', 'replay', 'stage-by-name', '--store', pm], { env, encoding: 'utf8' });
+  ok(r.status === 1 && /replay needs journal\.mjs/.test(r.stdout) && !/TypeError/.test(r.stderr), `replay with a journal.mjs that will not load says so (got ${r.status} ${r.stdout}${r.stderr})`);
   r = await run(['enforce']);
   ok(r.status === 1 && /replay/.test(r.stdout), 'enforce alone prints the usage');
 
