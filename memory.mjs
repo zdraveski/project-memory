@@ -225,9 +225,9 @@ const STOP = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'with', 'was', 
   'when', 'where', 'who', 'did', 'does', 'have', 'has', 'can', 'you', 'our', 'about', 'into', 'there', 'their', 'then', 'than',
   'am', 'an', 'as', 'at', 'be', 'by', 'do', 'he', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or', 'so', 'to', 'up', 'us', 'we',
   // Question filler: "which design skill did I put in all projects" ranked the real entry 7th (1.5.0 audit).
-  'which', 'will', 'many', 'all', 'any', 'last', 'month', 'new', 'make', 'take', 'ever', 'just', 'before', 'after', 'some', 'get', 'got',
+  'which', 'will', 'many', 'all', 'any', 'last', 'month', 'take', 'ever', 'just', 'before', 'after', 'some', 'got',
   'should', 'would', 'could', 'been', 'were', 'one', 'them', 'they', 'your', 'its', 'also', 'very', 'much', 'more', 'most', 'need',
-  'want', 'like', 'use', 'used', 'put', 'tell', 'remind', 'again', 'time', 'week', 'day', 'today', 'yesterday', 'ago']);
+  'want', 'like', 'used', 'tell', 'remind', 'again', 'week', 'day', 'today', 'yesterday', 'ago']);
 // Two letters are a word too: CI, PR, DB were never found. But only standing
 // alone: `ci` is in "decision".
 // Combining marks (\p{M}) belong to the word (Hindi), and both sides are NFC so a decomposed "e" + accent is "é".
@@ -1203,8 +1203,9 @@ export function main(given) {
     // What was asked on those days, newest first: "what did we do last week".
     const es = told(scope, { ...range, failed }).filter((e) => !e.key.startsWith('subagent-')).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
     const all = shown.some(short) ? told(scope, { failed }) : [];   // the reply before a short request may be on an earlier day
-    r = { ok: true, lines: es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
-      : [`no journal entry ${span} in ${where}`] };
+    const dropped = [...new Set(args.join(' ').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => STOP.has(t)))];
+    r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
+      : [`no journal entry ${span} in ${where}`]] };
   } else if (cmd === 'forget') {
     // A blank term is in every entry: `forget "" --yes` would empty the journal.
     const conversation = opt('--conversation'), yes = rest.includes('--yes'), terms = args.filter((a) => a.trim());
