@@ -16,8 +16,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Each system and each Node version once.
+          # Each system once on a different Node, and Windows also on 22, the oldest the README promises.
           - { os: ubuntu-latest, node: 22 }
+          - { os: windows-latest, node: 22 }
           - { os: windows-latest, node: 24 }
           - { os: macos-latest, node: 26 }
     runs-on: ${{ matrix.os }}

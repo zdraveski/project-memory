@@ -604,12 +604,19 @@ const packDir = join(root, '.git', 'objects', 'pack');
 mkdirSync(packDir, { recursive: true });
 writeFileSync(join(packDir, 'pack-dead.idx'), 'x');
 ok(/^ok +1 pack index file\(s\) [^\n]*have no pack[^\n]*pack-dead\.idx$/m.test((await cli('doctor')).stdout), 'doctor: an index a repack left with no pack is named');
-// No git is a setup the README allows: said, not a problem. Snapshots off say
+// 1.5.2 finding 13: a killed forget --purge leaves a full copy of the history in .git; doctor names it once it is older than a lock.
+{ const d = join(root, '.git', 'pm-purge-x'); mkdirSync(join(d, 'copy.git'), { recursive: true });
+  ok(!/pm-purge/.test((await cli('doctor')).stdout), 'doctor: a fresh pm-purge folder may be a purge running, not named');
+  { const t = new Date(Date.now() - 120000); utimesSync(d, t, t); }
+  const o = await cli('doctor');
+  ok(o.status === 1 && new RegExp(`^PROBLEM .*pm-purge-x.*forget`, 'm').test(o.stdout), `doctor: an old pm-purge folder is a problem, named, with the command that clears it (got ${o.stdout})`);
+  rmSync(d, { recursive: true, force: true }); }
+// No git is a setup the README allows: a note, not a problem. Snapshots off say
 // what is lost; failing ones come with what to do.
 r = spawnSync(process.execPath, [CLI, 'doctor'], { env: { HOME: home, USERPROFILE: home, PATH: '', ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }) }, encoding: 'utf8' });
-ok(/^ok +git is not installed: everything works except/m.test(r.stdout), `doctor: no git is said, not a problem (got ${r.stdout})`);
+ok(/^note +git is not installed: everything works except/m.test(r.stdout) && !/^ok +git is not installed/m.test(r.stdout), `doctor: no git is a note, not ok and not a problem (got ${r.stdout})`);
 writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, failures: 0, off: 'git is not installed' }));
-ok(/^ok +snapshots: off, git is not installed: everything else works/m.test((await cli('doctor')).stdout), 'doctor: snapshots off are said, not a problem');
+ok(/^note +snapshots: off, git is not installed: everything else works/m.test((await cli('doctor')).stdout), 'doctor: snapshots off are a note, not ok and not a problem');
 writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: null, failures: 4, error: 'fatal: bad object HEAD' }));
 ok(/^PROBLEM snapshots: failing, 4 in a row[^\n]*The user's fix: run git -C/m.test((await cli('doctor')).stdout), 'doctor: failing snapshots come with what to do');
 // A first snapshot taken in parts, or one waiting on another git, is said as it is: doctor said "none recorded yet" while a
