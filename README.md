@@ -231,7 +231,7 @@ afterwards tells Claude what you asked and what it last said.
 
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/long-conversations-narrow.webp">
-  <img src="docs/long-conversations.webp" width="880" alt="Three steps around a compaction. Before, at about 85% of the window: Claude is asked to save its notes. During, when the window is nearly full: Claude Code can be asked to wait, so the step in progress finishes. After the summary: Claude is told what you asked, its last words, tasks still running and files it edited.">
+  <img src="docs/long-conversations.webp" width="880" alt="Three steps around a compaction. Before, when the window is getting full (about 54% of a 200,000-token window, later in a bigger one): Claude is asked to save its notes. During, when the window is nearly full: Claude Code can be asked to wait, so the step in progress finishes. After the summary: Claude is told what you asked, its last words, tasks still running and files it edited.">
 </picture></p>
 
 **If your model holds 200,000 tokens, one setting matters** (a token is a
