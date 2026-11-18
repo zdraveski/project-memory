@@ -958,7 +958,7 @@
         <li class="glass lit keep"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-lock-key"/></svg></span><p>On Linux and macOS, the files it writes can be read only by you.</p></li>
         <li class="glass hot keep"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-eye-slash"/></svg></span><p>No tool catches every secret. A look-alike Cyrillic or Greek letter gets through, for one. Put the rest in <span class="tok">&lt;private&gt;</span>.</p></li>
       </ul>
-      <p class="more">Notes saved before a newer version can be re-checked with <code>/project-memory:memory rescan</code>. It counts first and changes nothing unless you add <code>--apply --yes</code>.</p>
+      <p class="more">Anything saved before a newer version (notes, journal, handoff, snapshots) can be re-checked with <code>/project-memory:memory rescan</code>. It counts first and changes nothing unless you add <code>--apply --yes</code>. It then makes a backup that still holds the old text.</p>
       <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#what-it-saves">What it removes, and what it misses</a>.</p>
     </div>
   </section>
@@ -1103,7 +1103,7 @@ claude plugin update project-memory@project-memory</code></pre></div>
   on: git add
   has: [-A, --all, .]
   unless: [mktemp, init]</code></pre>
-          <p class="rule-cap">At the top of a note's front matter. It logs a hit when a <code>git add</code> command holds <code>-A</code>, <code>--all</code> or a bare dot.</p>
+          <p class="rule-cap">At the top level of a note's front matter (not under <code>metadata:</code>). It logs a hit when a <code>git add</code> command holds <code>-A</code>, <code>--all</code> or a bare dot.</p>
         </div>
       </div>
     </div>
