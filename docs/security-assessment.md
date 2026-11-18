@@ -2,7 +2,7 @@
 
 What could go wrong with project-memory, how likely and how bad it would be,
 and what in the code and the tests guards against it. It covers version
-1.4.2 and the project around it, and was written in November 2026. A change
+1.5.2 and the project around it, and was written in November 2026. A change
 that reads, saves or sends anything new updates this page, as
 [CONTRIBUTING.md](../CONTRIBUTING.md#sending-a-change) says. The facts here
 come from [PRIVACY.md](../PRIVACY.md) and [How it works](how-it-works.md),
@@ -24,10 +24,10 @@ no network code.
 | Claude Code | Runs the hooks on its events ([When it runs](how-it-works.md#when-it-runs)) and hands each one a JSON payload on stdin; writes the transcripts the hooks read; loads `MEMORY.md` and the briefing into the conversation. |
 | Claude (the model) | Reads the briefing and the notes; writes notes itself; runs the memory tool through the skill (`skills/memory/SKILL.md`), with commands it composes. |
 | The Stop hook (`memory-tier.mjs --stop`) | After every reply: tidies the indexes, writes the handoff and the journal, imports other conversations, takes a snapshot, and may remind Claude to save notes. |
-| The SessionStart hook (`handoff-log.mjs --print`) | Prints the startup briefing. |
+| The SessionStart hook (`brief.mjs --print`) | Prints the startup briefing. |
 | The compaction gate (`compact-gate.mjs`) | Before an automatic compaction: may ask Claude Code to wait for the turn to end, or writes a note of the work in progress. |
 | The git-rule watcher (`enforce-hook.mjs`) | Before a git command: logs which note's `enforce:` rule matched. Blocks nothing, prints nothing. |
-| The memory tool (`memory.mjs`) | `search`, `show`, `forget`, `status`, `history`, `restore`, `promote`, `doctor`, `enforce`, and `off`, `on` and `incognito` ([commands](how-it-works.md#the-memory-tool-from-a-terminal)). |
+| The memory tool (`memory.mjs`) | `search`, `show`, `forget`, `status`, `history`, `restore`, `promote`, `doctor`, `enforce` (`status`, `replay`), `rescan` (`--apply --yes` rewrites saved text and the snapshot history, using a temporary working copy of it), `forget --purge`, and `off`, `on` and `incognito` ([commands](how-it-works.md#the-memory-tool-from-a-terminal)). |
 | git | Run by the hooks and the tool, as a program, for the snapshot repository. |
 | Other processes | Another Claude Code window on the same project, Claude's own edits, a virus scanner or a sync tool holding a file. |
 | The maintainer and GitHub | Write, review and release the code; GitHub hosts it, runs CI and serves it to Claude Code's `/plugin`. |
@@ -39,14 +39,19 @@ no network code.
   `PreCompact` (`manual`, `auto`), and `PreToolUse` (`Bash|PowerShell`, filtered to `git *`; the git-rule watcher). Input: Claude Code's JSON payload on
   stdin. The fields read are `session_id`, `transcript_path`, `cwd`,
   `hook_event_name`, `stop_hook_active`, `last_assistant_message`, `source`
-  and `trigger`. Output: the briefing as text (SessionStart, up to 9,500
+  and `trigger`; for a finished subagent also `agent_type`, `agent_id` and
+  `agent_transcript_path`; for the git-rule watcher `tool_input.command` and
+  `tool_use_id`. Output: the briefing as text (SessionStart, up to 9,500
   characters), a reminder as `additionalContext` JSON (Stop), and the gate's
   request to wait (PreCompact, exit status 2). Any other failure exits 0.
 - **Transcripts**: Claude Code's JSONL files in `~/.claude/projects`, read
   only ([What it reads](../PRIVACY.md#what-it-reads)).
 - **Notes and bookkeeping files**: read and written in `~/.claude/projects`
   only ([Where things live](how-it-works.md#where-things-live)).
-- **Environment**: seven variables, by name, the ones Claude Code reads
+- **Environment**: eleven variables, by name: `PROJECT_MEMORY_BRIEFING` (the plugin's own)
+  and ten that Claude Code reads too, plus `HOME` or `USERPROFILE` to find
+  `~/.claude`. `DISABLE_COMPACT` and `ANTHROPIC_MODEL` are read only to
+  decide whether the context-size setting counts, and are never saved
   ([What it reads](../PRIVACY.md#what-it-reads)).
 - **git**: the `git` program, run without a shell, on the snapshot
   repository at `~/.claude/projects/.git`, which has no remote; and the
@@ -93,7 +98,8 @@ history.
   blocks, passwords in web addresses and on command lines, values after
   names such as `password=`, passwords typed in chat in several languages,
   cookies and session ids, and look-alike spellings of these
-  ([The handoff](how-it-works.md#the-handoff)). Text is cut to 64 KB first.
+  ([The handoff](how-it-works.md#the-handoff)). Handoff text is cut to 64 KB
+  first; the journal's text is cleaned whole and then capped.
 - A note that holds a secret is kept out of the snapshots, and `promote`
   refuses it. On Linux and macOS the files are private to the user (mode
   0600, folders 0700).
@@ -106,7 +112,10 @@ history.
   check that none is written, briefed or printed.
 
 What remains: no list of patterns finds every secret. The README and
-PRIVACY.md say so, and point to the tags.
+PRIVACY.md say so, and point to the tags. Only secrets are removed: email
+addresses, phone, card and ID numbers stay as typed, so put such text in
+`<private>`. `rescan --apply --yes` first makes a backup folder in
+`~/.claude` that still holds the old secrets until the user deletes it.
 
 ### Private text leaking
 
@@ -200,8 +209,9 @@ run, or instructions placed in a later briefing.
   file is followed only when the main repository names it back.
 - Broken lines, half-written lines, odd encodings and huge replies are
   read without failing; the fuzzer sends all of them. Text saved in
-  `handoff.md` is cut to fixed sizes; a journal entry is kept whole, a line
-  a field. The briefing is held to 9,500 characters, and the last
+  `handoff.md` is cut to fixed sizes; a journal request or reply is capped at 50,000
+  characters (the start is dropped, the end kept), a command at 20,000 and
+  a turn's commands at 50,000. The briefing is held to 9,500 characters, and the last
   conversation's exchanges at startup to a briefing of 3,500 (with a reserve of 1,500 for them when the shared lessons fill it).
 
 What remains: text saved from one conversation is shown to Claude in a
@@ -234,7 +244,7 @@ Likely, from a bug or a full disk. Impact: a blocked or slow session.
   that time on a large store. A git stopped at its timeout touches no note
   (git only reads them), and the next replies go on in parts.
 
-The git-rule watcher (`enforce-hook.mjs`, PreToolUse) fails open: one try/catch, exit 0, no output, a 5-second timeout that lets the call go on. It never prints a decision (allow, ask, deny) and never exits 2, so it cannot block or change a call. It writes only `.enforce-log` (note name, session tag, agent type, tool-call id; no command text, so nothing private) and `.enforce.json` (a cache of the rules), both inside the store. The log is appended without a lock, so a line can be lost under heavy parallel use, and it stops growing at 256 KB. Conversations marked private, and projects with memory off, are skipped. A tag list that cannot be read counts as private.
+The git-rule watcher (`enforce-hook.mjs`, PreToolUse) fails open: one try/catch, exit 0, no output, a 5-second timeout that lets the call go on. It never prints a decision (allow, ask, deny) and never exits 2, so it cannot block or change a call. It writes only `.enforce-log` (note name, session tag, agent type, tool-call id; no command text, so nothing private) and `.enforce.json` (a cache of the rules), both inside the store. `memory enforce replay` is a separate, manual command: it reads git commands (Bash and PowerShell) from this project's conversation records, or every project's with `--all`, for the last 30 days, and prints them clipped to 160 characters with secrets replaced. It skips private conversations and projects with memory off, and prints only to the terminal. The log is appended without a lock, so a line can be lost under heavy parallel use, and it stops growing at 256 KB. Conversations marked private, and projects with memory off, are skipped. A tag list that cannot be read counts as private.
 
 ### The plugin's supply chain
 
