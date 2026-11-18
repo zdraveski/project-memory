@@ -1146,6 +1146,15 @@ lemur lemur lemur lemur
   ok(r.stdout.includes(`\n${outside(2)}\n`) && /^2 of 2 match\(es\)/m.test(r.stdout.trim().split('\n').at(-2)), `a ranged search says how many notes match outside it, before the count (got ${r.stdout})`);
   r = await jcli('search', 'quokka', '--since', '2026-11-01');
   ok(r.stdout.startsWith(`${outside(4)}\nnothing matches "quokka" in `), `a ranged miss says so too (got ${r.stdout})`);
+  // Tool words (make, get, put) are search words, not filler: with a range they listed every entry (audit 1.5.1, finding 6).
+  day(jd, '2027-01-05', [entry('2027-01-05 09:00', 'write the board report'), entry('2027-01-05 09:10', 'run make in the build folder'), entry('2027-01-05 09:20', 'GET endpoint returns 500'), entry('2027-01-05 09:30', 'PUT endpoint is fine')]);
+  r = await jcli('search', 'make', '--since', '2027-01-05');
+  ok(/Asked: run make in the build folder/.test(r.stdout) && !/board report|PUT endpoint/.test(r.stdout), `a ranged search for "make" lists only entries holding it (got ${r.stdout})`);
+  r = await jcli('search', 'GET', 'endpoint', '--since', '2027-01-05');
+  ok(r.stdout.indexOf('GET endpoint returns') < r.stdout.indexOf('PUT endpoint'), `"GET" counts as a search word (got ${r.stdout})`);
+  r = await jcli('search', 'what', 'did', 'we', 'do', '--since', '2027-01-05');
+  ok(/^ignored filler words: what, did, we, do$/m.test(r.stdout) && /board report/.test(r.stdout), `a range listing names the typed words it dropped (got ${r.stdout})`);
+  rmSync(join(jd, 'journal', '2027-01-05.md'));
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
@@ -1166,7 +1175,8 @@ lemur lemur lemur lemur
   const asked = [...r.stdout.matchAll(/^\d{4}-\d\d-\d\d \d\d:\d\d  conversation c0ffee12 · branch main  (.*)$/gm)].map((m) => m[1]);
   ok(r.status === 0 && asked.join('|') === 'write the changelog|review the pull request|plan the release', `a date range alone lists the work of those days, newest first (got ${r.stdout})`);
   // Words that say nothing of which memory ("what did I do") with a range: the range alone.
-  ok((await jcli('search', 'what', 'did', 'I', 'do', '--since', '2026-10-21', '--until', '2026-10-27')).stdout === r.stdout, 'stop words with a range list the range');
+  ok((await jcli('search', 'what', 'did', 'I', 'do', '--since', '2026-10-21', '--until', '2026-10-27')).stdout === `ignored filler words: what, did, do
+${r.stdout}`, 'stop words with a range list the range, naming the dropped words');
   r = await jcli('search', 'deploy', '--since', 'yesterday');
   const r2 = await jcli('search', 'deploy', '--until=2026-10');
   ok(r.status === 1 && r.stdout.trim() === '--since takes a date like 2026-10-01' && r2.status === 1 && r2.stdout.trim() === '--until takes a date like 2026-10-01', `a bad date is refused (got ${r.stdout}${r2.stdout})`);
