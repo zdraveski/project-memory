@@ -118,22 +118,22 @@ under env in my Claude Code settings,"* then restart Claude Code.
 
 To update, run `claude plugin marketplace update project-memory` and then
 `claude plugin update project-memory@project-memory` in a terminal, and
-restart Claude Code. To pause it, run
+restart Claude Code. A marketplace you added from GitHub has auto-update off.
+To turn it on, open `/plugin`, then Marketplaces, then project-memory, then
+Enable auto-update; `/project-memory:memory doctor` says whether it is on.
+To pause it, run
 `claude plugin disable project-memory@project-memory` and restart; `enable`
 turns it back on. To remove it, type
 `/plugin uninstall project-memory@project-memory` in Claude Code. Your notes
 and the journal stay either way, and so do the lines it added to each
 `MEMORY.md`, which keep being loaded.
-A marketplace you added yourself has auto-update off. To turn it on, open
-`/plugin`, then Marketplaces, then project-memory, then Enable auto-update;
-`/project-memory:memory doctor` says whether it is on.
 [Deleting it](../PRIVACY.md#deleting-it) lists what to delete by hand.
 
 ### How much disk space does it use?
 
 The journal keeps each exchange whole, so an entry is as long as what was
-said: everything Claude wrote in the turn, the real commands and errors, the
-files it edited, your answers to multiple-choice questions (as "Picked:"), and
+said: everything Claude wrote in the turn (up to 50,000 characters), the commands
+it ran, the files it edited, your answers to multiple-choice questions (as "Picked:"), and
 each subagent report as its own entry (cut at 8,000 characters). Half are
 under about 5 KB, and one in a hundred is over about 60 KB. A
 very busy project adds up to about 110 MB a year. The journal stays until
