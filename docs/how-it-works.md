@@ -1105,7 +1105,7 @@ project.
 
 It sees a command after an escaped quote, after git options such as
 `--no-optional-locks`, inside `{ }` or `( )`, after a line continuation, behind
-`env`, `sudo`, `command`, `rtk`, `git.exe` or a full path to git, and after
+`env`, `sudo` (with options such as `-u bob`), `cmd /c`, `command`, `rtk` (also `rtk bypass`), `git.exe` or a full path to git, and after
 `FOO=1` or `cd x &&`. A heredoc body is not a command. That is what the rule
 engine reads, and what `replay` reads in saved commands.
 
