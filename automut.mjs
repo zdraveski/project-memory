@@ -1,18 +1,17 @@
 // Automatic mutants: small breaks (an operator flipped, a condition negated,
-// a call dropped, a regex quantifier loosened) made everywhere in the code, not only where a
+// a call dropped, a return emptied) made everywhere in the code, not only where a
 // hand-written mutant in mutants/ sits. The 883 hand mutants touched a third
 // of the code lines (2026-10-30); a line no mutant touches can lose its test
 // unnoticed. Only code is mutated: strings, template text, regular
 // expressions and comments are blanked first by a masker that keeps offsets,
-// so a `<private>` in a pattern or `&&` in a comment is never touched; only
-// the regex kind reads the literals the masker reports. Each
+// so a `<private>` in a pattern or `&&` in a comment is never touched. Each
 // mutant has an id that survives edits to other lines, so automut-ignore.txt
 // can name the harmless ones.
 import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 
 export const OPS = ['equality', 'boundary', 'logic', 'boolean', 'not', 'number', 'condition', 'statement',
-  'regex', 'optional', 'return', 'catch', 'list', 'math', 'await'];
+  'optional', 'return', 'catch', 'list', 'math', 'await'];
 
 // After one of these characters, or one of these words, a `/` opens a regular
 // expression; after anything else (a name, a number, `)`, `]`) it divides.
@@ -22,7 +21,7 @@ const WORDS_RE = new Set(['return', 'typeof', 'case', 'do', 'else', 'in', 'of', 
 // src with every string, template text (not the code in its ${}), regular
 // expression and comment turned to spaces, line breaks kept: same length, so
 // an offset in the mask is the same offset in src.
-export function mask(src, regexes) {
+export function mask(src) {
   const out = src.split(''), n = src.length, tpl = [];
   const blank = (a, b) => { for (let k = a; k < b && k < n; k++) if (out[k] !== '\n') out[k] = ' '; };
   // last: the previous code character (a literal's closing one counts), what tells a regex from a division.
@@ -64,7 +63,7 @@ export function mask(src, regexes) {
       if (src[k] === '`') { blank(i, k + 1); last = k; i = k + 1; } else { tpl.push(depth); blank(i, k + 2); last = k + 1; i = k + 2; }
     } else if (c === '/' && startsRegex() && regexEnd() > 0) {
       const e = regexEnd();
-      regexes?.push([i, e]); blank(i, e); last = e - 1; i = e;
+      blank(i, e); last = e - 1; i = e;
     } else {
       if (c === '{') depth++;
       else if (c === '}') depth--;
@@ -90,49 +89,13 @@ const operand = (k, s, j) => {
   return j;
 };
 const swap = (re, to) => (k) => [...k.matchAll(re)].map((m) => [m.index, m[0], to[m[0]]]);
-// Edits of the regex literal s.slice(a, b) as [offset in s, from, to]: a quantifier loosened, an
-// anchor, the i flag, a \b or one item of a class dropped. One that no longer compiles is no mutant.
-const regexEdits = (s, a, b) => {
-  const lit = s.slice(a, b), end = lit.lastIndexOf('/'), body = lit.slice(1, end), out = [];
-  const add = (i, from, to) => out.push([i + 1, from, to]);
-  for (let i = 0; i < body.length; i++) {
-    const c = body[i];
-    if (c === '\\') { if (body[i + 1] === 'b') add(i, '\\b', ''); i++; }
-    else if (c === '[') {
-      // a class: its items (an escape, a character or a range), the first ^ not one
-      const items = [];
-      let j = i + 1;
-      if (body[j] === '^') j++;
-      while (j < body.length && body[j] !== ']') {
-        const st = j;
-        j += body[j] === '\\' ? 2 : 1;
-        if (body[j] === '-' && j + 1 < body.length && body[j + 1] !== ']') j += body[j + 1] === '\\' ? 3 : 2;
-        items.push([st, j]);
-      }
-      if (items.length > 1) for (const [st, en] of items) add(st, body.slice(st, en), '');
-      i = j;
-    } else if (c === '+' || c === '*') add(i, c, c === '+' ? '*' : '+');
-    else if (c === '?' && body[i - 1] !== '(') add(i, '?', '');
-    else if (c === '{') {
-      const m = /^\{(\d+)(,(\d*))?\}/.exec(body.slice(i));
-      if (m?.[2] !== undefined) add(i, m[0], m[3] === '' ? `{${+m[1] + 1},}` : `{${m[1]},${+m[3] + 1}}`);
-      if (m) i += m[0].length - 1;
-    } else if ((c === '^' && i === 0) || (c === '$' && i === body.length - 1)) add(i, c, '');
-  }
-  const f = lit.indexOf('i', end);
-  if (f > 0) out.push([f, 'i', '']);
-  return out.filter(([o, from, to]) => {
-    const t = lit.slice(0, o) + to + lit.slice(o + from.length), e = t.lastIndexOf('/');
-    try { new RegExp(t.slice(1, e), t.slice(e + 1)); return true; } catch { return false; }
-  }).map(([o, from, to]) => [a + o, from, to]);
-};
 // The offset of the } that closes the { at j in a masked source, or -1.
 const closeBrace = (k, j) => {
   for (let i = j, d = 0; i < k.length; i++) if (k[i] === '{') d++; else if (k[i] === '}' && --d === 0) return i;
   return -1;
 };
 // Each operator: its [offset in the line, from, to] on a masked line k whose real text is s;
-// ctx: the line's regex literals, and the whole masked and real source with this line's start.
+// ctx: the whole masked and real source, with this line's start.
 const FIND = {
   // The look-arounds leave =>, <<, >>, >>>, ?? and ?. alone.
   equality: swap(/(?<![=!<>])(?:===|!==|==|!=)(?!=)/g, { '===': '!==', '!==': '===', '==': '!=', '!=': '==' }),
@@ -155,7 +118,6 @@ const FIND = {
     return /^(?!(?:return|const|let|var|if|for|while|throw)\b)[\w$]+(?:\.[\w$]+)*\(.*\);$/.test(t) && close(t, t.indexOf('(')) === t.length - 2
       ? [[j, s.slice(j, j + t.length), 'void 0;']] : [];
   },
-  regex: (k, s, ctx) => ctx.re.flatMap(([a, b]) => regexEdits(s, a, b)),
   // ?? only alone on its line: next to another ?? , || or && the swap is a syntax error.
   optional: (k) => [...k.matchAll(/\?\.(?=[A-Za-z_$])|\?\?(?!=)/g)]
     .filter((m) => m[0] === '?.' || (k.match(/\?\?(?!=)|\|\||&&/g).length === 1))
@@ -200,13 +162,13 @@ const FIND = {
 // these 1-based lines. The id hashes the line's text, not its number, so an
 // edit elsewhere keeps it.
 export function mutants(file, src, lines) {
-  const re = [], whole = mask(src, re), masked = whole.split('\n'), copies = new Map(), out = [];
+  const whole = mask(src), masked = whole.split('\n'), copies = new Map(), out = [];
   let at = 0;
   src.split('\n').forEach((s, n) => {
     const text = s.trim(), copy = copies.get(text) ?? 0;
     copies.set(text, copy + 1);
     if (!lines || lines.has(n + 1)) {
-      const ctx = { re: re.filter(([a, b]) => a >= at && b <= at + s.length).map(([a, b]) => [a - at, b - at]), masked: whole, src, base: at };
+      const ctx = { masked: whole, src, base: at };
       for (const op of OPS) FIND[op](masked[n], s, ctx).forEach(([i, from, to], nth) => out.push({
         id: createHash('sha256').update([file, op, text, nth, copy].join('\0')).digest('hex').slice(0, 12),
         label: `auto ${op} ${file}:${n + 1} ${from.slice(0, 40)} -> ${to.slice(0, 40)}`.replace(/\s+/g, ' '),
@@ -261,15 +223,6 @@ assert.equal(mutants('t.mjs', 'x = a === b;\n')[0].id, '53c5c7f60679');
 assert.equal(mutants('t.mjs', 'if (a) f(x);\n')[0].id, '96f76b16a0bc');
 // the new kinds, each on a small source: what it mutates, what it leaves alone
 const of = (op, s) => mutants('t.mjs', s).filter((m) => m.op === op).map((m) => `${m.from}->${m.to}`);
-assert.deepEqual(of('regex', 'const r = /^a+b?$/i;\n'), ['^->', '+->*', '?->', '$->', 'i->']);
-assert.deepEqual(of('regex', 'const r = /a{2,}b{1,3}/;\n'), ['{2,}->{3,}', '{1,3}->{1,4}']);
-assert.deepEqual(of('regex', 'const r = /[abc]x[d]\\bk/;\n'), ['a->', 'b->', 'c->', '\\b->']);
-assert.deepEqual(of('regex', 'const r = /[\\s\\d_-]/;\n'), ['\\s->', '\\d->', '_->', '-->']);
-// a division, a regex in a string or a template, a comment: none; a * or ? in a class is an item, not a quantifier
-assert.deepEqual(of('regex', "x = a / b + c / d; y = '/a+/'; z = `/b*/`; // /c+/\n"), []);
-assert.deepEqual(of('regex', 'x = /[+*?]/;\n'), ['+->', '*->', '?->']);
-// the ? of (?: and (?= is no quantifier
-assert.deepEqual(of('regex', 'x = /(?:a)(?=b)/;\n'), []);
 assert.deepEqual(of('optional', 'x = a?.b ?? c; y = a ? .5 : 1; z = a?.[0]; w = a?.(1); v ??= 2;\n'), ['?.->.', '??->||']);
 assert.deepEqual(of('return', 'function f() { if (a) return a + 1; return; }\n'), ['a + 1->undefined']);
 assert.deepEqual(of('return', 'function f() { return g(\n  1);\n}\nfunction h() { return undefined; }\n'), []);
