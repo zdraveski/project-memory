@@ -884,7 +884,8 @@ function put(dir, fresh, drop, me, whole) {
   const file = join(dir, 'handoff.md');
   // The copy holds what a sweep takes out of the file, so it goes with it, even when the file has nothing left to drop (the
   // exchange rolled out of it); the next Stop of a day makes a clean one.
-  if (drop) try { rmSync(join(dir, PREV), { force: true }); } catch {}
+  // The .tmp is a copy killed half way; the temp sweeper (digits after .tmp) never takes it.
+  if (drop) for (const f of [PREV, `${PREV}.tmp`]) try { rmSync(join(dir, f), { force: true }); } catch {}
   for (let i = 0; i < 3; i++) {
     const before = raw(file);
     const next = build(before, fresh, drop, me, whole);
