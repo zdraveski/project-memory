@@ -1249,7 +1249,7 @@ catch up on conversations Claude Code has not yet deleted.
   The `autoMemoryDirectory` setting is not followed: `doctor` only warns when
   it is set. The plugin reads Claude Code's settings for two values only,
   `autoMemoryEnabled` and `autoMemoryDirectory`.
-- Tested on Linux with Node 22, Windows with Node 22 and 24 and macOS with Node 26.
+- Tested on Linux with Node 22, Windows with Node 24 and macOS with Node 26.
 - The snapshot repository only grows.
 - The suite is 8 test files and about 2,500 checks. Each pull request runs
   them on all three systems, with a sign-off check; the mutation tests and
