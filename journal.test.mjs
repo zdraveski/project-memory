@@ -2034,6 +2034,11 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
     writeFileSync(mb, [rec('user', 'b1', 0, '<private>my salary dispute with Walrus Ltd</private> research the law'), rec('assistant', 'b2', 1, [{ type: 'text', text: 'Started an agent.' }]),
       rec('user', 'b3', 10, 'meanwhile fix the typo')].join('\n') + '\n');
     ok(run('bgone', mb, 2, 'Walrus Ltd owes two months of pay') === false && !entries([sd]).some((x) => /Walrus|bgone/.test(JSON.stringify(x))), 'an agent started in a private turn is not saved when it ends in a later plain turn');
+    // The private turn's first reply is only a tool call (no text): it is still the turn the agent started in.
+    const mt = join(dirname(sd), 'ffff6666-t.jsonl');
+    writeFileSync(mt, [rec('user', 't1', 0, '<private>my salary dispute with Narwhal Ltd</private> research the law'), rec('assistant', 't2', 1, [{ type: 'tool_use', id: 'tu1', name: 'Agent', input: { prompt: 'x' } }]),
+      rec('user', 't3', 10, 'meanwhile fix the typo')].join('\n') + '\n');
+    ok(run('toolonly', mt, 2, 'Narwhal Ltd owes pay') === false && !entries([sd]).some((x) => /Narwhal/.test(JSON.stringify(x))), 'an agent started in a private turn that only called tools is not saved');
     // Control: the same conversation, an agent started after the plain prompt, is saved.
     ok(run('bgtwo', mb, 11, 'plain report ibex') === true && entries([sd]).some((x) => /ibex/.test(JSON.stringify(x))), 'an agent started in the plain turn is still saved');
     // A: <private-session> typed in the open turn, no Stop since.

@@ -280,6 +280,7 @@ const joined = (said, t) => (said ? `${said}\n\n${BLOCK}${t}` : t);
 export function turns(tail) {
   const out = [];
   let pending = null;
+  const opened = [];
   let said = '';   // the last text Claude wrote
   // A nudge holds the answer for its memory update only; a private message
   // (frozen: true) holds it to the next prompt.
@@ -377,8 +378,8 @@ export function turns(tail) {
     if (!t && !ask && !typed) continue;
     if (r.type === 'assistant' && t) said = t;
     if (ask && r.type === 'user' && BARE(ask, said)) ask = '[redacted]';
-    if (ask) pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [], base: [], ids: [], edits: new Map(), said: '', picked: [],
-      id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '' };
+    if (ask) { pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [], base: [], ids: [], edits: new Map(), said: '', picked: [],
+      id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '' }; opened.push(pending); }
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
     // Not a skill's body (isMeta, opens "Base directory for this skill:"): it names <private> in its own text, and froze the turn
@@ -395,6 +396,7 @@ export function turns(tail) {
   // A turn saved: the strict cut, redacted (its blocks were cut at twice this, unredacted).
   for (const p of out) if (p.said.length > SAID_KEEP) p.said = tailOf(p.said, SAID_KEEP);
   out.open = pending;   // the turn the transcript ends in
+  out.opened = opened;  // every turn a prompt opened, replied or not (a subagent's start turn)
   return out;
 }
 
