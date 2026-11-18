@@ -1,5 +1,5 @@
-// Automatic mutants: eight small breaks (an operator flipped, a condition
-// negated, a call dropped) made everywhere in the code, not only where a
+// Automatic mutants: small breaks (an operator flipped, a condition negated,
+// a call dropped, a return emptied) made everywhere in the code, not only where a
 // hand-written mutant in mutants/ sits. The 883 hand mutants touched a third
 // of the code lines (2026-10-30); a line no mutant touches can lose its test
 // unnoticed. Only code is mutated: strings, template text, regular
@@ -10,7 +10,8 @@
 import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 
-export const OPS = ['equality', 'boundary', 'logic', 'boolean', 'not', 'number', 'condition', 'statement'];
+export const OPS = ['equality', 'boundary', 'logic', 'boolean', 'not', 'number', 'condition', 'statement',
+  'optional', 'return', 'catch', 'list', 'math', 'await'];
 
 // After one of these characters, or one of these words, a `/` opens a regular
 // expression; after anything else (a name, a number, `)`, `]`) it divides.
@@ -88,7 +89,13 @@ const operand = (k, s, j) => {
   return j;
 };
 const swap = (re, to) => (k) => [...k.matchAll(re)].map((m) => [m.index, m[0], to[m[0]]]);
-// Each operator: its [offset in the line, from, to] on a masked line k whose real text is s.
+// The offset of the } that closes the { at j in a masked source, or -1.
+const closeBrace = (k, j) => {
+  for (let i = j, d = 0; i < k.length; i++) if (k[i] === '{') d++; else if (k[i] === '}' && --d === 0) return i;
+  return -1;
+};
+// Each operator: its [offset in the line, from, to] on a masked line k whose real text is s;
+// ctx: the whole masked and real source, with this line's start.
 const FIND = {
   // The look-arounds leave =>, <<, >>, >>>, ?? and ?. alone.
   equality: swap(/(?<![=!<>])(?:===|!==|==|!=)(?!=)/g, { '===': '!==', '!==': '===', '==': '!=', '!=': '==' }),
@@ -111,21 +118,60 @@ const FIND = {
     return /^(?!(?:return|const|let|var|if|for|while|throw)\b)[\w$]+(?:\.[\w$]+)*\(.*\);$/.test(t) && close(t, t.indexOf('(')) === t.length - 2
       ? [[j, s.slice(j, j + t.length), 'void 0;']] : [];
   },
+  // ?? only alone on its line: next to another ?? , || or && the swap is a syntax error.
+  optional: (k) => [...k.matchAll(/\?\.(?=[A-Za-z_$])|\?\?(?!=)/g)]
+    .filter((m) => m[0] === '?.' || (k.match(/\?\?(?!=)|\|\||&&/g).length === 1))
+    .map((m) => [m.index, m[0], m[0] === '?.' ? '.' : '||']),
+  // A return of one expression on its line, brackets balanced: not `return;`, not a call that goes on.
+  // The expression is read from s, not k: a string in it is blank there.
+  return: (k, s) => [...k.matchAll(/(?<![\w$.])return(?=\s)[^;]*;/g)].flatMap((m) => {
+    const a = m.index + 6, raw = s.slice(a, a + m[0].length - 7), x = raw.trim(), i = a + raw.indexOf(x);
+    const n = (re) => (k.slice(a, a + raw.length).match(re) ?? []).length;
+    return x && n(/[([{]/g) === n(/[)\]}]/g) && !/^(?:undefined|void 0)$/.test(x) ? [[i, x, 'undefined']] : [];
+  }),
+  // A catch with something in its body, which may run over many lines: the body emptied.
+  catch: (k, s, ctx) => [...k.matchAll(/(?<![\w$.])catch\s*(?:\([^)]*\)\s*)?\{/g)].flatMap((m) => {
+    const j = m.index + m[0].length - 1, e = closeBrace(ctx.masked, ctx.base + j);
+    return e > 0 && /\S/.test(ctx.masked.slice(ctx.base + j + 1, e)) ? [[j, ctx.src.slice(ctx.base + j, e + 1), '{}']] : [];
+  }),
+  list: (k, s) => [
+    ...[...k.matchAll(/(?<=\.)(?:some|every)(?=\()/g)].map((m) => [m.index, m[0], m[0] === 'some' ? 'every' : 'some']),
+    ...[...k.matchAll(/\.filter\(/g)].flatMap((m) => { const e = close(k, m.index + 7) + 1; return e ? [[m.index, s.slice(m.index, e), '']] : []; }),
+    // .slice(a, b) with two arguments: b one longer.
+    ...[...k.matchAll(/\.slice\(/g)].flatMap((m) => {
+      const j = m.index + 6, e = close(k, j), commas = [];
+      for (let i = j + 1, d = 0; i < e; i++) { if ('([{'.includes(k[i])) d++; else if (')]}'.includes(k[i])) d--; else if (k[i] === ',' && !d) commas.push(i); }
+      if (e < 0 || commas.length !== 1) return [];
+      const t = s.slice(commas[0] + 1, e), x = t.trim(), at = commas[0] + 1 + t.indexOf(x);
+      return x ? [[at, x, /^[\w$.]+$/.test(x) ? `${x} + 1` : `(${x}) + 1`]] : [];
+    }),
+  ],
+  // A binary minus (a name, number or bracket before it; not --, -=, 1e-3 or `return -1`), and Math.min / Math.max swapped.
+  math: (k) => [
+    ...[...k.matchAll(/-(?![-=])/g)].filter(({ index: i }) => {
+      const before = k.slice(0, i).trimEnd();
+      return k[i - 1] !== '-' && /[\w$)\]]$/.test(before) && !/\d[eE]$/.test(k.slice(0, i)) && !WORDS_RE.has(/[\w$]*$/.exec(before)[0]);
+    }).map((m) => [m.index, '-', '+']),
+    ...[...k.matchAll(/(?<![\w$.])Math\.(?:min|max)(?![\w$])/g)].map((m) => [m.index, m[0], m[0] === 'Math.min' ? 'Math.max' : 'Math.min']),
+  ],
+  // `await x` -> `x`; not `for await`, whose loop would change shape instead of losing a wait.
+  await: (k) => [...k.matchAll(/(?<![\w$.])await\s+/g)].filter((m) => !/\bfor\s*$/.test(k.slice(0, m.index))).map((m) => [m.index, m[0], '']),
 };
 
 // Every automatic mutant of src, in source order; with lines, only those on
 // these 1-based lines. The id hashes the line's text, not its number, so an
 // edit elsewhere keeps it.
 export function mutants(file, src, lines) {
-  const masked = mask(src).split('\n'), copies = new Map(), out = [];
+  const whole = mask(src), masked = whole.split('\n'), copies = new Map(), out = [];
   let at = 0;
   src.split('\n').forEach((s, n) => {
     const text = s.trim(), copy = copies.get(text) ?? 0;
     copies.set(text, copy + 1);
     if (!lines || lines.has(n + 1)) {
-      for (const op of OPS) FIND[op](masked[n], s).forEach(([i, from, to], nth) => out.push({
+      const ctx = { masked: whole, src, base: at };
+      for (const op of OPS) FIND[op](masked[n], s, ctx).forEach(([i, from, to], nth) => out.push({
         id: createHash('sha256').update([file, op, text, nth, copy].join('\0')).digest('hex').slice(0, 12),
-        label: `auto ${op} ${file}:${n + 1} ${from.slice(0, 40)} -> ${to.slice(0, 40)}`,
+        label: `auto ${op} ${file}:${n + 1} ${from.slice(0, 40)} -> ${to.slice(0, 40)}`.replace(/\s+/g, ' '),
         op, line: n + 1, at: at + i, from, to,
       }));
     }
@@ -154,7 +200,7 @@ const ops = (s) => mutants('t.mjs', s).map((m) => `${m.op} ${m.from}->${m.to}`);
 assert.deepEqual(ops('if (a === b) f();\n'), ['condition (a === b)->(!(a === b))', 'equality ===->!==']);
 assert.deepEqual(ops('log.push(x);\n'), ['statement log.push(x);->void 0;']);
 assert.deepEqual(ops('x = a < 3 && !y;\n'), ['boundary <-><=', 'number 3->4', 'logic &&->||', 'not !y->y']);
-assert.deepEqual(ops('const f = (a) => a >= 10 ?? true;\n'), ['boundary >=->>', 'boolean true->false']);
+assert.deepEqual(ops('const f = (a) => a >= 10 ?? true;\n'), ['boundary >=->>', 'optional ??->||', 'boolean true->false']);
 // an id survives an edit elsewhere
 const one = mutants('t.mjs', 'x = a === b;\n')[0].id, two = mutants('t.mjs', '// new\n\nx = a === b;\n')[0].id;
 assert.equal(one, two);
@@ -172,3 +218,21 @@ assert.equal(ignored(null).size, 0);
 assert.equal(ignored('# header\n0123456789ab why\n').size, 1);
 assert.deepEqual([...ignored('0123456789ab why\r\n\r\n   \r\n')], [['0123456789ab', 'why']]);
 assert.throws(() => ignored('0123 too short\n'), /not "<id> <reason>"/);
+// the existing kinds keep their ids: automut-ignore.txt names mutants by them
+assert.equal(mutants('t.mjs', 'x = a === b;\n')[0].id, '53c5c7f60679');
+assert.equal(mutants('t.mjs', 'if (a) f(x);\n')[0].id, '96f76b16a0bc');
+// the new kinds, each on a small source: what it mutates, what it leaves alone
+const of = (op, s) => mutants('t.mjs', s).filter((m) => m.op === op).map((m) => `${m.from}->${m.to}`);
+assert.deepEqual(of('optional', 'x = a?.b ?? c; y = a ? .5 : 1; z = a?.[0]; w = a?.(1); v ??= 2;\n'), ['?.->.', '??->||']);
+assert.deepEqual(of('return', 'function f() { if (a) return a + 1; return; }\n'), ['a + 1->undefined']);
+assert.deepEqual(of('return', 'function f() { return g(\n  1);\n}\nfunction h() { return undefined; }\n'), []);
+// a string is blank in the mask, but still the expression
+assert.deepEqual(of('return', "if (a) return 'x';\nreturn (a) ? m : 'y';\n"), ["'x'->undefined", "(a) ? m : 'y'->undefined"]);
+assert.deepEqual(of('catch', 'try { f(); } catch (e) { g(e); }\n'), ['{ g(e); }->{}']);
+assert.deepEqual(of('catch', 'try {\n  f();\n} catch {\n  g();\n  h();\n}\n').map((x) => x.replace(/\s+/g, ' ')), ['{ g(); h(); }->{}']);
+assert.deepEqual(of('catch', 'try { f(); } catch { /* nothing */ }\ntry { f(); } catch (e) {}\n'), []);
+assert.deepEqual(of('list', 'a.some(f); b.every(g); c.filter(h).map(i); d.slice(1, n); e.slice(1); f.slice(0, x ? 1 : 2);\n'),
+  ['some->every', 'every->some', '.filter(h)->', 'n->n + 1', 'x ? 1 : 2->(x ? 1 : 2) + 1']);
+assert.deepEqual(of('math', 'x = a - b; y = -a; z = a-- ; w = a - -b; v = a -= 1; u = 1e-3; return -1; t = Math.min(a, b) + Math.max(a, b);\n'),
+  ['-->+', '-->+', 'Math.min->Math.max', 'Math.max->Math.min']);
+assert.deepEqual(of('await', 'x = await f(); for await (const a of b) { await g(a); }\n'), ['await ->', 'await ->']);

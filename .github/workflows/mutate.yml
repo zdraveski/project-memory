@@ -48,7 +48,8 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.plan.outputs.shards) }}
     runs-on: windows-latest
-    timeout-minutes: 60
+    # 17 shards of the larger automatic set (1.5.3 kinds) can pass 60 min; 150 leaves room.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
