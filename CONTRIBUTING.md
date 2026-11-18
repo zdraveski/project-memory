@@ -227,7 +227,7 @@ Open a pull request against `master`: nobody, the maintainer included, can
 push to it directly. Sign off every commit
 ([below](#developer-certificate-of-origin)). Run `node check.mjs` first; CI runs
 the suites on every platform. The pull request merges only when its required
-checks pass: the three test jobs and the sign-off check (`dco`). Have the
+checks pass: the Linux 22, Windows 24 and macOS 26 test jobs and the sign-off check (`dco`). Have the
 change reviewed from its diff alone, by someone (or an agent) who has not heard why you made it. Leave the
 version number alone, and describe the change under an `## Unreleased`
 heading at the top of `CHANGELOG.md` (add the heading if it isn't there), in
