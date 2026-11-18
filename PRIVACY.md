@@ -23,13 +23,15 @@ This page says what it reads, what it saves, and how to remove it.
 - The git information of the folder a conversation starts in (its `.git`
   folder or file, and those of the folders above it), to find the repository
   whose notebook Claude Code uses, as Claude Code does.
-- Nine settings from the environment, by name: `PROJECT_MEMORY_BRIEFING`
-  (set to `0`, the startup briefing is not shown), and eight that Claude Code
+- Eleven settings from the environment, by name: `PROJECT_MEMORY_BRIEFING`
+  (set to `0`, the startup briefing is not shown), and ten that Claude Code
   reads too: `CLAUDE_PROJECT_DIR` (the project folder), `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME` and
   `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (where the notes are, and whether they're
   on), and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_DISABLE_1M_CONTEXT`,
   `CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
-  (how big a conversation can get). The home folder (`HOME` or `USERPROFILE`)
+  (how big a conversation can get). `DISABLE_COMPACT` (on or off) and
+  `ANTHROPIC_MODEL` (tested against a pattern, never saved) are read only to
+  decide whether `CLAUDE_CODE_MAX_CONTEXT_TOKENS` counts. The home folder (`HOME` or `USERPROFILE`)
   is read to find `~/.claude`. Nothing else in the environment.
 - Claude Code's lists of installed plugins and marketplaces, and the plugin's
   own manifest, in `~/.claude/plugins`, only when you run the `doctor` check,
@@ -43,7 +45,9 @@ This page says what it reads, what it saves, and how to remove it.
 
 The git-rule watcher (a PreToolUse hook) reads the notes that hold an `enforce:` rule, the first bytes of the conversation's record to find its store, and the git command about to run, to compare it with the rules. It sends nothing anywhere.
 
-When a subagent finishes, the plugin reads the end of that subagent's own conversation record and saves its final report and the first line of its task in the journal. The report is cut at 8,000 characters and cleaned of secrets, and `forget` removes it.
+The command `memory enforce replay <note>` is run by hand. It reads the git commands Claude ran through Bash or PowerShell in this project's conversation records of the last 30 days (every project's with `--all`) and prints the ones that match the note's rule to your terminal, each clipped to 160 characters with secrets replaced. It skips private conversations and projects with memory off, and saves nothing.
+
+When a subagent finishes, the plugin reads the end of that subagent's own conversation record and saves its final report and the first line of its task in the journal. The report is cleaned of secrets, and `forget` removes it. A report over 8,000 characters keeps its first 5,000 and last 2,900, with a note of how many characters were cut between them.
 
 ## What it saves
 
@@ -81,8 +85,10 @@ All of it stays in `~/.claude/projects` on your computer:
     path are kept. A number is kept only under a name that counts something,
     such as `TOKEN_LIMIT=4096`; after a password or token option, or under a
     secret's name, it is replaced, since it can be a PIN. A value in quotes
-    is replaced whole, blanks and all. Text is cut to 64 KB before the
-    secrets are removed, so one huge paste cannot stall a hook. Not found:
+    is replaced whole, blanks and all. For the handoff, text is cut to 64 KB
+    before the secrets are removed, so one huge paste cannot stall a hook. The
+    journal cleans a reply whole before it caps it; a request over 200,000
+    characters is cut to that length first. Not found:
     - a value with blanks and no quotes, past its first word (in
       `password: p@ss w0rd` nothing is replaced, since `p@ss` is under 6
       characters);
@@ -99,6 +105,9 @@ All of it stays in `~/.claude/projects` on your computer:
 
     Going the other way, a long list of small numbers in code can be cut as a
     possible Solana key.
+
+    Only secrets are removed. Email addresses, phone numbers, card numbers
+    and ID numbers are saved as typed; put them between `<private>` tags.
 
     No tool recognizes every secret, so put such text between `<private>`
     tags.
@@ -148,11 +157,10 @@ All of it stays in `~/.claude/projects` on your computer:
   failed is not listed as changed. When a command failed and no later try
   of it worked, the last 300 characters of its error are saved after it,
   with secrets replaced. Commands run through context-mode's ctx_execute
-  and ctx_batch tools are listed too, with their code. An entry is kept
-  whole: a long pasted text or a long command
-  is kept in full, up to 50,000 characters for one request or reply and 20,000
-  for one command, and
-  secrets in it are still replaced. Entries saved before 1.5.0 are not
+  and ctx_batch tools are listed too, with their code. A long pasted text or a long command
+  is kept in full up to a cap, and secrets in it are still replaced. The cap is 50,000 characters. For a reply, past it the start is dropped
+  and the end kept, with a note of how many characters came before. For a request, the
+  start is kept and the end is cut, with a note of how many were cut. A command is cut at 20,000. Entries saved before 1.5.0 are not
   rewritten: they keep the form they were saved in.
   - The rules above apply to it too: secrets are replaced with `[redacted]`,
     commands included, a `<private>` message's reply is saved as `[private]`
@@ -207,7 +215,8 @@ All of it stays in `~/.claude/projects` on your computer:
   tasks still running, and the names of the files Claude had changed. It
   lasts until Claude's next reply. None is made for a private conversation,
   or for one held with auto memory off, even after auto memory is back on.
-- When a conversation is about 85% full, project-memory asks Claude to write
+- When a conversation is getting full (about 54% of a 200k window; later in
+  a very big one, never past 85%), project-memory asks Claude to write
   down the work in progress: in its notes, and in `handoff.md` outside the
   automatic record. Those lines are Claude's own writing, and stay until
   Claude or you change them. Claude isn't asked in a private conversation,
@@ -279,7 +288,8 @@ project-memory itself connects to nothing: it makes no internet connections
 and has no server, and the git repository it keeps has no remote and is never
 pushed.
 
-It does add a briefing to your conversations: when one starts, after
+It does add a briefing to your conversations: when one starts or
+resumes, after
 `/clear` and after a compaction, up to 9,500 characters. The briefing can hold
 the start of recent messages and replies in this project, what other
 conversations open on this project were last asked, a line saying the
@@ -320,7 +330,7 @@ Uninstalling the plugin leaves all of this in place. To delete:
   once. While project-memory is on and Git is installed, the next change to a
   note, or the next day, starts a new one.
 - the record of where you left off: `handoff.md` and its daily copy
-  `handoff.md.prev` in a project's `memory` folder, and the line that points to it in its `MEMORY.md`.
+  `handoff.md.prev` (and a half-written `handoff.md.prev.tmp`, if one is left) in a project's `memory` folder, and the line that points to it in its `MEMORY.md`.
 - the archive: `MEMORY-archive.md` in a project's `memory` folder, and the
   `Archive` line in its `MEMORY.md`. It holds the pointers to older notes:
   move any you want loaded again back into `MEMORY.md` first. The shared
@@ -339,7 +349,7 @@ Uninstalling the plugin leaves all of this in place. To delete:
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
   `.journal-failed-…` file and the folder `.nudge`; in each project's
   `memory` folder, `.tiered`, `.facts`, `.health`, `.private-sessions`,
-  `.off-periods` and `.project-off` (the marker; delete it to turn that project on);
+  `.off-periods`, `.enforce-log`, `.enforce.json` and `.project-off` (the marker; delete it to turn that project on);
   and in the shared notebook's (`_shared/memory`), `.tiered`, `.facts` and
   `.health`. Delete `.memory-off`, `.private-sessions` and `.off-periods` only
   once project-memory is removed for good: they list the conversations it
