@@ -600,6 +600,20 @@ if (!quick) {
   ok(r.status === 0 && readFileSync(join(root, 'proj-two', 'memory', 'handoff.md'), 'utf8').includes('held-turn question'), `--stop: a store held a little longer than one wait still gets the turn (got ${r.stdout})`);
   await new Promise((done) => holder.once('close', done));
 }
+// The same retry without the 2.6 s wait (the mutants run quick): a preload refuses the first `.lock` and steps the clock past its
+// wait, so the first try is busy at once; the retry gets the lock, and the turn is saved.
+{
+  const tp = join(root, 'proj-two', 'retry.jsonl'), pre = join(tempDir('memtier-retry-'), 'retry.cjs');
+  const rec = (type, text) => JSON.stringify({ type, timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text }] } });
+  writeFileSync(tp, rec('user', 'retried-turn question') + '\n' + rec('assistant', 'retried-turn answer') + '\n');
+  writeFileSync(pre, `const fs = require('node:fs'), mk = fs.mkdirSync, now = Date.now; let skew = 0, refused = false;
+fs.mkdirSync = (p, ...a) => { if (!refused && String(p).endsWith('.lock')) { refused = true; skew = 5000; throw Object.assign(new Error('EEXIST'), { code: 'EEXIST' }); } return mk(p, ...a); };
+Date.now = () => now() + skew;
+require('node:module').syncBuiltinESMExports();
+`);
+  const r = spawnSync(process.execPath, ['--require', pre, TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: tp, session_id: 'retrysess' }) });
+  ok(r.status === 0 && readFileSync(join(root, 'proj-two', 'memory', 'handoff.md'), 'utf8').includes('retried-turn question'), `--stop: a first try that finds the store held is tried once more, and the turn saved (got ${r.status} ${r.stdout}${r.stderr})`);
+}
 // A Stop that finds the store held on both tries saved nothing, wrote no failure file, and deleted an older one (1.5.2).
 if (!quick) {
   const lock = join(root, 'proj-two', 'memory', '.lock'), tp = join(root, 'proj-two', 'busy2.jsonl'), failed = join(root, '.handoff-failed-proj-two');

@@ -625,6 +625,11 @@ ok(/^ok +1 pack index file\(s\) [^\n]*have no pack[^\n]*pack-dead\.idx$/m.test((
   { const t = new Date(Date.now() - 120000); utimesSync(d, t, t); }
   const o = await cli('doctor');
   ok(o.status === 1 && new RegExp(`^PROBLEM .*pm-purge-x.*forget`, 'm').test(o.stdout), `doctor: an old pm-purge folder is a problem, named, with the command that clears it (got ${o.stdout})`);
+  // Named past LOCK_STALE, not at it (the same edge as a lock's).
+  { const { LOCK_STALE } = await import('./store.mjs'), realNow = Date.now, old = new Date(realNow() - 3600_000); utimesSync(d, old, old);
+    const mt = statSync(d).mtimeMs; let edge, past;
+    try { Date.now = () => mt + LOCK_STALE; edge = await cli('doctor'); Date.now = () => mt + LOCK_STALE + 1; past = await cli('doctor'); } finally { Date.now = realNow; }
+    ok(!/pm-purge/.test(edge.stdout) && /pm-purge-x/.test(past.stdout), `doctor: a pm-purge folder exactly LOCK_STALE old is not named, one ms more is (got ${edge.stdout} / ${past.stdout})`); }
   rmSync(d, { recursive: true, force: true }); }
 // No git is a setup the README allows: a note, not a problem. Snapshots off say
 // what is lost; failing ones come with what to do.
@@ -1123,6 +1128,12 @@ lemur lemur lemur lemur
   r = await jcli('show', ...spaced.key.split(' '));
   rmSync(join(jd, 'journal', '2026-10-13.md'));   // a day no other check uses
   ok(r.status === 0 && /^     Asked: feed the okapi$/m.test(r.stdout), `show takes an unquoted key as its words (got ${r.stdout})`);
+  // Two words are enough: a key of one space, typed without quotes.
+  const twoW = entry('2026-10-13 12:00', 'feed the tapir', { key: 'c0ffee13 a1b2c3d4e5f7' });
+  day(jd, '2026-10-13', [twoW]);
+  r = await jcli('show', ...twoW.key.split(' '));
+  rmSync(join(jd, 'journal', '2026-10-13.md'));
+  ok(r.status === 0 && /^     Asked: feed the tapir$/m.test(r.stdout), `show takes an unquoted key of two words (got ${r.stdout})`);
   // One long request asked again and again is one hit, with its count, days and the copies' keys.
   r = await jcli('search', 'wombat', 'feed');
   ok((r.stdout.match(/^     Asked: feed the wombat its evening/gim) || []).length === 1 && r.stdout.includes(`\n     2 more like this, 2026-10-04..2026-10-06: ${w2.key}, ${w1.key}; --same takes them all\n`) &&
@@ -2740,6 +2751,21 @@ See [[nonexist-${GH}]]
   ok(/could not be purged/.test(r.stdout) && /snapshot/.test(r.stdout) && existsSync(join(root, '.git', 'config.lock')), `forget --purge refuses while a snapshot holds the repository (got ${r.stdout})`);
   unlinkSync(join(root, '.git', 'config.lock'));
   ok(/still hold/.test(r.stdout) && /--purge/.test(r.stdout), `a failed purge says the snapshots still hold the text and what to run (got ${r.stdout})`);
+}
+
+// git writes a path with bytes past ASCII as "..." with octal escapes (a store folder named with an accent): the purge reads them back.
+{
+  const { render } = await import('./journal.mjs');
+  const pd = join(root, 'C--pürge', 'memory'), word = 'okapi-' + 'quoted';
+  mkdirSync(join(pd, 'journal'), { recursive: true });
+  const e = { key: 'pk2', at: '2020-01-03 10:00', s: 'c0ffee13', t: 'C--pürge/c0ffee13-full', branch: 'main', asked: `remember ${word}`, answered: 'noted', changed: [], ran: [] };
+  writeFileSync(join(pd, 'journal', '2020-01-03.md'), `# Journal 2020-01-03\n\n${render(e)}\n`);
+  writeFileSync(join(pd, 'MEMORY.md'), '# Memory Index\n');
+  tier(); tier();
+  const held = () => spawnSync('git', ['-C', root, 'log', '--all', '-S' + word, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
+  ok(held(), 'fixture: the snapshots hold the day of a store with an accent in its name');
+  const r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
+  ok(/purged from the snapshots/.test(r.stdout) && !held(), `forget --purge drops a day whose path git wrote with octal escapes (got ${r.stdout})`);
 }
 
 // 1.5.2 finding 3: the purge rewrites a long history in one stream, not one shell and one git rm per commit (0.7 s each: 507 s for 709).

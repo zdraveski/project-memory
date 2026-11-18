@@ -2061,6 +2061,26 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
     writeFileSync(ag, r('user', 'l-a', 2, 'task late') + '\n');
     ok(subagent({ ...input, agent_id: 'late', transcript_path: mb, agent_transcript_path: ag, last_assistant_message: 'Gnu Ltd owes pay' }) === false && !entries([sd]).some((x) => /Gnu Ltd/.test(JSON.stringify(x))), 'an agent started in a private turn cut off by the tail is not saved when a later plain turn is open');
   }
+  // 1.5.2 mutants: the edges of "the turn open when the agent started".
+  {
+    const base = Date.parse('2026-06-03T10:00:00Z'), iso = (s) => new Date(base + s * 1000).toISOString();
+    const rec = (type, uuid, s, content) => JSON.stringify({ type, uuid, timestamp: iso(s), cwd: 'C:\\journal-subagent', message: { role: type, content } });
+    const queuedRec = (s, p) => JSON.stringify({ type: 'attachment', timestamp: iso(s), attachment: { type: 'queued_command', prompt: p, commandMode: 'prompt' } });
+    const run = (name, main, startAt, report) => { const ag = join(dirname(sd), `agent-${name}.jsonl`); writeFileSync(ag, rec('user', `${name}-u`, startAt, `task ${name}`) + '\n'); return subagent({ ...input, agent_id: name, transcript_path: main, agent_transcript_path: ag, last_assistant_message: report }); };
+    const saved = (re) => entries([sd]).some((x) => re.test(JSON.stringify(x)));
+    // A turn opened in the very second the agent started is the agent's turn, not the one before it (<=).
+    const me = join(dirname(sd), 'hhhh8888-edge.jsonl');
+    writeFileSync(me, [rec('user', 'e1', 0, '<private>my dispute with Heron Ltd</private> research it'), rec('user', 'e2', 10, 'meanwhile fix the typo')].join('\n') + '\n');
+    ok(run('edge', me, 0, 'Heron Ltd owes pay') === false && !saved(/Heron/), 'an agent that starts in the second a private turn opened is that turn\'s, not saved');
+    // Every turn opened after the agent started (clocks apart): the open turn stands, as the whole file was read.
+    const mo = join(dirname(sd), 'iiii9999-open.jsonl');
+    writeFileSync(mo, rec('user', 'o1', 10, '<private>my dispute with Stork Ltd</private> research it') + '\n');
+    ok(run('early', mo, 5, 'Stork Ltd owes pay') === false && !saved(/Stork/), 'an agent that starts before the first turn is judged by the open turn when the whole file was read');
+    // A turn frozen by a private message queued after it (not by its own prompt) holds its agents' reports too.
+    const mf = join(dirname(sd), 'jjjj0000-frozen.jsonl');
+    writeFileSync(mf, [rec('user', 'f1', 0, 'check the vault'), queuedRec(1, '<private>vault PIN 9154 Ibis</private>')].join('\n') + '\n');
+    ok(run('froz', mf, 2, 'The vault PIN is 9154 Ibis') === false && !saved(/Ibis/), 'a report from an agent started in a turn frozen by a queued private message is not saved');
+  }
 }
 
 // holds() reads both spellings of an accent: a term typed either way finds an entry written either way.
