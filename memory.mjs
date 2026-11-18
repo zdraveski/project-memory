@@ -680,6 +680,7 @@ export function history(dirs, file, everywhere = false, max = 30) {
   const verb = { A: 'added', M: 'changed', D: 'deleted' };
   const why = unsnapped();
   if (why) return no(why);
+  const blocks = [];
   try {
     for (const dir of dirs) {
       const f = named(dir, file);
@@ -695,9 +696,11 @@ export function history(dirs, file, everywhere = false, max = 30) {
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
       const moved = !isShared(dir) && !isIndex(f) && existsSync(join(sharedStore(), f)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
-      if (lines.length) return { ok: true, lines: [join(dir, f), ...lines.slice(0, max), ...(lines.length > max ? [`  and ${lines.length - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, f).map((p) => `"${p}"`).join(' ')}`] };
+      // --all prints a block per project that has the memory; without it the first.
+      if (lines.length) { blocks.push([join(dir, f), ...lines.slice(0, max), ...(lines.length > max ? [`  and ${lines.length - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, f).map((p) => `"${p}"`).join(' ')}`]); if (!everywhere) break; }
     }
   } catch (e) { return no(`no snapshots to read: ${gitWhy(e)}`); }
+  if (blocks.length) return { ok: true, lines: blocks.flat() };
   return no(`no snapshot holds ${file} (looked in ${dirs.join(', ')}): search <words> finds a memory's name${everywhere ? '' : '; --all looks in every project'}`);
 }
 
