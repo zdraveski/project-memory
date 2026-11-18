@@ -101,7 +101,7 @@ Entries saved before this version are not rewritten.
 ### Old secrets
 
 - **`memory rescan` finds secrets that were saved before a redaction rule existed.** It checks your notes, journal days, handoff and every snapshot with today's rules, and prints counts and file names, never the text. Nothing changes unless you add `--apply --yes`.
-- **`memory rescan --apply --yes` replaces each one with `***REMOVED***` and removes it from the snapshot history.** It first saves a backup (a copy of the old history and the changed files) and tells you where it is. The backup still holds the secrets, so delete it when you have checked the result. Revoke the secret with the service that issued it first; every snapshot that held one gets a new ID.
+- **`memory rescan --apply --yes` replaces each one with `[redacted]` and removes it from the snapshot history.** It first saves a backup (a copy of the old history and the changed files) and tells you where it is. The backup still holds the secrets, so delete it when you have checked the result. Revoke the secret with the service that issued it first; every snapshot that held one gets a new ID.
 
 ### Settings and size
 
