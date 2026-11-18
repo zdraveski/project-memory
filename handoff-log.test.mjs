@@ -424,6 +424,21 @@ const printLive = () => execFileSync(process.execPath, [join(liveDir, 'handoff-l
 ok(!/outside deploy/.test(printLive()), 'a deployed copy as deployed: nothing said');
 install(dirname(HOOK), join(home, 'hooks-live-node'), 'test', undefined, 'C:/x/node.exe');
 ok(JSON.parse(readFileSync(join(home, 'hooks-live-node', 'hooks', 'hooks.json'), 'utf8')).hooks.SubagentStop[0].hooks[0].command === 'C:/x/node.exe', 'a deploy rewrites the SubagentStop command to the node path');
+// 1.5.2 finding 14: the manifest names the repo's origin; a file an older manifest listed and this release dropped is deleted, and
+// nothing outside the deploy folder ever is.
+{
+  const to = join(home, 'hooks-live-drop'), outside = join(home, 'outside-deploy.txt');
+  writeFileSync(outside, 'keep');
+  install(dirname(HOOK), to, 'one', undefined, undefined, 'https://example.test/r.git');
+  ok(JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8')).origin === 'https://example.test/r.git', 'the manifest names the origin');
+  const m = JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8'));
+  writeFileSync(join(to, 'cut-feature.mjs'), 'old'); mkdirSync(join(to, 'sub')); writeFileSync(join(to, 'sub', 'old.md'), 'old');
+  m.files['cut-feature.mjs'] = 'x'; m.files['sub/old.md'] = 'x'; m.files['../outside-deploy.txt'] = 'x'; m.files[outside] = 'x'; m.files['..'] = 'x'; m.files['sub/../../outside-deploy.txt'] = 'x';
+  writeFileSync(join(to, '.deployed.json'), JSON.stringify(m));
+  install(dirname(HOOK), to, 'two');
+  ok(!existsSync(join(to, 'cut-feature.mjs')) && !existsSync(join(to, 'sub', 'old.md')), 'a file the old manifest listed and the new one does not is deleted');
+  ok(readFileSync(outside, 'utf8') === 'keep' && existsSync(home) && existsSync(join(to, 'store.mjs')), 'a manifest path that leaves the deploy folder deletes nothing');
+}
 // A damaged manifest says nothing, and costs nothing else: thrown, it took the
 // whole startup line with it, the other-session warning too (review, 2026-10-26).
 const asDeployed = readFileSync(join(liveDir, '.deployed.json'), 'utf8'), whole = printLive();
@@ -2430,6 +2445,11 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   // Valid JSON that is not an object gets past the parse and fails in the run path.
   const bad4 = spawnSync(process.execPath, [BRIEF, '--print'], { input: 'null', env: process.env, encoding: 'utf8' });
   ok(bad4.status === 0 && /^Memory briefing failed \(/.test(bad4.stdout), `a failure after the parse gives the line (got ${JSON.stringify(bad4.stdout)})`);
+  // 1.5.2 finding 15: under Node 22 the starter says so in one line (a preload fakes the version), and stays quiet from 22 up.
+  const fake = join(home, 'fake-node.cjs'), old = (v, env = {}) => { writeFileSync(fake, `Object.defineProperty(process, 'versions', { value: { ...process.versions, node: '${v}' } });`); return spawnSync(process.execPath, ['--require', fake, BRIEF, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source: 'startup' }), env: { ...process.env, ...env }, encoding: 'utf8' }); };
+  ok(/^project-memory needs Node 22 or newer, this is Node 20\.11\.0/.test(old('20.11.0').stdout), 'Node 20 gets a one-line warning first');
+  ok(!/needs Node 22/.test(old('22.0.0').stdout), 'Node 22 gets none');
+  ok(old('20.11.0', { PROJECT_MEMORY_BRIEFING: '0' }).stdout === '', 'the off switch silences the warning too');
 }
 
 
@@ -2849,6 +2869,8 @@ require('node:module').syncBuiltinESMExports();
     mkdirSync(here, { recursive: true });
     writeFileSync(join(here, '.deployed.json'), JSON.stringify({ files: { 'gone.mjs': 'abc' }, repo: 'C:\\my repo' }));
     ok(edited_(here)[0]?.includes('edit C:\\my repo and run node deploy.mjs there'), 'the message names the repo the manifest names');
+    writeFileSync(join(here, '.deployed.json'), JSON.stringify({ files: { 'gone.mjs': 'abc' }, repo: join(home, 'no-such-clone'), origin: 'https://example.test/r.git' }));
+    ok(edited_(here)[0]?.includes('https://example.test/r.git'), 'a repo path that is gone is named by its origin (1.5.2 finding 14)');
     writeFileSync(join(here, '.deployed.json'), JSON.stringify({ files: { 'gone.mjs': 'abc' } }));
     ok(edited_(here)[0]?.includes('edit the hooks repo and run node deploy.mjs there'), 'and says the hooks repo when it names none');
   }

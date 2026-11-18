@@ -8,9 +8,9 @@
 //
 // Run: node deploy.mjs [--tiering-change] [--full]
 // (from this repo; a few minutes, ~70 with --full, which adds every mutant)
-import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSync, realpathSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSync, realpathSync, rmSync } from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { hash } from './handoff-log.mjs';
 import { BUSY, sleep } from './store.mjs';
@@ -38,8 +38,10 @@ export const HOOKS = ['store.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs'
 // did: a Claude Code started without node on its PATH (the desktop app,
 // a service) would run none of them, and the startup line that says so is a
 // hook too. The repo's hooks.json keeps plain `node`.
-export function install(from, to, commit, patch, node) {
+// `origin` is the repo's remote URL: the folder `from` may be a throwaway clone that is gone later.
+export function install(from, to, commit, patch, node, origin) {
   const files = {};
+  let before = {}; try { before = JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8')).files ?? {}; } catch {}
   for (const f of HOOKS) {
     let buf = readFileSync(join(from, f));
     if (patch !== undefined && f === '.claude-plugin/plugin.json') {
@@ -62,8 +64,13 @@ export function install(from, to, commit, patch, node) {
     catch (e) { if (i >= 3 || !BUSY.includes(e.code)) throw e; sleep(100); }
   }
   // Each file's size and mtime as written: the startup check reads only a file whose stat moved.
+  // A file an earlier release shipped and this one dropped. Only paths inside `to`: the old manifest is a file anyone can edit.
+  for (const f of Object.keys(before)) {
+    const p = resolve(to, f);
+    if (!HOOKS.includes(f) && p.startsWith(resolve(to) + sep)) rmSync(p, { force: true });
+  }
   const stat = Object.fromEntries(HOOKS.map((f) => { const s = statSync(join(to, f)); return [f, [s.size, s.mtimeMs]]; }));
-  writeFileSync(join(to, '.deployed.json'), JSON.stringify({ commit, repo: from, at: new Date().toISOString(), files, stat }) + '\n');
+  writeFileSync(join(to, '.deployed.json'), JSON.stringify({ commit, repo: from, origin, at: new Date().toISOString(), files, stat }) + '\n');
   writeFileSync(join(to, 'README.md'), `Deployed by ${join(from, 'deploy.mjs')} after the full check. Edit there and deploy; an edit here is live and untested, and the startup line will say so.\n`);
 }
 
@@ -115,7 +122,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // copied has to be what was checked.
   if (git('rev-parse', '--short', 'HEAD') !== commit || dirty()) fail('the repo changed during the check: deploy again');
   // The commit count is the patch number: it only grows on master.
-  install(repo, LIVE, commit, Number(git('rev-list', '--count', 'HEAD')), process.execPath);
+  let origin; try { origin = execFileSync('git', ['-C', repo, 'remote', 'get-url', 'origin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
+  install(repo, LIVE, commit, Number(git('rev-list', '--count', 'HEAD')), process.execPath, origin);
   console.log(`deployed ${commit} to ${LIVE}`);
   // Installed as a plugin: it reads the live copy in place, so this deploy is
   // already what it runs. The cache copy beside it is not refreshed (that took

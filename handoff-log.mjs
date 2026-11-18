@@ -1048,7 +1048,7 @@ export function edited(here = dirname(fileURLToPath(import.meta.url))) {
         return hash(readFileSync(join(here, f))) !== m.files[f];
       } catch { return true; }
     });
-    return bad.length ? [`Memory hooks changed outside deploy.mjs, live and untested: ${bad.join(', ')} in ${here}. For the user: edit ${m.repo || 'the hooks repo'} and run node deploy.mjs there (a deploy replaces these edits).`] : [];
+    return bad.length ? [`Memory hooks changed outside deploy.mjs, live and untested: ${bad.join(', ')} in ${here}. For the user: edit ${m.repo ? (existsSync(m.repo) || !m.origin ? m.repo : `${m.repo} (gone; clone ${m.origin})`) : 'the hooks repo'} and run node deploy.mjs there (a deploy replaces these edits).`] : [];
   } catch { return []; }
 }
 
