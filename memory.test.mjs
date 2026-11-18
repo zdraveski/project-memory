@@ -252,6 +252,11 @@ for (const g of given) {
   r = await cli(...g);
   ok(r.status === 1 && r.stdout === `${g[0]} does not take ${o}; help lists the options\n`, `${g[0]} refuses ${o} (got ${r.stdout})`);
 }
+// 1.5.2 review: a command named like a built-in object (constructor, toString) is an unknown command, not a crash.
+for (const g of [['constructor', '--all'], ['toString', '--session', 'abc']]) {
+  r = await cli(...g);
+  ok(r.status === 1 && r.stdout.startsWith(`no command "${g[0]}"`), `${g[0]} is an unknown command (got ${r.stdout}${r.stderr})`);
+}
 // --since after --until matches no day: refused, not "nothing matches" (audit 17).
 r = await cli('search', '--since', '2026-11-12', '--until', '2026-11-01');
 ok(r.status === 1 && r.stdout === '--since 2026-11-12 is after --until 2026-11-01\n', `--since after --until is refused (got ${r.stdout})`);

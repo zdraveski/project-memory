@@ -524,7 +524,7 @@ After `restore`, the note's text equals one of the texts the round gave it; afte
 
 - [ ] **Step 2: Generate it**
 
-A step that edits a note between Stops (the round records each text); then `history <note>`, `restore <note> ... --yes`, `promote <note> --yes`, `doctor`, each once per round with a 40% chance.
+A step that edits a note between Stops (the round records each text); then `history <note>`, `restore <note> ...`, `promote <note>`, `doctor`, each once per round with a 40% chance.
 
 - [ ] **Step 3: Run it**
 

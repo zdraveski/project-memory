@@ -438,6 +438,12 @@ ok(JSON.parse(readFileSync(join(home, 'hooks-live-node', 'hooks', 'hooks.json'),
   install(dirname(HOOK), to, 'two');
   ok(!existsSync(join(to, 'cut-feature.mjs')) && !existsSync(join(to, 'sub', 'old.md')), 'a file the old manifest listed and the new one does not is deleted');
   ok(readFileSync(outside, 'utf8') === 'keep' && existsSync(home) && existsSync(join(to, 'store.mjs')), 'a manifest path that leaves the deploy folder deletes nothing');
+  // 1.5.2 review: a manifest entry that names a folder is skipped; it does not stop the deploy before the new manifest is written.
+  mkdirSync(join(to, 'adir')); writeFileSync(join(to, 'adir', 'keep.txt'), 'k'); writeFileSync(join(to, 'zfile.txt'), 'old');
+  m.files = { adir: 'x', 'zfile.txt': 'x' };
+  writeFileSync(join(to, '.deployed.json'), JSON.stringify(m));
+  install(dirname(HOOK), to, 'three');
+  ok(JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8')).commit === 'three' && existsSync(join(to, 'adir', 'keep.txt')) && !existsSync(join(to, 'zfile.txt')), 'a folder named in the old manifest does not abort the deploy');
 }
 // A damaged manifest says nothing, and costs nothing else: thrown, it took the
 // whole startup line with it, the other-session warning too (review, 2026-10-26).

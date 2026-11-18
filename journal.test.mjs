@@ -2051,6 +2051,16 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   writeFileSync(big, prompt('<private>my PIN is 7733, ask an agent to check the vault</private>', 'q1') + '\n');
   for (let i = 0; i < 8; i++) appendFileSync(big, JSON.stringify({ type: 'user', uuid: `q-r${i}`, timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${i}`, content: 'z'.repeat(100000) }] } }) + '\n');
   ok(subagent({ ...pin, agent_id: 'q1', transcript_path: big, last_assistant_message: 'The vault PIN is 7733 lemur' }) === false && !entries([sd]).some((x) => /7733/.test(JSON.stringify(x))), 'a subagent report after a long private turn is not saved');
+  // 1.5.2 review: the agent started in a private turn whose prompt is past the tail, and a later plain turn is open: still private.
+  {
+    const base = Date.parse('2026-06-02T10:00:00Z'), r = (type, uuid, sec, content) => JSON.stringify({ type, uuid, timestamp: new Date(base + sec * 1000).toISOString(), cwd: 'C:\\journal-subagent', message: { role: type, content } });
+    const mb = join(dirname(sd), 'gggg7777-late.jsonl'), ag = join(dirname(sd), 'agent-late.jsonl');
+    writeFileSync(mb, r('user', 'l1', 0, '<private>my lawsuit against Gnu Ltd</private> research it') + '\n');
+    for (let i = 0; i < 8; i++) appendFileSync(mb, r('user', `l-r${i}`, 1 + i, [{ type: 'tool_result', tool_use_id: `t${i}`, content: 'z'.repeat(100000) }]) + '\n');
+    appendFileSync(mb, r('user', 'l2', 20, 'meanwhile fix the typo') + '\n');
+    writeFileSync(ag, r('user', 'l-a', 2, 'task late') + '\n');
+    ok(subagent({ ...input, agent_id: 'late', transcript_path: mb, agent_transcript_path: ag, last_assistant_message: 'Gnu Ltd owes pay' }) === false && !entries([sd]).some((x) => /Gnu Ltd/.test(JSON.stringify(x))), 'an agent started in a private turn cut off by the tail is not saved when a later plain turn is open');
+  }
 }
 
 // holds() reads both spellings of an accent: a term typed either way finds an entry written either way.
