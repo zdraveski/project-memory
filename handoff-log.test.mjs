@@ -2556,6 +2556,10 @@ require('node:module').syncBuiltinESMExports();
   const qd = (...l) => turns(lines(user('first'), endTurn('a1'), att({ type: 'queued_command', prompt: 'second', commandMode: 'prompt' }), ...l, endTurn('a2'))).map((x) => `${x.ask}>${x.did}`).join('|');
   ok(qd() === 'first>a1|second>a2', `a queued message opens a turn (got ${qd()})`);
   ok(qd(user('second')) === 'first>a1|second>a2', 'a user record repeating it is the same turn');
+  // Opened turns are counted, not only the ones with a reply: the repeat of a queued message opens none, the repeat of a typed one does.
+  const opened = (...l) => turns(lines(...l)).opened.length;
+  ok(opened(user('first'), endTurn('a1'), att({ type: 'queued_command', prompt: 'second', commandMode: 'prompt' }), user('second'), endTurn('a2')) === 2, 'a user record repeating a queued message opens no turn of its own');
+  ok(opened(user('same'), user('same'), endTurn('a1')) === 2, 'a typed message sent twice before any reply is two turns');
   ok(turns(lines(user('first'), endTurn('a1'), att({ type: 'queued_command', prompt: '<task-notification>x</task-notification>', commandMode: 'task-notification' }), endTurn('a2'))).length === 1, 'a task\'s end queued meanwhile is no ask');
 
   // A skill's body (isMeta) that names <private> is no message of the user's: it must not freeze the turn (1.3.2 B2).
