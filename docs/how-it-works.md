@@ -121,7 +121,7 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/<project>/memory/MEMORY.md` | the index: one line per note, worth loading every session |
 | `…/memory/MEMORY-archive.md` | lines moved out of the index; not loaded, still searchable |
 | `…/memory/handoff.md` | the rolling handoff (see [The handoff](#the-handoff)) |
-| `…/memory/handoff.md.prev` | a copy of the handoff made at the first reply of each day, so a bad edit or a failed write doesn't lose what you wrote by hand (see [The handoff](#the-handoff)) |
+| `…/memory/handoff.md.prev` | a copy of the handoff made at the first reply of each day, so one bad overwrite does not lose all of it (see [The handoff](#the-handoff)) |
 | `…/memory/journal/YYYY-MM-DD.md` | the journal, one file per day (see [The journal](#the-journal)) |
 | `…/memory/journal.md` | the journal's note, so the index has a pinned line for it |
 | `…/memory/journal/.imported`, `.looked`, `.folders` | the transcripts imported and how far, the time of the last look for them, the worktree folders looked in too (see [The journal](#the-journal)) |
@@ -1345,7 +1345,7 @@ meet most:
   or from `status`. A reply was not saved: another window held the store
   through two tries, or the write failed. The line says when and why. The
   journal takes in what was missed from Claude Code's own conversation files.
-- **A leftover `pm-purge-…` folder**, from `doctor`. A `forget --purge` was
+- **A leftover `pm-purge-…` folder**, from `doctor`, listed once it is a few minutes old. It sits inside `~/.claude/projects/.git`. A `forget --purge` was
   killed half way and left a copy of the snapshot history, which may hold
   text you meant to forget. Run `forget <word> --purge` again, or delete the
   folder.
