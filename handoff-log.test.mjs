@@ -3732,6 +3732,10 @@ if (!quick) {
   say('a', 0, 'zebra plan details'); say('b', 1, 'ask b'); say('c', 2, 'ask c'); say('d', 3, 'ask d');
   ok(!readFileSync(join(dirR, 'handoff.md'), 'utf8').includes('zebra') && readFileSync(prevR, 'utf8').includes('zebra'), 'fixture: the exchange rolled out of handoff.md but the copy holds it');
   ok(say('a', 4, '<private-session> hide this') === 'private' && !existsSync(prevR), 'a sweep that finds nothing in handoff.md still removes the copy holding the swept exchange');
+  // 1.5.2 finding 11: a copy killed half way leaves handoff.md.prev.tmp, which holds the text too.
+  const tmpR = `${prevR}.tmp`; writeFileSync(tmpR, 'zebra plan details');
+  say('a', 5, '<private-session> hide again');
+  ok(!existsSync(tmpR), 'a sweep also removes a handoff.md.prev.tmp left by a killed copy');
 }
 
 rmSync(home, { recursive: true, force: true });
