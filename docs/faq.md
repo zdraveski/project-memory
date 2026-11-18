@@ -86,7 +86,8 @@ yesterday."* [Secrets in detail](how-it-works.md#the-handoff),
   unless you ask for `forget --purge`, which drops those days from the history
   too. To clean out a secret saved before a redaction rule existed, ask for
   `memory rescan`: it counts first and changes nothing until you add
-  `--apply --yes`.
+  `--apply --yes`. That first saves a backup that still holds the secret, so
+  revoke the secret and delete the backup afterwards.
 
 None of these reaches Claude Code's own conversation files. All four levels,
 including the setting for every project: [Turning it
@@ -123,12 +124,18 @@ turns it back on. To remove it, type
 `/plugin uninstall project-memory@project-memory` in Claude Code. Your notes
 and the journal stay either way, and so do the lines it added to each
 `MEMORY.md`, which keep being loaded.
+A marketplace you added yourself has auto-update off. To turn it on, open
+`/plugin`, then Marketplaces, then project-memory, then Enable auto-update;
+`/project-memory:memory doctor` says whether it is on.
 [Deleting it](../PRIVACY.md#deleting-it) lists what to delete by hand.
 
 ### How much disk space does it use?
 
 The journal keeps each exchange whole, so an entry is as long as what was
-said: half are under about 5 KB, and one in a hundred is over about 60 KB. A
+said: everything Claude wrote in the turn, the real commands and errors, the
+files it edited, your answers to multiple-choice questions (as "Picked:"), and
+each subagent report as its own entry (cut at 8,000 characters). Half are
+under about 5 KB, and one in a hundred is over about 60 KB. A
 very busy project adds up to about 110 MB a year. The journal stays until
 you delete it or ask Claude to forget part of it.
 
@@ -152,8 +159,9 @@ Every hook has a time limit, and a hook that fails never blocks Claude Code
 No. It searches by words, not by meaning: ask with words that were used, and
 Claude can try a few. Other forms of a word match (`migrated` finds
 `migration`; Macedonian endings too), but a synonym does not. It covers your notes, the shared notebook, the archive
-and the journal. Words of two Chinese or Japanese characters are found; in
-other scripts a two-letter word is found only standing alone.
+and the journal. A Chinese or Japanese word is found even at one character,
+and English words next to that text are found too; in other scripts a
+two-letter word is found only standing alone.
 
 ### What about two Claude windows on the same project?
 
@@ -172,7 +180,9 @@ other's *"forget"*.
 
 An experimental small extra. You can add a rule to a note, such as "do not
 `git add -A`", and a hook logs when a git command matches it. It only
-watches: it never blocks a command. Few lessons fit the form.
+watches: it never blocks a command. `memory enforce status` shows what it
+did, and `memory enforce replay <note>` replays the last 30 days against one
+note. Few lessons fit the form.
 [Checked lessons](how-it-works.md#checked-lessons-experimental).
 
 ## When something seems off
@@ -184,7 +194,9 @@ conversation in this project. If that finds nothing, type
 `/project-memory:memory doctor` in Claude Code. A line that starts with
 `PROBLEM` says what to do. Right after installing, one line says it's waiting
 for Claude's first reply, which is normal: the record is written after each
-reply. [What each message means](how-it-works.md#when-something-seems-wrong).
+reply. The startup briefing names the last conversation only if it was
+within the last 30 days; older work is still found by asking.
+[What each message means](how-it-works.md#when-something-seems-wrong).
 
 ### What happens when auto memory is turned off?
 

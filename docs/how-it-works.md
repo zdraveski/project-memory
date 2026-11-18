@@ -936,7 +936,7 @@ its last change.
 
 A word of two letters is found only standing alone (`ci` is not in
 "decision"), but a word made only of Chinese or Japanese characters is
-found anywhere in the text, at two characters too, since those languages put
+found anywhere in the text, even at one character, since those languages put
 no spaces round words. When some of the search words are held by no note or
 entry in the stores and range searched, one line after the hits names them:
 `no note or entry holds: hetzner`. A search where no word is held still says
