@@ -54,9 +54,9 @@ that fails stops at the first failed check, prints that check's message
 CI ([`test.yml`](.github/workflows/test.yml)) runs `node check.mjs`, all
 eight suites and `node survive.mjs` (which facts of a session the briefing after
 a compaction still carries; it exits 1 if one is lost) on every pull request
-and every push to `master`, in three jobs:
-Linux with Node 22, Windows with Node 24 and macOS with Node 26. A pull request
-can't merge until every job passes. Each job's log on GitHub shows the same lines as a run here.
+and every push to `master`, in four test jobs:
+Linux with Node 22, Windows with Node 22 and 24, and macOS with Node 26. A pull request
+can't merge until the Linux 22, Windows 24 and macOS 26 jobs pass (Windows 22, the oldest Node the README promises, is not required). Each job's log on GitHub shows the same lines as a run here.
 
 Beyond the suites:
 
@@ -117,7 +117,7 @@ Beyond the suites:
   its kept files as the artifact `fuzz-kept-<machine>`: for a bug hunt; no
   release needs it.
 - `node coverage.mjs [--suites] [--fuzz <seconds>]` runs the eight suites
-  and/or the fuzz under Node's own coverage and prints, for each of the eight
+  and/or the fuzz under Node's own coverage and prints, for each of the nine
   plugin files, the share of its code that ran, the functions that never
   ran and the first lines of the larger blocks that never ran: where the
   fuzz cannot find a bug because it never goes. Nothing runs it
@@ -155,16 +155,18 @@ Beyond the suites:
   fails unmutated stops the run with exit 1 too. A stillborn or ignored
   mutant never does.
 - `node deploy.mjs` skips the mutation check; with `--full` it runs every
-  mutant here, about 65 minutes.
+  mutant here, about 65 minutes. `--tiering-change` skips the comparison of
+  the tidy-up's dry run with the live copy's, for a change meant to alter tiering.
 - The `mutate` workflow on GitHub, started by hand (Actions > mutate > Run
   workflow) only if someone asks, splits the mutants across 17 machines
   (GitHub Free runs 20 jobs at once). It runs all the hand-written ones in about
   20 minutes (2026-11), and with `auto` on, the automatic ones too.
-- `node memory-tier.soak.mjs [store]` copies a store (by default the largest
-  on the machine) to a temp folder, then simulates a month of new notes and
+- `node memory-tier.soak.mjs [store] [--days N]` copies a store (by default the largest
+  on the machine) to a temp folder, then simulates 30 days (or N) of new notes and
   sessions ending at the same moment.
-- `node memory-tier.break.mjs [store]` breaks a copy of a store in 14 ways
-  and checks that no line is lost.
+- `node memory-tier.break.mjs [store]` breaks a copy of a store in 13 ways
+  (and runs one control with nothing broken) and checks that no line is lost
+  and that a second run leaves `MEMORY.md` unchanged.
 - `node bench.mjs [runs]` times each hook on copies of the machine's largest
   transcript and store.
 
@@ -183,8 +185,9 @@ they finish.
   what it is.
 - Add or update a test with every change to what the plugin does, however
   small. A change without one isn't merged.
-- Don't run the `claude` command, read a credential or Claude Code's
-  `settings.json`, copy the whole environment, or connect to anything. The
+- Don't run the `claude` command, read a credential, read Claude Code's
+  `settings.json` beyond the two values `PRIVACY.md` lists
+  (`autoMemoryEnabled` and `autoMemoryDirectory`; never print the file), copy the whole environment, or connect to anything. The
   plugin directory's security scan holds a plugin that does, and it reads
   every file, tests included.
 - Write the test first and watch it fail on the old code; before changing
@@ -258,7 +261,7 @@ The maintainer's steps:
 
 1. Bump `version` in `.claude-plugin/plugin.json`, and turn `## Unreleased`
    in `CHANGELOG.md` into the version's heading.
-2. Run `claude plugin validate . --strict`. It should find nothing to report.
+2. Run `claude plugin validate . --strict`. It should pass; warnings it prints are advice only.
 3. Run `/ponytail:ponytail-review` on every change since the last tag, and fix
    what it finds. Nothing else runs before a release: no mutants, no fuzz.
 4. Merge through a pull request once its CI passes.
