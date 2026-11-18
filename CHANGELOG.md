@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.5.2 (2026-11-18)
+
+This release fixes what an audit of 1.5.1 found: a few places where a private conversation or a forgotten entry could still leave text behind, a reply that could be lost without a trace, a `forget --purge` that timed out on a long history, and searches that came back empty when they should not have. Updating is recommended. Your existing memory works as it is.
+
+### Private conversations and forget
+
+- **A helper agent started in a private message is no longer saved to the journal**, even when it finishes after you have typed something else.
+- **`forget` and private conversations also remove a half-written handoff backup**, `handoff.md.prev.tmp`, which could keep the text you asked to forget.
+- **`forget --purge` finishes in seconds on a long snapshot history** instead of timing out. If it fails, it says the old snapshots still hold the text and to run the same command again.
+
+### Saving
+
+- **A reply is no longer lost without a trace when several sessions hold the memory store at once.** The briefing and `status` now warn about it.
+
+### Search and the CLI
+
+- **Search finds English words written next to Japanese or Chinese text**, like `CI` in `CIが落ちた`, and one-character Chinese or Japanese words.
+- **Words like "make", "get", "put", "time", "use" and "new" are search words again.** With a date range they no longer list every entry, and a range listing says which filler words it ignored.
+- **An option a command does not take, or a date range that ends before it starts, is refused with a message** instead of an answer of "nothing found". `show` also takes a key typed without quotes.
+- **`history <memory> --all` lists the changes in every project that has that memory**, each under its folder, instead of only the first.
+
+### Checked lessons
+
+- **The git rule check also sees commands run through `rtk bypass`, `sudo -u` or `cmd /c`.**
+- **A rule written under `metadata:` is reported as a bad rule** instead of being ignored without a word. `enforce:` goes at the top level of the note's front matter.
+
+### Doctor, deploy and docs
+
+- **`memory doctor` marks "git not installed" and "snapshots off" as notes, not ok**, and names a history copy left behind by an interrupted purge, with the command that clears it.
+- **A deploy removes files the old release shipped and the new one dropped**, and remembers where the repo came from, so a deleted clone can be found again.
+- **The plugin warns once at startup on Node older than 22.** The tests now also run on Windows with Node 22.
+- **The docs say when the wait before a compaction applies:** only mid-turn, with a compaction window of about 233,000 to 933,000 tokens on a 1M model.
+
 ## 1.5.1 (2026-11-18)
 
 This release fixes what the 1.5.0 review found: search that joined words that only look alike, a few things that were saved or kept when they should not have been, and a Stop that took seconds on a very long turn. Search also puts the right entry first more often, and prints less. Updating is recommended. Your existing memory works as it is.
