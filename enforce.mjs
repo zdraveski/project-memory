@@ -13,7 +13,7 @@ export function ruleOf(text) {
   const t = String(text).replace(/^﻿/, '').replace(/\r\n?/g, '\n'), end = frontEnd(t);
   if (end === -1) return null;
   const lines = t.slice(0, end).split('\n'), at = lines.findIndex((l) => /^enforce:/.test(l));
-  if (at === -1) return null;
+  if (at === -1) return lines.some((l) => /^[ 	]+enforce:/.test(l)) ? { bad: 'write `enforce:` at the start of a line, not under metadata:' } : null;
   if (!/^enforce:[ \t]*$/.test(lines[at])) return { bad: 'write `enforce:` alone on its line, with on:, has: indented below it' };
   const got = {};
   for (const l of lines.slice(at + 1)) {
@@ -139,7 +139,7 @@ export function commandsOf(file, chunk, seg, got) {
   } finally { closeSync(fd); }
 }
 
-export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024, CACHE_V = 2, HEAD = 64 * 1024;
+export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024, CACHE_V = 3, HEAD = 64 * 1024;
 
 // A store's rules through its cache `.enforce.json` ({ v, files: { file: { mtime, size, r } } }; another v is rebuilt, as ruleOf may read differently): only a note that is new or changed since
 // is read, and then only its first 64 KB, and ruleOf only if that holds `enforce:`. A cache that does not read is rebuilt. Never throws.

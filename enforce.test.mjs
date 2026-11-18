@@ -44,6 +44,27 @@ bad(note('enforce:\n  has: [-A]\n'), /on/, 'missing on');
 const withBlock = note('enforce:\n  on: git add\n  has: [type: archive, tier: archive]\n');
 ok(JSON.stringify(front(withBlock)) === JSON.stringify(front(note(''))), 'front() ignores the enforce block');
 
+// An enforce: block indented under metadata: is no rule, and says why (it used to be skipped without a word)
+bad(`---
+name: x
+metadata:
+  type: feedback
+  enforce:
+    on: git add
+    has: [-A]
+---
+
+body
+`, /start of a line, not under metadata:/, 'an indented enforce: block');
+ok(ruleOf(`---
+name: x
+metadata:
+  type: feedback
+---
+
+  enforce:
+`) === null, 'an indented enforce: in the body is no rule');
+
 // segments and tokens
 ok(segments('a && b || c; d | e\nf').join('|') === 'a|b|c|d|e|f'.split('|').map((s) => s).join('|'), 'split at && || ; | newline');
 ok(segments('echo "a && b"; git x').length === 2, 'not inside quotes');
