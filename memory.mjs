@@ -1076,6 +1076,11 @@ export function main(given) {
   if (bare) { console.log(`${bare} needs a value after it`); return 1; }
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
+  // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
+  // `search x --conversation T` listed every conversation's hits (audit 5). A command not listed gets its own refusal below.
+  const takes = { search: ['--since', '--until', '--all', '--limit'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [] }[cmd];
+  const extra = takes && rest.find((a, i) => a.startsWith('--') && !valued.has(rest[i - 1]) && !['--store', '--shared', '--session', ...takes].includes(a));
+  if (extra) { console.log(`${cmd} does not take ${extra}; help lists the options`); return 1; }
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
   // A number, or refused: `--limit ten` was dropped unsaid, and the default
   // listed. One below 1 is still the default (a test holds it).

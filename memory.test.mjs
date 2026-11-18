@@ -245,6 +245,13 @@ ok(r.status === 0 && /match\(es\) in/.test(r.stdout), `an option before the comm
 r = await cli('search', 'deploy', '--from', '2026-10-27');
 const after = await cli('search', 'deploy', '--after=2026-10-28');
 ok(r.status === 1 && r.stdout === 'unknown option --from; help lists the options\n' && after.status === 1 && after.stdout === 'unknown option --after=2026-10-28; help lists the options\n', `an unknown option is refused (got ${r.stdout}${after.stdout})`);
+// An option the command does not take is refused, not ignored (audit 5).
+const given = [['search', 'x', '--conversation', 'beef0001'], ['show', 'k', '--key', 'k'], ['search', 'x', '--rev', 'abc'], ['status', '--yes']];
+for (const g of given) {
+  const o = g.find((a, i) => a.startsWith('--') && i > 0 && g[0] !== a);
+  r = await cli(...g);
+  ok(r.status === 1 && r.stdout === `${g[0]} does not take ${o}; help lists the options\n`, `${g[0]} refuses ${o} (got ${r.stdout})`);
+}
 const helped = [];
 for (const h of ['--help', '-h', 'help']) helped.push(await cli(h));
 ok(helped.every((u) => u.status === 0 && u.stdout.startsWith('node memory.mjs <command>')), '--help and -h print the usage, as help does');
