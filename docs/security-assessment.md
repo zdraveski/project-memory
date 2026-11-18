@@ -190,7 +190,7 @@ runs. Impact: a note or the journal loses lines.
   again later.
 - The fuzzer runs two Stops at once, kills Stops part way, and makes disk
   calls fail (`fuzz-faults.cjs`); `memory-tier.break.mjs` breaks a store in
-  14 ways. Each checks that no line is lost.
+  13 ways, plus one control run with nothing broken. Each checks that no line is lost.
 
 What remains: a folder synced between computers can undo a `forget`; the
 README warns against syncing it.
