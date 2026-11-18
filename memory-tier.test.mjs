@@ -600,6 +600,20 @@ if (!quick) {
   ok(r.status === 0 && readFileSync(join(root, 'proj-two', 'memory', 'handoff.md'), 'utf8').includes('held-turn question'), `--stop: a store held a little longer than one wait still gets the turn (got ${r.stdout})`);
   await new Promise((done) => holder.once('close', done));
 }
+// A Stop that finds the store held on both tries saved nothing, wrote no failure file, and deleted an older one (1.5.2).
+if (!quick) {
+  const lock = join(root, 'proj-two', 'memory', '.lock'), tp = join(root, 'proj-two', 'busy2.jsonl'), failed = join(root, '.handoff-failed-proj-two');
+  const rec = (type, text) => JSON.stringify({ type, timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text }] } });
+  writeFileSync(tp, rec('user', 'busy-twice question') + '\n' + rec('assistant', 'busy-twice answer') + '\n');
+  writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: 'an earlier failure' }));
+  const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs'); fs.mkdirSync(${JSON.stringify(lock)}); fs.writeFileSync(${JSON.stringify(join(lock, 'owner'))}, 'other'); process.stdout.write('up'); setTimeout(() => { fs.unlinkSync(${JSON.stringify(join(lock, 'owner'))}); fs.rmdirSync(${JSON.stringify(lock)}); }, 6500)`]);
+  await new Promise((up) => holder.stdout.once('data', up));
+  r = await call(['--stop'], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: tp, session_id: 'busy2sess' }));
+  const left = existsSync(failed) ? readFileSync(failed, 'utf8') : '';
+  ok(r.status === 0 && /busy/.test(left) && !/earlier failure/.test(left) && !readFileSync(join(root, 'proj-two', 'memory', 'handoff.md'), 'utf8').includes('busy-twice question'), `--stop: a store still held on the second try leaves a failure file saying so (got ${left})`);
+  await new Promise((done) => holder.once('close', done));
+  rmSync(failed, { force: true });
+}
 // 1.5.0 item 10: a SubagentStop saves the report in the journal and runs nothing else (no tiering, no output).
 {
   const at = join(root, 'proj-two', 'agent-sub1.jsonl'), mainT = join(root, 'proj-two', 'session.jsonl');
