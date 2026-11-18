@@ -2686,6 +2686,34 @@ See [[nonexist-${GH}]]
   r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
   ok(/could not be purged/.test(r.stdout) && /snapshot/.test(r.stdout) && existsSync(join(root, '.git', 'config.lock')), `forget --purge refuses while a snapshot holds the repository (got ${r.stdout})`);
   unlinkSync(join(root, '.git', 'config.lock'));
+  ok(/still hold/.test(r.stdout) && /--purge/.test(r.stdout), `a failed purge says the snapshots still hold the text and what to run (got ${r.stdout})`);
+}
+
+// 1.5.2 finding 3: the purge rewrites a long history in one stream, not one shell and one git rm per commit (0.7 s each: 507 s for 709).
+{
+  const ld = join(root, 'C--purgelong', 'memory'), word = 'quokka-' + 'purgelong', day = 'C--purgelong/memory/journal/2020-03-04.md', keep = 'C--purgelong/memory/keep.md';
+  mkdirSync(join(ld, 'journal'), { recursive: true });
+  writeFileSync(join(ld, 'MEMORY.md'), '# Memory Index\n');
+  tier(); tier();
+  const branch = spawnSync('git', ['-C', root, 'symbolic-ref', '--short', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+  const N = 500;
+  let s = '';
+  for (let i = 0; i < N; i++) {
+    const body = (b) => `data ${Buffer.byteLength(b)}\n${b}\n`;
+    s += `commit refs/heads/${branch}\ncommitter t <t@t> ${1600000000 + i} +0000\n${body('c' + i)}${i ? '' : `from refs/heads/${branch}^0\n`}`
+      + `M 100644 inline ${keep}\n${body('keep ' + i)}` + (i < N - 5 ? `M 100644 inline ${day}\n${body(`# Journal\n${word} ${i}`)}` : `D ${day}\n`) + '\n';
+  }
+  const imp = spawnSync('git', ['-C', root, 'fast-import', '--quiet'], { input: s });
+  ok(imp.status === 0, `fixture: ${N} snapshot commits imported (${imp.stderr})`);
+  const hold = () => spawnSync('git', ['-C', root, 'log', '--all', '-S' + word, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
+  const count = () => spawnSync('git', ['-C', root, 'rev-list', '--count', '--all'], { encoding: 'utf8' }).stdout.trim();
+  const before = count();
+  ok(hold(), 'fixture: the long history holds the word');
+  writeFileSync(join(ld, 'journal', '2020-03-04.md'), `# Journal 2020-03-04\n\n${word}\n`);
+  const t0 = Date.now(), r = await run(['forget', word, '--yes', '--purge', '--store', ld]);
+  ok(/purged the journal of 2020-03-04/.test(r.stdout) && !hold() && count() === before, `forget --purge cleans every commit of a long history and keeps the commits (got ${r.stdout})`);
+  ok(spawnSync('git', ['-C', root, 'log', '--all', '--format=', '--name-only', '--', keep], { encoding: 'utf8' }).stdout.trim().split('\n').length >= N, 'the other files keep their history');
+  ok(Date.now() - t0 < 30_000, `${N} commits are purged in one pass, not one git rm each (took ${Date.now() - t0} ms)`);
 }
 
 // rescan: a secret saved before a rule existed is found in the files and the snapshots; the dry run prints counts, never the value;

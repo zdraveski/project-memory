@@ -572,10 +572,25 @@ const rewrite = (work) => {
     git('reflog', 'expire', '--expire=now', '--all'); git('gc', '-q', '--prune=now');
   } finally { rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
 };
+// A fast-export stream without the M and D lines of `paths`; data blocks are skipped by their length, so their text is never read as a line.
+const dropPaths = (buf, paths) => {
+  const out = [], gone = new Set(paths);
+  // git quotes a path with odd bytes: "..." with \ooo octal escapes.
+  const plain = (s) => s[0] !== '"' ? s : Buffer.from(s.slice(1, -1).replace(/\\(?:([0-7]{3})|(.))/g, (_, o, c) => o ? String.fromCharCode(parseInt(o, 8)) : ({ n: '\n', t: '\t' })[c] ?? c), 'latin1').toString();
+  let at = 0;
+  while (at < buf.length) {
+    let e = buf.indexOf(10, at); if (e < 0) e = buf.length - 1;
+    const line = buf.subarray(at, e + 1), t = line.toString().slice(0, -1), d = /^data (\d+)$/.exec(t);
+    at = e + 1;
+    if (d) { out.push(line, buf.subarray(at, at + +d[1])); at += +d[1]; continue; }
+    const p = /^M \d+ \S+ (.*)$/.exec(t)?.[1] ?? /^D (.*)$/.exec(t)?.[1];
+    if (p === undefined || !gone.has(plain(p))) out.push(line);
+  }
+  return Buffer.concat(out);
+};
 const purge = (dir, days) => {
   const paths = days.flatMap((d) => tracked(dir, `journal/${d}.md`));
-  const q = (p) => `'${p.replace(/'/g, "'\\''")}'`;
-  rewrite((copy) => execFileSync('git', ['-C', copy, 'filter-branch', '-f', '--index-filter', `git rm --cached --ignore-unmatch -q -r -- ${paths.map(q).join(' ')}`, '--', '--all'], { env: { ...process.env, FILTER_BRANCH_SQUELCH_WARNING: '1' }, stdio: 'pipe', timeout: 300_000 }));
+  rewrite((copy) => execFileSync('git', ['-C', copy, 'fast-import', '--force', '--quiet'], { ...FAST, input: dropPaths(execFileSync('git', ['-C', copy, 'fast-export', '--all', '--signed-tags=strip'], QUIET_FAST), paths) }));
 };
 
 // rescan: today's redaction rules over what is already saved (notes, journal, handoff, every snapshot): counts and places, never a
@@ -1277,7 +1292,7 @@ export function main(given) {
         let purged = null;
         if (ours && got && rest.includes('--purge')) {
           try { purge(here, [...new Set(tried.map((e) => e.day))]); purged = 'purged from the snapshots too'; }
-          catch (e) { purged = `the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)})`; }
+          catch (e) { purged = `the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); the old snapshots still hold the text: run the same forget command again with --purge`; }
         }
         r = !got ? no(`${here} is busy (another hook holds it); try again`)
           // Past LOOK (a range's), the count, not every line.
