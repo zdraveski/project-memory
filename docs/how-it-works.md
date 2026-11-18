@@ -539,8 +539,7 @@ once it is through, `<bytes looked at> at <offset>` while an import is under
 way, `other`, or `failed <time>` when it wouldn't open (it is tried again a
 day later, grown or not). One that has grown since and been quiet for 30
 minutes is read on from where the last read ended (keys keep a repeat
-harmless). A transcript gone from disk loses its line.
-`journal/.looked`
+harmless). A transcript gone from disk loses its line. `journal/.looked`
 holds the time of the last look: when the budget left work, the next Stop
 looks again; otherwise the next look is 30 minutes later, and a Stop
 before then doesn't take the store's lock for it. Every look first redoes
@@ -565,13 +564,6 @@ the sweeps listed in `.sweeps`. A conversation never imported:
 Keys listed in `journal/.forgotten` are never written again, by an import or
 a live Stop, and the exchanges they name are never written to `handoff.md`
 again, by a Stop or the compaction gate.
-
-To rebuild entries saved before 1.5.0, delete `journal/.imported` and
-`journal/.looked` once per store. The next Stops read the transcripts again,
-replace the entries and redact them under the current rules (forgotten
-entries stay gone, private conversations stay swept). This only works for
-conversations whose transcript is still on disk. Claude Code keeps
-transcripts 30 days unless you change that, and older entries stay as saved.
 
 **In the history.** Today's file grows with every reply, so it stays out of
 the snapshots: committed, every version would stay in the history. The
@@ -731,9 +723,8 @@ Per message, `<private>…</private>` keeps one piece of text out.
    it is back on, and the same conversation's turns before and after are
    kept. Claude can still write a note if you ask. Off stops adding; it does
    not hide: search and show still answer from what is there.
-3. **All projects on this machine:** set the environment variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to
-   `1`, `true`, `yes` or `on` (for example in the `env` block of Claude Code's
-   `settings.json`), or disable the plugin (below). Claude Code's own
+3. **All projects on this machine:** set `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to
+   `1`, `true`, `yes` or `on`, or disable the plugin (below). Claude Code's own
    `/memory` setting (`autoMemoryEnabled: false`) stops project-memory too;
    it reads only that value, from the settings files Claude Code reads.
 4. **Claude Code itself:** `autoMemoryEnabled: false` stops its auto memory,
@@ -945,7 +936,7 @@ its last change.
 
 A word of two letters is found only standing alone (`ci` is not in
 "decision"), but a word made only of Chinese or Japanese characters is
-found anywhere in the text, at one or two characters, and an English word written right next to such text is found too (`CI` in `CIが落ちた`), since those languages put
+found anywhere in the text, at two characters too, since those languages put
 no spaces round words. When some of the search words are held by no note or
 entry in the stores and range searched, one line after the hits names them:
 `no note or entry holds: hetzner`. A search where no word is held still says
@@ -1106,8 +1097,7 @@ It never logs the command.
 
 `memory enforce status` shows per note the hits of the last 30 days (main and
 sub-agent), the last one, bad rules with the reason, and whether the log is
-full or memory is off. Checked lessons are a 30-day trial (the changelog has the end date): the
-author reads this output and keeps the feature or cuts it. The live log keeps no command text, so run `replay`
+full or memory is off. The live log keeps no command text, so run `replay`
 to see commands. `memory doctor` has one line for the hook: it runs the copy
 the plugin runs and says what is wrong, even when memory is off in this
 project.
