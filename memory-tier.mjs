@@ -725,7 +725,10 @@ export async function main(argv, input) {
       // A store still held after one wait (twenty Stops at once) gets one more, after a pause and with a fresh wait: the session's
       // last Stop has no later one to redo the turn (defect hunt 1.3.2, C5).
       try {
-        if (payload && handoff(payload, sink) === 'busy' && stop) { sleep(200 + Math.random() * 600); lockBudget(true); handoff(payload, sink); }
+        let s = payload && handoff(payload, sink);
+        if (s === 'busy' && stop) { sleep(200 + Math.random() * 600); lockBudget(true); s = handoff(payload, sink); }
+        // Still held: the reply is unsaved, so say so, and keep any earlier record.
+        if (s === 'busy' && stop) throw new Error('the store stayed busy: another session held it through two tries, so this reply was not saved');
         try { unlinkSync(failed); } catch {}
       }
       catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) }), { mode: 0o600 }); }
