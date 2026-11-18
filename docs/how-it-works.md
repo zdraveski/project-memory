@@ -355,7 +355,8 @@ Before any of it is written, these are taken out:
 Text is cut before the secrets are removed, so one huge paste is read in
 linear time: blank runs are squeezed first, then it is cut to 64 KB, or to
 four times the final limit when that is more (200,000 characters for a
-request or reply, 80,000 for a command). Kept on purpose, since they are not secrets: references
+request, 80,000 for a command). A journal reply is not cut first: it is
+cleaned whole, then capped at 50,000. Kept on purpose, since they are not secrets: references
 such as `$API_TOKEN` and `${API_PASS}`, URL settings (`TOKEN_URL=…`), schema
 types (`password: z.string()`), labels, and times and `file.js:42`.
 
@@ -573,7 +574,8 @@ once it is through, `<bytes looked at> at <offset>` while an import is under
 way, `other`, or `failed <time>` when it wouldn't open (it is tried again a
 day later, grown or not). One that has grown since and been quiet for 30
 minutes is read on from where the last read ended (keys keep a repeat
-harmless). A transcript gone from disk loses its line. `journal/.looked`
+harmless). A transcript gone from disk loses its line.
+`journal/.looked`
 holds the time of the last look: when the budget left work, the next Stop
 looks again; otherwise the next look is 30 minutes later, and a Stop
 before then doesn't take the store's lock for it. Every look first redoes
@@ -598,6 +600,13 @@ the sweeps listed in `.sweeps`. A conversation never imported:
 Keys listed in `journal/.forgotten` are never written again, by an import or
 a live Stop, and the exchanges they name are never written to `handoff.md`
 again, by a Stop or the compaction gate.
+
+To rebuild entries saved before 1.5.0, delete `journal/.imported` and
+`journal/.looked` once per store. The next Stops read the transcripts again,
+replace the entries and redact them under the current rules (forgotten
+entries stay gone, private conversations stay swept). This only works for
+conversations whose transcript is still on disk. Claude Code keeps
+transcripts 30 days unless you change that, and older entries stay as saved.
 
 **In the history.** Today's file grows with every reply, so it stays out of
 the snapshots: committed, every version would stay in the history. The
@@ -759,8 +768,9 @@ Per message, `<private>…</private>` keeps one piece of text out.
    it is back on, and the same conversation's turns before and after are
    kept. Claude can still write a note if you ask. Off stops adding; it does
    not hide: search and show still answer from what is there.
-3. **All projects on this machine:** set `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to
-   `1`, `true`, `yes` or `on`, or disable the plugin (below). Claude Code's own
+3. **All projects on this machine:** set the environment variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY` to
+   `1`, `true`, `yes` or `on` (for example in the `env` block of Claude Code's
+   `settings.json`), or disable the plugin (below). Claude Code's own
    `/memory` setting (`autoMemoryEnabled: false`) stops project-memory too;
    it reads only that value, from the settings files Claude Code reads.
 4. **Claude Code itself:** `autoMemoryEnabled: false` stops its auto memory,
@@ -1141,7 +1151,8 @@ It never logs the command.
 
 `memory enforce status` shows per note the hits of the last 30 days (main and
 sub-agent), the last one, bad rules with the reason, and whether the log is
-full or memory is off. The live log keeps no command text, so run `replay`
+full or memory is off. On 2026-12-18 the author reads this output and keeps
+checked lessons or cuts them. The live log keeps no command text, so run `replay`
 to see commands. `memory doctor` has one line for the hook: it runs the copy
 the plugin runs and says what is wrong, even when memory is off in this
 project.
