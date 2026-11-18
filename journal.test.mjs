@@ -1135,6 +1135,10 @@ if (!quick) {
   writeFileSync(ps, rec('user', S, '2026-10-28T12:00:00Z', 'now', r) + '\n' + rec('assistant', S, '2026-10-28T12:00:30Z', 'ok', r) + '\n');
   // A Stop or a few: the look for a mark keeps to the budget, a segment past it.
   const whole = `${slug(r)}/${H} ${statSync(p).size}`, line = () => { try { return listed(d).find((l) => l.startsWith(`${slug(r)}/${H} `)) ?? ''; } catch { return ''; } };
+  // What a bare Stop costs here: node's own start and a busy runner's slowness are not the backfill's overrun.
+  const [ri] = repo('idle'), t1 = Date.now();
+  spawnSync(process.execPath, [TIER, '--stop'], { env, input: JSON.stringify({ cwd: ri, session_id: sid('i'), hook_event_name: 'Stop' }), encoding: 'utf8' });
+  const base = Date.now() - t1;
   let ms = 0, out = '';
   for (let i = 0; i < 5 && line() !== whole; i++) {
     const t0 = Date.now();
@@ -1143,9 +1147,9 @@ if (!quick) {
   }
   // The store now has an index, so its tier report is expected; the backfill itself says nothing.
   const said = out.split('\n').filter((l) => l && !/ hot \/ \d+ archived, |^  pointers recovered: |^memory snapshot: /.test(l));
-  // A whole node process each: a busy Windows runner took 3.7 s where a desktop takes 1 s (1.3.1 CI).
-  ok(ms < (process.platform === 'win32' ? 6000 : 3000) && said.length === 0 && line() === whole && asks(d).includes('before the flood') && asks(d).includes('after the flood'),
-    `backfill keeps to its budget on a huge transcript: no Stop takes over ${ms} ms, none says anything, and the 70 MB line is passed over unread, the turns before and after it journaled (got ${line()}; ${asks(d)}; ${out})`);
+  // A whole node process each: a busy Windows runner took 3.7 s where a desktop takes 1 s (1.3.1 CI), so the ceiling grows with the bare Stop measured above.
+  ok(ms < (process.platform === 'win32' ? 6000 : 3000) + 2 * base && said.length === 0 && line() === whole && asks(d).includes('before the flood') && asks(d).includes('after the flood'),
+    `backfill keeps to its budget on a huge transcript: no Stop takes over ${ms} ms (a bare Stop took ${base}), none says anything, and the 70 MB line is passed over unread, the turns before and after it journaled (got ${line()}; ${asks(d)}; ${out})`);
 }
 // A transcript of any size is read whole, not only its last 64 MB: in
 // segments (1 KB here for 64 MB), each cut at a prompt so no exchange is
