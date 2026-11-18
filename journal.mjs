@@ -234,9 +234,10 @@ export function subagent(input) {
     let t = null, hush = false;
     // Read before the lock; a tail that cuts the prompt off (a long private turn) gets the look back, as latest() does.
     // The turn that counts is the one open when the agent started (its first record's time), else the open one; a <private-session>
-    // typed anywhere in the tail hushes it. shortcut: a start older than the tail falls back to the open turn.
-    const pick = (all) => { hush ||= all.hush === true; return (Number.isFinite(start) && all.opened.filter((x) => x.ms <= start).pop()) || all.open; };
-    try { const r = readTail(tp, TAIL); t = pick(turns(r.text)); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = p ? pick(turns(`${p}\n${r.text}`)) : null; } } catch {}
+    // typed anywhere in the tail hushes it. A start older than the tail's first turn gets the look back too (`cut`), so a private prompt
+    // scrolled out of the tail is still found; only when the look back finds nothing does the open turn stand.
+    const pick = (all, cut) => { hush ||= all.hush === true; return (Number.isFinite(start) && all.opened.filter((x) => x.ms <= start).pop()) || (cut && Number.isFinite(start) ? null : all.open); };
+    try { const r = readTail(tp, TAIL), a = turns(r.text); t = pick(a, !r.whole); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = (p ? pick(turns(`${p}\n${r.text}`)) : null) ?? a.open; } } catch {}
     const saved = withLock(dir, () => {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
       if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) return false;
