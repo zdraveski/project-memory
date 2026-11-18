@@ -113,7 +113,7 @@ have? Ask Claude: *"Do I have Node.js 22 or newer, and Git?"*
    ```
 
 2. Close Claude Code and open it again.
-3. Type `/project-memory:memory doctor`. Every line should start with `ok`.
+3. Type `/project-memory:memory doctor`. No line should start with `PROBLEM` (`note` lines are allowed states, such as no Git installed).
    Until Claude finishes its first reply, one line says it's waiting for
    that reply, which is normal.
 

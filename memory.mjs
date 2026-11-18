@@ -868,7 +868,8 @@ const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e 
 export function doctor(site = sessionStore()) {
   const lines = [];
   let bad = 0;
-  const say = (fine, text) => { lines.push(`${fine ? 'ok     ' : 'PROBLEM'} ${text}`); if (!fine) bad++; };
+  // fine: true (ok), false (PROBLEM) or 'note' (a state that is allowed but not good news).
+  const say = (fine, text) => { lines.push(`${fine === 'note' ? 'note   ' : fine ? 'ok     ' : 'PROBLEM'} ${text}`); if (!fine) bad++; };
   // What is installed and what ran, never what settings.json says (but the two values read below): that file
   // can hold the user's keys, and the plugin directory holds a plugin that
   // reads it. The Stop hook logs each run in .stop-ran (memory-tier.mjs).
@@ -940,15 +941,17 @@ export function doctor(site = sessionStore()) {
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return Date.now() - statSync(l).mtimeMs > LOCK_STALE; } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);
   // No git is a setup the README allows: everything works but the history.
-  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); say(true, 'git on PATH'); } catch { say(true, 'git is not installed: everything works except bringing back an old version of a note. Installing Git (git-scm.com) turns that on'); }
+  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); say(true, 'git on PATH'); } catch { say('note', 'git is not installed: everything works except bringing back an old version of a note. Installing Git (git-scm.com) turns that on'); }
   // A repack Windows could not finish leaves an index with no pack: harmless,
   // but git warns of each one on every command the snapshot runs.
   const pack = join(projectsRoot(), '.git', 'objects', 'pack');
   let packs = []; try { packs = readdirSync(pack); } catch {}
   const orphans = packs.filter((f) => f.endsWith('.idx') && !packs.includes(f.replace(/\.idx$/, '.pack')));
   if (orphans.length) say(true, `${orphans.length} pack index file(s) in ${pack} have no pack (a repack that could not finish): harmless, but git warns of each on every command; the user can delete them: ${orphans.join(', ')}`);
+  // A killed forget --purge leaves a full copy of the history, forgotten text included, in .git.
+  try { for (const n of readdirSync(join(projectsRoot(), '.git'))) if (n.startsWith('pm-purge-') && Date.now() - statSync(join(projectsRoot(), '.git', n)).mtimeMs > LOCK_STALE) say(false, `${join(projectsRoot(), '.git', n)} is a copy of the snapshot history, with text you may have forgotten, left by a killed purge. The user's fix: run forget <word> --purge again (it removes the copy first), or delete that folder`); } catch {}
   const snap = snapshots();
-  say(!snap.startsWith('snapshots: failing') && !snap.includes('but they leave out'), snap);
+  say(snap.startsWith('snapshots: failing') || snap.includes('but they leave out') ? false : /^snapshots: (off|none recorded yet)|but they skip/.test(snap) ? 'note' : true, snap);
   return { ok: !bad, lines };
 }
 
