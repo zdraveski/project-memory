@@ -87,8 +87,13 @@ for (const c of ['exec -a name git add -A', 'cmd.exe /c git add -A'])
 for (const c of ['rtk bypass git add file.txt', 'sudo -u bob git add file.txt', 'cmd /c git add file.txt', 'rtk bypass ls -A', 'sudo -u bob ls -A'])
   ok(!hit(c), `no hit: ${c}`);
 ok(hits(rule, 'git add file').on && !hits(rule, 'git status').on, 'on says whether the command is the subcommand at all');
+// a command wrapped in quotes for another shell (BUG found 1.5.3: it was not seen)
+for (const c of ['cmd /c "git add -A"', 'bash -c "git add -A"', "sh -c 'cd x && git add .'", '/bin/bash -lc "git add -A"', 'powershell -Command "git add -A"', 'rtk bash -c "git add -A"'])
+  ok(hit(c), `hit inside a shell's quotes: ${c}`);
+for (const c of ['bash -c "git add file"', 'bash -c "echo git add -A"', 'bash -c "mktemp; git add -A"', 'bash script.sh'])
+  ok(!hit(c), `no hit inside a shell's quotes: ${c}`);
 // known misses
-for (const c of ['bash -c "git add -A"', 'git add -- -A', 'echo "$(git add -A)"']) ok(!hit(c), `known miss: ${c}`);
+for (const c of ['git add -- -A', 'echo "$(git add -A)"']) ok(!hit(c), `known miss: ${c}`);
 const push = ruleOf(note('enforce:\n  on: git push\n  has: --force\n')).rule;
 ok(hits(push, 'git push --force').hit && hits(push, 'git push origin main --force').hit, 'git push --force');
 ok(!hits(push, 'git push --force-with-lease').hit && !hits(push, 'echo "git push --force"').hit, 'not --force-with-lease, not an echo');
