@@ -56,7 +56,7 @@ eight suites and `node survive.mjs` (which facts of a session the briefing after
 a compaction still carries; it exits 1 if one is lost) on every pull request
 and every push to `master`, in four test jobs:
 Linux with Node 22, Windows with Node 22 and 24, and macOS with Node 26. A pull request
-can't merge until the Linux 22, Windows 24 and macOS 26 jobs pass (Windows 22, the oldest Node the README promises, is not required). Each job's log on GitHub shows the same lines as a run here.
+can't merge until the Linux 22, Windows 24 and macOS 26 jobs and the dco check pass (Windows 22, the oldest Node the README promises, is not required). Each job's log on GitHub shows the same lines as a run here.
 
 Beyond the suites:
 
@@ -185,8 +185,8 @@ they finish.
   what it is.
 - Add or update a test with every change to what the plugin does, however
   small. A change without one isn't merged.
-- Don't run the `claude` command, read a credential, read Claude Code's
-  `settings.json` beyond the two values `PRIVACY.md` lists
+- Don't run the `claude` command, read a credential, read anything from Claude Code's
+  `settings.json` except the two values `PRIVACY.md` lists
   (`autoMemoryEnabled` and `autoMemoryDirectory`; never print the file), copy the whole environment, or connect to anything. The
   plugin directory's security scan holds a plugin that does, and it reads
   every file, tests included.
@@ -261,7 +261,7 @@ The maintainer's steps:
 
 1. Bump `version` in `.claude-plugin/plugin.json`, and turn `## Unreleased`
    in `CHANGELOG.md` into the version's heading.
-2. Run `claude plugin validate . --strict`. It should pass; warnings it prints are advice only.
+2. Run `claude plugin validate . --strict`. It should exit 0.
 3. Run `/ponytail:ponytail-review` on every change since the last tag, and fix
    what it finds. Nothing else runs before a release: no mutants, no fuzz.
 4. Merge through a pull request once its CI passes.
