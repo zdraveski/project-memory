@@ -2023,6 +2023,29 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   ok(subagent(pin) === false && !entries([sd]).some((x) => /4821/.test(JSON.stringify(x))), 'a subagent report in a private turn is not saved');
   appendFileSync(priv, prompt('now something plain', 'p2') + '\n');
   ok(subagent({ ...pin, agent_id: 'p2', last_assistant_message: 'plain report tapir' }) === true, 'after a plain prompt the subagent report is saved again');
+  // 1.5.2 finding 1: judged by the turn open when the agent STARTED, not when it ended; <private-session> anywhere since hushes it.
+  {
+    const base = Date.parse('2026-06-01T10:00:00Z'), iso = (s) => new Date(base + s * 1000).toISOString();
+    const rec = (type, uuid, s, content) => JSON.stringify({ type, uuid, timestamp: iso(s), cwd: 'C:\\journal-subagent', message: { role: type, content } });
+    const agent = (name, s, task) => { const p = join(dirname(sd), name); writeFileSync(p, rec('user', `${name}-u`, s, task) + '\n'); return p; };
+    const run = (name, main, startAt, report) => subagent({ ...input, agent_id: name, transcript_path: main, agent_transcript_path: agent(`agent-${name}.jsonl`, startAt, `task ${name}`), last_assistant_message: report });
+    // B: a background agent from a <private> turn ends during a later plain turn.
+    const mb = join(dirname(sd), 'dddd4444-b.jsonl');
+    writeFileSync(mb, [rec('user', 'b1', 0, '<private>my salary dispute with Walrus Ltd</private> research the law'), rec('assistant', 'b2', 1, [{ type: 'text', text: 'Started an agent.' }]),
+      rec('user', 'b3', 10, 'meanwhile fix the typo')].join('\n') + '\n');
+    ok(run('bgone', mb, 2, 'Walrus Ltd owes two months of pay') === false && !entries([sd]).some((x) => /Walrus|bgone/.test(JSON.stringify(x))), 'an agent started in a private turn is not saved when it ends in a later plain turn');
+    // The private turn's first reply is only a tool call (no text): it is still the turn the agent started in.
+    const mt = join(dirname(sd), 'ffff6666-t.jsonl');
+    writeFileSync(mt, [rec('user', 't1', 0, '<private>my salary dispute with Narwhal Ltd</private> research the law'), rec('assistant', 't2', 1, [{ type: 'tool_use', id: 'tu1', name: 'Agent', input: { prompt: 'x' } }]),
+      rec('user', 't3', 10, 'meanwhile fix the typo')].join('\n') + '\n');
+    ok(run('toolonly', mt, 2, 'Narwhal Ltd owes pay') === false && !entries([sd]).some((x) => /Narwhal/.test(JSON.stringify(x))), 'an agent started in a private turn that only called tools is not saved');
+    // Control: the same conversation, an agent started after the plain prompt, is saved.
+    ok(run('bgtwo', mb, 11, 'plain report ibex') === true && entries([sd]).some((x) => /ibex/.test(JSON.stringify(x))), 'an agent started in the plain turn is still saved');
+    // A: <private-session> typed in the open turn, no Stop since.
+    const ma = join(dirname(sd), 'eeee5555-a.jsonl');
+    writeFileSync(ma, [rec('user', 'a1', 0, 'hello'), rec('assistant', 'a2', 1, [{ type: 'text', text: 'hi' }]), rec('user', 'a3', 5, '<private-session> look into the zebra papers')].join('\n') + '\n');
+    ok(run('sessA', ma, 6, 'Okapi Holdings buys zebra') === false && !entries([sd]).some((x) => /Okapi Holdings/.test(JSON.stringify(x))), 'an agent report after <private-session> typed in the open turn is not saved');
+  }
   // A private turn with over 512 KB of tool output after its prompt: the tail cuts the prompt off, and the report is still not saved.
   const big = join(dirname(sd), 'cccc3333-private.jsonl');
   writeFileSync(big, prompt('<private>my PIN is 7733, ask an agent to check the vault</private>', 'q1') + '\n');
