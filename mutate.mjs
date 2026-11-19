@@ -76,7 +76,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const jobs = [];
   for (const [name, [testName, mutants]] of Object.entries(suites)) {
     if (changed && !inScope(changed, name, testName)) continue;
-    if (hand) for (const [label, [from, to, opts]] of Object.entries(mutants)) if (!only.length || only.some((o) => label.includes(o))) jobs.push({ name, testName, label, from, to, full: !!opts?.full });
+    if (hand) for (const [label, [from, to, opts]] of Object.entries(mutants)) if (!only.length || only.some((o) => label.includes(o))) jobs.push({ name, testName: opts?.test ?? testName, label, from, to, full: !!opts?.full });
   }
   // The automatic mutants, after the hand ones: dropped when a hand mutant makes
   // the same edit. Compared as (offset, removed, inserted) with the common start
