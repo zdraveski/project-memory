@@ -35,9 +35,13 @@ const gate = (trigger = 'auto') => {
   try { execFileSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger, session_id: 's1' }), env, stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000 }); return { code: 0, err: '' }; }
   catch (e) { return { code: e.status, err: String(e.stderr) }; }
 };
+// The same run, whole: its exit code and what it said, for a session.
+const gateRun = (session = 's1') => spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: session }), env, encoding: 'utf8', timeout: 30_000 });
 // The nudge runs inside memory-tier.mjs's Stop path; call it in-process here,
 // under the throwaway HOME tempHome set.
-const { nudge, TRIGGER, WINDOW } = await import('./compact-gate.mjs');
+const { nudge, TRIGGER, WINDOW, tokens } = await import('./compact-gate.mjs');
+// A count of zero is a count (read from the environment it is the string '0'); none is NaN.
+ok(tokens(0) === 0 && tokens('0') === 0 && Number.isNaN(tokens(undefined)) && Number.isNaN(tokens(null)), 'tokens reads zero as zero and nothing as NaN');
 // The trigger moves with CLAUDE_CODE_AUTO_COMPACT_WINDOW: sizes are relative to it.
 const T = Math.round(TRIGGER * WINDOW);
 // The nudge must land a turn before Claude Code compacts (33k short of the window):
@@ -114,6 +118,7 @@ ok(/ag1 → C:\\Temp\\tasks\\ag1\.output/.test(doc), 'an agent launch is found a
 ok(/edited this turn:\*\* a\.py/.test(doc) && !/C:\\repo/.test(doc), 'files edited this turn are listed, by name: a path names the user\'s folders');
 ok(/last said:\*\* running the suites/.test(doc), 'the last words said are kept');
 ok(doc.indexOf('cut mid-turn') < doc.indexOf('<!-- auto:end -->'), 'the note sits inside the auto section, so the next Stop drops it');
+ok(!/<\n- \*\*cut mid-turn/.test(doc) && /edited this turn:\*\* a\.py\n<!-- auto:end -->\n$/.test(doc), 'the note is spliced in whole: nothing of the end marker is carried before it');
 // 1.5.0: the edited list leaves out an edit whose result is an error (refused, or not applied), as the handoff's Changed does.
 {
   const e = (id, file) => rec('assistant', [{ type: 'tool_use', id, name: 'Edit', input: { file_path: file } }]);
@@ -128,11 +133,45 @@ ok(doc.indexOf('cut mid-turn') < doc.indexOf('<!-- auto:end -->'), 'the note sit
   ok(/edited this turn:\*\* same\.py/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a failed second edit of a file the first changed keeps it listed');
 }
 
+// What Claude Code writes oddly is walked, not thrown at: a line that starts like JSON and is not, an attachment with no body, a record with
+// no message, null blocks, a tool call with no input (each threw, and a throw lets the compaction run). The null in a launch's result stays.
+{
+  const sw = (...c) => rec('assistant', c, { message: { stop_reason: 'tool_use', usage: { input_tokens: 3, cache_read_input_tokens: 870_000, cache_creation_input_tokens: 0, output_tokens: 9 } } });
+  write(user('odd job'), '{"broken', JSON.stringify({ type: 'attachment' }), JSON.stringify({ type: 'assistant' }),
+    sw(null, { type: 'tool_use', id: 'z', name: 'Bash' }, { type: 'tool_use', id: 'z2', name: 'PowerShell' }),
+    rec('user', [{ type: 'tool_result', tool_use_id: 'z', content: [null, { type: 'text', text: launch('bgnull') }] }]), sw({ type: 'text', text: 'working' }));
+  let st = {}; try { st = JSON.parse(execFileSync(process.execPath, [GATE, '--state', transcript], { env, encoding: 'utf8' })); } catch {}
+  ok(st.ctx === 870_003 && st.midTurn === true && st.running?.[0]?.[0] === 'bgnull', `an odd transcript is read through (got ${JSON.stringify(st).slice(0, 200)})`);
+  ok(gate().code === 2, 'an odd transcript still defers a mid-turn compaction');
+}
+// Deferred once per session: another session's mark does not stand for this one's.
+{
+  const au = (id) => rec('assistant', [{ type: 'text', text: 'working' }], { uuid: id, message: { stop_reason: 'tool_use', usage: { input_tokens: 3, cache_read_input_tokens: 870_000, cache_creation_input_tokens: 0, output_tokens: 9 } } });
+  writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+  write(user('long job'), au('rec-two'));
+  const got = ['sess-a', 'sess-b', 'sess-a', 'sess-b'].map((s) => gateRun(s).status);
+  ok(got.join() === '2,2,0,0', `each session's compaction is put off once, by its own mark (got ${got})`);
+}
+// A handoff that cannot be read says so in the gate's word: the note's failure is named, as the handoff's is.
+{
+  const hm = join(dir, 'handoff.md');
+  rmSync(hm, { force: true }); mkdirSync(hm);
+  write(user('long job'), asst('working', 965_000, 'tool_use'));
+  const r = gateRun();
+  rmSync(hm, { recursive: true }); writeFileSync(hm, '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+  ok(r.status === 0 && /handoff: /.test(r.stderr) && /note: /.test(r.stderr), `an unreadable handoff.md has its failures named, the compaction still runs (got ${r.status}: ${r.stderr.trim()})`);
+}
+
 // A password typed alone as the answer to a password question is not written into the note (1.4.1 H review).
 const SECRET = ['Zq8x', 'K2mP', '9vL4n'].join('');
 write(user('start'), asst('What is the database password I should use?', 500_000, 'end_turn'), user(SECRET), asst('editing', 965_000, 'tool_use'));
 ok(gate().code === 0, 'over the ceiling the compaction runs (secret answer)');
 ok(!readFileSync(join(dir, 'handoff.md'), 'utf8').includes(SECRET), 'a bare password answer is not in the cut mid-turn note');
+// A private ask is read in its normalized spelling, a plain tag beside it too: 100 ligatures are 109 characters typed and 209 normalized,
+// past the 200 a bare password may be, so the answer is a private one (`[private]`), not a bare password (`[redacted]`).
+write(user('start'), asst('What is the database password I should use?', 500_000, 'end_turn'), user(`<private>${'ﬁ'.repeat(100)}`), asst('editing', 965_000, 'tool_use'));
+gate();
+ok(/^[^\n]*asked [^\n]*: \[private\]\n/.test(readFileSync(join(dir, 'handoff.md'), 'utf8').split('**cut mid-turn**').pop()), 'a private ask with a plain tag is read normalized in the note: private, not a bare password');
 
 // An API-error or interrupt entry (model <synthetic>, usage all zeros) is no size: the turn's real one stays, and the nudge still fires.
 const synth = rec('assistant', [{ type: 'text', text: 'API Error' }], { message: { model: '<synthetic>', stop_reason: 'stop_sequence', usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 } } });
@@ -279,7 +318,8 @@ if (!quick) {
 writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
 writeFileSync(join(dir, '.private-sessions'), 's1\n');
 write(user('secret plan'), asst('working', 965_000, 'tool_use'), result('ok'));
-ok(gate().code === 0 && !/cut mid-turn|secret plan/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'a private conversation is compacted with nothing written');
+const pg = gateRun();
+ok(pg.status === 0 && /a private conversation, nothing written/.test(pg.stderr) && !/cut mid-turn|secret plan/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), `a private conversation is compacted with nothing written, and the gate says why (got ${pg.stderr.trim()})`);
 rmSync(join(dir, '.private-sessions'));
 // P-F2 (review): nor does one held with auto memory off once (its tag in the projects' .memory-off), resumed with it on, as its
 // handoff keeps it out: the note held what it said, and no recovery note is printed either.
