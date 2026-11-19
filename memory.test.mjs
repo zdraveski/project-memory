@@ -2661,6 +2661,63 @@ After the log: narwhalqq stays.
   writeFileSync(hj, hjText);
 }
 
+// 1.5.3 holes: replay's 30-day window to the millisecond, its order, the files it reads and what it prints.
+{
+  const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 30);
+  const day = 86400000, ago = (d) => Date.now() - d * day;
+  const tl = (command, t) => JSON.stringify({ type: 'assistant', isSidechain: false, timestamp: new Date(t).toISOString(), cwd: 'C:/rp/proj', sessionId: 'rp123456-aaaa',
+    message: { content: [{ type: 'tool_use', name: 'Bash', id: 'tu1', input: { command } }] } }) + '\n';
+  const proj = join(root, 'C--rp-proj'), pm = join(proj, 'memory'), sh = join(root, '_shared');
+  mkdirSync(pm, { recursive: true }); mkdirSync(sh, { recursive: true });
+  const rule = '---\nname: Stage files by name\ndescription: Never run git add -A.\ntype: feedback\nenforce:\n  on: git add\n  has: [-A, --all, .]\n---\n\nbody\n';
+  writeFileSync(join(pm, 'stage.md'), rule);
+  // The first moment of the window is in, a millisecond before it is out, and a file last written at that moment is read.
+  writeFileSync(join(proj, 'edge.jsonl'), tl('git add -A # atedge', from.getTime()) + tl('git add -A # justbefore', from.getTime() - 1));
+  utimesSync(join(proj, 'edge.jsonl'), from, from);
+  // Written newest first: the listing is oldest first.
+  writeFileSync(join(proj, 'order.jsonl'), tl('git add -A # third', ago(1)) + tl('git add -A # first', ago(5)) + tl('git add -A # second', ago(3)));
+  // A line longer than the 8 MB read is passed over, the line after it is read.
+  writeFileSync(join(proj, 'big.jsonl'), tl('git add -A # bigline ' + 'x'.repeat(8.5 * 1048576), ago(2)) + tl('git add -A # afterbig', ago(2)));
+  // Not transcripts: a file of another kind, a folder named like one, and the shared store's folder.
+  writeFileSync(join(proj, 'notes.txt'), tl('git add -A # nottranscript', ago(1)));
+  mkdirSync(join(proj, 'folder.jsonl'));
+  mkdirSync(join(sh, 'memory'), { recursive: true }); writeFileSync(join(sh, 'shared01-aaaa.jsonl'), tl('git add -A # sharedcmd', ago(1)));
+  const go = (...a) => run(['enforce', 'replay', 'stage', '--store', pm, ...a]);
+  r = await go();
+  const lines = r.stdout.split('\n').filter((l) => /\d{4}-\d\d-\d\d \d\d:\d\d/.test(l)), tags = lines.map((l) => l.match(/# (\w+)/)?.[1]);
+  ok(r.status === 0 && tags.join() === 'atedge,first,second,afterbig,third', `replay prints the hits oldest first, the window's first moment in, the moment before out, a line past 8 MB passed over (got ${tags} ${r.stdout.slice(-300)}${r.stderr})`);
+  ok(!/nottranscript/.test(r.stdout) && !/could not read/.test(r.stdout), 'a file that is not a .jsonl is not read, a folder named like one is no failure');
+  ok(/^hits by project: .* 5$/m.test(r.stdout) && /5 hits in 3 sessions, 1 project/.test(r.stdout), `hits by project counts one by one (got ${r.stdout.slice(-300)})`);
+  r = await go('--all');
+  ok(!/sharedcmd/.test(r.stdout), '--all does not read the shared store folder');
+  // The spawned CLI has no terminal: nothing on stderr.
+  const sp = spawnSync(process.execPath, [CLI, 'enforce', 'replay', 'stage', '--store', pm, '--all'], { env, encoding: 'utf8' });
+  ok(sp.status === 0 && sp.stderr === '', `replay writes no progress to a stderr that is no terminal (got ${sp.stderr})`);
+  // A transcript that goes away while it is read is named, not skipped in silence.
+  const gone = join(proj, 'gone.jsonl'); writeFileSync(gone, tl('git add -A # gonecmd', ago(1)));
+  mkdirSync(join(proj, 'rpsess', 'subagents'), { recursive: true });
+  const undo = meanwhile('readdirSync', (p) => /subagents$/.test(p), () => rmSync(gone));
+  try { r = await go(); } finally { undo(); }
+  ok(/^could not read .*gone\.jsonl: ENOENT$/m.test(r.stdout), `a transcript that vanished is reported (got ${r.stdout.slice(-300)})`);
+  // What is not asked for: no words after replay, another word before them, a path that is no note.
+  r = await run(['enforce', 'replay', '--store', pm]);
+  ok(r.status === 1 && /enforce takes status, or replay/.test(r.stdout), 'replay with no note is the usage');
+  r = await run(['enforce', 'bogus', 'stage', '--store', pm]);
+  ok(r.status === 1 && /enforce takes status, or replay/.test(r.stdout), 'enforce with another word is the usage');
+  const nowhere = join(home, 'nowhere');
+  r = await run(['enforce', 'replay', join(nowhere, 'stage.md'), '--store', pm]);
+  ok(r.status === 0 && /checked \d+ git commands/.test(r.stdout), `a .md path that is not there falls back to the note of that name in the store (got ${r.stdout.slice(-200)})`);
+  mkdirSync(join(nowhere, 'dir.md'), { recursive: true }); writeFileSync(join(nowhere, 'plain'), rule);
+  r = await run(['enforce', 'replay', join(nowhere, 'dir.md'), '--store', pm]);
+  ok(r.status === 1 && /no note/.test(r.stdout), `a folder named like a note is no note (got ${r.stdout})`);
+  r = await run(['enforce', 'replay', join(nowhere, 'plain'), '--store', pm]);
+  ok(r.status === 1 && /no note/.test(r.stdout), `a path with no .md is looked up as a note name, not read (got ${r.stdout})`);
+  // status counts back to the same moment: a log line at it is in, one a millisecond before is out.
+  writeFileSync(join(pm, '.enforce-log'), JSON.stringify({ t: from.toISOString(), note: 'stage.md', s: 'rp', agent: '', id: 'a' }) + '\n' + JSON.stringify({ t: new Date(from.getTime() - 1).toISOString(), note: 'stage.md', s: 'rp', agent: '', id: 'b' }) + '\n');
+  r = await run(['enforce', 'status', '--store', pm]);
+  ok(/^stage\.md +1 hit in 30 days \(1 main, 0 subagent\)/m.test(r.stdout), `status counts from the window's first moment (got ${r.stdout})`);
+}
+
 // Fake secrets, built from pieces so no scanner sees a literal.
 const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = ['Zx9', 'Qv', '7!', 'mT3', 'kLp'].join('');
 // Secrets in a note (1.4.1 J): promote refuses it, search and status print no secret from names or links.
