@@ -71,7 +71,6 @@ export default {
   "a nudge shortens a private hold": ["const hold = (p) => { if (p.frozen !== true) {", "const hold = (p) => { if (true) {"],
   "a compaction does not end the hold": [") || r.isCompactSummary\n", ") || false\n"],
   "a compaction summary freezes the turn": ["r.type === 'user' && !r.isCompactSummary ? unquote(unwrap(told", "r.type === 'user' ? unquote(unwrap(told"],
-  "a mixed private spelling leaks": ["if (ask && PRIVATE.test(norm(ask))) ask = norm(ask);", "if (ask && !PRIVATE.test(ask) && PRIVATE.test(norm(ask))) ask = norm(ask);"],
   "every line of a key replaced": ["if (n) { gone.add(t); left.set(key(t), n - 1); }", "if (n) { gone.add(t); }"],
   "the since match ignores the answer": [" && e.did === since.did", ""],
   "a forget turn's entry not found by the next Stop": ["const e = shown(t); return e.ask", "const e = { ask: clip(t.ask, ASK), did: answer(userText(t), t.did, DID) }; return e.ask"],

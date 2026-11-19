@@ -2778,6 +2778,10 @@ require('node:module').syncBuiltinESMExports();
       ok(/^- \*\*asked\*\* 2026-10-01 10:09 \[ssssssss\]: ask-9 here/m.test(crowded) && !crowded.includes('ask-0 here') && crowded.split('\n').filter((l) => l.startsWith('- [Pad')).length === 30
         && /Last session here ended 2026-10-01 10:09 on: ask-9 here/.test(crowded), `with the shared index full, the newest exchange is still printed, and every shared lesson stays (${crowded.length} characters)`);
       ok(crowded.length <= 3500 + 1500 && crowded.split('\n').filter((l) => /^- \*\*asked\*\*/.test(l)).length < 3, 'and the exchanges take no more than their reserve');
+      // The newest exchange alone past the reserve (ask, answer and files each at their cap): none is printed, not that one.
+      writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'ssssssss', `ask-0 ${mk(600)}`, `did-0 ${mk(1000)}\n  **changed:** ${mk(1000)}`)));
+      const huge = print_(cw4, 'pppppppp-1', 'startup', at4);
+      ok(huge.includes('ask-0 ') && !/^- \*\*asked\*\*/m.test(huge) && !huge.includes('Its last exchanges'), 'an exchange too big for its room, even alone, is left out whole');
       writeFileSync(shared, '');
       const few = startup(3, 50);
       ok(/Last session here ended 2026-10-01 10:02 on: ask-2 here[^\n]*\nIts last exchanges, oldest first:\n- \*\*asked\*\* 2026-10-01 10:00 \[ssssssss\]: ask-0 here\n {2}\*\*did:\*\* did-0 /.test(few)
