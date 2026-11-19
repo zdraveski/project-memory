@@ -257,3 +257,15 @@ a6bc39ccf135 enforce.mjs:202 `r.message?.content` -> `r.message.content`: a user
 accf9c1bb283 enforce.mjs:218 `cut < 0` -> `<= 0`: cut is the index of a newline found from the middle of a file over LOG_MAX (256 KB), so it is never 0
 47ec38726494 enforce.mjs:218 `cut < 0` -> `cut < 1`: cut is the index of a newline found from the middle of a file over LOG_MAX (256 KB), so it is never 0 and the two tests agree
 39ffc81b6ad6 memory.mjs:1043 `.filter((e) => e.isDirectory())` removed: a plain file kept in `subs` makes jsonl(join(file, "subagents")) read a path under a file, which fails with ENOTDIR and is caught as []; the same list as without the file.
+0af61ab3a25e memory.mjs:505 `return null` -> `return undefined`: every caller of transcriptOf tests it for truth (`if (t)`, `if (p)`, `!(session && ...)`) or passes it where only a string is used (`typeof t === 'string'` in transcripts), so null and undefined act the same.
+b79b661d0b57 memory.mjs:1161 `-1` -> `-2`: a sort comparator is read only by its sign, so -2 orders as -1.
+ee0a05f103a3 memory.mjs:1161 `1` -> `2`: a sort comparator is read only by its sign, so 2 orders as 1.
+53880412ac5f memory.mjs:1161 `a.at > b.at` -> `>=`: it differs only for equal `at`, where it returns 1 instead of 0, and V8's stable sort moves an element only when the comparator returns less than 0, so equal entries keep their order either way (checked over 6000 random arrays).
+b6b7863b1a2c memory.mjs:1161 tie result `0` -> `1`: for equal `at` the comparator returns 1 instead of 0, and V8's stable sort moves an element only when the comparator returns less than 0, so equal entries keep their order either way (checked over 6000 random arrays).
+5ee5c6087053 memory.mjs:1219 `1` -> `2`: a sort comparator is read only by its sign, so 2 orders as 1.
+c519c830eff6 memory.mjs:1219 `-1` -> `-2`: a sort comparator is read only by its sign, so -2 orders as -1.
+ed7da7218510 memory.mjs:1219 `a.at < b.at` -> `<=`: it differs only for equal `at`, where it returns 1 instead of 0, and V8's stable sort moves an element only when the comparator returns less than 0, so equal entries keep their order either way (checked over 6000 random arrays).
+c98910ad3314 memory.mjs:1219 tie result `0` -> `1`: for equal `at` the comparator returns 1 instead of 0, and V8's stable sort moves an element only when the comparator returns less than 0, so equal entries keep their order either way (checked over 6000 random arrays).
+c24ed10798d9 memory.mjs:1195 importing no-count 0 -> 1: importing is read only in the no-hit branch, and the first-branch no-terms and hit cases never use it, so the value is dead there.
+cfcf02353ffd memory.mjs:1195 catch { return t; } -> {}: summary() never throws (days() is lenient, its reads and candidates() are caught inside), so the catch is unreachable.
+56741da5de25 memory.mjs:1195 catch returns undefined instead of t: summary() never throws, so the catch is unreachable.
