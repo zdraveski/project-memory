@@ -47,7 +47,7 @@ three slash commands in `commands/`: `/project-memory:incognito`,
 
 | Moment | Claude Code event | What runs |
 |---|---|---|
-| Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, writes the journal and imports a few other conversations into it, takes a snapshot, and reminds Claude to save notes when a compaction is close |
+| Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, writes the journal and imports a few other conversations into it, takes a snapshot, and reminds Claude to save notes when a compaction is close. When a newer version is installed than the one this conversation runs, it says once per version: `project-memory X is installed, run /reload-plugins to use it` |
 | A subagent finishes | `SubagentStop` | `memory-tier.mjs --stop`, which saves the subagent's final report, with the first line of its task, as its own journal entry |
 | Claude stops because of an error (an API error, for example) | `StopFailure` | `memory-tier.mjs --stop`, the same as `Stop`, so the turn is saved at once and not at the next reply |
 | A conversation starts, is resumed, is cleared with `/clear`, or goes on after a compaction | `SessionStart` | `brief.mjs --print`: the startup briefing (none for a resumed conversation) |
@@ -136,7 +136,7 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
 | `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
 | `~/.claude/projects/.git/project-memory-ignored`, `project-memory-parts` | bookkeeping for the snapshot's ignore list; a first snapshot still being taken in parts |
-| `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran (with each reply's fingerprint, 8 characters of its hash), the snapshot's state, the reminder's state per conversation tag |
+| `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran (with each reply's fingerprint, 8 characters of its hash), the snapshot's state, the reminder's state and the last update notice per conversation tag |
 | `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, or with auto memory off a conversation's tag that could not be written (`off`), and why (a list that won't read is named there). It is also written when a reply could not be saved because another window held the store through two tries; read at the next start and by `status` |
 | `~/.claude/projects/.journal-failed-<project folder>` | a journal write that failed after a reply when the `journal` folder wouldn't take `.failed` either, and why; read at the next start and by `status`, removed by the next write that goes through |
 | `~/.claude/projects/.memory-off` | the tags of conversations held with auto memory off, which the journal never imports: kept while the transcript is on disk, and the newest 100 in any case, 10,000 at most |

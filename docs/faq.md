@@ -118,7 +118,9 @@ under env in my Claude Code settings,"* then restart Claude Code.
 
 To update, run `claude plugin marketplace update project-memory` and then
 `claude plugin update project-memory@project-memory` in a terminal, and
-restart Claude Code. A marketplace you added from GitHub has auto-update off.
+restart Claude Code. A conversation that is already open keeps running the old
+version: after its next reply it says once `project-memory X is installed, run
+/reload-plugins to use it`. A marketplace you added from GitHub has auto-update off.
 To turn it on, open `/plugin`, then Marketplaces, then project-memory, then
 Enable auto-update; `/project-memory:memory doctor` says whether it is on.
 To pause it, run
