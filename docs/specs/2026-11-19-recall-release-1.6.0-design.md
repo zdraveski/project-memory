@@ -181,6 +181,9 @@ workspace and checks whether Claude loads the memory skill.
 - **It ships only if it ran.** If the spike below shows that a run without a shell tool is refused
   on the build PC too, 2a is parked: no `evals/` folder goes into the repo with cases nobody ran,
   and the README says nothing about trigger cases.
+- **It never touches the real memory.** With `--trust-plugin` the plugin's hooks run in the eval's
+  workspace and would write a store into the real projects folder. So every `claude plugin eval`
+  run has `CLAUDE_CONFIG_DIR` set to a new temporary folder, like 2b.
 
 | Case folder | Prompt | Passes when |
 |---|---|---|
@@ -720,6 +723,8 @@ the erase.
   exists.
 - The mark is written first. If it cannot be written, `erase` deletes nothing, says why and
   exits 1.
+- It is written even when there is nothing to delete: a computer with old conversations and no
+  journal yet must not import them after an erase.
 - The builder greps every place that makes text from old turns (the note before a compaction, the
   briefing at session start) and gives each the same rule. Each gets a test.
 
