@@ -148,4 +148,11 @@ ok(ig.split('\n').includes('*') && !ig.includes('enforce'), 'the snapshot ignore
 { const q = project(); writeFileSync(join(q.store, 'stage.md'), note('Stage files by name', ADD).replace('Never run git add -A.', 'x'.repeat(5000)));
   ok(ruleSet(q.payload('git add -A')).rules.length === 1, 'a rule after a long description is cached'); }
 
+// 1.5.3: the agent type and the tool id are cut at 64 characters; a character split across two reads of stdin arrives whole
+p = project(); quiet(run(p.payload('git add -A', { agent_type: 'A'.repeat(100), tool_use_id: 'T'.repeat(100) })), 'long fields');
+ok(lines(p.store)[0].agent === 'A'.repeat(64) && lines(p.store)[0].id === 'T'.repeat(64), 'agent and id are cut at 64 characters');
+{ p = project(); const E = String.fromCharCode(233), at = (pad) => JSON.stringify(p.payload('git add -A', { pad: 'a'.repeat(pad), agent_type: E.repeat(30) })), start = Buffer.byteLength(at(0).slice(0, at(0).indexOf(E)));
+  quiet(run(at(65536 - 11 - start)), 'a character split at the 64 KB read'); quiet(run(at(65536 - 12 - start)), 'a character split at the 64 KB read, other side');
+  ok(lines(p.store).length === 2 && lines(p.store).every((x) => x.agent === E.repeat(30)), `a multi-byte character split across reads is whole (got ${JSON.stringify(lines(p.store).map((x) => x.agent))})`); }
+
 console.log(`enforce-hook: ${checks} checks passed`);

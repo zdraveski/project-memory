@@ -1162,7 +1162,9 @@ project.
 It sees a command after an escaped quote, after git options such as
 `--no-optional-locks`, inside `{ }` or `( )`, after a line continuation, behind
 `env`, `sudo` (with options such as `-u bob`), `time`, `nohup`, `exec -a`, `cmd /c`, `cmd.exe`, `command`, `rtk` (also `rtk bypass` and `rtk proxy`), `git.exe` or a full path to git, and after
-`FOO=1` or `cd x &&`. A heredoc body is not a command. That is what the rule
+`FOO=1`, `cd x &&` or `sleep 1 &`, and inside the quotes of a shell
+(`bash -c "git add -A"`, `cmd /c "git add -A"`, `powershell -Command "..."`).
+A heredoc body is not a command. That is what the rule
 engine reads, and what `replay` reads in saved commands.
 
 It does not see:
@@ -1174,10 +1176,9 @@ It does not see:
   tried. In 30 days of one user's real commands, about 0.4% of git calls
   were of these forms. `replay` reads the saved commands, so it does see
   them, and the log will show fewer hits than `replay` does for them.
-- `$(...)` inside quotes, `bash -c "git add -A"`, and words after `--`
-  (`git add -- -A`); git aliases and scripts; joined short flags (`-Av`); `&`
-  alone as a separator; `#` comments; and a rule with `unless:` words that a
-  comment holds.
+- `$(...)` inside quotes, and words after `--` (`git add -- -A`); git
+  aliases and scripts; joined short flags (`-Av`); `#` comments; and a rule
+  with `unless:` words that a comment holds.
 
 ### The honest numbers
 
