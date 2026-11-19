@@ -3497,6 +3497,10 @@ again ${key2}
   r = await jcli('search', 'three');
   const ls = r.stdout.trimEnd().split('\n');
   ok(/^could not read .*2026-10-09.md: /.test(ls.at(-3)) && /^2 of 2 match/.test(ls.at(-2)) && ls.at(-1) === 'Not the entry you meant? Search again with other words.', `a day that cannot be read is named above the count, and the count and the last line stay last (got ${r.stdout})`);
+  // A miss names the unreadable day above its one line, too.
+  r = await jcli('search', 'zzznomatchatall');
+  const lm = r.stdout.trimEnd().split(/\r?\n/);
+  ok(/^could not read .*2026-10-09.md: /.test(lm.at(-2)) && /^nothing matches "zzznomatchatall"/.test(lm.at(-1)), `a miss names the day it could not read above its last line (got ${r.stdout})`);
   rmSync(join(jd, 'journal', '2026-10-09.md'), { recursive: true });
 }
 

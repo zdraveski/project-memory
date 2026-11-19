@@ -269,3 +269,4 @@ c98910ad3314 memory.mjs:1219 tie result `0` -> `1`: for equal `at` the comparato
 c24ed10798d9 memory.mjs:1195 importing no-count 0 -> 1: importing is read only in the no-hit branch, and the first-branch no-terms and hit cases never use it, so the value is dead there.
 cfcf02353ffd memory.mjs:1195 catch { return t; } -> {}: summary() never throws (days() is lenient, its reads and candidates() are caught inside), so the catch is unreachable.
 56741da5de25 memory.mjs:1195 catch returns undefined instead of t: summary() never throws, so the catch is unreachable.
+f15dae2c7ec1 memory.mjs:1310 read(...) ?? '' -> || '': read() returns null or a string, and the only falsy string is '', which the fallback '' equals, so the tested text is the same.
