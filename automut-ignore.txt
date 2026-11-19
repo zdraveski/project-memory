@@ -86,3 +86,33 @@ a0bf31efd2f0 memory.mjs:584 `buf.length - 1` -> `- 2`: the fallback is only take
 710f9d2c68ce memory.mjs:1208 show's `args.length > 1` -> `>= 1`: with one word, `[args.join(' ')]` is `args`, the same key
 b46318518be8 memory.mjs:588 the D line's `exec(t)?.[1]` -> `[2]`: the D line of a path the purge drops is then kept, which deletes a file the stream never made (its M lines are dropped), and fast-import takes that without a word; the M line's group is the one the purge tests watch
 2fbd3fde3aa4 enforce.mjs:115 `&&` -> `||` in the lead-word loop: it never ends (every token satisfies `i < length || ...` once past the end), so the suite hangs until the 120 s clock cuts it off and it is reported TIMED OUT; a hang is a kill that no assertion can state
+431360c493b9 store.mjs:21 `salt.length < 32` -> `<= 32`: a salt of exactly 32 characters is then made anew, but the write of it (flag wx) is refused by the file that is there, and the catch reads that file back, so the salt used is the same 32 characters
+c0466355318d store.mjs:48 `?.autoMemoryEnabled` -> `.autoMemoryEnabled`: a file that holds the JSON `null` then throws, the catch continues, and `v` stays undefined; the `?.` leaves v undefined: either way the file sets nothing
+a0015c73b6f6 store.mjs:48 catch `{ continue; }` -> `{}`: `v` is declared before the try and stays undefined when the parse throws, so the `typeof v === 'boolean'` line that follows is false and the loop goes on, as `continue` does
+a17278b63a52 store.mjs:69 `worktreeMain(d) ?? d` -> `|| d`: worktreeMain returns null or a non-empty path (a dirname or a resolved folder), never an empty string, so `??` and `||` pick the same side
+44a37cd568ee store.mjs:82 `return null` -> `return undefined` in worktreeMain: its one caller (line 69) reads the result with `?? d`, which treats null and undefined alike
+8037f42f488d store.mjs:87 catch `{ return resolve(x); }` -> `{}`: real() then gives undefined and same() throws on resolve(undefined), caught by worktreeMain's own catch which returns null; with the fallback the path of a file that does not exist is compared to the existing .git file and is never the same, so null as well
+57e4791354d5 store.mjs:87 `return resolve(x)` -> `return undefined`: the same mutant as the empty catch above, the same two paths to null
+23e24e4ca8c5 store.mjs:88 `return null` -> `return undefined` in worktreeMain: its one caller reads the result with `?? d`, which treats null and undefined alike
+8170df7c2cf4 store.mjs:90 `return null` -> `return undefined` in worktreeMain: its one caller reads the result with `?? d`, which treats null and undefined alike
+1b930bde5b39 store.mjs:92 catch `{ return null; }` -> `{}`: worktreeMain then returns undefined, and its one caller reads the result with `?? d`, which treats null and undefined alike
+833d58aaf2f6 store.mjs:92 `return null` -> `return undefined` in worktreeMain's catch: its one caller reads the result with `?? d`, which treats null and undefined alike
+efdc1464bee7 store.mjs:107 `Buffer.alloc(0)` -> `alloc(1)`: head starts with one NUL byte, which no part of the "cwd" pattern can match or need, and the look-back margin (12,300 bytes) is 4 more than the longest match (7 + 4096 x 3 + 1), so the one byte it shifts the window by loses nothing
+865f0e8aa637 store.mjs:197 `low.get(...) ?? []` -> `|| []` in opener's table: the value is an array or undefined, and an array is truthy even when empty, so both pick the same side
+3daf0f55b547 store.mjs:201 catch `{ return t; }` -> `{}`: me stays undefined, the loop then fails to read the same file or gets an id that is never equal to undefined, and ends in `return t`
+a8bc062fbd08 store.mjs:202 `low.get(...) ?? []` -> `|| []` in opener's loop: the key was just tested with low.has(), so the value is an array, and an array is truthy even when empty
+b5ddd762336b store.mjs:238 `return false` -> `return undefined` in allStores' filter: filter keeps only truthy results, and false and undefined are both falsy
+4e6e61856d7d store.mjs:239 `return false` -> `return undefined` in allStores' filter: filter keeps only truthy results, and false and undefined are both falsy
+fed2eb5fc178 store.mjs:257 `t.slice(0, end)` -> `slice(0, end + 1)`: the frontmatter then ends with the newline that precedes the closing `---`, and every pattern in front() treats a newline as the end of a line (`$` with the m flag, `\n|$`, a block that needs one more indented line), so no value, key or block changes
+0c2e054ae27f store.mjs:269 `...?.[1] ?? ''` -> `|| ''` in block(): group 1 is one or more indented lines, never an empty string, so both pick the same side
+5b13f3021f10 store.mjs:334 `(text ?? '')` -> `(text || '')` in listOf: the text is a string or null, an empty string splits to the same nothing as '', so both give the same lines
+fd5129b5537b store.mjs:719 `(a ?? b)` -> `(a || b)`: group 1 is undefined (the base64 -d branch matched) or holds at least `echo ` or `printf `, never an empty string, so both pick the same side
+9163a5e80498 store.mjs:860 `d ?? h` -> `d || h`: d is undefined or the digits of `&#NN;`, a string that is truthy even when it is "0", so both pick the same side
+06ef877bd744 store.mjs:891 `let open = -1` -> `-2`: open is only ever compared with `< 0` and `>= 0`
+5650ea4d7726 store.mjs:894 `open < 0` -> `open <= 0`: open is -1 or the end of a match of at least `<private`, so at least 8, never 0
+0d86077fa042 store.mjs:894 `open < 0` -> `open < 1`: open is -1 or at least 8, never 0
+ce802807ac1d store.mjs:895 `open >= 0` -> `open > 0`: open is -1 or at least 8, never 0
+5dc82d6d44e0 store.mjs:895 `open >= 0` -> `open >= 1`: open is -1 or at least 8, so no value tells 0 from 1
+b83d28897e38 store.mjs:895 `open = -1` -> `open = -2`: open is only ever compared with `< 0` and `>= 0`
+f016bc4d9d68 store.mjs:897 `open >= 0` -> `open > 0`: open is -1 or at least 8, never 0
+a1101dde4519 store.mjs:897 `open >= 0` -> `open >= 1`: open is -1 or at least 8, so no value tells 0 from 1
