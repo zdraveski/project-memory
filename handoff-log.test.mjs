@@ -4006,5 +4006,12 @@ if (!quick) {
   // The bound is a speed limit (an open-ended run was quadratic), documented in store.mjs.
   ok(/hunter2xyz/.test(redact('redis-cli ' + '-n 1 '.repeat(45) + 'AUTH hunter2xyz')), 'and past 45 options the run is not followed');
 }
+// 1.5.3 holes: FORGETS gives up (as a forget, the safe way) when its step budget of 8 per character plus 64 runs out.
+{
+  const { FORGETS } = await import('./handoff-log.mjs');
+  // Each option holds another memory.mjs, so every opener walks the rest of the chain: quadratic, and 239 links outrun 8 per character.
+  const chain = (n) => 'memory.mjs' + ' --x=memory.mjs'.repeat(n);
+  ok(FORGETS.test(chain(238)) === false && FORGETS.test(chain(239)) === true, 'FORGETS stops at its step budget: 238 links read through, 239 count as a forget');
+}
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

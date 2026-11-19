@@ -93,3 +93,14 @@ a0bf31efd2f0 memory.mjs:584 `buf.length - 1` -> `- 2`: the fallback is only take
 710f9d2c68ce memory.mjs:1208 show's `args.length > 1` -> `>= 1`: with one word, `[args.join(' ')]` is `args`, the same key
 b46318518be8 memory.mjs:588 the D line's `exec(t)?.[1]` -> `[2]`: the D line of a path the purge drops is then kept, which deletes a file the stream never made (its M lines are dropped), and fast-import takes that without a word; the M line's group is the one the purge tests watch
 2fbd3fde3aa4 enforce.mjs:115 `&&` -> `||` in the lead-word loop: it never ends (every token satisfies `i < length || ...` once past the end), so the suite hangs until the 120 s clock cuts it off and it is reported TIMED OUT; a hang is a kill that no assertion can state
+a5436b673439 handoff-log.mjs:163 stick()'s miss value -1 -> -2: every caller tests only whether the result is below 0, and the one equality (=== v) is guarded by v >= 0, so -2 and -1 behave alike
+acfc39e6fd29 handoff-log.mjs:171 stick(F_END) >= 0 -> > 0: a hit is a lastIndex of at least 1 (F_END starts with s+, so it consumes a character), never 0; no input tells them apart
+479b1e9c4682 handoff-log.mjs:171 stick(F_END) >= 0 -> >= 1: a hit is a lastIndex of at least 1, a miss is -1; no input tells them apart
+870d62a558fa handoff-log.mjs:173 o < 0 -> o <= 0: o is -1 or a lastIndex of at least 1 (F_OPT starts with s+), never 0; no input tells them apart
+d8a4c5646f1c handoff-log.mjs:173 o < 0 -> o < 1: o is -1 or at least 1, so o < 1 is o < 0; no input tells them apart
+8babc9f9121a handoff-log.mjs:174 stick(F_END, s, o) >= 0 -> > 0: a hit is a lastIndex of at least 1, never 0; no input tells them apart
+0378516be03f handoff-log.mjs:174 stick(F_END, s, o) >= 0 -> >= 1: a hit is at least 1, a miss is -1; no input tells them apart
+cab934c65edf handoff-log.mjs:176 v < 0 -> v <= 0: v is -1 or a lastIndex of at least 1 (F_VAL starts with s+), never 0; no input tells them apart
+6396e5edc0c5 handoff-log.mjs:176 v < 0 -> v < 1: v is -1 or at least 1, so v < 1 is v < 0; no input tells them apart
+c5d8d5cf27f1 handoff-log.mjs:177 v >= 0 -> v > 0: v is -1 or at least 1, never 0; no input tells them apart
+5bb5fac201f4 handoff-log.mjs:177 v >= 0 -> v >= 1: v is -1 or at least 1, so the two tests agree; no input tells them apart
