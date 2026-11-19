@@ -100,6 +100,15 @@ const root = join(home, '.claude', 'projects');
     ["secrets:\n  db: hello1\n  admin: hello1", "secrets:\n  db: [redacted]\n  admin: [redacted]"],
     ["bundle config gems.corp.com {{secret}}", "bundle config gems.corp.com {{secret}}"],
     ["secret ABCDEF0123456789ABCDEF0123456789", "secret [redacted]"],
+    // 1.5.3: six rules the handoff-log suite alone watched, each leaked or mangled under its mutant.
+    ["x <private hunter2", "x [private]"],
+    ["<private", "[private]"],
+    ["Bearer\u00adabcdefghijklmnopqrstuvwxyzabcdef", "Bearer [redacted]"],
+    ["deploy --token \"-Zq99x PlmN0aQ\" go", "deploy --token \"[redacted]\" go"],
+    ["htpasswd -nb admin > .htpasswd", "htpasswd -nb admin > .htpasswd"],
+    ["htpasswd -nb admin 2>/dev/null", "htpasswd -nb admin 2>/dev/null"],
+    ["true&&STRIPE_KEY=rk9abcdefghij", "true&&STRIPE_KEY=[redacted]"],
+    ["6379> AUTH Zq99xPlmN0aQ ./check.sh", "6379> AUTH [redacted]"],
   ];
   for (const [text, stored] of cases) { const got = redact(text); ok(got === stored, `redact(${JSON.stringify(text)}) is ${JSON.stringify(stored)} (got ${JSON.stringify(got)})`); }
   // holdsSecret: a <private> span with anything real in it (a text, a number), and not one that holds nothing or only a word for one.
