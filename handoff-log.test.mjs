@@ -1333,6 +1333,15 @@ fs.readdirSync = (p, ...a) => { if (p === root) throw Object.assign(new Error(`E
 syncBuiltinESMExports();
 try { off({ session_id: 'capped00-0000' }); } finally { fs.readdirSync = rd; syncBuiltinESMExports(); }
 ok(tags().length === 10_001 && tags()[0] === 'many00050' && tags().at(-1) === 'capped00', `with no listing, the list keeps its newest 10,000 (got ${tags().length}, ${tags()[0]})`);
+// 1.5.3 holes: one project folder that will not list (not a file, which is ENOTDIR) is no listing either: nothing is pruned.
+const bad = join(root, 'C--unlistable');
+mkdirSync(bad, { recursive: true });
+writeFileSync(join(root, 'a-file-in-root'), '');
+writeFileSync(list, Array.from({ length: 150 }, (_, i) => `away${String(i).padStart(4, '0')}`).join('\n') + '\n');
+fs.readdirSync = (p, ...a) => { if (p === bad) throw Object.assign(new Error(`EACCES: permission denied, scandir '${p}'`), { code: 'EACCES' }); return rd(p, ...a); };
+syncBuiltinESMExports();
+try { off({ session_id: 'kept0000-0000' }); } finally { fs.readdirSync = rd; syncBuiltinESMExports(); rmSync(bad, { recursive: true }); rmSync(join(root, 'a-file-in-root')); }
+ok(tags().length === 151 && tags()[0] === 'away0000', `a folder that will not list prunes nothing (got ${tags().length})`);
 }
 
 // A turn that ran forget is written like a private one: its ask and its
@@ -4116,6 +4125,11 @@ if (!quick) {
   ok(clip('--password\n' + 'x'.repeat(65526), 400) === '--password [redacted] (+61177 chars)', 'one character more is cut first');
   assert.throws(() => clip(null, 5), /replace/);   // text only: anything else fails in cut(), as it always did
   checks++;
+  // No tag, no mark: hushed() says false for it and writes nothing, whatever is asked.
+  const { hushed } = await import('./handoff-log.mjs');
+  const hd = join(home, 'hushed-none');
+  mkdirSync(hd, { recursive: true });
+  ok(hushed(hd, '') === false && hushed(hd, undefined, true) === false && hushed(hd, '', true) === false && !existsSync(join(hd, '.private-sessions')), 'an empty tag is never marked, and is not a hushed one');
 }
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
