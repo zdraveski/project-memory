@@ -188,8 +188,6 @@ d58429fb717c memory-tier.mjs:560 `let n = 1` -> `2`: n is only read as `!n`, and
 1cba5687bb63 memory-tier.mjs:609 `?? {}` -> `|| {}`: JSON.parse gives null or a value; the values `||` would replace (0, false, '') have no fields and spread to nothing, exactly as {} does.
 a0a63590d3ea memory-tier.mjs:627 `catch { return false; }` -> `catch {}`: owed() is only read for truthiness, and undefined is false.
 a92846279d0a memory-tier.mjs:627 `return false` -> `undefined`: owed() is only read for truthiness, and undefined is false.
-17214640d874 memory-tier.mjs:756 `return 0` -> `undefined`: main's result goes to process.exitCode, and an undefined exitCode exits 0.
-c25eff511bf7 memory-tier.mjs:756 `await` removed: main only sets process.exitCode and never calls process.exit, so the process stays alive until the pending stdout write has flushed.
 b8d7bd525d5f memory-tier.mjs:770 `catch { return null; }` -> `catch {}`: the list is filtered by `d && ...`, which drops null and undefined alike.
 59accae95da4 memory-tier.mjs:770 `return null` -> `undefined`: the list is filtered by `d && ...`, which drops null and undefined alike.
 a5436b673439 handoff-log.mjs:163 stick()'s miss value -1 -> -2: every caller tests only whether the result is below 0, and the one equality (=== v) is guarded by v >= 0, so -2 and -1 behave alike
@@ -281,6 +279,15 @@ b47e22fb26f7 handoff-log.mjs:294 `0` -> `1`: the type pre-filter only skips line
 ed26d0c772dc handoff-log.mjs:397 `>` -> `>=`: p.said of exactly SAID_KEEP chars: tailOf(s, SAID_KEEP) returns s itself (length > keep is false), so >= changes nothing
 5d1cb723da70 handoff-log.mjs:446 `>` -> `>=`: clip(): at exactly lim chars slice(0, lim) cuts nothing and extra stays 0, so >= and > give the same string
 b90e9334a615 handoff-log.mjs:448 `===` -> `!==`: the cache key is null for a non-string and the key itself otherwise: the mutant caches only non-strings, which cut() never receives because clip() throws first
+5843b6a6ac24 handoff-log.mjs:451 `0` -> `1`: the pass counter starts at 0 or 1: a text that needs six passes to settle is cut at the first five, and none needs more than two
+f28a584b7ae2 handoff-log.mjs:455 `0` -> `1`: extra only carries what an earlier pass cut, and the first call starts at 0 or 1 with no text where the two give a different length
+4f44958f0cdf memory.mjs:90 `??` -> `||`: the left side is exec()?.[0], a string of at least 21 characters or undefined, never an empty or falsy string, so `||` and `??` pick the same side
+948ada8d850f memory.mjs:105 `??` -> `||`: the left side is the parsed `plugins` value, an object or undefined; a falsy non-nullish JSON value (0, "", false) and `{}` both give Object.keys() = [], so no find result differs
+2a84902b3eca memory.mjs:134 `{ return false; }` -> `{}`: the catch sits in a find() predicate, which reads only truthiness; undefined and false are the same
+fd95e6deac9f memory.mjs:134 `false` -> `undefined`: the catch sits in a find() predicate, which reads only truthiness; undefined and false are the same
+472b84b72ebb memory.mjs:151 `false` -> `undefined`: caseless()'s result reaches only fold()'s `folds` parameter through pick(), where it is read as `folds ? ... : n`, truthiness alone
+e0f66303654d memory.mjs:456 `''` -> `undefined`: recent()'s only caller (line 441) reads it as `if (ch)`, so '' and undefined both add no line
+dd785997cd14 memory.mjs:695 `?.` -> `.`: missing() is called only with the error caught from execFileSync (line 765), always an Error object and never null or undefined, so `e?.stderr` and `e.stderr` are the same
 e03bbf2392cd handoff-log.mjs:1240 `await main()` -> `main()`: main() catches every error itself unless rethrow is set (the tests' only caller path), and process.exitCode is already 0, so the process exits with the same output whether the promise is awaited or left pending
 f8233fabb562 handoff-log.mjs:978 `>=` -> `>`: bytes runs 512000 * 4^k (512000, 2048000, 8192000, 32768000) and 32e6 is none of them (4^k would be 62.5), so bytes >= 32e6 and bytes > 32e6 are true for the same values
 218e4fe9d743 handoff-log.mjs:978 `||` -> `&&` (whole || bytes >= 32e6): with whole true and bytes below the cap the loop only reads again; a whole file read at a larger window is the same text, so scan() gives the same result and it returns at 32768000 at the latest, same value
