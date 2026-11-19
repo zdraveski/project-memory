@@ -104,3 +104,7 @@ cab934c65edf handoff-log.mjs:176 v < 0 -> v <= 0: v is -1 or a lastIndex of at l
 6396e5edc0c5 handoff-log.mjs:176 v < 0 -> v < 1: v is -1 or at least 1, so v < 1 is v < 0; no input tells them apart
 c5d8d5cf27f1 handoff-log.mjs:177 v >= 0 -> v > 0: v is -1 or at least 1, never 0; no input tells them apart
 5bb5fac201f4 handoff-log.mjs:177 v >= 0 -> v >= 1: v is -1 or at least 1, so the two tests agree; no input tells them apart
+b63cf4bf7c63 handoff-log.mjs:121 command() returning undefined for a non-command instead of '': its one caller is prompt() (line 135), which reads it as command(s) || ..., and '' and undefined are both falsy there; no input tells them apart
+d93eb46331db handoff-log.mjs:125 command() returning undefined for an unusable name instead of '': same single caller, prompt(), reads it with ||; no input tells them apart
+b2ba93c3027d handoff-log.mjs:221 'a ?? []' -> 'a || []' in heard(): picksOf() gives an array (always truthy, [] included) or null/undefined, and ?? and || differ only for falsy non-nullish values, which it never gives
+f603aa0c666f handoff-log.mjs:222 a result that is no refusal giving undefined instead of '' inside heard()'s map: the list goes through .filter(Boolean) before .join, which drops '' and undefined alike; no input tells them apart
