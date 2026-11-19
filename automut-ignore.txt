@@ -86,6 +86,21 @@ a0bf31efd2f0 memory.mjs:584 `buf.length - 1` -> `- 2`: the fallback is only take
 710f9d2c68ce memory.mjs:1208 show's `args.length > 1` -> `>= 1`: with one word, `[args.join(' ')]` is `args`, the same key
 b46318518be8 memory.mjs:588 the D line's `exec(t)?.[1]` -> `[2]`: the D line of a path the purge drops is then kept, which deletes a file the stream never made (its M lines are dropped), and fast-import takes that without a word; the M line's group is the one the purge tests watch
 2fbd3fde3aa4 enforce.mjs:115 `&&` -> `||` in the lead-word loop: it never ends (every token satisfies `i < length || ...` once past the end), so the suite hangs until the 120 s clock cuts it off and it is reported TIMED OUT; a hang is a kill that no assertion can state
+a5436b673439 handoff-log.mjs:163 stick()'s miss value -1 -> -2: every caller tests only whether the result is below 0, and the one equality (=== v) is guarded by v >= 0, so -2 and -1 behave alike
+acfc39e6fd29 handoff-log.mjs:171 stick(F_END) >= 0 -> > 0: a hit is a lastIndex of at least 1 (F_END starts with s+, so it consumes a character), never 0; no input tells them apart
+479b1e9c4682 handoff-log.mjs:171 stick(F_END) >= 0 -> >= 1: a hit is a lastIndex of at least 1, a miss is -1; no input tells them apart
+870d62a558fa handoff-log.mjs:173 o < 0 -> o <= 0: o is -1 or a lastIndex of at least 1 (F_OPT starts with s+), never 0; no input tells them apart
+d8a4c5646f1c handoff-log.mjs:173 o < 0 -> o < 1: o is -1 or at least 1, so o < 1 is o < 0; no input tells them apart
+8babc9f9121a handoff-log.mjs:174 stick(F_END, s, o) >= 0 -> > 0: a hit is a lastIndex of at least 1, never 0; no input tells them apart
+0378516be03f handoff-log.mjs:174 stick(F_END, s, o) >= 0 -> >= 1: a hit is at least 1, a miss is -1; no input tells them apart
+cab934c65edf handoff-log.mjs:176 v < 0 -> v <= 0: v is -1 or a lastIndex of at least 1 (F_VAL starts with s+), never 0; no input tells them apart
+6396e5edc0c5 handoff-log.mjs:176 v < 0 -> v < 1: v is -1 or at least 1, so v < 1 is v < 0; no input tells them apart
+c5d8d5cf27f1 handoff-log.mjs:177 v >= 0 -> v > 0: v is -1 or at least 1, never 0; no input tells them apart
+5bb5fac201f4 handoff-log.mjs:177 v >= 0 -> v >= 1: v is -1 or at least 1, so the two tests agree; no input tells them apart
+b63cf4bf7c63 handoff-log.mjs:121 command() returning undefined for a non-command instead of '': its one caller is prompt() (line 135), which reads it as command(s) || ..., and '' and undefined are both falsy there; no input tells them apart
+d93eb46331db handoff-log.mjs:125 command() returning undefined for an unusable name instead of '': same single caller, prompt(), reads it with ||; no input tells them apart
+b2ba93c3027d handoff-log.mjs:221 'a ?? []' -> 'a || []' in heard(): picksOf() gives an array (always truthy, [] included) or null/undefined, and ?? and || differ only for falsy non-nullish values, which it never gives
+f603aa0c666f handoff-log.mjs:222 a result that is no refusal giving undefined instead of '' inside heard()'s map: the list goes through .filter(Boolean) before .join, which drops '' and undefined alike; no input tells them apart
 431360c493b9 store.mjs:21 `salt.length < 32` -> `<= 32`: a salt of exactly 32 characters is then made anew, but the write of it (flag wx) is refused by the file that is there, and the catch reads that file back, so the salt used is the same 32 characters
 c0466355318d store.mjs:48 `?.autoMemoryEnabled` -> `.autoMemoryEnabled`: a file that holds the JSON `null` then throws, the catch continues, and `v` stays undefined; the `?.` leaves v undefined: either way the file sets nothing
 a0015c73b6f6 store.mjs:48 catch `{ continue; }` -> `{}`: `v` is declared before the try and stays undefined when the parse throws, so the `typeof v === 'boolean'` line that follows is false and the loop goes on, as `continue` does
