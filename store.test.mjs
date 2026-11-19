@@ -11,7 +11,7 @@ import { createHmac } from 'node:crypto';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, wasOff, OFF_PERIODS, keyed, offSince, holdsSecret } = await import('./store.mjs');
+const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, wasOff, OFF_PERIODS, keyed, offSince, holdsSecret, tag } = await import('./store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -223,15 +223,20 @@ ok(gaveUp === null && existsSync(join(dir, '.lock')), `a held lock is given up o
 {
   const other = join(proj, 'other');
   mkdirSync(join(other, '.lock'), { recursive: true });
-  const tries = (on) => {
+  const tries = (on, first = dir) => {
     let n = 0; const real = fs.mkdirSync;
     fs.mkdirSync = function (p, ...a) { if (String(p) === join(other, '.lock')) n++; return real.call(this, p, ...a); }; syncBuiltinESMExports();
     lockBudget(on);
-    try { fastClock(() => { withLock(dir, () => 'got'); withLock(other, () => 'got'); }); } finally { lockBudget(false); fs.mkdirSync = real; syncBuiltinESMExports(); }
+    try { fastClock(() => { withLock(first, () => 'got'); withLock(other, () => 'got'); }); } finally { lockBudget(false); fs.mkdirSync = real; syncBuiltinESMExports(); }
     return n;
   };
   const alone = tries(false), shared = tries(true);
   ok(shared === 1 && alone > 1, `a hook's second held lock, its wait spent on the first, is tried once (${shared}; ${alone} with a wait of its own)`);
+  // A free lock spends only the time it took: the next held lock is still waited on, for what is left.
+  const free = join(proj, 'free'); mkdirSync(free, { recursive: true });
+  const afterFree = tries(true, free);
+  ok(afterFree > 1 && afterFree < alone, `a free lock leaves most of the wait for the next held one (${afterFree} tries; ${alone} with a wait of its own)`);
+  rmSync(free, { recursive: true, force: true });
   rmdirSync(join(other, '.lock'));
   lockBudget(true);
   try { fastClock(() => withLock(dir, () => 'got')); ok(fastClock(() => withLock(other, () => 'got')) === 'got', 'and a free lock is taken with no wait left'); } finally { lockBudget(false); }
@@ -773,6 +778,12 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(slow.res === true && readFileSync(g, 'utf8') === 'new' && slow.ms >= 100, `a rename refused three times is done on the fourth try, after pauses (got ${slow.res}, ${slow.ms} ms)`);
   const stuck = renameRun(rep('EBUSY', 9));
   ok(stuck.res === 'EBUSY' && stuck.attempts === (process.platform === 'win32' ? 9 : 4), `and given up on after the last refusal (got ${stuck.res} after ${stuck.attempts})`);
+  // The pause and the number of tries are the platform's: 8 tries 125 ms apart on Windows, 3 tries 50 ms apart elsewhere.
+  for (const [plat, pauses] of [['linux', rep(50, 3)], ['win32', rep(125, 8)]]) {
+    setPlatform(plat); const waits = [], wait = Atomics.wait; Atomics.wait = (a, i, v, ms) => { waits.push(ms); return 'ok'; };
+    let r; try { r = renameRun(rep('EBUSY', 9)); } finally { Atomics.wait = wait; setPlatform(was); }
+    ok(r.res === 'EBUSY' && r.attempts === pauses.length + 1 && waits.join() === pauses.join(), `a refused rename is tried ${pauses.length} more times, ${pauses[0]} ms apart, on ${plat} (got ${r.attempts} attempts, pauses ${waits})`);
+  }
   const bad = renameRun(rep('EINVAL', 9));
   ok(bad.res === 'EINVAL' && bad.attempts === 1, `any other refusal is thrown at once (got ${bad.res} after ${bad.attempts})`);
 
@@ -1030,5 +1041,8 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = [
     ok(ran(w1) && ran(d64), 'one character more, and all the kept are let go');
   } finally { String.prototype.normalize = norm; }
 }
+
+// tag(): the first 8 characters of a session id; none for a missing id.
+ok(tag('abcdefghij') === 'abcdefgh' && tag('abcdefgh') === 'abcdefgh' && tag('abc') === 'abc' && tag('') === '' && tag(null) === '' && tag(undefined) === '' && tag(0) === '', 'a session tag is the first 8 characters of its id, empty with no id');
 
 console.log(`store: ${checks} checks passed`);
