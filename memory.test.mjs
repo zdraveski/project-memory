@@ -3210,4 +3210,157 @@ again ${key2}
   ok(r.stdout.includes('snapshots: none to scan') && r.stdout.includes('nothing found'), `a repository with no commit has no snapshot (got ${JSON.stringify(r.stdout)})`);
 }
 
+
+// 1.5.3 holes: restore (a byte order mark on disk, what it says about the index line, a busy store, a history it cannot read) and promote (its own defaults, what it refuses and what it says).
+{
+  const h = tempHome('restore2-'), pr = join(h.home, '.claude', 'projects'), d = join(pr, 'C--rs', 'memory'), sh = join(pr, '_shared', 'memory');
+  const run1 = (args, extra = {}) => spawnSync(process.execPath, [CLI, ...args, '--store', d], { env: h.env, encoding: 'utf8', ...extra });
+  const snap = () => { spawnSync(process.execPath, [TIER], { env: h.env, encoding: 'utf8' }); spawnSync(process.execPath, [TIER], { env: h.env, encoding: 'utf8' }); };
+  const gitIn = (...x) => spawnSync('git', ['-C', pr, ...x], { encoding: 'utf8' });
+  const age = (f) => utimesSync(f, tenMin, tenMin);
+  mkdirSync(d, { recursive: true });
+  const C = Buffer.from('---\nname: bom\ndescription: a note with bytes\n---\nthe body\n');
+  const idx = (...lines) => writeFileSync(join(d, 'MEMORY.md'), ['# Memory Index', '', ...lines, ''].join('\n'));
+  writeFileSync(join(d, 'bom.md'), C); writeFileSync(join(d, 'lined.md'), ['---', 'name: lined', 'description: has a line', '---', 'body', ''].join('\n'));
+  idx('- [Bom](bom.md) — a note with bytes', '- [Lined](lined.md) — has a line');
+  for (const n of ['bom.md', 'lined.md', 'MEMORY.md']) age(join(d, n));
+  snap();
+  // What is on disk against what the snapshot holds: a byte order mark alone is no difference, a lookalike prefix is (and is no UTF-8, so it is not written over).
+  const BOM = [0xEF, 0xBB, 0xBF], disk = (prefix) => writeFileSync(join(d, 'bom.md'), Buffer.concat([Buffer.from(prefix), C]));
+  for (const [prefix, same, what] of [[BOM, true, 'a byte order mark'], [[], true, 'no prefix'], [[0x00, 0xBB, 0xBF], false, 'a first byte that is not one'], [[0xEF, 0x00, 0xBF], false, 'a second byte that is not one'], [[0xEF, 0xBB, 0x00], false, 'a third byte that is not one']]) {
+    disk(prefix);
+    const r = run1(['restore', 'bom', '--force']);
+    ok(same ? r.status === 1 && /already matches/.test(r.stdout) : !/already matches/.test(r.stdout), `restore over ${what}: ${same ? 'already that version' : 'not that version'} (got ${JSON.stringify(r.stdout)})`);
+  }
+  writeFileSync(join(d, 'bom.md'), Buffer.concat([Buffer.from(BOM), Buffer.from('other text\n')]));
+  let r = run1(['restore', 'bom', '--force']);
+  ok(r.status === 0 && /restored/.test(r.stdout) && readFileSync(join(d, 'bom.md')).equals(C), `a byte order mark and other text is replaced by the snapshot (got ${JSON.stringify(r.stdout)})`);
+  // The index line: absent at that revision, still there, or brought back.
+  // The snapshot a tier took has given every note a line, so this one is committed by hand, as the index has it.
+  writeFileSync(join(d, 'orphan.md'), ['---', 'name: orphan', 'description: no line', '---', 'body', ''].join('\n'));
+  gitIn('add', '-f', 'C--rs/memory/orphan.md'); gitIn('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'an orphan, no line');
+  unlinkSync(join(d, 'orphan.md'));
+  r = run1(['restore', 'orphan']);
+  ok(r.status === 0 && /no index line at that revision/.test(r.stdout) && existsSync(join(d, 'orphan.md')), `a note with no line in its snapshot comes back and says so (got ${JSON.stringify(r.stdout)})`);
+  unlinkSync(join(d, 'lined.md'));
+  r = run1(['restore', 'lined']);
+  ok(r.status === 0 && /its index line is still there/.test(r.stdout), `a line still in the index is said to be there (got ${JSON.stringify(r.stdout)})`);
+  unlinkSync(join(d, 'lined.md')); idx('- [Bom](bom.md) — a note with bytes');
+  r = run1(['restore', 'lined']);
+  ok(r.status === 0 && /with its line: - \[Lined\]\(lined\.md\) — has a line/.test(r.stdout) && readFileSync(join(d, 'MEMORY.md'), 'utf8').includes('[Lined](lined.md)'), `a line gone from the index comes back with the note (got ${JSON.stringify(r.stdout)})`);
+  // A store held by another hook is busy for both, and nothing moves (two seconds each).
+  writeFileSync(join(d, 'mover.md'), '---\nname: mover\ndescription: to move\n---\nbody\n');
+  mkdirSync(join(d, '.lock'));
+  const [rb, pb] = [run1(['restore', 'bom', '--force']), run1(['promote', 'mover'])];
+  rmSync(join(d, '.lock'), { recursive: true });
+  ok(rb.status === 1 && rb.stdout.includes(`${d} is busy (another hook holds it); try again`), `restore says the store is busy (got ${JSON.stringify(rb.stdout)})`);
+  ok(pb.status === 1 && pb.stdout.includes('a store is busy (another hook holds it); try again') && existsSync(join(d, 'mover.md')) && !existsSync(join(sh, 'mover.md')), `promote says a store is busy and moves nothing (got ${JSON.stringify(pb.stdout)})`);
+  // Promote: what it refuses and what it says.
+  r = run1(['promote', 'nosuchnote']);
+  ok(r.status === 1 && r.stdout.includes(`no ${join(d, 'nosuchnote.md')}`), `promote of a note that is not there names the path (got ${JSON.stringify(r.stdout)})`);
+  mkdirSync(sh, { recursive: true }); writeFileSync(join(sh, 'mover.md'), 'already shared\n');
+  r = run1(['promote', 'mover']);
+  ok(r.status === 1 && r.stdout.includes('the shared store has a mover.md already: rename one, or merge them by hand') && existsSync(join(d, 'mover.md')), `promote will not overwrite a shared note (got ${JSON.stringify(r.stdout)})`);
+  // Called as a function with no options: a key is held back, as with the CLI.
+  const key = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8';
+  writeFileSync(join(d, 'keyed.md'), `---\nname: keyed\ndescription: holds a key\n---\n${key}\n`);
+  const fn = spawnSync(process.execPath, ['--input-type=module', '-e', `import { promote } from ${JSON.stringify(pathToFileURL(CLI).href)}; const r = promote(${JSON.stringify(d)}, 'keyed.md'); console.log(JSON.stringify(r));`], { env: h.env, encoding: 'utf8' });
+  ok(/"ok":false/.test(fn.stdout) && /holds what looks like a key/.test(fn.stdout) && existsSync(join(d, 'keyed.md')) && !existsSync(join(sh, 'keyed.md')), `promote's own default is no force: a key stays where it is (got ${fn.stdout}${fn.stderr.slice(0, 200)})`);
+  // A history git cannot read: its newest commit is gone from the object store.
+  const head = gitIn('rev-parse', 'HEAD').stdout.trim(), obj = join(pr, '.git', 'objects', head.slice(0, 2), head.slice(2));
+  if (existsSync(obj)) {
+    renameSync(obj, obj + '.hidden');
+    r = run1(['history', 'bom']);
+    renameSync(obj + '.hidden', obj);
+    ok(r.status === 1 && /^no snapshots to read: /.test(r.stdout), `history says when the snapshots cannot be read (got ${JSON.stringify(r.stdout)})`);
+  }
+}
+
+
+// 1.5.3 holes: incognito's failures, memory off and on when the marker is already there or changes underfoot, doctor's reading of a damaged install, and a promote whose project copy cannot be deleted.
+{
+  const h = tempHome('incog2-'), pr = join(h.home, '.claude', 'projects'), proj = join(pr, 'C--ig'), d = join(proj, 'memory'), SID = 'eeeeeeee-5555';
+  mkdirSync(proj, { recursive: true });
+  writeFileSync(join(proj, `${SID}.jsonl`), [{ type: 'user', text: 'tell me about narwhal tusks' }, { type: 'assistant', text: 'a tusk is a tooth' }].map((m) => JSON.stringify({ type: m.type, cwd: 'C:\\ig', timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text: m.text }] } })).join('\n') + '\n');
+  const inc = () => spawnSync(process.execPath, [CLI, 'incognito', '--session', SID], { env: h.env, encoding: 'utf8' });
+  let r = inc();
+  ok(r.status === 0 && existsSync(d) && readFileSync(join(d, '.private-sessions'), 'utf8').includes('eeeeeeee'), `incognito makes the memory folder when there is none (got ${r.status} ${r.stdout}${r.stderr.slice(0, 200)})`);
+  rmSync(join(d, '.private-sessions')); mkdirSync(join(d, '.private-sessions'));
+  r = inc();
+  ok(r.status === 1 && /^incognito NOT applied: the private-session list in .+ could not be written; nothing was marked$/m.test(r.stdout), `a private-session list that cannot be written: not applied, and says which part (got ${r.status} ${JSON.stringify(r.stdout)})`);
+  rmSync(join(d, '.private-sessions'), { recursive: true });
+  rmSync(join(d, 'journal'), { recursive: true, force: true }); writeFileSync(join(d, 'journal'), 'a file where the journal folder should be');
+  r = inc();
+  ok(r.status === 1 && /^incognito is marked for this conversation, but sweeping what it already saved failed: /m.test(r.stdout) && readFileSync(join(d, '.private-sessions'), 'utf8').includes('eeeeeeee'), `a sweep that fails after the mark says so, and the mark stays (got ${r.status} ${JSON.stringify(r.stdout)})`);
+  rmSync(join(d, 'journal'));
+  rmSync(d, { recursive: true }); writeFileSync(d, 'a file where the memory folder should be');
+  r = inc();
+  ok(r.status === 1 && /^incognito NOT applied: .+; nothing was marked$/m.test(r.stdout), `a memory folder that cannot be made: not applied, nothing marked (got ${r.status} ${JSON.stringify(r.stdout)})`);
+}
+{ // memory off and on: the marker already there, one that changes underfoot, one that cannot be read. In this process, so the suite's own home again (tempHome moved it).
+  process.env.HOME = process.env.USERPROFILE = home;
+  const od = join(root, 'C--off-two', 'memory'), go = (...a) => run([...a, '--store', od]), marker = join(od, '.project-off');
+  let r = await go('off');
+  ok(r.status === 0 && existsSync(marker), 'fixture: memory off');
+  r = await go('off');
+  ok(r.status === 0 && /^memory is already off in this project since \d{4}-\d\d-\d\d/.test(r.stdout), `memory off twice says it is already off (got ${JSON.stringify(r.stdout)})`);
+  const doc = (await cli('doctor', '--store', od)).stdout;
+  ok(/^ok +memory is off in this project since/m.test(doc), `doctor reports a project that is off as fine, with the date (got ${JSON.stringify(doc.slice(0, 300))})`);
+  rmSync(marker);
+  const undo = meanwhile('writeFileSync', (p) => p.includes('.project-off.tmp'), () => fs.writeFileSync(marker, '{"t":1}'));
+  try { r = await go('off'); } finally { undo(); }
+  ok(r.status === 1 && /^memory off NOT applied: the marker was changed meanwhile; try again$/m.test(r.stdout), `a marker that changes while it is written: not applied (got ${r.status} ${JSON.stringify(r.stdout)})`);
+  rmSync(marker, { force: true });
+  // A marker whose state cannot be read is a pause the plugin cannot judge: said, and memory on is not "already on".
+  const real = fs.lstatSync;
+  fs.lstatSync = function (p, ...a) { if (String(p).endsWith('.project-off')) throw Object.assign(new Error('denied'), { code: 'EACCES' }); return real.call(this, p, ...a); };
+  syncBuiltinESMExports();
+  let unread, back;
+  try { unread = await cli('doctor', '--store', od); back = await go('on'); } finally { fs.lstatSync = real; syncBuiltinESMExports(); }
+  ok(/^PROBLEM memory is paused here: the off marker can't be read \(EACCES\)/m.test(unread.stdout) && unread.status === 1, `doctor says an unreadable off marker is a problem (got ${JSON.stringify(unread.stdout.slice(0, 400))})`);
+}
+{ // A promote whose project copy cannot be deleted: in both stores, said so, and the shared copy stays.
+  memory(dir, 'stuck-note', 'cannot be deleted');
+  const real = fs.unlinkSync;
+  fs.unlinkSync = function (p, ...a) { if (String(p).endsWith('stuck-note.md')) throw Object.assign(new Error('denied'), { code: 'EACCES' }); return real.call(this, p, ...a); };
+  syncBuiltinESMExports();
+  let r; try { r = await cli('promote', 'stuck-note'); } finally { fs.unlinkSync = real; syncBuiltinESMExports(); }
+  ok(r.status === 1 && /stuck-note\.md could not be deleted \(EACCES\): it is in both stores; delete it by hand/.test(r.stdout) && existsSync(join(shared, 'stuck-note.md')) && existsSync(join(dir, 'stuck-note.md')), `a note that cannot be deleted after the copy is said to be in both stores (got ${r.status} ${JSON.stringify(r.stdout)})`);
+}
+
+// 1.5.3 holes: doctor reads a damaged install without failing: a marketplace entry with no source, a plugin.json with an empty version, and an enforce hook whose wiring or run is broken.
+{
+  const h = tempHome('doctor2-'), cd = join(h.home, '.claude'), pl = join(cd, 'plugins'), at = join(pl, 'cache', 'pm', 'project-memory', '1.0.0');
+  mkdirSync(join(at, '.claude-plugin'), { recursive: true }); mkdirSync(join(at, 'hooks'), { recursive: true }); mkdirSync(join(h.home, '.claude', 'projects'), { recursive: true });
+  const doctor = () => spawnSync(process.execPath, [CLI, 'doctor'], { env: h.env, cwd: h.home, encoding: 'utf8' });
+  const install = (market) => {
+    writeFileSync(join(pl, 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@pm': [{ installPath: at }] } }));
+    writeFileSync(join(pl, 'known_marketplaces.json'), JSON.stringify(market));
+  };
+  writeFileSync(join(at, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'project-memory', version: '' }));
+  // A marketplace entry with no source: nothing to say of auto-update, and no stack trace.
+  install({ pm: {} });
+  let r = doctor();
+  ok(/^ok +installed as project-memory@pm$/m.test(r.stdout) && !/marketplace auto-update/.test(r.stdout) && !/TypeError/.test(r.stderr), `a marketplace entry with no source is no crash (got ${JSON.stringify(r.stdout.slice(0, 300))}${r.stderr.slice(0, 200)})`);
+  install({ pm: { source: { source: 'github', repo: 'a/b' } } });
+  r = doctor();
+  ok(/^ok +marketplace auto-update is off: /m.test(r.stdout) && /^ok +the plugin runs version  from /m.test(r.stdout), `an empty version is printed as it is, not as "(none)" (got ${JSON.stringify(r.stdout.slice(0, 500))})`);
+  // The enforce hook: its file, its two hook groups, then what it does for an empty call.
+  const hooks = join(at, 'hooks', 'hooks.json'), hook = join(at, 'enforce-hook.mjs'), enf = () => doctor().stdout.split('\n').find((l) => /enforce hook|hooks\.json in/.test(l)) ?? '';
+  writeFileSync(hooks, '{}');
+  ok(/^PROBLEM .*enforce-hook\.mjs is missing: the enforce hook cannot run/.test(enf()), `no enforce-hook.mjs is said (got ${enf()})`);
+  writeFileSync(hook, '');
+  for (const [json, what, text] of [['{ not json', 'a hooks.json that is not JSON', 'has no PreToolUse group'], ['{}', 'a hooks.json with no hooks', 'has no PreToolUse group'], ['{"hooks":{}}', 'no groups', 'has no PreToolUse group'], ['{"hooks":{"PreToolUse":[]}}', 'an empty PreToolUse', 'has no PreToolUse group'],
+    ['{"hooks":{"PreToolUse":[1]}}', 'no SubagentStop', 'has no SubagentStop group'], ['{"hooks":{"PreToolUse":[1],"SubagentStop":[]}}', 'an empty SubagentStop', 'has no SubagentStop group']]) {
+    writeFileSync(hooks, json);
+    ok(enf().startsWith('PROBLEM') && enf().includes(text), `${what}: ${text} (got ${enf()})`);
+  }
+  writeFileSync(hooks, '{"hooks":{"PreToolUse":[1],"SubagentStop":[1]}}');
+  ok(/^ok +the enforce hook runs and is wired \(PreToolUse\)$/m.test(doctor().stdout), 'a hook that prints nothing and exits 0 is fine');
+  writeFileSync(hook, 'console.log("noise");');
+  ok(/^PROBLEM the enforce hook printed output for an empty call \(noise\): it must print nothing$/m.test(doctor().stdout), 'a hook that prints for an empty call is a problem');
+  writeFileSync(hook, 'process.exit(3);');
+  ok(/^PROBLEM the enforce hook failed an empty call \(exit code 3\): /m.test(doctor().stdout), 'a hook that exits 3 is a problem, with its code');
+}
+
 console.log(`memory: ${checks} checks passed`);

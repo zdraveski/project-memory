@@ -120,3 +120,29 @@ a0bf31efd2f0 memory.mjs:586 dropPaths `buf.length - 1` -> `buf.length - 2`: the 
 d8b744d5a58b memory.mjs:583 `({ n: '\n', t: '\t' })[c] ?? c` -> `|| c`: the mapped values are '\n' and '\t', never falsy, so both give the same
 b46318518be8 memory.mjs:590 dropPaths `/^D (.*)$/.exec(t)?.[1]` -> `[2]`: a D line of a dropped path stays in the stream, and the M lines that added it are dropped, so it deletes a path that is not in the tree, which fast-import takes as a no-op; the saved trees are the same
 e59efb7080cc memory.mjs:590 dropPaths `?.[1] ?? /^D` -> `|| /^D`: the M line's path is never the empty string, so `??` and `||` give the same
+84b05e25626b memory.mjs:773 catch `{ return ''; }` -> `{}`: the value is only joined into text, and [undefined].join gives the same empty string as ''
+f821514f24c3 memory.mjs:773 catch `return ''` -> `undefined`: same join, an undefined element prints as the empty string
+5c50d7af85eb memory.mjs:858 `?? ''` -> `|| ''`: the value is null or a string, and null and '' both give ''
+1770c17d3b76 memory.mjs:846 `: false` -> `: true`: failed(true) is false and true is not 'conflict', so both branches read the same
+52ce086f927c memory.mjs:864 `?.` -> `.`: a throw is caught by the surrounding try, which gives the same result as the guard
+d923e8fbe75e memory.mjs:864 `?? ''` -> `|| ''`: null and '' both give ''
+fc7df739572a memory.mjs:936 `?.` -> `.`: a throw is caught by the surrounding try, which gives the same result as the guard
+96bba080ffbf memory.mjs:970 SubagentStop `?.` -> `.`: the PreToolUse check just before it already needed hooks.json to parse with a hooks object, so neither can be missing here
+ec7fc7430d75 memory.mjs:970 SubagentStop `?.` -> `.`: the PreToolUse check just before it already needed hooks.json to parse with a hooks object, so neither can be missing here
+a6ab334e2962 memory.mjs:974 `e.status ?? e.code` -> `||`: a failed exit has a non-zero status, never 0, so ?? and || agree
+f309f092cedf memory.mjs:948 catch `{ return false; }` -> `{}`: the result goes through a filter, where undefined is as falsy as false
+6a91c5fc4c77 memory.mjs:948 `return false` -> `undefined`: the result goes through a filter, where undefined is as falsy as false
+573e13619ac1 memory.mjs:1019 `was.since ?? statSync` -> `||`: since is a time in ms, never 0 (the epoch), so ?? and || agree
+deca67528637 memory.mjs:577 rmSync force on a tmp file that always exists at that point: force only matters for a missing file
+49e7ad8b4110 memory.mjs:567 rmSync force on a tmp file that always exists at that point: force only matters for a missing file
+b43aeb1b8362 memory.mjs:612 flag false -> true: fast-export input has no case where the flag changes the output
+e10ffc26dabc memory.mjs:614 `<` -> `<=`: fast-export streams end with a newline, so the boundary position is never reached
+6c151af5ca2c memory.mjs:614 `-` -> `+`: fast-export streams end with a newline, so the boundary position is never reached
+cce210a4da4d memory.mjs:614 `0` -> `1`: fast-export streams end with a newline, so the boundary position is never reached
+7bae5ed3989b memory.mjs:614 `1` -> `2`: fast-export streams end with a newline, so the boundary position is never reached
+a84463230055 memory.mjs:606 `>` -> `>=`: the two lengths are never equal for any stream git writes
+9cdb88dff12e memory.mjs:636 catch `{ return []; }` -> `{}`: the caller spreads or filters the result and undefined acts as empty
+1b5f291751e5 memory.mjs:636 `[]` -> `undefined`: the caller spreads or filters the result and undefined acts as empty
+f1e63daaa594 memory.mjs:635 dropping the `blob` filter: the lines it removes are not blobs in any history git writes here, so every line passes either way
+61911b0ebf35 memory.mjs:652 `?? ''` -> `|| ''`: null and '' both give ''
+ed4a5ef600c7 memory.mjs:674 dropping the `x.dir === dir` filter: the list holds one dir at that point, so the filter keeps everything
