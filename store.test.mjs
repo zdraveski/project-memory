@@ -7,15 +7,111 @@ import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { join, isAbsolute, basename, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
+import { createHmac } from 'node:crypto';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, wasOff, OFF_PERIODS } = await import('./store.mjs');
+const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, wasOff, OFF_PERIODS, keyed, offSince, holdsSecret } = await import('./store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const root = join(home, '.claude', 'projects');
+// What redact() keeps and what it hides, one line each, picked so that every change to a rule's guards (a call or a path that is
+// no secret, a word that is no password, the JSON "password" rule, the self./this. prefix, a cookie, a hash) alters one of them.
+// The first of each pair is the text, the second what is stored.
+{
+  const cases = [
+    ["export DB_PASSWORD={{secret}}", "export DB_PASSWORD={[redacted]"],
+    ["pw is Foo::bar(12)", "pw is Foo::bar(12)"],
+    ["xself.apiKey = \"Secret\"", "xself.apiKey = \"Secret\""],
+    ["'KEY_FILE_X' => 'Password'", "'KEY_FILE_X' => '[redacted]'"],
+    ["{name: 'api_key', value: 'foo.apiKey'}", "{name: 'api_key', value: 'foo.apiKey'}"],
+    ["- name: AUTH\n  value: jwt.sign(payload", "- name: AUTH\n  value: jwt.sign(payload"],
+    ["'api_key' => 'https://example.com/a'", "'api_key' => 'https://example.com/a'"],
+    ["ALL PASS = correct horse battery staple", "ALL PASS = correct horse battery staple"],
+    ["PASS !vault", "PASS !vault"],
+    ["Cookie: x=abcdefgh1234; Domain=a.b", "Cookie: [redacted]"],
+    ["pw is Optional", "pw is [redacted]"],
+    ["\"tokens\": {\"db\": \"hello1\"}", "\"tokens\": {\"db\": \"hello1\"}"],
+    ["putenv(\"TOKEN_LIMIT\", \"100\")", "putenv(\"TOKEN_LIMIT\", \"100\")"],
+    ["{\"name\":\"password\",\"value\":\"foo(12)\"}", "{\"name\":\"password\",\"value\":\"[redacted]\"}"],
+    ["&quot;password&quot;: &quot;hunter22xyz&quot; &#31;", "\"password\": \"[redacted]\" &#31;"],
+    ["AUTH=100", "AUTH=[redacted]"],
+    ["New value: the", "New value: the"],
+    ["pass: scanning", "pass: [redacted]"],
+    ["Cookie: a=hello1", "Cookie: a=hello1"],
+    ["Fernet(\"Optional\")", "Fernet(\"Optional\")"],
+    ["echo true | kinit bob", "echo true | kinit bob"],
+    ["password for bob: !vault", "password for bob: !vault"],
+    ["\"tokens\": {\"db\": \"abcdefgh12345678\"}", "\"tokens\": {\"db\": \"[redacted]\"}"],
+    ["tokens:\n  db: secrets.token_hex(16)\n  admin: secrets.token_hex(16)", "tokens:\n  db: secrets.token_hex(16)\n  admin: secrets.token_hex(16)"],
+    ["psk=the", "psk=[redacted]"],
+    ["creds=!vault", "creds=!vault"],
+    ["\"pwd\": \"ab1\"", "\"pwd\": \"[redacted]\""],
+    ["PASS foo(12)", "PASS [redacted]"],
+    ["psql <<< true", "psql <<< true"],
+    ["\"pwd\": \"nil;\"", "\"pwd\": \"nil;\""],
+    [" send \"true\\n\"", " send \"true\\n\""],
+    ["setx API_KEY is", "setx API_KEY [redacted]"],
+    ["user=bob:~pw1234", "user=bob:~pw1234"],
+    ["a:5432:b:c:dd:ee", "a:5432:b:c:[redacted]"],
+    ["pass: scanning the", "pass: scanning the"],
+    ["a:5432:b:c:dd:ee:ff", "a:5432:b:c:dd:ee:ff"],
+    ["mysql -u root -p\nhello", "mysql -u root -p\nhello"],
+    ["- name: AUTH\n  value: is", "- name: AUTH\n  value: [redacted]"],
+    ["\"password\": \"Mypassword\"", "\"password\": \"[redacted]\""],
+    ["export SECRET_NAME=my-app-secret", "export SECRET_NAME=my-app-secret"],
+    ["secret A8Q4E9U5J1Y6N2C7S3G8W4L9A5Q1E6U2J7Y3N8C4", "secret A8Q4E9U5J1Y6N2C7S3G8W4L9A5Q1E6U2J7Y3N8C4"],
+    ["KA8Q4E9U5J1Y6N2C7S3G8W4L9A5Q1E6U2J7Y3N8C4S9G5W1L6A2", "KA8Q4E9U5J1Y6N2C7S3G8W4L9A5Q1E6U2J7Y3N8C4S9G5W1L6A2"],
+    ["password(\"secrets.token_hex(1111111111111111111111111111111111111111111111111111111111111)\")", "password(\"secrets.token_hex(1111111111111111111111111111111111111111111111111111111111111)\")"],
+    ["psk=/add", "psk=/add"],
+    ["PW !vault", "PW !vault"],
+    ["\"pwd\": \"ab\"", "\"pwd\": \"ab\""],
+    ["--token ../x/y", "--token ../x/y"],
+    ["{\"pass\": \"key\"}", "{\"pass\": \"key\"}"],
+    ["doctl -t ../x/y", "doctl -t ../x/y"],
+    ["and pass !vault", "and pass !vault"],
+    ["net user bob the", "net user bob the"],
+    ["a1 LOGIN bob the", "a1 LOGIN bob the"],
+    ["creds: ./pw1.txt", "creds: ./pw1.txt"],
+    ["1> AUTH $(cat p1)", "1> AUTH [redacted]"],
+    ["login: bob:~/pw12", "login: bob:~/pw12"],
+    [".setSecret(\"true\")", ".setSecret(\"true\")"],
+    ["$password = !vault", "$password = !vault"],
+    ["pw is Your password", "pw is Your password"],
+    ["mot de passe !vault", "mot de passe !vault"],
+    ["identified by !vault", "identified by !vault"],
+    ["password = N'!vault'", "password = N'!vault'"],
+    ["this.password = secret", "this.password = secret"],
+    ["printf true | chpasswd", "printf [redacted] | chpasswd"],
+    ["auth = (\"u\", \"!vault\")", "auth = (\"u\", \"!vault\")"],
+    ["password for bob: a1!b", "password for bob: [redacted]"],
+    ["putenv(\"API_KEY\", \"is\")", "putenv(\"API_KEY\", \"[redacted]\")"],
+    ["redis-cli AUTH $(cat p1)", "redis-cli AUTH [redacted]"],
+    ["backup keys are ab and 99", "backup keys are ab and 99"],
+    ["$1$aaaaaaaaaa$bbbbbbbbbbb", "[redacted]"],
+    ["<password>!vault</password>", "<password>!vault</password>"],
+    ["password is the horse battery", "password is the horse battery"],
+    ["changeUserPassword(\"u\", \"!vault\")", "changeUserPassword(\"u\", \"!vault\")"],
+    ["&#112;assword: hunter22xyz &#127;", "password: [redacted] &#127;"],
+    ["mysqli_connect(\"h\", \"u\", \"!vault\")", "mysqli_connect(\"h\", \"u\", \"!vault\")"],
+    ["getpass.getpass = lambda x: \"!vault\"", "getpass.getpass = lambda x: \"!vault\""],
+    ["secrets:\n  db: hello1\n  admin: hello1", "secrets:\n  db: [redacted]\n  admin: [redacted]"],
+    ["bundle config gems.corp.com {{secret}}", "bundle config gems.corp.com {{secret}}"],
+    ["secret ABCDEF0123456789ABCDEF0123456789", "secret [redacted]"],
+  ];
+  for (const [text, stored] of cases) { const got = redact(text); ok(got === stored, `redact(${JSON.stringify(text)}) is ${JSON.stringify(stored)} (got ${JSON.stringify(got)})`); }
+  // holdsSecret: a <private> span with anything real in it (a text, a number), and not one that holds nothing or only a word for one.
+  const holds = [
+    ['<private>' + ' '.repeat(39) + 'x</private>', true],   // a span of 40 characters is too long to be a placeholder
+    ['<private>' + ' '.repeat(38) + 'x</private>', false],
+    ["<private>`</private>`", true],
+    ["<private>…</private>", false],
+    ["<private>yy</private>", true],
+  ];
+  for (const [text, held] of holds) ok(holdsSecret(text) === held, `holdsSecret(${JSON.stringify(text)}) is ${held}`);
+}
 const proj = join(root, 'C--some-project');
 const dir = join(proj, 'memory');
 mkdirSync(dir, { recursive: true });
@@ -61,6 +157,21 @@ if (process.platform === 'win32') {
   symlinkSync(out19, join(root, 'C--a19', 'memory'), 'junction');
   symlinkSync(join(home, 'SYNCED19', 'MEMORY'), join(root, 'C--b19', 'memory'), 'junction');
   ok(allStores().filter((d) => /C--[ab]19/.test(d)).length === 1, 'two links to one folder spelt in two cases are one store');
+}
+
+// A held lock is given up on, not spun on. In a child on a fast clock, so a loop that never ends fails here in seconds, not by
+// the suite's own time-out (a catch that swallowed every refusal did that).
+{
+  const lk = join(dir, '.lock');
+  mkdirSync(lk);
+  const child = `
+import { withLock } from ${JSON.stringify(pathToFileURL(tool('store.mjs')).href)};
+let t = Date.now(); Date.now = () => (t += 500);
+process.stdout.write(String(withLock(process.argv[1], () => 'got')));
+`;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', child, dir], { timeout: 8000, encoding: 'utf8' });
+  ok(r.stdout === 'null' && existsSync(lk), `a held lock is given up on by a process of its own (got ${r.stdout || r.signal})`);
+  rmdirSync(lk);
 }
 
 // 2. Six processes contend for one store: never two inside at once.
@@ -387,6 +498,24 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
     `the repository a folder is in: itself, its root, a worktree's main one, a submodule its own, none (got ${[repoRoot(sub), repoRoot(wt), repoRoot(subm)].join(' | ')})`);
   // A relative path is in no repository, whatever folder the hook runs in.
   { const was = process.cwd(); process.chdir(repo); try { ok(repoRoot('packages') === null, 'a path that is no absolute one is in no repository'); } finally { process.chdir(was); } }
+  ok(repoRoot(undefined) === null, 'a folder that is no string is in no repository');
+  // startCwd reads a transcript's head: 64 KB at a time, up to 4 MB, and the first cwd it finds is the one.
+  {
+    const { startCwd } = await import('./store.mjs');
+    const put = (name, text) => { const f = join(home, name); writeFileSync(f, text); return f; };
+    const two = put('sc-two.jsonl', `${JSON.stringify({ type: 'user', cwd: '/first' })}\n${JSON.stringify({ pad: 'x'.repeat(70000) })}\n${JSON.stringify({ type: 'user', cwd: '/second' })}\n`);
+    ok(startCwd(two) === '/first', `a later cwd never replaces the first (got ${startCwd(two)})`);
+    // The 4 MB limit: a cwd that starts 2,000 bytes inside it is found, one that starts 100 bytes past it is not.
+    const at = (name, off) => put(name, `{"pad":"${'x'.repeat(off - 11)}"}\n{"cwd":"/late"}\n`);
+    ok(startCwd(at('sc-in.jsonl', 4_194_304 - 2000)) === '/late', 'a cwd inside the first 4 MB is found');
+    const decode = Buffer.prototype.toString; let decoded = 0;
+    Buffer.prototype.toString = function (...x) { const t = decode.apply(this, x); decoded += t.length; return t; };
+    try { ok(startCwd(at('sc-out.jsonl', 4_194_304 + 100)) === null, 'a cwd past the first 4 MB is not looked for'); } finally { Buffer.prototype.toString = decode; }
+    ok(decoded < 8_000_000, `each look reads the new chunk and a margin, not all there is (decoded ${decoded} characters)`);
+    // A cwd that runs over a chunk's edge is whole in the next look, however long its path (up to the 4096 units its pattern takes).
+    const big = `{"a":"${'x'.repeat(60528)}","cwd":"${'\\\\'.repeat(3000)}"}\n`;
+    ok(startCwd(put('sc-long.jsonl', big)) === '\\'.repeat(3000), 'a cwd of 6,000 characters across the 64 KB edge is read whole');
+  }
   // A session started in a subfolder or a worktree has its store at the
   // repository's folder, as Claude Code keeps auto memory, though its
   // transcript sits in a folder named for where it started.
@@ -493,6 +622,8 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
       ok(am().off === true, 'managed false beats the files below it');
       put(join(mg, 'managed-settings.d', '10.json'), { autoMemoryEnabled: true });
       ok(am().off === false, 'a managed .d file overrides the managed base');
+      put(join(mg, 'managed-settings.d', '20.txt'), { autoMemoryEnabled: false });
+      ok(am().off === false, 'a file in managed-settings.d that is no .json is not read');
     } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = was; }
   }
 
@@ -799,6 +930,96 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = [
   const mb = (i) => `${i} ${'abcdefg '.repeat(131072)}`;
   for (let i = 0; i < 9; i++) redact(mb(i));
   ok(count(() => redact(mb(8))) === 0 && count(() => redact(mb(0))) > 0, 'the memory is cleared at 8 MB');
+}
+
+// keyed: n hex characters of an HMAC under a per-machine salt, kept in a file made with its folders; a short salt file is the salt.
+{
+  const was = process.env.CLAUDE_CONFIG_DIR, cfgK = join(home, 'keyed-cfg', 'deeper');   // none of its folders exist yet
+  process.env.CLAUDE_CONFIG_DIR = cfgK;
+  try {
+    const f = join(cfgK, 'projects', '.hash-salt'), hmac = (salt, text, n) => createHmac('sha256', salt).update(text).digest('hex').slice(0, n);
+    const a = keyed('hello', 12);
+    ok(existsSync(f) && readFileSync(f, 'utf8').length === 64, 'the salt is made, with its folders, at the first fingerprint');
+    ok(a === hmac(readFileSync(f, 'utf8'), 'hello', 12) && keyed('hello', 12) === a && keyed('world', 12) !== a, 'a fingerprint is the salted HMAC of its text, the same each time');
+    ok(keyed('hello', 1).length === 1 && keyed('hello', 12).length === 12 && keyed('hello', 64).length === 64, 'and as long as asked');
+    writeFileSync(f, 'short');
+    ok(keyed('x', 16) === hmac('short', 'x', 16) && keyed('x', 16) === keyed('x', 16), 'a salt file under 32 characters is still the salt, and not written over');
+    writeFileSync(f, 'k'.repeat(32));
+    ok(keyed('x', 16) === hmac('k'.repeat(32), 'x', 16) && readFileSync(f, 'utf8') === 'k'.repeat(32), 'a salt file of exactly 32 characters is kept');
+  } finally { if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = was; }
+}
+
+// The managed settings folder Claude Code reads on each system (autoMemory with no `managed` given).
+{
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform'), want = { win32: 'C:/Program Files/ClaudeCode', darwin: '/Library/Application Support/ClaudeCode', linux: '/etc/claude-code' };
+  for (const [p, path] of Object.entries(want)) {
+    Object.defineProperty(process, 'platform', { value: p });
+    let first = null; const real = fs.readdirSync;
+    try {
+      const m = await import(`./store.mjs?managed-${p}`);
+      fs.readdirSync = function (d, ...a) { first ??= String(d); return real.call(this, d, ...a); }; syncBuiltinESMExports();
+      m.autoMemory({ cwd: join(home, 'no-such-project') });
+    } finally { fs.readdirSync = real; syncBuiltinESMExports(); Object.defineProperty(process, 'platform', platform); }
+    ok(first?.replace(/\\/g, '/') === `${path}/managed-settings.d`, `managed settings are read from ${path} on ${p} (got ${first})`);
+  }
+}
+
+// wasOff: a turn is inside a period when its time is from it to its end, both ends counted, in any one of them.
+{
+  const d = join(home, 'periods'); mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, OFF_PERIODS), '100 200\n300 400\n');
+  const was = wasOff(d);
+  ok([100, 150, 200, 300, 350, 400].every((ms) => was({ ms })) && [99, 201, 250, 299, 401].every((ms) => !was({ ms })), 'a turn is inside a period from its start to its end, both counted');
+  ok(offSince({ since: new Date(2026, 0, 15, 12, 30).getTime() }) === '2026-01-15' && offSince({ since: null }) === 'an unknown date', 'a project off since a day is told by the day');
+}
+
+// opener: a name the folder does not hold is itself; two spellings of different files stay as asked; one file is its listed name.
+{
+  const od = join(home, 'opener-dir'); mkdirSync(od, { recursive: true });
+  ok(opener(od, ['kase.md'])('KASE.md') === 'KASE.md', 'a name nothing in the folder opens is itself');
+  const real = fs.statSync; let same_ = false, gone = false;
+  fs.statSync = function (p, o) { const s = String(p); if (gone && s.endsWith('Kase.md')) throw Object.assign(new Error('gone'), { code: 'ENOENT' }); return o?.bigint && s.startsWith(od) ? { dev: 1n, ino: s.endsWith('Kase.md') ? 2n : same_ ? 2n : 3n } : real.call(this, p, o); }; syncBuiltinESMExports();
+  try {
+    ok(opener(od, ['kase.md'])('Kase.md') === 'Kase.md', 'two spellings that open different files keep the name asked for');
+    same_ = true;
+    ok(opener(od, ['kase.md'])('Kase.md') === 'kase.md', 'one that opens the same file is the listed name');
+    gone = true;
+    ok(opener(od, ['kase.md'])('Kase.md') === 'Kase.md', 'a spelling that opens nothing is itself');
+  } finally { fs.statSync = real; syncBuiltinESMExports(); }
+}
+
+// withLock's own token, and a lock released or kept by who holds it.
+{
+  const lk = join(dir, '.lock'), owner = join(lk, 'owner');
+  const rnd = Math.random; Math.random = () => 0.5; let seen;
+  try { withLock(dir, () => { seen = readFileSync(owner, 'utf8'); }); } finally { Math.random = rnd; }
+  ok(seen === `${process.pid}.i`, `the owner file names the process and a random token (got ${seen})`);
+  // An owner file the disk refused: the lock is still ours and is released.
+  const wf = fs.writeFileSync;
+  fs.writeFileSync = function (p, ...a) { if (String(p) === owner) throw Object.assign(new Error('refused'), { code: 'EACCES' }); return wf.call(this, p, ...a); }; syncBuiltinESMExports();
+  try { ok(withLock(dir, () => 'got') === 'got' && !existsSync(lk), 'a lock whose owner file could not be written is released'); } finally { fs.writeFileSync = wf; syncBuiltinESMExports(); rmSync(lk, { recursive: true, force: true }); }
+  // A lock taken over meanwhile, its new holder not yet signed, is not ours to remove.
+  withLock(dir, () => { rmSync(lk, { recursive: true }); mkdirSync(lk); });
+  ok(existsSync(lk), 'a lock another holder made, with no owner file yet, is left alone');
+  rmSync(lk, { recursive: true });
+}
+
+// The memo of redact(): a text of 64 characters or more is kept by its exact text, and all of them are let go once the texts
+// kept pass 8,000,000 characters. Seen by what a kept text does not do: work out its fold a second time.
+{
+  const m = await import('./store.mjs?memo'), norm = String.prototype.normalize;
+  let runs = 0;
+  String.prototype.normalize = function (...x) { runs++; return norm.apply(this, x); };
+  const ran = (text) => { const was = runs; m.redact(text); return runs > was; };
+  try {
+    const d64 = 'd'.repeat(64), w1 = 'w'.repeat(100), big = 'a'.repeat(4_000_000), rest = 'b'.repeat(8_000_000 - 64 - 100 - 4_000_000);
+    ok(ran('c'.repeat(63)) && ran('c'.repeat(63)), 'a text of 63 characters is worked out each time');
+    ok(ran(d64) && !ran(d64), 'one of 64 characters is kept');
+    ok(ran(w1) && ran(big) && ran(rest), 'texts not seen are worked out');
+    ok(!ran(w1) && !ran(d64), 'with exactly 8,000,000 characters kept, none is let go');
+    ok(ran('e'.repeat(64)), 'a text not seen is worked out');
+    ok(ran(w1) && ran(d64), 'one character more, and all the kept are let go');
+  } finally { String.prototype.normalize = norm; }
 }
 
 console.log(`store: ${checks} checks passed`);
