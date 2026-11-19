@@ -2093,4 +2093,185 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   ok(holds(e('cafe\u0301'), 'caf\u00e9') && holds(e('caf\u00e9'), 'cafe\u0301'), 'holds: composed and decomposed accents hold each other');
 }
 
+// Mutation holes in entryOf, page(), drop() and record(): the caps' edges, the file's exact bytes, a copy beside, and subagent()'s returns.
+{
+  const said = (s, c = []) => entryOf(turn({ said: s, did: undefined, ran: c }), T);
+  const exact = 'S'.repeat(50000);
+  ok(said(exact).answered === exact, 'a reply of exactly 50,000 characters is kept whole');
+  const long = 'S'.repeat(10000) + 'E'.repeat(50000);
+  ok(said(long).answered === `… (10040 chars before) ${'E'.repeat(49960)}`, `past the cap the end stays and the lead counts what went (got ${said(long).answered.slice(0, 40)})`);
+  const cmd = (n) => 'c'.repeat(n);
+  ok(said('r', [cmd(10000), cmd(10000), cmd(10000), cmd(10000), cmd(10000)]).ran.length === 5, 'five 10,000-character commands fill the 50,000 room exactly and are all kept');
+  const two = said('r', [cmd(5), cmd(5), cmd(20000), cmd(20000), cmd(10000)]).ran;
+  ok(two.length === 4 && two[0] === '[2 earlier commands not kept]', `two commands that do not fit are counted in the plural (got ${two[0]}, ${two.length})`);
+  const one = said('r', [cmd(5), cmd(20000), cmd(20000), cmd(10000)]).ran;
+  ok(one.length === 4 && one[0] === '[1 earlier command not kept]', `one command that does not fit is counted in the singular (got ${one[0]})`);
+}
+{
+  // A day's bytes: no blank lines from an empty prose, and a note that moves up when its entry is forgotten.
+  const A = turn({ at: '2026-10-28 10:00', id: 'pb-a', ask: 'aardvark question', raw: 'aardvark question' }), B = turn({ at: '2026-10-28 11:00', id: 'pb-b', ask: 'zebrafish question', raw: 'zebrafish question' });
+  const eA = render(entryOf(A, T)), eB = render(entryOf(B, T));
+  const d1 = storeFor(home, 'C:\\journal-pagebytes'), f1 = () => readFileSync(dayFile(d1, '2026-10-28'), 'utf8');
+  record(d1, T, [A, B]);
+  ok(f1() === `# Journal 2026-10-28\n\n${eA}\n\n${eB}\n`, `a day with no prose is its heading and its entries (got ${JSON.stringify(f1())})`);
+  appendFileSync(dayFile(d1, '2026-10-28'), '\nnote on B\n');
+  forget(d1, ['zebrafish'], { apply: true });
+  ok(f1() === `# Journal 2026-10-28\n\n${eA}\n\nnote on B\n`, `a forgotten entry's note goes up to the entry above with no stray blank lines (got ${JSON.stringify(f1())})`);
+  const d2 = storeFor(home, 'C:\\journal-pagebytes2'), f2 = () => readFileSync(dayFile(d2, '2026-10-28'), 'utf8');
+  record(d2, T, [A, B]);
+  writeFileSync(dayFile(d2, '2026-10-28'), f2().replace(eA, `${eA}\n\nnote on A`));
+  forget(d2, ['aardvark'], { apply: true });
+  ok(f2() === `# Journal 2026-10-28\n\nnote on A\n\n${eB}\n`, `the note of the first forgotten entry becomes the day's prose, with no blank lines above it (got ${JSON.stringify(f2())})`);
+  // The day beside is cleaned when it holds ANY of the keys written, not only when it holds all.
+  const d3 = storeFor(home, 'C:\\journal-beside');
+  const other = turn({ at: '2026-11-01 08:00', id: 'bs-x', ask: 'another turn that day' });
+  record(d3, T, [other, turn({ at: '2026-11-01 23:30', id: 'bs-1', ask: 'the zone turn' })]);
+  record(d3, T, [turn({ at: '2026-11-02 00:10', id: 'bs-0', ask: 'a turn new to the day' }), turn({ at: '2026-11-02 00:30', id: 'bs-1', ask: 'the zone turn' })]);
+  ok(readFileSync(dayFile(d3, '2026-11-01'), 'utf8') === `# Journal 2026-11-01\n\n${render(entryOf(other, T))}\n`, 'a day beside holding one of two keys just written loses that one, and keeps its other entry under its own heading');
+}
+{
+  const sd = storeFor(home, 'C:\\journal-subagent2'), projects = join(home, '.claude', 'projects'), pd = dirname(sd), ap = join(pd, 'agent-b.jsonl'), off = join(projects, '.memory-off');
+  mkdirSync(sd, { recursive: true });
+  const fail = join(sd, 'journal', '.failed');
+  rmSync(fail, { force: true });
+  const rec = (type, content) => JSON.stringify({ type, message: { content } });
+  const hb = (input) => rec('assistant', [{ type: 'tool_use', name: 'SubagentHandback', input }]);
+  const main = join(pd, 'hhhh8888-main.jsonl');
+  const base = { agent_type: 'Explore', transcript_path: main, cwd: 'C:\\journal-subagent2', last_assistant_message: 'fallback text' };
+  const got = (id) => entries([sd]).map((x) => x.e ?? x).find((x) => x.key === `subagent-${id}`)?.answered;
+  const run = (id, lines, over = {}) => { writeFileSync(ap, lines.join('\n') + '\n'); return subagent({ ...base, agent_id: id, agent_transcript_path: ap, ...over }); };
+  run('k1', [hb({ report: 'the real report' }), rec('assistant', [{ type: 'tool_use', name: 'Bash', input: { command: 'echo SubagentHandback' } }])]);
+  ok(got('k1') === 'the real report', `another tool's call that names the handback is not the report (got ${got('k1')})`);
+  run('k2', [JSON.stringify({ message: { content: [null, { type: 'tool_use', name: 'SubagentHandback', input: { report: 'after a null' } }] } })]);
+  ok(got('k2') === 'after a null', `a null among a line's blocks does not hide the handback (got ${got('k2')})`);
+  run('k3', [hb({ count: 3, message: 'the report' })]);
+  ok(got('k3') === 'the report', `a handback input's text is its string field (got ${got('k3')})`);
+  run('k4', [hb({ a: 'short', b: 'much longer report' })]); run('k5', [hb({ a: 'much longer report', b: 'short' })]);
+  ok(got('k4') === 'much longer report' && got('k5') === 'much longer report', `the longest string of a handback input is the report (got ${got('k4')}; ${got('k5')})`);
+  run('k6', [rec('assistant', [{ type: 'tool_use', name: 'SubagentHandback', input: {} }, { type: 'tool_use', name: 'SubagentHandback', input: { report: 'second block' } }])]);
+  ok(got('k6') === 'second block', `an empty handback call does not hide the next one in its line (got ${got('k6')})`);
+  ok(subagent({ ...base, agent_id: 'e1', last_assistant_message: '  ' }) === false && got('e1') === undefined, 'an agent with an empty report is not saved');
+  const w8 = 'abcd '.repeat(1599) + 'abcde';
+  subagent({ ...base, agent_id: 'c8', last_assistant_message: w8 });
+  ok(got('c8') === w8, 'a report of exactly 8,000 characters is kept whole');
+  const w9 = Array.from({ length: 1800 }, (_, i) => `w${i}`).join(' ');
+  subagent({ ...base, agent_id: 'c9', last_assistant_message: w9 });
+  ok(got('c9') === `${w9.slice(0, 5000)} … (${w9.length - 7900} chars cut) … ${w9.slice(-2900)}`, `a long report is its first 5,000, the count, and its last 2,900 (got ${got('c9')?.slice(4990, 5040)})`);
+  subagent({ ...base, agent_id: 'a'.repeat(70) });
+  ok(entries([sd]).map((x) => (x.e ?? x).key).includes(`subagent-${'a'.repeat(64)}`), 'an agent id is cut at 64 characters');
+  ok(subagent({ ...base, agent_id: 'tw' }) === true && subagent({ ...base, agent_id: 'tw' }) === false, 'the same report saved again changes nothing and says so');
+  ok(subagent(null) === false, 'no payload at all is not saved and never throws');
+  ok(!existsSync(fail), 'saves that go through leave no failure');
+  // Where the store is: made when the transcript is in the projects folder, never for one outside; used whichever it is in when it exists.
+  const out = join(home, 'elsewhere', 'deep', 'iiii9999-x.jsonl'), cwdOf = (n) => `C:\\journal-${n}`;
+  ok(subagent({ ...base, cwd: cwdOf('nodir'), transcript_path: out, agent_id: 'n1' }) === false && !existsSync(storeFor(home, cwdOf('nodir'))), 'a transcript outside the projects folder with no store makes none and saves nothing');
+  mkdirSync(storeFor(home, cwdOf('hasdir')), { recursive: true });
+  ok(subagent({ ...base, cwd: cwdOf('hasdir'), transcript_path: out, agent_id: 'n2' }) === true, 'a transcript outside the projects folder is saved to a store that exists');
+  ok(subagent({ ...base, cwd: cwdOf('fresh'), transcript_path: join(projects, 'freshfolder', 'jjjj0000-x.jsonl'), agent_id: 'n3' }) === true && existsSync(join(projects, 'freshfolder', 'memory')), 'a transcript in the projects folder makes its store, parents too');
+  // Hushed by one list is hushed: neither list is marked by a save, and a tag in either alone keeps the report out.
+  writeFileSync(join(sd, '.private-sessions'), 'ffff6666\n');
+  appendFileSync(off, 'gggg7777\n');
+  ok(subagent({ ...base, transcript_path: join(pd, 'ffff6666-x.jsonl'), agent_id: 'q1' }) === false && subagent({ ...base, transcript_path: join(pd, 'gggg7777-x.jsonl'), agent_id: 'q2' }) === false && got('q1') === undefined && got('q2') === undefined,
+    'a report of a conversation tagged private, or tagged memory-off, is not saved');
+  const marked = existsSync(off) ? readFileSync(off, 'utf8') : '';
+  ok(!marked.includes('hhhh8888'), `saving a report does not tag its conversation memory-off (got ${JSON.stringify(marked)})`);
+  // A busy lock: lost, and said so in the failure file.
+  const lock = join(sd, '.lock'); mkdirSync(lock, { recursive: true });
+  const r = subagent({ ...base, agent_id: 'busy2', last_assistant_message: 'a report that finds the lock busy' });
+  rmSync(lock, { recursive: true, force: true });
+  ok(r === false && existsSync(fail) && readFileSync(fail, 'utf8').includes('the store was busy'), `a report that meets a busy lock is lost and the failure says the store was busy (got ${r})`);
+}
+
+// Mutation holes in the look at the folders and in what an import lists.
+{
+  // A folder that won't list, first in the order the look walks, still lets the next one import.
+  const [r, d] = repo('seenfirst'), broken = join(projects, `${slug(r)}-aaa`);
+  old(join(r, 'web'), sid('e'), 30, ['e1']);
+  writeFileSync(broken, '');
+  const got = fill(d);
+  rmSync(broken);
+  ok(got.imported === 1 && asks(d).join() === 'e1', `a folder that won't list before one that does costs the second nothing (got ${JSON.stringify(got)}, ${asks(d)})`);
+}
+{
+  // A transcript that won't stat (a link to nothing) is passed over, not a failure of the whole look.
+  const [r, d] = repo('dangling');
+  old(r, sid('a'), 30, ['a1']);
+  let linked = true;
+  try { fs.symlinkSync(join(projects, 'nowhere.jsonl'), join(projects, slug(r), 'zz.jsonl')); } catch { linked = false; }
+  if (linked) {
+    const got = fill(d);
+    ok(got.imported === 1 && asks(d).join() === 'a1', `a transcript that won't stat is passed over and the others import (got ${JSON.stringify(got)}, ${asks(d)})`);
+  }
+}
+{
+  // Out of time, the oldest goes first, whatever its name.
+  const [r, d] = repo('oldlast');
+  old(r, sid('a'), 30, ['a1']); old(r, sid('b'), 20, ['b1']); old(r, sid('z'), 50, ['z1']);
+  fill(d, { budgetMs: 0 });
+  ok(asks(d).join() === 'z1', `the oldest transcript is imported first, not the first by name (got ${asks(d)})`);
+}
+{
+  // An exchange read in several segments keeps every text block of its first parts, not only the last.
+  const [r, d] = repo('blocks'), W = sid('x'), p = join(projects, slug(r), `${W}.jsonl`);
+  const tool = (c) => JSON.stringify({ type: 'assistant', uuid: `x-t${c}`, sessionId: W, cwd: r, timestamp: '2026-09-01T10:05:10Z',
+    message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: `ls ${c} ${'q'.repeat(150)}` } }] } }) + '\n';
+  writeFileSync(p, Array.from({ length: 12 }, (_, i) => i === 5
+    ? exchange(W, r, 5, 'a first look') + rec('assistant', W, '2026-09-01T10:05:40Z', 'a second look', r) + '\n' + [1, 2, 3, 4, 5, 6, 7, 8].map(tool).join('') + rec('assistant', W, '2026-09-01T10:05:50Z', 'the final word', r) + '\n'
+    : exchange(W, r, i)).join(''));
+  utimesSync(p, ago(2), ago(2));
+  for (let i = 0; i < 80 && fill(d, small).left; i++);
+  const five = days(d).flatMap((x) => parseDay(readFileSync(dayFile(d, x), 'utf8')).entries).find((e) => e.asked === 'question 5');
+  ok(five?.answered === 'a first look \u2063a second look \u2063the final word' && five.ran.length === 8, `an exchange read in several parts keeps all its text blocks (got ${JSON.stringify(five?.answered)})`);
+}
+{
+  // A conversation the look will not import is still listed as read, at its size, so no later look opens it again.
+  const line = (d, r, id, p) => listed(d).includes(`${slug(r)}/${id} ${statSync(p).size}`);
+  const mark = (r, id, p) => appendFileSync(p, rec('user', id, '2026-09-02T10:00:00Z', '<private-session> my result', r) + '\n');
+  {
+    const [r, d] = repo('listmark'), id = sid('m'), p = old(r, id, 30, ['said before the mark']);
+    mark(r, id, p); utimesSync(p, ago(30), ago(30));
+    fill(d);
+    ok(!asks(d).length && line(d, r, id, p), `a conversation with a typed private-session mark is listed as read (got ${listed(d)})`);
+  }
+  {
+    const [r, d] = repo('listswept'), id = sid('s'), p = old(r, id, 30, ['said while swept']);
+    mkdirSync(join(d, 'journal'), { recursive: true });
+    writeFileSync(join(d, 'journal', '.checked'), `${slug(r)}/${id} 10 swept\n`);
+    fill(d);
+    ok(!asks(d).length && line(d, r, id, p) && readFileSync(join(d, '.private-sessions'), 'utf8').includes(id.slice(0, 8)), `a swept conversation that lost its tag is tagged again and listed as read (got ${listed(d)})`);
+  }
+  {
+    const [r, d] = repo('listoff'), id = sid('o'), p = old(r, id, 30, ['said with memory off']);
+    appendFileSync(join(projects, '.memory-off'), `${id.slice(0, 8)}\n`);
+    fill(d);
+    ok(!asks(d).length && line(d, r, id, p), `a conversation held with memory off is listed as read (got ${listed(d)})`);
+  }
+}
+{
+  // A Stop whose conversation was just marked private still ends the failure an earlier write left.
+  const d = storeFor(home, 'C:\\journal-hushclear'), failed = join(d, 'journal', '.failed'), P = '/x/projects/C--proj/dddddddd.jsonl';
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: 'EISDIR earlier' }) + '\n');
+  write(d, P, [], { quiet: true, hush: false });
+  ok(existsSync(failed), 'a Stop of a conversation already private, with nothing tried, keeps an earlier failure');
+  write(d, P, [], { quiet: true, hush: true });
+  ok(!existsSync(failed), 'a Stop that marks its conversation private and sweeps it ends an earlier failure');
+}
+{
+  ok(firstDay(storeFor(home, 'C:\\journal-nofirst')) === null, 'a store with no journal has no first day');
+}
+
+// past() and chunk() read no further than the size they are given, though the file is longer (a transcript still growing).
+{
+  const { past, chunk } = await import('./journal.mjs');
+  const f = join(home, 'grows.txt');
+  writeFileSync(f, 'ab\ncd\nef\n');
+  const fd = fs.openSync(f, 'r');
+  try {
+    ok(past(fd, 1, 2) === 2, 'past() looks for a line end only inside the size it is given');
+    const c = chunk(fd, 3, 100, 5);
+    ok(c && c.pos === 3 && c.buf.toString() === 'cd', `chunk() reads only the bytes up to the size it is given (got ${JSON.stringify(c && c.buf.toString())})`);
+  } finally { fs.closeSync(fd); }
+}
+
 console.log(`journal: ${checks} checks passed`);
