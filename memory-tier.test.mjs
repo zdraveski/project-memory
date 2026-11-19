@@ -2436,5 +2436,32 @@ ${b}
   ok(execFileSync('git', ['-C', r, 'ls-files', '--', 'pa/memory/fresh.md']).toString().trim() === 'pa/memory/fresh.md', 'the clean note was committed');
 }
 
+// An update installs a newer copy, but the session keeps running the one it started with until /reload-plugins:
+// the Stop says so once per version, in a line for the user (systemMessage), and never for the same or an older one.
+{
+  const plug = join(home, '.claude', 'plugins'), at = join(home, 'cache-pm'), ours = JSON.parse(readFileSync(new URL('./.claude-plugin/plugin.json', import.meta.url), 'utf8')).version;
+  mkdirSync(join(at, '.claude-plugin'), { recursive: true }); mkdirSync(plug, { recursive: true });
+  const installed = (v) => { writeFileSync(join(at, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: v })); writeFileSync(join(plug, 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@project-memory': [{ installPath: at }] } })); };
+  const said = (id) => {
+    const r = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, 'proj-two', 'session.jsonl'), session_id: id }) });
+    const line = r.stdout.split('\n').find((l) => l.startsWith('{'));
+    return `${r.status} ${line ? JSON.parse(line).systemMessage : ''}`;
+  };
+  mkdirSync(plug, { recursive: true });
+  installed('99.0.0');
+  let r = said('reload1');
+  ok(r === '0 project-memory 99.0.0 is installed, run /reload-plugins to use it', `a newer installed version is named, with the command (got ${r})`);
+  r = said('reload1');
+  ok(!r.includes('reload-plugins') && r.startsWith('0'), `said once per session (got ${r})`);
+  installed('99.0.1');
+  ok(said('reload1') === '0 project-memory 99.0.1 is installed, run /reload-plugins to use it', 'a second update is named again');
+  const [a, b, c] = ours.split('.').map(Number);
+  for (const v of [ours, `${a}.${b}.${c - 1}`, `${a}.${b - 1}.99`, `${a - 1}.99.99`, 'garbage']) { installed(v); ok(!said('reload2').includes('reload-plugins'), `no notice when ${v} is installed and ${ours} runs`); }
+  installed(`${a}.${b}.${c}.1`);
+  ok(said('reload3').includes(`${a}.${b}.${c}.1 is installed`), 'a longer version with the same start is newer');
+  rmSync(plug, { recursive: true, force: true }); rmSync(at, { recursive: true, force: true });
+  ok(!said('reload4').includes('reload-plugins'), 'no notice without an installed plugin');
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`memory-tier: ${checks} checks passed`);

@@ -8,5 +8,5 @@ export default {
   'deploys from a branch': ["if (git('rev-parse', '--abbrev-ref', 'HEAD') !== 'master') fail(", 'if (false) fail('],
   'deploys uncommitted changes': ["if (dirty()) fail('uncommitted changes: commit first');", ''],
   'no stat in the manifest': ['files, stat })', 'files })'],
-  'journal.mjs never deployed': ["'handoff-log.mjs', 'journal.mjs', 'compact-gate.mjs'", "'handoff-log.mjs', 'compact-gate.mjs'"],
+  'journal.mjs never deployed': ["'brief.mjs', 'journal.mjs', 'compact-gate.mjs'", "'brief.mjs', 'compact-gate.mjs'"],
 };

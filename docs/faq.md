@@ -118,7 +118,9 @@ under env in my Claude Code settings,"* then restart Claude Code.
 
 To update, run `claude plugin marketplace update project-memory` and then
 `claude plugin update project-memory@project-memory` in a terminal, and
-restart Claude Code. A marketplace you added from GitHub has auto-update off.
+restart Claude Code. A conversation that is already open keeps running the old
+version: after its next reply it says once `project-memory X is installed, run
+/reload-plugins to use it`. A marketplace you added from GitHub has auto-update off.
 To turn it on, open `/plugin`, then Marketplaces, then project-memory, then
 Enable auto-update; `/project-memory:memory doctor` says whether it is on.
 To pause it, run
@@ -200,8 +202,8 @@ within the last 30 days; older work is still found by asking.
 
 ### What happens when auto memory is turned off?
 
-project-memory follows one switch only: the environment variable
-`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, set to `1`, `true`, `yes` or `on`. While it is set,
+project-memory follows Claude Code's auto memory switch. The quickest is the
+environment variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, set to `1`, `true`, `yes` or `on`. While it is set,
 project-memory reads and saves nothing on its own, except a short tag for
 the conversation, so neither the journal nor the record of where you left
 off takes that conversation in later, even if you go on with it after
