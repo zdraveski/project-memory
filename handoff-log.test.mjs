@@ -3882,5 +3882,129 @@ if (!quick) {
   // A command that holds a forget, however its options are spelled.
   ok(FORGETS.test('node memory.mjs forget abc') && FORGETS.test('node memory.mjs --x forget') && FORGETS.test('node memory.mjs --x=1 forget') && !FORGETS.test('node memory.mjs search forget') && !FORGETS.test('node memory.mjs') , 'a forget is seen after the options of memory.mjs');
 }
+// 1.5.3 holes: promptBefore() on lines that are not prompts, and the 4096-character head it checks for a tool result.
+{
+  const { promptBefore } = await import('./handoff-log.mjs');
+  const mk = (t, x = {}) => JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: t }] }, ...x });
+  const at = (n) => { const f = (p) => mk('the ask at the head', { pad: 'x'.repeat(p) }).slice(0, -1) + ',"tool_result":1}'; const p = n - f(0).indexOf('"tool_result"'); return f(p); };
+  const old = mk('an older ask in words');
+  const last = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } });
+  const pb = (lines, bytes) => { const p = join(dir, 'pb.jsonl'); writeFileSync(p, lines.join('\n') + '\n'); return promptBefore(p, bytes); };
+  const tail = last.length + 1;
+  // A line that is not JSON, one that is null: passed over, the prompt before them is found.
+  ok(pb([old, 'not json {', 'null', last], tail) === old, 'promptBefore skips a line that is not JSON and one that is null');
+  // A tool result is told by its first 4096 characters: the marker ending at the 4096th is inside, one ending a character later is not.
+  const inside = at(4083), edge = at(4084);
+  ok(inside.indexOf('"tool_result"') === 4083 && edge.indexOf('"tool_result"') === 4084, 'the test lines put the marker where it says');
+  ok(pb([old, inside, last], tail) === old, 'a line with "tool_result" inside its first 4096 characters is a result, not a prompt');
+  ok(pb([old, edge, last], tail) === edge, 'a line whose "tool_result" ends at character 4097 is read as a prompt');
+  // Several megabytes back: the reads go on until a prompt, a megabyte at a time.
+  const filler = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'y'.repeat(900000) }] } });
+  ok(pb([old, filler, filler, filler, last], tail) === old, 'promptBefore reads back past a few megabytes of replies');
+  ok(pb([filler, last], tail) === null, 'promptBefore says null when no prompt is there');
+}
+// 1.5.3 holes: odd records, the shapes of what the readers return, and what one Stop writes in odd cases.
+{
+  const { turns, FORGETS, goesOn, fit, hushed, stalled } = await import('./handoff-log.mjs');
+  const J = (o) => JSON.stringify(o);
+  const U = (c, x = {}) => J({ type: 'user', timestamp: '2026-09-11T07:00:00Z', message: { content: c }, ...x });
+  const A = (c, x = {}) => J({ type: 'assistant', timestamp: '2026-09-11T07:00:05Z', message: { content: c }, ...x });
+  const P = (t) => ({ type: 'text', text: t });
+  // Records with no message at all, among a turn's: read as nothing, not thrown at.
+  let t0; try { t0 = turns([U([P('plan the move')]), J({ type: 'assistant' }), J({ type: 'user' }), A([P('done')])].join('\n')); } catch (e) { t0 = String(e); }
+  ok(Array.isArray(t0) && t0.length === 1 && t0[0].did === 'done', 'a user or assistant record with no message does not stop a turn being read');
+  // Tool calls with no input: nothing ran, and nothing is thrown.
+  let t1; try { t1 = turns([U([P('run it')]), A([{ type: 'tool_use', id: 'a', name: 'Bash' }, { type: 'tool_use', id: 'b', name: 'mcp__x__ctx_execute' }, { type: 'tool_use', id: 'c', name: 'mcp__x__ctx_batch' }, P('ok')]).trim()].join('\n')); } catch (e) { t1 = String(e); }
+  ok(Array.isArray(t1) && t1.length === 1 && t1[0].ran.length === 0, 'a shell, ctx_execute or ctx_batch call with no input ran nothing');
+  // An edit that failed, among edits: only its own file goes from the list.
+  const ed = (id, f) => ({ type: 'tool_use', id, name: 'Edit', input: { file_path: f } });
+  const res = (id, err) => ({ type: 'tool_result', tool_use_id: id, is_error: err, content: 'x' });
+  const t2 = turns([U([P('edit three')]), A([ed('e1', 'C:/p/a.js'), ed('e2', 'C:/p/b.js'), ed('e3', 'C:/p/c.js')]), U([res('e1', false), res('e2', true), res('e3', false)]), A([P('done')])].join('\n'));
+  ok(JSON.stringify(t2[0].changed) === JSON.stringify(['C:/p/a.js', 'C:/p/c.js']), `a failed edit takes its own file off the list and no other (got ${JSON.stringify(t2[0]?.changed)})`);
+  // What FORGETS says is a boolean.
+  ok(FORGETS.test('node memory.mjs search x') === false && FORGETS.test('node memory.mjs forget x') === true, 'FORGETS.test answers true or false');
+  // A reply that stops the turn or goes on; one with no message at all goes on.
+  ok(goesOn(undefined) === true && goesOn(null) === true && goesOn({}) === true && goesOn({ stop_reason: 'end_turn' }) === false, 'goesOn() of no message is a turn that goes on');
+  // fit(): held to 9,500, cut at a line end, a blank line included.
+  const cutAt = fit('a'.repeat(9439) + '\n\n' + 'b'.repeat(1000));
+  ok(cutAt === 'a'.repeat(9439) + "\n(the rest cut to fit Claude Code's startup limit)\n", 'fit cuts at the 9,440th character, keeping a line end that falls there');
+  // hushed() with no session is not private.
+  ok(hushed(dir, '') === false && hushed(dir, undefined) === false, 'no session id is never private');
+  // stalled(): a transcript that cannot be read says nothing, and says it as a list.
+  const none = stalled({ s: 'abcdefgh', p: join(dir, 'no-such-transcript.jsonl') });
+  ok(Array.isArray(none) && none.length === 0, 'stalled() of a transcript that is not there is an empty list');
+}
+// 1.5.3 holes: what one Stop writes, in the cases a plain turn does not reach.
+{
+  const J = (o) => JSON.stringify(o);
+  const store = (c) => { const d = storeFor(home, c); mkdirSync(d, { recursive: true }); return d; };
+  const lines = (...l) => l.join('\n') + '\n';
+  const docOf = (d) => { try { return readFileSync(join(d, 'handoff.md'), 'utf8'); } catch { return ''; } };
+  const nAsked = (d) => (docOf(d).match(/\*\*asked\*\*/g) || []).length;
+  const U = (t, ts, x = {}) => J({ type: 'user', timestamp: ts, uuid: x.uuid, message: { content: [{ type: 'text', text: t }] } });
+  const A = (t, ts, extra = []) => J({ type: 'assistant', timestamp: ts, message: { content: [...extra, { type: 'text', text: t }], stop_reason: 'end_turn' } });
+  // Nothing to write is false, not 'busy'.
+  {
+    const c = 'C:\\hl-E-nothing', d = store(c), tr = join(d, 'e1.jsonl');
+    writeFileSync(tr, lines(U('a prompt nobody has answered', '2026-09-12T08:00:00Z')));
+    ok(handoff({ cwd: c, transcript_path: tr, session_id: 'nothing1' }) === false, 'a transcript with no finished turn writes nothing, and says false');
+  }
+  // The reply Stop passes joins what the journal reads as said, unless the transcript already ends with it.
+  {
+    const c = 'C:\\hl-E-said', d = store(c), tr = join(d, 'e2.jsonl'); let got;
+    writeFileSync(tr, lines(U('a closed ask', '2026-09-12T08:00:00Z'), A('the older text', '2026-09-12T08:00:05Z')));
+    handoff({ cwd: c, transcript_path: tr, session_id: 'saidses1', hook_event_name: 'Stop', last_assistant_message: 'the newer text' }, (dd, p, g) => { got = g; });
+    ok(got?.length === 1 && got[0].said.endsWith('the newer text') && got[0].said.includes('the older text'), 'the reply Stop passes is added to what the turn said');
+    writeFileSync(tr, lines(U('a closed ask', '2026-09-12T08:00:00Z'), A('the same text', '2026-09-12T08:00:05Z')));
+    handoff({ cwd: c, transcript_path: tr, session_id: 'saidses1', hook_event_name: 'Stop', last_assistant_message: 'the same text' }, (dd, p, g) => { got = g; });
+    ok(got?.length === 1 && got[0].said === 'the same text', 'and not again when the transcript already ends with it');
+  }
+  // A StopFailure for a turn the transcript already holds does not list it twice.
+  {
+    const c = 'C:\\hl-E-fail', d = store(c), tr = join(d, 'e3.jsonl');
+    writeFileSync(tr, lines(U('fix the build', '2026-09-12T08:00:00Z'), A('fixed it', '2026-09-12T08:00:05Z', [{ type: 'tool_use', id: 'x1', name: 'Edit', input: { file_path: 'C:/p/build.js' } }])));
+    handoff({ cwd: c, transcript_path: tr, session_id: 'failses1', hook_event_name: 'StopFailure' });
+    ok(nAsked(d) === 1 && /fixed it/.test(docOf(d)), 'a StopFailure for a turn that has its reply lists it once');
+  }
+  // A turn asked while the project was off is not written.
+  {
+    const c = 'C:\\hl-E-periods', d = store(c), tr = join(d, 'e4.jsonl');
+    const t1 = Date.parse('2026-09-12T08:00:00Z'), t2 = Date.parse('2026-09-12T09:00:00Z');
+    writeFileSync(join(d, '.off-periods'), `${t1 - 60000} ${t1 + 60000}\n`);
+    writeFileSync(tr, lines(U('asked while off', '2026-09-12T08:00:00Z'), A('reply one', '2026-09-12T08:00:05Z'), U('asked after it was on', '2026-09-12T09:00:00Z'), A('reply two', '2026-09-12T09:00:05Z')));
+    handoff({ cwd: c, transcript_path: tr, session_id: 'perioda1' });
+    ok(nAsked(d) === 1 && /asked after it was on/.test(docOf(d)) && !/asked while off/.test(docOf(d)), 'a turn asked in a period the project was off is left out');
+  }
+  // Exchanges forget took out all go, not only one.
+  {
+    const c = 'C:\\hl-E-forget', d = store(c), tr = join(d, 'e5.jsonl');
+    writeFileSync(tr, lines(U('first to forget', '2026-09-12T08:00:00Z', { uuid: 'u-one' }), A('first reply', '2026-09-12T08:00:05Z'), U('second to forget', '2026-09-12T08:10:00Z', { uuid: 'u-two' }), A('second reply', '2026-09-12T08:10:05Z'), U('a third to keep', '2026-09-12T08:20:00Z', { uuid: 'u-three' }), A('third reply', '2026-09-12T08:20:05Z')));
+    handoff({ cwd: c, transcript_path: tr, session_id: 'forgets1' });
+    ok(nAsked(d) === 3, 'the three exchanges are written');
+    mkdirSync(join(d, 'journal'), { recursive: true });
+    writeFileSync(join(d, 'journal', '.forgotten'), ['u-one', 'u-two'].map((k) => `${k}\t${basename(dirname(tr))}/e5\t2026-09-12 08:00`).join('\n') + '\n');
+    handoff({ cwd: c, transcript_path: tr, session_id: 'forgets1' });
+    ok(nAsked(d) === 1 && /a third to keep/.test(docOf(d)), `both exchanges forget listed go from handoff.md (${nAsked(d)} left)`);
+  }
+  // A journal day that cannot be read is no copy: the entry is written all the same.
+  {
+    const c = 'C:\\hl-E-day', d = store(c), tr = join(d, 'e6.jsonl');
+    for (const day of ['2026-09-11', '2026-09-12', '2026-09-13']) mkdirSync(join(d, 'journal', `${day}.md`), { recursive: true });
+    writeFileSync(tr, lines(U('asked with a day that will not read', '2026-09-12T12:00:00Z', { uuid: 'u-day' }), A('answered', '2026-09-12T12:00:05Z')));
+    let r; try { r = handoff({ cwd: c, transcript_path: tr, session_id: 'dayses01' }); } catch (e) { r = String(e); }
+    ok(r === true && /asked with a day that will not read/.test(docOf(d)), `a journal day that will not read does not stop the entry (got ${r})`);
+  }
+}
+// 1.5.3 holes: redact() itself, in the shapes the Stop tests never reach (they hush the whole turn first).
+{
+  ok(!/6655/.test(redact('note <private my pin is 6655 open it')), 'an opener never closed takes the rest of the text with it');
+  ok(!/hunter2xyz/.test(redact('APP_pwd: hunter2xyz')), 'a name ending in _pwd hides its value');
+  ok(redact('Cookie: =abc123def456; x=1') === 'Cookie: =abc123def456; x=1', 'a cookie header whose first pair has no name is not a cookie pair: left as written');
+  ok(!/abcdefghij1234567890/.test(redact('bearer abcdefghij1234567890')), 'a lowercase bearer token is cut');
+  ok(!/S3cretPw9/.test(redact('htpasswd -b alice S3cretPw9')), 'htpasswd -b with a user and no file saves no password');
+  ok(!/hunter2xyz/.test(redact('redis-cli ' + '-n 1 '.repeat(40) + 'AUTH hunter2xyz')), 'redis-cli AUTH after 40 options hides its password');
+  // The bound is a speed limit (an open-ended run was quadratic), documented in store.mjs.
+  ok(/hunter2xyz/.test(redact('redis-cli ' + '-n 1 '.repeat(45) + 'AUTH hunter2xyz')), 'and past 45 options the run is not followed');
+}
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
