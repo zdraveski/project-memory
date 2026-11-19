@@ -1591,10 +1591,10 @@ ${r.stdout}`, 'stop words with a range list the range, naming the dropped words'
   ok(/^  journal: no days yet; importing 1 older conversations; last write failed: disk full$/m.test(await cli()), 'a journal that failed from its first write still says so');
   // 1.5.0 item 32: a search that finds nothing while older conversations are still being imported says so, not "nothing matches".
   out = (await run(['search', 'zzzunmatched', '--store', st])).stdout;
-  ok(/still importing 1 older conversation/.test(out) && !/^nothing matches/m.test(out), `a miss during the import says it is still importing (got ${out})`);
+  ok(/^no match yet for ".+" in .*[^ ]: the journal is still importing 1 older conversation, so search again in a few minutes/m.test(out) && !/^nothing matches/m.test(out), `a miss during the import says it is still importing (got ${out})`);
   unlinkSync(tp);
   out = (await run(['search', 'zzzunmatched', '--store', st])).stdout;
-  ok(/^nothing matches "zzzunmatched"/m.test(out) && !/importing/.test(out), `with nothing left to import it says nothing matches (got ${out})`);
+  ok(/^nothing matches "zzzunmatched" in [^;]*[^ ;]; --all searches every project$/m.test(out) && !/importing/.test(out), `with nothing left to import it says nothing matches (got ${out})`);
   // A store whose only memory is its journal (no index, no journal.md yet) is a store.
   const lone = join(root, 'C--jonly', 'memory');
   mkdirSync(join(lone, 'journal'), { recursive: true });
@@ -2661,6 +2661,63 @@ After the log: narwhalqq stays.
   writeFileSync(hj, hjText);
 }
 
+// 1.5.3 holes: replay's 30-day window to the millisecond, its order, the files it reads and what it prints.
+{
+  const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 30);
+  const day = 86400000, ago = (d) => Date.now() - d * day;
+  const tl = (command, t) => JSON.stringify({ type: 'assistant', isSidechain: false, timestamp: new Date(t).toISOString(), cwd: 'C:/rp/proj', sessionId: 'rp123456-aaaa',
+    message: { content: [{ type: 'tool_use', name: 'Bash', id: 'tu1', input: { command } }] } }) + '\n';
+  const proj = join(root, 'C--rp-proj'), pm = join(proj, 'memory'), sh = join(root, '_shared');
+  mkdirSync(pm, { recursive: true }); mkdirSync(sh, { recursive: true });
+  const rule = '---\nname: Stage files by name\ndescription: Never run git add -A.\ntype: feedback\nenforce:\n  on: git add\n  has: [-A, --all, .]\n---\n\nbody\n';
+  writeFileSync(join(pm, 'stage.md'), rule);
+  // The first moment of the window is in, a millisecond before it is out, and a file last written at that moment is read.
+  writeFileSync(join(proj, 'edge.jsonl'), tl('git add -A # atedge', from.getTime()) + tl('git add -A # justbefore', from.getTime() - 1));
+  utimesSync(join(proj, 'edge.jsonl'), from, from);
+  // Written newest first: the listing is oldest first.
+  writeFileSync(join(proj, 'order.jsonl'), tl('git add -A # third', ago(1)) + tl('git add -A # first', ago(5)) + tl('git add -A # second', ago(3)));
+  // A line longer than the 8 MB read is passed over, the line after it is read.
+  writeFileSync(join(proj, 'big.jsonl'), tl('git add -A # bigline ' + 'x'.repeat(8.5 * 1048576), ago(2)) + tl('git add -A # afterbig', ago(2)));
+  // Not transcripts: a file of another kind, a folder named like one, and the shared store's folder.
+  writeFileSync(join(proj, 'notes.txt'), tl('git add -A # nottranscript', ago(1)));
+  mkdirSync(join(proj, 'folder.jsonl'));
+  mkdirSync(join(sh, 'memory'), { recursive: true }); writeFileSync(join(sh, 'shared01-aaaa.jsonl'), tl('git add -A # sharedcmd', ago(1)));
+  const go = (...a) => run(['enforce', 'replay', 'stage', '--store', pm, ...a]);
+  r = await go();
+  const lines = r.stdout.split('\n').filter((l) => /\d{4}-\d\d-\d\d \d\d:\d\d/.test(l)), tags = lines.map((l) => l.match(/# (\w+)/)?.[1]);
+  ok(r.status === 0 && tags.join() === 'atedge,first,second,afterbig,third', `replay prints the hits oldest first, the window's first moment in, the moment before out, a line past 8 MB passed over (got ${tags} ${r.stdout.slice(-300)}${r.stderr})`);
+  ok(!/nottranscript/.test(r.stdout) && !/could not read/.test(r.stdout), 'a file that is not a .jsonl is not read, a folder named like one is no failure');
+  ok(/^hits by project: .* 5$/m.test(r.stdout) && /5 hits in 3 sessions, 1 project/.test(r.stdout), `hits by project counts one by one (got ${r.stdout.slice(-300)})`);
+  r = await go('--all');
+  ok(!/sharedcmd/.test(r.stdout), '--all does not read the shared store folder');
+  // The spawned CLI has no terminal: nothing on stderr.
+  const sp = spawnSync(process.execPath, [CLI, 'enforce', 'replay', 'stage', '--store', pm, '--all'], { env, encoding: 'utf8' });
+  ok(sp.status === 0 && sp.stderr === '', `replay writes no progress to a stderr that is no terminal (got ${sp.stderr})`);
+  // A transcript that goes away while it is read is named, not skipped in silence.
+  const gone = join(proj, 'gone.jsonl'); writeFileSync(gone, tl('git add -A # gonecmd', ago(1)));
+  mkdirSync(join(proj, 'rpsess', 'subagents'), { recursive: true });
+  const undo = meanwhile('readdirSync', (p) => /subagents$/.test(p), () => rmSync(gone));
+  try { r = await go(); } finally { undo(); }
+  ok(/^could not read .*gone\.jsonl: ENOENT$/m.test(r.stdout), `a transcript that vanished is reported (got ${r.stdout.slice(-300)})`);
+  // What is not asked for: no words after replay, another word before them, a path that is no note.
+  r = await run(['enforce', 'replay', '--store', pm]);
+  ok(r.status === 1 && /enforce takes status, or replay/.test(r.stdout), 'replay with no note is the usage');
+  r = await run(['enforce', 'bogus', 'stage', '--store', pm]);
+  ok(r.status === 1 && /enforce takes status, or replay/.test(r.stdout), 'enforce with another word is the usage');
+  const nowhere = join(home, 'nowhere');
+  r = await run(['enforce', 'replay', join(nowhere, 'stage.md'), '--store', pm]);
+  ok(r.status === 0 && /checked \d+ git commands/.test(r.stdout), `a .md path that is not there falls back to the note of that name in the store (got ${r.stdout.slice(-200)})`);
+  mkdirSync(join(nowhere, 'dir.md'), { recursive: true }); writeFileSync(join(nowhere, 'plain'), rule);
+  r = await run(['enforce', 'replay', join(nowhere, 'dir.md'), '--store', pm]);
+  ok(r.status === 1 && /no note/.test(r.stdout), `a folder named like a note is no note (got ${r.stdout})`);
+  r = await run(['enforce', 'replay', join(nowhere, 'plain'), '--store', pm]);
+  ok(r.status === 1 && /no note/.test(r.stdout), `a path with no .md is looked up as a note name, not read (got ${r.stdout})`);
+  // status counts back to the same moment: a log line at it is in, one a millisecond before is out.
+  writeFileSync(join(pm, '.enforce-log'), JSON.stringify({ t: from.toISOString(), note: 'stage.md', s: 'rp', agent: '', id: 'a' }) + '\n' + JSON.stringify({ t: new Date(from.getTime() - 1).toISOString(), note: 'stage.md', s: 'rp', agent: '', id: 'b' }) + '\n');
+  r = await run(['enforce', 'status', '--store', pm]);
+  ok(/^stage\.md +1 hit in 30 days \(1 main, 0 subagent\)/m.test(r.stdout), `status counts from the window's first moment (got ${r.stdout})`);
+}
+
 // Fake secrets, built from pieces so no scanner sees a literal.
 const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = ['Zx9', 'Qv', '7!', 'mT3', 'kLp'].join('');
 // Secrets in a note (1.4.1 J): promote refuses it, search and status print no secret from names or links.
@@ -3361,6 +3418,145 @@ again ${key2}
   ok(/^PROBLEM the enforce hook printed output for an empty call \(noise\): it must print nothing$/m.test(doctor().stdout), 'a hook that prints for an empty call is a problem');
   writeFileSync(hook, 'process.exit(3);');
   ok(/^PROBLEM the enforce hook failed an empty call \(exit code 3\): /m.test(doctor().stdout), 'a hook that exits 3 is a problem, with its code');
+}
+
+// 1.5.3 holes: how search, show and forget print what they find: the range in a line, the stores counted, a short request's reply, show's keys and exit.
+{ // In this process, so the suite's own home again (an earlier tempHome moved it).
+  process.env.HOME = process.env.USERPROFILE = home;
+  const { render } = await import('./journal.mjs');
+  const jd = join(root, 'C--l2', 'memory'), jcli = (...a) => run([...a, '--store', jd]);
+  mkdirSync(jd, { recursive: true });
+  let n = 0;
+  const entry = (at, asked, over = {}) => ({ key: `l2k${n++}`, at, s: 'c0ffee12', t: 'C--l2/c0ffee12-full', branch: 'main', asked, answered: 'done', changed: [], ran: [], ...over });
+  const day = (d, es) => { mkdirSync(join(jd, 'journal'), { recursive: true }); writeFileSync(join(jd, 'journal', `${d}.md`), `# Journal ${d}\n\n${es.map(render).join('\n\n')}\n`); };
+  // A range is named with one blank before it, whether it has a start, an end or both.
+  r = await jcli('search', 'zzzmissing', '--until', '2026-10-02');
+  ok(/memory until 2026-10-02; --all searches every project$/m.test(r.stdout), `a miss under --until names it (got ${r.stdout})`);
+  r = await jcli('search', 'zzzmissing', '--since', '2026-10-01');
+  ok(/memory since 2026-10-01; --all searches every project$/m.test(r.stdout), `a miss under --since names it (got ${r.stdout})`);
+  r = await jcli('search', 'zzzmissing', '--since', '2026-10-01', '--until', '2026-10-02');
+  ok(/memory since 2026-10-01 until 2026-10-02; --all/m.test(r.stdout), `a miss under both names both (got ${r.stdout})`);
+  r = await jcli('search', '--until', '2026-10-02');
+  ok(/^no journal entry until 2026-10-02 in /m.test(r.stdout), `an empty listing names its --until (got ${r.stdout})`);
+  r = await jcli('search', '--since', '2026-10-01');
+  ok(/^no journal entry since 2026-10-01 in /m.test(r.stdout), `an empty listing names its --since (got ${r.stdout})`);
+  // --all counts a project whose only memory is its journal, and no folder without one.
+  const stores = (o) => Number(/in ([0-9]+) stores/.exec(o)?.[1]), count = async () => stores((await run(['search', 'zzzmissing', '--all'])).stdout);
+  for (const x of ['a', 'b', 'c']) mkdirSync(join(root, `C--l2-${x}`, 'memory', 'journal'), { recursive: true });
+  const before = await count();
+  mkdirSync(join(root, 'C--l2-bare', 'memory'), { recursive: true }); writeFileSync(join(root, 'C--l2-bare', 'memory', 'loose.md'), 'no frontmatter, no journal');
+  const bare = await count();
+  mkdirSync(join(root, 'C--l2-only', 'memory', 'journal'), { recursive: true });
+  const after = await count();
+  ok(before >= 3 && bare === before && after === before + 1, `--all counts a store with a journal and no index, and a folder with neither not at all (${before}, ${bare}, ${after})`);
+  for (const x of ['only', 'bare', 'a', 'b', 'c']) rmSync(join(root, `C--l2-${x}`), { recursive: true });
+  // A short request (25 characters or fewer) shows the reply before it, cut at 200 characters; one character more is not short.
+  const w = (c, k) => `${c}`.repeat(k);
+  const exact = 'a'.repeat(150) + ' ' + 'b'.repeat(49), over = 'c'.repeat(201);
+  const e1 = entry('2026-10-10 09:00', 'first of the day', { answered: exact }), e2 = entry('2026-10-10 09:00', w('y', 25), { answered: 'ok' }), e3 = entry('2026-10-10 09:00', w('z', 26), { answered: 'ok' });
+  const e4 = entry('2026-10-10 09:01', 'next, long enough to be no short ask', { answered: over }), e5 = entry('2026-10-10 09:01', w('q', 25), { answered: 'ok' });
+  day('2026-10-10', [e1, e2, e3, e4, e5]);
+  const sh = async (e) => (await jcli('show', e.key)).stdout;
+  ok(exact.length === 200 && (await sh(e2)).includes(`     Reply to key ${e1.key}: ${exact}\n`), `a reply of exactly 200 characters is quoted whole, no ellipsis (got ${await sh(e2)})`);
+  ok(!/Reply to key/.test(await sh(e3)), 'a request of 26 characters is no short one');
+  ok((await sh(e5)).includes(`     Reply to key ${e4.key}: …${over.slice(1)}\n`), `a reply of 201 characters is cut to its last 200 behind an ellipsis (got ${await sh(e5)})`);
+  // Entries of the same minute keep the order of the day file: the reply before the second is the first.
+  const t1 = entry('2026-10-11 09:00', 'one of three at one minute', { answered: 'reply one' }), t2 = entry('2026-10-11 09:00', 'ok', { answered: 'reply two' }), t3 = entry('2026-10-11 09:00', 'yes', { answered: 'reply three' });
+  day('2026-10-11', [t1, t2, t3]);
+  ok((await sh(t3)).includes(`Reply to key ${t2.key}: reply two`) && (await sh(t2)).includes(`Reply to key ${t1.key}: reply one`), 'entries of one minute are ordered as the day file has them');
+  // The reply before a short request is the conversation's own previous entry: not another conversation's, nor a subagent's report.
+  const u1 = entry('2026-10-12 10:00', 'a first question that is long enough', { answered: 'the main reply' });
+  const x1 = entry('2026-10-12 10:01', 'a question in another conversation', { s: 'deadbeef', t: 'C--l2/deadbeef-full', answered: 'the other reply' });
+  const sa = entry('2026-10-12 10:01', 'a subagent was asked something long', { key: 'subagent-l2', answered: 'the subagent report' });
+  const u2 = entry('2026-10-12 10:02', 'ok', { answered: 'fine' });
+  day('2026-10-12', [u1, x1, sa, u2]);
+  ok((await sh(u2)).includes(`Reply to key ${u1.key}: the main reply`), `a short request is answered with its own conversation's previous reply (got ${await sh(u2)})`);
+  // show: several keys, one unknown, nothing empty printed.
+  r = await jcli('show', t1.key, t3.key);
+  ok(r.status === 0 && r.stdout.includes('one of three at one minute') && r.stdout.includes('reply three'), `show takes several keys (got ${r.stdout})`);
+  r = await jcli('show', t1.key, 'l2nosuch');
+  ok(r.status === 1 && r.stdout.includes('one of three at one minute') && /no journal entry has the key l2nosuch in /.test(r.stdout), `show prints the entries it has and names the key it has not, exit 1 (got ${r.status} ${r.stdout})`);
+  r = await jcli('show', t1.key);
+  ok(!/^ +(Changed|Ran):/m.test(r.stdout) && /^ +Asked:/m.test(r.stdout) && /^ +Answered:/m.test(r.stdout), `show prints no line for a field that is empty (got ${r.stdout})`);
+  // A range with no words lists what was asked, newest first, without the subagents' reports, as many as --limit says (30 without it).
+  const g1 = entry('2026-10-20 09:00', 'range question first'), g2 = entry('2026-10-20 10:00', 'range question middle'), g3 = entry('2026-10-20 10:00', 'range question later');
+  const g4 = entry('2026-10-21 08:00', 'range question last'), gs = entry('2026-10-20 11:00', 'range question by a subagent', { key: 'subagent-l2g' });
+  day('2026-10-20', [g1, g2, g3, gs]); day('2026-10-21', [g4]);
+  const asks = (o) => o.split('\n').filter((l) => /range question/.test(l)).map((l) => /range question (\w+)/.exec(l)[1]);
+  const rng = (...a) => jcli('search', '--since', '2026-10-20', '--until', '2026-10-21', ...a);
+  r = await rng();
+  ok(asks(r.stdout).join() === 'last,middle,later,first' && /^4 of 4 journal entries in [^;]*$/m.test(r.stdout), `a range lists its entries newest first, a subagent's report left out (got ${r.stdout})`);
+  r = await rng('--limit', '1');
+  ok(asks(r.stdout).join() === 'last' && /^1 of 4 journal entries in .*; --limit N shows more$/m.test(r.stdout), `--limit 1 shows the newest only (got ${r.stdout})`);
+  r = await rng('--limit', '2');
+  ok(asks(r.stdout).join() === 'last,middle' && /^2 of 4 journal entries in /m.test(r.stdout), `--limit 2 shows two (got ${r.stdout})`);
+  r = await rng('--limit', '0');
+  ok(asks(r.stdout).length === 4 && /^4 of 4 journal entries/m.test(r.stdout), `--limit 0 is no limit (got ${r.stdout})`);
+  // A search that cannot read one day still prints the hits, and names the day before the count: the count and the last line stay last.
+  mkdirSync(join(jd, 'journal', '2026-10-09.md'));
+  r = await jcli('search', 'three');
+  const ls = r.stdout.trimEnd().split('\n');
+  ok(/^could not read .*2026-10-09.md: /.test(ls.at(-3)) && /^2 of 2 match/.test(ls.at(-2)) && ls.at(-1) === 'Not the entry you meant? Search again with other words.', `a day that cannot be read is named above the count, and the count and the last line stay last (got ${r.stdout})`);
+  // A miss names the unreadable day above its one line, too.
+  r = await jcli('search', 'zzznomatchatall');
+  const lm = r.stdout.trimEnd().split(/\r?\n/);
+  ok(/^could not read .*2026-10-09.md: /.test(lm.at(-2)) && /^nothing matches "zzznomatchatall"/.test(lm.at(-1)), `a miss names the day it could not read above its last line (got ${r.stdout})`);
+  rmSync(join(jd, 'journal', '2026-10-09.md'), { recursive: true });
+}
+
+// 1.5.3 holes: an incognito run on a conversation already swept sweeps it again (what the conversation wrote since is not left in the journal).
+{
+  const h = tempHome('incog3-'), pr = join(h.home, '.claude', 'projects'), proj = join(pr, 'C--ig3'), d = join(proj, 'memory'), SID = 'ffffffff-6666';
+  const { render } = await import('./journal.mjs');
+  mkdirSync(proj, { recursive: true });
+  writeFileSync(join(proj, `${SID}.jsonl`), [{ type: 'user', text: 'tell me about narwhal tusks' }, { type: 'assistant', text: 'a tusk is a tooth' }].map((m) => JSON.stringify({ type: m.type, cwd: 'C:\ig3', timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text: m.text }] } })).join('\n') + '\n');
+  const inc = () => spawnSync(process.execPath, [CLI, 'incognito', '--session', SID], { env: h.env, encoding: 'utf8' });
+  let r = inc();
+  ok(r.status === 0, `incognito is applied (got ${r.status} ${r.stdout}${r.stderr.slice(0, 200)})`);
+  // An entry of the conversation that reached the journal after that sweep: the next incognito takes it out again.
+  const e = { key: 'ig3key01', at: '2026-10-12 09:00', s: 'ffffffff', t: `C--ig3/${SID}`, branch: 'main', asked: 'late pelican question', answered: 'pelican answer', changed: [], ran: [] };
+  mkdirSync(join(d, 'journal'), { recursive: true });
+  writeFileSync(join(d, 'journal', '2026-10-12.md'), `# Journal 2026-10-12\n\n${render(e)}\n`);
+  r = inc();
+  ok(r.status === 0 && !existsSync(join(d, 'journal', '2026-10-12.md')), `a second incognito sweeps what came after the first (got ${r.status} ${r.stdout})`);
+}
+
+// 1.5.3 holes: a forget --purge of what the journal no longer holds takes the days that held every word, and says so; a failed purge, and a store another hook holds.
+{
+  process.env.HOME = process.env.USERPROFILE = home;
+  const { render } = await import('./journal.mjs');
+  const pd = join(root, 'C--purge2', 'memory'), wa = 'aardvark-' + 'purge', wb = 'bonobo-' + 'purge', J = join(pd, 'journal');
+  mkdirSync(J, { recursive: true });
+  const e = (d, asked) => ({ key: `pg${d}`, at: `${d} 10:00`, s: 'c0ffee12', t: 'C--purge2/c0ffee12-full', branch: 'main', asked, answered: 'noted', changed: [], ran: [] });
+  const day = (d, asked) => writeFileSync(join(J, `${d}.md`), `# Journal ${d}\n\n${render(e(d, asked))}\n`);
+  const both = [1, 2, 3, 4, 5, 6, 7].map((n) => `2020-02-0${n}`);
+  for (const d of both) day(d, `remember ${wa} and ${wb}`);
+  day('2020-02-08', `remember ${wa}`); day('2020-02-09', `remember ${wb}`);
+  writeFileSync(join(J, 'keep.md'), `a note that is no day: ${wa} ${wb}\n`);
+  writeFileSync(join(pd, 'MEMORY.md'), '# Memory Index\n');
+  tier(); tier();
+  const days = (w) => spawnSync('git', ['-C', root, 'log', '--all', '-i', '--format=', '--name-only', '-S' + w], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean).map((p) => p.split('/').pop()).sort();
+  ok(days(wa).includes('2020-02-08.md') && days(wb).includes('2020-02-01.md') && days(wa).includes('keep.md'), `fixture: the snapshots hold the days and the loose file (got ${days(wa)})`);
+  // The journal no longer holds them: the days are gone from it.
+  for (const d of [...both, '2020-02-08', '2020-02-09']) rmSync(join(J, `${d}.md`));
+  // A purge that cannot run is said, exit 1, and takes nothing.
+  writeFileSync(join(root, '.git', 'HEAD.lock'), '');
+  let r = await run(['forget', wa, wb, '--yes', '--purge', '--store', pd]);
+  rmSync(join(root, '.git', 'HEAD.lock'));
+  ok(r.status === 1 && /the snapshots could not be purged \(a snapshot is being taken; try again in a moment\)/.test(r.stdout) && days(wa).includes('2020-02-01.md'), `a purge that cannot run says so and takes nothing (got ${r.status} ${r.stdout})`);
+  // Words with no day in common purge nothing.
+  r = await run(['forget', wa, 'zzznoword-purge', '--yes', '--purge', '--store', pd]);
+  ok(r.status === 0 && /^nothing in .* matches: no entry holds "aardvark-purge", "zzznoword-purge"$/m.test(r.stdout) && !/purged/.test(r.stdout) && days(wa).includes('2020-02-01.md'), `words that no day holds together purge nothing (got ${r.stdout})`);
+  // The days that held every word, by day files only, six named and the rest counted.
+  r = await run(['forget', wa, wb, '--yes', '--purge', '--store', pd]);
+  ok(r.status === 0 && r.stdout.includes('the journal of ' + pd + ' no longer holds it; purged the journal of 2020-02-01, 2020-02-02, 2020-02-03, 2020-02-04, 2020-02-05, 2020-02-06, and 1 more from the snapshots'), `the days that held both words go, six named (got ${r.stdout})`);
+  ok(days(wa).join() === '2020-02-08.md,keep.md' && days(wb).join() === '2020-02-09.md,keep.md', `the days that held one word, and a file that is no day, stay in the snapshots (got ${days(wa)} and ${days(wb)})`);
+  // A store another hook holds: forget --yes is busy and removes nothing.
+  day('2020-02-10', `remember ${wa}`);
+  mkdirSync(join(pd, '.lock'));
+  r = await run(['forget', wa, '--yes', '--store', pd]);
+  rmSync(join(pd, '.lock'), { recursive: true });
+  ok(r.status === 1 && r.stdout.includes(`${pd} is busy (another hook holds it); try again`) && existsSync(join(J, '2020-02-10.md')), `forget in a store another hook holds is busy and removes nothing (got ${r.status} ${r.stdout})`);
 }
 
 console.log(`memory: ${checks} checks passed`);
