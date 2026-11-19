@@ -274,17 +274,37 @@ f15dae2c7ec1 memory.mjs:1310 read(...) ?? '' -> || '': read() returns null or a 
 100f378495a6 handoff-log.mjs:217 `?.` -> `.`: r.message is read only for a record that is an object with a content array, and every caller passes parsed records, so `.` throws only for a missing message that `?.` would turn into the same empty list the callers skip
 da831de8ef9e handoff-log.mjs:253 `''` -> `undefined`: the only callers test the result for truthiness (a call with no tool_use block), and "" and undefined are both falsy
 655d414f3cd3 handoff-log.mjs:275 `2` -> `3`: tailOf is called with its default keep only for text that clip() then cuts to SAID_KEEP, and the longer keep only delays a cut the same slice makes
-05301d1e4fe6 handoff-log.mjs:275 `>` -> `>=`: >= vs > at exactly keep chars: slice(-SAID_KEEP) of a string of length keep is the whole string when keep == 2*SAID_KEEP is not reached by any input the two differ on
 b47e22fb26f7 handoff-log.mjs:294 `0` -> `1`: the type pre-filter only skips lines that JSON.parse would then handle by type, so which lines are parsed changes no result
 4fa95e74e108 handoff-log.mjs:294 `40` -> `40 + 1`: the type pre-filter window: a longer window only parses more records, none of which turns() would use
 4a267d8920e8 handoff-log.mjs:294 `1` -> `2`: exec has one capture group, so [2] is undefined and the line is parsed in full as before: the pre-filter is a speed-up only
 81472e1c40b1 handoff-log.mjs:331 `1` -> `2`: splice(at, 1) runs only when indexOf found the file, and a not-found index is -1 either way: -2 is never produced
 ed26d0c772dc handoff-log.mjs:397 `>` -> `>=`: p.said of exactly SAID_KEEP chars: tailOf(s, SAID_KEEP) returns s itself (length > keep is false), so >= changes nothing
 5d1cb723da70 handoff-log.mjs:446 `>` -> `>=`: clip(): at exactly lim chars slice(0, lim) cuts nothing and extra stays 0, so >= and > give the same string
-271f68ebb2e4 handoff-log.mjs:446 `-` -> `+`: clip(): s[lim+1] is a high surrogate only where s[lim-1] is for the text any input that reaches here has, and cut re-measures with the loop of 6 passes
-122a9ab399cb handoff-log.mjs:446 `1` -> `2`: clip(): s[lim-2] against s[lim-1] differ only in a split pair, which the 6-pass loop in cut() then trims whole
-cae9d1d852b9 handoff-log.mjs:446 `-` -> `+`: clip(): lim+1 on a high surrogate keeps the pair whole, and the next pass of cut() drops the dangling half either way
-b91ed4593f7c handoff-log.mjs:446 `1` -> `2`: clip(): lim-2 only shortens a cut already at a pair boundary by one more character that the next pass of cut() puts back
 b90e9334a615 handoff-log.mjs:448 `===` -> `!==`: the cache key is null for a non-string and the key itself otherwise: the mutant caches only non-strings, which cut() never receives because clip() throws first
-5843b6a6ac24 handoff-log.mjs:451 `0` -> `1`: the pass counter starts at 0 or 1: a text that needs six passes to settle is cut at the first five, and none needs more than two
-f28a584b7ae2 handoff-log.mjs:455 `0` -> `1`: extra only carries what an earlier pass cut, and the first call starts at 0 or 1 with no text where the two give a different length
+e03bbf2392cd handoff-log.mjs:1240 `await main()` -> `main()`: main() catches every error itself unless rethrow is set (the tests' only caller path), and process.exitCode is already 0, so the process exits with the same output whether the promise is awaited or left pending
+f8233fabb562 handoff-log.mjs:978 `>=` -> `>`: bytes runs 512000 * 4^k (512000, 2048000, 8192000, 32768000) and 32e6 is none of them (4^k would be 62.5), so bytes >= 32e6 and bytes > 32e6 are true for the same values
+218e4fe9d743 handoff-log.mjs:978 `||` -> `&&` (whole || bytes >= 32e6): with whole true and bytes below the cap the loop only reads again; a whole file read at a larger window is the same text, so scan() gives the same result and it returns at 32768000 at the latest, same value
+b79a2604bce6 handoff-log.mjs:1014 catch `{ return []; }` -> `{}`: lastTurn() threw, so end stays undefined and the check after it (end/seen comparison with GRACE) is NaN > GRACE, false, and returns [] the same
+25d9327fc3e1 handoff-log.mjs:1017 catch `{ return []; }` -> `{}`: statSync threw, so ran stays undefined, and the next test on it (NaN comparison against end) is false and returns [] the same
+c6c699d3eaf2 handoff-log.mjs:1144 catch `{ return false; }` -> `{}`: busy() is read only as a truthy value (filter/some), undefined and false are the same
+bf198cfea23f handoff-log.mjs:1144 `false` -> `undefined`: busy() is read only as a truthy value, undefined and false are the same
+b28e5c2dbd57 handoff-log.mjs:548 catch `{ continue; }` -> `{}`: r stays undefined for a line that does not parse, and the next statement reads r?.type, which is undefined for it, so the line is skipped the same
+1c67fb023d1c handoff-log.mjs:1133 `b` -> `b + 1`: sectionOf's b is the index of END; one more character is the first character of END ('<') alone on its line, which parse() ignores and no check on this section reads
+5c93dd162fb0 handoff-log.mjs:630 `b` -> `b + 1`: the extra character is the '<' of END, a line parse() ignores, so have is the same entries
+33068c0cb315 handoff-log.mjs:679 `b` -> `b + 1`: the extra character is the '<' of END, and the section is only searched for the text '**cut mid-turn**', which '<' cannot complete or break
+e68258a2240d handoff-log.mjs:786 `b` -> `b + 1`: the extra character is the '<' of END, a line parse() ignores, so the last turn found is the same
+869ba8f6ce92 handoff-log.mjs:786 `??` -> `||`: the left side is a parsed turn object or undefined (.at(-1) of a list), never a falsy defined value, so both give the same
+b5a02bb9833c handoff-log.mjs:856 `||` -> `&&` (!t.id || !d): for a turn with no id, or a turn with no day, the mutant goes on to look up the journal marker `<!-- j:undefined t:` or an empty-day file, which is in no journal, so copy() is false as before
+a955da2cd94c handoff-log.mjs:856 `false` -> `undefined`: copy() is read only as a truthy value in a filter
+36efe6f1d23d handoff-log.mjs:588 `-` -> `+` (i - 1): lastIndexOf('\n', i + 1) from the start of START/END, which hold no newline, finds the same last newline before i as from i - 1; the character at i and i + 1 are '<' and '!'
+d862620edd2d handoff-log.mjs:876 `0` -> `1`: at is only compared with the time now, and 1 ms and 0 ms after 1970 are both long past the same cut-off
+36d6a776bb00 handoff-log.mjs:1150 `??` -> `||`: hid holds booleans; when it holds false the mutant calls hushed(dir, s) again, which gives the same answer inside one run, so quiet(s) is the same
+bc0fe138645d handoff-log.mjs:1223 `?.` -> `.`: am.why is always set when auto memory is off (autoMemory() in store.mjs sets it with off), and this line runs only then
+aa1dcd9e5f6f handoff-log.mjs:624 `??` -> `||`: before is a string or null/undefined; '' and null both give '' here
+75c65cd3ecf5 handoff-log.mjs:662 `??` -> `||`: left.get() is a count of at least 1 or undefined, never 0, so both give the same
+dd0d10368366 handoff-log.mjs:674 `??` -> `||`: shown.get(t) is a rendered string or undefined; for an empty string the mutant renders again, to the same string
+912c672f4fa2 handoff-log.mjs:858 `??` -> `||`: raw() gives a string or null; for '' both give '' and for null both give ''
+b00aea548bfe handoff-log.mjs:943 `?.` -> `.`: it is the last statement of its try, and a throw from s.missed.length on undefined is caught and dropped like the false branch that adds nothing
+cba9ff5115bf handoff-log.mjs:1047 `false` -> `undefined`: the callback is a filter predicate, read for truthiness only
+5800aa2358a0 handoff-log.mjs:729 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same
+c52bd3132b07 handoff-log.mjs:732 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same

@@ -245,6 +245,10 @@ const clearL = () => execFileSync(process.execPath, [HOOK, '--print'], { input: 
 writeFileSync(join(dirname(dirL), 'ffffffff-1.jsonl'), user('the cleared ask', { ts: nowIso(1) }) + '\n');
 ok(/Another session is working/.test(startup()) && !/Another session|Last session here/.test(clearL()), 'a /clear names neither the conversation it cleared nor its ask');
 rmSync(join(dirname(dirL), 'ffffffff-1.jsonl'));
+// The newest entry is this conversation's own (a startup of a session that already has entries): the line names the last OTHER session (1.5.3 holes).
+writeFileSync(join(dirL, 'handoff.md'),
+  `---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** ${localAt(2)} [ffffffff]: the old question\n  **did:** the old answer\n- **asked** ${localAt(1)} [gggggggg]: my own ask\n  **did:** my own answer\n<!-- auto:end -->\n`);
+{ const own = startup(); ok(/^Last session here ended \S+ \S+ on: the old question/m.test(own) && !/my own ask/.test(own.split('Its last exchanges')[0]), `the last session named is another one, not this conversation (got ${own.slice(0, 300)})`); }
 handoffAt(10);
 ok(/^Last session here ended \S+ \S+ on: the old question/m.test(startup()), 'a session of ten days ago still shows where you left off (1.5.0: 30 days)');
 handoffAt(40);
@@ -1299,6 +1303,11 @@ ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`sta
   const bad = spawnSync(process.execPath, [tool('brief.mjs'), '--print'], { input: JSON.stringify({ cwd: cwdS, session_id: 'so222222-0000', source: 'startup' }), env: { ...penv, CLAUDE_CONFIG_DIR: cfg }, encoding: 'utf8' });
   ok(bad.status === 0 && /^Auto memory is off/.test(bad.stdout) && !/briefing failed|reinstall/.test(bad.stdout), `an off() failure at a settings-off start is not "reinstall" (got ${bad.status} ${JSON.stringify(bad.stdout)})`);
 }
+// Input the hook cannot parse: it exits 0 and prints nothing, a hook that throws on every turn is worse than one that misses a turn (1.5.3 holes).
+for (const args of [[HOOK], [HOOK, '--print']]) {
+  const junk = spawnSync(process.execPath, args, { input: 'not json', env, encoding: 'utf8' });
+  ok(junk.status === 0 && junk.stdout === '' && junk.stderr === '', `unreadable input exits 0 silently (${args.length - 1 ? '--print' : 'Stop'}: ${junk.status} ${JSON.stringify(junk.stderr.slice(0, 120))})`);
+}
 // A resumed conversation, auto memory on: nothing printed (it was read as a compaction).
 ok(started('resume', 'nnnnnnnn-1') === '', 'a resumed conversation gets no briefing');
 // Twelve at once lose none.
@@ -1513,6 +1522,18 @@ appendFileSync(tk, [user('the ibis note', { ts: '2026-10-29T10:10:00Z', uuid: 'u
 appendFileSync(join(dirF, 'journal', '.forgotten'), `u-lynx\tmemory/k\t${local('2026-10-29T10:10:00Z')}\n`);
 handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
 ok(/the ibis note/.test(fdoc()) && !/lynx/.test(fdoc()), `a forgotten exchange listed under another zone's minute takes only itself (got ${fdoc()})`);
+// Two exchanges of one minute, both forgotten after they were written: both go from the file, each by what it says (1.5.3 holes).
+{
+  const tm = join(dirF, 'm.jsonl');
+  // A 600 KB first record keeps the read to the tail (not the whole transcript), so the entries already in the file go by what they say.
+  writeFileSync(tm, [asst('pad '.repeat(150000), { ts: '2026-10-29T11:00:00Z' }), user('the heron plan', { ts: '2026-10-29T12:00:00Z', uuid: 'u-heron' }), asst('drafted the heron plan', { ts: '2026-10-29T12:00:10Z' }),
+    user('the egret plan', { ts: '2026-10-29T12:00:20Z', uuid: 'u-egret' }), asst('drafted the egret plan', { ts: '2026-10-29T12:00:30Z' })].join('\n') + '\n');
+  handoff({ cwd: cwdF, transcript_path: tm, session_id: 'mmmmmmmm-1' });
+  ok(/heron plan/.test(fdoc()) && /egret plan/.test(fdoc()), `two exchanges of one minute are both written (got ${fdoc()})`);
+  appendFileSync(join(dirF, 'journal', '.forgotten'), 'u-heron\tmemory/m\t2000-01-01 00:00\nu-egret\tmemory/m\t2000-01-01 00:00\n');
+  handoff({ cwd: cwdF, transcript_path: tm, session_id: 'mmmmmmmm-1' });
+  ok(!/heron|egret/.test(fdoc()), `two forgotten exchanges both leave handoff.md (got ${fdoc()})`);
+}
 // An exchange whose ask is cut at 240 characters inside a code reference (`api_key = process.env.API_KEY`) is written once as it reads and
 // cut once more by render; forget must still find it among the entries as written (F15's twin, R36).
 {
@@ -2238,6 +2259,11 @@ writeFileSync(tc, [user('<private reason="hr">pin 7788</private> open the door')
   JSON.stringify({ type: 'assistant', timestamp: '2026-09-11T07:01:00Z', message: { content: [{ type: 'text', text: 'Using pin 7788 now.' }], stop_reason: 'tool_use', usage: { input_tokens: 3, cache_read_input_tokens: 700_000, cache_creation_input_tokens: 0, output_tokens: 9 } } })].join('\n') + '\n');
 const cutNote = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, transcript_path: tc, session_id: 'r3cut001', source: 'compact' }), env }).toString();
 ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no recovery note (got ${cutNote.slice(0, 200)})`);
+// The same turn, not private: the note is printed under the compaction line (1.5.3 holes).
+const tc2 = join(dir3, 'r3cut002.jsonl');
+writeFileSync(tc2, [user('open the door please'), readFileSync(tc, 'utf8').split('\n')[1].replace('Using pin 7788 now.', 'Opening the door now.')].join('\n') + '\n');
+const cutNote2 = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, transcript_path: tc2, session_id: 'r3cut002', source: 'compact' }), env }).toString();
+ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r3cut002\][^\n]*asked [^\n]*open the door please\n {2}\*\*last said:\*\* Opening the door now\./.test(cutNote2), `a turn the compaction cut is printed as a recovery note (got ${cutNote2.slice(0, 300)})`);
 }
 
 // Round 4. A compaction summary that names the private tag is a recap, not
@@ -3892,6 +3918,13 @@ if (!quick) {
   // A last record bigger than the first window: the read grows until a message shows (here a lone 600 KB tool result after the prompt).
   writeFileSync(lp, [JSON.stringify(t0), JSON.stringify(U([{ type: 'tool_result', tool_use_id: 'x', content: 'y'.repeat(600_000) }]))].join('\n') + '\n');
   ok(lastTurn(lp).seen >= 1, 'a last record over the first window grows the read until a message shows');
+  // The read stops at the first window that shows a message (1.5.3 holes): 5 messages, a 600 KB result, 3 messages: the first 512 KB holds the last 3 and the result.
+  const big = (n) => JSON.stringify(U([{ type: 'tool_result', tool_use_id: 'x', content: 'y'.repeat(n) }]));
+  writeFileSync(lp, [...Array(5).fill(JSON.stringify(t0)), big(600_000), ...Array(3).fill(JSON.stringify(t0))].map((x) => x + '\n').join(''));
+  ok(lastTurn(lp).seen === 3, `a window that shows messages is not grown (got ${lastTurn(lp).seen})`);
+  // The window grows four times: a message 2.2 MB from the end is past the second window (2.048 MB), and five times would reach it.
+  writeFileSync(lp, [JSON.stringify(t0), big(1_500_000), JSON.stringify(t0), big(600_000)].map((x) => x + '\n').join(''));
+  ok(lastTurn(lp).seen === 2, `the read grows four times at a step (got ${lastTurn(lp).seen})`);
   // A command that holds a forget, however its options are spelled.
   ok(FORGETS.test('node memory.mjs forget abc') && FORGETS.test('node memory.mjs --x forget') && FORGETS.test('node memory.mjs --x=1 forget') && !FORGETS.test('node memory.mjs search forget') && !FORGETS.test('node memory.mjs') , 'a forget is seen after the options of memory.mjs');
 }
@@ -4123,6 +4156,15 @@ if (!quick) {
   // The pre-cut starts above 65,536 characters, not at them: a text of exactly that is read whole, its count of lost characters from the squeezed text.
   ok(clip('--password\n' + 'x'.repeat(65525), 400) === '--password [redacted] (+63166 chars)', 'a text of exactly the pre-cut length is read whole');
   ok(clip('--password\n' + 'x'.repeat(65526), 400) === '--password [redacted] (+61177 chars)', 'one character more is cut first');
+  // A pair the pre-cut would split is dropped whole, with the blank before it (not counted), and nothing else moves the cut (1.5.3 holes).
+  ok(clip('x'.repeat(65534) + ' \u{1F600}' + 'z'.repeat(100), 400).endsWith('(+65256 chars)'), 'a pair at the pre-cut is dropped whole and the blank before it is not counted');
+  // A `-u` value of 2,400 characters is redacted 200 a pass: it takes all the passes there are (7 cuts) to leave none of it.
+  ok(clip(`curl -u bob:${'x'.repeat(2400)}`, Infinity) === 'curl -u bob:[redacted]', 'a clip repeats its cut as long as a value of 2,400 characters needs');
+  // A code reference cut at 400 is redacted by the next pass and grows past 400, so it is cut again: that cut counts only what it drops itself. Pinned as it is:
+  // the 1.4 million characters the first cut dropped are not in the count (the same flaw as the one-more-pass bound above).
+  ok(clip('quokka ' + 'z'.repeat(359) + 'api_key=process.env.API_KEY ' + 'w '.repeat(700000), 400).endsWith('api_key=[redacted] (+21 chars)'), 'a cut again after the first counts from zero');
+  // A block of exactly twice SAID_KEEP is redacted when the next one joins it: an opener never closed runs over that block too.
+  ok(turns([u('go'), a('<private pin 6655 ' + 'a'.repeat(200000 - 18)), a('visible tail words')].join('\n'))[0]?.said === '[private]', 'the text kept for the journal is redacted at exactly twice its cap too');
   assert.throws(() => clip(null, 5), /replace/);   // text only: anything else fails in cut(), as it always did
   checks++;
   // No tag, no mark: hushed() says false for it and writes nothing, whatever is asked.
