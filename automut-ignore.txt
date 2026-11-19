@@ -256,3 +256,4 @@ a6bc39ccf135 enforce.mjs:202 `r.message?.content` -> `r.message.content`: a user
 4c65aec625f2 enforce.mjs:217 `size = 0` -> `1`: both are far below LOG_MAX, so the trim never runs for a file that cannot be read
 accf9c1bb283 enforce.mjs:218 `cut < 0` -> `<= 0`: cut is the index of a newline found from the middle of a file over LOG_MAX (256 KB), so it is never 0
 47ec38726494 enforce.mjs:218 `cut < 0` -> `cut < 1`: cut is the index of a newline found from the middle of a file over LOG_MAX (256 KB), so it is never 0 and the two tests agree
+8b267d9f5f54 deploy.mjs:44 `.files ?? {}` -> `.files || {}`: `before` is only read by Object.keys(before) (L68); the two differ only for a falsy non-nullish files value (0, "", false), and Object.keys of those is [] like {}
