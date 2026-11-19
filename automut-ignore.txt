@@ -100,3 +100,53 @@ d5717f125432 compact-gate.mjs:213 inflight's `return false` -> `return undefined
 5e730b8cfac0 compact-gate.mjs:391 isOff's `catch { return false; }` -> `{}`: the catch then yields undefined, read as `else if (payload && undefined)`, falsy as false is
 f7680c2e1849 compact-gate.mjs:391 isOff's catch `return false` -> `return undefined`: read as `else if (payload && undefined)`, falsy as false is
 099b1b2a986f compact-gate.mjs:391 isOff's catch `return false` -> `return true`: storeOf and isOff catch their own file errors and throw for no payload shape a hook can send (checked: NUL, objects, long and relative paths, non-objects); only process.cwd() failing (the hook's own folder deleted) throws, which the suite cannot set on Windows, where a folder in use cannot be removed
+ba3833c37dff journal.mjs:158 `before ?? ''` -> `before || ''`: raw() returns a string or null, and parseDay('') reads the same as parseDay(null ?? ''); only '' and null differ, and both give ''.
+01fcbb2bb192 journal.mjs:183 `?? ''` -> `|| ''`: raw() gives a string or null; the empty string and null both become ''.
+20f60637a629 journal.mjs:204 `.message?.content` -> `.message.content`: a line with no message throws, the catch skips the line, and the loop over `?? []` did nothing for it either, so `last` is the same.
+c46f37d090cd journal.mjs:205 `i ?? {}` -> `i || {}`: a string input is taken by the typeof test before; null and undefined give {} either way, and 0 or false give no strings through Object.values, as {} does.
+3a4f344d65cb journal.mjs:218 `?? ''` -> `|| ''`: find(Boolean) returns undefined or a non-empty string, and undefined becomes '' under both.
+378f45b20cbf journal.mjs:221 `return { ask: '', ms: NaN }` -> `undefined`: its only caller destructures it in a try with an empty catch (line 229), so ask and start stay '' and NaN as before.
+282a9654b415 journal.mjs:243 `return false` -> `undefined` in withLock's callback: `saved === null` is false for both and `saved ?? false` makes undefined false, so subagent() returns false either way.
+2e99dab30687 journal.mjs:245 `return false` -> `undefined` in withLock's callback: same as line 243, `saved ?? false` turns it into false.
+19cb9f5e6d4d journal.mjs:253 `saved ?? false` -> `saved || false`: saved is true, false or null (a busy lock); null and false both give false.
+b9b3541098ea journal.mjs:286 `raw(path) ?? ''` -> `|| ''`: raw() gives a string or null, and '' and null both become ''.
+d9309e266567 journal.mjs:299 `before ?? ''` -> `|| ''`: raw() gives a string or null; '' and null both parse as an empty day.
+82c000dfee2c journal.mjs:321 `return false` -> `undefined` in a filter callback: filter reads only truthiness.
+7cd061dba940 journal.mjs:343 `owed.get(s) ?? []` -> `|| []`: a Map value is an array (truthy) or undefined, and undefined gives [] both ways.
+9d3b0c1bf351 journal.mjs:345 `return owed.size` -> `undefined`: its two callers (lines 561 and 792) never read the value.
+e2359f925142 journal.mjs:431 `return []` -> `undefined` in flatMap's callback: went then holds one `undefined` key, and `went.has(e.key)` never asks for undefined, since every entry has a key.
+b82de4e69dff journal.mjs:462 `t ?? ''` -> `t || ''`: raw() gives a string or null; '' and null both split into no lines.
+e86080a20e4d journal.mjs:479 `return null` -> `undefined` in checked(): its callers read `checked(...)?.[4]` or `was?.[2]`, and `undefined?.[n]` is `null?.[n]`.
+ad93086e8645 journal.mjs:523 `was?.[2] ?? 0` -> `|| 0`: was[2] is a digit string from LINE, never '' or undefined except when was is null, which gives 0 both ways; Number('0') is 0 as well.
+9fcfeeb25052 journal.mjs:609 `raw(...) ?? ''` -> `|| ''`: raw() gives a string or null; '' and null both become ''.
+721459900757 journal.mjs:628 `done.get(k) ?? {...}` -> `|| {...}`: a Map value is an object (truthy) or undefined.
+0df3ee1cbf3b journal.mjs:644 `return size` -> `undefined`: its only caller assigns it to pos, and `pos < size` is false for undefined and for size, so chunk() returns null both ways.
+cf6387492dfb journal.mjs:652 `return null` -> `undefined`: every caller of chunk() tests the result for truthiness.
+fa109e64f283 journal.mjs:657 `return null` -> `undefined`: every caller of chunk() tests the result for truthiness.
+29915d024529 journal.mjs:736 `return false` -> `undefined`: the backfill loop reads `if (!r) continue`, which treats undefined as false.
+2c9c40ef4854 journal.mjs:746 `return false` -> `undefined`: the backfill loop reads `if (!r) continue`, which treats undefined as false.
+03653e0e2207 journal.mjs:653 `n - 1` -> `n + 1`: this branch runs only when pos + n >= size, and then n equals buf.length (buf.length = min(seg, size - pos) <= n <= buf.length), so subarray(0, n + 2) is clamped to the same bytes as subarray(0, n).
+fb6ae6e04873 memory-tier.mjs:97 `??` -> `||`: the left side is a Stats object or undefined, never another falsy value, so both pick the same one.
+e5fb32a69f40 memory-tier.mjs:98 `return null` -> `undefined`: every caller of factsFor tests it for truthiness (`!p.f`, `!facts`, `p.f &&`, isHot's `!f`).
+d7a740f98be3 memory-tier.mjs:108 `return null` -> `undefined`: every caller of factsFor tests it for truthiness (`!p.f`, `!facts`, `p.f &&`, isHot's `!f`).
+7e88ae4130dc memory-tier.mjs:112 `>` -> `>=`: differs only when a note's stamp equals Date.now() + one day to the millisecond, and the clock moves between writing the note and reading it.
+b17b68e4f8cc memory-tier.mjs:127 `return false` -> `undefined`: isHot's callers use the result in a ternary or `&&`, where undefined is false.
+0e71d12738fb memory-tier.mjs:218 `memo?.was` -> `memo.was`: memo is the object built a few lines above and is never null here.
+dc4877f654c7 memory-tier.mjs:238 `catch {...}` -> `catch {}`: a note that cannot be stat'ed leaves `at` undefined, the grace test is NaN < ORPHAN_GRACE (false), and factsFor then stats the same file: it returns null for a missing one and throws the same BUSY error for a held one.
+fb5aa48781f4 memory-tier.mjs:419 `?? ''` -> `|| ''`: raw() gives a string or null, and the only falsy string is '' itself, which `|| ''` leaves as ''.
+ecc892ca18d2 memory-tier.mjs:438 `catch { continue; }` -> `catch {}`: a lock that cannot be stat'ed is gone (or unreadable); age stays undefined, `undefined < GIT_LOCK_STALE` is false, and the unlink that follows ignores ENOENT, so the loop goes on the same way.
+cc927d3d412d memory-tier.mjs:514 `catch { return false; }` -> `catch {}`: allStores() already drops every store whose realpathSync fails, so the catch cannot be reached.
+3bea6d91a62e memory-tier.mjs:514 `return false` -> `undefined`: the filter callback is read for truthiness only.
+fd1f021e5201 memory-tier.mjs:514 `return false` -> `undefined`: the filter callback is read for truthiness only (and the catch it sits in cannot be reached, see the line above).
+a3587b6e5450 memory-tier.mjs:527 `let at = 0` -> `1`: the first reply line then starts one character later, which is still `<oid> blob <bytes>` (three words) or `<path> missing`, and `at` is set from the line end, so every later read is unchanged.
+b1021426b209 memory-tier.mjs:487 `return 0` -> `undefined`: the caller reads `rest` for truthiness only (`if (!rest)`, `rest ?` in the result).
+3383ef1fb9fa memory-tier.mjs:555 `return null` -> `undefined`: snapshot's result is read as `s === 'busy'`, `if (s)` and by snapshotHealth's `typeof s === 'string'` checks, so undefined and null mean the same.
+d58429fb717c memory-tier.mjs:560 `let n = 1` -> `2`: n is only read as `!n`, and both values are truthy.
+65ca122a56ee memory-tier.mjs:560 `return null` -> `undefined`: snapshot's result is read as `s === 'busy'`, `if (s)` and by snapshotHealth's `typeof s === 'string'` checks, so undefined and null mean the same.
+1cba5687bb63 memory-tier.mjs:609 `?? {}` -> `|| {}`: JSON.parse gives null or a value; the values `||` would replace (0, false, '') have no fields and spread to nothing, exactly as {} does.
+a0a63590d3ea memory-tier.mjs:627 `catch { return false; }` -> `catch {}`: owed() is only read for truthiness, and undefined is false.
+a92846279d0a memory-tier.mjs:627 `return false` -> `undefined`: owed() is only read for truthiness, and undefined is false.
+17214640d874 memory-tier.mjs:756 `return 0` -> `undefined`: main's result goes to process.exitCode, and an undefined exitCode exits 0.
+c25eff511bf7 memory-tier.mjs:756 `await` removed: main only sets process.exitCode and never calls process.exit, so the process stays alive until the pending stdout write has flushed.
+b8d7bd525d5f memory-tier.mjs:770 `catch { return null; }` -> `catch {}`: the list is filtered by `d && ...`, which drops null and undefined alike.
+59accae95da4 memory-tier.mjs:770 `return null` -> `undefined`: the list is filtered by `d && ...`, which drops null and undefined alike.
