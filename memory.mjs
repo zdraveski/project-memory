@@ -337,13 +337,15 @@ export function search(dirs, query, { since, until, failed } = {}) {
     const hand = m.file === 'handoff.md';
     if (hand) {
       // A start marker with no end marker (a half-written file): the log runs to the end of the file.
-      // Every block is cut, last first (sectionOf finds the last one); each cut shortens the text, so the loop ends.
+      // Every block is cut, last first (sectionOf finds the last one); each cut shortens the text, and a cut that does not ends the loop.
       let body = m.body;
       for (;;) {
         const { a, b } = [body, `${body}
 <!-- auto:end -->`].map(sectionOf).find((x) => x.a !== -1) ?? { a: -1 };
         if (a === -1) break;
-        body = body.slice(0, a) + body.slice(b).replace(/^[^\n]*/, '');
+        const next = body.slice(0, a) + body.slice(b).replace(/^[^\n]*/, '');
+        if (next.length >= body.length) break;
+        body = next;
       }
       if (!body.trim()) continue;
       m = { ...m, file: '', name: '', desc: '', body };   // its name is no match: only what a person wrote

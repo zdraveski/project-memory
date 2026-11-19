@@ -2860,4 +2860,246 @@ See [[nonexist-${GH}]]
   ok(/before answering/i.test(d) && /last week/.test(d) && /earlier work/.test(d), `the skill description names answering and relative dates (got ${d})`);
 }
 
+// 1.5.3 holes: word forms, edge by edge (each word picked so one rule of cutEn/starts/stem is the only thing that finds or misses it).
+{
+  const sd = join(root, 'C--stem', 'memory'); mkdirSync(sd, { recursive: true });
+  const bodies = ['tsking', 'tsked', 'acted', 'gas', 'statue', 'status', 'sadness', 'sadly', 'nickname', 'nicely', 'managing', 'manatee', 'management', 'printer',
+    'компас', 'компјутер', 'она'];
+  bodies.forEach((b, i) => memory(sd, `stem-${String(i).padStart(2, '0')}`, 'word', b));
+  const found = async (q) => { const r = await run(['search', q, '--store', sd]); return [...r.stdout.matchAll(/stem-(\d\d)\.md$/gm)].map((m) => bodies[Number(m[1])]).sort().join(','); };
+  ok(await found('tsked') === 'tsked', 'a 3-letter root with no vowel is not cut: tsked is not tsking');
+  ok((await found('acts')).includes('acted'), 'a 3-letter root with its vowel first is cut: acts finds acted');
+  ok((await found('gas')).split(',').includes('gas'), 'a short word keeps its s: gas');
+  ok(await found('status') === 'status', 'status keeps its s: not statue');
+  ok(await found('sadly') === 'sadly', 'ly is no word form of a 3-letter root: sadly is not sadness');
+  ok(await found('nicely') === 'nicely', 'a 4-letter stem keeps its e: nicely is not nickname');
+  ok(await found('management') === 'management,managing', 'management finds the manag- forms and nothing else');
+  ok((await found('printed')).includes('printer'), 'a 5-letter root matches at the start of a word: printed finds printer');
+  ok(await found('компјутер') === 'компјутер', 'a Cyrillic word is cut only at a suffix it ends with');
+  ok((await found('она')).split(',').includes('она'), 'a Cyrillic word keeps a suffix that leaves under 3 letters');
+}
+
+// 1.5.3 holes: the plugin lookups, a folder named like a note, a forget list that will not read, take(), promote's own defaults.
+{
+  const m = await import(pathToFileURL(CLI).href);
+  const cfg = tempDir('plug-'), was = process.env.CLAUDE_CONFIG_DIR;
+  mkdirSync(join(cfg, 'plugins'), { recursive: true });
+  process.env.CLAUDE_CONFIG_DIR = cfg;
+  const put = (f, v) => writeFileSync(join(cfg, 'plugins', f), JSON.stringify(v));
+  try {
+    ok(m.installPath() === null && m.marketplace() === null && m.pluginRoot() === null && m.deployedCommit(cfg) === null, 'nothing installed: every lookup is null');
+    put('known_marketplaces.json', {});
+    ok(m.marketplace() === null, 'a marketplace list with no plugin installed names none');
+    put('installed_plugins.json', { plugins: { 'project-memory@mk': [] } });
+    ok(m.installPath() === null, 'an install with no entry has no path');
+    put('installed_plugins.json', { plugins: { 'project-memory@mk': [{ installPath: '' }] } });
+    put('known_marketplaces.json', { mk: { source: '' } });
+    writeFileSync(join(cfg, '.deployed.json'), JSON.stringify({ commit: '' }));
+    ok(m.installPath() === '' && m.marketplace() === '' && m.deployedCommit(cfg) === '', 'a value is taken as written, an empty one too');
+  } finally { if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = was; }
+}
+{ // A folder named like a note is no note: skipped by status and search, which go on.
+  const hd = join(root, 'C--hole', 'memory'); mkdirSync(join(hd, 'folder.md'), { recursive: true });
+  memory(hd, 'real-note', 'a note beside a folder', 'quokka');
+  const s = await run(['status', '--store', hd]), q = await run(['search', 'quokka', '--store', hd]);
+  ok(s.status === 0 && q.status === 0 && /real-note\.md/.test(q.stdout) && !/folder\.md/.test(q.stdout), `a folder named folder.md is skipped (got ${s.stderr}${q.stderr}${q.stdout})`);
+  // A forget list that cannot be read (here a folder) is not fatal to a search that was not asked to report it.
+  const { FORGOTTEN } = await import('./handoff-log.mjs');
+  const { search: searchFn } = await import(pathToFileURL(CLI).href);
+  mkdirSync(join(hd, FORGOTTEN), { recursive: true });
+  ok(Array.isArray(searchFn([hd], 'quokka')), 'a search with no failure list survives an unreadable forget list');
+}
+{ // take(): a line that is no pointer keeps its place and its indented lines; only the pointer's own wrap goes with it.
+  const { promote } = await import(pathToFileURL(CLI).href);
+  const td = join(root, 'C--take', 'memory'); mkdirSync(td, { recursive: true });
+  memory(td, 'tk-a', 'first');
+  const sharedIdx = join(shared, 'MEMORY.md'), idxWas = existsSync(sharedIdx) ? readFileSync(sharedIdx, 'utf8') : '';
+  writeFileSync(join(td, 'MEMORY.md'), '  stray indented line\n- [A](tk-a.md) — first\n  wrapped onto a second line\nplain line\n  indented after plain\n- [B](tk-b.md) — b\n');
+  const r1 = promote(td, 'tk-a.md');
+  ok(r1.ok === true && readFileSync(join(td, 'MEMORY.md'), 'utf8') === '  stray indented line\nplain line\n  indented after plain\n- [B](tk-b.md) — b\n', `promote takes the pointer and its wrap, and nothing else out of the index (got ${JSON.stringify(readFileSync(join(td, 'MEMORY.md'), 'utf8'))})`);
+  ok(readFileSync(sharedIdx, 'utf8').includes('- [A](tk-a.md) — first\n  wrapped onto a second line\n'), 'and the shared index gets the whole line');
+  rmSync(join(shared, 'tk-a.md')); writeFileSync(sharedIdx, idxWas);
+  // promote called as a library: a note with a secret stays unless force is asked for.
+  const key = ['sk', 'live', 'abcdefghijklmnopqrstuvwx'].join('_');
+  memory(td, 'tk-secret', 'has a key', `the key is ${key}`);
+  const r2 = promote(td, 'tk-secret.md');
+  ok(r2.ok === false && existsSync(join(td, 'tk-secret.md')) && !existsSync(join(shared, 'tk-secret.md')), `promote without options refuses a secret (got ${JSON.stringify(r2)})`);
+  // A note that cannot be deleted after the copy: said, and it stays in both stores.
+  memory(td, 'tk-stuck', 'cannot be deleted');
+  const realUnlink = fs.unlinkSync;
+  fs.unlinkSync = (p, ...a) => { if (String(p).endsWith('tk-stuck.md') && String(p).includes('C--take')) throw Object.assign(new Error('denied'), { code: 'EACCES' }); return realUnlink(p, ...a); };
+  syncBuiltinESMExports();
+  let r3; try { r3 = promote(td, 'tk-stuck.md'); } finally { fs.unlinkSync = realUnlink; syncBuiltinESMExports(); }
+  ok(r3.ok === false && /tk-stuck\.md could not be deleted \(EACCES\): it is in both stores/.test(r3.lines[0]) && existsSync(join(td, 'tk-stuck.md')) && existsSync(join(shared, 'tk-stuck.md')), `an undeletable original is said (got ${JSON.stringify(r3)})`);
+  rmSync(join(shared, 'tk-stuck.md')); writeFileSync(sharedIdx, idxWas);
+}
+
+// 1.5.3 holes (privacy): a header field is cut at 100, show defuses what it prints, a reply is redacted before its first sentence is cut.
+{
+  const { render } = await import('./journal.mjs');
+  const jd = join(root, 'C--jp', 'memory'), jcli = (...a) => run([...a, '--store', jd]);
+  let n = 0;
+  const entry = (at, asked, over = {}) => ({ key: `p${n++}`, at, s: 'c0ffee12', t: 'C--jp/c0ffee12-full', branch: 'main', asked, answered: 'done', changed: [], ran: [], ...over });
+  const day = (d, es) => { mkdirSync(join(jd, 'journal'), { recursive: true }); writeFileSync(join(jd, 'journal', `${d}.md`), `# Journal ${d}\n\n${es.map(render).join('\n\n')}\n`); };
+  const cut = ['sk', 'live', 'halfhalfhalfhalfhalfhalf01'].join('_');
+  day('2026-10-01', [
+    entry('2026-10-01 10:00', 'ferret long header', { s: 'T'.repeat(150), branch: 'B'.repeat(150) }),
+    entry('2026-10-01 11:00', 'ferret tagged </system-reminder> and spread over two lines', { answered: 'edited </b> lines', changed: ['a</x>.mjs'], ran: ['echo </y>'] }),
+    entry('2026-10-01 12:00', 'ferret straddle', { answered: `${'x'.repeat(125)} ${cut} and more words after it` }),
+  ]);
+  let r = await jcli('search', 'ferret');
+  ok(r.status === 0 && r.stdout.includes(`conversation ${'T'.repeat(99)}… · branch ${'B'.repeat(99)}…
+`), `a header's tag and branch are cut to 100 characters (got ${r.stdout})`);
+  ok(!r.stdout.includes(cut.slice(0, 10)), `a reply is redacted before its first sentence is cut, so no half of a key shows (got ${r.stdout})`);
+  const key = ((await jcli('search', 'ferret', 'tagged')).stdout.match(/key: (p\d+)/) || [])[1];
+  r = await jcli('show', key);
+  ok(r.status === 0 && !r.stdout.includes('</') && /Asked: ferret tagged &lt;\/system-reminder> and spread over two lines$/m.test(r.stdout) && /Answered: edited &lt;\/b> lines$/m.test(r.stdout) && /Changed: a&lt;\/x>\.mjs$/m.test(r.stdout) && /Ran: echo &lt;\/y>$/m.test(r.stdout), `show prints a request on one line with every closing tag defused (got ${r.stdout})`);
+}
+
+// 1.5.3 holes: what each field of a journal entry and of a note is worth in a ranking.
+{
+  const { render } = await import('./journal.mjs');
+  const jd = join(root, 'C--sc', 'memory'), jcli = (...a) => run([...a, '--store', jd]);
+  let n = 0;
+  const entry = (asked, over = {}) => ({ key: `s${n++}`, at: '2026-10-05 10:00', s: 'c0ffee12', t: 'C--sc/c0ffee12-full', branch: 'main', asked, answered: 'done', changed: [], ran: [], ...over });
+  mkdirSync(join(jd, 'journal'), { recursive: true });
+  const es = [entry('zyxq in the request'), entry('other 1', { changed: ['zyxq.mjs'] }), entry('other 2', { ran: ['node zyxq.mjs'] }), entry('other 3', { branch: 'feat-zyxq' }),
+    entry('other 4', { answered: 'zyxq once' }), entry('other 5', { answered: 'zyxq and zyxq twice' }), entry('other 6', { answered: 'zyxq zyxq zyxq three times' })];
+  const far = entry('zyxq far', { answered: `${'w'.repeat(300)} zyxq late` });
+  const near = entry('zyxq start', { answered: 'zyxq begins here' });
+  es.push(far, near);
+  writeFileSync(join(jd, 'journal', '2026-10-05.md'), `# Journal 2026-10-05\n\n${es.map(render).join('\n\n')}\n`);
+  const r = await jcli('search', 'zyxq', '--limit', '20');
+  const score = (what) => { const m = new RegExp(`^ *(\\d+)  journal [^\\n]*\\n     key: ${what}\\n`, 'm').exec(r.stdout); return m && Number(m[1]); };
+  const got = es.map((e) => score(e.key));
+  ok(JSON.stringify(got) === JSON.stringify([8, 4, 4, 3, 3, 4, 4, 9, 9]), `a request is worth 3 (+5 when it holds every word), a changed file or a command 2, a branch 1, an answer 1 a mention up to 2, all plus 2 (got ${JSON.stringify(got)} in ${r.stdout})`);
+  const block = (k) => r.stdout.split(/^ *[0-9]+  journal /m).find((b) => b.includes(`key: ${k}`)) || '';
+  ok(!/Result:/.test(block(near.key)) && /Answered: zyxq begins here/.test(block(near.key)), 'a match at the start of the reply is shown, not a Result beside it');
+  const res = /^     Result: (w+)…$/m.exec(block(far.key));
+  ok(res && res[1].length < 150 && /Answered: .*zyxq late/.test(block(far.key)), `a reply with no sentence end shows its first stretch only, then where the word is (got ${block(far.key).slice(0, 400)})`);
+  // A note: its name 3, its description 2 (either, for every word, +5), its text 1 a mention up to 2.
+  const nd = join(root, 'C--sn', 'memory'); mkdirSync(nd, { recursive: true });
+  memory(nd, 'wobblex-name', 'plain', 'plain');
+  memory(nd, 'plain-one', 'wobblex in the description', 'plain');
+  memory(nd, 'plain-two', 'plain', 'wobblex once');
+  memory(nd, 'plain-three', 'plain', 'wobblex and wobblex twice');
+  memory(nd, 'plain-four', 'plain', 'wobblex wobblex wobblex three times');
+  writeFileSync(join(nd, 'journal.md'), 'wobblex is in the journal pointer\n'); writeFileSync(join(nd, 'handoff.md'), '# Handoff\n\nwobblex written by hand\n');
+  const q = await run(['search', 'wobblex', '--store', nd, '--limit', '20']);
+  const ns = (f) => { const m = new RegExp(`^ *(\\d+)  \\S+ +[\\d-]+  [^\\n]*${f}\\.md\\n`, 'm').exec(q.stdout); return m && Number(m[1]); };
+  const ngot = ['wobblex-name', 'plain-one', 'plain-two', 'plain-three', 'plain-four'].map(ns);
+  ok(/handoff\.md/.test(q.stdout) && !/journal\.md/.test(q.stdout), `the hand-written handoff is a hit and the journal's pointer is none (got ${q.stdout})`);
+  ok(JSON.stringify(ngot) === JSON.stringify([8, 7, 3, 4, 4]), `a note's name is worth 3, its description 2, its text a mention up to 2 (got ${JSON.stringify(ngot)} in ${q.stdout})`);
+}
+
+// 1.5.3 holes: what tells entries apart in the rank (word rarity, length, a typed phrase), by pairs where one constant flips the order.
+{
+  const { render } = await import('./journal.mjs'), { search: rankOf } = await import(pathToFileURL(CLI).href);
+  const keys = (dir, q) => rankOf([dir], q).map((h) => Number(h.key.slice(1)));   // the function, not the CLI: the CLI adds the shared store, whose size moves the weights
+  const W = ['zorp', 'quib', 'flum'];
+  const rows = [
+    ['j_max', 3, [['111', '330', 120, 0], ['111', '111', 1000, 1]], [0, 1]],
+    ['i_den', 3, [['000', '311', 1000, 1], ['110', '303', 30, 0]], [1, 0]],
+    ['d_init', 2, [['10', '13', 30, 0], ['00', '13', 1000, 1]], [0, 1]],
+    ['e_and', 3, [['000', '111', 400, 1], ['110', '233', 120, 0]], [1, 0]],
+    ['k_five', 2, [['00', '11', 1000, 1], ['01', '20', 120, 0]], [1, 0]],
+    ['a_w1', 3, [['100', '300', 120, 0], ['000', '311', 400, 0]], [1, 0]],
+    ['h_init', 2, [['01', '00', 1000, 0], ['00', '02', 400, 0]], [0, 1]],
+    ['b_docs', 3, [['010', '121', 1000, 0], ['100', '301', 30, 0]], [0, 1]],
+    ['c_n', 2, [['10', '00', 120, 0], ['10', '30', 30, 0], ['10', '03', 1000, 0]], [2, 1, 0]],
+  ];
+  let r = 0;
+  for (const [name, nt, spec, want] of rows) {
+    const jd = join(root, `C--rk${r++}`, 'memory'); mkdirSync(join(jd, 'journal'), { recursive: true });
+    const q = W.slice(0, nt);
+    const es = spec.map(([ak, an, len, ph], i) => {
+      const mk = (t) => (ak[t] === '1' ? q[t] : 'lorem');
+      let asked = q.map((_, t) => mk(t)).join(' and '); asked += ' ' + 'lorem '.repeat(len).slice(0, Math.max(0, len - asked.length - 1));
+      const rep = q.map((w, t) => Array(Number(an[t]) - (ph ? 1 : 0)).fill(w).join(' filler ')).filter(Boolean).join(' filler ');
+      const answered = `${ph ? q.join(' ') : ''} ${rep}`.trim() || 'nothing';
+      return { key: `r${i}`, at: `2026-10-05 10:${String(50 - i).padStart(2, '0')}`, s: 'c0ffee12', t: 'C--sc/c0ffee12-full', branch: 'main', asked, answered, changed: [], ran: [] };
+    });
+    writeFileSync(join(jd, 'journal', '2026-10-05.md'), `# Journal 2026-10-05\n\n${es.map(render).join('\n\n')}\n`);
+    const got = keys(jd, q.join(' '));
+    ok(JSON.stringify(got) === JSON.stringify(want), `rank ${name}: expected entries ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+  }
+  // One word is no phrase: no bonus for the text over a branch, so equal scores go by date.
+  const jd = join(root, 'C--rk-one', 'memory'); mkdirSync(join(jd, 'journal'), { recursive: true });
+  const base = { s: 'c0ffee12', t: 'C--sc/c0ffee12-full', changed: [], ran: [] };
+  const two = [{ ...base, key: 'r0', at: '2026-10-05 10:50', branch: 'feat-zorp', asked: 'other', answered: 'done' }, { ...base, key: 'r1', at: '2026-10-05 10:49', branch: 'main', asked: 'other', answered: 'zorp once' }];
+  writeFileSync(join(jd, 'journal', '2026-10-05.md'), `# Journal 2026-10-05\n\n${two.map(render).join('\n\n')}\n`);
+  ok(JSON.stringify(keys(jd, 'zorp')) === '[0,1]', 'a lone word earns no phrase bonus: equal scores go to the newer entry');
+}
+
+// 1.5.3 holes: cutting an auto block out of the handoff keeps every hand-written character around it.
+{
+  const { search: rankOf } = await import(pathToFileURL(CLI).href);
+  const hd = join(root, 'C--cutkeep', 'memory'); mkdirSync(hd, { recursive: true });
+  writeFileSync(join(hd, 'handoff.md'), '---\nname: handoff\n---\nzebraqq starts the text\n<!-- auto:start -->\nlogzzq line\n<!-- auto:end -->\nbetaqq follows\n');
+  ok(rankOf([hd], 'zebraqq').length === 1, 'the first character of the hand-written text is kept when the log is cut out');
+  ok(rankOf([hd], 'logzzq').length === 0, 'the log between the markers is not searched');
+  // The text before and after the log meet with nothing between them but the line break: a phrase across the cut is found, so the handoff outranks a note that has the words apart.
+  memory(hd, 'apart', 'the same words in another order', 'betaqq follows, then text starts zebraqq');
+  utimesSync(join(hd, 'handoff.md'), new Date(2020, 1, 1), new Date(2020, 1, 1));
+  const hits = rankOf([hd], 'zebraqq starts the text betaqq follows').map((h) => h.file);
+  ok(hits[0] === 'handoff.md', `a phrase across the cut counts as typed (got ${JSON.stringify(hits)})`);
+}
+
+// 1.5.3 holes: status: a link that names nothing, the size at which handoff.md is called big.
+{
+  const { handoffBig, status: statusOf } = await import(pathToFileURL(CLI).href);
+  const sd = join(root, 'C--statuspins', 'memory'); mkdirSync(sd, { recursive: true });
+  writeFileSync(join(sd, 'nameless.md'), '---\ndescription: no name line\ntype: reference\n---\nsee [[ ]] and [[real-target]]\n');
+  const dangling = statusOf(sd).filter((l) => /links to no memory/.test(l)).join('\n');
+  ok(/nameless\.md → \[\[\]\]/.test(dangling) && /real-target/.test(dangling), `an empty link is dangling even when another note has no name (got ${dangling})`);
+  writeFileSync(join(sd, 'handoff.md'), 'x'.repeat(64 * 1024));
+  ok(handoffBig(sd) === null, 'a handoff.md of exactly 64 KB is not big');
+  writeFileSync(join(sd, 'handoff.md'), 'x'.repeat(64 * 1024 + 1));
+  ok(/^handoff\.md is 64 KB \(over 64 KB\)/.test(handoffBig(sd)), 'one byte more is');
+  ok(handoffBig(join(sd, 'no-such-dir')) === null, 'no handoff.md is not big');
+}
+
+// 1.5.3 holes: rescan counts, in the files and in the snapshots, and what --apply --yes says and backs up. A home of its own, so no other test's history is counted.
+{
+  const h2 = tempHome('rescan2-'), r2 = join(h2.home, '.claude', 'projects'), key = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8', key2 = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2';
+  const sh = (cmd, args) => spawnSync(cmd, args, { env: h2.env, encoding: 'utf8' });
+  const snap = () => sh(process.execPath, [TIER]);
+  const rescan = (...a) => sh(process.execPath, [CLI, 'rescan', ...a]);
+  const a = join(r2, 'C--ra', 'memory'), b = join(r2, 'C--rb', 'memory');
+  for (const d of [a, b]) mkdirSync(join(d, 'journal'), { recursive: true });
+  writeFileSync(join(a, 'MEMORY.md'), '# Memory Index\n'); writeFileSync(join(b, 'MEMORY.md'), '# Memory Index\n');
+  writeFileSync(join(a, 'old.md'), `---\nname: old\n---\nthe token was ${key} then\n`);
+  writeFileSync(join(a, 'journal', '2020-02-03.md'), `# Journal 2020-02-03\n\nran with ${key}\n`);
+  writeFileSync(join(b, 'other.md'), `---\nname: other\n---\nthis one holds ${key2}\n`);
+  writeFileSync(join(a, 'notes.txt'), `not a note: ${key}\n`); writeFileSync(join(a, 'journal', 'raw.txt'), `not a day: ${key}\n`);
+  const old10 = (...fs) => fs.forEach((f) => utimesSync(f, tenMin, tenMin));
+  old10(join(a, 'old.md'), join(a, 'journal', '2020-02-03.md'), join(b, 'other.md'), join(a, 'notes.txt'), join(a, 'journal', 'raw.txt'));
+  snap(); snap();
+  writeFileSync(join(a, 'old.md'), `---\nname: old\n---\nthe token was ${key} then, and later ${key2}\n`);
+  writeFileSync(join(a, 'journal', '2020-02-03.md'), `# Journal 2020-02-03
+
+ran with ${key} and ${key2}
+`); writeFileSync(join(a, 'journal', '2020-02-04.md'), `# Journal 2020-02-04
+
+again ${key2}
+`);
+  old10(join(a, 'old.md'), join(a, 'journal', '2020-02-03.md'), join(a, 'journal', '2020-02-04.md')); snap();
+  const git = (...x) => sh('git', ['-C', r2, ...x]).stdout.trim();
+  const blob = spawnSync('git', ['-C', r2, 'hash-object', '-w', '--stdin'], { input: `old note ${key}\n`, encoding: 'utf8' }).stdout.trim();
+  git('update-ref', 'refs/project-memory/replaced/lab', blob);
+  let r = rescan();
+  ok(r.status === 0 && r.stdout === 'files now: 6 secrets in 4 files: C--ra/memory/old.md (2), C--ra/memory/journal/2020-02-03.md (2), C--ra/memory/journal/2020-02-04.md (1), C--rb/memory/other.md (1)\n'
+    + 'snapshots: 5 secrets in 3 saved versions of 2 files, in 2 snapshots, and 1 kept copies of replaced notes: C--ra/memory/journal/2020-02-03.md, C--ra/memory/journal/2020-02-04.md\n'
+    + 'nothing has been changed (dry run); rescan --apply --yes redacts them\n', `the dry run counts secrets, versions, files and snapshots, and skips a .txt (got ${JSON.stringify(r.stdout)}${r.stderr.slice(0, 300)})`);
+  r = rescan('--apply', '--yes');
+  const bk = readdirSync(join(h2.home, '.claude')).find((n) => n.startsWith('project-memory-rescan-backup')), at = join(h2.home, '.claude', bk ?? 'none');
+  ok(r.status === 0 && r.stdout.startsWith('Before you go on, revoke or rotate') && /redacted 6 in files and 5 in the snapshots; the snapshots hold none now\nbackup: /.test(r.stdout) && !r.stdout.includes(key), `the warning comes first, then what was redacted (got ${JSON.stringify(r.stdout)}${r.stderr.slice(0, 300)})`);
+  ok(readFileSync(join(at, 'files', 'C--ra', 'memory', 'old.md'), 'utf8').includes(key) && readFileSync(join(at, 'files', 'C--rb', 'memory', 'other.md'), 'utf8').includes(key2) && readFileSync(join(at, 'files', 'kept-lab.md'), 'utf8').includes(key) && existsSync(join(at, 'snapshots.bundle')), 'the backup holds every file with a hit, the kept copy and the old history');
+  const text = (f) => readFileSync(f, 'utf8');
+  ok(!text(join(a, 'old.md')).includes(key) && !text(join(a, 'journal', '2020-02-04.md')).includes(key2) && !text(join(b, 'other.md')).includes(key2) && text(join(a, 'notes.txt')).includes(key) && text(join(a, 'journal', 'raw.txt')).includes(key), 'every store has its files redacted; a .txt is left alone');
+  ok(git('log', '--all', '-S' + key, '--format=%H') === '' && git('log', '--all', '-S' + key2, '--format=%H') === '' && git('cat-file', 'blob', 'refs/project-memory/replaced/lab').includes('[redacted]'), 'no snapshot nor the kept copy holds a key');
+  r = rescan();
+  ok(/nothing found; nothing changed/.test(r.stdout), `a second run finds nothing (got ${r.stdout})`);
+}
+
 console.log(`memory: ${checks} checks passed`);
