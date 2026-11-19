@@ -188,8 +188,6 @@ d58429fb717c memory-tier.mjs:560 `let n = 1` -> `2`: n is only read as `!n`, and
 1cba5687bb63 memory-tier.mjs:609 `?? {}` -> `|| {}`: JSON.parse gives null or a value; the values `||` would replace (0, false, '') have no fields and spread to nothing, exactly as {} does.
 a0a63590d3ea memory-tier.mjs:627 `catch { return false; }` -> `catch {}`: owed() is only read for truthiness, and undefined is false.
 a92846279d0a memory-tier.mjs:627 `return false` -> `undefined`: owed() is only read for truthiness, and undefined is false.
-17214640d874 memory-tier.mjs:756 `return 0` -> `undefined`: main's result goes to process.exitCode, and an undefined exitCode exits 0.
-c25eff511bf7 memory-tier.mjs:756 `await` removed: main only sets process.exitCode and never calls process.exit, so the process stays alive until the pending stdout write has flushed.
 b8d7bd525d5f memory-tier.mjs:770 `catch { return null; }` -> `catch {}`: the list is filtered by `d && ...`, which drops null and undefined alike.
 59accae95da4 memory-tier.mjs:770 `return null` -> `undefined`: the list is filtered by `d && ...`, which drops null and undefined alike.
 a5436b673439 handoff-log.mjs:163 stick()'s miss value -1 -> -2: every caller tests only whether the result is below 0, and the one equality (=== v) is guarded by v >= 0, so -2 and -1 behave alike
