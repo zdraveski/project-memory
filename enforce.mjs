@@ -75,7 +75,7 @@ export function segments(command) {
       else if (c === '"' || c === "'") { q = c; cur += c; }
       else if (c === '`' && i + 1 === l.length) join = true;
       else if (c === '<' && l[i - 1] !== '<' && l[i + 1] === '<' && l[i + 2] !== '<' && (HD.lastIndex = i, m = HD.exec(l))) { docs.push(m[2]); cur += c; }
-      else if (';|{}()'.includes(c) || c === '&' && l[i + 1] === '&') { cut(); if (c === '&' || c === '|' && l[i + 1] === '|') i++; }
+      else if (';|{}()&'.includes(c)) cut();
       else cur += c;
     }
     if (n === lines.length - 1) break;
@@ -104,9 +104,9 @@ export function tokens(segment) {
 const LEAD = ['!', 'do', 'then', 'else', 'elif', 'if', 'while', 'until', 'env', 'command', 'sudo', 'time', 'rtk', 'exec', 'nohup', '&', 'cmd', 'cmd.exe'];
 // Options of a lead word that take a value in the next word (`sudo -u bob`); other options, and `cmd /c`, are one word.
 const LEAD_VALUE = { sudo: ['-u', '-g', '-h', '-p', '-r', '-t', '-C', '-D', '-R', '-T', '-U'], env: ['-u', '-C', '-S'], exec: ['-a'] };
-const OPTS_WITH_VALUE = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix', '--attr-source'];
+const OPTS_WITH_VALUE = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix', '--attr-source'], SHELL = /^(?:.*[\\/])?(?:(?:ba|z|da)?sh|pwsh|powershell)(?:\.exe)?$/i;
 // Whether `command` is the rule's git subcommand (`on`), and whether it also holds a word of `has` and none of `unless`.
-// shortcut: `bash -c "..."`, `$(...)`, aliases and anything after `--` are not seen (said in the README).
+// A command wrapped in quotes for a shell (`cmd /c "git add -A"`, `bash -c "..."`) is read on its own. shortcut: `$(...)`, aliases and anything after `--` are not seen (said in the README).
 export function hits(rule, command) {
   const segs = segments(command).map(tokens), all = segs.flat().flatMap((w) => [w, ...w.split(/[\\/]/)]); // `unless` also sees each part of a path; `has` stays whole words
   let on = false, hit = false;
@@ -118,7 +118,7 @@ export function hits(rule, command) {
       while (/^-|^\/[ck]$/i.test(toks[i] ?? '')) i += LEAD_VALUE[lead]?.includes(toks[i]) ? 2 : 1;
       if (lead === 'rtk' && ['bypass', 'proxy'].includes(toks[i])) i++;
     }
-    if (!/^(?:.*[\\/])?git(?:\.exe)?$/i.test(toks[i++] ?? '')) continue;
+    if (!/^(?:.*[\\/])?git(?:\.exe)?$/i.test(toks[i++] ?? '')) { const q = /\s/.test(toks[i - 1] ?? '') ? toks[i - 1] : SHELL.test(toks[i - 1] ?? '') ? toks.slice(i).find((t) => /\s/.test(t)) : ''; if (q) { const n = hits(rule, q); on ||= n.on; hit ||= n.hit; } continue; }
     while (toks[i]?.startsWith('-')) i += OPTS_WITH_VALUE.includes(toks[i]) ? 2 : 1;
     if (toks[i] !== rule.on) continue;
     on = true;

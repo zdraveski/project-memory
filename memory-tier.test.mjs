@@ -295,6 +295,60 @@ ok(healthStatus === 0, `a .health that cannot be written does not fail the hook 
 rmdirSync(join(dir, '.health'));
 rmSync(dir, { recursive: true, force: true });
 
+// A small store of its own for the rules below: notes of the given tier and type, ten minutes old, each with a pointer.
+const small = (notes) => {
+  const d = tempDir('memtier-small-'), old = new Date(Date.now() - 10 * 60000);
+  const put = (n, { tier, type = 'project', days = 0 } = {}) => {
+    writeFileSync(join(d, `${n}.md`), `---\nname: ${n}\ndescription: "desc of ${n}"\nmetadata:\n  type: ${type}${tier ? `\n  tier: ${tier}` : ''}\n  modified: ${iso(days)}\n---\nbody of ${n}\n`);
+    utimesSync(join(d, `${n}.md`), old, old);
+  };
+  for (const [n, o] of Object.entries(notes)) put(n, o);
+  writeFileSync(join(d, 'MEMORY.md'), ['# Index', '', ...Object.keys(notes).map((n) => `- [${n}](${n}.md) — hook ${n}`)].join('\n') + '\n');
+  return { d, put, main: () => readFileSync(join(d, 'MEMORY.md'), 'utf8'), arc: () => readFileSync(join(d, 'MEMORY-archive.md'), 'utf8') };
+};
+
+// A line the ceiling takes is taken once: with the pinned lines alone over budget it takes every event log and then has nothing left,
+// and no log is queued twice (a second turn at one marked its line twice and counted its bytes twice).
+{
+  const s = small({}), logs = [];
+  const line = (n) => `- [${n}](${n}.md) — hook${pad}`;
+  const pins = [];
+  for (let i = 0; i < 50; i++) { s.put(`pin-${i}`, { tier: 'hot' }); pins.push(line(`pin-${i}`)); }
+  for (let i = 0; i < 5; i++) { s.put(`log-${today}-${i}`); logs.push(line(`log-${today}-${i}`)); }
+  writeFileSync(join(s.d, 'MEMORY.md'), ['# Index', '', ...pins, ...logs].join('\n') + '\n');
+  await tierExec(['--dir', s.d]);
+  const a = s.arc();
+  ok(logs.every((l) => has(a, l + ' <!-- overflow -->') && a.split(l).length === 2), 'with only pinned lines left to keep, each event log is evicted once, marked once');
+}
+
+// A run that changes nothing writes nothing: the archive and the index keep their time, and so does the facts cache.
+{
+  const s = small({ 'kept-one': {}, 'gone-one': { tier: 'archive' } });
+  await tierExec(['--dir', s.d]); await tierExec(['--dir', s.d]);
+  const files = ['MEMORY.md', 'MEMORY-archive.md', '.facts'].map((f) => join(s.d, f)), long = new Date(Math.floor((Date.now() - 3600_000) / 1000) * 1000);
+  for (const f of files) utimesSync(f, long, long);
+  const o = await tierExec(['--dir', s.d]);
+  ok(files.every((f) => statSync(f).mtimeMs === long.getTime()) && !/rewrote|wrote/.test(o), `a settled store is not rewritten, archive and cache included (times ${files.map((f) => statSync(f).mtimeMs - long.getTime())})`);
+}
+
+// A cache that is no object is no cache, and the run writes the real one over it.
+{
+  const s = small({});
+  writeFileSync(join(s.d, '.facts'), '0');
+  await tierExec(['--dir', s.d]);
+  ok(readFileSync(join(s.d, '.facts'), 'utf8') === '{}', 'a facts cache holding a bare 0 is replaced by the real one');
+}
+
+// Archived stays archived: a note that was `tier: archive` and is edited to say nothing of it keeps its line in the archive (only a
+// 1.3.0 cache entry, read once, lets the window decide it again).
+{
+  const s = small({ 'was-cold': { tier: 'archive' } });
+  await tierExec(['--dir', s.d]);
+  s.put('was-cold');
+  await tierExec(['--dir', s.d]);
+  ok(/was-cold\.md/.test(s.arc()) && !/was-cold\.md/.test(s.main()), 'an archived line stays in the archive after its note drops `tier: archive`');
+}
+
 // --- part two: the snapshot path and the --stop gate ---------------------------
 const { home, env } = tempHome('memtier-home-');
 const root = join(home, '.claude', 'projects');
@@ -476,6 +530,7 @@ utimesSync(join(root, '.git', 'index.lock'), hourAgo, hourAgo);
 note('proj-one', 'locked-out');
 r = await plain();
 ok(/snapshot failed/.test(r.stdout) && sh().failures === 1, `an index.lock that cannot be removed is a failure, not busy (got ${r.stdout.trim()})`);
+ok(/unlink/.test(sh().error), `and it says the lock could not be removed, not git's own words (got ${sh().error})`);
 rmSync(join(root, '.git', 'index.lock'), { recursive: true, force: true });
 r = await plain();
 
@@ -511,7 +566,13 @@ const lastRun = JSON.parse(runLines().at(-1));
 ok(lastRun.s && lastRun.from && !Number.isNaN(Date.parse(lastRun.at)), `--stop: a run's line says when, which conversation and which copy (got ${runLines().at(-1)})`);
 writeFileSync(join(root, '.stop-ran'), Array.from({ length: 200 }, (_, i) => JSON.stringify({ at: new Date(i).toISOString(), s: 'old', from: 'x'.repeat(30) })).join('\n') + '\n');
 await stop();
-ok(runLines().length <= 20 && JSON.parse(runLines().at(-1)).s !== 'old', `--stop: the log keeps the newest runs only (got ${runLines().length} lines)`);
+ok(runLines().length === 20 && !readFileSync(join(root, '.stop-ran'), 'utf8').endsWith('\n\n') && JSON.parse(runLines().at(-1)).s !== 'old', `--stop: the log keeps the newest 20 runs, no blank line among them (got ${runLines().length} lines)`);
+// A Stop whose input is no JSON still leaves its proof of life: no conversation, no event, an empty fingerprint.
+{
+  await call(['--stop'], 'not json at all');
+  const l = JSON.parse(runLines().at(-1));
+  ok(l.s === '' && l.e === undefined && l.h === undefined && typeof l.m === 'string' && l.from, `--stop: input that is no JSON still logs a run (got ${runLines().at(-1)})`);
+}
 // A line another session appends while this run cuts the log back survives (audit #13).
 {
   const ranPath = join(root, '.stop-ran');
@@ -1387,6 +1448,19 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   await call(['--stop'], JSON.stringify({ transcript_path: now, session_id: 'now' }));
   const all = (existsSync(jd) ? readdirSync(jd).filter((f) => f.endsWith('.md')) : []).map((f) => readFileSync(join(jd, f), 'utf8')).join();
   ok(all.includes('asked last month') && all.includes('asked now'), `--stop: the Stop backfills the journal (got ${all.length} chars)`);
+  // With nothing of its own to journal (an empty transcript) there is no journal folder yet, and one old conversation beside it is enough to start it.
+  const pc = join(root, 'proj-backfill2'), old2 = join(pc, 'old.jsonl'), cur = join(pc, 'cur.jsonl');
+  mkdirSync(join(pc, 'memory'), { recursive: true }); writeFileSync(old2, turn('asked long ago', '2026-09-28T09:00:00Z')); writeFileSync(cur, ''); utimesSync(old2, month, month);
+  await call(['--stop'], JSON.stringify({ transcript_path: cur, session_id: 'cur' }));
+  const jd2 = join(pc, 'memory', 'journal');
+  ok(existsSync(jd2) && readdirSync(jd2).map((f) => readFileSync(join(jd2, f), 'utf8')).join().includes('asked long ago'), '--stop: a conversation beside is imported though no journal folder exists yet');
+  // A dry run makes no index for a store that has a handoff and none; the real one does.
+  const pd = join(root, 'proj-dryidx'), dryIn = JSON.stringify({ transcript_path: join(pd, 's.jsonl'), session_id: 'dry' });
+  mkdirSync(join(pd, 'memory'), { recursive: true }); writeFileSync(join(pd, 'memory', 'handoff.md'), 'x'); writeFileSync(join(pd, 's.jsonl'), '');
+  await call(['--stop', '--dry-run'], dryIn);
+  ok(!existsSync(join(pd, 'memory', 'MEMORY.md')), '--stop --dry-run creates no index');
+  await call(['--stop'], dryIn);
+  ok(existsSync(join(pd, 'memory', 'MEMORY.md')), 'and the same Stop without --dry-run does');
 }
 
 // A journal day is committed once it is over, never while it is today's.
@@ -2009,6 +2083,22 @@ require('node:module').syncBuiltinESMExports();
   await stop('proj-one');
   ok(left.every((p) => !existsSync(p)), '--stop: a quiet Stop sweeps the temp copies a killed Stop left in its store and journal');
 }
+// The same rule at once, with time stepped instead of waited: a Stop sets the run's budget of 2 s in all before it takes a lock, so
+// after it two held locks cost 2 s between them, not 2 s each.
+{
+  const { withLock } = await import(pathToFileURL(join(dirname(TOOL), 'store.mjs')).href);
+  const a = join(root, 'proj-one', 'memory'), b = join(root, 'proj-two', 'memory');
+  await stop('proj-one');
+  mkdirSync(join(a, '.lock')); mkdirSync(join(b, '.lock'));
+  const realWait = Atomics.wait, realNow = Date.now;
+  let skew = 0;
+  Atomics.wait = (arr, i, v, ms) => { skew += ms; return 'timed-out'; };
+  Date.now = () => realNow() + skew;
+  let waited;
+  try { withLock(a, () => 1); withLock(b, () => 1); waited = skew; }
+  finally { Atomics.wait = realWait; Date.now = realNow; rmdirSync(join(a, '.lock')); rmdirSync(join(b, '.lock')); }
+  ok(waited >= 1500 && waited < 3000, `a Stop's locks share a budget of 2 s: two held ones cost about 2 s together (${waited} ms stepped)`);
+}
 // A Stop waits 2 s for its locks in all, not 2 s for each: with another hook holding its store's and the shared one's, it
 // waited for its handoff, the journal's import and both tidy-ups, 8 s (audit H-F2). Slow: the wait is real.
 if (!quick) {
@@ -2081,8 +2171,11 @@ if (!quick) {
     let s = await stop1();
     ok(/in parts/.test(s.stdout) && health1().partial > 0 && health1().pending && !existsSync(join(r1, '.git', 'index.lock')), `a first snapshot too big for one run is taken in parts, and says so (got ${s.stdout.trim()}; ${JSON.stringify(health1())})`);
     ok(g1('show', `${g1('rev-list', '--max-parents=0', 'HEAD')}:proj-big/memory/MEMORY.md`) === asFound.trim(), 'and its first part holds the index as the user wrote it');
+    const owedAtFirst = health1().partial, inFirst = g1('ls-tree', '-r', '--name-only', g1('rev-list', '--max-parents=0', 'HEAD')).split('\n').length;
     for (let i = 0; i < 10 && health1().partial; i++) s = await stop1();
     const files = g1('ls-files').split('\n');
+    // Nine files were there to add (git's own list for this store): three in the first part, six owed.
+    ok(inFirst === 3 && owedAtFirst === 6, `a part is exactly the batch, and the count owed is the files not yet added (first part ${inFirst}, owed ${owedAtFirst})`);
     ok(Array.from({ length: 7 }, (_, i) => `proj-big/memory/Big${i}.md`).every((f) => files.includes(f)) && !health1().pending && health1().failures === 0 && !g1('status', '--porcelain'),
       `and the replies after it, no note changed, add the rest (got ${JSON.stringify(health1())}, ${g1('status', '--porcelain')})`);
     // A git killed at its timeout (here 1 ms, test-only) leaves every note as it was; from the next run, the history is taken in parts.
@@ -2137,8 +2230,11 @@ if (!quick) {
   r = await stop('proj-on');
   ok(tracked().includes('proj-on/memory/fresh.md') && git('show', 'HEAD:proj-off/memory/a.md') === offBefore, "another project's Stop leaves the off project's edit out of the snapshot, and its notes in HEAD");
   ok(tracked().includes('proj-off/memory/a.md'), 'an off project keeps its old notes in HEAD');
+  writeFileSync(join(onD, 'orphan2.md'), '---\nname: orphan2\ndescription: "o2"\nmetadata:\n  type: project\n---\nbody\n');
+  utimesSync(join(onD, 'orphan2.md'), tenMin, tenMin);
   r = await plain();
   ok(r.status === 0 && listing(offD) === before && git('show', 'HEAD:proj-off/memory/a.md') === offBefore, 'a manual run does not rewrite an off project\'s index, nor snapshot it');
+  ok(readFileSync(join(onD, 'MEMORY.md'), 'utf8').includes('orphan2.md'), 'and the store after the off one is still tiered');
   r = await call(['--dir', offD]);
   ok(r.status === 0 && listing(offD) === before, '--dir on an off store does nothing either');
   // A first add in parts (no index yet) leaves it out too.
@@ -2253,6 +2349,32 @@ ${b}
   ok(tracked().includes('proj-one/memory/n1.md') && tracked().includes('proj-one/memory/n3.md'), 'and the snapshot still commits the clean ones');
   clean('n1.md', 'n2-secret.md', 'n3.md'); await stop();
 
+  // Two more names that read like part of a reply: one space makes three words ("a b.md missing"), and a number in third place
+  // reads as a byte count ("x y 12 .md missing"). Neither is a blob, and the reads after them stay in step.
+  put('a b.md', 'long and unlike the rest, two '.repeat(40)); put('x y 12 .md', 'long and unlike the rest, three '.repeat(40)); await stop();
+  rmSync(join(dir, 'a b.md')); rmSync(join(dir, 'x y 12 .md'));
+  put('o1.md', 'clean one'); put('o2-secret.md', `token ${GH}`); put('o3.md', 'clean three');
+  await run(['o2-secret.md']);
+  ok(!tracked().includes('proj-one/memory/o2-secret.md') && held().includes('proj-one/memory/o2-secret.md') && tracked().includes('proj-one/memory/o3.md'), 'staged deletions named like a short reply or a byte count do not put the notes after them out of step');
+  clean('o1.md', 'o2-secret.md', 'o3.md'); await stop();
+
+  // A staged name with a line break is read by itself (`git show`), and Windows cannot make one, so it is slipped into the staged
+  // list. One git says is not there reads as a deleted note and the snapshot goes on; any other failure of that read commits nothing.
+  const ghost = 'proj-one/memory/ghost\nname.md';
+  const withGhost = (fail) => swap('node:child_process', 'execFileSync', (real) => (...a) => {
+    if (fail && a[0] === 'git' && a[1].includes('show')) throw Object.assign(new Error('boom'), { stderr: 'fatal: boom' });
+    const r = real(...a);
+    if (a[0] === 'git' && a[1].includes('--cached') && a[1].includes('--name-only')) return `${r}${ghost}\0`;
+    return r;
+  }, () => stop());
+  const committed = () => git('ls-tree', '-r', '--name-only', 'HEAD').split('\n');   // the index holds a note that was staged and not committed
+  put('p1.md', 'clean'); await withGhost(false);
+  ok(committed().includes('proj-one/memory/p1.md'), 'a staged name git does not have in the index reads as a deleted note: the snapshot still commits');
+  put('p2.md', 'clean'); await withGhost(true);
+  ok(!committed().includes('proj-one/memory/p2.md'), 'a staged note that cannot be read for another reason commits nothing');
+  await stop(); ok(committed().includes('proj-one/memory/p2.md'), 'and the next Stop commits it');
+  clean('p1.md', 'p2.md'); await stop();
+
   // A name with a line break would split git's input in two; not allowed on Windows, so skipped there.
   if (process.platform !== 'win32') {
     put('q1\nx.md', 'clean'); put('q2-secret.md', `token ${GH}`);
@@ -2312,6 +2434,33 @@ ${b}
   const o2 = stop(), h2 = health();
   ok(!/in parts/.test(o2) && !h2.partial && !h2.pending && h2.held?.length === 1, `a held tracked note is not counted as still to add (got ${o2.slice(-100)} ${JSON.stringify(h2)})`);
   ok(execFileSync('git', ['-C', r, 'ls-files', '--', 'pa/memory/fresh.md']).toString().trim() === 'pa/memory/fresh.md', 'the clean note was committed');
+}
+
+// An update installs a newer copy, but the session keeps running the one it started with until /reload-plugins:
+// the Stop says so once per version, in a line for the user (systemMessage), and never for the same or an older one.
+{
+  const plug = join(home, '.claude', 'plugins'), at = join(home, 'cache-pm'), ours = JSON.parse(readFileSync(new URL('./.claude-plugin/plugin.json', import.meta.url), 'utf8')).version;
+  mkdirSync(join(at, '.claude-plugin'), { recursive: true }); mkdirSync(plug, { recursive: true });
+  const installed = (v) => { writeFileSync(join(at, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: v })); writeFileSync(join(plug, 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@project-memory': [{ installPath: at }] } })); };
+  const said = (id) => {
+    const r = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, 'proj-two', 'session.jsonl'), session_id: id }) });
+    const line = r.stdout.split('\n').find((l) => l.startsWith('{'));
+    return `${r.status} ${line ? JSON.parse(line).systemMessage : ''}`;
+  };
+  mkdirSync(plug, { recursive: true });
+  installed('99.0.0');
+  let r = said('reload1');
+  ok(r === '0 project-memory 99.0.0 is installed, run /reload-plugins to use it', `a newer installed version is named, with the command (got ${r})`);
+  r = said('reload1');
+  ok(!r.includes('reload-plugins') && r.startsWith('0'), `said once per session (got ${r})`);
+  installed('99.0.1');
+  ok(said('reload1') === '0 project-memory 99.0.1 is installed, run /reload-plugins to use it', 'a second update is named again');
+  const [a, b, c] = ours.split('.').map(Number);
+  for (const v of [ours, `${a}.${b}.${c - 1}`, `${a}.${b - 1}.99`, `${a - 1}.99.99`, 'garbage']) { installed(v); ok(!said('reload2').includes('reload-plugins'), `no notice when ${v} is installed and ${ours} runs`); }
+  installed(`${a}.${b}.${c}.1`);
+  ok(said('reload3').includes(`${a}.${b}.${c}.1 is installed`), 'a longer version with the same start is newer');
+  rmSync(plug, { recursive: true, force: true }); rmSync(at, { recursive: true, force: true });
+  ok(!said('reload4').includes('reload-plugins'), 'no notice without an installed plugin');
 }
 
 rmSync(home, { recursive: true, force: true });

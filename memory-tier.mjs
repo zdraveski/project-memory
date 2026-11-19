@@ -8,11 +8,11 @@
 // As the Stop hook (and before a manual /compact) it runs with `--stop`, the
 // payload on stdin, and tiers that session's own store; a manual run walks them all.
 
-import { chmodSync, readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { holdsSecret, keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED, redact } from './store.mjs';
+import { holdsSecret, keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED, redact, configDir, tag } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -635,6 +635,31 @@ function ensureIndex(d) {
   } catch {}
 }
 
+// An update installs a newer copy, but a session runs the one it started with
+// until /reload-plugins, which no plugin can run itself: say so once per
+// conversation and version, as a line for the user (a Stop's systemMessage).
+const reloadNotice = (payload) => {
+  const ver = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')).version; } catch { return null; } };
+  let all = null; try { all = JSON.parse(readFileSync(join(configDir(), 'plugins', 'installed_plugins.json'), 'utf8')).plugins; } catch {}
+  const entry = Object.entries(all ?? {}).find(([k]) => k.split('@')[0] === 'project-memory')?.[1]?.[0];
+  const have = entry && (entry.version ?? (entry.installPath && ver(join(entry.installPath, '.claude-plugin', 'plugin.json'))));
+  const runs = ver(fileURLToPath(new URL('./.claude-plugin/plugin.json', import.meta.url)));
+  if (typeof have !== 'string' || typeof runs !== 'string' || !newer(have, runs)) return null;
+  const mark = join(projectsRoot(), '.nudge', `${tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''))}.reload`);
+  let was = null; try { was = readFileSync(mark, 'utf8'); } catch {}
+  if (was === have) return null;
+  // Unwritable: quiet, or it would be said at every Stop.
+  try { mkdirSync(dirname(mark), { recursive: true }); writeFileSync(mark, have); } catch { return null; }
+  return `project-memory ${have} is installed, run /reload-plugins to use it`;
+};
+// Whether version a is past b, part by part; 1.5.3.1 is past 1.5.3, anything not numbers is not.
+const newer = (a, b) => {
+  const x = a.split('.').map(Number), y = b.split('.').map(Number);
+  if (x.concat(y).some((n) => !Number.isInteger(n))) return false;
+  for (let i = 0; i < x.length; i++) if (x[i] !== (y[i] ?? -1)) return x[i] > (y[i] ?? -1);
+  return false;
+};
+
 // A run: its arguments and, behind --stop, stdin's text; it returns the exit
 // code. The entry at the end calls it once, the suite many times in its own
 // process, as memory.test.mjs calls memory.mjs's: a process a check cost ~0.2 s.
@@ -750,10 +775,12 @@ export async function main(argv, input) {
       // once so memory is written first (compact-gate.mjs). Printed alone --
       // a Stop hook's output is JSON on stdout, and the tiering lines below would
       // break it; tiering waits for the next turn, which redoes it anyway.
+      let notice = null; try { notice = payload && reloadNotice(payload); } catch {}
       const nudge = payload && (await import(new URL('./compact-gate.mjs', import.meta.url))).nudge(payload);
+      const out = (nudge || notice) && { ...nudge, ...(notice && { systemMessage: notice }) };
       // Done once it is written: on macOS a pipe is written asynchronously, and
       // an exit right after a write can cut it (handoff-log's --print, CI 2026-10-29).
-      if (nudge) { await new Promise((done) => process.stdout.write(JSON.stringify(nudge) + '\n', done)); return 0; }
+      if (out) { await new Promise((done) => process.stdout.write(JSON.stringify(out) + '\n', done)); return 0; }
     } catch {}
   }
 

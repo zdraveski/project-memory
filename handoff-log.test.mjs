@@ -24,6 +24,34 @@ mkdirSync(dir, { recursive: true });
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
+// lastTurn() must return at once on a small file; run apart, so a loop that never ends fails this check, not the whole run (1.5.3 holes).
+{
+  const lpath = join(home, 'tiny.jsonl');
+  writeFileSync(lpath, JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: 'hi' }] }, timestamp: '2026-09-11T07:00:00Z' }) + '\n');
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `import { lastTurn } from ${JSON.stringify(pathToFileURL(HOOK).href)}; process.stdout.write(String(lastTurn(${JSON.stringify(lpath)}).seen))`], { encoding: 'utf8', timeout: 20000 });
+  ok(r.status === 0 && r.stdout === '1', 'lastTurn returns on a small file that is read whole');
+}
+// 1.5.3 holes: clip()'s windows and counts, and the tail of a file.
+{
+  const { clip, readTail } = await import('./handoff-log.mjs');
+  const tok = 'ghp_' + 'a'.repeat(36);
+  // A long text cut where the count says: 380 characters (n - 20) shown, the rest counted, "… (+N chars)".
+  ok(clip('a'.repeat(500), 400) === 'a'.repeat(380) + '… (+120 chars)' && clip('a'.repeat(401), 400) === 'a'.repeat(380) + '… (+21 chars)' && clip('a'.repeat(400), 400) === 'a'.repeat(400), 'a clip of 400 ends with the count of what it cut, and one that fits is whole');
+  ok(clip('a'.repeat(100000), 400) === 'a'.repeat(380) + '… (+99620 chars)', 'a 100 KB paste says it lost all but what shows');
+  ok(clip('a'.repeat(65536), 400).endsWith('(+65156 chars)') && clip('a'.repeat(65537), 400).endsWith('(+65157 chars)'), 'a text at the 64 KB pre-cut and one past it count the same way');
+  ok(clip('word '.repeat(100), 100) === 'word '.repeat(19) + 'word…', 'a clip under 400 ends with an ellipsis alone');
+  // The count is after redaction: a secret inside the first 64 KB (or 4n) is redacted before it is counted, one past that is only counted raw.
+  ok(clip('ab '.repeat(1000) + tok + ' end', 400).endsWith('… (+2637 chars)'), 'a secret inside the window is counted redacted (10 characters, not 40)');
+  ok(clip('ab '.repeat(28000) + tok + ' end', 20000).endsWith('… (+64065 chars)'), 'the pre-cut keeps 4n characters: a secret past them is counted raw');
+  // A sentence or a word in the second half of the room ends the cut; one in the first half does not. The room is n - 20 characters.
+  ok(clip('a'.repeat(200) + ' ' + 'b'.repeat(178) + '. ' + 'c'.repeat(100), 400) === 'a'.repeat(200) + '… (+281 chars)', 'a cut ends at the last word when no sentence ends in the room');
+  ok(clip('a'.repeat(100) + ' ' + 'b'.repeat(500), 400) === 'a'.repeat(100) + ' ' + 'b'.repeat(279) + '… (+221 chars)', 'a word in the first half of the room is not a place to cut');
+  // readTail(): the last bytes only, whole when it reads from the start.
+  const rp = join(home, 'tail.txt');
+  writeFileSync(rp, 'abcdefghij12345');
+  const rt = readTail(rp, 5), rw = readTail(rp, 15), rb = readTail(rp, 99);
+  ok(rt.text === '12345' && rt.whole === false && rw.text === 'abcdefghij12345' && rw.whole === true && rb.whole === true, 'readTail reads the last bytes asked for, and says when it read the whole file');
+}
 // A guard that a pattern is linear, not that the machine is fast (audit #18): f(m) runs the hostile input at m parts, timed at 1 and at
 // 10. A slow or busy runner slows both, and the old fixed limit stays as the floor; a cubic pattern (1,000 times) or an exponential one still fails.
 const linear = (f, floor) => { f(1); let t = performance.now(); f(1); const small = performance.now() - t; t = performance.now(); f(10); const big = performance.now() - t; return [big < Math.max(floor, 50 * small), `${big.toFixed(0)} ms at full size, ${small.toFixed(1)} ms at a tenth`]; };
@@ -224,10 +252,11 @@ ok(bare(startup()) === '', 'and nothing about one forty days old');
 writeFileSync(join(dirL, '.health'), 'over budget: 9000B > 7000B\n');
 writeFileSync(join(home, '.claude', 'projects', '.snapshot-health'), JSON.stringify({ lastOk: '2026-10-01T00:00:00Z', failures: 3, error: 'git not found' }));
 mkdirSync(join(dirL, 'journal'), { recursive: true });
-writeFileSync(join(dirL, 'journal', '.failed'), [{ at: '2026-10-02T08:00:00Z', error: 'day file is not UTF-8 text' }, { at: '2026-10-02T08:00:00Z', error: 'backfill: EBUSY' }].map((x) => JSON.stringify(x)).join('\n') + '\n');
+writeFileSync(join(dirL, 'journal', '.failed'), [{ at: '2026-10-02T08:00:00Z', error: 'day file is not UTF-8 text' }, { at: '2026-10-02T08:00:00Z', error: 'backfill: EBUSY' }].map((x) => JSON.stringify(x)).join('\n\n') + '\n' + JSON.stringify({ at: '2026-10-02T08:30:00Z', error: 'day file is read-only' }) + '\n');
 const warn = startup();
 ok(/Memory store needs attention[^\n]*over budget/.test(warn) && /snapshots have failed 3 times in a row, last ok \d{4}-\d\d-\d\d \d\d:\d\d:/.test(warn), `and warns when the store or the snapshots are failing, in local time (got ${warn})`);
 ok(/the journal could not be written after the reply at \d{4}-\d\d-\d\d \d\d:\d\d: day file is not UTF-8 text/.test(warn) && !/EBUSY/.test(warn), `and when the journal is, not for a backfill retried later (got ${warn})`);
+ok(/after the reply at \d{4}-\d\d-\d\d \d\d:\d\d: day file is read-only/.test(warn), 'a blank line in that list does not hide the failures after it');
 rmSync(join(dirL, 'journal', '.failed'));
 // A journal folder that took no record of its own failure: kept beside the projects, and said the same (audit H-F4).
 const asideL = join(home, '.claude', 'projects', `.journal-failed-${basename(dirname(dirL))}`);
@@ -422,6 +451,7 @@ const liveDir = join(home, 'hooks-live');
 install(dirname(HOOK), liveDir, 'test');
 const printLive = () => execFileSync(process.execPath, [join(liveDir, 'handoff-log.mjs'), '--print'], { input: JSON.stringify({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString();
 ok(!/outside deploy/.test(printLive()), 'a deployed copy as deployed: nothing said');
+ok(['brief.mjs', 'journal.mjs', 'compact-gate.mjs'].every((f) => existsSync(join(liveDir, f))), 'a deploy copies every hook file, journal.mjs and the SessionStart starter among them');
 install(dirname(HOOK), join(home, 'hooks-live-node'), 'test', undefined, 'C:/x/node.exe');
 ok(JSON.parse(readFileSync(join(home, 'hooks-live-node', 'hooks', 'hooks.json'), 'utf8')).hooks.SubagentStop[0].hooks[0].command === 'C:/x/node.exe', 'a deploy rewrites the SubagentStop command to the node path');
 // 1.5.2 finding 14: the manifest names the repo's origin; a file an older manifest listed and this release dropped is deleted, and
@@ -2445,6 +2475,11 @@ ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no rec
   writeFileSync(join(broken, 'handoff-log.mjs'), "export async function main(o) { if (o?.rethrow) throw new Error('boom while printing'); }");
   const bad2 = viaStarter({}, join(broken, 'brief.mjs'));
   ok(bad2.status === 0 && /^Memory briefing failed \(boom while printing\)/.test(bad2.stdout), `a failure while running gives the line too (got ${JSON.stringify(bad2.stdout)})`);
+  // 1.5.3 holes: what a failure is named by. A throw of nothing, of an empty message or of a very long one still gives the one line, cut at 200 characters.
+  const failing = (thrown) => { writeFileSync(join(broken, 'handoff-log.mjs'), `export async function main() { throw ${thrown}; }`); return viaStarter({}, join(broken, 'brief.mjs')); };
+  ok(failing('null').stdout.startsWith('Memory briefing failed (null).'), 'a failure that throws nothing is named null, the line still given');
+  ok(failing("{ message: '' }").stdout.startsWith('Memory briefing failed ().'), 'a failure with an empty message gives an empty name, not the object');
+  ok(failing("new Error('x'.repeat(300))").stdout === `Memory briefing failed (${'x'.repeat(200)}). Run "memory doctor", or reinstall the project-memory plugin.\n`, 'a failure message is cut at 200 characters');
   // The real main, not a stub: a bad payload on stdin is reported, not left as an empty briefing.
   const bad3 = spawnSync(process.execPath, [BRIEF, '--print'], { input: 'not json', env: process.env, encoding: 'utf8' });
   ok(bad3.status === 0 && /^Memory briefing failed \(/.test(bad3.stdout), `the real handoff-log.mjs failing at run time gives the line (got ${JSON.stringify(bad3.stdout)})`);
@@ -3770,5 +3805,213 @@ if (!quick) {
   ok(!existsSync(tmpR), 'a sweep also removes a handoff.md.prev.tmp left by a killed copy');
 }
 
+// 1.5.3 holes: the small readers of a transcript record, on the odd records a real transcript holds (null blocks, no message,
+// no input, a half-written line). Each assertion names what a reader that trusted the record's shape would get wrong.
+{
+  const H = await import('./handoff-log.mjs');
+  const { turns, text, queuedText, toolAnswers, refused, editedFile, prompt, asked, NUDGE_TAG, lastTurn, FORGETS } = H;
+  const U = (content, x = {}) => ({ type: 'user', message: { content }, timestamp: '2026-09-11T07:00:00Z', ...x });
+  const A = (content, x = {}) => ({ type: 'assistant', message: { content }, timestamp: '2026-09-11T07:00:05Z', ...x });
+  const T = (...rs) => turns(rs.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n'));
+  const P = (t) => ({ type: 'text', text: t });
+  // text(): a record with no message, a message with no content, a null block among the blocks.
+  ok(text(null) === '' && text({}) === '' && text({ message: null }) === '' && text({ message: { content: 5 } }) === '', 'text() of a record with no words is empty');
+  ok(text({ message: { content: [null, { type: 'image' }, P('a'), P('b')] } }) === 'a b', 'text() joins the text blocks only, and a null block is no block');
+  // The nudge tag is looked for in the first 200 characters only: whole inside them, it is a nudge; ending at the 201st, it is not.
+  ok(asked({}, 'x'.repeat(200 - NUDGE_TAG.length) + NUDGE_TAG) === false && asked({}, 'x'.repeat(201 - NUDGE_TAG.length) + NUDGE_TAG) === true, 'a nudge tag ending at the 200th character marks the record, one ending at the 201st does not');
+  // A slash command's record: its name, its arguments; none when the name is missing, too long or holds a tag.
+  const cmd = (s) => prompt(U([P(s)]), s);
+  ok(cmd('<command-name>/foo</command-name><command-args> a b </command-args>') === '/foo a b' && cmd('<command-name>bar</command-name>') === '/bar', 'a slash command reads as its name and arguments');
+  ok(cmd('<command-name></command-name>') === '' && cmd('<command-name>a<b</command-name>') === '' && cmd('<command-name>/' + 'a'.repeat(200) + '</command-name>') === '' && cmd('<command-name>/' + 'a'.repeat(199) + '</command-name>') === '/' + 'a'.repeat(199), 'a command with no name, a tag in its name or a name over 200 characters reads as no command');
+  ok(cmd('<command-name>/foo') === '' && cmd('<command-message>') === '' && cmd('<command-message>hi</command-name>') === '', 'a command record with no closing or no opening name tag reads as no command');
+  // A prompt of images only is a turn; a null block or a record with no message is not an image.
+  ok(prompt(U([{ type: 'image' }, P('')]), '') === '[image]' && prompt(U([null, { type: 'image' }]), '') === '[image]' && prompt(U([{ type: 'text' }, { type: 'image' }]), '') === '[image]' && prompt({ type: 'user' }, '') === '' && prompt(U([P('a')]), '') === '', 'a prompt of images alone reads as [image], any other with no words as none');
+  // A queued message's blocks.
+  ok(queuedText({}) === '' && queuedText({ attachment: { prompt: [null, 'a', { type: 'text', text: 'b' }, { type: 'text', text: 0 }, { type: 'image' }] } }) === ' a b 0 ' && queuedText({ attachment: { prompt: 'x' } }) === 'x', 'a queued message reads as its strings and text blocks');
+  // What the user typed into a tool result.
+  const heard = toolAnswers();
+  const rej = { toolUseResult: 'User rejected tool use' };
+  const res = (c) => ({ type: 'tool_result', tool_use_id: 'r1', content: c });
+  ok(heard({ type: 'assistant' }) === '' && heard({ type: 'system' }) === '' && heard({ type: 'user' }) === '' && heard({ type: 'user', message: null }) === '', 'a record with no blocks heard nothing');
+  ok(heard(A([null, { type: 'tool_use', id: 'q1', name: 'AskUserQuestion' }])) === '' && heard(U([null, { type: 'text', content: 'the user said: no' }], rej)) === '', 'a null block or a text block heard nothing');
+  ok(heard(U([res([{ type: 'text', text: 'It stopped; the user said: a' }, null, { type: 'text', text: 0 }, { type: 'image' }])], rej)) === ' a  0 ', 'a rejected call gives the words after "the user said:", every block of its result read');
+  ok(heard(U([res('no words'), res('the user said: b')], rej)) === ' b', 'a result with no words of the user is dropped, not joined as an empty line');
+  ok(heard(U([res('the user said: c')])) === '', 'what a result says is only the user\'s when the call was rejected');
+  const asked1 = toolAnswers();
+  asked1(A([{ type: 'tool_use', id: 'r1', name: 'AskUserQuestion', input: { questions: ['Q?'] } }]));
+  ok(asked1(U([res('Q? A')], { toolUseResult: { answers: { 'Q?': 'A' } } })) === 'A' && asked1.picks.length === 1 && asked1(U([res('plain words')])) === 'plain words' && asked1.picks.length === 0, 'an answered question is its answers, or the result\'s words when it carries none');
+  // refused(): with no record or no block.
+  ok(refused({}, undefined) === false && refused(null, { is_error: true, content: 'x' }) === false && refused(null, { is_error: true, content: [{ type: 'text', text: 'Permission for this action was denied' }, null] }) === true && refused({ toolUseResult: 'User rejected tool use' }, { is_error: true }) === true && refused({ toolUseResult: 'User rejected tool use' }, { content: 'x' }) === false, 'a call is refused only by an error result');
+  // editedFile(): no block, no input.
+  ok(editedFile(null) === '' && editedFile({ type: 'tool_use', name: 'Edit' }) === '' && editedFile({ type: 'tool_use', name: 'NotebookEdit', input: { notebook_path: 'n.ipynb' } }) === 'n.ipynb' && editedFile({ type: 'tool_use', name: 'Write', input: { file_path: 'f.txt' } }) === 'f.txt', 'the file an edit names, and none for a block with no input');
+  // turns(): odd records between a prompt and its reply change nothing.
+  const t0 = U([P('run it')], { uuid: 'u1' });
+  const odd = [A([null, { type: 'tool_use', id: 't1', name: 'Bash' }, { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'ls' } }, { type: 'tool_use', id: 't3', name: 'mcp__x__ctx_execute', input: {} },
+    { type: 'tool_use', id: 't4', name: 'mcp__x__ctx_batch', input: { commands: [null, 'a', { command: 'b' }] } }, { type: 'tool_use', id: 't5', name: 'Other', input: { commands: ['zz'] } }, { type: 'tool_use', id: 't6', name: 'Edit' }]),
+  { type: 'assistant' }, { type: 'user' }, { type: 'attachment' }, '{"type":"user", broken', 'null', U([null, res('ok'), { type: 'text', text: 'x' }].slice(0, 2))];
+  const o = T(t0, ...odd, A([P('done')]));
+  ok(o.length === 1 && o[0].ran.join('|') === 'ls|null\na\nb', `odd records and odd tool calls: the turn still lists what ran (got ${JSON.stringify(o[0]?.ran)})`);
+  // After a nudge: a record with no message or no attachment does not end the hold or throw.
+  const nudge = U([P(NUDGE_TAG)]);
+  ok(T(t0, A([P('first')]), nudge, { type: 'assistant' }, A([P('update')], { message: { content: [P('update')], stop_reason: 'end_turn' } }), { type: 'attachment' }, { type: 'attachment', attachment: { type: 'queued_command', prompt: 'later ask' } }, A([P('late')])).length === 2, 'a nudge then records with no message or no attachment: no throw, a queued ask opens the next turn');
+  // A turn stopped before its reply, by an interrupt or any other user record, keeps what it ran or changed once.
+  const edit = (id, f) => A([{ type: 'tool_use', id, name: 'Edit', input: { file_path: f } }]);
+  const stop = U([P('[Request interrupted by user]')]);
+  const k1 = T(t0, edit('e1', 'a.txt'), stop, stop), k2 = T(t0, A([{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'ls' } }]), stop), k3 = T(t0, edit('e1', 'a.txt'), U([P('note'), P('more')], { isMeta: true }));
+  ok(k1.length === 1 && k1[0].did === '[stopped before a reply]' && k2.length === 1 && k2[0].ran[0] === 'ls' && k3.length === 0, 'a turn stopped by an interrupt is kept once, edits or commands alone; no other record stops it');
+  // A refused call never ran, whatever its neighbours; a result of a call never seen refuses nothing.
+  const run3 = A(['c1', 'c2', 'c3'].map((c, i) => ({ type: 'tool_use', id: `k${i + 1}`, name: 'Bash', input: { command: c } })));
+  const R = (id, c, x = {}) => U([{ type: 'tool_result', tool_use_id: id, content: c, ...x }], x.rej ? rej : {});
+  const g = turns([t0, run3, R('zzz', 'no', { is_error: true, rej: true }), R('k1', 'no', { is_error: true, rej: true }), R('k3', 'boom', { is_error: true }), A([P('end')])].map((r) => JSON.stringify(r)).join('\n'));
+  ok(g.length === 1 && g[0].ran.length === 2 && g[0].ran[0] === 'c2' && g[0].ran[1].startsWith('c3 → failed: boom'), `a refused call is dropped alone, a failed one is told (got ${JSON.stringify(g[0]?.ran)})`);
+  // An edit that errored changed nothing, only itself: the file edited before stays changed.
+  const e = turns([t0, edit('e1', 'a.txt'), edit('e2', 'b.txt'), edit('e3', 'c.txt'), R('e1', 'err', { is_error: true }), A([P('ok')])].map((r) => JSON.stringify(r)).join('\n'));
+  ok(e[0].changed.join() === 'b.txt,c.txt', `a failed edit takes only its own file out (got ${e[0]?.changed})`);
+  // A question answered with no turn open, or in a private turn, saves no pick.
+  const q = A([{ type: 'tool_use', id: 'q1', name: 'AskUserQuestion', input: { questions: [{ question: 'Pick one' }] } }]);
+  const qa = U([{ type: 'tool_result', tool_use_id: 'q1', content: 'ok' }], { toolUseResult: { answers: { 'Pick one': 'red' } } });
+  ok(T(q, qa, t0, A([P('end')])).length === 1 && T(t0, U([P('mentions <private> here')], { isMeta: true }), q, qa, A([P('end')]))[0]?.picked.length === 0 && T(t0, q, qa, A([P('end')]))[0].picked.join() === 'red', 'an answer with no turn open or after a private record froze the turn is no pick, an answer in an open turn is');
+  // lastTurn() on a file with a half-written line first: it still finds the prompt and that it is open.
+  const lp = join(dir, 'half.jsonl');
+  writeFileSync(lp, ['{"type":"user", broken', JSON.stringify(t0), JSON.stringify(A([P('a')]))].join('\n') + '\n');
+  const lt = lastTurn(lp);
+  ok(lt.seen === 2, `a half-written line in a transcript does not stop reading it (got ${JSON.stringify(lt)})`);
+  // A last record bigger than the first window: the read grows until a message shows (here a lone 600 KB tool result after the prompt).
+  writeFileSync(lp, [JSON.stringify(t0), JSON.stringify(U([{ type: 'tool_result', tool_use_id: 'x', content: 'y'.repeat(600_000) }]))].join('\n') + '\n');
+  ok(lastTurn(lp).seen >= 1, 'a last record over the first window grows the read until a message shows');
+  // A command that holds a forget, however its options are spelled.
+  ok(FORGETS.test('node memory.mjs forget abc') && FORGETS.test('node memory.mjs --x forget') && FORGETS.test('node memory.mjs --x=1 forget') && !FORGETS.test('node memory.mjs search forget') && !FORGETS.test('node memory.mjs') , 'a forget is seen after the options of memory.mjs');
+}
+// 1.5.3 holes: promptBefore() on lines that are not prompts, and the 4096-character head it checks for a tool result.
+{
+  const { promptBefore } = await import('./handoff-log.mjs');
+  const mk = (t, x = {}) => JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: t }] }, ...x });
+  const at = (n) => { const f = (p) => mk('the ask at the head', { pad: 'x'.repeat(p) }).slice(0, -1) + ',"tool_result":1}'; const p = n - f(0).indexOf('"tool_result"'); return f(p); };
+  const old = mk('an older ask in words');
+  const last = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } });
+  const pb = (lines, bytes) => { const p = join(dir, 'pb.jsonl'); writeFileSync(p, lines.join('\n') + '\n'); return promptBefore(p, bytes); };
+  const tail = last.length + 1;
+  // A line that is not JSON, one that is null: passed over, the prompt before them is found.
+  ok(pb([old, 'not json {', 'null', last], tail) === old, 'promptBefore skips a line that is not JSON and one that is null');
+  // A tool result is told by its first 4096 characters: the marker ending at the 4096th is inside, one ending a character later is not.
+  const inside = at(4083), edge = at(4084);
+  ok(inside.indexOf('"tool_result"') === 4083 && edge.indexOf('"tool_result"') === 4084, 'the test lines put the marker where it says');
+  ok(pb([old, inside, last], tail) === old, 'a line with "tool_result" inside its first 4096 characters is a result, not a prompt');
+  ok(pb([old, edge, last], tail) === edge, 'a line whose "tool_result" ends at character 4097 is read as a prompt');
+  // Several megabytes back: the reads go on until a prompt, a megabyte at a time.
+  const filler = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'y'.repeat(900000) }] } });
+  ok(pb([old, filler, filler, filler, last], tail) === old, 'promptBefore reads back past a few megabytes of replies');
+  ok(pb([filler, last], tail) === null, 'promptBefore says null when no prompt is there');
+}
+// 1.5.3 holes: odd records, the shapes of what the readers return, and what one Stop writes in odd cases.
+{
+  const { turns, FORGETS, goesOn, fit, hushed, stalled } = await import('./handoff-log.mjs');
+  const J = (o) => JSON.stringify(o);
+  const U = (c, x = {}) => J({ type: 'user', timestamp: '2026-09-11T07:00:00Z', message: { content: c }, ...x });
+  const A = (c, x = {}) => J({ type: 'assistant', timestamp: '2026-09-11T07:00:05Z', message: { content: c }, ...x });
+  const P = (t) => ({ type: 'text', text: t });
+  // Records with no message at all, among a turn's: read as nothing, not thrown at.
+  let t0; try { t0 = turns([U([P('plan the move')]), J({ type: 'assistant' }), J({ type: 'user' }), A([P('done')])].join('\n')); } catch (e) { t0 = String(e); }
+  ok(Array.isArray(t0) && t0.length === 1 && t0[0].did === 'done', 'a user or assistant record with no message does not stop a turn being read');
+  // Tool calls with no input: nothing ran, and nothing is thrown.
+  let t1; try { t1 = turns([U([P('run it')]), A([{ type: 'tool_use', id: 'a', name: 'Bash' }, { type: 'tool_use', id: 'b', name: 'mcp__x__ctx_execute' }, { type: 'tool_use', id: 'c', name: 'mcp__x__ctx_batch' }, P('ok')]).trim()].join('\n')); } catch (e) { t1 = String(e); }
+  ok(Array.isArray(t1) && t1.length === 1 && t1[0].ran.length === 0, 'a shell, ctx_execute or ctx_batch call with no input ran nothing');
+  // An edit that failed, among edits: only its own file goes from the list.
+  const ed = (id, f) => ({ type: 'tool_use', id, name: 'Edit', input: { file_path: f } });
+  const res = (id, err) => ({ type: 'tool_result', tool_use_id: id, is_error: err, content: 'x' });
+  const t2 = turns([U([P('edit three')]), A([ed('e1', 'C:/p/a.js'), ed('e2', 'C:/p/b.js'), ed('e3', 'C:/p/c.js')]), U([res('e1', false), res('e2', true), res('e3', false)]), A([P('done')])].join('\n'));
+  ok(JSON.stringify(t2[0].changed) === JSON.stringify(['C:/p/a.js', 'C:/p/c.js']), `a failed edit takes its own file off the list and no other (got ${JSON.stringify(t2[0]?.changed)})`);
+  // What FORGETS says is a boolean.
+  ok(FORGETS.test('node memory.mjs search x') === false && FORGETS.test('node memory.mjs forget x') === true, 'FORGETS.test answers true or false');
+  // A reply that stops the turn or goes on; one with no message at all goes on.
+  ok(goesOn(undefined) === true && goesOn(null) === true && goesOn({}) === true && goesOn({ stop_reason: 'end_turn' }) === false, 'goesOn() of no message is a turn that goes on');
+  // fit(): held to 9,500, cut at a line end, a blank line included.
+  const cutAt = fit('a'.repeat(9439) + '\n\n' + 'b'.repeat(1000));
+  ok(cutAt === 'a'.repeat(9439) + "\n(the rest cut to fit Claude Code's startup limit)\n", 'fit cuts at the 9,440th character, keeping a line end that falls there');
+  // hushed() with no session is not private.
+  ok(hushed(dir, '') === false && hushed(dir, undefined) === false, 'no session id is never private');
+  // stalled(): a transcript that cannot be read says nothing, and says it as a list.
+  const none = stalled({ s: 'abcdefgh', p: join(dir, 'no-such-transcript.jsonl') });
+  ok(Array.isArray(none) && none.length === 0, 'stalled() of a transcript that is not there is an empty list');
+}
+// 1.5.3 holes: what one Stop writes, in the cases a plain turn does not reach.
+{
+  const J = (o) => JSON.stringify(o);
+  const store = (c) => { const d = storeFor(home, c); mkdirSync(d, { recursive: true }); return d; };
+  const lines = (...l) => l.join('\n') + '\n';
+  const docOf = (d) => { try { return readFileSync(join(d, 'handoff.md'), 'utf8'); } catch { return ''; } };
+  const nAsked = (d) => (docOf(d).match(/\*\*asked\*\*/g) || []).length;
+  const U = (t, ts, x = {}) => J({ type: 'user', timestamp: ts, uuid: x.uuid, message: { content: [{ type: 'text', text: t }] } });
+  const A = (t, ts, extra = []) => J({ type: 'assistant', timestamp: ts, message: { content: [...extra, { type: 'text', text: t }], stop_reason: 'end_turn' } });
+  // Nothing to write is false, not 'busy'.
+  {
+    const c = 'C:\\hl-E-nothing', d = store(c), tr = join(d, 'e1.jsonl');
+    writeFileSync(tr, lines(U('a prompt nobody has answered', '2026-09-12T08:00:00Z')));
+    ok(handoff({ cwd: c, transcript_path: tr, session_id: 'nothing1' }) === false, 'a transcript with no finished turn writes nothing, and says false');
+  }
+  // The reply Stop passes joins what the journal reads as said, unless the transcript already ends with it.
+  {
+    const c = 'C:\\hl-E-said', d = store(c), tr = join(d, 'e2.jsonl'); let got;
+    writeFileSync(tr, lines(U('a closed ask', '2026-09-12T08:00:00Z'), A('the older text', '2026-09-12T08:00:05Z')));
+    handoff({ cwd: c, transcript_path: tr, session_id: 'saidses1', hook_event_name: 'Stop', last_assistant_message: 'the newer text' }, (dd, p, g) => { got = g; });
+    ok(got?.length === 1 && got[0].said.endsWith('the newer text') && got[0].said.includes('the older text'), 'the reply Stop passes is added to what the turn said');
+    writeFileSync(tr, lines(U('a closed ask', '2026-09-12T08:00:00Z'), A('the same text', '2026-09-12T08:00:05Z')));
+    handoff({ cwd: c, transcript_path: tr, session_id: 'saidses1', hook_event_name: 'Stop', last_assistant_message: 'the same text' }, (dd, p, g) => { got = g; });
+    ok(got?.length === 1 && got[0].said === 'the same text', 'and not again when the transcript already ends with it');
+  }
+  // A StopFailure for a turn the transcript already holds does not list it twice.
+  {
+    const c = 'C:\\hl-E-fail', d = store(c), tr = join(d, 'e3.jsonl');
+    writeFileSync(tr, lines(U('fix the build', '2026-09-12T08:00:00Z'), A('fixed it', '2026-09-12T08:00:05Z', [{ type: 'tool_use', id: 'x1', name: 'Edit', input: { file_path: 'C:/p/build.js' } }])));
+    handoff({ cwd: c, transcript_path: tr, session_id: 'failses1', hook_event_name: 'StopFailure' });
+    ok(nAsked(d) === 1 && /fixed it/.test(docOf(d)), 'a StopFailure for a turn that has its reply lists it once');
+  }
+  // A turn asked while the project was off is not written.
+  {
+    const c = 'C:\\hl-E-periods', d = store(c), tr = join(d, 'e4.jsonl');
+    const t1 = Date.parse('2026-09-12T08:00:00Z'), t2 = Date.parse('2026-09-12T09:00:00Z');
+    writeFileSync(join(d, '.off-periods'), `${t1 - 60000} ${t1 + 60000}\n`);
+    writeFileSync(tr, lines(U('asked while off', '2026-09-12T08:00:00Z'), A('reply one', '2026-09-12T08:00:05Z'), U('asked after it was on', '2026-09-12T09:00:00Z'), A('reply two', '2026-09-12T09:00:05Z')));
+    handoff({ cwd: c, transcript_path: tr, session_id: 'perioda1' });
+    ok(nAsked(d) === 1 && /asked after it was on/.test(docOf(d)) && !/asked while off/.test(docOf(d)), 'a turn asked in a period the project was off is left out');
+  }
+  // Exchanges forget took out all go, not only one.
+  {
+    const c = 'C:\\hl-E-forget', d = store(c), tr = join(d, 'e5.jsonl');
+    writeFileSync(tr, lines(U('first to forget', '2026-09-12T08:00:00Z', { uuid: 'u-one' }), A('first reply', '2026-09-12T08:00:05Z'), U('second to forget', '2026-09-12T08:10:00Z', { uuid: 'u-two' }), A('second reply', '2026-09-12T08:10:05Z'), U('a third to keep', '2026-09-12T08:20:00Z', { uuid: 'u-three' }), A('third reply', '2026-09-12T08:20:05Z')));
+    handoff({ cwd: c, transcript_path: tr, session_id: 'forgets1' });
+    ok(nAsked(d) === 3, 'the three exchanges are written');
+    mkdirSync(join(d, 'journal'), { recursive: true });
+    writeFileSync(join(d, 'journal', '.forgotten'), ['u-one', 'u-two'].map((k) => `${k}\t${basename(dirname(tr))}/e5\t2026-09-12 08:00`).join('\n') + '\n');
+    handoff({ cwd: c, transcript_path: tr, session_id: 'forgets1' });
+    ok(nAsked(d) === 1 && /a third to keep/.test(docOf(d)), `both exchanges forget listed go from handoff.md (${nAsked(d)} left)`);
+  }
+  // A journal day that cannot be read is no copy: the entry is written all the same.
+  {
+    const c = 'C:\\hl-E-day', d = store(c), tr = join(d, 'e6.jsonl');
+    for (const day of ['2026-09-11', '2026-09-12', '2026-09-13']) mkdirSync(join(d, 'journal', `${day}.md`), { recursive: true });
+    writeFileSync(tr, lines(U('asked with a day that will not read', '2026-09-12T12:00:00Z', { uuid: 'u-day' }), A('answered', '2026-09-12T12:00:05Z')));
+    let r; try { r = handoff({ cwd: c, transcript_path: tr, session_id: 'dayses01' }); } catch (e) { r = String(e); }
+    ok(r === true && /asked with a day that will not read/.test(docOf(d)), `a journal day that will not read does not stop the entry (got ${r})`);
+  }
+}
+// 1.5.3 holes: redact() itself, in the shapes the Stop tests never reach (they hush the whole turn first).
+{
+  ok(!/6655/.test(redact('note <private my pin is 6655 open it')), 'an opener never closed takes the rest of the text with it');
+  ok(!/hunter2xyz/.test(redact('APP_pwd: hunter2xyz')), 'a name ending in _pwd hides its value');
+  ok(redact('Cookie: =abc123def456; x=1') === 'Cookie: =abc123def456; x=1', 'a cookie header whose first pair has no name is not a cookie pair: left as written');
+  ok(!/abcdefghij1234567890/.test(redact('bearer abcdefghij1234567890')), 'a lowercase bearer token is cut');
+  ok(!/S3cretPw9/.test(redact('htpasswd -b alice S3cretPw9')), 'htpasswd -b with a user and no file saves no password');
+  ok(!/hunter2xyz/.test(redact('redis-cli ' + '-n 1 '.repeat(40) + 'AUTH hunter2xyz')), 'redis-cli AUTH after 40 options hides its password');
+  // The bound is a speed limit (an open-ended run was quadratic), documented in store.mjs.
+  ok(/hunter2xyz/.test(redact('redis-cli ' + '-n 1 '.repeat(45) + 'AUTH hunter2xyz')), 'and past 45 options the run is not followed');
+}
+// 1.5.3 holes: FORGETS gives up (as a forget, the safe way) when its step budget of 8 per character plus 64 runs out.
+{
+  const { FORGETS } = await import('./handoff-log.mjs');
+  // Each option holds another memory.mjs, so every opener walks the rest of the chain: quadratic, and 239 links outrun 8 per character.
+  const chain = (n) => 'memory.mjs' + ' --x=memory.mjs'.repeat(n);
+  ok(FORGETS.test(chain(238)) === false && FORGETS.test(chain(239)) === true, 'FORGETS stops at its step budget: 238 links read through, 239 count as a forget');
+}
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
