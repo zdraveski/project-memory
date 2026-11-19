@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.3 (2026-11-19)
+
+This release makes the plugin tell you when an update is waiting to be loaded, catches git commands hidden inside quotes, and fixes a rare case where a conversation in a very long folder path was saved to the wrong project. Most of the work is out of sight: the tests now catch about 1,200 more kinds of mistake.
+
+### Updates
+
+- **After an update, an open conversation says once: `project-memory X is installed, run /reload-plugins to use it`.** A conversation keeps running the version it started with, so until now an update did nothing there until a restart, without a word.
+
+### Checked lessons
+
+- **The git rule check sees a command wrapped in quotes for a shell**, like `cmd /c "git add -A"`, `bash -c "git add -A"` or `powershell -Command "git add -A"`.
+- **A single `&` separates two commands**, so `cd repo & git add -A` is checked like `cd repo && git add -A`.
+
+### Saving
+
+- **A conversation started in a subfolder of a project is saved to the project's memory even when the folder path is very long**, for example a deep path in Cyrillic or Chinese letters. Before, it could go to a separate memory for the subfolder.
+
+### Asking Claude
+
+- **Claude knows that a one-character Chinese or Japanese word can be searched**, and that turning off Claude Code's auto memory also turns off project-memory, so it answers questions about both correctly.
+
 ## 1.5.2 (2026-11-18)
 
 This release fixes what an audit of 1.5.1 found: a few places where a private conversation or a forgotten entry could still leave text behind, a reply that could be lost without a trace, a `forget --purge` that timed out on a long history, and searches that came back empty when they should not have. Updating is recommended. Your existing memory works as it is.
