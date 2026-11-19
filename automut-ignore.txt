@@ -87,7 +87,7 @@ b6d474d5253d memory-tier.mjs:629 the log cut's cleanup `force: true` -> `false`:
 ba05b91db59f memory-tier.mjs:729 `s === 'busy' && stop` -> `||`: this sits inside `if (stop)`, so stop is always true and `s === 'busy' || stop` is always true; a Stop that is not busy would only handoff a second time (the same turn, already written: nothing changes) after a 0.2-0.8 s pause
 eea2bb7f4a50 memory-tier.mjs:729 the retry's `lockBudget(true)` -> `false`: the retry takes one lock, and one lock waits LOCK_WAIT with a budget of LOCK_WAIT or with none, so the retry waits the same 2 s either way
 d6c2bd393d7c journal.mjs:240 `!t && !r.whole` -> `||`: with a turn found, the look back re-picks the same turn (the latest one opened by the start); with the whole file read, promptBefore finds no earlier prompt and `a.open` is the turn pick() gave; only a `<private-session>` before the tail would differ, and the Stop that read it has listed the conversation as private, which hushed() reads first
-c9b569de6f7c memory.mjs:584 `e < 0` -> `e < 1`: indexOf(10, at) is 0 only for a stream that starts with a newline, and git fast-export's never does
+c9b569de6f7c memory.mjs:586 dropPaths `e < 0` -> `e < 1`: e is an absolute index and the stream starts with "blob" or "commit", so no line ends at index 0; e < 0 is only the no-newline-at-all case, which fast-export never gives
 c8d9faec140c memory.mjs:584 `e < 0` -> `e <= 0`: indexOf(10, at) is 0 only for a stream that starts with a newline, and git fast-export's never does
 a0bf31efd2f0 memory.mjs:584 `buf.length - 1` -> `- 2`: the fallback is only taken by a last line with no newline, and git fast-export's stream ends in one
 710f9d2c68ce memory.mjs:1208 show's `args.length > 1` -> `>= 1`: with one word, `[args.join(' ')]` is `args`, the same key
@@ -113,3 +113,10 @@ d65fb503de9d memory.mjs:436 `j?.broken` -> `j.broken`: summary() always returns 
 885001975974 memory.mjs:347 `next.length >= body.length` -> `>`: a cut always removes at least the start marker, so next is always shorter; the equal case that tells >= from > never arises
 82e1c30d7059 memory.mjs:345 `a === -1` -> `a === -2`: with a = -1 b is undefined, next is the body plus all but its last character, longer than the body, and the length guard on the next line breaks out exactly as `a === -1` would
 3fe785e00d87 memory.mjs:344 `?? { a: -1 }` -> `|| { a: -1 }`: find() returns an object or undefined, and an object is never falsy, so both give the same
+c8d9faec140c memory.mjs:586 dropPaths `e < 0` -> `e <= 0`: e is an absolute index and the stream starts with "blob" or "commit", so no line ends at index 0; e < 0 is only the no-newline-at-all case, which fast-export never gives
+e86b7ade944a memory.mjs:586 dropPaths `buf.length - 1` -> `buf.length + 1`: the line that has no final newline; fast-export output always ends with one, so no input reaches it
+c9b569de6f7c memory.mjs:586 dropPaths `e < 0` -> `e < 1`: e is an absolute index and the stream starts with "blob" or "commit", so no line ends at index 0; e < 0 is only the no-newline-at-all case, which fast-export never gives
+a0bf31efd2f0 memory.mjs:586 dropPaths `buf.length - 1` -> `buf.length - 2`: the line that has no final newline; fast-export output always ends with one, so no input reaches it
+d8b744d5a58b memory.mjs:583 `({ n: '\n', t: '\t' })[c] ?? c` -> `|| c`: the mapped values are '\n' and '\t', never falsy, so both give the same
+b46318518be8 memory.mjs:590 dropPaths `/^D (.*)$/.exec(t)?.[1]` -> `[2]`: a D line of a dropped path stays in the stream, and the M lines that added it are dropped, so it deletes a path that is not in the tree, which fast-import takes as a no-op; the saved trees are the same
+e59efb7080cc memory.mjs:590 dropPaths `?.[1] ?? /^D` -> `|| /^D`: the M line's path is never the empty string, so `??` and `||` give the same

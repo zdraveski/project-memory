@@ -170,12 +170,14 @@ r = await cli('restore', 'deploy-notes', '--force');
 ok(r.status === 1 && /already matches/.test(r.stdout), `a restore that would change nothing says so, not "restored" (got ${r.stdout.trim()})`);
 // The copy of what --force replaces cannot be kept (its object folder is a file here): nothing is replaced (1.3.1 audit D-8).
 {
-  writeFileSync(join(dir, 'deploy-notes.md'), 'scribbled again');
-  const sha = spawnSync('git', ['hash-object', '--stdin'], { input: 'scribbled again', encoding: 'utf8' }).stdout.trim(), slot = join(kept[1], '.git', 'objects', sha.slice(0, 2));
-  const had = existsSync(slot);
-  if (!had) writeFileSync(slot, '');
+  const hashOf = (t) => spawnSync('git', ['hash-object', '--stdin'], { input: t, encoding: 'utf8' }).stdout.trim();
+  let again = 'scribbled again';
+  while (existsSync(join(kept[1], '.git', 'objects', hashOf(again).slice(0, 2)))) again += '!';   // a folder not there yet, so a file can take its place
+  writeFileSync(join(dir, 'deploy-notes.md'), again);
+  const sha = hashOf(again), slot = join(kept[1], '.git', 'objects', sha.slice(0, 2));
+  writeFileSync(slot, '');
   r = await cli('restore', 'deploy-notes', '--force');
-  ok(had || (r.status === 1 && readFileSync(join(dir, 'deploy-notes.md'), 'utf8') === 'scribbled again'), `--force replaces nothing when it cannot keep a copy (got ${r.stdout.trim()})`);
+  ok(r.status === 1 && readFileSync(join(dir, 'deploy-notes.md'), 'utf8') === again && /could not be copied into the snapshots first; nothing restored/.test(r.stdout), `--force replaces nothing when it cannot keep a copy, and says so (got ${r.stdout.trim()})`);
   // Other text, whose copy goes to another object folder: on Windows the one just removed can stay unusable a moment
   // while a scanner holds it (1.3.1 mutant run).
   let other = 'scribbled thrice';
@@ -183,7 +185,7 @@ ok(r.status === 1 && /already matches/.test(r.stdout), `a restore that would cha
   writeFileSync(join(dir, 'deploy-notes.md'), other);
   r = await cli('restore', 'deploy-notes', '--force');
   ok(r.status === 0, `and once it can, --force restores (got ${r.stdout.trim()})`);
-  if (!had) unlinkSync(slot);
+  unlinkSync(slot);
 }
 ok(!/--all looks/.test((await cli('history', 'never-was', '--all')).stdout), 'history --all does not suggest --all');
 r = await cli('history', 'never-was');
@@ -3100,6 +3102,112 @@ again ${key2}
   ok(git('log', '--all', '-S' + key, '--format=%H') === '' && git('log', '--all', '-S' + key2, '--format=%H') === '' && git('cat-file', 'blob', 'refs/project-memory/replaced/lab').includes('[redacted]'), 'no snapshot nor the kept copy holds a key');
   r = rescan();
   ok(/nothing found; nothing changed/.test(r.stdout), `a second run finds nothing (got ${r.stdout})`);
+}
+
+// 1.5.3 holes: a purge drops only the named day, in every commit, and leaves the rest of the history as it was (a folder with a non-ASCII name is quoted by git).
+{
+  const { render } = await import('./journal.mjs');
+  const h9 = tempHome('purge2-'), r9 = join(h9.home, '.claude', 'projects'), tier = () => spawnSync(process.execPath, [TIER], { env: h9.env, encoding: 'utf8' });
+  const pd = join(r9, 'C--pürge-keep', 'memory'), word = 'quokkaz-' + 'purge', other = 'wombatz-' + 'stays';
+  mkdirSync(join(pd, 'journal'), { recursive: true });
+  const day = (d, text, k) => writeFileSync(join(pd, 'journal', `${d}.md`), `# Journal ${d}\n\n${render({ key: k, at: `${d} 10:00`, s: 'c0ffee12', t: 'C--pürge-keep/c0ffee12-full', branch: 'main', asked: text, answered: 'noted', changed: [], ran: [] })}\n`);
+  const git = (...a) => spawnSync('git', ['-C', r9, ...a], { encoding: 'utf8' });
+  day('2020-03-01', `remember ${word}`, 'pk1'); day('2020-03-02', `remember ${other}`, 'pk2');
+  writeFileSync(join(pd, 'MEMORY.md'), '# Memory Index\n');
+  tier(); tier();
+  unlinkSync(join(pd, 'journal', '2020-03-01.md'));   // a commit that deletes the day: a D line in the stream
+  tier(); tier();
+  day('2020-03-01', `remember ${word}`, 'pk1'); tier(); tier();
+  const commits = git('rev-list', '--all', '--count').stdout.trim(), held = (w) => git('log', '--all', '-S' + w, '--format=%H').stdout.trim() !== '';
+  ok(held(word) && held(other) && Number(commits) >= 3, `fixture: the snapshots hold both days over several commits (${commits})`);
+  mkdirSync(join(r9, '.git', 'pm-purge-old'), { recursive: true }); writeFileSync(join(r9, '.git', 'pm-purge-old', 'copy.git'), 'a killed run left this');
+  const r = spawnSync(process.execPath, [CLI, 'forget', word, '--yes', '--purge', '--store', pd], { env: h9.env, encoding: 'utf8' });
+  ok(/purged from the snapshots/.test(r.stdout) && !held(word), `the named day is gone from every commit (got ${r.stdout})`);
+  ok(!existsSync(join(r9, '.git', 'pm-purge-old')), 'the copy a killed run left behind is removed');
+  ok(git('grep', '--cached', '-l', word).stdout === '', 'the index holds no old blob of the purged day');
+  ok(held(other) && git('rev-list', '--all', '--count').stdout.trim() === commits, 'every commit and the other day stay');
+  const tree = git('ls-tree', '-r', '--name-only', '-z', 'HEAD').stdout.split('\0');
+  ok(tree.some((p) => p.endsWith('journal/2020-03-02.md')) && tree.some((p) => p.endsWith('/memory/MEMORY.md')) && !tree.some((p) => p.endsWith('2020-03-01.md')), `the latest snapshot keeps every other file (got ${tree.join('|')})`);
+  ok(/Memory Index/.test(git('show', `HEAD:C--pürge-keep/memory/MEMORY.md`).stdout) || /Memory Index/.test(git('-c', 'core.quotepath=off', 'show', 'HEAD:C--pürge-keep/memory/MEMORY.md').stdout), 'a kept file reads back as it was');
+  // A snapshot in flight (any one of git's own locks, or the purge's) is no time to rewrite: said in words, and the lock is not ours to remove.
+  for (const lock of ['index.lock', 'config.lock']) {
+    day('2020-03-01', `remember ${word}`, 'pk1');
+    const lf = join(r9, '.git', lock); writeFileSync(lf, '');
+    const busy = spawnSync(process.execPath, [CLI, 'forget', word, '--yes', '--purge', '--store', pd], { env: h9.env, encoding: 'utf8' });
+    ok(/could not be purged \(a snapshot is being taken; try again in a moment\)/.test(busy.stdout) && existsSync(lf), `a purge gives way to ${lock} (got ${busy.stdout})`);
+    unlinkSync(lf);
+  }
+}
+
+// 1.5.3 holes: rescan over a history alone (copies of one blob, a commit message, a BOM, a blob that is not UTF-8, a kept copy), what a failed rewrite or a leftover tag says, and the no-snapshots cases.
+{
+  const h = tempHome('rescan3-'), pr = join(h.home, '.claude', 'projects'), a = join(pr, 'C--rc', 'memory');
+  const key = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8', key2 = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2', key3 = 'ghp_' + 'Q1w2E3r4T5y6U7i8O9p0A1s2D3f4G5h6J7k8';
+  const key4 = 'ghp_' + 'M1n2B3v4C5x6Z7a8S9d0F1g2H3j4K5l6P7o8', key5 = 'ghp_' + 'L9k8J7h6G5f4D3s2A1p0O9i8U7y6T5r4E3w2';
+  const sh = (cmd, args) => spawnSync(cmd, args, { env: h.env, encoding: 'utf8' });
+  const snap = () => { sh(process.execPath, [TIER]); sh(process.execPath, [TIER]); };
+  const rescan = (...x) => sh(process.execPath, [CLI, 'rescan', ...x]);
+  const git = (...x) => sh('git', ['-C', pr, ...x]);
+  mkdirSync(join(a, 'journal'), { recursive: true });
+  writeFileSync(join(a, 'MEMORY.md'), '# Memory Index\n');
+  const same = `---\nname: x\n---\nkey ${key}\n`, put = (n, b) => { writeFileSync(join(a, n), b); utimesSync(join(a, n), tenMin, tenMin); };
+  put('journal/2020-03-03.md', same);
+  put('journal/2020-03-01.md', Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(`---\nname: bom\n---\nkey ${key2}\n`)]));
+  put('journal/2020-03-02.md', Buffer.concat([Buffer.from([0xFF, 0x20]), Buffer.from(`${key3}\n`)]));
+  snap();
+  put('journal/2020-03-04.md', same); snap();   // the same text again: the same blob, a second and third snapshot with it
+  put('journal/2020-03-05.md', same); snap();
+  for (const n of ['03', '04', '05', '01', '02']) unlinkSync(join(a, 'journal', `2020-03-${n}.md`));
+  snap();
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--allow-empty', '-q', '-m', `pasted ${key5}`);   // a secret in a commit message
+  const kept = spawnSync('git', ['-C', pr, 'hash-object', '-w', '--stdin'], { input: `old note ${key}\n`, encoding: 'utf8' }).stdout.trim();
+  git('update-ref', 'refs/project-memory/replaced/lab', kept);
+  put('handoff.md.prev', `the old handoff had ${key4}\n`);
+  let r = rescan();
+  const dry = r.stdout;
+  ok(r.status === 0 && /^files now: 1 secret in 1 file: C--rc\/memory\/handoff\.md\.prev \(1\)\nsnapshots: 4 secrets in 2 saved versions of 4 files, in 4 snapshots, and 1 kept copies of replaced notes: C--rc\/memory\/journal\/2020-03-01\.md, C--rc\/memory\/journal\/2020-03-03\.md, C--rc\/memory\/journal\/2020-03-04\.md, C--rc\/memory\/journal\/2020-03-05\.md\nnothing has been changed \(dry run\); rescan --apply --yes redacts them\n$/.test(dry), `a history alone is counted: copies of one blob are separate snapshots, a message counts, a blob that is not UTF-8 does not (got ${JSON.stringify(dry)}${r.stderr.slice(0, 200)})`);
+  r = rescan('--apply');
+  ok(r.status === 0 && r.stdout.startsWith('Before you go on, revoke or rotate') && r.stdout.endsWith('nothing has been changed; add --yes to go on\n') && readFileSync(join(a, 'handoff.md.prev'), 'utf8').includes(key4), `--apply without --yes warns and changes nothing (got ${JSON.stringify(r.stdout)})`);
+  // One of git's own locks, alone, is a snapshot in flight.
+  for (const lock of ['HEAD.lock', 'index.lock']) {
+    const lf = join(pr, '.git', lock); writeFileSync(lf, '');
+    r = rescan('--apply', '--yes');
+    ok(r.status === 1 && r.stdout.trim() === 'a snapshot is being taken; try again in a moment; nothing changed' && existsSync(lf) && readFileSync(join(a, 'handoff.md.prev'), 'utf8').includes(key4), `rescan gives way to ${lock} (got ${JSON.stringify(r.stdout)})`);
+    unlinkSync(lf);
+  }
+  // A kept copy that cannot be rewritten: said, with the backup's place, and not reported as done.
+  const rl = join(pr, '.git', 'refs', 'project-memory', 'replaced', 'lab.lock'); writeFileSync(rl, '');
+  r = rescan('--apply', '--yes');
+  ok(r.status === 1 && /the snapshots could not be rewritten \(.+\); backup: /.test(r.stdout) && !/redacted \d+ in files/.test(r.stdout), `a failed rewrite is said, not reported as done (got ${JSON.stringify(r.stdout)})`);
+  unlinkSync(rl);
+  // A tag keeps the old history: what is still found is said, and the run does not count as clean.
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'tag', '-a', 'v1', '-m', `tag ${key}`);
+  r = rescan('--apply', '--yes');
+  ok(r.status === 1 && /redacted 0 in files and \d+ in the snapshots; \d+ still found in the snapshots\n/.test(r.stdout), `what a tag still holds is said and fails the run (got ${JSON.stringify(r.stdout)})`);
+  const at = (f) => git('log', 'HEAD', '--diff-filter=A', '--format=%H', '--', `C--rc/memory/${f}`).stdout.trim().split('\n')[0];
+  const bytes = (f) => spawnSync('git', ['-C', pr, 'show', `${at(f)}:C--rc/memory/${f}`], { encoding: 'buffer' }).stdout;
+  const bm = bytes('journal/2020-03-01.md'), bd = bytes('journal/2020-03-02.md');
+  ok(bm[0] === 0xEF && bm[1] === 0xBB && bm[2] === 0xBF && !bm.toString().includes(key2) && bm.toString().includes('[redacted]'), 'a blob with a byte order mark is redacted and keeps the mark');
+  ok(bd.equals(Buffer.concat([Buffer.from([0xFF, 0x20]), Buffer.from(`${key3}\n`)])), 'a blob that is not UTF-8 is left exactly as it was');
+}
+{ // No snapshots: a note, a folder named like one, then a repository around the store, then a repository with no commit.
+  const h = tempHome('rescan4-'), p = join(h.home, '.claude', 'projects'), d = join(p, 'C--rd', 'memory'), key = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8';
+  const rs = (...x) => spawnSync(process.execPath, [CLI, 'rescan', ...x], { env: h.env, encoding: 'utf8' });
+  mkdirSync(join(d, 'dir.md'), { recursive: true });
+  writeFileSync(join(d, 'MEMORY.md'), '# Memory Index\n'); writeFileSync(join(d, 'clean.md'), '---\nname: clean\n---\nnothing here\n');
+  let r = rs();
+  ok(r.status === 0 && r.stdout === 'files now: 0 secrets in 0 files\nsnapshots: none to scan\nnothing found; nothing changed\n', `no snapshots and no secret: nothing found, a folder named dir.md skipped (got ${JSON.stringify(r.stdout)}${r.stderr.slice(0, 200)})`);
+  writeFileSync(join(d, 'leak.md'), `---\nname: leak\n---\n${key}\n`);
+  r = rs();
+  ok(r.status === 0 && r.stdout === 'files now: 1 secret in 1 file: C--rd/memory/leak.md (1)\nsnapshots: none to scan\nnothing has been changed (dry run); rescan --apply --yes redacts them\n', `a secret in a file alone is reported (got ${JSON.stringify(r.stdout)})`);
+  unlinkSync(join(d, 'leak.md'));
+  spawnSync('git', ['init', '-q', h.home], { encoding: 'utf8' });
+  spawnSync('git', ['-C', h.home, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--allow-empty', '-q', '-m', 'x'], { encoding: 'utf8' });
+  r = rs();
+  ok(r.stdout.includes('snapshots: none to scan') && r.stdout.includes('nothing found'), `a repository around the store is no snapshot of it (got ${JSON.stringify(r.stdout)})`);
+  spawnSync('git', ['init', '-q', p], { encoding: 'utf8' });
+  r = rs();
+  ok(r.stdout.includes('snapshots: none to scan') && r.stdout.includes('nothing found'), `a repository with no commit has no snapshot (got ${JSON.stringify(r.stdout)})`);
 }
 
 console.log(`memory: ${checks} checks passed`);
