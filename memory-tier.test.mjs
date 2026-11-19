@@ -2459,6 +2459,16 @@ ${b}
   for (const v of [ours, `${a}.${b}.${c - 1}`, `${a}.${b - 1}.99`, `${a - 1}.99.99`, 'garbage']) { installed(v); ok(!said('reload2').includes('reload-plugins'), `no notice when ${v} is installed and ${ours} runs`); }
   installed(`${a}.${b}.${c}.1`);
   ok(said('reload3').includes(`${a}.${b}.${c}.1 is installed`), 'a longer version with the same start is newer');
+  // Past the compaction trigger in the same Stop: one JSON line carries both, the notice for the user and the nudge for Claude.
+  {
+    const { TRIGGER, WINDOW } = await import('./compact-gate.mjs'), big = join(root, 'proj-two', 'big.jsonl'), ctx = Math.round(TRIGGER * WINDOW) + 20_000;
+    const rec = (type, content, message = {}) => JSON.stringify({ type, timestamp: '2026-09-13T13:00:00Z', message: { content, ...message } });
+    writeFileSync(big, [rec('user', [{ type: 'text', text: 'q' }]), rec('assistant', [{ type: 'text', text: 'a' }], { stop_reason: 'end_turn', usage: { input_tokens: 3, cache_read_input_tokens: ctx - 3, cache_creation_input_tokens: 0, output_tokens: 9 } })].join('\n') + '\n');
+    const r = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ hook_event_name: 'Stop', cwd: 'C:\\nowhere', transcript_path: big, session_id: 'reload5' }) });
+    const out = JSON.parse(r.stdout.split('\n').find((l) => l.startsWith('{')) ?? '{}');
+    ok(out.systemMessage?.includes('reload-plugins') && /update memory/.test(out.hookSpecificOutput?.additionalContext ?? ''), `the notice and the compaction nudge both survive one Stop (got ${r.stdout.trim()})`);
+    rmSync(big, { force: true });
+  }
   rmSync(plug, { recursive: true, force: true }); rmSync(at, { recursive: true, force: true });
   ok(!said('reload4').includes('reload-plugins'), 'no notice without an installed plugin');
 }
