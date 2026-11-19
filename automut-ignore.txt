@@ -93,3 +93,10 @@ a0bf31efd2f0 memory.mjs:584 `buf.length - 1` -> `- 2`: the fallback is only take
 710f9d2c68ce memory.mjs:1208 show's `args.length > 1` -> `>= 1`: with one word, `[args.join(' ')]` is `args`, the same key
 b46318518be8 memory.mjs:588 the D line's `exec(t)?.[1]` -> `[2]`: the D line of a path the purge drops is then kept, which deletes a file the stream never made (its M lines are dropped), and fast-import takes that without a word; the M line's group is the one the purge tests watch
 2fbd3fde3aa4 enforce.mjs:115 `&&` -> `||` in the lead-word loop: it never ends (every token satisfies `i < length || ...` once past the end), so the suite hangs until the 120 s clock cuts it off and it is reported TIMED OUT; a hang is a kill that no assertion can state
+e6742d94599c compact-gate.mjs:237 recover's `{ ask: false }` -> `{ ask: true }`: the two reads end on the same last events (the tail's own, which the longer read only precedes), so both give the same midTurn; `ask` only sets how far back the read goes
+afc0cd21d7dd compact-gate.mjs:67 `PCT < 96` -> `PCT <= 96`: at PCT = 96 the cut is 96 / 96 = 1, the value the other branch gives
+d5717f125432 compact-gate.mjs:213 inflight's `return false` -> `return undefined`: the gate reads the result as `!n` (nothing written) and both are falsy
+33330a2d3c49 compact-gate.mjs:333 arm's `catch { return false; }` -> `undefined`: its callers read only the truthiness of the result (`!arm(...)`, or ignore it), and both are falsy
+5e730b8cfac0 compact-gate.mjs:391 isOff's `catch { return false; }` -> `{}`: the catch then yields undefined, read as `else if (payload && undefined)`, falsy as false is
+f7680c2e1849 compact-gate.mjs:391 isOff's catch `return false` -> `return undefined`: read as `else if (payload && undefined)`, falsy as false is
+099b1b2a986f compact-gate.mjs:391 isOff's catch `return false` -> `return true`: storeOf and isOff catch their own file errors and throw for no payload shape a hook can send (checked: NUL, objects, long and relative paths, non-objects); only process.cwd() failing (the hook's own folder deleted) throws, which the suite cannot set on Windows, where a folder in use cannot be removed
