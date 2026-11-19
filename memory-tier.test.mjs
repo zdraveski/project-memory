@@ -1714,6 +1714,18 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   ok(!await hotAt({ name: 'seen', modified: stamped }, Date.parse(stamped) + 7 * DAY), 'and archived when the seventh day is out');
   // A date that is not one (month 13, day 45, Feb 31) is no event date: the note goes by its modified time.
   for (const bad of ['2026-13-45', '2026-00-10', '2026-02-31']) ok(await hotAt({ name: `typo-${bad}` }, Date.now()), `a name dated ${bad} is tiered by its modified time, not archived at once`);
+  // Day zero is a date: a note named for 1970-01-01, or stamped with its first millisecond, is old, not "no date" (0 is falsy, not missing).
+  ok(!await hotAt({ name: 'log-1970-01-01' }, Date.now()), 'a name dated 1970-01-01 is an event log from 1970, archived');
+  {
+    const d = tempDir('memtier-epoch-'), idx = `- [zero](zero.md) — hook
+`;
+    writeNote(d, 'zero', { modified: '1970-01-01T00:00:00.000Z' });
+    for (const run of ['read from the note', 'read from the cache of the first run']) {
+      writeFileSync(join(d, 'MEMORY.md'), idx);
+      await tierDir(d, '--now', String(Date.now()));
+      ok(!readOr(join(d, 'MEMORY.md')).includes('(zero.md)'), `a note stamped at the epoch is archived (${run})`);
+    }
+  }
 
   const whole = Math.floor(Date.now() / 1000) * 1000 - 600000, wholeAt = new Date(whole);   // to the second: the mtime is read back exact
   const ghost = async (nowMs) => {
@@ -1866,6 +1878,15 @@ require('node:module').syncBuiltinESMExports();
     const t = await shared3(5001, 3);
     ok(has(t.main, t.ls[0]) && !has(t.main, t.ls[1]) && !has(t.main, t.ls[2]) && has(t.main, t.ls[3]),
       `rules over their share go oldest first until the rest fit it, one byte over included (got ${t.main.split('\n').map((l) => l.slice(0, 12)).join('|')})`);
+  }
+
+  {
+    // A rule named for 1970-01-01 is the oldest by its date (day zero is a date), though its file is the newest: it goes first.
+    const specs = [{ name: 'pin', tier: 'hot', days: 400, len: 5001 }, { name: 'rule-1970-01-01', type: 'feedback', days: 5, len: 499 },
+      { name: 'rule-0', type: 'feedback', days: 300, len: 499 }, { name: 'rule-2', type: 'feedback', days: 280, len: 499 },
+      ...[0, 1, 2].map((i) => ({ name: `work-${i}`, days: 3 - i * 0.01, len: 499 }))];
+    const z = await settle(specs);
+    ok(!has(z.main, z.ls[1]) && !has(z.main, z.ls[2]) && has(z.main, z.ls[3]), `a rule dated day zero in its name is evicted first (got ${z.main.split('\n').map((l) => l.slice(0, 12)).join('|')})`);
   }
 
   // --- the snapshot, with a git that fails on purpose ---
@@ -2441,7 +2462,7 @@ ${b}
 {
   const plug = join(home, '.claude', 'plugins'), at = join(home, 'cache-pm'), ours = JSON.parse(readFileSync(new URL('./.claude-plugin/plugin.json', import.meta.url), 'utf8')).version;
   mkdirSync(join(at, '.claude-plugin'), { recursive: true }); mkdirSync(plug, { recursive: true });
-  const installed = (v) => { writeFileSync(join(at, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: v })); writeFileSync(join(plug, 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@project-memory': [{ installPath: at }] } })); };
+  const installed = (v) => { writeFileSync(join(at, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: v })); writeFileSync(join(plug, 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@some-market': [{ installPath: at }] } })); };
   const said = (id) => {
     const r = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: join(root, 'proj-two', 'session.jsonl'), session_id: id }) });
     const line = r.stdout.split('\n').find((l) => l.startsWith('{'));
@@ -2469,6 +2490,23 @@ ${b}
     ok(out.systemMessage?.includes('reload-plugins') && /update memory/.test(out.hookSpecificOutput?.additionalContext ?? ''), `the notice and the compaction nudge both survive one Stop (got ${r.stdout.trim()})`);
     rmSync(big, { force: true });
   }
+  // Part by part, a part that is not a number rules the whole version out, even after a larger number; a -1 part is a number, equal to a missing one.
+  installed(`${a + 1}.x.0`); ok(!said('reload6').includes('reload-plugins'), 'a version with one part not a number is no newer one');
+  installed(`${a}.${b}.${c}.-1`); ok(!said('reload6').includes('reload-plugins'), 'a -1 part equals a missing one, so it is no newer one');
+  installed(`${a}.${b}.${c}.-1.1`); ok(said('reload6').includes('is installed'), 'a number after a -1 part counts: the -1 equals a missing one and the next part is past it');
+  // Another session, another mark: the same version is named once in each. A Stop with no session id has one mark of its own, as the id 'none' does.
+  installed('99.0.2');
+  ok(said('reload7a').includes('99.0.2 is installed') && said('reload7b').includes('99.0.2 is installed'), 'each session is told once, not one for all');
+  ok(said(undefined).includes('99.0.2 is installed') && !said('none').includes('reload-plugins'), 'a Stop with no session id shares the mark of the id none');
+  // The plugin's own entry is the first of its list, and installed_plugins.json may list another before it under a name that is not ours.
+  const old = join(home, 'cache-old'); mkdirSync(join(old, '.claude-plugin'), { recursive: true }); writeFileSync(join(old, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: ours }));
+  installed('99.0.3'); writeFileSync(join(plug, 'installed_plugins.json'), JSON.stringify({ plugins: { 'other@x': [{ version: '999.0.0' }], 'project-memory@some-market': [{ installPath: at }, { installPath: old }] } }));
+  ok(said('reload8') === '0 project-memory 99.0.3 is installed, run /reload-plugins to use it', 'the first entry of the plugin is the one read, not a later entry or another plugin');
+  rmSync(old, { recursive: true, force: true });
+  // A mark that cannot be written is no notice at all: said at every Stop otherwise.
+  installed('99.0.4'); rmSync(join(root, '.nudge'), { recursive: true, force: true }); writeFileSync(join(root, '.nudge'), 'a file where the folder goes');
+  ok(said('reload9') === '0 ' && said('reload9') === '0 ', 'a mark that cannot be written leaves the notice unsaid, every Stop');
+  rmSync(join(root, '.nudge'), { force: true });
   rmSync(plug, { recursive: true, force: true }); rmSync(at, { recursive: true, force: true });
   ok(!said('reload4').includes('reload-plugins'), 'no notice without an installed plugin');
 }
