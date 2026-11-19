@@ -93,3 +93,22 @@ a0bf31efd2f0 memory.mjs:584 `buf.length - 1` -> `- 2`: the fallback is only take
 710f9d2c68ce memory.mjs:1208 show's `args.length > 1` -> `>= 1`: with one word, `[args.join(' ')]` is `args`, the same key
 b46318518be8 memory.mjs:588 the D line's `exec(t)?.[1]` -> `[2]`: the D line of a path the purge drops is then kept, which deletes a file the stream never made (its M lines are dropped), and fast-import takes that without a word; the M line's group is the one the purge tests watch
 2fbd3fde3aa4 enforce.mjs:115 `&&` -> `||` in the lead-word loop: it never ends (every token satisfies `i < length || ...` once past the end), so the suite hangs until the 120 s clock cuts it off and it is reported TIMED OUT; a hang is a kill that no assertion can state
+8f955f6e159f enforce.mjs:15 `slice(0, end)` start `0` -> `1`: it drops only the first `-` of the opening `---` line, and no `enforce:` line or indented line is ever that one
+6f3c92ae5fd5 enforce.mjs:15 `slice(0, end)` -> `end + 1`: it adds the newline that ends the last front-matter line, so `split` gains one empty last line, and the loop skips a line with no non-blank character
+fd7b62ba149f enforce.mjs:40 `got.on ?? ''` -> `||`: got.on is a string or undefined; an empty string and undefined both split to no words
+ab12328b2aa8 enforce.mjs:81 `lines.length - 1` -> `+ 1`: the break only skips the last line's cut and heredoc lookup; the cut() after the loop does the same cut (a trailing newline or space is trimmed), and no heredoc word can sit later than the last line
+086e155bcc46 enforce.mjs:83 `>` -> `>=` (first or second): the opener's own line n holds the opener, never the bare closing word (`last.get(w) > n` cannot tie), and `k > n` never matches line n for the same reason, so the findIndex finds the same line
+34f3b9b0e9d2 enforce.mjs:83 `>` -> `>=` (first or second): the opener's own line n holds the opener, never the bare closing word (`last.get(w) > n` cannot tie), and `k > n` never matches line n for the same reason, so the findIndex finds the same line
+5e69258a3ec1 enforce-hook.mjs:11 `input?.` / `tool_input?.` -> `.`: the line sits inside the hook's try; a throw and an undefined command both end silent with exit 0
+72567f282959 enforce-hook.mjs:11 `input?.` / `tool_input?.` -> `.`: the line sits inside the hook's try; a throw and an undefined command both end silent with exit 0
+1da0ff7a04dd enforce.mjs:118 `toks[i] ?? ''` -> `||`: toks[i] is a non-empty string or undefined (tokens drops empty words), so `||` and `??` give the same ''
+aa0dc6c5da6a enforce.mjs:140 `catch { continue; }` -> `{}`: j stays undefined, and the next line reads `j?.message`, so a line that is not JSON gives no command just as `continue` does
+ede52965c8f2 enforce.mjs:141 `j?.message` -> `j.message`: j is null only for a line that is exactly `null`, which holds no `git`; the earlier text filter skips such a line, and a throw would be caught by the surrounding try anyway
+b3387915a502 enforce.mjs:155 `j?.v` -> `j.v`: a cache file of `null` throws, and the catch right after it leaves old as {} - the same as the `?.` giving undefined
+ced72a9dbee6 enforce.mjs:156 `catch { return []; }` -> `{}`: a store whose folder cannot be listed has no cache either, so old is {} and names stays [], and the rest of the function returns [] for it
+4ad386c55dc8 enforce.mjs:166 `got = 0` -> `1`: got is only read after a successful readSync, which sets it; on a throw the finally closes the fd and the error leaves the try
+1ebb75f2c47a enforce.mjs:170 `r ?? null` -> `||`: r is null or an object (never a falsy non-null value), so both give the same
+a6bc39ccf135 enforce.mjs:202 `r.message?.content` -> `r.message.content`: a user line without `message` throws, which the surrounding try catches and skips, the same as the undefined content that never matches the mark
+4c65aec625f2 enforce.mjs:217 `size = 0` -> `1`: both are far below LOG_MAX, so the trim never runs for a file that cannot be read
+accf9c1bb283 enforce.mjs:218 `cut < 0` -> `<= 0`: cut is the index of a newline found from the middle of a file over LOG_MAX (256 KB), so it is never 0
+47ec38726494 enforce.mjs:218 `cut < 0` -> `cut < 1`: cut is the index of a newline found from the middle of a file over LOG_MAX (256 KB), so it is never 0 and the two tests agree

@@ -75,7 +75,7 @@ export function segments(command) {
       else if (c === '"' || c === "'") { q = c; cur += c; }
       else if (c === '`' && i + 1 === l.length) join = true;
       else if (c === '<' && l[i - 1] !== '<' && l[i + 1] === '<' && l[i + 2] !== '<' && (HD.lastIndex = i, m = HD.exec(l))) { docs.push(m[2]); cur += c; }
-      else if (';|{}()'.includes(c) || c === '&' && l[i + 1] === '&') { cut(); if (c === '&' || c === '|' && l[i + 1] === '|') i++; }
+      else if (';|{}()&'.includes(c)) cut();
       else cur += c;
     }
     if (n === lines.length - 1) break;
