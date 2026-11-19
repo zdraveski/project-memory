@@ -1333,6 +1333,15 @@ fs.readdirSync = (p, ...a) => { if (p === root) throw Object.assign(new Error(`E
 syncBuiltinESMExports();
 try { off({ session_id: 'capped00-0000' }); } finally { fs.readdirSync = rd; syncBuiltinESMExports(); }
 ok(tags().length === 10_001 && tags()[0] === 'many00050' && tags().at(-1) === 'capped00', `with no listing, the list keeps its newest 10,000 (got ${tags().length}, ${tags()[0]})`);
+// 1.5.3 holes: one project folder that will not list (not a file, which is ENOTDIR) is no listing either: nothing is pruned.
+const bad = join(root, 'C--unlistable');
+mkdirSync(bad, { recursive: true });
+writeFileSync(join(root, 'a-file-in-root'), '');
+writeFileSync(list, Array.from({ length: 150 }, (_, i) => `away${String(i).padStart(4, '0')}`).join('\n') + '\n');
+fs.readdirSync = (p, ...a) => { if (p === bad) throw Object.assign(new Error(`EACCES: permission denied, scandir '${p}'`), { code: 'EACCES' }); return rd(p, ...a); };
+syncBuiltinESMExports();
+try { off({ session_id: 'kept0000-0000' }); } finally { fs.readdirSync = rd; syncBuiltinESMExports(); rmSync(bad, { recursive: true }); rmSync(join(root, 'a-file-in-root')); }
+ok(tags().length === 151 && tags()[0] === 'away0000', `a folder that will not list prunes nothing (got ${tags().length})`);
 }
 
 // A turn that ran forget is written like a private one: its ask and its
@@ -4016,6 +4025,111 @@ if (!quick) {
   // Each option holds another memory.mjs, so every opener walks the rest of the chain: quadratic, and 239 links outrun 8 per character.
   const chain = (n) => 'memory.mjs' + ' --x=memory.mjs'.repeat(n);
   ok(FORGETS.test(chain(238)) === false && FORGETS.test(chain(239)) === true, 'FORGETS stops at its step budget: 238 links read through, 239 count as a forget');
+}
+// 1.5.3 holes (handoff-log, part 3): a slash command's name, the nudge tag's place, FORGETS's step budget and its skipped rescans, the calls and edits a turn keeps, and what clip does at exactly its pre-cut length.
+{
+  const { turns, prompt, asked, NUDGE_TAG, FORGETS, toolAnswers } = await import('./handoff-log.mjs');
+  {
+    const p = (s) => prompt({}, s);
+    ok(p('<command-name>/deploy</command-name><command-args> now </command-args>') === '/deploy now', 'a command and its args');
+    ok(p('<command-name>deploy</command-name>') === '/deploy', 'a name with no slash gets one');
+    ok(p('<command-message>x</command-name>') === '', 'a closer with no opener names no command');
+    ok(p('<command-message>deploy') === '', 'a message with no name names no command');
+    ok(p('<command-name>/deploy') === '', 'a name never closed names no command');
+    ok(p('<command-name></command-name>') === '' && p('<command-name>  </command-name>') === '', 'an empty name names no command');
+    ok(p('<command-name>a<b</command-name>') === '', 'a name with < names no command');
+    const n200 = '/' + 'x'.repeat(199);
+    ok(p(`<command-name>${n200}</command-name>`) === n200, 'a name of 200 is kept');
+    ok(p(`<command-name>${n200}y</command-name>`) === '', 'a name of 201 is not');
+    ok(p('<command-name>/a</command-name><command-args>b') === '/a', 'args never closed are none');
+    ok(p('<command-name>/a</command-name></command-args><command-args>b</command-args>') === '/a b', 'args read from their opener');
+  }
+  {
+    const r = { type: 'user' };
+    ok(asked(r, 'x'.repeat(168) + NUDGE_TAG) === true, 'a tag past 200 chars is an ordinary ask');
+    ok(asked(r, 'x'.repeat(167) + NUDGE_TAG) === false, 'a tag ending at 200 is a nudge');
+  }
+  {
+    ok(FORGETS.test('node memory.mjs search x') === false, 'a search is not a forget');
+    // The step cap is 8 per character plus 64: a command that takes exactly that many steps is read through, one more counts as a forget.
+    const quoted = (k) => 'memory.mjs' + ' --a "memory.mjs"'.repeat(k);
+    ok(FORGETS.test('z'.repeat(605) + quoted(302)) === false, 'a command taking exactly the step cap is not a forget');
+    ok(FORGETS.test('z'.repeat(584) + quoted(301)) === true, 'a command taking one step more than the cap counts as a forget');
+    // A bare value that a scan took is not scanned again; a quoted one holding memory.mjs is, so a chain of those hits the cap.
+    ok(FORGETS.test('memory.mjs' + ' --a memory.mjs'.repeat(600)) === false, 'a chain of bare values is read once');
+    ok(FORGETS.test(quoted(600)) === true, 'a chain of quoted memory.mjs values runs out of steps');
+  }
+  const J = (o) => JSON.stringify(o);
+  const T = '2026-09-11T07:00:00Z';
+  const u = (s, x = {}) => J({ type: 'user', timestamp: T, message: { content: [{ type: 'text', text: s }] }, ...x });
+  const a = (s) => J({ type: 'assistant', timestamp: T, message: { content: [{ type: 'text', text: s }] } });
+  const calls = (...bs) => J({ type: 'assistant', timestamp: T, message: { content: bs } });
+  const bash = (id, command) => ({ type: 'tool_use', name: 'Bash', id, input: { command } });
+  const edit = (id, file_path) => ({ type: 'tool_use', name: 'Edit', id, input: { file_path } });
+  const res = (id, content, is_error = true, x = {}) => J({ type: 'user', timestamp: T, ...x, message: { content: [{ type: 'tool_result', tool_use_id: id, content, is_error }] } });
+  const NO = "The user doesn't want to proceed with this tool use";
+  // 1.5.3 holes: what a turn keeps of its calls, and the records it reads past.
+  {
+    const t = turns([u('go'), calls(bash('b1', 'cmd1'), bash('b2', 'cmd2'), bash('b3', 'cmd3')), res('zz', NO), res('b1', NO), res('b3', 'boom'), a('done')].join('\n'));
+    ok(t.length === 1 && J(t[0].ran) === J(['cmd2', 'cmd3 → failed: boom']), 'a refused call drops only itself, a refusal of no call of the turn drops none: ' + J(t[0]?.ran));
+  }
+  {
+    const t = turns([u('go'), calls(edit('e1', 'a.js'), edit('e2', 'b.js'), edit('e3', 'c.js')), res('e1', 'x'), a('done')].join('\n'));
+    ok(J(t[0].changed) === J(['b.js', 'c.js']), 'an edit that errored drops its file only: ' + J(t[0].changed));
+  }
+  {
+    const t = turns([u('go'), calls(edit('e1', 'a.js'), edit('e2', 'b.js'), edit('e3', 'c.js'), edit('e4', 'a.js')), a('done')].join('\n'));
+    ok(J(t[0].changed) === J(['b.js', 'c.js', 'a.js']), 'a file edited again moves to the end: ' + J(t[0].changed));
+  }
+  {
+    const ask = { type: 'tool_use', name: 'AskUserQuestion', id: 'q1', input: { questions: [{ question: 'Which?' }] } };
+    const lines = [u('go'), a('start'), calls(ask), u('ok <private> x', { isMeta: true }), J({ type: 'user', timestamp: T, toolUseResult: { answers: { 'Which?': 'blue' } }, message: { content: [{ type: 'tool_result', tool_use_id: 'q1', content: 'x' }] } })];
+    const p = turns(lines.join('\n')).open;
+    ok(p.frozen === true && p.picked.length === 0, 'a pick that comes after a private message is not kept: ' + J(p.picked));
+    const l2 = [u('go'), a('start'), calls(ask), J({ type: 'user', timestamp: T, toolUseResult: { answers: { 'Which?': 'blue' } }, message: { content: [{ type: 'tool_result', tool_use_id: 'q1', content: 'x' }] } })];
+    ok(J(turns(l2.join('\n')).open.picked) === J(['blue']), 'a pick of an open turn is kept');
+  }
+  {
+    const nudge = J({ type: 'attachment', timestamp: T, attachment: { type: 'hook_additional_context', content: NUDGE_TAG + ' update' } });
+    const lines = [u('go'), a('reply'), nudge, '{"type":"assistant"}', J({ type: 'assistant', timestamp: T, message: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'memory updated' }] } }), '{"type":"attachment"}', a('after')];
+    const t = turns(lines.join('\n'));
+    ok(t.length === 1 && t[0].did === 'reply', 'records with no message or attachment after a nudge are read past: ' + J(t.map((x) => x.did)));
+  }
+  {
+    const t = turns([u('go'), calls(bash('b1', 'cmd1')), u('a skill body', { isMeta: true })].join('\n'));
+    ok(t.length === 0, 'a record the harness added is no interruption');
+    const s = turns([u('go'), calls(bash('b1', 'cmd1')), u('[Request interrupted by user]')].join('\n'));
+    ok(s.length === 1 && s[0].did === '[stopped before a reply]', 'an interrupted turn with a call is kept');
+    const d = turns([u('go'), calls(bash('b1', 'cmd1')), a('done'), u('[Request interrupted by user]')].join('\n'));
+    ok(d.length === 1 && d[0].did === 'done', 'an interrupted turn that replied is kept once: ' + d.length);
+    const w = turns([u('go'), calls(bash('b1', 'cmd1')), a('[Request interrupted by user for tool use]')].join('\n'));
+    ok(w.length === 1 && w[0].did === '[Request interrupted by user for tool use]', 'an assistant text that opens like the mark is a reply');
+  }
+  {
+    const t = turns([u('go'), '{"type":"user", broken', '{"type":"user"} trailing', a('fine')].join('\n'));
+    ok(t.length === 1 && t[0].did === 'fine', 'a line that is not JSON is read past');
+    const c = turns([u('go'), calls({ type: 'tool_use', name: 'mcp__x__ctx_batch', id: 'c1', input: { commands: [null, { command: 'ls' }] } }), a('done')].join('\n'));
+    ok(J(c[0].ran) === J(['null\nls']), 'a null command in a batch is read as text: ' + J(c[0].ran));
+    const q = turns([u('go'), calls({ type: 'tool_use', name: 'AskUserQuestion', id: 'q1' }), a('done')].join('\n'));
+    ok(q.length === 1 && q[0].did === 'done', 'a question with no input is read past');
+    const r = turns([u('go'), a('x'), calls({ type: 'tool_use', name: 'AskUserQuestion', id: 'q1' }), u('hello')].join('\n'));
+    ok(r.length === 1, 'a question with no input leaves the turn open');
+  }
+  {
+    const heard = toolAnswers();
+    heard({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'AskUserQuestion', id: 'q1' }] } });
+    ok(heard({ type: 'user', toolUseResult: { answers: { q: 'a' } }, message: { content: [{ type: 'tool_result', tool_use_id: 'zz', content: 'x' }, { type: 'tool_result', tool_use_id: 'q1', content: 'y' }] } }) === 'a', 'a result that is no answer adds no blank line');
+  }
+  // The pre-cut starts above 65,536 characters, not at them: a text of exactly that is read whole, its count of lost characters from the squeezed text.
+  ok(clip('--password\n' + 'x'.repeat(65525), 400) === '--password [redacted] (+63166 chars)', 'a text of exactly the pre-cut length is read whole');
+  ok(clip('--password\n' + 'x'.repeat(65526), 400) === '--password [redacted] (+61177 chars)', 'one character more is cut first');
+  assert.throws(() => clip(null, 5), /replace/);   // text only: anything else fails in cut(), as it always did
+  checks++;
+  // No tag, no mark: hushed() says false for it and writes nothing, whatever is asked.
+  const { hushed } = await import('./handoff-log.mjs');
+  const hd = join(home, 'hushed-none');
+  mkdirSync(hd, { recursive: true });
+  ok(hushed(hd, '') === false && hushed(hd, undefined, true) === false && hushed(hd, '', true) === false && !existsSync(join(hd, '.private-sessions')), 'an empty tag is never marked, and is not a hushed one');
 }
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);
