@@ -644,6 +644,8 @@ require('node:module').syncBuiltinESMExports();
 const { recover } = await import('./compact-gate.mjs');
 const gone2 = join(dir, 'gone.jsonl');
 ok(recover({ transcript_path: gone2, session_id: 's1' }) === '' && recover({}) === '', 'no recovery note when the transcript is missing');
+write(user('done'), asst('all done', 965_000, 'end_turn'));
+ok(recover({ cwd, transcript_path: transcript, session_id: 's1' }) === '', 'no recovery note when the last turn finished: the empty string, not nothing');
 const lost = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: gone2, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
 ok(lost.status === 0 && /not an auto compaction/.test(lost.stderr), `a missing transcript lets the compaction run, said plainly (got ${lost.status}: ${lost.stderr.trim()})`);
 

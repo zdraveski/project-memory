@@ -1691,6 +1691,10 @@ ${r.stdout}`, 'stop words with a range list the range, naming the dropped words'
   ok(/ver-a\.md/.test(r.stdout) && !/ver-b\.md/.test(r.stdout) && !/nothing to search for/.test(r.stdout), `a version is searched whole (got ${r.stdout})`);
   r = await jcli('search', 'what', 'changed', 'in', 'v1.4.3');
   ok(/ver-a\.md/.test(r.stdout) && !/ver-b\.md/.test(r.stdout), `a leading v is the same version (got ${r.stdout})`);
+  // A three-part version is not the front of a four-part one (a two-part one is: 1.4 below).
+  memory(jm, 'ver-e', 'fifth log', 'only build 1.4.3.9 here');
+  r = await jcli('search', '1.4.3');
+  ok(/ver-a\.md/.test(r.stdout) && !/ver-e\.md/.test(r.stdout), `1.4.3 is not 1.4.3.9 (got ${r.stdout})`);
   // 1.5.1 W3: a one-dot version is every release of it: "1.4" finds 1.4.1, not 1.45 (a three-part version stays whole, above).
   memory(jm, 'ver-c', 'third log', 'shipped 1.4.1 today');
   memory(jm, 'ver-d', 'fourth log', 'only 1.45 here');
@@ -1788,6 +1792,14 @@ After the log: narwhalqq stays.
     writeFileSync(join(h2, 'handoff.md'), '---\nname: handoff\n---\n\nHand note: the lemurqq perch.\n\n<!-- auto:start -->\nfirst log line about the gnuqq paddock\n<!-- auto:end -->\n\nMiddle note: the tapirqq pen.\n\n<!-- auto:start -->\nsecond log line about the wombatqq burrow\n<!-- auto:end -->\n\nLast note: the yakqq shed.\n');
     for (const w of ['lemurqq', 'tapirqq', 'yakqq']) ok(/handoff\.md/.test((await run(['search', w, '--store', h2])).stdout), `${w}, hand-written, is found with two auto blocks`);
     for (const w of ['gnuqq', 'wombatqq']) ok(!/handoff\.md/.test((await run(['search', w, '--store', h2])).stdout), `${w}, in an auto block, is not found when there are two`);
+    // A handoff.md with no auto block at all keeps its one hand-written line whole.
+    const h3 = mdir('C--oneline');
+    writeFileSync(join(h3, 'handoff.md'), '---\nname: handoff\n---\nOnly the quokkaqq line.');
+    ok(/handoff\.md/.test((await run(['search', 'quokkaqq', '--store', h3])).stdout), 'a handoff.md of one hand-written line, no auto block, is found');
+    // A Macedonian stem takes no English endings: книгите is книг, not "кни" + Latin ies.
+    const h4 = mdir('C--notstories');
+    writeFileSync(join(h4, 'mk.md'), '---\nname: mk\ndescription: x\n---\nкниies only here\n');
+    ok(!/mk\.md/.test((await run(['search', 'книгите', '--store', h4])).stdout), 'a Cyrillic stem is given no English endings');
   }
 
   // 1.5.1 finding 11: a short stem matches its own word forms, not other words that start with it.
@@ -2274,6 +2286,10 @@ After the log: narwhalqq stays.
   let h, s; try { h = await cli('history', 'c4-note'); s = await cli('restore', 'c4-note'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
   ok(h.status === 1 && s.status === 1 && h.stdout === s.stdout && /^no snapshots yet: project-memory takes the first at the end of a reply\n$/.test(h.stdout),
     `before the first snapshot, history and restore say so plainly (got ${h.stdout}${s.stdout})`);
+  // A name no file has, with no snapshot to look it up in, is said the same way: it never crashes.
+  renameSync(join(root, '.git'), join(root, '.git-away'));
+  try { s = await cli('restore', 'c4-ghost'); } finally { renameSync(join(root, '.git-away'), join(root, '.git')); }
+  ok(s.status === 1 && /^no snapshots yet: /.test(s.stdout) && !/TypeError/.test(s.stderr), `restore of a name no file has, before the first snapshot, says so (got ${s.stdout}${s.stderr})`);
   // Nor while the first is still being taken (a repository with no commit yet), nor from a repository in a folder above the
   // projects folder (a dotfiles ~/.claude): git found that one, and its history was read as the snapshots'.
   {
@@ -2575,6 +2591,8 @@ After the log: narwhalqq stays.
   ok(!/supersecretvalue123/.test(r.stdout) && /sess1234/.test(r.stdout), 'a secret in a command is redacted, the session is named');
   ok(/checked 5 git commands/.test(r.stdout) && /5 are git add/.test(r.stdout) && /4 hits/.test(r.stdout) && /Read each hit\. A hit is a catch only if you agree the command broke the lesson\./.test(r.stdout), 'the summary counts commands, matches and hits (got ' + r.stdout + ')');
   ok(snap() === before, 'replay changes nothing');
+  r = await run(['enforce', 'replay', 'stage-by-name.MD', '--store', pm]);
+  ok(r.status === 0 && !/no note /.test(r.stdout), `a name typed with .MD is the note, not "stage-by-name.MD.md" (got ${r.stdout})`);
   r = await run(['enforce', 'replay', join(pm, 'stage-by-name.md'), '--all']);
   ok(r.status === 0 && /C--enf-other/.test(r.stdout) && /2 projects/.test(r.stdout), 'a path works, and --all reads every project (got ' + r.stdout + ')');
   // Private sessions and projects with memory off are not printed, even by --all.
@@ -3265,6 +3283,20 @@ again ${key2}
   spawnSync('git', ['init', '-q', p], { encoding: 'utf8' });
   r = rs();
   ok(r.stdout.includes('snapshots: none to scan') && r.stdout.includes('nothing found'), `a repository with no commit has no snapshot (got ${JSON.stringify(r.stdout)})`);
+}
+{ // Snapshots that cannot be read are no all-clear: rescan says so and fails, even with a clean file beside them.
+  const h = tempHome('rescan5-'), pr = join(h.home, '.claude', 'projects'), d = join(pr, 'C--re', 'memory');
+  const sh = (cmd, args) => spawnSync(cmd, args, { env: h.env, encoding: 'utf8' });
+  mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, 'MEMORY.md'), '# Memory Index\n'); writeFileSync(join(d, 'n.md'), '---\nname: n\n---\nplain text\n');
+  utimesSync(join(d, 'n.md'), tenMin, tenMin);
+  sh(process.execPath, [TIER]); sh(process.execPath, [TIER]);
+  const blob = sh('git', ['-C', pr, 'rev-parse', 'HEAD:C--re/memory/n.md']).stdout.trim();
+  const obj = join(pr, '.git', 'objects', blob.slice(0, 2), blob.slice(2));
+  ok(existsSync(obj), 'fixture: the note is a loose object in the snapshots');
+  unlinkSync(obj);
+  const r = sh(process.execPath, [CLI, 'rescan']);
+  ok(r.status === 1 && /^the snapshots could not be read \(.+\); nothing changed\n$/.test(r.stdout) && !/nothing found|none to scan/.test(r.stdout), `an unreadable history is said, not reported as clean (got ${JSON.stringify(r.stdout)})`);
 }
 
 
