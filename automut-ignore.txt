@@ -288,3 +288,10 @@ b91ed4593f7c handoff-log.mjs:446 `1` -> `2`: clip(): lim-2 only shortens a cut a
 b90e9334a615 handoff-log.mjs:448 `===` -> `!==`: the cache key is null for a non-string and the key itself otherwise: the mutant caches only non-strings, which cut() never receives because clip() throws first
 5843b6a6ac24 handoff-log.mjs:451 `0` -> `1`: the pass counter starts at 0 or 1: a text that needs six passes to settle is cut at the first five, and none needs more than two
 f28a584b7ae2 handoff-log.mjs:455 `0` -> `1`: extra only carries what an earlier pass cut, and the first call starts at 0 or 1 with no text where the two give a different length
+4f44958f0cdf memory.mjs:90 `??` -> `||`: the left side is exec()?.[0], a string of at least 21 characters or undefined, never an empty or falsy string, so `||` and `??` pick the same side
+948ada8d850f memory.mjs:105 `??` -> `||`: the left side is the parsed `plugins` value, an object or undefined; a falsy non-nullish JSON value (0, "", false) and `{}` both give Object.keys() = [], so no find result differs
+2a84902b3eca memory.mjs:134 `{ return false; }` -> `{}`: the catch sits in a find() predicate, which reads only truthiness; undefined and false are the same
+fd95e6deac9f memory.mjs:134 `false` -> `undefined`: the catch sits in a find() predicate, which reads only truthiness; undefined and false are the same
+472b84b72ebb memory.mjs:151 `false` -> `undefined`: caseless()'s result reaches only fold()'s `folds` parameter through pick(), where it is read as `folds ? ... : n`, truthiness alone
+e0f66303654d memory.mjs:456 `''` -> `undefined`: recent()'s only caller (line 441) reads it as `if (ch)`, so '' and undefined both add no line
+dd785997cd14 memory.mjs:695 `?.` -> `.`: missing() is called only with the error caught from execFileSync (line 765), always an Error object and never null or undefined, so `e?.stderr` and `e.stderr` are the same
