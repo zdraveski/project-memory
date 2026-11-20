@@ -11,7 +11,7 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           dates with no terms list those days' requests. --file: entries that changed it;
                                           --asked: your own words only; --conversation: one session; notes are left out
   show <key...|note> [--same] [--all]     journal entries whole, by the key a search hit prints, or a note's
-                                          first and newest exchange, by its name; --same: every entry that asked the same
+                                          first exchange and the last that changed it, by its name; --same: every entry that asked the same
   forget [<words...>] [--key K]... [--same] [--since D] [--until D] [--conversation ID] [--yes] [--purge]
                                           the journal entries holding every word (with those keys, of
                                           that conversation): listed with their keys, up to 200; with
@@ -631,7 +631,7 @@ const missing = (e) => /does not exist in|exists on disk, but not in|invalid obj
 // A request is the user's text, and clip keeps ESC, BEL and the bidi overrides: each prints as U+FFFD (tab and newline stay).
 const tame = (t) => t.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '\uFFFD');
 // The exchange behind a snapshot, as one line; null: none was found.
-const byLine = (e) => e === 'shared' ? 'by: not looked up for the shared store (what changed it is in the project journals)' : e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `by: ${e.at} [${e.s}] asked: "${tame(clip(e.asked, 100))}" · key: "${tame(clip(e.key, Infinity))}"`
+const byLine = (e, label = 'by') => e === 'shared' ? 'by: not looked up for the shared store (what changed it is in the project journals)' : e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `${label}: ${e.at} [${e.s}] asked: "${tame(clip(e.asked, 100))}" · key: "${tame(clip(e.key, Infinity))}"`
   : "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
 // A note's journal entries, oldest first, by its full path as the session saw it. A journal that will not read is none: history still prints.
 // `since`: a day 'YYYY-MM-DD'; the journal days before it are not opened.
@@ -1184,7 +1184,7 @@ export function main(given) {
       `     Day file: ${e.path}`, ...full(e)];
     // --same: every entry asking what this one asked, the copies a hit counts.
     const alike = (e) => (rest.includes('--same') ? es.filter((x) => sameKey(x.asked) === sameKey(e.asked)) : [e]).filter((x) => !seen.has(x) && seen.add(x));
-    // No entry has the key: a note's file name, as history takes it. The note's first and newest exchange; with --all every store that has it.
+    // No entry has the key: a note's file name, as history takes it. The note's first exchange and the last one that changed it; with --all every store that has it.
     const noteOf = (k) => {
       const blocks = [];
       for (const dir of scope) {
@@ -1192,7 +1192,7 @@ export function main(given) {
         if (text === null) continue;
         const { name, desc } = front(text), by = isShared(dir) ? ['shared'] : changersOf(dir, f, failed);
         blocks.push(join(dir, f), `  name: ${name || f.replace(/\.md$/, '')}`, ...(desc ? [`  description: ${desc}`] : []),
-          ...(by.length > 1 ? [`  first ${byLine(by[0])}`, `  newest ${byLine(by.at(-1))}`] : [`  ${byLine(by[0])}`]));
+          ...(by.length > 1 ? [`  ${byLine(by[0], 'first by')}`, `  ${byLine(by.at(-1), 'last exchange that changed it')}`] : [`  ${byLine(by[0])}`]));
         if (!rest.includes('--all')) break;
       }
       return blocks.length ? blocks : null;

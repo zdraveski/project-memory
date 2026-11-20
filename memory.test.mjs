@@ -3766,7 +3766,7 @@ again ${key2}
   ok(r.status === 0 && /^     Asked: an entry named like the note$/m.test(r.stdout) && !/first by/.test(r.stdout), `a key wins over a note's name (got ${r.stdout})`);
   put(three);
   const want = [join(sd, 'rules.md'), '  name: rules', '  description: how we write rules',
-    '  first by: 2026-11-12 10:00 [3f07bb43] asked: "first ask" · key: "s-10"', '  newest by: 2026-11-12 12:00 [3f07bb43] asked: "third ask" · key: "s-12"'].join('\n') + '\n';
+    '  first by: 2026-11-12 10:00 [3f07bb43] asked: "first ask" · key: "s-10"', '  last exchange that changed it: 2026-11-12 12:00 [3f07bb43] asked: "third ask" · key: "s-12"'].join('\n') + '\n';
   r = await scli('show', 'rules');
   ok(r.status === 0 && r.stdout === want, `show <note> prints its path, name, description and the first and the newest exchange (got ${r.stdout})`);
   ok((await scli('show', 'rules.md')).stdout === want, 'with .md the same');
@@ -3777,7 +3777,7 @@ again ${key2}
   put(three);
   r = await scli('forget', '--key', 's-12', '--yes');
   r = await scli('show', 'rules');
-  ok(/^  newest by: .*key: "s-11"$/m.test(r.stdout) && !/s-12|third ask/.test(r.stdout), `a forgotten entry is never named (got ${r.stdout})`);
+  ok(/^  last exchange that changed it: .*key: "s-11"$/m.test(r.stdout) && !/s-12|third ask/.test(r.stdout), `a forgotten entry is never named (got ${r.stdout})`);
   r = await scli('show', 'no-such-thing');
   ok(r.status === 1 && /^no journal entry has the key no-such-thing and no note has that name in .+; --all looks in every project$/m.test(r.stdout), `neither a key nor a note: the miss names both (got ${r.stdout})`);
 }
