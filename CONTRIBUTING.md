@@ -45,6 +45,7 @@ node memory.test.mjs
 node journal.test.mjs
 node enforce.test.mjs
 node enforce-hook.test.mjs
+node timing.test.mjs
 node bench.test.mjs
 ```
 
