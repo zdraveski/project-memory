@@ -1390,7 +1390,8 @@ export function main(given) {
   // which is its count, as the skill says. Once: a forget reads a day twice.
   r.lines.splice(r.lines.at(-1) === AGAIN ? -2 : cmd === 'search' || cmd === 'forget' || cmd === 'page' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
   // The page holds journal text: where the journal is forgotten, or the project or conversation stops being kept, it goes too.
-  if (cmd === 'forget' || cmd === 'incognito' || cmd === 'off' || (cmd === 'rescan' && rest.includes('--apply'))) {
+  // rescan only when it rewrites (--apply --yes): without --yes it changes nothing.
+  if (cmd === 'forget' || cmd === 'incognito' || cmd === 'off' || (cmd === 'rescan' && rest.includes('--apply') && rest.includes('--yes'))) {
     const bad = dropPage();
     if (bad instanceof Error) { r.lines.push(`could not delete the page: ${reason(bad)}; it still holds journal text`); r.ok = false; }
   }

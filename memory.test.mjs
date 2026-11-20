@@ -3874,8 +3874,9 @@ again ${key2}
     }
     await write();
     await run(['rescan']);
+    await run(['rescan', '--apply']);
     await run(['on', '--store', shop]);
-    ok(existsSync(pagePath()), 'rescan without --apply, and on, leave it');
+    ok(existsSync(pagePath()), 'rescan without --apply, rescan --apply without --yes (it changes nothing), and on, leave it');
 
     // The page holds each live store's lock from its read to its write, so a forget cannot slip between and be undone by the write.
     dropPage();
