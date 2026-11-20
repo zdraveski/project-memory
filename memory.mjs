@@ -1052,7 +1052,8 @@ function enforceStatus(here) {
 // entries, and projects that are switched off. An entry the user had forgotten is not in told(), so not in the page either.
 const PAGE_DAYS = 30, PAGE_MAX = 36500, PAGE_ASK = 2000, PAGE_ANSWER = 4000;
 // A browser opens a page of tens of MB slowly (20,000 entries made 129 MB): past this it is not written. An object, so a test can lower it.
-export const PAGE_LIMIT = { bytes: 40 * 1048576 };
+// built: a test's hook, run once the page is built, before the size check and the write.
+export const PAGE_LIMIT = { bytes: 40 * 1048576, built: null };
 // fn under the lock of every store in dirs, in one order, so two runs cannot wait on each other. Null when one stays busy.
 const lockAll = (dirs, fn) => (dirs.length ? withLock(dirs[0], () => lockAll(dirs.slice(1), fn)) : fn());
 // A note of a store (not handoff.md, not the journal) among the files an exchange changed: it wrote a memory.
@@ -1065,6 +1066,11 @@ const projectName = (dir) => {
 };
 const sizeOf = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const amount = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// Size and mtime of each day file and each forgotten list of the stores: what a page was read from, to see a change since.
+const stamp = (dirs) => dirs.flatMap((d) => {
+  const j = join(d, 'journal'); let names = []; try { names = readdirSync(j).sort(); } catch {}
+  return [...names.map((n) => join(j, n)), join(d, FORGOTTEN)].map((p) => { try { const s = statSync(p); return `${p} ${s.size} ${s.mtimeMs}`; } catch { return `${p} none`; } });
+}).join('\n');
 function page(stores, days, want, failed) {
   const real = stores.filter((d) => !isShared(d) && existsSync(join(d, 'journal')));
   const base = real.map(projectName);
@@ -1079,27 +1085,41 @@ function page(stores, days, want, failed) {
     if (!live.length) return { ok: false, lines: [`${hit.map((d) => name.get(d)).join(', ')} ${hit.length > 1 ? 'are' : 'is'} switched off (memory on to include ${hit.length > 1 ? 'them' : 'it'})`] };
   }
   const today = local().slice(0, 10), since = days === 'all' ? undefined : addDays(today, 1 - days);
-  // From the read to the write under the stores' locks: a forget in between removed an entry the write then put back.
-  const done = lockAll([...live].sort(), () => {
-    let helpers = 0;
-    const out = [];
+  // The stores' locks are held to read, and again to write, never while the page is built and redacted (0.35 s a MB: past the lock's
+  // 30 s, a hook takes it as stale). A day that changed in between is not overwritten: a forget or a sweep would be undone.
+  const keys = [...live].sort(), busy = { ok: false, lines: ['a project\'s memory folder is busy (another hook holds it); try again'] };
+  const over = (n) => ({ ok: false, lines: [`the page would be ${sizeOf(n)}, over the limit of ${sizeOf(PAGE_LIMIT.bytes)}; nothing written. Use --days N for fewer days${want ? '' : ' or --project NAME for one project'}`] });
+  const read = lockAll(keys, () => {
+    const seen = stamp(keys), out = []; let helpers = 0;
     for (const e of told(live, { since, failed })) {
       if (isHelper(e)) { helpers++; continue; }
       const priv = e.asked === '[private]' || e.answered === '[private]';
       out.push({ d: e.day, t: e.at.slice(11, 16), c: e.s, b: e.branch, p: name.get(e.dir), q: priv ? '' : clip(e.asked, PAGE_ASK), a: priv ? '' : clip(e.answered, PAGE_ANSWER),
         f: priv ? [] : e.changed.slice(0, 100), n: priv ? 0 : Number(wroteNote(e.changed)), priv: Number(priv), cut: Number(!priv && e.answered.length > PAGE_ANSWER) });
     }
-    const span = days === 'all' ? 'all days' : amount(days, 'day', 'days');
-    if (!out.length) return { ok: false, lines: [`nothing to show: no journal entry in ${days === 'all' ? (want ? clip(want, 100) : 'any project') : `the last ${span}`}`] };
-    out.sort((a, b) => (a.d + a.t < b.d + b.t ? 1 : a.d + a.t > b.d + b.t ? -1 : 0));
-    const html = pageHtml({ built: local(), today, days, entries: out }), size = Buffer.byteLength(html);
-    if (size > PAGE_LIMIT.bytes) return { ok: false, lines: [`the page would be ${sizeOf(size)}, over the limit of ${sizeOf(PAGE_LIMIT.bytes)}; nothing written. Use --days N for fewer days${want ? '' : ' or --project NAME for one project'}`] };
-    let path; try { path = writePage(html); } catch (e) { return { ok: false, lines: [`the page could not be written (${reason(e)}); nothing changed`] }; }
-    const off = real.length - live.length, left = [helpers && amount(helpers, 'helper entry', 'helper entries'), off && amount(off, 'switched-off project', 'switched-off projects')].filter(Boolean);
-    return { ok: true, lines: [pathToFileURL(path).href, `${amount(out.length, 'exchange', 'exchanges')} in ${amount(new Set(out.map((e) => e.p)).size, 'project', 'projects')} over ${span}, ${sizeOf(size)}`,
-      ...(left.length ? [`left out: ${left.join(', ')}`] : []), 'Open the link in a browser. Run memory page again to refresh it. forget, incognito, off and rescan --apply delete it.'] };
+    return { seen, out, helpers };
   });
-  return done ?? { ok: false, lines: ['a project\'s memory folder is busy (another hook holds it); try again'] };
+  if (!read) return busy;
+  const { seen, out, helpers } = read, span = days === 'all' ? 'all days' : amount(days, 'day', 'days');
+  if (!out.length) return { ok: false, lines: [`nothing to show: no journal entry in ${days === 'all' ? (want ? clip(want, 100) : 'any project') : `the last ${span}`}`] };
+  // The text alone, before it is built: a page far past the limit is refused without the minutes it takes to redact.
+  const text = out.reduce((n, e) => n + e.q.length + e.a.length + e.f.reduce((m, x) => m + x.length, 0), 0);
+  if (text > PAGE_LIMIT.bytes) return over(text);
+  out.sort((a, b) => (a.d + a.t < b.d + b.t ? 1 : a.d + a.t > b.d + b.t ? -1 : 0));
+  const html = pageHtml({ built: local(), today, days, entries: out }), size = Buffer.byteLength(html);
+  PAGE_LIMIT.built?.();
+  if (size > PAGE_LIMIT.bytes) return over(size);
+  let path;
+  const w = lockAll(keys, () => {
+    if (stamp(keys) !== seen) return { bad: { ok: false, lines: ['the journal changed while the page was built; run memory page again'] } };
+    try { path = writePage(html); } catch (e) { return { bad: { ok: false, lines: [`the page could not be written (${reason(e)}); nothing changed`] } }; }
+    return {};
+  });
+  if (!w) return busy;
+  if (w.bad) return w.bad;
+  const off = real.length - live.length, left = [helpers && amount(helpers, 'helper entry', 'helper entries'), off && amount(off, 'switched-off project', 'switched-off projects')].filter(Boolean);
+  return { ok: true, lines: [pathToFileURL(path).href, `${amount(out.length, 'exchange', 'exchanges')} in ${amount(new Set(out.map((e) => e.p)).size, 'project', 'projects')} over ${span}, ${sizeOf(size)}`,
+    ...(left.length ? [`left out: ${left.join(', ')}`] : []), 'Open the link in a browser. Run memory page again to refresh it. forget, incognito, off and rescan --apply delete it.'] };
 }
 
 // The command line, its words as given; returns the exit code. Callable in

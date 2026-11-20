@@ -3897,6 +3897,22 @@ again ${key2}
     try { r = await page(); } finally { PAGE_LIMIT.bytes = kept; }
     ok(r.status === 1 && /^the page would be \d+(\.\d)? (KB|MB), over the limit of 1000 B; nothing written\. Use --days N for fewer days/.test(r.stdout) && !existsSync(pagePath()), `past the limit it says so, and writes nothing (got ${r.status} ${r.stdout})`);
 
+    // The stores' locks are held only to read and to write: a page too big by its fields is refused before it is built, and a day that
+    // changed while it was built is not overwritten (a forget or a sweep in between would be undone by the write).
+    let built = 0;
+    PAGE_LIMIT.bytes = 1000; PAGE_LIMIT.built = () => { built++; };
+    try { r = await page(); } finally { PAGE_LIMIT.bytes = kept; PAGE_LIMIT.built = null; }
+    ok(r.status === 1 && /^the page would be \d/.test(r.stdout) && built === 0, `the estimate from the entries' fields refuses before the page is built (built ${built} times; got ${r.stdout})`);
+    await write(); const whole = statSync(pagePath()).size; dropPage();
+    PAGE_LIMIT.bytes = whole - 1; PAGE_LIMIT.built = () => { built++; };
+    try { r = await page(); } finally { PAGE_LIMIT.bytes = kept; PAGE_LIMIT.built = null; }
+    ok(r.status === 1 && /^the page would be \d/.test(r.stdout) && built === 1 && !existsSync(pagePath()), `and the built page is checked against the limit too (built ${built}; got ${r.stdout})`);
+    PAGE_LIMIT.built = () => appendFileSync(join(shop, 'journal', `${ago(5)}.md`), '\n');
+    try { r = await page(); } finally { PAGE_LIMIT.built = null; }
+    ok(r.status === 1 && r.stdout.trim() === 'the journal changed while the page was built; run memory page again' && !existsSync(pagePath()), `a day changed between the read and the write: said, exit 1, no page (got ${r.status} ${r.stdout})`);
+    r = await write();
+    ok(r.status === 0 && !existsSync(join(shop, '.lock')), 'and run again it is written');
+
     // A page that will not go is said, and fails the command: the text is still on disk.
     await write();
     rmSync(pagePath()); mkdirSync(join(pagePath(), 'x'), { recursive: true });
