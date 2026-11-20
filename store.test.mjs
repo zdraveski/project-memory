@@ -1061,8 +1061,16 @@ ok(tag('abcdefghij') === 'abcdefgh' && tag('abcdefgh') === 'abcdefgh' && tag('ab
     ok(dropPage() === true && !existsSync(pagePath()), 'dropPage removes it and says so');
     ok(dropPage() === false, 'a second time there is nothing to remove');
     mkdirSync(pagePath(), { recursive: true });
-    ok(dropPage() === false, 'a path that will not go (a folder) is no throw: it runs in the hooks');
+    const bad = dropPage();
+    ok(bad instanceof Error && existsSync(pagePath()), 'a path that will not go (a folder) is no throw, it runs in the hooks: the error comes back, for the commands to say');
     rmSync(pagePath(), { recursive: true });
+    // A kill between the write and the rename leaves journal.html.<pid>.tmp with journal text: both calls take every such file.
+    const strays = () => { for (const n of ['journal.html.123.tmp', 'journal.html.x.y.tmp']) writeFileSync(join(dirname(pagePath()), n), 'text'); writeFileSync(join(dirname(pagePath()), 'keep.txt'), 'mine'); };
+    strays(); writePage('<p>three</p>');
+    ok(readdirSync(dirname(pagePath())).sort().join() === 'journal.html,keep.txt', 'writePage takes the temporary files a killed run left, and nothing else');
+    strays(); ok(dropPage() === true && readdirSync(dirname(pagePath())).join() === 'keep.txt', 'dropPage takes them too');
+    strays(); ok(dropPage() === false && readdirSync(dirname(pagePath())).join() === 'keep.txt', 'and with no page, they still go, and it says no page was there');
+    rmSync(join(dirname(pagePath()), 'keep.txt'));
   } finally { if (here === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = here; }
 }
 
