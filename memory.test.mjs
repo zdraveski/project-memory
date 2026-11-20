@@ -3852,6 +3852,10 @@ again ${key2}
     ok(r.status === 1 && r.stdout.trim() === 'nothing to show: no journal entry in the last 1 day' && !existsSync(pagePath()), `nothing in the range: said, exit 1, no file (got ${r.status} ${r.stdout})`);
     dropPage();
 
+    // A project that is switched off is said so, not "nothing to show".
+    r = await page('--project', 'hidden');
+    ok(r.status === 1 && r.stdout.trim() === 'hidden is switched off (memory on to include it)' && !existsSync(pagePath()), `--project on a switched-off project says so (got ${r.status} ${r.stdout})`);
+
     // A day that cannot be read is named, exit 1; the rest is still shown.
     writeFileSync(join(shop, 'journal', `${ago(3)}.md`), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('# Journal\n', 'utf16le')]));
     r = await write();

@@ -1076,6 +1076,7 @@ function page(stores, days, want, failed) {
     const w = want.toLowerCase(), hit = real.filter((d, i) => [shown[i], base[i], basename(dirname(d))].some((n) => n.toLowerCase() === w));
     if (!hit.length) return { ok: false, lines: [`no project named ${clip(want, 100)}. Projects with a journal: ${live.map((d) => name.get(d)).join(', ') || '(none)'}`] };
     real.splice(0, real.length, ...hit); live.splice(0, live.length, ...hit.filter((d) => !isOff(d)));
+    if (!live.length) return { ok: false, lines: [`${hit.map((d) => name.get(d)).join(', ')} ${hit.length > 1 ? 'are' : 'is'} switched off (memory on to include ${hit.length > 1 ? 'them' : 'it'})`] };
   }
   const today = local().slice(0, 10), since = days === 'all' ? undefined : addDays(today, 1 - days);
   // From the read to the write under the stores' locks: a forget in between removed an entry the write then put back.
