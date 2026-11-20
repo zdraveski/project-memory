@@ -33,30 +33,37 @@ const at = (t, over) => ({ key: `k ${t}`, at: `2026-11-12 ${t}`, s: '3f07bb43', 
 const P = ['/home/u/.claude/projects/C--shop/memory/rules.md'];
 const who = (snaps, es) => whoChanged(snaps.map((t) => `2026-11-12 ${t}`), es).map((x) => x && (x.key ?? x));
 ok(changers([at('14:02'), at('14:03', { changed: ['memory/rules.md'] }), at('14:04', { changed: [] })], P).length === 1, 'the full path, not its end');
-assert.deepEqual(who(['14:03'], [at('14:02')]), ['k 14:02']);
-assert.deepEqual(who(['14:03'], [at('14:03')]), ['k 14:03']);
-assert.deepEqual(who(['14:03'], [at('14:04')]), [null]);
-assert.deepEqual(who(['14:03', '15:00'], [at('14:02'), at('14:30')]), ['k 14:02', 'k 14:30']);
-assert.deepEqual(who(['14:03', '15:00'], [at('14:02'), at('14:03', { key: 'second' })]), ['k 14:02', 'second']);
-assert.deepEqual(who(['14:03', '15:00'], [at('13:00'), at('14:02')]), ['k 14:02', null]);
+assert.deepStrictEqual(who(['14:03'], [at('14:02')]), ['k 14:02']);
+assert.deepStrictEqual(who(['14:03'], [at('14:03')]), ['k 14:03']);
+assert.deepStrictEqual(who(['14:03'], [at('14:04')]), [null]);
+assert.deepStrictEqual(who(['14:03', '15:00'], [at('14:02'), at('14:30')]), ['k 14:02', 'k 14:30']);
+assert.deepStrictEqual(who(['14:03', '15:00'], [at('14:02'), at('14:03', { key: 'second' })]), ['k 14:02', null]);
+assert.deepStrictEqual(who(['14:03', '15:00'], [at('13:00'), at('14:02')]), ['k 14:02', null]);
 // given once
-assert.deepEqual(who(['14:03', '14:04'], [at('14:03')]), ['k 14:03', null]);
-assert.deepEqual(who(['14:03', '14:04'], [at('14:02')]), ['k 14:02', null]);
+assert.deepStrictEqual(who(['14:03', '14:04'], [at('14:03')]), ['k 14:03', null]);
+assert.deepStrictEqual(who(['14:03', '14:04'], [at('14:02')]), ['k 14:02', null]);
 // one minute, two entries
 const two = [at('14:02', { key: 'a' }), at('14:02', { key: 'b', t: 'C--shop/99999999-bbbb', s: '99999999' })];
-assert.deepEqual(who(['14:03'], two), ['several']);
-assert.deepEqual(who(['14:03'], [at('14:02', { key: 'a' }), at('14:02', { key: 'b' })]), ['b']);
+assert.deepStrictEqual(who(['14:03'], two), ['several']);
+assert.deepStrictEqual(who(['14:03'], [at('14:02', { key: 'a' }), at('14:02', { key: 'b' })]), ['b']);
 // two conversations between two snapshots: none is named, even when one is older
-assert.deepEqual(who(['14:03', '15:00'], [at('14:02'), at('14:10', { t: 'C--shop/99999999-bbbb', s: '99999999' }), at('14:20')]), ['k 14:02', 'several']);
+assert.deepStrictEqual(who(['14:03', '15:00'], [at('14:02'), at('14:10', { t: 'C--shop/99999999-bbbb', s: '99999999' }), at('14:20')]), ['k 14:02', 'several']);
 // a helper's entry is named only when nothing else fits
 const sub = (t, over) => at(t, { key: `subagent-${t}`, asked: 'Subagent Explore: look', ...over });
-assert.deepEqual(who(['14:03'], [at('14:01'), sub('14:02')]), ['k 14:01']);
-assert.deepEqual(who(['14:03'], [sub('14:02')]), ['subagent-14:02']);
-assert.deepEqual(who(['14:03'], []), [null]);
-assert.deepEqual(who([], [at('14:02')]), []);
+assert.deepStrictEqual(who(['14:03'], [at('14:01'), sub('14:02')]), ['k 14:01']);
+assert.deepStrictEqual(who(['14:03'], [sub('14:02')]), ['subagent-14:02']);
+assert.deepStrictEqual(who(['14:03'], []), [null]);
+assert.deepStrictEqual(who([], [at('14:02')]), []);
+// every entry in a snapshot's own minute is taken, not only the one named
+assert.deepStrictEqual(who(['14:03', '14:04'], [at('14:03', { key: 'a' }), at('14:03', { key: 'b' })]), ['b', null]);
+assert.deepStrictEqual(who(['14:02', '14:03', '14:04'], [at('14:01', { key: 'a' }), at('14:03', { key: 'b' }), at('14:03', { key: 'c' })]), ['a', 'c', null]);
+// a deleted snapshot names nothing, and takes its minute's entries
+const del = (snaps, es, d) => whoChanged(snaps.map((t) => `2026-11-12 ${t}`), es, d).map((x) => x && x.key);
+assert.deepStrictEqual(del(['14:03', '14:04'], [at('14:02'), at('14:03', { key: 'b' })], [false, true]), ['k 14:02', null]);
+assert.deepStrictEqual(del(['14:03', '14:04'], [at('14:03')], [true, false]), [null, null]);
 // midnight
-assert.deepEqual(whoChanged(['2026-11-13 00:01'], [at('23:58', { key: 'day before' })]).map((x) => x && x.key), ['day before']);
-assert.deepEqual(whoChanged(['2026-11-12 23:59'], [at('00:01', { at: '2026-11-13 00:01' })]), [null]);
+assert.deepStrictEqual(whoChanged(['2026-11-13 00:01'], [at('23:58', { key: 'day before' })]).map((x) => x && x.key), ['day before']);
+assert.deepStrictEqual(whoChanged(['2026-11-12 23:59'], [at('00:01', { at: '2026-11-13 00:01' })]), [null]);
 checks += 17;
 
 console.log(`recall.test.mjs: ${checks} checks passed`);

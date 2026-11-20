@@ -653,7 +653,7 @@ export function history(dirs, file, everywhere = false, max = 30, failed = []) {
         else if (head && verb[l[0]]) { snaps.push([head[0], head[1] === 'memory: first snapshot' ? 'in the first snapshot' : verb[l[0]]]); head = null; }
       }
       // Newest first, as git prints them; paired oldest first, before `max` cuts the list.
-      const by = snaps.length ? whoChanged(snaps.map(([h]) => h.slice(h.indexOf(' ') + 1)).reverse(), changersOf(dir, f, failed)).reverse() : [];
+      const by = snaps.length ? whoChanged(snaps.map(([h]) => h.slice(h.indexOf(' ') + 1)).reverse(), changersOf(dir, f, failed), snaps.map(([, what]) => what === 'deleted').reverse()).reverse() : [];
       const lines = snaps.flatMap(([h, what], i) => [`  ${h}  ${what}`, `    ${byLine(by[i])}`]);
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.

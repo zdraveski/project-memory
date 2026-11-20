@@ -3719,6 +3719,16 @@ again ${key2}
   ok(r.stdout.includes(`asked: "${'y'.repeat(99)}…" `) && !r.stdout.includes('y'.repeat(101)), `a long request is cut to 100 characters (got ${r.stdout})`);
   r = await wcli('history', 'leaky');
   ok(!r.stdout.includes(GHT) && /asked: "keep \[redacted\] in the note"/.test(r.stdout), `a request holding a secret prints redacted (got ${r.stdout})`);
+  // A deleted note: an entry sent in the deletion's minute is not named for it.
+  memory(wd, 'gone', 'gone', 'v1');
+  tier();
+  unlinkSync(join(wd, 'gone.md'));
+  tier();
+  const dline = (await wcli('history', 'gone')).stdout.match(/^  \w+ (\d{4}-\d\d-\d\d \d\d:\d\d)  deleted$/m);
+  writeDay(wd, [...es, mk('who-g', 'remove gone', 'gone', { at: dline?.[1] }), mk('who-del', 'delete gone', 'gone', { at: dline?.[1] })]);
+  r = await wcli('history', 'gone');
+  const G = r.stdout.split('\n'), di = G.findIndex((l) => /  deleted$/.test(l));
+  ok(dline && di >= 0 && G[di + 1] === NONE, `a deleted note's snapshot names no exchange (got ${r.stdout})`);
 }
 // show <note>: the first and the newest exchange behind a note, when no entry has that name as its key.
 {

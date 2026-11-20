@@ -98,10 +98,14 @@ export const changers = (es, paths) => { const p = new Set(paths.map(cleanPath))
 // Who changed a note at each snapshot. `snaps` are snapshot times 'YYYY-MM-DD HH:MM', oldest first; `es` the entries from `changers`, oldest first.
 // An entry holds only its minute, so one sent in a snapshot's own minute may have come after it: it is taken only when nothing earlier fits.
 // shortcut: an entry names one snapshot only; upgrade if a long turn that a save cut in two is reported as "no exchange found".
-export const whoChanged = (snaps, es) => {
+export const whoChanged = (snaps, es, deleted = []) => {
   const given = new Set();
   return snaps.map((hi, i) => {
     const lo = i ? snaps[i - 1] : '', all = es.filter((e) => !given.has(e) && e.at >= lo && e.at <= hi);
+    // every entry in the snapshot's own minute is taken, named or not: the next snapshot's window starts at that minute
+    all.filter((e) => e.at === hi).forEach((e) => given.add(e));
+    // a journal entry does not say whether it deleted the file, so a deleted note's snapshot names nothing
+    if (deleted[i]) return null;
     // a helper's entry is named only when no other fits: its report lands a minute after the request that started it
     const fit = all.some((e) => !isHelper(e)) ? all.filter((e) => !isHelper(e)) : all;
     // two conversations changed it since the last snapshot: the snapshot cannot tell whose it holds
