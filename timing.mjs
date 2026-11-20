@@ -1,5 +1,5 @@
 // One line of numbers per hook run, appended to <projects root>/.timing and shown by `memory doctor`.
-// The line holds the time, a fixed hook name, an event name (letters only) and milliseconds: no text
+// The line holds the time, a fixed hook name, an event name from a fixed list and milliseconds: no text
 // from a conversation, no path, no command. Time zero is Node's own start. It never throws into a
 // hook and never creates a folder. PROJECT_MEMORY_TIMING=0 turns it off.
 // No static import of a plugin module: store.mjs is loaded inside flush(), when the hook has it already.
@@ -9,6 +9,9 @@ import { join } from 'node:path';
 export const FILE = '.timing';
 export const MAX = 256 * 1024;
 const HOOKS = ['save', 'brief', 'enforce', 'gate'];
+// Claude Code's own names only: whatever else a payload holds never reaches the file.
+const EVENTS = ['Stop', 'SubagentStop', 'SessionStart', 'PreCompact', 'PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Notification', 'SessionEnd'];
+const DETAILS = ['startup', 'resume', 'compact', 'clear', 'auto', 'manual'];
 
 export const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
 export function stats(ms) {
@@ -28,8 +31,8 @@ export function begin(hook) {
 
 export function tag(event, detail) {
   if (!run) return;
-  run.e = typeof event === 'string' && /^[A-Za-z]{1,24}$/.test(event) ? event : '?';
-  if (run.e !== '?' && typeof detail === 'string' && /^[a-z]{1,12}$/.test(detail)) run.e += `:${detail}`;
+  run.e = EVENTS.includes(event) ? event : '?';
+  if (run.e !== '?' && DETAILS.includes(detail)) run.e += `:${detail}`;
 }
 
 export function mark(phase) {

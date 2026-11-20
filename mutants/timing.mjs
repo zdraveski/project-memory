@@ -3,9 +3,8 @@
 export default {
   'the off switch ignored': ["process.env.PROJECT_MEMORY_TIMING === '0'", 'false'],
   'an unknown hook name accepted': ['!HOOKS.includes(hook) || ', ''],
-  'an event that is not a name kept': ['/^[A-Za-z]{1,24}$/', '/^.{1,24}$/'],
-  'an event that is not text kept': ["typeof event === 'string' && ", ''],
-  'a detail that is not a word kept': ['/^[a-z]{1,12}$/', '/^.*$/'],
+  'an event outside the list kept': ['EVENTS.includes(event)', "typeof event === 'string'"],
+  'a detail outside the list kept': ['DETAILS.includes(detail)', "typeof detail === 'string'"],
   'a detail added to an event that is not a name': ["run.e !== '?' && ", ''],
   'two marks of one phase not added': ['(run.p[phase] ?? 0) + (now - run.last)', 'now - run.last'],
   'the file never cut': ['256 * 1024', '256 * 4096'],

@@ -37,6 +37,10 @@ begin('brief'); await flush();
 ok(read(0, file).at(-1).e === '?', 'no tag, no event name');
 begin('brief'); tag('a b', 'compact'); await flush();
 ok(read(0, file).at(-1).e === '?', 'a detail does not rescue an event that is not a name');
+begin('brief'); tag('mysecretproject', 'compact'); await flush();
+ok(read(0, file).at(-1).e === '?', 'a letters-only name that is not a hook event is ?');
+begin('brief'); tag('SessionStart', 'mysecret'); await flush();
+ok(read(0, file).at(-1).e === 'SessionStart', 'a letters-only detail that is not a source is left out');
 
 // what starts nothing
 const count = read(0, file).length;
@@ -132,10 +136,10 @@ for (const [script, args, payload] of CASES) {
 
 // no text reaches the file
 for (const [script, args, payload] of CASES) {
-  for (const evil of ['C:\\Users\\someone\\notes', 'a b', 'x'.repeat(10000), { a: 1 }, undefined]) run(script, args, { ...payload, hook_event_name: evil, source: evil, trigger: evil });
+  for (const evil of ['C:\\Users\\someone\\notes', 'a b', 'mysecretproject', 'x'.repeat(10000), { a: 1 }, undefined]) run(script, args, { ...payload, hook_event_name: evil, source: evil, trigger: evil });
 }
 const all = readFileSync(file, 'utf8');
 ok(/^(\{"t":\d+,"h":"[a-z]+","e":"[A-Za-z?:]+",("node":\d+,)?"start":\d+,"p":\{("[a-z]+":\d+,?)*\},"ms":\d+\}\n)+$/.test(all), 'numbers and fixed names only');
-ok(!/someone|notes|feed the tapir|abcd1234|proj/.test(all), 'no path, no conversation text, no session');
+ok(!/someone|notes|mysecret|feed the tapir|abcd1234|proj/.test(all), 'no path, no conversation text, no session');
 
 console.log(`timing.test.mjs: ${checks} checks passed`);
