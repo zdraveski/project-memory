@@ -3715,6 +3715,12 @@ again ${key2}
   ok(r.status === 0 && (r.stdout.match(/^ {4}by: no exchange found/gm) || []).length === 2, `with no journal every snapshot says no exchange was found (got ${r.stdout})`);
   r = await wcli('history', 'rules', '--limit', '1');
   ok(/^ {4}by: no exchange found/m.test(r.stdout) && /^  and 1 older; --limit N shows more$/m.test(r.stdout) && !/who-1/.test(r.stdout), `--limit cuts the list after the snapshots are paired (got ${r.stdout})`);
+  // --limit 1 reads only the journal days from the snapshot just older than the one shown: a day file before that is never opened.
+  mkdirSync(join(wd, 'journal', '2001-01-01.md'));
+  ok(/could not read/.test((await wcli('history', 'rules')).stdout), 'all the journal days are read when every snapshot is shown');
+  r = await wcli('history', 'rules', '--limit', '1');
+  ok(!/could not read/.test(r.stdout) && /^  and 1 older/m.test(r.stdout), `--limit 1 opens no journal day older than the snapshot below it (got ${r.stdout})`);
+  rmSync(join(wd, 'journal', '2001-01-01.md'), { recursive: true });
   r = await wcli('history', 'long');
   ok(r.stdout.includes(`asked: "${'y'.repeat(99)}…" `) && !r.stdout.includes('y'.repeat(101)), `a long request is cut to 100 characters (got ${r.stdout})`);
   r = await wcli('history', 'leaky');

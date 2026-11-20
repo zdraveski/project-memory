@@ -634,8 +634,9 @@ const tame = (t) => t.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\
 const byLine = (e) => e === 'shared' ? 'by: not looked up for the shared store (what changed it is in the project journals)' : e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `by: ${e.at} [${e.s}] asked: "${tame(clip(e.asked, 100))}" · key: "${tame(clip(e.key, Infinity))}"`
   : "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
 // A note's journal entries, oldest first, by its full path as the session saw it. A journal that will not read is none: history still prints.
-const changersOf = (dir, f, failed) => {
-  try { return changers(told([dir], { failed }), [join(dir, f), join(real(dir), f)]).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); } catch { return []; }
+// `since`: a day 'YYYY-MM-DD'; the journal days before it are not opened.
+const changersOf = (dir, f, failed, since) => {
+  try { return changers(told([dir], { failed, since }), [join(dir, f), join(real(dir), f)]).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); } catch { return []; }
 };
 export function history(dirs, file, everywhere = false, max = 30, failed = []) {
   const verb = { A: 'added', M: 'changed', D: 'deleted' };
@@ -655,7 +656,9 @@ export function history(dirs, file, everywhere = false, max = 30, failed = []) {
         else if (head && verb[l[0]]) { snaps.push([head[0], head[1] === 'memory: first snapshot' ? 'in the first snapshot' : verb[l[0]]]); head = null; }
       }
       // Newest first, as git prints them; paired oldest first, before `max` cuts the list.
-      const by = isShared(dir) ? snaps.map(() => 'shared') : snaps.length ? whoChanged(snaps.map(([h]) => h.slice(h.indexOf(' ') + 1)).reverse(), changersOf(dir, f, failed), snaps.map(([, what]) => what === 'deleted').reverse()).reverse() : [];
+      // Only the ones shown, and the one below them: its minute is the lower limit of the oldest shown. None below: the oldest has no lower limit, all of the journal is read.
+      const used = snaps.slice(0, max + 1), since = snaps.length > max ? used.at(-1)[0].split(' ')[1] : undefined;
+      const by = isShared(dir) ? snaps.map(() => 'shared') : snaps.length ? whoChanged(used.map(([h]) => h.slice(h.indexOf(' ') + 1)).reverse(), changersOf(dir, f, failed, since), used.map(([, what]) => what === 'deleted').reverse()).reverse() : [];
       const lines = snaps.flatMap(([h, what], i) => [`  ${h}  ${what}`, `    ${byLine(by[i])}`]);
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
