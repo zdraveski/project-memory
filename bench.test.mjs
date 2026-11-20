@@ -111,4 +111,13 @@ const twice = await capture(() => main(['--check', '1'], fake(400), { a: 1 }));
 ok(twice.value === 1, 'slow twice is a failure');
 ok(eq(Object.keys(LIMITS).sort(), CASES.filter((c) => c !== EMPTY).sort()), 'a limit for every case');
 
+// --real copies the machine's own transcript and store, found before HOME points at the throwaway folder
+const real = spawnSync(process.execPath, [tool('bench.mjs'), '1', '--real'], { encoding: 'utf8' });
+ok(real.status === 0 && /^Stop, nothing changed\s+p50/m.test(real.stdout), `--real runs on a home that has a transcript and a store (${real.stderr.slice(0, 200)})`);
+const keep = process.env.HOME, empty = tempDir('bench-empty-');
+process.env.HOME = empty; process.env.USERPROFILE = empty;
+const none = spawnSync(process.execPath, [tool('bench.mjs'), '1', '--real'], { encoding: 'utf8' });
+process.env.HOME = keep; process.env.USERPROFILE = keep;
+ok(none.status === 1 && /needs a transcript and a memory store/.test(none.stderr), '--real with nothing to copy says so in plain words');
+
 console.log(`bench: ${checks} checks passed`);

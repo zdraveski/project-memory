@@ -64,15 +64,21 @@ function split(lines) {
 
 // One measurement of the cases named in `only` (all by default) on a fresh store.
 function measure({ runs, real, plugin, scale, only }) {
+  // The machine's own transcript and store are found before tempHome() points HOME at the empty folder.
+  let from, transcript;
+  if (real) {
+    const root = join(homedir(), '.claude', 'projects');
+    try {
+      const projects = readdirSync(root).map((p) => join(root, p)).filter((p) => statSync(p).isDirectory());
+      const biggest = (paths) => paths.map((p) => [p, statSync(p).size]).sort((a, b) => b[1] - a[1])[0]?.[0];
+      transcript = biggest(projects.flatMap((p) => readdirSync(p).filter((f) => f.endsWith('.jsonl')).map((f) => join(p, f))));
+      from = largestStore();
+    } catch {}
+    if (!transcript || !from) { console.error('bench --real needs a transcript and a memory store on this machine to copy'); process.exit(1); }
+  }
   const { home, env } = tempHome('bench-');
   let t, store, sizes;
   if (real) {
-    const root = join(homedir(), '.claude', 'projects');
-    const projects = readdirSync(root).map((p) => join(root, p)).filter((p) => statSync(p).isDirectory());
-    const biggest = (paths) => paths.map((p) => [p, statSync(p).size]).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const transcript = biggest(projects.flatMap((p) => readdirSync(p).filter((f) => f.endsWith('.jsonl')).map((f) => join(p, f))));
-    const from = largestStore();
-    if (!transcript || !from) { console.error('bench --real needs a transcript and a memory store on this machine to copy'); process.exit(1); }
     const proj = join(home, '.claude', 'projects', PROJECT);
     store = join(proj, 'memory'); t = join(proj, 'bbbbbbbb-0000-0000-0000-000000000000.jsonl');
     mkdirSync(proj, { recursive: true });
