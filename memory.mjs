@@ -45,6 +45,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
+import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { BLOCK, redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
@@ -872,6 +873,24 @@ const TWICE = 2000;
 const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e ?? 'Stop') === 'Stop' && !r.h === !p.h && (!r.m || !p.m || r.m === p.m) &&
   Math.abs(Date.parse(r.at) - Date.parse(p.at)) < TWICE;
 
+// One note per hook that ran in the last 7 days (the .timing file, timing.mjs). "since" is the later of 7 days ago and the oldest line:
+// the file is cut at 256 KB, which a busy user fills sooner than 7 days.
+const TIMED = { save: 'save after a reply', brief: 'briefing', enforce: 'git rule check', gate: 'check before a compaction' };
+export function timingLines(now = Date.now()) {
+  if (process.env.PROJECT_MEMORY_TIMING === '0') return ['hook times are off (PROJECT_MEMORY_TIMING=0)'];
+  const all = readTimes(0, join(projectsRoot(), TIMING)), since = Math.max(now - 7 * 864e5, all[0]?.t ?? 0), sec = (ms) => (ms / 1000).toFixed(2);
+  const groups = new Map();
+  for (const r of all.filter((x) => x.t >= now - 7 * 864e5 && TIMED[x.h])) {
+    const label = r.h === 'save' && r.e === 'SubagentStop' ? "save of a helper's report" : TIMED[r.h];
+    groups.set(label, [...(groups.get(label) ?? []), r]);
+  }
+  const lines = [...groups].map(([label, rs]) => {
+    const t = stats(rs.map((r) => r.ms)), start = stats(rs.map((r) => r.start).filter(Number.isFinite)).median;
+    return `${label}: ${t.runs} run${t.runs === 1 ? '' : 's'} since ${local(since).slice(0, 10)}, median ${sec(t.median)} s (${sec(start ?? 0)} s of it before the plugin's code runs), 9 in 10 under ${sec(t.p90)} s, worst ${sec(t.worst)} s`;
+  });
+  return lines.length ? lines : ['no hook times yet: they collect from the next reply on'];
+}
+
 export function doctor(site = sessionStore()) {
   const lines = [];
   let bad = 0;
@@ -945,6 +964,7 @@ export function doctor(site = sessionStore()) {
     let when; try { when = `last ran ${local(statSync(ran).mtime)}`; } catch (e) { when = `has run, but ${ran} could not be read (${e.code || e.message}), so not when`; }
     say(!s.length, s[0] || `the Stop hook ${when}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`);
   }
+  for (const t of timingLines()) say('note', t);
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return Date.now() - statSync(l).mtimeMs > LOCK_STALE; } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);
   // No git is a setup the README allows: everything works but the history.

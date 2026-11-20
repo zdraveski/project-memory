@@ -33,6 +33,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import * as T from './timing.mjs';
 import { goesOn, readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF, redact, BARE } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, isOff, local, envOn } from './store.mjs';
 
@@ -381,19 +382,24 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // A payload it cannot read, or a gate that throws, lets the compaction run:
   // a broken gate must never be what keeps a session from compacting. The two
   // are told apart, because "no payload" once covered every failure.
+  T.begin('gate');
   let payload = null;
   try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch {}
+  T.tag(payload?.hook_event_name, payload?.trigger);
   // A reader gone before the line is written: its EPIPE, thrown with no
   // listener, exited 1 and the deferral was lost (P1 hunt, 2026-10-29).
   process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
+  T.mark('input');
   let r = { code: 0, why: 'no payload' };
   if (payload && memoryOff()) r = { code: 0, why: 'auto memory is off: nothing done' };
   else if (payload && (() => { try { return isOff(storeOf(payload)); } catch { return false; } })()) r = { code: 0, why: 'memory is off in this project (.project-off): nothing done' };
   else if (payload) { try { r = gate(payload); } catch (e) { r = { code: 0, why: `gate failed, not deferred: ${e.message}` }; } }
+  T.mark('gate');
   // Always said, so the hooks debug log shows why a compaction ran or waited;
   // Claude Code shows exit-2 stderr to the user only for a manual /compact.
   process.stderr.write(`compaction gate: ${redact(r.why)}\n`);
   // Not process.exit(): on macOS a pipe is written asynchronously, and an
   // exit right after a write can cut it (CI 2026-10-29).
+  await T.flush();
   process.exitCode = r.code;
 }

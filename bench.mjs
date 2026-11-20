@@ -12,7 +12,8 @@ import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { tool, tempHome, largestStore } from './harness.mjs';
 import { projectsRoot, storeOf } from './store.mjs';
-import { liveTimes, pct } from './live-times.mjs';
+import { liveTimes } from './live-times.mjs';
+import { pct } from './timing.mjs';
 
 const OURS = ['memory-tier.mjs', 'brief.mjs', 'enforce-hook.mjs', 'compact-gate.mjs', 'handoff-log.mjs'];
 

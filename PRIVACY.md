@@ -23,8 +23,9 @@ This page says what it reads, what it saves, and how to remove it.
 - The git information of the folder a conversation starts in (its `.git`
   folder or file, and those of the folders above it), to find the repository
   whose notebook Claude Code uses, as Claude Code does.
-- Eleven settings from the environment, by name: `PROJECT_MEMORY_BRIEFING`
-  (set to `0`, the startup briefing is not shown), and ten that Claude Code
+- Twelve settings from the environment, by name: `PROJECT_MEMORY_BRIEFING`
+  (set to `0`, the startup briefing is not shown), `PROJECT_MEMORY_TIMING`
+  (set to `0`, the hook times are not recorded), and ten that Claude Code
   reads too: `CLAUDE_PROJECT_DIR` (the project folder), `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME` and
   `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (where the notes are, and whether they're
   on), and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_DISABLE_1M_CONTEXT`,
@@ -53,6 +54,7 @@ When a subagent finishes, the plugin reads the end of that subagent's own conver
 
 All of it stays in `~/.claude/projects` on your computer:
 
+- `.timing`, one line for each run of a hook: the time, which hook (`save`, `brief`, `enforce` or `gate`), which event (`Stop`, `PreToolUse` and the like, letters only) and how many milliseconds each step took. Numbers and those fixed names only: no text from a conversation, no file name, no command. It is cut to its newer half at 256 KB. `memory doctor` shows the times. They count from the start of Node, so what Claude Code spends starting a hook comes on top. Set `PROJECT_MEMORY_TIMING=0` to turn it off.
 - `.enforce-log` and `.enforce.json` in a store: which note's rule a git command matched (note name, session tag, sub-agent type, tool-call id; never the command) and a cache of the rules. Nothing is written for a private conversation or while memory is off.
 - A record of where you left off (`handoff.md`): the start of your latest
   messages (up to 500 characters each) and of Claude's replies (up to 900),
@@ -309,6 +311,7 @@ a conversation.
 
 ## How long it keeps it
 
+- The hook times (`.timing`): the newest part of 256 KB, a few days of use. Deleting the file loses nothing but the times.
 - The record of where you left off: until newer exchanges replace it. Lines
   Claude writes in `handoff.md` outside the record: until Claude or you
   change them. Its daily copy, `handoff.md.prev`: until the next day's first
@@ -345,7 +348,7 @@ Uninstalling the plugin leaves all of this in place. To delete:
 - a backup that `memory rescan --apply --yes` made: the folder
   `project-memory-rescan-backup-<date>` in Claude Code's folder (`~/.claude`).
   It still holds the secrets it removed, and is never deleted for you.
-- the bookkeeping files: in `~/.claude/projects`, `.hash-salt`, `.gitignore`, `.stop-ran`,
+- the bookkeeping files: in `~/.claude/projects`, `.hash-salt`, `.gitignore`, `.stop-ran`, `.timing`,
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
   `.journal-failed-…` file and the folder `.nudge`; in each project's
   `memory` folder, `.tiered`, `.facts`, `.health`, `.private-sessions`,

@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor } from './harness.mjs';
-import { liveTimes, scriptOf, pct } from './live-times.mjs';
+import { liveTimes, scriptOf } from './live-times.mjs';
+import { pct } from './timing.mjs';
 
 const { home } = tempHome('bench-');
 let checks = 0;

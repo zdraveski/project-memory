@@ -1,5 +1,8 @@
 // The plugin's SessionStart starter: it loads handoff-log.mjs itself, so a file that fails to load (a bad deploy, a half-written update) says so in one line
 // instead of leaving a silent, empty briefing. PROJECT_MEMORY_BRIEFING=0 turns the briefing off: no output at all.
+// Guarded: a timing.mjs that fails to load costs the times, never the briefing.
+const T = await import('./timing.mjs').catch(() => null);
+T?.begin('brief');
 process.exitCode = 0;
 if (process.env.PROJECT_MEMORY_BRIEFING !== '0') {
   process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
@@ -8,3 +11,4 @@ if (process.env.PROJECT_MEMORY_BRIEFING !== '0') {
   try { await (await import('./handoff-log.mjs')).main({ rethrow: true }); }
   catch (e) { process.stdout.write(`Memory briefing failed (${String(e?.message ?? e).split('\n')[0].slice(0, 200)}). Run "memory doctor", or reinstall the project-memory plugin.\n`); }
 }
+await T?.flush();

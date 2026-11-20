@@ -12,6 +12,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync, writeSync, appendFil
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import * as T from './timing.mjs';
 import { holdsSecret, keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED, redact, configDir, tag } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
@@ -701,8 +702,10 @@ export async function main(argv, input) {
   const say = (m) => { if (payload?.hook_event_name !== 'PreCompact') console.log(m); };
   if (stop) {
     try { payload = JSON.parse(input); } catch {}
+    T.tag(payload?.hook_event_name);
     // A project turned off (memory off): nothing is written, not even .stop-ran.
     try { if (payload && isOff(storeOf(payload))) return 0; } catch {}
+    T.mark('input');
     // SubagentStop: the agent's report goes to the journal, nothing else runs (no tiering, no nudge, no handoff).
     if (payload?.hook_event_name === 'SubagentStop') { try { (await import(new URL('./journal.mjs', import.meta.url))).subagent(payload); } catch {} return 0; }
     // Two tries, not one: a handoff that fails to write (two sessions renaming
@@ -747,6 +750,7 @@ export async function main(argv, input) {
       // the journal, never the handoff.
       let sink = null;
       try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}
+      T.mark('load');
       // A store still held after one wait (twenty Stops at once) gets one more, after a pause and with a fresh wait: the session's
       // last Stop has no later one to redo the turn (defect hunt 1.3.2, C5).
       try {
@@ -757,10 +761,12 @@ export async function main(argv, input) {
         try { unlinkSync(failed); } catch {}
       }
       catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) }), { mode: 0o600 }); }
+      T.mark('handoff');
       // The index of a store the plugin writes to, in the same Stop that wrote its handoff; the nudge below must not skip it.
       if (payload && !dry) ensureIndex(storeOf(payload));
       // The temp copies a killed Stop left here (store.mjs).
       if (payload) try { sweepTemps(storeOf(payload)); } catch {}
+      T.mark('index');
       // Then a few of the conversations still on disk, into the journal, without
       // a word; in a try of its own, so a failed import costs only the import.
       // Not due, no lock taken: another hook holding the store cost the Stop a
@@ -769,6 +775,7 @@ export async function main(argv, input) {
         const { backfill, due, JOURNAL } = await import(new URL('./journal.mjs', import.meta.url)), d = payload && storeOf(payload);
         if (d && due(d) && (existsSync(join(d, JOURNAL)) || readdirSync(dirname(d)).some((f) => f.endsWith('.jsonl')))) withLock(d, () => backfill(d, { skip: payload.transcript_path }));
       } catch {}
+      T.mark('backfill');
     } catch {}
     try {
       // Past the compaction trigger, the next prompt compacts: nudge this stop
@@ -777,6 +784,7 @@ export async function main(argv, input) {
       // break it; tiering waits for the next turn, which redoes it anyway.
       let notice = null; try { notice = payload && reloadNotice(payload); } catch {}
       const nudge = payload && (await import(new URL('./compact-gate.mjs', import.meta.url))).nudge(payload);
+      T.mark('notice');
       const out = (nudge || notice) && { ...nudge, ...(notice && { systemMessage: notice }) };
       // Done once it is written: on macOS a pipe is written asynchronously, and
       // an exit right after a write can cut it (handoff-log's --print, CI 2026-10-29).
@@ -822,11 +830,13 @@ export async function main(argv, input) {
   const gated = stop && !dry && dirAt === -1;
   const todo = gated ? dirs.filter((d) => { try { seen.set(d, scan(d)); return readFileSync(stampOf(d), 'utf8') !== fingerprint(seen.get(d)); } catch { return true; } }) : dirs;
   // Nothing to tidy: done, unless a snapshot is owed, which runs alone.
+  T.mark('scan');
   if (gated && !todo.length && !owed()) return 0;
   // The first time, the notebook is kept as it was found before the tidy-up
   // changes it: snapshotted after, the table of contents as the user had
   // written it could never come back (docs review, 2026-10-28).
   if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot();
+  T.mark('snapshot');
 
   const clean = [];
   for (const dir of todo) {
@@ -859,6 +869,7 @@ export async function main(argv, input) {
     if (r.dupes.length) say(`  duplicate pointers dropped: ${r.dupes.join(', ')}`);
     for (const p of problems) say(`  ${p}`);
   }
+  T.mark('tier');
 
   // After the stores are tiered, not before: the snapshot should record the
   // state a session will actually start from.
@@ -867,6 +878,7 @@ export async function main(argv, input) {
     if (s === 'busy') say('memory snapshot: busy — another session is committing; the next turn retries');
     else if (s) say(`memory snapshot: ${s}`);
     snapshotHealth(s);
+    T.mark('snapshot');
   }
   // The tool's own writes are part of the stamp, so the next turn is quiet
   // unless something else changed. None for a store that was skipped, busy,
@@ -886,9 +898,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // listener, exited the Stop 1 (P1 hunt, 2026-10-29).
   process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
   const argv = process.argv.slice(2);
+  if (argv.includes('--stop')) T.begin('save');
   // stdin only behind --stop: a manual run never blocks on a terminal. One that
   // cannot be read is no payload, as before.
   let input;
   if (argv.includes('--stop')) try { input = readFileSync(0, 'utf8'); } catch {}
-  process.exitCode = await main(argv, input);
+  try { process.exitCode = await main(argv, input); } finally { await T.flush(); }
 }

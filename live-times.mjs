@@ -4,8 +4,6 @@
 import { createReadStream, statSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
-export const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
-
 // Newer Claude Code records a hook's status message where the command was: this plugin's own, by name.
 const STATUS = { 'Saving memory': 'memory-tier.mjs', 'Saving subagent report': 'memory-tier.mjs', 'Saving before compaction': 'memory-tier.mjs', Briefing: 'brief.mjs', 'Checking before compaction': 'compact-gate.mjs' };
 // The file name of the first script a command names (not the interpreter running it), never any other part.

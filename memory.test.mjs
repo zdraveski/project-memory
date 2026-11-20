@@ -604,6 +604,30 @@ writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), '{}')
 ok(/^PROBLEM the plugin runs aaa from [^\n]*, the last deploy is bbb\. The user's fix: claude plugin update/m.test((await cli('doctor')).stdout), 'doctor: a plugin copy older than the last deploy is named');
 writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: {} }));
 ok(/^ok +the plugin runs the last deploy, bbb/m.test((await cli('doctor')).stdout), 'doctor: and one that matches is fine');
+// The hooks' times, from .timing (timing.mjs): one note per hook that ran, never a problem.
+{
+  const tfile = join(root, '.timing'), put = (...ls) => writeFileSync(tfile, ls.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n') + '\n');
+  const line = (h, ms, days = 1, extra = {}) => ({ t: Date.now() - days * 864e5, h, e: h === 'save' ? 'Stop' : 'x', node: 40, start: 90, p: {}, ms, ...extra });
+  const saves = Array.from({ length: 10 }, (_, i) => line('save', 100 * (i + 1), i === 0 ? 3 : 1));
+  put(...saves, line('brief', 400), line('brief', 500));
+  let out = (await cli('doctor')).stdout;
+  ok(/^note    save after a reply: 10 runs since \d{4}-\d\d-\d\d, median 0\.60 s \(0\.09 s of it before the plugin's code runs\), 9 in 10 under 1\.00 s, worst 1\.00 s$/m.test(out), `doctor: hook times, one line per hook (got ${out})`);
+  ok(/^note    briefing: 2 runs since /m.test(out), 'doctor: a second hook, a second line');
+  ok(!/git rule check/.test(out), 'doctor: a hook that never ran gets no line');
+  put(line('save', 100, 8), line('save', 200, 1, { e: 'SubagentStop' }));
+  out = (await cli('doctor')).stdout;
+  ok(/^note    save of a helper's report: 1 run since /m.test(out) && !/save after a reply/.test(out), "doctor: a line 8 days old is not counted, and a helper's report has its own line");
+  rmSync(tfile);
+  ok(/^note    no hook times yet: they collect from the next reply on$/m.test((await cli('doctor')).stdout), 'doctor: no times yet');
+  put('not json', '{"t":1,"ms":"x"}', '{"t":3');
+  r = await cli('doctor');
+  ok(/^note    no hook times yet: /m.test(r.stdout), 'doctor: a file of broken lines is no times');
+  put(line('save', 100));
+  const before = (await cli('doctor')).status;
+  process.env.PROJECT_MEMORY_TIMING = '0'; const off = await cli('doctor'); delete process.env.PROJECT_MEMORY_TIMING;
+  ok(/^note    hook times are off \(PROJECT_MEMORY_TIMING=0\)$/m.test(off.stdout) && off.status === before, 'doctor: times switched off, and the exit code does not change');
+  rmSync(tfile);
+}
 // A copy at the last deploy's commit with a file changed since is named by the file.
 writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: { 'gone.mjs': '0' } }));
 r = await cli('doctor');
@@ -1199,7 +1223,7 @@ lemur lemur lemur lemur
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'store.mjs', 'handoff-log.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(f)));
+  for (const f of ['memory.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(f)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   const njs = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'status', '--store', jd], { env, encoding: 'utf8' });
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
@@ -2656,7 +2680,7 @@ After the log: narwhalqq stays.
   // doctor: one line for the enforce hook of the plugin copy that runs, even when memory is off.
   const efHome = join(home, '.claude', 'plugins', 'cache', 'ef', '1.4.0');
   mkdirSync(join(efHome, 'hooks'), { recursive: true });
-  for (const f of ['enforce-hook.mjs', 'enforce.mjs', 'store.mjs', 'handoff-log.mjs']) writeFileSync(join(efHome, f), readFileSync(tool(f)));
+  for (const f of ['enforce-hook.mjs', 'enforce.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs']) writeFileSync(join(efHome, f), readFileSync(tool(f)));
   writeFileSync(join(efHome, 'hooks', 'hooks.json'), readFileSync(join(dirname(tool('memory.mjs')), 'hooks', 'hooks.json')));
   installed('project-memory@project-memory', efHome, { source: 'github', repo: 'zdraveski/project-memory' });
   const doc = async () => (await cli('doctor')).stdout;
