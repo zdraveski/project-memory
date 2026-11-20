@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.5.4 (2026-11-20)
+
+This release lets you see your journal as one page in the browser, tells you which conversation and which of your requests changed a note, and starts measuring how long the plugin's hooks take on your machine. Everything stays on your computer.
+
+### The journal page
+
+- **`memory page` writes your journal as one web page on your computer and prints its link.** It shows a week at a time with a card for each project, and the day's exchanges with what you asked and what Claude answered. A search box filters as you type (`/` jumps to it). `--days N` or `--days all` sets how far back (30 days by default), and `--project NAME` picks one project.
+- **The page loads nothing from the network and only you can read it.** It is one file, `project-memory/journal.html`. Private conversations show no text, forgotten entries are left out, and secrets are redacted as everywhere else. `forget`, `incognito`, `memory off` and `rescan --apply --yes` delete the page, so it never keeps what you removed; run `memory page` again for a fresh one.
+
+### Who said it
+
+- **`history <note>` names the exchange behind each change**: a `by:` line with the time, the conversation and what you asked. `show <note>` names the first and the last exchange that changed it. A change made by hand, by a shell command or by the plugin's own sorting says `no exchange found`.
+- **`search` has three filters**: `--file <path>` lists the exchanges that changed that file, `--asked` searches only your own words, and `--conversation <id>` searches one conversation.
+- **The briefing reminds Claude to check your own words** before it acts on a note it is not sure about.
+
+### Hook times
+
+- **`memory doctor` shows how long each hook takes**, for example the save after a reply and the briefing at the start. The hooks write one line of numbers per run to `~/.claude/projects/.timing`: hook names and milliseconds, never text or file names. Set `PROJECT_MEMORY_TIMING=0` to turn it off.
+
 ## 1.5.3 (2026-11-19)
 
 This release makes the plugin tell you when an update is waiting to be loaded, catches git commands hidden inside quotes, and fixes a rare case where a conversation in a very long folder path was saved to the wrong project. Most of the work is out of sight: the tests now catch about 1,200 more kinds of mistake.
