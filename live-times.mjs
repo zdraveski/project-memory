@@ -11,7 +11,7 @@ const STATUS = { 'Saving memory': 'memory-tier.mjs', 'Saving subagent report': '
 // The file name of the first script a command names (not the interpreter running it), never any other part.
 export const scriptOf = (command) => STATUS[command] ?? [...String(command ?? '').matchAll(/([\w.-]+\.(?:mjs|cjs|js|sh|py|ps1|exe))/g)].map((m) => m[1]).find((n) => !/^(?:node|python3?|pythonw|bash|sh|pwsh|powershell)\.exe$/i.test(n)) ?? 'other';
 
-const eventOf = (e) => String(e ?? '').match(/^[A-Za-z]+/)?.[0] ?? '?';
+const eventOf = (e) => (e === 'stop_hook_summary' ? 'Stop' : String(e ?? '').match(/^[A-Za-z]+/)?.[0] ?? '?');
 
 // Event, command and duration of each hook run a record holds.
 function* runs(r) {
@@ -23,11 +23,14 @@ function* runs(r) {
 }
 
 // Map of `${event} ${script}` to the durations in ms. Streams each file: they can be hundreds of MB.
+// A Stop run is written twice: once in a stop_hook_summary record and once per hook as an attachment.
+// A file with summaries keeps only those, so one run is one sample; a file without keeps the per-hook ones.
 export async function liveTimes(files, { since = 0 } = {}) {
   const out = new Map();
   for (const f of files) {
     let fileInWindow;
     try { fileInWindow = statSync(f).ctimeMs >= since; } catch { continue; }
+    const samples = []; let summaries = false;
     try {
       for await (const line of createInterface({ input: createReadStream(f), crlfDelay: Infinity })) {
         if (!line.includes('"hook') || !line.includes('uration')) continue;
@@ -36,13 +39,15 @@ export async function liveTimes(files, { since = 0 } = {}) {
         if (!r || typeof r !== 'object') continue;
         const at = Date.parse(r.timestamp);
         if (Number.isNaN(at) ? !fileInWindow : at < since) continue;
+        const summary = r.subtype === 'stop_hook_summary';
         for (const [event, command, ms] of runs(r)) {
           if (typeof ms !== 'number' || !Number.isFinite(ms)) continue;
-          const key = `${event} ${scriptOf(command)}`;
-          (out.get(key) ?? out.set(key, []).get(key)).push(ms);
+          if (summary) summaries = true;
+          samples.push([`${event} ${scriptOf(command)}`, ms, event === 'Stop' && !summary]);
         }
       }
-    } catch { /* unreadable: skip the file */ }
+    } catch { /* unreadable: keep what was read */ }
+    for (const [key, ms, perHookStop] of samples) if (!(summaries && perHookStop)) (out.get(key) ?? out.set(key, []).get(key)).push(ms);
   }
   return out;
 }
