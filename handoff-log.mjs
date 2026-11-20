@@ -22,6 +22,7 @@ import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, rea
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import * as T from './timing.mjs';
 import { holdsSecret, tag, QUIET, OFF, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, autoMemory, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED, redact, FUNC } from './store.mjs';
 export { redact, holdsSecret };
 
@@ -785,6 +786,7 @@ export function handoff(input, sink = null) {
   let since = null, refused = false;
   try { const d = readFileSync(file, 'utf8'), { a, b } = sectionOf(d); if (a !== -1) since = parse(d.slice(a, b)).filter((t) => t.s === s).sort(byAt).at(-1) ?? null; } catch (e) { refused = e.code !== 'ENOENT'; }
   const got = latest(input.transcript_path, since, refused);
+  T.mark('read');
   // The transcript can lag the reply that ends it: on Stop, Claude Code passes
   // that reply itself (hooks docs). Not after a block: then it is the reply
   // to the block. Nor when the hold has just ended and nothing was said since:
@@ -832,6 +834,7 @@ export function handoff(input, sink = null) {
     // reads (~25 Stops of 20 KB turns), every one swept every journal day
     // again, under the lock (1.5 s with three years of journal).
     if (sink) try { sink(dir, input.transcript_path, got, { quiet, hush: hush && !was }); } catch {}
+    T.mark('journal');
     // Or by the journal's look at the whole transcript, past this read.
     quiet ||= hushed(dir, s);
     if (quiet === null) throw unreadable(dir, QUIET);
@@ -1144,6 +1147,7 @@ async function print(input) {
   const busy = (t) => { try { return lastTurn(t.p).open; } catch { return false; } };
   const working = [];
   for (const t of live) { if (working.length === 2 || Date.now() - t.m >= ACTIVE) break; if (busy(t)) working.push(t); }
+  T.mark('handoff');
   // Never the words of a conversation marked private, though handoff.md still
   // holds them (a sweep that failed waits for the next reply): the mark is
   // kept apart. A list that won't read hides them all.
@@ -1177,7 +1181,10 @@ async function print(input) {
     const gone = new Set(forgotten(list).filter(([, t]) => t).map(([, t, at]) => `${tag(basename(t))} ${at}`));
     const theirs = lines.length && last && !others.length && !shut && hushed(projectsRoot(), last.s, false, OFF) === false
       ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).map(render) : [];
-    const rest = [...await journalLine(dir), ...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];
+    const journal = await journalLine(dir);
+    T.mark('journal');
+    const rest = [...journal, ...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];
+    T.mark('shared');
     const say = (ex) => fit([...lines, ...(ex.length ? ['Its last exchanges, oldest first:', ...ex] : []), ...rest].join('\n') + '\n', 1000);
     // The most that fit, from the newest back; none when not even it does.
     // Found, not looped: a while on the length, its && made ||, never ended
@@ -1185,18 +1192,25 @@ async function print(input) {
     // The budget is BRIEF, or what is there without them plus a reserve of their own: a full shared index left no room for any.
     const room = Math.max(BRIEF, say([]).length + EXCHANGES);
     const from = theirs.findIndex((_, i) => say(theirs.slice(i)).length <= room);
-    return say(from === -1 ? [] : theirs.slice(from));
+    const out = say(from === -1 ? [] : theirs.slice(from));
+    T.mark('fit');
+    return out;
   }
   let note = '';
   try { note = (await import(new URL('./compact-gate.mjs', import.meta.url))).recover(input); } catch {}
   // Its own exchanges only. None yet (cut in its first turn, or a private
   // conversation) is none: another session's, shown here, read as its own.
-  const mine = all.filter((t) => t.s === me).map(render), tail = [...await journalLine(dir), ...shared()];
+  const mine = all.filter((t) => t.s === me).map(render), journal = await journalLine(dir);
+  T.mark('journal');
+  const tail = [...journal, ...shared()];
+  T.mark('shared');
   const say = () => [...(note || mine.length ? ['The last exchanges before this compaction, from handoff.md:', ...(note ? [note] : []), ...mine, ...others] : []), ...tail].join('\n') + '\n';
   // The oldest exchanges go first, until it fits.
   let out = say();
   while (mine.length && out.length > SAY) { mine.shift(); out = say(); }
-  return fit(out);
+  out = fit(out);
+  T.mark('fit');
+  return out;
 }
 
 // Run directly (the harnesses do): payload on stdin, always exit 0.
@@ -1210,6 +1224,7 @@ async function print(input) {
 export async function main({ rethrow = false } = {}) {
   try {
     const input = JSON.parse(readFileSync(0, 'utf8'));
+    T.tag(input.hook_event_name, input.source);
     // Auto memory off: no record, no briefing; the tag at every start, so no
     // backfill imports a conversation whose first reply got no Stop (P1 hunt,
     // 2026-10-29). A resumed conversation has its history: no briefing.

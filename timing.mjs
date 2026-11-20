@@ -72,5 +72,5 @@ export function read(since, file) {
     let o; try { o = JSON.parse(l); } catch { continue; }
     if (o && typeof o.t === 'number' && typeof o.ms === 'number' && o.t >= since) out.push(o);
   }
-  return out.sort((a, b) => a.t - b.t);
+  return out;
 }

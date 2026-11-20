@@ -1,9 +1,10 @@
 // Self-check for timing.mjs, the one line of numbers every hook run appends to <projects root>/.timing.
 // Run: node timing.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, statSync, readdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, readdirSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
-import { tempHome } from './harness.mjs';
+import { tempHome, tool, storeFor, slug } from './harness.mjs';
 import { begin, tag, mark, flush, read, cut, stats, pct, FILE, MAX } from './timing.mjs';
 
 const { home } = tempHome('timing-');
@@ -21,6 +22,10 @@ ok(eq(Object.keys(l.p), ['input', 'load']), 'a phase marked twice is one phase')
 ok(readFileSync(file, 'utf8').split('\n').length === 2, 'one line, one newline');
 ok((statSync(file).mode & 0o777) === 0o600 || process.platform === 'win32', 'private to the user');
 
+begin('save'); const spin = (ms) => { const t = performance.now(); while (performance.now() - t < ms); };
+spin(15); mark('a'); spin(15); mark('a'); await flush();
+ok(read(0, file).at(-1).p.a >= 28, 'two marks of one name add up');
+
 // tag keeps names only
 for (const bad of ['C:\\Users\\someone', 'a b', 'x'.repeat(10000), '', undefined, { a: 1 }]) { begin('gate'); tag(bad, bad); await flush(); }
 ok(read(0, file).slice(1).every((x) => x.e === '?'), 'what is not a name is ?');
@@ -30,6 +35,8 @@ begin('brief'); tag('SessionStart', 'a b/c'); await flush();
 ok(read(0, file).at(-1).e === 'SessionStart', 'a detail that is not a word is left out');
 begin('brief'); await flush();
 ok(read(0, file).at(-1).e === '?', 'no tag, no event name');
+begin('brief'); tag('a b', 'compact'); await flush();
+ok(read(0, file).at(-1).e === '?', 'a detail does not rescue an event that is not a name');
 
 // what starts nothing
 const count = read(0, file).length;
@@ -71,5 +78,63 @@ ok(eq(read(0, join(root, 'nothing')), []), 'a missing file is an empty list');
 // stats
 ok(eq(stats([5, 1, 3, 2, 4, 9, 7, 8, 6, 10]), { runs: 10, median: 6, p90: 10, worst: 10 }), 'the house percentile');
 ok(pct([1, 2, 3], 0.5) === 2, 'pct');
+
+// Every hook entry writes its line, and changes nothing else.
+rmSync(file, { force: true });
+const SAVE_PHASES = ['input', 'load', 'read', 'journal', 'handoff', 'index', 'backfill', 'notice', 'scan', 'snapshot', 'tier'];
+const cwd = join(home, 'proj'), store = storeFor(home, cwd), projDir = join(root, slug(cwd));
+mkdirSync(store, { recursive: true });
+const tp = join(projDir, 'sess.jsonl');
+writeFileSync(tp, [{ type: 'user', timestamp: '2026-11-01T09:00:00Z', message: { content: 'feed the tapir' } },
+  { type: 'assistant', timestamp: '2026-11-01T09:00:30Z', message: { content: [{ type: 'text', text: 'fed it' }] } }].map((x) => JSON.stringify(x)).join('\n') + '\n');
+writeFileSync(join(store, 'MEMORY.md'), '# Memory\n');
+const base = { session_id: 'abcd1234-aaaa', cwd, transcript_path: tp };
+const gitCommand = { ...base, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git status' } };
+const CASES = [
+  ['memory-tier.mjs', ['--stop'], { ...base, hook_event_name: 'Stop', last_assistant_message: 'fed it' }, 'save', 'Stop'],
+  ['memory-tier.mjs', ['--stop'], { ...base, hook_event_name: 'SubagentStop', last_assistant_message: 'done' }, 'save', 'SubagentStop'],
+  ['brief.mjs', ['--print'], { ...base, hook_event_name: 'SessionStart', source: 'startup' }, 'brief', 'SessionStart:startup'],
+  ['enforce-hook.mjs', [], gitCommand, 'enforce', 'PreToolUse'],
+  ['compact-gate.mjs', [], { ...base, hook_event_name: 'PreCompact', trigger: 'auto' }, 'gate', 'PreCompact:auto'],
+];
+const run = (script, args, payload, env = {}) => { const r = spawnSync(process.execPath, [tool(script), ...args], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...env } }); return { status: r.status, stdout: r.stdout, stderr: r.stderr }; };
+const lines = () => (existsSync(file) ? read(0, file) : []);
+const one = (script, args, payload) => { const n = lines().length; run(script, args, payload); const got = lines(); ok(got.length === n + 1, `${script} ${payload.hook_event_name}: one line (got ${got.length - n})`); return got.at(-1); };
+let saveLine;
+for (const [script, args, payload, h, e] of CASES) {
+  const got = one(script, args, payload);
+  ok(got.h === h && got.e === e, `${h}: the hook and the event (got ${got.h} ${got.e})`);
+  if (h === 'save' && e === 'Stop') saveLine = got;
+}
+ok(Object.keys(saveLine.p).every((k) => SAVE_PHASES.includes(k)) && 'handoff' in saveLine.p, `only the known phases (got ${Object.keys(saveLine.p)})`);
+
+// timing changes no output: stdout, stderr and the exit code are the same with it off
+for (const [script, args, payload] of CASES) ok(eq(run(script, args, payload), run(script, args, payload, { PROJECT_MEMORY_TIMING: '0' })), `${script}: the same stdout, stderr and exit code with timing off`);
+// off writes nothing
+rmSync(file, { force: true });
+for (const [script, args, payload] of CASES) run(script, args, payload, { PROJECT_MEMORY_TIMING: '0' });
+ok(!existsSync(file), 'PROJECT_MEMORY_TIMING=0: no file');
+// a manual run of memory-tier.mjs without --stop writes no line
+run('memory-tier.mjs', ['--dry-run'], {});
+ok(!existsSync(file), 'a manual run writes no line');
+
+// a root that takes no file: .timing is a folder; then a projects root that is missing
+mkdirSync(file);
+for (const [script, args, payload] of CASES) ok(eq(run(script, args, payload), run(script, args, payload, { PROJECT_MEMORY_TIMING: '0' })), `${script}: .timing a folder, the hook answers as before`);
+rmSync(file, { recursive: true });
+for (const [script, args, payload] of CASES) {
+  const cfg = join(home, 'cfg'), gone = () => rmSync(cfg, { recursive: true, force: true });
+  gone(); const on = run(script, args, payload, { CLAUDE_CONFIG_DIR: cfg }), madeOn = existsSync(join(cfg, 'projects')), timed = existsSync(join(cfg, 'projects', FILE));
+  gone(); const off = run(script, args, payload, { CLAUDE_CONFIG_DIR: cfg, PROJECT_MEMORY_TIMING: '0' }), madeOff = existsSync(join(cfg, 'projects'));
+  ok(eq(on, off) && madeOn === madeOff && (madeOff || !timed), `${script}: no projects root, nothing created by timing`);
+}
+
+// no text reaches the file
+for (const [script, args, payload] of CASES) {
+  for (const evil of ['C:\\Users\\someone\\notes', 'a b', 'x'.repeat(10000), { a: 1 }, undefined]) run(script, args, { ...payload, hook_event_name: evil, source: evil, trigger: evil });
+}
+const all = readFileSync(file, 'utf8');
+ok(/^(\{"t":\d+,"h":"[a-z]+","e":"[A-Za-z?:]+",("node":\d+,)?"start":\d+,"p":\{("[a-z]+":\d+,?)*\},"ms":\d+\}\n)+$/.test(all), 'numbers and fixed names only');
+ok(!/someone|notes|feed the tapir|abcd1234|proj/.test(all), 'no path, no conversation text, no session');
 
 console.log(`timing.test.mjs: ${checks} checks passed`);

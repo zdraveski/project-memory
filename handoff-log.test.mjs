@@ -559,7 +559,7 @@ ok(/^Memory hooks changed outside deploy\.mjs, live and untested: store\.mjs in 
 // nine-minute check to reach; tested at the end of this file, with stubs for the check.
 const gated = join(home, 'gated');
 mkdirSync(gated, { recursive: true });
-for (const f of ['deploy.mjs', 'store.mjs', 'handoff-log.mjs', 'memory.mjs', 'compact-gate.mjs', 'enforce.mjs', 'enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(dirname(HOOK), f)));
+for (const f of ['deploy.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'memory.mjs', 'compact-gate.mjs', 'enforce.mjs', 'enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(dirname(HOOK), f)));
 const g = (...a) => execFileSync('git', ['-C', gated, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { env, encoding: 'utf8' });
 g('init', '-q', '-b', 'master'); g('add', '-A'); g('commit', '-qm', 'base'); g('checkout', '-qb', 'other');
 let gate = spawnSync(process.execPath, [join(gated, 'deploy.mjs')], { env, encoding: 'utf8' });
@@ -3020,7 +3020,7 @@ require('node:module').syncBuiltinESMExports();
 // can reach the real hooks-live or the real repo.
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = dirname(HOOK);
-  const FILES_ = ['store.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
+  const FILES_ = ['store.mjs', 'timing.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
     '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'deploy.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
@@ -3037,7 +3037,7 @@ if (s.err) process.stderr.write(s.err);
 if (s.out) process.stdout.write(s.out);
 process.exit(s.code || 0);
 `;
-  for (const f of ['store', 'handoff-log', 'journal', 'compact-gate', 'memory-tier', 'memory', 'enforce', 'enforce-hook'].map((t) => `${t}.test.mjs`).concat(['mutate.mjs', 'memory-tier.soak.mjs', 'memory-tier.break.mjs', 'memory-tier.mjs'])) writeFileSync(join(dep, f), STUB);
+  for (const f of ['store', 'handoff-log', 'journal', 'compact-gate', 'memory-tier', 'memory', 'enforce', 'enforce-hook', 'timing'].map((t) => `${t}.test.mjs`).concat(['mutate.mjs', 'memory-tier.soak.mjs', 'memory-tier.break.mjs', 'memory-tier.mjs'])) writeFileSync(join(dep, f), STUB);
   const g2 = (...a) => execFileSync('git', ['-C', dep, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8' }).trim();
   g2('init', '-q', '-b', 'master'); g2('add', '-A'); g2('commit', '-qm', 'base');
   const deploy = (c, ...args) => {

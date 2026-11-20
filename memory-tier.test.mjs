@@ -584,7 +584,7 @@ ok(runLines().length === 20 && !readFileSync(join(root, '.stop-ran'), 'utf8').en
 }
 // A handoff-log.mjs that cannot load writes no handoff: no proof of life either.
 const broken = tempDir('broken-');
-for (const f of ['memory-tier.mjs', 'store.mjs', 'compact-gate.mjs']) copyFileSync(tool(f), join(broken, f));
+for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs']) copyFileSync(tool(f), join(broken, f));
 writeFileSync(join(broken, 'handoff-log.mjs'), 'this is not javascript (');
 const ranBroken = statSync(join(root, '.stop-ran')).mtimeMs;
 spawnSync(process.execPath, [join(broken, 'memory-tier.mjs'), '--stop'], { env, input: JSON.stringify({ transcript_path: join(root, 'proj-one', 'session.jsonl'), session_id: 'tst' }) });
@@ -1500,7 +1500,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 {
   const was = [process.env.HOME, process.env.USERPROFILE];
   const hj = tempDir('memtier-nojournal-'), pj = join(hj, '.claude', 'projects', 'C--nj'), copy = tempDir('nojournal-'), tj = join(pj, 'nj.jsonl');
-  for (const f of ['memory-tier.mjs', 'store.mjs', 'compact-gate.mjs', 'handoff-log.mjs']) copyFileSync(tool(f), join(copy, f));
+  for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'handoff-log.mjs']) copyFileSync(tool(f), join(copy, f));
   writeFileSync(join(copy, 'journal.mjs'), 'this is not javascript (');
   mkdirSync(pj, { recursive: true });
   writeFileSync(tj, [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'asked with no journal' } },
