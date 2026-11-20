@@ -169,10 +169,16 @@ Beyond the suites:
 - `node memory-tier.break.mjs [store]` breaks a copy of a store in 13 ways
   (and runs one control with nothing broken) and checks that no line is lost
   and that a second run leaves `MEMORY.md` unchanged.
-- `node bench.mjs [runs]` times each hook on copies of the machine's largest
-  transcript and store. `node bench.mjs --live [--project <folder>|all] [--days <n>]`
-  instead reads the hook durations Claude Code recorded in its own conversation
-  files (read-only), this plugin's hooks beside the other plugins'.
+- `node bench.mjs [runs]` times each hook on a made-up busy store (60 days of
+  journal, 150 notes, a 50 MB conversation): p50 and p90, the time before the hook's
+  first line and its largest phase. `--real` copies the machine's largest transcript
+  and store instead, `--plugin <dir>` runs another checkout's hooks on the same store,
+  `--json <path>` writes the numbers, and `--check` fails when a case is slower than its
+  limit (`LIMITS` in `bench.mjs`, a multiple of an empty `node -e` on the same machine);
+  CI runs `node bench.mjs --check 5`. `node bench.mjs --live [--project <folder>|all]
+  [--days <n>]` instead reads the hook durations Claude Code recorded in its own
+  conversation files (read-only), this plugin's hooks beside the other plugins', with
+  how much of each was inside the script.
 
 The soak, the break harness and the benchmark read your real notes and
 transcripts only to copy them into a temp folder, and delete the copies when
