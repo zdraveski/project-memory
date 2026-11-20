@@ -16,6 +16,10 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           the journal entries holding every word (with those keys, of
                                           that conversation): listed with their keys, up to 200; with
                                           --yes removed; --purge also drops those days from the snapshot history
+  page [--days N|all] [--project NAME]    the journal as one HTML file on this machine, a week at a time, in every
+                                          project (helper entries and switched-off projects left out): the last 30
+                                          days unless --days; prints its file:// link. forget, incognito, off and
+                                          rescan --apply delete it; run page again to refresh it
   rescan [--apply [--yes]]                today's redaction rules over what is already saved (notes, journal,
                                           handoff, snapshots): counts and places only; --apply --yes backs up,
                                           then writes [redacted] and rewrites the snapshot history
@@ -44,12 +48,13 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey } from './store.mjs';
+import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey, writePage, dropPage } from './store.mjs';
+import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { BLOCK, redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
-import { STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
+import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -628,8 +633,6 @@ const unsnapped = () => {
 const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
 
 // The newest `max`: a note edited every reply had 2,000 snapshots, 72 KB of output.
-// A request is the user's text, and clip keeps ESC, BEL and the bidi overrides: each prints as U+FFFD (tab and newline stay).
-const tame = (t) => t.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '\uFFFD');
 // The exchange behind a snapshot, as one line; null: none was found.
 const byLine = (e, label = 'by') => e === 'shared' ? 'by: not looked up for the shared store (what changed it is in the project journals)' : e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `${label}: ${e.at} [${e.s}] asked: "${tame(clip(e.asked, 100))}" · key: "${tame(clip(e.key, Infinity))}"`
   : "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
@@ -1044,6 +1047,60 @@ function enforceStatus(here) {
     'To see the commands, run `memory enforce replay <note>`.'] };
 }
 
+// `memory page`: the journal of every project as one local HTML file. page.mjs builds the HTML from plain data; this reads and
+// filters the journal, writes the file (0600, in Claude Code's folder) and says where it is. Left out, and counted: helper
+// entries, and projects that are switched off. An entry the user had forgotten is not in told(), so not in the page either.
+const PAGE_DAYS = 30, PAGE_MAX = 36500, PAGE_ASK = 2000, PAGE_ANSWER = 4000;
+// A browser opens a page of tens of MB slowly (20,000 entries made 129 MB): past this it is not written. An object, so a test can lower it.
+export const PAGE_LIMIT = { bytes: 40 * 1048576 };
+// fn under the lock of every store in dirs, in one order, so two runs cannot wait on each other. Null when one stays busy.
+const lockAll = (dirs, fn) => (dirs.length ? withLock(dirs[0], () => lockAll(dirs.slice(1), fn)) : fn());
+// A note of a store (not handoff.md, not the journal) among the files an exchange changed: it wrote a memory.
+const wroteNote = (changed) => changed.some((p) => { const f = p.replaceAll('\\', '/'); return /(^|\/)projects\/[^/]+\/memory\/(?!journal\/).+\.md$/i.test(f) && !/\/memory\/handoff\.md$/i.test(f); });
+// A project by the folder its conversations started in, as a person says it; the store's folder name when it has no conversation file.
+const projectName = (dir) => {
+  const f = dirname(dir); let t; try { t = readdirSync(f).find((n) => n.endsWith('.jsonl')); } catch {}
+  const cwd = t && startCwd(join(f, t));
+  return (cwd && cwd.split(/[\\/]/).filter(Boolean).pop()) || basename(f);
+};
+const sizeOf = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+const amount = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+function page(stores, days, want, failed) {
+  const real = stores.filter((d) => !isShared(d) && existsSync(join(d, 'journal')));
+  const base = real.map(projectName);
+  // Two projects with one folder name: the store's folder says which.
+  const shown = real.map((d, i) => (base.filter((n) => n === base[i]).length > 1 ? `${base[i]} (${basename(dirname(d))})` : base[i]));
+  const name = new Map(real.map((d, i) => [d, shown[i]]));
+  const live = real.filter((d) => !isOff(d));
+  if (want) {
+    const w = want.toLowerCase(), hit = real.filter((d, i) => [shown[i], base[i], basename(dirname(d))].some((n) => n.toLowerCase() === w));
+    if (!hit.length) return { ok: false, lines: [`no project named ${clip(want, 100)}. Projects with a journal: ${live.map((d) => name.get(d)).join(', ') || '(none)'}`] };
+    real.splice(0, real.length, ...hit); live.splice(0, live.length, ...hit.filter((d) => !isOff(d)));
+  }
+  const today = local().slice(0, 10), since = days === 'all' ? undefined : addDays(today, 1 - days);
+  // From the read to the write under the stores' locks: a forget in between removed an entry the write then put back.
+  const done = lockAll([...live].sort(), () => {
+    let helpers = 0;
+    const out = [];
+    for (const e of told(live, { since, failed })) {
+      if (isHelper(e)) { helpers++; continue; }
+      const priv = e.asked === '[private]' || e.answered === '[private]';
+      out.push({ d: e.day, t: e.at.slice(11, 16), c: e.s, b: e.branch, p: name.get(e.dir), q: priv ? '' : clip(e.asked, PAGE_ASK), a: priv ? '' : clip(e.answered, PAGE_ANSWER),
+        f: priv ? [] : e.changed.slice(0, 100), n: priv ? 0 : Number(wroteNote(e.changed)), priv: Number(priv), cut: Number(!priv && e.answered.length > PAGE_ANSWER) });
+    }
+    const span = days === 'all' ? 'all days' : amount(days, 'day', 'days');
+    if (!out.length) return { ok: false, lines: [`nothing to show: no journal entry in ${days === 'all' ? (want ? clip(want, 100) : 'any project') : `the last ${span}`}`] };
+    out.sort((a, b) => (a.d + a.t < b.d + b.t ? 1 : a.d + a.t > b.d + b.t ? -1 : 0));
+    const html = pageHtml({ built: local(), today, days, entries: out }), size = Buffer.byteLength(html);
+    if (size > PAGE_LIMIT.bytes) return { ok: false, lines: [`the page would be ${sizeOf(size)}, over the limit of ${sizeOf(PAGE_LIMIT.bytes)}; nothing written. Use --days N for fewer days${want ? '' : ' or --project NAME for one project'}`] };
+    let path; try { path = writePage(html); } catch (e) { return { ok: false, lines: [`the page could not be written (${reason(e)}); nothing changed`] }; }
+    const off = real.length - live.length, left = [helpers && amount(helpers, 'helper entry', 'helper entries'), off && amount(off, 'switched-off project', 'switched-off projects')].filter(Boolean);
+    return { ok: true, lines: [pathToFileURL(path).href, `${amount(out.length, 'exchange', 'exchanges')} in ${amount(new Set(out.map((e) => e.p)).size, 'project', 'projects')} over ${span}, ${sizeOf(size)}`,
+      ...(left.length ? [`left out: ${left.join(', ')}`] : []), 'Open the link in a browser. Run memory page again to refresh it. forget, incognito, off and rescan --apply delete it.'] };
+  });
+  return done ?? { ok: false, lines: ['a project\'s memory folder is busy (another hook holds it); try again'] };
+}
+
 // The command line, its words as given; returns the exit code. Callable in
 // the same process: memory.test runs it so, where a process a call was 0.2 s
 // of its 50 s, 256 times (2026-10-30). Each call starts with no session.
@@ -1055,8 +1112,8 @@ export function main(given) {
   // `--store=X` as `--store X`: the equals form was dropped, and the command ran on the cwd's store.
   // After `--` every word is a term: `search -- --no-verify` printed the usage.
   const cut = given.includes('--') ? given.indexOf('--') : given.length;
-  const argv = given.slice(0, cut).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until|conversation|key|file))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
-  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation', '--key', '--file']);
+  const argv = given.slice(0, cut).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until|conversation|key|file|days|project))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
+  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation', '--key', '--file', '--days', '--project']);
   // One it does not know is refused: dropped, `--from 2026-10-27` searched for
   // "2026", and `--after=2026-10-28` listed what came before it.
   const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--purge', '--apply', '--help', '--asked'].includes(a));
@@ -1064,13 +1121,13 @@ export function main(given) {
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
   // An empty --conversation or --file (an unset variable in quotes) is none given: forget took it for "every conversation", search ran unfiltered.
-  const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file') && argv[i + 1] === '')));
+  const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--project') && argv[i + 1] === '')));
   if (bare) { console.log(`${bare} needs a value after it`); return 1; }
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
   // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
   // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal below.
-  const table = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [] };
+  const table = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], page: ['--days', '--project'] };
   const takes = Object.hasOwn(table, cmd) ? table[cmd] : undefined; // not table[cmd]: `constructor` is on every object
   const extra = takes && rest.find((a, i) => a.startsWith('--') && !valued.has(rest[i - 1]) && !['--store', '--shared', '--session', ...takes].includes(a));
   if (extra) { console.log(`${cmd} does not take ${extra}; help lists the options`); return 1; }
@@ -1080,6 +1137,8 @@ export function main(given) {
   // A number, or refused: `--limit ten` was dropped unsaid, and the default
   // listed. One below 1 is still the default (a test holds it).
   if (opt('--limit') !== undefined && !/^-?\d+$/.test(opt('--limit'))) { console.log(`--limit takes a number, not ${opt('--limit')}`); return 1; }
+  // A whole number of days, or all: `--days ten` was no number to count back from.
+  if (cmd === 'page' && opt('--days') !== undefined && opt('--days') !== 'all' && !/^[1-9]\d*$/.test(opt('--days'))) { console.log(`--days takes a number of days or all, not ${clip(opt('--days'), 100)}`); return 1; }
   // A session id names a file: anything but an id's characters is ignored.
   if (/^[\w-]{1,100}$/.test(opt('--session') || '')) session = opt('--session');
   const args = [...rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1])), ...given.slice(cut + 1)];
@@ -1322,19 +1381,25 @@ export function main(given) {
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
   else if (cmd === 'doctor') r = doctor(here);
+  else if (cmd === 'page') r = page(every(), opt('--days') === undefined ? PAGE_DAYS : opt('--days') === 'all' ? 'all' : Math.min(Number(opt('--days')), PAGE_MAX), opt('--project'), failed);
   // The usage, after why: a misspelt command, or one with no word after it,
   // printed the usage alone.
   else r = { ok: !cmd || cmd === 'help', lines: [...(cmd && cmd !== 'help' ? [/^(?:search|show|history|restore|promote)$/.test(cmd) ? `${cmd} needs a word after it` : `no command "${cmd}"`] : []), USAGE] };
   // A day that could not be read or written: what it holds is missing from, or
   // still in, the lines above. Before the last line of a search or a forget,
   // which is its count, as the skill says. Once: a forget reads a day twice.
-  r.lines.splice(r.lines.at(-1) === AGAIN ? -2 : cmd === 'search' || cmd === 'forget' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
+  r.lines.splice(r.lines.at(-1) === AGAIN ? -2 : cmd === 'search' || cmd === 'forget' || cmd === 'page' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
+  // The page holds journal text: where the journal is forgotten, or the project or conversation stops being kept, it goes too.
+  if (cmd === 'forget' || cmd === 'incognito' || cmd === 'off' || (cmd === 'rescan' && rest.includes('--apply'))) {
+    const bad = dropPage();
+    if (bad instanceof Error) { r.lines.push(`could not delete the page: ${reason(bad)}; it still holds journal text`); r.ok = false; }
+  }
   // A --session no transcript has: the store came from the folder this runs in, and status reported it in silence (audit C-10).
   if (opt('--session') !== undefined && cmd !== 'incognito' && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);
   // A note's file name or [[link]] can hold a secret the model wrote: read-only listings scrub what they print.
   console.log(r.lines.map(redact).join('\n'));
   // A forget that failed anywhere fails: exit 0 read as all gone.
-  return r.ok && !(cmd === 'forget' && failed.length) ? 0 : 1;
+  return r.ok && !((cmd === 'forget' || cmd === 'page') && failed.length) ? 0 : 1;
 }
 
 // Node names the script by its real path: compared with the path it was

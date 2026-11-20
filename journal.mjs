@@ -6,7 +6,7 @@ import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSy
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip, text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable, promptBefore, BLOCK } from './handoff-log.mjs';
-import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only, foldCase } from './store.mjs';
+import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only, foldCase, dropPage } from './store.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -304,6 +304,7 @@ function drop(dir, d, keep) {
     }
     if (kept.length === entries.length) return [];
     if (replaceIfUnchanged(file, before, page(d, prose, kept)) === 'conflict') continue;
+    dropPage(); // the page of the journal holds what is gone from the day
     if (!kept.length && !prose) try { unlinkSync(file); } catch {}
     return entries.filter((e) => !keep(e));
   }
@@ -319,7 +320,7 @@ export function sweep(dir, s, ds = days(dir, true)) {
   let n = 0, bad = null;
   const left = ds.filter((d) => { try { n += drop(dir, d, (e) => e.s !== s).length; return false; } catch (e) { bad = e; return true; } });
   owe(dir, s, ds, left);
-  if (bad) throw Object.assign(bad, { owed: true });
+  if (bad) { dropPage(); throw Object.assign(bad, { owed: true }); } // days still holding the conversation: the page may too
   return n;
 }
 

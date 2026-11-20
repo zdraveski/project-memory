@@ -12,6 +12,34 @@ import { createHmac, randomBytes } from 'node:crypto';
 // Resolved: a relative one put a root of its own under each hook's cwd (1.3.1 audit C-3).
 export const configDir = () => resolve(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'));
 export const projectsRoot = () => join(configDir(), 'projects');
+// The page `memory page` writes: one file in Claude Code's folder, outside every project and every snapshot. It holds journal text,
+// so it is 0600 in a 0700 folder, replaced whole (a temp file renamed), and dropPage removes it where the journal is forgotten.
+export const pagePath = () => join(configDir(), 'project-memory', 'journal.html');
+// A kill between the write and the rename leaves journal.html.<pid>.tmp, which holds journal text: every such file goes. The first error, or null.
+function stray(dir) {
+  let bad = null;
+  try { for (const n of readdirSync(dir)) if (/^journal\.html\..+\.tmp$/.test(n)) try { rmSync(join(dir, n)); } catch (e) { bad ??= e; } } catch {}
+  return bad;
+}
+export function writePage(html) {
+  const p = pagePath(), tmp = `${p}.${process.pid}.tmp`;
+  mkdirSync(dirname(p), { recursive: true, mode: 0o700 });
+  stray(dirname(p));
+  try { writeFileSync(tmp, html, { mode: 0o600, flag: 'wx' }); renameSync(tmp, p); }
+  catch (e) { rmSync(tmp, { force: true }); throw e; }
+  return p;
+}
+// Never throws: the hooks call it, and ignore what it returns. True when a page was there and is gone, false when none was, and the
+// Error when something would not go (a file another program holds open, on Windows): the commands say so, the text is still on disk.
+export function dropPage() {
+  const p = pagePath(); let bad = stray(dirname(p)), there = true;
+  try { lstatSync(p); } catch { there = false; }
+  if (there) {
+    try { rmSync(p, { force: true }); } catch (e) { bad ??= e; }
+    if (!bad && existsSync(p)) bad = new Error('it is still there');
+  }
+  return bad ?? there;
+}
 // A keyed fingerprint of raw text for dedup keys and proof-of-life lines: an unsalted hash of a short prompt that is just a
 // password falls to a dictionary run. The salt is a random per-machine file in the projects folder (never snapshotted, 0600);
 // when it cannot be kept, a one-off salt: keys then differ between runs, and nothing else breaks.

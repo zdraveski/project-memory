@@ -1,6 +1,6 @@
 // Self-check for recall.mjs: the word splitter and the tests on a journal entry. Run: node recall.test.mjs
 import assert from 'node:assert';
-import { words, changedFile, isHelper, inConversation, changers, whoChanged } from './recall.mjs';
+import { tame, words, changedFile, isHelper, inConversation, changers, whoChanged } from './recall.mjs';
 
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
@@ -67,5 +67,6 @@ assert.deepStrictEqual(del(['14:03', '14:04'], [at('14:03')], [true, false]), [n
 assert.deepStrictEqual(whoChanged(['2026-11-13 00:01'], [at('23:58', { key: 'day before' })]).map((x) => x && x.key), ['day before']);
 assert.deepStrictEqual(whoChanged(['2026-11-12 23:59'], [at('00:01', { at: '2026-11-13 00:01' })]), [null]);
 checks += 17;
+ok(tame('a\u001b[31m\u202eb\tc\nd\u0000') === 'a\uFFFD[31m\uFFFDb\tc\nd\uFFFD', 'control and bidi characters print as U+FFFD, tab and newline stay');
 
 console.log(`recall.test.mjs: ${checks} checks passed`);

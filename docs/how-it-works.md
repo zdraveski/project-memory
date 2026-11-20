@@ -1233,6 +1233,7 @@ node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory
 | `search <words…>` | `--file P`, `--asked`, `--conversation ID`, `--since D`, `--until D`, `--all`, `--limit N` (words optional with a filter) |
 | `show <key…>` or `show <note>` | `--same`, `--all` |
 | `forget [<words…>]` | `--key K` (again for each key), `--same`, `--since D`, `--until D`, `--conversation <tag or id>`, `--yes`, `--purge` (also remove from the snapshot history) |
+| `page` | `--days N` or `--days all` (30 by default), `--project NAME` (a project's name or its folder); writes the journal as one HTML page and prints its link (see [The journal page](#the-journal-page)) |
 | `status` | `--all` |
 | `history <note>` | `--all`, `--limit N` (the newest 30 by default); each snapshot names the exchange behind it |
 | `rescan` | `--apply`, `--yes` (redact secrets saved before a rule existed, in files and snapshots; makes a backup that still holds them) |
@@ -1259,6 +1260,28 @@ that takes a value with nothing after it, or another option in its place
 (`forget --key --yes`). Every word after `--` is a search word, one that starts with `--`
 too, so options go before it. The tool exits with 1 when a command is
 refused or fails.
+
+### The journal page
+
+`page` reads the journal of every project, leaves out helper entries (a
+subagent's own) and switched-off projects, keeps the last 30 days (or
+`--days`), and writes one file, `project-memory/journal.html` in Claude
+Code's folder, through a temporary file renamed into place (mode 0600, its
+folder 0700; a temporary file a killed run left is removed by the next write or delete). It prints the `file://` link, how many exchanges in how many
+projects, what it left out, and how to refresh and remove it. A turn marked
+`[private]` shows as private, with no text. Each question and answer is
+capped (2,000 and 4,000 characters) and marked when cut. A page past 40 MB (`--days all` on a long journal) is not written: it says so and suggests `--days N`.
+
+The read and the write happen under the lock of every store the page reads, so a `forget` cannot slip in between and be undone by the write; a store another hook holds is said, not skipped. When the page cannot be deleted (on Windows, a browser holding it open), `forget`, `incognito`, `off` and `rescan --apply` say `could not delete the page` and exit 1, since it still holds the text.
+
+The page is built by `page.mjs`, which only turns data into text. Every
+string passes the secret filter and the same cleaning as the `by:` lines, and
+is then escaped. The file has one style block and one script, a
+Content-Security-Policy that allows exactly those two (by hash), no network and
+no outside script. The data sits in the script as JSON with `<` written as
+`\u003c`, and the script writes it with `textContent`, never `innerHTML`.
+`forget`, `incognito`, `off`, `rescan --apply`, and the sweeps that take
+entries back delete the file, since it may hold what they removed.
 
 A note's name may be several words, quoted or not: `restore my note` is
 `my note.md`. Without Git, or before the first snapshot, `history` and

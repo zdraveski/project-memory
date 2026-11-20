@@ -86,6 +86,8 @@ export const changedFile = (e, path) => {
   const p = cleanPath(path), abs = /^(?:[a-z]:)?\//i.test(p);
   return p !== '' && e.changed.some((c) => { const f = cleanPath(c); return f === p || f.endsWith(`/${p}`) || (abs && f !== '' && p.endsWith(`/${f}`)); });
 };
+// A request is the user's text, and clip keeps ESC, BEL and the bidi overrides: each prints as U+FFFD (tab and newline stay).
+export const tame = (t) => t.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '\uFFFD');
 export const isHelper = (e) => e.key.startsWith('subagent-');
 // The session id is the end of `t`; an entry with no `t` has only its 8-character tag. With neither, it is in no conversation.
 export const inConversation = (e, tag) => {

@@ -358,6 +358,12 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   try { listed = days(dir); } catch { listed = 'threw'; } finally { fs.readdirSync = readdir; syncBuiltinESMExports(); }
   ok(threw && keys('2026-11-07') === 's-3' && Array.isArray(listed) && !listed.length, `a sweep whose listing of the days fails throws, and the entries stay to be swept again; days() itself gives an empty list (got ${threw}, ${keys('2026-11-07')}, ${listed})`);
   ok(sweep(dir, 'aaaaaaaa') === 1 && !days(dir).includes('2026-11-07'), 'and the next sweep takes them');
+  // The page of the journal holds the text a sweep takes back, so a sweep that took something deletes it; one that took nothing leaves it.
+  { const { writePage, pagePath } = await import('./store.mjs');
+    record(dir, S, [turn({ at: '2026-11-09 10:00', id: 'pg-1' })]);
+    writePage('<p>page</p>');
+    ok(sweep(dir, 'cccccccc') === 0 && existsSync(pagePath()), 'a sweep that takes nothing leaves the page');
+    ok(sweep(dir, 'aaaaaaaa') === 1 && !existsSync(pagePath()), 'a sweep that takes an entry deletes the page'); }
   // Nor is it for a forget: read as an empty journal, it found nothing to match, and memory.mjs said "nothing matches" with exit 0 while
   // the entry stayed (F20, R45). It throws; entries(), as search lists them, still finds none.
   record(dir, S, [turn({ at: '2026-11-08 10:00', id: 'f-1', ask: 'the quokka plan', raw: 'the quokka plan' })]);

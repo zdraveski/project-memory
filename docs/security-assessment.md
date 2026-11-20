@@ -61,6 +61,15 @@ no network code.
   ([The memory tool from a terminal](how-it-works.md#the-memory-tool-from-a-terminal)),
   run by the skill or by hand; it exits 1 when a command is refused or
   fails.
+- **The journal page**: `memory page` writes one HTML file, `project-memory/journal.html`
+  in `~/.claude`, mode 0600. Every journal string is untrusted text in an
+  HTML file, so it is escaped or written with `textContent`, the file holds
+  one style and one script allowed by hash in a Content-Security-Policy
+  (`default-src 'none'`, no network), and the tests feed it `<script>`,
+  `"><img onerror=`, `</style>` and control characters; `base-uri` and `form-action`
+  are `'none'` too. The sweeps and `forget`, `incognito`, `off` and
+  `rescan --apply` delete it (and any temporary file a killed write left),
+  and say so when they cannot.
 - **Claude Code's plugin lists**, in `~/.claude/plugins`, read only by
   `doctor`.
 - **Switches**: `.project-off` (a marker in one project's `memory` folder),
