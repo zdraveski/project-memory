@@ -1051,6 +1051,10 @@ function enforceStatus(here) {
 // filters the journal, writes the file (0600, in Claude Code's folder) and says where it is. Left out, and counted: helper
 // entries, and projects that are switched off. An entry the user had forgotten is not in told(), so not in the page either.
 const PAGE_DAYS = 30, PAGE_MAX = 36500, PAGE_ASK = 2000, PAGE_ANSWER = 4000;
+// A browser opens a page of tens of MB slowly (20,000 entries made 129 MB): past this it is not written. An object, so a test can lower it.
+export const PAGE_LIMIT = { bytes: 40 * 1048576 };
+// fn under the lock of every store in dirs, in one order, so two runs cannot wait on each other. Null when one stays busy.
+const lockAll = (dirs, fn) => (dirs.length ? withLock(dirs[0], () => lockAll(dirs.slice(1), fn)) : fn());
 // A note of a store (not handoff.md, not the journal) among the files an exchange changed: it wrote a memory.
 const wroteNote = (changed) => changed.some((p) => { const f = p.replaceAll('\\', '/'); return /(^|\/)projects\/[^/]+\/memory\/(?!journal\/).+\.md$/i.test(f) && !/\/memory\/handoff\.md$/i.test(f); });
 // A project by the folder its conversations started in, as a person says it; the store's folder name when it has no conversation file.
@@ -1074,22 +1078,27 @@ function page(stores, days, want, failed) {
     real.splice(0, real.length, ...hit); live.splice(0, live.length, ...hit.filter((d) => !isOff(d)));
   }
   const today = local().slice(0, 10), since = days === 'all' ? undefined : addDays(today, 1 - days);
-  let helpers = 0;
-  const out = [];
-  for (const e of told(live, { since, failed })) {
-    if (isHelper(e)) { helpers++; continue; }
-    const priv = e.asked === '[private]' || e.answered === '[private]';
-    out.push({ d: e.day, t: e.at.slice(11, 16), c: e.s, b: e.branch, p: name.get(e.dir), q: priv ? '' : clip(e.asked, PAGE_ASK), a: priv ? '' : clip(e.answered, PAGE_ANSWER),
-      f: priv ? [] : e.changed.slice(0, 100), n: priv ? 0 : Number(wroteNote(e.changed)), priv: Number(priv), cut: Number(!priv && e.answered.length > PAGE_ANSWER) });
-  }
-  const span = days === 'all' ? 'all days' : amount(days, 'day', 'days');
-  if (!out.length) return { ok: false, lines: [`nothing to show: no journal entry in ${days === 'all' ? (want ? clip(want, 100) : 'any project') : `the last ${span}`}`] };
-  out.sort((a, b) => (a.d + a.t < b.d + b.t ? 1 : a.d + a.t > b.d + b.t ? -1 : 0));
-  const html = pageHtml({ built: local(), today, days, entries: out });
-  let path; try { path = writePage(html); } catch (e) { return { ok: false, lines: [`the page could not be written (${reason(e)}); nothing changed`] }; }
-  const off = real.length - live.length, left = [helpers && amount(helpers, 'helper entry', 'helper entries'), off && amount(off, 'switched-off project', 'switched-off projects')].filter(Boolean);
-  return { ok: true, lines: [pathToFileURL(path).href, `${amount(out.length, 'exchange', 'exchanges')} in ${amount(new Set(out.map((e) => e.p)).size, 'project', 'projects')} over ${span}, ${sizeOf(Buffer.byteLength(html))}`,
-    ...(left.length ? [`left out: ${left.join(', ')}`] : []), 'Open the link in a browser. Run memory page again to refresh it. forget, incognito, off and rescan --apply delete it.'] };
+  // From the read to the write under the stores' locks: a forget in between removed an entry the write then put back.
+  const done = lockAll([...live].sort(), () => {
+    let helpers = 0;
+    const out = [];
+    for (const e of told(live, { since, failed })) {
+      if (isHelper(e)) { helpers++; continue; }
+      const priv = e.asked === '[private]' || e.answered === '[private]';
+      out.push({ d: e.day, t: e.at.slice(11, 16), c: e.s, b: e.branch, p: name.get(e.dir), q: priv ? '' : clip(e.asked, PAGE_ASK), a: priv ? '' : clip(e.answered, PAGE_ANSWER),
+        f: priv ? [] : e.changed.slice(0, 100), n: priv ? 0 : Number(wroteNote(e.changed)), priv: Number(priv), cut: Number(!priv && e.answered.length > PAGE_ANSWER) });
+    }
+    const span = days === 'all' ? 'all days' : amount(days, 'day', 'days');
+    if (!out.length) return { ok: false, lines: [`nothing to show: no journal entry in ${days === 'all' ? (want ? clip(want, 100) : 'any project') : `the last ${span}`}`] };
+    out.sort((a, b) => (a.d + a.t < b.d + b.t ? 1 : a.d + a.t > b.d + b.t ? -1 : 0));
+    const html = pageHtml({ built: local(), today, days, entries: out }), size = Buffer.byteLength(html);
+    if (size > PAGE_LIMIT.bytes) return { ok: false, lines: [`the page would be ${sizeOf(size)}, over the limit of ${sizeOf(PAGE_LIMIT.bytes)}; nothing written. Use --days N for fewer days${want ? '' : ' or --project NAME for one project'}`] };
+    let path; try { path = writePage(html); } catch (e) { return { ok: false, lines: [`the page could not be written (${reason(e)}); nothing changed`] }; }
+    const off = real.length - live.length, left = [helpers && amount(helpers, 'helper entry', 'helper entries'), off && amount(off, 'switched-off project', 'switched-off projects')].filter(Boolean);
+    return { ok: true, lines: [pathToFileURL(path).href, `${amount(out.length, 'exchange', 'exchanges')} in ${amount(new Set(out.map((e) => e.p)).size, 'project', 'projects')} over ${span}, ${sizeOf(size)}`,
+      ...(left.length ? [`left out: ${left.join(', ')}`] : []), 'Open the link in a browser. Run memory page again to refresh it. forget, incognito, off and rescan --apply delete it.'] };
+  });
+  return done ?? { ok: false, lines: ['a project\'s memory folder is busy (another hook holds it); try again'] };
 }
 
 // The command line, its words as given; returns the exit code. Callable in
@@ -1381,7 +1390,10 @@ export function main(given) {
   // which is its count, as the skill says. Once: a forget reads a day twice.
   r.lines.splice(r.lines.at(-1) === AGAIN ? -2 : cmd === 'search' || cmd === 'forget' || cmd === 'page' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
   // The page holds journal text: where the journal is forgotten, or the project or conversation stops being kept, it goes too.
-  if (cmd === 'forget' || cmd === 'incognito' || cmd === 'off' || (cmd === 'rescan' && rest.includes('--apply'))) dropPage();
+  if (cmd === 'forget' || cmd === 'incognito' || cmd === 'off' || (cmd === 'rescan' && rest.includes('--apply'))) {
+    const bad = dropPage();
+    if (bad instanceof Error) { r.lines.push(`could not delete the page: ${reason(bad)}; it still holds journal text`); r.ok = false; }
+  }
   // A --session no transcript has: the store came from the folder this runs in, and status reported it in silence (audit C-10).
   if (opt('--session') !== undefined && cmd !== 'incognito' && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);
   // A note's file name or [[link]] can hold a secret the model wrote: read-only listings scrub what they print.

@@ -3876,6 +3876,29 @@ again ${key2}
     await run(['rescan']);
     await run(['on', '--store', shop]);
     ok(existsSync(pagePath()), 'rescan without --apply, and on, leave it');
+
+    // The page holds each live store's lock from its read to its write, so a forget cannot slip between and be undone by the write.
+    dropPage();
+    mkdirSync(join(shop, '.lock'));
+    r = await page();
+    ok(r.status === 1 && /is busy/.test(r.stdout) && !existsSync(pagePath()), `a store another hook holds is said, and no page is written (got ${r.status} ${r.stdout})`);
+    rmSync(join(shop, '.lock'), { recursive: true });
+    r = await write();
+    ok(r.status === 0 && !existsSync(join(shop, '.lock')) && !existsSync(join(proot, 'C--work-garden', 'memory', '.lock')), 'a free store is locked for the run and left free');
+
+    // A page past the size limit is not written: 20,000 entries made 129 MB.
+    const { PAGE_LIMIT } = await import('./memory.mjs'), kept = PAGE_LIMIT.bytes;
+    PAGE_LIMIT.bytes = 1000; dropPage();
+    try { r = await page(); } finally { PAGE_LIMIT.bytes = kept; }
+    ok(r.status === 1 && /^the page would be \d+(\.\d)? (KB|MB), over the limit of 1000 B; nothing written\. Use --days N for fewer days/.test(r.stdout) && !existsSync(pagePath()), `past the limit it says so, and writes nothing (got ${r.status} ${r.stdout})`);
+
+    // A page that will not go is said, and fails the command: the text is still on disk.
+    await write();
+    rmSync(pagePath()); mkdirSync(join(pagePath(), 'x'), { recursive: true });
+    r = await run(['off', '--store', shop]);
+    ok(r.status === 1 && /^could not delete the page: /m.test(r.stdout), `a page that will not go is named and the command fails (got ${r.status} ${r.stdout})`);
+    rmSync(pagePath(), { recursive: true });
+    await run(['on', '--store', shop]);
   } finally { if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved; }
 }
 
