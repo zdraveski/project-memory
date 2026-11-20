@@ -348,6 +348,11 @@ Uninstalling the plugin leaves all of this in place. To delete:
 - a backup that `memory rescan --apply --yes` made: the folder
   `project-memory-rescan-backup-<date>` in Claude Code's folder (`~/.claude`).
   It still holds the secrets it removed, and is never deleted for you.
+- the journal page, if you ran `memory page`: `project-memory/journal.html`
+  in Claude Code's folder (`~/.claude`). It holds the journal text, secrets
+  already replaced, and never leaves your computer. `forget`, `incognito`,
+  `memory off` and `rescan --apply` delete it; run `memory page` again to
+  make a fresh one.
 - the bookkeeping files: in `~/.claude/projects`, `.hash-salt`, `.gitignore`, `.stop-ran`, `.timing`,
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
   `.journal-failed-…` file and the folder `.nudge`; in each project's

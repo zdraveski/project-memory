@@ -88,8 +88,11 @@ If you'd rather type a command, start with `/project-memory:memory`:
 | `/project-memory:memory search --file cart.js` | Lists the entries that changed that file. `--asked` searches only your own words, `--conversation <id>` one session. |
 | `/project-memory:memory restore pricing` | Brings back the note "pricing" (`history pricing` shows when it changed). |
 | `/project-memory:memory history pricing` | Shows when the note "pricing" changed, and which exchange (what you asked) was behind each change. |
+| `/project-memory:memory page` | Writes your journal as one web page on your computer, a week at a time, and prints its link. `--days N` or `--days all` sets how far back (30 by default), `--project NAME` picks one project. |
 | `/project-memory:memory doctor` | Checks that project-memory itself works. |
 | `/project-memory:incognito`, `/project-memory:memory-off` | Stop saving a conversation, or a project (see [Turning it off](#turning-it-off)). |
+
+<p><img src="docs/page.webp" width="880" alt="The journal page that memory page writes: a week at a time with a count of exchanges per day, a card for each project, and below them the day's exchanges with what you asked, what Claude answered, the files it changed and a mark when it wrote a note. Search is at the top. The entries shown are made up."></p>
 
 To read your notes yourself, type `/memory` in Claude Code and open the auto
 memory folder; the journal is its `journal` folder, one file per day. Every
@@ -141,7 +144,7 @@ Marketplaces, choose project-memory and select Enable auto-update.
 To pause it, run `claude plugin disable project-memory@project-memory` in a
 terminal and restart Claude Code; `enable` turns it back on. To remove it,
 type `/plugin uninstall project-memory@project-memory` in Claude Code. Your
-notes, the journal and the history stay either way. What to delete by hand:
+notes, the journal and the history stay either way (so does the journal page, if you made one). What to delete by hand:
 [Deleting it](PRIVACY.md#deleting-it).
 
 ## Privacy and control
@@ -171,6 +174,13 @@ notes, the journal and the history stay either way. What to delete by hand:
   This only works for conversations whose transcript is still on disk (Claude
   Code keeps them 30 days unless you change that); older entries stay as
   saved. Forgotten entries stay gone and private conversations stay swept.
+- **The journal page** (`memory page`) is one HTML file, `project-memory/journal.html`
+  in Claude Code's folder, readable only by you. It holds the same text as the
+  journal, with secrets already replaced, and loads nothing from the network:
+  no script or picture from outside, and a policy in the file that forbids it.
+  Private turns show no text, and helper entries and switched-off projects are
+  left out. Forgetting, incognito, turning a project off and `rescan --apply`
+  delete it; run `memory page` again for a fresh one.
 - **Keep text out** by putting it between `<private>` and `</private>`. Type
   `<private-session>` in any message to keep the whole conversation out; what
   was saved of it before is removed, except the history's copy of days
