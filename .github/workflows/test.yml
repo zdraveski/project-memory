@@ -49,8 +49,8 @@ jobs:
       - run: node bench.test.mjs
       # What a compaction keeps: the journal every fact, the print after it the start of each exchange it shows.
       - run: node survive.mjs
-      # How long each hook takes on a made-up busy store, beside an empty `node -e` on the same machine.
-      - run: node bench.mjs 5
+      # Each hook on a made-up busy store must stay within its limit times an empty `node -e` on the same machine.
+      - run: node bench.mjs --check 5
 
   # The workflow files themselves: GitHub once refused fuzz.yml over a %. After a merge, not on every pull request.
   actionlint:

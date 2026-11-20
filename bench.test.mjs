@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tempDir, tool, storeFor, capture } from './harness.mjs';
 import { build, CWD } from './bench-store.mjs';
-import { CASES, verdict, main } from './bench.mjs';
+import { CASES, LIMITS, verdict, main } from './bench.mjs';
 import { tmpdir, homedir } from 'node:os';
 import { days, parseDay, dayFile } from './journal.mjs';
 import { liveTimes, scriptOf } from './live-times.mjs';
@@ -109,5 +109,6 @@ const second = await capture(() => main(['--check', '1'], fake(400), { a: 3 }));
 ok(second.value === 0 && /measured again/.test(second.out), 'one slow measurement is not a failure: the second decides');
 const twice = await capture(() => main(['--check', '1'], fake(400), { a: 1 }));
 ok(twice.value === 1, 'slow twice is a failure');
+ok(eq(Object.keys(LIMITS).sort(), CASES.filter((c) => c !== EMPTY).sort()), 'a limit for every case');
 
 console.log(`bench: ${checks} checks passed`);

@@ -27,7 +27,11 @@ const HOOK = { 'memory-tier.mjs': 'save', 'brief.mjs': 'brief', 'enforce-hook.mj
 const EMPTY = 'node, empty script';
 export const CASES = ['Stop, nothing changed', 'Stop, a memory changed', 'SessionStart startup', 'SessionStart compact', 'PreCompact auto', 'PreToolUse git', 'search', 'status', EMPTY];
 // A case's median may be at most this many times the empty script's, measured in the same run.
-export const LIMITS = {};
+// Each is max(3, ceil(3 * the largest ratio seen)) over the four CI machines and the build PC, 2026-11-20.
+export const LIMITS = {
+  'Stop, nothing changed': 56, 'Stop, a memory changed': 59, 'SessionStart startup': 13, 'SessionStart compact': 49,
+  'PreCompact auto': 49, 'PreToolUse git': 7, search: 27, status: 22,
+};
 
 async function live(argv) {
   const arg = (name, dflt) => { const i = argv.indexOf(name); return i < 0 ? dflt : argv[i + 1]; };
