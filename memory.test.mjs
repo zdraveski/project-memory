@@ -248,7 +248,7 @@ r = await cli('search', 'deploy', '--from', '2026-10-27');
 const after = await cli('search', 'deploy', '--after=2026-10-28');
 ok(r.status === 1 && r.stdout === 'unknown option --from; help lists the options\n' && after.status === 1 && after.stdout === 'unknown option --after=2026-10-28; help lists the options\n', `an unknown option is refused (got ${r.stdout}${after.stdout})`);
 // An option the command does not take is refused, not ignored (audit 5).
-const given = [['search', 'x', '--conversation', 'beef0001'], ['show', 'k', '--key', 'k'], ['search', 'x', '--rev', 'abc'], ['status', '--yes']];
+const given = [['show', 'k', '--key', 'k'], ['search', 'x', '--rev', 'abc'], ['status', '--yes']];
 for (const g of given) {
   const o = g.find((a, i) => a.startsWith('--') && i > 0 && g[0] !== a);
   r = await cli(...g);
@@ -3615,4 +3615,52 @@ again ${key2}
   ok(r.status === 1 && r.stdout.includes(`${pd} is busy (another hook holds it); try again`) && existsSync(join(J, '2020-02-10.md')), `forget in a store another hook holds is busy and removes nothing (got ${r.status} ${r.stdout})`);
 }
 
+
+// 99b. search --file, --asked and --conversation: five made-up entries, two conversations, one helper, one private turn.
+{
+  const { render } = await import('./journal.mjs');
+  const sd = join(root, 'C--flt', 'memory'), sj = join(sd, 'journal'), hd = join(root, 'C--flt-helper', 'memory');
+  const fcli = (...a) => run([...a, '--store', sd]);
+  const at = (a, b, c, d, e) => ({ key: a, at: b, s: c.slice(0, 8), t: `C--flt/${c}`, branch: '', asked: d, answered: e[0], changed: e.slice(1), ran: [] });
+  const A = at('kA', '2026-10-20 09:00', 'aaaa1111-0000', 'keep four decimals in cart totals', ['done, the tax export needs them', 'src/cart.js']);
+  const B = at('kB', '2026-10-20 10:00', 'aaaa1111-0000', 'add a wishlist', ['the cart totals are untouched', 'src/wishlist.js']);
+  const C = at('kC', '2026-10-21 09:00', 'bbbb2222-0000', 'round cart totals', ['rounded to two decimals', 'src/cart.js', 'test/cart.test.js']);
+  const D = at('subagent-x1', '2026-10-21 10:00', 'bbbb2222-0000', 'Subagent explore: find cart totals', ['cart totals are in src/cart.js']);
+  const E = at('kE', '2026-10-21 11:00', 'bbbb2222-0000', '[private]', ['[private]']);
+  const write = (d, xs) => { mkdirSync(join(d, 'journal'), { recursive: true });
+    for (const day of new Set(xs.map((x) => x.at.slice(0, 10)))) writeFileSync(join(d, 'journal', `${day}.md`), `# Journal ${day}\n\n${xs.filter((x) => x.at.startsWith(day)).map(render).join('\n\n')}\n`); };
+  write(sd, [A, B, C, D, E]); write(hd, [D]);
+  const where = `${sd} and ${shared}`, left = '; notes are left out with --file, --asked and --conversation';
+  const keys = (r) => [...r.stdout.matchAll(/^ {5}key: (.+)$/gm)].map((m) => m[1]);
+  const asked = (r) => [...r.stdout.matchAll(/^\d{4}-\d\d-\d\d \d\d:\d\d {2}conversation \S+ {2}(.*)$/gm)].map((m) => m[1]);
+  // words + --asked: B says "cart totals" only in its answer, D is a helper
+  let r = await fcli('search', 'cart', 'totals', '--asked');
+  ok(r.status === 0 && keys(r).sort().join() === 'kA,kC' && r.stdout.includes(`2 of 2 match(es) in ${where}; --all searches every project; show '<key>' prints an entry whole${left}\n`), `--asked scores the request only, leaves helpers out, and says notes are left out (got ${r.stdout}${r.stderr})`);
+  ok(keys(await fcli('search', 'cart', 'totals')).sort().join() === 'kA,kB,kC,subagent-x1', 'without --asked the answer and the helper count as today');
+  // a private turn is never an --asked hit
+  r = await fcli('search', 'private', '--asked');
+  ok(r.status === 0 && r.stdout === `nothing matches "private" in ${where}; --all searches every project\n`, `a private turn is never an --asked hit (got ${r.stdout}${r.stderr})`);
+  // words + --file: the end of a path counts only at a folder
+  ok(keys(await fcli('search', 'totals', '--file', 'cart.js')).sort().join() === 'kA,kC', '--file keeps the entries that changed it');
+  r = await fcli('search', 'totals', '--file', 'art.js');
+  ok(r.stdout === `no entry changed art.js in ${where}; try the file's name alone, the journal holds paths as the session saw them\n`, `a name inside another is no match (got ${r.stdout})`);
+  // words + --conversation
+  ok(keys(await fcli('search', 'cart', '--conversation', 'aaaa')).sort().join() === 'kA,kB', '--conversation keeps one conversation');
+  // filters alone are a list, newest first
+  r = await fcli('search', '--file', 'src/cart.js');
+  ok(r.status === 0 && asked(r).join('|') === 'round cart totals|keep four decimals in cart totals' && r.stdout.endsWith(`2 of 2 journal entries in ${where}\n`), `--file alone lists newest first (got ${r.stdout}${r.stderr})`);
+  r = await fcli('search', '--conversation', 'bbbb2222');
+  ok(asked(r).join('|') === '[private]|Subagent explore: find cart totals|round cart totals', `--conversation alone lists a helper's report too (got ${r.stdout}${r.stderr})`);
+  r = await fcli('search', '--asked');
+  ok(asked(r).join('|') === 'round cart totals|add a wishlist|keep four decimals in cart totals', `--asked alone lists the user's requests: no helper, no private turn (got ${r.stdout}${r.stderr})`);
+  // together
+  r = await fcli('search', '--asked', '--file', 'cart.js', '--since', '2026-10-21');
+  ok(asked(r).join('|') === 'round cart totals', `the filters and a range hold together (got ${r.stdout}${r.stderr})`);
+  // a day the filter finds nothing on
+  r = await fcli('search', '--conversation', 'cccc');
+  ok(r.stdout === `no journal entry in ${where}\n`, `a list that finds nothing says so (got ${r.stdout})`);
+  // only helpers
+  r = await run(['search', 'cart', '--asked', '--store', hd]);
+  ok(r.status === 0 && /^nothing matches "cart" in /.test(r.stdout), `a journal of helpers only, searched with --asked, is a miss (got ${r.stdout}${r.stderr})`);
+}
 console.log(`memory: ${checks} checks passed`);

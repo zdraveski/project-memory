@@ -48,7 +48,7 @@ import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { BLOCK, redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
-import { STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper } from './recall.mjs';
+import { STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -253,12 +253,17 @@ const told = (dirs, o) => {
 // Rare words win: each term is weighted by how few notes and entries hold it (1 + ln of N over df), so "476" or "quokka"
 // outranks "first" or "schedule". The score a hit prints stays the plain sum; the weights only order the hits.
 // `outside`: the notes that match but are dated out of the range.
-export function search(dirs, query, { since, until, failed } = {}) {
+// The entries the three search filters keep; a filter not given keeps every one. A turn marked private holds [private] in Answered.
+const kept = ({ file, asked, conversation }) => (e) => (!file || changedFile(e, file)) && (!conversation || inConversation(e, conversation))
+  && (!asked || !isHelper(e) && e.asked !== '[private]' && e.answered !== '[private]');
+// `file`, `asked`, `conversation`: only the journal entries that changed that file, are the user's own words (no helper, no private
+// turn; only the request is scored) and belong to that conversation. A note has none of these, so any of them leaves the notes out.
+export function search(dirs, query, { since, until, failed, file, asked: mine, conversation } = {}) {
   const terms = words(query, true), cut = (t) => terms.as.get(t) !== t && terms.as.get(t), hits = [], held = new Set(), df = terms.map(() => 0);
   let outside = 0, docs = 0;
   // `parts`: what each term scored, in terms' order; `bonus`: the +5 or +2 for every term.
   const add = (h, parts, bonus) => hits.push({ ...h, score: parts.reduce((a, p) => a + p, 0) + bonus, parts, bonus });
-  for (const dir of terms.length ? dirs : []) for (let m of memories(dir)) {
+  for (const dir of terms.length && !(file || mine || conversation) ? dirs : []) for (let m of memories(dir)) {
     // The journal's pointer is no memory; handoff.md is searched in its hand-written part, not its automatic log (which repeats the journal).
     if (m.file === 'journal.md') continue;
     const hand = m.file === 'handoff.md';
@@ -297,13 +302,13 @@ export function search(dirs, query, { since, until, failed } = {}) {
   }
   // An entry by what was asked, then what it changed and ran (and its branch),
   // then the reply: a reply that names everything must not outrank the request.
-  for (const e of terms.length ? told(dirs, { since, until, failed }) : []) {
+  for (const e of terms.length ? told(dirs, { since, until, failed }).filter(kept({ file, asked: mine, conversation })) : []) {
     docs++;
     const asked = e.asked.toLowerCase(), did = [...e.changed, ...e.ran].join('\n').toLowerCase(), branch = e.branch.toLowerCase(), answered = e.answered.toLowerCase();
     let strong = true, every = true;
     const parts = terms.map((t, i) => {
       // A branch is named on every entry of its work: below a file or command that names the word.
-      const s = (has(asked, t, cut(t)) ? 3 : 0) + (has(did, t, cut(t)) ? 2 : has(branch, t, cut(t)) ? 1 : 0) + Math.min(2, count(answered, t, cut(t)));
+      const s = (has(asked, t, cut(t)) ? 3 : 0) + (mine ? 0 : (has(did, t, cut(t)) ? 2 : has(branch, t, cut(t)) ? 1 : 0) + Math.min(2, count(answered, t, cut(t))));
       if (!has(asked, t, cut(t))) strong = false;
       if (!s) every = false; else { held.add(t); df[i]++; }
       return s;
@@ -1034,11 +1039,11 @@ export function main(given) {
   // `--store=X` as `--store X`: the equals form was dropped, and the command ran on the cwd's store.
   // After `--` every word is a term: `search -- --no-verify` printed the usage.
   const cut = given.includes('--') ? given.indexOf('--') : given.length;
-  const argv = given.slice(0, cut).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until|conversation|key))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
-  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation', '--key']);
+  const argv = given.slice(0, cut).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until|conversation|key|file))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
+  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation', '--key', '--file']);
   // One it does not know is refused: dropped, `--from 2026-10-27` searched for
   // "2026", and `--after=2026-10-28` listed what came before it.
-  const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--purge', '--apply', '--help'].includes(a));
+  const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--purge', '--apply', '--help', '--asked'].includes(a));
   if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); return 1; }
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
@@ -1048,8 +1053,8 @@ export function main(given) {
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
   // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
-  // `search x --conversation T` listed every conversation's hits (audit 5). A command not listed gets its own refusal below.
-  const table = { search: ['--since', '--until', '--all', '--limit'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [] };
+  // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal below.
+  const table = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [] };
   const takes = Object.hasOwn(table, cmd) ? table[cmd] : undefined; // not table[cmd]: `constructor` is on every object
   const extra = takes && rest.find((a, i) => a.startsWith('--') && !valued.has(rest[i - 1]) && !['--store', '--shared', '--session', ...takes].includes(a));
   if (extra) { console.log(`${cmd} does not take ${extra}; help lists the options`); return 1; }
@@ -1075,6 +1080,7 @@ export function main(given) {
   // Days compare as text, so a range that ends before it starts matches none: "nothing matches" read as no record.
   if (opt('--since') > opt('--until')) { console.log(`--since ${opt('--since')} is after --until ${opt('--until')}`); return 1; }
   const range = { since: opt('--since'), until: opt('--until') }, failed = [];
+  const filters = { file: opt('--file'), asked: rest.includes('--asked'), conversation: cmd === 'search' ? opt('--conversation') : undefined }, filtered = Object.values(filters).some(Boolean);
   const span = [range.since && `since ${range.since}`, range.until && `until ${range.until}`].filter(Boolean).join(' ');
   const here = rest.includes('--shared') ? sharedStore() : store || sessionStore();
   // --all includes the shared store before it has an index, as the default does,
@@ -1094,6 +1100,7 @@ export function main(given) {
   // What the model reads back: a hit's lines stay short (a 13-link hit was a
   // quarter of its output), and a miss says where it looked in one line.
   const where = scope.length <= 2 ? scope.join(' and ') : `${scope.length} stores`, n = Number(opt('--limit'));
+  const missFile = `no entry changed ${filters.file} in ${where}; try the file's name alone, the journal holds paths as the session saw them`;
   // An entry's line; under --all, with the project it is from: forget and --store need its folder. Named first by where its
   // conversations started: the folder alone (`C--work-api-server`) was no name a person reads (audit C-9).
   const project = (d) => { const f = dirname(d); let t; try { t = readdirSync(f).find((n) => n.endsWith('.jsonl')); } catch {} const cwd = t && startCwd(join(f, t)); return cwd ? `${cwd} (${basename(f)})` : basename(f); };
@@ -1110,8 +1117,8 @@ export function main(given) {
   };
   const full = (e, conv = join(projectsRoot(), `${e.t}.jsonl`)) => (e.answered !== '[private]' && existsSync(conv) ? [`     Full conversation: ${conv}`] : []);
   // Words that say nothing of which memory ("what did I do") with a range: the range's listing.
-  if (cmd === 'search' && args.length && (words(args.join(' ')).length || !(range.since || range.until))) {
-    const q = args.join(' '), terms = words(q, true), found = search(scope, q, { ...range, failed });
+  if (cmd === 'search' && args.length && (words(args.join(' ')).length || !(range.since || range.until || filtered))) {
+    const q = args.join(' '), terms = words(q, true), found = search(scope, q, { ...range, failed, ...filters });
     const out = found.outside ? [`${found.outside} note${found.outside === 1 ? ' matches' : 's match'} outside the range (a note's date is its last change); search without --since/--until`] : [];
     // One long request asked again and again (a prompt a script sends, a retry)
     // is one hit with a count: its copies filled the list (recall test, 2026-10-29).
@@ -1145,8 +1152,8 @@ export function main(given) {
         `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...(found.missing.length ? [`no note or entry holds: ${found.missing.join(', ')}`] : []), ...out,
         // A hit's date, and what was not shown or not searched.
-        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}${shown.some(([h]) => h.kind === 'journal') ? "; show '<key>' prints an entry whole" : ''}`, AGAIN]
-      : [...out, importing ? `no match yet for "${q}" in ${where}${span && ` ${span}`}: the journal is still importing ${importing} older conversation${importing === 1 ? '' : 's'}, so search again in a few minutes${wider}`
+        `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}${shown.some(([h]) => h.kind === 'journal') ? "; show '<key>' prints an entry whole" : ''}${filtered ? '; notes are left out with --file, --asked and --conversation' : ''}`, AGAIN]
+      : filters.file ? [missFile] : [...out, importing ? `no match yet for "${q}" in ${where}${span && ` ${span}`}: the journal is still importing ${importing} older conversation${importing === 1 ? '' : 's'}, so search again in a few minutes${wider}`
         : `nothing matches "${q}" in ${where}${span && ` ${span}`}${wider}`] };
   } else if (cmd === 'show' && args.length) {
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read
@@ -1160,13 +1167,13 @@ export function main(given) {
     // --same: every entry asking what this one asked, the copies a hit counts.
     const alike = (e) => (rest.includes('--same') ? es.filter((x) => sameKey(x.asked) === sameKey(e.asked)) : [e]).filter((x) => !seen.has(x) && seen.add(x));
     r = { ok: got.every(Boolean), lines: got.flatMap((e, i) => e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${ks[i]} in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
-  } else if (cmd === 'search' && (range.since || range.until)) {
+  } else if (cmd === 'search' && (range.since || range.until || filtered)) {
     // What was asked on those days, newest first: "what did we do last week".
-    const es = told(scope, { ...range, failed }).filter((e) => !isHelper(e)).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
+    const es = told(scope, { ...range, failed }).filter(kept(filters)).filter((e) => !isHelper(e) || filters.file || filters.conversation).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
     const all = shown.some(short) ? told(scope, { failed }) : [];   // the reply before a short request may be on an earlier day
     const dropped = [...new Set(args.join(' ').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => STOP.has(t)))];
     r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
-      : [`no journal entry ${span} in ${where}`]] };
+      : [filters.file ? missFile : `no journal entry${span && ` ${span}`} in ${where}`]] };
   } else if (cmd === 'forget') {
     // A blank term is in every entry: `forget "" --yes` would empty the journal.
     const conversation = opt('--conversation'), yes = rest.includes('--yes'), terms = args.filter((a) => a.trim());
