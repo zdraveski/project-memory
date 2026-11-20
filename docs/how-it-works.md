@@ -26,7 +26,7 @@ If you would rather type a command, start with `/project-memory:memory`:
 |---|---|
 | `search logo colors` | Finds notes and journal entries about "logo colors". An entry shows as a short headline: what you asked, how it ended, and the lines with your words |
 | `search --file src/cart.js` | Lists the entries that changed that file, newest first (a name alone works too). `--asked` keeps your own words only, `--conversation <id>` one session; notes are left out |
-| `show 'key'` | Shows one journal entry in full, by the key `search` printed. `show pricing` (a note's name) shows the first and the newest exchange that changed that note |
+| `show 'key'` | Shows one journal entry in full, by the key `search` printed. `show pricing` (a note's name) shows the first exchange that changed that note and the last one |
 | `forget password` | Lists the journal entries that mention "password" and removes the ones you confirm (Claude Code's own conversation files still hold them) |
 | `history pricing` / `restore pricing` | Shows when the note "pricing" changed, and the exchange and your words behind each change / brings it back |
 | `promote pricing` | Moves the note "pricing" to the shared notebook |
@@ -1017,21 +1017,28 @@ context. The day list with no search words leaves out subagent reports
 (`subagent-` keys); a search by words still finds them.
 
 **Who said it.** `history <note>` puts a `by:` line under each snapshot, and
-`show <note>` prints the first and the newest one: the time, the conversation,
-what the user asked (cut at 100 characters) and the entry's key. The journal
-entries that changed the note by its full path are paired with its snapshots,
-oldest first. For each snapshot the candidates are the entries sent at or after
-the minute of the note's previous snapshot and no later than this snapshot's
-minute that no older snapshot took; one sent earlier than the snapshot's own
-minute comes first, the newest of them wins, and several in one minute go to the
-note's own conversation (its `originSessionId`), otherwise the later one. A
-change with no such entry (by hand, by a shell command, by a helper, by the
-plugin's own sorting) says `no exchange found`. An entry holds its time to the
-minute only, which is why one sent in a snapshot's own minute is taken last.
-A limit: a long turn that changes a note, is snapshotted by another session's
-save in the middle, and changes the note again gets its exchange named for the
-first snapshot only; the second says no exchange was found. The plugin cannot
-judge what is true. It makes the check one command.
+`show <note>` prints the first exchange that changed it and the last one: the
+time, the conversation, what the user asked (cut at 100 characters, control
+characters printed as U+FFFD) and the entry's key. The journal entries that
+changed the note by its full path are paired with its snapshots, oldest first.
+For each snapshot the candidates are the entries sent at or after the minute of
+the note's previous snapshot and no later than this snapshot's minute that no
+older snapshot took; a helper's entry counts only when no other fits. One sent
+earlier than the snapshot's own minute comes first, and the newest of them wins.
+Every entry in a snapshot's own minute is taken, named or not. A name is
+printed only when it is sure: when the candidates come from more than one
+conversation the line says `several exchanges`, and a deletion, a change with no
+candidate (by hand, by a shell command, by the plugin's own sorting) and the
+note's oldest snapshot when more than one exchange could be it all say
+`no exchange found`. A shared note says it was not looked up: its edits are in
+the project journals. `--limit N` opens only the journal days from the snapshot
+below the oldest one shown.
+Limits: an entry holds its time to the minute only, and entry and snapshot
+times are both the machine's local time, so a clock change (daylight saving, a
+new time zone) between them can pair them wrongly; a long turn that changes a
+note, is snapshotted by another session's save in the middle, and changes the
+note again gets its exchange named for the first snapshot only. The plugin
+cannot judge what is true. It makes the check one command.
 
 `search`, `show` and a day's listing never show an entry whose key is in
 `journal/.forgotten`: when `forget` couldn't rewrite its day file, the entry
