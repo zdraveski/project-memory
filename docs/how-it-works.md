@@ -961,7 +961,7 @@ Three options narrow a search to the journal: `--file <path>` keeps entries that
 changed that file (a name alone matches the end of a path, at a folder), `--asked`
 looks only at what you asked (helper reports and private turns are left out, and
 only the request is scored), and `--conversation <id>` keeps one conversation (the
-start of its id). With any of them notes are left out, and with no words they list
+start of its id, 4 characters or more). `--file` also takes an absolute path. `--file` and `--conversation` listings include helper (subagent) entries, `--asked` leaves them out. A path with ", " in its name cannot be matched (the journal lists changed files with that separator). With any of them notes are left out, and with no words they list
 the entries newest first.
 
 Hits are ordered by a weighted rank built from these scores: rarer words
