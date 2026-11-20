@@ -101,7 +101,9 @@ export const changers = (es, paths) => { const p = new Set(paths.map(cleanPath))
 export const whoChanged = (snaps, es, origin = '') => {
   const given = new Set();
   return snaps.map((hi, i) => {
-    const lo = i ? snaps[i - 1] : '', fit = es.filter((e) => !given.has(e) && e.at >= lo && e.at <= hi);
+    const lo = i ? snaps[i - 1] : '', all = es.filter((e) => !given.has(e) && e.at >= lo && e.at <= hi);
+    // a helper's entry is named only when no other fits: its report lands a minute after the request that started it
+    const fit = all.some((e) => !isHelper(e)) ? all.filter((e) => !isHelper(e)) : all;
     const before = fit.filter((e) => e.at < hi), pool = before.length ? before : fit;
     const top = pool.reduce((m, e) => (e.at > m ? e.at : m), ''), last = pool.filter((e) => e.at === top);
     const e = last.findLast((x) => origin && inConversation(x, origin)) ?? last.at(-1) ?? null;

@@ -46,6 +46,10 @@ assert.deepEqual(who(['14:03', '14:04'], [at('14:02')]), ['k 14:02', null]);
 const two = [at('14:02', { key: 'a' }), at('14:02', { key: 'b', t: 'C--shop/99999999-bbbb', s: '99999999' })];
 assert.deepEqual(who(['14:03'], two), ['b']);
 assert.deepEqual(who(['14:03'], two, '3f07bb43-aaaa'), ['a']);
+// a helper's entry is named only when nothing else fits
+const sub = (t, over) => at(t, { key: `subagent-${t}`, asked: 'Subagent Explore: look', ...over });
+assert.deepEqual(who(['14:03'], [at('14:01'), sub('14:02')]), ['k 14:01']);
+assert.deepEqual(who(['14:03'], [sub('14:02')]), ['subagent-14:02']);
 assert.deepEqual(who(['14:03'], []), [null]);
 assert.deepEqual(who([], [at('14:02')]), []);
 // midnight
