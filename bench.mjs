@@ -25,6 +25,7 @@ const OURS = ['memory-tier.mjs', 'brief.mjs', 'enforce-hook.mjs', 'compact-gate.
 // The name timing.mjs gives each script's lines; handoff-log.mjs writes none.
 const HOOK = { 'memory-tier.mjs': 'save', 'brief.mjs': 'brief', 'enforce-hook.mjs': 'enforce', 'compact-gate.mjs': 'gate' };
 const EMPTY = 'node, empty script';
+const VALUED = ['--plugin', '--json', '--scale', '--project', '--days'];
 export const CASES = ['Stop, nothing changed', 'Stop, a memory changed', 'SessionStart startup', 'SessionStart compact', 'PreCompact auto', 'PreToolUse git', 'search', 'status', EMPTY];
 // A case's median may be at most this many times the empty script's, measured in the same run.
 // Each is max(3, ceil(3 * the largest ratio seen)) over the four CI machines and the build PC, 2026-11-20.
@@ -149,7 +150,7 @@ export async function main(argv, run = measure, limits = LIMITS) {
   if (argv.includes('--live')) return live(argv);
   const flag = (name) => { const i = argv.indexOf(name); return i < 0 ? undefined : argv[i + 1]; };
   const plugin = flag('--plugin'), scale = Number(flag('--scale')) || 1, jsonPath = flag('--json');
-  const runs = Number(argv.find((a, i) => /^\d+$/.test(a) && !a.startsWith('-') && !argv[i - 1]?.startsWith('--'))) || 9;
+  const runs = Number(argv.find((a, i) => /^\d+$/.test(a) && !VALUED.includes(argv[i - 1]))) || 9;
   const opts = { runs, real: argv.includes('--real'), plugin, scale };
   const r = { ...(await run(opts)), runs };
   show(r);

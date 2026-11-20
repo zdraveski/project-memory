@@ -120,4 +120,12 @@ const none = spawnSync(process.execPath, [tool('bench.mjs'), '1', '--real'], { e
 process.env.HOME = keep; process.env.USERPROFILE = keep;
 ok(none.status === 1 && /needs a transcript and a memory store/.test(none.stderr), '--real with nothing to copy says so in plain words');
 
+// the number of runs: a number after a value flag is that flag's, any other is the runs
+let seen = 0;
+const spy = () => { const f = fake(1); return (o) => { seen = o.runs; return f(); }; };
+await capture(() => main(['--check', '5'], spy(), { a: 3 }));
+ok(seen === 5, '--check 5 runs 5 times');
+await capture(() => main(['--scale', '2'], spy(), { a: 3 }));
+ok(seen === 9, 'a number after --scale is not the runs');
+
 console.log(`bench: ${checks} checks passed`);
