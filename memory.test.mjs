@@ -3675,6 +3675,10 @@ again ${key2}
   ok((await fcli('search', '--file=src/cart.js')).stdout === (await fcli('search', '--file', 'src/cart.js')).stdout, '--file=PATH is --file PATH');
   r = await fcli('search', '--file', 'a.js', '--file', 'src/cart.js');
   ok(r.stdout.startsWith('no entry changed a.js in '), `given twice, the first value wins (got ${r.stdout})`);
+  for (const empty of [['--file', ''], ['--file=']]) {
+    r = await fcli('search', 'cart', ...empty);
+    ok(r.status === 1 && r.stdout === '--file needs a value after it\n', `an empty ${empty.join(' ')} is refused, not ignored (got ${r.stdout})`);
+  }
   ok((await run(['help'])).stdout.includes('  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N]\n'), 'the help lists the three filters');
 }
 console.log(`memory: ${checks} checks passed`);
