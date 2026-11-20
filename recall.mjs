@@ -111,6 +111,8 @@ export const whoChanged = (snaps, es, deleted = []) => {
     // two conversations changed it since the last snapshot: the snapshot cannot tell whose it holds
     if (new Set(fit.map((e) => e.t || e.s)).size > 1) return 'several';
     const before = fit.filter((e) => e.at < hi), pool = before.length ? before : fit;
+    // the oldest snapshot has no lower limit: with more than one exchange before it, which one wrote it is a guess
+    if (!i && pool.length > 1) return null;
     const top = pool.reduce((m, e) => (e.at > m ? e.at : m), ''), e = pool.findLast((x) => x.at === top) ?? null;
     if (e) given.add(e);
     return e;

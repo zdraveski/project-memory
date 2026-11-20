@@ -38,14 +38,16 @@ assert.deepStrictEqual(who(['14:03'], [at('14:03')]), ['k 14:03']);
 assert.deepStrictEqual(who(['14:03'], [at('14:04')]), [null]);
 assert.deepStrictEqual(who(['14:03', '15:00'], [at('14:02'), at('14:30')]), ['k 14:02', 'k 14:30']);
 assert.deepStrictEqual(who(['14:03', '15:00'], [at('14:02'), at('14:03', { key: 'second' })]), ['k 14:02', null]);
-assert.deepStrictEqual(who(['14:03', '15:00'], [at('13:00'), at('14:02')]), ['k 14:02', null]);
+assert.deepStrictEqual(who(['14:03', '15:00'], [at('13:00'), at('14:02')]), [null, null]);
+assert.deepStrictEqual(who(['14:03', '15:00'], [at('13:00'), at('14:02'), at('14:30')]), [null, 'k 14:30']);
 // given once
 assert.deepStrictEqual(who(['14:03', '14:04'], [at('14:03')]), ['k 14:03', null]);
 assert.deepStrictEqual(who(['14:03', '14:04'], [at('14:02')]), ['k 14:02', null]);
 // one minute, two entries
 const two = [at('14:02', { key: 'a' }), at('14:02', { key: 'b', t: 'C--shop/99999999-bbbb', s: '99999999' })];
 assert.deepStrictEqual(who(['14:03'], two), ['several']);
-assert.deepStrictEqual(who(['14:03'], [at('14:02', { key: 'a' }), at('14:02', { key: 'b' })]), ['b']);
+assert.deepStrictEqual(who(['14:03'], [at('14:02', { key: 'a' }), at('14:02', { key: 'b' })]), [null]);
+assert.deepStrictEqual(who(['14:00', '14:03'], [at('14:02', { key: 'a' }), at('14:02', { key: 'b' })]), [null, 'b']);
 // two conversations between two snapshots: none is named, even when one is older
 assert.deepStrictEqual(who(['14:03', '15:00'], [at('14:02'), at('14:10', { t: 'C--shop/99999999-bbbb', s: '99999999' }), at('14:20')]), ['k 14:02', 'several']);
 // a helper's entry is named only when nothing else fits
@@ -55,7 +57,7 @@ assert.deepStrictEqual(who(['14:03'], [sub('14:02')]), ['subagent-14:02']);
 assert.deepStrictEqual(who(['14:03'], []), [null]);
 assert.deepStrictEqual(who([], [at('14:02')]), []);
 // every entry in a snapshot's own minute is taken, not only the one named
-assert.deepStrictEqual(who(['14:03', '14:04'], [at('14:03', { key: 'a' }), at('14:03', { key: 'b' })]), ['b', null]);
+assert.deepStrictEqual(who(['14:00', '14:03', '14:04'], [at('14:03', { key: 'a' }), at('14:03', { key: 'b' })]), [null, 'b', null]);
 assert.deepStrictEqual(who(['14:02', '14:03', '14:04'], [at('14:01', { key: 'a' }), at('14:03', { key: 'b' }), at('14:03', { key: 'c' })]), ['a', 'c', null]);
 // a deleted snapshot names nothing, and takes its minute's entries
 const del = (snaps, es, d) => whoChanged(snaps.map((t) => `2026-11-12 ${t}`), es, d).map((x) => x && x.key);
