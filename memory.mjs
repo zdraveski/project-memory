@@ -1053,7 +1053,7 @@ function enforceStatus(here) {
 const PAGE_DAYS = 30, PAGE_MAX = 36500, PAGE_ASK = 2000, PAGE_ANSWER = 4000;
 // A browser opens a page of tens of MB slowly (20,000 entries made 129 MB): past this it is not written. An object, so a test can lower it.
 // built: a test's hook, run once the page is built, before the size check and the write.
-export const PAGE_LIMIT = { bytes: 40 * 1048576, built: null };
+export const PAGE_LIMIT = { bytes: 40 * 1048576, built: null, written: null };
 // fn under the lock of every store in dirs, in one order, so two runs cannot wait on each other. Null when one stays busy.
 const lockAll = (dirs, fn) => (dirs.length ? withLock(dirs[0], () => lockAll(dirs.slice(1), fn)) : fn());
 // A note of a store (not handoff.md, not the journal) among the files an exchange changed: it wrote a memory.
@@ -1112,6 +1112,9 @@ function page(stores, days, want, failed) {
     const w = lockAll(keys, () => {
       if (!existsSync(claim)) return { bad: { ok: false, lines: ['the journal changed while the page was built; run memory page again'] } };
       try { path = writePage(html); } catch (e) { return { bad: { ok: false, lines: [`the page could not be written (${reason(e)}); nothing changed`] } }; }
+      PAGE_LIMIT.written?.();
+      // An unlocked dropPage (memory off) deletes the claim before the page: either it is gone here and our page goes too, or it ran after the rename.
+      if (!existsSync(claim)) { dropPage(); return { bad: { ok: false, lines: ['the journal changed while the page was built; run memory page again'] } }; }
       return {};
     });
     if (!w) return busy;

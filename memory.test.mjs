@@ -3917,6 +3917,10 @@ again ${key2}
     PAGE_LIMIT.built = () => appendFileSync(join(shop, 'journal', `${ago(5)}.md`), '\n');
     try { r = await page(); } finally { PAGE_LIMIT.built = null; }
     ok(r.status === 0 && existsSync(pagePath()) && !tokens().length && !existsSync(join(shop, '.lock')), `a day file that changed meanwhile still writes it (got ${r.status} ${r.stdout})`);
+    // A dropPage between the claim check and the rename: the claim is gone once the page is written, so the page goes too.
+    PAGE_LIMIT.written = () => rmSync(`${pagePath()}.${process.pid}.reading`);
+    try { r = await page(); } finally { PAGE_LIMIT.written = null; }
+    ok(r.status === 1 && r.stdout.trim() === CHANGED && !existsSync(pagePath()) && !tokens().length && !readdirSync(dirname(pagePath())).some((n) => /.tmp$/.test(n)), `a dropPage between the claim check and the rename: the page just written is deleted (got ${r.status} ${r.stdout})`);
     dropPage();
     PAGE_LIMIT.built = () => { const o = spawnSync(process.execPath, [CLI, 'off', '--store', shop], { encoding: 'utf8' }); if (o.status !== 0) throw new Error(`fixture: off failed ${o.stdout}${o.stderr}`); };
     try { r = await page(); } finally { PAGE_LIMIT.built = null; }
