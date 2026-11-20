@@ -35,10 +35,12 @@ main:focus-visible{outline:0}
 /* Top bar: glass that content scrolls under */
 .top{position:sticky;top:0;z-index:20;-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%);background:rgba(6,12,40,.5);border-bottom:1px solid transparent;transition:border-color .2s,background-color .2s}
 .top.stuck{border-color:var(--line);background:rgba(6,12,40,.8)}
-.top-in{display:flex;align-items:center;gap:14px;height:68px}
+/* The title, the logo in the middle, the search: two equal side columns keep the logo centred. */
+.top-in{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:14px;height:68px}
+.brand{grid-column:1;grid-row:1;min-width:0}
 /* The logo of the project page: the brain, a ring carrying one moon, and a recall trace. Every size follows --w.
    --kx and --ky turn the ring's size into background-position percentages for the moon. */
-.logo-orbit{--w:100px;--kx:56.4%;--ky:84.5%;position:relative;display:grid;place-items:center;flex:none;width:var(--w);height:calc(var(--w)/2);margin:0 -14px 0 -20px}
+.logo-orbit{--w:100px;--kx:56.4%;--ky:84.5%;position:relative;display:grid;place-items:center;grid-column:2;grid-row:1;width:var(--w);height:calc(var(--w)/2)}
 .logo-orbit::before,.logo-orbit::after{content:"";position:absolute;left:50%;top:50%;width:var(--w);height:calc(var(--w)*.292);margin:calc(var(--w)*-.146) 0 0 calc(var(--w)*-.5);border:1px solid rgba(125,211,252,.4);border-radius:50%;transform:rotate(-12deg);pointer-events:none}
 .logo-orbit::after{clip-path:inset(50% 0 0 0);background:radial-gradient(circle at 84% 86%,#cffafe 0 calc(var(--w)*.014),rgba(34,211,238,.45) calc(var(--w)*.021),transparent calc(var(--w)*.05))}
 .logo-orbit img{position:relative;width:calc(var(--w)*.4167);height:auto;filter:drop-shadow(0 0 9px rgba(34,211,238,.55))}
@@ -65,7 +67,7 @@ main:focus-visible{outline:0}
 }
 h1{margin:0;color:var(--ink);font-size:17px;font-weight:700;letter-spacing:-.01em;line-height:1.25;white-space:nowrap}
 .brand p{margin:0;font-size:12.5px;color:var(--muted)}
-.search{margin-left:auto;display:flex;align-items:center;gap:10px;width:min(430px,46vw);height:42px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(10,20,60,.6);color:var(--muted);font-size:16px;transition:border-color .15s,box-shadow .15s}
+.search{grid-column:3;justify-self:end;display:flex;align-items:center;gap:10px;width:100%;max-width:430px;height:42px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(10,20,60,.6);color:var(--muted);font-size:16px;transition:border-color .15s,box-shadow .15s}
 .search:focus-within{border-color:var(--cyan);box-shadow:0 0 0 4px rgba(34,211,238,.16)}
 .search input{flex:1;align-self:stretch;min-width:0;border:0;outline:0;background:none;color:var(--ink);caret-color:var(--cyan);font:400 15px var(--sans);text-overflow:ellipsis}
 .search input::placeholder{color:var(--muted)}
@@ -216,7 +218,7 @@ mark{padding:0 2px;border-radius:3px;background:rgba(34,211,238,.3);color:var(--
   .hero{grid-template-columns:minmax(0,1fr);gap:26px;padding:22px 18px}
   .wrap,.top-in{padding:0 16px}
   .brand p,kbd,.tip{display:none}
-  .logo-orbit{--w:72px;--kx:56.5%;--ky:86.3%;margin:0 -10px 0 -14px}
+  .logo-orbit{--w:72px;--kx:56.5%;--ky:86.3%}
   .ib{width:44px;height:44px}
   .e{grid-template-columns:minmax(0,1fr)}
   .e::before,.node{display:none}
@@ -225,12 +227,18 @@ mark{padding:0 2px;border-radius:3px;background:rgba(34,211,238,.3);color:var(--
   .files,.more{margin-left:0}
   .more{min-height:44px}
   .legend{display:flex}
-  .search{flex:1;min-width:0;width:auto;max-width:430px;height:44px}
+  .search{min-width:0;height:44px}
   .chart{gap:2px}
   .heat{grid-template-columns:repeat(10,minmax(0,1fr))}
   .cell{height:32px}
 }
 /* Less motion: the fades stay, the movement goes */
+/* A phone has no room for two equal side columns: the logo goes back to the left of the title. */
+@media (max-width:480px){
+  .top-in{grid-template-columns:auto auto minmax(0,1fr)}
+  .logo-orbit{grid-column:1;margin:0 -10px 0 -14px}
+  .brand{grid-column:2}
+}
 @media (prefers-reduced-motion:reduce){
   .hero,.stack,.e{animation-name:fade}
   .hero,.stack,.e,.cell{animation-duration:.2s;animation-delay:0s}
