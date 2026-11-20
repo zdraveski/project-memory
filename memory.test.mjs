@@ -129,7 +129,7 @@ mkdirSync(join(dir, 'journal'), { recursive: true });
 writeFileSync(join(dir, 'journal', '2026-10-27.md'), '# Journal 2026-10-27\n');
 tier();
 r = await cli('history', 'deploy-notes');
-ok(r.status === 0 && /  \S+ \S+ \S+  deleted\n  \S+ \S+ \S+  in the first snapshot$/m.test(r.stdout), `history lists the snapshots that changed it, newest first; the first snapshot is not called its writing (got ${r.stdout})`);
+ok(r.status === 0 && /  \S+ \S+ \S+  deleted\n    by: [^\n]*\n  \S+ \S+ \S+  in the first snapshot\n    by: /m.test(r.stdout), `history lists the snapshots that changed it, newest first; the first snapshot is not called its writing (got ${r.stdout})`);
 // Its last line is a command that works as printed: the path git tracks, no `~`.
 const show = r.stdout.match(/^  a change: git -C "([^"]+)" --literal-pathspecs show <commit> -- "([^"]+)"$/m), first = r.stdout.match(/^  (\w+) .*in the first snapshot$/m);
 ok(show && first && /deploy notes/.test(spawnSync('git', ['-C', show[1], '--literal-pathspecs', 'show', first[1], '--', show[2]], { encoding: 'utf8' }).stdout), `history ends with the command that shows a change (got ${show && show[0]})`);
@@ -3686,5 +3686,38 @@ again ${key2}
   ok(!(await fcli('search', 'cart', '--conversation', 'beef')).stdout.includes('at least 4'), 'four characters are enough');
   ok(!(await fcli('forget', 'cart', '--conversation', 'abc')).stdout.includes('at least 4'), 'forget keeps its own rule');
   ok((await run(['help'])).stdout.includes('  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N]\n'), 'the help lists the three filters');
+}
+// who said it: history and show name the exchange behind a note.
+{
+  const { render } = await import('./journal.mjs');
+  const wd = join(root, 'C--who', 'memory'), nj = join(root, 'C--nojournal', 'memory'), wcli = (...a) => run([...a, '--store', wd]);
+  mkdirSync(wd, { recursive: true }); mkdirSync(nj, { recursive: true });
+  const pad = (v) => String(v).padStart(2, '0'), d5 = new Date(Date.now() - 5 * 60000);
+  const today = `${d5.getFullYear()}-${pad(d5.getMonth() + 1)}-${pad(d5.getDate())}`, at = `${today} ${pad(d5.getHours())}:${pad(d5.getMinutes())}`;
+  const mk = (key, asked, note, over = {}) => ({ key, at, s: '3f07bb43', t: 'C--who/3f07bb43-aaaa', branch: '', asked, answered: 'done', changed: [join(wd, `${note}.md`)], ran: [], ...over });
+  const GHT = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
+  const es = [mk('who-1', 'save that as a rule', 'rules'), mk('who-2', 'y'.repeat(300), 'long'), mk('who-3', `keep ${GHT} in the note`, 'leaky')];
+  const writeDay = (store, list) => { mkdirSync(join(store, 'journal'), { recursive: true }); writeFileSync(join(store, 'journal', `${today}.md`), `# Journal ${today}\n\n${list.map(render).join('\n\n')}\n`); };
+  for (const n of ['rules', 'long', 'leaky']) memory(wd, n, n, 'v1');
+  memory(nj, 'bare-note', 'no journal here', 'v1');
+  tier();
+  writeDay(wd, es);
+  // By hand, so the file's time is now: a note a quarter hour old is not snapshotted again.
+  for (const [d, n] of [[wd, 'rules'], [wd, 'long'], [wd, 'leaky'], [nj, 'bare-note']]) writeFileSync(join(d, `${n}.md`), `---\nname: ${n}\ndescription: "${n}"\n---\n\nv2\n`);
+  tier();
+  const NONE = '    by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin\'s own sorting)';
+  r = await wcli('history', 'rules');
+  const L = r.stdout.split('\n');
+  const snaps = L.map((l, i) => [l, i]).filter(([l]) => /^  \w+ \d{4}-\d\d-\d\d \d\d:\d\d  (added|changed)$/.test(l));
+  ok(r.status === 0 && snaps.length === 2 && L[snaps[0][1] + 1] === NONE && /^    by: \d{4}-\d\d-\d\d \d\d:\d\d \[3f07bb43\] asked: "save that as a rule" · key: "who-1"$/.test(L[snaps[1][1] + 1]),
+    `history gives the older snapshot its exchange and the newer, a change by hand, none (got ${r.stdout})`);
+  r = await run(['history', 'bare-note', '--store', nj]);
+  ok(r.status === 0 && (r.stdout.match(/^ {4}by: no exchange found/gm) || []).length === 2, `with no journal every snapshot says no exchange was found (got ${r.stdout})`);
+  r = await wcli('history', 'rules', '--limit', '1');
+  ok(/^ {4}by: no exchange found/m.test(r.stdout) && /^  and 1 older; --limit N shows more$/m.test(r.stdout) && !/who-1/.test(r.stdout), `--limit cuts the list after the snapshots are paired (got ${r.stdout})`);
+  r = await wcli('history', 'long');
+  ok(r.stdout.includes(`asked: "${'y'.repeat(99)}…" `) && !r.stdout.includes('y'.repeat(101)), `a long request is cut to 100 characters (got ${r.stdout})`);
+  r = await wcli('history', 'leaky');
+  ok(!r.stdout.includes(GHT) && /asked: "keep \[redacted\] in the note"/.test(r.stdout), `a request holding a secret prints redacted (got ${r.stdout})`);
 }
 console.log(`memory: ${checks} checks passed`);

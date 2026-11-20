@@ -92,3 +92,20 @@ export const inConversation = (e, tag) => {
   const g = tag.toLowerCase(), id = e.t.slice(e.t.lastIndexOf('/') + 1).toLowerCase(), s = e.s.toLowerCase();
   return g !== '' && (id ? id.startsWith(g) : s !== '' && (g.startsWith(s) || s.startsWith(g)));
 };
+
+// The entries whose Changed holds one of `paths` whole (not by its end: another project's notes.md is not this one's), in the order given.
+export const changers = (es, paths) => { const p = new Set(paths.map(cleanPath)); return es.filter((e) => e.changed.some((c) => p.has(cleanPath(c)))); };
+// Who changed a note at each snapshot. `snaps` are snapshot times 'YYYY-MM-DD HH:MM', oldest first; `es` the entries from `changers`, oldest first.
+// An entry holds only its minute, so one sent in a snapshot's own minute may have come after it: it is taken only when nothing earlier fits.
+// shortcut: an entry names one snapshot only; upgrade if a long turn that a save cut in two is reported as "no exchange found".
+export const whoChanged = (snaps, es, origin = '') => {
+  const given = new Set();
+  return snaps.map((hi, i) => {
+    const lo = i ? snaps[i - 1] : '', fit = es.filter((e) => !given.has(e) && e.at >= lo && e.at <= hi);
+    const before = fit.filter((e) => e.at < hi), pool = before.length ? before : fit;
+    const top = pool.reduce((m, e) => (e.at > m ? e.at : m), ''), last = pool.filter((e) => e.at === top);
+    const e = last.findLast((x) => origin && inConversation(x, origin)) ?? last.at(-1) ?? null;
+    if (e) given.add(e);
+    return e;
+  });
+};

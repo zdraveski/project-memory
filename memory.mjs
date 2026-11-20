@@ -49,7 +49,7 @@ import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { BLOCK, redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
-import { STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation } from './recall.mjs';
+import { STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -628,7 +628,14 @@ const unsnapped = () => {
 const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
 
 // The newest `max`: a note edited every reply had 2,000 snapshots, 72 KB of output.
-export function history(dirs, file, everywhere = false, max = 30) {
+// The exchange behind a snapshot, as one line; null: none was found.
+const byLine = (e) => e ? `by: ${e.at} [${e.s}] asked: "${clip(e.asked, 100)}" · key: "${clip(e.key, Infinity)}"`
+  : "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
+// A note's journal entries, oldest first, by its full path as the session saw it. A journal that will not read is none: history still prints.
+const changersOf = (dir, f, failed) => {
+  try { return changers(told([dir], { failed }), [join(dir, f), join(real(dir), f)]).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); } catch { return []; }
+};
+export function history(dirs, file, everywhere = false, max = 30, failed = []) {
   const verb = { A: 'added', M: 'changed', D: 'deleted' };
   const why = unsnapped();
   if (why) return no(why);
@@ -638,18 +645,21 @@ export function history(dirs, file, everywhere = false, max = 30) {
       const f = named(dir, file);
       // No renames: a link that sorts first moves every path to it, and an R line was no change.
       const out = git('log', '--no-renames', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', ...tracked(dir, f));
-      const lines = [];
+      const snaps = [];
       let head = null;
       for (const l of out.split('\n')) {
         if (l.startsWith('@')) head = l.slice(1).split('\t');
         // The first snapshot took in what was already there: not when it was written.
-        else if (head && verb[l[0]]) { lines.push(`  ${head[0]}  ${head[1] === 'memory: first snapshot' ? 'in the first snapshot' : verb[l[0]]}`); head = null; }
+        else if (head && verb[l[0]]) { snaps.push([head[0], head[1] === 'memory: first snapshot' ? 'in the first snapshot' : verb[l[0]]]); head = null; }
       }
+      // Newest first, as git prints them; paired oldest first, before `max` cuts the list.
+      const text = read(join(dir, f)), by = snaps.length ? whoChanged(snaps.map(([h]) => h.slice(h.indexOf(' ') + 1)).reverse(), changersOf(dir, f, failed), text ? front(text).origin : '').reverse() : [];
+      const lines = snaps.flatMap(([h, what], i) => [`  ${h}  ${what}`, `    ${byLine(by[i])}`]);
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
       const moved = !isShared(dir) && !isIndex(f) && existsSync(join(sharedStore(), f)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
       // --all prints a block per project that has the memory; without it the first.
-      if (lines.length) { blocks.push([join(dir, f), ...lines.slice(0, max), ...(lines.length > max ? [`  and ${lines.length - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, f).map((p) => `"${p}"`).join(' ')}`]); if (!everywhere) break; }
+      if (lines.length) { blocks.push([join(dir, f), ...lines.slice(0, max * 2), ...(lines.length > max * 2 ? [`  and ${lines.length / 2 - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, f).map((p) => `"${p}"`).join(' ')}`]); if (!everywhere) break; }
     }
   } catch (e) { return no(`no snapshots to read: ${gitWhy(e)}`); }
   if (blocks.length) return { ok: true, lines: blocks.flat() };
@@ -1289,7 +1299,7 @@ export function main(given) {
     const sharedNames = names(memories(sharedStore()));
     const am = autoMemory();
     r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
-  } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined);
+  } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined, failed);
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
   else if (cmd === 'doctor') r = doctor(here);
