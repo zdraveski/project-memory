@@ -94,7 +94,10 @@ function measure({ runs, real, plugin, scale, only }) {
   let out = '';
   const spawn = (name, args, input) => {
     const t0 = process.hrtime.bigint();
-    out = spawnSync(process.execPath, [file(name), ...args], { env, input, encoding: 'utf8' }).stdout ?? '';
+    const r = spawnSync(process.execPath, [file(name), ...args], { env, input, encoding: 'utf8' });
+    // A script that cannot start is not a fast one.
+    if (r.error || r.status !== 0) throw new Error(`bench: ${name} ${args[0] ?? ''} did not run (${r.error?.message ?? `exit ${r.status}`}): ${(r.stderr ?? '').slice(0, 200)}`);
+    out = r.stdout ?? '';
     return Number(process.hrtime.bigint() - t0) / 1e6;
   };
   spawn('memory-tier.mjs', [], '');                       // the snapshot repo, as a live machine has it
@@ -138,8 +141,13 @@ function show({ store, cases, runs }) {
 // A case with no limit fails; one over its limit fails with its numbers in plain words.
 export function verdict(cases, limits) {
   const base = cases[EMPTY];
-  return Object.entries(cases).filter(([name]) => name !== EMPTY).flatMap(([name, ms]) => {
+  if (!(Number.isFinite(base) && base > 0)) return [`no usable measurement of the empty script (${base})`];
+  const names = [...new Set([...Object.keys(cases), ...Object.keys(limits)])].filter((n) => n !== EMPTY);
+  return names.flatMap((name) => {
+    const ms = cases[name];
+    if (!(name in cases)) return [`no measurement for "${name}"`];
     if (!(name in limits)) return [`no limit set for "${name}"`];
+    if (!Number.isFinite(ms)) return [`"${name}" has no usable measurement (${ms})`];
     const ratio = ms / base;
     return ratio > limits[name] ? [`"${name}" took ${ms} ms, ${ratio.toFixed(1)} times the empty script's ${base} ms; the limit is ${limits[name]} times`] : [];
   });

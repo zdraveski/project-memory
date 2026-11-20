@@ -128,4 +128,11 @@ ok(seen === 5, '--check 5 runs 5 times');
 await capture(() => main(['--scale', '2'], spy(), { a: 3 }));
 ok(seen === 9, 'a number after --scale is not the runs');
 
+// a measurement that is missing or not a number cannot pass
+ok(verdict({ a: 1, [EMPTY]: 0 }, { a: 3 }).length === 1 && verdict({ a: 1, [EMPTY]: NaN }, { a: 3 }).length === 1, 'an empty-script median of 0 or NaN fails');
+ok(/"a" has no usable measurement/.test(verdict({ a: NaN, [EMPTY]: 50 }, { a: 3 })[0]), 'a case whose time is not a number fails');
+ok(eq(verdict({ [EMPTY]: 50 }, { a: 3 }), ['no measurement for "a"']), 'a case with a limit but no measurement fails');
+const dead = spawnSync(process.execPath, [tool('bench.mjs'), '1', '--scale', '0.02', '--plugin', tempDir('bench-nothing-')], { encoding: 'utf8' });
+ok(dead.status !== 0 && /did not run/.test(dead.stderr), 'a hook that cannot start fails the bench');
+
 console.log(`bench: ${checks} checks passed`);
