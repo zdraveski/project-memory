@@ -16,6 +16,7 @@ import memory from './mutants/memory.mjs';
 import hooks from './mutants/hooks.mjs';
 import journal from './mutants/journal.mjs';
 import recall from './mutants/recall.mjs';
+import page from './mutants/page.mjs';
 import deploy from './mutants/deploy.mjs';
 import enforce from './mutants/enforce.mjs';
 import enforceHook from './mutants/enforce-hook.mjs';
@@ -23,7 +24,7 @@ import brief from './mutants/brief.mjs';
 import timing from './mutants/timing.mjs';
 
 // Every file a suite may import, copied beside the mutant.
-const FILES = ['harness.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'recall.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
+const FILES = ['harness.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'recall.mjs', 'page.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
   '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
 
 export const suites = {
@@ -40,6 +41,7 @@ export const suites = {
   'enforce.mjs': ['enforce.test.mjs', enforce],
   'enforce-hook.mjs': ['enforce-hook.test.mjs', enforceHook],
   'timing.mjs': ['timing.test.mjs', timing],
+  'page.mjs': ['page.test.mjs', page],
 };
 // The file that holds a group's mutants: a --changed list naming it asks for that group alone.
 export const tableOf = (name) => `mutants/${name.split('/').pop().replace(/\.\w+$/, '')}.mjs`;
