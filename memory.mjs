@@ -48,6 +48,7 @@ import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { BLOCK, redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
+import { STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -219,81 +220,6 @@ export function memories(dir) {
   });
 }
 
-// Words that say nothing about which memory: in a model's natural-language
-// query they scored like content -- "the" in a file name took the name bonus,
-// and "how do we deploy the site" filled its last places with them (review).
-const STOP = new Set(['the', 'and', 'for', 'how', 'what', 'why', 'with', 'was', 'are', 'not', 'this', 'that', 'from',
-  'when', 'where', 'who', 'did', 'does', 'have', 'has', 'can', 'you', 'our', 'about', 'into', 'there', 'their', 'then', 'than',
-  'am', 'an', 'as', 'at', 'be', 'by', 'do', 'he', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or', 'so', 'to', 'up', 'us', 'we',
-  // Question filler: "which design skill did I put in all projects" ranked the real entry 7th (1.5.0 audit).
-  'which', 'will', 'many', 'all', 'any', 'last', 'month', 'take', 'ever', 'just', 'before', 'after', 'some', 'got',
-  'should', 'would', 'could', 'been', 'were', 'one', 'them', 'they', 'your', 'its', 'also', 'very', 'much', 'more', 'most', 'need',
-  'want', 'like', 'used', 'tell', 'remind', 'again', 'week', 'day', 'today', 'yesterday', 'ago']);
-// Two letters are a word too: CI, PR, DB were never found. But only standing
-// alone: `ci` is in "decision".
-// Combining marks (\p{M}) belong to the word (Hindi), and both sides are NFC so a decomposed "e" + accent is "é".
-// A version (1.4.3, v1.4.3) is one word, matched whole: split at the dots, its pieces were all dropped, and 1.4.3 is not 1.4.30.
-const VERSION = /(?<![\p{L}\p{N}.])v?(\d+(?:\.\d+)+)/gu;
-const isVer = (t) => /^\d+(?:\.\d+)+$/.test(t);
-// A one-dot version (1.4) is every release of it (1.4.1), so only a three-part version refuses a further .N.
-const verRe = (t) => new RegExp(`(?<![\\p{L}\\p{N}.])v?${t.replaceAll('.', '\\.')}(?!\\p{N}${t.split('.').length > 2 ? '|\\.\\p{N}' : ''})`, 'gu');
-// Word forms: the query's word loses one regular ending, and the match finds the longer forms (the index is not stemmed).
-// shortcut: regular endings only (run and ran, or decide and decision, are not one word; no irregular-verb table).
-// A root of 5 letters or more matches at the start of a word (migrat: migrate, migration). A root of 3 or 4 letters from
-// s, es, ed, ing, ies or ied (and a 3-letter word as typed) matches only itself and those endings, so "log" finds logs, logged
-// and logging but not login, and "planned" finds plan but not planet. A 3-letter root needs a vowel and one of s, es, ed, ing.
-// A final y or e is dropped only when an ending was cut, so "ready" is not "read". "-us" and "-is" words (status) keep their s.
-const EN_SUF = ['ational', 'ations', 'ation', 'ments', 'ment', 'ingly', 'ings', 'ing', 'edly', 'ies', 'ied', 'ures', 'ure', 'ed', 'es', 's', 'ly'];
-// Macedonian: articles, plurals and common verb endings; the stem stays 3 letters or more.
-const MK_SUF = ['ињата', 'ијата', 'ување', 'увања', 'ите', 'ата', 'ото', 'ета', 'ови', 'еви', 'ања', 'ање', 'вме', 'вте', 'ше', 'ме', 'те', 'та', 'то', 'от', 'ов', 'ва', 'во', 'ве', 'он', 'на', 'но', 'не', 'ат', 'ам', 'аш', 'и', 'а', 'е', 'о', 'у'];
-const INFL = new Set(['s', 'es', 'ed', 'ing', 'ings', 'ies', 'ied']), DOUBLED = new Set(['ed', 'ing', 'ings', 'edly', 'ingly']);
-// An English word as [root, the ending cut, the final y or e dropped].
-function cutEn(t) {
-  let x = t, cut = '', drop = '';
-  for (const f of EN_SUF) {
-    const n = x.length - f.length;
-    if (x.endsWith(f) && (n >= 4 || n === 3 && ['s', 'es', 'ed', 'ing'].includes(f) && /[aeiou]/.test(x.slice(0, 3))) && !(f === 's' && /(ss|us|is)$/.test(x))) { x = x.slice(0, -f.length); cut = f; break; }
-  }
-  if (DOUBLED.has(cut) && x.length >= 4 && /([b-df-hj-np-tv-z])\1$/.test(x) && !/(ll|ss|zz|ff)$/.test(x)) x = x.slice(0, -1);
-  else if (cut && x.length > 4 && /[^aeiou][ye]$/.test(x)) { drop = x.at(-1); x = x.slice(0, -1); }
-  return [x, cut, drop];
-}
-function stem(t) {
-  if (/^[a-z]+$/.test(t)) return cutEn(t)[0];
-  if (/^[Ѐ-ӿ]+$/.test(t)) for (const f of MK_SUF) if (t.endsWith(f) && t.length - f.length >= 3) return t.slice(0, -f.length);
-  return t;
-}
-// The search words of a query, each as its stem; `.as` gives the word as typed. `any`: a query of only stop words
-// searches them rather than nothing. Without it, only words that say which memory (a date range alone lists the days).
-const words = (q, any = false) => {
-  const n = q.normalize('NFC').toLowerCase();
-  const all = [...[...n.matchAll(VERSION)].map((m) => m[1]), ...n.replace(VERSION, ' ').split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => t.length >= 2 || CJK.test(t))];
-  const kept = all.filter((t) => !STOP.has(t)), as = new Map();
-  for (const t of kept.length || !any ? kept : all) if (!as.has(stem(t))) as.set(stem(t), t);
-  return Object.assign([...as.keys()], { as });
-};
-// Han, Hiragana and Katakana have no spaces round a word, so they are not the letters a Latin word must not touch.
-const CJK = /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]$/u, NC = '(?![\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}])';
-const alone = (t) => new RegExp(`(?<!${NC}[\\p{L}\\p{M}\\p{N}])${t}(?!${NC}[\\p{L}\\p{M}\\p{N}])`, 'gu');
-// Chinese and Japanese have no spaces round a word, so a two-character one is looked for as a substring.
-const plain = (t) => t.length > 2 || /^[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]+$/u.test(t);
-// A cut stem counts only at the start of a word: "stor" finds "store" and "storage", not "history" (`cut`: the term was shortened).
-// A short English root (see stem()) is a whole word with its endings instead; `w` is the word as typed.
-const starts = (t, w = t) => {
-  const [r, f, d] = /^[a-z]+$/.test(w) ? cutEn(w) : [], B = `(?<!${NC}[\\p{L}\\p{N}])`;
-  if (!r || r.length > 4 || !(f ? INFL.has(f) : r.length === 3)) {
-    // An uncut consonant + y word also finds its plural and past: library, libraries; story, stories (not store).
-    const y = !f && /[^aeiou]y$/.test(t) ? `|${t.slice(0, -1)}i(?:es|ed)` : '';
-    return new RegExp(`${B}(?:${t}${y})`, 'gu');
-  }
-  const l = r.at(-1), o = [`e?(?:s|es|d|ed|ing|ings|ies|ied|${l}ed|${l}ing|${l}ings)`];
-  if (!d && !(f === 'ed' && r.endsWith('e'))) o.push(['s', 'es', 'ed', 'ing', 'ings'].includes(f) ? 'e?' : '');
-  return new RegExp(`${B}(?:${w}|${r}(?:${o.join('|')}))(?!${NC}[\\p{L}\\p{N}])`, 'gu');
-};
-// A term is matched as word forms when it was cut, is a 3-letter English word, or ends in a consonant and y (library: libraries).
-const forms = (t, cut) => (cut || /^[a-z]{3}$/.test(t) || /^[a-z]*[^aeiou]y$/.test(t)) && plain(t);
-const count = (hay, t, cut) => (isVer(t) ? (hay.match(verRe(t)) ?? []).length : forms(t, cut) ? (hay.normalize('NFC').match(starts(t, cut || t)) ?? []).length : plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
-const has = (hay, t, cut) => (isVer(t) ? verRe(t).test(hay) : forms(t, cut) ? starts(t, cut || t).test(hay.normalize('NFC')) : plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
 // The stretches of `text` around each match of `find`, joined, `room` characters
 // at most; no cut leaves half an emoji, which prints as U+FFFD.
 function around(text, find, room) {
@@ -1178,7 +1104,7 @@ export function main(given) {
   const short = (e) => e.asked.trim().length <= SHORT_ASK;
   const replyTo = (all, e) => {
     if (!short(e)) return [];
-    const same = all.filter((x) => x.t === e.t && !x.key.startsWith('subagent-')).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+    const same = all.filter((x) => x.t === e.t && !isHelper(x)).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
     const p = same[same.findIndex((x) => x.key === e.key) - 1], tail = p && p.answered.split(BLOCK).join('').replace(/\s+/g, ' ').trim();
     return tail ? [`     Reply to key ${clip(p.key, Infinity)}: ${tail.length > BEFORE ? `…${tail.slice(-BEFORE).replace(/^[\uDC00-\uDFFF]/, '')}` : tail}`] : [];
   };
@@ -1236,7 +1162,7 @@ export function main(given) {
     r = { ok: got.every(Boolean), lines: got.flatMap((e, i) => e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${ks[i]} in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
   } else if (cmd === 'search' && (range.since || range.until)) {
     // What was asked on those days, newest first: "what did we do last week".
-    const es = told(scope, { ...range, failed }).filter((e) => !e.key.startsWith('subagent-')).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
+    const es = told(scope, { ...range, failed }).filter((e) => !isHelper(e)).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
     const all = shown.some(short) ? told(scope, { failed }) : [];   // the reply before a short request may be on an earlier day
     const dropped = [...new Set(args.join(' ').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => STOP.has(t)))];
     r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]

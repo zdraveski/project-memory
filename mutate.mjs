@@ -15,6 +15,7 @@ import memoryTier from './mutants/memory-tier.mjs';
 import memory from './mutants/memory.mjs';
 import hooks from './mutants/hooks.mjs';
 import journal from './mutants/journal.mjs';
+import recall from './mutants/recall.mjs';
 import deploy from './mutants/deploy.mjs';
 import enforce from './mutants/enforce.mjs';
 import enforceHook from './mutants/enforce-hook.mjs';
@@ -22,7 +23,7 @@ import brief from './mutants/brief.mjs';
 import timing from './mutants/timing.mjs';
 
 // Every file a suite may import, copied beside the mutant.
-const FILES = ['harness.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
+const FILES = ['harness.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'recall.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
   '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
 
 export const suites = {
@@ -33,6 +34,7 @@ export const suites = {
   'memory.mjs': ['memory.test.mjs', memory],
   'hooks/hooks.json': ['memory.test.mjs', hooks],
   'journal.mjs': ['journal.test.mjs', journal],
+  'recall.mjs': ['recall.test.mjs', recall],
   'deploy.mjs': ['handoff-log.test.mjs', deploy],
   'brief.mjs': ['handoff-log.test.mjs', brief],
   'enforce.mjs': ['enforce.test.mjs', enforce],

@@ -43,6 +43,7 @@ jobs:
       - run: node memory-tier.test.mjs
       - run: node memory.test.mjs
       - run: node journal.test.mjs
+      - run: node recall.test.mjs
       - run: node enforce.test.mjs
       - run: node enforce-hook.test.mjs
       - run: node timing.test.mjs

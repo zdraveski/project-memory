@@ -209,6 +209,8 @@ export function opener(dir, listed) {
 // target is gone is none.
 // A real path as a key: Windows spells one folder in any case.
 export const pathKey = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+// A path's case folded where the disk ignores case (Windows, macOS): on Linux /home/USER is not /home/user.
+export const foldCase = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);
 // A transcript as .forgotten, .imported and .checked name it: `<folder>/<session>`.
 // Compared through pathKey: a payload spelt the folder `c--x`, the disk `C--x`.
 export const transcriptKey = (p) => `${basename(dirname(p))}/${basename(p, '.jsonl')}`;

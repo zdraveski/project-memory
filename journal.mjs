@@ -6,7 +6,7 @@ import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSy
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip, text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable, promptBefore, BLOCK } from './handoff-log.mjs';
-import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only } from './store.mjs';
+import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only, foldCase } from './store.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -51,10 +51,9 @@ function each(ds, fn) {
 // A path inside the turn's folder reads shorter relative to it. In any case
 // only where the disk ignores case (Windows, macOS): on Linux /home/USER is
 // not /home/user (final review).
-const fold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);
 const rel = (p, cwd) => {
   const c = cwd ? cwd.replace(/[\\/]+$/, '') : '';
-  return c && p.length > c.length + 1 && /[\\/]/.test(p[c.length]) && fold(p.slice(0, c.length)) === fold(c) ? p.slice(c.length + 1) : p;
+  return c && p.length > c.length + 1 && /[\\/]/.test(p[c.length]) && foldCase(p.slice(0, c.length)) === foldCase(c) ? p.slice(c.length + 1) : p;
 };
 
 // All the text, redacted whole first; past the cap the start goes, so the final answer stays, and a lead says how much went.
