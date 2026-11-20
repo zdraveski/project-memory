@@ -58,7 +58,7 @@ everything you did.
 | Work from a few weeks ago is hard to find again. | **A journal you can ask.** Every exchange is kept on your computer. Ask in your own words, and Claude finds it and tells you when it happened. |
 | A note deleted or overwritten by mistake is gone. | **Old versions come back.** Every version of your notes is kept, and Claude restores one when you ask. |
 | A very long conversation is shortened to a summary, and the task in progress can get lost. | **Long tasks stay on track.** Claude saves its notes first, and afterwards it's told what you asked and what it last said. |
-| You teach Claude your habits again in every project. | **Lessons shared across projects.** What applies everywhere goes in a notebook every project reads. |
+| Habits that hold everywhere go in a CLAUDE.md in your home folder, kept by hand. | **Lessons shared across projects.** What applies everywhere goes in a notebook every project reads. |
 | Two windows open on one project can clash. | **Two windows are safe to use.** Each store has a lock. A hook waits up to 2 seconds for it, skips that part if it is still busy, and catches up after the next reply. |
 | A key or password you paste can end up in saved files. | **Secrets kept out.** Keys, tokens and passwords become `[redacted]` before they reach the journal or the handoff. |
 | There is no way to keep a passage or a project out. | **You decide what is saved.** Keep out a passage, a conversation or a whole project. |
@@ -111,7 +111,8 @@ It works on Windows, macOS and Linux, in Claude Code only. Not sure what you
 have? Ask Claude: *"Do I have Node.js 22 or newer, and Git?"*
 
 1. In Claude Code, type these two lines. When the second one opens a menu,
-   choose to install it for you (user scope), so it works in every project.
+   pick the option that installs it for you in every project (it may say user
+   scope).
 
    ```
    /plugin marketplace add zdraveski/project-memory
