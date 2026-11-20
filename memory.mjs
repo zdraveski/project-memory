@@ -832,7 +832,7 @@ export function timingLines(now = Date.now()) {
   const groups = new Map();
   for (const r of all.filter((x) => x.t >= now - 7 * 864e5 && TIMED[x.h])) {
     const label = r.h === 'save' && r.e === 'SubagentStop' ? "save of a helper's report" : TIMED[r.h];
-    groups.set(label, [...(groups.get(label) ?? []), r]);
+    if (groups.has(label)) groups.get(label).push(r); else groups.set(label, [r]);
   }
   const lines = [...groups].map(([label, rs]) => {
     const t = stats(rs.map((r) => r.ms)), start = stats(rs.map((r) => r.start).filter(Number.isFinite)).median;
