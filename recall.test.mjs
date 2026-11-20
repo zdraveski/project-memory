@@ -15,6 +15,9 @@ ok(changedFile(e(), 'cart.js') && changedFile(e(), 'docs/README.md') && changedF
 // the end of a path counts only at a folder
 ok(!changedFile(e(), 'art.js') && !changedFile(e(), 'rc/cart.js'), 'not inside a name');
 ok(!changedFile(e(), '') && !changedFile(e(), '/') && !changedFile(e({ changed: [] }), 'cart.js'), 'nothing given, nothing changed');
+// the journal holds paths relative to the session folder; an absolute path matches when it ends in one, at a folder
+ok(changedFile(e(), '/home/u/shop/src/cart.js') && changedFile(e(), 'c:\\shop\\src\\cart.js') && changedFile(e(), 'C:/shop/src/cart.js'), 'an absolute path ending in the stored one');
+ok(!changedFile(e(), '/x/shop/rc/cart.js') && !changedFile(e(), '/x/shop/src/art.js') && !changedFile(e(), '/home/u/shop/lib/cart.js'), 'an absolute path matches only at a folder');
 // helper
 ok(isHelper(e({ key: 'subagent-a1' })) && !isHelper(e()), 'helper by key');
 // conversation

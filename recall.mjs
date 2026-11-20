@@ -81,9 +81,10 @@ export const has = (hay, t, cut) => (isVer(t) ? verRe(t).test(hay) : forms(t, cu
 // A path as the journal compares it: forward slashes, no leading ./ or trailing /, case as the journal folds it.
 export const cleanPath = (p) => foldCase(p.replaceAll('\\', '/').replace(/^(\.\/)+/, '').replace(/\/+$/, ''));
 // An equal path, or the given one is the end of a changed path right after a folder: art.js is not src/cart.js.
+// The journal holds paths relative to the session's folder, so an absolute one given also matches when it ends in a changed path.
 export const changedFile = (e, path) => {
-  const p = cleanPath(path);
-  return p !== '' && e.changed.some((c) => { const f = cleanPath(c); return f === p || f.endsWith(`/${p}`); });
+  const p = cleanPath(path), abs = /^(?:[a-z]:)?\//i.test(p);
+  return p !== '' && e.changed.some((c) => { const f = cleanPath(c); return f === p || f.endsWith(`/${p}`) || (abs && f !== '' && p.endsWith(`/${f}`)); });
 };
 export const isHelper = (e) => e.key.startsWith('subagent-');
 // The session id is the end of `t`; an entry with no `t` has only its 8-character tag.
