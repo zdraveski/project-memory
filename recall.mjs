@@ -92,3 +92,29 @@ export const inConversation = (e, tag) => {
   const g = tag.toLowerCase(), id = e.t.slice(e.t.lastIndexOf('/') + 1).toLowerCase(), s = e.s.toLowerCase();
   return g !== '' && (id ? id.startsWith(g) : s !== '' && (g.startsWith(s) || s.startsWith(g)));
 };
+
+// The entries whose Changed holds one of `paths` whole (not by its end: another project's notes.md is not this one's), in the order given.
+export const changers = (es, paths) => { const p = new Set(paths.map(cleanPath)); return es.filter((e) => e.changed.some((c) => p.has(cleanPath(c)))); };
+// Who changed a note at each snapshot. `snaps` are snapshot times 'YYYY-MM-DD HH:MM', oldest first; `es` the entries from `changers`, oldest first.
+// An entry holds only its minute, so one sent in a snapshot's own minute may have come after it: it is taken only when nothing earlier fits.
+// shortcut: an entry names one snapshot only; upgrade if a long turn that a save cut in two is reported as "no exchange found".
+export const whoChanged = (snaps, es, deleted = []) => {
+  const given = new Set();
+  return snaps.map((hi, i) => {
+    const lo = i ? snaps[i - 1] : '', all = es.filter((e) => !given.has(e) && e.at >= lo && e.at <= hi);
+    // every entry in the snapshot's own minute is taken, named or not: the next snapshot's window starts at that minute
+    all.filter((e) => e.at === hi).forEach((e) => given.add(e));
+    // a journal entry does not say whether it deleted the file, so a deleted note's snapshot names nothing
+    if (deleted[i]) return null;
+    // a helper's entry is named only when no other fits: its report lands a minute after the request that started it
+    const fit = all.some((e) => !isHelper(e)) ? all.filter((e) => !isHelper(e)) : all;
+    // two conversations changed it since the last snapshot: the snapshot cannot tell whose it holds
+    if (new Set(fit.map((e) => e.t || e.s)).size > 1) return 'several';
+    const before = fit.filter((e) => e.at < hi), pool = before.length ? before : fit;
+    // the oldest snapshot has no lower limit: with more than one exchange before it, which one wrote it is a guess
+    if (!i && pool.length > 1) return null;
+    const top = pool.reduce((m, e) => (e.at > m ? e.at : m), ''), e = pool.findLast((x) => x.at === top) ?? null;
+    if (e) given.add(e);
+    return e;
+  });
+};

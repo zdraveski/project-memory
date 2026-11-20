@@ -129,7 +129,7 @@ mkdirSync(join(dir, 'journal'), { recursive: true });
 writeFileSync(join(dir, 'journal', '2026-10-27.md'), '# Journal 2026-10-27\n');
 tier();
 r = await cli('history', 'deploy-notes');
-ok(r.status === 0 && /  \S+ \S+ \S+  deleted\n  \S+ \S+ \S+  in the first snapshot$/m.test(r.stdout), `history lists the snapshots that changed it, newest first; the first snapshot is not called its writing (got ${r.stdout})`);
+ok(r.status === 0 && /  \S+ \S+ \S+  deleted\n    by: [^\n]*\n  \S+ \S+ \S+  in the first snapshot\n    by: /m.test(r.stdout), `history lists the snapshots that changed it, newest first; the first snapshot is not called its writing (got ${r.stdout})`);
 // Its last line is a command that works as printed: the path git tracks, no `~`.
 const show = r.stdout.match(/^  a change: git -C "([^"]+)" --literal-pathspecs show <commit> -- "([^"]+)"$/m), first = r.stdout.match(/^  (\w+) .*in the first snapshot$/m);
 ok(show && first && /deploy notes/.test(spawnSync('git', ['-C', show[1], '--literal-pathspecs', 'show', first[1], '--', show[2]], { encoding: 'utf8' }).stdout), `history ends with the command that shows a change (got ${show && show[0]})`);
@@ -1147,7 +1147,7 @@ lemur lemur lemur lemur
   r = await jcli('show', fix.key, pasted.key);
   ok(r.status === 0 && /^     Asked: fix the deploy error$/m.test(r.stdout) && /^     Answered: stored \[redacted\] as the config token$/m.test(r.stdout) && !r.stdout.includes(key), `show takes several keys, and redacts (got ${r.stdout})`);
   r = await jcli('show', 'no-such-key');
-  ok(r.status === 1 && /^no journal entry has the key no-such-key in .+; --all looks in every project$/m.test(r.stdout), `a key that is no entry's says so, and fails (got ${r.stdout})`);
+  ok(r.status === 1 && /^no journal entry has the key no-such-key and no note has that name in .+; --all looks in every project$/m.test(r.stdout), `a key that is no entry's says so, and fails (got ${r.stdout})`);
   // A key typed without quotes is its words: none a key, so the words joined by one space are tried (audit 17).
   const spaced = entry('2026-10-13 11:00', 'feed the okapi', { key: 'c0ffee12 2026-10-13 11:00 a1b2c3d4e5f6' });
   day(jd, '2026-10-13', [spaced]);
@@ -3531,7 +3531,7 @@ again ${key2}
   r = await jcli('show', t1.key, t3.key);
   ok(r.status === 0 && r.stdout.includes('one of three at one minute') && r.stdout.includes('reply three'), `show takes several keys (got ${r.stdout})`);
   r = await jcli('show', t1.key, 'l2nosuch');
-  ok(r.status === 1 && r.stdout.includes('one of three at one minute') && /no journal entry has the key l2nosuch in /.test(r.stdout), `show prints the entries it has and names the key it has not, exit 1 (got ${r.status} ${r.stdout})`);
+  ok(r.status === 1 && r.stdout.includes('one of three at one minute') && /no journal entry has the key l2nosuch and no note has that name in /.test(r.stdout), `show prints the entries it has and names the key it has not, exit 1 (got ${r.status} ${r.stdout})`);
   r = await jcli('show', t1.key);
   ok(!/^ +(Changed|Ran):/m.test(r.stdout) && /^ +Asked:/m.test(r.stdout) && /^ +Answered:/m.test(r.stdout), `show prints no line for a field that is empty (got ${r.stdout})`);
   // A range with no words lists what was asked, newest first, without the subagents' reports, as many as --limit says (30 without it).
@@ -3686,5 +3686,99 @@ again ${key2}
   ok(!(await fcli('search', 'cart', '--conversation', 'beef')).stdout.includes('at least 4'), 'four characters are enough');
   ok(!(await fcli('forget', 'cart', '--conversation', 'abc')).stdout.includes('at least 4'), 'forget keeps its own rule');
   ok((await run(['help'])).stdout.includes('  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N]\n'), 'the help lists the three filters');
+}
+// who said it: history and show name the exchange behind a note.
+{
+  const { render } = await import('./journal.mjs');
+  const wd = join(root, 'C--who', 'memory'), nj = join(root, 'C--nojournal', 'memory'), wcli = (...a) => run([...a, '--store', wd]);
+  mkdirSync(wd, { recursive: true }); mkdirSync(nj, { recursive: true });
+  const pad = (v) => String(v).padStart(2, '0'), d5 = new Date(Date.now() - 5 * 60000);
+  const today = `${d5.getFullYear()}-${pad(d5.getMonth() + 1)}-${pad(d5.getDate())}`, at = `${today} ${pad(d5.getHours())}:${pad(d5.getMinutes())}`;
+  const mk = (key, asked, note, over = {}) => ({ key, at, s: '3f07bb43', t: 'C--who/3f07bb43-aaaa', branch: '', asked, answered: 'done', changed: [join(wd, `${note}.md`)], ran: [], ...over });
+  const GHT = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
+  const es = [mk('who-1', 'save that as a rule', 'rules'), mk('who-2', 'y'.repeat(300), 'long'), mk('who-3', `keep ${GHT} in the note`, 'leaky'), mk('who-4', 'first of two', 'twice'), mk('who-5', 'second of two', 'twice'), mk('who-6\x1b]0;x\x07', 'clear \x1b[2J then \x1b]0;x\x07 and \u202eevil', 'ctl')];
+  const writeDay = (store, list) => { mkdirSync(join(store, 'journal'), { recursive: true }); writeFileSync(join(store, 'journal', `${today}.md`), `# Journal ${today}\n\n${list.map(render).join('\n\n')}\n`); };
+  for (const n of ['rules', 'long', 'leaky', 'twice', 'ctl']) memory(wd, n, n, 'v1');
+  memory(nj, 'bare-note', 'no journal here', 'v1');
+  tier();
+  writeDay(wd, es);
+  // By hand, so the file's time is now: a note a quarter hour old is not snapshotted again.
+  for (const [d, n] of [[wd, 'rules'], [wd, 'long'], [wd, 'leaky'], [wd, 'twice'], [wd, 'ctl'], [nj, 'bare-note']]) writeFileSync(join(d, `${n}.md`), `---\nname: ${n}\ndescription: "${n}"\n---\n\nv2\n`);
+  tier();
+  const NONE = '    by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin\'s own sorting)';
+  r = await wcli('history', 'rules');
+  const L = r.stdout.split('\n');
+  const snaps = L.map((l, i) => [l, i]).filter(([l]) => /^  \w+ \d{4}-\d\d-\d\d \d\d:\d\d  (added|changed)$/.test(l));
+  ok(r.status === 0 && snaps.length === 2 && L[snaps[0][1] + 1] === NONE && /^    by: \d{4}-\d\d-\d\d \d\d:\d\d \[3f07bb43\] asked: "save that as a rule" · key: "who-1"$/.test(L[snaps[1][1] + 1]),
+    `history gives the older snapshot its exchange and the newer, a change by hand, none (got ${r.stdout})`);
+  r = await run(['history', 'bare-note', '--store', nj]);
+  ok(r.status === 0 && (r.stdout.match(/^ {4}by: no exchange found/gm) || []).length === 2, `with no journal every snapshot says no exchange was found (got ${r.stdout})`);
+  r = await wcli('history', 'rules', '--limit', '1');
+  ok(/^ {4}by: no exchange found/m.test(r.stdout) && /^  and 1 older; --limit N shows more$/m.test(r.stdout) && !/who-1/.test(r.stdout), `--limit cuts the list after the snapshots are paired (got ${r.stdout})`);
+  // --limit 1 reads only the journal days from the snapshot just older than the one shown: a day file before that is never opened.
+  mkdirSync(join(wd, 'journal', '2001-01-01.md'));
+  ok(/could not read/.test((await wcli('history', 'rules')).stdout), 'all the journal days are read when every snapshot is shown');
+  r = await wcli('history', 'rules', '--limit', '1');
+  ok(!/could not read/.test(r.stdout) && /^  and 1 older/m.test(r.stdout), `--limit 1 opens no journal day older than the snapshot below it (got ${r.stdout})`);
+  rmSync(join(wd, 'journal', '2001-01-01.md'), { recursive: true });
+  r = await wcli('history', 'long');
+  ok(r.stdout.includes(`asked: "${'y'.repeat(99)}…" `) && !r.stdout.includes('y'.repeat(101)), `a long request is cut to 100 characters (got ${r.stdout})`);
+  r = await wcli('history', 'leaky');
+  ok(!r.stdout.includes(GHT) && /asked: "keep \[redacted\] in the note"/.test(r.stdout), `a request holding a secret prints redacted (got ${r.stdout})`);
+  r = await wcli('history', 'twice');
+  ok(!/who-[45]|first of two|second of two/.test(r.stdout), `two exchanges before the oldest snapshot: neither is named (got ${r.stdout})`);
+  r = await wcli('history', 'ctl');
+  ok(/by: .*asked: "clear \uFFFD\[2J then \uFFFD\]0;x\uFFFD and \uFFFDevil"/.test(r.stdout) && !/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/.test(r.stdout.replace(/\r?\n/g, '')), `escape codes and bidi controls in a request print as U+FFFD (got ${JSON.stringify(r.stdout)})`);
+  // The shared store: its edits are in the project journals, which are not read for it, so "changed by hand" would be false.
+  mkdirSync(shared, { recursive: true });
+  memory(shared, 'pm-lesson', 'a lesson', 'v1');
+  tier();
+  writeFileSync(join(shared, 'pm-lesson.md'), '---\nname: pm-lesson\ndescription: "a lesson"\n---\n\nv2\n');
+  tier();
+  const SHARED = 'by: not looked up for the shared store (what changed it is in the project journals)';
+  r = await run(['history', 'pm-lesson', '--store', shared]);
+  ok(r.status === 0 && (r.stdout.match(new RegExp(`^ {4}${SHARED.replace(/[()]/g, '\\$&')}$`, 'gm')) || []).length === 2 && !/changed by hand/.test(r.stdout), `history of a shared note says it did not look (got ${r.stdout})`);
+  r = await run(['show', 'pm-lesson', '--store', shared]);
+  ok(r.status === 0 && r.stdout.endsWith(`\n  ${SHARED}\n`), `show of a shared note says it did not look (got ${r.stdout})`);
+  // A deleted note: an entry sent in the deletion's minute is not named for it.
+  memory(wd, 'gone', 'gone', 'v1');
+  tier();
+  unlinkSync(join(wd, 'gone.md'));
+  tier();
+  const dline = (await wcli('history', 'gone')).stdout.match(/^  \w+ (\d{4}-\d\d-\d\d \d\d:\d\d)  deleted$/m);
+  writeDay(wd, [...es, mk('who-g', 'remove gone', 'gone', { at: dline?.[1] }), mk('who-del', 'delete gone', 'gone', { at: dline?.[1] })]);
+  r = await wcli('history', 'gone');
+  const G = r.stdout.split('\n'), di = G.findIndex((l) => /  deleted$/.test(l));
+  ok(dline && di >= 0 && G[di + 1] === NONE, `a deleted note's snapshot names no exchange (got ${r.stdout})`);
+}
+// show <note>: the first and the newest exchange behind a note, when no entry has that name as its key.
+{
+  const { render } = await import('./journal.mjs');
+  const sd = join(root, 'C--show', 'memory'), scli = (...a) => run([...a, '--store', sd]);
+  mkdirSync(join(sd, 'journal'), { recursive: true });
+  memory(sd, 'rules', 'how we write rules'); memory(sd, 'quiet', 'nothing changed it');
+  const mk = (key, t, asked, over = {}) => ({ key, at: `2026-11-12 ${t}`, s: '3f07bb43', t: 'C--show/3f07bb43-aaaa', branch: '', asked, answered: 'done', changed: [join(sd, 'rules.md')], ran: [], ...over });
+  const three = [mk('s-10', '10:00', 'first ask'), mk('s-11', '11:00', 'second ask'), mk('s-12', '12:00', 'third ask')];
+  const put = (list) => writeFileSync(join(sd, 'journal', '2026-11-12.md'), `# Journal 2026-11-12\n\n${list.map(render).join('\n\n')}\n`);
+  const NONE = "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
+  put([mk('rules', '09:00', 'an entry named like the note', { changed: [] }), ...three]);
+  r = await scli('show', 'rules');
+  ok(r.status === 0 && /^     Asked: an entry named like the note$/m.test(r.stdout) && !/first by/.test(r.stdout), `a key wins over a note's name (got ${r.stdout})`);
+  put(three);
+  const want = [join(sd, 'rules.md'), '  name: rules', '  description: how we write rules',
+    '  first by: 2026-11-12 10:00 [3f07bb43] asked: "first ask" · key: "s-10"', '  last exchange that changed it: 2026-11-12 12:00 [3f07bb43] asked: "third ask" · key: "s-12"'].join('\n') + '\n';
+  r = await scli('show', 'rules');
+  ok(r.status === 0 && r.stdout === want, `show <note> prints its path, name, description and the first and the newest exchange (got ${r.stdout})`);
+  ok((await scli('show', 'rules.md')).stdout === want, 'with .md the same');
+  r = await scli('show', 'quiet');
+  ok(r.status === 0 && r.stdout === `${join(sd, 'quiet.md')}\n  name: quiet\n  description: nothing changed it\n  ${NONE}\n`, `a note nothing changed says so (got ${r.stdout})`);
+  put(three.slice(0, 1));
+  ok((await scli('show', 'rules')).stdout.endsWith(`\n  by: 2026-11-12 10:00 [3f07bb43] asked: "first ask" · key: "s-10"\n`), 'one exchange is one by: line');
+  put(three);
+  r = await scli('forget', '--key', 's-12', '--yes');
+  r = await scli('show', 'rules');
+  ok(/^  last exchange that changed it: .*key: "s-11"$/m.test(r.stdout) && !/s-12|third ask/.test(r.stdout), `a forgotten entry is never named (got ${r.stdout})`);
+  r = await scli('show', 'no-such-thing');
+  ok(r.status === 1 && /^no journal entry has the key no-such-thing and no note has that name in .+; --all looks in every project$/m.test(r.stdout), `neither a key nor a note: the miss names both (got ${r.stdout})`);
 }
 console.log(`memory: ${checks} checks passed`);

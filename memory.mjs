@@ -10,8 +10,8 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           ranked, a long request asked many times once. D is YYYY-MM-DD;
                                           dates with no terms list those days' requests. --file: entries that changed it;
                                           --asked: your own words only; --conversation: one session; notes are left out
-  show <key...> [--same] [--all]          journal entries whole, by the key a search hit prints;
-                                          --same: every entry that asked the same
+  show <key...|note> [--same] [--all]     journal entries whole, by the key a search hit prints, or a note's
+                                          first exchange and the last that changed it, by its name; --same: every entry that asked the same
   forget [<words...>] [--key K]... [--same] [--since D] [--until D] [--conversation ID] [--yes] [--purge]
                                           the journal entries holding every word (with those keys, of
                                           that conversation): listed with their keys, up to 200; with
@@ -49,7 +49,7 @@ import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { BLOCK, redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
-import { STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation } from './recall.mjs';
+import { STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -628,7 +628,17 @@ const unsnapped = () => {
 const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
 
 // The newest `max`: a note edited every reply had 2,000 snapshots, 72 KB of output.
-export function history(dirs, file, everywhere = false, max = 30) {
+// A request is the user's text, and clip keeps ESC, BEL and the bidi overrides: each prints as U+FFFD (tab and newline stay).
+const tame = (t) => t.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '\uFFFD');
+// The exchange behind a snapshot, as one line; null: none was found.
+const byLine = (e, label = 'by') => e === 'shared' ? 'by: not looked up for the shared store (what changed it is in the project journals)' : e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `${label}: ${e.at} [${e.s}] asked: "${tame(clip(e.asked, 100))}" · key: "${tame(clip(e.key, Infinity))}"`
+  : "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
+// A note's journal entries, oldest first, by its full path as the session saw it. A journal that will not read is none: history still prints.
+// `since`: a day 'YYYY-MM-DD'; the journal days before it are not opened.
+const changersOf = (dir, f, failed, since) => {
+  try { return changers(told([dir], { failed, since }), [join(dir, f), join(real(dir), f)]).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); } catch { return []; }
+};
+export function history(dirs, file, everywhere = false, max = 30, failed = []) {
   const verb = { A: 'added', M: 'changed', D: 'deleted' };
   const why = unsnapped();
   if (why) return no(why);
@@ -638,18 +648,23 @@ export function history(dirs, file, everywhere = false, max = 30) {
       const f = named(dir, file);
       // No renames: a link that sorts first moves every path to it, and an R line was no change.
       const out = git('log', '--no-renames', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', ...tracked(dir, f));
-      const lines = [];
+      const snaps = [];
       let head = null;
       for (const l of out.split('\n')) {
         if (l.startsWith('@')) head = l.slice(1).split('\t');
         // The first snapshot took in what was already there: not when it was written.
-        else if (head && verb[l[0]]) { lines.push(`  ${head[0]}  ${head[1] === 'memory: first snapshot' ? 'in the first snapshot' : verb[l[0]]}`); head = null; }
+        else if (head && verb[l[0]]) { snaps.push([head[0], head[1] === 'memory: first snapshot' ? 'in the first snapshot' : verb[l[0]]]); head = null; }
       }
+      // Newest first, as git prints them; paired oldest first, before `max` cuts the list.
+      // Only the ones shown, and the one below them: its minute is the lower limit of the oldest shown. None below: the oldest has no lower limit, all of the journal is read.
+      const used = snaps.slice(0, max + 1), since = snaps.length > max ? used.at(-1)[0].split(' ')[1] : undefined;
+      const by = isShared(dir) ? snaps.map(() => 'shared') : snaps.length ? whoChanged(used.map(([h]) => h.slice(h.indexOf(' ') + 1)).reverse(), changersOf(dir, f, failed, since), used.map(([, what]) => what === 'deleted').reverse()).reverse() : [];
+      const lines = snaps.flatMap(([h, what], i) => [`  ${h}  ${what}`, `    ${byLine(by[i])}`]);
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
       const moved = !isShared(dir) && !isIndex(f) && existsSync(join(sharedStore(), f)) ? [`  promoted: it is in ${sharedStore()} now`] : [];
       // --all prints a block per project that has the memory; without it the first.
-      if (lines.length) { blocks.push([join(dir, f), ...lines.slice(0, max), ...(lines.length > max ? [`  and ${lines.length - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, f).map((p) => `"${p}"`).join(' ')}`]); if (!everywhere) break; }
+      if (lines.length) { blocks.push([join(dir, f), ...lines.slice(0, max * 2), ...(lines.length > max * 2 ? [`  and ${lines.length / 2 - max} older; --limit N shows more`] : []), ...moved, `  a change: git -C "${real(projectsRoot())}" --literal-pathspecs show <commit> -- ${tracked(dir, f).map((p) => `"${p}"`).join(' ')}`]); if (!everywhere) break; }
     }
   } catch (e) { return no(`no snapshots to read: ${gitWhy(e)}`); }
   if (blocks.length) return { ok: true, lines: blocks.flat() };
@@ -1169,7 +1184,21 @@ export function main(given) {
       `     Day file: ${e.path}`, ...full(e)];
     // --same: every entry asking what this one asked, the copies a hit counts.
     const alike = (e) => (rest.includes('--same') ? es.filter((x) => sameKey(x.asked) === sameKey(e.asked)) : [e]).filter((x) => !seen.has(x) && seen.add(x));
-    r = { ok: got.every(Boolean), lines: got.flatMap((e, i) => e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${ks[i]} in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
+    // No entry has the key: a note's file name, as history takes it. The note's first exchange and the last one that changed it; with --all every store that has it.
+    const noteOf = (k) => {
+      const blocks = [];
+      for (const dir of scope) {
+        const f = named(dir, basename(k).replace(/(\.md)?$/i, '.md')), text = read(join(dir, f));
+        if (text === null) continue;
+        const { name, desc } = front(text), by = isShared(dir) ? ['shared'] : changersOf(dir, f, failed);
+        blocks.push(join(dir, f), `  name: ${name || f.replace(/\.md$/, '')}`, ...(desc ? [`  description: ${desc}`] : []),
+          ...(by.length > 1 ? [`  ${byLine(by[0], 'first by')}`, `  ${byLine(by.at(-1), 'last exchange that changed it')}`] : [`  ${byLine(by[0])}`]));
+        if (!rest.includes('--all')) break;
+      }
+      return blocks.length ? blocks : null;
+    };
+    const found = got.map((e, i) => e ?? noteOf(ks[i]));
+    r = { ok: found.every(Boolean), lines: found.flatMap((e, i) => Array.isArray(e) ? e : e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${ks[i]} and no note has that name in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
   } else if (cmd === 'search' && (range.since || range.until || filtered)) {
     // What was asked on those days, newest first: "what did we do last week".
     const es = told(scope, { ...range, failed }).filter(kept(filters)).filter((e) => !isHelper(e) || filters.file || filters.conversation).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
@@ -1289,7 +1318,7 @@ export function main(given) {
     const sharedNames = names(memories(sharedStore()));
     const am = autoMemory();
     r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
-  } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined);
+  } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined, failed);
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
   else if (cmd === 'doctor') r = doctor(here);
