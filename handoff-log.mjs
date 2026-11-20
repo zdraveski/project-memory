@@ -1117,7 +1117,8 @@ export const fit = (s, line = Infinity) => {
 async function journalLine(dir) {
   let first = null; try { first = (await import(new URL('./journal.mjs', import.meta.url))).firstDay(dir); } catch {}
   return first ? [`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`,
-    'When a note and the code disagree about what exists, the code wins. When the user corrects how you work, save it as a feedback note before going on.'] : [];
+    'When a note and the code disagree about what exists, the code wins. When the user corrects how you work, save it as a feedback note before going on.',
+    'A "decided", "rejected" or "parked" in a note is a session\'s summary. Before telling the user they decided it, check their own words: memory skill, search --asked KEYWORDS.'] : [];
 }
 
 // The SessionStart hook. After a compaction (source "compact"): the note on a

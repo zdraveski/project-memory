@@ -26,9 +26,9 @@ If you would rather type a command, start with `/project-memory:memory`:
 |---|---|
 | `search logo colors` | Finds notes and journal entries about "logo colors". An entry shows as a short headline: what you asked, how it ended, and the lines with your words |
 | `search --file src/cart.js` | Lists the entries that changed that file, newest first (a name alone works too). `--asked` keeps your own words only, `--conversation <id>` one session; notes are left out |
-| `show 'key'` | Shows one journal entry in full, by the key `search` printed |
+| `show 'key'` | Shows one journal entry in full, by the key `search` printed. `show pricing` (a note's name) shows the first and the newest exchange that changed that note |
 | `forget password` | Lists the journal entries that mention "password" and removes the ones you confirm (Claude Code's own conversation files still hold them) |
-| `history pricing` / `restore pricing` | Shows when the note "pricing" changed / brings it back |
+| `history pricing` / `restore pricing` | Shows when the note "pricing" changed, and the exchange and your words behind each change / brings it back |
 | `promote pricing` | Moves the note "pricing" to the shared notebook |
 | `status` / `doctor` | A health check of this project's notes / of project-memory itself |
 | `incognito`, `off`, `on` | Stop saving this conversation / turn this project off / turn it back on ([Turning it off](#turning-it-off)); also available as `/project-memory:incognito`, `/project-memory:memory-off` and `/project-memory:memory-on` |
@@ -651,7 +651,9 @@ At the start of a conversation, and after `/clear`, Claude is told:
   search it with the memory skill before saying you don't know." The
   journal itself is never loaded; a second line says the code wins when a
   note and the code disagree, and that a correction you give is saved as a
-  feedback note;
+  feedback note; a third says that a "decided", "rejected" or "parked" in a note
+  is a session's summary, and to check the user's own words (`search --asked KEYWORDS`)
+  before telling them they decided it;
 - anything failing, such as the Stop hook not running, snapshots failing
   three times in a row, a notebook that needs attention, hook files changed
   outside the installer, a full disk, a reply that could not be saved, or
@@ -1007,12 +1009,29 @@ only `nothing matches`.
 heading, the key, every field, the day file and, when it's still on disk
 and the entry isn't private, the transcript. `--same` adds every entry whose request is the same, as a
 hit's "more like this" counts them; `--all` and `--store` reach another
-project. A key no entry has is named, and the tool exits with 1. When the
+project. A key no entry has is tried as a note's file name (see Who said it, below); when neither exists the miss says so, and the tool exits with 1. When the
 entry's request is 25 characters or less ("yes", "go"), `show` and the day
 list add one line, `Reply to key <key>: …`, with the end (200 characters) of
 the reply before it in that conversation, so the short request reads in
 context. The day list with no search words leaves out subagent reports
 (`subagent-` keys); a search by words still finds them.
+
+**Who said it.** `history <note>` puts a `by:` line under each snapshot, and
+`show <note>` prints the first and the newest one: the time, the conversation,
+what the user asked (cut at 100 characters) and the entry's key. The journal
+entries that changed the note by its full path are paired with its snapshots,
+oldest first. For each snapshot the candidates are the entries sent at or after
+the minute of the note's previous snapshot and no later than this snapshot's
+minute that no older snapshot took; one sent earlier than the snapshot's own
+minute comes first, the newest of them wins, and several in one minute go to the
+note's own conversation (its `originSessionId`), otherwise the later one. A
+change with no such entry (by hand, by a shell command, by a helper, by the
+plugin's own sorting) says `no exchange found`. An entry holds its time to the
+minute only, which is why one sent in a snapshot's own minute is taken last.
+A limit: a long turn that changes a note, is snapshotted by another session's
+save in the middle, and changes the note again gets its exchange named for the
+first snapshot only; the second says no exchange was found. The plugin cannot
+judge what is true. It makes the check one command.
 
 `search`, `show` and a day's listing never show an entry whose key is in
 `journal/.forgotten`: when `forget` couldn't rewrite its day file, the entry
@@ -1205,10 +1224,10 @@ node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory
 | Command | Options |
 |---|---|
 | `search <words…>` | `--file P`, `--asked`, `--conversation ID`, `--since D`, `--until D`, `--all`, `--limit N` (words optional with a filter) |
-| `show <key…>` | `--same`, `--all` |
+| `show <key…>` or `show <note>` | `--same`, `--all` |
 | `forget [<words…>]` | `--key K` (again for each key), `--same`, `--since D`, `--until D`, `--conversation <tag or id>`, `--yes`, `--purge` (also remove from the snapshot history) |
 | `status` | `--all` |
-| `history <note>` | `--all`, `--limit N` (the newest 30 by default) |
+| `history <note>` | `--all`, `--limit N` (the newest 30 by default); each snapshot names the exchange behind it |
 | `rescan` | `--apply`, `--yes` (redact secrets saved before a rule existed, in files and snapshots; makes a backup that still holds them) |
 | `restore <note>` | `--rev <commit>`, `--force` |
 | `promote <note>` | `--force` (copy a note that holds a secret) |

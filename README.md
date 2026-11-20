@@ -87,6 +87,7 @@ If you'd rather type a command, start with `/project-memory:memory`:
 | `/project-memory:memory search logo colors` | Finds notes and journal entries about "logo colors". |
 | `/project-memory:memory search --file cart.js` | Lists the entries that changed that file. `--asked` searches only your own words, `--conversation <id>` one session. |
 | `/project-memory:memory restore pricing` | Brings back the note "pricing" (`history pricing` shows when it changed). |
+| `/project-memory:memory history pricing` | Shows when the note "pricing" changed, and which exchange (what you asked) was behind each change. |
 | `/project-memory:memory doctor` | Checks that project-memory itself works. |
 | `/project-memory:incognito`, `/project-memory:memory-off` | Stop saving a conversation, or a project (see [Turning it off](#turning-it-off)). |
 
