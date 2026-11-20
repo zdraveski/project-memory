@@ -28,7 +28,7 @@ export function matches(e, q, p) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   if (e.priv) return false;
-  const hay = [e.p, e.q, e.a, e.c, e.b, ...(e.f || [])].join('\n').toLowerCase();
+  const hay = e.h ??= [e.p, e.q, e.a, e.c, e.b, ...(e.f || [])].join('\n').toLowerCase(); // kept on the entry: a keystroke searched them all again
   return words.every((w) => hay.includes(w));
 }
 
@@ -543,7 +543,7 @@ const stepDay=(n,kb)=>goto(add(S.day,n),kb);
 
 $("prev").onclick=()=>setWin(add(S.end,-7));
 $("next").onclick=()=>setWin(add(S.end,7));
-$("q").oninput=(e)=>{S.q=e.target.value;S.lim=PAGE;sync();list()};
+let lag;$("q").oninput=(e)=>{S.q=e.target.value;S.lim=PAGE;sync();clearTimeout(lag);lag=setTimeout(list,120)};
 addEventListener("keydown",(e)=>{
   const typing=e.target.matches("input");
   if(e.key==="/"&&!typing){e.preventDefault();$("q").focus()}

@@ -16,6 +16,7 @@ const e = { p: 'bookshop', q: 'Why is the Cart total wrong?', a: 'Summed as floa
 ok(matches(e, '', '') && matches(e, 'cart', '') && matches(e, 'cart.js', 'bookshop'), 'words in the request and in a file');
 ok(!matches(e, 'cart', 'garden-site') && !matches(e, 'tomato', '') && !matches(e, 'cart tomato', ''), 'another project, another word, a missing word among found ones');
 ok(!matches({ ...e, priv: 1, q: '', a: '' }, 'bookshop', ''), 'a private turn is never a search match');
+{ const x = { ...e }; matches(x, 'cart', ''); const h = x.h; matches(x, 'cart', ''); ok(typeof h === 'string' && x.h === h, 'the lowercase text of an entry is made once, then kept'); }
 ok(matches({ ...e, priv: 1, q: '', a: '' }, '', 'bookshop'), 'but it shows on its day');
 assert.deepEqual([0, 1, 2, 4, 8].map((n) => level(n, 8)), [0, 1, 1, 2, 4]);
 assert.equal(daysAgo('2026-11-20', '2026-11-20'), 0);
@@ -75,5 +76,6 @@ run([]);
 run([entry({})], { days: 'all' });
 run([entry({ d: '2026-10-01' })], { days: 7 });
 
+ok(script.includes('clearTimeout(lag);lag=setTimeout(list,120)'), 'a keystroke waits 120 ms for the next before the list is rebuilt');
 
 console.log(`page.test.mjs: ${checks} checks passed`);
