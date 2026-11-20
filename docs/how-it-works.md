@@ -1267,10 +1267,12 @@ refused or fails.
 subagent's own) and switched-off projects, keeps the last 30 days (or
 `--days`), and writes one file, `project-memory/journal.html` in Claude
 Code's folder, through a temporary file renamed into place (mode 0600, its
-folder 0700). It prints the `file://` link, how many exchanges in how many
+folder 0700; a temporary file a killed run left is removed by the next write or delete). It prints the `file://` link, how many exchanges in how many
 projects, what it left out, and how to refresh and remove it. A turn marked
 `[private]` shows as private, with no text. Each question and answer is
-capped (2,000 and 4,000 characters) and marked when cut.
+capped (2,000 and 4,000 characters) and marked when cut. A page past 40 MB (`--days all` on a long journal) is not written: it says so and suggests `--days N`.
+
+The read and the write happen under the lock of every store the page reads, so a `forget` cannot slip in between and be undone by the write; a store another hook holds is said, not skipped. When the page cannot be deleted (on Windows, a browser holding it open), `forget`, `incognito`, `off` and `rescan --apply` say `could not delete the page` and exit 1, since it still holds the text.
 
 The page is built by `page.mjs`, which only turns data into text. Every
 string passes the secret filter and the same cleaning as the `by:` lines, and

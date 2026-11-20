@@ -66,8 +66,10 @@ no network code.
   HTML file, so it is escaped or written with `textContent`, the file holds
   one style and one script allowed by hash in a Content-Security-Policy
   (`default-src 'none'`, no network), and the tests feed it `<script>`,
-  `"><img onerror=`, `</style>` and control characters. The sweeps and
-  `forget`, `incognito`, `off` and `rescan --apply` delete it.
+  `"><img onerror=`, `</style>` and control characters; `base-uri` and `form-action`
+  are `'none'` too. The sweeps and `forget`, `incognito`, `off` and
+  `rescan --apply` delete it (and any temporary file a killed write left),
+  and say so when they cannot.
 - **Claude Code's plugin lists**, in `~/.claude/plugins`, read only by
   `doctor`.
 - **Switches**: `.project-off` (a marker in one project's `memory` folder),
