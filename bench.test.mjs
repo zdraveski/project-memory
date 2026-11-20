@@ -1,10 +1,13 @@
 // Self-check for live-times.mjs and `bench.mjs --live`: Claude Code's own hook durations,
 // read from (made-up) conversation files. Run: node bench.test.mjs
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
-import { tempHome, tool, storeFor } from './harness.mjs';
+import { tempHome, tempDir, tool, storeFor } from './harness.mjs';
+import { build } from './bench-store.mjs';
+import { days, parseDay, dayFile } from './journal.mjs';
 import { liveTimes, scriptOf } from './live-times.mjs';
 import { pct } from './timing.mjs';
 
@@ -59,5 +62,23 @@ ok(/^Stop\s+memory-tier\.mjs\s+3\s+700\s+900\s+900$/m.test(out), 'event, script,
 ok(/^PreToolUse\s+enforce-hook\.mjs\s+1\s+310\s+310\s+310$/m.test(out), 'a second row');
 ok(!out.includes('someone') && !out.includes('token'), 'no part of a path or a command');
 ok(!/brief\.mjs/.test(out), 'a run older than the window is not in the table');
+
+// the made-up store: two builds match byte for byte, and it is healthy
+const home1 = tempHome('bench-a-').home, home2 = tempDir('bench-b-');
+const at = Date.parse('2026-11-20T12:00:00Z');
+const a = build(home1, { now: at, scale: 0.02 }), b = build(home2, { now: at, scale: 0.02 });
+const tree = (d) => readdirSync(d, { recursive: true }).sort().map((p) => (statSync(join(d, p)).isDirectory() ? p : `${p} ${createHash('sha1').update(readFileSync(join(d, p))).digest('hex')}`));
+ok(eq(tree(a.proj), tree(b.proj)), 'two builds match, byte for byte');
+ok(a.sizes.entries === 40 && days(a.store).length === 60, 'the scaled counts');
+ok(statSync(join(a.shared, 'MEMORY.md')).size === 3000, 'the shared index at its budget');
+const cli = (...args) => spawnSync(process.execPath, [tool('memory.mjs'), ...args, '--store', a.store], { encoding: 'utf8' }).stdout;
+ok(!/^PROBLEM(?! not installed)/m.test(cli('doctor')), 'doctor finds no problem in it (a temp home has no plugin installed)');
+ok(/harbor/i.test(cli('search', 'harbor')), 'search finds a word of the list');
+const entriesIn = () => days(a.store).flatMap((d) => parseDay(readFileSync(dayFile(a.store, d), 'utf8')).entries).length;
+const stop = () => spawnSync(process.execPath, [tool('memory-tier.mjs'), '--stop'], { input: JSON.stringify({ cwd: 'C:\bench-project', transcript_path: a.transcript, session_id: 'bbbbbbbb-0000', hook_event_name: 'Stop' }), encoding: 'utf8' });
+// the first Stop journals what its read window holds of the conversation; every later one finds nothing new
+ok(stop().status === 0 && entriesIn() > a.sizes.entries, 'a first Stop saves the conversation');
+const first = entriesIn();
+ok(stop().status === 0 && entriesIn() === first, 'a second Stop changes nothing: the bench times a steady state');
 
 console.log(`bench: ${checks} checks passed`);
