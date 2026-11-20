@@ -3907,11 +3907,23 @@ again ${key2}
     PAGE_LIMIT.bytes = whole - 1; PAGE_LIMIT.built = () => { built++; };
     try { r = await page(); } finally { PAGE_LIMIT.bytes = kept; PAGE_LIMIT.built = null; }
     ok(r.status === 1 && /^the page would be \d/.test(r.stdout) && built === 1 && !existsSync(pagePath()), `and the built page is checked against the limit too (built ${built}; got ${r.stdout})`);
+    // What blocks the write is a dropPage (forget, a sweep, off, incognito, rescan --apply --yes) while the page was built, not a day
+    // file that changed: a reply saved in between rewrites today's day and forgets nothing.
+    const CHANGED = 'the journal changed while the page was built; run memory page again';
+    const tokens = () => readdirSync(dirname(pagePath())).filter((n) => /^journal\.html\..+\.reading$/.test(n));
+    PAGE_LIMIT.built = () => dropPage();
+    try { r = await page(); } finally { PAGE_LIMIT.built = null; }
+    ok(r.status === 1 && r.stdout.trim() === CHANGED && !existsSync(pagePath()) && !tokens().length, `a dropPage while the page was built: said, exit 1, no page, no token left (got ${r.status} ${r.stdout})`);
     PAGE_LIMIT.built = () => appendFileSync(join(shop, 'journal', `${ago(5)}.md`), '\n');
     try { r = await page(); } finally { PAGE_LIMIT.built = null; }
-    ok(r.status === 1 && r.stdout.trim() === 'the journal changed while the page was built; run memory page again' && !existsSync(pagePath()), `a day changed between the read and the write: said, exit 1, no page (got ${r.status} ${r.stdout})`);
+    ok(r.status === 0 && existsSync(pagePath()) && !tokens().length && !existsSync(join(shop, '.lock')), `a day file that changed meanwhile still writes it (got ${r.status} ${r.stdout})`);
+    dropPage();
+    PAGE_LIMIT.built = () => { const o = spawnSync(process.execPath, [CLI, 'off', '--store', shop], { encoding: 'utf8' }); if (o.status !== 0) throw new Error(`fixture: off failed ${o.stdout}${o.stderr}`); };
+    try { r = await page(); } finally { PAGE_LIMIT.built = null; }
+    ok(r.status === 1 && r.stdout.trim() === CHANGED && !existsSync(pagePath()) && !tokens().length, `memory off while the page was built: no page (got ${r.status} ${r.stdout})`);
+    await run(['on', '--store', shop]);
     r = await write();
-    ok(r.status === 0 && !existsSync(join(shop, '.lock')), 'and run again it is written');
+    ok(r.status === 0 && !existsSync(join(shop, '.lock')) && !tokens().length, 'and run again it is written');
 
     // A page that will not go is said, and fails the command: the text is still on disk.
     await write();

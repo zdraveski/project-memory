@@ -1047,7 +1047,7 @@ ok(tag('abcdefghij') === 'abcdefgh' && tag('abcdefgh') === 'abcdefgh' && tag('ab
 
 // The page of the journal: one file in Claude Code's folder, written whole and mode 0600, and gone when dropPage runs.
 {
-  const { pagePath, writePage, dropPage, configDir } = await import('./store.mjs');
+  const { pagePath, writePage, dropPage, claimPage, configDir } = await import('./store.mjs');
   const here = process.env.CLAUDE_CONFIG_DIR;
   const cfg = join(home, 'my config é');
   process.env.CLAUDE_CONFIG_DIR = cfg;
@@ -1071,6 +1071,13 @@ ok(tag('abcdefghij') === 'abcdefgh' && tag('abcdefgh') === 'abcdefgh' && tag('ab
     strays(); ok(dropPage() === true && readdirSync(dirname(pagePath())).join() === 'keep.txt', 'dropPage takes them too');
     strays(); ok(dropPage() === false && readdirSync(dirname(pagePath())).join() === 'keep.txt', 'and with no page, they still go, and it says no page was there');
     rmSync(join(dirname(pagePath()), 'keep.txt'));
+    // A page run's claim on what it read: a file beside the page, taken by dropPage, kept by writePage.
+    const tok = claimPage(), mine = `${pagePath()}.${process.pid}.reading`;
+    ok(tok === mine && existsSync(tok), 'claimPage makes journal.html.<pid>.reading and says where');
+    writePage('<p>four</p>'); ok(existsSync(tok), 'a write leaves the claim for its owner to remove');
+    writeFileSync(join(dirname(pagePath()), 'journal.html.77.reading'), '');
+    ok(dropPage() === true && readdirSync(dirname(pagePath())).length === 0, 'dropPage takes every claim, its own and another run\'s');
+    ok(claimPage() === mine && dropPage() === false && readdirSync(dirname(pagePath())).length === 0, 'and with no page it takes them too, and says no page was there');
   } finally { if (here === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = here; }
 }
 

@@ -15,11 +15,18 @@ export const projectsRoot = () => join(configDir(), 'projects');
 // The page `memory page` writes: one file in Claude Code's folder, outside every project and every snapshot. It holds journal text,
 // so it is 0600 in a 0700 folder, replaced whole (a temp file renamed), and dropPage removes it where the journal is forgotten.
 export const pagePath = () => join(configDir(), 'project-memory', 'journal.html');
-// A kill between the write and the rename leaves journal.html.<pid>.tmp, which holds journal text: every such file goes. The first error, or null.
-function stray(dir) {
+// A kill between the write and the rename leaves journal.html.<pid>.tmp, which holds journal text: every such file goes (with `claims`,
+// the claims of page runs too). The first error, or null.
+function stray(dir, claims) {
   let bad = null;
-  try { for (const n of readdirSync(dir)) if (/^journal\.html\..+\.tmp$/.test(n)) try { rmSync(join(dir, n)); } catch (e) { bad ??= e; } } catch {}
+  try { for (const n of readdirSync(dir)) if ((claims ? /^journal\.html\..+\.(tmp|reading)$/ : /^journal\.html\..+\.tmp$/).test(n)) try { rmSync(join(dir, n)); } catch (e) { bad ??= e; } } catch {}
   return bad;
+}
+// A page run's claim on the text it read, made while it holds the stores' locks: dropPage (a forget, a sweep, off, incognito, rescan
+// --apply --yes) deletes it, so the run sees that what it read may since have been forgotten and does not write. The path, or null.
+export function claimPage() {
+  const t = `${pagePath()}.${process.pid}.reading`;
+  try { mkdirSync(dirname(t), { recursive: true, mode: 0o700 }); writeFileSync(t, '', { mode: 0o600 }); return t; } catch { return null; }
 }
 export function writePage(html) {
   const p = pagePath(), tmp = `${p}.${process.pid}.tmp`;
@@ -32,7 +39,7 @@ export function writePage(html) {
 // Never throws: the hooks call it, and ignore what it returns. True when a page was there and is gone, false when none was, and the
 // Error when something would not go (a file another program holds open, on Windows): the commands say so, the text is still on disk.
 export function dropPage() {
-  const p = pagePath(); let bad = stray(dirname(p)), there = true;
+  const p = pagePath(); let bad = stray(dirname(p), true), there = true;
   try { lstatSync(p); } catch { there = false; }
   if (there) {
     try { rmSync(p, { force: true }); } catch (e) { bad ??= e; }

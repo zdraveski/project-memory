@@ -48,7 +48,7 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey, writePage, dropPage } from './store.mjs';
+import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
@@ -1066,11 +1066,6 @@ const projectName = (dir) => {
 };
 const sizeOf = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const amount = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-// Size and mtime of each day file and each forgotten list of the stores: what a page was read from, to see a change since.
-const stamp = (dirs) => dirs.flatMap((d) => {
-  const j = join(d, 'journal'); let names = []; try { names = readdirSync(j).sort(); } catch {}
-  return [...names.map((n) => join(j, n)), join(d, FORGOTTEN)].map((p) => { try { const s = statSync(p); return `${p} ${s.size} ${s.mtimeMs}`; } catch { return `${p} none`; } });
-}).join('\n');
 function page(stores, days, want, failed) {
   const real = stores.filter((d) => !isShared(d) && existsSync(join(d, 'journal')));
   const base = real.map(projectName);
@@ -1086,40 +1081,45 @@ function page(stores, days, want, failed) {
   }
   const today = local().slice(0, 10), since = days === 'all' ? undefined : addDays(today, 1 - days);
   // The stores' locks are held to read, and again to write, never while the page is built and redacted (0.35 s a MB: past the lock's
-  // 30 s, a hook takes it as stale). A day that changed in between is not overwritten: a forget or a sweep would be undone.
+  // 30 s, a hook takes it as stale). Under the read lock the run makes a claim (claimPage); a dropPage while it builds (forget, a sweep,
+  // off, incognito, rescan --apply --yes) deletes it, and then the page is not written: it was read from text that may since be forgotten.
   const keys = [...live].sort(), busy = { ok: false, lines: ['a project\'s memory folder is busy (another hook holds it); try again'] };
   const over = (n) => ({ ok: false, lines: [`the page would be ${sizeOf(n)}, over the limit of ${sizeOf(PAGE_LIMIT.bytes)}; nothing written. Use --days N for fewer days${want ? '' : ' or --project NAME for one project'}`] });
   const read = lockAll(keys, () => {
-    const seen = stamp(keys), out = []; let helpers = 0;
+    const out = []; let helpers = 0;
     for (const e of told(live, { since, failed })) {
       if (isHelper(e)) { helpers++; continue; }
       const priv = e.asked === '[private]' || e.answered === '[private]';
       out.push({ d: e.day, t: e.at.slice(11, 16), c: e.s, b: e.branch, p: name.get(e.dir), q: priv ? '' : clip(e.asked, PAGE_ASK), a: priv ? '' : clip(e.answered, PAGE_ANSWER),
         f: priv ? [] : e.changed.slice(0, 100), n: priv ? 0 : Number(wroteNote(e.changed)), priv: Number(priv), cut: Number(!priv && e.answered.length > PAGE_ANSWER) });
     }
-    return { seen, out, helpers };
+    return { claim: claimPage(), out, helpers };
   });
   if (!read) return busy;
-  const { seen, out, helpers } = read, span = days === 'all' ? 'all days' : amount(days, 'day', 'days');
-  if (!out.length) return { ok: false, lines: [`nothing to show: no journal entry in ${days === 'all' ? (want ? clip(want, 100) : 'any project') : `the last ${span}`}`] };
-  // The text alone, before it is built: a page far past the limit is refused without the minutes it takes to redact.
-  const text = out.reduce((n, e) => n + e.q.length + e.a.length + e.f.reduce((m, x) => m + x.length, 0), 0);
-  if (text > PAGE_LIMIT.bytes) return over(text);
-  out.sort((a, b) => (a.d + a.t < b.d + b.t ? 1 : a.d + a.t > b.d + b.t ? -1 : 0));
-  const html = pageHtml({ built: local(), today, days, entries: out }), size = Buffer.byteLength(html);
-  PAGE_LIMIT.built?.();
-  if (size > PAGE_LIMIT.bytes) return over(size);
-  let path;
-  const w = lockAll(keys, () => {
-    if (stamp(keys) !== seen) return { bad: { ok: false, lines: ['the journal changed while the page was built; run memory page again'] } };
-    try { path = writePage(html); } catch (e) { return { bad: { ok: false, lines: [`the page could not be written (${reason(e)}); nothing changed`] } }; }
-    return {};
-  });
-  if (!w) return busy;
-  if (w.bad) return w.bad;
-  const off = real.length - live.length, left = [helpers && amount(helpers, 'helper entry', 'helper entries'), off && amount(off, 'switched-off project', 'switched-off projects')].filter(Boolean);
-  return { ok: true, lines: [pathToFileURL(path).href, `${amount(out.length, 'exchange', 'exchanges')} in ${amount(new Set(out.map((e) => e.p)).size, 'project', 'projects')} over ${span}, ${sizeOf(size)}`,
-    ...(left.length ? [`left out: ${left.join(', ')}`] : []), 'Open the link in a browser. Run memory page again to refresh it. forget, incognito, off and rescan --apply delete it.'] };
+  const { claim, out, helpers } = read;
+  if (!claim) return { ok: false, lines: ['the page could not be written (its folder cannot be made); nothing changed'] };
+  try {
+    const span = days === 'all' ? 'all days' : amount(days, 'day', 'days');
+    if (!out.length) return { ok: false, lines: [`nothing to show: no journal entry in ${days === 'all' ? (want ? clip(want, 100) : 'any project') : `the last ${span}`}`] };
+    // The text alone, before it is built: a page far past the limit is refused without the minutes it takes to redact.
+    const text = out.reduce((n, e) => n + e.q.length + e.a.length + e.f.reduce((m, x) => m + x.length, 0), 0);
+    if (text > PAGE_LIMIT.bytes) return over(text);
+    out.sort((a, b) => (a.d + a.t < b.d + b.t ? 1 : a.d + a.t > b.d + b.t ? -1 : 0));
+    const html = pageHtml({ built: local(), today, days, entries: out }), size = Buffer.byteLength(html);
+    PAGE_LIMIT.built?.();
+    if (size > PAGE_LIMIT.bytes) return over(size);
+    let path;
+    const w = lockAll(keys, () => {
+      if (!existsSync(claim)) return { bad: { ok: false, lines: ['the journal changed while the page was built; run memory page again'] } };
+      try { path = writePage(html); } catch (e) { return { bad: { ok: false, lines: [`the page could not be written (${reason(e)}); nothing changed`] } }; }
+      return {};
+    });
+    if (!w) return busy;
+    if (w.bad) return w.bad;
+    const off = real.length - live.length, left = [helpers && amount(helpers, 'helper entry', 'helper entries'), off && amount(off, 'switched-off project', 'switched-off projects')].filter(Boolean);
+    return { ok: true, lines: [pathToFileURL(path).href, `${amount(out.length, 'exchange', 'exchanges')} in ${amount(new Set(out.map((e) => e.p)).size, 'project', 'projects')} over ${span}, ${sizeOf(size)}`,
+      ...(left.length ? [`left out: ${left.join(', ')}`] : []), 'Open the link in a browser. Run memory page again to refresh it. forget, incognito, off and rescan --apply delete it.'] };
+  } finally { rmSync(claim, { force: true }); }
 }
 
 // The command line, its words as given; returns the exit code. Callable in
