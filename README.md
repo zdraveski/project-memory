@@ -213,6 +213,10 @@ Four ways, from narrow to wide:
 To turn off only the startup briefing, set `PROJECT_MEMORY_BRIEFING` to `0`.
 Everything else keeps saving.
 
+Each hook run also leaves one line of numbers (when, which hook, how many
+milliseconds) in `~/.claude/projects/.timing`, and `memory doctor` shows the
+times. Set `PROJECT_MEMORY_TIMING=0` to turn that off.
+
 <p><picture>
   <source media="(max-width: 700px)" srcset="docs/turning-off-narrow.webp">
   <img src="docs/turning-off.webp" width="880" alt="Four ways to stop it saving, from narrow to wide. 1, one conversation: /project-memory:incognito. 2, one project: /project-memory:memory-off, and memory-on to turn it back on. 3, all projects on this computer: an environment setting, or disable the plugin. 4, Claude Code itself: Claude Code's own settings. Claude Code still keeps its own transcripts of conversations, for 30 days unless you change it.">

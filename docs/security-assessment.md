@@ -48,7 +48,7 @@ no network code.
   only ([What it reads](../PRIVACY.md#what-it-reads)).
 - **Notes and bookkeeping files**: read and written in `~/.claude/projects`
   only ([Where things live](how-it-works.md#where-things-live)).
-- **Environment**: eleven variables, by name: `PROJECT_MEMORY_BRIEFING` (the plugin's own)
+- **Environment**: twelve variables, by name: `PROJECT_MEMORY_BRIEFING` and `PROJECT_MEMORY_TIMING` (the plugin's own)
   and ten that Claude Code reads too, plus `HOME` or `USERPROFILE` to find
   `~/.claude`. `DISABLE_COMPACT` and `ANTHROPIC_MODEL` are read only to
   decide whether the context-size setting counts, and are never saved
