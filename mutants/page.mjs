@@ -6,5 +6,6 @@ export default {
   'a search needs only one of its words': ['words.every(', 'words.some('],
   'a < in the data is not escaped': ["replace(/</g, '\\\\u003c')", "replace(/</g, '<')"],
   'the policy lets anything load': ["default-src 'none'", 'default-src *'],
+  'the policy lets a base tag in': ["base-uri 'none'; ", ''],
   'a secret goes into the page as it is': ['redact(tame(String(s ?? \'\')))', 'tame(String(s ?? \'\'))'],
 };

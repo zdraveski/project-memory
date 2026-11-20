@@ -41,7 +41,7 @@ const h = pageHtml(data([
   entry({ q: '', a: '', f: [], b: '', priv: 1 }),
 ]));
 const { style, script } = parts(h);
-ok(h.includes(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src ${sha(style)}; script-src ${sha(script)}">`), 'the policy names the hash of the style and of the script');
+ok(h.includes(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; img-src data:; style-src ${sha(style)}; script-src ${sha(script)}">`), 'the policy names the hash of the style and of the script');
 ok(h.indexOf('Content-Security-Policy') < h.indexOf('<style'), 'the policy comes before any style or script');
 ok(h.split('<script').length === 2 && h.split('<style').length === 2 && h.split('</script>').length === 2, 'one script and one style, whatever the data says');
 ok(!script.slice(0, script.indexOf(';\nfunction addDays')).includes('<'), 'the data holds no < at all');
@@ -74,5 +74,6 @@ run([entry({}), entry({ priv: 1, q: '', a: '', f: [], b: '' }), entry({ cut: 1, 
 run([]);
 run([entry({})], { days: 'all' });
 run([entry({ d: '2026-10-01' })], { days: 7 });
+
 
 console.log(`page.test.mjs: ${checks} checks passed`);

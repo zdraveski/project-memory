@@ -582,7 +582,7 @@ export function pageHtml(data) {
   }));
   const days = data.days === 'all' ? 'all' : Math.max(1, Math.floor(Number(data.days)) || 1);
   const script = `const DATA=${inScript({ built: clean(data.built), today: clean(data.today), days, entries })};\n${HELPERS}${SCRIPT}`;
-  const csp = `default-src 'none'; img-src data:; style-src ${sha(STYLE)}; script-src ${sha(script)}`;
+  const csp = `default-src 'none'; base-uri 'none'; form-action 'none'; img-src data:; style-src ${sha(STYLE)}; script-src ${sha(script)}`;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
