@@ -631,7 +631,7 @@ const missing = (e) => /does not exist in|exists on disk, but not in|invalid obj
 // A request is the user's text, and clip keeps ESC, BEL and the bidi overrides: each prints as U+FFFD (tab and newline stay).
 const tame = (t) => t.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '\uFFFD');
 // The exchange behind a snapshot, as one line; null: none was found.
-const byLine = (e) => e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `by: ${e.at} [${e.s}] asked: "${tame(clip(e.asked, 100))}" · key: "${tame(clip(e.key, Infinity))}"`
+const byLine = (e) => e === 'shared' ? 'by: not looked up for the shared store (what changed it is in the project journals)' : e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `by: ${e.at} [${e.s}] asked: "${tame(clip(e.asked, 100))}" · key: "${tame(clip(e.key, Infinity))}"`
   : "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
 // A note's journal entries, oldest first, by its full path as the session saw it. A journal that will not read is none: history still prints.
 const changersOf = (dir, f, failed) => {
@@ -655,7 +655,7 @@ export function history(dirs, file, everywhere = false, max = 30, failed = []) {
         else if (head && verb[l[0]]) { snaps.push([head[0], head[1] === 'memory: first snapshot' ? 'in the first snapshot' : verb[l[0]]]); head = null; }
       }
       // Newest first, as git prints them; paired oldest first, before `max` cuts the list.
-      const by = snaps.length ? whoChanged(snaps.map(([h]) => h.slice(h.indexOf(' ') + 1)).reverse(), changersOf(dir, f, failed), snaps.map(([, what]) => what === 'deleted').reverse()).reverse() : [];
+      const by = isShared(dir) ? snaps.map(() => 'shared') : snaps.length ? whoChanged(snaps.map(([h]) => h.slice(h.indexOf(' ') + 1)).reverse(), changersOf(dir, f, failed), snaps.map(([, what]) => what === 'deleted').reverse()).reverse() : [];
       const lines = snaps.flatMap(([h, what], i) => [`  ${h}  ${what}`, `    ${byLine(by[i])}`]);
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.
@@ -1187,7 +1187,7 @@ export function main(given) {
       for (const dir of scope) {
         const f = named(dir, basename(k).replace(/(\.md)?$/i, '.md')), text = read(join(dir, f));
         if (text === null) continue;
-        const { name, desc } = front(text), by = changersOf(dir, f, failed);
+        const { name, desc } = front(text), by = isShared(dir) ? ['shared'] : changersOf(dir, f, failed);
         blocks.push(join(dir, f), `  name: ${name || f.replace(/\.md$/, '')}`, ...(desc ? [`  description: ${desc}`] : []),
           ...(by.length > 1 ? [`  first ${byLine(by[0])}`, `  newest ${byLine(by.at(-1))}`] : [`  ${byLine(by[0])}`]));
         if (!rest.includes('--all')) break;

@@ -3723,6 +3723,17 @@ again ${key2}
   ok(!/who-[45]|first of two|second of two/.test(r.stdout), `two exchanges before the oldest snapshot: neither is named (got ${r.stdout})`);
   r = await wcli('history', 'ctl');
   ok(/by: .*asked: "clear \uFFFD\[2J then \uFFFD\]0;x\uFFFD and \uFFFDevil"/.test(r.stdout) && !/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/.test(r.stdout.replace(/\r?\n/g, '')), `escape codes and bidi controls in a request print as U+FFFD (got ${JSON.stringify(r.stdout)})`);
+  // The shared store: its edits are in the project journals, which are not read for it, so "changed by hand" would be false.
+  mkdirSync(shared, { recursive: true });
+  memory(shared, 'pm-lesson', 'a lesson', 'v1');
+  tier();
+  writeFileSync(join(shared, 'pm-lesson.md'), '---\nname: pm-lesson\ndescription: "a lesson"\n---\n\nv2\n');
+  tier();
+  const SHARED = 'by: not looked up for the shared store (what changed it is in the project journals)';
+  r = await run(['history', 'pm-lesson', '--store', shared]);
+  ok(r.status === 0 && (r.stdout.match(new RegExp(`^ {4}${SHARED.replace(/[()]/g, '\\$&')}$`, 'gm')) || []).length === 2 && !/changed by hand/.test(r.stdout), `history of a shared note says it did not look (got ${r.stdout})`);
+  r = await run(['show', 'pm-lesson', '--store', shared]);
+  ok(r.status === 0 && r.stdout.endsWith(`\n  ${SHARED}\n`), `show of a shared note says it did not look (got ${r.stdout})`);
   // A deleted note: an entry sent in the deletion's minute is not named for it.
   memory(wd, 'gone', 'gone', 'v1');
   tier();
