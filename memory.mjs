@@ -10,8 +10,8 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           ranked, a long request asked many times once. D is YYYY-MM-DD;
                                           dates with no terms list those days' requests. --file: entries that changed it;
                                           --asked: your own words only; --conversation: one session; notes are left out
-  show <key...> [--same] [--all]          journal entries whole, by the key a search hit prints;
-                                          --same: every entry that asked the same
+  show <key...|note> [--same] [--all]     journal entries whole, by the key a search hit prints, or a note's
+                                          first and newest exchange, by its name; --same: every entry that asked the same
   forget [<words...>] [--key K]... [--same] [--since D] [--until D] [--conversation ID] [--yes] [--purge]
                                           the journal entries holding every word (with those keys, of
                                           that conversation): listed with their keys, up to 200; with
@@ -1179,7 +1179,21 @@ export function main(given) {
       `     Day file: ${e.path}`, ...full(e)];
     // --same: every entry asking what this one asked, the copies a hit counts.
     const alike = (e) => (rest.includes('--same') ? es.filter((x) => sameKey(x.asked) === sameKey(e.asked)) : [e]).filter((x) => !seen.has(x) && seen.add(x));
-    r = { ok: got.every(Boolean), lines: got.flatMap((e, i) => e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${ks[i]} in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
+    // No entry has the key: a note's file name, as history takes it. The note's first and newest exchange; with --all every store that has it.
+    const noteOf = (k) => {
+      const blocks = [];
+      for (const dir of scope) {
+        const f = named(dir, basename(k).replace(/(\.md)?$/i, '.md')), text = read(join(dir, f));
+        if (text === null) continue;
+        const { name, desc } = front(text), by = changersOf(dir, f, failed);
+        blocks.push(join(dir, f), `  name: ${name || f.replace(/\.md$/, '')}`, ...(desc ? [`  description: ${desc}`] : []),
+          ...(by.length > 1 ? [`  first ${byLine(by[0])}`, `  newest ${byLine(by.at(-1))}`] : [`  ${byLine(by[0])}`]));
+        if (!rest.includes('--all')) break;
+      }
+      return blocks.length ? blocks : null;
+    };
+    const found = got.map((e, i) => e ?? noteOf(ks[i]));
+    r = { ok: found.every(Boolean), lines: found.flatMap((e, i) => Array.isArray(e) ? e : e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${ks[i]} and no note has that name in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
   } else if (cmd === 'search' && (range.since || range.until || filtered)) {
     // What was asked on those days, newest first: "what did we do last week".
     const es = told(scope, { ...range, failed }).filter(kept(filters)).filter((e) => !isHelper(e) || filters.file || filters.conversation).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);

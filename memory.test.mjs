@@ -1147,7 +1147,7 @@ lemur lemur lemur lemur
   r = await jcli('show', fix.key, pasted.key);
   ok(r.status === 0 && /^     Asked: fix the deploy error$/m.test(r.stdout) && /^     Answered: stored \[redacted\] as the config token$/m.test(r.stdout) && !r.stdout.includes(key), `show takes several keys, and redacts (got ${r.stdout})`);
   r = await jcli('show', 'no-such-key');
-  ok(r.status === 1 && /^no journal entry has the key no-such-key in .+; --all looks in every project$/m.test(r.stdout), `a key that is no entry's says so, and fails (got ${r.stdout})`);
+  ok(r.status === 1 && /^no journal entry has the key no-such-key and no note has that name in .+; --all looks in every project$/m.test(r.stdout), `a key that is no entry's says so, and fails (got ${r.stdout})`);
   // A key typed without quotes is its words: none a key, so the words joined by one space are tried (audit 17).
   const spaced = entry('2026-10-13 11:00', 'feed the okapi', { key: 'c0ffee12 2026-10-13 11:00 a1b2c3d4e5f6' });
   day(jd, '2026-10-13', [spaced]);
@@ -3531,7 +3531,7 @@ again ${key2}
   r = await jcli('show', t1.key, t3.key);
   ok(r.status === 0 && r.stdout.includes('one of three at one minute') && r.stdout.includes('reply three'), `show takes several keys (got ${r.stdout})`);
   r = await jcli('show', t1.key, 'l2nosuch');
-  ok(r.status === 1 && r.stdout.includes('one of three at one minute') && /no journal entry has the key l2nosuch in /.test(r.stdout), `show prints the entries it has and names the key it has not, exit 1 (got ${r.status} ${r.stdout})`);
+  ok(r.status === 1 && r.stdout.includes('one of three at one minute') && /no journal entry has the key l2nosuch and no note has that name in /.test(r.stdout), `show prints the entries it has and names the key it has not, exit 1 (got ${r.status} ${r.stdout})`);
   r = await jcli('show', t1.key);
   ok(!/^ +(Changed|Ran):/m.test(r.stdout) && /^ +Asked:/m.test(r.stdout) && /^ +Answered:/m.test(r.stdout), `show prints no line for a field that is empty (got ${r.stdout})`);
   // A range with no words lists what was asked, newest first, without the subagents' reports, as many as --limit says (30 without it).
@@ -3719,5 +3719,35 @@ again ${key2}
   ok(r.stdout.includes(`asked: "${'y'.repeat(99)}…" `) && !r.stdout.includes('y'.repeat(101)), `a long request is cut to 100 characters (got ${r.stdout})`);
   r = await wcli('history', 'leaky');
   ok(!r.stdout.includes(GHT) && /asked: "keep \[redacted\] in the note"/.test(r.stdout), `a request holding a secret prints redacted (got ${r.stdout})`);
+}
+// show <note>: the first and the newest exchange behind a note, when no entry has that name as its key.
+{
+  const { render } = await import('./journal.mjs');
+  const sd = join(root, 'C--show', 'memory'), scli = (...a) => run([...a, '--store', sd]);
+  mkdirSync(join(sd, 'journal'), { recursive: true });
+  memory(sd, 'rules', 'how we write rules'); memory(sd, 'quiet', 'nothing changed it');
+  const mk = (key, t, asked, over = {}) => ({ key, at: `2026-11-12 ${t}`, s: '3f07bb43', t: 'C--show/3f07bb43-aaaa', branch: '', asked, answered: 'done', changed: [join(sd, 'rules.md')], ran: [], ...over });
+  const three = [mk('s-10', '10:00', 'first ask'), mk('s-11', '11:00', 'second ask'), mk('s-12', '12:00', 'third ask')];
+  const put = (list) => writeFileSync(join(sd, 'journal', '2026-11-12.md'), `# Journal 2026-11-12\n\n${list.map(render).join('\n\n')}\n`);
+  const NONE = "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
+  put([mk('rules', '09:00', 'an entry named like the note', { changed: [] }), ...three]);
+  r = await scli('show', 'rules');
+  ok(r.status === 0 && /^     Asked: an entry named like the note$/m.test(r.stdout) && !/first by/.test(r.stdout), `a key wins over a note's name (got ${r.stdout})`);
+  put(three);
+  const want = [join(sd, 'rules.md'), '  name: rules', '  description: how we write rules',
+    '  first by: 2026-11-12 10:00 [3f07bb43] asked: "first ask" · key: "s-10"', '  newest by: 2026-11-12 12:00 [3f07bb43] asked: "third ask" · key: "s-12"'].join('\n') + '\n';
+  r = await scli('show', 'rules');
+  ok(r.status === 0 && r.stdout === want, `show <note> prints its path, name, description and the first and the newest exchange (got ${r.stdout})`);
+  ok((await scli('show', 'rules.md')).stdout === want, 'with .md the same');
+  r = await scli('show', 'quiet');
+  ok(r.status === 0 && r.stdout === `${join(sd, 'quiet.md')}\n  name: quiet\n  description: nothing changed it\n  ${NONE}\n`, `a note nothing changed says so (got ${r.stdout})`);
+  put(three.slice(0, 1));
+  ok((await scli('show', 'rules')).stdout.endsWith(`\n  by: 2026-11-12 10:00 [3f07bb43] asked: "first ask" · key: "s-10"\n`), 'one exchange is one by: line');
+  put(three);
+  r = await scli('forget', '--key', 's-12', '--yes');
+  r = await scli('show', 'rules');
+  ok(/^  newest by: .*key: "s-11"$/m.test(r.stdout) && !/s-12|third ask/.test(r.stdout), `a forgotten entry is never named (got ${r.stdout})`);
+  r = await scli('show', 'no-such-thing');
+  ok(r.status === 1 && /^no journal entry has the key no-such-thing and no note has that name in .+; --all looks in every project$/m.test(r.stdout), `neither a key nor a note: the miss names both (got ${r.stdout})`);
 }
 console.log(`memory: ${checks} checks passed`);
