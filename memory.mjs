@@ -4,11 +4,12 @@
 // every project, check the hooks are wired. The hooks write on their own; this
 // writes only when told to, under the same lock.
 const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <id>]
-  search <terms...> [--since D] [--until D] [--all] [--limit N]
+  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N]
                                           memories (name, description, then body; archive included)
                                           and the journal (asked, then changed and ran, then answered),
                                           ranked, a long request asked many times once. D is YYYY-MM-DD;
-                                          dates with no terms list those days' requests
+                                          dates with no terms list those days' requests. --file: entries that changed it;
+                                          --asked: your own words only; --conversation: one session; notes are left out
   show <key...> [--same] [--all]          journal entries whole, by the key a search hit prints;
                                           --same: every entry that asked the same
   forget [<words...>] [--key K]... [--same] [--since D] [--until D] [--conversation ID] [--yes] [--purge]

@@ -3663,4 +3663,18 @@ again ${key2}
   r = await run(['search', 'cart', '--asked', '--store', hd]);
   ok(r.status === 0 && /^nothing matches "cart" in /.test(r.stdout), `a journal of helpers only, searched with --asked, is a miss (got ${r.stdout}${r.stderr})`);
 }
+
+// 99c. The three search filters as options: their values, the help text.
+{
+  const sd = join(root, 'C--flt', 'memory');
+  const fcli = (...a) => run([...a, '--store', sd]);
+  let r = await fcli('search', 'cart', '--file');
+  ok(r.status === 1 && r.stdout === '--file needs a value after it\n', `a filter without its value is refused (got ${r.stdout})`);
+  r = await fcli('show', 'x', '--asked');
+  ok(r.status === 1 && r.stdout === 'show does not take --asked; help lists the options\n', `show does not take --asked (got ${r.stdout})`);
+  ok((await fcli('search', '--file=src/cart.js')).stdout === (await fcli('search', '--file', 'src/cart.js')).stdout, '--file=PATH is --file PATH');
+  r = await fcli('search', '--file', 'a.js', '--file', 'src/cart.js');
+  ok(r.stdout.startsWith('no entry changed a.js in '), `given twice, the first value wins (got ${r.stdout})`);
+  ok((await run(['help'])).stdout.includes('  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N]\n'), 'the help lists the three filters');
+}
 console.log(`memory: ${checks} checks passed`);
