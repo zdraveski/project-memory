@@ -49,7 +49,7 @@ import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { BLOCK, redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
-import { STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
+import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -628,8 +628,6 @@ const unsnapped = () => {
 const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
 
 // The newest `max`: a note edited every reply had 2,000 snapshots, 72 KB of output.
-// A request is the user's text, and clip keeps ESC, BEL and the bidi overrides: each prints as U+FFFD (tab and newline stay).
-const tame = (t) => t.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '\uFFFD');
 // The exchange behind a snapshot, as one line; null: none was found.
 const byLine = (e, label = 'by') => e === 'shared' ? 'by: not looked up for the shared store (what changed it is in the project journals)' : e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `${label}: ${e.at} [${e.s}] asked: "${tame(clip(e.asked, 100))}" · key: "${tame(clip(e.key, Infinity))}"`
   : "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
