@@ -263,7 +263,7 @@ the tuning is in [Compaction](docs/how-it-works.md#compaction).
 
 ## Compared with other tools
 
-Claude Code's own memory keeps no journal, no history of your notes and no
+Claude Code's own memory doesn't keep a journal, a history of your notes or a
 shared notebook. project-memory adds those, and keeps what it saves on your computer, with
 no server of its own. What Claude reads of it goes to Anthropic with the rest
 of the conversation. Claude Code's `/resume` reopens one earlier conversation with its
@@ -300,8 +300,7 @@ enforce:
 
 A hook then watches your git calls and logs which note matched. It only
 watches and logs: it blocks nothing and prints nothing. Few lessons fit this
-form, and some commands it does not see. This is a test of the idea, not a
-promise. It is a 30-day trial (see the changelog for the end date). The author checks
+form, and some commands it does not see. It is a 30-day trial (see the changelog for the end date). The author checks
 `memory enforce status` (hits per rule in the last 30 days) and keeps or cuts it.
 Syntax, limits and how to try a rule on past conversations:
 [Checked lessons](docs/how-it-works.md#checked-lessons-experimental).
