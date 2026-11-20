@@ -25,6 +25,7 @@ If you would rather type a command, start with `/project-memory:memory`:
 | Type after it | What it does |
 |---|---|
 | `search logo colors` | Finds notes and journal entries about "logo colors". An entry shows as a short headline: what you asked, how it ended, and the lines with your words |
+| `search --file src/cart.js` | Lists the entries that changed that file, newest first (a name alone works too). `--asked` keeps your own words only, `--conversation <id>` one session; notes are left out |
 | `show 'key'` | Shows one journal entry in full, by the key `search` printed |
 | `forget password` | Lists the journal entries that mention "password" and removes the ones you confirm (Claude Code's own conversation files still hold them) |
 | `history pricing` / `restore pricing` | Shows when the note "pricing" changed / brings it back |
@@ -956,6 +957,13 @@ entry is scored the same way on its request (+3), its files and commands
 to 2): every word in the request gets +5, every word somewhere +2, so a
 reply that names everything can't outrank the request for the thing.
 
+Three options narrow a search to the journal: `--file <path>` keeps entries that
+changed that file (a name alone matches the end of a path, at a folder), `--asked`
+looks only at what you asked (helper reports and private turns are left out, and
+only the request is scored), and `--conversation <id>` keeps one conversation (the
+start of its id, 4 characters or more). `--file` also takes an absolute path. `--file` and `--conversation` listings include helper (subagent) entries, `--asked` leaves them out. A path with ", " in its name cannot be matched (the journal lists changed files with that separator). With any of them notes are left out, and with no words they list
+the entries newest first.
+
 Hits are ordered by a weighted rank built from these scores: rarer words
 count more, long entries count less, and an entry that holds your whole
 search text word for word gets a bonus. The newest first only breaks a tie
@@ -1196,7 +1204,7 @@ node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory
 
 | Command | Options |
 |---|---|
-| `search <words…>` | `--since D`, `--until D`, `--all`, `--limit N` |
+| `search <words…>` | `--file P`, `--asked`, `--conversation ID`, `--since D`, `--until D`, `--all`, `--limit N` (words optional with a filter) |
 | `show <key…>` | `--same`, `--all` |
 | `forget [<words…>]` | `--key K` (again for each key), `--same`, `--since D`, `--until D`, `--conversation <tag or id>`, `--yes`, `--purge` (also remove from the snapshot history) |
 | `status` | `--all` |
