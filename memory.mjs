@@ -629,7 +629,7 @@ const missing = (e) => /does not exist in|exists on disk, but not in|invalid obj
 
 // The newest `max`: a note edited every reply had 2,000 snapshots, 72 KB of output.
 // The exchange behind a snapshot, as one line; null: none was found.
-const byLine = (e) => e ? `by: ${e.at} [${e.s}] asked: "${clip(e.asked, 100)}" · key: "${clip(e.key, Infinity)}"`
+const byLine = (e) => e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `by: ${e.at} [${e.s}] asked: "${clip(e.asked, 100)}" · key: "${clip(e.key, Infinity)}"`
   : "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
 // A note's journal entries, oldest first, by its full path as the session saw it. A journal that will not read is none: history still prints.
 const changersOf = (dir, f, failed) => {
@@ -653,7 +653,7 @@ export function history(dirs, file, everywhere = false, max = 30, failed = []) {
         else if (head && verb[l[0]]) { snaps.push([head[0], head[1] === 'memory: first snapshot' ? 'in the first snapshot' : verb[l[0]]]); head = null; }
       }
       // Newest first, as git prints them; paired oldest first, before `max` cuts the list.
-      const text = read(join(dir, f)), by = snaps.length ? whoChanged(snaps.map(([h]) => h.slice(h.indexOf(' ') + 1)).reverse(), changersOf(dir, f, failed), text ? front(text).origin : '').reverse() : [];
+      const by = snaps.length ? whoChanged(snaps.map(([h]) => h.slice(h.indexOf(' ') + 1)).reverse(), changersOf(dir, f, failed)).reverse() : [];
       const lines = snaps.flatMap(([h, what], i) => [`  ${h}  ${what}`, `    ${byLine(by[i])}`]);
       // The command that shows a change, with the path git tracks: a junctioned
       // store's own path shows nothing, and PowerShell expands no `~`.

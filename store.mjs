@@ -297,8 +297,6 @@ export function front(text) {
     // The whole word: `tier: hot-ish` read as hot.
     tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)(?=["']?[ \t]*(?:#|$))/m, keys).toLowerCase(),
     superseded,
-    // The conversation Claude Code wrote the note in, top level or under metadata: like `type`.
-    origin: scalar(get(/^[ \t]*originSessionId:[ \t]*(.*)$/m, keys)),
     // A date alone is that day here: read as UTC midnight, it printed as the
     // day before anywhere west of Greenwich. A date, a space and a time is that time: cut at the space, it was midnight.
     modified: Date.parse(get(/^[ \t]*modified:[ \t]*(\d{4}-\d\d-\d\d \d\d:\d\d\S*|\S+)/m).replace(' ', 'T').replace(/^(\d{4}-\d\d-\d\d)$/, '$1T00:00')),

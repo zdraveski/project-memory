@@ -31,7 +31,7 @@ ok(words('The Carts v1.2.3').join(' ') === '1.2.3 cart', 'same stems');
 const at = (t, over) => ({ key: `k ${t}`, at: `2026-11-12 ${t}`, s: '3f07bb43', t: 'C--shop/3f07bb43-aaaa',
   asked: 'save that as a rule', changed: ['/home/u/.claude/projects/C--shop/memory/rules.md'], ...over });
 const P = ['/home/u/.claude/projects/C--shop/memory/rules.md'];
-const who = (snaps, es, origin) => whoChanged(snaps.map((t) => `2026-11-12 ${t}`), es, origin).map((x) => x && x.key);
+const who = (snaps, es) => whoChanged(snaps.map((t) => `2026-11-12 ${t}`), es).map((x) => x && (x.key ?? x));
 ok(changers([at('14:02'), at('14:03', { changed: ['memory/rules.md'] }), at('14:04', { changed: [] })], P).length === 1, 'the full path, not its end');
 assert.deepEqual(who(['14:03'], [at('14:02')]), ['k 14:02']);
 assert.deepEqual(who(['14:03'], [at('14:03')]), ['k 14:03']);
@@ -44,8 +44,10 @@ assert.deepEqual(who(['14:03', '14:04'], [at('14:03')]), ['k 14:03', null]);
 assert.deepEqual(who(['14:03', '14:04'], [at('14:02')]), ['k 14:02', null]);
 // one minute, two entries
 const two = [at('14:02', { key: 'a' }), at('14:02', { key: 'b', t: 'C--shop/99999999-bbbb', s: '99999999' })];
-assert.deepEqual(who(['14:03'], two), ['b']);
-assert.deepEqual(who(['14:03'], two, '3f07bb43-aaaa'), ['a']);
+assert.deepEqual(who(['14:03'], two), ['several']);
+assert.deepEqual(who(['14:03'], [at('14:02', { key: 'a' }), at('14:02', { key: 'b' })]), ['b']);
+// two conversations between two snapshots: none is named, even when one is older
+assert.deepEqual(who(['14:03', '15:00'], [at('14:02'), at('14:10', { t: 'C--shop/99999999-bbbb', s: '99999999' }), at('14:20')]), ['k 14:02', 'several']);
 // a helper's entry is named only when nothing else fits
 const sub = (t, over) => at(t, { key: `subagent-${t}`, asked: 'Subagent Explore: look', ...over });
 assert.deepEqual(who(['14:03'], [at('14:01'), sub('14:02')]), ['k 14:01']);

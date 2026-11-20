@@ -1045,7 +1045,4 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = [
 // tag(): the first 8 characters of a session id; none for a missing id.
 ok(tag('abcdefghij') === 'abcdefgh' && tag('abcdefgh') === 'abcdefgh' && tag('abc') === 'abc' && tag('') === '' && tag(null) === '' && tag(undefined) === '' && tag(0) === '', 'a session tag is the first 8 characters of its id, empty with no id');
 
-// front(): the conversation a note came from, at the top level or under metadata:, or none.
-ok(front('---\nname: a\noriginSessionId: 3f07bb43-aaaa\n---\nbody').origin === '3f07bb43-aaaa' && front('---\nname: a\nmetadata:\n  originSessionId: "3f07bb43-aaaa"\n---\n').origin === '3f07bb43-aaaa' && front('---\nname: a\n---\nbody').origin === '', 'front() reads originSessionId');
-
 console.log(`store: ${checks} checks passed`);
