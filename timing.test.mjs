@@ -48,6 +48,7 @@ begin('save'); await flush(); await flush();
 ok(read(0, file).length === count + 1, 'a second flush writes nothing');
 
 // the cut
+ok(MAX === 256 * 1024, 'the file is cut at 256 KB, as PRIVACY.md says');
 const fill = (n, t0) => Array.from({ length: n }, (_, i) => JSON.stringify({ t: t0 + i, h: 'save', e: 'Stop', start: 90, p: { load: 20 }, ms: 300 })).join('\n') + '\n';
 writeFileSync(file, fill(Math.ceil(MAX / 60), 1000));
 ok(statSync(file).size > MAX, 'the made-up file is over the limit');
