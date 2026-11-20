@@ -2504,7 +2504,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
   { const v = viaStarter(), w = brief(); ok(v.stdout === w && v.status === 0, `the starter prints the same briefing as handoff-log.mjs --print (starter ${v.status} ${JSON.stringify(v.stdout.slice(0, 300))} ${JSON.stringify(v.stderr.slice(0, 300))}; direct ${JSON.stringify(w.slice(0, 300))})`); }
   ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }).stdout === '', 'PROJECT_MEMORY_BRIEFING=0 prints nothing');
   const broken = join(home, 'broken-starter'); mkdirSync(broken, { recursive: true });
-  writeFileSync(join(broken, 'brief.mjs'), readFileSync(BRIEF)); writeFileSync(join(broken, 'handoff-log.mjs'), 'export const = ;');
+  writeFileSync(join(broken, 'brief.mjs'), readFileSync(BRIEF)); writeFileSync(join(broken, 'timing.mjs'), readFileSync(join(dirname(HOOK), 'timing.mjs'))); writeFileSync(join(broken, 'handoff-log.mjs'), 'export const = ;');
   const bad = viaStarter({}, join(broken, 'brief.mjs'));
   ok(bad.status === 0 && /^Memory briefing failed \(.*\)\. Run "memory doctor", or reinstall the project-memory plugin\.\n$/.test(bad.stdout), `a handoff-log.mjs that does not load gives one line (got ${JSON.stringify(bad.stdout)})`);
   ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }, join(broken, 'brief.mjs')).stdout === '', 'and the off switch silences that line too');

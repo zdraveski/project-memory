@@ -93,7 +93,7 @@ writeFileSync(join(sharedStore(), 'shared-rule.md'), 'x');
 p = project(); writeFileSync(join(p.store, LOG), 'x'.repeat(LOG_MAX + 1) + '\n');
 quiet(run(p.payload('git add -A', { tool_use_id: 'new1' })), 'log full'); ok(lines(p.store).some((l) => l.id === 'new1') && statSync(join(p.store, LOG)).size < LOG_MAX, 'a full log drops its oldest half and takes the new line');
 p = project(); quiet(run(p.payload('git add -A', { agent_type: 'A'.repeat(2e6), tool_use_id: 'T'.repeat(2e6) })), 'huge fields'); ok(statSync(join(p.store, LOG)).size < 1024, 'one log line is bounded');
-{ const d = join(home, 'nohook'); mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'enforce-hook.mjs'), readFileSync(HOOK));
+{ const d = join(home, 'nohook'); mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'enforce-hook.mjs'), readFileSync(HOOK)); writeFileSync(join(d, 'timing.mjs'), readFileSync(tool('timing.mjs')));
   quiet(spawnSync(process.execPath, [join(d, 'enforce-hook.mjs')], { input: '{}', encoding: 'utf8' }), 'enforce.mjs missing'); }
 p = project(); { const tp = join(home, 'priv.jsonl'); writeFileSync(tp, '{"type":"user","message":{"content":"x <private-session>"}}\n');
   quiet(run(p.payload('git add -A', { transcript_path: tp })), 'private transcript'); ok(lines(p.store).length === 0, 'no hit logged in a private-session turn');
