@@ -87,8 +87,8 @@ export const changedFile = (e, path) => {
   return p !== '' && e.changed.some((c) => { const f = cleanPath(c); return f === p || f.endsWith(`/${p}`) || (abs && f !== '' && p.endsWith(`/${f}`)); });
 };
 export const isHelper = (e) => e.key.startsWith('subagent-');
-// The session id is the end of `t`; an entry with no `t` has only its 8-character tag.
+// The session id is the end of `t`; an entry with no `t` has only its 8-character tag. With neither, it is in no conversation.
 export const inConversation = (e, tag) => {
   const g = tag.toLowerCase(), id = e.t.slice(e.t.lastIndexOf('/') + 1).toLowerCase(), s = e.s.toLowerCase();
-  return g !== '' && (id ? id.startsWith(g) : g.startsWith(s) || s.startsWith(g));
+  return g !== '' && (id ? id.startsWith(g) : s !== '' && (g.startsWith(s) || s.startsWith(g)));
 };

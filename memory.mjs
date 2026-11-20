@@ -1060,6 +1060,8 @@ export function main(given) {
   const extra = takes && rest.find((a, i) => a.startsWith('--') && !valued.has(rest[i - 1]) && !['--store', '--shared', '--session', ...takes].includes(a));
   if (extra) { console.log(`${cmd} does not take ${extra}; help lists the options`); return 1; }
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
+  // A short id would name every conversation whose id starts with it; `forget` has its own rule for the value.
+  if (cmd === 'search' && (opt('--conversation') ?? 'abcd').length < 4) { console.log('--conversation needs at least 4 characters of the id'); return 1; }
   // A number, or refused: `--limit ten` was dropped unsaid, and the default
   // listed. One below 1 is still the default (a test holds it).
   if (opt('--limit') !== undefined && !/^-?\d+$/.test(opt('--limit'))) { console.log(`--limit takes a number, not ${opt('--limit')}`); return 1; }

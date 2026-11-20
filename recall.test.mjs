@@ -24,6 +24,7 @@ ok(isHelper(e({ key: 'subagent-a1' })) && !isHelper(e()), 'helper by key');
 ok(inConversation(e(), '0123') && inConversation(e(), '0123456789ABCDEF-aaaa'), 'start of the id, case ignored');
 ok(!inConversation(e(), '1234') && !inConversation(e(), ''), 'not inside the id, not empty');
 ok(inConversation(e({ t: '' }), '0123456789') && inConversation(e({ t: '' }), '0123'), 'no t: the tag decides');
+ok(!inConversation(e({ t: '', s: '' }), '0123') && !inConversation(e({ t: 'C--shop/', s: '' }), '0123'), 'an entry with no id and no tag is in no conversation');
 // the splitter did not change
 ok(words('The Carts v1.2.3').join(' ') === '1.2.3 cart', 'same stems');
 console.log(`recall.test.mjs: ${checks} checks passed`);

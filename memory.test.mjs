@@ -3679,6 +3679,12 @@ again ${key2}
     r = await fcli('search', 'cart', ...empty);
     ok(r.status === 1 && r.stdout === '--file needs a value after it\n', `an empty ${empty.join(' ')} is refused, not ignored (got ${r.stdout})`);
   }
+  for (const short of [['--conversation', 'abc'], ['--conversation=a']]) {
+    r = await fcli('search', 'cart', ...short);
+    ok(r.status === 1 && r.stdout === '--conversation needs at least 4 characters of the id\n', `${short.join(' ')} is too short to name a conversation (got ${r.stdout})`);
+  }
+  ok(!(await fcli('search', 'cart', '--conversation', 'beef')).stdout.includes('at least 4'), 'four characters are enough');
+  ok(!(await fcli('forget', 'cart', '--conversation', 'abc')).stdout.includes('at least 4'), 'forget keeps its own rule');
   ok((await run(['help'])).stdout.includes('  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N]\n'), 'the help lists the three filters');
 }
 console.log(`memory: ${checks} checks passed`);
