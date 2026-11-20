@@ -200,6 +200,7 @@
   .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
   .hero .actions { justify-content: center; }
   .hero .cmd { width: min(100%, 34rem); margin: 1.25rem 0 0; text-align: left; }
+  .hero .req { color: var(--muted); font-size: 0.95rem; margin: 0.9rem 0 0; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1.5rem 0 0; padding: 0; list-style: none; }
   /* The logo in orbit. The ring is drawn twice: its back half behind the brain, its front half (clipped) over it,
      carrying one small moon. brain.png is 148 px wide, so it stays at 80 CSS px here and 60 on phones. */
@@ -749,6 +750,7 @@
         </div>
         <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add zdraveski/<wbr>project-memory
 /plugin install project-memory@<wbr>project-memory</code></pre></div>
+        <p class="req">Needs Claude Code and Node.js 22 or newer. Works on Windows, macOS and Linux.</p>
       </div>
       <div class="land">
         <div class="demo">
@@ -1013,7 +1015,7 @@
             </tr>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-share-network"/></svg>Many projects</span></th>
-              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>One notebook per project; lessons aren't shared.</span></span></td>
+              <td role="cell"><span class="cell"><svg class="pi half mk" aria-hidden="true"><use href="#p-minus-circle"/></svg><span><span class="hidden">Partly. </span>A CLAUDE.md in your home folder reaches every project, but you keep it by hand.</span></span></td>
               <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>Lessons that apply everywhere reach every project: ask Claude to remember one for all your projects.</span></span></td>
             </tr>
             <tr role="row">
@@ -1042,19 +1044,19 @@
       <div class="install">
         <ol class="steps">
           <li>
-            <p>In Claude Code, type these two lines. When the second opens a menu, choose to install it for you (user scope), so it works in every project.</p>
+            <p>In Claude Code, type these two lines. When the second opens a menu, pick the option that installs it for you in every project (it may say user scope).</p>
             <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add zdraveski/project-memory
 /plugin install project-memory@project-memory</code></pre></div>
           </li>
           <li><p>Close Claude Code and open it again.</p></li>
           <li>
-            <p>Check it's working. No line should start with <code>PROBLEM</code>. A line that starts with <code>note</code> is fine, such as when Git isn't installed.</p>
-            <div class="cmd"><pre class="code" tabindex="0"><code>/project-memory:memory doctor</code></pre></div>
-            <p class="small">Until Claude finishes its first reply, one line says it's waiting for that reply. That's normal.</p>
-          </li>
-          <li>
             <p>Start a conversation tomorrow. Claude begins with a short note on where you stopped, something like this:</p>
             <div class="glass term next"><div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>Where you stopped</b><span>handoff.md</span></div><div class="panel"><p><b>asked</b> Finish the pricing table</p><p><b>did</b> Pricing table done. The checkout copy is next.</p><p><b>changed</b> pricing.md</p></div></div>
+          </li>
+          <li>
+            <p>To check it's working, run this. No line should start with <code>PROBLEM</code>. A line that starts with <code>note</code> is fine, such as when Git isn't installed.</p>
+            <div class="cmd"><pre class="code" tabindex="0"><code>/project-memory:memory doctor</code></pre></div>
+            <p class="small">Until Claude finishes its first reply, one line says it's waiting for that reply. That's normal.</p>
           </li>
           <li>
             <p>To update later, run these two lines in a terminal, then restart Claude Code. A marketplace you add yourself does not update on its own. To turn that on, type <code>/plugin</code>, open Marketplaces, choose project-memory and select Enable auto-update.</p>
@@ -1140,7 +1142,7 @@ claude plugin update project-memory@project-memory</code></pre></div>
       <li><a href="https://github.com/zdraveski/project-memory/issues">Report a problem</a></li>
       <li><a href="https://github.com/zdraveski/project-memory/blob/master/SECURITY.md">Security</a></li>
     </ul>
-    <p>MIT license. Icons: Phosphor.</p>
+    <p>Made by <a href="https://github.com/zdraveski">zdraveski</a>. Open source under the MIT license, with a public changelog and test runs on GitHub. Icons: Phosphor.</p>
   </div>
 </footer>
 
