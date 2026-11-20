@@ -45,6 +45,7 @@ node memory.test.mjs
 node journal.test.mjs
 node enforce.test.mjs
 node enforce-hook.test.mjs
+node bench.test.mjs
 ```
 
 A suite that passes ends with one line, `<suite>: <n> checks passed`. One
@@ -168,7 +169,9 @@ Beyond the suites:
   (and runs one control with nothing broken) and checks that no line is lost
   and that a second run leaves `MEMORY.md` unchanged.
 - `node bench.mjs [runs]` times each hook on copies of the machine's largest
-  transcript and store.
+  transcript and store. `node bench.mjs --live [--project <folder>|all] [--days <n>]`
+  instead reads the hook durations Claude Code recorded in its own conversation
+  files (read-only), this plugin's hooks beside the other plugins'.
 
 The soak, the break harness and the benchmark read your real notes and
 transcripts only to copy them into a temp folder, and delete the copies when
