@@ -1272,7 +1272,7 @@ projects, what it left out, and how to refresh and remove it. A turn marked
 `[private]` shows as private, with no text. Each question and answer is
 capped (2,000 and 4,000 characters) and marked when cut. A page past 40 MB (`--days all` on a long journal) is not written: it says so and suggests `--days N`.
 
-The read and the write happen under the lock of every store the page reads, so a `forget` cannot slip in between and be undone by the write; a store another hook holds is said, not skipped. When the page cannot be deleted (on Windows, a browser holding it open), `forget`, `incognito`, `off` and `rescan --apply` say `could not delete the page` and exit 1, since it still holds the text.
+The stores' locks are held to read the journal and again to write the page, not while the page is built (redacting takes about 0.35 s a MB, longer than a lock lasts before a hook calls it stale). The write goes ahead only if no day file or forgotten list changed since the read; otherwise it says `the journal changed while the page was built; run memory page again`, so a `forget` in between is never undone. A page whose text alone is past the limit is refused before it is built. A store another hook holds is said, not skipped. When the page cannot be deleted (on Windows, a browser holding it open), `forget`, `incognito`, `off` and `rescan --apply` say `could not delete the page` and exit 1, since it still holds the text.
 
 The page is built by `page.mjs`, which only turns data into text. Every
 string passes the secret filter and the same cleaning as the `by:` lines, and
