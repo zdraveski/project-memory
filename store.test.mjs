@@ -1047,7 +1047,7 @@ ok(tag('abcdefghij') === 'abcdefgh' && tag('abcdefgh') === 'abcdefgh' && tag('ab
 
 // The page of the journal: one file in Claude Code's folder, written whole and mode 0600, and gone when dropPage runs.
 {
-  const { pagePath, writePage, dropPage, configDir } = await import('./store.mjs');
+  const { pagePath, writePage, dropPage, claimPage, configDir } = await import('./store.mjs');
   const here = process.env.CLAUDE_CONFIG_DIR;
   const cfg = join(home, 'my config é');
   process.env.CLAUDE_CONFIG_DIR = cfg;
@@ -1064,13 +1064,20 @@ ok(tag('abcdefghij') === 'abcdefgh' && tag('abcdefgh') === 'abcdefgh' && tag('ab
     const bad = dropPage();
     ok(bad instanceof Error && existsSync(pagePath()), 'a path that will not go (a folder) is no throw, it runs in the hooks: the error comes back, for the commands to say');
     rmSync(pagePath(), { recursive: true });
-    // A kill between the write and the rename leaves journal.html.<pid>.tmp with journal text: both calls take every such file.
+    // A kill between the write and the rename leaves journal.html.<pid>.tmp with journal text: dropPage takes every such file; writePage only its own pid's, since another live run's is being written.
     const strays = () => { for (const n of ['journal.html.123.tmp', 'journal.html.x.y.tmp']) writeFileSync(join(dirname(pagePath()), n), 'text'); writeFileSync(join(dirname(pagePath()), 'keep.txt'), 'mine'); };
-    strays(); writePage('<p>three</p>');
-    ok(readdirSync(dirname(pagePath())).sort().join() === 'journal.html,keep.txt', 'writePage takes the temporary files a killed run left, and nothing else');
+    strays(); writeFileSync(`${pagePath()}.${process.pid}.tmp`, 'old'); writePage('<p>three</p>');
+    ok(readdirSync(dirname(pagePath())).sort().join() === 'journal.html,journal.html.123.tmp,journal.html.x.y.tmp,keep.txt' && readFileSync(pagePath(), 'utf8') === '<p>three</p>', "writePage replaces its own pid's leftover and leaves another run's temp file alone");
     strays(); ok(dropPage() === true && readdirSync(dirname(pagePath())).join() === 'keep.txt', 'dropPage takes them too');
     strays(); ok(dropPage() === false && readdirSync(dirname(pagePath())).join() === 'keep.txt', 'and with no page, they still go, and it says no page was there');
     rmSync(join(dirname(pagePath()), 'keep.txt'));
+    // A page run's claim on what it read: a file beside the page, taken by dropPage, kept by writePage.
+    const tok = claimPage(), mine = `${pagePath()}.${process.pid}.reading`;
+    ok(tok === mine && existsSync(tok), 'claimPage makes journal.html.<pid>.reading and says where');
+    writePage('<p>four</p>'); ok(existsSync(tok), 'a write leaves the claim for its owner to remove');
+    writeFileSync(join(dirname(pagePath()), 'journal.html.77.reading'), '');
+    ok(dropPage() === true && readdirSync(dirname(pagePath())).length === 0, 'dropPage takes every claim, its own and another run\'s');
+    ok(claimPage() === mine && dropPage() === false && readdirSync(dirname(pagePath())).length === 0, 'and with no page it takes them too, and says no page was there');
   } finally { if (here === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = here; }
 }
 

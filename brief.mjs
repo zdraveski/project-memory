@@ -1,6 +1,6 @@
 // The plugin's SessionStart starter: it loads handoff-log.mjs itself, so a file that fails to load (a bad deploy, a half-written update) says so in one line
 // instead of leaving a silent, empty briefing. PROJECT_MEMORY_BRIEFING=0 turns the briefing off: no output at all.
-// Guarded: a timing.mjs that fails to load costs the times, never the briefing.
+// Loaded guarded: a timing.mjs that is missing or broken costs the timings only, and never stops the briefing or its failure line below.
 const T = await import('./timing.mjs').catch(() => null);
 T?.begin('brief');
 process.exitCode = 0;

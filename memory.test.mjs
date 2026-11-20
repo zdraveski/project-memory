@@ -3852,6 +3852,10 @@ again ${key2}
     ok(r.status === 1 && r.stdout.trim() === 'nothing to show: no journal entry in the last 1 day' && !existsSync(pagePath()), `nothing in the range: said, exit 1, no file (got ${r.status} ${r.stdout})`);
     dropPage();
 
+    // A project that is switched off is said so, not "nothing to show".
+    r = await page('--project', 'hidden');
+    ok(r.status === 1 && r.stdout.trim() === 'hidden is switched off (memory on to include it)' && !existsSync(pagePath()), `--project on a switched-off project says so (got ${r.status} ${r.stdout})`);
+
     // A day that cannot be read is named, exit 1; the rest is still shown.
     writeFileSync(join(shop, 'journal', `${ago(3)}.md`), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('# Journal\n', 'utf16le')]));
     r = await write();
@@ -3874,8 +3878,9 @@ again ${key2}
     }
     await write();
     await run(['rescan']);
+    await run(['rescan', '--apply']);
     await run(['on', '--store', shop]);
-    ok(existsSync(pagePath()), 'rescan without --apply, and on, leave it');
+    ok(existsSync(pagePath()), 'rescan without --apply, rescan --apply without --yes (it changes nothing), and on, leave it');
 
     // The page holds each live store's lock from its read to its write, so a forget cannot slip between and be undone by the write.
     dropPage();
@@ -3891,6 +3896,38 @@ again ${key2}
     PAGE_LIMIT.bytes = 1000; dropPage();
     try { r = await page(); } finally { PAGE_LIMIT.bytes = kept; }
     ok(r.status === 1 && /^the page would be \d+(\.\d)? (KB|MB), over the limit of 1000 B; nothing written\. Use --days N for fewer days/.test(r.stdout) && !existsSync(pagePath()), `past the limit it says so, and writes nothing (got ${r.status} ${r.stdout})`);
+
+    // The stores' locks are held only to read and to write: a page too big by its fields is refused before it is built, and a day that
+    // changed while it was built is not overwritten (a forget or a sweep in between would be undone by the write).
+    let built = 0;
+    PAGE_LIMIT.bytes = 1000; PAGE_LIMIT.built = () => { built++; };
+    try { r = await page(); } finally { PAGE_LIMIT.bytes = kept; PAGE_LIMIT.built = null; }
+    ok(r.status === 1 && /^the page would be \d/.test(r.stdout) && built === 0, `the estimate from the entries' fields refuses before the page is built (built ${built} times; got ${r.stdout})`);
+    await write(); const whole = statSync(pagePath()).size; dropPage();
+    PAGE_LIMIT.bytes = whole - 1; PAGE_LIMIT.built = () => { built++; };
+    try { r = await page(); } finally { PAGE_LIMIT.bytes = kept; PAGE_LIMIT.built = null; }
+    ok(r.status === 1 && /^the page would be \d/.test(r.stdout) && built === 1 && !existsSync(pagePath()), `and the built page is checked against the limit too (built ${built}; got ${r.stdout})`);
+    // What blocks the write is a dropPage (forget, a sweep, off, incognito, rescan --apply --yes) while the page was built, not a day
+    // file that changed: a reply saved in between rewrites today's day and forgets nothing.
+    const CHANGED = 'the journal changed while the page was built; run memory page again';
+    const tokens = () => readdirSync(dirname(pagePath())).filter((n) => /^journal\.html\..+\.reading$/.test(n));
+    PAGE_LIMIT.built = () => dropPage();
+    try { r = await page(); } finally { PAGE_LIMIT.built = null; }
+    ok(r.status === 1 && r.stdout.trim() === CHANGED && !existsSync(pagePath()) && !tokens().length, `a dropPage while the page was built: said, exit 1, no page, no token left (got ${r.status} ${r.stdout})`);
+    PAGE_LIMIT.built = () => appendFileSync(join(shop, 'journal', `${ago(5)}.md`), '\n');
+    try { r = await page(); } finally { PAGE_LIMIT.built = null; }
+    ok(r.status === 0 && existsSync(pagePath()) && !tokens().length && !existsSync(join(shop, '.lock')), `a day file that changed meanwhile still writes it (got ${r.status} ${r.stdout})`);
+    // A dropPage between the claim check and the rename: the claim is gone once the page is written, so the page goes too.
+    PAGE_LIMIT.written = () => rmSync(`${pagePath()}.${process.pid}.reading`);
+    try { r = await page(); } finally { PAGE_LIMIT.written = null; }
+    ok(r.status === 1 && r.stdout.trim() === CHANGED && !existsSync(pagePath()) && !tokens().length && !readdirSync(dirname(pagePath())).some((n) => /.tmp$/.test(n)), `a dropPage between the claim check and the rename: the page just written is deleted (got ${r.status} ${r.stdout})`);
+    dropPage();
+    PAGE_LIMIT.built = () => { const o = spawnSync(process.execPath, [CLI, 'off', '--store', shop], { encoding: 'utf8' }); if (o.status !== 0) throw new Error(`fixture: off failed ${o.stdout}${o.stderr}`); };
+    try { r = await page(); } finally { PAGE_LIMIT.built = null; }
+    ok(r.status === 1 && r.stdout.trim() === CHANGED && !existsSync(pagePath()) && !tokens().length, `memory off while the page was built: no page (got ${r.status} ${r.stdout})`);
+    await run(['on', '--store', shop]);
+    r = await write();
+    ok(r.status === 0 && !existsSync(join(shop, '.lock')) && !tokens().length, 'and run again it is written');
 
     // A page that will not go is said, and fails the command: the text is still on disk.
     await write();
