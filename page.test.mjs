@@ -76,6 +76,7 @@ run([]);
 run([entry({})], { days: 'all' });
 run([entry({ d: '2026-10-01' })], { days: 7 });
 
+ok(script.includes('text.toLowerCase().length!==text.length'), 'a text whose lowercase is another length (a dotted I) is not marked, its offsets would be wrong');
 ok(script.includes('clearTimeout(lag);lag=setTimeout(list,120)'), 'a keystroke waits 120 ms for the next before the list is rebuilt');
 
 console.log(`page.test.mjs: ${checks} checks passed`);

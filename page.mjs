@@ -382,7 +382,8 @@ function num(el,to){
 }
 // Text with the search words marked, built from text nodes only.
 function mark(el,text,q){
-  if(!q){el.append(text);return}
+  // A lowercase of another length (a dotted I) moves every offset: nothing is marked.
+  if(!q||text.toLowerCase().length!==text.length){el.append(text);return}
   const low=text.toLowerCase();let i=0,j;
   while((j=low.indexOf(q,i))>-1){el.append(text.slice(i,j),h("mark","",text.slice(j,j+q.length)));i=j+q.length}
   el.append(text.slice(i));
