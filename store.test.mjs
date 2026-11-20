@@ -1045,4 +1045,25 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = [
 // tag(): the first 8 characters of a session id; none for a missing id.
 ok(tag('abcdefghij') === 'abcdefgh' && tag('abcdefgh') === 'abcdefgh' && tag('abc') === 'abc' && tag('') === '' && tag(null) === '' && tag(undefined) === '' && tag(0) === '', 'a session tag is the first 8 characters of its id, empty with no id');
 
+// The page of the journal: one file in Claude Code's folder, written whole and mode 0600, and gone when dropPage runs.
+{
+  const { pagePath, writePage, dropPage, configDir } = await import('./store.mjs');
+  const here = process.env.CLAUDE_CONFIG_DIR;
+  const cfg = join(home, 'my config é');
+  process.env.CLAUDE_CONFIG_DIR = cfg;
+  try {
+    ok(pagePath() === join(cfg, 'project-memory', 'journal.html') && configDir() === resolve(cfg), `the page is project-memory/journal.html in Claude Code's folder (got ${pagePath()})`);
+    ok(dropPage() === false, 'dropping a page that is not there is no error, and says nothing was dropped');
+    ok(writePage('<p>one</p>') === pagePath() && readFileSync(pagePath(), 'utf8') === '<p>one</p>', 'the page is written where pagePath says');
+    ok(writePage('<p>two</p>') === pagePath() && readFileSync(pagePath(), 'utf8') === '<p>two</p>', 'and written again over the first');
+    if (process.platform !== 'win32') ok((statSync(pagePath()).mode & 0o777) === 0o600 && (statSync(dirname(pagePath())).mode & 0o777) === 0o700, 'the file is 0600 and its folder 0700');
+    ok(readdirSync(dirname(pagePath())).join() === 'journal.html', 'no temporary file is left');
+    ok(dropPage() === true && !existsSync(pagePath()), 'dropPage removes it and says so');
+    ok(dropPage() === false, 'a second time there is nothing to remove');
+    mkdirSync(pagePath(), { recursive: true });
+    ok(dropPage() === false, 'a path that will not go (a folder) is no throw: it runs in the hooks');
+    rmSync(pagePath(), { recursive: true });
+  } finally { if (here === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = here; }
+}
+
 console.log(`store: ${checks} checks passed`);

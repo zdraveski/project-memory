@@ -1223,7 +1223,7 @@ lemur lemur lemur lemur
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'recall.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(f)));
+  for (const f of ['memory.mjs', 'recall.mjs', 'page.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(f)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   const njs = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'status', '--store', jd], { env, encoding: 'utf8' });
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
@@ -3781,4 +3781,102 @@ again ${key2}
   r = await scli('show', 'no-such-thing');
   ok(r.status === 1 && /^no journal entry has the key no-such-thing and no note has that name in .+; --all looks in every project$/m.test(r.stdout), `neither a key nor a note: the miss names both (got ${r.stdout})`);
 }
+// 1.5.4 the page: `memory page` writes one local HTML file of the journal and prints its link; forget, incognito, off and rescan --apply delete it.
+{
+  const { render } = await import('./journal.mjs');
+  const { pagePath, dropPage, local } = await import('./store.mjs');
+  const saved = process.env.CLAUDE_CONFIG_DIR, cfg = join(tempDir('page-'), 'my config é');
+  process.env.CLAUDE_CONFIG_DIR = cfg;
+  try {
+    const proot = join(cfg, 'projects'), ago = (n) => local(Date.now() - n * 864e5).slice(0, 10);
+    // A made-up project: its folder, the first line of a conversation file (where its name comes from), and its journal days.
+    const proj = (folder, cwd, days) => {
+      const d = join(proot, folder, 'memory', 'journal');
+      mkdirSync(d, { recursive: true });
+      if (cwd) writeFileSync(join(proot, folder, 'c0ffee12-aaaa.jsonl'), `${JSON.stringify({ type: 'user', cwd })}\n`);
+      for (const [day, es] of Object.entries(days)) writeFileSync(join(d, `${day}.md`), `# Journal ${day}\n\n${es.map(render).join('\n\n')}\n`);
+      return join(proot, folder, 'memory');
+    };
+    const ent = (folder, key, day, hm, o = {}) => ({ key, at: `${day} ${hm}`, s: 'c0ffee12', t: `${folder}/c0ffee12-aaaa`, branch: 'main', asked: `question ${key}`, answered: `answer ${key}`, changed: [], ran: [], ...o });
+    const shop = proj('C--work-bookshop', 'C:\\work\\bookshop', {
+      [ago(1)]: [ent('C--work-bookshop', 'bs1', ago(1), '10:00', { asked: 'add the basket page', changed: ['src/basket.js', `${proot.replaceAll('\\', '/')}/C--work-bookshop/memory/notes.md`] }),
+        ent('C--work-bookshop', 'bs2', ago(1), '11:00', { answered: 'long answer '.repeat(500), changed: [`${proot}\\C--work-bookshop\\memory\\handoff.md`, `${proot}/C--work-bookshop/memory/journal/${ago(1)}.md`] }),
+        ent('C--work-bookshop', 'subagent-bs3', ago(1), '12:00', { asked: 'helper question' })],
+      [ago(5)]: [ent('C--work-bookshop', 'bs4', ago(5), '09:00', { asked: 'older basket work' })],
+    });
+    proj('C--work-garden', '/home/x/garden-site', { [ago(2)]: [ent('C--work-garden', 'gs1', ago(2), '08:00', { asked: 'water the tomato page', answered: '[private]' })] });
+    const off = proj('C--work-hidden', '/home/x/hidden', { [ago(1)]: [ent('C--work-hidden', 'hd1', ago(1), '07:00', { asked: 'a switched-off project' })] });
+    const page = async (...a) => run(['page', ...a]);
+    const dataOf = (html) => { const i = html.indexOf('const DATA='), j = html.indexOf(';\n', i); return JSON.parse(html.slice(i + 11, j)); };
+    const write = async (...a) => { const r = await page(...a); return { ...r, html: existsSync(pagePath()) ? readFileSync(pagePath(), 'utf8') : '' }; };
+    ok((await run(['off', '--store', off])).status === 0, 'fixture: one project is switched off');
+
+    let r = await write();
+    const lines = r.stdout.trimEnd().split('\n');
+    ok(r.status === 0 && lines.length === 4 && lines[0] === pathToFileURL(pagePath()).href && /^4 exchanges in 2 projects over 30 days, \d+(\.\d)? (B|KB)$/.test(lines[1]), `written: the link, the counts, what was left out, the hint (got ${r.status} ${r.stdout})`);
+    ok(lines[2] === 'left out: 1 helper entry, 1 switched-off project' && /^Open the link in a browser\. Run memory page again to refresh it\. forget, incognito, off and rescan --apply delete it\.$/.test(lines[3]), `and says what it left out and how to refresh and remove it (got ${lines.slice(2).join(' | ')})`);
+    ok(/%20config%20%C3%A9/.test(lines[0]) && existsSync(pagePath()), 'the link of a folder with a space and an accent is a valid file URL');
+    if (process.platform !== 'win32') ok((statSync(pagePath()).mode & 0o777) === 0o600, 'the file is readable by its owner only');
+    let data = dataOf(r.html);
+    const by = Object.fromEntries(data.entries.map((e) => [e.d + e.t, e]));
+    ok(data.days === 30 && data.today === local().slice(0, 10) && data.entries.length === 4 && data.entries.map((e) => e.d).join() === [ago(1), ago(1), ago(2), ago(5)].join(), `newest first, the helper and the switched-off project are not in it (got ${JSON.stringify(data.entries.map((e) => e.q))})`);
+    ok(!/helper question|a switched-off project/.test(r.html), 'their text is nowhere in the file');
+    ok(by[ago(1) + '10:00'].p === 'bookshop' && by[ago(2) + '08:00'].p === 'garden-site', 'a project is named by the folder its conversations started in');
+    ok(by[ago(1) + '10:00'].n === 1 && by[ago(1) + '11:00'].n === 0 && by[ago(5) + '09:00'].n === 0, 'an exchange that wrote a note of the store is marked; handoff.md and the journal are not notes');
+    ok(by[ago(1) + '11:00'].cut === 1 && by[ago(1) + '11:00'].a.length < 4200 && by[ago(1) + '10:00'].cut === 0, 'an answer past 4000 characters is cut, and marked');
+    ok(by[ago(2) + '08:00'].priv === 1 && by[ago(2) + '08:00'].q === '' && by[ago(2) + '08:00'].a === '', 'a private turn has no text in the page');
+
+    // --days: a number of days or all.
+    r = await write('--days', '3');
+    ok(r.status === 0 && dataOf(r.html).entries.length === 3 && /over 3 days/.test(r.stdout), `--days 3 keeps the last three days (got ${r.stdout})`);
+    r = await write('--days', 'all');
+    ok(r.status === 0 && dataOf(r.html).days === 'all' && dataOf(r.html).entries.length === 4 && /over all days/.test(r.stdout), `--days all keeps every day (got ${r.stdout})`);
+    for (const bad of ['0', 'ten', '1.5', '-3']) {
+      const g = await page('--days', bad);
+      ok(g.status === 1 && g.stdout.trim() === `--days takes a number of days or all, not ${bad}`, `--days ${bad} is refused (got ${g.status} ${g.stdout})`);
+    }
+    r = await write('--days', '99999999999999999999');
+    ok(r.status === 0 && dataOf(r.html).entries.length === 4, 'a huge number of days is the whole journal, no error');
+
+    // --project: a name or its folder, any case.
+    r = await write('--project', 'BookShop');
+    ok(r.status === 0 && dataOf(r.html).entries.length === 3 && /in 1 project /.test(r.stdout), `--project names a project, in any case (got ${r.stdout})`);
+    r = await write('--project', 'c--work-garden');
+    ok(r.status === 0 && dataOf(r.html).entries.map((e) => e.p).join() === 'garden-site', 'or its folder name');
+    r = await page('--project', 'nope');
+    ok(r.status === 1 && r.stdout.trim() === 'no project named nope. Projects with a journal: bookshop, garden-site', `a miss names the projects there are, not the switched-off one (got ${r.stdout})`);
+
+    // Nothing to show: no file.
+    dropPage();
+    r = await page('--project', 'garden-site', '--days', '1');
+    ok(r.status === 1 && r.stdout.trim() === 'nothing to show: no journal entry in the last 1 day' && !existsSync(pagePath()), `nothing in the range: said, exit 1, no file (got ${r.status} ${r.stdout})`);
+    dropPage();
+
+    // A day that cannot be read is named, exit 1; the rest is still shown.
+    writeFileSync(join(shop, 'journal', `${ago(3)}.md`), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('# Journal\n', 'utf16le')]));
+    r = await write();
+    ok(r.status === 1 && new RegExp(`^could not read .*${ago(3)}\\.md: `, 'm').test(r.stdout) && dataOf(r.html).entries.length === 4, `an unreadable day is named and fails, and the page has the rest (got ${r.status} ${r.stdout})`);
+    rmSync(join(shop, 'journal', `${ago(3)}.md`));
+
+    // Options it does not take, and the help.
+    r = await page('--since', ago(3));
+    ok(r.status === 1 && /^page does not take --since/.test(r.stdout), `an option of another command is refused (got ${r.stdout})`);
+    r = await run(['help']);
+    ok(/^ {2}page \[--days N\|all\] \[--project NAME\]/m.test(r.stdout), 'help lists page');
+
+    // Where the journal is forgotten, the page goes.
+    const drops = [['forget', '--key', 'bs4', '--yes', '--store', shop], ['off', '--store', shop], ['rescan', '--apply', '--yes'], ['incognito']];
+    for (const args of drops) {
+      await write();
+      ok(existsSync(pagePath()), `fixture: a page before ${args[0]}`);
+      await run(args);
+      ok(!existsSync(pagePath()), `${args.join(' ')} deletes the page`);
+    }
+    await write();
+    await run(['rescan']);
+    await run(['on', '--store', shop]);
+    ok(existsSync(pagePath()), 'rescan without --apply, and on, leave it');
+  } finally { if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved; }
+}
+
 console.log(`memory: ${checks} checks passed`);

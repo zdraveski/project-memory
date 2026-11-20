@@ -12,6 +12,21 @@ import { createHmac, randomBytes } from 'node:crypto';
 // Resolved: a relative one put a root of its own under each hook's cwd (1.3.1 audit C-3).
 export const configDir = () => resolve(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'));
 export const projectsRoot = () => join(configDir(), 'projects');
+// The page `memory page` writes: one file in Claude Code's folder, outside every project and every snapshot. It holds journal text,
+// so it is 0600 in a 0700 folder, replaced whole (a temp file renamed), and dropPage removes it where the journal is forgotten.
+export const pagePath = () => join(configDir(), 'project-memory', 'journal.html');
+export function writePage(html) {
+  const p = pagePath(), tmp = `${p}.${process.pid}.tmp`;
+  mkdirSync(dirname(p), { recursive: true, mode: 0o700 });
+  rmSync(tmp, { force: true });
+  try { writeFileSync(tmp, html, { mode: 0o600, flag: 'wx' }); renameSync(tmp, p); }
+  catch (e) { rmSync(tmp, { force: true }); throw e; }
+  return p;
+}
+// Never throws: the hooks call it. True when a page was there and is gone.
+export function dropPage() {
+  try { lstatSync(pagePath()); rmSync(pagePath(), { force: true }); return !existsSync(pagePath()); } catch { return false; }
+}
 // A keyed fingerprint of raw text for dedup keys and proof-of-life lines: an unsalted hash of a short prompt that is just a
 // password falls to a dictionary run. The salt is a random per-machine file in the projects folder (never snapshotted, 0600);
 // when it cannot be kept, a one-off salt: keys then differ between runs, and nothing else breaks.
