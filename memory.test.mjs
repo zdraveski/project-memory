@@ -3696,14 +3696,14 @@ again ${key2}
   const today = `${d5.getFullYear()}-${pad(d5.getMonth() + 1)}-${pad(d5.getDate())}`, at = `${today} ${pad(d5.getHours())}:${pad(d5.getMinutes())}`;
   const mk = (key, asked, note, over = {}) => ({ key, at, s: '3f07bb43', t: 'C--who/3f07bb43-aaaa', branch: '', asked, answered: 'done', changed: [join(wd, `${note}.md`)], ran: [], ...over });
   const GHT = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
-  const es = [mk('who-1', 'save that as a rule', 'rules'), mk('who-2', 'y'.repeat(300), 'long'), mk('who-3', `keep ${GHT} in the note`, 'leaky'), mk('who-4', 'first of two', 'twice'), mk('who-5', 'second of two', 'twice')];
+  const es = [mk('who-1', 'save that as a rule', 'rules'), mk('who-2', 'y'.repeat(300), 'long'), mk('who-3', `keep ${GHT} in the note`, 'leaky'), mk('who-4', 'first of two', 'twice'), mk('who-5', 'second of two', 'twice'), mk('who-6\x1b]0;x\x07', 'clear \x1b[2J then \x1b]0;x\x07 and \u202eevil', 'ctl')];
   const writeDay = (store, list) => { mkdirSync(join(store, 'journal'), { recursive: true }); writeFileSync(join(store, 'journal', `${today}.md`), `# Journal ${today}\n\n${list.map(render).join('\n\n')}\n`); };
-  for (const n of ['rules', 'long', 'leaky', 'twice']) memory(wd, n, n, 'v1');
+  for (const n of ['rules', 'long', 'leaky', 'twice', 'ctl']) memory(wd, n, n, 'v1');
   memory(nj, 'bare-note', 'no journal here', 'v1');
   tier();
   writeDay(wd, es);
   // By hand, so the file's time is now: a note a quarter hour old is not snapshotted again.
-  for (const [d, n] of [[wd, 'rules'], [wd, 'long'], [wd, 'leaky'], [wd, 'twice'], [nj, 'bare-note']]) writeFileSync(join(d, `${n}.md`), `---\nname: ${n}\ndescription: "${n}"\n---\n\nv2\n`);
+  for (const [d, n] of [[wd, 'rules'], [wd, 'long'], [wd, 'leaky'], [wd, 'twice'], [wd, 'ctl'], [nj, 'bare-note']]) writeFileSync(join(d, `${n}.md`), `---\nname: ${n}\ndescription: "${n}"\n---\n\nv2\n`);
   tier();
   const NONE = '    by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin\'s own sorting)';
   r = await wcli('history', 'rules');
@@ -3721,6 +3721,8 @@ again ${key2}
   ok(!r.stdout.includes(GHT) && /asked: "keep \[redacted\] in the note"/.test(r.stdout), `a request holding a secret prints redacted (got ${r.stdout})`);
   r = await wcli('history', 'twice');
   ok(!/who-[45]|first of two|second of two/.test(r.stdout), `two exchanges before the oldest snapshot: neither is named (got ${r.stdout})`);
+  r = await wcli('history', 'ctl');
+  ok(/by: .*asked: "clear \uFFFD\[2J then \uFFFD\]0;x\uFFFD and \uFFFDevil"/.test(r.stdout) && !/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/.test(r.stdout.replace(/\r?\n/g, '')), `escape codes and bidi controls in a request print as U+FFFD (got ${JSON.stringify(r.stdout)})`);
   // A deleted note: an entry sent in the deletion's minute is not named for it.
   memory(wd, 'gone', 'gone', 'v1');
   tier();

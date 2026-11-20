@@ -628,8 +628,10 @@ const unsnapped = () => {
 const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
 
 // The newest `max`: a note edited every reply had 2,000 snapshots, 72 KB of output.
+// A request is the user's text, and clip keeps ESC, BEL and the bidi overrides: each prints as U+FFFD (tab and newline stay).
+const tame = (t) => t.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '\uFFFD');
 // The exchange behind a snapshot, as one line; null: none was found.
-const byLine = (e) => e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `by: ${e.at} [${e.s}] asked: "${clip(e.asked, 100)}" · key: "${clip(e.key, Infinity)}"`
+const byLine = (e) => e === 'several' ? 'by: several exchanges changed it since the snapshot before; none is named' : e ? `by: ${e.at} [${e.s}] asked: "${tame(clip(e.asked, 100))}" · key: "${tame(clip(e.key, Infinity))}"`
   : "by: no exchange found (changed by hand, by a shell command, by a helper or by the plugin's own sorting)";
 // A note's journal entries, oldest first, by its full path as the session saw it. A journal that will not read is none: history still prints.
 const changersOf = (dir, f, failed) => {
