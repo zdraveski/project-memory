@@ -67,6 +67,7 @@
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   }
   * { box-sizing: border-box; }
+  main:focus { outline: none; }
   html { -webkit-text-size-adjust: 100%; scroll-padding-top: 5rem; background: #040719; color-scheme: dark; scrollbar-color: #33437E #040719; }
   @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
   /* Stars down the whole page: five tiles of different odd sizes, so the pattern never visibly repeats.
@@ -259,7 +260,8 @@
     .js .hero, .js .land { animation: rise 600ms var(--ease-out) backwards; }
     .js .land { animation-delay: 90ms; }
   }
-  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  /* .01, not 0: the browser counts the headline as painted from the first frame, so the rise no longer delays it. */
+  @keyframes rise { from { opacity: .01; transform: translateY(8px); } }
 
   /* The demo: a glass terminal on the planet's edge */
   .demo { position: relative; isolation: isolate; width: min(100%, 44rem); }
@@ -628,6 +630,8 @@
     .go::after { right: auto; left: -4px; top: auto; bottom: -1px; border: 5px solid transparent; border-top-color: var(--cyan); border-bottom: 0; }
     .swap .cd .hidden { position: static; width: auto; height: auto; clip-path: none; display: block; white-space: normal; font: 600 0.75rem/1.4 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
   }
+  /* A landscape phone: a sticky bar would take a fifth of the screen. */
+  @media (max-height: 31.25em) { .bar { position: static; } }
   @media (max-width: 42.5em) {
     body { font-size: 1rem; }
     h1 { font-size: 2.3rem; }
@@ -646,7 +650,8 @@
     .fork { display: none; }
     .demo .panel { min-height: 0; font-size: 0.86rem; }
     .hero { padding-top: 1.5rem; }
-    .hero .code code { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .code code { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .aside-note { font-size: 0.875rem; }
     .logo-orbit { width: 9rem; height: 4.75rem; margin-bottom: 1rem; --kx: 56.25%; --ky: 81.25%; }
     .logo-orbit::before, .logo-orbit::after { width: 9rem; height: 2.6rem; margin: -1.3rem 0 0 -4.5rem; }
     .logo-orbit img { width: 3.75rem; }
@@ -729,7 +734,7 @@
   </div>
 </header>
 
-<main id="main">
+<main id="main" tabindex="-1">
   <div class="top">
     <i class="stars" aria-hidden="true"></i>
     <div class="wrap">
