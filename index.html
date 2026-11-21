@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Persistent memory for Claude Code, local and free</title>
 <meta name="description" content="A free Claude Code plugin that keeps a journal of your work and where you stopped, so a new conversation picks up from the last. Saved on your computer.">
-<meta name="theme-color" content="#050A23">
+<meta name="theme-color" content="#081133">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="brain.png" type="image/png">
 <link rel="canonical" href="https://zdraveski.github.io/project-memory/">
 <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
 <meta property="og:type" content="website">
 <meta property="og:title" content="project-memory: ask Claude Code what you decided last month">
 <meta property="og:description" content="Claude Code forgets. project-memory remembers. Saved only on your computer. A journal you can ask, a note of where you stopped, old versions of your notes, secrets kept out. Free, no account.">
@@ -38,7 +39,7 @@
   "sameAs": ["https://github.com/zdraveski/project-memory"]
 }
 </script>
-<script>document.documentElement.classList.add('js');</script>
+<script>document.documentElement.classList.add('js'); try { if (localStorage.getItem('still') === '1') document.documentElement.classList.add('still'); } catch {}</script>
 <style>
   /* Inter and JetBrains Mono, served from this site (SIL Open Font License, fonts/*-OFL.txt).
      Icons: Phosphor, duotone (MIT, icons/LICENSE). */
@@ -68,6 +69,9 @@
   }
   * { box-sizing: border-box; }
   main:focus { outline: none; }
+  /* No double-tap zoom delay on taps, and no rubber-band bounce with a mouse. */
+  html { touch-action: manipulation; }
+  @media (pointer: fine) { html { overscroll-behavior: none; } }
   html { -webkit-text-size-adjust: 100%; scroll-padding-top: 5rem; background: #040719; color-scheme: dark; scrollbar-color: #33437E #040719; }
   @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
   /* Stars down the whole page: five tiles of different odd sizes, so the pattern never visibly repeats.
@@ -151,11 +155,23 @@
   @media (prefers-contrast: more) { :root { --line: rgb(130 170 255 / .6); --glass: var(--solid); } .bar.scrolled { border-bottom-color: var(--line); } }
   /* Wrap is the safety net: if the links can't fit beside the name, they drop to a second line instead of off the screen. */
   .bar .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 1rem; min-height: 4.25rem; }
+  .brand, .bar nav a, footer a, .faq summary { -webkit-tap-highlight-color: transparent; }
   .brand { display: flex; align-items: center; min-height: 2.75rem; gap: 0.6rem; font-weight: 800; font-size: 1.15rem; letter-spacing: -0.02em; text-decoration: none; white-space: nowrap; }
+  @media (hover: hover) and (pointer: fine) { .brand:hover { color: var(--ink); text-decoration: underline; } }
   .brand img { width: 2.1rem; height: auto; filter: drop-shadow(0 0 8px rgb(34 211 238 / .45)); }
   .bar nav { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
   .bar nav a { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.75rem; padding: 0 0.85rem; border-radius: 0.6rem; color: var(--body); text-decoration: none; font-size: 0.97rem; font-weight: 500; transition: color var(--fast), background-color var(--fast); }
-  @media (hover: hover) and (pointer: fine) { .bar nav a:hover { color: var(--ink); background: rgb(80 125 255 / .12); } }
+  /* Pause motion sits under the hero, next to the motion it stops, so the header stays one line on phones. */
+  .motion { align-items: center; gap: 0.45rem; min-height: 2.75rem; margin-top: 0.5rem; padding: 0 0.85rem; border: 0; border-radius: 0.6rem; background: none; color: var(--muted); font: inherit; font-size: 0.9rem; font-weight: 500; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: color var(--fast), background-color var(--fast); }
+  .motion:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .motion .pi { width: 1.15rem; height: 1.15rem; }
+  .motion .on, .motion[aria-pressed="true"] .off { display: none; }
+  .motion[aria-pressed="true"] .on { display: inline; }
+  /* The button is for scripts and for people who allow motion: with reduced motion there is nothing to pause. */
+  .motion { display: none !important; }
+  .js .motion { display: inline-flex !important; }
+  @media (prefers-reduced-motion: reduce) { .js .motion { display: none !important; } }
+  @media (hover: hover) and (pointer: fine) { .bar nav a:hover, .motion:hover { color: var(--ink); background: rgb(80 125 255 / .12); } }
   .bar nav a.gh { color: var(--ink); background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); }
   .bar nav a.gh .pi { width: 1.15rem; height: 1.15rem; }
 
@@ -185,12 +201,13 @@
   p { text-wrap: pretty; }
   .hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 1.5rem; }
   h1 { font-size: clamp(2.3rem, 6vw, 5.25rem); line-height: 1; letter-spacing: -0.04em; max-width: 13em; margin: 0 auto 1.2rem; }
-  .tagline .nw { white-space: nowrap; } /* keeps "project-memory" whole on phones */
+  .nw { white-space: nowrap; } /* keeps "project-memory" and the install names whole on phones */
   .tagline { font-size: 1.4rem; line-height: 1.45; font-weight: 600; color: var(--ink); max-width: 34rem; margin: 0 auto 0.5rem; }
   .lede { font-size: 1.1rem; line-height: 1.6; color: var(--body); max-width: 38rem; margin: 0 auto 1.25rem; }
   .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
   .hero .actions { justify-content: center; }
-  .hero .cmd { width: min(100%, 34rem); margin: 1.25rem 0 0; text-align: left; }
+  .hero .paste { margin: 1.25rem 0 0.5rem; color: var(--body); font-size: 0.95rem; font-weight: 600; }
+  .hero .cmd { width: min(100%, 34rem); margin: 0; text-align: left; }
   .hero .req { color: var(--muted); font-size: 0.95rem; margin: 0.9rem 0 0; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1.5rem 0 0; padding: 0; list-style: none; }
   /* The logo in orbit. The ring is drawn twice: its back half behind the brain, its front half (clipped) over it,
@@ -217,6 +234,8 @@
     .nn .c2 { animation: found 12s linear var(--d) infinite; }
     .nn .r2 { animation: ripple 12s linear var(--d) infinite; }
     .logo-orbit.away::before, .logo-orbit.away::after, .logo-orbit.away .nn * { animation-play-state: paused; }
+    /* The Pause motion button: the same pause, for the looping animations only. */
+    .still .logo-orbit::before, .still .logo-orbit::after, .still .nn *, .still .flow::after { animation-play-state: paused; }
   }
   @keyframes orbit { to { --orbit: 407deg; } }
   /* The recall trace over the logo, drawn in the logo's own pixels (the brain sits at 0..148 x 0..136 of the viewBox, which
@@ -334,7 +353,7 @@
   h2 { font-size: clamp(2rem, 1.4rem + 2.6vw, 3.1rem); line-height: 1.08; margin: 0 0 1rem; max-width: 22ch; }
   :is(#get, #how, #compared, #install, #faq) h2 .grad { background: none; color: var(--cyan); -webkit-text-fill-color: currentColor; }
   .intro { max-width: 42rem; color: var(--body); font-size: 1.2rem; line-height: 1.6; margin: 0 0 3rem; }
-  h3 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; margin: 0 0 0.35rem; }
+  h3 { text-wrap: balance; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; margin: 0 0 0.35rem; }
 
   /* The problem: one Monday, then the next morning two ways */
   .story { display: grid; grid-template-columns: 1fr 1fr; column-gap: 2rem; }
@@ -389,7 +408,7 @@
   .search .box .pi { width: 1.15rem; height: 1.15rem; }
   .search ul { list-style: none; margin: 0.8rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
   .search li { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.75rem; padding: 0.6rem 0.75rem; border-radius: 0.55rem; background: rgb(80 125 255 / .08); border: 1px solid rgb(130 170 255 / .14); font-size: 0.85rem; }
-  .search li time { font: 600 0.8125rem/1.6 var(--mono); color: var(--cyan); }
+  .search li time { font: 600 0.8125rem/1.6 var(--mono); font-variant-numeric: tabular-nums; color: var(--cyan); }
   .search li span { color: #DBE7FF; }
   .search li:first-child { border-color: rgb(34 211 238 / .45); background: rgb(34 211 238 / .08); }
   .search .found { margin: 1rem 0 0.2rem; font-size: 0.9rem; line-height: 1.55; }
@@ -586,6 +605,7 @@
   .faq details { padding: 0 1.4rem; }
   .faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 3.75rem; padding: 0.9rem 0; font-weight: 600; font-size: 1.05rem; }
   .faq summary::-webkit-details-marker { display: none; }
+  @media (hover: hover) and (pointer: fine) { .faq summary:hover { color: var(--ink); } .faq summary:hover .pi { color: var(--cyan); } }
   .faq summary .pi { width: 1.25rem; height: 1.25rem; transition: transform var(--fast) var(--ease-out); }
   .faq details[open] { border-color: rgb(34 211 238 / .45); }
   .faq details[open] summary .pi { transform: rotate(45deg); }
@@ -594,7 +614,13 @@
   .faq .answer p + p, .faq .answer ol + p { margin-top: 0.8rem; }
   .faq .answer ol { margin: 0.8rem 0 0; padding-left: 1.3rem; display: grid; gap: 0.5rem; }
   .faq .answer .tok { white-space: normal; overflow-wrap: anywhere; }
+  /* The same fold-out holds Privacy's list of what it removes; its paragraphs keep their usual gap. */
+  .faq .answer .more { margin-top: 1.5rem; }
+  .faq.fold { margin-top: 0; max-width: none; }
+  /* Top padding: the fold-out clips its content, and the number badges sit 0.4rem above their text. */
+  .faq .answer .steps { padding: 0.5rem 0 0; gap: 0; margin: 0; }
   /* Answers grow open in 200 ms and shut in 150 ms. Browsers without interpolate-size keep the instant open. */
+  /* Block-size does move the layout, but only for those 150-200 ms, and reduced motion turns it off. */
   @media (prefers-reduced-motion: no-preference) {
     .faq { interpolate-size: allow-keywords; }
     .faq details::details-content { block-size: 0; overflow: clip; transition: block-size 150ms var(--ease-out), content-visibility 150ms allow-discrete; }
@@ -606,6 +632,7 @@
   .closing h2 { margin-inline: auto; }
   .closing p { color: var(--body); margin: 0 auto 2rem; max-width: 34rem; font-size: 1.12rem; }
   .closing .actions { justify-content: center; }
+  .closing .cmd { width: min(100%, 34rem); margin: 0 auto 2rem; text-align: left; }
   .closing .star { margin: 1.75rem auto 0; font-size: 1rem; color: var(--muted); }
 
   footer { border-top: 1px solid var(--line); background: #03051A; color: var(--muted); padding: 2.25rem 0; font-size: 0.95rem; }
@@ -650,7 +677,12 @@
     .fork { display: none; }
     .demo .panel { min-height: 0; font-size: 0.86rem; }
     .hero { padding-top: 1.5rem; }
+    /* The requirements line comes before the buttons and the command, so it shows without scrolling. */
+    .hero .actions, .hero .paste, .hero .cmd, .hero .motion { order: 1; }
+    .hero .req { margin: 0 0 1.25rem; }
     .code code { white-space: pre-wrap; overflow-wrap: anywhere; }
+    /* The hero command breaks only at spaces, so a name is never cut in half. */
+    .hero .code code { overflow-wrap: normal; }
     .aside-note { font-size: 0.875rem; }
     .logo-orbit { width: 9rem; height: 4.75rem; margin-bottom: 1rem; --kx: 56.25%; --ky: 81.25%; }
     .logo-orbit::before, .logo-orbit::after { width: 9rem; height: 2.6rem; margin: -1.3rem 0 0 -4.5rem; }
@@ -677,6 +709,36 @@
     .brand img { width: 1.7rem; }
     .bar nav a { padding: 0 0.55rem; }
   }
+
+  /* Behind the hero: a faint network of memories. Now and then a question runs from a random note at the edge and lights the note it finds, like the logo's traces.
+     Only wide screens get it: on a phone the crop shows five of its 95 notes. */
+  .net { position: absolute; z-index: -1; inset: 0; width: 100%; height: 100%; pointer-events: none;
+    -webkit-mask: radial-gradient(70% 62% at 50% 42%, transparent 30%, #000 75%), linear-gradient(#000 70%, transparent);
+    -webkit-mask-composite: source-in; mask: radial-gradient(70% 62% at 50% 42%, transparent 30%, #000 75%) intersect, linear-gradient(#000 70%, transparent); }
+  .net path { fill: none; }
+  .net .e-far { stroke: rgb(130 170 255 / .09); stroke-width: 1; }
+  .net .e-near { stroke: rgb(130 170 255 / .2); stroke-width: 1.2; }
+  .net .n-far circle { r: 1.6px; fill: rgb(186 230 253 / .35); }
+  .net .n-near circle { r: 2.6px; fill: rgb(165 243 252 / .7); }
+  .net .n-hub circle { r: 4px; fill: #CFFAFE; filter: drop-shadow(0 0 6px #22D3EE); }
+  .net .tr { stroke-width: 1.8; stroke-linecap: round; stroke-dasharray: 100 101; stroke-dashoffset: 101; opacity: 0; }
+  /* No glow filter on the trails: a filter on a moving line repaints its whole area every frame. */
+  .net .cy .tr { stroke: #22D3EE; }
+  .net .vi .tr { stroke: #A78BFA; }
+  .net .fd { fill: #CFFAFE; opacity: 0; transform-box: fill-box; transform-origin: center; }
+  .net .rp { fill: none; stroke: #CFFAFE; stroke-width: 1.4; opacity: 0; transform-box: fill-box; transform-origin: center; }
+  @media (prefers-reduced-motion: no-preference) {
+    .net .ak { fill: none; stroke: #CFFAFE; stroke-width: 1.2; opacity: 0; transform-box: fill-box; transform-origin: center; animation: net-ask var(--t) ease-out both; }
+    .net .tr { animation: net-trail var(--t) linear both; }
+    .net .fd { animation: net-found var(--t) linear both; }
+    .net .rp { animation: net-ripple var(--t) linear both; }
+    .net.away * { animation-play-state: paused; }
+  }
+  @media (max-width: 40em) { .net { display: none; } }
+  @keyframes net-ask { 0% { opacity: .9; transform: scale(.6); } 20%, 100% { opacity: 0; transform: scale(2.6); } }
+  @keyframes net-trail { 0% { stroke-dashoffset: 101; opacity: .95; } 55% { stroke-dashoffset: 0; opacity: .95; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+  @keyframes net-found { 0%, 52% { opacity: 0; transform: scale(.5); } 58% { opacity: 1; transform: scale(1.5); } 72% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0; transform: scale(1); } }
+  @keyframes net-ripple { 0%, 54% { opacity: 0; transform: scale(.6); } 57% { opacity: .9; transform: scale(.8); } 100% { opacity: 0; transform: scale(3.6); } }
 </style>
 </head>
 <body>
@@ -710,6 +772,7 @@
   <symbol id="p-magnifying-glass" viewBox="0 0 256 256"><path d="M192,112a80,80,0,1,1-80-80A80,80,0,0,1,192,112Z" opacity="0.2"/><path d="M229.66,218.34,179.6,168.28a88.21,88.21,0,1,0-11.32,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></symbol>
   <symbol id="p-minus-circle" viewBox="0 0 256 256"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" opacity="0.2"/><path d="M176,128a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,128Zm56,0A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></symbol>
   <symbol id="p-notebook" viewBox="0 0 256 256"><path d="M80,40V216H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8Z" opacity="0.2"/><path d="M184,112a8,8,0,0,1-8,8H112a8,8,0,0,1,0-16h64A8,8,0,0,1,184,112Zm-8,24H112a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16Zm48-88V208a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H72V48H48Zm160,0V48H88V208H208Z"/></symbol>
+  <symbol id="p-pause-circle" viewBox="0 0 256 256"><path d="M128,32a96,96,0,1,0,96,96A96,96,0,0,0,128,32Z" opacity="0.2"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216ZM112,96v64a8,8,0,0,1-16,0V96a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V96a8,8,0,0,1,16,0Z"/></symbol>
   <symbol id="p-play-circle" viewBox="0 0 256 256"><path d="M128,32a96,96,0,1,0,96,96A96,96,0,0,0,128,32ZM108,168V88l64,40Z" opacity="0.2"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm48.24-94.78-64-40A8,8,0,0,0,100,88v80a8,8,0,0,0,12.24,6.78l64-40a8,8,0,0,0,0-13.56ZM116,153.57V102.43L156.91,128Z"/></symbol>
   <symbol id="p-plus" viewBox="0 0 256 256"><path d="M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z" opacity="0.2"/><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/></symbol>
   <symbol id="p-share-network" viewBox="0 0 256 256"><path d="M208,200a32,32,0,1,1-32-32A32,32,0,0,1,208,200ZM176,88a32,32,0,1,0-32-32A32,32,0,0,0,176,88Z" opacity="0.2"/><path d="M176,160a39.89,39.89,0,0,0-28.62,12.09l-46.1-29.63a39.8,39.8,0,0,0,0-28.92l46.1-29.63a40,40,0,1,0-8.66-13.45l-46.1,29.63a40,40,0,1,0,0,55.82l46.1,29.63A40,40,0,1,0,176,160Zm0-128a24,24,0,1,1-24,24A24,24,0,0,1,176,32ZM64,152a24,24,0,1,1,24-24A24,24,0,0,1,64,152Zm112,72a24,24,0,1,1,24-24A24,24,0,0,1,176,224Z"/></symbol>
@@ -723,7 +786,7 @@
 
 <header class="bar">
   <div class="wrap">
-    <a class="brand" href="./"><img src="brain.png" alt="" width="148" height="136"><span>project-<span class="grad">memory</span></span></a>
+    <a class="brand" translate="no" href="./"><img src="brain.png" alt="" width="148" height="136"><span>project-<span class="grad">memory</span></span></a>
     <nav aria-label="Main">
       <a class="wide" href="#problem">Why</a>
       <a class="wide" href="#how">How it works</a>
@@ -736,34 +799,36 @@
 
 <main id="main" tabindex="-1">
   <div class="top">
-    <i class="stars" aria-hidden="true"></i>
+    <i class="stars" aria-hidden="true"></i><svg class="net" data-g='{"n":[[0,402],[499,41],[1377,368],[350,642],[225,342],[941,744],[612,76],[493,717],[19,174],[1419,470],[155,550],[1534,288],[1442,17],[1148,727],[267,720],[1517,659],[1600,720],[985,22],[1523,748],[563,787],[2,600],[1522,495],[1484,898],[681,730],[77,47],[1324,98],[279,516],[881,832],[158,882],[1378,581],[1457,132],[255,865],[161,718],[1397,236],[1212,306],[1,18],[53,502],[1584,444],[1211,155],[390,238],[1306,447],[1341,750],[1162,217],[22,706],[1251,17],[1352,878],[761,898],[967,894],[1459,593],[254,189],[312,75],[27,294],[811,1],[64,809],[646,833],[461,865],[1035,93],[214,112],[1095,15],[149,421],[1486,353],[108,308],[594,704],[1581,219],[1229,699],[1270,843],[1177,886],[390,806],[399,722],[1560,82],[541,116],[756,809],[1383,680],[1227,601],[401,15],[1112,141],[1059,885],[135,160],[1585,561],[353,383],[401,101],[242,600],[1593,888],[169,250],[455,610],[331,302],[1284,187],[156,39],[86,228],[463,192],[1040,778],[556,866],[100,665],[1575,362],[1098,653]],"a":[[51,36,61,59],[70,74,80,6],[40,60,9,33],[68,84,14,81],[83,59,79,85],[90,27,47],[70,1],[68,19,62,55,67,84],[88,77,35],[21,2,40,29],[81,36,26],[60,63,93,33],[30,69],[64,94,90,66,73],[3,32,31],[48,18,16],[15,18],[56,58,75,52],[15,16,22,82],[7,91,62,54,55],[43,36],[9,37,78],[82,45,18,41],[62,54,71],[87,35],[86,44,38],[81,10],[5,47,71],[31,53],[48,72,9],[12,69,33],[28,14,67],[14,92,53],[11,30,86,2,60],[42,86],[24,87,8],[0,10,20,59],[21,93,78],[25,42,86,44,75],[89,85,80,79],[2,9],[22,72,65,64,45],[34,38,75],[20,92,53],[25,38,58,86],[22,65,41],[71,54],[5,27,76,90],[15,29],[57,83,77],[80,57],[0,61,88],[17],[28,43,32],[19,23,46,91,71],[67,91,19,7],[17,75,58],[49,50,77,87],[17,44,56],[0,4,61,36],[2,11,33,93],[0,51,59,88,83],[7,19,23],[11,69,93],[13,41,73],[41,45,66],[65,76,13,90],[31,55,68,7],[3,7,67],[12,30,63],[1,6,89],[23,27,46,54],[29,41],[64,94,13],[1,80],[17,42,56,38],[47,66,90],[8,49,57,88,83,87],[21,37],[85,4,39],[1,39,50,74,89],[10,26,3],[22,18],[4,49,61,77,88],[3,7],[39,79,4],[25,33,34,38,44],[24,35,57,77],[8,51,61,77,83],[39,70,80],[5,13,47,66,76,94],[19,54,55],[32,43],[11,37,60,63],[13,73,90]]}' viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><path class="e-far" d="M0 402L53 502M0 402L149 421M499 41L541 116M499 41L401 15M499 41L401 101M499 41L612 76M1377 368L1306 447M1377 368L1486 353M1377 368L1419 470M1377 368L1397 236M350 642L455 610M350 642L242 600M225 342L169 250M225 342L149 421M225 342L353 383M225 342L331 302M941 744L881 832M612 76L541 116M493 717L455 610M19 174L1 18M1419 470L1522 495M1419 470L1306 447M155 550L242 600M155 550L53 502M155 550L279 516M1442 17L1457 132M1442 17L1560 82M267 720L255 865M1517 659L1459 593M1517 659L1523 748M1600 720L1523 748M985 22L1035 93M985 22L1112 141M1523 748L1484 898M1523 748L1593 888M563 787L556 866M563 787L646 833M2 600L22 706M2 600L53 502M1522 495L1584 444M1522 495L1585 561M681 730L646 833M681 730L756 809M77 47L1 18M1324 98L1284 187M1324 98L1251 17M1324 98L1211 155M279 516L242 600M881 832L967 894M881 832L756 809M158 882L255 865M158 882L64 809M1378 581L1459 593M1457 132L1560 82M1457 132L1397 236M255 865L390 806M161 718L100 665M161 718L64 809M1212 306L1162 217M1 18L156 39M53 502L149 421M1584 444L1575 362M1584 444L1585 561M1211 155L1162 217M1211 155L1284 187M1211 155L1251 17M1211 155L1112 141M390 238L463 192M390 238L331 302M390 238L401 101M390 238L353 383M1162 217L1112 141M22 706L100 665M22 706L64 809M761 898L756 809M761 898L646 833M254 189L214 112M312 75L401 101M312 75L214 112M646 833L556 866M646 833L756 809M461 865L556 866M1035 93L1112 141M1035 93L1095 15M214 112L135 160M214 112L156 39M149 421L108 308M1581 219L1560 82M541 116L463 192M401 15L401 101M401 101L463 192"/><path class="e-near" d="M0 402L27 294M0 402L108 308M350 642L399 722M350 642L267 720M941 744L1040 778M941 744L967 894M493 717L399 722M493 717L563 787M493 717L594 704M493 717L461 865M493 717L390 806M19 174L86 228M19 174L135 160M1419 470L1378 581M1534 288L1486 353M1534 288L1581 219M1534 288L1575 362M1534 288L1397 236M1148 727L1229 699M1148 727L1098 653M1148 727L1040 778M1148 727L1177 886M1148 727L1227 601M267 720L161 718M1517 659L1600 720M985 22L1095 15M985 22L811 1M563 787L594 704M563 787L461 865M1484 898L1593 888M1484 898L1352 878M1484 898L1341 750M681 730L594 704M77 47L156 39M1378 581L1383 680M1397 236L1284 187M1397 236L1486 353M1212 306L1284 187M1341 750L1383 680M1341 750L1270 843M1341 750L1229 699M1341 750L1352 878M1251 17L1095 15M1251 17L1284 187M1352 878L1270 843M967 894L1059 885M967 894L1040 778M254 189L169 250M254 189L135 160M27 294L108 308M27 294L86 228M461 865L390 806M1486 353L1575 362M108 308L86 228M108 308L169 250M1581 219L1575 362M1229 699L1227 601M1270 843L1177 886M1177 886L1059 885M1177 886L1040 778M390 806L399 722M1227 601L1098 653M1059 885L1040 778M135 160L86 228M135 160L169 250M135 160L156 39M353 383L331 302M169 250L86 228M1040 778L1098 653"/><g class="n-far"><circle cx="499" cy="41"/><circle cx="1377" cy="368"/><circle cx="225" cy="342"/><circle cx="612" cy="76"/><circle cx="1442" cy="17"/><circle cx="1523" cy="748"/><circle cx="2" cy="600"/><circle cx="1522" cy="495"/><circle cx="1324" cy="98"/><circle cx="279" cy="516"/><circle cx="881" cy="832"/><circle cx="158" cy="882"/><circle cx="1457" cy="132"/><circle cx="255" cy="865"/><circle cx="1" cy="18"/><circle cx="53" cy="502"/><circle cx="1584" cy="444"/><circle cx="1211" cy="155"/><circle cx="390" cy="238"/><circle cx="1306" cy="447"/><circle cx="1162" cy="217"/><circle cx="1459" cy="593"/><circle cx="312" cy="75"/><circle cx="64" cy="809"/><circle cx="646" cy="833"/><circle cx="1035" cy="93"/><circle cx="214" cy="112"/><circle cx="149" cy="421"/><circle cx="1560" cy="82"/><circle cx="541" cy="116"/><circle cx="756" cy="809"/><circle cx="1112" cy="141"/><circle cx="1585" cy="561"/><circle cx="401" cy="101"/><circle cx="242" cy="600"/><circle cx="455" cy="610"/><circle cx="556" cy="866"/><circle cx="100" cy="665"/></g><g class="n-near"><circle cx="350" cy="642"/><circle cx="941" cy="744"/><circle cx="493" cy="717"/><circle cx="19" cy="174"/><circle cx="1419" cy="470"/><circle cx="155" cy="550"/><circle cx="1148" cy="727"/><circle cx="267" cy="720"/><circle cx="1517" cy="659"/><circle cx="1600" cy="720"/><circle cx="985" cy="22"/><circle cx="563" cy="787"/><circle cx="681" cy="730"/><circle cx="77" cy="47"/><circle cx="1378" cy="581"/><circle cx="161" cy="718"/><circle cx="1212" cy="306"/><circle cx="1341" cy="750"/><circle cx="22" cy="706"/><circle cx="1352" cy="878"/><circle cx="761" cy="898"/><circle cx="967" cy="894"/><circle cx="254" cy="189"/><circle cx="27" cy="294"/><circle cx="811" cy="1"/><circle cx="1095" cy="15"/><circle cx="1486" cy="353"/><circle cx="108" cy="308"/><circle cx="594" cy="704"/><circle cx="1581" cy="219"/><circle cx="1229" cy="699"/><circle cx="1270" cy="843"/><circle cx="390" cy="806"/><circle cx="399" cy="722"/><circle cx="1383" cy="680"/><circle cx="1227" cy="601"/><circle cx="401" cy="15"/><circle cx="1059" cy="885"/><circle cx="353" cy="383"/><circle cx="1593" cy="888"/><circle cx="169" cy="250"/><circle cx="331" cy="302"/><circle cx="1284" cy="187"/><circle cx="156" cy="39"/><circle cx="463" cy="192"/><circle cx="1040" cy="778"/><circle cx="1575" cy="362"/><circle cx="1098" cy="653"/></g><g class="n-hub"><circle cx="0" cy="402"/><circle cx="1534" cy="288"/><circle cx="1484" cy="898"/><circle cx="1397" cy="236"/><circle cx="1251" cy="17"/><circle cx="461" cy="865"/><circle cx="1177" cy="886"/><circle cx="135" cy="160"/><circle cx="86" cy="228"/></g><g class="pul"></g></svg>
     <div class="wrap">
       <div class="hero">
         <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"><svg class="nn" viewBox="-103.6 -20.8 355.2 177.6" aria-hidden="true"><circle class="dot" cx="38" cy="9" r="2"/><circle class="dot" cx="63" cy="12" r="2"/><circle class="dot" cx="64" cy="63" r="2"/><circle class="dot" cx="15" cy="40" r="2"/><circle class="dot" cx="5" cy="75" r="2"/><circle class="dot" cx="41" cy="47" r="2"/><circle class="dot" cx="28" cy="66" r="2"/><circle class="dot" cx="48" cy="92" r="2"/><circle class="dot" cx="22" cy="110" r="2"/><circle class="dot" cx="52" cy="127" r="2"/><circle class="dot" cx="80" cy="9" r="2"/><circle class="dot" cx="80" cy="54" r="2"/><circle class="dot" cx="108" cy="13" r="2"/><circle class="dot" cx="112" cy="42" r="2"/><circle class="dot" cx="138" cy="52" r="2"/><g class="glow"><g style="--d:0.8s"><path class="t2" pathLength="100" d="M141 92 L103 92 L66 90 L48 92 L22 110"/><path class="hd2" pathLength="100" d="M141 92 L103 92 L66 90 L48 92 L22 110"/><circle class="b2" cx="141" cy="92" r="3.6"/><circle class="c2" cx="22" cy="110" r="4.4"/><circle class="r2" cx="22" cy="110" r="5"/></g><g style="--d:4.8s"><path class="t2" pathLength="100" d="M141 92 L138 52 L108 13 L80 9 L63 12 L38 9"/><path class="hd2" pathLength="100" d="M141 92 L138 52 L108 13 L80 9 L63 12 L38 9"/><circle class="b2" cx="141" cy="92" r="3.6"/><circle class="c2" cx="38" cy="9" r="4.4"/><circle class="r2" cx="38" cy="9" r="5"/></g><g style="--d:8.8s"><path class="t2" pathLength="100" d="M141 92 L103 92 L80 54 L64 63 L41 47 L15 40"/><path class="hd2" pathLength="100" d="M141 92 L103 92 L80 54 L64 63 L41 47 L15 40"/><circle class="b2" cx="141" cy="92" r="3.6"/><circle class="c2" cx="15" cy="40" r="4.4"/><circle class="r2" cx="15" cy="40" r="5"/></g></g></svg></span>
         <h1>Ask Claude Code <span class="grad">what you decided last month.</span></h1>
-        <p class="tagline">Claude Code forgets. <span class="nw">project-memory</span> remembers. Saved only on your computer.</p>
+        <p class="tagline">Claude Code forgets. <span class="nw" translate="no">project-memory</span> remembers. Saved only on your computer.</p>
         <p class="lede">A free plugin for Claude Code. After every reply it saves a journal of your work and a note of where you stopped.</p>
         <div class="actions">
           <a class="button primary" href="#install">Install in a minute</a>
           <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
         </div>
-        <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add zdraveski/<wbr>project-memory
-/plugin install project-memory@<wbr>project-memory</code></pre></div>
+        <p class="paste">Paste into Claude Code:</p>
+        <div class="cmd"><pre class="code" translate="no" tabindex="0"><code>/plugin marketplace add <span class="nw" translate="no">zdraveski/project-memory</span>
+/plugin install <span class="nw" translate="no">project-memory@project-memory</span></code></pre></div>
         <p class="req">Needs Claude Code and Node.js 22 or newer. Works on Windows, macOS and Linux.</p>
+        <button type="button" class="motion" aria-pressed="false"><svg class="pi plain off" aria-hidden="true"><use href="#p-pause-circle"/></svg><svg class="pi plain on" aria-hidden="true"><use href="#p-play-circle"/></svg><span>Pause motion</span></button>
       </div>
       <div class="land">
         <div class="demo">
           <div class="glass lit term">
             <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>Claude Code</b><span>~/shop</span></div>
-            <div class="panel show" role="tabpanel" id="p-pick" aria-labelledby="t-pick" tabindex="0">
-              <p class="aside-note">The next morning, a new conversation.</p>
-              <p class="you">Let's carry on.</p>
-              <p class="cl">Yesterday we finished the pricing table. <b>The checkout copy is next, so I'll start there.</b></p>
-            </div>
-            <div class="panel" role="tabpanel" id="p-find" aria-labelledby="t-find" tabindex="0">
+            <div class="panel show" role="tabpanel" id="p-find" aria-labelledby="t-find" tabindex="0">
               <p class="you">What did we decide about the logo in September?</p>
               <p class="cl">On 12 September we kept the brain with the code mark, and <b>dropped the green version because it was hard to read.</b></p>
               <p class="aside-note">Found in your journal, with the date.</p>
+            </div>
+            <div class="panel" role="tabpanel" id="p-pick" aria-labelledby="t-pick" tabindex="0">
+              <p class="aside-note">The next morning, a new conversation.</p>
+              <p class="you">Let's carry on.</p>
+              <p class="cl">Yesterday we finished the pricing table. <b>The checkout copy is next, so I'll start there.</b></p>
             </div>
             <div class="panel" role="tabpanel" id="p-undo" aria-labelledby="t-undo" tabindex="0">
               <p class="you">I deleted the note about pricing by mistake. Bring it back.</p>
@@ -772,20 +837,20 @@
             </div>
             <div class="panel" role="tabpanel" id="p-forget" aria-labelledby="t-forget" tabindex="0">
               <p class="you">Forget the password I pasted this morning.</p>
-              <p class="cl">Two journal entries from today mention it. Remove both?</p>
+              <p class="cl">2 journal entries from today mention it. Remove both?</p>
               <p class="you">Yes.</p>
               <p class="cl"><b>Removed from the journal.</b></p>
             </div>
           </div>
           <div class="tabs" role="tablist" aria-label="What it looks like in Claude Code">
-            <button class="tab" role="tab" id="t-pick" aria-controls="p-pick" aria-selected="true"><svg class="pi plain" aria-hidden="true"><use href="#p-play-circle"/></svg>Continue</button>
-            <button class="tab" role="tab" id="t-find" aria-controls="p-find" aria-selected="false" tabindex="-1"><svg class="pi plain" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>Remember</button>
+            <button class="tab" role="tab" id="t-find" aria-controls="p-find" aria-selected="true"><svg class="pi plain" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>Remember</button>
+            <button class="tab" role="tab" id="t-pick" aria-controls="p-pick" aria-selected="false" tabindex="-1"><svg class="pi plain" aria-hidden="true"><use href="#p-play-circle"/></svg>Continue</button>
             <button class="tab" role="tab" id="t-undo" aria-controls="p-undo" aria-selected="false" tabindex="-1"><svg class="pi plain" aria-hidden="true"><use href="#p-clock-counter-clockwise"/></svg>Restore</button>
             <button class="tab" role="tab" id="t-forget" aria-controls="p-forget" aria-selected="false" tabindex="-1"><svg class="pi plain" aria-hidden="true"><use href="#p-eye-slash"/></svg>Forget</button>
           </div>
         </div>
         <ul class="chips" aria-label="In short">
-          <li class="chip">Free, MIT license</li><li class="chip">No account</li><li class="chip">No servers of its own</li><li class="chip">About 900 tokens at start</li>
+          <li class="chip">Free, MIT license</li><li class="chip">No account</li><li class="chip">No servers of its own</li><li class="chip">About 900&nbsp;tokens at start</li>
         </ul>
       </div>
     </div>
@@ -840,20 +905,20 @@
             <h3>A journal you can ask</h3>
             <p>Every exchange is kept in full up to a size limit, one file per day. Ask about earlier work, and Claude searches the journal and your notes and tells you when it happened. It isn't loaded into the conversation, only searched when you ask, and search goes by words, not meaning.</p>
           </div>
-          <div class="search" aria-label="An example search">
+          <figure class="search" aria-label="An example search">
             <div class="box"><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>logo colors</div>
             <ul>
-              <li><time>12 Sep</time><span>Kept the brain with the code mark</span></li>
-              <li><time>11 Sep</time><span>Green version hard to read, dropped</span></li>
-              <li><time>9 Sep</time><span>First logo sketches, three colors</span></li>
+              <li><time datetime="2026-09-12">12 Sep</time><span>Kept the brain with the code mark</span></li>
+              <li><time datetime="2026-09-11">11 Sep</time><span>Green version hard to read, dropped</span></li>
+              <li><time datetime="2026-09-09">9 Sep</time><span>First logo sketches, three colors</span></li>
             </ul>
             <p class="cl found">On 12 September we kept the brain with the code mark, and <b>dropped the green version because it was hard to read.</b></p>
-          </div>
+          </figure>
         </div>
         <div class="glass tile">
           <div class="mini pick" aria-hidden="true">
             <span class="said past"><em>Mon</em>Let's stop here.</span>
-            <span class="tok">handoff.md</span>
+            <span class="tok" translate="no">handoff.md</span>
             <span class="said"><em>Tue</em>We stopped before pricing.</span>
           </div>
           <div><h3>Picks up where you left off</h3><p>After every reply it notes where you stopped, and the next conversation starts from there.</p></div>
@@ -879,9 +944,9 @@
       <p class="intro">There's nothing to learn and nothing to run. It works on its own after every reply.</p>
       <ol class="flow">
         <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-chat-teardrop-text"/></svg></div><h3>Claude replies</h3><p>You work with Claude Code as you always do.</p></li>
-        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg></div><h3>The journal grows</h3><p>The exchange is saved, one file per day.</p><span class="tok file">journal/2026-11-01.md</span></li>
-        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-file-text"/></svg></div><h3>Where you stopped</h3><p>The last exchanges are kept for next time.</p><span class="tok file">handoff.md</span></li>
-        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg></div><h3>The next conversation</h3><p>Claude starts with a short briefing on where you stopped, about 900 tokens.</p></li>
+        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg></div><h3>The journal grows</h3><p>The exchange is saved, one file per day.</p><span class="tok file" translate="no">journal/2026-11-01.md</span></li>
+        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-file-text"/></svg></div><h3>Where you stopped</h3><p>The last exchanges are kept for next time.</p><span class="tok file" translate="no">handoff.md</span></li>
+        <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-sun-horizon"/></svg></div><h3>The next conversation</h3><p>Claude starts with a short briefing on where you stopped, about 900&nbsp;tokens.</p></li>
       </ol>
 
       <h3 class="sub">When a long conversation fills up</h3>
@@ -924,14 +989,15 @@
         </div>
         <ul class="items">
           <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-hard-drives"/></svg></span><div><h3>No servers of its own</h3><p>It needs no account or API key.</p></div></li>
-          <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-eye-slash"/></svg></span><div><h3>Keep text out</h3><p>Put it in <span class="tok">&lt;private&gt;</span> and <span class="tok">&lt;/private&gt;</span>. Claude's reply to it stays out too.</p></div></li>
+          <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-eye-slash"/></svg></span><div><h3>Keep text out</h3><p>Put it in <span class="tok" translate="no">&lt;private&gt;</span> and <span class="tok" translate="no">&lt;/private&gt;</span>. Claude's reply to it stays out too.</p></div></li>
           <li class="glass item"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-clock-counter-clockwise"/></svg></span><div><h3>Forget on request</h3><p>Ask Claude to forget something. It lists the journal entries and removes the ones you confirm.</p></div></li>
         </ul>
       </div>
-      <p class="aside"><svg class="pi" aria-hidden="true"><use href="#p-info"/></svg><span>Anthropic still sees your conversation, as with Claude Code's own memory, and Claude Code keeps its own transcripts, which "forget" does not touch. The tags keep text out of project-memory's files only.</span></p>
+      <p class="aside"><svg class="pi" aria-hidden="true"><use href="#p-info"/></svg><span>Anthropic still sees your conversation, as with Claude Code's own memory, and Claude Code keeps its own transcripts, which “forget” does not touch. The tags keep text out of project-memory's files only.</span></p>
       <a class="button quiet" href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg>Read the privacy policy</a>
       <h3 class="sub" id="secrets">Keys and passwords are not saved.</h3>
-      <p class="intro">Sooner or later you paste a key or type a password in chat. Before anything goes into the journal, the handoff or the note kept for after a summary, project-memory replaces it with <span class="tok">[redacted]</span>.</p>
+      <p class="intro">Sooner or later you paste a key or type a password in chat. Before anything goes into the journal, the handoff or the note kept for after a summary, project-memory replaces it with <span class="tok" translate="no">[redacted]</span>.</p>
+      <div class="faq fold"><details class="glass"><summary>What it removes, and what it misses<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer">
       <div class="swap-heads" aria-hidden="true">
         <span class="b"><i></i>What you typed or ran</span>
         <span class="a"><i></i>What is saved</span>
@@ -939,21 +1005,21 @@
       <ul class="swaps">
         <li class="glass swap">
           <p class="what"><svg class="pi" aria-hidden="true"><use href="#p-key"/></svg>A key in a command</p>
-          <p class="cd bad"><span class="hidden">You typed: </span>export API_KEY=ghp_8fK…</p>
+          <p class="cd " translate="no"><span class="hidden" translate="yes">You typed: </span>export API_KEY=ghp_8fK…</p>
           <i class="go" aria-hidden="true"></i>
-          <p class="cd ok"><span class="hidden">Saved as: </span>export API_KEY=[redacted]</p>
+          <p class="cd " translate="no"><span class="hidden" translate="yes">Saved as: </span>export API_KEY=[redacted]</p>
         </li>
         <li class="glass swap">
           <p class="what"><svg class="pi" aria-hidden="true"><use href="#p-lock-key"/></svg>A password typed in chat</p>
-          <p class="cd bad"><span class="hidden">You typed: </span>the password is plum-42…</p>
+          <p class="cd " translate="no"><span class="hidden" translate="yes">You typed: </span>the password is plum-42…</p>
           <i class="go" aria-hidden="true"></i>
-          <p class="cd ok"><span class="hidden">Saved as: </span>the password is [redacted]</p>
+          <p class="cd " translate="no"><span class="hidden" translate="yes">Saved as: </span>the password is [redacted]</p>
         </li>
         <li class="glass swap">
           <p class="what"><svg class="pi" aria-hidden="true"><use href="#p-browsers"/></svg>A cookie</p>
-          <p class="cd bad"><span class="hidden">You typed: </span>Cookie: sessionid=a1b2c3…</p>
+          <p class="cd " translate="no"><span class="hidden" translate="yes">You typed: </span>Cookie: sessionid=a1b2c3…</p>
           <i class="go" aria-hidden="true"></i>
-          <p class="cd ok"><span class="hidden">Saved as: </span>Cookie: [redacted]</p>
+          <p class="cd " translate="no"><span class="hidden" translate="yes">Saved as: </span>Cookie: [redacted]</p>
         </li>
       </ul>
       <ul class="chips covers" aria-label="What it looks for">
@@ -962,10 +1028,11 @@
       <ul class="keeps">
         <li class="glass lit keep"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-folder-lock"/></svg></span><p>A note that holds a secret stays out of the snapshots, and startup names it. Promoting it to the shared store is refused.</p></li>
         <li class="glass lit keep"><span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-lock-key"/></svg></span><p>On Linux and macOS, the files it writes can be read only by you.</p></li>
-        <li class="glass hot keep"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-eye-slash"/></svg></span><p>No tool catches every secret. A look-alike Cyrillic or Greek letter gets through, for one. Put the rest in <span class="tok">&lt;private&gt;</span>.</p></li>
+        <li class="glass hot keep"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-eye-slash"/></svg></span><p>No tool catches every secret. A look-alike Cyrillic or Greek letter gets through, for one. Put the rest in <span class="tok" translate="no">&lt;private&gt;</span>.</p></li>
       </ul>
-      <p class="more">Anything saved before a newer version (notes, journal, handoff, snapshots) can be re-checked with <code>/project-memory:memory rescan</code>. It counts first and changes nothing unless you add <code>--apply --yes</code>. It then makes a backup that still holds the old text.</p>
-      <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#what-it-saves">What it removes, and what it misses</a>.</p>
+      <p class="more">Anything saved before a newer version (notes, journal, handoff, snapshots) can be re-checked with <code translate="no">/project-memory:memory rescan</code>. It counts first and changes nothing unless you add <code translate="no">--apply --yes</code>. It then makes a backup that still holds the old text.</p>
+      <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#what-it-saves">The full list, in the privacy policy</a>.</p>
+      </div></details></div>
     </div>
   </section>
 
@@ -975,7 +1042,7 @@
         <span class="big grad" aria-hidden="true">~2,500</span>
         <div>
           <h2 id="care-h">Tested before every release</h2>
-          <p>About 2,500 checks run on Windows, macOS and Linux with every change, all passing. The code is scanned for problems every week, and each release gets one review. Every step has a time limit of 5 to 120 seconds, so a stuck step can't hold Claude up.</p>
+          <p>About 2,500 checks run on Windows, macOS and Linux with every change, all passing. The code is scanned for problems every week, and each release gets one review. Every step has a time limit of 5 to 120&nbsp;seconds, so a stuck step can't hold Claude up.</p>
           <p class="more">The <a href="https://github.com/zdraveski/project-memory/actions/workflows/test.yml">test runs</a> and the <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#when-it-runs">time limits</a> are on GitHub.</p>
         </div>
       </div>
@@ -1039,12 +1106,13 @@
     <div class="wrap">
       <p class="eyebrow">Install</p>
       <h2 id="install-h">Ready <span class="grad">in a minute.</span></h2>
-      <p class="intro">Not sure what you have? Ask Claude: <em>"Do I have Node.js 22 or newer, and Git?"</em></p>
+      <p class="intro">Not sure what you have? Ask Claude: <em>“Do I have Node.js 22 or newer, and Git?”</em></p>
       <div class="install">
+        <div>
         <ol class="steps">
           <li>
-            <p>In Claude Code, type these two lines. When the second opens a menu, pick the option that installs it for you in every project (it may say user scope).</p>
-            <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add zdraveski/project-memory
+            <p>In Claude Code, type these 2 lines. When the second opens a menu, pick the option that installs it for you in every project (it may say user scope).</p>
+            <div class="cmd"><pre class="code" translate="no" tabindex="0"><code>/plugin marketplace add zdraveski/project-memory
 /plugin install project-memory@project-memory</code></pre></div>
           </li>
           <li><p>Close Claude Code and open it again.</p></li>
@@ -1052,17 +1120,22 @@
             <p>Start a conversation tomorrow. Claude begins with a short note on where you stopped, something like this:</p>
             <div class="glass term next"><div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>Where you stopped</b><span>handoff.md</span></div><div class="panel"><p><b>asked</b> Finish the pricing table</p><p><b>did</b> Pricing table done. The checkout copy is next.</p><p><b>changed</b> pricing.md</p></div></div>
           </li>
+        </ol>
+        <div class="faq fold"><details class="glass"><summary>Check it works, and update later<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer">
+        <ol class="steps" style="counter-reset: s 3">
           <li>
-            <p>To check it's working, run this. No line should start with <code>PROBLEM</code>. A line that starts with <code>note</code> is fine, such as when Git isn't installed.</p>
-            <div class="cmd"><pre class="code" tabindex="0"><code>/project-memory:memory doctor</code></pre></div>
+            <p>To check it's working, run this. No line should start with <code translate="no">PROBLEM</code>. A line that starts with <code translate="no">note</code> is fine, such as when Git isn't installed.</p>
+            <div class="cmd"><pre class="code" translate="no" tabindex="0"><code>/project-memory:memory doctor</code></pre></div>
             <p class="small">Until Claude finishes its first reply, one line says it's waiting for that reply. That's normal.</p>
           </li>
           <li>
-            <p>To update later, run these two lines in a terminal, then restart Claude Code. A marketplace you add yourself does not update on its own. To turn that on, type <code>/plugin</code>, open Marketplaces, choose project-memory and select Enable auto-update.</p>
-            <div class="cmd"><pre class="code" tabindex="0"><code>claude plugin marketplace update project-memory
+            <p>To update later, run these 2 lines in a terminal, then restart Claude Code. A marketplace you add yourself does not update on its own. To turn that on, type <code translate="no">/plugin</code>, open Marketplaces, choose project-memory and select Enable auto-update.</p>
+            <div class="cmd"><pre class="code" translate="no" tabindex="0"><code>claude plugin marketplace update project-memory
 claude plugin update project-memory@project-memory</code></pre></div>
           </li>
         </ol>
+        </div></details></div>
+        </div>
         <div class="glass needs">
           <h3>What you need</h3>
           <ul>
@@ -1083,13 +1156,13 @@ claude plugin update project-memory@project-memory</code></pre></div>
       <h2 id="faq-h">Questions <span class="grad">people ask.</span></h2>
       <div class="faq">
         <details class="glass"><summary>Does it cost anything?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No. It is free and open source under the MIT license, with no account and no API key.</p></div></details>
-        <details class="glass"><summary>Claude Code can already resume a conversation. Why add this?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p><code>/resume</code> reopens one earlier conversation with its whole history, as long as it was when it ended. project-memory starts a fresh conversation with a short briefing on where you stopped, and its journal covers every conversation you don't keep private, not only the one you reopen. Claude Code also deletes its own conversation files after 30 days unless you change that; the journal keeps each exchange until you delete it.</p></div></details>
-        <details class="glass"><summary>Does it slow Claude down or fill the conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, about 900 tokens (3,500 characters) on your last conversation, and never more than about 2,400 tokens in all; the note after a summary is usually near that.</p></div></details>
-        <details class="glass"><summary>How much disk space does it use?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Half of the journal entries are under about 5 KB. A very busy project adds up to about 110 MB a year.</p></div></details>
-        <details class="glass"><summary>Can I use it on two computers?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each computer keeps its own notes and journal; they don't sync. Don't sync the memory folder yourself (Dropbox, OneDrive): each computer would undo the other's "forget".</p></div></details>
-        <details class="glass"><summary>My model holds 200,000 tokens. Do I need to change anything?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes, for long conversations. It assumes a window of 1,000,000 tokens, so the reminder to save notes never comes. Ask Claude: "Is my context window 200,000 tokens?" If it is, ask: "Add CLAUDE_CODE_AUTO_COMPACT_WINDOW set to 200k under env in my Claude Code settings," then restart Claude Code.</p><p>On a bigger model, setting it lower than the model's window (such as 800k on a 1,000,000-token model) also asks Claude Code to let a step finish before it shortens the conversation, and even then it doesn't always wait. The note Claude gets after a summary needs nothing. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">The details</a>.</p></div></details>
-        <details class="glass" id="control"><summary>How do I stop it saving something?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Four ways, from narrow to wide.</p><ol><li><strong>One conversation:</strong> <span class="tok">/project-memory:incognito</span> stops saving this conversation and removes what it already saved, except the history's copy of days already over. Typing <span class="tok">&lt;private-session&gt;</span> does the same. If it says NOT applied, it did not work.</li><li><strong>One project:</strong> <span class="tok">/project-memory:memory-off</span> saves nothing for this project. Search still finds what was saved before. Resume with <span class="tok">memory-on</span>.</li><li><strong>All projects on this computer:</strong> set the environment variable <span class="tok">CLAUDE_CODE_<wbr>DISABLE_<wbr>AUTO_MEMORY=1</span>, or disable the plugin.</li><li><strong>Claude Code itself:</strong> Claude Code's own settings. project-memory does not read or change them, so Claude Code's own memory switch does not stop it.</li></ol><p>None of these reaches Claude Code's own files. It keeps its own transcript of every conversation, for 30 days unless you change that. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#turning-it-off">Turning it off, in detail</a>.</p></div></details>
-        <details class="glass"><summary>How do I pause or remove it?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>To pause it, run <code>claude plugin disable project-memory@project-memory</code> in a terminal and restart Claude Code. To remove it, type <code>/plugin uninstall project-memory@project-memory</code> in Claude Code. Your notes and the journal stay either way; the <a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#deleting-it">privacy policy</a> says what to delete by hand.</p></div></details>
+        <details class="glass"><summary>Claude Code can already resume a conversation. Why add this?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p><code translate="no">/resume</code> reopens one earlier conversation with its whole history, as long as it was when it ended. project-memory starts a fresh conversation with a short briefing on where you stopped, and its journal covers every conversation you don't keep private, not only the one you reopen. Claude Code also deletes its own conversation files after 30&nbsp;days unless you change that; the journal keeps each exchange until you delete it.</p></div></details>
+        <details class="glass"><summary>Does it slow Claude down or fill the conversation?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each conversation starts with a short briefing, about 900&nbsp;tokens (3,500&nbsp;characters) on your last conversation, and never more than about 2,400&nbsp;tokens in all; the note after a summary is usually near that.</p></div></details>
+        <details class="glass"><summary>How much disk space does it use?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Half of the journal entries are under about 5&nbsp;KB. A very busy project adds up to about 110&nbsp;MB a year.</p></div></details>
+        <details class="glass"><summary>Can I use it on two computers?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Each computer keeps its own notes and journal; they don't sync. Don't sync the memory folder yourself (Dropbox, OneDrive): each computer would undo the other's “forget”.</p></div></details>
+        <details class="glass"><summary>My model holds 200,000&nbsp;tokens. Do I need to change anything?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes, for long conversations. It assumes a window of 1,000,000&nbsp;tokens, so the reminder to save notes never comes. Ask Claude: “Is my context window 200,000&nbsp;tokens?” If it is, ask: “Add CLAUDE_CODE_AUTO_COMPACT_WINDOW set to 200k under env in my Claude Code settings,” then restart Claude Code.</p><p>On a bigger model, setting it lower than the model's window (such as 800k on a 1,000,000-token model) also asks Claude Code to let a step finish before it shortens the conversation, and even then it doesn't always wait. The note Claude gets after a summary needs nothing. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">The details</a>.</p></div></details>
+        <details class="glass" id="control"><summary>How do I stop it saving something?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>4 ways, from narrow to wide.</p><ol><li><strong>One conversation:</strong> <span class="tok" translate="no">/project-memory:incognito</span> stops saving this conversation and removes what it already saved, except the history's copy of days already over. Typing <span class="tok" translate="no">&lt;private-session&gt;</span> does the same. If it says NOT applied, it did not work.</li><li><strong>One project:</strong> <span class="tok" translate="no">/project-memory:memory-off</span> saves nothing for this project. Search still finds what was saved before. Resume with <span class="tok" translate="no">memory-on</span>.</li><li><strong>All projects on this computer:</strong> set the environment variable <span class="tok" translate="no">CLAUDE_CODE_<wbr>DISABLE_<wbr>AUTO_MEMORY=1</span>, or disable the plugin.</li><li><strong>Claude Code itself:</strong> Claude Code's own settings. project-memory does not read or change them, so Claude Code's own memory switch does not stop it.</li></ol><p>None of these reaches Claude Code's own files. It keeps its own transcript of every conversation, for 30&nbsp;days unless you change that. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#turning-it-off">Turning it off, in detail</a>.</p></div></details>
+        <details class="glass"><summary>How do I pause or remove it?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>To pause it, run <code translate="no">claude plugin disable project-memory@project-memory</code> in a terminal and restart Claude Code. To remove it, type <code translate="no">/plugin uninstall project-memory@project-memory</code> in Claude Code. Your notes and the journal stay either way; the <a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#deleting-it">privacy policy</a> says what to delete by hand.</p></div></details>
       </div>
       <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/docs/faq.md">All questions and answers</a>. Something missing? <a href="https://github.com/zdraveski/project-memory/discussions">Ask in Discussions</a>.</p>
     </div>
@@ -1105,11 +1178,11 @@ claude plugin update project-memory@project-memory</code></pre></div>
           <p><a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#checked-lessons-experimental">Syntax, limits and how to try a rule on past conversations</a></p>
         </div>
         <div>
-          <pre class="rule" tabindex="0"><code>enforce:
+          <pre class="rule" translate="no" tabindex="0"><code>enforce:
   on: git add
   has: [-A, --all, .]
   unless: [mktemp, init]</code></pre>
-          <p class="rule-cap">At the top level of a note's front matter (not under <code>metadata:</code>). It logs a hit when a <code>git add</code> command holds <code>-A</code>, <code>--all</code> or a bare dot.</p>
+          <p class="rule-cap">At the top level of a note's front matter (not under <code translate="no">metadata:</code>). It logs a hit when a <code translate="no">git add</code> command holds <code translate="no">-A</code>, <code translate="no">--all</code> or a bare dot.</p>
         </div>
       </div>
     </div>
@@ -1120,7 +1193,9 @@ claude plugin update project-memory@project-memory</code></pre></div>
     <div class="wrap">
       <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"></span>
       <h2 id="end-h">Stop re-explaining your project <span class="grad">to Claude Code.</span></h2>
-      <p>Free, no account, and saved only on your computer. Two lines in Claude Code, and it works in every project.</p>
+      <p>Free, no account, and saved only on your computer. 2 lines in Claude Code, and it works in every project.</p>
+      <div class="cmd"><pre class="code" translate="no" tabindex="0"><code>/plugin marketplace add zdraveski/project-memory
+/plugin install project-memory@project-memory</code></pre></div>
       <div class="actions">
         <a class="button primary" href="#install">Install in a minute</a>
         <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
@@ -1184,7 +1259,7 @@ claude plugin update project-memory@project-memory</code></pre></div>
   if (nn && bookend) bookend.append(nn.cloneNode(true));
 
   // The line of light in How it works and the logos' moon and trace repaint every frame, so they pause while off screen.
-  for (const el of document.querySelectorAll('.flow, .logo-orbit'))
+  for (const el of document.querySelectorAll('.flow, .logo-orbit, .net'))
     if ('IntersectionObserver' in window) new IntersectionObserver((es) => el.classList.toggle('away', !es[es.length - 1].isIntersecting)).observe(el);
 
   // A copy button beside each command, added only when the browser can copy.
@@ -1208,6 +1283,55 @@ claude plugin update project-memory@project-memory</code></pre></div>
     });
     box.append(b);
   }
+</script>
+<script>
+(() => {
+  const net = document.querySelector('.net');
+  if (!net) return;
+  const { n, a } = JSON.parse(net.dataset.g), layer = net.querySelector('.pul'), ns = 'http://www.w3.org/2000/svg';
+  const pick = (xs) => xs[Math.floor(Math.random() * xs.length)];
+  // start well outside the clear middle, where the light is visible; the walk may still drift inward
+  const edge = n.map((p, i) => i).filter((i) => ((n[i][0] - 800) / 430) ** 2 + ((n[i][1] - 405) / 330) ** 2 > 1.7);
+  const el = (tag, attrs) => { const e = document.createElementNS(ns, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const fire = () => {
+    const path = [pick(edge)], hops = 2 + Math.floor(Math.random() * 4);
+    while (path.length <= hops) { const nx = a[path.at(-1)].filter((j) => !path.includes(j)); if (!nx.length) break; path.push(pick(nx)); }
+    if (path.length > 2) {
+      const t = 1.4 + path.length * 0.35 + Math.random(), [sx, sy] = n[path[0]], [ex, ey] = n[path.at(-1)];
+      const g = el('g', { class: pick(['cy', 'cy', 'vi']) });
+      g.style.setProperty('--t', t + 's');
+      g.append(el('circle', { class: 'ak', cx: sx, cy: sy, r: 4 }), el('path', { class: 'tr', pathLength: 100, d: 'M' + path.map((i) => n[i].join(' ')).join(' L') }),
+        el('circle', { class: 'fd', cx: ex, cy: ey, r: 4 }), el('circle', { class: 'rp', cx: ex, cy: ey, r: 5 }));
+      layer.append(g);
+      setTimeout(() => g.remove(), t * 1000 + 100);
+    }
+    timer = setTimeout(fire, 350 + Math.random() * 1600);
+  };
+  // No timer runs unless a pulse could be seen: on screen, tab open, wide enough to show the network, motion welcome and not paused.
+  // Each of those changing runs the check again.
+  const calm = matchMedia('(prefers-reduced-motion: no-preference)'), wide = matchMedia('(min-width: 40em)'), root = document.documentElement;
+  let timer;
+  const check = () => {
+    clearTimeout(timer);
+    if (calm.matches && wide.matches && !document.hidden && !root.classList.contains('still') && !net.classList.contains('away')) fire();
+    else layer.replaceChildren();
+  };
+  calm.addEventListener('change', check); wide.addEventListener('change', check); document.addEventListener('visibilitychange', check);
+  for (const watched of [net, root]) new MutationObserver(check).observe(watched, { attributes: true, attributeFilter: ['class'] });
+  check();
+})();
+// Pause motion: the button sets one class on <html>; the page's CSS and the pulse timer both read it. The choice is kept in this browser.
+(() => {
+  const btn = document.querySelector('.motion'), root = document.documentElement;
+  if (!btn) return;
+  const set = (on) => { root.classList.toggle('still', on); btn.setAttribute('aria-pressed', String(on)); };
+  set(root.classList.contains('still'));
+  btn.addEventListener('click', () => {
+    const on = !root.classList.contains('still');
+    set(on);
+    try { localStorage.setItem('still', on ? '1' : '0'); } catch {}
+  });
+})();
 </script>
 </body>
 </html>
