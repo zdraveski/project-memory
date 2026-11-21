@@ -185,12 +185,13 @@
   p { text-wrap: pretty; }
   .hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 1.5rem; }
   h1 { font-size: clamp(2.3rem, 6vw, 5.25rem); line-height: 1; letter-spacing: -0.04em; max-width: 13em; margin: 0 auto 1.2rem; }
-  .tagline .nw { white-space: nowrap; } /* keeps "project-memory" whole on phones */
+  .nw { white-space: nowrap; } /* keeps "project-memory" and the install names whole on phones */
   .tagline { font-size: 1.4rem; line-height: 1.45; font-weight: 600; color: var(--ink); max-width: 34rem; margin: 0 auto 0.5rem; }
   .lede { font-size: 1.1rem; line-height: 1.6; color: var(--body); max-width: 38rem; margin: 0 auto 1.25rem; }
   .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
   .hero .actions { justify-content: center; }
-  .hero .cmd { width: min(100%, 34rem); margin: 1.25rem 0 0; text-align: left; }
+  .hero .paste { margin: 1.25rem 0 0.5rem; color: var(--body); font-size: 0.95rem; font-weight: 600; }
+  .hero .cmd { width: min(100%, 34rem); margin: 0; text-align: left; }
   .hero .req { color: var(--muted); font-size: 0.95rem; margin: 0.9rem 0 0; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1.5rem 0 0; padding: 0; list-style: none; }
   /* The logo in orbit. The ring is drawn twice: its back half behind the brain, its front half (clipped) over it,
@@ -594,6 +595,11 @@
   .faq .answer p + p, .faq .answer ol + p { margin-top: 0.8rem; }
   .faq .answer ol { margin: 0.8rem 0 0; padding-left: 1.3rem; display: grid; gap: 0.5rem; }
   .faq .answer .tok { white-space: normal; overflow-wrap: anywhere; }
+  /* The same fold-out holds Privacy's list of what it removes; its paragraphs keep their usual gap. */
+  .faq .answer .more { margin-top: 1.5rem; }
+  .faq.fold { margin-top: 0; max-width: none; }
+  /* Top padding: the fold-out clips its content, and the number badges sit 0.4rem above their text. */
+  .faq .answer .steps { padding: 0.5rem 0 0; gap: 0; margin: 0; }
   /* Answers grow open in 200 ms and shut in 150 ms. Browsers without interpolate-size keep the instant open. */
   @media (prefers-reduced-motion: no-preference) {
     .faq { interpolate-size: allow-keywords; }
@@ -606,6 +612,7 @@
   .closing h2 { margin-inline: auto; }
   .closing p { color: var(--body); margin: 0 auto 2rem; max-width: 34rem; font-size: 1.12rem; }
   .closing .actions { justify-content: center; }
+  .closing .cmd { width: min(100%, 34rem); margin: 0 auto 2rem; text-align: left; }
   .closing .star { margin: 1.75rem auto 0; font-size: 1rem; color: var(--muted); }
 
   footer { border-top: 1px solid var(--line); background: #03051A; color: var(--muted); padding: 2.25rem 0; font-size: 0.95rem; }
@@ -650,7 +657,12 @@
     .fork { display: none; }
     .demo .panel { min-height: 0; font-size: 0.86rem; }
     .hero { padding-top: 1.5rem; }
+    /* The requirements line comes before the buttons and the command, so it shows without scrolling. */
+    .hero .actions, .hero .paste, .hero .cmd { order: 1; }
+    .hero .req { margin: 0 0 1.25rem; }
     .code code { white-space: pre-wrap; overflow-wrap: anywhere; }
+    /* The hero command breaks only at spaces, so a name is never cut in half. */
+    .hero .code code { overflow-wrap: normal; }
     .aside-note { font-size: 0.875rem; }
     .logo-orbit { width: 9rem; height: 4.75rem; margin-bottom: 1rem; --kx: 56.25%; --ky: 81.25%; }
     .logo-orbit::before, .logo-orbit::after { width: 9rem; height: 2.6rem; margin: -1.3rem 0 0 -4.5rem; }
@@ -777,23 +789,24 @@
           <a class="button primary" href="#install">Install in a minute</a>
           <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
         </div>
-        <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add zdraveski/<wbr>project-memory
-/plugin install project-memory@<wbr>project-memory</code></pre></div>
+        <p class="paste">Paste into Claude Code:</p>
+        <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add <span class="nw">zdraveski/project-memory</span>
+/plugin install <span class="nw">project-memory@project-memory</span></code></pre></div>
         <p class="req">Needs Claude Code and Node.js 22 or newer. Works on Windows, macOS and Linux.</p>
       </div>
       <div class="land">
         <div class="demo">
           <div class="glass lit term">
             <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>Claude Code</b><span>~/shop</span></div>
-            <div class="panel show" role="tabpanel" id="p-pick" aria-labelledby="t-pick" tabindex="0">
-              <p class="aside-note">The next morning, a new conversation.</p>
-              <p class="you">Let's carry on.</p>
-              <p class="cl">Yesterday we finished the pricing table. <b>The checkout copy is next, so I'll start there.</b></p>
-            </div>
-            <div class="panel" role="tabpanel" id="p-find" aria-labelledby="t-find" tabindex="0">
+            <div class="panel show" role="tabpanel" id="p-find" aria-labelledby="t-find" tabindex="0">
               <p class="you">What did we decide about the logo in September?</p>
               <p class="cl">On 12 September we kept the brain with the code mark, and <b>dropped the green version because it was hard to read.</b></p>
               <p class="aside-note">Found in your journal, with the date.</p>
+            </div>
+            <div class="panel" role="tabpanel" id="p-pick" aria-labelledby="t-pick" tabindex="0">
+              <p class="aside-note">The next morning, a new conversation.</p>
+              <p class="you">Let's carry on.</p>
+              <p class="cl">Yesterday we finished the pricing table. <b>The checkout copy is next, so I'll start there.</b></p>
             </div>
             <div class="panel" role="tabpanel" id="p-undo" aria-labelledby="t-undo" tabindex="0">
               <p class="you">I deleted the note about pricing by mistake. Bring it back.</p>
@@ -808,8 +821,8 @@
             </div>
           </div>
           <div class="tabs" role="tablist" aria-label="What it looks like in Claude Code">
-            <button class="tab" role="tab" id="t-pick" aria-controls="p-pick" aria-selected="true"><svg class="pi plain" aria-hidden="true"><use href="#p-play-circle"/></svg>Continue</button>
-            <button class="tab" role="tab" id="t-find" aria-controls="p-find" aria-selected="false" tabindex="-1"><svg class="pi plain" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>Remember</button>
+            <button class="tab" role="tab" id="t-find" aria-controls="p-find" aria-selected="true"><svg class="pi plain" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>Remember</button>
+            <button class="tab" role="tab" id="t-pick" aria-controls="p-pick" aria-selected="false" tabindex="-1"><svg class="pi plain" aria-hidden="true"><use href="#p-play-circle"/></svg>Continue</button>
             <button class="tab" role="tab" id="t-undo" aria-controls="p-undo" aria-selected="false" tabindex="-1"><svg class="pi plain" aria-hidden="true"><use href="#p-clock-counter-clockwise"/></svg>Restore</button>
             <button class="tab" role="tab" id="t-forget" aria-controls="p-forget" aria-selected="false" tabindex="-1"><svg class="pi plain" aria-hidden="true"><use href="#p-eye-slash"/></svg>Forget</button>
           </div>
@@ -962,6 +975,7 @@
       <a class="button quiet" href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg>Read the privacy policy</a>
       <h3 class="sub" id="secrets">Keys and passwords are not saved.</h3>
       <p class="intro">Sooner or later you paste a key or type a password in chat. Before anything goes into the journal, the handoff or the note kept for after a summary, project-memory replaces it with <span class="tok">[redacted]</span>.</p>
+      <div class="faq fold"><details class="glass"><summary>What it removes, and what it misses<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer">
       <div class="swap-heads" aria-hidden="true">
         <span class="b"><i></i>What you typed or ran</span>
         <span class="a"><i></i>What is saved</span>
@@ -995,7 +1009,8 @@
         <li class="glass hot keep"><span class="ico warn" aria-hidden="true"><svg class="pi warn"><use href="#p-eye-slash"/></svg></span><p>No tool catches every secret. A look-alike Cyrillic or Greek letter gets through, for one. Put the rest in <span class="tok">&lt;private&gt;</span>.</p></li>
       </ul>
       <p class="more">Anything saved before a newer version (notes, journal, handoff, snapshots) can be re-checked with <code>/project-memory:memory rescan</code>. It counts first and changes nothing unless you add <code>--apply --yes</code>. It then makes a backup that still holds the old text.</p>
-      <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#what-it-saves">What it removes, and what it misses</a>.</p>
+      <p class="more"><a href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md#what-it-saves">The full list, in the privacy policy</a>.</p>
+      </div></details></div>
     </div>
   </section>
 
@@ -1071,6 +1086,7 @@
       <h2 id="install-h">Ready <span class="grad">in a minute.</span></h2>
       <p class="intro">Not sure what you have? Ask Claude: <em>"Do I have Node.js 22 or newer, and Git?"</em></p>
       <div class="install">
+        <div>
         <ol class="steps">
           <li>
             <p>In Claude Code, type these two lines. When the second opens a menu, pick the option that installs it for you in every project (it may say user scope).</p>
@@ -1082,6 +1098,9 @@
             <p>Start a conversation tomorrow. Claude begins with a short note on where you stopped, something like this:</p>
             <div class="glass term next"><div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>Where you stopped</b><span>handoff.md</span></div><div class="panel"><p><b>asked</b> Finish the pricing table</p><p><b>did</b> Pricing table done. The checkout copy is next.</p><p><b>changed</b> pricing.md</p></div></div>
           </li>
+        </ol>
+        <div class="faq fold"><details class="glass"><summary>Check it works, and update later<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer">
+        <ol class="steps" style="counter-reset: s 3">
           <li>
             <p>To check it's working, run this. No line should start with <code>PROBLEM</code>. A line that starts with <code>note</code> is fine, such as when Git isn't installed.</p>
             <div class="cmd"><pre class="code" tabindex="0"><code>/project-memory:memory doctor</code></pre></div>
@@ -1093,6 +1112,8 @@
 claude plugin update project-memory@project-memory</code></pre></div>
           </li>
         </ol>
+        </div></details></div>
+        </div>
         <div class="glass needs">
           <h3>What you need</h3>
           <ul>
@@ -1151,6 +1172,8 @@ claude plugin update project-memory@project-memory</code></pre></div>
       <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"></span>
       <h2 id="end-h">Stop re-explaining your project <span class="grad">to Claude Code.</span></h2>
       <p>Free, no account, and saved only on your computer. Two lines in Claude Code, and it works in every project.</p>
+      <div class="cmd"><pre class="code" tabindex="0"><code>/plugin marketplace add zdraveski/project-memory
+/plugin install project-memory@project-memory</code></pre></div>
       <div class="actions">
         <a class="button primary" href="#install">Install in a minute</a>
         <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
