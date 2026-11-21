@@ -43,8 +43,9 @@
 <style>
   /* Inter and JetBrains Mono, served from this site (SIL Open Font License, fonts/*-OFL.txt).
      Icons: Phosphor, duotone (MIT, icons/LICENSE). */
-  @font-face { font-family: "Inter"; src: url(fonts/inter.woff2) format("woff2"); font-weight: 400 800; font-display: swap; }
-  @font-face { font-family: "JetBrains Mono"; src: url(fonts/jetbrains-mono.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
+  /* optional: metric-matched fallbacks exist, so a late font never swaps and shifts text */
+  @font-face { font-family: "Inter"; src: url(fonts/inter.woff2) format("woff2"); font-weight: 400 800; font-display: optional; }
+  @font-face { font-family: "JetBrains Mono"; src: url(fonts/jetbrains-mono.woff2) format("woff2"); font-weight: 400 700; font-display: optional; }
   /* Stand-ins sized to match each font's metrics, so text does not shift when the real font arrives. */
   @font-face { font-family: "Inter Fallback"; src: local("Arial"); font-weight: 400 500; size-adjust: 107.2%; ascent-override: 90.2%; descent-override: 22.48%; line-gap-override: 0%; }
   @font-face { font-family: "Inter Fallback"; src: local("Arial Bold"); font-weight: 600 800; size-adjust: 102%; ascent-override: 94.7%; descent-override: 23.6%; line-gap-override: 0%; }
