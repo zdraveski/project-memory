@@ -45,6 +45,10 @@
      Icons: Phosphor, duotone (MIT, icons/LICENSE). */
   @font-face { font-family: "Inter"; src: url(fonts/inter.woff2) format("woff2"); font-weight: 400 800; font-display: swap; }
   @font-face { font-family: "JetBrains Mono"; src: url(fonts/jetbrains-mono.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
+  /* Stand-ins sized to match each font's metrics, so text does not shift when the real font arrives. */
+  @font-face { font-family: "Inter Fallback"; src: local("Arial"); font-weight: 400 500; size-adjust: 107.2%; ascent-override: 90.2%; descent-override: 22.48%; line-gap-override: 0%; }
+  @font-face { font-family: "Inter Fallback"; src: local("Arial Bold"); font-weight: 600 800; size-adjust: 102%; ascent-override: 94.7%; descent-override: 23.6%; line-gap-override: 0%; }
+  @font-face { font-family: "JetBrains Mono Fallback"; src: local("Courier New"); size-adjust: 100%; ascent-override: 102%; descent-override: 30%; line-gap-override: 0%; }
 
   /* The README pictures' palette (docs/art/style.css): deep navy, a cyan-to-violet glow, pink for the problem. */
   :root {
@@ -61,8 +65,8 @@
     --glass: linear-gradient(180deg, rgb(80 125 255 / 0.15), rgb(40 60 150 / 0.07));
     --solid: linear-gradient(180deg, rgb(14 24 70 / .97), rgb(8 14 44 / .97));
     --glow: linear-gradient(90deg, #22D3EE 0%, #60A5FA 55%, #A78BFA 100%);
-    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+    --sans: "Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", "JetBrains Mono Fallback", ui-monospace, Consolas, monospace;
     --wrap: 72rem;
     --fast: 180ms;
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
