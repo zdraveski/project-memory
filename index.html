@@ -43,8 +43,9 @@
 <style>
   /* Inter and JetBrains Mono, served from this site (SIL Open Font License, fonts/*-OFL.txt).
      Icons: Phosphor, duotone (MIT, icons/LICENSE). */
-  @font-face { font-family: "Inter"; src: url(fonts/inter.woff2) format("woff2"); font-weight: 400 800; font-display: swap; }
-  @font-face { font-family: "JetBrains Mono"; src: url(fonts/jetbrains-mono.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
+  /* optional: metric-matched fallbacks exist, so a late font never swaps and shifts text */
+  @font-face { font-family: "Inter"; src: url(fonts/inter.woff2) format("woff2"); font-weight: 400 800; font-display: optional; }
+  @font-face { font-family: "JetBrains Mono"; src: url(fonts/jetbrains-mono.woff2) format("woff2"); font-weight: 400 700; font-display: optional; }
   /* Stand-ins sized to match each font's metrics, so text does not shift when the real font arrives. */
   @font-face { font-family: "Inter Fallback"; src: local("Arial"); font-weight: 400 500; size-adjust: 107.2%; ascent-override: 90.2%; descent-override: 22.48%; line-gap-override: 0%; }
   @font-face { font-family: "Inter Fallback"; src: local("Arial Bold"); font-weight: 600 800; size-adjust: 102%; ascent-override: 94.7%; descent-override: 23.6%; line-gap-override: 0%; }
@@ -867,7 +868,7 @@
     <div class="wrap">
       <p class="eyebrow warn">The problem</p>
       <h2 id="problem-h">Every new conversation <span class="grad warn">starts fresh.</span></h2>
-      <p class="intro">You stop on Monday evening. On Tuesday morning you open a new conversation. What happens next depends on whether anything kept track.</p>
+      <p class="intro">You stop on Monday evening and open a new conversation on Tuesday. Here is what each setup remembers.</p>
       <div class="story">
         <div class="glass term past monday">
           <div class="term-bar"><i></i><i></i><i></i><b>Monday</b><span>18:40</span></div>
@@ -904,13 +905,13 @@
     <div class="wrap">
       <p class="eyebrow">What you get</p>
       <h2 id="get-h">What it <span class="grad">does for you.</span></h2>
-      <p class="intro">It looks after the notebook Claude Code keeps for each project, and adds a journal of everything you did. It helps most when you come back to the same project over days or weeks.</p>
+      <p class="intro">It looks after the notebook Claude Code keeps for each project and adds a journal of everything you did. It helps most when you return to a project over days or weeks.</p>
       <div class="bento">
         <div class="glass tile big">
           <div>
             <span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-magnifying-glass"/></svg></span>
             <h3>A journal you can ask</h3>
-            <p>Every exchange is kept in full up to a size limit, one file per day. Ask about earlier work, and Claude searches the journal and your notes and tells you when it happened. It isn't loaded into the conversation, only searched when you ask, and search goes by words, not meaning.</p>
+            <p>Every exchange is kept in full, up to a size limit, one file per day. Ask about earlier work and Claude searches the journal and your notes, then tells you when it happened. The journal is not loaded into the conversation. It is searched only when you ask, by words, not meaning.</p>
           </div>
           <figure class="search" aria-label="An example search">
             <div class="box"><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>logo colors</div>
@@ -948,7 +949,7 @@
     <div class="wrap">
       <p class="eyebrow">How it works</p>
       <h2 id="how-h">You work. <span class="grad">It keeps track.</span></h2>
-      <p class="intro">There's nothing to learn and nothing to run. It works on its own after every reply.</p>
+      <p class="intro">Nothing to learn, nothing to run. It works on its own after every reply.</p>
       <ol class="flow">
         <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-chat-teardrop-text"/></svg></div><h3>Claude replies</h3><p>You work with Claude Code as you always do.</p></li>
         <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg></div><h3>The journal grows</h3><p>The exchange is saved, one file per day.</p><span class="tok file" translate="no">journal/2026-11-01.md</span></li>
@@ -957,7 +958,7 @@
       </ol>
 
       <h3 class="sub">When a long conversation fills up</h3>
-      <p class="intro">Claude can only see so much at once: your messages, its replies and the files it reads. When that fills up, Claude Code shortens the conversation to a summary, and the details of a task in progress can get lost.</p>
+      <p class="intro">Claude can only see so much at once: your messages, its replies and the files it reads. When that fills up, Claude Code replaces the conversation with a summary, and details of a task in progress can get lost.</p>
       <div class="track-wrap">
         <div class="glass step">
           <div class="step-top"><span class="num" aria-hidden="true">1</span><b>Before</b><span>getting full</span></div>
@@ -1060,7 +1061,7 @@
     <div class="wrap">
       <p class="eyebrow">Compared</p>
       <h2 id="cmp-h">Claude Code, <span class="grad">with and without it.</span></h2>
-      <p class="intro">Claude Code's own memory keeps getting better. project-memory adds what it still doesn't do.</p>
+      <p class="intro">Claude Code's own memory keeps improving. project-memory adds what is still missing.</p>
       <div class="glass vs-box">
         <table class="vs" role="table">
           <caption class="hidden">For each need: what Claude Code does alone, and with project-memory</caption>
@@ -1073,7 +1074,7 @@
             </tr>
             <tr role="row">
               <th role="rowheader" scope="row"><span class="need"><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>Finding past work</span></th>
-              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>No journal, so older work is hard to find.</span></span></td>
+              <td role="cell"><span class="cell"><svg class="pi warn mk" aria-hidden="true"><use href="#p-x-circle"/></svg><span><span class="hidden">No. </span>Older work is hard to find without a journal.</span></span></td>
               <td role="cell" class="us"><span class="cell"><svg class="pi mk" aria-hidden="true"><use href="#p-check-circle"/></svg><span><span class="hidden">Yes. </span>A journal of every exchange, found with the date.</span></span></td>
             </tr>
             <tr role="row">
