@@ -160,17 +160,18 @@
   @media (hover: hover) and (pointer: fine) { .brand:hover { color: var(--ink); text-decoration: underline; } }
   .brand img { width: 2.1rem; height: auto; filter: drop-shadow(0 0 8px rgb(34 211 238 / .45)); }
   .bar nav { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
-  .bar nav :is(a, button) { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.75rem; padding: 0 0.85rem; border-radius: 0.6rem; color: var(--body); text-decoration: none; font-size: 0.97rem; font-weight: 500; transition: color var(--fast), background-color var(--fast); }
-  .bar nav button { font: inherit; font-size: 0.97rem; font-weight: 500; border: 0; background: none; cursor: pointer; }
-  .bar nav button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
-  .bar nav button .pi { width: 1.15rem; height: 1.15rem; }
-  .bar nav button .on, .bar nav button[aria-pressed="true"] .off { display: none; }
-  .bar nav button[aria-pressed="true"] .on { display: inline; }
+  .bar nav a { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.75rem; padding: 0 0.85rem; border-radius: 0.6rem; color: var(--body); text-decoration: none; font-size: 0.97rem; font-weight: 500; transition: color var(--fast), background-color var(--fast); }
+  /* Pause motion sits under the hero, next to the motion it stops, so the header stays one line on phones. */
+  .motion { align-items: center; gap: 0.45rem; min-height: 2.75rem; margin-top: 0.5rem; padding: 0 0.85rem; border: 0; border-radius: 0.6rem; background: none; color: var(--muted); font: inherit; font-size: 0.9rem; font-weight: 500; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: color var(--fast), background-color var(--fast); }
+  .motion:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .motion .pi { width: 1.15rem; height: 1.15rem; }
+  .motion .on, .motion[aria-pressed="true"] .off { display: none; }
+  .motion[aria-pressed="true"] .on { display: inline; }
   /* The button is for scripts and for people who allow motion: with reduced motion there is nothing to pause. */
   .motion { display: none !important; }
   .js .motion { display: inline-flex !important; }
   @media (prefers-reduced-motion: reduce) { .js .motion { display: none !important; } }
-  @media (hover: hover) and (pointer: fine) { .bar nav :is(a, button):hover { color: var(--ink); background: rgb(80 125 255 / .12); } }
+  @media (hover: hover) and (pointer: fine) { .bar nav a:hover, .motion:hover { color: var(--ink); background: rgb(80 125 255 / .12); } }
   .bar nav a.gh { color: var(--ink); background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); }
   .bar nav a.gh .pi { width: 1.15rem; height: 1.15rem; }
 
@@ -667,7 +668,7 @@
     .actions > .button { flex: 1 1 auto; }
     .bar nav a.wide { display: none; }
     /* On a phone the GitHub link keeps its name for screen readers and shows only the mark. */
-    .bar nav .motion span, .bar nav a.gh span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .bar nav a.gh span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     .bar nav a.gh { min-width: 2.75rem; justify-content: center; padding: 0; }
     .part { padding: 4.25rem 0; }
     .bento, .flow { grid-template-columns: 1fr; }
@@ -677,7 +678,7 @@
     .demo .panel { min-height: 0; font-size: 0.86rem; }
     .hero { padding-top: 1.5rem; }
     /* The requirements line comes before the buttons and the command, so it shows without scrolling. */
-    .hero .actions, .hero .paste, .hero .cmd { order: 1; }
+    .hero .actions, .hero .paste, .hero .cmd, .hero .motion { order: 1; }
     .hero .req { margin: 0 0 1.25rem; }
     .code code { white-space: pre-wrap; overflow-wrap: anywhere; }
     /* The hero command breaks only at spaces, so a name is never cut in half. */
@@ -791,7 +792,6 @@
       <a class="wide" href="#how">How it works</a>
       <a class="wide" href="#privacy">Privacy</a>
       <a href="#install">Install</a>
-      <button type="button" class="motion" aria-pressed="false"><svg class="pi plain off" aria-hidden="true"><use href="#p-pause-circle"/></svg><svg class="pi plain on" aria-hidden="true"><use href="#p-play-circle"/></svg><span>Pause motion</span></button>
       <a class="gh" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg><span>GitHub</span></a>
     </nav>
   </div>
@@ -814,6 +814,7 @@
         <div class="cmd"><pre class="code" translate="no" tabindex="0"><code>/plugin marketplace add <span class="nw" translate="no">zdraveski/project-memory</span>
 /plugin install <span class="nw" translate="no">project-memory@project-memory</span></code></pre></div>
         <p class="req">Needs Claude Code and Node.js 22 or newer. Works on Windows, macOS and Linux.</p>
+        <button type="button" class="motion" aria-pressed="false"><svg class="pi plain off" aria-hidden="true"><use href="#p-pause-circle"/></svg><svg class="pi plain on" aria-hidden="true"><use href="#p-play-circle"/></svg><span>Pause motion</span></button>
       </div>
       <div class="land">
         <div class="demo">
