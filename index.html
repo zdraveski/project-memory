@@ -123,16 +123,6 @@
     box-shadow: inset 0 1px 0 rgb(255 255 255 / .08), 0 22px 44px -18px rgb(0 0 0 / .7); }
   .glass.lit { border-color: rgb(34 211 238 / .6); box-shadow: 0 0 0 1px rgb(34 211 238 / .25), 0 0 34px rgb(34 211 238 / .22), inset 0 0 30px rgb(34 211 238 / .07), inset 0 1px 0 rgb(255 255 255 / .1); }
   .glass.hot { border-color: rgb(244 114 182 / .5); box-shadow: 0 0 0 1px rgb(244 114 182 / .18), 0 0 34px rgb(244 114 182 / .16), 0 22px 44px -18px rgb(0 0 0 / .7); }
-  /* On a mouse, a soft light follows the pointer across a glass panel (not in #problem, which stays as it is). It fades by a registered property, not opacity,
-     so the browser repaints the panel and gives it no layer of its own (see the glint note under How it works). */
-  @property --spot { syntax: "<number>"; inherits: false; initial-value: 0; }
-  @media (hover: hover) and (pointer: fine) {
-    .glass { isolation: isolate; }
-    .glass:not(details, #problem *)::after { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; pointer-events: none;
-      background: radial-gradient(24rem circle at var(--mx, 50%) var(--my, 50%), rgb(96 165 250 / calc(var(--spot) * .13)), transparent 65%); }
-    .glass:hover::after { --spot: 1; }
-    @media (prefers-reduced-motion: no-preference) { .glass:not(details)::after { transition: --spot 300ms var(--ease-out); } }
-  }
   .ico { flex: none; width: 3.4rem; height: 3.4rem; border-radius: 1rem; display: grid; place-items: center;
     background: linear-gradient(160deg, rgb(34 211 238 / .2), rgb(139 92 246 / .16));
     box-shadow: inset 0 0 0 1px rgb(34 211 238 / .38), 0 0 24px rgb(34 211 238 / .2); }
@@ -314,7 +304,7 @@
   @keyframes line { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 
   /* Parts */
-  .part { position: relative; isolation: isolate; padding: 6rem 0; }
+  .part { position: relative; isolation: isolate; padding: 5rem 0 4rem; }
   .part + .part { border-top: 1px solid transparent; border-image: linear-gradient(90deg, transparent, rgb(130 170 255 / .22), transparent) 1; }
   .part.closing { overflow: hidden; padding-bottom: 7rem; background: radial-gradient(40rem 22rem at 50% 100%, rgb(139 92 246 / .22), transparent 70%); }
   /* Each part sits in its own soft pool of light, placed by --at and tinted by --hue. #problem keeps its plain sky. */
@@ -468,7 +458,7 @@
   }
 
   /* Privacy: the computer it stays on, and the four promises */
-  .privacy-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 2rem; align-items: start; }
+  .privacy-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 2rem; align-items: stretch; }
   .privacy-grid > * { min-width: 0; }
   .device { overflow: hidden; background: var(--solid); }
   .tree { padding: 1.2rem 1.3rem 0.4rem; font: 500 0.88rem/1.4 var(--mono); }
@@ -1196,15 +1186,6 @@ claude plugin update project-memory@project-memory</code></pre></div>
   // The line of light in How it works and the logos' moon and trace repaint every frame, so they pause while off screen.
   for (const el of document.querySelectorAll('.flow, .logo-orbit'))
     if ('IntersectionObserver' in window) new IntersectionObserver((es) => el.classList.toggle('away', !es[es.length - 1].isIntersecting)).observe(el);
-
-  // The soft light on glass panels follows a mouse; touch screens never get it.
-  if (matchMedia('(hover: hover) and (pointer: fine)').matches) document.addEventListener('pointermove', (e) => {
-    const g = e.target.closest('.glass');
-    if (!g) return;
-    const r = g.getBoundingClientRect();
-    g.style.setProperty('--mx', `${e.clientX - r.left}px`);
-    g.style.setProperty('--my', `${e.clientY - r.top}px`);
-  }, { passive: true });
 
   // A copy button beside each command, added only when the browser can copy.
   const status = document.getElementById('copied');
