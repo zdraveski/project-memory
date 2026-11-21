@@ -255,6 +255,8 @@
   .nn .t2 { fill: none; stroke: #E6FDFF; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 101 120; stroke-dashoffset: 101; opacity: 0; }
   .nn .hd2 { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 5 200; stroke-dashoffset: 7; opacity: 0; }
   @media (prefers-contrast: more) { .nn { display: none; } }
+  /* Windows high-contrast: give buttons an outline, drop the gradient icon fill and the decorative network. */
+  @media (forced-colors: active) { .button, .bar nav a.gh { border: 1px solid ButtonText; } .pi { fill: CanvasText; filter: none; } .net { display: none; } }
   /* Travel takes 0-16% of the 12 s cycle (about 2 s); the memory lights and ripples at 16-34%. */
   @keyframes trail { 0% { stroke-dashoffset: 101; opacity: .95; } 16% { stroke-dashoffset: 0; opacity: .95; } 30%, 100% { stroke-dashoffset: 0; opacity: 0; } }
   @keyframes head { 0% { stroke-dashoffset: 7; opacity: 1; } 16% { stroke-dashoffset: -95; opacity: 1; } 20%, 100% { stroke-dashoffset: -95; opacity: 0; } }
@@ -531,7 +533,8 @@
   .limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin: 0; padding: 0; list-style: none; }
   .limits li { display: flex; align-items: center; gap: 0.75rem; padding: 0.9rem 1.1rem; border-radius: 1.1rem; color: #DBE7FF; background: rgb(139 92 246 / .06); border: 1px dashed rgb(167 139 250 / .45); font-size: 0.97rem; box-shadow: inset 0 1px 0 rgb(255 255 255 / .06); }
   .limits .pi { width: 1.35rem; height: 1.35rem; }
-  .more { margin: 1.5rem 0 0; color: var(--body); }
+  /* Long answers and notes stay near 70 characters a line, even where the box is wider. */
+  .more { margin: 1.5rem 0 0; color: var(--body); max-width: 46rem; }
   .more a, .star a { padding-block: 0.75rem; }
 
   /* Install */
@@ -613,7 +616,7 @@
   .faq summary .pi { width: 1.25rem; height: 1.25rem; transition: transform var(--fast) var(--ease-out); }
   .faq details[open] { border-color: rgb(34 211 238 / .45); }
   .faq details[open] summary .pi { transform: rotate(45deg); }
-  .faq .answer { padding: 0 0 1.3rem; color: var(--body); }
+  .faq .answer { padding: 0 0 1.3rem; color: var(--body); max-width: 44rem; }
   .faq .answer p { margin: 0; }
   .faq .answer p + p, .faq .answer ol + p { margin-top: 0.8rem; }
   .faq .answer ol { margin: 0.8rem 0 0; padding-left: 1.3rem; display: grid; gap: 0.5rem; }
@@ -957,7 +960,7 @@
       <p class="intro">Claude can only see so much at once: your messages, its replies and the files it reads. When that fills up, Claude Code shortens the conversation to a summary, and the details of a task in progress can get lost.</p>
       <div class="track-wrap">
         <div class="glass step">
-          <div class="step-top"><span class="num" aria-hidden="true">1</span><b>Before</b><span>Getting full</span></div>
+          <div class="step-top"><span class="num" aria-hidden="true">1</span><b>Before</b><span>getting full</span></div>
           <div class="track" aria-hidden="true"><b style="--w: calc(85% - 6px)"></b></div>
           <p>Claude saves its notes.</p>
         </div>
