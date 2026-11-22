@@ -210,7 +210,7 @@
 
   /* Opening, after the banner: the headline alone in the sky with the logo in orbit above it,
      and the conversation on a planet's lit edge below. */
-  .top { position: relative; isolation: isolate; overflow: hidden; padding-bottom: 1.5rem; }
+  .top { position: relative; isolation: isolate; overflow: hidden; padding-bottom: 0.5rem; }
   h1, h2 { font-weight: 800; letter-spacing: -0.025em; text-wrap: balance; }
   p { text-wrap: pretty; }
   .hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 1.5rem; }
@@ -274,13 +274,15 @@
   @keyframes found { 0%, 15% { opacity: 0; transform: scale(.5); } 17.5% { opacity: 1; transform: scale(1.5); } 25% { opacity: 1; transform: scale(1.1); } 34%, 100% { opacity: 0; transform: scale(1); } }
   @keyframes ripple { 0%, 16% { opacity: 0; transform: scale(.6); } 17% { opacity: .9; transform: scale(.8); } 31%, 100% { opacity: 0; transform: scale(3.6); } }
   /* The planet: a huge circle whose top edge catches the light, brightest where the demo sits. */
-  .land { position: relative; display: flex; flex-direction: column; align-items: center; margin-top: 5rem; padding-top: 3.5rem; }
+  .land { position: relative; display: flex; flex-direction: column; align-items: center; margin-top: 0.5rem; padding-top: 1.25rem; }
   .land::before { content: ""; position: absolute; z-index: -1; left: 50%; top: 0; width: 240rem; height: 240rem; margin-left: -120rem; border-radius: 50%; pointer-events: none;
     background: radial-gradient(circle at 50% 0, #10205C 0, #081033 6%, #050A23 18%, #040719 40%);
     box-shadow: 0 0 0 1.5px rgb(125 211 252 / .7), 0 -18px 60px rgb(56 189 248 / .35), 0 -70px 180px rgb(99 102 241 / .22), inset 0 40px 110px rgb(56 189 248 / .16); }
   .land::after { content: ""; position: absolute; z-index: -1; left: 50%; top: 0; width: 40rem; height: 7rem; margin: -3.5rem 0 0 -20rem; pointer-events: none;
     background: radial-gradient(closest-side, rgb(186 240 255 / .55), rgb(56 189 248 / .18) 45%, transparent); }
   .land .chips { justify-content: center; margin-top: 2rem; }
+  .land .chips .chip { background: none; border: 0; padding: 0.2rem 0.4rem; font-weight: 500; color: var(--body); }
+  @media (max-width: 40em) { .land .chips { display: grid; grid-template-columns: 1fr 1fr; } }
   /* The opening rises in once, the headline block first and the planet 90 ms later, then the demo plays its first answer.
      Fill is backwards only: once played, nothing is left on the layer (see the glint note under How it works). */
   @media (prefers-reduced-motion: no-preference) {
@@ -668,6 +670,7 @@
   .closing p { color: var(--body); margin: 0 auto 2rem; max-width: 34rem; font-size: 1.12rem; }
   .closing .actions { justify-content: center; }
   .closing .cmd { width: min(100%, 34rem); margin: 0 auto 2rem; text-align: left; }
+  .closing .need { font-size: 0.875rem; color: var(--muted); margin: -1.25rem auto 2rem; }
   .closing .star { margin: 1.75rem auto 0; font-size: 1rem; color: var(--muted); }
 
   footer { border-top: 1px solid var(--line); background: #03051A; color: var(--muted); padding: 2.25rem 0; font-size: 0.95rem; }
@@ -698,7 +701,7 @@
     body { font-size: 1rem; }
     h1 { font-size: 2.3rem; }
     .tagline { font-size: 1.25rem; }
-    .lede { line-height: 1.55; }
+    .lede { line-height: 1.55; margin-bottom: 1rem; }
     .lesson, .tile { padding: 1.25rem; }
     .actions > .button { flex: 1 1 auto; }
     .bar nav a.wide { display: none; }
@@ -711,16 +714,17 @@
     .story { grid-template-columns: 1fr; row-gap: 1.5rem; }
     .fork { display: none; }
     .demo .panel { min-height: 0; font-size: 0.86rem; }
-    .hero { padding-top: 1.5rem; }
+    .hero { padding-top: 0.75rem; }
     /* The requirements line comes before the buttons and the command, so it shows without scrolling. */
     .hero .actions, .hero .motion { order: 1; }
     .hero .paste, .hero .cmd { order: 2; }
     .hero .req { margin: 0 0 1.25rem; }
+    .hero .paste { margin-top: 0.75rem; }
     .code code { white-space: pre-wrap; overflow-wrap: anywhere; }
     /* The hero command breaks only at spaces, so a name is never cut in half. */
     .hero .code code { overflow-wrap: normal; }
     .aside-note { font-size: 0.875rem; }
-    .logo-orbit { width: 9rem; height: 4.75rem; margin-bottom: 1rem; --kx: 56.25%; --ky: 81.25%; }
+    .logo-orbit { width: 9rem; height: 3.4rem; margin-bottom: 0.75rem; --kx: 56.25%; --ky: 81.25%; }
     .logo-orbit::before, .logo-orbit::after { width: 9rem; height: 2.6rem; margin: -1.3rem 0 0 -4.5rem; }
     .logo-orbit img { width: 3.75rem; }
     .land { margin-top: 3.5rem; padding-top: 2.5rem; }
@@ -827,6 +831,7 @@
       <a class="wide" href="#problem">Why</a>
       <a class="wide" href="#how">How it works</a>
       <a class="wide" href="#privacy">Privacy</a>
+      <a class="wide" href="#compared">Compared</a>
       <a href="#install">Install</a>
       <a class="gh" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg><span>GitHub</span></a>
     </nav>
@@ -843,13 +848,13 @@
         <p class="tagline">Claude Code forgets. <span class="nw" translate="no">project-memory</span> remembers. Saved only on your computer.</p>
         <p class="lede">A free plugin for Claude Code. After every reply it saves a journal of your work and a note of where you stopped.</p>
         <div class="actions">
-          <a class="button primary" href="#install">Install in a minute</a>
+          <a class="button primary" href="#install" data-copy-install>Copy install lines</a>
           <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
         </div>
         <p class="paste">Paste into Claude Code:</p>
         <div class="cmd"><pre class="code" translate="no" tabindex="0"><code>/plugin marketplace add <span class="nw" translate="no">zdraveski/project-memory</span>
 /plugin install <span class="nw" translate="no">project-memory@project-memory</span></code></pre></div>
-        <p class="req">Needs Claude Code and Node.js 22 or newer. Works on Windows, macOS and Linux.</p>
+        <p class="req">Needs Claude Code and Node.js 22 or newer. Works on Windows, macOS and Linux. <a href="#install">Full install steps</a></p>
         <button type="button" class="motion"><svg class="pi plain off" aria-hidden="true"><use href="#p-pause-circle"/></svg><svg class="pi plain on" aria-hidden="true"><use href="#p-play-circle"/></svg><span class="off">Pause motion</span><span class="on">Resume motion</span></button>
       </div>
       <div class="land">
@@ -1208,6 +1213,24 @@ claude plugin update project-memory@project-memory</code></pre></div>
     </div>
   </section>
 
+  <section class="part closing" aria-labelledby="end-h">
+    <i class="stars" aria-hidden="true"></i>
+    <div class="wrap">
+      <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"></span>
+      <h2 id="end-h">Stop re-explaining your project <span class="grad">to Claude Code.</span></h2>
+      <p>Free, no account, and saved only on your computer. 2 lines in Claude Code, and it works in every project.</p>
+      <div class="cmd"><pre class="code" translate="no" tabindex="0"><code>/plugin marketplace add zdraveski/project-memory
+/plugin install project-memory@project-memory</code></pre></div>
+      <p class="need">Needs Claude Code and Node.js 22 or newer.</p>
+      <div class="actions">
+        <a class="button primary" href="#install" data-copy-install>Copy install lines</a>
+        <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>Star on GitHub</a>
+      </div>
+      <p class="star">Useful? A <a href="https://github.com/zdraveski/project-memory">star on GitHub</a> helps others find it.</p>
+    </div>
+    <i class="horizon warm" aria-hidden="true"></i>
+  </section>
+
   <section class="part slim" aria-labelledby="lessons-h">
     <div class="wrap">
       <div class="glass lesson">
@@ -1226,23 +1249,6 @@ claude plugin update project-memory@project-memory</code></pre></div>
         </div>
       </div>
     </div>
-  </section>
-
-  <section class="part closing" aria-labelledby="end-h">
-    <i class="stars" aria-hidden="true"></i>
-    <div class="wrap">
-      <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"></span>
-      <h2 id="end-h">Stop re-explaining your project <span class="grad">to Claude Code.</span></h2>
-      <p>Free, no account, and saved only on your computer. 2 lines in Claude Code, and it works in every project.</p>
-      <div class="cmd"><pre class="code" translate="no" tabindex="0"><code>/plugin marketplace add zdraveski/project-memory
-/plugin install project-memory@project-memory</code></pre></div>
-      <div class="actions">
-        <a class="button primary" href="#install">Install in a minute</a>
-        <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
-      </div>
-      <p class="star">Useful? A <a href="https://github.com/zdraveski/project-memory">star on GitHub</a> helps others find it.</p>
-    </div>
-    <i class="horizon warm" aria-hidden="true"></i>
   </section>
 </main>
 
@@ -1322,6 +1328,18 @@ claude plugin update project-memory@project-memory</code></pre></div>
       clearTimeout(reset); reset = setTimeout(() => { say('Copy'); status.textContent = ''; }, 1800);
     });
     box.append(b);
+  }
+
+  // The big button copies the two install lines (href="#install" stays as the fallback without JS or a clipboard).
+  if (navigator.clipboard) for (const a of document.querySelectorAll('[data-copy-install]')) {
+    const label = a.textContent; let reset;
+    a.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try { await navigator.clipboard.writeText(document.querySelector('.cmd code').textContent); }
+      catch { location.hash = 'install'; return; }
+      a.textContent = 'Copied'; status.textContent = 'Copied to the clipboard.';
+      clearTimeout(reset); reset = setTimeout(() => { a.textContent = label; status.textContent = ''; }, 1800);
+    });
   }
 </script>
 <script>
