@@ -198,7 +198,7 @@
   .bar nav { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
   .bar nav a { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.75rem; padding: 0 0.85rem; border-radius: 0.6rem; color: var(--body); text-decoration: none; font-size: 0.97rem; font-weight: 500; transition: color var(--fast), background-color var(--fast), transform 160ms var(--ease-out); }
   /* Pause motion sits under the hero, next to the motion it stops, so the header stays one line on phones. */
-  .motion { align-items: center; gap: 0.45rem; min-height: 2.75rem; margin-top: 0.5rem; padding: 0 0.85rem; border: 0; border-radius: 0.6rem; background: none; color: var(--muted); font: inherit; font-size: 0.9rem; font-weight: 500; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: color var(--fast), background-color var(--fast); }
+  .motion { align-items: center; gap: 0.45rem; min-height: 2.75rem; padding: 0 0.85rem; border: 0; border-radius: 0.6rem; background: none; color: var(--muted); font: inherit; font-size: 0.9rem; font-weight: 500; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: color var(--fast), background-color var(--fast); }
   .motion:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   .motion .pi { width: 1.15rem; height: 1.15rem; }
   .motion .on, .still .motion .off { display: none; }
@@ -320,6 +320,28 @@
   /* .01, not 0: the browser counts the headline as painted from the first frame, so the rise no longer delays it. */
   @keyframes rise { from { opacity: .01; transform: translateY(8px); } }
 
+  /* Wide screens: the headline and the install lines on the left, the demo beside them, so the whole opening fits one screen.
+     .land covers both columns as a subgrid: the demo takes the right of row one, and the facts sit under both, on the planet. */
+  @media (min-width: 70em) {
+    @supports (grid-template-columns: subgrid) {
+      .top > .wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3rem; }
+      .hero { grid-area: 1 / 1; z-index: 1; align-self: center; align-items: flex-start; text-align: left; padding: 1.5rem 0 2rem; }
+      .hero h1 { font-size: 3rem; line-height: 1.05; margin: 0 0 1rem; }
+      .hero .tagline { font-size: 1.25rem; margin: 0 0 0.25rem; }
+      /* The small orbit, as on phones: the header already shows the logo just above. */
+      .hero .logo-orbit { width: 9rem; height: 3.4rem; margin: 0 0 1rem; --kx: 56.25%; --ky: 81.25%; }
+      .hero .logo-orbit::before, .hero .logo-orbit::after { width: 9rem; height: 2.6rem; margin: -1.3rem 0 0 -4.5rem; }
+      .hero .logo-orbit img { width: 3.75rem; }
+      .hero .actions { justify-content: flex-start; }
+      .land { --edge: calc(100% - 10.5rem); grid-area: 1 / 1 / 5 / 3; display: grid; grid-template: subgrid / subgrid; align-items: center; justify-items: center; margin: 0; padding: 0; }
+      .land::before, .land::after { top: var(--edge); }
+      .demo { grid-area: 1 / 2; width: 100%; }
+      .land .chips { grid-area: 2 / 1 / 3 / 3; }
+      .land .proof { grid-area: 3 / 1 / 4 / 3; }
+      .land .proof + .proof { grid-row: 4 / 5; }
+    }
+  }
+
   /* The demo: a glass terminal on the planet's edge */
   .demo { position: relative; isolation: isolate; width: min(100%, 44rem); }
   .term { overflow: hidden; }
@@ -401,8 +423,16 @@
   }
   @media (prefers-contrast: more) { :is(#how, #privacy, #compared, #install, #faq)::before, :is(#how, #install, .closing)::after { display: none; } }
   h2 { font-size: clamp(2rem, 1.4rem + 2.6vw, 3.1rem); line-height: 1.08; margin: 0 0 1rem; max-width: 22ch; }
-  :is(#how, #compared, #install, #faq) h2 .grad { background: none; color: var(--cyan); -webkit-text-fill-color: currentColor; }
+  /* The coloured words break as one piece: "Claude Code," then "with and without it." */
+  h2 .grad { display: inline-block; }
   .intro { max-width: 42rem; color: var(--body); font-size: 1.2rem; line-height: 1.6; margin: 0 0 3rem; }
+  /* A part opens with its heading on the left and its introduction on the right, so neither half of a wide screen sits empty. */
+  .head { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3rem; align-items: end; margin: 0 0 3rem; }
+  .head h2, .head .intro, .head .sub { margin-bottom: 0; }
+  .head.below { margin: 3.5rem 0 1.5rem; align-items: start; }
+  .head .sub { margin-top: 0; }
+  #problem .head { align-items: start; margin-bottom: 2.5rem; }
+  .lead-in { max-width: 34rem; margin: 0 auto 1.5rem; text-align: center; color: var(--body); font-size: 1.1rem; }
   h3 { text-wrap: balance; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; margin: 0 0 0.35rem; }
 
   /* The problem: one Monday, then the next morning two ways */
@@ -509,8 +539,9 @@
   /* Privacy: the computer it stays on, and the four promises */
   .privacy-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 2rem; align-items: stretch; }
   .privacy-grid > * { min-width: 0; }
-  .device { overflow: hidden; background: var(--solid); }
-  .tree { padding: 1.2rem 1.3rem 0.4rem; font: 500 0.88rem/1.4 var(--mono); }
+  /* Beside the three cards the panel is stretched to their height: the file rows share the spare room. */
+  .device { overflow: hidden; background: var(--solid); display: flex; flex-direction: column; }
+  .tree { flex: 1; display: grid; padding: 1.2rem 1.3rem 0.4rem; font: 500 0.88rem/1.4 var(--mono); }
   .tree div { display: flex; align-items: center; gap: 0.65rem; padding: 0.5rem 0; color: #DBE7FF; }
   .tree div + div { border-top: 1px dashed rgb(130 170 255 / .18); }
   .tree .in { padding-left: 1.6rem; color: var(--body); }
@@ -634,8 +665,12 @@
   .rule code { font-size: 0.88rem; line-height: 1.75; }
   .rule-cap { margin: 0.7rem 0 0; color: var(--muted); font-size: 0.9rem; }
 
-  /* Questions */
+  /* Questions: the heading stays in view on the left while the list scrolls past on the right. */
+  .faq-cols { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); column-gap: 3rem; align-items: start; }
+  .faq-cols > :first-child { position: sticky; top: 6rem; }
+  .faq-cols > :not(:first-child) { grid-column: 2; }
   .faq { max-width: 60rem; display: grid; gap: 0.75rem; margin-top: 3rem; }
+  .faq-cols .faq { margin-top: 0; }
   /* The padding sits on the summary, so the whole row opens the answer, not just the middle. */
   .faq details { padding: 0; transition: border-color var(--fast); }
   .faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 3.75rem; padding: 0.9rem 1.4rem; font-weight: 600; font-size: 1.05rem; }
@@ -653,6 +688,7 @@
   /* The same fold-out holds Privacy's list of what it removes; its paragraphs keep their usual gap. */
   .faq .answer .more { margin-top: 1.5rem; }
   .faq.fold { margin-top: 0; max-width: none; }
+  .more + .faq.fold { margin-top: 1.5rem; }
   /* Top padding: the fold-out clips its content, and the number badges sit 0.4rem above their text. */
   .faq .answer .steps { padding: 0.5rem 0 0; gap: 0; margin: 0; }
   /* Answers grow open in 200 ms and shut in 150 ms. Browsers without interpolate-size keep the instant open. */
@@ -683,6 +719,10 @@
   /* Breakpoints are in em, so a visitor with a bigger browser text size gets the narrower layout sooner (1em = 16px at the default). */
   @media (max-width: 68em) { .install { grid-template-columns: 1fr; } .install .needs { position: static; order: -1; } }
   @media (max-width: 62.5em) {
+    .head { grid-template-columns: minmax(0, 1fr); row-gap: 1rem; }
+    .faq-cols { display: block; }
+    .faq-cols > :first-child { position: static; }
+    .faq-cols .faq { margin-top: 2rem; }
     .privacy-grid { grid-template-columns: 1fr; }
     .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 2.5rem; }
     .flow::before, .flow::after { display: none; }
@@ -849,8 +889,8 @@
         <p class="req">Needs Claude Code and Node.js 22 or newer. Works on Windows, macOS and Linux. <a href="#install">Full install steps</a></p>
         <div class="actions">
           <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
+          <button type="button" class="motion"><svg class="pi plain off" aria-hidden="true"><use href="#p-pause-circle"/></svg><svg class="pi plain on" aria-hidden="true"><use href="#p-play-circle"/></svg><span class="off">Pause motion</span><span class="on">Resume motion</span></button>
         </div>
-        <button type="button" class="motion"><svg class="pi plain off" aria-hidden="true"><use href="#p-pause-circle"/></svg><svg class="pi plain on" aria-hidden="true"><use href="#p-play-circle"/></svg><span class="off">Pause motion</span><span class="on">Resume motion</span></button>
       </div>
       <div class="land">
         <div class="demo">
@@ -896,9 +936,14 @@
 
   <section class="part" id="problem" aria-labelledby="problem-h">
     <div class="wrap">
-      <p class="eyebrow">In plain words</p>
-      <h2 id="problem-h">How do I make Claude Code <span class="grad">remember past sessions?</span></h2>
-      <p class="intro">Claude Code starts every conversation with a fresh context. The <span class="nw" translate="no">project-memory</span> plugin for Claude Code (<span class="nw" translate="no">zdraveski/project-memory</span>) is free and saves a journal of each exchange and a note of where you stopped, on your own computer. The next conversation starts with a short briefing (about 900&nbsp;tokens) on the last one, and Claude can search the journal when you ask about earlier work. No account, no API key, no server. Here is what each setup remembers when you stop on Monday evening and open a new conversation on Tuesday.</p>
+      <div class="head">
+        <div>
+          <p class="eyebrow">In plain words</p>
+          <h2 id="problem-h">How do I make Claude Code <span class="grad">remember past sessions?</span></h2>
+        </div>
+        <p class="intro">Claude Code starts every conversation with a fresh context. The <span class="nw" translate="no">project-memory</span> plugin for Claude Code (<span class="nw" translate="no">zdraveski/project-memory</span>) is free and saves a journal of each exchange and a note of where you stopped, on your own computer. The next conversation starts with a short briefing (about 900&nbsp;tokens) on the last one, and Claude can search the journal when you ask about earlier work. No account, no API key, no server.</p>
+      </div>
+      <p class="lead-in">Here is what each setup remembers when you stop on Monday evening and open a new conversation on Tuesday.</p>
       <div class="story">
         <div class="glass term past monday">
           <div class="term-bar"><i></i><i></i><i></i><b>Monday</b><span>18:40</span></div>
@@ -933,9 +978,13 @@
 
   <section class="part" id="how" aria-labelledby="how-h">
     <div class="wrap">
-      <p class="eyebrow">How it works</p>
-      <h2 id="how-h">You work. <span class="grad">It keeps track.</span></h2>
-      <p class="intro">Nothing to learn, nothing to run. It works on its own after every reply, looks after the notebook Claude Code keeps for each project and adds a journal of everything you did. It helps most when you return to a project over days or weeks.</p>
+      <div class="head">
+        <div>
+          <p class="eyebrow">How it works</p>
+          <h2 id="how-h">You work. <span class="grad">It keeps track.</span></h2>
+        </div>
+        <p class="intro">Nothing to learn, nothing to run. It works on its own after every reply, looks after the notebook Claude Code keeps for each project and adds a journal of everything you did. It helps most when you return to a project over days or weeks.</p>
+      </div>
       <ol class="flow">
         <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-chat-teardrop-text"/></svg></div><h3>Claude replies</h3><p>You work with Claude Code as you always do.</p></li>
         <li><div class="node"><svg class="pi" aria-hidden="true"><use href="#p-notebook"/></svg></div><h3>The journal grows</h3><p>The exchange is saved, one file per day.</p><span class="tok file" translate="no">journal/2026-11-01.md</span></li>
@@ -979,9 +1028,13 @@
 
   <section class="part" id="privacy" aria-labelledby="privacy-h">
     <div class="wrap">
-      <p class="eyebrow">Your privacy</p>
-      <h2 id="privacy-h">Stays on <span class="grad">your computer.</span></h2>
-      <p class="intro">It makes no connections of its own. What it saves stays in Claude Code's own folder, in your home folder. This page loads nothing from anywhere else, either.</p>
+      <div class="head">
+        <div>
+          <p class="eyebrow">Your privacy</p>
+          <h2 id="privacy-h">Stays on <span class="grad">your computer.</span></h2>
+        </div>
+        <p class="intro">It makes no connections of its own. What it saves stays in Claude Code's own folder, in your home folder. This page loads nothing from anywhere else, either.</p>
+      </div>
       <div class="privacy-grid">
         <div class="glass device" role="img" aria-label="Where it saves: in your home folder, under .claude/projects, each project's memory folder holds the journal, the record of where you stopped, and your notes. project-memory sends nothing out.">
           <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>Your computer</b></div>
@@ -1001,8 +1054,10 @@
       </div>
       <p class="aside"><svg class="pi" aria-hidden="true"><use href="#p-info"/></svg><span>Anthropic still sees your conversation, as with Claude Code's own memory, and Claude Code keeps its own transcripts, which “forget” does not touch. The tags keep text out of project-memory's files only.</span></p>
       <a class="button quiet" href="https://github.com/zdraveski/project-memory/blob/master/PRIVACY.md"><svg class="pi" aria-hidden="true"><use href="#p-shield-check"/></svg>Read the privacy policy</a>
-      <h3 class="sub" id="secrets">Keys and passwords are not saved.</h3>
-      <p class="intro">Sooner or later you paste a key or type a password in chat. Before anything goes into the journal, the handoff or the note kept for after a summary, project-memory replaces it with <span class="tok" translate="no">[redacted]</span>.</p>
+      <div class="head below">
+        <h3 class="sub" id="secrets">Keys and passwords are not saved.</h3>
+        <p class="intro">Sooner or later you paste a key or type a password in chat. Before anything goes into the journal, the handoff or the note kept for after a summary, project-memory replaces it with <span class="tok" translate="no">[redacted]</span>.</p>
+      </div>
       <div class="faq fold"><details class="glass"><summary>What it removes, and what it misses<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer">
       <div class="swap-heads" aria-hidden="true">
         <span class="b"><i></i>What you typed or ran</span>
@@ -1057,9 +1112,13 @@
 
   <section class="part" id="compared" aria-labelledby="cmp-h">
     <div class="wrap">
-      <p class="eyebrow">Compared</p>
-      <h2 id="cmp-h">Claude Code, <span class="grad">with and without it.</span></h2>
-      <p class="intro">Claude Code's own memory keeps improving. project-memory adds what is still missing.</p>
+      <div class="head">
+        <div>
+          <p class="eyebrow">Compared</p>
+          <h2 id="cmp-h">Claude Code, <span class="grad">with and without it.</span></h2>
+        </div>
+        <p class="intro">Claude Code's own memory keeps improving. project-memory adds what is still missing.</p>
+      </div>
       <div class="glass vs-box">
         <table class="vs" role="table">
           <caption class="hidden">For each need: what Claude Code does alone, and with project-memory</caption>
@@ -1110,9 +1169,13 @@
 
   <section class="part" id="install" aria-labelledby="install-h">
     <div class="wrap">
-      <p class="eyebrow">Install</p>
-      <h2 id="install-h">Ready <span class="grad">in a minute.</span></h2>
-      <p class="intro">Not sure what you have? Ask Claude: <em>“Do I have Node.js 22 or newer, and Git?”</em></p>
+      <div class="head">
+        <div>
+          <p class="eyebrow">Install</p>
+          <h2 id="install-h">Ready <span class="grad">in a minute.</span></h2>
+        </div>
+        <p class="intro">Not sure what you have? Ask Claude: <em>“Do I have Node.js 22 or newer, and Git?”</em></p>
+      </div>
       <div class="install">
         <div>
         <ol class="steps">
@@ -1178,9 +1241,11 @@ claude plugin update project-memory@project-memory</code></pre></div>
   </section>
 
   <section class="part" id="faq" aria-labelledby="faq-h">
-    <div class="wrap">
-      <p class="eyebrow">Questions</p>
-      <h2 id="faq-h">Questions about <span class="grad">Claude Code memory.</span></h2>
+    <div class="wrap faq-cols">
+      <div>
+        <p class="eyebrow">Questions</p>
+        <h2 id="faq-h">Questions about <span class="grad">Claude Code memory.</span></h2>
+      </div>
       <div class="faq">
         <details class="glass"><summary>Does it cost anything, or need an API key, account or database?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No. It is free and open source under the MIT license. It keeps plain files on your computer, with no account, API key, server or AI model writing the memories.</p></div></details>
         <details class="glass"><summary>Claude Code can already resume a conversation. Why add this?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p><code translate="no">/resume</code> reopens one earlier conversation with its whole history, as long as it was when it ended. project-memory starts a fresh conversation with a short briefing on where you stopped, and its journal covers every conversation you don't keep private, not only the one you reopen. Claude Code also deletes its own conversation files after 30&nbsp;days unless you change that; the journal keeps each exchange until you delete it.</p></div></details>
