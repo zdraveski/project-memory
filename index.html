@@ -459,7 +459,12 @@
   .head h2, .head .intro, .head .sub { margin-bottom: 0; }
   .head.below { margin: 3.5rem 0 1.5rem; align-items: start; }
   .head .sub { margin-top: 0; }
-  #problem .head { align-items: start; margin-bottom: 2.5rem; }
+  /* The question and its answer sit on the page's centre line, like the opening above and the Monday card below. */
+  #problem .head { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; row-gap: 1.5rem; margin-bottom: 3.5rem; }
+  #problem h2 { max-width: none; }
+  #problem .intro { max-width: 46rem; font-size: 1.1rem; }
+  #problem .intro .lead { font-size: 1.4rem; line-height: 1.45; font-weight: 600; color: var(--ink); margin-bottom: 0.75rem; }
+  #problem .intro > span { display: block; text-wrap: balance; }
   .lead-in { max-width: 34rem; margin: 0 auto 1.5rem; text-align: center; color: var(--body); font-size: 1.1rem; }
   h3 { text-wrap: balance; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; margin: 0 0 0.35rem; }
 
@@ -999,7 +1004,7 @@
           <p class="eyebrow">In plain words</p>
           <h2 id="problem-h">How do I make Claude Code <span class="grad">remember past sessions?</span></h2>
         </div>
-        <p class="intro">Claude Code starts every conversation with a fresh context. The <span class="nw" translate="no">project-memory</span> plugin for Claude Code (<span class="nw" translate="no">zdraveski/project-memory</span>) is free and saves a journal of each exchange and a note of where you stopped, on your own computer. The next conversation starts with a short briefing (about 900&nbsp;tokens) on the last one, and Claude can search the journal when you ask about earlier work. It needs no account or API key, and runs no server.</p>
+        <p class="intro"><span class="lead">Claude Code starts every conversation with a fresh context.</span> <span class="rest">The <span class="nw" translate="no">project-memory</span> plugin for Claude Code (<span class="nw" translate="no">zdraveski/project-memory</span>) is free and saves a journal of each exchange and a note of where you stopped, on your own computer. The next conversation starts with a short briefing (about 900&nbsp;tokens) on the last one, and Claude can search the journal when you ask about earlier work. It needs no account or API key, and runs no server.</span></p>
       </div>
       <p class="lead-in">Here is what each setup remembers when you stop on Monday evening and open a new conversation on Tuesday.</p>
       <div class="story">
