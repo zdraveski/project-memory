@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>project-memory: persistent memory for Claude Code, local and free</title>
-<meta name="description" content="A free Claude Code plugin that keeps a journal of your work and where you stopped, so a new conversation picks up from the last. Saved on your computer.">
+<title>project-memory: Persistent Memory Plugin for Claude Code</title>
+<meta name="description" content="Free memory plugin for Claude Code. A journal of your work and where you stopped, on your computer, so a new conversation picks up from the last. No account.">
 <meta name="theme-color" content="#040719">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -14,31 +14,56 @@
 <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
 <meta property="og:type" content="website">
-<meta property="og:title" content="project-memory: ask Claude Code what you decided last month">
+<meta property="og:title" content="project-memory: Persistent Memory Plugin for Claude Code">
 <meta property="og:description" content="Claude Code forgets. project-memory remembers. Saved only on your computer. A journal you can ask, a note of where you stopped, old versions of your notes, secrets kept out. Free, no account.">
 <meta property="og:url" content="https://zdraveski.github.io/project-memory/">
 <meta property="og:image" content="https://zdraveski.github.io/project-memory/social-card.png?v=3">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
+<meta property="og:site_name" content="project-memory">
 <meta property="og:image:alt" content="project-memory, with a brain logo: 'Ask Claude Code what you decided last month. Claude Code forgets. project-memory remembers. Saved only on your computer.' Below it: 'A journal you can ask', 'Picks up where you left off', 'Secrets kept out' and 'Stays on your computer'.">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="project-memory: Persistent Memory Plugin for Claude Code">
+<meta name="twitter:image:alt" content="project-memory, with a brain logo: 'Ask Claude Code what you decided last month. Claude Code forgets. project-memory remembers. Saved only on your computer.' Below it: 'A journal you can ask', 'Picks up where you left off', 'Secrets kept out' and 'Stays on your computer'.">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "project-memory",
-  "description": "A free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, on your own computer, so the next conversation starts where the last one ended.",
-  "url": "https://zdraveski.github.io/project-memory/",
-  "image": "https://zdraveski.github.io/project-memory/social-card.png",
-  "applicationCategory": "DeveloperApplication",
-  "applicationSubCategory": "Claude Code plugin",
-  "operatingSystem": "Windows, macOS, Linux",
-  "softwareRequirements": "Claude Code; Node.js 22 or newer",
-  "license": "https://opensource.org/licenses/MIT",
-  "isAccessibleForFree": true,
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-  "author": { "@type": "Person", "name": "zdraveski", "url": "https://github.com/zdraveski" },
-  "sameAs": ["https://github.com/zdraveski/project-memory"]
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://zdraveski.github.io/project-memory/#website",
+      "url": "https://zdraveski.github.io/project-memory/",
+      "name": "project-memory",
+      "inLanguage": "en"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://zdraveski.github.io/project-memory/#app",
+      "name": "project-memory",
+      "alternateName": "project-memory for Claude Code",
+      "description": "A free plugin for Claude Code. After every reply it keeps a journal of your work and a note of where you stopped, on your own computer, so the next conversation starts where the last one ended.",
+      "url": "https://zdraveski.github.io/project-memory/",
+      "mainEntityOfPage": { "@id": "https://zdraveski.github.io/project-memory/#website" },
+      "image": "https://zdraveski.github.io/project-memory/social-card.png",
+      "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "Claude Code plugin",
+      "operatingSystem": "Windows, macOS, Linux",
+      "softwareRequirements": "Claude Code; Node.js 22 or newer",
+      "featureList": [
+        "A journal of your work that you can ask questions",
+        "A note of where you stopped, so a new conversation picks up from the last",
+        "Old versions of your notes kept (needs Git)",
+        "Secrets replaced before anything is saved",
+        "Saved only on your computer"
+      ],
+      "license": "https://opensource.org/licenses/MIT",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "downloadUrl": "https://github.com/zdraveski/project-memory",
+      "author": { "@type": "Person", "name": "zdraveski", "url": "https://github.com/zdraveski" },
+      "sameAs": ["https://github.com/zdraveski/project-memory"]
+    }
+  ]
 }
 </script>
 <script>document.documentElement.classList.add('js'); try { if (localStorage.getItem('still') === '1') document.documentElement.classList.add('still'); } catch {}</script>
