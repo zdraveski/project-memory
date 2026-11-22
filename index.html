@@ -334,7 +334,8 @@
       .hero .logo-orbit { grid-area: 1 / 1 / 2 / -1; justify-self: center; width: 15rem; height: 7.5rem; margin: 0.75rem 0 0.25rem; --kx: 53.57%; --ky: 64.81%; }
       .hero .logo-orbit::before, .hero .logo-orbit::after { width: 15rem; height: 4.375rem; margin: -2.1875rem 0 0 -7.5rem; }
       .hero .logo-orbit img { width: 6.25rem; }
-      .hero h1 { grid-area: 2 / 1 / 3 / -1; justify-self: center; text-align: center; font-size: clamp(3rem, min(5.6vw, 8.4vh), 5rem); margin-bottom: 1rem; }
+      /* The headline may be wider than the columns, so a wider fallback font still gives two lines. */
+      .hero h1 { grid-area: 2 / 1 / 3 / -1; justify-self: center; width: min(16em, 100vw - 3rem); text-align: center; font-size: clamp(3rem, min(5.6vw, 8.4vh), 5rem); margin-bottom: 1rem; }
       .hero .tagline { grid-area: 3 / 1 / 4 / -1; justify-self: center; text-align: center; max-width: 46rem; margin-bottom: 1.75rem; }
       .hero .paste { grid-row: 5; margin-top: 0; }
       .hero .cmd { grid-row: 6; width: 100%; }
@@ -351,6 +352,19 @@
         .hero .logo-orbit { width: 12rem; height: 5rem; margin-top: 0; --kx: 54.5%; --ky: 70%; }
         .hero .logo-orbit::before, .hero .logo-orbit::after { width: 12rem; height: 3.5rem; margin: -1.75rem 0 0 -6rem; }
         .hero .logo-orbit img { width: 5rem; }
+      }
+      /* Short windows (a 1366x768 laptop leaves about 630 px under the browser's bars): the small orbit, as on phones, and a tighter headline. */
+      @media (max-height: 43.5em) {
+        .hero .logo-orbit { width: 9rem; height: 3.4rem; margin-bottom: 0.25rem; --kx: 56.25%; --ky: 81.25%; }
+        .hero .logo-orbit::before, .hero .logo-orbit::after { width: 9rem; height: 2.6rem; margin: -1.3rem 0 0 -4.5rem; }
+        .hero .logo-orbit img { width: 3.75rem; }
+        .hero h1 { font-size: clamp(2.6rem, min(5.6vw, 7vh), 5rem); margin-bottom: 0.75rem; }
+        .hero .tagline { font-size: 1.25rem; margin-bottom: 1.25rem; text-wrap: balance; }
+      }
+      /* Shorter still: the header already shows the logo. shortcut: the demo is cut again under about 570 px of window height. */
+      @media (max-height: 39em) {
+        .hero .logo-orbit { display: none; }
+        .hero h1 { margin-top: 0.75rem; }
       }
     }
   }
