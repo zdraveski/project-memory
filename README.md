@@ -21,7 +21,8 @@ Saved only on your computer.
 </div>
 
 Claude Code forgets everything when a conversation ends. project-memory is a
-free plugin (MIT license) that keeps a journal of your work on your own
+free, local [persistent memory plugin for Claude Code](https://zdraveski.github.io/project-memory/)
+(MIT license) that keeps a journal of your work on your own
 computer, so the next conversation starts where the last one stopped. It runs
 on its own after every reply, and it helps most when you come back to the
 same project over days or weeks.
