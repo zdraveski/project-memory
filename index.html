@@ -450,7 +450,7 @@
   .closing { --rx: calc(50% - 32rem); --ry: 2.5rem; }
   }
   @media (prefers-contrast: more) { :is(#how, #privacy, #compared, #install, #faq)::before, :is(#how, #install, .closing)::after { display: none; } }
-  h2 { font-size: clamp(2rem, 1.4rem + 2.6vw, 3.1rem); line-height: 1.08; margin: 0 0 1rem; max-width: 22ch; }
+  h2 { font-size: clamp(2rem, 1.4rem + 2.6vw, 3.5rem); line-height: 1.05; letter-spacing: -0.03em; margin: 0 0 1rem; max-width: 22ch; }
   /* The coloured words break as one piece: "Claude Code," then "with and without it." */
   h2 .grad { display: inline-block; }
   .intro { max-width: 42rem; color: var(--body); font-size: 1.2rem; line-height: 1.6; margin: 0 0 3rem; }
@@ -730,7 +730,14 @@
 
   /* Closing */
   .closing { text-align: center; }
-  .closing h2 { margin-inline: auto; }
+  /* The last word is as loud as the first: the headline at the opening's size, and the planet's edge risen into view. */
+  .closing h2 { margin-inline: auto; font-size: clamp(2rem, 5vw, 4rem); line-height: 1; max-width: 17em; }
+  .closing .horizon { bottom: -20.5rem; border-top-color: rgb(216 180 254 / .75); box-shadow: 0 -18px 60px rgb(167 139 250 / .42), 0 -70px 180px rgb(99 102 241 / .26); }
+  @media (min-width: 70em) {
+    .closing .logo-orbit { width: 15rem; height: 7.5rem; --kx: 53.57%; --ky: 64.81%; }
+    .closing .logo-orbit::before, .closing .logo-orbit::after { width: 15rem; height: 4.375rem; margin: -2.1875rem 0 0 -7.5rem; }
+    .closing .logo-orbit img { width: 6.25rem; }
+  }
   .closing p { color: var(--body); margin: 0 auto 2rem; max-width: 34rem; font-size: 1.12rem; }
   .closing .actions { justify-content: center; }
   .closing .cmd { width: min(100%, 34rem); margin: 0 auto 2rem; text-align: left; }
