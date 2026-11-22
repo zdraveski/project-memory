@@ -320,26 +320,40 @@
   /* .01, not 0: the browser counts the headline as painted from the first frame, so the rise no longer delays it. */
   @keyframes rise { from { opacity: .01; transform: translateY(8px); } }
 
-  /* Wide screens: the headline and the install lines on the left, the demo beside them, so the whole opening fits one screen.
-     .land covers both columns as a subgrid: the demo takes the right of row one, and the facts sit under both, on the planet. */
+  /* Wide screens: logo, headline and tagline across the middle, as on smaller screens. Under them the install lines on the left
+     and the demo on the right, so the whole opening fits one screen. .hero's children sit straight on the two-column grid.
+     .land covers the lower rows as a subgrid: the demo takes the right, and the facts sit under both, on the planet. */
   @media (min-width: 70em) {
     @supports (grid-template-columns: subgrid) {
-      .top > .wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3rem; }
-      .hero { grid-area: 1 / 1; z-index: 1; align-self: center; align-items: flex-start; text-align: left; padding: 1.5rem 0 2rem; }
-      .hero h1 { font-size: 3rem; line-height: 1.05; margin: 0 0 1rem; }
-      .hero .tagline { font-size: 1.25rem; margin: 0 0 0.25rem; }
-      /* The small orbit, as on phones: the header already shows the logo just above. */
-      .hero .logo-orbit { width: 9rem; height: 3.4rem; margin: 0 0 1rem; --kx: 56.25%; --ky: 81.25%; }
-      .hero .logo-orbit::before, .hero .logo-orbit::after { width: 9rem; height: 2.6rem; margin: -1.3rem 0 0 -4.5rem; }
-      .hero .logo-orbit img { width: 3.75rem; }
-      .hero .actions { justify-content: flex-start; }
-      .land { --edge: calc(100% - 10.5rem); grid-area: 1 / 1 / 5 / 3; display: grid; grid-template: subgrid / subgrid; align-items: center; justify-items: center; margin: 0; padding: 0; }
+      .top > .wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, auto) 1fr repeat(4, auto) 1fr; column-gap: 3rem; }
+      .hero { display: contents; }
+      /* .hero has no box here, so its children rise in its place. */
+      @media (prefers-reduced-motion: no-preference) { .js .hero > * { animation: rise 600ms var(--ease-out) backwards; } }
+      .hero > * { grid-column: 1; position: relative; z-index: 1; justify-self: start; text-align: left; }
+      /* A quarter larger than elsewhere. --kx and --ky follow the ring's size (see .logo-orbit). */
+      .hero .logo-orbit { grid-area: 1 / 1 / 2 / -1; justify-self: center; width: 15rem; height: 7.5rem; margin: 0.75rem 0 0.25rem; --kx: 53.57%; --ky: 64.81%; }
+      .hero .logo-orbit::before, .hero .logo-orbit::after { width: 15rem; height: 4.375rem; margin: -2.1875rem 0 0 -7.5rem; }
+      .hero .logo-orbit img { width: 6.25rem; }
+      .hero h1 { grid-area: 2 / 1 / 3 / -1; justify-self: center; text-align: center; font-size: clamp(3rem, min(5.6vw, 8.4vh), 5rem); margin-bottom: 1rem; }
+      .hero .tagline { grid-area: 3 / 1 / 4 / -1; justify-self: center; text-align: center; max-width: 46rem; margin-bottom: 1.75rem; }
+      .hero .paste { grid-row: 5; margin-top: 0; }
+      .hero .cmd { grid-row: 6; width: 100%; }
+      .hero .req { grid-row: 7; }
+      .hero .actions { grid-row: 8; justify-content: flex-start; }
+      .land { --edge: calc(100% - 10.5rem); grid-area: 4 / 1 / 13 / 3; display: grid; grid-template: subgrid / subgrid; align-items: center; justify-items: center; margin: 0; padding: 0; }
       .land::before, .land::after { top: var(--edge); }
-      .demo { grid-area: 1 / 2; width: 100%; }
-      .land .chips { grid-area: 2 / 1 / 3 / 3; }
-      .land .proof { grid-area: 3 / 1 / 4 / 3; }
-      .land .proof + .proof { grid-row: 4 / 5; }
+      .demo { grid-area: 1 / 2 / 7 / 3; width: 100%; }
+      .land .chips { grid-area: 7 / 1 / 8 / 3; }
+      .land .proof { grid-area: 8 / 1 / 9 / 3; }
+      .land .proof + .proof { grid-row: 9 / 10; }
+      /* Short screens: the usual logo, so the demo still ends above the fold. */
+      @media (max-height: 50em) {
+        .hero .logo-orbit { width: 12rem; height: 5rem; margin-top: 0; --kx: 54.5%; --ky: 70%; }
+        .hero .logo-orbit::before, .hero .logo-orbit::after { width: 12rem; height: 3.5rem; margin: -1.75rem 0 0 -6rem; }
+        .hero .logo-orbit img { width: 5rem; }
+      }
     }
+  }
   }
 
   /* The demo: a glass terminal on the planet's edge */
