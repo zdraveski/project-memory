@@ -242,13 +242,14 @@
   .hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 1.5rem; }
   h1 { font-size: clamp(2.3rem, 6vw, 5.25rem); line-height: 1; letter-spacing: -0.03em; max-width: 16em; margin: 0 auto 1.2rem; }
   .nw { white-space: nowrap; } /* keeps "project-memory" and the install names whole on phones */
-  .tagline { font-size: 1.4rem; line-height: 1.45; font-weight: 600; color: var(--ink); max-width: 34rem; margin: 0 auto 0.5rem; }
+  .tagline { font-size: 1.4rem; line-height: 1.45; font-weight: 600; color: var(--ink); max-width: 40rem; margin: 0 auto 0.5rem; }
   .lede { font-size: 1.1rem; line-height: 1.6; color: var(--body); max-width: 38rem; margin: 0 auto 1.25rem; }
   .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
   .hero .actions { justify-content: center; }
   .hero .paste { margin: 1.25rem 0 0.5rem; color: var(--body); font-size: 0.95rem; font-weight: 600; }
   .hero .cmd { width: min(100%, 34rem); margin: 0; text-align: left; }
-  .hero .req { color: var(--muted); font-size: 0.95rem; margin: 0.9rem 0 0; }
+  .hero .req { color: var(--body); font-size: 1rem; margin: 0.9rem 0 0; }
+  .hero .actions { margin-top: 1rem; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 1.5rem 0 0; padding: 0; list-style: none; }
   /* The logo in orbit. The ring is drawn twice: its back half behind the brain, its front half (clipped) over it,
      carrying one small moon. brain.png is 148 px wide, so it stays at 80 CSS px here and 60 on phones. */
@@ -742,11 +743,8 @@
     .fork { display: none; }
     .demo .panel { min-height: 0; font-size: 0.86rem; }
     .hero { padding-top: 0.75rem; }
-    /* The requirements line comes before the buttons and the command, so it shows without scrolling. */
-    .hero .actions, .hero .motion { order: 1; }
-    .hero .paste, .hero .cmd { order: 2; }
-    .hero .req { margin: 0 0 1.25rem; }
-    .hero .paste { margin-top: 0.75rem; }
+    .hero .paste { margin-top: 0.5rem; }
+    .hero .req { margin-top: 0.6rem; }
     .code code { white-space: pre-wrap; overflow-wrap: anywhere; }
     /* The hero command breaks only at spaces, so a name is never cut in half. */
     .hero .code code { overflow-wrap: normal; }
@@ -871,18 +869,15 @@
     <div class="wrap">
       <div class="hero">
         <span class="logo-orbit" aria-hidden="true"><img src="brain.png" alt="" width="148" height="136"><svg class="nn" viewBox="-103.6 -20.8 355.2 177.6" aria-hidden="true"><circle class="dot" cx="38" cy="9" r="2"/><circle class="dot" cx="63" cy="12" r="2"/><circle class="dot" cx="64" cy="63" r="2"/><circle class="dot" cx="15" cy="40" r="2"/><circle class="dot" cx="5" cy="75" r="2"/><circle class="dot" cx="41" cy="47" r="2"/><circle class="dot" cx="28" cy="66" r="2"/><circle class="dot" cx="48" cy="92" r="2"/><circle class="dot" cx="22" cy="110" r="2"/><circle class="dot" cx="52" cy="127" r="2"/><circle class="dot" cx="80" cy="9" r="2"/><circle class="dot" cx="80" cy="54" r="2"/><circle class="dot" cx="108" cy="13" r="2"/><circle class="dot" cx="112" cy="42" r="2"/><circle class="dot" cx="138" cy="52" r="2"/><g class="glow"><g style="--d:0.8s"><path class="t2" pathLength="100" d="M141 92 L103 92 L66 90 L48 92 L22 110"/><path class="hd2" pathLength="100" d="M141 92 L103 92 L66 90 L48 92 L22 110"/><circle class="b2" cx="141" cy="92" r="3.6"/><circle class="c2" cx="22" cy="110" r="4.4"/><circle class="r2" cx="22" cy="110" r="5"/></g><g style="--d:4.8s"><path class="t2" pathLength="100" d="M141 92 L138 52 L108 13 L80 9 L63 12 L38 9"/><path class="hd2" pathLength="100" d="M141 92 L138 52 L108 13 L80 9 L63 12 L38 9"/><circle class="b2" cx="141" cy="92" r="3.6"/><circle class="c2" cx="38" cy="9" r="4.4"/><circle class="r2" cx="38" cy="9" r="5"/></g><g style="--d:8.8s"><path class="t2" pathLength="100" d="M141 92 L103 92 L80 54 L64 63 L41 47 L15 40"/><path class="hd2" pathLength="100" d="M141 92 L103 92 L80 54 L64 63 L41 47 L15 40"/><circle class="b2" cx="141" cy="92" r="3.6"/><circle class="c2" cx="15" cy="40" r="4.4"/><circle class="r2" cx="15" cy="40" r="5"/></g></g></svg></span>
-        <p class="eyebrow">Local, free, no account</p>
         <h1>A memory for Claude Code that <span class="grad">stays on your computer.</span></h1>
-        <p class="tagline">No server, no database, no AI model writing your notes.</p>
-        <p class="lede"><span class="nw" translate="no">project-memory</span> makes no network connections of its own. Keys and passwords it recognizes are replaced with <span class="nw" translate="no">[redacted]</span> before anything is saved.</p>
-        <div class="actions">
-          <a class="button primary" href="#install" data-copy-install>Copy install lines</a>
-          <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
-        </div>
+        <p class="tagline">Claude starts the next conversation knowing where you stopped, and you can ask about anything from earlier.</p>
         <p class="paste">Paste into Claude Code:</p>
         <div class="cmd"><pre class="code" translate="no" tabindex="0"><code>/plugin marketplace add <span class="nw" translate="no">zdraveski/project-memory</span>
 /plugin install <span class="nw" translate="no">project-memory@project-memory</span></code></pre></div>
-        <p class="req">Needs Claude Code and Node.js 22 or newer. Works on Windows, macOS and Linux, tested on all three with every change. <a href="#install">Full install steps</a></p>
+        <p class="req">Needs Claude Code and Node.js 22 or newer. Works on Windows, macOS and Linux. <a href="#install">Full install steps</a></p>
+        <div class="actions">
+          <a class="button quiet" href="https://github.com/zdraveski/project-memory"><svg class="pi plain" aria-hidden="true"><use href="#gh-mark"/></svg>View on GitHub</a>
+        </div>
         <button type="button" class="motion"><svg class="pi plain off" aria-hidden="true"><use href="#p-pause-circle"/></svg><svg class="pi plain on" aria-hidden="true"><use href="#p-play-circle"/></svg><span class="off">Pause motion</span><span class="on">Resume motion</span></button>
       </div>
       <div class="land">
@@ -921,6 +916,7 @@
         <ul class="chips" aria-label="In short">
           <li class="chip">Free, MIT license</li><li class="chip">No account</li><li class="chip">No servers of its own</li><li class="chip">About 900&nbsp;tokens at start</li>
         </ul>
+        <p class="proof"><span class="nw" translate="no">project-memory</span> makes no network connections of its own. Keys and passwords it recognizes are replaced with <span class="nw" translate="no">[redacted]</span> before anything is saved.</p>
         <p class="proof">v1.5.4, 20 Nov 2026, MIT license, tested on Windows, macOS and Linux with every change.</p>
       </div>
     </div>
