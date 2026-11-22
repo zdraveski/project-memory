@@ -262,7 +262,7 @@
   .nn .hd2 { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 5 200; stroke-dashoffset: 7; opacity: 0; }
   @media (prefers-contrast: more) { .nn { display: none; } }
   /* Windows high-contrast: give buttons an outline, drop the gradient icon fill and the decorative network. */
-  @media (forced-colors: active) { .button, .bar nav a.gh { border: 1px solid ButtonText; } .pi { fill: CanvasText; filter: none; } .net { display: none; } }
+  @media (forced-colors: active) { .button, .bar nav a.gh { border: 1px solid ButtonText; } .pi { fill: CanvasText; filter: none; } .net { display: none; } button.tab { border: 1px solid ButtonText; } button.tab[aria-selected="true"] { border-color: Highlight; outline: 3px solid Highlight; outline-offset: -4px; } }
   /* Travel takes 0-16% of the 12 s cycle (about 2 s); the memory lights and ripples at 16-34%. */
   @keyframes trail { 0% { stroke-dashoffset: 101; opacity: .95; } 16% { stroke-dashoffset: 0; opacity: .95; } 30%, 100% { stroke-dashoffset: 0; opacity: 0; } }
   @keyframes head { 0% { stroke-dashoffset: 7; opacity: 1; } 16% { stroke-dashoffset: -95; opacity: 1; } 20%, 100% { stroke-dashoffset: -95; opacity: 0; } }
@@ -411,9 +411,11 @@
   .bento > * { min-width: 0; }
   /* The journal page that memory page writes, shown as it looks. */
   .shot { margin: 1.5rem 0 0; }
+  .shot a { display: block; border-radius: 1rem; }
   .shot img { display: block; width: 100%; height: auto; border-radius: 1rem; }
   .shot figcaption { margin-top: 0.75rem; color: var(--muted); font-size: 0.92rem; text-align: center; }
   .shot figcaption code { white-space: nowrap; }
+  .tile.big, .demo .term, .shot img { box-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 32px 64px -20px rgb(0 0 0 / .8); }
   .tile { padding: 1.6rem; display: flex; flex-direction: column; gap: 1rem; }
   .tile p { margin: 0; color: var(--body); }
   .tile .note { color: var(--muted); font-weight: 600; }
@@ -953,8 +955,8 @@
         </div>
       </div>
       <figure class="shot">
-        <img src="page.webp" width="1760" height="1138" loading="lazy" decoding="async" alt="The journal page that memory page writes: a week at a time with a count of exchanges per day, a card for each project, and below them the day's exchanges with what you asked, what Claude answered, the files it changed and a mark when it wrote a note. Search is at the top. The entries shown are made up.">
-        <figcaption>Your journal as one page: <code translate="no">/project-memory:memory page</code>. The entries shown are made up.</figcaption>
+        <a href="page.webp" target="_blank" rel="noopener"><img src="page.webp" srcset="page-880.webp 880w, page.webp 1760w" sizes="(min-width:72rem) 1104px, 100vw" width="1760" height="1138" loading="lazy" decoding="async" alt="The journal page that memory page writes: a week at a time with a count of exchanges per day, a card for each project, and below them the day's exchanges with what you asked, what Claude answered, the files it changed and a mark when it wrote a note. Search is at the top. The entries shown are made up."></a>
+        <figcaption>Your journal as one page: <code translate="no">/project-memory:memory page</code>. The entries shown are made up. Tap to open full size.</figcaption>
       </figure>
     </div>
   </section>
