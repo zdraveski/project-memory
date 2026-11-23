@@ -321,3 +321,5 @@ c90f04fa3262 src/handoff-log.mjs:943 `?.` -> `.`: it is the last statement of it
 3434888e830d src/handoff-log.mjs:1047 `false` -> `undefined`: the callback is a filter predicate, read for truthiness only
 5b94baddbdce src/handoff-log.mjs:729 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same
 2a15fad8deaa src/handoff-log.mjs:732 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same
+
+e1a8873728e2 src/memory.mjs:938 enforceHook's `.find(existsSync) ?? join(...)` -> `||`: find returns a path or undefined, never an empty string, so `||` and `??` take the same branch
