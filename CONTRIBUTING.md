@@ -30,6 +30,13 @@ named `project-memory`), then add your folder as the marketplace:
 `/plugin marketplace add <folder>`, then
 `/plugin install project-memory@project-memory`.
 
+Where things live:
+
+- `src/`: the plugin itself, the hooks and the memory tool. This is the code that ships.
+- `test/`: the test suites, their harness, and the soak and break runs.
+- `tools/`: the developer tools (check, mutants, fuzzer, benchmarks, deploy). Not shipped.
+- `docs/`: how it works, the specs and the plans.
+
 ## Tests
 
 Each suite tests the file it is named after (`store.test.mjs` tests
