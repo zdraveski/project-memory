@@ -3099,13 +3099,13 @@ process.exit(s.code || 0);
     writeFileSync(join(home, 'cache-b', '.deployed.json'), JSON.stringify({ commit: 'old1234' }));
     installed(join(home, 'cache-b'), { source: 'github' });
     r = deploy({}, '--full', '--tiering-change');
-    ok(r.status === 0 && r.stdout === `the eleven suites ... ok\nmutation check (all, ~65 min) ... ok\nsoak ... ok\nbreak harness ... ok\ndeployed ${c} to ${liveD}\nwarning: the plugin runs old1234 from ${join(home, 'cache-b')}, not ${c}: node memory.mjs doctor says why\n`, `--full checks every mutant, --tiering-change skips the dry run, an older plugin copy is named (${sum(r)})`);
+    ok(r.status === 0 && r.stdout === `the eleven suites ... ok\nmutation check (all, ~65 min) ... ok\nsoak ... ok\nbreak harness ... ok\ndeployed ${c} to ${liveD}\nwarning: the plugin runs old1234 from ${join(home, 'cache-b')}, not ${c}: node src/memory.mjs doctor says why\n`, `--full checks every mutant, --tiering-change skips the dry run, an older plugin copy is named (${sum(r)})`);
     ok(r.calls.join('|') === 'mutate.mjs|memory-tier.soak.mjs|memory-tier.break.mjs', `no dry run, every mutant (${r.calls})`);
     // A dry run that differs once and agrees on the second look passes; a plugin copy with no manifest is unknown.
     installed(join(home, 'cache-c'), { source: 'github' });
     r = deploy({ 'memory-tier.mjs@live': [{ out: 'a' }, { out: 'b' }], 'memory-tier.mjs': [{ out: 'b' }] });
     ok(r.status === 0 && r.stdout === `${ALL}soak ... ok\nbreak harness ... ok\ndry run same as live ... ok\n`
-      + `deployed ${c} to ${liveD}\nwarning: the plugin runs an unknown copy from ${join(home, 'cache-c')}, not ${c}: node memory.mjs doctor says why\n`, `a dry run is repeated once (${sum(r)})`);
+      + `deployed ${c} to ${liveD}\nwarning: the plugin runs an unknown copy from ${join(home, 'cache-c')}, not ${c}: node src/memory.mjs doctor says why\n`, `a dry run is repeated once (${sum(r)})`);
     ok(r.calls.join('|') === 'memory-tier.soak.mjs|memory-tier.break.mjs|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run|memory-tier.mjs@live --dry-run|memory-tier.mjs --dry-run', `the dry run looked at twice (${r.calls})`);
     // A dry run that differs twice stops the deploy.
     r = deploy({ 'memory-tier.mjs@live': [{ out: 'a' }], 'memory-tier.mjs': [{ out: 'b' }] });
