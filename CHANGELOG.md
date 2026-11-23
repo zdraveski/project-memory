@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.5 (2026-11-23)
+
+This release stops Claude Code from waiting on the plugin's backup after a reply. On a busy computer that backup sometimes held the end of a reply for half a minute.
+
+### Faster end of a reply
+
+- **The tidy-up and backup after a reply now run in the background.** When a reply changed a memory file, the plugin sorted the index and saved a git snapshot before Claude Code could go on. That usually took under a second, but on a loaded computer it once took 38 seconds. Now it starts as a process of its own and Claude Code goes on at once. A reply that changed no memory starts nothing extra.
+- **A manual `/compact` still waits for the tidy-up**, so the summary sees the sorted index. If the background process cannot start, the tidy-up runs in the hook as before.
+- **`memory doctor` shows the background tidy-up as its own line**, `tidy`, next to `save`, so you can see how long it takes on your machine.
+
 ## 1.5.4 (2026-11-20)
 
 This release lets you see your journal as one page in the browser, tells you which conversation and which of your requests changed a note, and starts measuring how long the plugin's hooks take on your machine. Everything stays on your computer.
