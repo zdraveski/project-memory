@@ -893,7 +893,7 @@ export async function main(argv, input) {
     const s = snapshot();
     if (s === 'busy') say('memory snapshot: busy — another session is committing; the next turn retries');
     else if (s) say(`memory snapshot: ${s}`);
-    snapshotHealth(s);
+    try { snapshotHealth(s); } catch {}   // a record the disk will not read or write is skipped (a fault), never a crash
     T.mark('snapshot');
   }
   // The tool's own writes are part of the stamp, so the next turn is quiet

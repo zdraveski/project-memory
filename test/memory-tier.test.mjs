@@ -694,6 +694,15 @@ ok(tracked().includes('proj-two/memory/f2.md') && sh().failures === 0 && !sh().b
 rmSync(join(root, '.snapshot-health'));
 r = await stop('proj-two');
 ok(!existsSync(join(root, '.snapshot-health')), '--stop: a quiet Stop with no snapshot record owes none, and runs no git');
+// A health record that cannot be read (a disk fault) is skipped, not a crash, and not written over: exit 0, the record as it was.
+const hpath = join(root, '.snapshot-health');
+writeFileSync(hpath, JSON.stringify({ failures: 4, pending: true }));
+const hBefore = readFileSync(hpath, 'utf8');
+writeFileSync(join(root, 'proj-two', 'memory', 'unreadable-health.md'), 'x');
+r = await swap('node:fs', 'readFileSync', (real) => (p, ...a) => { if (String(p).endsWith('.snapshot-health')) throw Object.assign(new Error('EBUSY: injected'), { code: 'EBUSY' }); return real(p, ...a); }, () => stop('proj-two'));
+ok(readFileSync(hpath, 'utf8') === hBefore, '--stop: an unreadable .snapshot-health is skipped, not crashed on, and not written over');
+unlinkSync(join(root, 'proj-two', 'memory', 'unreadable-health.md'));
+rmSync(hpath);
 // Twenty Stops at once outlast one 2 s wait, and a session's last Stop has no later one to take its turn up: a Stop that finds
 // the store held waits once more, after a pause (defect hunt 1.3.2, C5). The holder here lets go at about 2.6 s.
 if (!quick) {
