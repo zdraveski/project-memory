@@ -467,17 +467,17 @@ ok(sh().failures === 0 && sh().lastOk, 'and a good one resets the count');
     r = await swap('node:child_process', 'spawn', fake, () => stopAs('PreCompact'));
     ok(r.status === 0 && !spawned.length && tracked().includes('proj-one/memory/bg-three.md'), 'a manual /compact still tidies before it returns');
 
-    // As the hook runs it: the Stop exits while its child is still held, and the child commits after. A child that kept the
+    // As the hook runs it: the Stop exits while its child is still held (15 s; a Stop on a slow runner takes 1-2 s), and the child commits after. A child that kept the
     // hook's pipes (Windows handle inheritance) held the Stop until it was done.
     const pre = join(tempDir('memtier-slowtidy-'), 'slow.cjs');
-    writeFileSync(pre, "if (process.argv.includes('--tidy')) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);\n");
+    writeFileSync(pre, "if (process.argv.includes('--tidy')) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15000);\n");
     note('proj-one', 'bg-four');
     const timed = () => existsSync(join(root, '.timing')) ? readFileSync(join(root, '.timing'), 'utf8').split('\n').filter((l) => l.includes('"h":"tidy"')).length : 0;
     const tidies = timed(), t0 = Date.now();
     const p = spawnSync(process.execPath, [TOOL, '--stop'], { env: { ...process.env, NODE_OPTIONS: `--require "${pre.replace(/\\/g, '/')}"` }, encoding: 'utf8',
       input: JSON.stringify({ ...JSON.parse(stopInput('proj-one')), hook_event_name: 'Stop' }), timeout: 60000 });
     const took = Date.now() - t0;
-    ok(p.status === 0 && took < 4000 && !tracked().includes('proj-one/memory/bg-four.md'), `the Stop returns while its tidy-up is still running (took ${took} ms, status ${p.status})`);
+    ok(p.status === 0 && took < 10000 && !tracked().includes('proj-one/memory/bg-four.md'), `the Stop returns while its tidy-up is still running (took ${took} ms, status ${p.status})`);
     while (timed() === tidies && Date.now() - t0 < 60000) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
     ok(tracked().includes('proj-one/memory/bg-four.md') && timed() === tidies + 1, `and the tidy-up commits after it, with a timing line of its own (${Date.now() - t0} ms)`);
   } finally { process.env.PROJECT_MEMORY_TIDY = 'inline'; }

@@ -4,9 +4,9 @@
 // on demand. Pointer prose is MOVED verbatim between the two files, never
 // rewritten -- the hook text is hand-written and carries the recall value.
 //
-// Run: node memory-tier.mjs [--dry-run] [--dir <memory dir>]
+// Run: node memory-tier.mjs [--dry-run] [--dir <memory dir>] [--tidy <memory dir>]
 // As the Stop hook (and before a manual /compact) it runs with `--stop`, the
-// payload on stdin, and tiers that session's own store; a manual run walks them all.
+// payload on stdin, and tiers that session's own store (a Stop hands that to a `--tidy` process of its own); a manual run walks them all.
 
 import { chmodSync, mkdirSync, readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
