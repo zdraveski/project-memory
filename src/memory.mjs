@@ -934,7 +934,8 @@ export function doctor(site = sessionStore()) {
 
 // Whether the plugin copy at `at` has the PreToolUse group and an enforce hook that starts, exits 0 and prints nothing: [fine, text].
 function enforceHook(at) {
-  const file = join(at, 'enforce-hook.mjs');
+  // A pre-1.5.6 copy keeps its files flat; a false PROBLEM on one would send the user to a needless update.
+  const file = [join(at, 'src', 'enforce-hook.mjs'), join(at, 'enforce-hook.mjs')].find(existsSync) ?? join(at, 'src', 'enforce-hook.mjs');
   if (!existsSync(file)) return [false, `${file} is missing: the enforce hook cannot run. The user's fix: claude plugin update ${PLUGIN}`];
   if (!json(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.length) return [false, `hooks.json in ${at} has no PreToolUse group: the enforce hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
   if (!json(join(at, 'hooks', 'hooks.json'))?.hooks?.SubagentStop?.length) return [false, `hooks.json in ${at} has no SubagentStop group: subagent reports are not saved. The user's fix: claude plugin update ${PLUGIN}`];

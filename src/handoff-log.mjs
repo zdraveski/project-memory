@@ -1039,7 +1039,7 @@ export const hash = (buf) => createHash('sha256').update(buf).digest('hex');
 // changed or gone there since is live and untested: name it. Run from the
 // repo, with no manifest, there is nothing to say; nor with a damaged one:
 // thrown, it took every other line of the startup message with it.
-export function edited(here = dirname(fileURLToPath(import.meta.url))) {
+export function edited(here = dirname(dirname(fileURLToPath(import.meta.url)))) {
   try {
     const m = JSON.parse(readFileSync(join(here, '.deployed.json'), 'utf8'));
     const bad = Object.keys(m.files).filter((f) => {

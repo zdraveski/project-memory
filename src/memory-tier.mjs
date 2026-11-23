@@ -644,7 +644,7 @@ const reloadNotice = (payload) => {
   let all = null; try { all = JSON.parse(readFileSync(join(configDir(), 'plugins', 'installed_plugins.json'), 'utf8')).plugins; } catch {}
   const entry = Object.entries(all ?? {}).find(([k]) => k.split('@')[0] === 'project-memory')?.[1]?.[0];
   const have = entry && (entry.version ?? (entry.installPath && ver(join(entry.installPath, '.claude-plugin', 'plugin.json'))));
-  const runs = ver(fileURLToPath(new URL('./.claude-plugin/plugin.json', import.meta.url)));
+  const runs = ver(fileURLToPath(new URL('../.claude-plugin/plugin.json', import.meta.url)));
   if (typeof have !== 'string' || typeof runs !== 'string' || !newer(have, runs)) return null;
   const mark = join(projectsRoot(), '.nudge', `${tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''))}.reload`);
   let was = null; try { was = readFileSync(mark, 'utf8'); } catch {}
