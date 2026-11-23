@@ -498,7 +498,7 @@ ok(JSON.stringify(wiring) === JSON.stringify(['PreCompact | auto | node ${CLAUDE
   'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/src/brief.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'SubagentStop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop']),
   `the plugin wires its hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
 {
-  const { HOOKS } = await import('./deploy.mjs');
+  const { HOOKS } = await import('../deploy.mjs');
   const named = wiring.map((w) => w.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/(\S+)/)[1]);
   ok(named.every((f) => HOOKS.includes(f)), `every script hooks.json runs is deployed (HOOKS lacks ${named.filter((f) => !HOOKS.includes(f))})`);
 }
@@ -652,7 +652,7 @@ ok(/^ok +1 pack index file\(s\) [^\n]*have no pack[^\n]*pack-dead\.idx$/m.test((
   const o = await cli('doctor');
   ok(o.status === 1 && new RegExp(`^PROBLEM .*pm-purge-x.*forget`, 'm').test(o.stdout), `doctor: an old pm-purge folder is a problem, named, with the command that clears it (got ${o.stdout})`);
   // Named past LOCK_STALE, not at it (the same edge as a lock's).
-  { const { LOCK_STALE } = await import('./src/store.mjs'), realNow = Date.now, old = new Date(realNow() - 3600_000); utimesSync(d, old, old);
+  { const { LOCK_STALE } = await import('../src/store.mjs'), realNow = Date.now, old = new Date(realNow() - 3600_000); utimesSync(d, old, old);
     const mt = statSync(d).mtimeMs; let edge, past;
     try { Date.now = () => mt + LOCK_STALE; edge = await cli('doctor'); Date.now = () => mt + LOCK_STALE + 1; past = await cli('doctor'); } finally { Date.now = realNow; }
     ok(!/pm-purge/.test(edge.stdout) && /pm-purge-x/.test(past.stdout), `doctor: a pm-purge folder exactly LOCK_STALE old is not named, one ms more is (got ${edge.stdout} / ${past.stdout})`); }
@@ -988,7 +988,7 @@ if (!quick) {
 // The journal, searched: Claude asks in the user's words for past work, by
 // what was asked, or by the days it was done.
 {
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const jd = join(root, 'C--jr', 'memory'), other = join(root, 'C--jr2', 'memory');
   const jcli = (...a) => run([...a, '--store', jd]);
   let n = 0;
@@ -1324,7 +1324,7 @@ ${r.stdout}`, 'stop words with a range list the range, naming the dropped words'
 // forget: the user's say over the journal. Claude lists what would go, the
 // user confirms, and only --yes removes it.
 {
-  const { render } = await import('./src/journal.mjs'), { local } = await import('./src/store.mjs');
+  const { render } = await import('../src/journal.mjs'), { local } = await import('../src/store.mjs');
   const fd = join(root, 'C--fg', 'memory'), fj = join(fd, 'journal'), today = local().slice(0, 10);
   const fcli = (...a) => run([...a, '--store', fd]);
   const cc = `Claude Code still keeps these exchanges in its own conversation files (the .jsonl files in ${root}): forget does not change them\n`;
@@ -1632,9 +1632,9 @@ ${r.stdout}`, 'stop words with a range list the range, naming the dropped words'
 // promote at their limits, doctor's limits, forget's failures.
 {
   const { history, restore, promote } = await import(pathToFileURL(CLI).href);
-  const { render } = await import('./src/journal.mjs');
-  const { budgetOf, LOCK_STALE, gitArgs } = await import('./src/store.mjs');
-  const { GRACE } = await import('./src/handoff-log.mjs');
+  const { render } = await import('../src/journal.mjs');
+  const { budgetOf, LOCK_STALE, gitArgs } = await import('../src/store.mjs');
+  const { GRACE } = await import('../src/handoff-log.mjs');
   const { default: fsm } = await import('node:fs'), { syncBuiltinESMExports } = await import('node:module');
   const mdir = (name) => { const d = join(root, name, 'memory'); mkdirSync(d, { recursive: true }); return d; };
   const bytes = (s) => Buffer.byteLength(s);
@@ -2807,7 +2807,7 @@ See [[nonexist-${GH}]]
 
 // forget --purge: the finished day is in the snapshots; --yes alone leaves it there, --purge drops it from every commit.
 {
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const pd = join(root, 'C--purge', 'memory'), word = 'zebrafish-' + 'purge';
   mkdirSync(join(pd, 'journal'), { recursive: true });
   const e = { key: 'pk1', at: '2020-01-02 10:00', s: 'c0ffee12', t: 'C--purge/c0ffee12-full', branch: 'main', asked: `remember ${word}`, answered: 'noted', changed: [], ran: [] };
@@ -2857,7 +2857,7 @@ See [[nonexist-${GH}]]
 
 // git writes a path with bytes past ASCII as "..." with octal escapes (a store folder named with an accent): the purge reads them back.
 {
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const pd = join(root, 'C--pürge', 'memory'), word = 'okapi-' + 'quoted';
   mkdirSync(join(pd, 'journal'), { recursive: true });
   const e = { key: 'pk2', at: '2020-01-03 10:00', s: 'c0ffee13', t: 'C--pürge/c0ffee13-full', branch: 'main', asked: `remember ${word}`, answered: 'noted', changed: [], ran: [] };
@@ -2958,7 +2958,7 @@ See [[nonexist-${GH}]]
 
 // 1.5.0 P39: the skill's description makes Claude search before answering, relative dates included.
 {
-  const d = readFileSync(new URL('./skills/memory/SKILL.md', import.meta.url), 'utf8').match(/^description: (.*)$/m)[1];
+  const d = readFileSync(new URL('../skills/memory/SKILL.md', import.meta.url), 'utf8').match(/^description: (.*)$/m)[1];
   ok(/before answering/i.test(d) && /last week/.test(d) && /earlier work/.test(d), `the skill description names answering and relative dates (got ${d})`);
 }
 
@@ -3006,7 +3006,7 @@ See [[nonexist-${GH}]]
   const s = await run(['status', '--store', hd]), q = await run(['search', 'quokka', '--store', hd]);
   ok(s.status === 0 && q.status === 0 && /real-note\.md/.test(q.stdout) && !/folder\.md/.test(q.stdout), `a folder named folder.md is skipped (got ${s.stderr}${q.stderr}${q.stdout})`);
   // A forget list that cannot be read (here a folder) is not fatal to a search that was not asked to report it.
-  const { FORGOTTEN } = await import('./src/handoff-log.mjs');
+  const { FORGOTTEN } = await import('../src/handoff-log.mjs');
   const { search: searchFn } = await import(pathToFileURL(CLI).href);
   mkdirSync(join(hd, FORGOTTEN), { recursive: true });
   ok(Array.isArray(searchFn([hd], 'quokka')), 'a search with no failure list survives an unreadable forget list');
@@ -3038,7 +3038,7 @@ See [[nonexist-${GH}]]
 
 // 1.5.3 holes (privacy): a header field is cut at 100, show defuses what it prints, a reply is redacted before its first sentence is cut.
 {
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const jd = join(root, 'C--jp', 'memory'), jcli = (...a) => run([...a, '--store', jd]);
   let n = 0;
   const entry = (at, asked, over = {}) => ({ key: `p${n++}`, at, s: 'c0ffee12', t: 'C--jp/c0ffee12-full', branch: 'main', asked, answered: 'done', changed: [], ran: [], ...over });
@@ -3060,7 +3060,7 @@ See [[nonexist-${GH}]]
 
 // 1.5.3 holes: what each field of a journal entry and of a note is worth in a ranking.
 {
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const jd = join(root, 'C--sc', 'memory'), jcli = (...a) => run([...a, '--store', jd]);
   let n = 0;
   const entry = (asked, over = {}) => ({ key: `s${n++}`, at: '2026-10-05 10:00', s: 'c0ffee12', t: 'C--sc/c0ffee12-full', branch: 'main', asked, answered: 'done', changed: [], ran: [], ...over });
@@ -3096,7 +3096,7 @@ See [[nonexist-${GH}]]
 
 // 1.5.3 holes: what tells entries apart in the rank (word rarity, length, a typed phrase), by pairs where one constant flips the order.
 {
-  const { render } = await import('./src/journal.mjs'), { search: rankOf } = await import(pathToFileURL(CLI).href);
+  const { render } = await import('../src/journal.mjs'), { search: rankOf } = await import(pathToFileURL(CLI).href);
   const keys = (dir, q) => rankOf([dir], q).map((h) => Number(h.key.slice(1)));   // the function, not the CLI: the CLI adds the shared store, whose size moves the weights
   const W = ['zorp', 'quib', 'flum'];
   const rows = [
@@ -3206,7 +3206,7 @@ again ${key2}
 
 // 1.5.3 holes: a purge drops only the named day, in every commit, and leaves the rest of the history as it was (a folder with a non-ASCII name is quoted by git).
 {
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const h9 = tempHome('purge2-'), r9 = join(h9.home, '.claude', 'projects'), tier = () => spawnSync(process.execPath, [TIER], { env: h9.env, encoding: 'utf8' });
   const pd = join(r9, 'C--pürge-keep', 'memory'), word = 'quokkaz-' + 'purge', other = 'wombatz-' + 'stays';
   mkdirSync(join(pd, 'journal'), { recursive: true });
@@ -3481,7 +3481,7 @@ again ${key2}
 // 1.5.3 holes: how search, show and forget print what they find: the range in a line, the stores counted, a short request's reply, show's keys and exit.
 { // In this process, so the suite's own home again (an earlier tempHome moved it).
   process.env.HOME = process.env.USERPROFILE = home;
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const jd = join(root, 'C--l2', 'memory'), jcli = (...a) => run([...a, '--store', jd]);
   mkdirSync(jd, { recursive: true });
   let n = 0;
@@ -3565,7 +3565,7 @@ again ${key2}
 // 1.5.3 holes: an incognito run on a conversation already swept sweeps it again (what the conversation wrote since is not left in the journal).
 {
   const h = tempHome('incog3-'), pr = join(h.home, '.claude', 'projects'), proj = join(pr, 'C--ig3'), d = join(proj, 'memory'), SID = 'ffffffff-6666';
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   mkdirSync(proj, { recursive: true });
   writeFileSync(join(proj, `${SID}.jsonl`), [{ type: 'user', text: 'tell me about narwhal tusks' }, { type: 'assistant', text: 'a tusk is a tooth' }].map((m) => JSON.stringify({ type: m.type, cwd: 'C:\ig3', timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text: m.text }] } })).join('\n') + '\n');
   const inc = () => spawnSync(process.execPath, [CLI, 'incognito', '--session', SID], { env: h.env, encoding: 'utf8' });
@@ -3582,7 +3582,7 @@ again ${key2}
 // 1.5.3 holes: a forget --purge of what the journal no longer holds takes the days that held every word, and says so; a failed purge, and a store another hook holds.
 {
   process.env.HOME = process.env.USERPROFILE = home;
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const pd = join(root, 'C--purge2', 'memory'), wa = 'aardvark-' + 'purge', wb = 'bonobo-' + 'purge', J = join(pd, 'journal');
   mkdirSync(J, { recursive: true });
   const e = (d, asked) => ({ key: `pg${d}`, at: `${d} 10:00`, s: 'c0ffee12', t: 'C--purge2/c0ffee12-full', branch: 'main', asked, answered: 'noted', changed: [], ran: [] });
@@ -3620,7 +3620,7 @@ again ${key2}
 
 // 99b. search --file, --asked and --conversation: five made-up entries, two conversations, one helper, one private turn.
 {
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const sd = join(root, 'C--flt', 'memory'), sj = join(sd, 'journal'), hd = join(root, 'C--flt-helper', 'memory');
   const fcli = (...a) => run([...a, '--store', sd]);
   const at = (a, b, c, d, e) => ({ key: a, at: b, s: c.slice(0, 8), t: `C--flt/${c}`, branch: '', asked: d, answered: e[0], changed: e.slice(1), ran: [] });
@@ -3691,7 +3691,7 @@ again ${key2}
 }
 // who said it: history and show name the exchange behind a note.
 {
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const wd = join(root, 'C--who', 'memory'), nj = join(root, 'C--nojournal', 'memory'), wcli = (...a) => run([...a, '--store', wd]);
   mkdirSync(wd, { recursive: true }); mkdirSync(nj, { recursive: true });
   const pad = (v) => String(v).padStart(2, '0'), d5 = new Date(Date.now() - 5 * 60000);
@@ -3755,7 +3755,7 @@ again ${key2}
 }
 // show <note>: the first and the newest exchange behind a note, when no entry has that name as its key.
 {
-  const { render } = await import('./src/journal.mjs');
+  const { render } = await import('../src/journal.mjs');
   const sd = join(root, 'C--show', 'memory'), scli = (...a) => run([...a, '--store', sd]);
   mkdirSync(join(sd, 'journal'), { recursive: true });
   memory(sd, 'rules', 'how we write rules'); memory(sd, 'quiet', 'nothing changed it');
@@ -3785,8 +3785,8 @@ again ${key2}
 }
 // 1.5.4 the page: `memory page` writes one local HTML file of the journal and prints its link; forget, incognito, off and rescan --apply delete it.
 {
-  const { render } = await import('./src/journal.mjs');
-  const { pagePath, dropPage, local } = await import('./src/store.mjs');
+  const { render } = await import('../src/journal.mjs');
+  const { pagePath, dropPage, local } = await import('../src/store.mjs');
   const saved = process.env.CLAUDE_CONFIG_DIR, cfg = join(tempDir('page-'), 'my config é');
   process.env.CLAUDE_CONFIG_DIR = cfg;
   try {
@@ -3894,7 +3894,7 @@ again ${key2}
     ok(r.status === 0 && !existsSync(join(shop, '.lock')) && !existsSync(join(proot, 'C--work-garden', 'memory', '.lock')), 'a free store is locked for the run and left free');
 
     // A page past the size limit is not written: 20,000 entries made 129 MB.
-    const { PAGE_LIMIT } = await import('./src/memory.mjs'), kept = PAGE_LIMIT.bytes;
+    const { PAGE_LIMIT } = await import('../src/memory.mjs'), kept = PAGE_LIMIT.bytes;
     PAGE_LIMIT.bytes = 1000; dropPage();
     try { r = await page(); } finally { PAGE_LIMIT.bytes = kept; }
     ok(r.status === 1 && /^the page would be \d+(\.\d)? (KB|MB), over the limit of 1000 B; nothing written\. Use --days N for fewer days/.test(r.stdout) && !existsSync(pagePath()), `past the limit it says so, and writes nothing (got ${r.status} ${r.stdout})`);

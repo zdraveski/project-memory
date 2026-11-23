@@ -37,18 +37,18 @@ Each suite tests the file it is named after (`store.test.mjs` tests
 `~/.claude`:
 
 ```
-node store.test.mjs
-node compact-gate.test.mjs
-node handoff-log.test.mjs
-node memory-tier.test.mjs
-node memory.test.mjs
-node journal.test.mjs
-node recall.test.mjs
-node enforce.test.mjs
-node enforce-hook.test.mjs
-node timing.test.mjs
-node page.test.mjs
-node bench.test.mjs
+node test/store.test.mjs
+node test/compact-gate.test.mjs
+node test/handoff-log.test.mjs
+node test/memory-tier.test.mjs
+node test/memory.test.mjs
+node test/journal.test.mjs
+node test/recall.test.mjs
+node test/enforce.test.mjs
+node test/enforce-hook.test.mjs
+node test/timing.test.mjs
+node test/page.test.mjs
+node test/bench.test.mjs
 ```
 
 A suite that passes ends with one line, `<suite>: <n> checks passed`. One
@@ -165,10 +165,10 @@ Beyond the suites:
   workflow) only if someone asks, splits the mutants across 17 machines
   (GitHub Free runs 20 jobs at once). It runs all the hand-written ones in about
   20 minutes (2026-11), and with `auto` on, the automatic ones too.
-- `node memory-tier.soak.mjs [store] [--days N]` copies a store (by default the largest
+- `node test/memory-tier.soak.mjs [store] [--days N]` copies a store (by default the largest
   on the machine) to a temp folder, then simulates 30 days (or N) of new notes and
   sessions ending at the same moment.
-- `node memory-tier.break.mjs [store]` breaks a copy of a store in 13 ways
+- `node test/memory-tier.break.mjs [store]` breaks a copy of a store in 13 ways
   (and runs one control with nothing broken) and checks that no line is lost
   and that a second run leaves `MEMORY.md` unchanged.
 - `node bench.mjs [runs]` times each hook on a made-up busy store (60 days of

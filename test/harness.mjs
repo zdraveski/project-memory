@@ -33,8 +33,8 @@ export async function capture(fn) {
 }
 
 // The repo root, and a path from it (`src/store.mjs`), as execFileSync wants it.
-export const ROOT = fileURLToPath(new URL('./', import.meta.url));
-export const tool = (name) => fileURLToPath(new URL(`./${name}`, import.meta.url));
+export const ROOT = fileURLToPath(new URL('../', import.meta.url));
+export const tool = (name) => fileURLToPath(new URL(`../${name}`, import.meta.url));
 
 // The store the hook derives from a cwd, under a given home.
 export const slug = (cwd) => cwd.replace(/[^A-Za-z0-9]/g, '-');

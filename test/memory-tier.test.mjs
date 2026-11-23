@@ -1510,7 +1510,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 
 // A journal day is committed once it is over, never while it is today's.
 {
-  const { local } = await import('./src/store.mjs');
+  const { local } = await import('../src/store.mjs');
   const today = local().slice(0, 10), yesterday = local(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - 1, 12)).slice(0, 10);   // noon: DST-safe
   const jd = join(root, 'proj-one', 'memory', 'journal'), rel = (d) => `proj-one/memory/journal/${d}.md`;
   mkdirSync(jd, { recursive: true });
@@ -1584,7 +1584,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 // The nudge's reader gone before it is written: exit 0. Thrown with no
 // listener, the pipe's EPIPE made the Stop exit 1 (P1 hunt, 2026-10-29).
 {
-  const { TRIGGER, WINDOW } = await import('./src/compact-gate.mjs');
+  const { TRIGGER, WINDOW } = await import('../src/compact-gate.mjs');
   const pe = join(root, 'C--epipe'), te = join(pe, 'epipe.jsonl'), ctx = Math.round(TRIGGER * WINDOW) + 5000;
   mkdirSync(pe, { recursive: true });
   writeFileSync(te, [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'go' } },
@@ -2096,7 +2096,7 @@ require('node:module').syncBuiltinESMExports();
     const lineBytes = bytesOf(runLines().at(-1)) + 1;
     ok(JSON.parse(runLines().at(-1)).s === 'abcdefgh', `--stop: the run log names a conversation by its first eight characters (got ${runLines().at(-1)})`);
     // And the reply by a fingerprint: two quick replies of one conversation read as hooks wired twice (audit H-F10).
-    const { keyed } = await import('./src/store.mjs');
+    const { keyed } = await import('../src/store.mjs');
     await call(['--stop'], JSON.stringify({ ...payload, last_assistant_message: 'a reply to tell apart' }));
     ok(JSON.parse(runLines().at(-1)).m === keyed('a reply to tell apart', 8), `--stop: the run log carries the reply's fingerprint (got ${runLines().at(-1)})`);
     const fill = 8192 - lineBytes, whole100 = Math.floor(fill / 100) - 1, rest = fill - whole100 * 100;
@@ -2505,7 +2505,7 @@ ${b}
 // An update installs a newer copy, but the session keeps running the one it started with until /reload-plugins:
 // the Stop says so once per version, in a line for the user (systemMessage), and never for the same or an older one.
 {
-  const plug = join(home, '.claude', 'plugins'), at = join(home, 'cache-pm'), ours = JSON.parse(readFileSync(new URL('./.claude-plugin/plugin.json', import.meta.url), 'utf8')).version;
+  const plug = join(home, '.claude', 'plugins'), at = join(home, 'cache-pm'), ours = JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version;
   mkdirSync(join(at, '.claude-plugin'), { recursive: true }); mkdirSync(plug, { recursive: true });
   const installed = (v) => { writeFileSync(join(at, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: v })); writeFileSync(join(plug, 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@some-market': [{ installPath: at }] } })); };
   const said = (id) => {
@@ -2527,7 +2527,7 @@ ${b}
   ok(said('reload3').includes(`${a}.${b}.${c}.1 is installed`), 'a longer version with the same start is newer');
   // Past the compaction trigger in the same Stop: one JSON line carries both, the notice for the user and the nudge for Claude.
   {
-    const { TRIGGER, WINDOW } = await import('./src/compact-gate.mjs'), big = join(root, 'proj-two', 'big.jsonl'), ctx = Math.round(TRIGGER * WINDOW) + 20_000;
+    const { TRIGGER, WINDOW } = await import('../src/compact-gate.mjs'), big = join(root, 'proj-two', 'big.jsonl'), ctx = Math.round(TRIGGER * WINDOW) + 20_000;
     const rec = (type, content, message = {}) => JSON.stringify({ type, timestamp: '2026-09-13T13:00:00Z', message: { content, ...message } });
     writeFileSync(big, [rec('user', [{ type: 'text', text: 'q' }]), rec('assistant', [{ type: 'text', text: 'a' }], { stop_reason: 'end_turn', usage: { input_tokens: 3, cache_read_input_tokens: ctx - 3, cache_creation_input_tokens: 0, output_tokens: 9 } })].join('\n') + '\n');
     const r = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ hook_event_name: 'Stop', cwd: 'C:\\nowhere', transcript_path: big, session_id: 'reload5' }) });

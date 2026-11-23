@@ -15,7 +15,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { tool, tempHome, largestStore } from './harness.mjs';
+import { tool, tempHome, largestStore } from './test/harness.mjs';
 import { projectsRoot, storeOf } from './src/store.mjs';
 import { liveTimes } from './live-times.mjs';
 import { pct, stats, read, FILE } from './src/timing.mjs';

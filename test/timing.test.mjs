@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor, slug } from './harness.mjs';
-import { begin, tag, mark, flush, read, cut, stats, pct, FILE, MAX } from './src/timing.mjs';
+import { begin, tag, mark, flush, read, cut, stats, pct, FILE, MAX } from '../src/timing.mjs';
 
 const { home } = tempHome('timing-');
 let checks = 0;

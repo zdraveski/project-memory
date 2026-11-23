@@ -39,7 +39,7 @@ const gate = (trigger = 'auto') => {
 const gateRun = (session = 's1') => spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: session }), env, encoding: 'utf8', timeout: 30_000 });
 // The nudge runs inside memory-tier.mjs's Stop path; call it in-process here,
 // under the throwaway HOME tempHome set.
-const { nudge, TRIGGER, WINDOW, tokens } = await import('./src/compact-gate.mjs');
+const { nudge, TRIGGER, WINDOW, tokens } = await import('../src/compact-gate.mjs');
 // A count of zero is a count (read from the environment it is the string '0'); none is NaN.
 ok(tokens(0) === 0 && tokens('0') === 0 && Number.isNaN(tokens(undefined)) && Number.isNaN(tokens(null)), 'tokens reads zero as zero and nothing as NaN');
 // The trigger moves with CLAUDE_CODE_AUTO_COMPACT_WINDOW: sizes are relative to it.
@@ -328,7 +328,7 @@ writeFileSync(join(dir, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:sta
 writeFileSync(offList, 's1\n');
 write(user('the Acme offer is 2.1M'), asst('drafting the 2.1M offer', 965_000, 'tool_use'), result('ok'));
 {
-  const { recover } = await import('./src/compact-gate.mjs');
+  const { recover } = await import('../src/compact-gate.mjs');
   const g = gate(), noted = readFileSync(join(dir, 'handoff.md'), 'utf8'), rec2 = recover({ cwd, transcript_path: transcript, session_id: 's1' });
   ok(g.code === 0 && !/cut mid-turn|2\.1M/.test(noted) && rec2 === '', `a conversation held with auto memory off gets no in-flight note and no recovery note (got ${noted.split('<!-- auto:start -->')[1]}, ${JSON.stringify(rec2)})`);
 }
@@ -420,8 +420,8 @@ if (!quick) {
 
 // Round 3 (2026-10-27).
 {
-const { tokens } = await import('./src/compact-gate.mjs');
-const { hushed, handoff: hand } = await import('./src/handoff-log.mjs');
+const { tokens } = await import('../src/compact-gate.mjs');
+const { hushed, handoff: hand } = await import('../src/handoff-log.mjs');
 const state = () => JSON.parse(execFileSync(process.execPath, [GATE, '--state', transcript], { env }).toString());
 // A task's end now arrives as a queued attachment record: read only from user
 // records, every finished task stayed "still running", and the note said not
@@ -461,7 +461,7 @@ ok(nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 
 // F22: nor one marked <private-session> in an earlier turn whose Stop failed to save the mark (a full or busy disk): its list does
 // not name it, its transcript does. Read as the list and this turn alone, it got a nudge and a recovery note (fuzz 169429269).
 {
-  const { recover } = await import('./src/compact-gate.mjs');
+  const { recover } = await import('../src/compact-gate.mjs');
   const earlier = (...rest) => writeFileSync(tp, [user('<private-session> the merger is Contoso'), asst('noted', 1000, 'end_turn'), user('plan it'), ...rest].join('\n') + '\n');
   earlier(asst('planning', T + 100_000, 'end_turn'));
   const n = nudge({ hook_event_name: 'Stop', cwd: cwdP, transcript_path: tp, session_id: 'ssssssss-1' });
@@ -490,7 +490,7 @@ ok(existsSync(join(home, '.claude', 'projects', '.nudge', 'abcdefgh')) && !exist
 // private here, where nothing is swept: no nudge, no recovery note, no note
 // from the gate. Read as no tags, a private conversation got all three.
 {
-  const { default: fsm } = await import('node:fs'), { syncBuiltinESMExports } = await import('node:module'), { recover: recovered } = await import('./src/compact-gate.mjs');
+  const { default: fsm } = await import('node:fs'), { syncBuiltinESMExports } = await import('node:module'), { recover: recovered } = await import('../src/compact-gate.mjs');
   const read = fsm.readFileSync;
   const refused = (fn) => {
     fsm.readFileSync = (p, ...a) => { if (String(p).endsWith('.private-sessions')) throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }); return read(p, ...a); };
@@ -519,7 +519,7 @@ require('node:module').syncBuiltinESMExports();
 ok(tokens('200k') === 200_000 && tokens('1M') === 1_000_000 && tokens('800000') === 800_000 && tokens(' 1.5m ') === 1_500_000 && Number.isNaN(tokens('lots')) && Number.isNaN(tokens('')), 'window sizes are read with k and M suffixes');
 const windowWith = (vars) => {
   for (const [k, v] of Object.entries(vars)) process.env[k] = v;
-  try { return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `import { WINDOW, MODEL_WINDOW, TRIGGER } from ${JSON.stringify(new URL('./src/compact-gate.mjs', import.meta.url).href)}; console.log(JSON.stringify({ WINDOW, MODEL_WINDOW, TRIGGER }))`], { env }).toString()); }
+  try { return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `import { WINDOW, MODEL_WINDOW, TRIGGER } from ${JSON.stringify(new URL('../src/compact-gate.mjs', import.meta.url).href)}; console.log(JSON.stringify({ WINDOW, MODEL_WINDOW, TRIGGER }))`], { env }).toString()); }
   finally { for (const k of Object.keys(vars)) delete process.env[k]; }
 };
 const w1 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200k' });
@@ -641,7 +641,7 @@ require('node:module').syncBuiltinESMExports();
 }
 
 // A transcript that is gone: nothing to read, nothing deferred, said as such.
-const { recover } = await import('./src/compact-gate.mjs');
+const { recover } = await import('../src/compact-gate.mjs');
 const gone2 = join(dir, 'gone.jsonl');
 ok(recover({ transcript_path: gone2, session_id: 's1' }) === '' && recover({}) === '', 'no recovery note when the transcript is missing');
 write(user('done'), asst('all done', 965_000, 'end_turn'));
@@ -659,7 +659,7 @@ ok(gate().code === 0, 'mid-turn at exactly the ceiling runs');
 // TRIGGER from CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: only 1 to 95 moves it.
 const triggerWith = (pct) => {
   process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = pct;
-  try { return Number(execFileSync(process.execPath, ['--input-type=module', '-e', `import { TRIGGER } from ${JSON.stringify(new URL('./src/compact-gate.mjs', import.meta.url).href)}; console.log(TRIGGER)`], { env, timeout: 30_000 }).toString()); }
+  try { return Number(execFileSync(process.execPath, ['--input-type=module', '-e', `import { TRIGGER } from ${JSON.stringify(new URL('../src/compact-gate.mjs', import.meta.url).href)}; console.log(TRIGGER)`], { env, timeout: 30_000 }).toString()); }
   finally { delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE; }
 };
 const near = (a, b) => Math.abs(a - b) < 1e-9;

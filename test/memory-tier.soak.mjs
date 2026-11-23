@@ -13,7 +13,7 @@ import assert from 'node:assert';
 import { tool, tempDir, audit, largestStore, pointers } from './harness.mjs';
 // The ceiling under test is the tool's own: a copy of the number here went
 // stale the day the owner lowered it and asserted nothing.
-import { BUDGET } from './src/store.mjs';
+import { BUDGET } from '../src/store.mjs';
 
 const TOOL = tool('src/memory-tier.mjs');
 // --days N is its own flag: "60" as the first argument used to be taken for the store's folder.
