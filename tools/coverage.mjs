@@ -3,16 +3,16 @@
 // dependency): per plugin file the approximate share of its bytes that ran, the functions
 // that never ran and the first lines of the larger blocks that never ran. The
 // fuzz hunts bugs only in code it reaches; this shows the code it does not.
-// Run: node coverage.mjs [--suites] [--fuzz <seconds>]   (no flag: --suites)
+// Run: node tools/coverage.mjs [--suites] [--fuzz <seconds>]   (no flag: --suites)
 // Nothing runs it automatically.
 import assert from 'node:assert';
 import { readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, basename, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { tempDir } from './test/harness.mjs';
+import { tempDir } from '../test/harness.mjs';
 
-const repo = dirname(fileURLToPath(import.meta.url));
+const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const FILES = ['store.mjs', 'timing.mjs', 'handoff-log.mjs', 'brief.mjs', 'memory-tier.mjs', 'compact-gate.mjs', 'journal.mjs', 'recall.mjs', 'page.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs'];
 const SUITES = ['store', 'compact-gate', 'handoff-log', 'memory-tier', 'memory', 'journal', 'recall', 'enforce', 'enforce-hook', 'timing'].map((s) => `test/${s}.test.mjs`);
 
@@ -76,7 +76,7 @@ assert.match(report(join(tmp, 'c'), tmp, ['x.mjs']).join(String.fromCharCode(10)
 
 const args = process.argv.slice(2);
 const doFuzz = args.includes('--fuzz'), seconds = Number(args[args.indexOf('--fuzz') + 1]);
-if (doFuzz && !(seconds > 0)) { console.error('usage: node coverage.mjs [--suites] [--fuzz <seconds>]'); process.exit(2); }
+if (doFuzz && !(seconds > 0)) { console.error('usage: node tools/coverage.mjs [--suites] [--fuzz <seconds>]'); process.exit(2); }
 const cov = tempDir('cov-run-');
 // Each child writes its coverage into the one folder. Set on this process, which a child inherits: env stays undefined, as harness.mjs asks (R42).
 process.env.NODE_V8_COVERAGE = cov;
@@ -85,5 +85,5 @@ const run = (name, ...a) => {
   if (r.status !== 0) console.error(`${name} failed (${r.status === null ? r.error?.message ?? `signal ${r.signal}` : `exit ${r.status}`}); its coverage is partial`);
 };
 if (args.includes('--suites') || !doFuzz) for (const t of SUITES) run(t);
-if (doFuzz) run('fuzz.mjs', String(seconds));
+if (doFuzz) run('tools/fuzz.mjs', String(seconds));
 console.log(report(cov, join(repo, 'src'), FILES).join(String.fromCharCode(10)));

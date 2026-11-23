@@ -73,31 +73,31 @@
 // an exchange by key and minute, and must not take out another turn that reads as
 // that minute after a move to another zone (F5, c59deeb). A forget by key often picks
 // such a turn and runs its Stops in the colliding turn's zone.
-// Run: node fuzz.mjs [seconds, default 60] [--seed N] [--keep-going] [--no-shrink]
+// Run: node tools/fuzz.mjs [seconds, default 60] [--seed N] [--keep-going] [--no-shrink]
 import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, readdirSync, existsSync, utimesSync, cpSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir, availableParallelism, homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { tool, tempHome, storeFor } from './test/harness.mjs';
-import { LOCK_STALE, SHARED_BUDGET, POINTER } from './src/store.mjs';
-import { NUDGE_TAG, ACTIVE, tag, parse, sectionOf } from './src/handoff-log.mjs';
+import { tool, tempHome, storeFor } from '../test/harness.mjs';
+import { LOCK_STALE, SHARED_BUDGET, POINTER } from '../src/store.mjs';
+import { NUDGE_TAG, ACTIVE, tag, parse, sectionOf } from '../src/handoff-log.mjs';
 
 const args = process.argv.slice(2);
 // A typo ("10m", "0", "--seed x") exits 1: it used to run 60 s, or no rounds, and report a pass for a run that tested nothing (audit #15).
 const secs = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--seed'), seedArg = args.includes('--seed') ? args[args.indexOf('--seed') + 1] : null;
-if ((secs !== undefined && !/^[1-9]\d*$/.test(secs)) || (args.includes('--seed') && !/^\d+$/.test(seedArg ?? ''))) { console.error('usage: node fuzz.mjs [seconds, a whole number above 0] [--seed N, a whole number]'); process.exit(1); }
+if ((secs !== undefined && !/^[1-9]\d*$/.test(secs)) || (args.includes('--seed') && !/^\d+$/.test(seedArg ?? ''))) { console.error('usage: node tools/fuzz.mjs [seconds, a whole number above 0] [--seed N, a whole number]'); process.exit(1); }
 const seconds = Number(secs ?? 60);
 const only = seedArg === null ? null : Number(seedArg);
 const REAL = join(homedir(), '.claude').replaceAll('\\', '/').toLowerCase();   // the user's own folder, read before tempHome moves HOME: no command may name it
-const OWN = new RegExp(`${dirname(fileURLToPath(import.meta.url)).replaceAll('\\', '/').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[/\\s)'",:;]|$)`, 'g');   // the hooks folder itself (then a slash, a blank, a bracket, a quote, , : ; or the end: not hooks-live, not hooks.bak)
+const OWN = new RegExp(`${dirname(tool('src')).replaceAll('\\', '/').toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[/\\s)'",:;]|$)`, 'g');   // the hooks folder itself (then a slash, a blank, a bracket, a quote, , : ; or the end: not hooks-live, not hooks.bak)
 const homes = tempHome('fuzz-').home, kept = new Set();
 // The hooks and this file must read the same numbers: the four variables that
 // set the windows are gone from this process (the hooks inherit that) before
 // compact-gate.mjs is loaded, which a static import would do first.
 for (const v of ['CLAUDE_CODE_MAX_CONTEXT_TOKENS', 'CLAUDE_CODE_DISABLE_1M_CONTEXT', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']) delete process.env[v];
-const { MODEL_WINDOW, WINDOW, TRIGGER } = await import('./src/compact-gate.mjs');
+const { MODEL_WINDOW, WINDOW, TRIGGER } = await import('../src/compact-gate.mjs');
 // Reply sizes, in tokens: a small start, two under the trigger, one just past it, one past the ceiling.
 const SIZES = [1_000, 199_000, 500_000, Math.ceil(TRIGGER * WINDOW) + 1_000, Math.ceil(0.95 * MODEL_WINDOW)];
 const TIER = tool('src/memory-tier.mjs'), LOG = tool('src/handoff-log.mjs'), GATE = tool('src/compact-gate.mjs'), CLI = tool('src/memory.mjs');
@@ -923,7 +923,7 @@ for (let seed = first; only === null ? Date.now() - start < seconds * 1000 : rou
   const { steps, meta } = generate(seed), { found, story } = await execute(steps, meta);
   if (!found.length) continue;
   failed++;
-  console.log(`fuzz: round ${seed} failed (round number ${rounds} of this run; replay: node fuzz.mjs --seed ${seed}):`);
+  console.log(`fuzz: round ${seed} failed (round number ${rounds} of this run; replay: node tools/fuzz.mjs --seed ${seed}):`);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `- seed ${seed}: ${found[0].replace(/\n/g, ' ')}\n`);
   if (keepGoing) { for (const p of [...found, ...story].slice(0, 60)) console.log(`  ${p}`); continue; }
   for (const p of noShrink ? [...found, ...story] : found) console.log(`  ${p}`);

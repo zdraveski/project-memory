@@ -62,4 +62,4 @@ jobs:
         env:
           AUTO: ${{ inputs.auto && '1' || '' }}
           SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
-        run: node mutate.mjs --shard "$SHARD" ${AUTO:+--auto}
+        run: node tools/mutate.mjs --shard "$SHARD" ${AUTO:+--auto}

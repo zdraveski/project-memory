@@ -5,19 +5,7 @@
 # Left out of the release .tar.gz/.zip (git archive): the user gets the plugin and
 # its documents; tests, dev tools, plans and repo settings stay in the repo.
 test/ export-ignore
-mutants/ export-ignore
-automut.mjs export-ignore
-automut-ignore.txt export-ignore
-mutate.mjs export-ignore
-survive.mjs export-ignore
-coverage.mjs export-ignore
-fuzz.mjs export-ignore
-fuzz-faults.cjs export-ignore
-bench.mjs export-ignore
-bench-store.mjs export-ignore
-check.mjs export-ignore
-live-times.mjs export-ignore
-deploy.mjs export-ignore
+tools/ export-ignore
 docs/plans/ export-ignore
 docs/specs/ export-ignore
 docs/art/ export-ignore

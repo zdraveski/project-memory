@@ -4,7 +4,7 @@
 
 ## Checked
 
-- [ ] `node check.mjs` passes
+- [ ] `node tools/check.mjs` passes
 - [ ] A test fails without this change and passes with it
 - [ ] Nothing new is saved, read or sent anywhere that PRIVACY.md doesn't describe (if it does, `PRIVACY.md` and `docs/security-assessment.md` are updated in this PR)
 - [ ] `CHANGELOG.md` has a line under `## Unreleased`, and the version is untouched

@@ -73,7 +73,7 @@ e8abd320db15 src/store.mjs:313 the takeover's `renameSync(lock, dead);` -> `void
 fa830e083dbe src/store.mjs:315 the takeover's freshness `<= LOCK_STALE` -> `<`: the two differ only for a lock exactly LOCK_STALE old to the millisecond
 695b9354e37f src/store.mjs:317 the takeover's cleanup `force: true` -> `false`: the copy exists (we just renamed it), so force has nothing to silence; a failure is caught either way
 f9d8aef07edb src/memory-tier.mjs:629 the log cut's cleanup `force: true` -> `false`: after a successful rename the temp copy is gone and rmSync then throws, into the try/catch around the whole proof-of-life block, which swallows it; nothing after it in that block
-64dc77679cdd deploy.mjs:70 rmSync's `force: true` -> `false`: the call sits in a try that swallows every error, so the only thing force changes is a missing file, which throws ENOENT and is swallowed; a file that is there is removed either way
+8b85aa853fa4 tools/deploy.mjs:70 rmSync's `force: true` -> `false`: the call sits in a try that swallows every error, so the only thing force changes is a missing file, which throws ENOENT and is swallowed; a file that is there is removed either way
 70eff8199afa src/handoff-log.mjs:890 rmSync's `force: true` -> `false` for the PREV copy: the call is in a try that swallows every error, so a missing copy throws ENOENT and is swallowed, and one that is there is removed either way
 08b97b7f4943 src/enforce.mjs:115 `i < toks.length` -> `<=`: at i === length toks[i] is undefined, which the loop's `!toks[i]` takes in, it adds one to i and ends; the next line reads `toks[i++] ?? ''` and finds no git either way
 a813c8ac41d0 src/enforce.mjs:149 `CACHE_V = 3` -> 4: the number is only compared with itself (written into the cache, read back, and the test sets `CACHE_V - 1`), so no run can tell one value from another
@@ -257,7 +257,7 @@ ad9f63d17fc7 src/enforce.mjs:170 `r ?? null` -> `||`: r is null or an object (ne
 47a5e47feac2 src/memory.mjs:1195 catch { return t; } -> {}: summary() never throws (days() is lenient, its reads and candidates() are caught inside), so the catch is unreachable.
 d132cab7e328 src/memory.mjs:1195 catch returns undefined instead of t: summary() never throws, so the catch is unreachable.
 e9c8a9409e2d src/memory.mjs:1310 read(...) ?? '' -> || '': read() returns null or a string, and the only falsy string is '', which the fallback '' equals, so the tested text is the same.
-8b267d9f5f54 deploy.mjs:44 `.files ?? {}` -> `.files || {}`: `before` is only read by Object.keys(before) (L68); the two differ only for a falsy non-nullish files value (0, "", false), and Object.keys of those is [] like {}
+db5b007a6f68 tools/deploy.mjs:44 `.files ?? {}` -> `.files || {}`: `before` is only read by Object.keys(before) (L68); the two differ only for a falsy non-nullish files value (0, "", false), and Object.keys of those is [] like {}
 47437024c3ca src/handoff-log.mjs:217 `?.` -> `.`: r.message is read only for a record that is an object with a content array, and every caller passes parsed records, so `.` throws only for a missing message that `?.` would turn into the same empty list the callers skip
 a95912c5953c src/handoff-log.mjs:253 `''` -> `undefined`: the only callers test the result for truthiness (a call with no tool_use block), and "" and undefined are both falsy
 c3918c9f43a2 src/handoff-log.mjs:275 `2` -> `3`: tailOf is called with its default keep only for text that clip() then cuts to SAID_KEEP, and the longer keep only delays a cut the same slice makes

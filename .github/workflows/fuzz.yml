@@ -2,7 +2,7 @@ name: fuzz
 
 # Long fuzz runs, by hand: every machine its own random rounds, on Windows,
 # Linux and macOS (at most 5 at once on macOS), for a bug hunt.
-# A failing round prints its seed: `node fuzz.mjs --seed N` replays
+# A failing round prints its seed: `node tools/fuzz.mjs --seed N` replays
 # it. Started from Actions > fuzz > Run workflow, or
 # `gh workflow run fuzz.yml --ref <branch> -f machines=17 -f seconds=600`.
 # Keep the 17 machines: a failure often
@@ -58,7 +58,7 @@ jobs:
         env:
           SECONDS_EACH: ${{ inputs.seconds }}
           FUZZ_KEEP: ${{ runner.temp }}/fuzz-kept
-        run: node fuzz.mjs "${SECONDS_EACH:-600}" --keep-going
+        run: node tools/fuzz.mjs "${SECONDS_EACH:-600}" --keep-going
       # A failing round's project folder, kept by fuzz.mjs as round-<n>;
       # a run with no failure makes no folder and uploads nothing.
       - if: failure()

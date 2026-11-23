@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The quick check, for every edit: what CI would say about the files changed
-// since the last commit, in seconds to a minute or two. In order, each step
+// since the last commit (or since --base <ref>), in seconds to a minute or two. In order, each step
 // stopping the check when it fails:
 //   1. every .mjs and every .json parses;
 //   2. no file imports a name it never uses;
@@ -13,17 +13,18 @@
 //   6. the automatic mutants on the changed lines (--no-auto skips them);
 //   7. changed code lines no mutant covers: a reminder, not a failure;
 //   8. after a change to a hook's code, 20 s of fuzz.mjs.
-// Run: node check.mjs [--full] [--no-auto]  (from this repo)
-import { readFileSync, existsSync } from 'node:fs';
+// Run: node tools/check.mjs [--full] [--no-auto] [--base <ref>]  (from this repo)
+// --base <ref>: "changed" is everything since that ref (a tag, say; committed or not), a renamed file counting only its real edits.
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
-import { availableParallelism } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
 import { suites, settle, tableOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
 
-const repo = dirname(fileURLToPath(import.meta.url));
+const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
 // What every suite stands on (SHARED): changed, all eleven run. The list is deploy.mjs's own, so the quick check and the deploy agree
 // (audit #16); handoff-log.mjs is left out on purpose: store.mjs and memory-tier.mjs do not import it, so it is not under every suite.
@@ -55,7 +56,7 @@ const span = (text, find) => {
 assert.deepEqual(suitesFor(['README.md']), []);
 assert.deepEqual(suitesFor(['src/journal.mjs', 'test/memory.test.mjs']), ['test/journal.test.mjs', 'test/memory.test.mjs']);
 assert.equal(suitesFor(['test/harness.mjs']).length, ALL.length);
-assert.equal(suitesFor(['mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
+assert.equal(suitesFor(['tools/mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
 // A mutant that timed out is run once more: killed then it counts as killed, otherwise the second verdict stands, any other verdict is not rerun.
 {
   let runs = 0;
@@ -85,6 +86,31 @@ export const failures = (r, known) => {
   assert.deepEqual(failures({ status: null, error: new Error('spawn failed'), stdout: '', stderr: '' }, k), ['spawn failed']);
 }
 assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11])]])), 'a.mjs:3,4;b.mjs:11');
+// --base <ref>: the ref "changed" is measured from; HEAD (the last commit) when not given.
+export const baseOf = (argv) => {
+  const i = argv.indexOf('--base');
+  if (i === -1) return 'HEAD';
+  if (!argv[i + 1] || argv[i + 1].startsWith('-')) throw new Error('--base wants a ref (a tag, a branch or a commit), e.g. --base v1.5.5');
+  return argv[i + 1];
+};
+// What changed from `base` to the working tree, as a Map of new path -> the path it had at base. -M pairs a rename, so a moved file counts only its real edits.
+export const changesOf = (git, base) => new Map(git('diff', '-M', '--name-status', base).split('\n').filter(Boolean).map((l) => { const [st, a, b] = l.split('\t'); return st[0] === 'R' ? [b, a] : [a, a]; }));
+// The -U0 diff of one file, given the path it had at base: both paths, or git sees a rename as a new file.
+export const lineDiff = (git, base, file, was) => git('diff', '-M', '-U0', base, '--', ...new Set([was, file]));
+assert.equal(baseOf(['--full']), 'HEAD');
+assert.equal(baseOf(['--base', 'v1.5.5', '--full']), 'v1.5.5');
+assert.throws(() => baseOf(['--full', '--base']), /--base wants a ref/);
+assert.throws(() => baseOf(['--base', '--full']), /--base wants a ref/);
+// A file moved to another folder with one line edited: one changed line, not a whole new file.
+{
+  const d = mkdtempSync(join(tmpdir(), 'check-base-')), g = (...a) => execFileSync('git', ['-C', d, '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    g('init', '-q'); writeFileSync(join(d, 'a.mjs'), 'one\ntwo\nthree\nfour\nfive\nsix\n'); g('add', 'a.mjs'); g('commit', '-qm', 'a'); g('tag', 'base');
+    mkdirSync(join(d, 'sub')); g('mv', 'a.mjs', 'sub/b.mjs'); writeFileSync(join(d, 'sub', 'b.mjs'), 'one\ntwo\nTHREE\nfour\nfive\nsix\n'); g('add', '-A'); g('commit', '-qm', 'b');
+    assert.deepEqual([...changesOf(g, 'base')], [['sub/b.mjs', 'a.mjs']]);
+    assert.deepEqual([...changedLines(lineDiff(g, 'base', 'sub/b.mjs', 'a.mjs'))], [3]);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+}
 // The release .tar.gz/.zip leave out what .gitattributes marks export-ignore; what the plugin runs must stay in:
 // every ${CLAUDE_PLUGIN_ROOT}/ path the hooks, the skill and the commands name (in git, not ignored), everything those
 // scripts import, and the plugin's own folders. archive.test.mjs runs the archive itself.
@@ -105,21 +131,21 @@ assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11]
 // mutate.mjs --list --auto-lines names the automatic mutants of a line, each once, running nothing.
 {
   const n = readFileSync(join(repo, 'src/store.mjs'), 'utf8').split('\n').findIndex((l) => l.includes(' === ')) + 1;
-  const r = spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--auto-lines', `src/store.mjs:${n}`], { encoding: 'utf8' }), listed = r.stdout.split('\n').filter(Boolean);
+  const r = spawnSync(process.execPath, [join(repo, 'tools', 'mutate.mjs'), '--list', '--auto-lines', `src/store.mjs:${n}`], { encoding: 'utf8' }), listed = r.stdout.split('\n').filter(Boolean);
   assert.ok(listed.includes(`auto equality src/store.mjs:${n} === -> !==`), `exit ${r.status}\n${listed.join('\n')}\n${r.stderr}`);
   assert.equal(new Set(listed).size, listed.length);
 }
 // --list keeps every line for a slow reader: a busy GitHub machine got 193 of 218 and failed the check below. Windows writes a pipe at once.
 if (process.platform !== 'win32') {
-  const lines = (pipe) => spawnSync('sh', ['-c', `"$0" "$1" --list --auto${pipe}`, process.execPath, join(repo, 'mutate.mjs')], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean).length;
+  const lines = (pipe) => spawnSync('sh', ['-c', `"$0" "$1" --list --auto${pipe}`, process.execPath, join(repo, 'tools', 'mutate.mjs')], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean).length;
   assert.equal(lines(' | (sleep 2; cat)'), lines(''));
 }
 // A change that only adds a mutant runs that source's group: not every mutant (5 of the 17 PRs of 1.2.6 did), and not none.
 {
-  const listed = (f) => spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--changed', f], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
-  assert.deepEqual(listed('mutants/journal.mjs'), Object.keys(suites['src/journal.mjs'][1]));
-  assert.deepEqual(listed('mutants/hooks.mjs'), Object.keys(suites['hooks/hooks.json'][1]));
-  assert.deepEqual(suitesFor(['mutants/hooks.mjs']), ['test/memory.test.mjs']);
+  const listed = (f) => spawnSync(process.execPath, [join(repo, 'tools', 'mutate.mjs'), '--list', '--changed', f], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+  assert.deepEqual(listed('tools/mutants/journal.mjs'), Object.keys(suites['src/journal.mjs'][1]));
+  assert.deepEqual(listed('tools/mutants/hooks.mjs'), Object.keys(suites['hooks/hooks.json'][1]));
+  assert.deepEqual(suitesFor(['tools/mutants/hooks.mjs']), ['test/memory.test.mjs']);
 }
 
 const t0 = Date.now(), problems = [];
@@ -141,8 +167,12 @@ const pool = async (items, fn) => {
 
 const files = git('ls-files', '-co', '--exclude-standard', '*.mjs').split('\n').filter(Boolean);
 const untracked = git('ls-files', '-o', '--exclude-standard').split('\n').filter(Boolean);
-const changed = [...new Set([...git('diff', '--name-only', 'HEAD').split('\n'), ...untracked].filter(Boolean))];
-console.log(`changed since the last commit: ${changed.length ? changed.join(', ') : 'nothing'}`);
+let base;
+try { base = baseOf(process.argv); } catch (e) { console.error(e.message); process.exit(2); }
+if (base !== 'HEAD') { try { base = git('merge-base', base, 'HEAD').trim(); } catch { console.error(`--base ${base}: not a commit in this repo`); process.exit(2); } }
+const changes = changesOf(git, base);
+const changed = [...new Set([...changes.keys(), ...untracked].filter(Boolean))];
+console.log(`changed since ${base === 'HEAD' ? 'the last commit' : process.argv[process.argv.indexOf('--base') + 1]}: ${changed.length ? changed.join(', ') : 'nothing'}`);
 
 // 1. Every file parses.
 step('every .mjs parses', (await pool(files, (f) => new Promise((done) => execFile(process.execPath, ['--check', join(repo, f)], (e, _o, err) => done(e ? `${f}: ${String(err).trim().split('\n').slice(0, 4).join(' | ')}` : null))))).filter(Boolean));
@@ -194,7 +224,7 @@ const on = [], bare = [], autoLines = new Map();
 for (const [file, [, mutants]] of Object.entries(suites)) {
   if (!changed.includes(file) || !existsSync(join(repo, file))) continue;
   const text = readFileSync(join(repo, file), 'utf8'), lines = text.split('\n');
-  const touched = touchedOf(untracked.includes(file), lines, git('diff', '-U0', 'HEAD', '--', file)), covered = new Set();
+  const touched = touchedOf(untracked.includes(file), lines, lineDiff(git, base, file, changes.get(file) ?? file)), covered = new Set();
   if (touched.size && file.endsWith('.mjs')) autoLines.set(file, touched); // automut reads code, not hooks.json
   for (const [label, [from]] of Object.entries(mutants)) {
     const at = span(text, from);
@@ -205,14 +235,14 @@ for (const [file, [, mutants]] of Object.entries(suites)) {
 }
 if (on.length) {
   console.log(`     ${on.length} mutant(s) on the changed lines ...`);
-  const r = spawnSync(process.execPath, [join(repo, 'mutate.mjs'), ...on], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const r = spawnSync(process.execPath, [join(repo, 'tools', 'mutate.mjs'), ...on], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
   step('the mutants on the changed lines', failures(r, / (SURVIVED|TIMED OUT|MUTATION DID NOT APPLY|FIND-TEXT NOT UNIQUE)\b|fails unmutated/));
 } else console.log('ok   the mutants on the changed lines (none there)');
 // 5b. The automatic mutants on the changed lines; --no-auto skips them.
 if (process.argv.includes('--no-auto')) console.log('ok   the automatic mutants on the changed lines: skipped (--no-auto)');
 else if (!autoLines.size) console.log('ok   the automatic mutants on the changed lines (none there)');
 else {
-  const arg = autoArg(autoLines), run = (...a) => spawnSync(process.execPath, [join(repo, 'mutate.mjs'), ...a, '--auto-lines', arg], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const arg = autoArg(autoLines), run = (...a) => spawnSync(process.execPath, [join(repo, 'tools', 'mutate.mjs'), ...a, '--auto-lines', arg], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
   const l = run('--list'), listed = failures(l, /$^/);
   if (listed.length) step('the automatic mutants on the changed lines (listing them)', listed);
   const n = l.stdout.split('\n').filter(Boolean).length;
@@ -231,7 +261,7 @@ if (bare.length) {
 
 // 8. A hook's code changed: 20 s of fuzz, new rounds each time.
 if (changed.some((f) => ['src/store.mjs', 'src/handoff-log.mjs', 'src/journal.mjs', 'src/memory-tier.mjs', 'src/compact-gate.mjs'].includes(f))) {
-  const r = spawnSync(process.execPath, [join(repo, 'fuzz.mjs'), '20'], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const r = spawnSync(process.execPath, [join(repo, 'tools', 'fuzz.mjs'), '20'], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
   step('20 s of fuzz', r.status === 0 ? [] : r.stdout.trim().split('\n'));
 }
 finish();
