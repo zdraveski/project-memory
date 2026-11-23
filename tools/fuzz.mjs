@@ -539,7 +539,8 @@ async function execute(steps, meta) {
       marks.set(st.mark, { kind: st.kind, s, turn: ++s.turns });
       const askLine = rec(s, 'user', ts(0), st.block ? [{ type: 'text', text: st.ask }] : st.ask, st.uuid);
       // A message queued while Claude works: an attachment record whose prompt is a string, or blocks (text, an image).
-      const q = st.queued, queued = q ? [JSON.stringify({ type: 'attachment', uuid: id('q-'), sessionId: s.id, cwd, timestamp: ts(5000),
+      // Since 1.3.2 a queued message opens a turn of its own, and the ask before it, with no answer yet, is not saved: the mark rides in the queued text.
+      const q = st.queued && !st.queued.secret && st.kind === 'plain' ? { ...st.queued, text: `${st.queued.text} ${st.mark}` } : st.queued, queued = q ? [JSON.stringify({ type: 'attachment', uuid: id('q-'), sessionId: s.id, cwd, timestamp: ts(5000),
         attachment: { type: 'queued_command', prompt: q.blocks ? [{ type: 'text', text: q.text }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo' } }] : q.text } })] : [];
       log.push(`turn ${st.mark} ${st.kind}${st.ask.startsWith('<private-session>') ? ' <private-session>' : ''}${q ? `, a queued message (${q.blocks ? 'blocks' : 'string'}${q.secret ? ', private' : ''})` : ''}${st.shapes ? ', with secret shapes' : ''} at ${ts(0)}, ${size} tokens${st.collides ? `, collides with ${st.collides}` : ''}${st.cut ? ', cut mid-way' : ''}${st.half ? ', answer half written' : ''}${st.broken ? ', then a broken line' : ''}`);
       if (st.cut) {
@@ -661,7 +662,7 @@ async function execute(steps, meta) {
       const c = await cli(tz, ['doctor']);
       realFolder(c, ['doctor']);
       const lines = c.out.split('\n').filter(Boolean);
-      if (lines.some((l) => !/^(ok {5}|PROBLEM) /.test(l))) problems.push(`doctor printed a line that is neither ok nor PROBLEM: ${lines.find((l) => !/^(ok {5}|PROBLEM) /.test(l)).slice(0, 160)}`);
+      if (lines.some((l) => !/^(ok {5}|note {3}|PROBLEM) /.test(l))) problems.push(`doctor printed a line that is neither ok, note nor PROBLEM: ${lines.find((l) => !/^(ok {5}|note {3}|PROBLEM) /.test(l)).slice(0, 160)}`);
       else if ((c.status === 0) === lines.some((l) => l.startsWith('PROBLEM'))) problems.push(`doctor exited ${c.status} with ${lines.filter((l) => l.startsWith('PROBLEM')).length} PROBLEM line(s)`);
     },
   };
