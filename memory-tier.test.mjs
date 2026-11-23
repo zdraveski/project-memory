@@ -437,6 +437,51 @@ unlinkSync(join(root, '.git'));
 renameSync(join(root, '.gitaside'), join(root, '.git'));
 r = await plain();
 ok(sh().failures === 0 && sh().lastOk, 'and a good one resets the count');
+// 1.5.5: a Stop's tidy-up and snapshot run in a process of their own, which the reply never waits for (git on a loaded PC
+// held one 31 s). The suites keep them inline (harness.mjs); this block turns that off.
+{
+  const mem = join(root, 'proj-one', 'memory'), stamp = join(mem, '.tiered'), commits = () => Number(git('rev-list', '--count', 'HEAD'));
+  const stopAs = (e) => call(['--stop'], JSON.stringify({ ...JSON.parse(stopInput('proj-one')), hook_event_name: e }));
+  const spawned = [];
+  const fake = () => (...a) => { spawned.push(a); return { on() { return this; }, unref() {} }; };
+  delete process.env.PROJECT_MEMORY_TIDY;
+  try {
+    note('proj-one', 'bg-one');
+    const stampOf = () => existsSync(stamp) ? readFileSync(stamp, 'utf8') : '', n = commits(), stamped = stampOf();
+    r = await swap('node:child_process', 'spawn', fake, () => stopAs('Stop'));
+    const [file, args = [], opts = {}] = spawned[0] ?? [];
+    ok(r.status === 0 && spawned.length === 1 && file === process.execPath && /memory-tier\.mjs$/.test(args[0]) && args[1] === '--tidy' && args[2] === mem &&
+      opts.detached && opts.stdio === 'ignore', `a Stop with a changed memory starts the tidy-up as a process of its own (got ${JSON.stringify(spawned)})`);
+    ok(commits() === n && stampOf() === stamped && !readFileSync(join(mem, 'MEMORY.md'), 'utf8').includes('bg-one.md'), 'and returns before it: nothing tiered, committed or stamped yet');
+    r = await call(['--tidy', mem]);
+    ok(r.status === 0 && commits() === n + 1 && tracked().includes('proj-one/memory/bg-one.md') && readFileSync(join(mem, 'MEMORY.md'), 'utf8').includes('bg-one.md') &&
+      stampOf() !== stamped, `--tidy tiers, snapshots and stamps what the Stop left (got ${r.stdout.trim()})`);
+    ok((await call(['--tidy'])).status === 1, '--tidy with no path is refused');
+    spawned.length = 0;
+    r = await swap('node:child_process', 'spawn', fake, () => stopAs('Stop'));
+    ok(r.status === 0 && !spawned.length, 'a Stop with nothing changed starts no process');
+    note('proj-one', 'bg-two');
+    r = await swap('node:child_process', 'spawn', () => () => { throw new Error('spawn EAGAIN'); }, () => stopAs('StopFailure'));
+    ok(r.status === 0 && tracked().includes('proj-one/memory/bg-two.md'), 'a spawn that throws tidies in the hook, as before');
+    note('proj-one', 'bg-three');
+    r = await swap('node:child_process', 'spawn', fake, () => stopAs('PreCompact'));
+    ok(r.status === 0 && !spawned.length && tracked().includes('proj-one/memory/bg-three.md'), 'a manual /compact still tidies before it returns');
+
+    // As the hook runs it: the Stop exits while its child is still held, and the child commits after. A child that kept the
+    // hook's pipes (Windows handle inheritance) held the Stop until it was done.
+    const pre = join(tempDir('memtier-slowtidy-'), 'slow.cjs');
+    writeFileSync(pre, "if (process.argv.includes('--tidy')) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);\n");
+    note('proj-one', 'bg-four');
+    const timed = () => existsSync(join(root, '.timing')) ? readFileSync(join(root, '.timing'), 'utf8').split('\n').filter((l) => l.includes('"h":"tidy"')).length : 0;
+    const tidies = timed(), t0 = Date.now();
+    const p = spawnSync(process.execPath, [TOOL, '--stop'], { env: { ...process.env, NODE_OPTIONS: `--require "${pre.replace(/\\/g, '/')}"` }, encoding: 'utf8',
+      input: JSON.stringify({ ...JSON.parse(stopInput('proj-one')), hook_event_name: 'Stop' }), timeout: 60000 });
+    const took = Date.now() - t0;
+    ok(p.status === 0 && took < 4000 && !tracked().includes('proj-one/memory/bg-four.md'), `the Stop returns while its tidy-up is still running (took ${took} ms, status ${p.status})`);
+    while (timed() === tidies && Date.now() - t0 < 60000) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    ok(tracked().includes('proj-one/memory/bg-four.md') && timed() === tidies + 1, `and the tidy-up commits after it, with a timing line of its own (${Date.now() - t0} ms)`);
+  } finally { process.env.PROJECT_MEMORY_TIDY = 'inline'; }
+}
 // The user's own git settings are not the snapshot's: a global hooks path
 // (a pre-commit that fails) and commit signing with no signer failed every
 // snapshot, and ran the user's hooks on the memory repo.

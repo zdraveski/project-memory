@@ -11,7 +11,7 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import * as T from './timing.mjs';
 import { holdsSecret, keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED, redact, configDir, tag } from './store.mjs';
 
@@ -792,8 +792,8 @@ export async function main(argv, input) {
     } catch {}
   }
 
-  const dirAt = argv.indexOf('--dir');
-  if (!stop && !dry && dirAt === -1) try { for (const p of readdirSync(projectsRoot())) { const d = join(projectsRoot(), p, 'memory'); if (!isOff(d)) ensureIndex(d); } } catch {}
+  const dirAt = argv.indexOf('--dir'), tidyAt = argv.indexOf('--tidy');
+  if (!stop && !dry && dirAt === -1 && tidyAt === -1) try { for (const p of readdirSync(projectsRoot())) { const d = join(projectsRoot(), p, 'memory'); if (!isOff(d)) ensureIndex(d); } } catch {}
   if (dirAt !== -1 && !argv[dirAt + 1]) { console.log('--dir needs a path'); return 1; }
   // A Stop tiers its own session's store and no other. Every Stop once walked all
   // sixteen: a session in one project rewrote another's index while that
@@ -801,8 +801,11 @@ export async function main(argv, input) {
   // recovered machine lines in the race probe (2026-10-26). A manual run still
   // walks them all. The shared store is every project's, so any Stop may tier it,
   // under its own lock, when it changed.
+  // `--tidy <dir>`: the rest of a Stop, in the process the Stop started (below); the same stores, gated the same way.
+  if (tidyAt !== -1 && !argv[tidyAt + 1]) { console.log('--tidy needs a path'); return 1; }
+  const own = tidyAt !== -1 ? argv[tidyAt + 1] : (() => { try { return storeOf(payload || {}); } catch { return null; } })();
   const dirs = dirAt !== -1 ? [argv[dirAt + 1]]
-    : stop ? [(() => { try { return storeOf(payload || {}); } catch { return null; } })(), sharedStore()].filter((d) => d && existsSync(join(d, 'MEMORY.md')))
+    : stop || tidyAt !== -1 ? [...new Set([own, sharedStore()])].filter((d) => d && existsSync(join(d, 'MEMORY.md')))
     : allStores();
   for (let i = dirs.length; i--;) if (isOff(dirs[i])) dirs.splice(i, 1);
 
@@ -827,11 +830,24 @@ export async function main(argv, input) {
     for (const f of ['MEMORY.md', ARCHIVE]) s.set(f, statSync(join(d, f)));
     return fingerprint(s);
   };
-  const gated = stop && !dry && dirAt === -1;
+  const gated = (stop || tidyAt !== -1) && !dry && dirAt === -1;
   const todo = gated ? dirs.filter((d) => { try { seen.set(d, scan(d)); return readFileSync(stampOf(d), 'utf8') !== fingerprint(seen.get(d)); } catch { return true; } }) : dirs;
   // Nothing to tidy: done, unless a snapshot is owed, which runs alone.
   T.mark('scan');
   if (gated && !todo.length && !owed()) return 0;
+  // The tidy-up and the snapshot after a reply run in a process of their own, which the user never waits for: git on a
+  // loaded PC held the reply 31 s (.timing, 2026-11-22). The child scans again and does what is still owed then.
+  // A spawn that throws runs it here, as before; one that fails later (an 'error' event) leaves it to the next Stop,
+  // since nothing was stamped. A manual /compact (PreCompact) still waits for it: the index it compacts with should be tidy.
+  // PROJECT_MEMORY_TIDY=inline keeps it in the hook: the suites assert what a Stop did once it returns.
+  if (stop && gated && ['Stop', 'StopFailure'].includes(payload?.hook_event_name) && process.env.PROJECT_MEMORY_TIDY !== 'inline') {
+    try {
+      spawn(process.execPath, [fileURLToPath(import.meta.url), '--tidy', own || sharedStore()], { detached: true, stdio: 'ignore', windowsHide: true })
+        .on('error', () => {}).unref();
+      T.mark('spawn');
+      return 0;
+    } catch {}
+  }
   // The first time, the notebook is kept as it was found before the tidy-up
   // changes it: snapshotted after, the table of contents as the user had
   // written it could never come back (docs review, 2026-10-28).
@@ -899,6 +915,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
   const argv = process.argv.slice(2);
   if (argv.includes('--stop')) T.begin('save');
+  else if (argv.includes('--tidy')) T.begin('tidy');
   // stdin only behind --stop: a manual run never blocks on a terminal. One that
   // cannot be read is no payload, as before.
   let input;
