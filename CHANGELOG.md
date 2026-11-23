@@ -7,6 +7,7 @@ This release fixes one privacy hole and tidies the project's files.
 ### Private questions
 
 - **A message you type while Claude is still answering a `<private>` question is no longer saved with that answer.** Since 1.3.2 such a message started a turn of its own, and Claude's reply, which may repeat the private text, was saved to the journal and the handoff under it. Now that reply is not saved, the same as the private question.
+- **A disk error while the plugin reads its backup-health record no longer stops the end-of-reply hook with an error.** The record is skipped for that reply and read again on the next one. This was there before 1.5.6 and showed only when the disk refused a read.
 
 ### Tidier files
 
