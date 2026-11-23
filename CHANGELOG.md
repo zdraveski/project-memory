@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.6 (2026-11-23)
+
+This release tidies the project's files. **Nothing changes in how project-memory works.**
+
+- **The plugin's files now live in a `src` folder**, and the tests and developer tools in `test` and `tools`. Your notes, hooks, commands and the `memory` skill behave exactly as before. Update with `claude plugin update project-memory@project-memory` and restart Claude Code.
+- **The path to the memory tool moves.** It is now `.../src/memory.mjs`, not `.../memory.mjs`. The skill and the commands already use the new path. **If you wrote your own permission rule, shell alias or hand-wired hook that points at the old path, update it**, or it will stop matching or fail.
+- The download is the same plugin as before; tests and developer tools were already left out of it.
+
 ## 1.5.5 (2026-11-23)
 
 This release stops Claude Code from waiting on the plugin's backup after a reply. On a busy computer that backup sometimes held the end of a reply for half a minute.
