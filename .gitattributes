@@ -1,3 +1,35 @@
 *.mjs text eol=lf
 *.md text eol=lf
 *.json text eol=lf
+
+# Left out of the release .tar.gz/.zip (git archive): the user gets the plugin and
+# its documents; tests, dev tools, plans and repo settings stay in the repo.
+*.test.mjs export-ignore
+mutants/ export-ignore
+automut.mjs export-ignore
+automut-ignore.txt export-ignore
+mutate.mjs export-ignore
+survive.mjs export-ignore
+coverage.mjs export-ignore
+fuzz.mjs export-ignore
+fuzz-faults.cjs export-ignore
+bench.mjs export-ignore
+bench-store.mjs export-ignore
+check.mjs export-ignore
+harness.mjs export-ignore
+memory-tier.soak.mjs export-ignore
+memory-tier.break.mjs export-ignore
+live-times.mjs export-ignore
+deploy.mjs export-ignore
+docs/plans/ export-ignore
+docs/specs/ export-ignore
+docs/art/ export-ignore
+.github/ export-ignore
+.bestpractices.json export-ignore
+.editorconfig export-ignore
+.gitignore export-ignore
+.gitattributes export-ignore
+CONTRIBUTING.md export-ignore
+GOVERNANCE.md export-ignore
+CODE_OF_CONDUCT.md export-ignore
+SUPPORT.md export-ignore
