@@ -85,6 +85,18 @@ export const failures = (r, known) => {
   assert.deepEqual(failures({ status: null, error: new Error('spawn failed'), stdout: '', stderr: '' }, k), ['spawn failed']);
 }
 assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11])]])), 'a.mjs:3,4;b.mjs:11');
+// The release .tar.gz/.zip leave out what .gitattributes marks export-ignore; what the plugin runs must stay in:
+// the hooks' scripts, memory.mjs (the skill's CLI), everything they import, and the plugin's own folders.
+{
+  const run = ['memory.mjs', ...readFileSync(join(repo, 'hooks/hooks.json'), 'utf8').match(/[\w-]+\.mjs/g)];
+  const need = new Set(['LICENSE', ...git('ls-files', 'hooks', 'commands', 'skills', '.claude-plugin').split('\n').filter(Boolean)]);
+  for (const f of run) if (!need.has(f)) {
+    need.add(f);
+    for (const m of readFileSync(join(repo, f), 'utf8').matchAll(/['"]\.\/([\w-]+\.mjs)['"]/g)) run.push(m[1]);
+  }
+  const left = git('check-attr', 'export-ignore', '--', ...need).split('\n').filter((l) => l.endsWith(': set'));
+  assert.deepEqual(left, [], 'the release archive would leave out files the plugin needs');
+}
 // mutate.mjs --list --auto-lines names the automatic mutants of a line, each once, running nothing.
 {
   const n = readFileSync(join(repo, 'store.mjs'), 'utf8').split('\n').findIndex((l) => l.includes(' === ')) + 1;
