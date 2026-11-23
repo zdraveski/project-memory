@@ -17,7 +17,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { availableParallelism } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
 import { suites, settle, tableOf } from './mutate.mjs';
@@ -53,7 +53,7 @@ const span = (text, find) => {
   return Array.from({ length: find.split('\n').length }, (_, k) => first + k);
 };
 assert.deepEqual(suitesFor(['README.md']), []);
-assert.deepEqual(suitesFor(['journal.mjs', 'memory.test.mjs']), ['journal.test.mjs', 'memory.test.mjs']);
+assert.deepEqual(suitesFor(['src/journal.mjs', 'memory.test.mjs']), ['journal.test.mjs', 'memory.test.mjs']);
 assert.equal(suitesFor(['harness.mjs']).length, ALL.length);
 assert.equal(suitesFor(['mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
 // A mutant that timed out is run once more: killed then it counts as killed, otherwise the second verdict stands, any other verdict is not rerun.
@@ -86,22 +86,27 @@ export const failures = (r, known) => {
 }
 assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11])]])), 'a.mjs:3,4;b.mjs:11');
 // The release .tar.gz/.zip leave out what .gitattributes marks export-ignore; what the plugin runs must stay in:
-// the hooks' scripts, memory.mjs (the skill's CLI), everything they import, and the plugin's own folders.
+// every ${CLAUDE_PLUGIN_ROOT}/ path the hooks, the skill and the commands name (in git, not ignored), everything those
+// scripts import, and the plugin's own folders. archive.test.mjs runs the archive itself.
 {
-  const run = ['memory.mjs', ...readFileSync(join(repo, 'hooks/hooks.json'), 'utf8').match(/[\w-]+\.mjs/g)];
-  const need = new Set(['LICENSE', ...git('ls-files', 'hooks', 'commands', 'skills', '.claude-plugin').split('\n').filter(Boolean)]);
+  const lines = (...a) => git(...a).split('\n').filter(Boolean);
+  const named = ['hooks/hooks.json', 'skills/memory/SKILL.md', ...lines('ls-files', 'commands')]
+    .flatMap((f) => [...readFileSync(join(repo, f), 'utf8').matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([\w./-]+\.\w+)/g)].map((m) => m[1]));
+  const run = [...named], tracked = new Set(lines('ls-files'));
+  const need = new Set(['LICENSE', ...lines('ls-files', 'hooks', 'commands', 'skills', '.claude-plugin')]);
   for (const f of run) if (!need.has(f)) {
     need.add(f);
-    for (const m of readFileSync(join(repo, f), 'utf8').matchAll(/['"]\.\/([\w-]+\.mjs)['"]/g)) run.push(m[1]);
+    if (tracked.has(f)) for (const m of readFileSync(join(repo, f), 'utf8').matchAll(/['"]\.\/([\w-]+\.mjs)['"]/g)) run.push(posix.join(posix.dirname(f), m[1]));
   }
-  const left = git('check-attr', 'export-ignore', '--', ...need).split('\n').filter((l) => l.endsWith(': set'));
+  assert.deepEqual([...need].filter((f) => !tracked.has(f)), [], 'a path the plugin names is not in git');
+  const left = lines('check-attr', 'export-ignore', '--', ...need).filter((l) => l.endsWith(': set'));
   assert.deepEqual(left, [], 'the release archive would leave out files the plugin needs');
 }
 // mutate.mjs --list --auto-lines names the automatic mutants of a line, each once, running nothing.
 {
-  const n = readFileSync(join(repo, 'store.mjs'), 'utf8').split('\n').findIndex((l) => l.includes(' === ')) + 1;
-  const r = spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--auto-lines', `store.mjs:${n}`], { encoding: 'utf8' }), listed = r.stdout.split('\n').filter(Boolean);
-  assert.ok(listed.includes(`auto equality store.mjs:${n} === -> !==`), `exit ${r.status}\n${listed.join('\n')}\n${r.stderr}`);
+  const n = readFileSync(join(repo, 'src/store.mjs'), 'utf8').split('\n').findIndex((l) => l.includes(' === ')) + 1;
+  const r = spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--auto-lines', `src/store.mjs:${n}`], { encoding: 'utf8' }), listed = r.stdout.split('\n').filter(Boolean);
+  assert.ok(listed.includes(`auto equality src/store.mjs:${n} === -> !==`), `exit ${r.status}\n${listed.join('\n')}\n${r.stderr}`);
   assert.equal(new Set(listed).size, listed.length);
 }
 // --list keeps every line for a slow reader: a busy GitHub machine got 193 of 218 and failed the check below. Windows writes a pipe at once.
@@ -112,7 +117,7 @@ if (process.platform !== 'win32') {
 // A change that only adds a mutant runs that source's group: not every mutant (5 of the 17 PRs of 1.2.6 did), and not none.
 {
   const listed = (f) => spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--changed', f], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
-  assert.deepEqual(listed('mutants/journal.mjs'), Object.keys(suites['journal.mjs'][1]));
+  assert.deepEqual(listed('mutants/journal.mjs'), Object.keys(suites['src/journal.mjs'][1]));
   assert.deepEqual(listed('mutants/hooks.mjs'), Object.keys(suites['hooks/hooks.json'][1]));
   assert.deepEqual(suitesFor(['mutants/hooks.mjs']), ['memory.test.mjs']);
 }
@@ -225,7 +230,7 @@ if (bare.length) {
 }
 
 // 8. A hook's code changed: 20 s of fuzz, new rounds each time.
-if (changed.some((f) => ['store.mjs', 'handoff-log.mjs', 'journal.mjs', 'memory-tier.mjs', 'compact-gate.mjs'].includes(f))) {
+if (changed.some((f) => ['src/store.mjs', 'src/handoff-log.mjs', 'src/journal.mjs', 'src/memory-tier.mjs', 'src/compact-gate.mjs'].includes(f))) {
   const r = spawnSync(process.execPath, [join(repo, 'fuzz.mjs'), '20'], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
   step('20 s of fuzz', r.status === 0 ? [] : r.stdout.trim().split('\n'));
 }
