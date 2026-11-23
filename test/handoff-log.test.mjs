@@ -450,7 +450,7 @@ ok(!/Memory hooks/.test(execFileSync(process.execPath, [HOOK, '--print'], { inpu
 // 26. The hooks run from a copy deploy.mjs makes after the full check: an edit
 // in the repo was live before any test ran. An edit to that copy is live and
 // untested, so the startup line names it.
-const { install } = await import('../deploy.mjs');
+const { install } = await import('../tools/deploy.mjs');
 const liveDir = join(home, 'hooks-live');
 install(ROOT, liveDir, 'test');
 const printLive = () => execFileSync(process.execPath, [join(liveDir, 'src', 'handoff-log.mjs'), '--print'], { input: JSON.stringify({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString();
@@ -521,7 +521,7 @@ for (const f of ['.claude-plugin/plugin.json', 'hooks/hooks.json']) {
   const t = readFileSync(join(liveV, f), 'utf8');
   ok(t === JSON.stringify(JSON.parse(t), null, 2) + '\n', `${f} is written two-space indented, newline-ended`);
 }
-ok(readFileSync(join(liveV, 'README.md'), 'utf8') === `Deployed by ${join(ROOT, 'deploy.mjs')} after the full check. Edit there and deploy; an edit here is live and untested, and the startup line will say so.\n`, 'the live folder says where to edit');
+ok(readFileSync(join(liveV, 'README.md'), 'utf8') === `Deployed by ${join(ROOT, 'tools', 'deploy.mjs')} after the full check. Edit there and deploy; an edit here is live and untested, and the startup line will say so.\n`, 'the live folder says where to edit');
 // A scanner holding a fresh file refuses the rename for a moment: retried up to four times, and only for a busy file.
 {
   const renamed = fs.renameSync;
@@ -560,14 +560,15 @@ ok(/^Memory hooks changed outside deploy\.mjs, live and untested: src\/store\.mj
 const gated = join(home, 'gated');
 mkdirSync(gated, { recursive: true });
 mkdirSync(join(gated, 'src'), { recursive: true });
-for (const f of ['deploy.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
+mkdirSync(join(gated, 'tools'), { recursive: true });
+for (const f of ['tools/deploy.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
 const g = (...a) => execFileSync('git', ['-C', gated, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { env, encoding: 'utf8' });
 g('init', '-q', '-b', 'master'); g('add', '-A'); g('commit', '-qm', 'base'); g('checkout', '-qb', 'other');
-let gate = spawnSync(process.execPath, [join(gated, 'deploy.mjs')], { env, encoding: 'utf8' });
+let gate = spawnSync(process.execPath, [join(gated, 'tools', 'deploy.mjs')], { env, encoding: 'utf8' });
 ok(gate.status === 1 && /deploy from master/.test(gate.stderr) && !existsSync(join(home, '.claude', 'hooks-live')), `deploy refuses a branch, before any check (got ${gate.stderr.trim()})`);
 g('checkout', '-q', 'master');
 appendFileSync(join(gated, 'src', 'store.mjs'), '// an edit\n');
-gate = spawnSync(process.execPath, [join(gated, 'deploy.mjs')], { env, encoding: 'utf8' });
+gate = spawnSync(process.execPath, [join(gated, 'tools', 'deploy.mjs')], { env, encoding: 'utf8' });
 ok(gate.status === 1 && /uncommitted changes/.test(gate.stderr), `and uncommitted changes (got ${gate.stderr.trim()})`);
 
 // 28. An answer's markdown marks carry no words: dropped before the 400 characters are counted.
@@ -2955,11 +2956,11 @@ require('node:module').syncBuiltinESMExports();
     const here = join(home, 'edited-here');
     mkdirSync(here, { recursive: true });
     writeFileSync(join(here, '.deployed.json'), JSON.stringify({ files: { 'gone.mjs': 'abc' }, repo: 'C:\\my repo' }));
-    ok(edited_(here)[0]?.includes('edit C:\\my repo and run node deploy.mjs there'), 'the message names the repo the manifest names');
+    ok(edited_(here)[0]?.includes('edit C:\\my repo and run node tools/deploy.mjs there'), 'the message names the repo the manifest names');
     writeFileSync(join(here, '.deployed.json'), JSON.stringify({ files: { 'gone.mjs': 'abc' }, repo: join(home, 'no-such-clone'), origin: 'https://example.test/r.git' }));
     ok(edited_(here)[0]?.includes('https://example.test/r.git'), 'a repo path that is gone is named by its origin (1.5.2 finding 14)');
     writeFileSync(join(here, '.deployed.json'), JSON.stringify({ files: { 'gone.mjs': 'abc' } }));
-    ok(edited_(here)[0]?.includes('edit the hooks repo and run node deploy.mjs there'), 'and says the hooks repo when it names none');
+    ok(edited_(here)[0]?.includes('edit the hooks repo and run node tools/deploy.mjs there'), 'and says the hooks repo when it names none');
   }
 
   // A slash command with no arguments tag is the command alone, whatever a stray closer or the tag's text says.
@@ -3024,7 +3025,7 @@ require('node:module').syncBuiltinESMExports();
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = ROOT;
   const FILES_ = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
-    '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'deploy.mjs'];
+    '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'tools/deploy.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
 import { basename } from 'node:path';
@@ -3041,12 +3042,13 @@ if (s.out) process.stdout.write(s.out);
 process.exit(s.code || 0);
 `;
   mkdirSync(join(dep, 'test'), { recursive: true });
-  for (const f of ['store', 'handoff-log', 'journal', 'recall', 'compact-gate', 'memory-tier', 'memory', 'enforce', 'enforce-hook', 'timing', 'page'].map((t) => `test/${t}.test.mjs`).concat(['mutate.mjs', 'test/memory-tier.soak.mjs', 'test/memory-tier.break.mjs', 'src/memory-tier.mjs'])) writeFileSync(join(dep, f), STUB);
+  mkdirSync(join(dep, 'tools'), { recursive: true });
+  for (const f of ['store', 'handoff-log', 'journal', 'recall', 'compact-gate', 'memory-tier', 'memory', 'enforce', 'enforce-hook', 'timing', 'page'].map((t) => `test/${t}.test.mjs`).concat(['tools/mutate.mjs', 'test/memory-tier.soak.mjs', 'test/memory-tier.break.mjs', 'src/memory-tier.mjs'])) writeFileSync(join(dep, f), STUB);
   const g2 = (...a) => execFileSync('git', ['-C', dep, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf8' }).trim();
   g2('init', '-q', '-b', 'master'); g2('add', '-A'); g2('commit', '-qm', 'base');
   const deploy = (c, ...args) => {
     writeFileSync(ctl, JSON.stringify(c)); rmSync(`${ctl}.log`, { force: true });
-    const r = spawnSync(process.execPath, [join(dep, 'deploy.mjs'), ...args], { encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [join(dep, 'tools', 'deploy.mjs'), ...args], { encoding: 'utf8' });
     // what the stubs were run with, minus the eleven suites
     r.calls = (existsSync(`${ctl}.log`) ? readFileSync(`${ctl}.log`, 'utf8').trim().split('\n') : []).map((x) => x.trimEnd()).filter((x) => !x.includes('.test.mjs'));
     return r;

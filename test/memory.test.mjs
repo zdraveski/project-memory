@@ -498,7 +498,7 @@ ok(JSON.stringify(wiring) === JSON.stringify(['PreCompact | auto | node ${CLAUDE
   'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/src/brief.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'SubagentStop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop']),
   `the plugin wires its hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
 {
-  const { HOOKS } = await import('../deploy.mjs');
+  const { HOOKS } = await import('../tools/deploy.mjs');
   const named = wiring.map((w) => w.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/(\S+)/)[1]);
   ok(named.every((f) => HOOKS.includes(f)), `every script hooks.json runs is deployed (HOOKS lacks ${named.filter((f) => !HOOKS.includes(f))})`);
 }

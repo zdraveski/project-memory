@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       # A fresh checkout has nothing changed: its parse (.mjs and .json) and import checks, a few seconds.
-      - run: node check.mjs
+      - run: node tools/check.mjs
       - run: node test/store.test.mjs
       - run: node test/compact-gate.test.mjs
       - run: node test/handoff-log.test.mjs
@@ -52,9 +52,9 @@ jobs:
       - run: node test/archive.test.mjs
       - run: node test/bench.test.mjs
       # What a compaction keeps: the journal every fact, the print after it the start of each exchange it shows.
-      - run: node survive.mjs
+      - run: node tools/survive.mjs
       # Each hook on a made-up busy store must stay within its limit times an empty `node -e` on the same machine.
-      - run: node bench.mjs --check 5
+      - run: node tools/bench.mjs --check 5
 
   # The workflow files themselves: GitHub once refused fuzz.yml over a %. After a merge, not on every pull request.
   actionlint:

@@ -6,18 +6,18 @@
 // manifest of their hashes; handoff-log's startup line names any live file that
 // no longer matches it.
 //
-// Run: node deploy.mjs [--tiering-change] [--full]
+// Run: node tools/deploy.mjs [--tiering-change] [--full]
 // (from this repo; a few minutes, ~70 with --full, which adds every mutant)
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSync, realpathSync, rmSync } from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
 import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { hash } from './src/handoff-log.mjs';
-import { BUSY, sleep } from './src/store.mjs';
-import { LIVE, installPath, pluginRoot, deployedCommit } from './src/memory.mjs';
+import { hash } from '../src/handoff-log.mjs';
+import { BUSY, sleep } from '../src/store.mjs';
+import { LIVE, installPath, pluginRoot, deployedCommit } from '../src/memory.mjs';
 
 // What every suite stands on: check.mjs runs all eleven after a change to one.
-export const SHARED = ['src/store.mjs', 'test/harness.mjs', 'mutate.mjs'];
+export const SHARED = ['src/store.mjs', 'test/harness.mjs', 'tools/mutate.mjs'];
 
 // The hooks, the CLI, and the plugin around them: the live copy is also the
 // project-memory plugin's root and its marketplace. Installed from there, the
@@ -71,13 +71,13 @@ export function install(from, to, commit, patch, node, origin) {
   }
   const stat = Object.fromEntries(HOOKS.map((f) => { const s = statSync(join(to, f)); return [f, [s.size, s.mtimeMs]]; }));
   writeFileSync(join(to, '.deployed.json'), JSON.stringify({ commit, repo: from, origin, at: new Date().toISOString(), files, stat }) + '\n');
-  writeFileSync(join(to, 'README.md'), `Deployed by ${join(from, 'deploy.mjs')} after the full check. Edit there and deploy; an edit here is live and untested, and the startup line will say so.\n`);
+  writeFileSync(join(to, 'README.md'), `Deployed by ${join(from, 'tools', 'deploy.mjs')} after the full check. Edit there and deploy; an edit here is live and untested, and the startup line will say so.\n`);
 }
 
 // Node names the script by its real path: compared with the path it was
 // given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
-  const repo = dirname(fileURLToPath(import.meta.url));
+  const repo = dirname(dirname(fileURLToPath(import.meta.url)));
   const node = (...args) => execFileSync(process.execPath, args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const git = (...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
   const fail = (why) => { console.error(`deploy: ${why}`); process.exit(1); };
@@ -103,7 +103,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // release (CONTRIBUTING.md), not here: the plugin runs no signed-in claude CLI,
   // which the plugin directory's security scan holds.
   // Mutants are no part of a deploy or a release; --full runs them if someone asks.
-  if (process.argv.includes('--full')) step('mutation check (all, ~65 min)', () => node('mutate.mjs'));
+  if (process.argv.includes('--full')) step('mutation check (all, ~65 min)', () => node('tools/mutate.mjs'));
   else console.log('mutation check ... skipped');
   step('soak', () => node('test/memory-tier.soak.mjs'));
   step('break harness', () => {

@@ -1,12 +1,12 @@
 // How long each hook takes. Three ways:
-//   node bench.mjs [runs]   times each hook on a made-up busy store under a throwaway HOME (default 9
+//   node tools/bench.mjs [runs]   times each hook on a made-up busy store under a throwaway HOME (default 9
 //                           runs; prints p50 / p90 in ms, the time before the hook's first line, and its
 //                           largest phase). --real copies this machine's largest transcript and store
 //                           instead: the real ones are never touched.
 //     --plugin <dir>        runs the hooks of another checkout against the same store
 //     --json <path>         also writes the numbers as JSON (no path, no machine name)
 //     --check               fails when a case is too slow beside an empty `node -e ""` (LIMITS below)
-//   node bench.mjs --live [--project <folder>|all] [--days <n>]
+//   node tools/bench.mjs --live [--project <folder>|all] [--days <n>]
 //                           reads the hook durations Claude Code recorded in its own conversation
 //                           files (read-only): this plugin's hooks beside every other plugin's, and
 //                           for ours how much of it was inside the script and how much outside.
@@ -15,10 +15,10 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { tool, tempHome, largestStore } from './test/harness.mjs';
-import { projectsRoot, storeOf } from './src/store.mjs';
+import { ROOT, tool, tempHome, largestStore } from '../test/harness.mjs';
+import { projectsRoot, storeOf } from '../src/store.mjs';
 import { liveTimes } from './live-times.mjs';
-import { pct, stats, read, FILE } from './src/timing.mjs';
+import { pct, stats, read, FILE } from '../src/timing.mjs';
 import { build, PROJECT, CWD } from './bench-store.mjs';
 
 const OURS = ['memory-tier.mjs', 'brief.mjs', 'enforce-hook.mjs', 'compact-gate.mjs', 'handoff-log.mjs'];
@@ -164,7 +164,7 @@ export async function main(argv, run = measure, limits = LIMITS) {
   const r = { ...(await run(opts)), runs };
   show(r);
   if (jsonPath) {
-    const root = plugin ?? dirname(tool('bench.mjs'));
+    const root = plugin ?? ROOT;
     const version = JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8')).version;
     const { store, cases, briefingBytes } = r;
     writeFileSync(jsonPath, JSON.stringify({ at: new Date().toISOString(), node: process.version, platform: process.platform, plugin: version, runs, store, cases, briefingBytes }, null, 2) + '\n');

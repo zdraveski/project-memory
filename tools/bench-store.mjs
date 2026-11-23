@@ -4,8 +4,8 @@
 // generator, so the same seed and time give the same bytes. Nothing in it is from a real conversation.
 import { mkdirSync, writeFileSync, openSync, writeSync, closeSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { render } from './src/journal.mjs';
-import { local } from './src/store.mjs';
+import { render } from '../src/journal.mjs';
+import { local } from '../src/store.mjs';
 
 const WORDS = ('harbor lantern orchard meadow copper violet ledger compass thistle quarry beacon willow ember saddle mirror ' +
   'anchor falcon garnet hollow juniper kettle lagoon marble nectar opal pebble quill ripple summit timber umber velvet wicker ' +

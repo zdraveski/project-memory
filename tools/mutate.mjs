@@ -1,12 +1,12 @@
 // Mutation check for the seven suites: break one rule of a tool at a time in a
 // copy and confirm its test fails. A mutant that survives is a rule the test
-// does not watch. Run: node mutate.mjs
+// does not watch. Run: node tools/mutate.mjs
 import { rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { availableParallelism } from 'node:os';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { tool, tempDir } from './test/harness.mjs';
+import { tool, tempDir } from '../test/harness.mjs';
 import { mutants, ignored } from './automut.mjs';
 import store from './mutants/store.mjs';
 import compactGate from './mutants/compact-gate.mjs';
@@ -24,7 +24,7 @@ import brief from './mutants/brief.mjs';
 import timing from './mutants/timing.mjs';
 
 // Every file a suite may import, copied beside the mutant.
-const FILES = ['test/harness.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'deploy.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
+const FILES = ['test/harness.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'tools/deploy.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
   '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
 
 export const suites = {
@@ -36,7 +36,7 @@ export const suites = {
   'hooks/hooks.json': ['test/memory.test.mjs', hooks],
   'src/journal.mjs': ['test/journal.test.mjs', journal],
   'src/recall.mjs': ['test/recall.test.mjs', recall],
-  'deploy.mjs': ['test/handoff-log.test.mjs', deploy],
+  'tools/deploy.mjs': ['test/handoff-log.test.mjs', deploy],
   'src/brief.mjs': ['test/handoff-log.test.mjs', brief],
   'src/enforce.mjs': ['test/enforce.test.mjs', enforce],
   'src/enforce-hook.mjs': ['test/enforce-hook.test.mjs', enforceHook],
@@ -44,7 +44,7 @@ export const suites = {
   'src/page.mjs': ['test/page.test.mjs', page],
 };
 // The file that holds a group's mutants: a --changed list naming it asks for that group alone.
-export const tableOf = (name) => `mutants/${name.split('/').pop().replace(/\.\w+$/, '')}.mjs`;
+export const tableOf = (name) => `tools/mutants/${name.split('/').pop().replace(/\.\w+$/, '')}.mjs`;
 // Whether a --changed list asks for a group: its source, its suite or its mutants.
 export const inScope = (changed, name, test) => [name, test, tableOf(name)].some((f) => changed.includes(f));
 
@@ -56,7 +56,7 @@ export const settle = async (first, again) => first !== 'TIMED OUT' ? first : ((
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   // Side by side, one per core but one: each mutant has its own folder and HOME,
   // and one after another the check took ~15 minutes of a 20-minute deploy.
-  // `node mutate.mjs <text...>` runs only the mutants whose label contains one
+  // `node tools/mutate.mjs <text...>` runs only the mutants whose label contains one
   // of the texts: several run one pool (one at a time, each paid its own controls).
   // `--changed a,b`: only the groups whose source, suite or mutants are among the
   // files a deploy changed. `--shard i/n`: every n-th mutant from the i-th, one machine
@@ -98,7 +98,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   };
   const stale = [];
   let dropped = 0;
-  const ignore = ignored(existsSync(tool('automut-ignore.txt')) ? readFileSync(tool('automut-ignore.txt'), 'utf8') : null);
+  const ignore = ignored(existsSync(tool('tools/automut-ignore.txt')) ? readFileSync(tool('tools/automut-ignore.txt'), 'utf8') : null);
   if (auto) {
     const seen = new Set();
     for (const [name, [testName, table]] of Object.entries(suites)) {

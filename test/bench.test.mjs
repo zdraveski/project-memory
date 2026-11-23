@@ -6,11 +6,11 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tempDir, tool, storeFor, capture } from './harness.mjs';
-import { build, CWD } from '../bench-store.mjs';
-import { CASES, LIMITS, verdict, main } from '../bench.mjs';
+import { build, CWD } from '../tools/bench-store.mjs';
+import { CASES, LIMITS, verdict, main } from '../tools/bench.mjs';
 import { tmpdir, homedir } from 'node:os';
 import { days, parseDay, dayFile } from '../src/journal.mjs';
-import { liveTimes, scriptOf } from '../live-times.mjs';
+import { liveTimes, scriptOf } from '../tools/live-times.mjs';
 import { pct } from '../src/timing.mjs';
 
 const { home } = tempHome('bench-');
@@ -60,7 +60,7 @@ ok(eq([...both.keys()], ['Stop memory-tier.mjs']), 'a summary is a Stop row, not
 ok(eq(both.get('Stop memory-tier.mjs'), [800]), 'both shapes of one run: one sample; a hook without a duration is skipped');
 ok(eq((await liveTimes([write('loose.jsonl', [perHook(790), perHook(610)])])).get('Stop memory-tier.mjs'), [790, 610]), 'per-hook Stop records alone are still counted');
 // the table
-const r = spawnSync(process.execPath, [tool('bench.mjs'), '--live', '--project', cwd, '--days', '14'], { encoding: 'utf8' });
+const r = spawnSync(process.execPath, [tool('tools/bench.mjs'), '--live', '--project', cwd, '--days', '14'], { encoding: 'utf8' });
 const out = r.stdout;
 ok(r.status === 0, `bench --live exits 0 (${r.stderr})`);
 ok(/^conversation files read: 1, last 14 days$/m.test(out), 'the header counts the files and the window');
@@ -92,7 +92,7 @@ const EMPTY = 'node, empty script';
 const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const version = JSON.parse(readFileSync(tool('.claude-plugin/plugin.json'), 'utf8')).version;
 const jsonPath = join(home, 'bench.json');
-const bench = spawnSync(process.execPath, [tool('bench.mjs'), '2', '--scale', '0.02', '--json', jsonPath], { encoding: 'utf8' });
+const bench = spawnSync(process.execPath, [tool('tools/bench.mjs'), '2', '--scale', '0.02', '--json', jsonPath], { encoding: 'utf8' });
 ok(bench.status === 0, `bench exits 0 (${bench.stderr})`);
 ok(CASES.every((c) => new RegExp(`^${esc(c)}\\s+p50\\s+\\d+ ms\\s+p90\\s+\\d+ ms`, 'm').test(bench.stdout)), 'every case prints');
 const j = JSON.parse(readFileSync(jsonPath, 'utf8'));
@@ -112,11 +112,11 @@ ok(twice.value === 1, 'slow twice is a failure');
 ok(eq(Object.keys(LIMITS).sort(), CASES.filter((c) => c !== EMPTY).sort()), 'a limit for every case');
 
 // --real copies the machine's own transcript and store, found before HOME points at the throwaway folder
-const real = spawnSync(process.execPath, [tool('bench.mjs'), '1', '--real'], { encoding: 'utf8' });
+const real = spawnSync(process.execPath, [tool('tools/bench.mjs'), '1', '--real'], { encoding: 'utf8' });
 ok(real.status === 0 && /^Stop, nothing changed\s+p50/m.test(real.stdout), `--real runs on a home that has a transcript and a store (${real.stderr.slice(0, 200)})`);
 const keep = process.env.HOME, empty = tempDir('bench-empty-');
 process.env.HOME = empty; process.env.USERPROFILE = empty;
-const none = spawnSync(process.execPath, [tool('bench.mjs'), '1', '--real'], { encoding: 'utf8' });
+const none = spawnSync(process.execPath, [tool('tools/bench.mjs'), '1', '--real'], { encoding: 'utf8' });
 process.env.HOME = keep; process.env.USERPROFILE = keep;
 ok(none.status === 1 && /needs a transcript and a memory store/.test(none.stderr), '--real with nothing to copy says so in plain words');
 
@@ -132,7 +132,7 @@ ok(seen === 9, 'a number after --scale is not the runs');
 ok(verdict({ a: 1, [EMPTY]: 0 }, { a: 3 }).length === 1 && verdict({ a: 1, [EMPTY]: NaN }, { a: 3 }).length === 1, 'an empty-script median of 0 or NaN fails');
 ok(/"a" has no usable measurement/.test(verdict({ a: NaN, [EMPTY]: 50 }, { a: 3 })[0]), 'a case whose time is not a number fails');
 ok(eq(verdict({ [EMPTY]: 50 }, { a: 3 }), ['no measurement for "a"']), 'a case with a limit but no measurement fails');
-const dead = spawnSync(process.execPath, [tool('bench.mjs'), '1', '--scale', '0.02', '--plugin', tempDir('bench-nothing-')], { encoding: 'utf8' });
+const dead = spawnSync(process.execPath, [tool('tools/bench.mjs'), '1', '--scale', '0.02', '--plugin', tempDir('bench-nothing-')], { encoding: 'utf8' });
 ok(dead.status !== 0 && /did not run/.test(dead.stderr), 'a hook that cannot start fails the bench');
 
 console.log(`bench: ${checks} checks passed`);

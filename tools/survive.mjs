@@ -2,16 +2,16 @@
 // compact) still carries, and which only the journal keeps. Model-free, after KEEP-Bench (arXiv 2610.26827):
 // every fact is a unique token, found or not by string match, and an exchange counts only if all of its
 // facts survive. A synthetic transcript under a throwaway HOME: no real memory is read.
-// Run: node survive.mjs   (prints the table; exits 1 if the journal loses a fact, or the print loses one
+// Run: node tools/survive.mjs   (prints the table; exits 1 if the journal loses a fact, or the print loses one
 // it promises to keep: the start of an ask or an answer of an exchange it shows)
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { tool, tempHome, storeFor } from './test/harness.mjs';
+import { tool, tempHome, storeFor } from '../test/harness.mjs';
 
 const { home, env } = tempHome('survive-');
-const { handoff, parse } = await import('./src/handoff-log.mjs');
-const { entryOf, render, parseDay } = await import('./src/journal.mjs');
+const { handoff, parse } = await import('../src/handoff-log.mjs');
+const { entryOf, render, parseDay } = await import('../src/journal.mjs');
 const cwd = 'C:\\survive-project', dir = storeFor(home, cwd), t = join(dir, 'ssssssss.jsonl');
 mkdirSync(dir, { recursive: true });
 
