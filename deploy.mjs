@@ -17,7 +17,7 @@ import { BUSY, sleep } from './src/store.mjs';
 import { LIVE, installPath, pluginRoot, deployedCommit } from './src/memory.mjs';
 
 // What every suite stands on: check.mjs runs all eleven after a change to one.
-export const SHARED = ['src/store.mjs', 'harness.mjs', 'mutate.mjs'];
+export const SHARED = ['src/store.mjs', 'test/harness.mjs', 'mutate.mjs'];
 
 // The hooks, the CLI, and the plugin around them: the live copy is also the
 // project-memory plugin's root and its marketplace. Installed from there, the
@@ -96,7 +96,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // another they were a minute of the gate.
   process.stdout.write('the eleven suites ... ');
   const suites = await Promise.all(['store', 'handoff-log', 'journal', 'recall', 'compact-gate', 'memory-tier', 'memory', 'enforce', 'enforce-hook', 'timing', 'page'].map((t) => new Promise((done) =>
-    execFile(process.execPath, [`${t}.test.mjs`], { cwd: repo, encoding: 'utf8' }, (e, out, err) => done(e && `${t}.test: ${(err + out).trim().split('\n').slice(-3).join(' | ')}`)))));
+    execFile(process.execPath, [`test/${t}.test.mjs`], { cwd: repo, encoding: 'utf8' }, (e, out, err) => done(e && `${t}.test: ${(err + out).trim().split('\n').slice(-3).join(' | ')}`)))));
   if (suites.some(Boolean)) { console.log('FAILED'); fail(suites.filter(Boolean).join('; ')); }
   console.log('ok');
   // The manifest is checked with `claude plugin validate . --strict` before a
@@ -105,9 +105,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // Mutants are no part of a deploy or a release; --full runs them if someone asks.
   if (process.argv.includes('--full')) step('mutation check (all, ~65 min)', () => node('mutate.mjs'));
   else console.log('mutation check ... skipped');
-  step('soak', () => node('memory-tier.soak.mjs'));
+  step('soak', () => node('test/memory-tier.soak.mjs'));
   step('break harness', () => {
-    const bad = node('memory-tier.break.mjs').split('\n').filter((l) => l.trim() && !l.includes(' ok ('));
+    const bad = node('test/memory-tier.break.mjs').split('\n').filter((l) => l.trim() && !l.includes(' ok ('));
     if (bad.length) throw new Error(bad.join('\n'));
   });
   // Tiering the real stores comes out the same unless the change meant it to.

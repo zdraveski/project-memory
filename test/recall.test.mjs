@@ -1,6 +1,6 @@
 // Self-check for recall.mjs: the word splitter and the tests on a journal entry. Run: node recall.test.mjs
 import assert from 'node:assert';
-import { tame, words, changedFile, isHelper, inConversation, changers, whoChanged } from './src/recall.mjs';
+import { tame, words, changedFile, isHelper, inConversation, changers, whoChanged } from '../src/recall.mjs';
 
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };

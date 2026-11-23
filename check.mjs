@@ -53,8 +53,8 @@ const span = (text, find) => {
   return Array.from({ length: find.split('\n').length }, (_, k) => first + k);
 };
 assert.deepEqual(suitesFor(['README.md']), []);
-assert.deepEqual(suitesFor(['src/journal.mjs', 'memory.test.mjs']), ['journal.test.mjs', 'memory.test.mjs']);
-assert.equal(suitesFor(['harness.mjs']).length, ALL.length);
+assert.deepEqual(suitesFor(['src/journal.mjs', 'test/memory.test.mjs']), ['test/journal.test.mjs', 'test/memory.test.mjs']);
+assert.equal(suitesFor(['test/harness.mjs']).length, ALL.length);
 assert.equal(suitesFor(['mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
 // A mutant that timed out is run once more: killed then it counts as killed, otherwise the second verdict stands, any other verdict is not rerun.
 {
@@ -119,7 +119,7 @@ if (process.platform !== 'win32') {
   const listed = (f) => spawnSync(process.execPath, [join(repo, 'mutate.mjs'), '--list', '--changed', f], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
   assert.deepEqual(listed('mutants/journal.mjs'), Object.keys(suites['src/journal.mjs'][1]));
   assert.deepEqual(listed('mutants/hooks.mjs'), Object.keys(suites['hooks/hooks.json'][1]));
-  assert.deepEqual(suitesFor(['mutants/hooks.mjs']), ['memory.test.mjs']);
+  assert.deepEqual(suitesFor(['mutants/hooks.mjs']), ['test/memory.test.mjs']);
 }
 
 const t0 = Date.now(), problems = [];

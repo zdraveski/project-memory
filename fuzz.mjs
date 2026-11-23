@@ -80,7 +80,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir, availableParallelism, homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { tool, tempHome, storeFor } from './harness.mjs';
+import { tool, tempHome, storeFor } from './test/harness.mjs';
 import { LOCK_STALE, SHARED_BUDGET, POINTER } from './src/store.mjs';
 import { NUDGE_TAG, ACTIVE, tag, parse, sectionOf } from './src/handoff-log.mjs';
 

@@ -37,20 +37,20 @@ jobs:
           node-version: ${{ matrix.node }}
       # A fresh checkout has nothing changed: its parse (.mjs and .json) and import checks, a few seconds.
       - run: node check.mjs
-      - run: node store.test.mjs
-      - run: node compact-gate.test.mjs
-      - run: node handoff-log.test.mjs
-      - run: node memory-tier.test.mjs
-      - run: node memory.test.mjs
-      - run: node journal.test.mjs
-      - run: node recall.test.mjs
-      - run: node enforce.test.mjs
-      - run: node enforce-hook.test.mjs
-      - run: node timing.test.mjs
-      - run: node page.test.mjs
+      - run: node test/store.test.mjs
+      - run: node test/compact-gate.test.mjs
+      - run: node test/handoff-log.test.mjs
+      - run: node test/memory-tier.test.mjs
+      - run: node test/memory.test.mjs
+      - run: node test/journal.test.mjs
+      - run: node test/recall.test.mjs
+      - run: node test/enforce.test.mjs
+      - run: node test/enforce-hook.test.mjs
+      - run: node test/timing.test.mjs
+      - run: node test/page.test.mjs
       # The release archive unpacked: every hook command in hooks.json runs from it, on every OS.
-      - run: node archive.test.mjs
-      - run: node bench.test.mjs
+      - run: node test/archive.test.mjs
+      - run: node test/bench.test.mjs
       # What a compaction keeps: the journal every fact, the print after it the start of each exchange it shows.
       - run: node survive.mjs
       # Each hook on a made-up busy store must stay within its limit times an empty `node -e` on the same machine.

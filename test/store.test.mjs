@@ -11,7 +11,7 @@ import { createHmac } from 'node:crypto';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, wasOff, OFF_PERIODS, keyed, offSince, holdsSecret, tag } = await import('./src/store.mjs');
+const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, wasOff, OFF_PERIODS, keyed, offSince, holdsSecret, tag } = await import('../src/store.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -403,7 +403,7 @@ ok(full === 'ENOSPC' && readFileSync(f, 'utf8') === 'the model wrote this' && !r
 // A transcript is in the projects folder by its resolved path: `<projects>/../x`
 // is not. Its key is `<folder>/<session>`.
 {
-  const { projectsRoot } = await import('./src/store.mjs');
+  const { projectsRoot } = await import('../src/store.mjs');
   const inside = join(projectsRoot(), 'C--x', 'abc.jsonl');
   ok(inProjects(inside) && !inProjects(`${projectsRoot()}/../history.jsonl`), 'a transcript under the projects folder is in it; one reached by .. is not');
   ok(transcriptKey(inside) === 'C--x/abc', `a transcript's key is its folder and session (got ${transcriptKey(inside)})`);
@@ -485,7 +485,7 @@ ok(withLock(dir, () => 'taken') === 'taken', 'a lock dated an hour ahead is take
 // The snapshot repo's git ignores the user's own config: commit signing failed
 // every snapshot, a global hooks folder ran the user's hooks on it, and on
 // Windows a path past 260 characters was skipped with only a warning.
-const { gitArgs } = await import('./src/store.mjs');
+const { gitArgs } = await import('../src/store.mjs');
 const ga = gitArgs('status');
 ok(ga.includes('commit.gpgsign=false') && ga.includes('core.longpaths=true') && ga.some((a) => /^core\.hooksPath=.*no-hooks$/.test(a)) && ga.at(-1) === 'status',
   `the snapshot repo's git turns off signing and hooks, and on long paths (got ${ga.join(' ')})`);
@@ -496,7 +496,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
 
 // Round 3 (2026-10-27).
 {
-  const { repoRoot, projectsRoot, memoryOff } = await import('./src/store.mjs');
+  const { repoRoot, projectsRoot, memoryOff } = await import('../src/store.mjs');
   const slug = (p) => p.replace(/[^A-Za-z0-9]/g, '-');
   // A repository, a subfolder of it, a worktree of it (its .git a file naming
   // a folder in the main .git), and a submodule (one with no commondir).
@@ -515,7 +515,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
   ok(repoRoot(undefined) === null, 'a folder that is no string is in no repository');
   // startCwd reads a transcript's head: 64 KB at a time, up to 4 MB, and the first cwd it finds is the one.
   {
-    const { startCwd } = await import('./src/store.mjs');
+    const { startCwd } = await import('../src/store.mjs');
     const put = (name, text) => { const f = join(home, name); writeFileSync(f, text); return f; };
     const two = put('sc-two.jsonl', `${JSON.stringify({ type: 'user', cwd: '/first' })}\n${JSON.stringify({ pad: 'x'.repeat(70000) })}\n${JSON.stringify({ type: 'user', cwd: '/second' })}\n`);
     ok(startCwd(two) === '/first', `a later cwd never replaces the first (got ${startCwd(two)})`);
@@ -604,7 +604,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
 
   // Settings Claude Code reads (item 28): the first autoMemoryEnabled in managed, project local, project, user; the env var over all.
   {
-    const { autoMemory } = await import('./src/store.mjs');
+    const { autoMemory } = await import('../src/store.mjs');
     const lab = join(home, 'lab28'), mg = join(lab, 'managed'), pr = join(lab, 'proj'), cf = join(lab, 'cfg');
     for (const d of [join(mg, 'managed-settings.d'), join(pr, '.claude'), cf]) mkdirSync(d, { recursive: true });
     const put = (f, v) => writeFileSync(f, typeof v === 'string' ? v : JSON.stringify(v));
@@ -659,7 +659,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
 // Round 4. The snapshots keep line endings as written, whatever git is told
 // elsewhere: Git for Windows sets core.autocrlf=true for the whole machine.
 {
-  const { gitArgs, projectsRoot } = await import('./src/store.mjs');
+  const { gitArgs, projectsRoot } = await import('../src/store.mjs');
   const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8' });
   mkdirSync(projectsRoot(), { recursive: true });
   if (!existsSync(join(projectsRoot(), '.git'))) {
@@ -674,7 +674,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
 
 // The caller's repo-locating git variables never reach a snapshot's git (a pre-commit hook running `claude -p` sets them); the rest stay.
 {
-  const { gitArgs } = await import('./src/store.mjs');
+  const { gitArgs } = await import('../src/store.mjs');
   const names = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_CONFIG_PARAMETERS'];
   for (const k of names) process.env[k] = '/elsewhere';
   process.env.GIT_SSH_COMMAND = 'ssh';
@@ -802,7 +802,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
     writeFileSync(join(gd, 'gitdir'), back === 'ok' ? join(w, '.git') : back);
     return [w, r];
   };
-  const { repoRoot } = await import('./src/store.mjs');
+  const { repoRoot } = await import('../src/store.mjs');
   const [wGood, rGood] = mk('good');
   ok(repoRoot(wGood) === rGood, 'a worktree that checks out is its repository');
   for (const [name, o] of [['nocommon', { common: '' }], ['noback', { back: '' }], ['notworktrees', { sub: 'other' }], ['elsewhere', { back: join(home, 'work59', 'elsewhere', '.git') }]]) {
@@ -891,7 +891,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
 
 // 99. A project turned off (memory off) is a marker in its store: isOff says since when, fails closed on a marker it cannot stat.
 {
-  const { isOff, PROJECT_OFF } = await import('./src/store.mjs');
+  const { isOff, PROJECT_OFF } = await import('../src/store.mjs');
   const od = join(root, 'C--off-project', 'memory');
   mkdirSync(od, { recursive: true });
   ok(PROJECT_OFF === '.project-off' && isOff(od) === null, 'no marker: not off');
@@ -976,7 +976,7 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = [
     Object.defineProperty(process, 'platform', { value: p });
     let first = null; const real = fs.readdirSync;
     try {
-      const m = await import(`./src/store.mjs?managed-${p}`);
+      const m = await import(`../src/store.mjs?managed-${p}`);
       fs.readdirSync = function (d, ...a) { first ??= String(d); return real.call(this, d, ...a); }; syncBuiltinESMExports();
       m.autoMemory({ cwd: join(home, 'no-such-project') });
     } finally { fs.readdirSync = real; syncBuiltinESMExports(); Object.defineProperty(process, 'platform', platform); }
@@ -1027,7 +1027,7 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = [
 // The memo of redact(): a text of 64 characters or more is kept by its exact text, and all of them are let go once the texts
 // kept pass 8,000,000 characters. Seen by what a kept text does not do: work out its fold a second time.
 {
-  const m = await import('./src/store.mjs?memo'), norm = String.prototype.normalize;
+  const m = await import('../src/store.mjs?memo'), norm = String.prototype.normalize;
   let runs = 0;
   String.prototype.normalize = function (...x) { runs++; return norm.apply(this, x); };
   const ran = (text) => { const was = runs; m.redact(text); return runs > was; };
@@ -1047,7 +1047,7 @@ ok(tag('abcdefghij') === 'abcdefgh' && tag('abcdefgh') === 'abcdefgh' && tag('ab
 
 // The page of the journal: one file in Claude Code's folder, written whole and mode 0600, and gone when dropPage runs.
 {
-  const { pagePath, writePage, dropPage, claimPage, configDir } = await import('./src/store.mjs');
+  const { pagePath, writePage, dropPage, claimPage, configDir } = await import('../src/store.mjs');
   const here = process.env.CLAUDE_CONFIG_DIR;
   const cfg = join(home, 'my config é');
   process.env.CLAUDE_CONFIG_DIR = cfg;

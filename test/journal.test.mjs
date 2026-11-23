@@ -10,9 +10,9 @@ import { createHash } from 'node:crypto';
 import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./src/journal.mjs');
-const { ACTIVE, TAIL, NUDGE_TAG } = await import('./src/handoff-log.mjs');
-const { local, withLock } = await import('./src/store.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, due: isDue, IMPORT_SEGMENT } = await import('../src/journal.mjs');
+const { ACTIVE, TAIL, NUDGE_TAG } = await import('../src/handoff-log.mjs');
+const { local, withLock } = await import('../src/store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -359,7 +359,7 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   ok(threw && keys('2026-11-07') === 's-3' && Array.isArray(listed) && !listed.length, `a sweep whose listing of the days fails throws, and the entries stay to be swept again; days() itself gives an empty list (got ${threw}, ${keys('2026-11-07')}, ${listed})`);
   ok(sweep(dir, 'aaaaaaaa') === 1 && !days(dir).includes('2026-11-07'), 'and the next sweep takes them');
   // The page of the journal holds the text a sweep takes back, so a sweep that took something deletes it; one that took nothing leaves it.
-  { const { writePage, pagePath } = await import('./src/store.mjs');
+  { const { writePage, pagePath } = await import('../src/store.mjs');
     record(dir, S, [turn({ at: '2026-11-09 10:00', id: 'pg-1' })]);
     writePage('<p>page</p>');
     ok(sweep(dir, 'cccccccc') === 0 && existsSync(pagePath()), 'a sweep that takes nothing leaves the page');
@@ -2269,7 +2269,7 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
 
 // past() and chunk() read no further than the size they are given, though the file is longer (a transcript still growing).
 {
-  const { past, chunk } = await import('./src/journal.mjs');
+  const { past, chunk } = await import('../src/journal.mjs');
   const f = join(home, 'grows.txt');
   writeFileSync(f, 'ab\ncd\nef\n');
   const fd = fs.openSync(f, 'r');

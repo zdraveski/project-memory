@@ -6,10 +6,10 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor } from './harness.mjs';
-import { ruleSet, record, LOG, CACHE, CACHE_V, LOG_MAX } from './src/enforce.mjs';
-import { QUIET, OFF, PROJECT_OFF, sharedStore } from './src/store.mjs';
-import { tag as tagOf, hushed } from './src/handoff-log.mjs';
-import { gitignore } from './src/memory-tier.mjs';
+import { ruleSet, record, LOG, CACHE, CACHE_V, LOG_MAX } from '../src/enforce.mjs';
+import { QUIET, OFF, PROJECT_OFF, sharedStore } from '../src/store.mjs';
+import { tag as tagOf, hushed } from '../src/handoff-log.mjs';
+import { gitignore } from '../src/memory-tier.mjs';
 
 const { home } = tempHome('enforce-hook-');
 let checks = 0;

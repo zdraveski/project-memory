@@ -6,12 +6,12 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tempDir, tool, storeFor, capture } from './harness.mjs';
-import { build, CWD } from './bench-store.mjs';
-import { CASES, LIMITS, verdict, main } from './bench.mjs';
+import { build, CWD } from '../bench-store.mjs';
+import { CASES, LIMITS, verdict, main } from '../bench.mjs';
 import { tmpdir, homedir } from 'node:os';
-import { days, parseDay, dayFile } from './src/journal.mjs';
-import { liveTimes, scriptOf } from './live-times.mjs';
-import { pct } from './src/timing.mjs';
+import { days, parseDay, dayFile } from '../src/journal.mjs';
+import { liveTimes, scriptOf } from '../live-times.mjs';
+import { pct } from '../src/timing.mjs';
 
 const { home } = tempHome('bench-');
 let checks = 0;

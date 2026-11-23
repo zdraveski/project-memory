@@ -7,7 +7,7 @@
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { tool, tempHome, storeFor } from './harness.mjs';
+import { tool, tempHome, storeFor } from './test/harness.mjs';
 
 const { home, env } = tempHome('survive-');
 const { handoff, parse } = await import('./src/handoff-log.mjs');
