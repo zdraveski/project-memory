@@ -226,4 +226,6 @@ export default {
   "a short quoted setting word taken for a secret": ["(?<=\")(?![\\r\\n])(?:[^\"\\\\]|\\\\.){6,2000}(?:\"[ \\t]*\\+", "(?<=\")(?![\\r\\n])(?:[^\"\\\\]|\\\\.){1,2000}(?:\"[ \\t]*\\+", { test: "test/handoff-log.test.mjs" }],
   "redis-cli any words before AUTH": ["(\\bredis-cli(?:(?:[ \\t]|\\\\\\r?\\n)+-(?!", "(\\bredis-cli(?:(?:[ \\t]|\\\\\\r?\\n)+-?(?!", { test: "test/handoff-log.test.mjs" }],
   "redis-cli quoted option value kept": ["(?:[ \\t=]|\\\\\\r?\\n)+(?:\"[^\"\\n]*\"|'[^'\\n]*'|(?!\\bredis-cli", "(?:[ \\t=]|\\\\\\r?\\n)+(?:(?!\\bredis-cli", { test: "test/handoff-log.test.mjs" }],
+  "journal paths folded in case on Linux": ["foldCase = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);", "foldCase = (p) => p.toLowerCase();", { test: 'test/journal.test.mjs' }],
+  "journal paths not folded in case on macOS": ["foldCase = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);", "foldCase = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);", { test: 'test/journal.test.mjs' }],
 };

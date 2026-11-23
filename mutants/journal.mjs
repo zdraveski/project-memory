@@ -139,8 +139,6 @@ export default {
   'journal a turn re-dated a day on stays in the day before': ['for (const k of [-1, 1]) {', 'for (const k of []) {'],
   "journal a day beside it that won't read fails the record": ['(e) => !mine.has(e.key));\n      } catch {}', '(e) => !mine.has(e.key));\n      } catch (e) { throw e; }'],
   'journal a turn re-dated a day back stays in the day after': ['for (const k of [-1, 1])', 'for (const k of [-1])'],
-  'journal paths folded in case on Linux': ["const fold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);", 'const fold = (p) => p.toLowerCase();'],
-  'journal paths not folded in case on macOS': ["process.platform === 'win32' || process.platform === 'darwin' ?", "process.platform === 'win32' ?"],
   'journal failure not kept': ['replaceIfUnchanged(f, before, [line, ', 'void ([line, '],
   "journal key fallback unstable": ["keyed(turn.raw ?? turn.ask, 12)", "Math.random()"],
   'journal backfill imports twice': [' || st.size <= was.upto) continue;', ') continue;'],
