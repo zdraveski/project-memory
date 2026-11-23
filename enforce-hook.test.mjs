@@ -6,15 +6,15 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor } from './harness.mjs';
-import { ruleSet, record, LOG, CACHE, CACHE_V, LOG_MAX } from './enforce.mjs';
-import { QUIET, OFF, PROJECT_OFF, sharedStore } from './store.mjs';
-import { tag as tagOf, hushed } from './handoff-log.mjs';
-import { gitignore } from './memory-tier.mjs';
+import { ruleSet, record, LOG, CACHE, CACHE_V, LOG_MAX } from './src/enforce.mjs';
+import { QUIET, OFF, PROJECT_OFF, sharedStore } from './src/store.mjs';
+import { tag as tagOf, hushed } from './src/handoff-log.mjs';
+import { gitignore } from './src/memory-tier.mjs';
 
 const { home } = tempHome('enforce-hook-');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
-const HOOK = tool('enforce-hook.mjs');
+const HOOK = tool('src/enforce-hook.mjs');
 const note = (name, rule) => `---\nname: ${name}\ndescription: Never run git add -A.\ntype: feedback\n${rule}---\n\nbody\n`;
 const ADD = 'enforce:\n  on: git add\n  has: [-A, --all]\n  unless: [mktemp]\n';
 
@@ -93,7 +93,7 @@ writeFileSync(join(sharedStore(), 'shared-rule.md'), 'x');
 p = project(); writeFileSync(join(p.store, LOG), 'x'.repeat(LOG_MAX + 1) + '\n');
 quiet(run(p.payload('git add -A', { tool_use_id: 'new1' })), 'log full'); ok(lines(p.store).some((l) => l.id === 'new1') && statSync(join(p.store, LOG)).size < LOG_MAX, 'a full log drops its oldest half and takes the new line');
 p = project(); quiet(run(p.payload('git add -A', { agent_type: 'A'.repeat(2e6), tool_use_id: 'T'.repeat(2e6) })), 'huge fields'); ok(statSync(join(p.store, LOG)).size < 1024, 'one log line is bounded');
-{ const d = join(home, 'nohook'); mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'enforce-hook.mjs'), readFileSync(HOOK)); writeFileSync(join(d, 'timing.mjs'), readFileSync(tool('timing.mjs')));
+{ const d = join(home, 'nohook'); mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'enforce-hook.mjs'), readFileSync(HOOK)); writeFileSync(join(d, 'timing.mjs'), readFileSync(tool('src/timing.mjs')));
   quiet(spawnSync(process.execPath, [join(d, 'enforce-hook.mjs')], { input: '{}', encoding: 'utf8' }), 'enforce.mjs missing'); }
 p = project(); { const tp = join(home, 'priv.jsonl'); writeFileSync(tp, '{"type":"user","message":{"content":"x <private-session>"}}\n');
   quiet(run(p.payload('git add -A', { transcript_path: tp })), 'private transcript'); ok(lines(p.store).length === 0, 'no hit logged in a private-session turn');
@@ -137,7 +137,7 @@ record(join(home, 'no-such-store'), { note: 'x' }); ok(!existsSync(join(home, 'n
 const hookFile = JSON.parse(readFileSync(tool('hooks/hooks.json'), 'utf8')), pre = hookFile.hooks.PreToolUse;
 ok(pre.length === 1 && pre[0].matcher === 'Bash|PowerShell', 'one PreToolUse group for Bash and PowerShell');
 ok(pre[0].hooks.map((h) => h.if).sort().join() === 'Bash(git *),PowerShell(git *)', 'one handler per `if` rule');
-ok(pre[0].hooks.every((h) => h.timeout === 5 && !('onFailure' in h) && !('statusMessage' in h) && h.args[0] === '${CLAUDE_PLUGIN_ROOT}/enforce-hook.mjs'), 'timeout 5, no onFailure, no statusMessage');
+ok(pre[0].hooks.every((h) => h.timeout === 5 && !('onFailure' in h) && !('statusMessage' in h) && h.args[0] === '${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs'), 'timeout 5, no onFailure, no statusMessage');
 
 // The snapshot's .gitignore takes neither dot file.
 mkdirSync(join(home, '.claude', 'projects', 'x', 'memory'), { recursive: true });

@@ -86,4 +86,4 @@ const run = (name, ...a) => {
 };
 if (args.includes('--suites') || !doFuzz) for (const t of SUITES) run(t);
 if (doFuzz) run('fuzz.mjs', String(seconds));
-console.log(report(cov, repo, FILES).join(String.fromCharCode(10)));
+console.log(report(cov, join(repo, 'src'), FILES).join(String.fromCharCode(10)));

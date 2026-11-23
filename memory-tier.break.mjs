@@ -9,7 +9,7 @@ import { tool, tempDir, pointers, largestStore } from './harness.mjs';
 // Subject: this machine's largest store, copied. Override with argv[2].
 const SRC = process.argv[2] || largestStore();
 if (!SRC) { console.error('no memory store on this machine to copy: pass one, node memory-tier.break.mjs <store dir>'); process.exit(1); }
-const TOOL = tool('memory-tier.mjs');
+const TOOL = tool('src/memory-tier.mjs');
 
 const targets = (dir) => new Set(['MEMORY.md', 'MEMORY-archive.md'].flatMap((f) => existsSync(join(dir, f)) ? pointers(readFileSync(join(dir, f), 'utf8')) : []));
 

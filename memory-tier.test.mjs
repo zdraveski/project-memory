@@ -11,7 +11,7 @@ import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import { tool, tempDir, tempHome, pointers, quick, capture } from './harness.mjs';
 
-const TOOL = tool('memory-tier.mjs');
+const TOOL = tool('src/memory-tier.mjs');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 // The tool in this process: a process a run cost ~0.2 s, as memory.test.mjs
@@ -629,7 +629,7 @@ ok(runLines().length === 20 && !readFileSync(join(root, '.stop-ran'), 'utf8').en
 }
 // A handoff-log.mjs that cannot load writes no handoff: no proof of life either.
 const broken = tempDir('broken-');
-for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs']) copyFileSync(tool(f), join(broken, f));
+for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs']) copyFileSync(tool(`src/${f}`), join(broken, f));
 writeFileSync(join(broken, 'handoff-log.mjs'), 'this is not javascript (');
 const ranBroken = statSync(join(root, '.stop-ran')).mtimeMs;
 spawnSync(process.execPath, [join(broken, 'memory-tier.mjs'), '--stop'], { env, input: JSON.stringify({ transcript_path: join(root, 'proj-one', 'session.jsonl'), session_id: 'tst' }) });
@@ -1168,13 +1168,13 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   let offBad;
   try { offBad = await call(['--stop'], JSON.stringify({ transcript_path: to2, session_id: 'offline2-0000' })); }
   finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
-  const offSaid = execFileSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: to2, session_id: 'other', source: 'startup' }), env }).toString();
+  const offSaid = execFileSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: to2, session_id: 'other', source: 'startup' }), env }).toString();
   rmSync(offList, { recursive: true }); writeFileSync(offList, hadOff);
   const savedNothing = !existsSync(join(po, 'memory'));
   // In its own words, in the briefing and in status (a store kept from before memory went off): nothing was meant to be saved, and
   // what failed is the tag that keeps the conversation out of the journal (release review).
   mkdirSync(join(po, 'memory')); writeFileSync(join(po, 'memory', 'MEMORY.md'), '# Index\n');
-  const offStatus = execFileSync(process.execPath, [tool('memory.mjs'), 'status', '--store', join(po, 'memory')], { env }).toString();
+  const offStatus = execFileSync(process.execPath, [tool('src/memory.mjs'), 'status', '--store', join(po, 'memory')], { env }).toString();
   rmSync(join(po, 'memory'), { recursive: true });
   const offWords = (l) => /needs attention/.test(l) && l.includes('a conversation held with auto memory off could not be marked after the reply at ')
     && l.includes(', so the journal may take it in later: ') && l.includes('.memory-off could not be read') && !l.includes('where you left off');
@@ -1193,7 +1193,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
     JSON.stringify({ type: 'assistant', timestamp: '2026-10-27T10:00:05Z', message: { content: [{ type: 'text', text: 'saved' }] } })].join('\n') + '\n');
   const stopB = () => call(['--stop'], JSON.stringify({ transcript_path: tb, session_id: 'brkn' }));
   await stopB();
-  const said = execFileSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: tb, session_id: 'other', source: 'startup' }), env }).toString();
+  const said = execFileSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: tb, session_id: 'other', source: 'startup' }), env }).toString();
   ok(existsSync(join(root, '.handoff-failed-proj-broken')) && /needs attention[^\n]*: the record of where you left off could not be saved after the reply at /.test(said) && !said.includes('auto memory off'),
     `a handoff that cannot be saved is said at the next start (got ${said.slice(0, 200)})`);
   // The failure file keeps the error's first line, whole, for the startup line to quote.
@@ -1510,7 +1510,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 
 // A journal day is committed once it is over, never while it is today's.
 {
-  const { local } = await import('./store.mjs');
+  const { local } = await import('./src/store.mjs');
   const today = local().slice(0, 10), yesterday = local(new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - 1, 12)).slice(0, 10);   // noon: DST-safe
   const jd = join(root, 'proj-one', 'memory', 'journal'), rel = (d) => `proj-one/memory/journal/${d}.md`;
   mkdirSync(jd, { recursive: true });
@@ -1545,7 +1545,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 {
   const was = [process.env.HOME, process.env.USERPROFILE];
   const hj = tempDir('memtier-nojournal-'), pj = join(hj, '.claude', 'projects', 'C--nj'), copy = tempDir('nojournal-'), tj = join(pj, 'nj.jsonl');
-  for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'handoff-log.mjs']) copyFileSync(tool(f), join(copy, f));
+  for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'handoff-log.mjs']) copyFileSync(tool(`src/${f}`), join(copy, f));
   writeFileSync(join(copy, 'journal.mjs'), 'this is not javascript (');
   mkdirSync(pj, { recursive: true });
   writeFileSync(tj, [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'asked with no journal' } },
@@ -1584,7 +1584,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 // The nudge's reader gone before it is written: exit 0. Thrown with no
 // listener, the pipe's EPIPE made the Stop exit 1 (P1 hunt, 2026-10-29).
 {
-  const { TRIGGER, WINDOW } = await import('./compact-gate.mjs');
+  const { TRIGGER, WINDOW } = await import('./src/compact-gate.mjs');
   const pe = join(root, 'C--epipe'), te = join(pe, 'epipe.jsonl'), ctx = Math.round(TRIGGER * WINDOW) + 5000;
   mkdirSync(pe, { recursive: true });
   writeFileSync(te, [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'go' } },
@@ -2096,7 +2096,7 @@ require('node:module').syncBuiltinESMExports();
     const lineBytes = bytesOf(runLines().at(-1)) + 1;
     ok(JSON.parse(runLines().at(-1)).s === 'abcdefgh', `--stop: the run log names a conversation by its first eight characters (got ${runLines().at(-1)})`);
     // And the reply by a fingerprint: two quick replies of one conversation read as hooks wired twice (audit H-F10).
-    const { keyed } = await import('./store.mjs');
+    const { keyed } = await import('./src/store.mjs');
     await call(['--stop'], JSON.stringify({ ...payload, last_assistant_message: 'a reply to tell apart' }));
     ok(JSON.parse(runLines().at(-1)).m === keyed('a reply to tell apart', 8), `--stop: the run log carries the reply's fingerprint (got ${runLines().at(-1)})`);
     const fill = 8192 - lineBytes, whole100 = Math.floor(fill / 100) - 1, rest = fill - whole100 * 100;
@@ -2527,7 +2527,7 @@ ${b}
   ok(said('reload3').includes(`${a}.${b}.${c}.1 is installed`), 'a longer version with the same start is newer');
   // Past the compaction trigger in the same Stop: one JSON line carries both, the notice for the user and the nudge for Claude.
   {
-    const { TRIGGER, WINDOW } = await import('./compact-gate.mjs'), big = join(root, 'proj-two', 'big.jsonl'), ctx = Math.round(TRIGGER * WINDOW) + 20_000;
+    const { TRIGGER, WINDOW } = await import('./src/compact-gate.mjs'), big = join(root, 'proj-two', 'big.jsonl'), ctx = Math.round(TRIGGER * WINDOW) + 20_000;
     const rec = (type, content, message = {}) => JSON.stringify({ type, timestamp: '2026-09-13T13:00:00Z', message: { content, ...message } });
     writeFileSync(big, [rec('user', [{ type: 'text', text: 'q' }]), rec('assistant', [{ type: 'text', text: 'a' }], { stop_reason: 'end_turn', usage: { input_tokens: 3, cache_read_input_tokens: ctx - 3, cache_creation_input_tokens: 0, output_tokens: 9 } })].join('\n') + '\n');
     const r = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ hook_event_name: 'Stop', cwd: 'C:\\nowhere', transcript_path: big, session_id: 'reload5' }) });
