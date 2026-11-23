@@ -293,7 +293,8 @@ function generate(seed) {
       const few = drawn.map((sh) => (wx() < 0.4 ? widen(sh, wx() < 0.5 ? '  ' : '\t') : sh));
       st.shapes = { text: [...few.map(([t]) => t), nm].join('\n'), command: oneLine([...few.map(([t]) => t), nm]), secrets: few.map(([, sc]) => sc) };
     }
-    marks.set(mark, { kind: st.kind, s, uuid: st.uuid });
+    // The mark rides in the queued message when there is one (line ~543), and that record's uuid is the turn's key.
+    marks.set(mark, { kind: st.kind, s, uuid: st.queued && !st.queued.secret && st.kind === 'plain' ? st.uuid.replace('u-', 'q-') : st.uuid });
     // The ask as a string or a text block; the answer half written when the Stop comes, or a broken line after it.
     st.block = r() >= 0.5;
     st.half = !isCut && r() < 0.1;
