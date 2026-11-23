@@ -10,9 +10,9 @@ import { createHash } from 'node:crypto';
 import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./journal.mjs');
-const { ACTIVE, TAIL, NUDGE_TAG } = await import('./handoff-log.mjs');
-const { local, withLock } = await import('./store.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, due: isDue, IMPORT_SEGMENT } = await import('./src/journal.mjs');
+const { ACTIVE, TAIL, NUDGE_TAG } = await import('./src/handoff-log.mjs');
+const { local, withLock } = await import('./src/store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -359,7 +359,7 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   ok(threw && keys('2026-11-07') === 's-3' && Array.isArray(listed) && !listed.length, `a sweep whose listing of the days fails throws, and the entries stay to be swept again; days() itself gives an empty list (got ${threw}, ${keys('2026-11-07')}, ${listed})`);
   ok(sweep(dir, 'aaaaaaaa') === 1 && !days(dir).includes('2026-11-07'), 'and the next sweep takes them');
   // The page of the journal holds the text a sweep takes back, so a sweep that took something deletes it; one that took nothing leaves it.
-  { const { writePage, pagePath } = await import('./store.mjs');
+  { const { writePage, pagePath } = await import('./src/store.mjs');
     record(dir, S, [turn({ at: '2026-11-09 10:00', id: 'pg-1' })]);
     writePage('<p>page</p>');
     ok(sweep(dir, 'cccccccc') === 0 && existsSync(pagePath()), 'a sweep that takes nothing leaves the page');
@@ -409,7 +409,7 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
 }
 
 // --- the Stop hook, as Claude Code runs it -----------------------------------
-const TIER = tool('memory-tier.mjs');
+const TIER = tool('src/memory-tier.mjs');
 const scwd = 'C:\\journal-stop-selftest', proj = join(home, '.claude', 'projects', slug(scwd)), sdir = join(proj, 'memory');
 mkdirSync(proj, { recursive: true });
 const sid = (c) => `${c.repeat(8)}-0000-4000-8000-000000000000`;
@@ -627,7 +627,7 @@ if (!quick) {
   rmSync(hf);   // other sessions' turns, newer than this one's
   stop(Y);
   const journal = days(sdir).map((d) => readFileSync(dayFile(sdir, d), 'utf8')).join(''), hd = existsSync(hf) ? readFileSync(hf, 'utf8') : '';
-  const brief = spawnSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+  const brief = spawnSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
     input: JSON.stringify({ cwd: scwd, session_id: sid('yb'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '';
   const leaked = ['journal', 'handoff.md', 'briefing'].filter((_, i) => /vault code|walrus/.test([journal, hd, brief][i]));
   ok(swept && was && !leaked.length && tags().includes(y),
@@ -659,7 +659,7 @@ if (!quick) {
   mkdirSync(lock);
   try { if (!quick) stop(N); } finally { rmSync(lock, { recursive: true }); }
   const skipped = !of(N).length && !hd().includes('narwhal');
-  const r = spawnSync(process.execPath, [tool('memory.mjs'), 'forget', '--key', key, '--yes', '--store', sdir], { env, encoding: 'utf8', timeout: 60e3 });
+  const r = spawnSync(process.execPath, [tool('src/memory.mjs'), 'forget', '--key', key, '--yes', '--store', sdir], { env, encoding: 'utf8', timeout: 60e3 });
   stop(N);
   ok(skipped && r.status === 0 && !of(N).length && !hd().includes('narwhal'),
     `a forget by the key of a turn a busy Stop skipped keeps it out of the journal and handoff.md (got skipped ${skipped}, exit ${r.status}: ${r.stdout}; then ${JSON.stringify(of(N))}, ${hd().includes('narwhal')})`);
@@ -685,7 +685,7 @@ const stopRefused = (id, names) => { const r = spawnSync(process.execPath, ['--i
   appendFileSync(list, `${r8}\n`);
   say(R, now, 'so what is the vault code', 'it is heron-8812');
   stopRefused(R, ['.private-sessions']);
-  const brief = () => spawnSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+  const brief = () => spawnSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
     input: JSON.stringify({ cwd: scwd, session_id: sid('rb'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '';
   const where = () => ['journal', 'handoff.md', 'briefing'].filter((_, i) => /heron/.test([days(sdir).map((d) => readFileSync(dayFile(sdir, d), 'utf8')).join(''), existsSync(hf) ? readFileSync(hf, 'utf8') : '', brief()][i]));
   const refused = where();
@@ -729,9 +729,9 @@ for (const [c, name, at] of [['ua', '.private-sessions', sdir], ['ub', '.memory-
   const U = sid(c), list = join(at, name), had = existsSync(list) ? readFileSync(list) : null, hf = join(sdir, 'handoff.md'), where = ['journal', 'handoff.md'];
   const failed = join(dirname(proj), `.handoff-failed-${slug(scwd)}`);
   const saved = () => where.filter((w) => (w === 'journal' ? of(U).length > 0 : existsSync(hf) && readFileSync(hf, 'utf8').includes(`asked while ${name} is a folder`)));
-  const said = () => [spawnSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+  const said = () => [spawnSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
     input: JSON.stringify({ cwd: scwd, session_id: sid('uz'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '',
-  spawnSync(process.execPath, [tool('memory.mjs'), 'status', '--store', sdir], { env, encoding: 'utf8', timeout: 60e3 }).stdout ?? ''];
+  spawnSync(process.execPath, [tool('src/memory.mjs'), 'status', '--store', sdir], { env, encoding: 'utf8', timeout: 60e3 }).stdout ?? ''];
   say(U, new Date(Date.now() - 60e3).toISOString(), `asked while ${name} is a folder`, 'answered');
   rmSync(list, { force: true }); mkdirSync(list);
   const r = stop(U), during = saved(), recorded = existsSync(failed), [brief, status] = said();
@@ -2269,7 +2269,7 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
 
 // past() and chunk() read no further than the size they are given, though the file is longer (a transcript still growing).
 {
-  const { past, chunk } = await import('./journal.mjs');
+  const { past, chunk } = await import('./src/journal.mjs');
   const f = join(home, 'grows.txt');
   writeFileSync(f, 'ab\ncd\nef\n');
   const fd = fs.openSync(f, 'r');

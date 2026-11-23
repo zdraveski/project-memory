@@ -12,18 +12,18 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSyn
 import { execFile, execFileSync } from 'node:child_process';
 import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { hash } from './handoff-log.mjs';
-import { BUSY, sleep } from './store.mjs';
-import { LIVE, installPath, pluginRoot, deployedCommit } from './memory.mjs';
+import { hash } from './src/handoff-log.mjs';
+import { BUSY, sleep } from './src/store.mjs';
+import { LIVE, installPath, pluginRoot, deployedCommit } from './src/memory.mjs';
 
 // What every suite stands on: check.mjs runs all eleven after a change to one.
-export const SHARED = ['store.mjs', 'harness.mjs', 'mutate.mjs'];
+export const SHARED = ['src/store.mjs', 'harness.mjs', 'mutate.mjs'];
 
 // The hooks, the CLI, and the plugin around them: the live copy is also the
 // project-memory plugin's root and its marketplace. Installed from there, the
 // plugin is read in place, and Claude Code keeps a copy per version in
 // ~/.claude/plugins/cache that only a new version refreshes (2026-10-27).
-export const HOOKS = ['store.mjs', 'timing.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'recall.mjs', 'page.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
+export const HOOKS = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
   '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
 
 // Each file by rename, so a hook starting mid-deploy reads a whole file. Every
@@ -111,9 +111,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     if (bad.length) throw new Error(bad.join('\n'));
   });
   // Tiering the real stores comes out the same unless the change meant it to.
-  if (existsSync(join(LIVE, 'memory-tier.mjs')) && !process.argv.includes('--tiering-change')) {
+  // The flat name is the copy a pre-1.5.6 deploy left: the one transition deploy compares it with the new src/ file.
+  const live = [join(LIVE, 'src', 'memory-tier.mjs'), join(LIVE, 'memory-tier.mjs')].find(existsSync);
+  if (live && !process.argv.includes('--tiering-change')) {
     step('dry run same as live', () => {
-      const same = () => node(join(LIVE, 'memory-tier.mjs'), '--dry-run') === node('memory-tier.mjs', '--dry-run');
+      const same = () => node(live, '--dry-run') === node('src/memory-tier.mjs', '--dry-run');
       // Twice before failing: a parallel session's Stop can tier a store between the two runs.
       if (!same() && !same()) throw new Error('the dry run differs from live; rerun with --tiering-change if the change meant it');
     });

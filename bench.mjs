@@ -10,15 +10,15 @@
 //                           reads the hook durations Claude Code recorded in its own conversation
 //                           files (read-only): this plugin's hooks beside every other plugin's, and
 //                           for ours how much of it was inside the script and how much outside.
-import { readdirSync, statSync, copyFileSync, mkdirSync, cpSync, utimesSync, realpathSync, readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, statSync, copyFileSync, mkdirSync, cpSync, utimesSync, realpathSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { tool, tempHome, largestStore } from './harness.mjs';
-import { projectsRoot, storeOf } from './store.mjs';
+import { projectsRoot, storeOf } from './src/store.mjs';
 import { liveTimes } from './live-times.mjs';
-import { pct, stats, read, FILE } from './timing.mjs';
+import { pct, stats, read, FILE } from './src/timing.mjs';
 import { build, PROJECT, CWD } from './bench-store.mjs';
 
 const OURS = ['memory-tier.mjs', 'brief.mjs', 'enforce-hook.mjs', 'compact-gate.mjs', 'handoff-log.mjs'];
@@ -89,7 +89,8 @@ function measure({ runs, real, plugin, scale, only }) {
   } else {
     ({ store, transcript: t, sizes } = build(home, { scale }));
   }
-  const file = (name) => (plugin ? join(plugin, name) : tool(name));
+  // An older checkout (`--plugin`) keeps its files flat.
+  const file = (name) => (plugin ? [join(plugin, 'src', name), join(plugin, name)].find(existsSync) ?? join(plugin, 'src', name) : tool(`src/${name}`));
   const payload = (extra) => JSON.stringify({ cwd: CWD, transcript_path: t, session_id: 'bbbbbbbb-0000', ...extra });
   let out = '';
   const spawn = (name, args, input) => {

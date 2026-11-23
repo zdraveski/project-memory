@@ -10,8 +10,8 @@ import { join } from 'node:path';
 import { tool, tempHome, storeFor } from './harness.mjs';
 
 const { home, env } = tempHome('survive-');
-const { handoff, parse } = await import('./handoff-log.mjs');
-const { entryOf, render, parseDay } = await import('./journal.mjs');
+const { handoff, parse } = await import('./src/handoff-log.mjs');
+const { entryOf, render, parseDay } = await import('./src/journal.mjs');
 const cwd = 'C:\\survive-project', dir = storeFor(home, cwd), t = join(dir, 'ssssssss.jsonl');
 mkdirSync(dir, { recursive: true });
 
@@ -38,7 +38,7 @@ for (let i = 1; i <= N; i++) {
 }
 writeFileSync(t, turns.flatMap(({ i, ask, did }) => [rec('user', ask, iso(i)), rec('assistant', did, iso(i, 30))]).join('\n') + '\n');
 handoff({ cwd, transcript_path: t, session_id: 'ssssssss-1' });
-const print = execFileSync(process.execPath, [tool('handoff-log.mjs'), '--print'], { input: JSON.stringify({ cwd, session_id: 'ssssssss-2', source: 'compact' }), env }).toString();
+const print = execFileSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { input: JSON.stringify({ cwd, session_id: 'ssssssss-2', source: 'compact' }), env }).toString();
 const journal = turns.map(({ i, ask, did }) => {
   const d = parseDay(render(entryOf({ ask, did, at: iso(i).slice(0, 16).replace('T', ' '), changed: [], ran: [] }, t)));
   return `${d.entries[0]?.asked} ${d.entries[0]?.answered}`;

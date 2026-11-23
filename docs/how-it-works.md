@@ -1225,7 +1225,7 @@ could be written as a git rule (measured once by the author, not repeated).
 The skill runs `memory.mjs`, and so can you:
 
 ```
-node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/memory.mjs" <command>
+node "$HOME/.claude/plugins/cache/project-memory/project-memory/<version>/src/memory.mjs" <command>
 ```
 
 | Command | Options |

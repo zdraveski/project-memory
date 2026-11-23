@@ -20,7 +20,7 @@ The CLI, run with Bash. `--session` names this conversation, so the CLI finds
 its project whatever the cwd:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/memory.mjs" <command> --session ${CLAUDE_SESSION_ID}
+node "${CLAUDE_PLUGIN_ROOT}/src/memory.mjs" <command> --session ${CLAUDE_SESSION_ID}
 ```
 
 | Command | Use it when |

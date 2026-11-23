@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor, slug } from './harness.mjs';
-import { begin, tag, mark, flush, read, cut, stats, pct, FILE, MAX } from './timing.mjs';
+import { begin, tag, mark, flush, read, cut, stats, pct, FILE, MAX } from './src/timing.mjs';
 
 const { home } = tempHome('timing-');
 let checks = 0;
@@ -102,7 +102,7 @@ const CASES = [
   ['enforce-hook.mjs', [], gitCommand, 'enforce', 'PreToolUse'],
   ['compact-gate.mjs', [], { ...base, hook_event_name: 'PreCompact', trigger: 'auto' }, 'gate', 'PreCompact:auto'],
 ];
-const run = (script, args, payload, env = {}) => { const r = spawnSync(process.execPath, [tool(script), ...args], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...env } }); return { status: r.status, stdout: r.stdout, stderr: r.stderr }; };
+const run = (script, args, payload, env = {}) => { const r = spawnSync(process.execPath, [tool(`src/${script}`), ...args], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...env } }); return { status: r.status, stdout: r.stdout, stderr: r.stderr }; };
 const lines = () => (existsSync(file) ? read(0, file) : []);
 const one = (script, args, payload) => { const n = lines().length; run(script, args, payload); const got = lines(); ok(got.length === n + 1, `${script} ${payload.hook_event_name}: one line (got ${got.length - n})`); return got.at(-1); };
 let saveLine;

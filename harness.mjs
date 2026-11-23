@@ -32,7 +32,8 @@ export async function capture(fn) {
   return { out: Buffer.from(lines.map((l) => `${l}\n`).join(''), 'utf8').toString('utf8'), value };
 }
 
-// Path of a sibling tool, as execFileSync wants it.
+// The repo root, and a path from it (`src/store.mjs`), as execFileSync wants it.
+export const ROOT = fileURLToPath(new URL('./', import.meta.url));
 export const tool = (name) => fileURLToPath(new URL(`./${name}`, import.meta.url));
 
 // The store the hook derives from a cwd, under a given home.

@@ -3,7 +3,7 @@
 import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
-import { addDays, weekOf, matches, level, daysAgo, pageHtml } from './page.mjs';
+import { addDays, weekOf, matches, level, daysAgo, pageHtml } from './src/page.mjs';
 
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };

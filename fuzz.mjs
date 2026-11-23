@@ -81,8 +81,8 @@ import { tmpdir, availableParallelism, homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tool, tempHome, storeFor } from './harness.mjs';
-import { LOCK_STALE, SHARED_BUDGET, POINTER } from './store.mjs';
-import { NUDGE_TAG, ACTIVE, tag, parse, sectionOf } from './handoff-log.mjs';
+import { LOCK_STALE, SHARED_BUDGET, POINTER } from './src/store.mjs';
+import { NUDGE_TAG, ACTIVE, tag, parse, sectionOf } from './src/handoff-log.mjs';
 
 const args = process.argv.slice(2);
 // A typo ("10m", "0", "--seed x") exits 1: it used to run 60 s, or no rounds, and report a pass for a run that tested nothing (audit #15).
@@ -97,10 +97,10 @@ const homes = tempHome('fuzz-').home, kept = new Set();
 // set the windows are gone from this process (the hooks inherit that) before
 // compact-gate.mjs is loaded, which a static import would do first.
 for (const v of ['CLAUDE_CODE_MAX_CONTEXT_TOKENS', 'CLAUDE_CODE_DISABLE_1M_CONTEXT', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']) delete process.env[v];
-const { MODEL_WINDOW, WINDOW, TRIGGER } = await import('./compact-gate.mjs');
+const { MODEL_WINDOW, WINDOW, TRIGGER } = await import('./src/compact-gate.mjs');
 // Reply sizes, in tokens: a small start, two under the trigger, one just past it, one past the ceiling.
 const SIZES = [1_000, 199_000, 500_000, Math.ceil(TRIGGER * WINDOW) + 1_000, Math.ceil(0.95 * MODEL_WINDOW)];
-const TIER = tool('memory-tier.mjs'), LOG = tool('handoff-log.mjs'), GATE = tool('compact-gate.mjs'), CLI = tool('memory.mjs');
+const TIER = tool('src/memory-tier.mjs'), LOG = tool('src/handoff-log.mjs'), GATE = tool('src/compact-gate.mjs'), CLI = tool('src/memory.mjs');
 
 // mulberry32: a seed replays its round exactly.
 const rng = (seed) => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -868,7 +868,7 @@ assert.deepEqual(generate(7), generate(7));
         folded: process.platform === 'win32' ? t(() => fs.writeFileSync(path.join(root.toUpperCase(), 'f'), 'x')) : 'skip', dotted: t(() => fs.writeFileSync(path.join(root, '..x'), 'x')),
         imported: typeof (await import(store)).LOCK_STALE })); })();`;
   process.env.FUZZ_FAULTS = `1:1:${root}`;
-  const r = spawnSync(process.execPath, ['--require', FAULTS, '-e', script, root, outside, beside, pathToFileURL(join(dirname(FAULTS), 'store.mjs')).href], { encoding: 'utf8' });
+  const r = spawnSync(process.execPath, ['--require', FAULTS, '-e', script, root, outside, beside, pathToFileURL(tool('src/store.mjs')).href], { encoding: 'utf8' });
   delete process.env.FUZZ_FAULTS;
   const got = r.stdout.trim() ? JSON.parse(r.stdout.trim()) : r.stderr.trim().split('\n').slice(-3).join(' | ');
   for (const d of [root, outside, beside]) rmSync(d, { recursive: true, force: true });

@@ -24,24 +24,24 @@ import brief from './mutants/brief.mjs';
 import timing from './mutants/timing.mjs';
 
 // Every file a suite may import, copied beside the mutant.
-const FILES = ['harness.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'brief.mjs', 'journal.mjs', 'recall.mjs', 'page.mjs', 'compact-gate.mjs', 'memory-tier.mjs', 'deploy.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs',
+const FILES = ['harness.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'deploy.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
   '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
 
 export const suites = {
-  'store.mjs': ['store.test.mjs', store],
-  'compact-gate.mjs': ['compact-gate.test.mjs', compactGate],
-  'handoff-log.mjs': ['handoff-log.test.mjs', handoffLog],
-  'memory-tier.mjs': ['memory-tier.test.mjs', memoryTier],
-  'memory.mjs': ['memory.test.mjs', memory],
+  'src/store.mjs': ['store.test.mjs', store],
+  'src/compact-gate.mjs': ['compact-gate.test.mjs', compactGate],
+  'src/handoff-log.mjs': ['handoff-log.test.mjs', handoffLog],
+  'src/memory-tier.mjs': ['memory-tier.test.mjs', memoryTier],
+  'src/memory.mjs': ['memory.test.mjs', memory],
   'hooks/hooks.json': ['memory.test.mjs', hooks],
-  'journal.mjs': ['journal.test.mjs', journal],
-  'recall.mjs': ['recall.test.mjs', recall],
+  'src/journal.mjs': ['journal.test.mjs', journal],
+  'src/recall.mjs': ['recall.test.mjs', recall],
   'deploy.mjs': ['handoff-log.test.mjs', deploy],
-  'brief.mjs': ['handoff-log.test.mjs', brief],
-  'enforce.mjs': ['enforce.test.mjs', enforce],
-  'enforce-hook.mjs': ['enforce-hook.test.mjs', enforceHook],
-  'timing.mjs': ['timing.test.mjs', timing],
-  'page.mjs': ['page.test.mjs', page],
+  'src/brief.mjs': ['handoff-log.test.mjs', brief],
+  'src/enforce.mjs': ['enforce.test.mjs', enforce],
+  'src/enforce-hook.mjs': ['enforce-hook.test.mjs', enforceHook],
+  'src/timing.mjs': ['timing.test.mjs', timing],
+  'src/page.mjs': ['page.test.mjs', page],
 };
 // The file that holds a group's mutants: a --changed list naming it asks for that group alone.
 export const tableOf = (name) => `mutants/${name.split('/').pop().replace(/\.\w+$/, '')}.mjs`;

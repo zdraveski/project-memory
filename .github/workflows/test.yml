@@ -48,6 +48,8 @@ jobs:
       - run: node enforce-hook.test.mjs
       - run: node timing.test.mjs
       - run: node page.test.mjs
+      # The release archive unpacked: every hook command in hooks.json runs from it, on every OS.
+      - run: node archive.test.mjs
       - run: node bench.test.mjs
       # What a compaction keeps: the journal every fact, the print after it the start of each exchange it shows.
       - run: node survive.mjs

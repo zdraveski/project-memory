@@ -9,9 +9,9 @@ import { tempHome, tempDir, tool, storeFor, capture } from './harness.mjs';
 import { build, CWD } from './bench-store.mjs';
 import { CASES, LIMITS, verdict, main } from './bench.mjs';
 import { tmpdir, homedir } from 'node:os';
-import { days, parseDay, dayFile } from './journal.mjs';
+import { days, parseDay, dayFile } from './src/journal.mjs';
 import { liveTimes, scriptOf } from './live-times.mjs';
-import { pct } from './timing.mjs';
+import { pct } from './src/timing.mjs';
 
 const { home } = tempHome('bench-');
 let checks = 0;
@@ -77,11 +77,11 @@ const tree = (d) => readdirSync(d, { recursive: true }).sort().map((p) => (statS
 ok(eq(tree(a.proj), tree(b.proj)), 'two builds match, byte for byte');
 ok(a.sizes.entries === 40 && days(a.store).length === 60, 'the scaled counts');
 ok(statSync(join(a.shared, 'MEMORY.md')).size === 3000, 'the shared index at its budget');
-const cli = (...args) => spawnSync(process.execPath, [tool('memory.mjs'), ...args, '--store', a.store], { encoding: 'utf8' }).stdout;
+const cli = (...args) => spawnSync(process.execPath, [tool('src/memory.mjs'), ...args, '--store', a.store], { encoding: 'utf8' }).stdout;
 ok(!/^PROBLEM(?! not installed)/m.test(cli('doctor')), 'doctor finds no problem in it (a temp home has no plugin installed)');
 ok(/harbor/i.test(cli('search', 'harbor')), 'search finds a word of the list');
 const entriesIn = () => days(a.store).flatMap((d) => parseDay(readFileSync(dayFile(a.store, d), 'utf8')).entries).length;
-const stop = () => spawnSync(process.execPath, [tool('memory-tier.mjs'), '--stop'], { input: JSON.stringify({ cwd: CWD, transcript_path: a.transcript, session_id: 'bbbbbbbb-0000', hook_event_name: 'Stop' }), encoding: 'utf8' });
+const stop = () => spawnSync(process.execPath, [tool('src/memory-tier.mjs'), '--stop'], { input: JSON.stringify({ cwd: CWD, transcript_path: a.transcript, session_id: 'bbbbbbbb-0000', hook_event_name: 'Stop' }), encoding: 'utf8' });
 // the first Stop journals what its read window holds of the conversation; every later one finds nothing new
 ok(stop().status === 0 && entriesIn() > a.sizes.entries, 'a first Stop saves the conversation');
 const first = entriesIn();
