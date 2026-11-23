@@ -84,6 +84,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     if (changed && !inScope(changed, name, testName)) continue;
     if (hand) for (const [label, [from, to, opts]] of Object.entries(mutants)) if (!only.length || only.some((o) => label.includes(o))) jobs.push({ name, testName: opts?.test ?? testName, label, from, to, full: !!opts?.full });
   }
+  // A suite that is not there fails, and a failure counts as a kill: every mutant aimed at it would pass untested.
+  const lost = [...new Set(jobs.map((j) => j.testName).filter((t) => !tests.includes(t)))];
+  if (lost.length) { console.error(`mutants aimed at no suite: ${lost.join(', ')}`); process.exit(1); }
   // The automatic mutants, after the hand ones: dropped when a hand mutant makes
   // the same edit. Compared as (offset, removed, inserted) with the common start
   // and end of from/to trimmed, not as two whole mutated files (2,270 x 883 copies).
