@@ -132,6 +132,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // `claude plugin update`); nothing runs it.
   if (installPath()) {
     const ran = deployedCommit(pluginRoot());
-    console.log(ran === commit ? `the plugin runs ${commit} from ${pluginRoot()}` : `warning: the plugin runs ${ran || 'an unknown copy'} from ${pluginRoot()}, not ${commit}: node memory.mjs doctor says why`);
+    console.log(ran === commit ? `the plugin runs ${commit} from ${pluginRoot()}` : `warning: the plugin runs ${ran || 'an unknown copy'} from ${pluginRoot()}, not ${commit}: node src/memory.mjs doctor says why`);
   }
 }

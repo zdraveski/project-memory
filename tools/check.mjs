@@ -88,10 +88,11 @@ export const failures = (r, known) => {
 assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11])]])), 'a.mjs:3,4;b.mjs:11');
 // --base <ref>: the ref "changed" is measured from; HEAD (the last commit) when not given.
 export const baseOf = (argv) => {
+  const eq = argv.find((a) => a.startsWith('--base='));
   const i = argv.indexOf('--base');
-  if (i === -1) return 'HEAD';
-  if (!argv[i + 1] || argv[i + 1].startsWith('-')) throw new Error('--base wants a ref (a tag, a branch or a commit), e.g. --base v1.5.5');
-  return argv[i + 1];
+  const ref = eq !== undefined ? eq.slice(7) : i === -1 ? 'HEAD' : argv[i + 1];
+  if (!ref || ref.startsWith('-')) throw new Error('--base wants a ref (a tag, a branch or a commit), e.g. --base v1.5.5');
+  return ref;
 };
 // What changed from `base` to the working tree, as a Map of new path -> the path it had at base. -M pairs a rename, so a moved file counts only its real edits.
 export const changesOf = (git, base) => new Map(git('diff', '-M', '--name-status', base).split('\n').filter(Boolean).map((l) => { const [st, a, b] = l.split('\t'); return st[0] === 'R' ? [b, a] : [a, a]; }));
@@ -99,6 +100,8 @@ export const changesOf = (git, base) => new Map(git('diff', '-M', '--name-status
 export const lineDiff = (git, base, file, was) => git('diff', '-M', '-U0', base, '--', ...new Set([was, file]));
 assert.equal(baseOf(['--full']), 'HEAD');
 assert.equal(baseOf(['--base', 'v1.5.5', '--full']), 'v1.5.5');
+assert.equal(baseOf(['--full', '--base=v1.5.5']), 'v1.5.5');
+assert.throws(() => baseOf(['--base=']), /--base wants a ref/);
 assert.throws(() => baseOf(['--full', '--base']), /--base wants a ref/);
 assert.throws(() => baseOf(['--base', '--full']), /--base wants a ref/);
 // A file moved to another folder with one line edited: one changed line, not a whole new file.
@@ -172,7 +175,7 @@ try { base = baseOf(process.argv); } catch (e) { console.error(e.message); proce
 if (base !== 'HEAD') { try { base = git('merge-base', base, 'HEAD').trim(); } catch { console.error(`--base ${base}: not a commit in this repo`); process.exit(2); } }
 const changes = changesOf(git, base);
 const changed = [...new Set([...changes.keys(), ...untracked].filter(Boolean))];
-console.log(`changed since ${base === 'HEAD' ? 'the last commit' : process.argv[process.argv.indexOf('--base') + 1]}: ${changed.length ? changed.join(', ') : 'nothing'}`);
+console.log(`changed since ${base === 'HEAD' ? 'the last commit' : base}: ${changed.length ? changed.join(', ') : 'nothing'}`);
 
 // 1. Every file parses.
 step('every .mjs parses', (await pool(files, (f) => new Promise((done) => execFile(process.execPath, ['--check', join(repo, f)], (e, _o, err) => done(e ? `${f}: ${String(err).trim().split('\n').slice(0, 4).join(' | ')}` : null))))).filter(Boolean));
