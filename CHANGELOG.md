@@ -2,7 +2,13 @@
 
 ## 1.5.6 (2026-11-23)
 
-This release tidies the project's files. **Nothing changes in how project-memory works.**
+This release fixes one privacy hole and tidies the project's files.
+
+### Private questions
+
+- **A message you type while Claude is still answering a `<private>` question is no longer saved with that answer.** Since 1.3.2 such a message started a turn of its own, and Claude's reply, which may repeat the private text, was saved to the journal and the handoff under it. Now that reply is not saved, the same as the private question.
+
+### Tidier files
 
 - **The plugin's files now live in a `src` folder**, and the tests and developer tools in `test` and `tools`. Your notes, hooks, commands and the `memory` skill behave exactly as before. Update with `claude plugin update project-memory@project-memory` and restart Claude Code.
 - **The path to the memory tool moves.** It is now `.../src/memory.mjs`, not `.../memory.mjs`. The skill and the commands already use the new path. **If you wrote your own permission rule, shell alias or hand-wired hook that points at the old path, update it**, or it will stop matching or fail.

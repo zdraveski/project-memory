@@ -379,8 +379,10 @@ export function turns(tail) {
     if (!t && !ask && !typed) continue;
     if (r.type === 'assistant' && t) said = t;
     if (ask && r.type === 'user' && BARE(ask, said)) ask = '[redacted]';
+    // A message queued before a private ask was answered: that answer is to both, and may repeat the private text, so it is not this turn's either.
+    const inherit = !!q && !!pending && !pending.did && PRIVATE.test(userText(pending));
     if (ask) { pending = { at: local(r.timestamp), ms: Date.parse(r.timestamp), ask, raw: unwrap(n), queued: !!q, did: '', changed: [], ran: [], base: [], ids: [], edits: new Map(), said: '', picked: [],
-      id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '' }; opened.push(pending); }
+      id: r.uuid || '', branch: r.gitBranch && r.gitBranch !== 'HEAD' ? r.gitBranch : '', cwd: r.cwd || '', ...(inherit && { frozen: true }) }; opened.push(pending); }
     // A nudge, or a private message that is no ask: the answer after it is not
     // this turn's, and it is not saved.
     // Not a skill's body (isMeta, opens "Base directory for this skill:"): it names <private> in its own text, and froze the turn

@@ -2606,6 +2606,10 @@ require('node:module').syncBuiltinESMExports();
   const frozen = turns(lines(user('go'), asst('answer'), att({ type: 'queued_command', prompt: '<private>secret</private>' }),
     rec('assistant', [{ type: 'tool_use', name: 'Edit', input: { file_path: 'C:\\x\\after-private.txt' } }, { type: 'tool_use', name: 'Bash', input: { command: 'ls after' } }, { type: 'text', text: 'private reply' }])))[0];
   ok(frozen.changed.length === 0 && frozen.ran.length === 0 && frozen.did === 'answer', 'a file edited or a command run after a private message is not the turn\'s');
+  // A plain message queued while a private ask is unanswered: the reply to both may repeat the private text, so it is not saved (fuzz seed 1116956439).
+  const privQ = turns(lines(user('<private>ZQXQ1</private> go'), att({ type: 'queued_command', prompt: 'then this' }), asst('done ZQXQ1')));
+  ok(privQ.every((p) => !p.did.includes('ZQXQ1') && !p.said.includes('ZQXQ1')), 'the reply after a private ask and a queued message is not saved');
+  ok(turns(lines(user('<private>ZQXQ2</private> go'), asst('first'), att({ type: 'queued_command', prompt: 'then this' }), asst('second')))[1]?.did === 'second', 'a message queued after the private ask was answered is a turn of its own');
   // A forget run after a freeze still counts (F14, R32).
   const fg = { type: 'tool_use', name: 'Bash', input: { command: 'node "C:/p/memory.mjs" forget quokka --yes' } };
   ok(JSON.stringify(turns(lines(user('go'), asst('a'), user(`${NUDGE_TAG} update the memory`), rec('assistant', [fg, { type: 'tool_use', name: 'Bash', input: { command: 'ls after' } }]), endTurn('done')))[0].ran) === JSON.stringify([fg.input.command]),
