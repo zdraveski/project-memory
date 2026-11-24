@@ -937,6 +937,10 @@ ${r.stdout}`, 'stop words with a range list the range, naming the dropped words'
     r = await fcli('forget', '--key', 'f-late', ...yes);
     ok(r.status === 0 && r.stdout === again && readFileSync(join(fj, '.forgotten'), 'utf8') === listed1, `a key forgotten before is said to be, and nothing goes (${yes.join('') || 'a look'}: got ${r.stdout})`);
   }
+  // 1.5.8: a forget list that won't read (a folder in its place) can't say what was forgotten: the look stops, and lists none.
+  rmSync(join(fj, '.forgotten')); mkdirSync(join(fj, '.forgotten'));
+  try { r = await fcli('forget', '--key', 'f-late'); } finally { rmSync(join(fj, '.forgotten'), { recursive: true }); writeFileSync(join(fj, '.forgotten'), listed1); }
+  ok(r.status === 1 && /could not be read/.test(r.stdout) && !/f-late|would go|removed/.test(r.stdout), `an unreadable forget list stops forget before it lists anything (got ${r.stdout})`);
   // Said before the count, the last line, as a failure is.
   r = await fcli('forget', '--key', 'f-late', '--key', es[0].key);
   ok(r.status === 0 && r.stdout === `${fl(es[0])}key f-late is already forgotten; nothing to remove\n1 entry in ${fd} would go; run again with --yes to remove them\n`,
