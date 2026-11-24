@@ -66,5 +66,27 @@ through a link to a folder outside the projects root.
 it (`forget --purge`), or so that secrets are replaced with `[redacted]`
 (`rescan --apply`).
 
+## Run records
+
+**Run record**: a small status file the hooks write and doctor, status and the
+startup line read. `src/run-records.mjs` (1.6.0 step 17) reads and writes all of
+them. A missing record is "none"; one that exists but cannot be read or parsed
+is "damaged".
+
+**Stop record**: `.stop-ran` in the projects root. It holds one line per Stop
+hook run, which is how doctor and the startup line tell whether saving still
+runs.
+
+**Failure record**: a note that a handoff or journal write failed:
+`.handoff-failed-<project folder>` and `.journal-failed-<project folder>` in the
+projects root, and `journal/.failed` in the store.
+
+**Store health**: `.health` in a store. It holds the problems the last tiering
+pass found, one per line, and is deleted when there are none.
+
+**Deploy record**: `.deployed.json` in a copy made by `tools/deploy.mjs`. It
+holds the commit, the tag and each file's size and time, so a file changed
+after the deploy is named.
+
 `src/snapshot.mjs` (1.6.0 step 16) runs every git call against the projects
 root. See `docs/adr/0002-plugin-owns-git-cleanup-and-one-busy-rule.md`.
