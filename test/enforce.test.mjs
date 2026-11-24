@@ -262,6 +262,10 @@ for (const [i, c] of ['[1,2]', '{"v":3,"files":"abc"}', '{"v":3,"files":null}', 
   ok(pt({ type: 'assistant', message: { content: P } }) === false && pt({ type: 'assistant', message: { content: [{ type: 'text', text: P }] } }) === false, 'assistant text with the mark: not private');
   ok(pt({ type: 'user', message: { content: [{ type: 'text', text: 'a' }] }, note: P }) === false, 'the mark elsewhere in the line: not private');
   ok(pt(`${P} not json`, { type: 'user', message: { content: `x ${P}` } }) === true, 'a line that is not JSON is passed over');
+  // 1.5.8: the mark in any spelling the journal treats as private (full-width brackets, a hidden character), and helpers' records skipped as turns() does.
+  ok(pt({ type: 'user', message: { content: 'x ＜private-session＞' } }) === true, 'a full-width mark: private');
+  ok(pt({ type: 'user', message: { content: [{ type: 'text', text: '<private​-session>' }] } }) === true, 'a mark with a hidden character: private');
+  ok(pt({ type: 'user', isSidechain: true, message: { content: `x ${P}` } }) === false, 'the mark only in a helper record: not private');
   ok(privateTurn({ transcript_path: join(home, 'gone.jsonl') }) === true, 'an unreadable transcript: private'); }
 
 { const rec = (st, e) => { record(st, e); return existsSync(join(st, LOG)) ? readFileSync(join(st, LOG), 'utf8') : null; }, mkst = (n) => { const d = join(home, `rec${n}`); mkdirSync(d); return d; };
