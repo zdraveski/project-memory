@@ -1,4 +1,4 @@
-// The hand-written mutants of hooks/hooks.json, which memory.test.mjs must catch (mutate.mjs runs them).
+// The hand-written mutants of hooks/hooks.json, which the three memory-*.test.mjs suites must catch (mutate.mjs runs them).
 // Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
 export default {
   'the plugin starts the briefing without --print': ['brief.mjs", "--print"]', 'handoff-log.mjs", "--print"]'],

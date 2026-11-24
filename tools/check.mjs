@@ -21,20 +21,20 @@ import { availableParallelism, tmpdir } from 'node:os';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
-import { suites, settle, tableOf } from './mutate.mjs';
+import { suites, settle, tableOf, testsOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
-// What every suite stands on (SHARED): changed, all eleven run. The list is deploy.mjs's own, so the quick check and the deploy agree
+// What every suite stands on (SHARED): changed, every suite runs. The list is deploy.mjs's own, so the quick check and the deploy agree
 // (audit #16); handoff-log.mjs is left out on purpose: store.mjs and memory-tier.mjs do not import it, so it is not under every suite.
-const ALL = [...new Set(Object.values(suites).map(([t]) => t))];
+const ALL = [...new Set(Object.values(suites).flatMap(([t]) => testsOf(t)))];
 
 // The suites a set of changed files needs: a source's own, its mutants', a suite itself,
 // or all of them after a change to what they share.
-const suiteOf = Object.fromEntries(Object.entries(suites).flatMap(([f, [t]]) => [[f, t], [tableOf(f), t]]));
+const suiteOf = Object.fromEntries(Object.entries(suites).flatMap(([f, [t]]) => [[f, testsOf(t)], [tableOf(f), testsOf(t)]]));
 export const suitesFor = (changed) => (changed.some((f) => SHARED.includes(f)) ? ALL
-  : [...new Set(changed.flatMap((f) => (ALL.includes(f) ? [f] : suiteOf[f] ? [suiteOf[f]] : [])))]);
+  : [...new Set(changed.flatMap((f) => (ALL.includes(f) ? [f] : suiteOf[f] ?? [])))]);
 // The lines a unified diff with no context (-U0) adds or changes, in the new file.
 export const changedLines = (diff) => {
   const at = new Set();
@@ -54,7 +54,7 @@ const span = (text, find) => {
   return Array.from({ length: find.split('\n').length }, (_, k) => first + k);
 };
 assert.deepEqual(suitesFor(['README.md']), []);
-assert.deepEqual(suitesFor(['src/journal.mjs', 'test/memory.test.mjs']), ['test/journal.test.mjs', 'test/memory.test.mjs']);
+assert.deepEqual(suitesFor(['src/journal.mjs', 'test/memory-cli.test.mjs']), ['test/journal.test.mjs', 'test/memory-cli.test.mjs']);
 assert.equal(suitesFor(['test/harness.mjs']).length, ALL.length);
 assert.equal(suitesFor(['tools/mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
 // A mutant that timed out is run once more: killed then it counts as killed, otherwise the second verdict stands, any other verdict is not rerun.
@@ -148,7 +148,7 @@ if (process.platform !== 'win32') {
   const listed = (f) => spawnSync(process.execPath, [join(repo, 'tools', 'mutate.mjs'), '--list', '--changed', f], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
   assert.deepEqual(listed('tools/mutants/journal.mjs'), Object.keys(suites['src/journal.mjs'][1]));
   assert.deepEqual(listed('tools/mutants/hooks.mjs'), Object.keys(suites['hooks/hooks.json'][1]));
-  assert.deepEqual(suitesFor(['tools/mutants/hooks.mjs']), ['test/memory.test.mjs']);
+  assert.deepEqual(suitesFor(['tools/mutants/hooks.mjs']), testsOf(suites['hooks/hooks.json'][0]));
 }
 
 const t0 = Date.now(), problems = [];

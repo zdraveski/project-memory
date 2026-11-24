@@ -6,17 +6,19 @@
 // manifest of their hashes; handoff-log's startup line names any live file that
 // no longer matches it.
 //
-// Run: node tools/deploy.mjs [--tiering-change] [--full]
-// (from this repo; a few minutes, ~70 with --full, which adds every mutant)
+// Run: node tools/deploy.mjs [--tiering-change] [--full] [--local-tests]
+// (from this repo; a few minutes, ~70 with --full, which adds every mutant). The suites are
+// not run here: the deploy asks GitHub whether CI's test workflow passed on this commit,
+// and --local-tests runs them here instead.
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSync, realpathSync, rmSync } from 'node:fs';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { hash } from '../src/handoff-log.mjs';
 import { BUSY, sleep } from '../src/store.mjs';
 import { LIVE, installPath, pluginRoot, deployedCommit } from '../src/memory.mjs';
 
-// What every suite stands on: check.mjs runs all eleven after a change to one.
+// What every suite stands on: check.mjs runs all of them after a change to one.
 export const SHARED = ['src/store.mjs', 'test/harness.mjs', 'tools/mutate.mjs'];
 
 // The hooks, the CLI, and the plugin around them: the live copy is also the
@@ -40,6 +42,16 @@ export const HOOKS = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 
 // hook too. The repo's hooks.json keeps plain `node`.
 // `origin` is the repo's remote URL: the folder `from` may be a throwaway clone that is gone later.
 // `tag` is the release tag on that commit, if any: doctor prints it, since `patch` hides the release in the version.
+// Throws unless the runs `gh run list` gave for a commit include a green one.
+export const requireGreenCi = (runs, commit) => {
+  if (runs.some((r) => r.status === 'completed' && r.conclusion === 'success')) return;
+  throw new Error(runs.length ? `the test workflow on ${commit} is ${runs.map((r) => r.conclusion || r.status).join(', ')}: wait for it, or --local-tests`
+    : `no test run for ${commit}: push it and wait for CI, or --local-tests`);
+};
+// The push runs on master only: a pull request's run tests a merge commit, not this one.
+export const greenCiOn = (sha, commit, gh = (args) => execFileSync('gh', args, { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })) =>
+  requireGreenCi(JSON.parse(gh(['run', 'list', '--commit', sha, '--workflow', 'test', '--event', 'push', '--branch', 'master', '--json', 'status,conclusion'])), commit);
+
 export function install(from, to, commit, patch, node, origin, tag) {
   const files = {};
   let before = {}; try { before = JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8')).files ?? {}; } catch {}
@@ -93,13 +105,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   if (git('rev-parse', '--abbrev-ref', 'HEAD') !== 'master') fail('deploy from master: the manifest names this folder as the place to edit');
   if (dirty()) fail('uncommitted changes: commit first');
   const commit = git('rev-parse', '--short', 'HEAD');
-  // The eleven suites side by side, each in its own throwaway HOME: one after
-  // another they were a minute of the gate.
-  process.stdout.write('the eleven suites ... ');
-  const suites = await Promise.all(['store', 'handoff-log', 'journal', 'recall', 'compact-gate', 'memory-tier', 'memory', 'enforce', 'enforce-hook', 'timing', 'page'].map((t) => new Promise((done) =>
-    execFile(process.execPath, [`test/${t}.test.mjs`], { cwd: repo, encoding: 'utf8' }, (e, out, err) => done(e && `${t}.test: ${(err + out).trim().split('\n').slice(-3).join(' | ')}`)))));
-  if (suites.some(Boolean)) { console.log('FAILED'); fail(suites.filter(Boolean).join('; ')); }
-  console.log('ok');
+  // The suites ran once, in CI, on this very commit: they are not run again here.
+  // --local-tests runs them here instead, for when gh is not at hand.
+  if (process.argv.includes('--local-tests')) {
+    process.stdout.write('the suites, here ... ');
+    const { runSuites } = await import('./suites.mjs');
+    const bad = (await runSuites()).filter((r) => r.failure);
+    if (bad.length) { console.log('FAILED'); fail(bad.map((r) => `${r.file}: ${r.failure.split('\n').slice(-3).join(' | ')}`).join('; ')); }
+    console.log('ok');
+  } else step('the test workflow passed on this commit', () => greenCiOn(git('rev-parse', 'HEAD'), commit));
   // The manifest is checked with `claude plugin validate . --strict` before a
   // release (CONTRIBUTING.md), not here: the plugin runs no signed-in claude CLI,
   // which the plugin directory's security scan holds.

@@ -24,7 +24,7 @@ cd project-memory
 node tools/check.mjs
 ```
 
-then the eleven suites below. To try your copy in Claude Code, first remove
+then the suites below (`node tools/suites.mjs` runs them all side by side). To try your copy in Claude Code, first remove
 the plugin and its marketplace if you installed them from GitHub (both are
 named `project-memory`), then add your folder as the marketplace:
 `/plugin marketplace add <folder>`, then
@@ -48,7 +48,9 @@ node test/store.test.mjs
 node test/compact-gate.test.mjs
 node test/handoff-log.test.mjs
 node test/memory-tier.test.mjs
-node test/memory.test.mjs
+node test/memory-cli.test.mjs
+node test/memory-doctor.test.mjs
+node test/memory-switch.test.mjs
 node test/journal.test.mjs
 node test/recall.test.mjs
 node test/enforce.test.mjs
@@ -62,10 +64,10 @@ A suite that passes ends with one line, `<suite>: <n> checks passed`. One
 that fails stops at the first failed check, prints that check's message
 (what it checks, and often what it got), and exits non-zero.
 
-CI ([`test.yml`](.github/workflows/test.yml)) runs `node tools/check.mjs`, all
-eleven suites and `node tools/survive.mjs` (which facts of a session the briefing after
+CI ([`test.yml`](.github/workflows/test.yml)) runs `node tools/check.mjs`,
+every suite (`node tools/suites.mjs`, in parallel) and `node tools/survive.mjs` (which facts of a session the briefing after
 a compaction still carries; it exits 1 if one is lost) on every pull request
-and every push to `master`, in four test jobs:
+and every push to `master`, in four test jobs (a pull request also gets one job that runs the mutants and fuzz on its changed lines):
 Linux with Node 22, Windows with Node 22 and 24, and macOS with Node 26. A pull request
 can't merge until the Linux 22, Windows 24 and macOS 26 jobs and the dco check pass (Windows 22, the oldest Node the README promises, is not required). Each job's log on GitHub shows the same lines as a run here.
 
@@ -127,7 +129,7 @@ Beyond the suites:
   job waits for one of the account's 5 slots), and a failing machine uploads
   its kept files as the artifact `fuzz-kept-<machine>`: for a bug hunt; no
   release needs it.
-- `node tools/coverage.mjs [--suites] [--fuzz <seconds>]` runs the eleven suites
+- `node tools/coverage.mjs [--suites] [--fuzz <seconds>]` runs the suites
   and/or the fuzz under Node's own coverage and prints, for each of the nine
   plugin files, the share of its code that ran, the functions that never
   ran and the first lines of the larger blocks that never ran: where the
@@ -143,7 +145,7 @@ Beyond the suites:
   `quick` in `harness.mjs`); a mutant only those blocks kill is marked
   `{ full: true }` and runs its whole suite. The full run took 65 minutes on
   a 4-core Windows machine (2026-10-29), half of it the ~200 mutants
-  `memory.test.mjs` checks. `--changed a,b` runs only the groups whose source,
+  `memory-*.test.mjs` checks. `--changed a,b` runs only the groups whose source,
   suite or file in `tools/mutants/` is among those; `--shard i/n` runs every n-th mutant from
   the i-th. `--list` prints the selected labels and runs nothing. The last
   line names every mutant that survived.
@@ -165,7 +167,7 @@ Beyond the suites:
   `FIND-TEXT NOT UNIQUE`) are all named there as survivors. A suite that
   fails unmutated stops the run with exit 1 too. A stillborn or ignored
   mutant never does.
-- `node tools/deploy.mjs` skips the mutation check; with `--full` it runs every
+- `node tools/deploy.mjs` skips the mutation check and trusts CI for the suites; with `--full` it runs every
   mutant here, about 65 minutes. `--tiering-change` skips the comparison of
   the tidy-up's dry run with the live copy's, for a change meant to alter tiering.
 - The `mutate` workflow on GitHub, started by hand (Actions > mutate > Run
@@ -296,7 +298,7 @@ The maintainer's steps:
 
 The author keeps this repository at `~/.claude/hooks` and runs the hooks from
 a checked copy. `node tools/deploy.mjs` runs only on `master` with nothing
-uncommitted. It runs the eleven suites, the soak and the break harness
+uncommitted. It checks that CI's `test` workflow passed on that exact commit (`--local-tests` runs the suites here instead), then runs the soak and the break harness
 (with `--full`, the mutation check too), then compares a dry run of the tidy-up
 with the live copy's, and copies the plugin to `~/.claude/hooks-live`, which also serves as a local
 marketplace the plugin is installed from. It doesn't run the validator or the
