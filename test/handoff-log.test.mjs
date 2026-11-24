@@ -4067,6 +4067,15 @@ if (!quick) {
     handoff({ cwd: c, transcript_path: tr, session_id: 'perioda1' });
     ok(nAsked(d) === 1 && /asked after it was on/.test(docOf(d)) && !/asked while off/.test(docOf(d)), 'a turn asked in a period the project was off is left out');
   }
+  // 1.5.8: an off-period list that won't read (a folder in its place) could hold any turn: the Stop throws, so its failure is
+  // recorded, and writes none.
+  {
+    const c = 'C:\\hl-E-periods-shut', d = store(c), tr = join(d, 'e4s.jsonl');
+    mkdirSync(join(d, '.off-periods'));
+    writeFileSync(tr, lines(U('asked while the list will not read', '2026-09-12T08:00:00Z'), A('reply one', '2026-09-12T08:00:05Z')));
+    let r; try { r = handoff({ cwd: c, transcript_path: tr, session_id: 'periods1' }); } catch (e) { r = e; }
+    ok(r instanceof Error && nAsked(d) === 0 && !/will not read/.test(docOf(d)), `an unreadable off-period list throws and writes no turn (got ${String(r)})`);
+  }
   // Exchanges forget took out all go, not only one.
   {
     const c = 'C:\\hl-E-forget', d = store(c), tr = join(d, 'e5.jsonl');

@@ -261,6 +261,7 @@ export function isOff(dir) {
 // its Stops and the import come later: a turn asked inside a period is never written. Tested on what a turn's own time says.
 export const OFF_PERIODS = '.off-periods';
 export function wasOff(dir) {
+  // A read error throws: the Stop records it and writes nothing.
   const periods = listOf(raw(join(dir, OFF_PERIODS))).map((l) => l.split(' ').map(Number));
   // A turn of unknown time (NaN: its record had no timestamp) is placed in none, so it is kept out once the project has been off.
   return (t) => Number.isNaN(t.ms) ? periods.length > 0 : periods.some(([from, to]) => t.ms >= from && t.ms <= to);
