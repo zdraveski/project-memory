@@ -23,7 +23,7 @@ import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import * as T from './timing.mjs';
-import { holdsSecret, tag, QUIET, OFF, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, autoMemory, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED, redact, FUNC } from './store.mjs';
+import { holdsSecret, tag, QUIET, OFF, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, autoMemory, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED, redact, FUNC, norm } from './store.mjs';
 export { redact, holdsSecret };
 
 const TURNS = 10;         // how many exchanges to keep, per session
@@ -180,12 +180,7 @@ export const FORGETS = { test(s) {
   }
   return false;
 } };
-// Text read the same in any width and without hidden characters: a fullwidth
-// ＜private＞, or a zero-width space inside the tag, kept what it should hide.
-// Every character Unicode says to show as nothing (Default_Ignorable_Code_Point): with the five zero-width ones alone, a soft
-// hyphen, a left-to-right mark (an RTL keyboard's, or a paste's), a bidi control or a variation selector inside the tag kept it
-// (e2e audit, 2026-11-01).
-export const norm = (s) => s.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '');
+export { norm };   // it lives in store.mjs, so the git-rule hook reads it without loading this file
 // The harness's blocks that quote others: an agent's message, a task's end, a
 // command's output. What they quote is not the user's, and a red-team report
 // quoting <private-session> marked the conversation that read it private.

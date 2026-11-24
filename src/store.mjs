@@ -368,6 +368,12 @@ export const gitWhy = (e) => redact((e.code === 'ENOENT' && String(e.syscall).st
 export const raw = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
 // A list file's lines, trimmed (an editor's CRLF, a space left after one), none blank.
 export const listOf = (text) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+// Text read the same in any width and without hidden characters: a fullwidth
+// ＜private＞, or a zero-width space inside the tag, kept what it should hide.
+// Every character Unicode says to show as nothing (Default_Ignorable_Code_Point): with the five zero-width ones alone, a soft
+// hyphen, a left-to-right mark (an RTL keyboard's, or a paste's), a bidi control or a variation selector inside the tag kept it
+// (e2e audit, 2026-11-01).
+export const norm = (s) => s.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '');
 
 // Local time as `2026-10-27 01:07`, by hand: toLocaleString('sv-SE') loads
 // ICU's locale data on its first call, 26-34 ms of a ~135 ms Stop (profiled
