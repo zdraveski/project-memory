@@ -48,7 +48,7 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
+import { holdsSecret, sleep, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, PROJECT_OFF, OFF_PERIODS, isOff, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
@@ -511,7 +511,10 @@ const rewrite = (work) => {
     git('fetch', '-q', '--update-head-ok', '--force', copy, '+refs/heads/*:refs/heads/*');
     git('reset', '-q');
     for (const ref of git('for-each-ref', '--format=%(refname)', 'refs/original/').split('\n').filter(Boolean)) git('update-ref', '-d', ref);
-    git('reflog', 'expire', '--expire=now', '--all'); git('gc', '-q', '--prune=now');
+    git('reflog', 'expire', '--expire=now', '--all');
+    // A detached gc --auto that an earlier snapshot started can drop loose objects under this one ("unable to mark recent
+    // objects", CI 2026-11-24): once more after it.
+    try { git('gc', '-q', '--prune=now'); } catch { sleep(2000); git('gc', '-q', '--prune=now'); }
   } finally { rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
 };
 // A fast-export stream without the M and D lines of `paths`; data blocks are skipped by their length, so their text is never read as a line.
