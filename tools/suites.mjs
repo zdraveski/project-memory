@@ -16,7 +16,7 @@ export const suiteFiles = () => readdirSync(join(repo, 'test')).filter((f) => f.
 export const runSuites = () => Promise.all(suiteFiles().map((file) => new Promise((done) => {
   const t0 = Date.now();
   execFile(process.execPath, [`test/${file}`], { cwd: repo, encoding: 'utf8', maxBuffer: 64 << 20 }, (e, out, err) =>
-    done({ file, seconds: (Date.now() - t0) / 1000, failure: e && (err + out).trim().split('\n').slice(-8).join('\n') }));
+    done({ file, seconds: (Date.now() - t0) / 1000, failure: e && (err + out).trim().split('\n').slice(-20).join('\n') }));
 })));
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
