@@ -877,7 +877,11 @@ export function doctor(site = sessionStore()) {
   // The one setting doctor reads (never printed but for its presence): the hooks keep the default folder, and a note in the moved one is
   // never tiered, snapshotted or briefed.
   if (typeof json(join(configDir(), 'settings.json'))?.autoMemoryDirectory === 'string') say(false, 'the autoMemoryDirectory setting is set, and project-memory does not follow it: notes in that folder are not tiered, snapshotted or briefed (the hooks work on the default memory folder). Remove the setting to use project-memory');
-  if (existsSync(join(LIVE, '.deployed.json'))) { const e = edited(LIVE); say(!e.length, e[0] || `${LIVE} matches what deploy.mjs checked`); }
+  // edited() stays silent on a damaged record (the startup line's choice); doctor names it.
+  if (existsSync(join(LIVE, '.deployed.json'))) {
+    const e = json(join(LIVE, '.deployed.json')) ? edited(LIVE) : [`${join(LIVE, '.deployed.json')} is damaged (not JSON), so the live hooks can't be checked against the last deploy. Run deploy.mjs again`];
+    say(!e.length, e[0] || `${LIVE} matches what deploy.mjs checked`);
+  }
   // Installed from the live copy, the plugin runs it in place; from anywhere
   // else, a cached copy that only `claude plugin update` refreshes.
   if (id) {
