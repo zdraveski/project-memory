@@ -1291,6 +1291,9 @@ export function main(given) {
     const dropped = [...new Set(args.join(' ').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => STOP.has(t)))];
     r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [filters.file ? missFile : `no journal entry${span && ` ${span}`} in ${where}`]] };
+  } else if (cmd === 'forget' && read(join(here, FORGOTTEN)) === null && existsSync(join(here, FORGOTTEN))) {
+    // A forget list that won't read can't say what was forgotten: the look found a forgotten exchange in its conversation again.
+    r = { ok: false, lines: [`the forget list ${join(here, FORGOTTEN)} could not be read; nothing was looked up or removed`] };
   } else if (cmd === 'forget') {
     // A blank term is in every entry: `forget "" --yes` would empty the journal.
     const conversation = opt('--conversation'), yes = rest.includes('--yes'), terms = args.filter((a) => a.trim());
