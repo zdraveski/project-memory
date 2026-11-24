@@ -283,11 +283,11 @@ The maintainer's steps:
 1. Bump `version` in `.claude-plugin/plugin.json`, and turn `## Unreleased`
    in `CHANGELOG.md` into the version's heading.
 2. Run `claude plugin validate . --strict`. It should exit 0.
-3. Run `/ponytail:ponytail-review` on every change since the last tag, and fix
-   what it finds. No full mutation run and no long fuzz before a release.
-4. Before tagging, run `node tools/check.mjs --full --base <last tag>` on your
-   own machine: the mutants and the fuzz of everything changed since that tag
-   (no GitHub machines).
+3. Have one reviewer who did not write the code review every change since the
+   last tag, fix what it finds, and review only the fixes again.
+4. Nothing to rerun before tagging: each pull request's CI already ran the
+   suites, and the mutants and a short fuzz of its changed lines. Look at the
+   last scheduled `fuzz` and `mutate` runs; a failure there is fixed first.
 5. Merge through a pull request once its CI passes.
 6. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release with
    the version's changelog. The `release` workflow then attaches the
