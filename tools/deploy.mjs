@@ -39,7 +39,8 @@ export const HOOKS = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 
 // a service) would run none of them, and the startup line that says so is a
 // hook too. The repo's hooks.json keeps plain `node`.
 // `origin` is the repo's remote URL: the folder `from` may be a throwaway clone that is gone later.
-export function install(from, to, commit, patch, node, origin) {
+// `tag` is the release tag on that commit, if any: doctor prints it, since `patch` hides the release in the version.
+export function install(from, to, commit, patch, node, origin, tag) {
   const files = {};
   let before = {}; try { before = JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8')).files ?? {}; } catch {}
   for (const f of HOOKS) {
@@ -70,7 +71,7 @@ export function install(from, to, commit, patch, node, origin) {
     if (!HOOKS.includes(f) && p.startsWith(resolve(to) + sep)) try { rmSync(p, { force: true }); } catch {} // a folder or a locked file: one bad entry never stops the deploy
   }
   const stat = Object.fromEntries(HOOKS.map((f) => { const s = statSync(join(to, f)); return [f, [s.size, s.mtimeMs]]; }));
-  writeFileSync(join(to, '.deployed.json'), JSON.stringify({ commit, repo: from, origin, at: new Date().toISOString(), files, stat }) + '\n');
+  writeFileSync(join(to, '.deployed.json'), JSON.stringify({ commit, tag, repo: from, origin, at: new Date().toISOString(), files, stat }) + '\n');
   writeFileSync(join(to, 'README.md'), `Deployed by ${join(from, 'tools', 'deploy.mjs')} after the full check. Edit there and deploy; an edit here is live and untested, and the startup line will say so.\n`);
 }
 
@@ -124,8 +125,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // copied has to be what was checked.
   if (git('rev-parse', '--short', 'HEAD') !== commit || dirty()) fail('the repo changed during the check: deploy again');
   // The commit count is the patch number: it only grows on master.
-  let origin; try { origin = execFileSync('git', ['-C', repo, 'remote', 'get-url', 'origin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
-  install(repo, LIVE, commit, Number(git('rev-list', '--count', 'HEAD')), process.execPath, origin);
+  const quiet = (...args) => { try { return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || undefined; } catch {} };
+  const origin = quiet('remote', 'get-url', 'origin'), tag = quiet('describe', '--tags', '--exact-match', 'HEAD');
+  install(repo, LIVE, commit, Number(git('rev-list', '--count', 'HEAD')), process.execPath, origin, tag);
   console.log(`deployed ${commit} to ${LIVE}`);
   // Installed as a plugin: it reads the live copy in place, so this deploy is
   // already what it runs. The cache copy beside it is not refreshed (that took

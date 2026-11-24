@@ -891,7 +891,8 @@ export function doctor(site = sessionStore()) {
     // untested edits, and no plugin update fixes that.
     else if (marketplace()?.source === 'directory' && !same(at, LIVE)) say(false, `the plugin is read from ${at}, not the live copy. The user's fix: claude plugin marketplace remove ${installedId().split('@')[1]}, then claude plugin marketplace add "${LIVE}" and claude plugin install ${PLUGIN}`);
     else if (deployedCommit(at) !== deployedCommit(LIVE)) say(false, `the plugin runs ${deployedCommit(at) || 'an undeployed copy'} from ${at}, the last deploy is ${deployedCommit(LIVE)}. The user's fix: claude plugin update ${PLUGIN}`);
-    else { const e = edited(at); say(!e.length, e[0] || `the plugin runs the last deploy, ${deployedCommit(at)}, from ${at}`); }
+    // The manifest's version ends in a deploy count, not the release: the tag names it.
+    else { const e = edited(at), tag = json(join(at, '.deployed.json'))?.tag; say(!e.length, e[0] || `the plugin runs the last deploy, ${deployedCommit(at)}${tag ? ` (${tag})` : ''}, from ${at}`); }
   }
   const ran = join(projectsRoot(), '.stop-ran');
   if (!existsSync(ran)) {

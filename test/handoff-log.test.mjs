@@ -463,8 +463,9 @@ ok(JSON.parse(readFileSync(join(home, 'hooks-live-node', 'hooks', 'hooks.json'),
 {
   const to = join(home, 'hooks-live-drop'), outside = join(home, 'outside-deploy.txt');
   writeFileSync(outside, 'keep');
-  install(ROOT, to, 'one', undefined, undefined, 'https://example.test/r.git');
+  install(ROOT, to, 'one', undefined, undefined, 'https://example.test/r.git', 'v9.9.9');
   ok(JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8')).origin === 'https://example.test/r.git', 'the manifest names the origin');
+  ok(JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8')).tag === 'v9.9.9', 'the manifest names the release tag');
   const m = JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8'));
   writeFileSync(join(to, 'cut-feature.mjs'), 'old'); mkdirSync(join(to, 'sub')); writeFileSync(join(to, 'sub', 'old.md'), 'old');
   m.files['cut-feature.mjs'] = 'x'; m.files['sub/old.md'] = 'x'; m.files['../outside-deploy.txt'] = 'x'; m.files[outside] = 'x'; m.files['..'] = 'x'; m.files['sub/../../outside-deploy.txt'] = 'x';

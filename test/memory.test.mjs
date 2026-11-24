@@ -603,7 +603,10 @@ writeFileSync(join(home, '.claude', 'plugins', 'installed_plugins.json'), JSON.s
 writeFileSync(join(home, '.claude', 'plugins', 'known_marketplaces.json'), '{}');
 ok(/^PROBLEM the plugin runs aaa from [^\n]*, the last deploy is bbb\. The user's fix: claude plugin update/m.test((await cli('doctor')).stdout), 'doctor: a plugin copy older than the last deploy is named');
 writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'bbb', files: {} }));
-ok(/^ok +the plugin runs the last deploy, bbb/m.test((await cli('doctor')).stdout), 'doctor: and one that matches is fine');
+ok(/^ok +the plugin runs the last deploy, bbb, from/m.test((await cli('doctor')).stdout), 'doctor: and one that matches is fine');
+// The manifest's version holds a deploy count, not the release: the tag deploy saw is printed beside the commit.
+writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'bbb', tag: 'v9.9.9', files: {} }));
+ok(/^ok +the plugin runs the last deploy, bbb \(v9\.9\.9\), from/m.test((await cli('doctor')).stdout), 'doctor: a deploy made at a tag names the release');
 // The hooks' times, from .timing (timing.mjs): one note per hook that ran, never a problem.
 {
   const tfile = join(root, '.timing'), put = (...ls) => writeFileSync(tfile, ls.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n') + '\n');
