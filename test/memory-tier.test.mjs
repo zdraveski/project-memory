@@ -14,7 +14,7 @@ import { tool, tempDir, tempHome, pointers, quick, capture } from './harness.mjs
 const TOOL = tool('src/memory-tier.mjs');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
-// The tool in this process: a process a run cost ~0.2 s, as memory.test.mjs
+// The tool in this process: a process a run cost ~0.2 s, as memory-cli.test.mjs
 // found for memory.mjs (2026-10-30). What needs a process of its own still
 // spawns one: --pause, the busy preload Stop, a real lock, a run through a
 // symlink or from a copy beside a broken module, another PATH, the nudge

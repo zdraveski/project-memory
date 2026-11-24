@@ -1,6 +1,6 @@
 name: fuzz
 
-# Long fuzz runs, by hand: every machine its own random rounds, on Windows,
+# Long fuzz runs, nightly or by hand: every machine its own random rounds, on Windows,
 # Linux and macOS (at most 5 at once on macOS), for a bug hunt.
 # A failing round prints its seed: `node tools/fuzz.mjs --seed N` replays
 # it. Started from Actions > fuzz > Run workflow, or
@@ -8,6 +8,9 @@ name: fuzz
 # Keep the 17 machines: a failure often
 # shows on one machine alone.
 on:
+  # Every night, a modest run: 3 machines (two on macOS, one on Windows) for 600 s each. A longer hunt is started by hand.
+  schedule:
+    - cron: '43 2 * * *'
   workflow_dispatch:
     inputs:
       machines:
@@ -29,7 +32,7 @@ jobs:
     steps:
       - id: list
         env:
-          MACHINES: ${{ inputs.machines }}
+          MACHINES: ${{ inputs.machines || '3' }}
         # Each machine and its system: 2 on macOS (the account runs 5 at
         # once; a job waiting for a slot wastes its time), one in six on
         # Windows, the rest on Linux, the fastest. macOS and Windows come

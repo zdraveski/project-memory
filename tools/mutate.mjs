@@ -27,13 +27,17 @@ import timing from './mutants/timing.mjs';
 const FILES = ['test/harness.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'tools/deploy.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
   '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
 
+// A suite is a test file, or a list of them: memory.mjs is checked by three.
+export const testsOf = (t) => [].concat(t);
+const MEMORY = ['test/memory-cli.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-switch.test.mjs'];
+
 export const suites = {
   'src/store.mjs': ['test/store.test.mjs', store],
   'src/compact-gate.mjs': ['test/compact-gate.test.mjs', compactGate],
   'src/handoff-log.mjs': ['test/handoff-log.test.mjs', handoffLog],
   'src/memory-tier.mjs': ['test/memory-tier.test.mjs', memoryTier],
-  'src/memory.mjs': ['test/memory.test.mjs', memory],
-  'hooks/hooks.json': ['test/memory.test.mjs', hooks],
+  'src/memory.mjs': [MEMORY, memory],
+  'hooks/hooks.json': [MEMORY, hooks],
   'src/journal.mjs': ['test/journal.test.mjs', journal],
   'src/recall.mjs': ['test/recall.test.mjs', recall],
   'tools/deploy.mjs': ['test/handoff-log.test.mjs', deploy],
@@ -46,7 +50,7 @@ export const suites = {
 // The file that holds a group's mutants: a --changed list naming it asks for that group alone.
 export const tableOf = (name) => `tools/mutants/${name.split('/').pop().replace(/\.\w+$/, '')}.mjs`;
 // Whether a --changed list asks for a group: its source, its suite or its mutants.
-export const inScope = (changed, name, test) => [name, test, tableOf(name)].some((f) => changed.includes(f));
+export const inScope = (changed, name, test) => [name, ...testsOf(test), tableOf(name)].some((f) => changed.includes(f));
 
 // Run when executed, not when imported: check.mjs reads the table above.
 // A mutant that hit the clock is run once more, alone: on a slow GitHub machine three that a run before killed in 18-75 s
@@ -77,7 +81,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   if (wantsLines && !autoLines && !args.includes('--auto')) { console.log('--auto-lines: no lines given, nothing selected'); process.exit(0); }
   const auto = args.includes('--auto') || wantsLines, hand = !wantsLines || args.includes('--auto');
   const lineSets = new Map(autoLines?.split(';').filter(Boolean).map((p) => { const [f, ls = ''] = p.split(':'); return [f, new Set(ls.split(',').filter(Boolean).map(Number))]; }));
-  const tests = [...new Set(Object.values(suites).map(([t]) => t))];
+  const tests = [...new Set(Object.values(suites).flatMap(([t]) => testsOf(t)))];
   const code = Object.fromEntries([...FILES, ...tests].filter((f) => existsSync(tool(f))).map((f) => [f, readFileSync(tool(f))]));
   const jobs = [];
   for (const [name, [testName, mutants]] of Object.entries(suites)) {
@@ -85,7 +89,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     if (hand) for (const [label, [from, to, opts]] of Object.entries(mutants)) if (!only.length || only.some((o) => label.includes(o))) jobs.push({ name, testName: opts?.test ?? testName, label, from, to, full: !!opts?.full });
   }
   // A suite that is not there fails, and a failure counts as a kill: every mutant aimed at it would pass untested.
-  const lost = [...new Set(jobs.map((j) => j.testName).filter((t) => !tests.includes(t)))];
+  const lost = [...new Set(jobs.flatMap((j) => testsOf(j.testName)).filter((t) => !tests.includes(t)))];
   if (lost.length) { console.error(`mutants aimed at no suite: ${lost.join(', ')}`); process.exit(1); }
   // The automatic mutants, after the hand ones: dropped when a hand mutant makes
   // the same edit. Compared as (offset, removed, inserted) with the common start
@@ -128,7 +132,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // out, a race, a big fixture, paid again by each of ~750 mutants, and a clock
   // that beside the other mutants failed on the right code, a kill by the time,
   // not by the rule. A mutant only those blocks kill is marked { full: true }.
-  const how = (j) => (j.full ? j.testName : `${j.testName} --mutant`);
+  const hows = (j) => testsOf(j.testName).map((t) => (j.full ? t : `${t} --mutant`));
   // A suite that fails unmutated kills every mutant, and the check then proves
   // nothing: a missing file once passed 132 mutants in 6 seconds.
   const run = (args, name, from, to, limit, at) => new Promise((done) => {
@@ -168,7 +172,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const took = {};
   // An ignored mutant never runs, so its suite needs no control for it.
   const live = jobs.filter((j) => !ignore.has(j.id));
-  await pool([...new Set(live.map(how))], async (t) => {
+  await pool([...new Set(live.flatMap(hows))], async (t) => {
     const t0 = Date.now();
     if (await run(t, undefined, undefined, undefined, 600_000) !== 'SURVIVED') {
       const lines = (why[t] ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !/^at /.test(l) && !/^Node\.js v/.test(l));
@@ -179,9 +183,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   });
   // Longest suites first, timed by their controls: in file order the last
   // handoff-log mutants ran on alone while the other workers sat idle. A mutant
-  // that hangs is cut off at three times its control: a whole memory.test.mjs
+  // that hangs is cut off at three times its control: a whole memory suite
   // took 122 s beside other work, past the 120 s every mutant once had.
-  live.sort((a, b) => took[how(b)] - took[how(a)]);
+  const cost = (j) => hows(j).reduce((sum, h) => sum + took[h], 0);
+  live.sort((a, b) => cost(b) - cost(a));
   const survived = [], count = { STILLBORN: 0, IGNORED: jobs.length - live.length };
   // The id is what automut-ignore.txt needs; a label can name two mutants.
   const tag = (j) => `${j.label}${j.id ? ` [${j.id}]` : ''}`;
@@ -191,7 +196,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     else if (verdict !== 'killed' && verdict !== 'killed on retry') survived.push(`${job.name} :: ${tag(job)} (${verdict})`);
     console.log(`${job.name.padEnd(17)} ${tag(job).padEnd(48)} ${verdict} ${Math.round((Date.now() - t0) / 1000)} s`);
   };
-  const go = (job) => run(how(job), job.name, job.edit?.from ?? job.from, job.edit?.to ?? job.to, Math.max(120_000, 3 * took[how(job)]), job.edit?.at);
+  // A suite list runs in turn and stops at the first that does not survive: a kill by any of them is a kill.
+  const go = async (job) => {
+    for (const h of hows(job)) {
+      const verdict = await run(h, job.name, job.edit?.from ?? job.from, job.edit?.to ?? job.to, Math.max(120_000, 3 * took[h]), job.edit?.at);
+      if (verdict !== 'SURVIVED') return verdict;
+    }
+    return 'SURVIVED';
+  };
   const late = [];
   await pool(live, async (job) => {
     const t0 = Date.now(), verdict = await go(job);

@@ -3,10 +3,14 @@ name: mutate
 # The mutation check, split across 17 machines: GitHub Free runs 20 jobs at
 # once for an account, and past that they queue. 20 machines took 6 min 44 s
 # beside a push's test run, three of them queued; six took about 10 minutes,
-# one 65. Started by hand (Actions > mutate > Run workflow, or `gh workflow run
-# mutate.yml --ref <branch> -f machines=N`), only when someone asks; no pull request or release needs it:
+# one 65. Runs every Monday with the automatic mutants too, or by hand (Actions >
+# mutate > Run workflow, or `gh workflow run mutate.yml --ref <branch> -f machines=N`):
 # every hand-written mutant, and with `-f auto=true` the automatic ones too.
 on:
+  # Every Monday, the whole check, automatic mutants too, on the 17 machines the plan step
+  # defaults to; a pull request meanwhile runs only the mutants on its changed lines (test.yml).
+  schedule:
+    - cron: '17 3 * * 1'
   workflow_dispatch:
     inputs:
       machines:
@@ -60,6 +64,6 @@ jobs:
       # Every value through env, none into the script's text.
       - shell: bash
         env:
-          AUTO: ${{ inputs.auto && '1' || '' }}
+          AUTO: ${{ (inputs.auto || github.event_name == 'schedule') && '1' || '' }}
           SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
         run: node tools/mutate.mjs --shard "$SHARD" ${AUTO:+--auto}

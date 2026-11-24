@@ -14,7 +14,7 @@ import { tempDir } from '../test/harness.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const FILES = ['store.mjs', 'timing.mjs', 'handoff-log.mjs', 'brief.mjs', 'memory-tier.mjs', 'compact-gate.mjs', 'journal.mjs', 'recall.mjs', 'page.mjs', 'memory.mjs', 'enforce.mjs', 'enforce-hook.mjs'];
-const SUITES = ['store', 'compact-gate', 'handoff-log', 'memory-tier', 'memory', 'journal', 'recall', 'enforce', 'enforce-hook', 'timing'].map((s) => `test/${s}.test.mjs`);
+const SUITES = ['store', 'compact-gate', 'handoff-log', 'memory-tier', 'memory-cli', 'memory-doctor', 'memory-switch', 'journal', 'recall', 'enforce', 'enforce-hook', 'timing'].map((s) => `test/${s}.test.mjs`);
 
 // The lines to print for `files` of `repoDir`, from the V8 coverage files in covDir.
 // One file is one process. V8 leaves out a block range whose count is its

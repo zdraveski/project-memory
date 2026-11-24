@@ -1,4 +1,4 @@
-// The hand-written mutants of memory.mjs, which memory.test.mjs must catch (mutate.mjs runs them).
+// The hand-written mutants of memory.mjs, which the three memory-*.test.mjs suites must catch (mutate.mjs runs them).
 // Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
 export default {
   'R64 status silent on a handoff the Stop could not save': ['if (lost) lines.push(', 'if (false) lines.push('],

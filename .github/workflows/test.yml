@@ -6,6 +6,11 @@ on:
     branches: [master]
   pull_request:
 
+# A newer push to the same branch makes an older run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Read the code, nothing more, whatever the repository's default; actionlint's and zizmor's downloads are public releases.
 permissions:
   contents: read
@@ -25,7 +30,7 @@ jobs:
     # Windows holds a file another program opened here; the memory-tier test must prove it.
     env:
       REAL_LOCKS: "${{ matrix.os == 'windows-latest' && '1' || '' }}"
-    # The eight suites take ~3 minutes; a hang would otherwise hold a runner for 6 hours.
+    # The suites take a few minutes side by side; a hang would otherwise hold a runner for 6 hours.
     timeout-minutes: 20
     steps:
       # A pull request's code runs here: the checkout keeps no token for it to read.
@@ -37,24 +42,33 @@ jobs:
           node-version: ${{ matrix.node }}
       # A fresh checkout has nothing changed: its parse (.mjs and .json) and import checks, a few seconds.
       - run: node tools/check.mjs
-      - run: node test/store.test.mjs
-      - run: node test/compact-gate.test.mjs
-      - run: node test/handoff-log.test.mjs
-      - run: node test/memory-tier.test.mjs
-      - run: node test/memory.test.mjs
-      - run: node test/journal.test.mjs
-      - run: node test/recall.test.mjs
-      - run: node test/enforce.test.mjs
-      - run: node test/enforce-hook.test.mjs
-      - run: node test/timing.test.mjs
-      - run: node test/page.test.mjs
-      # The release archive unpacked: every hook command in hooks.json runs from it, on every OS.
-      - run: node test/archive.test.mjs
-      - run: node test/bench.test.mjs
+      # Every test/*.test.mjs side by side (the release archive unpacked among them: every hook command in hooks.json runs from it, on every OS).
+      - run: node tools/suites.mjs
       # What a compaction keeps: the journal every fact, the print after it the start of each exchange it shows.
       - run: node tools/survive.mjs
       # Each hook on a made-up busy store must stay within its limit times an empty `node -e` on the same machine.
       - run: node tools/bench.mjs --check 5
+
+  # A pull request's own lines: the mutants on what it changed (hand-written and automatic) and, after a change to a hook, 20 s of fuzz.
+  # One system and Node; the whole mutation check and the long fuzz run on a schedule (mutate.yml, fuzz.yml).
+  changed-lines:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      # The whole history, so the diff against the base branch is the pull request's alone.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      # The branch name through env, never into the script's text.
+      - shell: bash
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: node tools/check.mjs --full --base "$BASE"
 
   # The workflow files themselves: GitHub once refused fuzz.yml over a %. After a merge, not on every pull request.
   actionlint:
