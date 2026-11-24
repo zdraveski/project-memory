@@ -507,8 +507,9 @@ See [[nonexist-${GH}]]
   r = await run(['rescan', '--apply']);
   ok(/revoke or rotate/.test(r.stdout) && /still holds the secrets/.test(r.stdout) && /add --yes/.test(r.stdout) && held() && head() === before && !readdirSync(join(home, '.claude')).some((n) => n.startsWith('project-memory-rescan-backup')), `rescan --apply alone only says what it would do (got ${r.stdout})`);
   r = await run(['rescan', '--apply', '--yes']);
-  // A git of the snapshots still finishing (Windows CI, 2026-11-24) makes rescan refuse, as it should: once more after it lets go.
-  if (/a snapshot is being taken/.test(r.stderr)) { await new Promise((ok) => setTimeout(ok, 3000)); r = await run(['rescan', '--apply', '--yes']); }
+  // A git of the snapshots still finishing makes rescan refuse, as it should: once more after it lets go. The Windows CI
+  // failure of 2026-11-24 printed nothing, so main threw: the message now shows stderr, to name it if it comes back.
+  if (/a snapshot is being taken/.test(r.stdout + r.stderr)) { await new Promise((ok) => setTimeout(ok, 3000)); r = await run(['rescan', '--apply', '--yes']); }
   const bk = readdirSync(join(home, '.claude')).find((n) => n.startsWith('project-memory-rescan-backup'));
   ok(r.status === 0 && bk && /the snapshots hold none now/.test(r.stdout) && !r.stdout.includes(key), `rescan --apply --yes redacts (got ${r.stdout}${r.stderr.slice(0, 400)})`);
   const old = readFileSync(join(rd, 'old.md'), 'utf8');
