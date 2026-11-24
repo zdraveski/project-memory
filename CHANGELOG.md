@@ -2,14 +2,11 @@
 
 ## 1.5.7 (2026-11-24)
 
-This release makes `memory doctor` name the release you are running, and speeds up the project's own checks.
-
-### Clearer doctor
-
-- **`memory doctor` now names the release next to the commit it runs**, for example `the plugin runs the last deploy, 886501d (v1.5.7), from ...`. The version number Claude Code shows for a locally deployed copy ends in a deploy count (such as `1.5.1127`), not the release, which made it look like the wrong version was installed.
+Nothing changes in the plugin you install from the marketplace. This release speeds up the project's own checks and deploys.
 
 ### For contributors
 
+- **On a copy deployed with `tools/deploy.mjs`, `memory doctor` now names the release next to the commit**, for example `the plugin runs the last deploy, e8cdaf3 (v1.5.7), from ...`. The version number of such a copy ends in a deploy count (such as `1.5.1127`), not the release, which made it look like the wrong version was installed.
 - **The test suites run side by side**, in CI and before a deploy, and the slowest one is split into three. A CI run now takes 1.5 to 4 minutes per system instead of 10 to 19.
 - **Each pull request now gets the mutants and a short fuzz of its own changed lines** in CI. The full mutation check runs weekly and a longer fuzz nightly, on a schedule.
 - **A deploy no longer runs the suites again:** it checks that CI passed on that exact commit (`--local-tests` runs them on your machine instead).
