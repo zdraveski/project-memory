@@ -48,6 +48,9 @@ export const requireGreenCi = (runs, commit) => {
   throw new Error(runs.length ? `the test workflow on ${commit} is ${runs.map((r) => r.conclusion || r.status).join(', ')}: wait for it, or --local-tests`
     : `no test run for ${commit}: push it and wait for CI, or --local-tests`);
 };
+// The push runs on master only: a pull request's run tests a merge commit, not this one.
+export const greenCiOn = (sha, commit, gh = (args) => execFileSync('gh', args, { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })) =>
+  requireGreenCi(JSON.parse(gh(['run', 'list', '--commit', sha, '--workflow', 'test', '--event', 'push', '--branch', 'master', '--json', 'status,conclusion'])), commit);
 
 export function install(from, to, commit, patch, node, origin, tag) {
   const files = {};
@@ -110,10 +113,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     const bad = (await runSuites()).filter((r) => r.failure);
     if (bad.length) { console.log('FAILED'); fail(bad.map((r) => `${r.file}: ${r.failure.split('\n').slice(-3).join(' | ')}`).join('; ')); }
     console.log('ok');
-  } else step('the test workflow passed on this commit', () => {
-    const runs = JSON.parse(execFileSync('gh', ['run', 'list', '--commit', git('rev-parse', 'HEAD'), '--workflow', 'test', '--json', 'status,conclusion'], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
-    requireGreenCi(runs, commit);
-  });
+  } else step('the test workflow passed on this commit', () => greenCiOn(git('rev-parse', 'HEAD'), commit));
   // The manifest is checked with `claude plugin validate . --strict` before a
   // release (CONTRIBUTING.md), not here: the plugin runs no signed-in claude CLI,
   // which the plugin directory's security scan holds.

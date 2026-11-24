@@ -9,7 +9,8 @@ on:
 # A newer push to the same branch makes an older run pointless.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Only pull requests: a cancelled run on master leaves that commit with no green run to deploy.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Read the code, nothing more, whatever the repository's default; actionlint's and zizmor's downloads are public releases.
 permissions:

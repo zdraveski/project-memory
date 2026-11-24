@@ -3035,6 +3035,14 @@ require('node:module').syncBuiltinESMExports();
   ok(why([run('completed', 'failure'), run('completed', 'cancelled')]) === 'the test workflow on abc is failure, cancelled: wait for it, or --local-tests', 'failed runs are named');
   ok(why([run('in_progress', 'success')]) !== undefined, 'a conclusion without completion is not green');
   ok(why([run('completed', 'failure')]) !== undefined && why([run('completed', 'skipped')]) !== undefined, 'only success is green');
+  // The gh call deploy makes: master's push runs of this exact commit, judged by requireGreenCi.
+  const { greenCiOn } = await import('../tools/deploy.mjs');
+  let asked;
+  const gh = (runs) => (args) => { asked = args.join(' '); return JSON.stringify(runs); };
+  ok(greenCiOn('f00d', 'abc', gh([run('completed', 'success')])) === undefined, 'a green push run lets the deploy on');
+  ok(/--commit f00d\b/.test(asked) && /--workflow test\b/.test(asked) && /--event push\b/.test(asked) && /--branch master\b/.test(asked), `gh is asked for master's push runs of the commit (${asked})`);
+  let refused; try { greenCiOn('f00d', 'abc', gh([run('completed', 'failure')])); } catch (e) { refused = e.message; }
+  ok(/failure/.test(refused || ''), 'a red run stops the deploy');
 }
 
 // The whole run, in a repo of its own: the suites, the mutants, the soak and the

@@ -323,4 +323,3 @@ c90f04fa3262 src/handoff-log.mjs:943 `?.` -> `.`: it is the last statement of it
 2a15fad8deaa src/handoff-log.mjs:732 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same
 
 e1a8873728e2 src/memory.mjs:938 enforceHook's `.find(existsSync) ?? join(...)` -> `||`: find returns a path or undefined, never an empty string, so `||` and `??` take the same branch
-03d50260db69 tools/deploy.mjs:115 dropping the requireGreenCi call: the test repo has no gh or remote, so no test can reach this line with a run to judge; requireGreenCi itself is tested on its own
