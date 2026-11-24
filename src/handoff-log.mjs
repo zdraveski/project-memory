@@ -839,7 +839,8 @@ export function handoff(input, sink = null) {
     // Stop put it back (R36). By its transcript and minute, as forget lists it,
     // and by its key, the prompt's id: a clock moved to another time zone gave
     // it another minute, and it came back.
-    let list = null; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch {}
+    // A list that won't read could name any of this turn's exchanges: none goes in, the startup line's rule (below).
+    let list = null, shut = false; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch (e) { shut = e.code !== 'ENOENT'; }
     const me = pathKey(transcriptKey(input.transcript_path)), listed = forgotten(list);
     const keys = new Set(listed.map(([k]) => k)), out = new Set(listed.filter(([, t]) => t && pathKey(t) === me).map(([, , at]) => at));
     // A turn with a key goes by it alone: the minute it was listed under, in
@@ -860,7 +861,7 @@ export function handoff(input, sink = null) {
       return i !== -1 && !bytes.startsWith(`${mineT} d:`, i + `<!-- j:${t.id} t:`.length);
     };
     if (!quiet) backup(dir);
-    const w = put(dir, quiet ? [] : fresh.filter((t) => !forgot(t) && !copy(t)), drop, s, got.whole);
+    const w = put(dir, quiet || shut ? [] : fresh.filter((t) => !forgot(t) && !copy(t)), drop, s, got.whole);
     return quiet ? 'private' : w;
   });
   return r ?? 'busy';
