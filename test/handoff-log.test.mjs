@@ -1525,6 +1525,14 @@ appendFileSync(tk, [user('the ibis note', { ts: '2026-10-29T10:10:00Z', uuid: 'u
 appendFileSync(join(dirF, 'journal', '.forgotten'), `u-lynx\tmemory/k\t${local('2026-10-29T10:10:00Z')}\n`);
 handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
 ok(/the ibis note/.test(fdoc()) && !/lynx/.test(fdoc()), `a forgotten exchange listed under another zone's minute takes only itself (got ${fdoc()})`);
+// 1.5.8: a forget list that won't read (a folder in its place: EISDIR on every system) could name any exchange, so none is written.
+{
+  const f = join(dirF, 'journal', '.forgotten'), keep = readFileSync(f, 'utf8'), tp = join(dirF, 'p.jsonl');
+  writeFileSync(tp, [user('the pangolin note', { ts: '2026-10-29T10:30:00Z', uuid: 'u-pangolin' }), asst('wrote the pangolin note', { ts: '2026-10-29T10:30:30Z' })].join('\n') + '\n');
+  rmSync(f); mkdirSync(f);
+  try { handoff({ cwd: cwdF, transcript_path: tp, session_id: 'pppppppp-1' }); } finally { rmSync(f, { recursive: true }); writeFileSync(f, keep); }
+  ok(!/pangolin/.test(fdoc()), `an unreadable forget list puts none of the turn's exchanges in handoff.md (got ${fdoc()})`);
+}
 // Two exchanges of one minute, both forgotten after they were written: both go from the file, each by what it says (1.5.3 holes).
 {
   const tm = join(dirF, 'm.jsonl');
