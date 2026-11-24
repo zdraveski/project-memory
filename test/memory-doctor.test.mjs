@@ -123,9 +123,11 @@ ok(/^ok +the plugin runs the last deploy, bbb \(v9\.9\.9\), from/m.test((await c
 // 1.5.8: a deploy record that won't parse is a problem, not "matches what deploy.mjs checked".
 {
   const rec = join(live, '.deployed.json'), keep = readFileSync(rec, 'utf8');
-  writeFileSync(rec, '{not json');
-  try { r = await cli('doctor'); } finally { writeFileSync(rec, keep); }
-  ok(/^PROBLEM [^\n]*\.deployed\.json/m.test(r.stdout) && !/matches what deploy\.mjs checked/.test(r.stdout), `doctor: a damaged deploy record is named (got ${r.stdout})`);
+  for (const bad of ['{not json', '{}']) {
+    writeFileSync(rec, bad);
+    try { r = await cli('doctor'); } finally { writeFileSync(rec, keep); }
+    ok(/^PROBLEM [^\n]*\.deployed\.json/m.test(r.stdout) && !/matches what deploy\.mjs checked/.test(r.stdout), `doctor: a damaged deploy record (${bad}) is named (got ${r.stdout})`);
+  }
 }
 // The hooks' times, from .timing (timing.mjs): one note per hook that ran, never a problem.
 {

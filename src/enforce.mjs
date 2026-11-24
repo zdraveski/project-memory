@@ -197,7 +197,8 @@ export function privateTurn(payload) {
   const RE = /<\s*private[-_]session\b[^>]{0,200}>/i;
   try {
     for (const l of readFileSync(payload.transcript_path, 'utf8').split('\n')) {
-      if (!RE.test(norm(l))) continue;
+      // norm costs ~10 ms a MB: only a line with a non-ASCII character can hide the mark from the plain test.
+      if (!RE.test(l) && !(/[^\x00-\x7f]/.test(l) && RE.test(norm(l)))) continue;
       try {
         const r = JSON.parse(l), c = r.message?.content;
         if (r.isSidechain) continue;   // a helper's record, as turns() skips it
