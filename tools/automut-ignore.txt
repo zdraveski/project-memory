@@ -323,3 +323,4 @@ c90f04fa3262 src/handoff-log.mjs:943 `?.` -> `.`: it is the last statement of it
 2a15fad8deaa src/handoff-log.mjs:732 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same
 
 e1a8873728e2 src/memory.mjs:938 enforceHook's `.find(existsSync) ?? join(...)` -> `||`: find returns a path or undefined, never an empty string, so `||` and `??` take the same branch
+6e3bc419fedb src/memory.mjs:517 the gc retry `catch { sleep; gc }` -> `{}`: it runs only when a detached gc --auto races the purge, which no test can start on demand; the 1.6.0 snapshot module (step 16 PR C) removes the race
