@@ -120,6 +120,13 @@ ok(/^ok +the plugin runs the last deploy, bbb, from/m.test((await cli('doctor'))
 // The manifest's version holds a deploy count, not the release: the tag deploy saw is printed beside the commit.
 writeFileSync(join(cache, '.deployed.json'), JSON.stringify({ commit: 'bbb', tag: 'v9.9.9', files: {} }));
 ok(/^ok +the plugin runs the last deploy, bbb \(v9\.9\.9\), from/m.test((await cli('doctor')).stdout), 'doctor: a deploy made at a tag names the release');
+// 1.5.8: a deploy record that won't parse is a problem, not "matches what deploy.mjs checked".
+{
+  const rec = join(live, '.deployed.json'), keep = readFileSync(rec, 'utf8');
+  writeFileSync(rec, '{not json');
+  try { r = await cli('doctor'); } finally { writeFileSync(rec, keep); }
+  ok(/^PROBLEM [^\n]*\.deployed\.json/m.test(r.stdout) && !/matches what deploy\.mjs checked/.test(r.stdout), `doctor: a damaged deploy record is named (got ${r.stdout})`);
+}
 // The hooks' times, from .timing (timing.mjs): one note per hook that ran, never a problem.
 {
   const tfile = join(root, '.timing'), put = (...ls) => writeFileSync(tfile, ls.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n') + '\n');
@@ -1770,6 +1777,10 @@ After the log: narwhalqq stays.
     Date.now = () => mt + LOCK_STALE + 1;
     const past = await cli('doctor');
     ok(!/locks a killed hook left/.test(edge.stdout) && past.status === 0 && new RegExp(`^ok +locks a killed hook left, taken over at the next write: ${lock.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}$`, 'm').test(past.stdout), `a lock exactly LOCK_STALE old is not stale, one ms more is (got ${edge.stdout} / ${past.stdout})`);
+    // 1.5.8: one dated 10 minutes ahead (a clock set back) is stale too, as withLock takes it.
+    Date.now = () => mt - 600_000;
+    const ahead = await cli('doctor');
+    ok(/locks a killed hook left, taken over at the next write: /.test(ahead.stdout), `a lock from the future is listed as withLock treats it (got ${ahead.stdout})`);
   } finally { Date.now = realNow; rmSync(lock, { recursive: true, force: true }); }
   // The reply that ended exactly GRACE ago is still waited for.
   rmSync(join(root, '.stop-ran'), { force: true });
