@@ -402,7 +402,7 @@ See [[nonexist-${GH}]]
   writeDay();
   writeFileSync(join(pd, 'MEMORY.md'), '# Memory Index\n');
   tier(); tier();
-  const held = () => spawnSync('git', ['-C', root, 'log', '--all', '-S' + word, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
+  const held = () => spawnSync('git', ['-C', root, 'log', '--all', '--reflog', '-S' + word, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
   ok(held(), 'fixture: the snapshots hold the finished day');
   let r = await run(['forget', word, '--yes', '--store', pd]);
   ok(/removed 1/.test(r.stdout) && held(), 'forget --yes alone leaves the snapshot history');
@@ -451,7 +451,7 @@ See [[nonexist-${GH}]]
   writeFileSync(join(pd, 'journal', '2020-01-03.md'), `# Journal 2020-01-03\n\n${render(e)}\n`);
   writeFileSync(join(pd, 'MEMORY.md'), '# Memory Index\n');
   tier(); tier();
-  const held = () => spawnSync('git', ['-C', root, 'log', '--all', '-S' + word, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
+  const held = () => spawnSync('git', ['-C', root, 'log', '--all', '--reflog', '-S' + word, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
   ok(held(), 'fixture: the snapshots hold the day of a store with an accent in its name');
   const r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
   ok(/purged from the snapshots/.test(r.stdout) && !held(), `forget --purge drops a day whose path git wrote with octal escapes (got ${r.stdout})`);
@@ -473,7 +473,7 @@ See [[nonexist-${GH}]]
   }
   const imp = spawnSync('git', ['-C', root, 'fast-import', '--quiet'], { input: s });
   ok(imp.status === 0, `fixture: ${N} snapshot commits imported (${imp.stderr})`);
-  const hold = () => spawnSync('git', ['-C', root, 'log', '--all', '-S' + word, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
+  const hold = () => spawnSync('git', ['-C', root, 'log', '--all', '--reflog', '-S' + word, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
   const count = () => spawnSync('git', ['-C', root, 'rev-list', '--count', '--all'], { encoding: 'utf8' }).stdout.trim();
   const before = count();
   ok(hold(), 'fixture: the long history holds the word');
@@ -498,7 +498,7 @@ See [[nonexist-${GH}]]
 `, encoding: 'utf8' }).stdout.trim();
   spawnSync('git', ['-C', root, 'update-ref', 'refs/project-memory/replaced/lab', blob]);
   const kept = () => spawnSync('git', ['-C', root, 'cat-file', 'blob', 'refs/project-memory/replaced/lab'], { encoding: 'utf8' }).stdout;
-  const held = () => spawnSync('git', ['-C', root, 'log', '--all', '-S' + key, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
+  const held = () => spawnSync('git', ['-C', root, 'log', '--all', '--reflog', '-S' + key, '--format=%H'], { encoding: 'utf8' }).stdout.trim() !== '';
   const head = () => spawnSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
   ok(held(), 'fixture: the snapshots hold the key');
   const before = head();
@@ -789,7 +789,7 @@ again ${key2}
   ok(readFileSync(join(at, 'files', 'C--ra', 'memory', 'old.md'), 'utf8').includes(key) && readFileSync(join(at, 'files', 'C--rb', 'memory', 'other.md'), 'utf8').includes(key2) && readFileSync(join(at, 'files', 'kept-lab.md'), 'utf8').includes(key) && existsSync(join(at, 'snapshots.bundle')), 'the backup holds every file with a hit, the kept copy and the old history');
   const text = (f) => readFileSync(f, 'utf8');
   ok(!text(join(a, 'old.md')).includes(key) && !text(join(a, 'journal', '2020-02-04.md')).includes(key2) && !text(join(b, 'other.md')).includes(key2) && text(join(a, 'notes.txt')).includes(key) && text(join(a, 'journal', 'raw.txt')).includes(key), 'every store has its files redacted; a .txt is left alone');
-  ok(git('log', '--all', '-S' + key, '--format=%H') === '' && git('log', '--all', '-S' + key2, '--format=%H') === '' && git('cat-file', 'blob', 'refs/project-memory/replaced/lab').includes('[redacted]'), 'no snapshot nor the kept copy holds a key');
+  ok(git('log', '--all', '--reflog', '-S' + key, '--format=%H') === '' && git('log', '--all', '-S' + key2, '--format=%H') === '' && git('cat-file', 'blob', 'refs/project-memory/replaced/lab').includes('[redacted]'), 'no snapshot nor the kept copy holds a key');
   r = rescan();
   ok(/nothing found; nothing changed/.test(r.stdout), `a second run finds nothing (got ${r.stdout})`);
 }
@@ -808,7 +808,7 @@ again ${key2}
   unlinkSync(join(pd, 'journal', '2020-03-01.md'));   // a commit that deletes the day: a D line in the stream
   tier(); tier();
   day('2020-03-01', `remember ${word}`, 'pk1'); tier(); tier();
-  const commits = git('rev-list', '--all', '--count').stdout.trim(), held = (w) => git('log', '--all', '-S' + w, '--format=%H').stdout.trim() !== '';
+  const commits = git('rev-list', '--all', '--count').stdout.trim(), held = (w) => git('log', '--all', '--reflog', '-S' + w, '--format=%H').stdout.trim() !== '';
   ok(held(word) && held(other) && Number(commits) >= 3, `fixture: the snapshots hold both days over several commits (${commits})`);
   mkdirSync(join(r9, '.git', 'pm-purge-old'), { recursive: true }); writeFileSync(join(r9, '.git', 'pm-purge-old', 'copy.git'), 'a killed run left this');
   const r = spawnSync(process.execPath, [CLI, 'forget', word, '--yes', '--purge', '--store', pd], { env: h9.env, encoding: 'utf8' });
