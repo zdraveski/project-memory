@@ -3023,6 +3023,20 @@ require('node:module').syncBuiltinESMExports();
   }
 }
 
+// What counts as a green CI for the deploy: one completed, successful run on the commit.
+{
+  const { requireGreenCi } = await import('../tools/deploy.mjs');
+  const run = (status, conclusion) => ({ status, conclusion });
+  const why = (runs) => { try { requireGreenCi(runs, 'abc'); } catch (e) { return e.message; } };
+  ok(why([run('completed', 'success')]) === undefined, 'a successful run is green');
+  ok(why([run('completed', 'failure'), run('completed', 'success')]) === undefined, 'a re-run that succeeded is green');
+  ok(why([]) === 'no test run for abc: push it and wait for CI, or --local-tests', 'no run is refused, and says what to do');
+  ok(why([run('in_progress', '')]) === 'the test workflow on abc is in_progress: wait for it, or --local-tests', 'a run still going is refused');
+  ok(why([run('completed', 'failure'), run('completed', 'cancelled')]) === 'the test workflow on abc is failure, cancelled: wait for it, or --local-tests', 'failed runs are named');
+  ok(why([run('in_progress', 'success')]) !== undefined, 'a conclusion without completion is not green');
+  ok(why([run('completed', 'failure')]) !== undefined && why([run('completed', 'skipped')]) !== undefined, 'only success is green');
+}
+
 // The whole run, in a repo of its own: the suites, the mutants, the soak and the
 // break harness are stubs that obey a control file (what they print, whether they
 // fail, what they do to the repo), and HOME is the throwaway one, so nothing here

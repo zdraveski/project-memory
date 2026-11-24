@@ -42,6 +42,13 @@ export const HOOKS = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 
 // hook too. The repo's hooks.json keeps plain `node`.
 // `origin` is the repo's remote URL: the folder `from` may be a throwaway clone that is gone later.
 // `tag` is the release tag on that commit, if any: doctor prints it, since `patch` hides the release in the version.
+// Throws unless the runs `gh run list` gave for a commit include a green one.
+export const requireGreenCi = (runs, commit) => {
+  if (runs.some((r) => r.status === 'completed' && r.conclusion === 'success')) return;
+  throw new Error(runs.length ? `the test workflow on ${commit} is ${runs.map((r) => r.conclusion || r.status).join(', ')}: wait for it, or --local-tests`
+    : `no test run for ${commit}: push it and wait for CI, or --local-tests`);
+};
+
 export function install(from, to, commit, patch, node, origin, tag) {
   const files = {};
   let before = {}; try { before = JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8')).files ?? {}; } catch {}
@@ -105,7 +112,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     console.log('ok');
   } else step('the test workflow passed on this commit', () => {
     const runs = JSON.parse(execFileSync('gh', ['run', 'list', '--commit', git('rev-parse', 'HEAD'), '--workflow', 'test', '--json', 'status,conclusion'], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
-    if (!runs.some((r) => r.status === 'completed' && r.conclusion === 'success')) throw new Error(runs.length ? `the test workflow on ${commit} is ${runs.map((r) => r.conclusion || r.status).join(', ')}: wait for it, or --local-tests` : `no test run for ${commit}: push it and wait for CI, or --local-tests`);
+    requireGreenCi(runs, commit);
   });
   // The manifest is checked with `claude plugin validate . --strict` before a
   // release (CONTRIBUTING.md), not here: the plugin runs no signed-in claude CLI,
