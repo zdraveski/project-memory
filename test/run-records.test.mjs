@@ -108,6 +108,12 @@ const rmFile = (p) => rmSync(p, { recursive: true, force: true });
   writeFileSync(ran, Array.from({ length: 30 }, (_, i) => JSON.stringify({ at: '2026-01-01T00:00:00Z', s: String(i) })).join('\n') + '\n');
   R.stopRecord({});
   ok(readFileSync(ran, 'utf8').split('\n').filter(Boolean).length === 31, 'under 8 KB nothing is cut');
+  // Exactly 8 KB is not past it: the line a run adds is measured, then 30 lines are laid so the file ends at 8192 bytes.
+  rmFile(ran); R.stopRecord({});
+  const one = statSync(ran).size, pad = 8192 - one - 29 * 10;
+  writeFileSync(ran, '123456789\n'.repeat(29) + 'x'.repeat(pad - 1) + '\n');
+  R.stopRecord({});
+  ok(statSync(ran).size === 8192 && readFileSync(ran, 'utf8').split('\n').filter(Boolean).length === 31, 'a file of exactly 8192 bytes is not cut');
   // Damaged: a folder in its place is a run that goes unrecorded, quietly.
   rmFile(ran); folder(ran);
   R.stopRecord({});
@@ -199,6 +205,8 @@ const rmFile = (p) => rmSync(p, { recursive: true, force: true });
   ok(R.deployed(d) === null && R.deployedCommit(d) === null && R.edited(d).length === 0, 'bad JSON: none, and silent');
   writeFileSync(join(d, '.deployed.json'), '{"commit":"c"}');
   ok(R.deployedCommit(d) === 'c' && R.edited(d).length === 0, 'no file list: silent');
+  writeFileSync(join(d, '.deployed.json'), '{"commit":""}');
+  ok(R.deployedCommit(d) === '', 'an empty commit is taken as written');
   writeFileSync(join(d, '.deployed.json'), '{"files":{"gone.txt":"x"}}');
   ok(R.edited(d)[0].includes('edit the hooks repo and run node tools/deploy.mjs there'), 'no repo named: the hooks repo');
   const e = tempDir('rr-dep2-');
