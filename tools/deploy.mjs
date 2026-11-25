@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { hash } from '../src/handoff-log.mjs';
 import { BUSY, sleep } from '../src/store.mjs';
 import { LIVE, installPath, pluginRoot, deployedCommit } from '../src/memory.mjs';
+import { pluginFiles } from './suites.mjs';
 
 // What every suite stands on: check.mjs runs all of them after a change to one.
 export const SHARED = ['src/store.mjs', 'test/harness.mjs', 'tools/mutate.mjs'];
@@ -25,8 +26,7 @@ export const SHARED = ['src/store.mjs', 'test/harness.mjs', 'tools/mutate.mjs'];
 // project-memory plugin's root and its marketplace. Installed from there, the
 // plugin is read in place, and Claude Code keeps a copy per version in
 // ~/.claude/plugins/cache that only a new version refreshes (2026-10-27).
-export const HOOKS = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
-  '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
+export const HOOKS = pluginFiles();
 
 // Each file by rename, so a hook starting mid-deploy reads a whole file. Every
 // temp is written first, where a full disk or a scanner fails, then the renames

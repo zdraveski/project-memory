@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
 import { suites, settle, tableOf, testsOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
+import { srcFiles } from './suites.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
@@ -57,6 +58,8 @@ assert.deepEqual(suitesFor(['README.md']), []);
 assert.deepEqual(suitesFor(['src/journal.mjs', 'test/memory-cli.test.mjs']), ['test/journal.test.mjs', 'test/memory-cli.test.mjs']);
 assert.equal(suitesFor(['test/harness.mjs']).length, ALL.length);
 assert.equal(suitesFor(['tools/mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
+// The one list kept by hand: a new src/ module needs its tests and mutants named in mutate.mjs's suites, or its changes run nothing.
+assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no entry in tools/mutate.mjs suites');
 // A mutant that timed out is run once more: killed then it counts as killed, otherwise the second verdict stands, any other verdict is not rerun.
 {
   let runs = 0;
@@ -262,8 +265,10 @@ if (bare.length) {
   if (bare.length > 15) console.log(`       and ${bare.length - 15} more`);
 }
 
-// 8. A hook's code changed: 20 s of fuzz, new rounds each time.
-if (changed.some((f) => ['src/store.mjs', 'src/handoff-log.mjs', 'src/journal.mjs', 'src/memory-tier.mjs', 'src/compact-gate.mjs'].includes(f))) {
+// 8. A hook's code changed: 20 s of fuzz, new rounds each time. Named here are the src/ files the fuzz does not drive, so a new
+// module is fuzzed until someone says it need not be.
+const NO_FUZZ = ['src/page.mjs', 'src/recall.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs', 'src/timing.mjs', 'src/memory.mjs', 'src/brief.mjs'];
+if (changed.some((f) => f.startsWith('src/') && f.endsWith('.mjs') && !NO_FUZZ.includes(f))) {
   const r = spawnSync(process.execPath, [join(repo, 'tools', 'fuzz.mjs'), '20'], { cwd: repo, encoding: 'utf8', maxBuffer: 1 << 26 });
   step('20 s of fuzz', r.status === 0 ? [] : r.stdout.trim().split('\n'));
 }
