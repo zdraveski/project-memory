@@ -1,5 +1,7 @@
 # Snapshot module (1.6.0 step 16)
 
+Amended 2026-11-25 after the audit `reports/Audit of 1.6.0 plans 2026-11-25.md` (findings 4, 6, 7, 13).
+
 Status: approved by the maintainer, 2026-11-24, in the architecture review's
 candidate #3. There were two rounds of questions, and every answer was "yes"
 to the recommendation. A later session builds it from
@@ -22,7 +24,7 @@ Measured on master at ad20f3e (v1.5.7):
   - Only `gitArgs` and `gitWhy` (`store.mjs:352`, `:364`) are shared.
 - **There are three different answers to "is the repo busy".**
   - The snapshot checks index, HEAD, config, packed-refs and refs/heads/*
-    locks, and deletes any older than 10 minutes (`memory-tier.mjs:406-442`).
+    locks, and deletes any older than 10 minutes (`memory-tier.mjs:430-441`).
   - Purge's `rewrite` checks the index and HEAD locks, then holds `config.lock`
     for its whole run (`memory.mjs:499-503`, on purpose, as its comment says).
   - Rescan checks three locks (`:602`).
@@ -38,8 +40,8 @@ Measured on master at ad20f3e (v1.5.7):
   - `owed()` (`:628`) reads it as "nothing owed".
   - `snapshots()` (`memory.mjs:413-427`, for status and doctor) says "none
     recorded yet".
-  - The startup line (`handoff-log.mjs:945-949`) stays silent.
-  - MISSED and HELD live in `handoff-log.mjs:577-580`.
+  - The startup line (`handoff-log.mjs:940-945`) stays silent.
+  - MISSED and HELD live in `handoff-log.mjs:572-574`.
 - **The tests need real git and a fake HOME.** `memory-tier.test.mjs` (2,569
   lines, 60 spawns), `memory-doctor.test.mjs` (2,001 lines) and
   `memory-switch.test.mjs` all spawn hooks or the CLI against a real repo. None
@@ -58,6 +60,10 @@ chosen exit, output or error. Two adapters make the seam worth having.
 **What moves in, as it is:**
 - From `memory-tier.mjs`: `snapshot()`, `snapshotHealth()`, `owed()`,
   `gitignore()`, the `held` and `missed` lists, and the lock sweep.
+- The seam also carries what `memory-tier`'s `main` sets (`:672-673`): the git
+  timeout and the batch size, passed in, and an exported `reset()` that empties
+  `held` and `missed`. `GIT_TIMEOUT`, `BATCH` and `GIT_LOCK_STALE` are at
+  `:32-34`.
 - From `store.mjs`: `gitArgs`, `gitWhy` and `LOCAL_GIT_ENV`.
 - From `memory.mjs`, the git half of:
   - history: `ever`, `unsnapped`, and the log reads in `history`.
@@ -104,15 +110,20 @@ This is the only change in behaviour, so it has failing tests first.
      clean-up.
    - At the end of a snapshot that committed, the snapshot runs
      `gc --auto --no-detach` itself (by then it already runs in the
-     background). While it runs, `gc.pid` exists, so purge sees busy and waits
-     its turn.
-   - When PR C has landed, the retry from #230 can go, in its own commit. It is
-     dropped only after a mutant run shows nothing else needs it.
+     background), with `-c gc.auto=6700` (git's default) after the zero. With
+     `gc.auto=0` left on that call, `gc --auto` does nothing. While it runs,
+     `gc.pid` exists, so purge sees busy and waits its turn.
+   - When PR C has landed, the retry from #230 (`memory.mjs:515-517`, inside
+     `rewrite()`) can go, in its own commit. No hand mutant covers it, so it is
+     dropped only after a run of the automatic mutants (`--auto-lines`) on those
+     lines shows nothing else needs it.
 
 ## Tests
 
-- **PRs A and B:** every existing suite passes unchanged on the three systems.
-  Only an import line may change.
+- **PRs A and B:** every existing suite passes with no assertion changes on the
+  three systems. Imports change (`gitArgs` and `gitWhy` in `store.test.mjs`,
+  `memory-doctor.test.mjs` and two hand mutants), and the tests that copy `src`
+  files into temp trees get `snapshot.mjs` added to their lists.
 - **`test/snapshot.test.mjs`, in-process with the scripted git:**
   - How errors map: ENOENT means off, ETIMEDOUT means in parts, the lock
     messages mean busy, and anything else means failed.

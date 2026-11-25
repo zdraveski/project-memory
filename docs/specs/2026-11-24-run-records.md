@@ -1,5 +1,7 @@
 # Run records (1.6.0 step 17)
 
+Amended 2026-11-25 after the audit `reports/Audit of 1.6.0 plans 2026-11-25.md` (findings 4, 5, 7, 13).
+
 Status: approved by the maintainer, 2026-11-24. This is candidate #4 of the
 architecture review, settled in two rounds of questions with "yes" to every
 recommendation. A later session builds it from
@@ -82,13 +84,21 @@ widely is a later choice, not part of this step.
 module, so the format lives in one place.
 
 **What moves in, as it is:**
-- From `memory-tier.mjs`: `health()` and the Stop-record append and cut.
+- From `memory-tier.mjs`: `health()` and the Stop-record append and cut. The
+  Stop record is written inline in `main` (`:724-743`), so it is first extracted
+  into a function.
 - From `journal.mjs`: `aside()`, `fault()`, `failures()` and `clear()`.
-- From `handoff-log.mjs`: `edited()`, `unsaved()`, and the record reads in the
-  startup line (`:926-940`).
-- From `memory.mjs`: `stopRuns`, `deployedCommit` and the `installed_plugins.json`
-  read.
+- From `handoff-log.mjs`: `edited()` with `hash` (which it needs, and which
+  `tools/deploy.mjs:17` imports from there today, so deploy imports it from the
+  new module), `unsaved()`, and the record reads in the startup line
+  (`:921-941`).
+- From `memory.mjs`: `stopRuns`, `deployedCommit` and `plugins()`, which reads
+  both `installed_plugins.json` (`:113`, `:115`) and `known_marketplaces.json`
+  (`:119`, `:862`). Both reads move; `marketplace()` stays and calls the module.
 - From `store.mjs`: `HANDOFF_FAILED` and `JOURNAL_FAILED`.
+
+The module cannot import `journal.mjs`, so it has its own constants for the
+journal folder and `.failed`. A test checks they equal the journal's.
 
 **What stays out:**
 - `timing.mjs`, which is already one clean module with its own tests.
@@ -106,7 +116,13 @@ landed.
 
 ## Tests
 
-- Every existing suite passes unchanged. Only an import line may change.
+- Every existing suite passes with no assertion changes. Imports change, and
+  four tests that copy `src` files into temp trees get `run-records.mjs` added
+  to their lists (`test/memory-tier.test.mjs:632` and `:1557`,
+  `test/handoff-log.test.mjs:565` and `:3062`).
+- Since PR #239 the tools derive their file lists from `src/`. The new module
+  needs a `suites` entry in `tools/mutate.mjs`, its import, and
+  `tools/mutants/run-records.mjs`.
 - `test/run-records.test.mjs` runs in-process. For each record it covers:
   absent, present, damaged (bad JSON, unreadable), with a BOM, and with CRLF
   line ends. It also covers the Stop record's cut at 8 KB to 20 lines.

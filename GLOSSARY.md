@@ -96,5 +96,10 @@ health notes and the compaction note, cut to the size limits. `src/briefing.mjs`
 builds it (1.6.0 step 18); `src/brief.mjs` is only the guard that runs it. See
 `docs/adr/0003-no-import-loops-in-src.md`.
 
+**Safe printing**: cutting, clearing and fitting text so it is safe to print: `clip`,
+`cut`, `plain`, `defuse` and `fit`. `src/text.mjs` (1.6.0 step 15) holds them. It
+imports only Node built-ins and `store.mjs`, so a hook can print without loading
+the briefing.
+
 `src/snapshot.mjs` (1.6.0 step 16) runs every git call against the projects
 root. See `docs/adr/0002-plugin-owns-git-cleanup-and-one-busy-rule.md`.
