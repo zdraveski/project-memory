@@ -493,7 +493,9 @@ limits at the end of this section: the journal is the detailed record, and
   last 2,900, with `(N chars cut)` between them. Nothing is saved when the
   conversation's turn is private or memory is off. A subagent that is
   resumed and finishes again replaces its earlier report, since the key is
-  the same.
+  the same. The plugin's own `recall` helper (below) is the exception: its
+  report is made of journal text, so saving it would double every hit, and
+  it is not saved.
 - Writes go under the store's lock through the same unchanged-file check as
   every other write. Entries are kept in time order. A line in a day file
   that isn't part of an entry (a note you wrote) stays under the entry it
@@ -1138,6 +1140,23 @@ the size, how many older conversations are still to import, and the last
 failure of the live write and of the import, if any. When `journal.mjs`
 won't load, the line says so. A day file that can't be read or isn't
 UTF-8 gets a line of its own (`journal: could not read <file>: <why>`).
+
+### The recall helper
+
+`agents/recall.md` is a helper agent that ships with the plugin; Claude Code
+names it `project-memory:recall`. Claude hands it a question about the past
+that one search does not answer (the skill and the startup briefing say so),
+or you ask it by name with `@agent-project-memory:recall`. It runs on Sonnet,
+for at most 15 turns, without your CLAUDE.md files, and its only tool is
+Bash: it runs `search`, `show`, `history` and `status` of the CLI with
+several wordings and filters, opens the promising hits, and reports the
+answer first, then each source's date, conversation tag and key, quoting
+your own words for a "who said it" question, or "not found" with what it
+searched. It changes nothing; that it runs only those four commands is its
+instruction, not a lock, since a plugin's agent cannot limit Bash to one
+command. It reads the same journal and notes the skill does, nothing more.
+Its report is not saved to the journal. With `PROJECT_MEMORY_RECALL=0` the
+briefing leaves out the line that points to it.
 
 ## Checked lessons (experimental)
 

@@ -77,6 +77,7 @@ There's nothing to learn. Ask in your own words:
 |---|---|
 | *"Where did we leave off?"* | Claude already knows: each new conversation starts with the last one's latest exchanges. |
 | *"What did we decide about the logo in September?"* | Claude searches your notes and the journal, and answers with the date. |
+| *"Why did we drop the PDF export, and who asked for it?"* | A question one search doesn't settle goes to the `recall` helper, which searches several ways and reports back with dates and your own words (`@agent-project-memory:recall` asks it directly). Its report is not saved again to the journal. |
 | *"I deleted the note about pricing by mistake. Bring it back."* | Claude restores it from the history. |
 | *"Forget the password I pasted yesterday."* | Claude lists the journal entries that match, and removes the ones you confirm from project-memory's files. Claude Code's own conversation files still hold them. |
 | *"Remember for all my projects that I like plain language."* | Claude saves it to the shared notebook. |
