@@ -2,7 +2,7 @@
 // mapped (off, in parts, busy, failed), a damaged index rebuilt once, a note held back, the health record after a failure and after
 // a success, and a missing or a broken health file. The expected values are what snapshot() answered before it moved out of
 // memory-tier.mjs. Real git stays in memory-tier.test.mjs. Run: node snapshot.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync, utimesSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync, utimesSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome } from './harness.mjs';
@@ -226,12 +226,12 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   for (const f of ['index.lock', 'HEAD.lock']) {
     writeFileSync(join(g, f), '');
     let msg = ''; try { rewrite(() => {}); } catch (e) { msg = e.message; }
-    ok(msg === 'a snapshot is being taken; try again in a moment' && seen.length === 0 && !existsSync(join(g, 'config.lock')), `${f}: the purge gives way, runs no git, takes no lock`);
+    ok(msg === 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment' && seen.length === 0 && !existsSync(join(g, 'config.lock')), `${f}: the purge gives way, runs no git, takes no lock`);
     rmSync(join(g, f));
   }
   writeFileSync(join(g, 'config.lock'), '');
   let msg = ''; try { rewrite(() => {}); } catch (e) { msg = e.message; }
-  ok(msg === 'a snapshot is being taken; try again in a moment' && existsSync(join(g, 'config.lock')) && seen.length === 0, 'a config.lock that is there: busy, and not taken away');
+  ok(msg === 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment' && existsSync(join(g, 'config.lock')) && seen.length === 0, 'a config.lock that is there: busy, and not taken away');
   rmSync(join(g, 'config.lock'));
 
   // The health record, as every reader sees it.
@@ -250,10 +250,10 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
 
 // PR C of step 16: one busy rule for every git write (the snapshot, restore, purge, rescan), and the plugin runs git's clean-up itself.
 {
-  const { busy } = S, { restore } = await import('../src/memory.mjs');
+  const { busy, rewrite } = S, { restore } = await import('../src/memory.mjs');
   const old = new Date(Date.now() - 11 * 60000), ahead = new Date(Date.now() + 11 * 60000);
   mkdirSync(join(g, 'refs', 'heads'), { recursive: true });
-  const files = ['index.lock', 'HEAD.lock', 'config.lock', 'packed-refs.lock', 'gc.pid', join('refs', 'heads', 'main.lock')];
+  const files = ['index.lock', 'HEAD.lock', 'config.lock', 'packed-refs.lock', join('refs', 'heads', 'main.lock')];
   ok(busy() === false, 'no lock: not busy');
   for (const f of files) {
     const p = join(g, f);
@@ -264,12 +264,48 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
     writeFileSync(p, ''); utimesSync(p, ahead, ahead);
     ok(busy() === false && !existsSync(p), `a ${f} dated ahead of the clock is as old`);
   }
+  // gc.pid: "<pid> <host>", as git writes it. Stale when its owner here is dead; else git's own 12 hours.
+  {
+    const { hostname } = await import('node:os'), { spawnSync } = await import('node:child_process');
+    const dead = spawnSync(process.execPath, ['-e', '']).pid, gp = join(g, 'gc.pid'), ago = (ms) => { const d = new Date(Date.now() - ms); utimesSync(gp, d, d); };
+    const put = (text, ms = 0) => { writeFileSync(gp, text); if (ms) ago(ms); };
+    put(`${dead} ${hostname()}`);
+    ok(busy() === false && !existsSync(gp), 'a gc.pid whose gc died on this machine is not busy, fresh as it is');
+    put(`${process.pid} ${hostname()}`, 11 * 60000);
+    ok(busy() === true && existsSync(gp), 'a gc.pid of a live gc here is busy past ten minutes');
+    put(`${process.pid} ${hostname()}`, 13 * 3600000);
+    ok(busy() === false && !existsSync(gp), 'and stale after git\'s own twelve hours');
+    put(`${dead} some-other-host`, 11 * 60000);
+    ok(busy() === true, 'a gc.pid from another machine is busy past ten minutes (a pid there means nothing here)');
+    put(`${dead} some-other-host`, 13 * 3600000);
+    ok(busy() === false && !existsSync(gp), 'and stale after twelve hours');
+    put('', 11 * 60000);
+    ok(busy() === true, 'an unreadable or malformed gc.pid is busy');
+    put('garbage', 13 * 3600000);
+    ok(busy() === false && !existsSync(gp), 'unless older than twelve hours');
+  }
+  // A lock that cannot be removed (held open on Windows: EPERM or EBUSY) is busy, not a crash.
+  {
+    const lk = join(g, 'index.lock'); mkdirSync(lk); utimesSync(lk, old, old);
+    let r; try { r = busy(); } catch (e) { r = e.code; }
+    ok(r instanceof Error, 'an old lock that cannot be removed is busy (an Error to say why), not a throw (got ' + r + ')');
+    rmSync(lk, { recursive: true });
+  }
+  // A purge keeps its config.lock young through every git it runs, however long they take.
+  {
+    const lk = join(g, 'config.lock'), old9 = () => { const d = new Date(Date.now() - 9 * 60000); utimesSync(lk, d, d); }, ages = [];
+    useGit((cmd, args) => { ages.push(Date.now() - statSync(lk).mtimeMs); old9(); return ''; });
+    rewrite(() => { S.fastExportOf('/c.git'); S.fastImportTo('/c.git', 'x'); });
+    ok(ages.length >= 5 && ages.every((a) => a < 60000), 'each git of a purge finds its config.lock fresh, though the clock says nine minutes passed between (ages ' + ages.map((a) => Math.round(a / 1000)).join() + ')');
+    ok(!existsSync(lk), 'and the purge frees it');
+  }
+
   // restore refuses while busy, and runs no git write.
   const dir = store('proj-busy');
   scripted((sub, a) => (a.includes('rev-parse') ? 'abc1234' : ''));
   writeFileSync(join(g, 'gc.pid'), '');
   const r = restore(dir, 'a.md', { force: true });
-  ok(r.ok === false && /a snapshot is being taken; try again in a moment/.test(r.lines.join('\n')) && !calls.some((c) => /hash-object|update-ref|cat-file/.test(c)), 'restore says busy while git is busy, and writes nothing');
+  ok(r.ok === false && r.lines.join(' ').includes('git of the memory store is busy') && !calls.some((c) => /hash-object|update-ref|cat-file/.test(c)), 'restore says busy while git is busy, and writes nothing');
   rmSync(join(g, 'gc.pid'));
 
   // doctor's pack check: an index with no pack, not a pair, not a lone pack.

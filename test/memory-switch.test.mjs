@@ -446,7 +446,7 @@ See [[nonexist-${GH}]]
   // A git clean-up in flight (gc.pid, fresh) is busy too: said, and no crash.
   writeFileSync(join(root, '.git', 'gc.pid'), '1 host');
   const rg = await run(['forget', word, '--yes', '--purge', '--store', pd]);
-  ok(/could not be purged/.test(rg.stdout) && /snapshot is being taken/.test(rg.stdout) && rg.status !== null && !/at .*.mjs:d+/.test(rg.stderr) && existsSync(join(root, '.git', 'gc.pid')), `forget --purge refuses while git's clean-up runs (got ${rg.stdout} ${rg.stderr})`);
+  ok(/could not be purged/.test(rg.stdout) && /git of the memory store is busy/.test(rg.stdout) && rg.status !== null && !/at .*\.mjs:\d+/.test(rg.stderr) && existsSync(join(root, '.git', 'gc.pid')), `forget --purge refuses while git's clean-up runs (got ${rg.stdout} ${rg.stderr})`);
   unlinkSync(join(root, '.git', 'gc.pid'));
   ok(/still hold/.test(r.stdout) && /--purge/.test(r.stdout), `a failed purge says the snapshots still hold the text and what to run (got ${r.stdout})`);
 }
@@ -519,14 +519,14 @@ See [[nonexist-${GH}]]
     writeFileSync(join(root, '.git', lk), '');
     r = await run(['rescan', '--apply', '--yes']);
     const rr = await run(['restore', 'old.md', '--force', '--store', rd]);
-    ok(/a snapshot is being taken/.test(rr.stdout) && rr.status !== 0, `restore refuses while ${lk} is there (got ${rr.stdout})`);
-    ok(/a snapshot is being taken/.test(r.stdout) && held() && head() === before && readFileSync(join(rd, 'old.md'), 'utf8').includes(key) && existsSync(join(root, '.git', lk)), `rescan --apply --yes refuses while ${lk} is there, and changes nothing (got ${r.stdout})`);
+    ok(/git of the memory store is busy/.test(rr.stdout) && rr.status !== 0, `restore refuses while ${lk} is there (got ${rr.stdout})`);
+    ok(/git of the memory store is busy/.test(r.stdout) && held() && head() === before && readFileSync(join(rd, 'old.md'), 'utf8').includes(key) && existsSync(join(root, '.git', lk)), `rescan --apply --yes refuses while ${lk} is there, and changes nothing (got ${r.stdout})`);
     unlinkSync(join(root, '.git', lk));
   }
   r = await run(['rescan', '--apply', '--yes']);
   // A git of the snapshots still finishing makes rescan refuse, as it should: once more after it lets go. The Windows CI
   // failure of 2026-11-24 printed nothing, so main threw: the message now shows stderr, to name it if it comes back.
-  if (/a snapshot is being taken/.test(r.stdout + r.stderr)) { await new Promise((ok) => setTimeout(ok, 3000)); r = await run(['rescan', '--apply', '--yes']); }
+  if (/git of the memory store is busy/.test(r.stdout + r.stderr)) { await new Promise((ok) => setTimeout(ok, 3000)); r = await run(['rescan', '--apply', '--yes']); }
   const bk = readdirSync(join(home, '.claude')).find((n) => n.startsWith('project-memory-rescan-backup'));
   ok(r.status === 0 && bk && /the snapshots hold none now/.test(r.stdout) && !r.stdout.includes(key), `rescan --apply --yes redacts (got ${r.stdout}${r.stderr.slice(0, 400)})`);
   const old = readFileSync(join(rd, 'old.md'), 'utf8');
@@ -548,7 +548,7 @@ See [[nonexist-${GH}]]
   writeFileSync(join(root, '.git', 'config.lock'), '');
   const nb = () => readdirSync(join(home, '.claude')).filter((n) => n.startsWith('project-memory-rescan-backup')).length;
   r = await run(['rescan', '--apply', '--yes']);
-  ok(r.status === 1 && /snapshot is being taken/.test(r.stdout) && !/at .*memory\.mjs:\d+/.test(r.stderr) && nb() === 1 && readFileSync(join(rd, 'handoff.md'), 'utf8').includes(key), `rescan --apply --yes with a busy lock stops cleanly (got ${r.stdout}${r.stderr.slice(0, 300)})`);
+  ok(r.status === 1 && /git of the memory store is busy/.test(r.stdout) && !/at .*memory\.mjs:\d+/.test(r.stderr) && nb() === 1 && readFileSync(join(rd, 'handoff.md'), 'utf8').includes(key), `rescan --apply --yes with a busy lock stops cleanly (got ${r.stdout}${r.stderr.slice(0, 300)})`);
   unlinkSync(join(root, '.git', 'config.lock'));
   r = await run(['rescan', '--apply', '--yes']);
   ok(r.status === 0 && !readFileSync(join(rd, 'handoff.md'), 'utf8').includes(key) && /backup: /.test(r.stdout), `a secret in handoff.md is redacted (got ${r.stdout})`);
@@ -841,7 +841,7 @@ again ${key2}
     day('2020-03-01', `remember ${word}`, 'pk1');
     const lf = join(r9, '.git', lock); writeFileSync(lf, '');
     const busy = spawnSync(process.execPath, [CLI, 'forget', word, '--yes', '--purge', '--store', pd], { env: h9.env, encoding: 'utf8' });
-    ok(/could not be purged \(a snapshot is being taken; try again in a moment\)/.test(busy.stdout) && existsSync(lf), `a purge gives way to ${lock} (got ${busy.stdout})`);
+    ok(/could not be purged \(the git of the memory store is busy \(a snapshot or clean-up\); try again in a moment\)/.test(busy.stdout) && existsSync(lf), `a purge gives way to ${lock} (got ${busy.stdout})`);
     unlinkSync(lf);
   }
 }
@@ -879,7 +879,7 @@ again ${key2}
   for (const lock of ['HEAD.lock', 'index.lock']) {
     const lf = join(pr, '.git', lock); writeFileSync(lf, '');
     r = rescan('--apply', '--yes');
-    ok(r.status === 1 && r.stdout.trim() === 'a snapshot is being taken; try again in a moment; nothing changed' && existsSync(lf) && readFileSync(join(a, 'handoff.md.prev'), 'utf8').includes(key4), `rescan gives way to ${lock} (got ${JSON.stringify(r.stdout)})`);
+    ok(r.status === 1 && r.stdout.trim() === 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment; nothing changed' && existsSync(lf) && readFileSync(join(a, 'handoff.md.prev'), 'utf8').includes(key4), `rescan gives way to ${lock} (got ${JSON.stringify(r.stdout)})`);
     unlinkSync(lf);
   }
   // A kept copy that cannot be rewritten: said, with the backup's place, and not reported as done.
@@ -1208,7 +1208,7 @@ again ${key2}
   writeFileSync(join(root, '.git', 'HEAD.lock'), '');
   let r = await run(['forget', wa, wb, '--yes', '--purge', '--store', pd]);
   rmSync(join(root, '.git', 'HEAD.lock'));
-  ok(r.status === 1 && /the snapshots could not be purged \(a snapshot is being taken; try again in a moment\)/.test(r.stdout) && days(wa).includes('2020-02-01.md'), `a purge that cannot run says so and takes nothing (got ${r.status} ${r.stdout})`);
+  ok(r.status === 1 && /the snapshots could not be purged \(the git of the memory store is busy \(a snapshot or clean-up\); try again in a moment\)/.test(r.stdout) && days(wa).includes('2020-02-01.md'), `a purge that cannot run says so and takes nothing (got ${r.status} ${r.stdout})`);
   // Words with no day in common purge nothing.
   r = await run(['forget', wa, 'zzznoword-purge', '--yes', '--purge', '--store', pd]);
   ok(r.status === 0 && /^nothing in .* matches: no entry holds "aardvark-purge", "zzznoword-purge"$/m.test(r.stdout) && !/purged/.test(r.stdout) && days(wa).includes('2020-02-01.md'), `words that no day holds together purge nothing (got ${r.stdout})`);

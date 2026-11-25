@@ -3,7 +3,8 @@
 // command line for it (gitArgs, gitWhy). Moved here whole from memory-tier.mjs and store.mjs, as they were.
 // Imports only Node and store.mjs (and privacy.mjs's isOff); git runs through `exec`, which a test replaces with a scripted stand-in.
 
-import { chmodSync, readFileSync, writeFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join, relative, isAbsolute, basename, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { isOff } from './privacy.mjs';
@@ -17,7 +18,9 @@ export const BATCH = 1000;          // files a part of a first snapshot adds: ~6
 // (or nothing, for real git again). execFileSync is looked up at each call, as an import is, so a test that swaps it still reaches git.
 let stand;
 export const useGit = (f) => { stand = f; };
-const exec = (...a) => (stand ?? execFileSync)(...a);
+// The lock a purge holds is touched before each git it runs, so a live purge never reads as a stale lock to busy().
+let held_ = null;
+const exec = (...a) => { if (held_) try { const d = new Date(); utimesSync(held_, d, d); } catch {} return (stand ?? execFileSync)(...a); };
 // What main() clears at each start: the lists a snapshot fills for snapshotHealth.
 export const reset = () => { missed = []; held = []; };
 
@@ -94,17 +97,25 @@ const IGNORE_HEAD = '*\n!*/\n!*/memory/*.md\n';
 // busy, not a failure -- the next turn retries. One older than ten minutes outlived the git that made it, and would refuse every
 // write from now on: swept here, and not busy. Dated ahead of the clock is as old: it read as busy, uncounted, until the clock
 // caught up. Gone meanwhile is gone. A purge holds config.lock for its whole run, so a snapshot started meanwhile reads busy.
-export const BUSY = 'a snapshot is being taken; try again in a moment';
+export const BUSY = 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment';
+const GC_STALE = 12 * 3600000;   // git's own rule for a gc.pid
+// gc.pid is "<pid> <host>": dead when its gc ran on this machine and the process is gone (EPERM: alive, another user's); else git's 12 hours.
+const gcDead = (p, age) => {
+  let m; try { m = /^(\d+) (\S+)\s*$/.exec(readFileSync(p, 'utf8')); } catch {}
+  if (m && m[2] === hostname()) { try { process.kill(+m[1], 0); } catch (e) { if (e.code === 'ESRCH') return true; } }
+  return age >= GC_STALE;
+};
 export function busy() {
   const g = join(projectsRoot(), '.git'), heads = join(g, 'refs', 'heads');
   let hs = []; try { hs = readdirSync(heads).filter((f) => f.endsWith('.lock')).map((f) => join(heads, f)); } catch {}
-  let fresh = false;
+  let fresh = false, stuck = null;
   for (const l of [join(g, 'index.lock'), join(g, 'HEAD.lock'), join(g, 'config.lock'), join(g, 'packed-refs.lock'), join(g, 'gc.pid'), ...hs]) {
     let age; try { age = Math.abs(Date.now() - statSync(l).mtimeMs); } catch { continue; }
-    if (age < GIT_LOCK_STALE) { fresh = true; continue; }
-    try { unlinkSync(l); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    if (l.endsWith('gc.pid') ? !gcDead(l, age) : age < GIT_LOCK_STALE) { fresh = true; continue; }
+    // One that cannot be removed (held open on Windows) is busy, not a crash; the snapshot reads the error as the failure it was.
+    try { unlinkSync(l); } catch (e) { if (e.code !== 'ENOENT') stuck = e; }
   }
-  return fresh;
+  return stuck ?? fresh;
 }
 
 let held = [];     // notes left out of the commit for holding a secret: set by snapshot(), kept by snapshotHealth()
@@ -144,7 +155,9 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
       }
     }
     // Another git's work in flight is busy, not a failure -- the next turn retries (busy(), below).
-    if (busy()) return 'busy';
+    const b = busy();
+    if (b instanceof Error) throw b;
+    if (b) return 'busy';
     // Adopted after the sweep: a stale config.lock refused `git config`, and read
     // as busy, the history never started.
     if (!ours) git('config', 'project-memory.snapshots', 'true');
@@ -379,6 +392,7 @@ const rewrite = (work) => {
   try { for (const n of readdirSync(g)) if (n.startsWith('pm-purge-')) rmSync(join(g, n), { recursive: true, force: true }); } catch {}
   // The copy sits in the repository's own .git, which no snapshot commits; the OS temp folder was outside the store.
   const tmp = mkdtempSync(join(g, 'pm-purge-')), copy = join(tmp, 'copy.git');
+  held_ = lock;
   try {
     git('clone', '-q', '--mirror', '--no-hardlinks', projectsRoot(), copy);
     work(copy);
@@ -387,7 +401,7 @@ const rewrite = (work) => {
     for (const ref of git('for-each-ref', '--format=%(refname)', 'refs/original/').split('\n').filter(Boolean)) git('update-ref', '-d', ref);
     git('reflog', 'expire', '--expire=now', '--all');
     git('gc', '-q', '--prune=now');   // no detached gc --auto can start under it now: gc.auto=0 (gitArgs)
-  } finally { rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
+  } finally { held_ = null; rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
 };
 // shortcut: the whole history is read into one buffer (1 GiB cap) and only branches come back from the rewrite, so a hand-made tag keeps old text; upgrade to streaming or fetch all refs if that is hit.
 const FAST = { maxBuffer: 1 << 30, timeout: 300_000 }, QUIET_FAST = { ...FAST, stdio: ['ignore', 'pipe', 'ignore'] };   // git warns about a ref that names a blob
@@ -422,5 +436,5 @@ export const HELD = 'it holds what looks like a key, token or password, so it st
 export const packOrphans = () => {
   const pack = join(projectsRoot(), '.git', 'objects', 'pack');
   let packs = []; try { packs = readdirSync(pack); } catch {}
-  return { pack, orphans: packs.filter((f) => f.endsWith('.idx') && !packs.includes(f.replace(/.idx$/, '.pack'))) };
+  return { pack, orphans: packs.filter((f) => f.endsWith('.idx') && !packs.includes(f.replace(/\.idx$/, '.pack'))) };
 };
