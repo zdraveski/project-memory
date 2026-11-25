@@ -324,18 +324,19 @@ export const owed = () => { try { return JSON.parse(readFileSync(join(projectsRo
 // reason: `git show rev:a*.md` took the argument for a pattern, printed
 // nothing and succeeded, and restore wrote an empty note.
 const gitAs = (encoding, a) => exec('git', gitArgs('--literal-pathspecs', ...a), { encoding, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20, timeout: 60_000 });
-export const git = (...a) => gitAs('utf8', a);
+export { git, gitBytes, real, tracked, ever, rewrite, FAST, unsnapped, missing };   // the CLI's way in; the lines above stay as they were in memory.mjs
+const git = (...a) => gitAs('utf8', a);
 // A blob's own bytes: through a string, a note that is not UTF-8 lost its letters.
-export const gitBytes = (...a) => gitAs('buffer', a);
+const gitBytes = (...a) => gitAs('buffer', a);
 // The on-disk spelling: git's paths are case-sensitive, and the JS realpath
 // keeps whatever case it was handed (a cwd typed in lower case).
-export const real = (p) => { try { return realpathSync.native(p); } catch { return p; } };
+const real = (p) => { try { return realpathSync.native(p); } catch { return p; } };
 // A store linked to a folder outside the root is in the history by its link's
 // path: resolved, git said the path was outside the repository.
 // Its memory folder or its project folder, either can be the link: the
 // project folder as the root lists it, then memory/.
 // Every path git may hold it by, the one to read first first.
-export const tracked = (dir, file) => {
+const tracked = (dir, file) => {
   const root = real(projectsRoot()), at = relative(root, real(dir));
   if (!at.startsWith('..') && !isAbsolute(at)) return [relative(root, join(real(dir), file)).replace(/\\/g, '/')];
   // Of two links to one folder, the first, which the snapshot keeps: named by
@@ -350,14 +351,14 @@ export const tracked = (dir, file) => {
   return (links.length ? links : [basename(dirname(dir))]).map((n) => `${n}/memory/${file}`);
 };
 // Every name the store's files had in the snapshots (each was added once).
-export const ever = (dir) => {
+const ever = (dir) => {
   try { return tracked(dir, '').flatMap((at) => git('-c', 'core.quotepath=off', 'log', '--format=', '--name-only', '--no-renames', '--diff-filter=A', '--', at).split('\n')).map((p) => p.split('/').pop()); }
   catch { return []; }
 };
 // forget --purge: drop the days that held a forgotten entry from every snapshot, then expire the reflog and collect, so no
 // old commit keeps the text. The current files stay; the next snapshot adds them back without the entry.
 // shortcut: a purged day loses its older versions whole, not just the entry; upgrade to a line filter if that is missed.
-export const rewrite = (work) => {
+const rewrite = (work) => {
   // filter-branch refuses a repository with unstaged changes, and a store always has some (notes edited since the last snapshot):
   // it rewrites a bare copy, which is fetched back over the branches (the work tree and its files stay as they are), and the
   // index is reset to the new HEAD so it holds no old blob.
@@ -383,17 +384,17 @@ export const rewrite = (work) => {
   } finally { rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
 };
 // shortcut: the whole history is read into one buffer (1 GiB cap) and only branches come back from the rewrite, so a hand-made tag keeps old text; upgrade to streaming or fetch all refs if that is hit.
-export const FAST = { maxBuffer: 1 << 30, timeout: 300_000 }, QUIET_FAST = { ...FAST, stdio: ['ignore', 'pipe', 'ignore'] };   // git warns about a ref that names a blob
+const FAST = { maxBuffer: 1 << 30, timeout: 300_000 }, QUIET_FAST = { ...FAST, stdio: ['ignore', 'pipe', 'ignore'] };   // git warns about a ref that names a blob
 // Why no snapshot can be read, in plain words, or '' when one can: git's own ("fatal: not a git repository", "cannot change
 // to") read as a fault, and without git, restore offered to replace a note "with the snapshot" (audit C-3, C-4).
-export const unsnapped = () => {
+const unsnapped = () => {
   try { gitInstalled(); } catch { return 'git is not installed, so there are no snapshots: everything else works. Installing Git (git-scm.com) turns them on'; }
   // Nor a repository with no commit yet: a large first snapshot is taken in parts, over several replies.
   let head = false; try { head = existsSync(join(projectsRoot(), '.git')) && !!git('rev-parse', '--verify', '-q', 'HEAD'); } catch {}
   return head ? '' : 'no snapshots yet: project-memory takes the first at the end of a reply';
 };
 // git saying a snapshot does not hold a path, or there is no such commit.
-export const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
+const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
 
 // The git commands the CLI (memory.mjs: history, restore, forget --purge, rescan, doctor) runs, each with the arguments and options it
 // had there. The 60 s `git` and `gitBytes` read the snapshots; the fast-export and fast-import of a history rewrite take 300 s.
