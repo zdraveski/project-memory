@@ -58,7 +58,7 @@
 // restore the note is one of the texts it had, and one that fails or is not forced changes nothing;
 // a promoted note is in _shared/memory once, with one index line, and none is left in the project;
 // doctor's lines are ok or PROBLEM, its exit 1 exactly when one is, and none names the user's own
-// ~/.claude. The startup briefing (handoff-log.mjs --print) is within 9,500 characters, a line of a
+// ~/.claude. The startup briefing (briefing.mjs --print) is within 9,500 characters, a line of a
 // startup or a /clear within 1,000, and a startup of a new conversation names the ask of the newest
 // plain exchange of the conversation handoff.md lists last (`[private]` when the last entry is a
 // turn that ran forget, as PRIVACY.md saves it), when that is under a week old by the hook's own
@@ -101,7 +101,7 @@ for (const v of ['CLAUDE_CODE_MAX_CONTEXT_TOKENS', 'CLAUDE_CODE_DISABLE_1M_CONTE
 const { MODEL_WINDOW, WINDOW, TRIGGER } = await import('../src/compact-gate.mjs');
 // Reply sizes, in tokens: a small start, two under the trigger, one just past it, one past the ceiling.
 const SIZES = [1_000, 199_000, 500_000, Math.ceil(TRIGGER * WINDOW) + 1_000, Math.ceil(0.95 * MODEL_WINDOW)];
-const TIER = tool('src/memory-tier.mjs'), LOG = tool('src/handoff-log.mjs'), GATE = tool('src/compact-gate.mjs'), CLI = tool('src/memory.mjs');
+const TIER = tool('src/memory-tier.mjs'), LOG = tool('src/handoff-log.mjs'), BRIEFING = tool('src/briefing.mjs'), GATE = tool('src/compact-gate.mjs'), CLI = tool('src/memory.mjs');
 
 // mulberry32: a seed replays its round exactly.
 const rng = (seed) => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -731,7 +731,7 @@ async function execute(steps, meta) {
     }
     log.push('a big store: long health lines in both stores, the snapshot health, a failed record, a failed journal write, a full shared index');
   }
-  const brief = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), lastTz);
+  const brief = await run(BRIEFING, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), lastTz);
   if (brief.status !== 0) problems.push(`the startup briefing exited ${brief.status ?? brief.signal}`);
   // The briefing's limit as the code defines it (text.mjs fit()): 9,500 characters in all, whatever the source, and at a
   // startup or a /clear no line over 1,000 plus the ellipsis a cut line ends with (so 1,001). Copies of SAY (text.mjs; kept as copies so a drift fails
@@ -749,7 +749,7 @@ async function execute(steps, meta) {
   const doc = existsSync(join(dir, 'handoff.md')) ? readFileSync(join(dir, 'handoff.md'), 'utf8') : '', { a, b } = sectionOf(doc);
   const listed = a === -1 ? [] : parse(doc.slice(a + '<!-- auto:start -->'.length, b)), last = listed.at(-1);
   const now = last && Date.parse(`${last.at.replace(' ', 'T')}:00Z`) + (meta.late ? 32 : 2) * 86400_000;
-  const fresh = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: 'zzbrief0-1', source: 'startup' }), lastTz, { now });
+  const fresh = await run(BRIEFING, ['--print'], JSON.stringify({ cwd, session_id: 'zzbrief0-1', source: 'startup' }), lastTz, { now });
   if (fresh.status !== 0) problems.push(`the startup briefing of a new conversation exited ${fresh.status ?? fresh.signal}`);
   if (fresh.out.length > SAY) problems.push(`the startup briefing of a new conversation is ${fresh.out.length} characters, over ${SAY}`);
   if (fresh.out.split('\n').some((l) => l.length > LINE)) problems.push(`a line of the startup briefing of a new conversation is over ${LINE} characters`);

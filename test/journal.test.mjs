@@ -627,7 +627,7 @@ if (!quick) {
   rmSync(hf);   // other sessions' turns, newer than this one's
   stop(Y);
   const journal = days(sdir).map((d) => readFileSync(dayFile(sdir, d), 'utf8')).join(''), hd = existsSync(hf) ? readFileSync(hf, 'utf8') : '';
-  const brief = spawnSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+  const brief = spawnSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
     input: JSON.stringify({ cwd: scwd, session_id: sid('yb'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '';
   const leaked = ['journal', 'handoff.md', 'briefing'].filter((_, i) => /vault code|walrus/.test([journal, hd, brief][i]));
   ok(swept && was && !leaked.length && tags().includes(y),
@@ -685,7 +685,7 @@ const stopRefused = (id, names) => { const r = spawnSync(process.execPath, ['--i
   appendFileSync(list, `${r8}\n`);
   say(R, now, 'so what is the vault code', 'it is heron-8812');
   stopRefused(R, ['.private-sessions']);
-  const brief = () => spawnSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+  const brief = () => spawnSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
     input: JSON.stringify({ cwd: scwd, session_id: sid('rb'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '';
   const where = () => ['journal', 'handoff.md', 'briefing'].filter((_, i) => /heron/.test([days(sdir).map((d) => readFileSync(dayFile(sdir, d), 'utf8')).join(''), existsSync(hf) ? readFileSync(hf, 'utf8') : '', brief()][i]));
   const refused = where();
@@ -729,7 +729,7 @@ for (const [c, name, at] of [['ua', '.private-sessions', sdir], ['ub', '.memory-
   const U = sid(c), list = join(at, name), had = existsSync(list) ? readFileSync(list) : null, hf = join(sdir, 'handoff.md'), where = ['journal', 'handoff.md'];
   const failed = join(dirname(proj), `.handoff-failed-${slug(scwd)}`);
   const saved = () => where.filter((w) => (w === 'journal' ? of(U).length > 0 : existsSync(hf) && readFileSync(hf, 'utf8').includes(`asked while ${name} is a folder`)));
-  const said = () => [spawnSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+  const said = () => [spawnSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
     input: JSON.stringify({ cwd: scwd, session_id: sid('uz'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '',
   spawnSync(process.execPath, [tool('src/memory.mjs'), 'status', '--store', sdir], { env, encoding: 'utf8', timeout: 60e3 }).stdout ?? ''];
   say(U, new Date(Date.now() - 60e3).toISOString(), `asked while ${name} is a folder`, 'answered');

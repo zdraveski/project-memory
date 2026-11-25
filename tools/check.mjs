@@ -95,8 +95,8 @@ export const loopsOf = (graph) => {
   const reaches = (from, to, seen = new Set()) => from === to || (!seen.has(from) && (seen.add(from), (graph[from] ?? []).some((n) => reaches(n, to, seen))));
   return Object.entries(graph).flatMap(([a, bs]) => bs.filter((b) => reaches(b, a)).map((b) => `${a} -> ${b}`));
 };
-// Loops known on master, to go with the briefing's move (1.6.0 step 18).
-const KNOWN_LOOPS = ['handoff-log.mjs -> journal.mjs', 'handoff-log.mjs -> compact-gate.mjs', 'compact-gate.mjs -> handoff-log.mjs', 'journal.mjs -> handoff-log.mjs'];
+// Loops known and waiting to be undone: none since the briefing moved out of handoff-log.mjs (1.6.0 step 18).
+const KNOWN_LOOPS = [];
 assert.deepEqual(importsOf("import { a } from './a.mjs';\nimport * as B from \"./b.mjs\";\nimport './c.mjs';\nawait import('./d.mjs');\nimport(new URL('./e.mjs', import.meta.url));\nimport x from 'node:fs';"), ['a.mjs', 'b.mjs', 'c.mjs', 'd.mjs', 'e.mjs']);
 assert.deepEqual(loopsOf({ 'a.mjs': ['b.mjs'], 'b.mjs': ['c.mjs'], 'c.mjs': ['a.mjs'], 'd.mjs': ['a.mjs'] }), ['a.mjs -> b.mjs', 'b.mjs -> c.mjs', 'c.mjs -> a.mjs']);
 assert.deepEqual(loopsOf({ 'a.mjs': ['b.mjs'], 'b.mjs': [] }), []);

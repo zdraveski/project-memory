@@ -297,10 +297,10 @@ c8a3aff63da2 src/transcript.mjs:978 `>=` -> `>`: bytes runs 512000 * 4^k (512000
 8e5433a08b55 src/handoff-log.mjs:978 `||` -> `&&` (whole || bytes >= 32e6): with whole true and bytes below the cap the loop only reads again; a whole file read at a larger window is the same text, so scan() gives the same result and it returns at 32768000 at the latest, same value
 e5a3f2eda34a src/handoff-log.mjs:1014 catch `{ return []; }` -> `{}`: lastTurn() threw, so end stays undefined and the check after it (end/seen comparison with GRACE) is NaN > GRACE, false, and returns [] the same
 61204625533b src/handoff-log.mjs:1017 catch `{ return []; }` -> `{}`: statSync threw, so ran stays undefined, and the next test on it (NaN comparison against end) is false and returns [] the same
-ba634a47cd91 src/handoff-log.mjs:1144 catch `{ return false; }` -> `{}`: busy() is read only as a truthy value (filter/some), undefined and false are the same
-eb04aa725f2e src/handoff-log.mjs:1144 `false` -> `undefined`: busy() is read only as a truthy value, undefined and false are the same
+e26e0ba9ed9c src/briefing.mjs:107 catch `{ return false; }` -> `{}`: busy() is read only as a truthy value (filter/some), undefined and false are the same
+71b7e23bd1bb src/briefing.mjs:107 `false` -> `undefined`: busy() is read only as a truthy value, undefined and false are the same
 50d5a4109d8c src/transcript.mjs:548 catch `{ continue; }` -> `{}`: r stays undefined for a line that does not parse, and the next statement reads r?.type, which is undefined for it, so the line is skipped the same
-65d0f2da72d4 src/handoff-log.mjs:1133 `b` -> `b + 1`: sectionOf's b is the index of END; one more character is the first character of END ('<') alone on its line, which parse() ignores and no check on this section reads
+c54d70ae7bcb src/briefing.mjs:96 `b` -> `b + 1`: sectionOf's b is the index of END; one more character is the first character of END ('<') alone on its line, which parse() ignores and no check on this section reads
 417931b80e92 src/handoff-log.mjs:630 `b` -> `b + 1`: the extra character is the '<' of END, a line parse() ignores, so have is the same entries
 967f6f8f6718 src/handoff-log.mjs:679 `b` -> `b + 1`: the extra character is the '<' of END, and the section is only searched for the text '**cut mid-turn**', which '<' cannot complete or break
 2eb42a742399 src/handoff-log.mjs:786 `b` -> `b + 1`: the extra character is the '<' of END, a line parse() ignores, so the last turn found is the same
@@ -309,13 +309,13 @@ fc236685e23e src/handoff-log.mjs:786 `??` -> `||`: the left side is a parsed tur
 05c836793d3f src/handoff-log.mjs:856 `false` -> `undefined`: copy() is read only as a truthy value in a filter
 b5fd63bb98a8 src/handoff-log.mjs:588 `-` -> `+` (i - 1): lastIndexOf('\n', i + 1) from the start of START/END, which hold no newline, finds the same last newline before i as from i - 1; the character at i and i + 1 are '<' and '!'
 2be361d9c382 src/handoff-log.mjs:876 `0` -> `1`: at is only compared with the time now, and 1 ms and 0 ms after 1970 are both long past the same cut-off
-9b0770b53e2a src/handoff-log.mjs:1150 `??` -> `||`: hid holds booleans; when it holds false the mutant calls hushed(dir, s) again, which gives the same answer inside one run, so quiet(s) is the same
-04a4c6456525 src/handoff-log.mjs:1223 `?.` -> `.`: am.why is always set when auto memory is off (autoMemory() in store.mjs sets it with off), and this line runs only then
+20ec88064b3c src/briefing.mjs:114 `??` -> `||`: hid holds booleans; when it holds false the mutant calls hushed(dir, s) again, which gives the same answer inside one run, so quiet(s) is the same
+2ac1b0c3164c src/briefing.mjs:195 `?.` -> `.`: am.why is always set when auto memory is off (autoMemory() in store.mjs sets it with off), and this line runs only then
 577bef76e96b src/handoff-log.mjs:624 `??` -> `||`: before is a string or null/undefined; '' and null both give '' here
 d803ea391123 src/handoff-log.mjs:662 `??` -> `||`: left.get() is a count of at least 1 or undefined, never 0, so both give the same
 ae5c1fa7bbd8 src/handoff-log.mjs:674 `??` -> `||`: shown.get(t) is a rendered string or undefined; for an empty string the mutant renders again, to the same string
 c4a3d6278aa3 src/handoff-log.mjs:858 `??` -> `||`: raw() gives a string or null; for '' both give '' and for null both give ''
-c90f04fa3262 src/handoff-log.mjs:943 `?.` -> `.`: it is the last statement of its try, and a throw from s.missed.length on undefined is caught and dropped like the false branch that adds nothing
+e41aecc59223 src/briefing.mjs:31 `?.` -> `.`: it is the last statement of its try, and a throw from s.missed.length on undefined is caught and dropped like the false branch that adds nothing
 ef95a386c7b7 src/run-records.mjs:1047 `false` -> `undefined`: the callback is a filter predicate, read for truthiness only
 f65599f88474 src/privacy.mjs:729 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same
 2a15fad8deaa src/handoff-log.mjs:732 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same

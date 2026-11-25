@@ -1177,7 +1177,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   let offBad;
   try { offBad = await call(['--stop'], JSON.stringify({ transcript_path: to2, session_id: 'offline2-0000' })); }
   finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
-  const offSaid = execFileSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: to2, session_id: 'other', source: 'startup' }), env }).toString();
+  const offSaid = execFileSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { input: JSON.stringify({ transcript_path: to2, session_id: 'other', source: 'startup' }), env }).toString();
   rmSync(offList, { recursive: true }); writeFileSync(offList, hadOff);
   const savedNothing = !existsSync(join(po, 'memory'));
   // In its own words, in the briefing and in status (a store kept from before memory went off): nothing was meant to be saved, and
@@ -1202,7 +1202,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
     JSON.stringify({ type: 'assistant', timestamp: '2026-10-27T10:00:05Z', message: { content: [{ type: 'text', text: 'saved' }] } })].join('\n') + '\n');
   const stopB = () => call(['--stop'], JSON.stringify({ transcript_path: tb, session_id: 'brkn' }));
   await stopB();
-  const said = execFileSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: tb, session_id: 'other', source: 'startup' }), env }).toString();
+  const said = execFileSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { input: JSON.stringify({ transcript_path: tb, session_id: 'other', source: 'startup' }), env }).toString();
   ok(existsSync(join(root, '.handoff-failed-proj-broken')) && /needs attention[^\n]*: the record of where you left off could not be saved after the reply at /.test(said) && !said.includes('auto memory off'),
     `a handoff that cannot be saved is said at the next start (got ${said.slice(0, 200)})`);
   // The failure file keeps the error's first line, whole, for the startup line to quote.
