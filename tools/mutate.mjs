@@ -27,6 +27,7 @@ import text from './mutants/text.mjs';
 import privacy from './mutants/privacy.mjs';
 import transcript from './mutants/transcript.mjs';
 import snapshot from './mutants/snapshot.mjs';
+import runRecords from './mutants/run-records.mjs';
 
 // Every file a suite may import, copied beside the mutant.
 const FILES = ['test/harness.mjs', 'tools/deploy.mjs', 'tools/suites.mjs', ...pluginFiles()];
@@ -54,6 +55,7 @@ export const suites = {
   'src/privacy.mjs': [['test/privacy.test.mjs', 'test/store.test.mjs', 'test/handoff-log.test.mjs'], privacy],
   'src/transcript.mjs': [['test/transcript.test.mjs', 'test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/journal.test.mjs'], transcript],
   'src/snapshot.mjs': [['test/snapshot.test.mjs', 'test/memory-tier.test.mjs', 'test/store.test.mjs', 'test/enforce-hook.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-cli.test.mjs', 'test/memory-switch.test.mjs', 'test/handoff-log.test.mjs'], snapshot],
+  'src/run-records.mjs': [['test/run-records.test.mjs', 'test/handoff-log.test.mjs', 'test/journal.test.mjs', 'test/memory-tier.test.mjs', 'test/memory-cli.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-switch.test.mjs'], runRecords],
 };
 // The file that holds a group's mutants: a --changed list naming it asks for that group alone.
 export const tableOf = (name) => `tools/mutants/${name.split('/').pop().replace(/\.\w+$/, '')}.mjs`;
