@@ -17,7 +17,7 @@ export default {
   "the front matter read from 1,200 bytes": ["Buffer.alloc(16384)", "Buffer.alloc(1200)"],
   "a returning line loses its own trailing space": ["p.line.slice(0, -OVERFLOW.length).replace(/ $/, '')", "p.line.slice(0, -OVERFLOW.length).trimEnd()"],
   "no line ceiling": ["(size > budget || count > LINES) && q < queue.length", "size > budget && q < queue.length"],
-  "the tidy-up before the first snapshot": ["if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot();\n", ""],
+  "the tidy-up before the first snapshot": ["if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot({ gitWait, batch });\n", ""],
   "the first of two lines kept": ["if (inIndex && was.inIndex) was.p.line = p.line;", ""],
   "a 7-= heading taken for a conflict": ["merged: /^<{7}(?:[ \\t].*)?\\r?$/m.test(mainText) && /^>{7}", "merged: /^(?:<{7}|={7})(?:[ \\t].*)?\\r?$/m.test(mainText) || /^>{7}"],
   "a failed handoff said nowhere": ["    catch (e) { writeFileSync(failed, ", "    catch (e) { (() => {})(failed, "],
