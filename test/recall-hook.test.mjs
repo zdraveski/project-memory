@@ -113,7 +113,9 @@ ok(r.n === 2 && /key: "fine"/.test(r.say) && /key: "mine"/.test(r.say) && !/key:
 // A forget list that will not read (a folder by its name) could name any entry: nothing.
 const fl = join(p.store, FORGOTTEN);
 rmSync(fl); mkdirSync(fl);
-ok((await look({ ...p.payload('src/close.js'), session_id: 'ffff6666-x' })).say === '', 'a forget list that will not read: nothing');
+// (eeee5555 changed the same file a moment ago, so the same-file warning of headline 4 comes alone.)
+r = await look({ ...p.payload('src/close.js'), session_id: 'ffff6666-x' });
+ok(r.n === 0 && !r.say.includes('earlier exchanges'), 'a forget list that will not read: no pointer');
 rmSync(fl, { recursive: true });
 
 // A conversation that is private, memory-off, or a project switched off: no pointer and no session file.
@@ -276,7 +278,8 @@ p.day('2026-11-10', [...filler,
 // 60 entries: under 3 is rare. harbor and crane are in 3 each, so the first request has no rare word.
 ok((await hear(ask(p, 'harbor crane lumber'))).say === '', 'a word in 5% of the entries is not rare');
 r = await hear({ ...ask(p, 'zebra yak lumber crane harbor'), session_id: 'eeee0000-x' });
-ok(r.say === '', `two rare words of five are not enough (got ${r.say})`);
+// (abcd1234 asked a moment ago, so headline 4's line about it may come alone.)
+ok(r.n === 0 && !r.say.includes('earlier exchanges'), `two rare words of five are not enough (got ${r.say})`);
 // 64 entries: 3 or fewer is rare. n1 shares the rarest word; n3 and n4 tie, the newer first; n2 is fourth.
 p.day('2026-11-11', [other(p, 70, { key: 'n1', asked: 'quokka wombat numbat' }), other(p, 71, { key: 'n2', asked: 'wombat numbat dingo' }),
   other(p, 72, { key: 'n3', at: '2026-11-11 09:00', asked: 'numbat dingo bilby' }), other(p, 73, { key: 'n4', at: '2026-11-11 10:00', asked: 'dingo bilby wombat' })]);

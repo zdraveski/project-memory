@@ -16,7 +16,7 @@ import { tag, storeOf, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER,
 import { notes, edited } from './run-records.mjs';
 import { ACTIVE, START, render, parse, sectionOf, stalled } from './handoff-log.mjs';
 import { firstDay, rel } from './journal.mjs';
-import { readSession, sessionLine, sessionsOf, byWords, sharesBlock, DEADLINE } from './recall.mjs';
+import { readSession, sessionLine, sessionsOf, byWords, sharesBlock, DEADLINE, others as liveOthers, doing, about, near } from './recall.mjs';
 import { recover } from './compact-gate.mjs';
 
 const RECENT = 30 * 86400000;  // older than this, the startup line has nothing to say
@@ -152,10 +152,15 @@ async function print(input) {
   const hid = new Map(), quiet = (s) => hid.get(s) ?? hid.set(s, hushed(dir, s) !== false).get(s);
   // By the last request recorded for it, and said so: what it works on now may be newer, and named as its work, a finished
   // ask read as the current one (audit H-F8).
-  const others = working.map((t) => {
+  // 1.6.0 headline 4: its title and newest files from its session file, and a session only its session file shows as live
+  // (another worktree's, whose conversation file lies in another folder) when that file says what it does.
+  const files = liveOthers(dir, me), cwd = typeof input.cwd === 'string' ? input.cwd.replaceAll('\\', '/') : '';
+  const extra = (s) => { const o = files.find((x) => x.s === s); if (!o) return ''; const { title, files: fs } = doing(o.lines); return `${title ? `; titled "${title}"` : ''}${fs.length ? `; files it changed: ${fs.slice(0, 3).map((f) => near(f, cwd)).join(', ')}` : ''}`; };
+  const elsewhere = files.filter((o) => !live.some((t) => t.s === o.s) && Object.values(doing(o.lines)).some((x) => x.length));
+  const others = [...working.map((t) => {
     const e = all.filter((x) => x.s === t.s && !quiet(x.s)).at(-1);
-    return `Another session is working in this project: [${t.s}]${e ? `; the last request recorded for it, at ${e.at}: ${clip(e.ask, 120)}` : `, active at ${local(t.m)} (no handoff entry)`}`;
-  });
+    return `Another session is working in this project: [${t.s}]${e ? `; the last request recorded for it, at ${e.at}: ${clip(e.ask, 120)}` : `, active at ${local(t.m)} (no handoff entry)`}${quiet(t.s) ? '' : extra(t.s)}`;
+  }), ...elsewhere.map((o) => `Another session is working in this project: ${about(o, cwd)}`)].slice(0, 2);
   if (input.source === 'startup' || input.source === 'clear') {
     const told = all.filter((t) => !quiet(t.s));
     const last = told.filter((t) => t.s !== me).at(-1);

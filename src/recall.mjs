@@ -4,7 +4,7 @@
 // caller: the hook loads it only when a look-up needs it, and the "already seen" path never pays for it.
 import { readFileSync, appendFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
-import { foldCase, projectsRoot, storeOf, memoryOff, tag, norm } from './store.mjs';
+import { foldCase, projectsRoot, storeOf, memoryOff, tag, norm, local } from './store.mjs';
 import { isOff, isHushed, forgottenIn, QUIET, OFF, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
 import { clip, fit } from './text.mjs';
 
@@ -132,8 +132,8 @@ export const whoChanged = (snaps, es, deleted = []) => {
 };
 
 // The session file (1.6.0 spec, "The session file"): one per conversation, outside the store, so no fingerprint, snapshot or
-// status sees it. Append-only, `<kind> <ISO time> [agent:<helper id>] <rest>` a line. This step writes `file` (a path the
-// conversation changed, as cleanPath has it) and `told` (an entry key it was shown); it reads the kinds later steps write too.
+// status sees it. Append-only, `<kind> <ISO time> [agent:<helper id>] <rest>` a line. Kinds: `file` (a path the
+// conversation changed, as cleanPath has it), `told` (an entry key it was shown), `compact`, `asked`, `quiet`, `title`, `saw`, `end`.
 export const SESSIONS = '.sessions';
 export const sessionsOf = (store) => join(projectsRoot(), SESSIONS, basename(dirname(store)));
 const LINE = /^(\S+) (\S+)(?: agent:([\w-]{1,64}))?(?: (.*))?$/;
@@ -161,6 +161,77 @@ export function sweepSessions(now = Date.now()) {
     } catch {}
   } catch {}
   return n;
+}
+
+// Headline 4, sessions that see each other. A session is live when its newest line is younger than ACTIVE (handoff-log's 30
+// minutes, not imported: the hooks keep their imports small) and is not `end`. The hooks decide by the session file alone.
+export const ACTIVE = 30 * 60e3;
+const hhmm = (iso) => local(iso).slice(11);
+// A full path as the user reads it: under `cwd`, relative to it.
+export const near = (f, cwd) => { const c = cleanPath(cwd || ''); return c && f.startsWith(`${c}/`) ? f.slice(c.length + 1) : f; };
+// The other live sessions of `store`, but `me`: { s, lines, since }, `since` the first line of its live run (no gap over ACTIVE,
+// no `end`). Only files changed within ACTIVE are opened. Never a conversation marked private (one try; unknown is private).
+export function others(store, me = '', now = Date.now()) {
+  const dir = sessionsOf(store), out = [];
+  let names = [];
+  try { names = readdirSync(dir); } catch { return out; }
+  for (const s of names) {
+    if (s === me || !/^[\w-]+$/.test(s)) continue;
+    try { if (now - statSync(join(dir, s)).mtimeMs > ACTIVE) continue; } catch { continue; }
+    const lines = readSession(join(dir, s)), last = lines?.at(-1);
+    if (!last || last.kind === 'end' || now - Date.parse(last.at) > ACTIVE || isHushed(store, s, QUIET, 1)) continue;
+    let i = lines.length - 1;
+    while (i > 0 && lines[i - 1].kind !== 'end' && Date.parse(lines[i].at) - Date.parse(lines[i - 1].at) <= ACTIVE) i--;
+    out.push({ s, lines, since: lines[i].at });
+  }
+  return out;
+}
+// What a session's file says it does: its newest request ('' when its newest prompt line is `quiet`), its title, the files it
+// changed, newest first. Only these three kinds are ever shown to another session.
+export function doing(lines) {
+  const p = lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet');
+  return { ask: p?.kind === 'asked' ? tame(p.rest) : '', title: tame(lines.findLast((l) => l.kind === 'title')?.rest ?? ''),
+    files: [...new Set(lines.filter((l) => l.kind === 'file').map((l) => l.rest).reverse())] };
+}
+// One line about a live session, for the briefing and `status`: its title, request and newest files.
+export const about = ({ s, lines }, cwd = '') => {
+  const { ask, title, files } = doing(lines);
+  return `[${s}]${title ? ` "${title}"` : ''}${ask ? `, on: "${ask}"` : ''}${files.length ? `; files it changed: ${files.slice(0, 3).map((f) => near(f, cwd)).join(', ')}` : ''}`;
+};
+// At a change: another live session changed `key` within ACTIVE, and this one (`mine`, its lines) was not warned of it since.
+// { say, saw }: the warning ('' for none) and the tags to write `saw` lines for. Never blocks: it comes with the change's result.
+export function sameFile(store, me, mine, key, now = Date.now()) {
+  const out = [], saw = [];
+  for (const o of others(store, me, now)) {
+    const i = o.lines.findLastIndex((l) => l.kind === 'file' && l.rest === key), f = o.lines[i];
+    if (!f || now - Date.parse(f.at) > ACTIVE || mine.some((l) => l.kind === 'saw' && l.rest === `${o.s} ${key}` && l.at >= f.at)) continue;
+    const { ask } = doing(o.lines.slice(0, i + 1));
+    out.push(`project-memory: another session [${o.s}] changed this file at ${hhmm(f.at)}${ask ? ` (its request: "${ask}")` : ''}. Check with the user or that session before changing it again.`);
+    saw.push(o.s);
+  }
+  return { say: out.length ? fit(out.join('\n')) : '', saw };
+}
+// At a prompt: each other live session this one has not looked at since it became live. { say, saw } as sameFile's.
+export function newOthers(store, me, mine, cwd = '', now = Date.now()) {
+  const out = [], saw = [], own = new Set(doing(mine).files);
+  for (const o of others(store, me, now)) {
+    if (mine.some((l) => l.kind === 'saw' && l.rest === o.s && l.at >= o.since)) continue;
+    const { ask, title, files } = doing(o.lines), both = files.filter((f) => own.has(f));
+    out.push(`project-memory: another session [${o.s}]${title ? ` ("${title}")` : ''} is working in this project since ${hhmm(o.since)}${ask ? ` on: "${ask}"` : ''}.${files.length ? ` Files it changed: ${files.slice(0, 3).map((f) => near(f, cwd)).join(', ')}` : ''}${both.length ? `. This session changed ${both.slice(0, 3).map((f) => near(f, cwd)).join(', ')} too.` : ''}`);
+    saw.push(o.s);
+  }
+  return { say: out.length ? fit(out.join('\n')) : '', saw };
+}
+// SessionEnd: an `end` line with the reason, so the others stop counting this session as live. Only to a file that is there:
+// a conversation that wrote none (private, switched off, nothing changed) gets none. True when written.
+export function onEnd(input) {
+  const s = tag(input?.session_id);
+  if (!/^[\w-]+$/.test(s) || memoryOff()) return false;
+  const store = storeOf(input), at = join(sessionsOf(store), s);
+  if (isOff(store) || isHushed(store, s, QUIET, 1) || isHushed(projectsRoot(), s, OFF, 1) || !readSession(at)?.length) return false;
+  const why = /^[\w-]{1,40}$/.test(input.reason) ? input.reason : 'other';
+  appendFileSync(at, sessionLine('end', why), { mode: 0o600 });
+  return true;
 }
 
 // The change hook (headline 1b). DEADLINE: ms from the process's start after which the scan gives up and says nothing; the
@@ -258,20 +329,27 @@ export async function onChange(input, { journal, deadline = DEADLINE, now = Date
   const mine = cur.filter((l) => l.by === by), seen = mine.filter((l) => l.kind === 'file' && l.rest === key);
   const write = (text) => { mkdirSync(dirname(at), { recursive: true, mode: 0o700 }); appendFileSync(at, text, { mode: 0o600 }); };
   if (!seen.length || now - Date.parse(seen.at(-1).at) > AGAIN) write(sessionLine('file', key, by, new Date(now).toISOString()));
-  // The common case: this conversation changed the file already. It ends here, before the journal is loaded.
-  if (seen.length) return none;
-  const turn = cur.slice(p + 1).filter((l) => l.by === by && l.kind === 'told'), blocks = new Set(turn.filter((l) => l.rest !== 'more').map((l) => l.at)).size;
-  // shortcut: the files past the third block count as seen and get no pointer later; upgrade if a missed pointer there mattered.
-  if (blocks >= BLOCKS && turn.some((l) => l.rest === 'more')) return none;
-  const found = await earlier(store, file, String(input.session_id), { journal, deadline, now, since: lines[c]?.at ?? '', told: new Set(mine.filter((l) => l.kind === 'told').map((l) => l.rest)) });
-  if (!found?.length) return none;
-  const t = new Date(now).toISOString();
-  if (blocks >= BLOCKS) { write(sessionLine('told', 'more', by, t)); return { say: MORE, n: 0 }; }
-  const { rel } = await journal(), shown = pick(found), say = block(shown, found.length - shown.length, rel(file, cwd));
-  if (!say) return none;
-  // One time for the block's lines: rule 11 counts blocks by it.
-  write(shown.map((e) => sessionLine('told', e.key, by, t)).join(''));
-  return { say, n: shown.length };
+  // Headline 4: another live session changed this file too. Said with whatever else this change gets, and before it.
+  const w = sameFile(store, s, cur, key, now);
+  if (w.saw.length) write(w.saw.map((o) => sessionLine('saw', `${o} ${key}`, by, new Date(now).toISOString())).join(''));
+  const r = await pointers();
+  return w.say ? { say: [w.say, r.say].filter(Boolean).join('\n\n'), n: r.n } : r;
+  async function pointers() {
+    // The common case: this conversation changed the file already. It ends here, before the journal is loaded.
+    if (seen.length) return none;
+    const turn = cur.slice(p + 1).filter((l) => l.by === by && l.kind === 'told'), blocks = new Set(turn.filter((l) => l.rest !== 'more').map((l) => l.at)).size;
+    // shortcut: the files past the third block count as seen and get no pointer later; upgrade if a missed pointer there mattered.
+    if (blocks >= BLOCKS && turn.some((l) => l.rest === 'more')) return none;
+    const found = await earlier(store, file, String(input.session_id), { journal, deadline, now, since: lines[c]?.at ?? '', told: new Set(mine.filter((l) => l.kind === 'told').map((l) => l.rest)) });
+    if (!found?.length) return none;
+    const t = new Date(now).toISOString();
+    if (blocks >= BLOCKS) { write(sessionLine('told', 'more', by, t)); return { say: MORE, n: 0 }; }
+    const { rel } = await journal(), shown = pick(found), say = block(shown, found.length - shown.length, rel(file, cwd));
+    if (!say) return none;
+    // One time for the block's lines: rule 11 counts blocks by it.
+    write(shown.map((e) => sessionLine('told', e.key, by, t)).join(''));
+    return { say, n: shown.length };
+  }
 }
 
 // The words matcher (headline 1c), run by the briefing after a compaction (1e) on the request in progress. The entries of the
@@ -346,7 +424,7 @@ export async function onPrompt(input, { journal, deadline = DEADLINE, now = Date
   if (process.env.PROJECT_MEMORY_RECALL === '0' || input?.agent_id != null || typeof input?.prompt !== 'string' || !/^[\w-]+$/.test(s) || memoryOff()) return none;
   const store = storeOf(input);
   if (isOff(store) || isHushed(store, s, QUIET, 1) || isHushed(projectsRoot(), s, OFF, 1)) return none;
-  const { asked, own } = await import('./transcript.mjs');
+  const { asked, own, readTail } = await import('./transcript.mjs');
   if (!asked({}, input.prompt)) return none;
   const at = join(sessionsOf(store), s), lines = readSession(at), t = new Date(now).toISOString();
   if (!lines) return none;
@@ -364,6 +442,19 @@ export async function onPrompt(input, { journal, deadline = DEADLINE, now = Date
   let say = '', shown = [];
   for (let k = found?.length ?? 0; k && !say; k--) say = sharesBlock(shown = found.slice(0, k));
   if (!say) shown = [];
-  write(shown.map((e) => sessionLine('told', e.key, '', t)).join('') + sessionLine('asked', clip(text, ASKED), '', t));
-  return { say, n: shown.length };
+  // Headline 4: the title, when the user set one or changed it, and each other live session not looked at since it became live.
+  const name = clip(titleOf(input.transcript_path, readTail, TITLE_BYTES), TITLE), named = name && name !== lines.findLast((l) => l.kind === 'title')?.rest;
+  const o = newOthers(store, s, lines, typeof input.cwd === 'string' ? input.cwd.replaceAll('\\', '/') : '', now);
+  write((named ? sessionLine('title', name, '', t) : '') + shown.map((e) => sessionLine('told', e.key, '', t)).join('') + sessionLine('asked', clip(text, ASKED), '', t) +
+    o.saw.map((x) => sessionLine('saw', x, '', t)).join(''));
+  return { say: [o.say, say].filter(Boolean).join('\n\n'), n: shown.length };
+}
+// The title the user gave this conversation (/rename): the newest `custom-title` record in its last TITLE_BYTES, '' for none.
+// shortcut: /rename appends its record just before the next prompt, so 64 KB holds it then; a title that only a resumed
+// conversation's older part holds is missed. Upgrade if users miss the names of long sessions.
+export const TITLE = 80, TITLE_BYTES = 64 * 1024;
+export function titleOf(p, readTail, bytes) {
+  let got = '';
+  try { for (const l of readTail(p, bytes).text.split('\n')) if (l.includes('"custom-title"')) try { const r = JSON.parse(l); if (r.type === 'custom-title' && typeof r.customTitle === 'string') got = r.customTitle; } catch {} } catch {}
+  return got.replace(/\s+/g, ' ').trim();
 }
