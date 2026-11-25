@@ -2830,12 +2830,13 @@ require('node:module').syncBuiltinESMExports();
           ...Array.from({ length: n }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(size)}`))));
         return print_(cw4, 'pppppppp-1', 'startup', at4);
       };
-      // The shared index at its 3,000 B ceiling takes the 3,500 characters; the exchanges have a reserve of their own (1,500), the
+      // The shared index at its 3,000 B ceiling takes the 3,500 characters; the exchanges have a reserve of their own (1,000), the
       // oldest dropped first, so the newest is printed and every lesson stays (1.5.0 audit: the exchanges almost never showed).
       const crowded = startup(10, 899);
       ok(/^- \*\*asked\*\* 2026-10-01 10:09 \[ssssssss\]: ask-9 here/m.test(crowded) && !crowded.includes('ask-0 here') && crowded.split('\n').filter((l) => l.startsWith('- [Pad')).length === 30
         && /Last session here ended 2026-10-01 10:09 on: ask-9 here/.test(crowded), `with the shared index full, the newest exchange is still printed, and every shared lesson stays (${crowded.length} characters)`);
-      ok(crowded.length <= 3500 + 1500 && crowded.split('\n').filter((l) => /^- \*\*asked\*\*/.test(l)).length < 3, 'and the exchanges take no more than their reserve');
+      const heads = crowded.split('\n').filter((l) => /^- \*\*asked\*\*/.test(l)).length;
+      ok(crowded.length <= 4000 + 1000 && heads >= 2 && heads <= 5, `and the exchanges, as headlines, take no more than their reserve (${heads}, ${crowded.length} characters)`);
       // The newest exchange alone past the reserve (ask, answer and files each at their cap): none is printed, not that one.
       writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'ssssssss', `ask-0 ${mk(600)}`, `did-0 ${mk(1000)}\n  **changed:** ${mk(1000)}`)));
       const huge = print_(cw4, 'pppppppp-1', 'startup', at4);
@@ -2847,14 +2848,15 @@ require('node:module').syncBuiltinESMExports();
       const many = startup(10, 899), kept = many.split('\n').filter((l) => /^- \*\*asked\*\*/.test(l)).length;
       ok(many.length <= 3500 && many.includes('ask-9 here') && !many.includes('ask-0 here') && kept >= 2 && kept < 10,
         `a long session's oldest exchanges go until the briefing is within 3,500 characters, its newest stay (${kept} kept, ${many.length} characters)`);
-      ok(/^ {2}\*\*did:\*\* did-9 .{850,}… \(\+\d+ chars\)$/m.test(many), 'an exchange keeps up to 900 characters of its answer');
+      ok(/^ {2}\*\*did:\*\* did-9 .{100,154}…$/m.test(many) && kept === 5, `at startup an exchange is a headline: 160 characters of its answer, the newest five (${kept} kept)`);
       // Exactly 3,500 characters keeps the oldest exchange; one more, and it goes.
       const edge = (last) => {
-        writeFileSync(join(dP4, 'handoff.md'), docOf(...Array.from({ length: 5 }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here`, `did-${i} ${mk(i === 4 ? last : 600)}`))));
+        writeFileSync(join(dP4, 'handoff.md'), docOf(...Array.from({ length: 5 }, (_, i) => entry(`2026-10-01 10:0${i}`, 'ssssssss', `ask-${i} here ${mk(300)}`, `did-${i} ${mk(600)}${i === 4 ? `
+  **changed:** ${mk(last)}` : ''}`))));
         return print_(cw4, 'pppppppp-1', 'startup', at4);
       };
       const E1 = edge(1).length, need = 1 + 3500 - E1, brim = edge(need);
-      ok(need > 1 && need <= 894 && brim.length === 3500 && brim.includes('ask-0 here'), `a startup briefing of exactly 3,500 characters keeps every exchange (${E1} -> ${brim.length})`);
+      ok(need > 1 && need <= 890 && brim.length === 3500 && brim.includes('ask-0 here'), `a startup briefing of exactly 3,500 characters keeps every exchange (${E1} -> ${brim.length})`);
       ok(!edge(need + 1).includes('ask-0 here'), 'one character more, and the oldest exchange goes');
       writeFileSync(join(dP4, 'handoff.md'), docOf(entry('2026-10-01 10:00', 'ssssssss', `long-ask ${mk(700)}`, 'done')));
       const asked = print_(cw4, 'pppppppp-1', 'startup', at4).match(/^- \*\*asked\*\* \S+ \S+ \[ssssssss\]: (long-ask .*)$/m)?.[1] ?? '';

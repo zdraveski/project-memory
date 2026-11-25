@@ -22,7 +22,7 @@ export default {
   'startup budget is 4,000 characters': ['const BRIEF = 3500;', 'const BRIEF = 4000;'],
   'startup drops the newest exchange': ['theirs.slice(from));', 'theirs.slice(0, theirs.length - from));'],
   'startup prints the newest exchange that does not fit': ['from === -1 ? [] : theirs.slice(from)', 'theirs.slice(from)'],
-  'startup briefs a forgotten exchange': [' && !gone.has(`${t.s} ${t.at}`)).map(render)', ').map(render)'],
+  'startup briefs a forgotten exchange': [' && !gone.has(`${t.s} ${t.at}`)).slice', ').slice'],
   "startup reads no forgotten list": ["const { listed, shut } = forgottenIn(dir);\n    const gone", "const { listed, shut } = { listed: [], shut: false };\n    const gone"],
   "startup reads a forgotten key with no conversation": ["listed.filter(([, t]) => t).map(", "listed.map("],
   "startup matches a forgotten line by the session's full id": ['`${tag(basename(t))} ${at}`', '`${basename(t)} ${at}`'],

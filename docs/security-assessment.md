@@ -222,7 +222,7 @@ run, or instructions placed in a later briefing.
   `handoff.md` is cut to fixed sizes; a journal reply keeps its last 50,000
   characters and a request its first 50,000, a command at 20,000 and
   a turn's commands at 50,000. The briefing is held to 9,500 characters, and the last
-  conversation's exchanges at startup to a briefing of 3,500 (with a reserve of 1,500 for them when the shared lessons fill it).
+  conversation's exchanges at startup to a briefing of 3,500 (at most five, each a headline with 160 characters of its answer, and a reserve of 1,000 for them when the shared lessons fill it).
 
 What remains: text saved from one conversation is shown to Claude in a
 later one, as with Claude Code's own memory. The briefing holds only the

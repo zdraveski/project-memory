@@ -652,8 +652,8 @@ At the start of a conversation, and after `/clear`, Claude is told:
   the last request recorded for each, said as such: what it works on now may
   be newer; if none, where the last conversation stopped, if
   that was in the last 30 days, followed by that conversation's own exchanges
-  from the handoff, oldest first (request, answer and files, as the handoff
-  keeps them), as many as fit (see below). After `/clear` neither, since the conversation
+  from the handoff, oldest first, the newest five as headlines (the request, the first 160
+  characters of the answer and the files), as many as fit (see below). After `/clear` neither, since the conversation
   just cleared is the newest. It names at most two, and only conversations
   started in the project's folder or in the folder this one started in.
   A conversation marked `<private-session>` is never named as the last one
@@ -702,7 +702,7 @@ The briefing stays under 9,500 characters, inside the 10,000 Claude Code
 passes on whole. After a compaction, the oldest exchanges are left out first,
 until it fits. At the start of a conversation, the last conversation's
 exchanges fill the briefing up to 3,500 characters, the oldest left out first; with a full shared index (3,000
-bytes) they get a reserve of about 1,500 characters of their own, so the newest is still shown. Each line is cut to 1,000 characters, then the end is cut, so
+bytes) they get a reserve of about 1,000 characters of their own, so the newest are still shown. Each line is cut to 1,000 characters, then the end is cut, so
 the shared index goes first. A `<` that starts a
 tag is written `&lt;`, so text from an earlier conversation can't pose as part
 of Claude Code's own message.
