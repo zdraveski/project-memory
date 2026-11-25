@@ -388,6 +388,35 @@ const newer = (a, b) => {
   return false;
 };
 
+// The Stop hook's proof of life, `.stop-ran`, for the startup line and doctor.
+function stopRecord(payload) {
+  // One line a run: when, which conversation, which copy. Two runs for one
+  // reply, seconds apart, are hooks wired twice (memory.mjs doctor, which
+  // reads this and never settings.json). Appended, so two copies running at
+  // once both land; cut back to the newest 20 past 8 KB.
+  try {
+    const ran = join(projectsRoot(), '.stop-ran');
+    // The event too, and whether a block sent it back: a /compact typed
+    // right after a reply, or a reply to the nudge, is a second run seconds
+    // later, not a second wiring. And the reply's fingerprint, 8 hex of its
+    // hash: two quick replies of one conversation read as two wirings (audit H-F10).
+    // On a line of its own: before 1.0.7 the file was one time and no newline.
+    const prev = raw(ran);
+    appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: keyed(payload?.last_assistant_message ?? '', 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n', { mode: 0o600 });
+    // The cut goes to a temp copy that replaces the log only if it is no longer than when read:
+    // another session's line appended in between was lost (audit #13).
+    // shortcut: an append between the size check and the rename (well under a millisecond) is
+    // still lost, which costs one line of the double-wiring check; lock the projects root if that shows.
+    const size = statSync(ran).size, cut = `${ran}.tmp${process.pid}`;
+    if (size > 8192) {
+      try {
+        writeFileSync(cut, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n', { mode: 0o600 });
+        if (statSync(ran).size === size) renameSync(cut, ran);
+      } finally { rmSync(cut, { force: true }); }
+    }
+  } catch {}
+}
+
 // A run: its arguments and, behind --stop, stdin's text; it returns the exit
 // code. The entry at the end calls it once, the suite many times in its own
 // process, as memory.test.mjs calls memory.mjs's: a process a check cost ~0.2 s.
@@ -443,31 +472,7 @@ export async function main(argv, input) {
       // Proof of life for the startup line (handoff-log's stalled()), once the
       // handoff has loaded: Stop output reaches nobody, so a hook that stopped
       // running was silence.
-      // One line a run: when, which conversation, which copy. Two runs for one
-      // reply, seconds apart, are hooks wired twice (memory.mjs doctor, which
-      // reads this and never settings.json). Appended, so two copies running at
-      // once both land; cut back to the newest 20 past 8 KB.
-      try {
-        const ran = join(projectsRoot(), '.stop-ran');
-        // The event too, and whether a block sent it back: a /compact typed
-        // right after a reply, or a reply to the nudge, is a second run seconds
-        // later, not a second wiring. And the reply's fingerprint, 8 hex of its
-        // hash: two quick replies of one conversation read as two wirings (audit H-F10).
-        // On a line of its own: before 1.0.7 the file was one time and no newline.
-        const prev = raw(ran);
-        appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: keyed(payload?.last_assistant_message ?? '', 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n', { mode: 0o600 });
-        // The cut goes to a temp copy that replaces the log only if it is no longer than when read:
-        // another session's line appended in between was lost (audit #13).
-        // shortcut: an append between the size check and the rename (well under a millisecond) is
-        // still lost, which costs one line of the double-wiring check; lock the projects root if that shows.
-        const size = statSync(ran).size, cut = `${ran}.tmp${process.pid}`;
-        if (size > 8192) {
-          try {
-            writeFileSync(cut, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n', { mode: 0o600 });
-            if (statSync(ran).size === size) renameSync(cut, ran);
-          } finally { rmSync(cut, { force: true }); }
-        }
-      } catch {}
+      stopRecord(payload);
       // One that throws (a store folder that takes no new files) is kept in a
       // file the next start reads: swallowed, nothing was saved, and nothing said.
       // One per project, beside the projects, not in the store that refused it:
