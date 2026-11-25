@@ -37,7 +37,7 @@ for (const [event, groups] of Object.entries(hooks)) for (const g of groups) for
   ok(r.status === 0, `${event} ${g.matcher ?? ''} ${args.join(' ')} exits 0 (got ${r.status}: ${r.stderr.trim().split('\n')[0]})`);
   ran++;
 }
-ok(ran === 9, `all nine hook commands ran (${ran})`);
+ok(ran === 10, `all ten hook commands ran (${ran})`);
 ok(existsSync(join(projects, '.stop-ran')), 'a Stop from the archive saved: the proof-of-life file is there');
 ok(readdirSync(join(home, '.claude'), { recursive: true }).some((f) => /\.timing$/.test(f)), 'and the hooks timed themselves');
 
