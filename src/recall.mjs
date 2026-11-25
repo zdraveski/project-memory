@@ -1,6 +1,7 @@
 // How a query is read and matched: the word splitter and the tests on a journal entry that search and the hooks share.
 // Also the session file and the change hook's look-up (1.6.0 headline 1b). Imports store.mjs, privacy.mjs and text.mjs
-// only; the journal is loaded when a look-up needs it, so memory.mjs and the hook's "already seen" path never pay for it.
+// only. The journal imports this file (dropSessions), so the look-up is handed a loader of the journal (`journal`) by its
+// caller: the hook loads it only when a look-up needs it, and the "already seen" path never pays for it.
 import { readFileSync, appendFileSync, mkdirSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { foldCase, projectsRoot, storeOf, memoryOff, tag } from './store.mjs';
@@ -175,8 +176,8 @@ const whole = (p, cwd) => { const f = p.replaceAll('\\', '/'); return /^(?:[a-z]
 // null when the forget list will not read or the scan passes `deadline` (performance.now()): the caller says nothing.
 // shortcut: a turn that ran after a `cd` saved its paths relative to that folder and is missed; upgrade when the eval or a user
 // shows it matters (the journal would have to record the working folder).
-export async function earlier(store, file, session, { deadline = DEADLINE, told = new Set(), now = Date.now() } = {}) {
-  const { days, dayFile, parseDay, rel } = await import('./journal.mjs');
+export async function earlier(store, file, session, { journal, deadline = DEADLINE, told = new Set(), now = Date.now() } = {}) {
+  const { days, dayFile, parseDay, rel } = await journal();
   const { listed, shut } = forgottenIn(store);
   if (shut) return null;
   const gone = new Set(listed.map(([k]) => k)), key = cleanPath(file), parts = file.split('/'), under = new Map();
@@ -234,7 +235,7 @@ export const MORE = 'project-memory: more files changed in this turn have earlie
 // Stops, writing nothing, when pointers are off (PROJECT_MEMORY_RECALL=0), memory or the project is off, the conversation is
 // private, or this turn is (the newest prompt line is `quiet`). Inside a helper (agent_id) its lines carry its id, and the
 // first-change and never-twice checks count only the lines of the same writer.
-export async function onChange(input, { deadline = DEADLINE, now = Date.now() } = {}) {
+export async function onChange(input, { journal, deadline = DEADLINE, now = Date.now() } = {}) {
   const none = { say: '', n: 0 };
   if (process.env.PROJECT_MEMORY_RECALL === '0' || !/^(?:Edit|Write|NotebookEdit)$/.test(input?.tool_name)) return none;
   const given = input.tool_input?.file_path ?? input.tool_input?.notebook_path, s = tag(input.session_id);
@@ -259,11 +260,11 @@ export async function onChange(input, { deadline = DEADLINE, now = Date.now() } 
   const turn = cur.slice(p + 1).filter((l) => l.by === by && l.kind === 'told'), blocks = new Set(turn.filter((l) => l.rest !== 'more').map((l) => l.at)).size;
   // shortcut: the files past the third block count as seen and get no pointer later; upgrade if a missed pointer there mattered.
   if (blocks >= BLOCKS && turn.some((l) => l.rest === 'more')) return none;
-  const found = await earlier(store, file, String(input.session_id), { deadline, now, told: new Set(mine.filter((l) => l.kind === 'told').map((l) => l.rest)) });
+  const found = await earlier(store, file, String(input.session_id), { journal, deadline, now, told: new Set(mine.filter((l) => l.kind === 'told').map((l) => l.rest)) });
   if (!found?.length) return none;
   const t = new Date(now).toISOString();
   if (blocks >= BLOCKS) { write(sessionLine('told', 'more', by, t)); return { say: MORE, n: 0 }; }
-  const { rel } = await import('./journal.mjs'), shown = pick(found), say = block(shown, found.length - shown.length, rel(file, cwd));
+  const { rel } = await journal(), shown = pick(found), say = block(shown, found.length - shown.length, rel(file, cwd));
   if (!say) return none;
   // One time for the block's lines: rule 11 counts blocks by it.
   write(shown.map((e) => sessionLine('told', e.key, by, t)).join(''));

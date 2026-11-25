@@ -33,7 +33,8 @@ const run = (input, env = process.env) => spawnSync(process.execPath, [HOOK], { 
 const quiet = (r, msg) => ok(r.status === 0 && r.stdout === '' && r.stderr === '', `${msg} (status ${r.status}, out ${JSON.stringify(r.stdout)}, err ${JSON.stringify(r.stderr)})`);
 const said = (r) => JSON.parse(r.stdout).hookSpecificOutput;
 // In this process: the deadline counts from the process's start, long past here.
-const look = (input, o) => onChange(input, { deadline: performance.now() + 10_000, ...o });
+const journal = () => import('../src/journal.mjs');
+const look = (input, o) => onChange(input, { journal, deadline: performance.now() + 10_000, ...o });
 
 // The pointer, as Claude sees it: the wording is pinned here.
 let p = project();
@@ -173,7 +174,7 @@ quiet(run({ ...project().payload('src/close.js'), cwd: join(home, 'nowhere') }),
 p = project(); mkdirSync(join(p.store, 'journal', '2026-11-12.md'));
 quiet(run(p.payload('src/close.js')), 'an unreadable day file (a folder by its name)');
 p = project(); p.day('2026-11-12', [p.entry()]);
-ok(await earlier(p.store, join(p.cwd, 'src/close.js').replaceAll('\\', '/'), 'zz', { deadline: performance.now() - 1 }) === null, 'past the deadline the scan gives up');
+ok(await earlier(p.store, join(p.cwd, 'src/close.js').replaceAll('\\', '/'), 'zz', { journal, deadline: performance.now() - 1 }) === null, 'past the deadline the scan gives up');
 ok((await look(p.payload('src/close.js'), { deadline: performance.now() - 1 })).say === '', 'and the hook says nothing');
 // A session file that will not read may hold a private turn: nothing.
 p = project(); p.day('2026-11-12', [p.entry()]); mkdirSync(p.session(), { recursive: true });

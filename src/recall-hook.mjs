@@ -14,7 +14,8 @@ try {
     const input = JSON.parse(text);
     T.tag(input?.hook_event_name);
     if (input?.hook_event_name === 'PostToolUse') {
-      const { say, n } = await onChange(input);
+      // The journal, loaded only when a look-up needs it: recall.mjs cannot import it (journal.mjs imports recall.mjs).
+      const { say, n } = await onChange(input, { journal: () => import('./journal.mjs') });
       T.mark('look');
       T.shown(n);
       // Written whole before the exit: on macOS a pipe is written asynchronously.
