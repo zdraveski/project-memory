@@ -8,6 +8,7 @@ import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { tool, tempDir } from '../test/harness.mjs';
 import { mutants, ignored } from './automut.mjs';
+import { pluginFiles } from './suites.mjs';
 import store from './mutants/store.mjs';
 import compactGate from './mutants/compact-gate.mjs';
 import handoffLog from './mutants/handoff-log.mjs';
@@ -24,8 +25,7 @@ import brief from './mutants/brief.mjs';
 import timing from './mutants/timing.mjs';
 
 // Every file a suite may import, copied beside the mutant.
-const FILES = ['test/harness.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'tools/deploy.mjs', 'tools/suites.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
-  '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
+const FILES = ['test/harness.mjs', 'tools/deploy.mjs', 'tools/suites.mjs', ...pluginFiles()];
 
 // A suite is a test file, or a list of them: memory.mjs is checked by three.
 export const testsOf = (t) => [].concat(t);

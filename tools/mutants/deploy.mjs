@@ -8,5 +8,5 @@ export default {
   'deploys from a branch': ["if (git('rev-parse', '--abbrev-ref', 'HEAD') !== 'master') fail(", 'if (false) fail('],
   'deploys uncommitted changes': ["if (dirty()) fail('uncommitted changes: commit first');", ''],
   'no stat in the manifest': ['files, stat })', 'files })'],
-  "journal.mjs never deployed": ["'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs'", "'src/brief.mjs', 'src/recall.mjs'"],
+  "journal.mjs never deployed": ['export const HOOKS = pluginFiles();', "export const HOOKS = pluginFiles().filter((f) => f !== 'src/journal.mjs');"],
 };
