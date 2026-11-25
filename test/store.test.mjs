@@ -11,7 +11,7 @@ import { createHmac } from 'node:crypto';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, keyed, offSince, holdsSecret, tag } = await import('../src/store.mjs'), { wasOff, OFF_PERIODS } = await import('../src/privacy.mjs');
+const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, keyed, offSince, holdsSecret, tag } = await import('../src/store.mjs'), { gitWhy } = await import('../src/snapshot.mjs'), { wasOff, OFF_PERIODS } = await import('../src/privacy.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -485,7 +485,7 @@ ok(withLock(dir, () => 'taken') === 'taken', 'a lock dated an hour ahead is take
 // The snapshot repo's git ignores the user's own config: commit signing failed
 // every snapshot, a global hooks folder ran the user's hooks on it, and on
 // Windows a path past 260 characters was skipped with only a warning.
-const { gitArgs } = await import('../src/store.mjs');
+const { gitArgs } = await import('../src/snapshot.mjs');
 const ga = gitArgs('status');
 ok(ga.includes('commit.gpgsign=false') && ga.includes('core.longpaths=true') && ga.some((a) => /^core\.hooksPath=.*no-hooks$/.test(a)) && ga.at(-1) === 'status',
   `the snapshot repo's git turns off signing and hooks, and on long paths (got ${ga.join(' ')})`);
@@ -659,7 +659,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
 // Round 4. The snapshots keep line endings as written, whatever git is told
 // elsewhere: Git for Windows sets core.autocrlf=true for the whole machine.
 {
-  const { gitArgs, projectsRoot } = await import('../src/store.mjs');
+  const { projectsRoot } = await import('../src/store.mjs'), { gitArgs } = await import('../src/snapshot.mjs');
   const git = (...a) => execFileSync('git', gitArgs(...a), { encoding: 'utf8' });
   mkdirSync(projectsRoot(), { recursive: true });
   if (!existsSync(join(projectsRoot(), '.git'))) {
@@ -674,7 +674,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
 
 // The caller's repo-locating git variables never reach a snapshot's git (a pre-commit hook running `claude -p` sets them); the rest stay.
 {
-  const { gitArgs } = await import('../src/store.mjs');
+  const { gitArgs } = await import('../src/snapshot.mjs');
   const names = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_CONFIG_PARAMETERS'];
   for (const k of names) process.env[k] = '/elsewhere';
   process.env.GIT_SSH_COMMAND = 'ssh';

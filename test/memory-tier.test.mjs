@@ -629,7 +629,7 @@ ok(runLines().length === 20 && !readFileSync(join(root, '.stop-ran'), 'utf8').en
 }
 // A handoff-log.mjs that cannot load writes no handoff: no proof of life either.
 const broken = tempDir('broken-');
-for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs']) copyFileSync(tool(`src/${f}`), join(broken, f));
+for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs']) copyFileSync(tool(`src/${f}`), join(broken, f));
 writeFileSync(join(broken, 'handoff-log.mjs'), 'this is not javascript (');
 const ranBroken = statSync(join(root, '.stop-ran')).mtimeMs;
 spawnSync(process.execPath, [join(broken, 'memory-tier.mjs'), '--stop'], { env, input: JSON.stringify({ transcript_path: join(root, 'proj-one', 'session.jsonl'), session_id: 'tst' }) });
@@ -1554,7 +1554,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 {
   const was = [process.env.HOME, process.env.USERPROFILE];
   const hj = tempDir('memtier-nojournal-'), pj = join(hj, '.claude', 'projects', 'C--nj'), copy = tempDir('nojournal-'), tj = join(pj, 'nj.jsonl');
-  for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs']) copyFileSync(tool(`src/${f}`), join(copy, f));
+  for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs']) copyFileSync(tool(`src/${f}`), join(copy, f));
   writeFileSync(join(copy, 'journal.mjs'), 'this is not javascript (');
   mkdirSync(pj, { recursive: true });
   writeFileSync(tj, [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'asked with no journal' } },
@@ -2478,7 +2478,7 @@ ${b}
   if (process.platform !== 'win32') {
     ok((statSync(join(root, '.stop-ran')).mode & 0o077) === 0 && (statSync(join(root, '.git')).mode & 0o077) === 0, 'the proof-of-life file and the snapshot .git are private');
   } else {
-    const src = ['store.mjs', 'memory-tier.mjs', 'journal.mjs'].map((f) => readFileSync(join(dirname(TOOL), f), 'utf8')).join('\n');
+    const src = ['store.mjs', 'memory-tier.mjs', 'snapshot.mjs', 'journal.mjs'].map((f) => readFileSync(join(dirname(TOOL), f), 'utf8')).join('\n');
     ok(/mode:\s*0o600/.test(src) && /mode:\s*0o700/.test(src) && /chmodSync\(join\(root, '\.git'\)/.test(src), 'the hooks ask for private modes (0600 files, 0700 dirs, a private .git)');
   }
   // An install from before the modes: found open, the next Stop closes .git, the journal folder and its files, once.

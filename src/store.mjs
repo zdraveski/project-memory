@@ -320,33 +320,9 @@ export function front(text) {
   };
 }
 
-// git for the snapshot repo, whatever the user's own git config says: a global
-// commit.gpgsign failed every snapshot, a global hooks path ran the user's
-// hooks on it, and on Windows a path past 260 characters was skipped with only
-// a warning. The hooks path names a folder that does not exist: no hooks.
-// Line endings as written, too: Git for Windows sets core.autocrlf=true for
-// the whole machine, and a CRLF note came back from a restore with LF ones.
-// Names as the disk spells them: macOS git composes them (NFC) by default, so a café named decomposed was a snapshot's
-// composed one and `history` of it answered with a path the disk never had (audit C-8).
-// Every git spawn takes its args here, so the caller's repo-locating variables (git's own `rev-parse --local-env-vars` list) go here too, by name:
-// they beat -C (a Stop hook under a pre-commit hook committed into the user's repo). PATH, HOME, GIT_EXEC_PATH and the like stay.
-const LOCAL_GIT_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_PREFIX',
-  'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_SHALLOW_FILE', 'GIT_NO_REPLACE_OBJECTS', 'GIT_REPLACE_REF_BASE', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT'];
-export const gitArgs = (...a) => (LOCAL_GIT_ENV.forEach((k) => delete process.env[k]), ['-C', projectsRoot(),'-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false', '-c', 'core.precomposeunicode=false',
-  // Ours whoever created it: one made from an elevated shell or under sudo failed every snapshot with "dubious ownership" (1.3.1 audit C-2).
-  '-c', `safe.directory=${projectsRoot().replace(/\\/g, '/')}`,
-  '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`, ...a]);
-
 // A failure's reason, as stored for status and the briefing: the message's first line, with a refused write's `<path>.tmp<pid>` cut from
 // it (status printed it as a leftover file).
 export const reason = (e) => redact(String(e?.message).split('\n')[0].replace(/\.tmp\d+/g, ''));
-// git's reason for a failure: stderr's first line that is not a warning -- a
-// repack Windows could not finish leaves an .idx with no .pack, and git warns
-// of it on every command (2026-10-27) -- else the message's, which only says
-// which command failed (reason()). The stderr line loses a temp file's name too.
-export const gitWhy = (e) => redact((e.code === 'ENOENT' && String(e.syscall).startsWith('spawn') ? 'git is not installed'
-  : String(e.stderr || '').split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('warning:')) || reason(e)).replace(/\.tmp\d+/g, ''));
-
 // A file's text, or null when there is none: what replaceIfUnchanged compares.
 export const raw = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
 // A list file's lines, trimmed (an editor's CRLF, a space left after one), none blank.

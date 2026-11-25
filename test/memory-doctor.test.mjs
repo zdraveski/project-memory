@@ -748,7 +748,7 @@ lemur lemur lemur lemur
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'recall.mjs', 'page.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
+  for (const f of ['memory.mjs', 'recall.mjs', 'page.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   const njs = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'status', '--store', jd], { env, encoding: 'utf8' });
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
@@ -1162,7 +1162,7 @@ ${r.stdout}`, 'stop words with a range list the range, naming the dropped words'
 {
   const { history, restore, promote } = await import(pathToFileURL(CLI).href);
   const { render } = await import('../src/journal.mjs');
-  const { budgetOf, LOCK_STALE, gitArgs } = await import('../src/store.mjs');
+  const { budgetOf, LOCK_STALE } = await import('../src/store.mjs'), { gitArgs } = await import('../src/snapshot.mjs');
   const { GRACE } = await import('../src/handoff-log.mjs');
   const { default: fsm } = await import('node:fs'), { syncBuiltinESMExports } = await import('node:module');
   const mdir = (name) => { const d = join(root, name, 'memory'); mkdirSync(d, { recursive: true }); return d; };

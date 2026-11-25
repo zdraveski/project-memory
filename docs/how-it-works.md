@@ -105,6 +105,7 @@ that step 18 of 1.6.0 removes.
   `.project-off`, `.off-periods`, `journal/.forgotten`). A file it cannot read counts as private. It imports `store.mjs` only, so the git-rule
   hook can load it and still start fast.
 - `transcript.mjs`: reads a transcript: its records, forward or backward, and its turns. It imports `store.mjs`, `privacy.mjs` and `text.mjs` only.
+- `snapshot.mjs`: takes the snapshot (the git repository at the projects root: its `.gitignore`, the lock sweep, the held notes, the health record in `.snapshot-health`) and builds every git command line (`gitArgs`, `gitWhy`). Git runs through one seam, so a test can stand in for it. It imports `store.mjs` and `privacy.mjs` only. `memory.mjs` still runs the history, restore and purge git calls itself, until the next step moves them in.
 - `handoff-log.mjs`: writes `handoff.md` and prints the startup briefing.
 - `journal.mjs`, `compact-gate.mjs`, `memory-tier.mjs`, `memory.mjs`, `recall.mjs`, `page.mjs`, `enforce.mjs`, `enforce-hook.mjs`, `brief.mjs`, `timing.mjs`: the journal, the compaction gate, the Stop hook and tidy-up, the `memory` command, search words, the journal page, the git rule, and the rest.
 
