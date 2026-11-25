@@ -7,7 +7,7 @@ import { chmodSync, readFileSync, writeFileSync, unlinkSync, readdirSync, exists
 import { join, relative, isAbsolute, basename, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { isOff } from './privacy.mjs';
-import { holdsSecret, sleep, projectsRoot, replaceIfUnchanged, raw, allStores, pathKey, same, local, redact, reason } from './store.mjs';
+import { holdsSecret, projectsRoot, replaceIfUnchanged, raw, allStores, pathKey, same, local, redact, reason } from './store.mjs';
 
 const GIT_LOCK_STALE = 10 * 60000;  // an index.lock this old outlived the git that made it
 export const GIT_TIMEOUT = 30_000;  // a git that hangs (a prompt nobody sees) must not hold the Stop hook
@@ -386,9 +386,7 @@ const rewrite = (work) => {
     git('reset', '-q');
     for (const ref of git('for-each-ref', '--format=%(refname)', 'refs/original/').split('\n').filter(Boolean)) git('update-ref', '-d', ref);
     git('reflog', 'expire', '--expire=now', '--all');
-    // A detached gc --auto that an earlier snapshot started can drop loose objects under this one ("unable to mark recent
-    // objects", CI 2026-11-24): once more after it.
-    try { git('gc', '-q', '--prune=now'); } catch { sleep(2000); git('gc', '-q', '--prune=now'); }
+    git('gc', '-q', '--prune=now');   // no detached gc --auto can start under it now: gc.auto=0 (gitArgs)
   } finally { rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
 };
 // shortcut: the whole history is read into one buffer (1 GiB cap) and only branches come back from the rewrite, so a hand-made tag keeps old text; upgrade to streaming or fetch all refs if that is hit.
