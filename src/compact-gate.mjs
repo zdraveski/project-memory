@@ -36,7 +36,6 @@ import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
 import { clip } from './text.mjs';
 import { handoff, tag, answer, newest, sectionOf, norm, redact } from './handoff-log.mjs';
-import { keptUnder } from './journal.mjs';
 import { goesOn, readTail, records, turns, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, BARE } from './transcript.mjs';
 import { isHushed, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, OFF, isOff } from './privacy.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
@@ -263,7 +262,7 @@ const marked = (payload) => {
 };
 
 /** PreCompact: 0 lets the compaction run, 2 defers it. */
-export function gate(payload) {
+export function gate(payload, keptUnder = null) {
   if (payload.trigger !== 'auto' || !payload.transcript_path || !existsSync(payload.transcript_path)) return { code: 0, why: 'not an auto compaction' };
   // Size and turn state decide: past the threshold Claude Code asks before every
   // model call, and the read back to the turn's prompt can be megabytes. Only
@@ -392,9 +391,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
   T.mark('input');
   let r = { code: 0, why: 'no payload' };
+  // The journal guarded, as the Stop hook loads it: a journal.mjs that cannot load costs the fork-copy check, never the gate,
+  // and memory.mjs, which imports this module, keeps working without one.
+  let kept = null; try { ({ keptUnder: kept } = await import('./journal.mjs')); } catch {}
   if (payload && memoryOff()) r = { code: 0, why: 'auto memory is off: nothing done' };
   else if (payload && (() => { try { return isOff(storeOf(payload)); } catch { return false; } })()) r = { code: 0, why: 'memory is off in this project (.project-off): nothing done' };
-  else if (payload) { try { r = gate(payload); } catch (e) { r = { code: 0, why: `gate failed, not deferred: ${e.message}` }; } }
+  else if (payload) { try { r = gate(payload, kept); } catch (e) { r = { code: 0, why: `gate failed, not deferred: ${e.message}` }; } }
   T.mark('gate');
   // Always said, so the hooks debug log shows why a compaction ran or waited;
   // Claude Code shows exit-2 stderr to the user only for a manual /compact.
