@@ -272,6 +272,20 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(r.ok === false && /a snapshot is being taken; try again in a moment/.test(r.lines.join('\n')) && !calls.some((c) => /hash-object|update-ref|cat-file/.test(c)), 'restore says busy while git is busy, and writes nothing');
   rmSync(join(g, 'gc.pid'));
 
+  // git's own clean-up is the plugin's: never on its own after a command, once after a commit.
+  ok(gitArgs('log').join(' ').includes('-c gc.auto=0'), 'gitArgs turns git\'s own automatic gc off');
+  ours(); writeFileSync(join(g, 'index'), '');
+  scripted(() => '');
+  ok(snapshot() === 'committed', 'fixture: a commit');
+  const at = calls.findIndex((c) => c.includes('gc ')); ok(calls[at] === '-c gc.auto=6700 gc --auto --no-detach' && calls[at - 1].includes('commit') && calls.filter((c) => c.includes('gc ')).length === 1, 'after a commit: gc --auto --no-detach with git\'s own 6700');
+  scripted((sub, a, opts) => { if (a.includes('commit')) throw fail('x', { stdout: 'nothing to commit' }); return ''; });
+  ok(snapshot() === null && !calls.some((c) => c.includes('gc ')), 'nothing to commit: no gc');
+  writeFileSync(join(g, 'index.lock'), '');
+  scripted(() => ''); ok(snapshot() === 'busy' && calls.length === 0, 'busy: no git at all, no gc'); rmSync(join(g, 'index.lock'));
+  scripted((sub, a) => { if (a.includes('gc')) throw fail('gc died', { status: 1, stderr: 'fatal: gc died' }); return ''; });
+  ok(snapshot() === 'committed', 'a gc that fails does not fail the snapshot');
+  scripted((sub, a) => { if (a.includes('gc')) throw fail('t', { code: 'ETIMEDOUT' }); return ''; });
+  ok(snapshot() === 'committed' && !existsSync(join(g, 'project-memory-parts')), 'a gc that times out does not fail it, nor start the history in parts');
 }
 
 useGit();

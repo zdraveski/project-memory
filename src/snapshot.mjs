@@ -34,6 +34,8 @@ export const reset = () => { missed = []; held = []; };
 const LOCAL_GIT_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_PREFIX',
   'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_SHALLOW_FILE', 'GIT_NO_REPLACE_OBJECTS', 'GIT_REPLACE_REF_BASE', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT'];
 export const gitArgs = (...a) => (LOCAL_GIT_ENV.forEach((k) => delete process.env[k]), ['-C', projectsRoot(),'-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false', '-c', 'core.precomposeunicode=false',
+  // git's own clean-up never starts by itself, detached, under a later command (it dropped objects under a purge, CI 2026-11-24): the snapshot runs it, below.
+  '-c', 'gc.auto=0',
   // Ours whoever created it: one made from an elevated shell or under sudo failed every snapshot with "dubious ownership" (1.3.1 audit C-2).
   '-c', `safe.directory=${projectsRoot().replace(/\\/g, '/')}`,
   '-c', `core.hooksPath=${join(projectsRoot(), '.git', 'no-hooks')}`, ...a]);
@@ -264,6 +266,9 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
       if (/no changes added to commit/.test(String(e.stdout))) { if (held.length) { let n = 1; try { n = owed(); } catch {} if (!n) return null; } return 'busy'; }
       throw e;
     }
+    // git's clean-up, once a commit is made, in this process and waited for: with gc.auto=0 above it never runs on its own. 6700 loose
+    // objects is git's own limit, after the 0 so it wins. Best effort: a failed or killed gc is not a failed snapshot.
+    try { git('-c', 'gc.auto=6700', 'gc', '--auto', '--no-detach'); } catch {}
     // Changed since the add (another session's write, whose own snapshot went busy): still owed, or its pending mark is
     // cleared by this success and the file stays out of every snapshot until it changes again.
     // `diff --name-only`, not `status`: tracked files only, no scan of untracked ones (80-300 ms), and a path `add -A` can never add (nul.md) never shows.
