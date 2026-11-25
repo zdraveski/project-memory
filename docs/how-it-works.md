@@ -68,7 +68,7 @@ word. A Stop stopped while git runs has already written the journal and the
 handoff, because the snapshot comes last; the next Stop reports the snapshot as
 busy until the lock git left is ten minutes old, then takes it. That one rule (`busy()` in
 `snapshot.mjs`: git's lock files and `gc.pid`) also stops `restore`, `forget --purge` and
-`rescan --apply` while a snapshot or git's clean-up is under way. After a snapshot that commits,
+`rescan --apply` while a snapshot or git's clean-up is under way (a live purge keeps its own lock fresh; a `gc.pid` is stale when its gc died on this machine, else after git's 12 hours). After a snapshot that commits,
 the plugin runs `git gc --auto` itself, in that same process (git's own automatic gc is off in
 every git command the plugin runs). Each hook shows
 a short status message while it runs, except the git-rule watcher, which runs
