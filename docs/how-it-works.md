@@ -159,7 +159,7 @@ Windows device names such as `con` and `nul`.
 | `~/.claude/projects/.git`, `.gitignore` | the snapshot repository, and what it ignores |
 | `~/.claude/projects/.git/project-memory-ignored`, `project-memory-parts` | bookkeeping for the snapshot's ignore list; a first snapshot still being taken in parts |
 | `~/.claude/projects/.timing` | one JSON line per hook run: the time, the hook (`save`, `tidy` (the tidy-up and snapshot after a reply, run in the background), `brief`, `enforce`, `gate` or `recall`), the event name (letters only) and milliseconds (when Node started, when the hook's code started, each step, the total), and for `recall` the number of earlier exchanges it named (`memory doctor` adds them up for 7 days). Numbers and fixed names only; cut to its newer half at 256 KB; shown by `memory doctor`; `PROJECT_MEMORY_TIMING=0` turns it off |
-| `~/.claude/projects/.sessions/<project folder>/<conversation tag>` | one small append-only file per conversation, a line `<kind> <ISO time> [agent:<helper id>] <rest>`: `file <path>` for each file it changed (the full path, `/`, lower case on Windows and macOS; again only after 5 minutes) and `told <key>` for each earlier exchange it was shown (`told more` for the line past the third block). Outside the store, so no snapshot or status sees it. Deleted after 7 days by the save after a reply, by `forget` and `memory off` (the project's), `rescan --apply --yes` (all) and `incognito` or a `<private-session>` mark (the conversation's) |
+| `~/.claude/projects/.sessions/<project folder>/<conversation tag>` | one small append-only file per conversation, a line `<kind> <ISO time> [agent:<helper id>] <rest>`: `file <path>` for each file it changed (the full path, `/`, lower case on Windows and macOS; again only after 5 minutes) and `told <key>` for each earlier exchange it was shown (`told more` for the line past the third block); `compact` (no rest) when the briefing after a compaction ran. Outside the store, so no snapshot or status sees it. Deleted after 7 days by the save after a reply, by `forget` and `memory off` (the project's), `rescan --apply --yes` (all) and `incognito` or a `<private-session>` mark (the conversation's) |
 | `~/.claude/projects/.stop-ran`, `.snapshot-health`, `.nudge/` | bookkeeping: when the Stop hook last ran (with each reply's fingerprint, 8 characters of its hash), the snapshot's state, the reminder's state and the last update notice per conversation tag |
 | `~/.claude/projects/.handoff-failed-<project folder>` | a handoff that could not be saved, or with auto memory off a conversation's tag that could not be written (`off`), and why (a list that won't read is named there). It is also written when a reply could not be saved because another window held the store through two tries; read at the next start and by `status` |
 | `~/.claude/projects/.journal-failed-<project folder>` | a journal write that failed after a reply when the `journal` folder wouldn't take `.failed` either, and why; read at the next start and by `status`, removed by the next write that goes through |
@@ -691,9 +691,21 @@ After a compaction, Claude is told:
 - this conversation's own latest exchanges, never another's;
 - which other conversations are working here, when there is a recovery note or
   this conversation has exchanges of its own;
+- the files this conversation changed, the newest ten, and how to find its
+  exchanges (`search --conversation <tag>`);
+- up to three earlier exchanges that share rare words with the request in
+  progress, each with its date, conversation, request, files and key: records,
+  not instructions, never from a private or forgotten exchange, and none for a
+  private request. This conversation's own exchanges from before the compaction
+  count too, as the ones the briefing already prints do not;
 - the journal line and the code-wins line, as at startup, when the journal has
   an entry;
 - the shared notebook's index.
+
+From the compaction on, the note after a file change counts this
+conversation's older exchanges as earlier ones, and a file it changed before
+gets its note again. `PROJECT_MEMORY_RECALL=0` leaves out the files and the
+earlier exchanges.
 
 A conversation that is resumed gets no briefing: its history already holds
 the one it got when it started. When the briefing cannot load, it says so in
