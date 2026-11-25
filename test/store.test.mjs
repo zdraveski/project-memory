@@ -11,7 +11,7 @@ import { createHmac } from 'node:crypto';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, wasOff, OFF_PERIODS, keyed, offSince, holdsSecret, tag } = await import('../src/store.mjs');
+const { redact, storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, gitWhy, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, keyed, offSince, holdsSecret, tag } = await import('../src/store.mjs'), { wasOff, OFF_PERIODS } = await import('../src/privacy.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -891,7 +891,7 @@ ok(gitWhy({ code: 'ENOENT', syscall: 'unlink', message: "ENOENT: no such file or
 
 // 99. A project turned off (memory off) is a marker in its store: isOff says since when, fails closed on a marker it cannot stat.
 {
-  const { isOff, PROJECT_OFF } = await import('../src/store.mjs');
+  const { isOff, PROJECT_OFF } = await import('../src/privacy.mjs');
   const od = join(root, 'C--off-project', 'memory');
   mkdirSync(od, { recursive: true });
   ok(PROJECT_OFF === '.project-off' && isOff(od) === null, 'no marker: not off');

@@ -421,7 +421,7 @@ if (!quick) {
 // Round 3 (2026-10-27).
 {
 const { tokens } = await import('../src/compact-gate.mjs');
-const { hushed, handoff: hand } = await import('../src/handoff-log.mjs');
+const { handoff: hand } = await import('../src/handoff-log.mjs'), { hushed } = await import('../src/privacy.mjs');
 const state = () => JSON.parse(execFileSync(process.execPath, [GATE, '--state', transcript], { env }).toString());
 // A task's end now arrives as a queued attachment record: read only from user
 // records, every finished task stayed "still running", and the note said not

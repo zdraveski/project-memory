@@ -17,13 +17,15 @@
 // this file out -- and what must not be written is kept out before it is:
 // secrets (SECRETS), the answer to a <private> message and the files its turn
 // changed (answer()), and every entry of a conversation marked
-// <private-session> (hushed()).
+// <private-session> (hushed(), in privacy.mjs).
 import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, statfsSync, realpathSync, mkdirSync, copyFileSync, renameSync, rmSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import * as T from './timing.mjs';
-import { holdsSecret, tag, QUIET, OFF, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, autoMemory, isOff, offSince, wasOff, pathKey, transcriptKey, raw, listOf, inProjects, BUSY, sleep, STEP, HANDOFF_FAILED, JOURNAL_FAILED, redact, FUNC, norm } from './store.mjs';
+import { clip, plain, fit, SAY } from './text.mjs';
+import { PRIVATE, PRIVATE_SESSION, QUIET, OFF, isOff, wasOff, hushed, off, offLine, unreadable, forgottenIn } from './privacy.mjs';
+import { holdsSecret, tag, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, autoMemory, pathKey, transcriptKey, raw, inProjects, HANDOFF_FAILED, JOURNAL_FAILED, redact, FUNC, norm } from './store.mjs';
 export { redact, holdsSecret };
 
 const TURNS = 10;         // how many exchanges to keep, per session
@@ -134,13 +136,6 @@ const command = (s) => {
 // answer was filed under the ask before.
 const image = (r) => Array.isArray(r.message?.content) && r.message.content.some((b) => b?.type === 'image');
 export const prompt = (r, s) => (r.isMeta || r.isCompactSummary ? '' : command(s) || (asked(r, s) ? own(s) : '') || (!s && image(r) ? '[image]' : ''));
-// A <private> block's opener, and the <private-session> mark: in any case,
-// with spaces or attributes, self-closed, or as private_session. Only the
-// exact forms counted, and `<private-session/>` recorded the conversation.
-// An opener never closed with `>` runs to the end: `<private my pin` was saved.
-export const PRIVATE = /<\s*private(?![-_\w])(?:[^>]*>|[^>]*$)/i;
-// Bounded: with no `>`, 256 KB of openers took 5 s a test.
-export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
 // A turn that ran forget is kept like a private one, in the journal and in
 // handoff.md: its listing, saved as the reply and committed with the day, kept
 // what it removed (review, 2026-10-29).
@@ -236,8 +231,8 @@ export const unquote = (s) => {
 };
 export { unwrap };
 
-// tag, QUIET and OFF live in store.mjs, so the enforce hook can read them without loading this file.
-export { tag, OFF };
+// tag lives in store.mjs (QUIET and OFF in privacy.mjs), so the enforce hook can read them without loading this file.
+export { tag };
 
 // A result that says the call was refused or blocked and never ran. Claude Code's own first words on a result with is_error true
 // (read from real transcripts, 2026-11-17): the user's refusal (also toolUseResult "User rejected tool use"), a PreToolUse hook's
@@ -407,80 +402,6 @@ export const answer = (ask, did, n) => (PRIVATE.test(ask) ? '[private]' : clip(p
 // -- and read as `raw ?? ask` here but `raw || ask` in the gate, one message
 // was private to one and not the other.
 export const userText = (t) => `${t.raw ?? ''}\n${t.ask ?? ''}`;
-
-// Marker text inside an ask or an answer would become the section boundary on
-// the next run and strand every entry before it as prose, and a tag printed at
-// startup (`</system-reminder>`) could end the wrapper Claude Code puts the
-// briefing in and pose as its own text. No tag survives: `<` before a letter,
-// `/`, `!` or `?` is written `&lt;`, and so is one with spaces or hidden
-// characters before it (`< /system-reminder>`), or in another width (＜, ﹤).
-// A line break that is not \n (a lone \r, U+2028, U+0085) is a space: in a
-// shared index line or a health message it started a line of its own, and
-// posed as one.
-// Never half an emoji, and no lone surrogate: one is written as U+FFFD, the
-// entry read back no longer matched its turn, and the turn was added again every Stop.
-export const defuse = (s) => s.replace(/[<\uFF1C\uFE64](?=[\u200B-\u200D\u2060\uFEFF]*[A-Za-z/!?]|\s+\/)/g, '&lt;')
-  .replace(/\r(?!\n)|[\u2028\u2029\u0085]/g, ' ');
-// Cut until a cut changes nothing, so an entry as written (clipped again by render) is the turn as read, to latest() and to forget, and
-// what the journal stores (clipped once) is what handoff.md shows (F15, F19, R36, R44). One more cut was not enough: a cut can leave a
-// code reference (api_key = proces…) that reads as a secret, defuse's `&lt;` gives a value the symbol a password has, and a value one
-// pattern keeps as a path is half redacted by a later one, which the first then takes. Bounded at 7 cuts, what a clip of 2,000 can
-// need: a `-u` value is redacted 200 characters a pass, so a run of over about 1,300 clipped at Infinity (a journal entry, kept
-// whole, or a search's display) can stop short of stable (B3). Nothing else the tests build takes more than 2.
-// Kept for the process, by length and text: a Stop clips each turn of its read several times (latest(), the fresh entries, the
-// journal's), and each clip is four passes of every secret pattern or more (release review). clip is pure: redact(),
-// defuse() and cut() read no state and no environment, so a clip kept is the clip again, whatever store the run is for.
-// shortcut: emptied once its texts pass 8 M characters (a Stop's 512 KB read keeps about 1 M), so a read near latest()'s 32 MB
-// redoes some of its redaction; make it an LRU if a long-lived process ever clips that much.
-const clipped = new Map();
-let clippedSize = 0;
-export const clip = (s, n) => {
-  // A few times n is all that can show, and the rules cost 0.2 to 1.3 s a megabyte: 64 KB or 4n first, not at a split surrogate.
-  const lim = Math.max(65536, 4 * n);
-  // Squeeze blanks first (cut() does too): a long blank run must not use up the cut.
-  if (typeof s === 'string' && s.length > lim) s = s.replace(/\s+/g, ' ');
-  // The pre-cut's loss is added to the (+N chars) count, so a 1 MB paste does not say it lost 64 KB.
-  let extra = 0;
-  if (typeof s === 'string' && s.length > lim) { const was = s.length; s = s.slice(0, /[\uD800-\uDBFF]/.test(s[lim - 1]) ? lim - 1 : lim); extra = was - s.length; }
-  // Text only: anything else spelt as a text kept here fails in cut(), as it always did.
-  const k = typeof s === 'string' ? `${n}\0${extra}\0${s}` : null;
-  if (clipped.has(k)) return clipped.get(k);
-  let out = cut(s, n, extra);
-  for (let i = 0; i < 6; i++) { const again = cut(out, n); if (again === out) break; out = again; }
-  if (k !== null) { if ((clippedSize += k.length) > 8e6) { clipped.clear(); clippedSize = k.length; } clipped.set(k, out); }
-  return out;
-};
-const cut = (s, n, extra = 0) => {
-  // Redacted before the blanks are squeezed and after. After only, a bare flag that ends a line took the next line's keyword as its value,
-  // and that line's own secret was kept whole (F23, R59); before only, a secret after two blanks or a tab was redacted only when the entry
-  // was clipped again (F19). U+0085 is made a line break first: it is not \s in JavaScript, and the first pass took it for a value.
-  const one = defuse(redact(redact(s.replace(/\u0085/g, '\n')).replace(/\s+/g, ' '))).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD').trim();
-  if (one.length <= n) return one;
-  // Ends at the last sentence, else the last word, in the second half of the room: a cut mid-sentence kept
-  // a claim and dropped the condition after it ("deploy" without "only on Windows"; survive.mjs).
-  // A clip of 400 or more (a stored ask or answer, not a screen line) ends "… (+N chars)", N counted after redaction; the whole stays within n, so a second clip leaves it be.
-  const long = n >= 400, tail = (k) => (long ? `… (+${one.length - k.length + extra} chars)` : '…');
-  const room = one.slice(0, long ? n - 20 : n), half = n / 2;
-  const sentence = room.match(/^.*[.!?](?=\s)/)?.[0], word = room.match(/^(.*) /)?.[1];
-  if (sentence?.length >= half) return sentence + tail(sentence);
-  if (word?.length >= half) return word + tail(word);
-  const k = one.slice(0, long ? n - 20 : n - 1).replace(/[\uD800-\uDBFF]$/, '');
-  return k + tail(k);
-};
-
-// An answer is markdown, and its marks carry no words: heading hashes, bold,
-// table rules and pipes cost characters a 400-character entry cannot spare
-// ("## What a surety agent is **The 3 parties in a bond:** ...", 2026-10-26).
-// Line by line, and no pattern that can match a newline: a `\s` in the rule
-// pattern was cubic on blank lines -- 800 of them took a second, every Stop.
-// Only marks are dropped: `2**32 and 2**64`, `**kwargs`, `__init__.py` and
-// `a || b` keep their meaning. Bold opens after a space or the line start and
-// closes before a space, punctuation or the line end, hugging its words.
-export const plain = (s) => s.split('\n')
-  .filter((l) => !(l.includes('-') && /^[ \t|:-]*$/.test(l)))   // a table rule, or a horizontal one
-  .map((l) => (l.trimStart().startsWith('|') ? l.replace(/\|/g, ' ') : l).replace(/^#{1,6}[ \t]+/, '')
-    .replace(/(^|[ \t(])\*\*(?=[^\s*])([^*]*?[^\s*])\*\*(?=$|[\s).,:;!?])/g, '$1$2'))
-  .join('\n');
 
 // One turn can be megabytes of tool output, so a fixed tail read nothing on
 // 65 of 76 transcripts here. Grow until the latest prompt is inside it, and
@@ -683,75 +604,6 @@ function build(before, fresh, drop = null, me = fresh[0]?.s, whole = false) {
     : doc.trimEnd() + `\n\n## Last ${TURNS} exchanges\n\n` + body + '\n';
 }
 
-// The conversations marked private, by tag: the newest 1,000, one per line
-// (9 KB). The newest 50 let an older private conversation, resumed, be
-// recorded again.
-// The conversations held with auto memory off, kept the same way beside the
-// projects (off(), at their start and every Stop, which make no store for
-// them): the journal never records or imports them.
-// What a start says in a project turned off (memory off). The only text such a project gets.
-export const offLine = (o) => (o.unread
-  ? `project-memory: memory is paused here because the off marker can't be read (${o.unread}). Tell the user; memory on won't help until that's fixed.`
-  : `project-memory is off in this project since ${offSince(o)} (the user turned it off). Mention it if the user asks about memory; memory on turns it back on.`);
-// `prune`: the tags kept beside a new one. False: not marked, or a mark that
-// lost every race, unwritten. Null: unknown, the list refused three reads.
-export function hushed(dir, s, mark = false, list = QUIET, prune = (have) => have.slice(-999)) {
-  const p = join(dir, list);
-  if (!s) return false;
-  let unread;
-  for (let i = 0; i < 3; i++) {
-    // CRLF too: a tag with a \r left over matched no conversation, and a marked
-    // one was written again.
-    // A read refused (EBUSY: a scan holding the list) is no answer: read as no
-    // tags, a private conversation was saved as public (F12). Held for a moment, it is read again after a pause, as the store's other
-    // retries do: three reads in the same instant all met the hold (release review). None after the last, none for a folder.
-    let before = null;
-    try { before = readFileSync(p, 'utf8'); unread = false; } catch (e) { unread = e.code !== 'ENOENT'; if (i < 2 && BUSY.includes(e.code)) sleep(STEP); }
-    if (unread) continue;
-    const have = listOf(before);
-    if (!mark || have.includes(s)) return have.includes(s);
-    // By rename: written in place, a hook killed mid-write forgot every mark.
-    // Again, from the text read, when another wrote first.
-    if (replaceIfUnchanged(p, before, [...prune(have), s].join('\n') + '\n') !== 'conflict') return true;
-  }
-  return unread ? null : false;
-}
-// What a writer throws when hushed() answers unknown, after changing nothing.
-export const unreadable = (dir, list) => new Error(`${join(dir, list)} could not be read`);
-
-// The tags of the transcripts in every project folder; null when one won't list.
-function onDisk(root) {
-  const all = new Set();
-  try {
-    for (const f of readdirSync(root)) {
-      let ns = []; try { ns = readdirSync(join(root, f)); } catch (e) { if (e.code !== 'ENOTDIR') return null; }
-      for (const n of ns) if (n.endsWith('.jsonl')) all.add(tag(n));
-    }
-  } catch { return null; }
-  return all;
-}
-// A conversation held with auto memory off, into OFF. Under the projects'
-// lock: 24 memory-off Stops at once, with no lock, lost 46 tags of 96 (P1
-// hunt, 2026-10-29). Pruned by the transcripts still on disk, as the
-// journal's list is: the newest 1,000 anywhere evicted a quiet project's tags,
-// and its conversations were imported. The newest OFF_NEW stay whatever: a
-// transcript is made with its first message, after its start wrote the tag.
-// False when the tag is not there. A list that won't read throws, after
-// writing nothing, so the Stop records it: swallowed, the conversation stayed
-// untagged, nothing said so, and once the list read the journal took it in (R67).
-const OFF_NEW = 100, OFF_MOST = 10_000;
-export function off(input) {
-  const root = projectsRoot(), s = tag(input.session_id || basename(String(input.transcript_path || ''), '.jsonl'));
-  return withLock(root, () => {
-    const r = hushed(root, s, true, OFF, (have) => {
-      const live = onDisk(root);
-      return have.filter((t, i) => !live || live.has(t) || i >= have.length - OFF_NEW).slice(-OFF_MOST);
-    });
-    if (r === null) throw unreadable(root, OFF);
-    return r;
-  }) === true;
-}
-
 // Exported so memory-tier.mjs can run it in the same process from the Stop
 // hook: a second Node start cost a median 200 ms a turn on this box.
 export function handoff(input, sink = null) {
@@ -840,8 +692,7 @@ export function handoff(input, sink = null) {
     // and by its key, the prompt's id: a clock moved to another time zone gave
     // it another minute, and it came back.
     // A list that won't read could name any of this turn's exchanges: none goes in, the startup line's rule (below).
-    let list = null, shut = false; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch (e) { shut = e.code !== 'ENOENT'; }
-    const me = pathKey(transcriptKey(input.transcript_path)), listed = forgotten(list);
+    const { listed, shut } = forgottenIn(dir), me = pathKey(transcriptKey(input.transcript_path));
     const keys = new Set(listed.map(([k]) => k)), out = new Set(listed.filter(([, t]) => t && pathKey(t) === me).map(([, , at]) => at));
     // A turn with a key goes by it alone: the minute it was listed under, in
     // another zone's clock, can be another turn's minute here (fuzz, 2026-10-30).
@@ -902,11 +753,6 @@ function put(dir, fresh, drop, me, whole) {
 // import found marked private, as its own Stop's would have, or the exchanges
 // forget took out. Call under withLock(dir).
 export const unsay = (dir, gone) => put(dir, [], gone);
-// The exchanges forget took out, `<key>\t<folder>/<session>\t<time>` a line
-// (journal.mjs writes it; an older line is its key alone). Trimmed: an
-// editor's CRLF, or a space left after a line, is still the line.
-export const FORGOTTEN = join('journal', '.forgotten');
-export const forgotten = (text) => listOf(text).map((l) => l.split('\t'));
 
 // What a Stop's record of a failure (HANDOFF_FAILED) says, in the briefing and in status: the record of where you left off, or with
 // auto memory off (`off`) the tag that keeps the conversation out of the journal, which was all a Stop then meant to write.
@@ -1085,31 +931,12 @@ function shared() {
   return [head, ...said];
 }
 
-// Claude Code passes a hook's text whole up to 10,000 characters; past that,
-// a preview and a file, and the shared lessons at the end were what was cut.
-const SAY = 9500;
 // The 3,500 characters the FAQ names: the last session's exchanges fill the
 // startup briefing up to it, the oldest left out first, and never past it. What is there without them (the shared index alone can be 3,000 B) is
 // as before.
 const BRIEF = 3500;
 // The exchanges' own room when the rest (the shared index can be 3,000 B) takes the 3,500: the newest one is ~1,000 characters.
 const EXCHANGES = 1500;
-// Defused, then held to SAY at a line's end, on both paths: the startup's
-// health lists and the compaction note's task lists had no bound, and `<`
-// grows fourfold as `&lt;`. What is cut is cut from the end, the shared
-// lessons first. At startup each line is held to `line` characters first:
-// one health line naming 400 files cut the briefing to 407 characters, the
-// shared lessons with it, at every start.
-export const fit = (s, line = Infinity) => {
-  // Redacted whole: the shared index and the health lines are printed in
-  // every session too, and a key written into one was printed as it was.
-  // Line by line, each line being its own: an unclosed <private> runs to the
-  // end of what it is given, and one shared lesson about the tags hid every
-  // lesson after it.
-  const d = defuse(s.split('\n').map(redact).join('\n')).split('\n').map((l) => (l.length <= line ? l : `${l.slice(0, /[\uD800-\uDBFF]/.test(l[line - 1]) ? line - 1 : line)}…`)).join('\n');
-  return d.length <= SAY ? d : `${d.slice(0, SAY - 60).replace(/[^\n]*$/, '')}(the rest cut to fit Claude Code's startup limit)\n`;
-};
-
 // The journal's pointer, at every start and after a compaction too (the model that lost its context loses this line with it).
 // It carries the two rules too, so no journal means no rules. A broken journal.mjs costs the line, never the briefing. Loaded here: journal.mjs imports this module.
 async function journalLine(dir) {
@@ -1176,8 +1003,8 @@ async function print(input) {
     // A list that won't read could name any: none is listed. Nor any of a
     // conversation held with auto memory off, unknown included: a later Stop
     // with it on reads back what was typed while it was off.
-    let list = null, shut = false; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch (e) { shut = e.code !== 'ENOENT'; }
-    const gone = new Set(forgotten(list).filter(([, t]) => t).map(([, t, at]) => `${tag(basename(t))} ${at}`));
+    const { listed, shut } = forgottenIn(dir);
+    const gone = new Set(listed.filter(([, t]) => t).map(([, t, at]) => `${tag(basename(t))} ${at}`));
     const theirs = lines.length && last && !others.length && !shut && hushed(projectsRoot(), last.s, false, OFF) === false
       ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).map(render) : [];
     const journal = await journalLine(dir);

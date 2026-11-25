@@ -732,9 +732,9 @@ async function execute(steps, meta) {
   }
   const brief = await run(LOG, ['--print'], JSON.stringify({ cwd, session_id: briefing.session, source: briefing.source }), lastTz);
   if (brief.status !== 0) problems.push(`the startup briefing exited ${brief.status ?? brief.signal}`);
-  // The briefing's limit as the code defines it (handoff-log.mjs fit()): 9,500 characters in all, whatever the source, and at a
-  // startup or a /clear no line over 1,000 plus the ellipsis a cut line ends with (so 1,001). Copies of SAY (handoff-log.mjs, not
-  // exported) and of the `fit(.., 1000)` call; a drift is caught by the big rounds, which meet both limits (the mutants with no cap
+  // The briefing's limit as the code defines it (text.mjs fit()): 9,500 characters in all, whatever the source, and at a
+  // startup or a /clear no line over 1,000 plus the ellipsis a cut line ends with (so 1,001). Copies of SAY (text.mjs; kept as copies so a drift fails
+  // here) and of the `fit(.., 1000)` call; a drift is caught by the big rounds, which meet both limits (the mutants with no cap
   // and no line cut fail them).
   const SAY = 9500, LINE = 1001;
   if (brief.out.length > SAY) problems.push(`the ${briefing.source} briefing is ${brief.out.length} characters, over ${SAY}`);

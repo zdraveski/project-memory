@@ -13,7 +13,8 @@ import { join, dirname, basename, relative, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawn } from 'node:child_process';
 import * as T from './timing.mjs';
-import { holdsSecret, keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, isOff, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED, redact, configDir, tag } from './store.mjs';
+import { isOff } from './privacy.mjs';
+import { holdsSecret, keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, local, POINTER, ARCHIVE, isIndex, pointerLine, allStores, pathKey, front, gitWhy, gitArgs, raw, memoryOff, reason, HANDOFF_FAILED, redact, configDir, tag } from './store.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -689,7 +690,7 @@ export async function main(argv, input) {
     let p = null;
     try {
       p = JSON.parse(input);
-      (await import(new URL('./handoff-log.mjs', import.meta.url))).off(p);
+      (await import(new URL('./privacy.mjs', import.meta.url))).off(p);
     } catch (e) {
       // A tag that could not be kept is said at the next start with memory on, as a handoff that could not be saved is (R67), in its
       // own words (`off`): nothing was to be saved, and the journal may take the conversation in later (release review).

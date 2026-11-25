@@ -20,7 +20,7 @@ import { LIVE, installPath, pluginRoot, deployedCommit } from '../src/memory.mjs
 import { pluginFiles } from './suites.mjs';
 
 // What every suite stands on: check.mjs runs all of them after a change to one.
-export const SHARED = ['src/store.mjs', 'test/harness.mjs', 'tools/mutate.mjs'];
+export const SHARED = ['src/store.mjs', 'src/privacy.mjs', 'test/harness.mjs', 'tools/mutate.mjs'];
 
 // The hooks, the CLI, and the plugin around them: the live copy is also the
 // project-memory plugin's root and its marketplace. Installed from there, the

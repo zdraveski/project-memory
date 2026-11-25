@@ -1,10 +1,10 @@
 // The hand-written mutants of journal.mjs, which journal.test.mjs must catch (mutate.mjs runs them).
 // Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
 export default {
-  'a word search lists a turn of a private-listed conversation': ['if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;', 'if (hushed(projectsRoot(), s, false, OFF) !== false) continue;'],
-  'a word search lists a turn of a memory-off conversation': ['if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;', 'if (hushed(dir, s) !== false) continue;'],
+  "a word search lists a turn of a private-listed conversation": ["if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) continue;", "if (isHushed(projectsRoot(), s, OFF)) continue;"],
+  "a word search lists a turn of a memory-off conversation": ["if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) continue;", "if (isHushed(dir, s)) continue;"],
   'a word search lists a turn of a conversation with a typed private mark': ['          if (marked(fd, 0, IMPORT_SEGMENT, size).hit) continue;\n', ''],
-  'a word search lists a turn when a private list will not read': ['if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;', 'if (hushed(dir, s) || hushed(projectsRoot(), s, false, OFF)) continue;'],
+  "a word search lists a turn when a private list will not read": ["if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) continue;", "if (hushed(dir, s) || hushed(projectsRoot(), s, false, OFF)) continue;"],
   'forget leaves the temp copies a killed Stop left': ['    sweepTemps(dir);\n    return { matched', '    return { matched'],
   "a journal failure its folder refused said nowhere": ["} catch { if (!from) try { writeFileSync(aside(dir), line + '\\n', { mode: 0o600 }); } catch {} }", "} catch {}"],
   "an import's refused failure in the live write's place": ["if (!from) try { writeFileSync(aside(dir)", "if (true) try { writeFileSync(aside(dir)"],

@@ -1,9 +1,10 @@
 // A note can carry a rule a computer checks on a git command (`enforce:` in its
 // front matter). This file reads the rule and matches it; it never runs, blocks
-// or writes anything. Imports store.mjs only, so a hook can load it fast.
+// or writes anything. Imports store.mjs and privacy.mjs only, so a hook can load it fast.
 import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, isOff, tag, QUIET, OFF, listOf, norm } from './store.mjs';
+import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, tag, norm } from './store.mjs';
+import { isOff, isHushed, QUIET, OFF, PRIVATE_SESSION } from './privacy.mjs';
 
 const BSL = String.fromCharCode(92), KEYS = ['on', 'has', 'unless'], MAX = 8;
 
@@ -182,8 +183,9 @@ export function ruleSet(payload) {
   if (memoryOff()) return { off: true, rules: [] };
   const store = storeOf(payload);
   if (isOff(store)) return { store, off: true, rules: [] };
-  const s = tag(payload.session_id), tagged = (dir, list) => { try { return listOf(readFileSync(join(dir, list), 'utf8')).includes(s); } catch (e) { return e.code !== 'ENOENT'; } };
-  if (s && (tagged(store, QUIET) || tagged(projectsRoot(), OFF))) return { store, off: true, rules: [] };
+  // One try each: this hook has 5 s. A list that cannot be read is private (privacy.mjs).
+  const s = tag(payload.session_id);
+  if (s && (isHushed(store, s, QUIET, 1) || isHushed(projectsRoot(), s, OFF, 1))) return { store, off: true, rules: [] };
   const rules = cached(store).filter((x) => x.rule);
   const shared = sharedStore() === store ? [] : cached(sharedStore()).filter((x) => x.rule).map((x) => ({ ...x, file: `_shared/${x.file}` }));
   return { store, rules: [...rules, ...shared] };
@@ -191,18 +193,17 @@ export function ruleSet(payload) {
 
 // True when something the user typed carries the private-session mark (assistant text and tool results are skipped: they
 // quote it); an unreadable transcript counts as private (no path: not).
-// shortcut: same pattern as handoff-log.mjs PRIVATE_SESSION (not imported: the hook must start fast), on typed text only.
+// On typed text only.
 export function privateTurn(payload) {
   if (!payload?.transcript_path) return false;
-  const RE = /<\s*private[-_]session\b[^>]{0,200}>/i;
   try {
     for (const l of readFileSync(payload.transcript_path, 'utf8').split('\n')) {
       // norm costs ~10 ms a MB: only a line with a non-ASCII character can hide the mark from the plain test.
-      if (!RE.test(l) && !(/[^\x00-\x7f]/.test(l) && RE.test(norm(l)))) continue;
+      if (!PRIVATE_SESSION.test(l) && !(/[^\x00-\x7f]/.test(l) && PRIVATE_SESSION.test(norm(l)))) continue;
       try {
         const r = JSON.parse(l), c = r.message?.content;
         if (r.isSidechain) continue;   // a helper's record, as turns() skips it
-        if (r.type === 'user' && (Array.isArray(c) ? c.some((b) => b?.type === 'text' && RE.test(norm(String(b.text)))) : RE.test(norm(String(c))))) return true;
+        if (r.type === 'user' && (Array.isArray(c) ? c.some((b) => b?.type === 'text' && PRIVATE_SESSION.test(norm(String(b.text)))) : PRIVATE_SESSION.test(norm(String(c))))) return true;
       } catch {}
     }
     return false;

@@ -5,8 +5,10 @@
 import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
-import { clip, text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable, promptBefore, BLOCK } from './handoff-log.mjs';
-import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only, foldCase, dropPage } from './store.mjs';
+import { clip } from './text.mjs';
+import { text, readTail, tag, userText, FORGETS, norm, turns, unsay, ACTIVE, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './handoff-log.mjs';
+import { PRIVATE, PRIVATE_SESSION, hushed, isHushed, FORGOTTEN, forgotten, OFF, unreadable, wasOff } from './privacy.mjs';
+import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only, foldCase, dropPage } from './store.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -239,7 +241,7 @@ export function subagent(input) {
     try { const r = readTail(tp, TAIL), a = turns(r.text); t = pick(a, !r.whole); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = (p ? pick(turns(`${p}\n${r.text}`)) : null) ?? a.open; } } catch {}
     const saved = withLock(dir, () => {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
-      if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) return false;
+      if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) return false;
       // The parent's open turn is private: so is its subagent's report.
       if (hush || t && (t.frozen === true || PRIVATE.test(userText(t)))) return false;
       // Past the cap, the start and the end stay: the end usually holds the result.
@@ -366,7 +368,7 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
       const p = join(projectsRoot(), f, n), s = tag(basename(n, '.jsonl'));
       // Not a conversation the journal never takes (private, or held with auto memory off; a list that won't read is no answer): it
       // had no entry to forget, and listing its turn said one was lost.
-      if (hushed(dir, s) !== false || hushed(projectsRoot(), s, false, OFF) !== false) continue;
+      if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) continue;
       try {
         const fd = openSync(p, 'r');
         try {

@@ -15,7 +15,8 @@ const { home, env } = tempHome('hl-test-');
 // The hooks in this process too, under the same throwaway HOME (tempHome set
 // it here): a check that needs no stdin or exit code calls handoff() itself,
 // not a node start per turn.
-const { handoff, edited, plain, redact, clip, holdsSecret } = await import('../src/handoff-log.mjs');
+const { handoff, edited, redact, holdsSecret } = await import('../src/handoff-log.mjs');
+const { plain, clip } = await import('../src/text.mjs');
 const cwd = 'C:\\handoff-log-selftest';
 const dir = storeFor(home, cwd);
 const transcript = join(dir, 'transcript.jsonl');
@@ -33,7 +34,7 @@ const ok = (cond, msg) => { assert(cond, msg); checks++; };
 }
 // 1.5.3 holes: clip()'s windows and counts, and the tail of a file.
 {
-  const { clip, readTail } = await import('../src/handoff-log.mjs');
+  const { readTail } = await import('../src/handoff-log.mjs'), { clip } = await import('../src/text.mjs');
   const tok = 'ghp_' + 'a'.repeat(36);
   // A long text cut where the count says: 380 characters (n - 20) shown, the rest counted, "… (+N chars)".
   ok(clip('a'.repeat(500), 400) === 'a'.repeat(380) + '… (+120 chars)' && clip('a'.repeat(401), 400) === 'a'.repeat(380) + '… (+21 chars)' && clip('a'.repeat(400), 400) === 'a'.repeat(400), 'a clip of 400 ends with the count of what it cut, and one that fits is whole');
@@ -562,7 +563,7 @@ const gated = join(home, 'gated');
 mkdirSync(gated, { recursive: true });
 mkdirSync(join(gated, 'src'), { recursive: true });
 mkdirSync(join(gated, 'tools'), { recursive: true });
-for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
+for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
 const g = (...a) => execFileSync('git', ['-C', gated, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { env, encoding: 'utf8' });
 g('init', '-q', '-b', 'master'); g('add', '-A'); g('commit', '-qm', 'base'); g('checkout', '-qb', 'other');
 let gate = spawnSync(process.execPath, [join(gated, 'tools', 'deploy.mjs')], { env, encoding: 'utf8' });
@@ -880,7 +881,7 @@ ok(turns([call('toolu_e3', 'Bash'), rejected('toolu_e3', no('<private-session>')
 // what it wrote there before goes, as the journal keeps it out: what was typed while auto memory was off reached handoff.md at the
 // first Stop with it back on (e2e audit, 2026-11-01). A list that won't read is unknown: nothing written, and the Stop says so.
 {
-  const { OFF } = await import('../src/handoff-log.mjs');
+  const { OFF } = await import('../src/privacy.mjs');
   const cwdM = 'C:\\handoff-memory-off', dirM = storeFor(home, cwdM), offList = join(home, '.claude', 'projects', OFF);
   mkdirSync(dirM, { recursive: true });
   const mdoc = () => readFileSync(join(dirM, 'handoff.md'), 'utf8');
@@ -948,7 +949,7 @@ ok(handoff({ cwd: cwdI, transcript_path: tc, session_id: 'cccccccc-4' }) === 'pr
 
 // 40. What 1.1.0 fixed, each with the input that broke it.
 {
-const { own, hushed } = await import('../src/handoff-log.mjs');
+const { own } = await import('../src/handoff-log.mjs'), { hushed } = await import('../src/privacy.mjs');
 const printOf = (cwd, session_id, source) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd, session_id, source }), env }).toString();
 const cwdN = 'C:\\handoff-108', dirN = storeFor(home, cwdN), tn = join(dirN, 'n.jsonl');
 mkdirSync(dirN, { recursive: true });
@@ -1167,7 +1168,7 @@ ok(hushed(dirN, 's0000000'), 'the private mark of a conversation 60 back still h
 // Two memory-off Stops at once write .memory-off under no lock: the one whose
 // write finds the other's just landed tries again, and both tags stay. The
 // other Stop is simulated here, just before this one's write lands.
-const { OFF } = await import('../src/handoff-log.mjs'), offDir = join(home, 'off-race'), offList = join(offDir, OFF);
+const { OFF } = await import('../src/privacy.mjs'), offDir = join(home, 'off-race'), offList = join(offDir, OFF);
 mkdirSync(offDir, { recursive: true });
 writeFileSync(offList, 'first000\n');
 const read = fs.readFileSync;
@@ -1198,7 +1199,7 @@ ok(q === 'private' && !readFileSync(join(dirN, 'handoff.md'), 'utf8').includes('
 // conversation's lines. The Stop does nothing for it but say so (it throws,
 // and memory-tier records why: R64); the next one does it.
 {
-const { hushed } = await import('../src/handoff-log.mjs');
+const { hushed } = await import('../src/privacy.mjs');
 const cwdF = 'C:\\handoff-refused', dirF = storeFor(home, cwdF), list = join(dirF, '.private-sessions'), hf = join(dirF, 'handoff.md');
 mkdirSync(dirF, { recursive: true });
 const read = fs.readFileSync;
@@ -1274,7 +1275,7 @@ for (const [id, tags, want] of [['looked00', true, 'otter-5150'], ['looked01', f
 // .memory-off: written under the projects' lock, by every SessionStart and Stop
 // while auto memory is off, and pruned by the transcripts still on disk.
 {
-const { off, OFF } = await import('../src/handoff-log.mjs');
+const { off, OFF } = await import('../src/privacy.mjs');
 const root = join(home, '.claude', 'projects'), list = join(root, OFF);
 const tags = () => { try { return readFileSync(list, 'utf8').split(/\r?\n/).filter(Boolean); } catch { return []; } };
 mkdirSync(root, { recursive: true });
@@ -1359,7 +1360,7 @@ ok(tags().length === 151 && tags()[0] === 'away0000', `a folder that will not li
 // A turn that ran forget is written like a private one: its ask and its
 // listing named what went (P1 hunt, 2026-10-29). The journal's rule.
 {
-const { FORGETS, unsay, hushed } = await import('../src/handoff-log.mjs');
+const { FORGETS, unsay } = await import('../src/handoff-log.mjs'), { hushed } = await import('../src/privacy.mjs');
 const cwdF = 'C:\\handoff-forget', dirF = storeFor(home, cwdF), tf = join(dirF, 'f.jsonl'), fdoc = () => readFileSync(join(dirF, 'handoff.md'), 'utf8');
 mkdirSync(dirF, { recursive: true });
 writeFileSync(tf, [user('forget the zebra policy', { ts: '2026-10-29T09:00:00Z' }),
@@ -1395,7 +1396,7 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
 // U+0085 left a run of spaces the turn read kept, so the turn never matched
 // its own entry and a moved clock went unseen (fuzz, 2026-10-30).
 {
-  const { clip } = await import('../src/handoff-log.mjs');
+  const { clip } = await import('../src/text.mjs');
   const s = 'plan \u0085 <system-reminder> x  \u0085y';
   ok(clip(clip(s, 400), 400) === clip(s, 400) && !/ {2}/.test(clip(s, 400)), `a clip clipped again is the same (got ${JSON.stringify(clip(s, 400))})`);
   // A cut ends at the last sentence, else the last word, if that keeps half the room: a cut mid-sentence kept a claim
@@ -1416,7 +1417,7 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
 // as a secret (F15); defuse's `&lt;` gives a value the symbol a password has; and a value one pattern keeps as a path is half redacted by a
 // later one, which the first then takes: three cuts.
 {
-  const { clip } = await import('../src/handoff-log.mjs');
+  const { clip } = await import('../src/text.mjs');
   const ch = String.fromCharCode, flag = ['--', 'token'].join(''), v = ['Qz7k', 'Lm9X', 'p4w'].join(''), bt = ['Hk7v', 'Tq2n', 'Wb9x', 'Lp4d', 'Rz6m', 'Gs3c', 'Jy'].join('');
   for (const [s, n, gone] of [[`deploy ${flag}  ${v}`, Infinity, v], [`deploy ${flag}\t${v}`, 400, v], [`deploy ${flag}${ch(0x85)}${v}`, 400, v],
     [`deploy ${flag}\n${v}`, 400, v], [`Bearer  ${v}${v}`, 400, v], [`npm config set //r/:_authToken  ${v}`, 400, v], [`say <private>x</private> and ${flag}  ${v}`, 240, v],
@@ -1679,7 +1680,7 @@ if (process.platform === 'win32') {
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.
 {
-const { hushed, defuse, redact: red, own } = await import('../src/handoff-log.mjs');
+const { redact: red, own } = await import('../src/handoff-log.mjs'), { hushed } = await import('../src/privacy.mjs'), { defuse } = await import('../src/text.mjs');
 const { local } = await import('../src/store.mjs');
 const cwd3 = 'C:\\handoff-round3', dir3 = storeFor(home, cwd3);
 mkdirSync(dir3, { recursive: true });
@@ -1775,7 +1776,7 @@ rmSync(join(dir3, '.health'));
 ok(big.length <= 9500 && /Memory store needs attention[^\n]*…\n/.test(big) && /^- \[Pin 0\]/m.test(big),
   `the startup briefing fits, a long health line shortened, the shared lessons kept (got ${big.length})`);
 // Held to the limit from the end, and a long line is shortened, not cut with what follows.
-const { fit } = await import('../src/handoff-log.mjs');
+const { fit } = await import('../src/text.mjs');
 const huge = Array.from({ length: 30 }, (_, i) => `line ${i} ${'y'.repeat(500)}`).join('\n');
 ok(fit(huge).length <= 9500 && /cut to fit/.test(fit(huge)) && fit(huge).startsWith('line 0'), 'a briefing past the limit is cut from its end');
 ok(/^a{1000}…\nshared$/.test(fit(`${'a'.repeat(5000)}\nshared`, 1000)), 'a line past its limit is shortened, and what follows it stays');
@@ -2545,7 +2546,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
 // Edge rules of turns(), the section markers, the write loops, the briefing
 // and the entry point, each stated at its check.
 {
-  const { turns, unwrap, unquote, asked, newest, sectionOf, unsay, hushed, lastTurn, stalled, transcripts, edited: edited_, fit, off, OFF, NUDGE_TAG, ACTIVE, GRACE, FORGOTTEN } = await import('../src/handoff-log.mjs');
+  const { turns, unwrap, unquote, asked, newest, sectionOf, unsay, lastTurn, stalled, transcripts, edited: edited_, NUDGE_TAG, ACTIVE, GRACE } = await import('../src/handoff-log.mjs'), { hushed, off, OFF, FORGOTTEN } = await import('../src/privacy.mjs'), { fit } = await import('../src/text.mjs');
   const T0 = '2026-09-11T07:00:00Z';
   const store = (cwd_) => { const d = storeFor(home, cwd_); mkdirSync(d, { recursive: true }); return d; };
   const lines = (...l) => l.join('\n') + '\n';
@@ -3059,7 +3060,7 @@ require('node:module').syncBuiltinESMExports();
 // can reach the real hooks-live or the real repo.
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = ROOT;
-  const FILES_ = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
+  const FILES_ = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
     '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'tools/deploy.mjs', 'tools/suites.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
@@ -3262,7 +3263,7 @@ if (!quick) {
   fs.lstatSync = (p, ...a) => { if (String(p).endsWith('.project-off')) throw Object.assign(new Error('denied'), { code: 'EACCES' }); return real(p, ...a); };
   syncBuiltinESMExports();
   try {
-    const { offLine } = await import('../src/handoff-log.mjs'), { isOff } = await import('../src/store.mjs');
+    const { offLine } = await import('../src/privacy.mjs'), { isOff } = await import('../src/privacy.mjs');
     ok(offLine(isOff(dirO)) === "project-memory: memory is paused here because the off marker can't be read (EACCES). Tell the user; memory on won't help until that's fixed.", 'an unreadable marker has its own startup line');
   } finally { fs.lstatSync = real; syncBuiltinESMExports(); }
   rmSync(join(dirO, '.project-off'));
@@ -3685,7 +3686,7 @@ if (!quick) {
     'secret: arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-AbCdEf', 'password: !vault |',
     'secret: scanning is on', 'api_key: required in headers', 'password: required', 'password: hashed with bcrypt', 'secret: handled by the vault',
   ];
-  const { defuse } = await import("../src/handoff-log.mjs"), cut = keep.filter((t) => clip(t, 2000) !== defuse(t));
+  const { defuse } = await import('../src/text.mjs'), cut = keep.filter((t) => clip(t, 2000) !== defuse(t));
   ok(!cut.length, `1.4.1 I: harmless lines are kept whole (cut: ${cut.join(' | ')})`);
   const P = ['Zq8x', 'K2mP', '9vL4n'].join('');
   const leak = [`secret: ${P}`, `export API_TOKEN=${P}`, `password: Passw0rd(1)`, `cookie: sessionid=${P}`, `Cookie: theme=dark; sid=${P}`, `Set-Cookie: ${P}=${P}`, `password: ${P}`, `"password": "${P}"`, `password: sunshine`]
@@ -3997,7 +3998,7 @@ if (!quick) {
 }
 // 1.5.3 holes: odd records, the shapes of what the readers return, and what one Stop writes in odd cases.
 {
-  const { turns, FORGETS, goesOn, fit, hushed, stalled } = await import('../src/handoff-log.mjs');
+  const { turns, FORGETS, goesOn, stalled } = await import('../src/handoff-log.mjs'), { hushed } = await import('../src/privacy.mjs'), { fit } = await import('../src/text.mjs');
   const J = (o) => JSON.stringify(o);
   const U = (c, x = {}) => J({ type: 'user', timestamp: '2026-09-11T07:00:00Z', message: { content: c }, ...x });
   const A = (c, x = {}) => J({ type: 'assistant', timestamp: '2026-09-11T07:00:05Z', message: { content: c }, ...x });
@@ -4223,7 +4224,7 @@ if (!quick) {
   assert.throws(() => clip(null, 5), /replace/);   // text only: anything else fails in cut(), as it always did
   checks++;
   // No tag, no mark: hushed() says false for it and writes nothing, whatever is asked.
-  const { hushed } = await import('../src/handoff-log.mjs');
+  const { hushed } = await import('../src/privacy.mjs');
   const hd = join(home, 'hushed-none');
   mkdirSync(hd, { recursive: true });
   ok(hushed(hd, '') === false && hushed(hd, undefined, true) === false && hushed(hd, '', true) === false && !existsSync(join(hd, '.private-sessions')), 'an empty tag is never marked, and is not a hushed one');
