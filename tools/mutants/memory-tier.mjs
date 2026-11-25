@@ -51,7 +51,7 @@ export default {
   "conflict markers unreported": ["  if (r.merged) problems.push(", "  if (false) problems.push("],
   "the old run log glued": ["(prev && !prev.endsWith('\\n') ? '\\n' : '') + ", ""],
   "the Stop hook runs with auto memory off": ["if (stop && memoryOff()) {", "if (false) {"],
-  "journal backfill: the memory-off mark not written": ["(await import(new URL('./handoff-log.mjs', import.meta.url))).off(p);", ""],
+  "journal backfill: the memory-off mark not written": ["(await import(new URL('./privacy.mjs', import.meta.url))).off(p);", ""],
   "journal backfill: the Stop never backfills": ["withLock(d, () => backfill(d, { skip: payload.transcript_path }))", "0"],
   'working rules age out': ['if (shared || KEEP_TYPES.has(f.type)) return true;', 'if (shared) return true;'],
   'a shared lesson ages out': ['if (shared || KEEP_TYPES.has(f.type)) return true;', 'if (KEEP_TYPES.has(f.type)) return true;'],

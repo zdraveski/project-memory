@@ -35,8 +35,9 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
 import { clip } from './text.mjs';
-import { goesOn, readTail, turns, text, prompt, handoff, hushed, tag, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF, redact, BARE } from './handoff-log.mjs';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, isOff, local, envOn } from './store.mjs';
+import { goesOn, readTail, turns, text, prompt, handoff, tag, answer, userText, newest, sectionOf, NUDGE_TAG, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, redact, BARE } from './handoff-log.mjs';
+import { hushed, PRIVATE, PRIVATE_SESSION, OFF, isOff } from './privacy.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
 // A token count as Claude Code takes one: `800000`, `800k`, `1M`. NaN: none.

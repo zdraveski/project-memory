@@ -248,24 +248,6 @@ export const foldCase = (p) => (process.platform === 'win32' || process.platform
 // A transcript as .forgotten, .imported and .checked name it: `<folder>/<session>`.
 // Compared through pathKey: a payload spelt the folder `c--x`, the disk `C--x`.
 export const transcriptKey = (p) => `${basename(dirname(p))}/${basename(p, '.jsonl')}`;
-// A project turned off (memory off): a marker in its store, {"t": ms}. A dotfile, so the snapshot's .gitignore leaves it out.
-export const PROJECT_OFF = '.project-off';
-// null when the project is on; else {since} (null when the marker does not read). A marker that cannot be stat'ed counts as
-// there, with {unread: code}: guessing "on" would write into a project the user turned off.
-export function isOff(dir) {
-  const f = join(dir, PROJECT_OFF);
-  try { lstatSync(f); } catch (e) { return e.code === 'ENOENT' || e.code === 'ENOTDIR' ? null : { since: null, unread: e.code || 'error' }; }
-  try { const t = JSON.parse(readFileSync(f, 'utf8')).t; return { since: Number.isFinite(t) ? t : null }; } catch { return { since: null }; }
-}
-// When a project was off, one `<from ms> <to ms>` a line (memory on adds it). A transcript runs on while the marker is there, and
-// its Stops and the import come later: a turn asked inside a period is never written. Tested on what a turn's own time says.
-export const OFF_PERIODS = '.off-periods';
-export function wasOff(dir) {
-  // A read error throws: the Stop records it and writes nothing.
-  const periods = listOf(raw(join(dir, OFF_PERIODS))).map((l) => l.split(' ').map(Number));
-  // A turn of unknown time (NaN: its record had no timestamp) is placed in none, so it is kept out once the project has been off.
-  return (t) => Number.isNaN(t.ms) ? periods.length > 0 : periods.some(([from, to]) => t.ms >= from && t.ms <= to);
-}
 // The local date a project was turned off, for what is said to the user.
 export const offSince = (o) => (o.since ? local(o.since).slice(0, 10) : 'an unknown date');
 export function allStores() {
@@ -515,10 +497,6 @@ export function replaceIfUnchanged(path, expected, next) {
 
 // A session's short tag: enough to tell parallel sessions apart in one file.
 export const tag = (id) => String(id || '').slice(0, 8);
-// The conversations marked private, by tag (handoff-log.mjs's hushed() writes and reads them): in a store.
-export const QUIET = '.private-sessions';
-// The conversations held with auto memory off, kept the same way beside the projects.
-export const OFF = '.memory-off';
 
 // Secrets live here, a leaf both store and handoff-log import (no import cycle).
 // A secret pasted into a message is never written: the snapshots would keep it

@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome, storeFor } from './harness.mjs';
 import { ruleOf, rulesOf, segments, tokens, hits, commandsOf, ruleSet, privateTurn, record, tally, LOG, CACHE, CACHE_V, LOG_MAX } from '../src/enforce.mjs';
-import { front, projectsRoot, sharedStore, QUIET, OFF, PROJECT_OFF } from '../src/store.mjs';
+import { front, projectsRoot, sharedStore } from '../src/store.mjs';
+import { QUIET, OFF, PROJECT_OFF } from '../src/privacy.mjs';
 import { chunk } from '../src/journal.mjs';
 
 const { home } = tempHome('enforce-');

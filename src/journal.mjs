@@ -6,8 +6,9 @@ import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSy
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip } from './text.mjs';
-import { text, readTail, tag, userText, PRIVATE, PRIVATE_SESSION, FORGETS, norm, turns, hushed, unsay, FORGOTTEN, forgotten, ACTIVE, OFF, TAIL, NUDGE_TAG, unreadable, promptBefore, BLOCK } from './handoff-log.mjs';
-import { keyed, replaceIfUnchanged, raw, listOf, local, wasOff, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only, foldCase, dropPage } from './store.mjs';
+import { text, readTail, tag, userText, FORGETS, norm, turns, unsay, ACTIVE, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './handoff-log.mjs';
+import { PRIVATE, PRIVATE_SESSION, hushed, FORGOTTEN, forgotten, OFF, unreadable, wasOff } from './privacy.mjs';
+import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only, foldCase, dropPage } from './store.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is

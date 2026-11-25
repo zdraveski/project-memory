@@ -3,7 +3,8 @@
 // or writes anything. Imports store.mjs only, so a hook can load it fast.
 import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, isOff, tag, QUIET, OFF, listOf, norm } from './store.mjs';
+import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, tag, listOf, norm } from './store.mjs';
+import { isOff, QUIET, OFF } from './privacy.mjs';
 
 const BSL = String.fromCharCode(92), KEYS = ['on', 'has', 'unless'], MAX = 8;
 
