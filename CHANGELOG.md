@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.8 (2026-11-25)
+
+This release fixes three privacy holes and two places where `memory doctor` said everything was fine when it wasn't.
+
+### Private and forgotten conversations
+
+- **A private conversation is now also private to the git rule check when its tag is typed in another form,** such as full-width brackets (`＜private-session＞`) or with a hidden character inside. The journal already read these forms as private. A helper's work no longer makes a conversation private either.
+- **An exchange you forgot no longer comes back when the forget list can't be read.** The list could be locked by another program or damaged on disk. Until it can be read again, the end-of-reply save leaves that reply's exchanges out of `handoff.md`, and `memory forget` stops with a message saying it couldn't read the list. Before, it showed an exchange you had already forgotten as if it were new.
+- **If the list of times memory was off can't be read, nothing is saved for that reply,** and the failure is recorded. This already worked; a test now keeps it that way.
+
+### `memory doctor`
+
+- **A damaged deploy record is now reported as a problem.** Before, `doctor` said the hooks matched the last deploy.
+- **A lock file dated in the future is now listed as left behind,** the same way the plugin itself treats it. A computer clock that was set back can leave one.
+
+### Removing from the history
+
+- **`memory forget --purge` tries git's clean-up a second time** if a clean-up git started on its own gets in the way, instead of failing.
+
+Update with `claude plugin update project-memory@project-memory`, then restart Claude Code.
+
 ## 1.5.7 (2026-11-24)
 
 Nothing changes in the plugin you install from the marketplace. This release speeds up the project's own checks and deploys.
