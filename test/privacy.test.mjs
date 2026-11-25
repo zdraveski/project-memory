@@ -11,7 +11,7 @@ import { tempHome, tempDir, quick } from './harness.mjs';
 const { home } = tempHome('privacy-test-');
 const { norm, projectsRoot, tag } = await import('../src/store.mjs');
 const P = await import('../src/privacy.mjs');
-const { PRIVATE, PRIVATE_SESSION, QUIET, OFF, PROJECT_OFF, OFF_PERIODS, FORGOTTEN, hushed, isHushed, isOff, wasOff, off, offLine, unreadable, forgotten, forgottenIn } = P;
+const { PRIVATE, PRIVATE_SESSION, NOTE_HIDES, QUIET, OFF, PROJECT_OFF, OFF_PERIODS, FORGOTTEN, hushed, isHushed, isOff, wasOff, off, offLine, unreadable, forgotten, forgottenIn } = P;
 
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
@@ -153,6 +153,13 @@ for (const [what, list, dirOf] of [['private conversation', QUIET, () => store('
   ok(!PRIVATE_SESSION.test(full) && PRIVATE_SESSION.test(norm(full)), 'a fullwidth private-session tag is seen once normalized');
   ok(!PRIVATE_SESSION.test(zero) && PRIVATE_SESSION.test(norm(zero)), 'a private-session tag with zero-width characters inside is seen once normalized');
   ok(PRIVATE.test(norm(fullTurn)) && PRIVATE.test(norm(zeroTurn)), 'fullwidth and zero-width private turns are seen once normalized');
+}
+// The compaction note's wider check: it hides any text holding `<private`, in any spelling, the longer tags included. That is wider
+// than a private turn, and stays so on purpose: the note is printed into the next context.
+{
+  for (const t of ['<private-session>', '<privately>', '<Private', '< private', '<privates and more', '<private>']) ok(NOTE_HIDES.test(t), `the note hides ${JSON.stringify(t)}`);
+  ok(!PRIVATE.test('<privately>') && !PRIVATE.test('<private-session>'), 'the private-turn rule is narrower than the note\'s');
+  for (const t of ['private', 'a < b', '<priv', '</private>']) ok(!NOTE_HIDES.test(t), `the note shows ${JSON.stringify(t)}`);
 }
 
 console.log(`privacy.test.mjs: ${checks} checks passed`);

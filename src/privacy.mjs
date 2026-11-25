@@ -16,6 +16,10 @@ import { tag, projectsRoot, withLock, replaceIfUnchanged, listOf, raw, offSince,
 export const PRIVATE = /<\s*private(?![-_\w])(?:[^>]*>|[^>]*$)/i;
 // Bounded: with no `>`, 256 KB of openers took 5 s a test.
 export const PRIVATE_SESSION = /<\s*private[-_]session\b[^>]{0,200}>/i;
+// DELIBERATELY WIDER than the two above: the compaction note hides any text holding `<private` in any spelling, `<private-session>`
+// and `<privately>` included. The note is printed into the next context, so a word that might be a tag is not worth showing. It stays
+// that way: do not narrow it to PRIVATE.
+export const NOTE_HIDES = /<\s*private/i;
 
 // The conversations marked private, by tag (hushed() writes and reads them): in a store.
 export const QUIET = '.private-sessions';

@@ -21,4 +21,5 @@ export default {
   "a forgotten list that will not read taken for an empty one": ["shut: e.code !== 'ENOENT' }", "shut: false }", {"test":["test/privacy.test.mjs","test/handoff-log.test.mjs"]}],
   "a list that cannot be read taken for no tags": ["list, undefined, tries) !== false;", "list, undefined, tries) === true;"],
   "a caller that asks for one try gets three": ["for (let i = 0; i < tries; i++) {", "for (let i = 0; i < 3; i++) {"],
+  "the compaction note narrowed to the private-turn rule": ["export const NOTE_HIDES = /<\\s*private/i;", "export const NOTE_HIDES = PRIVATE;"],
 };

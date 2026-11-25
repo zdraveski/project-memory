@@ -36,7 +36,7 @@ import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
 import { clip } from './text.mjs';
 import { goesOn, readTail, turns, text, prompt, handoff, tag, answer, userText, newest, sectionOf, NUDGE_TAG, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, redact, BARE } from './handoff-log.mjs';
-import { isHushed, PRIVATE, PRIVATE_SESSION, OFF, isOff } from './privacy.mjs';
+import { isHushed, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, OFF, isOff } from './privacy.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -131,7 +131,7 @@ function walk(raw) {
     if (r.type === 'attachment' && r.attachment?.type === 'queued_command') {
       const q = norm(queuedText(r));
       for (const hit of q.matchAll(DONE)) s.running.delete(hit[1]);
-      if (/<\s*private/i.test(unquote(q))) s.hidden = true;
+      if (NOTE_HIDES.test(unquote(q))) s.hidden = true;
     }
     if (r.type === 'user') {
       if (/^\s*\[Request interrupted by user/.test(t)) s.midTurn = false;   // Escape ends the turn, as lastTurn() reads it
@@ -149,7 +149,7 @@ function walk(raw) {
       // named the tag hid them, and the nudge, for the rest of the turn.
       // Unless no ask came before it (a file that opens with one): then it is
       // all the turn has, and the words after it may answer what it quotes.
-      else if ((!r.isCompactSummary || !s.ask) && /<\s*private/i.test(unquote(unwrap(norm(told ? `${t}\n${told}` : t))))) s.hidden = true;
+      else if ((!r.isCompactSummary || !s.ask) && NOTE_HIDES.test(unquote(unwrap(norm(told ? `${t}\n${told}` : t))))) s.hidden = true;
       // A launch is read from the result of a Bash or Agent call only: from any
       // tool result, a fetched page that spelt one out put its words, and any
       // instruction in them, into the note printed after the compaction.
