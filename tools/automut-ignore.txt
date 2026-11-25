@@ -323,7 +323,6 @@ f65599f88474 src/privacy.mjs:729 `null` -> `undefined`: the caller tests `!live`
 2a15fad8deaa src/handoff-log.mjs:732 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same
 
 e1a8873728e2 src/memory.mjs:938 enforceHook's `.find(existsSync) ?? join(...)` -> `||`: find returns a path or undefined, never an empty string, so `||` and `??` take the same branch
-1b7bd6e51841 src/snapshot.mjs:517 the gc retry `catch { sleep; gc }` -> `{}`: it runs only when a detached gc --auto races the purge, which no test can start on demand; the 1.6.0 snapshot module (step 16 PR C) removes the race
 69a6b76879f6 src/memory.mjs:926 doctor's stale-lock filter `catch { return false; }` -> `{}`: undefined and false are both falsy to filter
 dedb4e067315 src/memory.mjs:926 doctor's stale-lock filter `return false` -> `return undefined`: undefined and false are both falsy to filter
 0e88165517c4 src/enforce.mjs:201 the prefilter's `non-ASCII && RE.test(norm(l))` -> `||`: norm changes only non-ASCII text, so the answer is the same and only slower
