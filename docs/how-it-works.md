@@ -94,6 +94,19 @@ files, in that order, and the variable wins over them (`0` means on). They
 cannot see `--settings`, `--bare`, safe mode or server-managed settings.
 Disabling the plugin stops them.
 
+## The code
+
+Every file is in `src/`. The leaves come first; each file imports only those above it, apart from the loop through `handoff-log.mjs`
+that step 18 of 1.6.0 removes.
+
+- `store.mjs`: where a project's memory lives, the locks, `redact`, and the small helpers everything shares.
+- `text.mjs`: prints text safely (`clip`, `defuse`, `plain`, `fit`), and the 9,500-character limit on what a hook says (`SAY`). It imports `store.mjs` only.
+- `privacy.mjs`: decides whether a turn or a conversation may be saved or shown, and owns the marker files (`.private-sessions`, `.memory-off`,
+  `.project-off`, `.off-periods`, `journal/.forgotten`). A file it cannot read counts as private. It imports `store.mjs` only, so the git-rule
+  hook can load it and still start fast.
+- `handoff-log.mjs`: reads the transcript into turns, writes `handoff.md` and prints the startup briefing.
+- `journal.mjs`, `compact-gate.mjs`, `memory-tier.mjs`, `memory.mjs`, `recall.mjs`, `page.mjs`, `enforce.mjs`, `enforce-hook.mjs`, `brief.mjs`, `timing.mjs`: the journal, the compaction gate, the Stop hook and tidy-up, the `memory` command, search words, the journal page, the git rule, and the rest.
+
 ## Where things live
 
 Claude Code keeps one folder per project under `~/.claude/projects/`, named
@@ -791,7 +804,7 @@ Two commands stop it, and each is checked first thing in the hook that would
 have saved something.
 
 - `.project-off` in a project's `memory` folder (`memory off` writes it, `memory
-  on` removes it). `isOff` in `store.mjs` reads it: no marker is on; a marker
+  on` removes it). `isOff` in `privacy.mjs` reads it: no marker is on; a marker
   is off, with the date from its `t` or "an unknown date" if it can't be read;
   a marker that can't be examined at all (any error but "not there") also
   counts as off, so a failure never reads as on. The Stop and PreCompact

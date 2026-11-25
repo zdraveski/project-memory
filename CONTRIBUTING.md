@@ -211,6 +211,8 @@ they finish.
   (`autoMemoryEnabled` and `autoMemoryDirectory`; never print the file), copy the whole environment, or connect to anything. The
   plugin directory's security scan holds a plugin that does, and it reads
   every file, tests included.
+- Privacy goes through `privacy.mjs`; never copy the rule into a hook. A marker file that
+  cannot be read means private, for every caller.
 - Write the test first and watch it fail on the old code; before changing
   a rule, find every test and caller that uses it. One change a commit.
 
