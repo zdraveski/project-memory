@@ -104,7 +104,8 @@ that step 18 of 1.6.0 removes.
 - `privacy.mjs`: decides whether a turn or a conversation may be saved or shown, and owns the marker files (`.private-sessions`, `.memory-off`,
   `.project-off`, `.off-periods`, `journal/.forgotten`). A file it cannot read counts as private. It imports `store.mjs` only, so the git-rule
   hook can load it and still start fast.
-- `handoff-log.mjs`: reads the transcript into turns, writes `handoff.md` and prints the startup briefing.
+- `transcript.mjs`: reads a transcript: its records, forward or backward, and its turns. It imports `store.mjs`, `privacy.mjs` and `text.mjs` only.
+- `handoff-log.mjs`: writes `handoff.md` and prints the startup briefing.
 - `journal.mjs`, `compact-gate.mjs`, `memory-tier.mjs`, `memory.mjs`, `recall.mjs`, `page.mjs`, `enforce.mjs`, `enforce-hook.mjs`, `brief.mjs`, `timing.mjs`: the journal, the compaction gate, the Stop hook and tidy-up, the `memory` command, search words, the journal page, the git rule, and the rest.
 
 ## Where things live

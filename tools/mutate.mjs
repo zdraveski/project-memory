@@ -25,6 +25,7 @@ import brief from './mutants/brief.mjs';
 import timing from './mutants/timing.mjs';
 import text from './mutants/text.mjs';
 import privacy from './mutants/privacy.mjs';
+import transcript from './mutants/transcript.mjs';
 
 // Every file a suite may import, copied beside the mutant.
 const FILES = ['test/harness.mjs', 'tools/deploy.mjs', 'tools/suites.mjs', ...pluginFiles()];
@@ -50,6 +51,7 @@ export const suites = {
   'src/page.mjs': ['test/page.test.mjs', page],
   'src/text.mjs': [['test/text.test.mjs', 'test/handoff-log.test.mjs'], text],
   'src/privacy.mjs': [['test/privacy.test.mjs', 'test/store.test.mjs', 'test/handoff-log.test.mjs'], privacy],
+  'src/transcript.mjs': [['test/transcript.test.mjs', 'test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/journal.test.mjs'], transcript],
 };
 // The file that holds a group's mutants: a --changed list naming it asks for that group alone.
 export const tableOf = (name) => `tools/mutants/${name.split('/').pop().replace(/\.\w+$/, '')}.mjs`;

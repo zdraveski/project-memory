@@ -82,7 +82,8 @@ import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tool, tempHome, storeFor } from '../test/harness.mjs';
 import { LOCK_STALE, SHARED_BUDGET, POINTER } from '../src/store.mjs';
-import { NUDGE_TAG, ACTIVE, tag, parse, sectionOf } from '../src/handoff-log.mjs';
+import { ACTIVE, tag, parse, sectionOf } from '../src/handoff-log.mjs';
+import { NUDGE_TAG } from '../src/transcript.mjs';
 
 const args = process.argv.slice(2);
 // A typo ("10m", "0", "--seed x") exits 1: it used to run 60 s, or no rounds, and report a pass for a run that tested nothing (audit #15).

@@ -29,12 +29,12 @@ const ok = (cond, msg) => { assert(cond, msg); checks++; };
 {
   const lpath = join(home, 'tiny.jsonl');
   writeFileSync(lpath, JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: 'hi' }] }, timestamp: '2026-09-11T07:00:00Z' }) + '\n');
-  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `import { lastTurn } from ${JSON.stringify(pathToFileURL(HOOK).href)}; process.stdout.write(String(lastTurn(${JSON.stringify(lpath)}).seen))`], { encoding: 'utf8', timeout: 20000 });
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `import { lastTurn } from ${JSON.stringify(pathToFileURL(tool('src/transcript.mjs')).href)}; process.stdout.write(String(lastTurn(${JSON.stringify(lpath)}).seen))`], { encoding: 'utf8', timeout: 20000 });
   ok(r.status === 0 && r.stdout === '1', 'lastTurn returns on a small file that is read whole');
 }
 // 1.5.3 holes: clip()'s windows and counts, and the tail of a file.
 {
-  const { readTail } = await import('../src/handoff-log.mjs'), { clip } = await import('../src/text.mjs');
+  const { readTail } = await import('../src/transcript.mjs'), { clip } = await import('../src/text.mjs');
   const tok = 'ghp_' + 'a'.repeat(36);
   // A long text cut where the count says: 380 characters (n - 20) shown, the rest counted, "… (+N chars)".
   ok(clip('a'.repeat(500), 400) === 'a'.repeat(380) + '… (+120 chars)' && clip('a'.repeat(401), 400) === 'a'.repeat(380) + '… (+21 chars)' && clip('a'.repeat(400), 400) === 'a'.repeat(400), 'a clip of 400 ends with the count of what it cut, and one that fits is whole');
@@ -563,7 +563,7 @@ const gated = join(home, 'gated');
 mkdirSync(gated, { recursive: true });
 mkdirSync(join(gated, 'src'), { recursive: true });
 mkdirSync(join(gated, 'tools'), { recursive: true });
-for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
+for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
 const g = (...a) => execFileSync('git', ['-C', gated, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { env, encoding: 'utf8' });
 g('init', '-q', '-b', 'master'); g('add', '-A'); g('commit', '-qm', 'base'); g('checkout', '-qb', 'other');
 let gate = spawnSync(process.execPath, [join(gated, 'tools', 'deploy.mjs')], { env, encoding: 'utf8' });
@@ -830,7 +830,7 @@ ok(handoff({ cwd: cwdI, transcript_path: tm, session_id: 'mmmmmmmm-2' }) === 'pr
 // Only there: a tag quoted in any other tool's output (a file read, a command's output, a failed command) marks nothing (e2e audit,
 // 2026-11-01).
 {
-  const { turns } = await import('../src/handoff-log.mjs');
+  const { turns } = await import('../src/transcript.mjs');
   const cwdA = 'C:\\handoff-tool-answers', dirA = storeFor(home, cwdA);
   mkdirSync(dirA, { recursive: true });
   const adoc = () => readFileSync(join(dirA, 'handoff.md'), 'utf8');
@@ -908,7 +908,7 @@ ok(turns([call('toolu_e3', 'Bash'), rejected('toolu_e3', no('<private-session>')
 // and right-to-left marks an RTL keyboard or a paste puts around `<` and `>`, the other bidi controls, invisible operators, a
 // variation selector, a tag character (e2e audit, 2026-11-01).
 {
-  const { turns, answer, userText } = await import('../src/handoff-log.mjs');
+  const { answer } = await import('../src/handoff-log.mjs'), { turns, userText } = await import('../src/transcript.mjs');
   const hidden = { 'U+00AD': '­', 'U+200E': '‎', 'U+200F': '‏', 'U+202A': '‪', 'U+202E': '‮', 'U+2066': '⁦', 'U+2069': '⁩',
     'U+2061': '⁡', 'U+2063': '⁣', 'U+180E': '᠎', 'U+034F': '͏', 'U+FE0F': '️', 'U+E0020': '\u{E0020}', 'U+E007F': '\u{E007F}', 'U+061C': '؜', 'U+200B': '​' };
   const missed = Object.entries(hidden).filter(([, c]) => {
@@ -921,7 +921,7 @@ ok(turns([call('toolu_e3', 'Bash'), rejected('toolu_e3', no('<private-session>')
 // A sidechain record (a subagent's turn, which an older Claude Code wrote into its conversation's transcript) is not the
 // conversation's: its prompt is no ask, its reply no answer, and a tag in it marks nothing (e2e audit, 2026-11-01).
 {
-  const { turns } = await import('../src/handoff-log.mjs');
+  const { turns } = await import('../src/transcript.mjs');
   const side = { isSidechain: true };
   const got = turns([user('the real ask'), rec('user', [{ type: 'text', text: 'a subagent prompt <private-session>' }], side), rec('assistant', [{ type: 'text', text: 'a subagent reply' }], side),
     asst('the real reply'), user('the next ask'), rec('assistant', [{ type: 'text', text: 'a later subagent reply' }], side)].join('\n'));
@@ -949,7 +949,7 @@ ok(handoff({ cwd: cwdI, transcript_path: tc, session_id: 'cccccccc-4' }) === 'pr
 
 // 40. What 1.1.0 fixed, each with the input that broke it.
 {
-const { own } = await import('../src/handoff-log.mjs'), { hushed } = await import('../src/privacy.mjs');
+const { own } = await import('../src/transcript.mjs'), { hushed } = await import('../src/privacy.mjs');
 const printOf = (cwd, session_id, source) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd, session_id, source }), env }).toString();
 const cwdN = 'C:\\handoff-108', dirN = storeFor(home, cwdN), tn = join(dirN, 'n.jsonl');
 mkdirSync(dirN, { recursive: true });
@@ -1360,7 +1360,7 @@ ok(tags().length === 151 && tags()[0] === 'away0000', `a folder that will not li
 // A turn that ran forget is written like a private one: its ask and its
 // listing named what went (P1 hunt, 2026-10-29). The journal's rule.
 {
-const { FORGETS, unsay } = await import('../src/handoff-log.mjs'), { hushed } = await import('../src/privacy.mjs');
+const { unsay } = await import('../src/handoff-log.mjs'), { FORGETS } = await import('../src/transcript.mjs'), { hushed } = await import('../src/privacy.mjs');
 const cwdF = 'C:\\handoff-forget', dirF = storeFor(home, cwdF), tf = join(dirF, 'f.jsonl'), fdoc = () => readFileSync(join(dirF, 'handoff.md'), 'utf8');
 mkdirSync(dirF, { recursive: true });
 writeFileSync(tf, [user('forget the zebra policy', { ts: '2026-10-29T09:00:00Z' }),
@@ -1475,7 +1475,7 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
 // A <private> tag inside fullwidth reminder tags the user typed: normalized,
 // the reminder swallowed it from the typed text, but the ask kept it.
 {
-  const { turns, userText, answer } = await import('../src/handoff-log.mjs');
+  const { answer } = await import('../src/handoff-log.mjs'), { turns, userText } = await import('../src/transcript.mjs');
   const said = (type, text) => JSON.stringify({ type, timestamp: '2026-10-30T10:00:00Z', uuid: 'fw-1', message: { content: [{ type: 'text', text }], stop_reason: 'end_turn' } });
   const [t] = turns([said('user', 'hello ＜system-reminder＞<private>pin 4417</private>＜/system-reminder＞ open the door'), said('assistant', 'Opened with 4417.')].join('\n') + '\n');
   ok(answer(userText(t), t.did, 400) === '[private]', `a private tag the typed text lost but the ask kept still hides the answer (got ${JSON.stringify(t)})`);
@@ -1680,7 +1680,7 @@ if (process.platform === 'win32') {
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.
 {
-const { redact: red, own } = await import('../src/handoff-log.mjs'), { hushed } = await import('../src/privacy.mjs'), { defuse } = await import('../src/text.mjs');
+const { redact: red } = await import('../src/handoff-log.mjs'), { own } = await import('../src/transcript.mjs'), { hushed } = await import('../src/privacy.mjs'), { defuse } = await import('../src/text.mjs');
 const { local } = await import('../src/store.mjs');
 const cwd3 = 'C:\\handoff-round3', dir3 = storeFor(home, cwd3);
 mkdirSync(dir3, { recursive: true });
@@ -2395,7 +2395,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
 
 // Round 6. A turn the user stopped with Escape is no turn still running.
 {
-  const { lastTurn: lt6 } = await import('../src/handoff-log.mjs');
+  const { lastTurn: lt6 } = await import('../src/transcript.mjs');
   const t7 = join(dir, 'r6-esc.jsonl');
   const working = [user('refactor it', { ts: '2026-10-28T12:00:00Z' }),
     rec('assistant', [{ type: 'tool_use', id: 'e1', name: 'Bash', input: {} }], { ts: '2026-10-28T12:00:10Z', message: { content: [{ type: 'tool_use', id: 'e1', name: 'Bash', input: {} }], stop_reason: 'tool_use', usage: { input_tokens: 9 } } })];
@@ -2465,7 +2465,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
 
 // The journal's fields: commands, the prompt's uuid, branch and cwd.
 {
-  const { turns } = await import('../src/handoff-log.mjs');
+  const { turns } = await import('../src/transcript.mjs');
   const u = (s, x = {}) => JSON.stringify({ type: 'user', timestamp: '2026-10-28T09:00:00Z', uuid: 'u-1', gitBranch: 'main', cwd: 'C:\\proj', message: { content: [{ type: 'text', text: s }] }, ...x });
   const a = (content) => JSON.stringify({ type: 'assistant', timestamp: '2026-10-28T09:01:00Z', message: { content } });
   const raw = [u('deploy it'), a([{ type: 'tool_use', name: 'Bash', input: { command: 'npm run build' } }]),
@@ -2546,7 +2546,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
 // Edge rules of turns(), the section markers, the write loops, the briefing
 // and the entry point, each stated at its check.
 {
-  const { turns, unwrap, unquote, asked, newest, sectionOf, unsay, lastTurn, stalled, transcripts, edited: edited_, NUDGE_TAG, ACTIVE, GRACE } = await import('../src/handoff-log.mjs'), { hushed, off, OFF, FORGOTTEN } = await import('../src/privacy.mjs'), { fit } = await import('../src/text.mjs');
+  const { newest, sectionOf, unsay, stalled, edited: edited_, ACTIVE, GRACE } = await import('../src/handoff-log.mjs'), { turns, unwrap, unquote, asked, lastTurn, transcripts, NUDGE_TAG } = await import('../src/transcript.mjs'), { hushed, off, OFF, FORGOTTEN } = await import('../src/privacy.mjs'), { fit } = await import('../src/text.mjs');
   const T0 = '2026-09-11T07:00:00Z';
   const store = (cwd_) => { const d = storeFor(home, cwd_); mkdirSync(d, { recursive: true }); return d; };
   const lines = (...l) => l.join('\n') + '\n';
@@ -2979,7 +2979,7 @@ require('node:module').syncBuiltinESMExports();
 
   // A slash command with no arguments tag is the command alone, whatever a stray closer or the tag's text says.
   {
-    const { prompt } = await import('../src/handoff-log.mjs');
+    const { prompt } = await import('../src/transcript.mjs');
     ok(prompt({}, '<command-name>/exit</command-name>') === '/exit' && prompt({}, '<command-name>/exit</command-name> </command-args> x') === '/exit',
       'a command with no <command-args> is its name alone, even beside a stray </command-args>');
     ok(prompt({}, '<command-name>/exit</command-name><command-args> a b </command-args>') === '/exit a b', 'and its arguments follow, trimmed');
@@ -3060,7 +3060,7 @@ require('node:module').syncBuiltinESMExports();
 // can reach the real hooks-live or the real repo.
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = ROOT;
-  const FILES_ = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
+  const FILES_ = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
     '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'tools/deploy.mjs', 'tools/suites.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
@@ -3157,7 +3157,7 @@ process.exit(s.code || 0);
 // The look back for a prompt (promptBefore), on a small file: past tool results, over reads of a megabyte; the prompt the
 // tail cut through; the file's first line; none in a file with no prompt.
 {
-  const { promptBefore } = await import('../src/handoff-log.mjs');
+  const { promptBefore } = await import('../src/transcript.mjs');
   const pb = join(home, 'pb.jsonl'), big = tool_(700_000);
   const rows = [user('the first line asks'), big, big, asst('mid'), user('the later ask'), big, big, asst('done')];
   writeFileSync(pb, rows.join('\n') + '\n');
@@ -3272,7 +3272,7 @@ if (!quick) {
 
 // 1.4.1 A (regex-speed-1, -2, -3, -4, -6, -7): hostile text must cost time in proportion to its size, and clip() must cap its input.
 {
-  const { prompt, FORGETS } = await import('../src/handoff-log.mjs');
+  const { prompt, FORGETS } = await import('../src/transcript.mjs');
   const lin = (name, f, floor = 1500) => { const [good, how] = linear(f, floor); ok(good, `${name} is linear: ${how}`); };
   lin('blanks after <command-name>', (m) => { const s = '<command-name>' + ' '.repeat(400 * m) + 'x'; prompt({ message: { content: s } }, s); });
   lin('newlines after <command-name>', (m) => { const s = '<command-name>' + '\n'.repeat(400 * m) + 'x'; prompt({ message: { content: s } }, s); });
@@ -3302,7 +3302,7 @@ if (!quick) {
   ok(!cut.includes('zzzz'), 'a secret just inside the cap is still redacted');
 }
 {
-  const { FORGETS } = await import('../src/handoff-log.mjs');
+  const { FORGETS } = await import('../src/transcript.mjs');
   // 1.4.2 S: each rule costs under 200 ms/MB on its own hostile opener run (bound: 3 times a pass over plain prose), and a forget
   // after more than 64 options is seen.
   if (!quick) {
@@ -3613,7 +3613,7 @@ if (!quick) {
 
 // 1.4.1 H: prose, other languages, a password typed as the answer (redaction-corpus-39, -40, secret-paths-7, -9).
 {
-  const { turns } = await import('../src/handoff-log.mjs');
+  const { turns } = await import('../src/transcript.mjs');
   const V = ['Zq8x', 'K2mP', '9vL4n'].join(''), W = ['correct', 'horse', 'battery', 'staple'];
   const lines = [[`connect with pw: ${V}`], [`export DBPW=${V}`], [`credential=${V} for the vpn`], [`login with user admin and pass ${V}`], [`creds: bob / ${V}`], [`login with me / ${V}`],
     [`the credentials are me:${V}`], [`set the password to ${V}`], [`change my password to ${V}`], [`PW ${V}`], [`my PIN is 638336`, '638336'], [`backup codes: 63833687 06838076 09497525`, '06838076'],
@@ -3635,7 +3635,7 @@ if (!quick) {
 
 // 1.4.1 H review: other-language prose, quoted passphrases, fewer false cuts, a typed passphrase, a cheap one-time-code rule.
 {
-  const { turns } = await import('../src/handoff-log.mjs');
+  const { turns } = await import('../src/transcript.mjs');
   const V = ['Zq8x', 'K2mP', '9vL4n'].join('');
   const bad = [];
   for (const t of [`Passwort ist ${V}`, `Das Passwort lautet ${V}`, `mot de passe est ${V}`, `la contrase\u00f1a es ${V}`, `\u043f\u0430\u0440\u043e\u043b\u044c ${V}`, `heslo: ${V}`, `salasana: ${V}`, `jelsz\u00f3: ${V}`, `\u015fifre: ${V}`,
@@ -3753,7 +3753,7 @@ if (!quick) {
 
 // 1.5.0 PR 1: what a turn saves is true. Items 29, 19, 18 and 20 read through turns().
 {
-  const { turns } = await import('../src/handoff-log.mjs');
+  const { turns } = await import('../src/transcript.mjs');
   const use = (name, input, id = 'tu1') => rec('assistant', [{ type: 'tool_use', id, name, input }]);
   const T0 = (m) => `2026-11-17T10:0${m}:00Z`;
   const end = (s, m) => asst(s, { ts: T0(m), message: { content: [{ type: 'text', text: s }], stop_reason: 'end_turn' } });
@@ -3810,7 +3810,7 @@ if (!quick) {
 // The marks are the ones real transcripts carry (read 2026-11-17): the rejection's toolUseResult, the hook block's and the auto-mode
 // denial's own first words, all with is_error true.
 {
-  const { turns } = await import('../src/handoff-log.mjs');
+  const { turns } = await import('../src/transcript.mjs');
   const use = (name, input, id) => rec('assistant', [{ type: 'tool_use', id, name, input }]);
   const res = (id, content, isErr, extra = {}) => rec('user', [{ type: 'tool_result', tool_use_id: id, content, ...(isErr ? { is_error: true } : {}) }], extra);
   const T = (m) => `2026-11-17T11:0${m}:00Z`;
@@ -3894,7 +3894,7 @@ if (!quick) {
 // 1.5.3 holes: the small readers of a transcript record, on the odd records a real transcript holds (null blocks, no message,
 // no input, a half-written line). Each assertion names what a reader that trusted the record's shape would get wrong.
 {
-  const H = await import('../src/handoff-log.mjs');
+  const H = await import('../src/transcript.mjs');
   const { turns, text, queuedText, toolAnswers, refused, editedFile, prompt, asked, NUDGE_TAG, lastTurn, FORGETS } = H;
   const U = (content, x = {}) => ({ type: 'user', message: { content }, timestamp: '2026-09-11T07:00:00Z', ...x });
   const A = (content, x = {}) => ({ type: 'assistant', message: { content }, timestamp: '2026-09-11T07:00:05Z', ...x });
@@ -3977,7 +3977,7 @@ if (!quick) {
 }
 // 1.5.3 holes: promptBefore() on lines that are not prompts, and the 4096-character head it checks for a tool result.
 {
-  const { promptBefore } = await import('../src/handoff-log.mjs');
+  const { promptBefore } = await import('../src/transcript.mjs');
   const mk = (t, x = {}) => JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: t }] }, ...x });
   const at = (n) => { const f = (p) => mk('the ask at the head', { pad: 'x'.repeat(p) }).slice(0, -1) + ',"tool_result":1}'; const p = n - f(0).indexOf('"tool_result"'); return f(p); };
   const old = mk('an older ask in words');
@@ -3998,7 +3998,7 @@ if (!quick) {
 }
 // 1.5.3 holes: odd records, the shapes of what the readers return, and what one Stop writes in odd cases.
 {
-  const { turns, FORGETS, goesOn, stalled } = await import('../src/handoff-log.mjs'), { hushed } = await import('../src/privacy.mjs'), { fit } = await import('../src/text.mjs');
+  const { stalled } = await import('../src/handoff-log.mjs'), { turns, FORGETS, goesOn } = await import('../src/transcript.mjs'), { hushed } = await import('../src/privacy.mjs'), { fit } = await import('../src/text.mjs');
   const J = (o) => JSON.stringify(o);
   const U = (c, x = {}) => J({ type: 'user', timestamp: '2026-09-11T07:00:00Z', message: { content: c }, ...x });
   const A = (c, x = {}) => J({ type: 'assistant', timestamp: '2026-09-11T07:00:05Z', message: { content: c }, ...x });
@@ -4110,14 +4110,14 @@ if (!quick) {
 }
 // 1.5.3 holes: FORGETS gives up (as a forget, the safe way) when its step budget of 8 per character plus 64 runs out.
 {
-  const { FORGETS } = await import('../src/handoff-log.mjs');
+  const { FORGETS } = await import('../src/transcript.mjs');
   // Each option holds another memory.mjs, so every opener walks the rest of the chain: quadratic, and 239 links outrun 8 per character.
   const chain = (n) => 'memory.mjs' + ' --x=memory.mjs'.repeat(n);
   ok(FORGETS.test(chain(238)) === false && FORGETS.test(chain(239)) === true, 'FORGETS stops at its step budget: 238 links read through, 239 count as a forget');
 }
 // 1.5.3 holes (handoff-log, part 3): a slash command's name, the nudge tag's place, FORGETS's step budget and its skipped rescans, the calls and edits a turn keeps, and what clip does at exactly its pre-cut length.
 {
-  const { turns, prompt, asked, NUDGE_TAG, FORGETS, toolAnswers } = await import('../src/handoff-log.mjs');
+  const { turns, prompt, asked, NUDGE_TAG, FORGETS, toolAnswers } = await import('../src/transcript.mjs');
   {
     const p = (s) => prompt({}, s);
     ok(p('<command-name>/deploy</command-name><command-args> now </command-args>') === '/deploy now', 'a command and its args');

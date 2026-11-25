@@ -629,7 +629,7 @@ ok(runLines().length === 20 && !readFileSync(join(root, '.stop-ran'), 'utf8').en
 }
 // A handoff-log.mjs that cannot load writes no handoff: no proof of life either.
 const broken = tempDir('broken-');
-for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'text.mjs', 'privacy.mjs']) copyFileSync(tool(`src/${f}`), join(broken, f));
+for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs']) copyFileSync(tool(`src/${f}`), join(broken, f));
 writeFileSync(join(broken, 'handoff-log.mjs'), 'this is not javascript (');
 const ranBroken = statSync(join(root, '.stop-ran')).mtimeMs;
 spawnSync(process.execPath, [join(broken, 'memory-tier.mjs'), '--stop'], { env, input: JSON.stringify({ transcript_path: join(root, 'proj-one', 'session.jsonl'), session_id: 'tst' }) });
@@ -1554,7 +1554,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 {
   const was = [process.env.HOME, process.env.USERPROFILE];
   const hj = tempDir('memtier-nojournal-'), pj = join(hj, '.claude', 'projects', 'C--nj'), copy = tempDir('nojournal-'), tj = join(pj, 'nj.jsonl');
-  for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs']) copyFileSync(tool(`src/${f}`), join(copy, f));
+  for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs']) copyFileSync(tool(`src/${f}`), join(copy, f));
   writeFileSync(join(copy, 'journal.mjs'), 'this is not javascript (');
   mkdirSync(pj, { recursive: true });
   writeFileSync(tj, [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'asked with no journal' } },
@@ -1771,7 +1771,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   // Day zero is a date: a note named for 1970-01-01, or stamped with its first millisecond, is old, not "no date" (0 is falsy, not missing).
   ok(!await hotAt({ name: 'log-1970-01-01' }, Date.now()), 'a name dated 1970-01-01 is an event log from 1970, archived');
   {
-    const d = tempDir('memtier-epoch-'), idx = `- [zero](zero.md) — hook
+    const d = tempDir('memtier-epoch-'), idx = `- [zero](zero.md) ï¿½ hook
 `;
     writeNote(d, 'zero', { modified: '1970-01-01T00:00:00.000Z' });
     for (const run of ['read from the note', 'read from the cache of the first run']) {

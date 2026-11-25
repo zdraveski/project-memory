@@ -750,8 +750,7 @@ const EXPECTED = {
 ;
 
 // The code under test, from where it is.
-const { turns, readTail, promptBefore } = await import('../src/handoff-log.mjs');
-const { chunk, past } = await import('../src/journal.mjs');
+const { turns, readTail, promptBefore, chunk, past } = await import('../src/transcript.mjs');
 
 // turns(): each fixture, behind a line the tail cut through, a type nothing reads, a line that is no JSON, and a last line cut.
 const flat = (t) => ({ ...t, edits: [...t.edits] });
