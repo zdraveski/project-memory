@@ -293,7 +293,7 @@ d92366e2ea3b src/memory.mjs:105 `??` -> `||`: the left side is the parsed `plugi
 a57763f63926 src/memory.mjs:134 `false` -> `undefined`: the catch sits in a find() predicate, which reads only truthiness; undefined and false are the same
 8d095c58da16 src/memory.mjs:151 `false` -> `undefined`: caseless()'s result reaches only fold()'s `folds` parameter through pick(), where it is read as `folds ? ... : n`, truthiness alone
 2a91b80f4111 src/memory.mjs:456 `''` -> `undefined`: recent()'s only caller (line 441) reads it as `if (ch)`, so '' and undefined both add no line
-063b1b9229d7 src/memory.mjs:695 `?.` -> `.`: missing() is called only with the error caught from execFileSync (line 765), always an Error object and never null or undefined, so `e?.stderr` and `e.stderr` are the same
+f00341eb545e src/snapshot.mjs:695 `?.` -> `.`: missing() is called only with the error caught from execFileSync (line 765), always an Error object and never null or undefined, so `e?.stderr` and `e.stderr` are the same
 0dc1f04af18f src/handoff-log.mjs:1240 `await main()` -> `main()`: main() catches every error itself unless rethrow is set (the tests' only caller path), and process.exitCode is already 0, so the process exits with the same output whether the promise is awaited or left pending
 c8a3aff63da2 src/transcript.mjs:978 `>=` -> `>`: bytes runs 512000 * 4^k (512000, 2048000, 8192000, 32768000) and 32e6 is none of them (4^k would be 62.5), so bytes >= 32e6 and bytes > 32e6 are true for the same values
 8e5433a08b55 src/handoff-log.mjs:978 `||` -> `&&` (whole || bytes >= 32e6): with whole true and bytes below the cap the loop only reads again; a whole file read at a larger window is the same text, so scan() gives the same result and it returns at 32768000 at the latest, same value
@@ -323,7 +323,7 @@ f65599f88474 src/privacy.mjs:729 `null` -> `undefined`: the caller tests `!live`
 2a15fad8deaa src/handoff-log.mjs:732 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same
 
 e1a8873728e2 src/memory.mjs:938 enforceHook's `.find(existsSync) ?? join(...)` -> `||`: find returns a path or undefined, never an empty string, so `||` and `??` take the same branch
-6e3bc419fedb src/memory.mjs:517 the gc retry `catch { sleep; gc }` -> `{}`: it runs only when a detached gc --auto races the purge, which no test can start on demand; the 1.6.0 snapshot module (step 16 PR C) removes the race
+1b7bd6e51841 src/snapshot.mjs:517 the gc retry `catch { sleep; gc }` -> `{}`: it runs only when a detached gc --auto races the purge, which no test can start on demand; the 1.6.0 snapshot module (step 16 PR C) removes the race
 69a6b76879f6 src/memory.mjs:926 doctor's stale-lock filter `catch { return false; }` -> `{}`: undefined and false are both falsy to filter
 dedb4e067315 src/memory.mjs:926 doctor's stale-lock filter `return false` -> `return undefined`: undefined and false are both falsy to filter
 0e88165517c4 src/enforce.mjs:201 the prefilter's `non-ASCII && RE.test(norm(l))` -> `||`: norm changes only non-ASCII text, so the answer is the same and only slower
