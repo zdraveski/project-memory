@@ -21,6 +21,7 @@ import page from './mutants/page.mjs';
 import deploy from './mutants/deploy.mjs';
 import enforce from './mutants/enforce.mjs';
 import enforceHook from './mutants/enforce-hook.mjs';
+import recallHook from './mutants/recall-hook.mjs';
 import brief from './mutants/brief.mjs';
 import briefing from './mutants/briefing.mjs';
 import timing from './mutants/timing.mjs';
@@ -45,12 +46,13 @@ export const suites = {
   'src/memory.mjs': [MEMORY, memory],
   'hooks/hooks.json': [MEMORY, hooks],
   'src/journal.mjs': ['test/journal.test.mjs', journal],
-  'src/recall.mjs': ['test/recall.test.mjs', recall],
+  'src/recall.mjs': [['test/recall.test.mjs', 'test/recall-hook.test.mjs'], recall],
   'tools/deploy.mjs': ['test/handoff-log.test.mjs', deploy],
   'src/brief.mjs': ['test/handoff-log.test.mjs', brief],
   'src/briefing.mjs': [['test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/journal.test.mjs', 'test/memory-switch.test.mjs', 'test/memory-tier.test.mjs'], briefing],
   'src/enforce.mjs': ['test/enforce.test.mjs', enforce],
   'src/enforce-hook.mjs': ['test/enforce-hook.test.mjs', enforceHook],
+  'src/recall-hook.mjs': ['test/recall-hook.test.mjs', recallHook],
   'src/timing.mjs': ['test/timing.test.mjs', timing],
   'src/page.mjs': ['test/page.test.mjs', page],
   'src/text.mjs': [['test/text.test.mjs', 'test/handoff-log.test.mjs'], text],

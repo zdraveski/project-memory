@@ -48,13 +48,16 @@ The git-rule watcher (a PreToolUse hook) reads the notes that hold an `enforce:`
 
 The command `memory enforce replay <note>` is run by hand. It reads the git commands Claude ran through Bash or PowerShell in this project's conversation records of the last 30 days (every project's with `--all`) and prints the ones that match the note's rule to your terminal, each clipped to 160 characters with secrets replaced. It skips private conversations and projects with memory off, and saves nothing.
 
+The file-change hook (a PostToolUse hook, after Edit, Write and NotebookEdit) reads the path of the file just changed, this project's journal (the newest 365 days or 6 MB of it), its forget list and its private-conversation list, to name earlier exchanges that changed the same file. It sends nothing anywhere. `PROJECT_MEMORY_RECALL=0` turns it off.
+
 When a subagent finishes, the plugin reads the end of that subagent's own conversation record and saves its final report, the first line of its task and the files it changed in the journal. The report is cleaned of secrets, and `forget` removes it. A report over 8,000 characters keeps its first 5,000 and last 2,900, with a note of how many characters were cut between them.
 
 ## What it saves
 
 All of it stays in `~/.claude/projects` on your computer:
 
-- `.timing`, one line for each run of a hook: the time, which hook (`save`, `brief`, `enforce` or `gate`), which event (`Stop`, `PreToolUse` and the like, letters only) and how many milliseconds each step took. Numbers and those fixed names only: no text from a conversation, no file name, no command. It is cut to its newer half at 256 KB. `memory doctor` shows the times. They count from the start of Node, so what Claude Code spends starting a hook comes on top. Set `PROJECT_MEMORY_TIMING=0` to turn it off.
+- `.timing`, one line for each run of a hook: the time, which hook (`save`, `brief`, `enforce`, `gate` or `recall`), which event (`Stop`, `PreToolUse` and the like, letters only) and how many milliseconds each step took, and for `recall` how many earlier exchanges it named. Numbers and those fixed names only: no text from a conversation, no file name, no command. It is cut to its newer half at 256 KB. `memory doctor` shows the times. They count from the start of Node, so what Claude Code spends starting a hook comes on top. Set `PROJECT_MEMORY_TIMING=0` to turn it off.
+- `.sessions/<project folder>/<conversation tag>`, one small file per conversation: the full path of each file it changed (lower case on Windows and macOS) and the keys of the earlier exchanges it was told about, each with the time (and a helper's id when a helper wrote it). No text of a conversation. Nothing is written for a private conversation or turn, or while memory is off. Each reply's save deletes those older than 7 days; `forget` and `memory off` delete the project's, `rescan --apply --yes` every project's, and `incognito` (or a `<private-session>` mark) the conversation's.
 - `.enforce-log` and `.enforce.json` in a store: which note's rule a git command matched (note name, session tag, sub-agent type, tool-call id; never the command) and a cache of the rules. Nothing is written for a private conversation or while memory is off.
 - A record of where you left off (`handoff.md`): the start of your latest
   messages (up to 500 characters each) and of Claude's replies (up to 900),
@@ -311,6 +314,7 @@ a conversation.
 
 ## How long it keeps it
 
+- The session files (`.sessions`): 7 days after their last change.
 - The hook times (`.timing`): the newest part of 256 KB, a few days of use. Deleting the file loses nothing but the times.
 - The record of where you left off: until newer exchanges replace it. Lines
   Claude writes in `handoff.md` outside the record: until Claude or you
@@ -353,7 +357,7 @@ Uninstalling the plugin leaves all of this in place. To delete:
   already replaced, and never leaves your computer. `forget`, `incognito`,
   `memory off` and `rescan --apply` delete it; run `memory page` again to
   make a fresh one.
-- the bookkeeping files: in `~/.claude/projects`, `.hash-salt`, `.gitignore`, `.stop-ran`, `.timing`,
+- the bookkeeping files: in `~/.claude/projects`, `.hash-salt`, `.gitignore`, `.stop-ran`, `.timing`, `.sessions`,
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
   `.journal-failed-…` file and the folder `.nudge`; in each project's
   `memory` folder, `.tiered`, `.facts`, `.health`, `.private-sessions`,

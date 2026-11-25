@@ -229,6 +229,17 @@ Four ways, from narrow to wide:
 To turn off only the startup briefing, set `PROJECT_MEMORY_BRIEFING` to `0`.
 Everything else keeps saving.
 
+**A file with a past.** When Claude changes a file that earlier conversations
+in this project changed too, it is told so with the result of that first
+change: the date, the conversation and the request of the newest two, and how
+to open them. Once per file and conversation, at most three such notes between
+two of your messages, never from a private or forgotten exchange. Set
+`PROJECT_MEMORY_RECALL` to `0` to turn these notes off. A note already shown
+stays in the conversation that got it: `forget` cannot take it back. A
+helper's changes before 1.6.0 have no past (its entries listed no files then).
+To know what it has said, each conversation keeps a small file in
+`~/.claude/projects/.sessions/`, deleted after 7 days.
+
 Each hook run also leaves one line of numbers (when, which hook, how many
 milliseconds) in `~/.claude/projects/.timing`, and `memory doctor` shows the
 times. Set `PROJECT_MEMORY_TIMING=0` to turn that off.

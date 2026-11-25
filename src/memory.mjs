@@ -59,7 +59,7 @@ import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { clip } from './text.mjs';
 import { redact, sectionOf, parse, stalled, GRACE, tag, unsay } from './handoff-log.mjs';
 import { BLOCK, transcripts, lastTurn, chunk as chunkOf } from './transcript.mjs';
-import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
+import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged, dropSessions } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -750,7 +750,7 @@ const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e 
 
 // One note per hook that ran in the last 7 days (the .timing file, timing.mjs). "since" is the later of 7 days ago and the oldest line:
 // the file is cut at 256 KB, which a busy user fills sooner than 7 days.
-const TIMED = { save: 'save after a reply', tidy: 'tidy-up and snapshot after a reply (in the background)', brief: 'briefing', enforce: 'git rule check', gate: 'check before a compaction' };
+const TIMED = { save: 'save after a reply', tidy: 'tidy-up and snapshot after a reply (in the background)', brief: 'briefing', enforce: 'git rule check', gate: 'check before a compaction', recall: 'look-up after a file change' };
 export function timingLines(now = Date.now()) {
   if (process.env.PROJECT_MEMORY_TIMING === '0') return ['hook times are off (PROJECT_MEMORY_TIMING=0)'];
   const all = readTimes(0, join(projectsRoot(), TIMING)), since = Math.max(now - 7 * 864e5, all[0]?.t ?? 0), sec = (ms) => (ms / 1000).toFixed(2);
@@ -763,6 +763,9 @@ export function timingLines(now = Date.now()) {
     const t = stats(rs.map((r) => r.ms)), start = stats(rs.map((r) => r.start).filter(Number.isFinite)).median;
     return `${label}: ${t.runs} run${t.runs === 1 ? '' : 's'} since ${local(since).slice(0, 10)}, median ${sec(t.median)} s (${sec(start ?? 0)} s of it before the plugin's code runs), 9 in 10 under ${sec(t.p90)} s, worst ${sec(t.worst)} s`;
   });
+  // Whether memory spoke up on real sessions: a count from the timing lines (1.6.0 step 4).
+  const shown = all.filter((x) => x.t >= now - 7 * 864e5 && x.h === 'recall').reduce((n, x) => n + (Number.isInteger(x.n) ? x.n : 0), 0);
+  if (groups.has(TIMED.recall)) lines.push(`pointers shown since ${local(since).slice(0, 10)}: ${shown}`);
   return lines.length ? lines : ['no hook times yet: they collect from the next reply on'];
 }
 
@@ -1350,6 +1353,12 @@ export function main(given) {
   if (cmd === 'forget' || cmd === 'incognito' || cmd === 'off' || (cmd === 'rescan' && rest.includes('--apply') && rest.includes('--yes'))) {
     const bad = dropPage();
     if (bad instanceof Error) { r.lines.push(`could not delete the page: ${reason(bad)}; it still holds journal text`); r.ok = false; }
+  }
+  // The session files (recall.mjs) hold paths and keys of exchanges: forget and off drop the project's, rescan every project's.
+  // incognito drops its conversation's through the journal's takeBack.
+  if (cmd === 'forget' || cmd === 'off' || (cmd === 'rescan' && rest.includes('--apply') && rest.includes('--yes'))) {
+    const bad = dropSessions(cmd === 'rescan' ? null : here);
+    if (bad instanceof Error) { r.lines.push(`could not delete the session files: ${reason(bad)}`); r.ok = false; }
   }
   // A --session no transcript has: the store came from the folder this runs in, and status reported it in silence (audit C-10).
   if (opt('--session') !== undefined && cmd !== 'incognito' && !store && !rest.includes('--shared') && !rest.includes('--all') && !(session && transcriptOf(session))) r.lines.unshift(`no conversation ${clip(opt('--session'), 100)} on this machine, so this is the store of the folder this runs in: ${here}`);

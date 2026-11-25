@@ -21,17 +21,18 @@ import { liveTimes } from './live-times.mjs';
 import { pct, stats, read, FILE } from '../src/timing.mjs';
 import { build, PROJECT, CWD } from './bench-store.mjs';
 
-const OURS = ['memory-tier.mjs', 'brief.mjs', 'enforce-hook.mjs', 'compact-gate.mjs', 'handoff-log.mjs'];
+const OURS = ['memory-tier.mjs', 'brief.mjs', 'enforce-hook.mjs', 'compact-gate.mjs', 'handoff-log.mjs', 'recall-hook.mjs'];
 // The name timing.mjs gives each script's lines; handoff-log.mjs writes none.
-const HOOK = { 'memory-tier.mjs': 'save', 'brief.mjs': 'brief', 'enforce-hook.mjs': 'enforce', 'compact-gate.mjs': 'gate' };
+const HOOK = { 'memory-tier.mjs': 'save', 'brief.mjs': 'brief', 'enforce-hook.mjs': 'enforce', 'compact-gate.mjs': 'gate', 'recall-hook.mjs': 'recall' };
 const EMPTY = 'node, empty script';
 const VALUED = ['--plugin', '--json', '--scale', '--project', '--days'];
-export const CASES = ['Stop, nothing changed', 'Stop, a memory changed', 'SessionStart startup', 'SessionStart compact', 'PreCompact auto', 'PreToolUse git', 'search', 'status', EMPTY];
+const SEEN = 'PostToolUse, file already seen', FIRST = 'PostToolUse, first change';
+export const CASES = ['Stop, nothing changed', 'Stop, a memory changed', 'SessionStart startup', 'SessionStart compact', 'PreCompact auto', 'PreToolUse git', SEEN, FIRST, 'search', 'status', EMPTY];
 // A case's median may be at most this many times the empty script's, measured in the same run.
 // Each is max(3, ceil(3 * the largest ratio seen)) over the four CI machines and the build PC, 2026-11-20.
 export const LIMITS = {
   'Stop, nothing changed': 56, 'Stop, a memory changed': 59, 'SessionStart startup': 13, 'SessionStart compact': 49,
-  'PreCompact auto': 49, 'PreToolUse git': 7, search: 27, status: 22,
+  'PreCompact auto': 49, 'PreToolUse git': 7, [SEEN]: 7, [FIRST]: 16, search: 27, status: 22,
 };
 
 async function live(argv) {
@@ -106,6 +107,11 @@ function measure({ runs, real, plugin, scale, only }) {
 
   const some = join(store, readdirSync(store).find((f) => f.endsWith('.md') && !f.startsWith('MEMORY') && f !== 'handoff.md'));
   const stop = () => spawn('memory-tier.mjs', ['--stop'], payload({ hook_event_name: 'Stop' }));
+  // The first file of the newest day's first entry, as the change hook gets it: whole, under the bench project's folder.
+  const newest = readdirSync(join(store, 'journal')).filter((f) => f.endsWith('.md')).sort().at(-1);
+  const changed = /^\*\*Changed:\*\* ([^,\n]+)/m.exec(readFileSync(join(store, 'journal', newest), 'utf8'))?.[1] ?? 'src/x.js';
+  let fresh = 0;
+  const change = (session) => ({ session_id: session, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: `${CWD}/${changed}` }, tool_use_id: 'toolu_2' });
   const cases = {
     'Stop, nothing changed': stop,
     'Stop, a memory changed': () => { const n = new Date(Date.now() - 600_000 + Math.random() * 1000); utimesSync(some, n, n); return stop(); },
@@ -113,6 +119,10 @@ function measure({ runs, real, plugin, scale, only }) {
     'SessionStart compact': () => spawn('brief.mjs', ['--print'], payload({ hook_event_name: 'SessionStart', source: 'compact' })),
     'PreCompact auto': () => spawn('compact-gate.mjs', [], payload({ hook_event_name: 'PreCompact', trigger: 'auto' })),
     'PreToolUse git': () => spawn('enforce-hook.mjs', [], payload({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git status' }, tool_use_id: 'toolu_1' })),
+    // A file of the made-up journal: one conversation has changed it already, and a fresh one each run has not, so its
+    // look-up scans the journal and shows a pointer.
+    [SEEN]: () => spawn('recall-hook.mjs', [], payload(change('bbbbbbbb-0000'))),
+    [FIRST]: () => spawn('recall-hook.mjs', [], payload(change(`${String(++fresh).padStart(8, 'c')}-0000`))),
     search: () => spawn('memory.mjs', ['search', 'harbor', '--store', store]),
     status: () => spawn('memory.mjs', ['status', '--store', store]),
     [EMPTY]: () => { const t0 = process.hrtime.bigint(); spawnSync(process.execPath, ['-e', ''], { env }); return Number(process.hrtime.bigint() - t0) / 1e6; },

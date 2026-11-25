@@ -11,6 +11,7 @@ import { text, readTail, readHead, openFile, records, chunk, userText, FORGETS, 
 import { PRIVATE, PRIVATE_SESSION, hushed, isHushed, FORGOTTEN, forgotten, OFF, unreadable, wasOff } from './privacy.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
 import { fault, failures, clear } from './run-records.mjs';
+import { dropSessions } from './recall.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -55,7 +56,7 @@ function each(ds, fn) {
 // A path inside the turn's folder reads shorter relative to it. In any case
 // only where the disk ignores case (Windows, macOS): on Linux /home/USER is
 // not /home/user (final review).
-const rel = (p, cwd) => {
+export const rel = (p, cwd) => {
   const c = cwd ? cwd.replace(/[\\/]+$/, '') : '';
   return c && p.length > c.length + 1 && /[\\/]/.test(p[c.length]) && foldCase(p.slice(0, c.length)) === foldCase(c) ? p.slice(c.length + 1) : p;
 };
@@ -473,6 +474,7 @@ function checked(dir, k) {
 // its days owed are retried alone, and swept whole again, each of its Stops
 // read every day. Again when `again`.
 export function takeBack(dir, k, s, again = false, priv = false) {
+  dropSessions(dir, s); // its session file holds the paths it changed and the keys it was shown
   if (!again && checked(dir, k)?.[4] === 'swept') return;
   if (priv) unsay(dir, (t) => t.s === s);
   let owed = null;
