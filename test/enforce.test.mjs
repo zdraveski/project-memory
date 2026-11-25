@@ -159,16 +159,12 @@ ok(!A('cat <<EOF\ngit add -A\nEOF').hit, 'a real heredoc body is still dropped')
 for (const c of ['env FOO=1 git add -A', 'command git add -A', '/usr/bin/git add -A', 'git.exe add -A', 'rtk git add -A', 'sudo git add -A', 'time git add -A', '& git add -A', '& "C:/Program Files/Git/cmd/git.exe" add -A'])
   ok(A(c).hit, `wrapped: ${c}`);
 ok(!A('echo git add -A').hit && !A('git-lfs add -A').hit && !A('gitk add -A').hit, 'echo, git-lfs, gitk are no hit');
-// Linear by growth, not by one time limit: a fixed 500 ms failed on busy macOS runners (3 PRs, 2026-11), and a ratio alone
-// failed on Linux, where a few-ms run makes one GC pause look like 8x. The best of 3 at n and 4n: quadratic work grows about
-// 16x (linear about 4x) and, at these sizes, takes seconds; it fails only when both are true.
-const growth = (f, n) => { const best = (k) => Math.min(...[0, 1, 2].map(() => { const t = performance.now(); f(k); return performance.now() - t; }));
-  const small = best(n), big = best(4 * n); return { ratio: big / Math.max(small, 0.01), big }; };
-const steep = (g) => g.ratio >= 8 && g.big >= 250;
-ok(growth((k) => { let c = 0; for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) c += j & i; return c; }, 2000).ratio >= 8, 'growth() sees quadratic work');
+// The best of 3 runs: one run over 500 ms failed on busy CI runners (3 PRs, 2026-11), while quadratic work misses every time.
+// (Growth ratios were tried and were noisier still: 11x for linear work on Windows CI.)
+const best = (f) => Math.min(...[0, 1, 2].map(() => { const t = performance.now(); f(); return performance.now() - t; }));
 ok(A('git add -A\n' + 'cat <<EOF\n'.repeat(20000)).hit, 'a hit before 20,000 unclosed heredocs');
-{ const h = growth((k) => A('git add -A\n' + 'cat <<EOF\n'.repeat(k)), 10000), s = growth((k) => segments('git status\n' + 'cat <<A\nx\n'.repeat(k)), 30000);
-  ok(!steep(h) && !steep(s), `unclosed heredocs are linear (hits ${h.ratio.toFixed(1)}x ${h.big.toFixed(0)} ms, segments ${s.ratio.toFixed(1)}x ${s.big.toFixed(0)} ms)`); }
+{ const h = best(() => A('git add -A\n' + 'cat <<EOF\n'.repeat(20000))), s = best(() => segments('git status\n' + 'cat <<A\nx\n'.repeat(60000)));
+  ok(h < 500 && s < 500, `unclosed heredocs are linear (hits ${h.toFixed(0)} ms, segments ${s.toFixed(0)} ms)`); }
 
 ok(!segments('echo "x\\').join('|').includes('undefined') && segments('git commit -m "a\\\ngit add -A"').length === 1, 'a backslash ending the last line in a quote adds no text');
 { const d = join(home, 'big'); mkdirSync(d); const rule = 'enforce:\n  on: git\n  has:\n    - x\n';
