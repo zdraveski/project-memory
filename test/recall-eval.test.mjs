@@ -34,6 +34,9 @@ const hook = (script) => ({ hooks: [{ type: 'command', command: 'node', args: [`
 writeFileSync(join(plug, 'hooks', 'hooks.json'), JSON.stringify({ hooks: { UserPromptSubmit: [hook('recall-hook.mjs')], PostToolUseFailure: [hook('other.mjs')] } }));
 ok(JSON.stringify([...builtTriggers(plug)]) === '["prompt"]', 'prompt built; error names another script; file absent');
 ok(builtTriggers(tempDir('reval-none-')).size === 0, 'no hooks.json: nothing built');
+mkdirSync(join(plug, 'agents')); writeFileSync(join(plug, 'agents', 'recall.md'), '---\nname: recall\n---\n');
+ok(JSON.stringify([...builtTriggers(plug)]) === '["prompt","helper"]', 'the helper set is built when the plugin ships agents/recall.md');
+ok(parseArgs(['--plugin', 'x', '--set', 'helper']).set === 'helper', '--set helper');
 
 // a session's stream: answer, cost, id, and whether a memory search ran
 const line = (o) => JSON.stringify(o);
@@ -72,10 +75,16 @@ gt = gates([res('a', 'file', 'misleading', 4, null)]); ok(!gt.file.pass, 'one mi
 gt = gates([res('a', 'file', 'control', 5, 4)]); ok(!gt.file.pass, 'a control must pass in both arms');
 gt = gates([res('a', 'file', 'gain', 5, null)]); ok(!gt.file.pass && /without/.test(gt.file.why.join(' ')), 'no arm without: no verdict on the gain');
 ok(gates([{ name: 'e', trigger: 'error', kind: 'gain', status: 'trigger not built' }]).error === undefined, 'a trigger not built has no gate');
+// the helper's gate: with the routing line, right at least as often as without, over all its cases
+gt = gates([res('p', 'helper', 'answer', 1, 2), res('q', 'helper', 'answer', 2, 1)]); ok(gt.helper.pass, '3 right against 3: passes');
+gt = gates([res('p', 'helper', 'answer', 1, 2), res('q', 'helper', 'answer', 1, 1)]); ok(!gt.helper.pass && /2 of 10 right with the routing line, 3 of 10 without/.test(gt.helper.why.join(' ')), '2 against 3 fails, and says so');
+gt = gates([res('p', 'helper', 'answer', 2, null)]); ok(!gt.helper.pass && /without/.test(gt.helper.why.join(' ')), 'no arm without: no verdict');
 
 // the cases as the design lists them
-ok(CASES.cases.length === 11 && CASES.cases.filter((c) => c.kind === 'misleading').length === 4, 'eleven cases, four misleading');
-ok(CASES.cases.every((c) => ['file', 'prompt', 'error'].includes(c.trigger) && ['gain', 'control', 'misleading'].includes(c.kind)), 'every trigger and kind known');
+ok(CASES.cases.length === 17 && CASES.cases.filter((c) => c.kind === 'misleading').length === 4, 'seventeen cases, four misleading');
+ok(CASES.cases.every((c) => ['file', 'prompt', 'error', 'helper'].includes(c.trigger) && ['gain', 'control', 'misleading', 'answer'].includes(c.kind)), 'every trigger and kind known');
+ok(CASES.cases.filter((c) => c.trigger === 'helper').map((c) => c.name).join() === 'helper-port,helper-last-week-bug,helper-decision,helper-staging-db,helper-error-fix,helper-never-discussed'
+  && CASES.cases.every((c) => (c.trigger === 'helper') === (c.kind === 'answer')), 'the six answer cases of the helper');
 
 // the whole run, against a fake claude: no paid session
 const r = spawnSync(process.execPath, [tool('tools/recall-eval.mjs'), '--self-check'], { encoding: 'utf8', timeout: 300_000 });

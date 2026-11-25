@@ -30,6 +30,8 @@ const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 export const CASES = JSON.parse(readFileSync(join(repo, 'tools', 'recall-eval-cases.json'), 'utf8'));
 export const PREFIX = 'pm-recall-eval-';
 const EVENT = { file: 'PostToolUse', prompt: 'UserPromptSubmit', error: 'PostToolUseFailure' };
+// The helper's set (headline 6) has no hook: it is built when the plugin ships the agent, and its arm without drops the routing line.
+const HELPER = 'helper', SETS = [...Object.keys(EVENT), HELPER];
 const RECALL_HOOK = 'recall-hook.mjs', EMPTY_HOOK = 'empty-hook.mjs';
 const AT_ONCE = 4, SESSION_MS = 10 * 60_000, HOOK_SLACK_MS = 100, DAY = 86_400_000;
 const USAGE = 'usage: node tools/recall-eval.mjs --plugin <dir> [--set file|prompt|error] [--without] [--runs N] [--case <name>] [--model sonnet] [--max-usd 20] [--json <path>]\n       node tools/recall-eval.mjs --self-check';
@@ -53,7 +55,7 @@ export function parseArgs(argv) {
   if (!o.plugin) throw new Error('--plugin <dir> is needed');
   if (o.runs !== null && !(Number.isInteger(o.runs) && o.runs > 0)) throw new Error('--runs takes a whole number above 0');
   if (!(o.maxUsd > 0)) throw new Error('--max-usd takes an amount above 0');
-  if (o.set && !EVENT[o.set]) throw new Error(`--set is one of ${Object.keys(EVENT).join(', ')}`);
+  if (o.set && !SETS.includes(o.set)) throw new Error(`--set is one of ${SETS.join(', ')}`);
   if (o.case && !CASES.cases.some((c) => c.name === o.case)) throw new Error(`no case ${o.case}`);
   return o;
 }
@@ -82,10 +84,11 @@ export function sweep() {
 // A folder of this run, its pid inside so no other run sweeps it.
 const ownDir = (tag = '') => { const d = real(mkdtempSync(join(tmpdir(), PREFIX + tag))); writeFileSync(join(d, 'pid'), String(process.pid)); return d; };
 
-// The triggers whose hook the plugin has: its event runs recall-hook.mjs.
+// The triggers whose hook the plugin has: its event runs recall-hook.mjs. The helper's, when it ships agents/recall.md.
 export function builtTriggers(plugin) {
   let hooks = {}; try { hooks = JSON.parse(readFileSync(join(plugin, 'hooks', 'hooks.json'), 'utf8')).hooks ?? {}; } catch {}
-  return new Set(Object.keys(EVENT).filter((t) => JSON.stringify(hooks[EVENT[t]] ?? []).includes(RECALL_HOOK)));
+  const built = new Set(Object.keys(EVENT).filter((t) => JSON.stringify(hooks[EVENT[t]] ?? []).includes(RECALL_HOOK)));
+  return existsSync(join(plugin, 'agents', 'recall.md')) ? built.add(HELPER) : built;
 }
 
 // A memory search, for the grader: the CLI's search or show, or any tool reaching into the stores. Loading the skill is none.
@@ -135,9 +138,10 @@ export function grade(c, { answer = '', pointer = false, searched = false, dir }
 }
 
 // The eval part of a trigger's gate, scaled to the runs: a gain passes in 4 of 5 with pointers and at most 2 of 5
-// without; a misleading case and a control pass every time, a control in both arms.
+// without; a misleading case and a control pass every time, a control in both arms. The helper's answer cases, summed: right with
+// the routing line at least as often as without it.
 export function gates(results) {
-  const out = {};
+  const out = {}, right = { with: 0, without: 0, runs: 0, runsWithout: 0 };
   for (const r of results.filter((x) => x.status === 'run')) {
     const g = (out[r.trigger] ??= { pass: true, why: [] }), n = r.with?.runs ?? 0, fail = (why) => { g.pass = false; g.why.push(`${r.name}: ${why}`); };
     if (!n) { fail('not run'); continue; }
@@ -145,11 +149,18 @@ export function gates(results) {
       if (r.with.pass < Math.ceil(0.8 * n)) fail(`${r.with.pass} of ${n} with pointers, needs ${Math.ceil(0.8 * n)}`);
       if (!r.without?.runs) fail('no arm without pointers (--without)');
       else if (r.without.pass > Math.floor(0.4 * r.without.runs)) fail(`${r.without.pass} of ${r.without.runs} without pointers: too easy, rewrite it once`);
+    } else if (r.kind === 'answer') {
+      if (!r.without?.runs) fail('no arm without the routing line (--without)');
+      else Object.assign(right, { with: right.with + r.with.pass, without: right.without + r.without.pass, runs: right.runs + n, runsWithout: right.runsWithout + r.without.runs });
     } else if (r.with.pass < n) fail(`${r.with.pass} of ${n} with pointers, needs all`);
     if (r.kind === 'control') {
       if (!r.without?.runs) fail('no arm without pointers (--without)');
       else if (r.without.pass < r.without.runs) fail(`${r.without.pass} of ${r.without.runs} without pointers, needs all`);
     }
+  }
+  if (out[HELPER] && right.with < right.without) {
+    out[HELPER].pass = false;
+    out[HELPER].why.push(`${right.with} of ${right.runs} right with the routing line, ${right.without} of ${right.runsWithout} without`);
   }
   return out;
 }
@@ -387,7 +398,7 @@ async function selfCheck() {
     ok(!r.out.includes('tok-SECRET-123') && !readFileSync(json, 'utf8').includes('tok-SECRET-123'), 'the token is never printed');
     ok(JSON.stringify(ours()) === JSON.stringify(before), 'the run deleted its folders');
     const rep = JSON.parse(readFileSync(json, 'utf8')), by = Object.fromEntries(rep.cases.map((c) => [c.name, c]));
-    ok(rep.cases.length === 11 && by['error-again'].status === 'trigger not built' && !by['error-again'].with, 'the error case: not built, not run');
+    ok(rep.cases.length === 17 && by['error-again'].status === 'trigger not built' && !by['error-again'].with && by['helper-port'].status === 'trigger not built', 'the error and helper cases: not built, not run');
     ok(rep.cases.filter((c) => c.status === 'run').every((c) => c.with.pass === 1 && c.with.runs === 1), `every built case passes with pointers: ${JSON.stringify(rep.cases.map((c) => [c.name, c.with?.why]))}`);
     ok(['file-rule', 'port-implicit', 'pdf-implicit'].every((n) => by[n].without.pass === 0 && by[n].with.pointer === 1 && by[n].without.pointer === 0), 'a gain fails without pointers, which the without arm switches off');
     ok(['file-none', 'no-need', 'never-discussed'].every((n) => by[n].without.pass === 1 && by[n].with.pointer === 0), 'controls pass in both arms, with no pointer');

@@ -2509,6 +2509,10 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
   for (const src of ['startup', 'compact']) ok(/^When a note and the code disagree about what exists, the code wins\. When the user corrects how you work, save it as a feedback note before going on\.$/m.test(brief(src)), `the ${src} briefing carries the two rules (got ${brief(src)})`);
   // 1.5.4: the third line, on who said it.
   for (const src of ['startup', 'compact']) ok(/^A "decided", "rejected" or "parked" in a note is a session's summary\. Before telling the user they decided it, check their own words: memory skill, search --asked KEYWORDS.$/m.test(brief(src)), `the ${src} briefing carries the third line (got ${brief(src)})`);
+  // 1.6.0 headline 6: the routing line to the recall helper; PROJECT_MEMORY_RECALL=0 (the eval's arm without) drops it.
+  for (const src of ['startup', 'compact']) ok(/^For a question about the past that one search does not answer, hand it to the project-memory:recall agent\.$/m.test(brief(src)), `the ${src} briefing routes to the helper (got ${brief(src)})`);
+  { const off = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source: 'startup' }), env: { ...process.env, PROJECT_MEMORY_RECALL: '0' } }).toString();
+    ok(!/project-memory:recall/.test(off) && /since 2026-09-03 is in its journal/.test(off), `PROJECT_MEMORY_RECALL=0 drops only the routing line (got ${off})`); }
   // 1.5.0 B2: after a compaction too, not only at startup.
   ok(/^Earlier work in this project since 2026-09-03 is in its journal/m.test(brief('compact')), `the briefing after a compaction names the journal too (got ${brief('compact')})`);
   // 1.5.0 B3: the plugin starts the briefing through brief.mjs, which says in one line when it cannot load, and has an off switch.
