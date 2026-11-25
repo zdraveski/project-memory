@@ -51,4 +51,15 @@ export default {
   "a warning taken for git's reason": [".find((l) => l && !l.startsWith('warning:'))", '.find((l) => l)'],
   "no git read as spawnSync ENOENT": ["(e.code === 'ENOENT' && String(e.syscall).startsWith('spawn') ? 'git is not installed'\n  : ", "("],
 
+  'C-4 no git taken for git': ["try { gitInstalled(); } catch { return 'git is not installed", "try {} catch { return 'git is not installed"],
+  "a linked store found by its resolved path": ["  if (!at.startsWith('..') && !isAbsolute(at)) return [relative(root, join(real(dir), file)).replace(/\\\\/g, '/')];", "  return [relative(root, join(real(dir), file)).replace(/\\\\/g, '/')];"],
+  "a project folder linked outside named by its target": ["return (links.length ? links : [basename(dirname(dir))]).map((n) => `${n}/memory/${file}`);", "return [relative(root, join(real(dirname(dir)), basename(dir), file)).replace(/\\\\/g, '/')];"],
+  "a store's second link named in the history": ["(links.length ? links : [basename(dirname(dir))])", "([basename(dirname(dir))])"],
+  "a history made before a first-sorting link lost": ["(links.length ? links : [", "(links.length ? links.slice(0, 1) : ["],
+  "a deleted index hides the link the snapshot keeps": ["const links = names.filter((n) => ", "const links = names.filter((n) => existsSync(join(projectsRoot(), n, 'memory', 'MEMORY.md')) && "],
+  "history paths read as patterns": ["gitArgs('--literal-pathspecs', ...a)", "gitArgs(...a)"],
+  'C-8 a non-ASCII snapshot name quoted away': ["git('-c', 'core.quotepath=off', 'log', '--format=', '--name-only'", "git('log', '--format=', '--name-only'"],
+  'a store path in another case misses its snapshots': ['realpathSync.native(p)', 'realpathSync(p)'],
+  'C-3 a repository above the projects folder taken for the snapshots': ["head = existsSync(join(projectsRoot(), '.git')) && ", 'head = '],
+  'C-3 a repository with no commit taken for snapshots': [" && !!git('rev-parse', '--verify', '-q', 'HEAD');", ';'],
 };

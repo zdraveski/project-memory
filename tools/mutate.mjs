@@ -53,7 +53,7 @@ export const suites = {
   'src/text.mjs': [['test/text.test.mjs', 'test/handoff-log.test.mjs'], text],
   'src/privacy.mjs': [['test/privacy.test.mjs', 'test/store.test.mjs', 'test/handoff-log.test.mjs'], privacy],
   'src/transcript.mjs': [['test/transcript.test.mjs', 'test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/journal.test.mjs'], transcript],
-  'src/snapshot.mjs': [['test/snapshot.test.mjs', 'test/memory-tier.test.mjs', 'test/store.test.mjs', 'test/enforce-hook.test.mjs'], snapshot],
+  'src/snapshot.mjs': [['test/snapshot.test.mjs', 'test/memory-tier.test.mjs', 'test/store.test.mjs', 'test/enforce-hook.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-cli.test.mjs', 'test/memory-switch.test.mjs', 'test/handoff-log.test.mjs'], snapshot],
 };
 // The file that holds a group's mutants: a --changed list naming it asks for that group alone.
 export const tableOf = (name) => `tools/mutants/${name.split('/').pop().replace(/\.\w+$/, '')}.mjs`;
