@@ -88,5 +88,13 @@ pass found, one per line, and is deleted when there are none.
 holds the commit, the tag and each file's size and time, so a file changed
 after the deploy is named.
 
+## Starting a conversation
+
+**Briefing**: the text the plugin prints when a conversation starts, resumes,
+is cleared or compacts: the handoff's last exchanges, the journal line, the
+health notes and the compaction note, cut to the size limits. `src/briefing.mjs`
+builds it (1.6.0 step 18); `src/brief.mjs` is only the guard that runs it. See
+`docs/adr/0003-no-import-loops-in-src.md`.
+
 `src/snapshot.mjs` (1.6.0 step 16) runs every git call against the projects
 root. See `docs/adr/0002-plugin-owns-git-cleanup-and-one-busy-rule.md`.
