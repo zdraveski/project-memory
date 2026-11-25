@@ -26,13 +26,14 @@ const OURS = ['memory-tier.mjs', 'brief.mjs', 'enforce-hook.mjs', 'compact-gate.
 const HOOK = { 'memory-tier.mjs': 'save', 'brief.mjs': 'brief', 'enforce-hook.mjs': 'enforce', 'compact-gate.mjs': 'gate', 'recall-hook.mjs': 'recall' };
 const EMPTY = 'node, empty script';
 const VALUED = ['--plugin', '--json', '--scale', '--project', '--days'];
-const SEEN = 'PostToolUse, file already seen', FIRST = 'PostToolUse, first change';
-export const CASES = ['Stop, nothing changed', 'Stop, a memory changed', 'SessionStart startup', 'SessionStart compact', 'PreCompact auto', 'PreToolUse git', SEEN, FIRST, 'search', 'status', EMPTY];
+const SEEN = 'PostToolUse, file already seen', FIRST = 'PostToolUse, first change', PROMPT = 'UserPromptSubmit, nothing to say';
+export const CASES = ['Stop, nothing changed', 'Stop, a memory changed', 'SessionStart startup', 'SessionStart compact', 'PreCompact auto', 'PreToolUse git', SEEN, FIRST, PROMPT, 'search', 'status', EMPTY];
 // A case's median may be at most this many times the empty script's, measured in the same run.
 // Each is max(3, ceil(3 * the largest ratio seen)) over the four CI machines and the build PC, 2026-11-20.
+// The prompt case: 3 times its ratio on the build PC (136 / 40 ms), 2026-11-25; widen it from CI's numbers if it flakes.
 export const LIMITS = {
   'Stop, nothing changed': 56, 'Stop, a memory changed': 59, 'SessionStart startup': 13, 'SessionStart compact': 49,
-  'PreCompact auto': 49, 'PreToolUse git': 7, [SEEN]: 7, [FIRST]: 16, search: 27, status: 22,
+  'PreCompact auto': 49, 'PreToolUse git': 7, [SEEN]: 7, [FIRST]: 16, [PROMPT]: 11, search: 27, status: 22,
 };
 
 async function live(argv) {
@@ -123,6 +124,8 @@ function measure({ runs, real, plugin, scale, only }) {
     // look-up scans the journal and shows a pointer.
     [SEEN]: () => spawn('recall-hook.mjs', [], payload(change('bbbbbbbb-0000'))),
     [FIRST]: () => spawn('recall-hook.mjs', [], payload(change(`${String(++fresh).padStart(8, 'c')}-0000`))),
+    // A request of words the journal may hold, none of them shared with an entry three times: the whole window is scanned.
+    [PROMPT]: () => spawn('recall-hook.mjs', [], payload({ hook_event_name: 'UserPromptSubmit', prompt: 'why does the quarterly invoice export skip weekends' })),
     search: () => spawn('memory.mjs', ['search', 'harbor', '--store', store]),
     status: () => spawn('memory.mjs', ['status', '--store', store]),
     [EMPTY]: () => { const t0 = process.hrtime.bigint(); spawnSync(process.execPath, ['-e', ''], { env }); return Number(process.hrtime.bigint() - t0) / 1e6; },

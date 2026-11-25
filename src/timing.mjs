@@ -8,7 +8,7 @@ import { join } from 'node:path';
 
 export const FILE = '.timing';
 export const MAX = 256 * 1024;
-const HOOKS = ['save', 'tidy', 'brief', 'enforce', 'gate', 'recall'];
+const HOOKS = ['save', 'tidy', 'brief', 'enforce', 'gate', 'recall', 'prompt'];
 // Claude Code's own names only: whatever else a payload holds never reaches the file.
 const EVENTS = ['Stop', 'SubagentStop', 'SessionStart', 'PreCompact', 'PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Notification', 'SessionEnd'];
 const DETAILS = ['startup', 'resume', 'compact', 'clear', 'auto', 'manual'];
@@ -51,6 +51,11 @@ export function cut(file, size, stat = statSync) {
     writeFileSync(tmp, lines.slice(Math.ceil(lines.length / 2)).join('\n') + '\n', { mode: 0o600 });
     if (stat(file).size === size) renameSync(tmp, file);
   } finally { rmSync(tmp, { force: true }); }
+}
+
+// A script that serves two hooks names the one it ran as, once its input is read (recall-hook.mjs: `prompt`).
+export function name(hook) {
+  if (run && HOOKS.includes(hook)) run.h = hook;
 }
 
 // The number of pointers the run showed (1.6.0 step 4): a count, never what they said.

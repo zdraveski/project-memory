@@ -240,6 +240,17 @@ its own from before the compaction included. Set
 `PROJECT_MEMORY_RECALL` to `0` to turn these notes off. A note already shown
 stays in the conversation that got it: `forget` cannot take it back. A
 helper's changes before 1.6.0 have no past (its entries listed no files then).
+
+**A request that names something old.** When your message shares three rare
+words (two, for a message of two words) with an earlier exchange of another
+conversation in this project, Claude is told so before it answers: the
+request, up to three files it changed, the shared words, and how to open it.
+A word is rare when fewer than 1 in 20 recent exchanges hold it. At most three
+such exchanges, each once per conversation; "go" or "yes" alone never
+triggers one. A message with a `<private>` block or the `<private-session>`
+mark triggers none and is not written down. `PROJECT_MEMORY_RECALL=0` turns
+this off too.
+
 To know what it has said, each conversation keeps a small file in
 `~/.claude/projects/.sessions/`, deleted after 7 days.
 
