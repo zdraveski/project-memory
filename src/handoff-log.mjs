@@ -17,7 +17,7 @@
 // this file out -- and what must not be written is kept out before it is:
 // secrets (SECRETS), the answer to a <private> message and the files its turn
 // changed (answer()), and every entry of a conversation marked
-// <private-session> (hushed()).
+// <private-session> (hushed(), in privacy.mjs).
 import { readFileSync, existsSync, openSync, readSync, closeSync, fstatSync, readdirSync, statSync, statfsSync, realpathSync, mkdirSync, copyFileSync, renameSync, rmSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -231,7 +231,7 @@ export const unquote = (s) => {
 };
 export { unwrap };
 
-// tag, QUIET and OFF live in store.mjs, so the enforce hook can read them without loading this file.
+// tag lives in store.mjs (QUIET and OFF in privacy.mjs), so the enforce hook can read them without loading this file.
 export { tag };
 
 // A result that says the call was refused or blocked and never ran. Claude Code's own first words on a result with is_error true

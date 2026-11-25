@@ -1,6 +1,6 @@
 // A note can carry a rule a computer checks on a git command (`enforce:` in its
 // front matter). This file reads the rule and matches it; it never runs, blocks
-// or writes anything. Imports store.mjs only, so a hook can load it fast.
+// or writes anything. Imports store.mjs and privacy.mjs only, so a hook can load it fast.
 import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, tag, norm } from './store.mjs';
