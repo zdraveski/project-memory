@@ -493,7 +493,7 @@ ok(r.stdout.includes(dir), `the CLI run through a symlinked folder still runs (g
 const hookFile = JSON.parse(readFileSync(tool('hooks/hooks.json'), 'utf8'));
 const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((e) => e.hooks.map((x) =>
   `${ev} | ${e.matcher || ''} | ${x.command} ${(x.args || []).join(' ')}`))).sort();
-ok(JSON.stringify(wiring) === JSON.stringify(['PostToolUse | Edit|Write|NotebookEdit | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/src/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop',
+ok(JSON.stringify(wiring) === JSON.stringify(['PostToolUse | Edit|Write|NotebookEdit | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'PostToolUseFailure | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/src/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop',
   'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs', 'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs',
   'SessionEnd |  | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/src/brief.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'SubagentStop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop',
   'UserPromptSubmit |  | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs']),
@@ -506,12 +506,12 @@ ok(JSON.stringify(wiring) === JSON.stringify(['PostToolUse | Edit|Write|Notebook
 // A hook with no timeout gets Claude Code's 10 minutes; a real Stop took 45.7 s. A timed-out hook's output is discarded.
 const hooksOf = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((e) => e.hooks.map((x) => ({ ev, matcher: e.matcher || '', ...x }))));
 const timeouts = Object.fromEntries(hooksOf.map((h) => [`${h.ev}|${h.matcher}`, h.timeout]));
-ok(JSON.stringify(timeouts) === JSON.stringify({ 'Stop|': 120, 'StopFailure|': 120, 'SubagentStop|': 30, 'SessionStart|startup|resume|clear|compact': 30, 'PreToolUse|Bash|PowerShell': 5, 'PostToolUse|Edit|Write|NotebookEdit': 5, 'UserPromptSubmit|': 5, 'SessionEnd|': 3, 'PreCompact|manual': 120, 'PreCompact|auto': 60 }),
+ok(JSON.stringify(timeouts) === JSON.stringify({ 'Stop|': 120, 'StopFailure|': 120, 'SubagentStop|': 30, 'SessionStart|startup|resume|clear|compact': 30, 'PreToolUse|Bash|PowerShell': 5, 'PostToolUse|Edit|Write|NotebookEdit': 5, 'PostToolUseFailure|Bash|PowerShell': 5, 'UserPromptSubmit|': 5, 'SessionEnd|': 3, 'PreCompact|manual': 120, 'PreCompact|auto': 60 }),
   `each hook has its timeout in seconds (got ${JSON.stringify(timeouts)})`);
-// The PreToolUse, PostToolUse and UserPromptSubmit hooks have none: a status line on every git call, change or prompt is noise, and the eval harness
+// The PreToolUse, PostToolUse, PostToolUseFailure and UserPromptSubmit hooks have none: a status line on every git call, change, failure or prompt is noise, and the eval harness
 // (tools/recall-eval.mjs) knows the recall hook by its command, which a statusMessage replaces in Claude Code's record.
-ok(hooksOf.filter((h) => !/^(P(re|ost)ToolUse|UserPromptSubmit|SessionEnd)$/.test(h.ev)).every((h) => typeof h.statusMessage === 'string' && h.statusMessage), 'each hook has a statusMessage');
-ok(hooksOf.filter((h) => /ToolUse$|^UserPromptSubmit$|^SessionEnd$/.test(h.ev)).every((h) => h.statusMessage === undefined), 'the tool, prompt and end hooks have none');
+ok(hooksOf.filter((h) => !/^(P(re|ost)ToolUse|PostToolUseFailure|UserPromptSubmit|SessionEnd)$/.test(h.ev)).every((h) => typeof h.statusMessage === 'string' && h.statusMessage), 'each hook has a statusMessage');
+ok(hooksOf.filter((h) => /ToolUse$|^PostToolUseFailure$|^UserPromptSubmit$|^SessionEnd$/.test(h.ev)).every((h) => h.statusMessage === undefined), 'the tool, failure, prompt and end hooks have none');
 ok(new Set(hooksOf.filter((h) => h.ev === 'PreCompact').map((h) => h.statusMessage)).size === 2, 'the two PreCompact messages differ');
 // A fork inherits its conversation, so it needs no briefing of its own.
 ok(!/fork/.test(hookFile.hooks.SessionStart[0].matcher), 'the SessionStart matcher leaves fork out');

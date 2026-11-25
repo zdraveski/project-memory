@@ -754,7 +754,8 @@ const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e 
 
 // One note per hook that ran in the last 7 days (the .timing file, timing.mjs). "since" is the later of 7 days ago and the oldest line:
 // the file is cut at 256 KB, which a busy user fills sooner than 7 days.
-const TIMED = { save: 'save after a reply', tidy: 'tidy-up and snapshot after a reply (in the background)', brief: 'briefing', enforce: 'git rule check', gate: 'check before a compaction', recall: 'look-up after a file change', prompt: 'look-up at a prompt' };
+const TIMED = { save: 'save after a reply', tidy: 'tidy-up and snapshot after a reply (in the background)', brief: 'briefing', enforce: 'git rule check', gate: 'check before a compaction', recall: 'look-up after a file change', prompt: 'look-up at a prompt', error: 'look-up after a failed command' };
+const SPOKE = ['recall', 'prompt', 'error'];
 export function timingLines(now = Date.now()) {
   if (process.env.PROJECT_MEMORY_TIMING === '0') return ['hook times are off (PROJECT_MEMORY_TIMING=0)'];
   const all = readTimes(0, join(projectsRoot(), TIMING)), since = Math.max(now - 7 * 864e5, all[0]?.t ?? 0), sec = (ms) => (ms / 1000).toFixed(2);
@@ -768,8 +769,8 @@ export function timingLines(now = Date.now()) {
     return `${label}: ${t.runs} run${t.runs === 1 ? '' : 's'} since ${local(since).slice(0, 10)}, median ${sec(t.median)} s (${sec(start ?? 0)} s of it before the plugin's code runs), 9 in 10 under ${sec(t.p90)} s, worst ${sec(t.worst)} s`;
   });
   // Whether memory spoke up on real sessions: a count from the timing lines (1.6.0 step 4).
-  const shown = all.filter((x) => x.t >= now - 7 * 864e5 && (x.h === 'recall' || x.h === 'prompt')).reduce((n, x) => n + (Number.isInteger(x.n) ? x.n : 0), 0);
-  if (groups.has(TIMED.recall) || groups.has(TIMED.prompt)) lines.push(`pointers shown since ${local(since).slice(0, 10)}: ${shown}`);
+  const shown = all.filter((x) => x.t >= now - 7 * 864e5 && SPOKE.includes(x.h)).reduce((n, x) => n + (Number.isInteger(x.n) ? x.n : 0), 0);
+  if (SPOKE.some((h) => groups.has(TIMED[h]))) lines.push(`pointers shown since ${local(since).slice(0, 10)}: ${shown}`);
   return lines.length ? lines : ['no hook times yet: they collect from the next reply on'];
 }
 

@@ -252,6 +252,14 @@ triggers one, nor a file note. A message with a `<private>` block or the `<priva
 mark triggers none and is not written down. `PROJECT_MEMORY_RECALL=0` turns
 this off too.
 
+**An error seen before.** When a Bash or PowerShell command fails with an
+error that a command of another conversation in this project hit too (the same
+end of its output, paths and numbers aside), Claude is told the date and how to
+open that exchange before it tries again. Once per error and conversation;
+nothing for an interrupt or a timeout, and never from a private or forgotten
+exchange. `PROJECT_MEMORY_RECALL=0` turns this off too. It needs Claude Code
+2.0.56 or newer (the plugin's save after a failed reply already needs 2.1.78).
+
 **Sessions that see each other.** Two Claude Code sessions open on the same
 project know about each other. At your next message, Claude is told once that
 another session is working here, since when, on what request and which files
