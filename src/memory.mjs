@@ -48,7 +48,8 @@ import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
+import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
+import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRuns, deployedCommit, edited, DEPLOYED } from './run-records.mjs';
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, rewrite, unsnapped, missing, gitInstalled, fastExport, fastExportOf, fastImportTo, hashObject, readHealth, MISSED, HELD } from './snapshot.mjs';
 import { PROJECT_OFF, OFF_PERIODS, isOff, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
@@ -56,7 +57,7 @@ import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { clip } from './text.mjs';
-import { redact, sectionOf, parse, stalled, GRACE, edited, tag, unsaved, unsay } from './handoff-log.mjs';
+import { redact, sectionOf, parse, stalled, GRACE, tag, unsay } from './handoff-log.mjs';
 import { BLOCK, transcripts, lastTurn, chunk as chunkOf } from './transcript.mjs';
 import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
@@ -111,8 +112,6 @@ const sameKey = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 // the live copy, and what runs.
 export const PLUGIN = 'project-memory@project-memory';
 export const LIVE = join(homedir(), '.claude', 'hooks-live');
-const json = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
-const plugins = (f) => json(join(configDir(), 'plugins', f));
 // The installed plugin's id, from whichever marketplace added it: this repo's
 // own (GitHub, or the live copy) or another that lists it.
 const installedId = () => Object.keys(plugins('installed_plugins.json')?.plugins ?? {}).find((k) => k.split('@')[0] === 'project-memory');
@@ -123,11 +122,8 @@ export const installPath = () => plugins('installed_plugins.json')?.plugins?.[in
 // the cache copy only sits beside it (measured 2026-10-27, Claude Code 2.1.311).
 export const marketplace = () => plugins('known_marketplaces.json')?.[installedId()?.split('@')[1]]?.source ?? null;
 export const pluginRoot = () => installPath() && (marketplace()?.source === 'directory' ? marketplace().path : installPath());
-// The commit deploy.mjs checked and copied into a folder.
-export const deployedCommit = (dir) => json(join(dir, '.deployed.json'))?.commit ?? null;
 
 // `raw` (store.mjs) is what replaceIfUnchanged compares against; `read` is for parsing.
-const read = (p) => { try { return readFileSync(p, 'utf8').replace(/^\uFEFF/, ''); } catch { return null; } };
 // A BOM before the first line hid its pointer: promote left that line behind.
 const target = (line) => (line.replace(/^\uFEFF/, '').match(POINTER) || [])[1];
 const targets = (text) => (text ?? '').split(/\r?\n/).map(target).filter((t) => t && t !== ARCHIVE);
@@ -200,10 +196,10 @@ export function memories(dir) {
   // By the file each line opens, as tiering counts them (store.mjs `opener`).
   // One listing for the store: read once a line, a 5 MB index hung status for good.
   const opens = opener(dir, files);
-  const hot = new Set([...new Set(targets(read(join(dir, 'MEMORY.md'))))].map(opens)), cold = new Set([...new Set(targets(read(join(dir, ARCHIVE))))].map(opens));
+  const hot = new Set([...new Set(targets(readText(join(dir, 'MEMORY.md'))))].map(opens)), cold = new Set([...new Set(targets(readText(join(dir, ARCHIVE))))].map(opens));
   return files.filter((f) => f.endsWith('.md') && !isIndex(f)).flatMap((file) => {
     const path = join(dir, file);
-    const text = read(path);
+    const text = readText(path);
     if (text === null) return [];
     const end = frontEnd(text);
     // As tiering reads it: cut here, an unclosed frontmatter was none, and a
@@ -348,7 +344,7 @@ export function handoffBig(dir) {
   return n > HANDOFF_WARN ? `handoff.md is ${Math.round(n / 1024)} KB (over ${HANDOFF_WARN / 1024} KB). To trim it: delete the finished topics from the part you wrote by hand, above the automatic log; the journal keeps every exchange, so nothing is lost from search` : null;
 }
 export function status(dir, sharedNames = []) {
-  const ms = memories(dir), main = read(join(dir, 'MEMORY.md'));
+  const ms = memories(dir), main = readText(join(dir, 'MEMORY.md'));
   const lines = [`${dir}${isShared(dir) ? '  (shared by every project)' : ''}`];
   const gone = isOff(dir);
   if (gone) lines.push(`  ${offText(gone)}`);
@@ -360,10 +356,10 @@ export function status(dir, sharedNames = []) {
   const loose = ms.filter((m) => m.where === 'unindexed' && m.file !== 'handoff.md' && m.file !== 'journal.md').length;
   lines.push(`  index ${Buffer.byteLength(main ?? '')} / ${budgetOf(dir)} B · ${n('hot')} hot · ${n('archived')} archived` +
     (loose ? ` · ${loose} with no pointer yet` : ''));
-  const health = (read(join(dir, '.health')) ?? '').trim();
+  const health = healthOf(dir);
   if (health) lines.push(...health.split('\n').map((h) => `  needs attention: ${h}`));
   // The Stop's record of what it could not save, as the briefing says it: only the briefing did (R64).
-  const lost = json(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(dir))}`));
+  const lost = lostHandoff(dir);
   if (lost) lines.push(`  needs attention: ${unsaved(lost)}`);
   const known = new Set([...names(ms), ...sharedNames]);
   const dangling = ms.flatMap((m) => m.links.filter((l) => !known.has(l)).map((l) => `${m.file} → [[${l}]]`));
@@ -371,7 +367,7 @@ export function status(dir, sharedNames = []) {
   const bare = ms.filter((m) => !m.desc || !m.type).map((m) => m.file);
   if (bare.length) lines.push(`  frontmatter without a description or type: ${bare.join(', ')}`);
   const big = handoffBig(dir); if (big) lines.push(`  needs attention: ${big}`);
-  const doc = read(join(dir, 'handoff.md'));
+  const doc = readText(join(dir, 'handoff.md'));
   const { a, b } = sectionOf(doc ?? '');
   const all = a === -1 ? [] : parse(doc.slice(a, b));
   if (all.length) lines.push(`  handoff: ${all.length} exchanges from ${new Set(all.map((t) => t.s)).size} session(s), newest ${all.at(-1).at}`);
@@ -742,8 +738,6 @@ export function promote(dir, file, { force = false } = {}) {
     : `moved ${file} to ${to}. The shared index is now ${size} of its ${cap} bytes: after the next reply its oldest lines move to the shared archive, which no session start prints. To keep this one in view, add "tier: hot" to its frontmatter`] };
 }
 
-// The Stop hook's runs, oldest first, one JSON line each (memory-tier.mjs).
-const stopRuns = () => (read(join(projectsRoot(), '.stop-ran')) ?? '').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r?.at ? [r] : []; } catch { return []; } });
 // Two wirings answer one Stop at once. Not a /compact typed after a reply (a
 // PreCompact run), nor the reply to a block (stop_hook_active): both are a
 // second run seconds later, and both read as hooks wired twice. Nor two
@@ -807,10 +801,10 @@ export function doctor(site = sessionStore()) {
   { const k = (n) => `${Math.round(n / 1000)}k`; say(true, `compaction window ${k(WINDOW)} of the model's ${k(MODEL_WINDOW)}: Claude Code compacts at ${k(COMPACTS_AT * WINDOW)}, the memory reminder comes at ${k(TRIGGER * WINDOW)}`); }
   // The one setting doctor reads (never printed but for its presence): the hooks keep the default folder, and a note in the moved one is
   // never tiered, snapshotted or briefed.
-  if (typeof json(join(configDir(), 'settings.json'))?.autoMemoryDirectory === 'string') say(false, 'the autoMemoryDirectory setting is set, and project-memory does not follow it: notes in that folder are not tiered, snapshotted or briefed (the hooks work on the default memory folder). Remove the setting to use project-memory');
+  if (typeof readJson(join(configDir(), 'settings.json'))?.autoMemoryDirectory === 'string') say(false, 'the autoMemoryDirectory setting is set, and project-memory does not follow it: notes in that folder are not tiered, snapshotted or briefed (the hooks work on the default memory folder). Remove the setting to use project-memory');
   // edited() stays silent on a damaged record (the startup line's choice); doctor names it.
-  if (existsSync(join(LIVE, '.deployed.json'))) {
-    const e = json(join(LIVE, '.deployed.json'))?.files ? edited(LIVE) : [`${join(LIVE, '.deployed.json')} is damaged (not JSON, or no file list), so the live hooks can't be checked against the last deploy. Run deploy.mjs again`];
+  if (existsSync(join(LIVE, DEPLOYED))) {
+    const e = readJson(join(LIVE, DEPLOYED))?.files ? edited(LIVE) : [`${join(LIVE, DEPLOYED)} is damaged (not JSON, or no file list), so the live hooks can't be checked against the last deploy. Run deploy.mjs again`];
     say(!e.length, e[0] || `${LIVE} matches what deploy.mjs checked`);
   }
   // Installed from the live copy, the plugin runs it in place; from anywhere
@@ -819,15 +813,15 @@ export function doctor(site = sessionStore()) {
     const at = pluginRoot();
     if (!at) say(false, `${id} is listed as installed, but with no folder. The user's fix: claude plugin install ${PLUGIN}`);
     // From GitHub, or from any copy where nothing was deployed: it runs that copy.
-    else if (!existsSync(join(LIVE, '.deployed.json')) || (marketplace()?.source !== 'directory' && !deployedCommit(at))) {
-      say(true, `the plugin runs version ${json(join(at, '.claude-plugin', 'plugin.json'))?.version ?? '(none)'} from ${at}`);
+    else if (!existsSync(join(LIVE, DEPLOYED)) || (marketplace()?.source !== 'directory' && !deployedCommit(at))) {
+      say(true, `the plugin runs version ${readJson(join(at, '.claude-plugin', 'plugin.json'))?.version ?? '(none)'} from ${at}`);
     }
     // Added from anywhere but the live copy (the repo, a worktree), it runs
     // untested edits, and no plugin update fixes that.
     else if (marketplace()?.source === 'directory' && !same(at, LIVE)) say(false, `the plugin is read from ${at}, not the live copy. The user's fix: claude plugin marketplace remove ${installedId().split('@')[1]}, then claude plugin marketplace add "${LIVE}" and claude plugin install ${PLUGIN}`);
     else if (deployedCommit(at) !== deployedCommit(LIVE)) say(false, `the plugin runs ${deployedCommit(at) || 'an undeployed copy'} from ${at}, the last deploy is ${deployedCommit(LIVE)}. The user's fix: claude plugin update ${PLUGIN}`);
     // The manifest's version ends in a deploy count, not the release: the tag names it.
-    else { const e = edited(at), tag = json(join(at, '.deployed.json'))?.tag; say(!e.length, e[0] || `the plugin runs the last deploy, ${deployedCommit(at)}${tag ? ` (${tag})` : ''}, from ${at}`); }
+    else { const e = edited(at), tag = readJson(join(at, DEPLOYED))?.tag; say(!e.length, e[0] || `the plugin runs the last deploy, ${deployedCommit(at)}${tag ? ` (${tag})` : ''}, from ${at}`); }
   }
   const ran = join(projectsRoot(), '.stop-ran');
   if (!existsSync(ran)) {
@@ -871,8 +865,8 @@ function enforceHook(at) {
   // A pre-1.5.6 copy keeps its files flat; a false PROBLEM on one would send the user to a needless update.
   const file = [join(at, 'src', 'enforce-hook.mjs'), join(at, 'enforce-hook.mjs')].find(existsSync) ?? join(at, 'src', 'enforce-hook.mjs');
   if (!existsSync(file)) return [false, `${file} is missing: the enforce hook cannot run. The user's fix: claude plugin update ${PLUGIN}`];
-  if (!json(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.length) return [false, `hooks.json in ${at} has no PreToolUse group: the enforce hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
-  if (!json(join(at, 'hooks', 'hooks.json'))?.hooks?.SubagentStop?.length) return [false, `hooks.json in ${at} has no SubagentStop group: subagent reports are not saved. The user's fix: claude plugin update ${PLUGIN}`];
+  if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.length) return [false, `hooks.json in ${at} has no PreToolUse group: the enforce hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
+  if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.SubagentStop?.length) return [false, `hooks.json in ${at} has no SubagentStop group: subagent reports are not saved. The user's fix: claude plugin update ${PLUGIN}`];
   try {
     const out = execFileSync(process.execPath, [file], { input: '{}', encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] });
     return out ? [false, `the enforce hook printed output for an empty call (${clip(out, 80)}): it must print nothing`] : [true, 'the enforce hook runs and is wired (PreToolUse)'];
@@ -1206,7 +1200,7 @@ export function main(given) {
     const noteOf = (k) => {
       const blocks = [];
       for (const dir of scope) {
-        const f = named(dir, basename(k).replace(/(\.md)?$/i, '.md')), text = read(join(dir, f));
+        const f = named(dir, basename(k).replace(/(\.md)?$/i, '.md')), text = readText(join(dir, f));
         if (text === null) continue;
         const { name, desc } = front(text), by = isShared(dir) ? ['shared'] : changersOf(dir, f, failed);
         blocks.push(join(dir, f), `  name: ${name || f.replace(/\.md$/, '')}`, ...(desc ? [`  description: ${desc}`] : []),
@@ -1224,7 +1218,7 @@ export function main(given) {
     const dropped = [...new Set(args.join(' ').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => STOP.has(t)))];
     r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [filters.file ? missFile : `no journal entry${span && ` ${span}`} in ${where}`]] };
-  } else if (cmd === 'forget' && read(join(here, FORGOTTEN)) === null && existsSync(join(here, FORGOTTEN))) {
+  } else if (cmd === 'forget' && readText(join(here, FORGOTTEN)) === null && existsSync(join(here, FORGOTTEN))) {
     // A forget list that won't read can't say what was forgotten: the look found a forgotten exchange in its conversation again.
     r = { ok: false, lines: [`the forget list ${join(here, FORGOTTEN)} could not be read; nothing was looked up or removed`] };
   } else if (cmd === 'forget') {
@@ -1238,7 +1232,7 @@ export function main(given) {
     // reply, and named as another project's, it was kept out by no key and came back (fuzz seed 1729835215).
     // Not one forgotten before: in no day, and still in its conversation, it was found again and said removed (review).
     // Nor while a day won't read: a key of that day, found in its conversation, was said removed while the day still held it (R73).
-    const listed = forgotten(read(join(here, FORGOTTEN))), already = new Set(listed.map(([k]) => k)), none = (k) => !stored.some((e) => e.key === k);
+    const listed = forgotten(readText(join(here, FORGOTTEN))), already = new Set(listed.map(([k]) => k)), none = (k) => !stored.some((e) => e.key === k);
     // By words alone, every such turn holding them: a look by words missed one, and the next reply wrote it (1.2.5).
     const late = unread.length ? [] : terms.length && !named.length ? unwritten(here, [], terms).filter((e) => !already.has(e.key)) : unwritten(here, named.filter((k) => none(k) && !already.has(k)));
     stored.push(...late);
@@ -1291,7 +1285,7 @@ export function main(given) {
         // The journal no longer holds it (forgotten before) but the snapshots may: the days whose versions held every word go.
         // Plain words only: a key, conversation or date range that matched nothing must not widen into every day holding the words.
         // shortcut: words are looked up as plain text in any case (git folds ASCII letters only), per day; a day holding them in different entries is purged too.
-        if (yes && terms.length && !named.length && !conversation && !range.since && !range.until && rest.includes('--purge') && /^\[project-memory\]/m.test(read(join(projectsRoot(), '.git', 'config')) ?? '')) {
+        if (yes && terms.length && !named.length && !conversation && !range.since && !range.until && rest.includes('--purge') && /^\[project-memory\]/m.test(readText(join(projectsRoot(), '.git', 'config')) ?? '')) {
           try {
             const days = terms.map((t) => new Set(tracked(here, 'journal').flatMap((at) => git('log', '--all', '-i', '--format=', '--name-only', '-S' + t, '--', at).split('\n')).map((p) => p.split('/').pop().replace(/\.md$/, '')).filter((d) => /^\d{4}-\d\d-\d\d$/.test(d))));
             const hit = [...days[0]].filter((d) => days.every((s) => s.has(d)));
@@ -1313,7 +1307,7 @@ export function main(given) {
         // A day before today is in the snapshots already (memory-tier commits a
         // day once it closes), when they are the plugin's: a repository the user
         // made there holds no journal, and deleting it would lose their history.
-        const ours = /^\[project-memory\]/m.test(read(join(projectsRoot(), '.git', 'config')) ?? '');
+        const ours = /^\[project-memory\]/m.test(readText(join(projectsRoot(), '.git', 'config')) ?? '');
         // Not an unwritten turn's day: no snapshot holds what no day did.
         const old = ours ? [...new Set(gone.filter((e) => !e.unsaid && e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
         let purged = null;

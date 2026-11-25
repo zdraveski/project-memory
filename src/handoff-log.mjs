@@ -21,13 +21,13 @@
 import { readFileSync, existsSync, openSync, closeSync, statSync, statfsSync, realpathSync, mkdirSync, copyFileSync, renameSync, rmSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
 import * as T from './timing.mjs';
 import { clip, plain, fit, SAY } from './text.mjs';
 import { readTail, turns, promptBefore, TAIL, FORGETS, userText, tailOf, joined, lastTurn, transcripts } from './transcript.mjs';
 import { PRIVATE, QUIET, OFF, isOff, wasOff, hushed, off, offLine, unreadable, forgottenIn } from './privacy.mjs';
 import { readHealth, MISSED, HELD } from './snapshot.mjs';
-import { holdsSecret, tag, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, autoMemory, pathKey, transcriptKey, raw, inProjects, HANDOFF_FAILED, JOURNAL_FAILED, redact, norm } from './store.mjs';
+import { holdsSecret, tag, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, autoMemory, pathKey, transcriptKey, raw, inProjects, redact, norm } from './store.mjs';
+import { notes, edited } from './run-records.mjs';
 export { redact, holdsSecret };
 
 const TURNS = 10;         // how many exchanges to keep, per session
@@ -376,35 +376,10 @@ function put(dir, fresh, drop, me, whole) {
 // forget took out. Call under withLock(dir).
 export const unsay = (dir, gone) => put(dir, [], gone);
 
-// What a Stop's record of a failure (HANDOFF_FAILED) says, in the briefing and in status: the record of where you left off, or with
-// auto memory off (`off`) the tag that keeps the conversation out of the journal, which was all a Stop then meant to write.
-export const unsaved = (f) => (f.off
-  ? `a conversation held with auto memory off could not be marked after the reply at ${local(f.at)}, so the journal may take it in later: ${f.error}`
-  : `the record of where you left off could not be saved after the reply at ${local(f.at)}: ${f.error}`);
-
 // Warnings only: the startup line costs every session, so it says nothing
 // here when all is well. The shared store's problems are every project's.
 function health(dir) {
-  const out = [];
-  for (const d of [dir, sharedStore()]) {
-    try { const h = readFileSync(join(d, '.health'), 'utf8').trim(); if (h) out.push(`Memory store needs attention (${d}): ${h.split('\n').join('; ')}`); } catch {}
-  }
-  // What the last Stop could not save.
-  try {
-    const f = JSON.parse(readFileSync(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(dir))}`), 'utf8'));
-    out.push(`Memory store needs attention (${dir}): ${unsaved(f)}`);
-  } catch {}
-  // A journal write that failed after a reply (journal/.failed; not a backfill,
-  // which is retried): only status said so, and every reply went unrecorded.
-  // And one its folder would not take, kept beside the projects (JOURNAL_FAILED).
-  for (const p of [join(dir, 'journal', '.failed'), join(projectsRoot(), `${JOURNAL_FAILED}${basename(dirname(dir))}`)]) {
-    try {
-      for (const l of readFileSync(p, 'utf8').split(/\r?\n/).filter(Boolean)) {
-        const f = JSON.parse(l);
-        if (!String(f.error).startsWith('backfill: ')) out.push(`Memory store needs attention (${dir}): the journal could not be written after the reply at ${local(f.at)}: ${f.error}`);
-      }
-    } catch {}
-  }
+  const out = notes(dir);
   try {
     const { health: s } = readHealth();
     if (s.failures >= 3) out.push(`Memory snapshots have failed ${s.failures} times in a row, last ok ${s.lastOk ? local(s.lastOk) : 'never'}: ${s.error}`);
@@ -442,28 +417,6 @@ export function stalled(t, hint = true) {
       (hint ? ` If not: node "${join(dirname(fileURLToPath(import.meta.url)), 'memory.mjs')}" doctor` : '')];
   }
   return [];
-}
-
-export const hash = (buf) => createHash('sha256').update(buf).digest('hex');
-
-// The hooks run from the copy deploy.mjs made after the full check. A file
-// changed or gone there since is live and untested: name it. Run from the
-// repo, with no manifest, there is nothing to say; nor with a damaged one:
-// thrown, it took every other line of the startup message with it.
-export function edited(here = dirname(dirname(fileURLToPath(import.meta.url)))) {
-  try {
-    const m = JSON.parse(readFileSync(join(here, '.deployed.json'), 'utf8'));
-    const bad = Object.keys(m.files).filter((f) => {
-      try {
-        // Size and mtime as deployed: not read, as git's index judges. Hashing all
-        // nine files was 8-11 ms of every startup (measured 2026-10-27).
-        const s = statSync(join(here, f)), was = m.stat?.[f];
-        if (was && s.size === was[0] && s.mtimeMs === was[1]) return false;
-        return hash(readFileSync(join(here, f))) !== m.files[f];
-      } catch { return true; }
-    });
-    return bad.length ? [`Memory hooks changed outside deploy.mjs, live and untested: ${bad.join(', ')} in ${here}. For the user: edit ${m.repo ? (existsSync(m.repo) || !m.origin ? m.repo : `${m.repo} (gone; clone ${m.origin})`) : 'the hooks repo'} and run node tools/deploy.mjs there (a deploy replaces these edits).`] : [];
-  } catch { return []; }
 }
 
 // The shared store's index, printed into every session of every project: Claude
