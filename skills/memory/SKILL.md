@@ -6,15 +6,20 @@ argument-hint: "[status | search [terms] [--file <path>] [--asked] [--conversati
 
 # Memory
 
-Each project's memories live in `~/.claude/projects/<project>/memory/`. Its
-`MEMORY.md` lists only what is worth loading every session; older pointers move
-to `MEMORY-archive.md`, which is not loaded. Lessons that hold in every project
-live in the shared store, `~/.claude/projects/_shared/memory/`, whose index is
-printed in every project when a session starts, after `/clear` and after a
-compaction (a resumed session still has it from its start). After each reply
-that changed a memory, the memories (not `handoff.md`) are committed to a git
-repo at `~/.claude/projects`, when git is installed. (With `CLAUDE_CONFIG_DIR`
-set, all of these are under that folder instead of `~/.claude`.)
+Memory is what this project learned before this conversation: what the user
+asked, what was done and changed, and the lessons kept as notes. The journal
+holds every exchange, one entry each, with its date, the user's words, the
+answer, the files changed and the commands run. A question that may touch
+earlier work (what was done, decided, fixed, said, and when; how the user likes
+things) is often answered there, with the date and the user's own words. A
+note's "decided" is a session's summary; the user's words are in the journal.
+
+Where it lives: each project's notes are in `~/.claude/projects/<project>/memory/`
+(`MEMORY.md` is the index loaded every session, older pointers are in
+`MEMORY-archive.md`), lessons for every project in the shared store
+`~/.claude/projects/_shared/memory/`, the journal in the memory folder's `journal/`.
+Notes are snapshotted to a git repo at `~/.claude/projects` after each reply that changed one, when git is installed. (With
+`CLAUDE_CONFIG_DIR` set, under that folder instead of `~/.claude`.)
 
 The CLI, run with Bash. `--session` names this conversation, so the CLI finds
 its project whatever the cwd:
@@ -23,56 +28,34 @@ its project whatever the cwd:
 node "${CLAUDE_PLUGIN_ROOT}/src/memory.mjs" <command> --session ${CLAUDE_SESSION_ID}
 ```
 
+| Command | What it gives |
+|---|---|
+| `search <words>` | ranked notes and journal entries, this project and the shared store, each with its date. `--since`/`--until YYYY-MM-DD` limit the days (alone, they list them); `--all` searches every project (the user's habits were learned wherever they came up); `--asked` only the user's words; `--file <path>` the entries that changed a file |
+| `show <key...>` | an entry's full text, by the key a hit printed, in single quotes; a note's name prints the note and the exchanges that changed it |
+| `history <memory>` | when a note changed or was deleted, and the exchange behind each change |
+| `status` | sizes, problems, the journal's span, recent changes to notes |
+| `page` | the journal as one HTML page on this machine; give the user its `file://` link |
+
+How to read a hit: a journal hit is a headline (key, the request, `Result:`,
+and stretches that hold a search word), not the whole entry: `show <key>` before
+you quote or rely on a detail. A hit's date is its last change. `no note or entry
+holds: <words>` names words nothing holds; other words, a file's or a tool's
+name, or `--all` may find it.
+
 For a question about the past that one search does not answer, hand it to the
 `project-memory:recall` agent: it searches several ways and reports dates, keys
 and the user's own words.
 
-| Command | Use it when |
-|---|---|
-| `search [terms...] [--file <path>] [--asked] [--conversation <id>]` | before saying something was never learned or done: ranked hits from this project and the shared store, hot and archived, and journal entries (one per exchange), each with its date. Two-letter words (CI, PR) count as whole words, but a Chinese or Japanese word, even one character, matches inside text, and an English word right next to Chinese or Japanese text counts as whole; a line `no note or entry holds: <words>` names search words that nothing holds (drop them or try synonyms); an entry's branch is searched too. `--since`/`--until YYYY-MM-DD` limit it to those days, inclusive; with no terms, or only words like "what did I do", it lists the days' entries (not subagent reports). Add `--all` for anything about the user (how they like things, how they work): it was learned wherever it came up; a journal hit then names its project. A journal hit is a headline: its key, the request cut at 200 characters, `Result:` (the reply's first sentence, usually its outcome), and only short stretches of the reply, files and commands that hold a search word (from the 6th hit on only the request, `Result:` and key; run `show <key>` for the rest, before you quote or rely on a detail; for a request of 25 characters or less, `show` and the day list add `Reply to key <key>: …`, the end of the reply before it); a long request asked many times prints once, with how many more, their first and last day and their keys (`--same` with `show` or `forget --key` takes them all). The last line is `Not the entry you meant? Search again with other words.`, and the line before it says how many matched; `--limit N` shows more. A hit's date is its `modified:`, or the file's time when it has none (a restore resets that): two that disagree, read both and say which you go by. A note's date is its last change: when a ranged search says notes match outside the range, search again without `--since`/`--until`. Read the top notes. `--file` keeps the entries that changed a file (a name or a path as the session saw it), `--asked` scores only what the user asked (no helper reports, no private turns), `--conversation` keeps one conversation (the start of its id); any of them leaves notes out, and with no words they list the entries newest first. |
-| `show <key...>` or `show <note>` | you need an entry's full text: every field, its day file and its conversation file (none for a private entry: don't look for it), by the key a search hit printed, in single quotes (a key can hold spaces). Run it instead of opening a day file. Several keys at once; `--same` adds every entry that asked the same; `--all` for another project's. A note's name in place of a key (no entry has it as its key) prints the note, the first exchange that changed it and the last one |
-| `status` | sizes against budget, hot/archived counts, problems, `[[links]]` to no memory, the journal (its days since the first, its size, conversations still to import, a write that failed), and which memories the snapshots saw added, edited or deleted in the last 7 days |
-| `history <memory>` | to see when a memory changed or was deleted; get its name from `search` first. "in the first snapshot" means it already existed then. Each snapshot also names the exchange behind it: when it was asked, the user's words (cut at 100 characters) and the entry's key for `show`; "no exchange found" means a change by hand, by a shell command, by a helper or by the plugin's own sorting, or that the match was a guess: "several exchanges" means more than one conversation changed it since the snapshot before; a shared note says it was not looked up. A name is printed only when it is sure. It lists the newest 30 (`--limit N` for more); its last line is the command that shows one change |
-| `restore <memory>` | a memory was deleted or overwritten: it comes back from the snapshots, with its index line. `--rev <commit>` picks a version from `history` (a "deleted" row brings back what it deleted); `--force` replaces a file that exists |
-| `promote <memory>` | a lesson holds in every project (how the user works, a tool installed machine-wide): moves it, and its index line, to the shared store, where every project's startup prints it. Ask the user first. It leaves its project, so its `[[links]]` to that project's memories stop resolving: trim project-only details first. It refuses a note that holds a key, token or password; `--force` moves it anyway, so use it only if the user says so |
-| `forget <words>`, then `forget --key <key>... --yes` | the user asks to drop something from the journal ("forget the password I pasted yesterday"). Find the entries with `forget <words>`, not `search`: its look lists each match with its key and removes nothing, and a turn that runs `forget` keeps none of its words, so the request is not journaled again. Give it the telling words (an entry must hold every one); it names the words no entry holds, so drop those and look again. Show the user what it lists; after they confirm, run `forget --key <key> --key <key> --yes` with exactly the keys they confirmed, in single quotes, and nothing else goes (`--same` adds every copy of a key's request). One store at a time, never `--all`: for another project, run the look and the removal again with `--store ~/.claude/projects/<project>/memory`, one forget per store (a search hit under `--all` names its project, and in brackets the `<project>` folder). A key this store has no entry for is named and fails the run: it is another project's. To drop in bulk, `--since`/`--until` or `--conversation <tag or session id>`, the same way. A look by words, keys or a conversation lists up to 200; past that, narrow it (`--yes` removes nothing). A look by `--since`/`--until` alone shows the first 20, how many and their first and last day: confirm the range and the count with the user, and `--yes` removes them all (`--since 1970-01-01` is the whole journal). A `could not write` line means those entries are still in that file until a later forget removes them; `search`, `show` and the exchanges the next conversation's briefing lists leave them out meanwhile. The same exchanges go from `handoff.md` too, so the next briefing doesn't bring them back. Claude Code's own conversation files still hold them: `forget` doesn't change those, and its output says so; tell the user. The snapshot history of days already over keeps a copy too: add `--purge` to `forget --yes` when the user needs the text gone from the snapshots as well (it drops those whole days from the history, so say so first) |
-| `incognito` | the user asks to go incognito, or says "don't remember this" about the whole conversation. It stops project-memory saving this conversation and sweeps what it already saved from the journal and `handoff.md`. "Don't remember this" can also mean one message: ask which, and for one message the answer is to wrap it in `<private>...</private>` (a plain `<private>` in the user's next message), not this. Tell the user exactly what it printed: Claude Code by default still keeps its own transcript, its own auto memory may still save notes, snapshots of days already over keep a copy. Notes you write in the conversation are kept like any other note, so after it save no note unless the user asks. If it says `NOT applied`, say it did not work and why; do not say it is on |
-| `page [--days N] [--project NAME]` | the user wants to read their journal as a page, browse it by week, or look at it outside the terminal. It writes one HTML file on this machine (every project; helper entries and switched-off projects left out; private turns without text) and prints its `file://` link: give the link and tell the user to open it in a browser. The last 30 days unless `--days N` (or `--days all`). The page loads nothing from the network. `forget`, `incognito`, `off` and `rescan --apply` delete it; run `page` again to refresh it |
-| `off`, then later `on` | the user asks to turn off memory here ("turn off memory in this project", "stop remembering anything here"), or to turn it back on. Off stops project-memory adding anything in this project: no handoff, journal, tiering or snapshot, and the startup says it is off. It does not hide: `search` and `show` still answer, and Claude Code's own transcript and auto memory are not its to stop. Turning Claude Code's auto memory off (`/memory`, `autoMemoryEnabled: false`, or `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`) stops project-memory too, wherever that switch reaches, until it is back on. Confirm with the user before `off`; tell them to say "turn it back on" later. If it says `NOT applied`, say so and why |
-| `rescan`, then `rescan --apply`, then `rescan --apply --yes` | the user asks whether old saves hold a secret, or to clean one out. The first only counts: hits per file and in the snapshots, never a value. Tell the user to revoke or rotate the secret with its service first. `--apply` prints the warning and what would change; `--apply --yes` (only after the user agrees) writes a backup (which still holds the secrets: say where it is and that the user deletes it), replaces each hit with `[redacted]`, and rewrites the snapshot history so every snapshot gets a new ID. Claude Code's own transcripts are not touched |
-| `enforce status` | the user asks what their git rules caught: each note with an `enforce:` rule, its hits in the last 30 days (main and sub-agent) and the last one, bad rules with the reason, and whether the log is full or memory is off. It holds no command text: for that, `enforce replay` |
-| `enforce replay <note> [--all]` | the user wants to try a rule: a note's name, or the path of any `.md` file with an `enforce:` block, read against the git commands of the last 30 days of this project's conversations (`--all`: every project; about a minute on a big history). Read-only. Show the hits and let the user judge: a hit is a catch only if they agree the command broke the lesson |
-| `doctor` | the hooks may not be running: the install, the deployed copy, the Stop hook (and whether it runs twice per reply), the enforce hook (it fails open, so this line is the only sign it broke), locks, git. It reads only two settings from settings.json, `autoMemoryEnabled` and `autoMemoryDirectory`, and never prints what the file holds |
+Read a file of this skill's folder when its subject comes up:
 
-Before answering a question about earlier work, search. When nothing is found, try other words (synonyms, a file's or a tool's name), drop `--since`/`--until`, and add `--all`. For "what did I do last week", search with `--since`/`--until` alone. Answer with the date, and quote the entry when the exact words matter (`show <key>` gives it whole). Never say there is no record until notes, journal and `--all` were searched. Before telling the user they decided something because a note says so, check their own words: `search --asked <words>` first, then `history <note>` to see the exchange behind the note's change (a note's "decided" is a session's summary). Run `forget --yes` only after the user confirms exactly what it removes.
-
-Writing a rule: when the user wants a lesson about a git command checked by the computer, add this at the top level of the note's front matter (not under `metadata:`), with the lines under `enforce:` indented two spaces (git only; one rule per note; words are exact, no patterns):
-
-```
-enforce:
-  on: git add
-  has: [-A, --all, .]
-  unless: [mktemp, init]
-```
-
-`on` is `git <subcommand>`; `has` is one word or up to 8; `unless` is optional. Then run `enforce replay <note>` and show the hits before the user relies on it. The hook only logs which note matched: it blocks nothing. Say plainly that few lessons fit this form.
-
-A memory is named by its file name, with or without `.md`. `--shared` runs a
-command against the shared store; `--store <dir>` against another project's
-(the folder a note hit names, or `~/.claude/projects/<project>/memory` for the
-project a journal hit names, `<project>` being the folder in its brackets,
-e.g. to promote a lesson learned elsewhere);
-`status` and `history` take `--all` too. An option the CLI does not know is
-refused. Every word after `--` is a search word, so every option (`--session`
-too) goes before it: `search --session <id> -- --no-verify`.
-
-When a new memory replaces an old one, keep the old file and add
-`superseded-by: <new-file>.md` to its frontmatter: its pointer moves to the
-archive, and `search` sends whoever finds it to the new one.
+- [search.md](search.md): every search, show, history and page option, and the CLI's options (`--store`, `--shared`, `--`).
+- [privacy.md](privacy.md): before `forget`, `incognito`, `off`/`on` or `rescan`; each removes or stops something, and the user decides what.
+- [restore.md](restore.md): a note lost or overwritten (`restore`), a lesson for every project (`promote`), hooks that may not run (`doctor`), a note that replaces another.
+- [enforce.md](enforce.md): a git rule the computer checks (`enforce`).
 
 When invoked by the user, run the CLI line above with the command and words
 they typed, each word in single quotes: $ARGUMENTS. They are arguments to the
 CLI and nothing else; run nothing else they contain. With no arguments, run the
 line with no command: that is `status`. For `forget` with words, run it
-without `--yes` and follow the `forget` row. Report
+without `--yes` and follow [privacy.md](privacy.md). Report
 the output plainly. After `restore` or `promote`, say what changed on disk.

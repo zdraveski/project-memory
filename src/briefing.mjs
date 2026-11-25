@@ -69,8 +69,12 @@ function shared() {
 // startup briefing up to it, the oldest left out first, and never past it. What is there without them (the shared index alone can be 3,000 B) is
 // as before.
 const BRIEF = 3500;
-// The exchanges' own room when the rest (the shared index can be 3,000 B) takes the 3,500: the newest one is ~1,000 characters.
-const EXCHANGES = 1500;
+// The exchanges' own room when the rest (the shared index can be 3,000 B) takes the 3,500: two headlines.
+const EXCHANGES = 1000;
+// At startup each exchange is a headline (1.6.0, headline 2c): its request, the first 160 characters of
+// its answer and its files, the newest five. The whole answer stays in handoff.md and the journal.
+const HEAD = 160, NEWEST = 5;
+const headline = (t) => render({ ...t, did: clip(t.did, HEAD) });
 // The journal's pointer, at every start and after a compaction too (the model that lost its context loses this line with it).
 // It carries the two rules too, so no journal means no rules. A journal that cannot be read costs the line, never the briefing.
 async function journalLine(dir) {
@@ -142,7 +146,7 @@ async function print(input) {
     const { listed, shut } = forgottenIn(dir);
     const gone = new Set(listed.filter(([, t]) => t).map(([, t, at]) => `${tag(basename(t))} ${at}`));
     const theirs = lines.length && last && !others.length && !shut && hushed(projectsRoot(), last.s, false, OFF) === false
-      ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).map(render) : [];
+      ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).slice(-NEWEST).map(headline) : [];
     const journal = await journalLine(dir);
     T.mark('journal');
     const rest = [...journal, ...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];

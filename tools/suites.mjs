@@ -13,8 +13,10 @@ const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 export const suiteFiles = () => readdirSync(join(repo, 'test')).filter((f) => f.endsWith('.test.mjs')).sort();
 // The plugin as it ships: every src/*.mjs, read from the folder so a new module needs no list, and the files around it.
 export const srcFiles = () => readdirSync(join(repo, 'src')).filter((f) => f.endsWith('.mjs')).sort().map((f) => `src/${f}`);
+// The skill's core and its reference files, read from the folder too (a copy with no skill folder still names the core).
+const skillFiles = () => { try { return readdirSync(join(repo, 'skills', 'memory')).filter((f) => f.endsWith('.md')).sort().map((f) => `skills/memory/${f}`); } catch { return ['skills/memory/SKILL.md']; } };
 export const pluginFiles = () => [...srcFiles(), '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json',
-  'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
+  ...skillFiles(), 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
 
 // Resolves to [{ file, seconds, failure }], failure being the end of a failing suite's output.
 export const runSuites = () => Promise.all(suiteFiles().map((file) => new Promise((done) => {
