@@ -1,25 +1,29 @@
-// The one entry point of the 1.6.0 recall hooks. Today PostToolUse for Edit, Write and NotebookEdit (headline 1b, "a file
-// with a past"): after a change that worked, it names earlier exchanges that changed the same file, as additionalContext.
+// The one entry point of the 1.6.0 recall hooks. PostToolUse for Edit, Write and NotebookEdit (headline 1b, "a file with a
+// past"): after a change that worked, it names earlier exchanges that changed the same file. UserPromptSubmit (headline 1c, "a
+// prompt that names something old"): it names earlier exchanges that share rare words with the request. Both as additionalContext.
 // Modelled on enforce-hook.mjs: the import sits inside the try (a missing sibling fails open), the cheapest check comes first,
 // and the exit code is always 0 with nothing printed on any failure. PROJECT_MEMORY_RECALL=0 turns every pointer off.
+// stdout is empty unless a pointer is shown (tools/recall-eval.mjs reads that).
 import * as T from './timing.mjs';
 T.begin('recall');
 try {
   if (process.env.PROJECT_MEMORY_RECALL !== '0') {
-    const { onChange } = await import('./recall.mjs');
+    const { onChange, onPrompt } = await import('./recall.mjs');
     T.mark('load');
     let text = '';
     process.stdin.setEncoding('utf8');
     for await (const c of process.stdin) text += c;
-    const input = JSON.parse(text);
-    T.tag(input?.hook_event_name);
-    if (input?.hook_event_name === 'PostToolUse') {
+    const input = JSON.parse(text), event = input?.hook_event_name;
+    T.tag(event);
+    const on = event === 'PostToolUse' ? onChange : event === 'UserPromptSubmit' ? onPrompt : null;
+    if (on) {
+      if (on === onPrompt) T.name('prompt');
       // The journal, loaded only when a look-up needs it: recall.mjs cannot import it (journal.mjs imports recall.mjs).
-      const { say, n } = await onChange(input, { journal: () => import('./journal.mjs') });
+      const { say, n } = await on(input, { journal: () => import('./journal.mjs') });
       T.mark('look');
       T.shown(n);
       // Written whole before the exit: on macOS a pipe is written asynchronously.
-      if (say) await new Promise((done) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: say } }) + '\n', done));
+      if (say) await new Promise((done) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: say } }) + '\n', done));
     }
   }
 } catch {}

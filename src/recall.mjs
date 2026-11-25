@@ -2,10 +2,10 @@
 // Also the session file and the change hook's look-up (1.6.0 headline 1b). Imports store.mjs, privacy.mjs and text.mjs
 // only. The journal imports this file (dropSessions), so the look-up is handed a loader of the journal (`journal`) by its
 // caller: the hook loads it only when a look-up needs it, and the "already seen" path never pays for it.
-import { readFileSync, appendFileSync, mkdirSync, rmSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, appendFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
-import { foldCase, projectsRoot, storeOf, memoryOff, tag } from './store.mjs';
-import { isOff, isHushed, forgottenIn, QUIET, OFF } from './privacy.mjs';
+import { foldCase, projectsRoot, storeOf, memoryOff, tag, norm } from './store.mjs';
+import { isOff, isHushed, forgottenIn, QUIET, OFF, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
 import { clip, fit } from './text.mjs';
 
 // Words that say nothing about which memory: in a model's natural-language
@@ -278,10 +278,11 @@ export async function onChange(input, { journal, deadline = DEADLINE, now = Date
 // newest 90 days or 4 MB of day files that share rare words with `text`: a word is rare when an entry holds it and under 5% do
 // (under 40 entries: one or two). A match shares 3 rare words, or 2 when the text has exactly 2 words. Up to SHOWN, the highest
 // sum of rarity (1 / entries holding the word) first, the newest on a tie, each with `shares`, the words as typed. Never a
-// helper's entry, a [private] one, a forgotten key, an exchange in `skip` ("<tag> <at>"), a conversation marked private, or this conversation's
-// unless older than `since`. [] when the text has under 2 words; null when the forget list will not read or past `deadline`.
+// helper's entry, a [private] one, a forgotten key, an exchange in `skip` ("<tag> <at>") or `told` (keys), a conversation marked private,
+// or this conversation's unless older than `since`. [] when the text has under 2 words; null when the forget list will not read or past
+// `deadline`. `max`: the window's bytes (the prompt hook's is smaller, PROMPT_BYTES).
 export const RECENT_DAYS = 90, RECENT_BYTES = 4 * 1024 * 1024, RARE = 0.05, YOUNG = 40, SHOWN = 3;
-export async function byWords(store, text, session, { journal, deadline = DEADLINE, since = '', skip = new Set(), now = Date.now() } = {}) {
+export async function byWords(store, text, session, { journal, deadline = DEADLINE, since = '', skip = new Set(), told = new Set(), max = RECENT_BYTES, now = Date.now() } = {}) {
   const ws = words(text), cut = (w) => ws.as.get(w) !== w && ws.as.get(w);
   if (ws.length < 2) return [];
   const { days, dayFile, parseDay } = await journal();
@@ -294,14 +295,16 @@ export async function byWords(store, text, session, { journal, deadline = DEADLI
     if (performance.now() > deadline) return null;
     let t;
     try { t = readFileSync(dayFile(store, d), 'utf8'); } catch { continue; }
-    if (bytes && bytes + t.length > RECENT_BYTES) break;
+    if (bytes && bytes + t.length > max) break;
     bytes += t.length;
     for (const e of parseDay(t).entries.reverse()) {
-      if (isHelper(e) || skip.has(`${e.s} ${e.at}`) || gone.has(e.key) || e.asked === '[private]' || e.answered === '[private]' || held(e, session, since)) continue;
+      if (isHelper(e) || told.has(e.key) || skip.has(`${e.s} ${e.at}`) || gone.has(e.key) || e.asked === '[private]' || e.answered === '[private]' || held(e, session, since)) continue;
       if (!hush.has(e.s)) hush.set(e.s, isHushed(store, e.s, QUIET, 1));
       if (hush.get(e.s)) continue;
       // Ran is left out: half the bytes, and mostly command noise.
-      const hay = [e.asked, e.answered, ...e.changed].join('\n'), in_ = ws.map((w) => has(hay, w, cut(w)));
+      // Lower case, as search reads an entry. Every form has() finds holds the word but its last letter (library: librari-es), so a
+      // cheap includes() goes first.
+      const hay = [e.asked, e.answered, ...e.changed].join('\n').normalize('NFC').toLowerCase(), in_ = ws.map((w) => hay.includes(w.slice(0, -1)) && has(hay, w, cut(w)));
       in_.forEach((h, i) => { if (h) df[i]++; });
       seen.push([e, in_]);
     }
@@ -318,4 +321,49 @@ export function sharesBlock(shown, what = 'this request') {
     if (text.length <= BLOCK_MAX) return text;
   }
   return '';
+}
+
+// The prompt hook (headline 1c). Its window is the newest 90 days or 2 MB of day files, the spec's floor ("Budgets": 4 MB took the
+// bench's prompt to 164 ms, 3 MB to 149 ms, 2 MB to 136 ms; the budget is a 150 ms median, 2026-11-25). ASKED: the characters of
+// an `asked` line. Over SESSION_MAX the prompt hook rewrites the session file.
+export const PROMPT_BYTES = 2 * 1024 * 1024, ASKED = 120, SESSION_MAX = 64 * 1024;
+
+// Over SESSION_MAX the newest line of each kind and path (or key) stays, in order. Only the prompt hook rewrites: a line another
+// hook appends in that instant can be lost, and the cost is one repeated pointer.
+const ONE = new Set(['asked', 'quiet', 'title', 'compact', 'end']);
+export const tidy = (lines) => {
+  const id = (l) => `${l.kind} ${l.by} ${ONE.has(l.kind) ? '' : l.rest}`, last = new Map(lines.map((l, i) => [id(l), i]));
+  return lines.filter((l, i) => last.get(id(l)) === i).map((l) => sessionLine(l.kind, l.rest, l.by, l.at)).join('');
+};
+
+// UserPromptSubmit: { say, n } as onChange. Stops, writing nothing, when pointers are off, memory or the project is off, the
+// conversation is private, or the prompt is a helper's (agent_id) or no ask. A private turn writes one `quiet` line and stops: a
+// <private> block appends it, the <private-session> mark cuts the file down to it (the save after the reply then deletes the
+// file). Otherwise the `asked` line (redacted, then cut) goes last, after the `told` lines of the pointer: the change hook counts
+// its blocks from the newest prompt line on, so a prompt's pointer uses up none of them.
+export async function onPrompt(input, { journal, deadline = DEADLINE, now = Date.now() } = {}) {
+  const none = { say: '', n: 0 }, s = tag(input?.session_id);
+  if (process.env.PROJECT_MEMORY_RECALL === '0' || input?.agent_id != null || typeof input?.prompt !== 'string' || !/^[\w-]+$/.test(s) || memoryOff()) return none;
+  const store = storeOf(input);
+  if (isOff(store) || isHushed(store, s, QUIET, 1) || isHushed(projectsRoot(), s, OFF, 1)) return none;
+  const { asked, own } = await import('./transcript.mjs');
+  if (!asked({}, input.prompt)) return none;
+  const at = join(sessionsOf(store), s), lines = readSession(at), t = new Date(now).toISOString();
+  if (!lines) return none;
+  const write = (text, whole = false) => { mkdirSync(dirname(at), { recursive: true, mode: 0o700 }); (whole ? writeFileSync : appendFileSync)(at, text, { mode: 0o600 }); };
+  const typed = norm(input.prompt);
+  if (PRIVATE_SESSION.test(typed)) { write(sessionLine('quiet', '', '', t), true); return none; }
+  if (PRIVATE.test(typed)) { write(sessionLine('quiet', '', '', t)); return none; }
+  let size = 0;
+  try { size = statSync(at).size; } catch {}
+  if (size > SESSION_MAX) write(tidy(lines), true);
+  const text = own(input.prompt), c = lines.findLastIndex((l) => l.kind === 'compact');
+  const told = new Set(lines.slice(c + 1).filter((l) => l.by === '' && l.kind === 'told').map((l) => l.rest));
+  // "go" and "yes" end inside byWords, before any day file is read.
+  const found = await byWords(store, text, String(input.session_id), { journal, deadline, since: lines[c]?.at ?? '', told, max: PROMPT_BYTES, now }).catch(() => null);
+  let say = '', shown = [];
+  for (let k = found?.length ?? 0; k && !say; k--) say = sharesBlock(shown = found.slice(0, k));
+  if (!say) shown = [];
+  write(shown.map((e) => sessionLine('told', e.key, '', t)).join('') + sessionLine('asked', clip(text, ASKED), '', t));
+  return { say, n: shown.length };
 }

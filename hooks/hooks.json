@@ -21,6 +21,9 @@
     "PostToolUse": [
       { "matcher": "Edit|Write|NotebookEdit", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs"], "timeout": 5 }] }
     ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs"], "timeout": 5 }] }
+    ],
     "PreCompact": [
       { "matcher": "manual", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs", "--stop"], "timeout": 120, "statusMessage": "Saving before compaction" }] },
       { "matcher": "auto", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/compact-gate.mjs"], "timeout": 60, "statusMessage": "Checking before compaction" }] }
