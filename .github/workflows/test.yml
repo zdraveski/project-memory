@@ -55,7 +55,7 @@ jobs:
   changed-lines:
     if: github.event_name == 'pull_request'
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 20
     steps:
       # The whole history, so the diff against the base branch is the pull request's alone.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
