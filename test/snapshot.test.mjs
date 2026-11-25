@@ -248,5 +248,31 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(MISSED.startsWith('it is reached through a link to a folder outside ~/.claude/projects') && HELD.startsWith('it holds what looks like a key, token or password'), 'the reasons a store is left out are said here');
 }
 
+// PR C of step 16: one busy rule for every git write (the snapshot, restore, purge, rescan), and the plugin runs git's clean-up itself.
+{
+  const { busy } = S, { restore } = await import('../src/memory.mjs');
+  const old = new Date(Date.now() - 11 * 60000), ahead = new Date(Date.now() + 11 * 60000);
+  mkdirSync(join(g, 'refs', 'heads'), { recursive: true });
+  const files = ['index.lock', 'HEAD.lock', 'config.lock', 'packed-refs.lock', 'gc.pid', join('refs', 'heads', 'main.lock')];
+  ok(busy() === false, 'no lock: not busy');
+  for (const f of files) {
+    const p = join(g, f);
+    writeFileSync(p, '');
+    ok(busy() === true && existsSync(p), `a fresh ${f} is busy, and left alone`);
+    utimesSync(p, old, old);
+    ok(busy() === false && !existsSync(p), `a ${f} older than ten minutes is swept, not busy`);
+    writeFileSync(p, ''); utimesSync(p, ahead, ahead);
+    ok(busy() === false && !existsSync(p), `a ${f} dated ahead of the clock is as old`);
+  }
+  // restore refuses while busy, and runs no git write.
+  const dir = store('proj-busy');
+  scripted((sub, a) => (a.includes('rev-parse') ? 'abc1234' : ''));
+  writeFileSync(join(g, 'gc.pid'), '');
+  const r = restore(dir, 'a.md', { force: true });
+  ok(r.ok === false && /a snapshot is being taken; try again in a moment/.test(r.lines.join('\n')) && !calls.some((c) => /hash-object|update-ref|cat-file/.test(c)), 'restore says busy while git is busy, and writes nothing');
+  rmSync(join(g, 'gc.pid'));
+
+}
+
 useGit();
 console.log(`snapshot.test.mjs: ${checks} checks passed`);

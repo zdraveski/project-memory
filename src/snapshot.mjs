@@ -87,6 +87,24 @@ export function gitignore() {
 // this tool made before it marked them.
 const IGNORE_HEAD = '*\n!*/\n!*/memory/*.md\n';
 
+// The one busy rule, asked before every git write (the snapshot, restore, purge, rescan). git's lock files a commit takes (the index,
+// HEAD, the branch's, packed-refs, config) and gc.pid, which a git clean-up holds: a fresh one is another git's work in flight, so
+// busy, not a failure -- the next turn retries. One older than ten minutes outlived the git that made it, and would refuse every
+// write from now on: swept here, and not busy. Dated ahead of the clock is as old: it read as busy, uncounted, until the clock
+// caught up. Gone meanwhile is gone. A purge holds config.lock for its whole run, so a snapshot started meanwhile reads busy.
+export const BUSY = 'a snapshot is being taken; try again in a moment';
+export function busy() {
+  const g = join(projectsRoot(), '.git'), heads = join(g, 'refs', 'heads');
+  let hs = []; try { hs = readdirSync(heads).filter((f) => f.endsWith('.lock')).map((f) => join(heads, f)); } catch {}
+  let fresh = false;
+  for (const l of [join(g, 'index.lock'), join(g, 'HEAD.lock'), join(g, 'config.lock'), join(g, 'packed-refs.lock'), join(g, 'gc.pid'), ...hs]) {
+    let age; try { age = Math.abs(Date.now() - statSync(l).mtimeMs); } catch { continue; }
+    if (age < GIT_LOCK_STALE) { fresh = true; continue; }
+    try { unlinkSync(l); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  }
+  return fresh;
+}
+
 let held = [];     // notes left out of the commit for holding a secret: set by snapshot(), kept by snapshotHealth()
 let missed = [];   // stores the snapshot cannot reach: set by snapshot(), kept by snapshotHealth(), emptied by main()
 export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
@@ -102,12 +120,6 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
   const git = (...a) => gitIn('', ...a);
   // A first snapshot taken in parts: the rest is still to add.
   const parts = join(root, '.git', 'project-memory-parts');
-  // git's lock files a commit takes: the index, HEAD, the branch's, config.
-  const locks = () => {
-    const g = join(root, '.git'), heads = join(g, 'refs', 'heads');
-    let hs = []; try { hs = readdirSync(heads).filter((f) => f.endsWith('.lock')).map((f) => join(heads, f)); } catch {}
-    return [join(g, 'index.lock'), join(g, 'HEAD.lock'), join(g, 'config.lock'), join(g, 'packed-refs.lock'), ...hs];
-  };
   try {
     const fresh = !existsSync(join(root, '.git'));
     const ignorePath = join(root, '.gitignore');
@@ -129,17 +141,8 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
         for (const f of days) to(join(d, 'journal', f), 0o600);
       }
     }
-    // A fresh lock is another session's commit in flight: busy, not a failure
-    // -- the next turn retries. One older than ten minutes outlived the git
-    // that made it, and would refuse every commit from now on: index.lock, and
-    // HEAD's or the branch's, which a killed commit leaves too (only the
-    // index's was cleared). Dated ahead of the clock is as old: it read as
-    // busy, uncounted, until the clock caught up. Gone meanwhile is gone.
-    for (const l of locks()) {
-      let age; try { age = Math.abs(Date.now() - statSync(l).mtimeMs); } catch { continue; }
-      if (age < GIT_LOCK_STALE) return 'busy';
-      try { unlinkSync(l); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-    }
+    // Another git's work in flight is busy, not a failure -- the next turn retries (busy(), below).
+    if (busy()) return 'busy';
     // Adopted after the sweep: a stale config.lock refused `git config`, and read
     // as busy, the history never started.
     if (!ours) git('config', 'project-memory.snapshots', 'true');
@@ -364,9 +367,9 @@ const rewrite = (work) => {
   // index is reset to the new HEAD so it holds no old blob.
   // The snapshot hook takes no lock but git's own, and reads a fresh config.lock (nothing here writes config) as busy: the purge
   // holds that one for its whole run, and gives way to a commit already in flight, whose work the stale copy would overwrite.
-  const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), busy = new Error('a snapshot is being taken; try again in a moment');
-  if (['index.lock', 'HEAD.lock'].some((f) => existsSync(join(g, f)))) throw busy;
-  try { writeFileSync(lock, '', { flag: 'wx', mode: 0o600 }); } catch (e) { throw e.code === 'EEXIST' ? busy : e; }
+  const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), wait = new Error(BUSY);
+  if (busy()) throw wait;
+  try { writeFileSync(lock, '', { flag: 'wx', mode: 0o600 }); } catch (e) { throw e.code === 'EEXIST' ? wait : e; }
   // A run that was killed left its copy, the full unscrubbed history, behind; holding the lock, no other run is using one.
   try { for (const n of readdirSync(g)) if (n.startsWith('pm-purge-')) rmSync(join(g, n), { recursive: true, force: true }); } catch {}
   // The copy sits in the repository's own .git, which no snapshot commits; the OS temp folder was outside the store.
@@ -411,3 +414,10 @@ export const readHealth = () => { try { return { read: true, health: JSON.parse(
 export const MISSED = 'it is reached through a link to a folder outside ~/.claude/projects, and git does not follow that link, so no old version of a note there can be brought back. The fix: keep the folder in ~/.claude/projects and make the link the other way round';
 // A held note is checked again at every snapshot, so removing the secret is all it takes.
 export const HELD = 'it holds what looks like a key, token or password, so it stays out of the history. To release it: remove the secret from the note (or its file name, or delete the note); the next reply snapshots it';
+
+// Pack index files with no pack, which a repack Windows could not finish leaves: harmless, but git warns of each on every command.
+export const packOrphans = () => {
+  const pack = join(projectsRoot(), '.git', 'objects', 'pack');
+  let packs = []; try { packs = readdirSync(pack); } catch {}
+  return { pack, orphans: packs.filter((f) => f.endsWith('.idx') && !packs.includes(f.replace(/.idx$/, '.pack'))) };
+};

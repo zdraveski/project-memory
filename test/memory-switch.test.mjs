@@ -439,6 +439,11 @@ See [[nonexist-${GH}]]
   r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
   ok(/could not be purged/.test(r.stdout) && /snapshot/.test(r.stdout) && existsSync(join(root, '.git', 'config.lock')), `forget --purge refuses while a snapshot holds the repository (got ${r.stdout})`);
   unlinkSync(join(root, '.git', 'config.lock'));
+  // A git clean-up in flight (gc.pid, fresh) is busy too: said, and no crash.
+  writeFileSync(join(root, '.git', 'gc.pid'), '1 host');
+  const rg = await run(['forget', word, '--yes', '--purge', '--store', pd]);
+  ok(/could not be purged/.test(rg.stdout) && /snapshot is being taken/.test(rg.stdout) && rg.status !== null && !/at .*.mjs:d+/.test(rg.stderr) && existsSync(join(root, '.git', 'gc.pid')), `forget --purge refuses while git's clean-up runs (got ${rg.stdout} ${rg.stderr})`);
+  unlinkSync(join(root, '.git', 'gc.pid'));
   ok(/still hold/.test(r.stdout) && /--purge/.test(r.stdout), `a failed purge says the snapshots still hold the text and what to run (got ${r.stdout})`);
 }
 
@@ -506,6 +511,12 @@ See [[nonexist-${GH}]]
   ok(r.status === 0 && r.stdout.includes('C--rescan/memory/old.md (1)') && r.stdout.includes('C--rescan/memory/journal/2020-02-03.md (1)') && /snapshots: \d+ secrets? in \d+ saved versions?/.test(r.stdout) && !r.stdout.includes(key) && held() && readFileSync(join(rd, 'old.md'), 'utf8').includes(key), `rescan prints counts and places, never the value, and changes nothing (got ${r.stdout}${r.stderr.slice(0, 400)})`);
   r = await run(['rescan', '--apply']);
   ok(/revoke or rotate/.test(r.stdout) && /still holds the secrets/.test(r.stdout) && /add --yes/.test(r.stdout) && held() && head() === before && !readdirSync(join(home, '.claude')).some((n) => n.startsWith('project-memory-rescan-backup')), `rescan --apply alone only says what it would do (got ${r.stdout})`);
+  for (const lk of ['index.lock', 'gc.pid']) {
+    writeFileSync(join(root, '.git', lk), '');
+    r = await run(['rescan', '--apply', '--yes']);
+    ok(/a snapshot is being taken/.test(r.stdout) && held() && head() === before && readFileSync(join(rd, 'old.md'), 'utf8').includes(key) && existsSync(join(root, '.git', lk)), `rescan --apply --yes refuses while ${lk} is there, and changes nothing (got ${r.stdout})`);
+    unlinkSync(join(root, '.git', lk));
+  }
   r = await run(['rescan', '--apply', '--yes']);
   // A git of the snapshots still finishing makes rescan refuse, as it should: once more after it lets go. The Windows CI
   // failure of 2026-11-24 printed nothing, so main threw: the message now shows stderr, to name it if it comes back.

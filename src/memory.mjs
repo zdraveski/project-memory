@@ -49,7 +49,7 @@ import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
-import { gitWhy, git, gitBytes, real, tracked, ever, rewrite, unsnapped, missing, gitInstalled, fastExport, fastExportOf, fastImportTo, hashObject, readHealth, MISSED, HELD } from './snapshot.mjs';
+import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, rewrite, unsnapped, missing, gitInstalled, fastExport, fastExportOf, fastImportTo, hashObject, readHealth, MISSED, HELD } from './snapshot.mjs';
 import { PROJECT_OFF, OFF_PERIODS, isOff, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
@@ -539,8 +539,7 @@ const rescan = (stores, apply, yes) => {
     `First a backup is made at ${backup}. The backup still holds the secrets, on purpose. Delete it when you have checked the result; it is not deleted for you.`,
     "Copies this cannot clean: Claude Code's own conversation files, other copies of this folder, and synced folders. Delete old copies, or they bring the old text back."];
   if (!yes) return { ok: true, lines: [...warn, ...lines, 'nothing has been changed; add --yes to go on'] };
-  const g = join(root, '.git');
-  if (['index.lock', 'HEAD.lock', 'config.lock'].some((f) => existsSync(join(g, f)))) return no('a snapshot is being taken; try again in a moment; nothing changed');
+  if (busy()) return no(`${BUSY}; nothing changed`);
   mkdirSync(join(backup, 'files'), { recursive: true, mode: 0o700 });
   console.log(warn.join('\n'));   // before the rewrite: a failure or a timeout must not lose where the backup is
   if (hist) git('bundle', 'create', join(backup, 'snapshots.bundle'), '--all');
@@ -613,6 +612,7 @@ export function history(dirs, file, everywhere = false, max = 30, failed = []) {
 export function restore(dir, file, { rev, force = false } = {}) {
   const path = join(dir, file), why = unsnapped();
   if (why) return no(why);
+  if (busy()) return no(`${BUSY}; nothing changed`);
   if (existsSync(path) && !force) return no(`${path} exists; restore --force replaces it with the snapshot`);
   // Deleted here by a promote: brought back, it would be in both stores, loaded twice, drifting apart.
   // Not an index: every store has its own, and a deleted one read as promoted.
@@ -857,9 +857,7 @@ export function doctor(site = sessionStore()) {
   try { gitInstalled(); say(true, 'git on PATH'); } catch { say('note', 'git is not installed: everything works except bringing back an old version of a note. Installing Git (git-scm.com) turns that on'); }
   // A repack Windows could not finish leaves an index with no pack: harmless,
   // but git warns of each one on every command the snapshot runs.
-  const pack = join(projectsRoot(), '.git', 'objects', 'pack');
-  let packs = []; try { packs = readdirSync(pack); } catch {}
-  const orphans = packs.filter((f) => f.endsWith('.idx') && !packs.includes(f.replace(/\.idx$/, '.pack')));
+  const { pack, orphans } = packOrphans();
   if (orphans.length) say(true, `${orphans.length} pack index file(s) in ${pack} have no pack (a repack that could not finish): harmless, but git warns of each on every command; the user can delete them: ${orphans.join(', ')}`);
   // A killed forget --purge leaves a full copy of the history, forgotten text included, in .git.
   try { for (const n of readdirSync(join(projectsRoot(), '.git'))) if (n.startsWith('pm-purge-') && Date.now() - statSync(join(projectsRoot(), '.git', n)).mtimeMs > LOCK_STALE) say(false, `${join(projectsRoot(), '.git', n)} is a copy of the snapshot history, with text you may have forgotten, left by a killed purge. The user's fix: run forget <word> --purge again (it removes the copy first), or delete that folder`); } catch {}
