@@ -1479,17 +1479,23 @@ again ${key2}
 
     // Where the journal is forgotten, the page goes.
     const drops = [['forget', '--key', 'bs4', '--yes', '--store', shop], ['off', '--store', shop], ['rescan', '--apply', '--yes'], ['incognito']];
+    // And the session files (recall.mjs): forget and off a project's, rescan --apply --yes every project's; incognito its own
+    // conversation's, through the journal's takeBack (recall-hook.test.mjs).
+    const { sessionsOf, sessionLine } = await import('../src/recall.mjs'), sess = join(sessionsOf(shop), 'abcd1234');
     for (const args of drops) {
       await write();
+      mkdirSync(sessionsOf(shop), { recursive: true }); writeFileSync(sess, sessionLine('file', '/x'));
       ok(existsSync(pagePath()), `fixture: a page before ${args[0]}`);
       await run(args);
       ok(!existsSync(pagePath()), `${args.join(' ')} deletes the page`);
+      if (args[0] !== 'incognito') ok(!existsSync(sess), `${args.join(' ')} deletes the session files`);
     }
     await write();
     await run(['rescan']);
     await run(['rescan', '--apply']);
     await run(['on', '--store', shop]);
     ok(existsSync(pagePath()), 'rescan without --apply, rescan --apply without --yes (it changes nothing), and on, leave it');
+    ok(existsSync(sess), 'and the session files');
 
     // The page holds each live store's lock from its read to its write, so a forget cannot slip between and be undone by the write.
     dropPage();

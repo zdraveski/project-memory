@@ -53,6 +53,7 @@ node test/memory-doctor.test.mjs
 node test/memory-switch.test.mjs
 node test/journal.test.mjs
 node test/recall.test.mjs
+node test/recall-hook.test.mjs
 node test/enforce.test.mjs
 node test/enforce-hook.test.mjs
 node test/timing.test.mjs

@@ -459,6 +459,8 @@ export async function main(argv, input) {
       if (payload && !dry) ensureIndex(storeOf(payload));
       // The temp copies a killed Stop left here (store.mjs).
       if (payload) try { sweepTemps(storeOf(payload)); } catch {}
+      // Session files older than 7 days, in every project (recall.mjs).
+      try { (await import(new URL('./recall.mjs', import.meta.url))).sweepSessions(); } catch {}
       T.mark('index');
       // Then a few of the conversations still on disk, into the journal, without
       // a word; in a try of its own, so a failed import costs only the import.

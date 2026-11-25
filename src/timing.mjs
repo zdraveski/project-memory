@@ -8,7 +8,7 @@ import { join } from 'node:path';
 
 export const FILE = '.timing';
 export const MAX = 256 * 1024;
-const HOOKS = ['save', 'tidy', 'brief', 'enforce', 'gate'];
+const HOOKS = ['save', 'tidy', 'brief', 'enforce', 'gate', 'recall'];
 // Claude Code's own names only: whatever else a payload holds never reaches the file.
 const EVENTS = ['Stop', 'SubagentStop', 'SessionStart', 'PreCompact', 'PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Notification', 'SessionEnd'];
 const DETAILS = ['startup', 'resume', 'compact', 'clear', 'auto', 'manual'];
@@ -53,6 +53,11 @@ export function cut(file, size, stat = statSync) {
   } finally { rmSync(tmp, { force: true }); }
 }
 
+// The number of pointers the run showed (1.6.0 step 4): a count, never what they said.
+export function shown(n) {
+  if (run && n > 0) run.n = n;
+}
+
 export async function flush() {
   const r = run; run = null;
   if (!r) return;
@@ -60,8 +65,8 @@ export async function flush() {
     const { projectsRoot } = await import('./store.mjs');
     const file = join(projectsRoot(), FILE);
     const p = Object.fromEntries(Object.entries(r.p).map(([k, v]) => [k, Math.round(v)]));
-    const { h, e, node, start } = r;
-    appendFileSync(file, JSON.stringify({ t: Date.now(), h, e, ...(node && { node }), start, p, ms: Math.round(performance.now()) }) + '\n', { mode: 0o600 });
+    const { h, e, node, start, n } = r;
+    appendFileSync(file, JSON.stringify({ t: Date.now(), h, e, ...(node && { node }), start, p, ...(n && { n }), ms: Math.round(performance.now()) }) + '\n', { mode: 0o600 });
     cut(file, statSync(file).size);
   } catch {}
 }
