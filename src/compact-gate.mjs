@@ -36,7 +36,7 @@ import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
 import { clip } from './text.mjs';
 import { goesOn, readTail, turns, text, prompt, handoff, tag, answer, userText, newest, sectionOf, NUDGE_TAG, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, redact, BARE } from './handoff-log.mjs';
-import { hushed, PRIVATE, PRIVATE_SESSION, OFF, isOff } from './privacy.mjs';
+import { isHushed, PRIVATE, PRIVATE_SESSION, OFF, isOff } from './privacy.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -258,7 +258,7 @@ const secret = (payload, s) => PRIVATE_SESSION.test(userText(s)) || PRIVATE.test
 // Or held with auto memory off once (OFF), as handoff() keeps it out: resumed with auto memory on, the notes and the nudge wrote
 // what it said into handoff.md (review, 2026-11-01).
 const marked = (payload) => {
-  if (hushed(storeOf(payload), tag(payload.session_id)) !== false || hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return true;
+  if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;
   const all = readTail(payload.transcript_path, Infinity).text;
   return PRIVATE_SESSION.test(norm(all)) && turns(all).hush === true;
 };
@@ -321,7 +321,7 @@ export function nudge(payload) {
   if (payload.hook_event_name !== 'Stop' || payload.stop_hook_active || !payload.transcript_path || !existsSync(payload.transcript_path)) return null;
   // A conversation marked private, before any read: past the trigger, its
   // whole turn was read again at every Stop, for no nudge. Or held with auto memory off once (OFF), as marked() reads it.
-  if (hushed(storeOf(payload), tag(payload.session_id)) !== false || hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return null;
+  if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return null;
   const s = state(payload.transcript_path, { ask: false });
   // The conversation's tag, as everywhere else: its full id named a file.
   const id = tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''));

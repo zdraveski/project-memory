@@ -52,19 +52,21 @@ export const offLine = (o) => (o.unread
   ? `project-memory: memory is paused here because the off marker can't be read (${o.unread}). Tell the user; memory on won't help until that's fixed.`
   : `project-memory is off in this project since ${offSince(o)} (the user turned it off). Mention it if the user asks about memory; memory on turns it back on.`);
 // `prune`: the tags kept beside a new one. False: not marked, or a mark that
-// lost every race, unwritten. Null: unknown, the list refused three reads.
-export function hushed(dir, s, mark = false, list = QUIET, prune = (have) => have.slice(-999)) {
+// lost every race, unwritten. Null: unknown, the list refused `tries` reads. Null counts as private: it is for the one caller that must
+// record the failure (the Stop hook throws unreadable()); every other asks isHushed(). `tries` is the caller's choice, 3 by default
+// (a scan can hold the list for a moment); the git-rule hook makes one, because its timeout is 5 s.
+export function hushed(dir, s, mark = false, list = QUIET, prune = (have) => have.slice(-999), tries = 3) {
   const p = join(dir, list);
   if (!s) return false;
   let unread;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < tries; i++) {
     // CRLF too: a tag with a \r left over matched no conversation, and a marked
     // one was written again.
     // A read refused (EBUSY: a scan holding the list) is no answer: read as no
     // tags, a private conversation was saved as public (F12). Held for a moment, it is read again after a pause, as the store's other
     // retries do: three reads in the same instant all met the hold (release review). None after the last, none for a folder.
     let before = null;
-    try { before = readFileSync(p, 'utf8'); unread = false; } catch (e) { unread = e.code !== 'ENOENT'; if (i < 2 && BUSY.includes(e.code)) sleep(STEP); }
+    try { before = readFileSync(p, 'utf8'); unread = false; } catch (e) { unread = e.code !== 'ENOENT'; if (i < tries - 1 && BUSY.includes(e.code)) sleep(STEP); }
     if (unread) continue;
     const have = listOf(before);
     if (!mark || have.includes(s)) return have.includes(s);
@@ -74,6 +76,9 @@ export function hushed(dir, s, mark = false, list = QUIET, prune = (have) => hav
   }
   return unread ? null : false;
 }
+// Whether a conversation is private, by the list `list` of the store or the projects root. A list that exists and cannot be read means
+// private: nothing here answers "not private" for a file it could not read.
+export const isHushed = (dir, s, list = QUIET, tries = 3) => hushed(dir, s, false, list, undefined, tries) !== false;
 // What a writer throws when hushed() answers unknown, after changing nothing.
 export const unreadable = (dir, list) => new Error(`${join(dir, list)} could not be read`);
 
@@ -115,3 +120,8 @@ export function off(input) {
 // editor's CRLF, or a space left after a line, is still the line.
 export const FORGOTTEN = join('journal', '.forgotten');
 export const forgotten = (text) => listOf(text).map((l) => l.split('\t'));
+// The list as a store has it: `listed` its lines, and `shut` when it exists but cannot be read, which could name any exchange: the
+// caller keeps every one of its exchanges out and records the failure, as the Stop does. A list that is not there names none.
+export function forgottenIn(dir) {
+  try { return { listed: forgotten(readFileSync(join(dir, FORGOTTEN), 'utf8')), shut: false }; } catch (e) { return { listed: [], shut: e.code !== 'ENOENT' }; }
+}

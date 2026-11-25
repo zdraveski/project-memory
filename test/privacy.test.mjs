@@ -2,7 +2,8 @@
 // off, project switched off, off period, forgotten exchange), each with its file absent, present and unreadable (a folder where
 // the file should be), the rule "unreadable means private", the tag patterns, the compaction note's wider check, and the pruning
 // of the two lists. Run: node privacy.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import fs, { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome, tempDir, quick } from './harness.mjs';
@@ -10,7 +11,7 @@ import { tempHome, tempDir, quick } from './harness.mjs';
 const { home } = tempHome('privacy-test-');
 const { norm, projectsRoot, tag } = await import('../src/store.mjs');
 const P = await import('../src/privacy.mjs');
-const { PRIVATE, PRIVATE_SESSION, QUIET, OFF, PROJECT_OFF, OFF_PERIODS, FORGOTTEN, hushed, isOff, wasOff, off, offLine, unreadable, forgotten } = P;
+const { PRIVATE, PRIVATE_SESSION, QUIET, OFF, PROJECT_OFF, OFF_PERIODS, FORGOTTEN, hushed, isHushed, isOff, wasOff, off, offLine, unreadable, forgotten, forgottenIn } = P;
 
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
@@ -34,11 +35,27 @@ for (const [what, list, dirOf] of [['private conversation', QUIET, () => store('
   mkdirSync(here, { recursive: true }); mkdirSync(gone, { recursive: true });
   writeFileSync(join(here, list), `other000\n${S}\r\n`);
   mkdirSync(join(gone, list));   // a folder where the list should be: it exists and cannot be read
-  ok(hushed(none, S, false, list) === false, `${what}: no list, not marked`);
-  ok(hushed(here, S, false, list) === true, `${what}: a tag in the list (CRLF too) is marked`);
-  ok(hushed(here, 'zzz00000', false, list) === false, `${what}: another tag is not`);
+  ok(hushed(none, S, false, list) === false && isHushed(none, S, list) === false, `${what}: no list, not marked`);
+  ok(hushed(here, S, false, list) === true && isHushed(here, S, list) === true, `${what}: a tag in the list (CRLF too) is marked`);
+  ok(hushed(here, 'zzz00000', false, list) === false && isHushed(here, 'zzz00000', list) === false, `${what}: another tag is not`);
   ok(hushed(gone, S, false, list) === null, `${what}: a list that cannot be read answers unknown, for the Stop that records it`);
+  ok(isHushed(gone, S, list) === true && isHushed(gone, 'zzz00000', list) === true, `${what}: unreadable is private, whoever asks`);
   ok(hushed(none, '', false, list) === false && hushed(none, undefined, true, list) === false && !existsSync(join(none, list)), `${what}: no id is never private, and never marked`);
+}
+// One try, as the git-rule hook asks (its timeout is 5 s), and three by default: counted on a list a scan holds.
+{
+  const d = store('tries'), list = join(d, QUIET);
+  writeFileSync(list, `${S}\n`);
+  const read = fs.readFileSync;
+  let reads = 0;
+  fs.readFileSync = (p, ...a) => { if (String(p) === list) { reads++; throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }); } return read(p, ...a); };
+  syncBuiltinESMExports();
+  try {
+    const one = isHushed(d, S, QUIET, 1), oneReads = reads; reads = 0;
+    const three = isHushed(d, S), threeReads = reads;
+    ok(one === true && oneReads === 1, `a caller that asks for one try reads once (read ${oneReads})`);
+    ok(three === true && threeReads === 3, `the default is three tries (read ${threeReads})`);
+  } finally { fs.readFileSync = read; syncBuiltinESMExports(); }
 }
 // Marking, by rename; a mark already there writes nothing.
 {
@@ -46,7 +63,7 @@ for (const [what, list, dirOf] of [['private conversation', QUIET, () => store('
   ok(hushed(d, S, true) === true && readFileSync(join(d, QUIET), 'utf8') === `${S}\n`, 'a tag is marked');
   ok(hushed(d, S, true) === true && readFileSync(join(d, QUIET), 'utf8') === `${S}\n`, 'a tag already there is marked once');
   const bad = store('mark-unread'); mkdirSync(join(bad, QUIET));
-  ok(hushed(bad, S, true) === null, 'a list that cannot be read is not written, and is private');
+  ok(hushed(bad, S, true) === null && isHushed(bad, S) === true, 'a list that cannot be read is not written, and is private');
 }
 
 // Pruning. .private-sessions keeps the newest 999 with the new tag; a plain list of 1,005 is cut to 1,000.
@@ -118,6 +135,9 @@ for (const [what, list, dirOf] of [['private conversation', QUIET, () => store('
   const none = store('fg-none'), on = store('fg-on'), bad = store('fg-bad');
   mkdirSync(join(on, 'journal'), { recursive: true }); mkdirSync(join(bad, FORGOTTEN), { recursive: true });
   writeFileSync(join(on, FORGOTTEN), 'k1\tC--p/abc\t2026-11-01 10:00\r\nk2\n');
+  assert.deepStrictEqual(forgottenIn(none), { listed: [], shut: false }); checks++;
+  assert.deepStrictEqual(forgottenIn(on), { listed: [['k1', 'C--p/abc', '2026-11-01 10:00'], ['k2']], shut: false }); checks++;
+  assert.deepStrictEqual(forgottenIn(bad), { listed: [], shut: true }); checks++;
   assert.deepStrictEqual(forgotten('a\tb\tc\n\n k \n'), [['a', 'b', 'c'], ['k']]); checks++;
   ok(unreadable('/d', '.x').message.endsWith('.x could not be read') && unreadable('/d', '.x') instanceof Error, 'the error a writer throws names the list');
 }

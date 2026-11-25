@@ -2,7 +2,7 @@
 // Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
 export default {
   "F12 a list that won't read taken for no tags": ["unread = e.code !== 'ENOENT';", 'unread = false;'],
-  'a list held for a moment read again at once': [" if (i < 2 && BUSY.includes(e.code)) sleep(STEP); }", ' }'],
+  "a list held for a moment read again at once": [" if (i < tries - 1 && BUSY.includes(e.code)) sleep(STEP); }", " }"],
   "only one spelling of the mark": ["export const PRIVATE_SESSION = /<\\s*private[-_]session\\b[^>]{0,200}>/i;", "export const PRIVATE_SESSION = /<private-session>/i;"],
   "a CRLF list of private conversations misread": ["const have = listOf(before);", "const have = (before ?? '').split('\\n').filter(Boolean);"],
   "a private tag with attributes kept": ["export const PRIVATE = /<\\s*private(?![-_\\w])(?:[^>]*>|[^>]*$)/i;", "export const PRIVATE = /<private>/i;"],
@@ -17,4 +17,8 @@ export default {
   "memory-off tags never capped": [").slice(-OFF_MOST);", ");"],
   'private marks kept for 50': ['have.slice(-999)', 'have.slice(-49)'],
   'forget undone by a padded line': ["listOf(text).map((l) => l.split('\\t'))", "(text ?? '').split('\\n').filter(Boolean).map((l) => l.split('\\t'))"],
+  "startup takes a missing forgotten list for one that will not read": ["shut: e.code !== 'ENOENT' }", "shut: true }", {"test":["test/privacy.test.mjs","test/handoff-log.test.mjs"]}],
+  "a forgotten list that will not read taken for an empty one": ["shut: e.code !== 'ENOENT' }", "shut: false }", {"test":["test/privacy.test.mjs","test/handoff-log.test.mjs"]}],
+  "a list that cannot be read taken for no tags": ["list, undefined, tries) !== false;", "list, undefined, tries) === true;"],
+  "a caller that asks for one try gets three": ["for (let i = 0; i < tries; i++) {", "for (let i = 0; i < 3; i++) {"],
 };

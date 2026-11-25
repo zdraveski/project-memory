@@ -49,7 +49,7 @@ import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { holdsSecret, sleep, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
-import { PROJECT_OFF, OFF_PERIODS, isOff, hushed, forgotten, FORGOTTEN } from './privacy.mjs';
+import { PROJECT_OFF, OFF_PERIODS, isOff, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
@@ -1029,7 +1029,7 @@ function replay(here, args, all, label, failed) {
       try {
         if (statSync(file).mtimeMs < from) continue;
         const s = tag(sub ? basename(dirname(dirname(file))) : basename(file, '.jsonl'));
-        if (hushed(join(folder, 'memory'), s) !== false) continue; // incognito, or the list unread: not printed
+        if (isHushed(join(folder, 'memory'), s)) continue; // incognito, or the list unread: not printed
         commandsOf(file, chunk, REPLAY_SEG, (c) => {
           if (!(c.t >= from)) return;
           checked++;

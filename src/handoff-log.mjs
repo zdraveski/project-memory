@@ -24,7 +24,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import * as T from './timing.mjs';
 import { clip, plain, fit, SAY } from './text.mjs';
-import { PRIVATE, PRIVATE_SESSION, QUIET, OFF, isOff, wasOff, hushed, off, offLine, unreadable, FORGOTTEN, forgotten } from './privacy.mjs';
+import { PRIVATE, PRIVATE_SESSION, QUIET, OFF, isOff, wasOff, hushed, off, offLine, unreadable, forgottenIn } from './privacy.mjs';
 import { holdsSecret, tag, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, autoMemory, pathKey, transcriptKey, raw, inProjects, HANDOFF_FAILED, JOURNAL_FAILED, redact, FUNC, norm } from './store.mjs';
 export { redact, holdsSecret };
 
@@ -692,8 +692,7 @@ export function handoff(input, sink = null) {
     // and by its key, the prompt's id: a clock moved to another time zone gave
     // it another minute, and it came back.
     // A list that won't read could name any of this turn's exchanges: none goes in, the startup line's rule (below).
-    let list = null, shut = false; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch (e) { shut = e.code !== 'ENOENT'; }
-    const me = pathKey(transcriptKey(input.transcript_path)), listed = forgotten(list);
+    const { listed, shut } = forgottenIn(dir), me = pathKey(transcriptKey(input.transcript_path));
     const keys = new Set(listed.map(([k]) => k)), out = new Set(listed.filter(([, t]) => t && pathKey(t) === me).map(([, , at]) => at));
     // A turn with a key goes by it alone: the minute it was listed under, in
     // another zone's clock, can be another turn's minute here (fuzz, 2026-10-30).
@@ -1004,8 +1003,8 @@ async function print(input) {
     // A list that won't read could name any: none is listed. Nor any of a
     // conversation held with auto memory off, unknown included: a later Stop
     // with it on reads back what was typed while it was off.
-    let list = null, shut = false; try { list = readFileSync(join(dir, FORGOTTEN), 'utf8'); } catch (e) { shut = e.code !== 'ENOENT'; }
-    const gone = new Set(forgotten(list).filter(([, t]) => t).map(([, t, at]) => `${tag(basename(t))} ${at}`));
+    const { listed, shut } = forgottenIn(dir);
+    const gone = new Set(listed.filter(([, t]) => t).map(([, t, at]) => `${tag(basename(t))} ${at}`));
     const theirs = lines.length && last && !others.length && !shut && hushed(projectsRoot(), last.s, false, OFF) === false
       ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).map(render) : [];
     const journal = await journalLine(dir);

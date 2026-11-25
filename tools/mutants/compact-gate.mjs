@@ -3,7 +3,7 @@
 export default {
   "an Escape after a tool call reads as mid-turn by the gate": ["      if (/^\\s*\\[Request interrupted by user/.test(t)) s.midTurn = false;", "      "],
   "a subagent's record read as the conversation's by the gate": ["    if (r.isSidechain === true) continue;   // a subagent's record", "    // a subagent's record"],
-  "P-F2 the gate's notes speak of a memory-off conversation":[" || hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return true;", ") return true;"],
+  "P-F2 the gate's notes speak of a memory-off conversation": [" || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;", ") return true;"],
   "P-F1 the gate's note ignores a private answer to Claude's question":["const told = heard(r);", "const told = '';"],
   "a forget turn not seen by the gate":["FORGETS.test(String(b.input?.command ?? ''))) s.forgot = true;", "false) s.forgot = true;"],
   "a forget turn's cut note keeps its ask": ["${s.forgot ? '[private]' : clip(s.ask, 240)}", "${clip(s.ask, 240)}"],
@@ -38,8 +38,8 @@ export default {
   "a private message that is no ask shows its answer": ["else if ((!r.isCompactSummary || !s.ask) && /<\\s*private/i.test(unquote(unwrap(norm(told ? `${t}\\n${told}` : t))))) s.hidden = true;", ""],
   "a private conversation gets a note": ["  if (marked(payload)) return 'private';\n", ""],
   // One check now for the gate's note, the recovery note and the nudge's last test (F22): the F12 pair is one mutant.
-  "F12 a note when the private list won't read": ["if (hushed(storeOf(payload), tag(payload.session_id)) !== false || hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return true;", "if (hushed(storeOf(payload), tag(payload.session_id)) || hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return true;"],
-  "F12 a note when the memory-off list won't read": ["|| hushed(projectsRoot(), tag(payload.session_id), false, OFF) !== false) return true;", "|| hushed(projectsRoot(), tag(payload.session_id), false, OFF)) return true;"],
+  "F12 a note when the private list won't read": ["if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;", "if (isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;"],
+  "F12 a note when the memory-off list won't read": ["if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;", "if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), '.private-sessions')) return true;"],
   "F22 a <private-session> typed in an earlier turn unseen": ["  return PRIVATE_SESSION.test(norm(all)) && turns(all).hush === true;", "  return false;"],
   "F22 a <private-session> only quoted taken for a mark": ["PRIVATE_SESSION.test(norm(all)) && turns(all).hush === true", "PRIVATE_SESSION.test(norm(all))"],
   "a private answer in the note": ["answer(userText(s), s.said, 400) ||", "clip(s.said, 400) ||"],
