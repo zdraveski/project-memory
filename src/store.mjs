@@ -261,6 +261,7 @@ export function isOff(dir) {
 // its Stops and the import come later: a turn asked inside a period is never written. Tested on what a turn's own time says.
 export const OFF_PERIODS = '.off-periods';
 export function wasOff(dir) {
+  // A read error throws: the Stop records it and writes nothing.
   const periods = listOf(raw(join(dir, OFF_PERIODS))).map((l) => l.split(' ').map(Number));
   // A turn of unknown time (NaN: its record had no timestamp) is placed in none, so it is kept out once the project has been off.
   return (t) => Number.isNaN(t.ms) ? periods.length > 0 : periods.some(([from, to]) => t.ms >= from && t.ms <= to);
@@ -368,6 +369,12 @@ export const gitWhy = (e) => redact((e.code === 'ENOENT' && String(e.syscall).st
 export const raw = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
 // A list file's lines, trimmed (an editor's CRLF, a space left after one), none blank.
 export const listOf = (text) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+// Text read the same in any width and without hidden characters: a fullwidth
+// ＜private＞, or a zero-width space inside the tag, kept what it should hide.
+// Every character Unicode says to show as nothing (Default_Ignorable_Code_Point): with the five zero-width ones alone, a soft
+// hyphen, a left-to-right mark (an RTL keyboard's, or a paste's), a bidi control or a variation selector inside the tag kept it
+// (e2e audit, 2026-11-01).
+export const norm = (s) => s.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '');
 
 // Local time as `2026-10-27 01:07`, by hand: toLocaleString('sv-SE') loads
 // ICU's locale data on its first call, 26-34 ms of a ~135 ms Stop (profiled
@@ -382,6 +389,8 @@ export const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4
 
 const LOCK_WAIT = 2000;     // a hook that waits longer skips the turn; the next one redoes it
 export const LOCK_STALE = 30_000;  // nothing held under the lock takes this long: a lock this old is a killed hook's
+// A lock past LOCK_STALE either way: one dated in the future (a clock set back) is a killed hook's too. Throws when it is gone.
+export const staleLock = (p) => Math.abs(Date.now() - statSync(p).mtimeMs) > LOCK_STALE;
 export const STEP = 25;    // ms between tries for a held lock: a freed one is taken within 25 ms, 80 tries in LOCK_WAIT
 // The codes Windows gives while another program holds a path or a delete is still settling.
 export const BUSY = ['EPERM', 'EBUSY', 'EACCES'];
@@ -411,7 +420,7 @@ export function withLock(dir, fn) {
       // Either way: a lock dated in the future (a clock set back) was never stale.
       // Age only, not a dead owner's pid: a waiter can read the owner of a lock being released, and took the next
       // holder's live lock (1.3.3).
-      try { stale = Math.abs(Date.now() - statSync(lock).mtimeMs) > LOCK_STALE; } catch {}
+      try { stale = staleLock(lock); } catch {}
       // A killed hook's lock, whatever it left: a file, a folder with something
       // in it. One still there when the wait is up throws, so the pass that
       // fails says so in .health: busy every turn was silence.
@@ -425,7 +434,7 @@ export function withLock(dir, fn) {
         try {
           renameSync(lock, dead);
           // What we renamed may be a lock another waiter made in between: put it back.
-          let fresh = false; try { fresh = Math.abs(Date.now() - statSync(dead).mtimeMs) <= LOCK_STALE; } catch {}
+          let fresh = false; try { fresh = !staleLock(dead); } catch {}
           if (fresh) { try { renameSync(dead, lock); } catch {} }
           else try { rmSync(dead, { recursive: true, force: true }); } catch {}   // left over: sweepTemps takes it
           continue;

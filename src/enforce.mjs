@@ -3,7 +3,7 @@
 // or writes anything. Imports store.mjs only, so a hook can load it fast.
 import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, isOff, tag, QUIET, OFF, listOf } from './store.mjs';
+import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, isOff, tag, QUIET, OFF, listOf, norm } from './store.mjs';
 
 const BSL = String.fromCharCode(92), KEYS = ['on', 'has', 'unless'], MAX = 8;
 
@@ -197,10 +197,12 @@ export function privateTurn(payload) {
   const RE = /<\s*private[-_]session\b[^>]{0,200}>/i;
   try {
     for (const l of readFileSync(payload.transcript_path, 'utf8').split('\n')) {
-      if (!RE.test(l)) continue;
+      // norm costs ~10 ms a MB: only a line with a non-ASCII character can hide the mark from the plain test.
+      if (!RE.test(l) && !(/[^\x00-\x7f]/.test(l) && RE.test(norm(l)))) continue;
       try {
         const r = JSON.parse(l), c = r.message?.content;
-        if (r.type === 'user' && (Array.isArray(c) ? c.some((b) => b?.type === 'text' && RE.test(b.text)) : RE.test(String(c)))) return true;
+        if (r.isSidechain) continue;   // a helper's record, as turns() skips it
+        if (r.type === 'user' && (Array.isArray(c) ? c.some((b) => b?.type === 'text' && RE.test(norm(String(b.text)))) : RE.test(norm(String(c))))) return true;
       } catch {}
     }
     return false;

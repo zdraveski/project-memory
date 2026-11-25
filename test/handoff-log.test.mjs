@@ -1525,6 +1525,14 @@ appendFileSync(tk, [user('the ibis note', { ts: '2026-10-29T10:10:00Z', uuid: 'u
 appendFileSync(join(dirF, 'journal', '.forgotten'), `u-lynx\tmemory/k\t${local('2026-10-29T10:10:00Z')}\n`);
 handoff({ cwd: cwdF, transcript_path: tk, session_id: 'kkkkkkkk-1' });
 ok(/the ibis note/.test(fdoc()) && !/lynx/.test(fdoc()), `a forgotten exchange listed under another zone's minute takes only itself (got ${fdoc()})`);
+// 1.5.8: a forget list that won't read (a folder in its place: EISDIR on every system) could name any exchange, so none is written.
+{
+  const f = join(dirF, 'journal', '.forgotten'), keep = readFileSync(f, 'utf8'), tp = join(dirF, 'p.jsonl');
+  writeFileSync(tp, [user('the pangolin note', { ts: '2026-10-29T10:30:00Z', uuid: 'u-pangolin' }), asst('wrote the pangolin note', { ts: '2026-10-29T10:30:30Z' })].join('\n') + '\n');
+  rmSync(f); mkdirSync(f);
+  try { handoff({ cwd: cwdF, transcript_path: tp, session_id: 'pppppppp-1' }); } finally { rmSync(f, { recursive: true }); writeFileSync(f, keep); }
+  ok(!/pangolin/.test(fdoc()), `an unreadable forget list puts none of the turn's exchanges in handoff.md (got ${fdoc()})`);
+}
 // Two exchanges of one minute, both forgotten after they were written: both go from the file, each by what it says (1.5.3 holes).
 {
   const tm = join(dirF, 'm.jsonl');
@@ -4058,6 +4066,15 @@ if (!quick) {
     writeFileSync(tr, lines(U('asked while off', '2026-09-12T08:00:00Z'), A('reply one', '2026-09-12T08:00:05Z'), U('asked after it was on', '2026-09-12T09:00:00Z'), A('reply two', '2026-09-12T09:00:05Z')));
     handoff({ cwd: c, transcript_path: tr, session_id: 'perioda1' });
     ok(nAsked(d) === 1 && /asked after it was on/.test(docOf(d)) && !/asked while off/.test(docOf(d)), 'a turn asked in a period the project was off is left out');
+  }
+  // 1.5.8: an off-period list that won't read (a folder in its place) could hold any turn: the Stop throws, so its failure is
+  // recorded, and writes none.
+  {
+    const c = 'C:\\hl-E-periods-shut', d = store(c), tr = join(d, 'e4s.jsonl');
+    mkdirSync(join(d, '.off-periods'));
+    writeFileSync(tr, lines(U('asked while the list will not read', '2026-09-12T08:00:00Z'), A('reply one', '2026-09-12T08:00:05Z')));
+    let r; try { r = handoff({ cwd: c, transcript_path: tr, session_id: 'periods1' }); } catch (e) { r = e; }
+    ok(r instanceof Error && nAsked(d) === 0 && !/will not read/.test(docOf(d)), `an unreadable off-period list throws and writes no turn (got ${String(r)})`);
   }
   // Exchanges forget took out all go, not only one.
   {

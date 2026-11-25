@@ -1,6 +1,6 @@
 {
   "name": "project-memory",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "displayName": "Project Memory",
   "description": "Claude Code forgets. project-memory remembers. Saved only on your computer. It keeps a journal of your work so a new conversation starts where the last one stopped, keeps long tasks on track when a conversation is compacted, keeps old versions of its notes so a lost one can come back, shares lessons across your projects and keeps secrets out.",
   "author": { "name": "zdraveski", "url": "https://github.com/zdraveski" },
