@@ -42,7 +42,10 @@ p.day('2026-11-12', [
   p.entry({ key: 'old1', at: '2026-11-12 10:00', asked: 'an older exchange of the same conversation' }),
   p.entry({ key: '3f07bb43 2026-11-12T14:02 a1b2c3d4e5f6' }),
 ]);
-let r = run(p.payload('src/close.js'));
+// The hook gives up after 400 ms from Node's start; a busy CI machine running every suite at once (macOS, Windows on Node 22)
+// can pass that on a cold start, and the hook rightly says nothing. Then its session file goes and it runs again, up to 5 times.
+let r;
+for (let i = 0; i < 5; i++) { r = run(p.payload('src/close.js')); if (r.stdout || r.status !== 0) break; dropSessions(p.store, SID.slice(0, 8)); }
 ok(r.status === 0 && r.stderr === '', `the hook exits 0 (got ${r.status} ${r.stderr})`);
 ok(said(r).hookEventName === 'PostToolUse', 'a PostToolUse answer');
 ok(said(r).additionalContext === [
