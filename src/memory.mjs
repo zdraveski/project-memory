@@ -43,20 +43,20 @@ The store is this session's own (outside a session: the cwd's project, or the ne
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
 reads its transcript. After --, every word is a term, one that starts with -- too.`;
-import { appendFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, realpathSync, writeFileSync } from 'node:fs';
-import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:path';
+import { appendFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, rmSync, unlinkSync, realpathSync, writeFileSync } from 'node:fs';
+import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { holdsSecret, sleep, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
-import { gitWhy, gitArgs } from './snapshot.mjs';
+import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
+import { gitWhy, git, gitBytes, real, tracked, ever, rewrite, unsnapped, missing, gitInstalled, fastExport, fastExportOf, fastImportTo, hashObject, readHealth, MISSED, HELD } from './snapshot.mjs';
 import { PROJECT_OFF, OFF_PERIODS, isOff, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { clip } from './text.mjs';
-import { redact, MISSED, HELD, sectionOf, parse, stalled, GRACE, edited, tag, unsaved, unsay } from './handoff-log.mjs';
+import { redact, sectionOf, parse, stalled, GRACE, edited, tag, unsaved, unsay } from './handoff-log.mjs';
 import { BLOCK, transcripts, lastTurn, chunk as chunkOf } from './transcript.mjs';
 import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
@@ -416,7 +416,7 @@ function recent(dir) {
 }
 
 function snapshots() {
-  const h = json(join(projectsRoot(), '.snapshot-health'));
+  const { health: h } = readHealth();
   if (!h) return 'snapshots: none recorded yet';
   if (h.off) return `snapshots: off, ${h.off}: everything else works, but an old version of a note cannot be brought back`;
   // A first snapshot in parts, or one waiting on another git, as it is: "none recorded yet" hid a history that never
@@ -456,72 +456,7 @@ function sessionStore() {
   }
 }
 
-// The snapshot repo is ~/.claude/projects and tracks each store by its real
-// path: memory-tier.mjs ignores the junctions.
-// Paths literal: git reads a path with * ? [ as a pattern, and `notes[1].md`
-// matched other notes' history. A version is read with cat-file for the same
-// reason: `git show rev:a*.md` took the argument for a pattern, printed
-// nothing and succeeded, and restore wrote an empty note.
-const gitAs = (encoding, a) => execFileSync('git', gitArgs('--literal-pathspecs', ...a), { encoding, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20, timeout: 60_000 });
-const git = (...a) => gitAs('utf8', a);
-// A blob's own bytes: through a string, a note that is not UTF-8 lost its letters.
-const gitBytes = (...a) => gitAs('buffer', a);
-// The on-disk spelling: git's paths are case-sensitive, and the JS realpath
-// keeps whatever case it was handed (a cwd typed in lower case).
-const real = (p) => { try { return realpathSync.native(p); } catch { return p; } };
-// A store linked to a folder outside the root is in the history by its link's
-// path: resolved, git said the path was outside the repository.
-// Its memory folder or its project folder, either can be the link: the
-// project folder as the root lists it, then memory/.
-// Every path git may hold it by, the one to read first first.
-const tracked = (dir, file) => {
-  const root = real(projectsRoot()), at = relative(root, real(dir));
-  if (!at.startsWith('..') && !isAbsolute(at)) return [relative(root, join(real(dir), file)).replace(/\\/g, '/')];
-  // Of two links to one folder, the first, which the snapshot keeps: named by
-  // the second, git read an ignored path, and restore brought back a version
-  // older than the last snapshot's. Then the others: a link that sorts first,
-  // added later, holds none of the history made before it. In the order
-  // gitignore() takes them, with no MEMORY.md needed: a deleted index is the
-  // one to restore.
-  const me = pathKey(real(dir));
-  let names = []; try { names = readdirSync(projectsRoot()); } catch {}
-  const links = names.filter((n) => pathKey(real(join(projectsRoot(), n, 'memory'))) === me);
-  return (links.length ? links : [basename(dirname(dir))]).map((n) => `${n}/memory/${file}`);
-};
-// Every name the store's files had in the snapshots (each was added once).
-const ever = (dir) => {
-  try { return tracked(dir, '').flatMap((at) => git('-c', 'core.quotepath=off', 'log', '--format=', '--name-only', '--no-renames', '--diff-filter=A', '--', at).split('\n')).map((p) => p.split('/').pop()); }
-  catch { return []; }
-};
 
-// forget --purge: drop the days that held a forgotten entry from every snapshot, then expire the reflog and collect, so no
-// old commit keeps the text. The current files stay; the next snapshot adds them back without the entry.
-// shortcut: a purged day loses its older versions whole, not just the entry; upgrade to a line filter if that is missed.
-const rewrite = (work) => {
-  // filter-branch refuses a repository with unstaged changes, and a store always has some (notes edited since the last snapshot):
-  // it rewrites a bare copy, which is fetched back over the branches (the work tree and its files stay as they are), and the
-  // index is reset to the new HEAD so it holds no old blob.
-  // The snapshot hook takes no lock but git's own, and reads a fresh config.lock (nothing here writes config) as busy: the purge
-  // holds that one for its whole run, and gives way to a commit already in flight, whose work the stale copy would overwrite.
-  const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), busy = new Error('a snapshot is being taken; try again in a moment');
-  if (['index.lock', 'HEAD.lock'].some((f) => existsSync(join(g, f)))) throw busy;
-  try { writeFileSync(lock, '', { flag: 'wx', mode: 0o600 }); } catch (e) { throw e.code === 'EEXIST' ? busy : e; }
-  // A run that was killed left its copy, the full unscrubbed history, behind; holding the lock, no other run is using one.
-  try { for (const n of readdirSync(g)) if (n.startsWith('pm-purge-')) rmSync(join(g, n), { recursive: true, force: true }); } catch {}
-  // The copy sits in the repository's own .git, which no snapshot commits; the OS temp folder was outside the store.
-  const tmp = mkdtempSync(join(g, 'pm-purge-')), copy = join(tmp, 'copy.git');
-  try {
-    git('clone', '-q', '--mirror', '--no-hardlinks', projectsRoot(), copy);
-    work(copy);
-    git('fetch', '-q', '--update-head-ok', '--force', copy, '+refs/heads/*:refs/heads/*');
-    git('reset', '-q');
-    for (const ref of git('for-each-ref', '--format=%(refname)', 'refs/original/').split('\n').filter(Boolean)) git('update-ref', '-d', ref);
-    git('reflog', 'expire', '--expire=now', '--all');
-    // A detached gc --auto that an earlier snapshot started can drop loose objects under this one ("unable to mark recent
-    // objects", CI 2026-11-24): once more after it.
-    try { git('gc', '-q', '--prune=now'); } catch { sleep(2000); git('gc', '-q', '--prune=now'); }
-  } finally { rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
-};
 // A fast-export stream without the M and D lines of `paths`; data blocks are skipped by their length, so their text is never read as a line.
 const dropPaths = (buf, paths) => {
   const out = [], gone = new Set(paths);
@@ -540,7 +475,7 @@ const dropPaths = (buf, paths) => {
 };
 const purge = (dir, days) => {
   const paths = days.flatMap((d) => tracked(dir, `journal/${d}.md`));
-  rewrite((copy) => execFileSync('git', ['-C', copy, 'fast-import', '--force', '--quiet'], { ...FAST, input: dropPaths(execFileSync('git', ['-C', copy, 'fast-export', '--all', '--signed-tags=strip'], QUIET_FAST), paths) }));
+  rewrite((copy) => fastImportTo(copy, dropPaths(fastExportOf(copy), paths)));
 };
 
 // rescan: today's redaction rules over what is already saved (notes, journal, handoff, every snapshot): counts and places, never a
@@ -575,8 +510,6 @@ const walk = (buf) => {
   }
   return { out: Buffer.concat(out), hits, blobs, commits: commits + hit, files };
 };
-// shortcut: the whole history is read into one buffer (1 GiB cap) and only branches come back from the rewrite, so a hand-made tag keeps old text; upgrade to streaming or fetch all refs if that is hit.
-const FAST = { maxBuffer: 1 << 30, timeout: 300_000 }, QUIET_FAST = { ...FAST, stdio: ['ignore', 'pipe', 'ignore'] };   // git warns about a ref that names a blob
 // restore keeps the note it replaces under a ref that names a blob, which fast-export skips.
 const blobRefs = () => git('for-each-ref', '--format=%(objecttype) %(objectname) %(refname)').split('\n').map((l) => l.split(' ')).filter((p) => p[0] === 'blob').flatMap(([, sha, ref]) => {
   try { const text = git('cat-file', 'blob', sha), [to, c] = scrub(text); return c ? [{ ref, text, to, c }] : []; } catch { return []; }
@@ -593,7 +526,7 @@ const rescan = (stores, apply, yes) => {
     }
   }
   let hist = null, kept = [];
-  if (!unsnapped()) try { hist = walk(execFileSync('git', gitArgs('fast-export', '--all', '--signed-tags=strip'), QUIET_FAST)); kept = blobRefs(); }
+  if (!unsnapped()) try { hist = walk(fastExport()); kept = blobRefs(); }
   catch (e) { return no(`the snapshots could not be read (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); nothing changed`); }
   const nf = found.reduce((a, x) => a + x.c, 0), nh = (hist?.hits ?? 0) + kept.reduce((a, x) => a + x.c, 0), s = (n) => (n === 1 ? '' : 's');
   const lines = [`files now: ${nf} secret${s(nf)} in ${found.length} file${s(found.length)}${found.length ? `: ${more(found.map((x) => `${relative(root, x.f).replace(/\\/g, '/')} (${x.c})`), 20)}` : ''}`,
@@ -621,24 +554,14 @@ const rescan = (stores, apply, yes) => {
     if (!r) { out.push(`${dir} is busy; its files were not changed, run again`); left++; } else if (r.includes('conflict')) { out.push(`a file in ${dir} changed while this ran; run again for it`); left++; }
   }
   try {
-    for (const x of kept) git('update-ref', x.ref, execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: x.to, encoding: 'utf8' }).trim());
-    if (nh) rewrite((copy) => execFileSync('git', ['-C', copy, 'fast-import', '--force', '--quiet'], { ...FAST, input: walk(execFileSync('git', ['-C', copy, 'fast-export', '--all', '--signed-tags=strip'], QUIET_FAST)).out }));
+    for (const x of kept) git('update-ref', x.ref, hashObject(x.to, { encoding: 'utf8' }).trim());
+    if (nh) rewrite((copy) => fastImportTo(copy, walk(fastExportOf(copy)).out));
   } catch (e) { return { ok: false, lines: [...out, `the snapshots could not be rewritten (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); backup: ${backup}`] }; }
-  const after = nh && walk(execFileSync('git', gitArgs('fast-export', '--all', '--signed-tags=strip'), QUIET_FAST)).hits + blobRefs().length;
+  const after = nh && walk(fastExport()).hits + blobRefs().length;
   out.push(`redacted ${nf} in files and ${nh} in the snapshots; ${after ? `${after} still found in the snapshots` : 'the snapshots hold none now'}`, `backup: ${backup}`);
   return { ok: !left && !after, lines: out };
 };
 
-// Why no snapshot can be read, in plain words, or '' when one can: git's own ("fatal: not a git repository", "cannot change
-// to") read as a fault, and without git, restore offered to replace a note "with the snapshot" (audit C-3, C-4).
-const unsnapped = () => {
-  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); } catch { return 'git is not installed, so there are no snapshots: everything else works. Installing Git (git-scm.com) turns them on'; }
-  // Nor a repository with no commit yet: a large first snapshot is taken in parts, over several replies.
-  let head = false; try { head = existsSync(join(projectsRoot(), '.git')) && !!git('rev-parse', '--verify', '-q', 'HEAD'); } catch {}
-  return head ? '' : 'no snapshots yet: project-memory takes the first at the end of a reply';
-};
-// git saying a snapshot does not hold a path, or there is no such commit.
-const missing = (e) => /does not exist in|exists on disk, but not in|invalid object name|not a valid object name|unknown revision|bad revision/i.test(String(e?.stderr));
 
 // The newest `max`: a note edited every reply had 2,000 snapshots, 72 KB of output.
 // The exchange behind a snapshot, as one line; null: none was found.
@@ -744,7 +667,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
     let kept = '';
     // No copy, no replace: the text it would overwrite was gone for good (1.3.1 audit D-8).
     // Under a ref: a blob nothing refers to is dangling, and gc deletes it.
-    if (cur !== null) { try { const sha = execFileSync('git', gitArgs('hash-object', '-w', '--stdin'), { input: curB, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim(); git('update-ref', `refs/project-memory/replaced/${sha}`, sha); kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${sha}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
+    if (cur !== null) { try { const sha = hashObject(curB, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim(); git('update-ref', `refs/project-memory/replaced/${sha}`, sha); kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${sha}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
     // Or one the disk refuses (a name Windows cannot hold, from a store synced from Linux).
     const w = put(path, cur, bytes);
     if (failed(w)) return `${path} could not be written (${w.slice(8)}); nothing restored`;
@@ -931,7 +854,7 @@ export function doctor(site = sessionStore()) {
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return staleLock(l); } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);
   // No git is a setup the README allows: everything works but the history.
-  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); say(true, 'git on PATH'); } catch { say('note', 'git is not installed: everything works except bringing back an old version of a note. Installing Git (git-scm.com) turns that on'); }
+  try { gitInstalled(); say(true, 'git on PATH'); } catch { say('note', 'git is not installed: everything works except bringing back an old version of a note. Installing Git (git-scm.com) turns that on'); }
   // A repack Windows could not finish leaves an index with no pack: harmless,
   // but git warns of each one on every command the snapshot runs.
   const pack = join(projectsRoot(), '.git', 'objects', 'pack');

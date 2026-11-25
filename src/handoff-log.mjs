@@ -26,6 +26,7 @@ import * as T from './timing.mjs';
 import { clip, plain, fit, SAY } from './text.mjs';
 import { readTail, turns, promptBefore, TAIL, FORGETS, userText, tailOf, joined, lastTurn, transcripts } from './transcript.mjs';
 import { PRIVATE, QUIET, OFF, isOff, wasOff, hushed, off, offLine, unreadable, forgottenIn } from './privacy.mjs';
+import { readHealth, MISSED, HELD } from './snapshot.mjs';
 import { holdsSecret, tag, storeOf, withLock, replaceIfUnchanged, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, same, memoryOff, autoMemory, pathKey, transcriptKey, raw, inProjects, HANDOFF_FAILED, JOURNAL_FAILED, redact, norm } from './store.mjs';
 export { redact, holdsSecret };
 
@@ -114,10 +115,6 @@ export const newest = (xs, n, older = 'more') => (xs.length > n ? `${xs.slice(-n
 // entries written before it read as one untagged session. The time is lazy:
 // greedy, it took the colon of an untagged "[word]: ..." ask, and the word read as a tag.
 const ENTRY = /^- \*\*asked\*\* (\S+ \S+?)(?: \[([\w-]+)\])?: (.*?)\r?\n  \*\*did:\*\* (.*?)\r?$(?:\n  \*\*changed:\*\* (.*?)\r?$)?/gm;
-// Why a store is not in the snapshots, and the user's fix. Shared with doctor.
-export const MISSED = 'it is reached through a link to a folder outside ~/.claude/projects, and git does not follow that link, so no old version of a note there can be brought back. The fix: keep the folder in ~/.claude/projects and make the link the other way round';
-// A held note is checked again at every snapshot, so removing the secret is all it takes.
-export const HELD = 'it holds what looks like a key, token or password, so it stays out of the history. To release it: remove the secret from the note (or its file name, or delete the note); the next reply snapshots it';
 export const parse = (section) => [...section.matchAll(ENTRY)].map((m) => ({ at: m[1], s: m[2] || '', ask: m[3], did: m[4], changed: m[5] || '' }));
 // The LAST START that has an END after it, and the first END after it.
 // Searching for the first START let a stray START -- one whose END was lost --
@@ -409,7 +406,7 @@ function health(dir) {
     } catch {}
   }
   try {
-    const s = JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8'));
+    const { health: s } = readHealth();
     if (s.failures >= 3) out.push(`Memory snapshots have failed ${s.failures} times in a row, last ok ${s.lastOk ? local(s.lastOk) : 'never'}: ${s.error}`);
     if (s.held?.length) out.push(`Memory snapshots skip ${s.held.join(', ')}: ${HELD}`);
     if (s.missed?.length) out.push(`Memory snapshots leave out ${s.missed.join(', ')}: ${MISSED}`);
