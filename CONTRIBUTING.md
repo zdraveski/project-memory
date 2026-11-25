@@ -190,6 +190,15 @@ Beyond the suites:
   [--days <n>]` instead reads the hook durations Claude Code recorded in its own
   conversation files (read-only), this plugin's hooks beside the other plugins', with
   how much of each was inside the script.
+- `node tools/recall-eval.mjs --plugin <dir> [--set file|prompt|error] [--without] [--runs N]
+  [--case <name>] [--model sonnet] [--max-usd 20] [--json <path>]` is the eval of the
+  1.6.0 pointers: headless `claude -p` sessions in throwaway projects whose journals hold
+  made-up facts (`tools/recall-eval-cases.json`), with pointers and, with `--without`,
+  with `PROJECT_MEMORY_RECALL=0`. It spends plan usage, so it never runs in CI. Every
+  session runs under a new `CLAUDE_CONFIG_DIR` in the temp folder, deleted after; your
+  `~/.claude` is never read or copied. Log in once with `claude setup-token`, save the
+  token in a file only you can read, and set `PROJECT_MEMORY_EVAL_TOKEN_FILE` to it.
+  `--self-check` runs the whole harness against a fake `claude` (CI runs it).
 
 The soak, the break harness and the benchmark read your real notes and
 transcripts only to copy them into a temp folder, and delete the copies when
