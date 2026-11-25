@@ -159,8 +159,12 @@ ok(!A('cat <<EOF\ngit add -A\nEOF').hit, 'a real heredoc body is still dropped')
 for (const c of ['env FOO=1 git add -A', 'command git add -A', '/usr/bin/git add -A', 'git.exe add -A', 'rtk git add -A', 'sudo git add -A', 'time git add -A', '& git add -A', '& "C:/Program Files/Git/cmd/git.exe" add -A'])
   ok(A(c).hit, `wrapped: ${c}`);
 ok(!A('echo git add -A').hit && !A('git-lfs add -A').hit && !A('gitk add -A').hit, 'echo, git-lfs, gitk are no hit');
-const t1 = Date.now(), long = A('git add -A\n' + 'cat <<EOF\n'.repeat(20000)), t2 = Date.now(); segments('git status\n' + 'cat <<A\nx\n'.repeat(60000));
-ok(long.hit && t2 - t1 < 500 && Date.now() - t2 < 500, 'unclosed heredocs are linear');
+// Linear by ratio, not by a time limit: a fixed 500 ms failed on a busy macOS runner (3 PRs, 2026-11).
+// The best of 3 at n and 4n: linear work grows about 4x, quadratic about 16x, whatever the machine's speed.
+const growth = (f, n) => { const best = (k) => Math.min(...[0, 1, 2].map(() => { const t = performance.now(); f(k); return performance.now() - t; })); return best(4 * n) / Math.max(best(n), 0.01); };
+ok(growth((k) => { let c = 0; for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) c += j & i; return c; }, 2000) >= 8, 'growth() sees quadratic work');
+ok(A('git add -A\n' + 'cat <<EOF\n'.repeat(20000)).hit, 'a hit before 20,000 unclosed heredocs');
+ok(growth((k) => A('git add -A\n' + 'cat <<EOF\n'.repeat(k)), 10000) < 8 && growth((k) => segments('git status\n' + 'cat <<A\nx\n'.repeat(k)), 30000) < 8, 'unclosed heredocs are linear');
 
 ok(!segments('echo "x\\').join('|').includes('undefined') && segments('git commit -m "a\\\ngit add -A"').length === 1, 'a backslash ending the last line in a quote adds no text');
 { const d = join(home, 'big'); mkdirSync(d); const rule = 'enforce:\n  on: git\n  has:\n    - x\n';
