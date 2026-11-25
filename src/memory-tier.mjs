@@ -8,14 +8,15 @@
 // As the Stop hook (and before a manual /compact) it runs with `--stop`, the
 // payload on stdin, and tiers that session's own store (a Stop hands that to a `--tidy` process of its own); a manual run walks them all.
 
-import { mkdirSync, readFileSync, writeFileSync, writeSync, appendFileSync, unlinkSync, renameSync, rmSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, writeSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import * as T from './timing.mjs';
 import { isOff } from './privacy.mjs';
 import { snapshot, snapshotHealth, owed, reset, GIT_TIMEOUT, BATCH } from './snapshot.mjs';
-import { keyed, storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, allStores, front, raw, memoryOff, reason, HANDOFF_FAILED, redact, configDir, tag } from './store.mjs';
+import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, allStores, front, raw, memoryOff, reason, redact, tag } from './store.mjs';
+import { HANDOFF_FAILED, health, stopRecord, plugins } from './run-records.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -343,17 +344,6 @@ function tier(dir, now, seen = null) {
 // Recall is a grep, not a flag: `rg -il <term> ~/.claude/projects/*/memory --glob '!MEMORY*'`
 // finds the memory, hot or archived; its `description:` line is the hook.
 
-// The only route to the owner's eyes: Stop output is shown to nobody, and the
-// startup line (handoff-log --print) reads these.
-function health(dir, problems) {
-  const p = join(dir, '.health');
-  const want = problems.length ? problems.join('\n') + '\n' : null;
-  const have = raw(p);
-  if (want === have) return;
-  // Through a temp file: the startup line read a half-written one (1.3.1 audit D-5).
-  if (want === null) unlinkSync(p); else replaceIfUnchanged(p, have, want);
-}
-
 // A store the plugin has written to (a handoff or a journal) with no MEMORY.md gets a title-only one: Claude Code never made it,
 // and tiering walks only stores that have one. Exclusive create, so an index written meanwhile is never overwritten.
 function ensureIndex(d) {
@@ -368,7 +358,7 @@ function ensureIndex(d) {
 // conversation and version, as a line for the user (a Stop's systemMessage).
 const reloadNotice = (payload) => {
   const ver = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')).version; } catch { return null; } };
-  let all = null; try { all = JSON.parse(readFileSync(join(configDir(), 'plugins', 'installed_plugins.json'), 'utf8')).plugins; } catch {}
+  const all = plugins('installed_plugins.json')?.plugins;
   const entry = Object.entries(all ?? {}).find(([k]) => k.split('@')[0] === 'project-memory')?.[1]?.[0];
   const have = entry && (entry.version ?? (entry.installPath && ver(join(entry.installPath, '.claude-plugin', 'plugin.json'))));
   const runs = ver(fileURLToPath(new URL('../.claude-plugin/plugin.json', import.meta.url)));
@@ -443,31 +433,7 @@ export async function main(argv, input) {
       // Proof of life for the startup line (handoff-log's stalled()), once the
       // handoff has loaded: Stop output reaches nobody, so a hook that stopped
       // running was silence.
-      // One line a run: when, which conversation, which copy. Two runs for one
-      // reply, seconds apart, are hooks wired twice (memory.mjs doctor, which
-      // reads this and never settings.json). Appended, so two copies running at
-      // once both land; cut back to the newest 20 past 8 KB.
-      try {
-        const ran = join(projectsRoot(), '.stop-ran');
-        // The event too, and whether a block sent it back: a /compact typed
-        // right after a reply, or a reply to the nudge, is a second run seconds
-        // later, not a second wiring. And the reply's fingerprint, 8 hex of its
-        // hash: two quick replies of one conversation read as two wirings (audit H-F10).
-        // On a line of its own: before 1.0.7 the file was one time and no newline.
-        const prev = raw(ran);
-        appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: keyed(payload?.last_assistant_message ?? '', 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n', { mode: 0o600 });
-        // The cut goes to a temp copy that replaces the log only if it is no longer than when read:
-        // another session's line appended in between was lost (audit #13).
-        // shortcut: an append between the size check and the rename (well under a millisecond) is
-        // still lost, which costs one line of the double-wiring check; lock the projects root if that shows.
-        const size = statSync(ran).size, cut = `${ran}.tmp${process.pid}`;
-        if (size > 8192) {
-          try {
-            writeFileSync(cut, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n', { mode: 0o600 });
-            if (statSync(ran).size === size) renameSync(cut, ran);
-          } finally { rmSync(cut, { force: true }); }
-        }
-      } catch {}
+      stopRecord(payload);
       // One that throws (a store folder that takes no new files) is kept in a
       // file the next start reads: swallowed, nothing was saved, and nothing said.
       // One per project, beside the projects, not in the store that refused it:

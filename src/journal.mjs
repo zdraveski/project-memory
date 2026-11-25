@@ -2,14 +2,15 @@
 // turn, kept apart from handoff.md so what was done last month is still
 // findable. Entries are capped and redacted here, the one place a turn's
 // files and commands (uncapped in turns()) are shortened.
-import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, closeSync } from 'node:fs';
+import { mkdirSync, existsSync, readdirSync, readFileSync, statSync, unlinkSync, openSync, fstatSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip } from './text.mjs';
 import { tag, norm, unsay, ACTIVE } from './handoff-log.mjs';
 import { text, readTail, readHead, openFile, records, chunk, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
 import { PRIVATE, PRIVATE_SESSION, hushed, isHushed, FORGOTTEN, forgotten, OFF, unreadable, wasOff } from './privacy.mjs';
-import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only, foldCase, dropPage } from './store.mjs';
+import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
+import { fault, failures, clear } from './run-records.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -437,34 +438,6 @@ export function forget(dir, terms, { since, until, conversation, keys: only, mor
     sweepTemps(dir);
     return { matched, removed: matched.filter((e) => went.has(e.key) || e.unsaid) };
   });
-}
-
-// A throw kept in .failed for `status` to report: swallowed, the journal would
-// stop and nothing say so. `from` names the writer when it is not the sink.
-// One line a writer, the newest first: each writes and clears its own only.
-// The next reply's write cleared a backfill that kept failing, and a failed
-// backfill overwrote the live write's failure: status said nothing of either.
-const FAILED = '.failed';
-const own = (text, backfill) => (text ?? '').split(/\r?\n/).filter((l) => l && l.includes('"error":"backfill: ') === backfill);
-// A live write's failure the journal folder would not take is kept beside the projects: kept in the folder that refused
-// it, it was lost with every reply's entry, and nothing said so (audit H-F4).
-const aside = (dir) => join(projectsRoot(), JOURNAL_FAILED + basename(dirname(dir)));
-function fault(dir, e, from = '') {
-  const f = join(dir, JOURNAL, FAILED), line = JSON.stringify({ at: new Date().toISOString(), error: from + reason(e) });
-  try {
-    mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });
-    const before = raw(f);
-    replaceIfUnchanged(f, before, [line, ...own(before, !from)].join('\n') + '\n');
-  } catch { if (!from) try { writeFileSync(aside(dir), line + '\n', { mode: 0o600 }); } catch {} }
-}
-// The failures kept, in the journal and beside the projects: one line each.
-const failures = (dir) => [raw(join(dir, JOURNAL, FAILED)), raw(aside(dir))].flatMap((t) => (t ?? '').split(/\r?\n/).filter(Boolean));
-function clear(dir, backfill) {
-  if (!backfill) try { unlinkSync(aside(dir)); } catch {}
-  const f = join(dir, JOURNAL, FAILED), before = raw(f), left = own(before, !backfill);
-  if (before == null) return;
-  if (left.length) replaceIfUnchanged(f, before, left.join('\n') + '\n');
-  else try { unlinkSync(f); } catch {}
 }
 
 // The conversations a live Stop looked at past its read for a mark,

@@ -14,9 +14,9 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, statSyn
 import { execFileSync } from 'node:child_process';
 import { join, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { hash } from '../src/handoff-log.mjs';
 import { BUSY, sleep } from '../src/store.mjs';
-import { LIVE, installPath, pluginRoot, deployedCommit } from '../src/memory.mjs';
+import { LIVE, installPath, pluginRoot } from '../src/memory.mjs';
+import { hash, deployed, deployedCommit, writeDeployed } from '../src/run-records.mjs';
 import { pluginFiles } from './suites.mjs';
 
 // What every suite stands on: check.mjs runs all of them after a change to one.
@@ -54,7 +54,7 @@ export const greenCiOn = (sha, commit, gh = (args) => execFileSync('gh', args, {
 
 export function install(from, to, commit, patch, node, origin, tag) {
   const files = {};
-  let before = {}; try { before = JSON.parse(readFileSync(join(to, '.deployed.json'), 'utf8')).files ?? {}; } catch {}
+  const before = deployed(to)?.files ?? {};
   for (const f of HOOKS) {
     let buf = readFileSync(join(from, f));
     if (patch !== undefined && f === '.claude-plugin/plugin.json') {
@@ -83,7 +83,7 @@ export function install(from, to, commit, patch, node, origin, tag) {
     if (!HOOKS.includes(f) && p.startsWith(resolve(to) + sep)) try { rmSync(p, { force: true }); } catch {} // a folder or a locked file: one bad entry never stops the deploy
   }
   const stat = Object.fromEntries(HOOKS.map((f) => { const s = statSync(join(to, f)); return [f, [s.size, s.mtimeMs]]; }));
-  writeFileSync(join(to, '.deployed.json'), JSON.stringify({ commit, tag, repo: from, origin, at: new Date().toISOString(), files, stat }) + '\n');
+  writeDeployed(to, { commit, tag, repo: from, origin, at: new Date().toISOString(), files, stat });
   writeFileSync(join(to, 'README.md'), `Deployed by ${join(from, 'tools', 'deploy.mjs')} after the full check. Edit there and deploy; an edit here is live and untested, and the startup line will say so.\n`);
 }
 

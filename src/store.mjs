@@ -55,12 +55,6 @@ export const keyed = (text, n) => {
   if (salt.length < 32) { salt = randomBytes(32).toString('hex'); try { mkdirSync(projectsRoot(), { recursive: true, mode: 0o700 }); writeFileSync(f, salt, { mode: 0o600, flag: 'wx' }); } catch { try { salt = readFileSync(f, 'utf8') || salt; } catch {} } }
   return createHmac('sha256', salt).update(String(text)).digest('hex').slice(0, n);
 };
-// What a Stop could not save, `<projects>/<this><project folder>`: memory-tier writes it, the briefing and status read it. One
-// name for the three: spelt in four places, a change to one would have left the warning silent (release review).
-export const HANDOFF_FAILED = '.handoff-failed-';
-// A journal write's failure its own folder would not take (journal/.failed is in it), `<projects>/<this><project folder>`:
-// journal.mjs writes it, the briefing and status read it, beside journal/.failed (audit H-F4).
-export const JOURNAL_FAILED = '.journal-failed-';
 // A transcript where Claude Code keeps them, `<projects>/<folder>/<id>.jsonl`.
 // Resolved: `<projects>/../history.jsonl` passed, and was read as a session's.
 export const inProjects = (t) => same(dirname(dirname(resolve(t))), projectsRoot());
