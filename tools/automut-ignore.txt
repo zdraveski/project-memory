@@ -113,8 +113,8 @@ baa7281256d3 src/memory.mjs:846 `: false` -> `: true`: failed(true) is false and
 60aef809f619 src/run-records.mjs:864 `?.` -> `.`: a throw is caught by the surrounding try, which gives the same result as the guard
 3d6e9304cf10 src/run-records.mjs:864 `?? ''` -> `|| ''`: null and '' both give ''
 f7a8c2543d42 src/memory.mjs:936 `?.` -> `.`: a throw is caught by the surrounding try, which gives the same result as the guard
-c3211a37c426 src/memory.mjs:970 SubagentStop `?.` -> `.`: the PreToolUse check just before it already needed hooks.json to parse with a hooks object, so neither can be missing here
-b1e39a5966c8 src/memory.mjs:970 SubagentStop `?.` -> `.`: the PreToolUse check just before it already needed hooks.json to parse with a hooks object, so neither can be missing here
+a1c97591acd3 src/memory.mjs:869 SubagentStop `?.` -> `.`: the PreToolUse check just before it already needed hooks.json to parse with a hooks object, so neither can be missing here
+3dcecb3f69df src/memory.mjs:869 SubagentStop `?.` -> `.`: the PreToolUse check just before it already needed hooks.json to parse with a hooks object, so neither can be missing here
 7ae2e379c652 src/memory.mjs:974 `e.status ?? e.code` -> `||`: a failed exit has a non-zero status, never 0, so ?? and || agree
 a0e4b61bd761 src/memory.mjs:948 catch `{ return false; }` -> `{}`: the result goes through a filter, where undefined is as falsy as false
 e4e594310916 src/memory.mjs:948 `return false` -> `undefined`: the result goes through a filter, where undefined is as falsy as false
@@ -334,3 +334,6 @@ ab768bf7ef3a src/snapshot.mjs:106 gcDead's `age >= GC_STALE` -> `>`: they differ
 801448ec97a3 src/snapshot.mjs:118 busy's `stuck ?? fresh` -> `||`: stuck is an Error or null, so the two choose alike
 e67b7b33d2a9 src/snapshot.mjs:404 rewrite's rmSync `force: true` -> `false` on its own temp copy: the copy always exists at that point, so force only matters if it was removed by hand
 6042aa9b7cf0 src/run-records.mjs:130 `(readText(p) ?? '')` -> `|| ''`: readText gives a string or null, and the only falsy string is '', so both split into no lines.
+338b6d2981b1 src/memory.mjs:824 `readJson(join(at, DEPLOYED))?.tag` -> `.tag`: this branch is reached only when deployedCommit(at) is set, so the record parsed and is not null.
+c56de0a153ef src/memory-tier.mjs:361 `plugins(...)?.plugins` -> `.plugins`: a missing file throws into the try around reloadNotice, which gives no notice, as a null did.
+bc1d40c097ea src/memory.mjs:1310 `readText(...) ?? ''` -> `|| ''`: readText gives a string or null, and the only falsy string is '', so both give ''.
