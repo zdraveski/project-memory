@@ -11,7 +11,7 @@ import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs'
 
 const { home, env } = tempHome('jr-test-');
 const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, due: isDue, IMPORT_SEGMENT } = await import('../src/journal.mjs');
-const { ACTIVE, TAIL, NUDGE_TAG } = await import('../src/handoff-log.mjs');
+const { ACTIVE } = await import('../src/handoff-log.mjs'), { TAIL, NUDGE_TAG } = await import('../src/transcript.mjs');
 const { local, withLock } = await import('../src/store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
@@ -2269,7 +2269,7 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
 
 // past() and chunk() read no further than the size they are given, though the file is longer (a transcript still growing).
 {
-  const { past, chunk } = await import('../src/journal.mjs');
+  const { past, chunk } = await import('../src/transcript.mjs');
   const f = join(home, 'grows.txt');
   writeFileSync(f, 'ab\ncd\nef\n');
   const fd = fs.openSync(f, 'r');

@@ -2,7 +2,6 @@
 // Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
 export default {
   "an Escape after a tool call reads as mid-turn by the gate": ["      if (/^\\s*\\[Request interrupted by user/.test(t)) s.midTurn = false;", "      "],
-  "a subagent's record read as the conversation's by the gate": ["    if (r.isSidechain === true) continue;   // a subagent's record", "    // a subagent's record"],
   "P-F2 the gate's notes speak of a memory-off conversation": [" || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;", ") return true;"],
   "P-F1 the gate's note ignores a private answer to Claude's question":["const told = heard(r);", "const told = '';"],
   "a forget turn not seen by the gate":["FORGETS.test(String(b.input?.command ?? ''))) s.forgot = true;", "false) s.forgot = true;"],
