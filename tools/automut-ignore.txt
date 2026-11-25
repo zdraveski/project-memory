@@ -330,3 +330,8 @@ ea47a0a8fcdb src/store.mjs:437 `let fresh = false` -> `true`: it matters only wh
 bc2f9fa22cb1 src/store.mjs:437 `!staleLock(dead)` -> `staleLock(dead)`: it puts every stale lock back, so the takeover loops forever and the lock test hangs; caught on 15efe90's run, TIMED OUT on df4f314's (a hang, not a survivor)
 d7f3339e3c57 src/snapshot.mjs:377 rewrite's lock-taking `catch { throw EEXIST ? wait : e }` -> `{}`: busy() has already refused a config.lock that was there, so this guard only fires when another git takes it in the gap between the two, which no test can place
 d4db2f3a28ad src/snapshot.mjs:377 rewrite's lock-taking `e.code === 'EEXIST'` -> `!==`: the same gap between busy() and the exclusive create; either way the purge stops, only the wording differs
+1a5c7dcb8c66 src/snapshot.mjs:23 exec's `stand ?? execFileSync` -> `||`: stand is a function or undefined, so the two choose alike
+bdc2aa0328de src/snapshot.mjs:105 gcDead's `process.kill(pid, 0)` signal `0` -> `1`: no test can tell them apart without ending the live process it asks about; on Linux and macOS a SIGHUP to the test's own pid would end the run, so those CI runs show it
+ab768bf7ef3a src/snapshot.mjs:106 gcDead's `age >= GC_STALE` -> `>`: they differ only for a gc.pid exactly twelve hours old to the millisecond
+801448ec97a3 src/snapshot.mjs:118 busy's `stuck ?? fresh` -> `||`: stuck is an Error or null, so the two choose alike
+e67b7b33d2a9 src/snapshot.mjs:404 rewrite's rmSync `force: true` -> `false` on its own temp copy: the copy always exists at that point, so force only matters if it was removed by hand
