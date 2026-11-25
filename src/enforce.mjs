@@ -1,9 +1,10 @@
 // A note can carry a rule a computer checks on a git command (`enforce:` in its
 // front matter). This file reads the rule and matches it; it never runs, blocks
-// or writes anything. Imports store.mjs and privacy.mjs only, so a hook can load it fast.
-import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync } from 'node:fs';
+// or writes anything. Imports store.mjs, privacy.mjs and transcript.mjs only, so a hook can load it fast.
+import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, closeSync, fstatSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, tag, norm } from './store.mjs';
+import { records, readHead } from './transcript.mjs';
 import { isOff, isHushed, QUIET, OFF, PRIVATE_SESSION } from './privacy.mjs';
 
 const BSL = String.fromCharCode(92), KEYS = ['on', 'has', 'unless'], MAX = 8;
@@ -129,20 +130,17 @@ export function hits(rule, command) {
   return { on, hit: hit && !rule.unless.some((u) => all.includes(u)) };
 }
 
-// Each git Bash or PowerShell command in a transcript, `got({ command, t, sidechain })`, read with journal.mjs's `chunk`
+// Each git Bash or PowerShell command in a transcript, `got({ command, t, sidechain })`, read with transcript.mjs's `chunk`
 // in pieces of `seg` bytes (a line longer than that, a tool result, is passed over). Lines without `git` are not parsed.
 export function commandsOf(file, chunk, seg, got) {
   const fd = openSync(file, 'r');
   try {
     const size = fstatSync(fd).size;
     for (let pos = 0, b; (b = chunk(fd, pos, seg, size)); pos = b.pos + b.buf.length) {
-      for (const line of b.buf.toString('utf8').split('\n')) {
-        if (!line.includes('git')) continue;
-        let j; try { j = JSON.parse(line); } catch { continue; }
+      for (const j of records(b.buf.toString('utf8'), { sidechain: true, has: 'git' }))
         for (const c of Array.isArray(j?.message?.content) ? j.message.content : [])
           if (c?.type === 'tool_use' && (c.name === 'Bash' || c.name === 'PowerShell') && typeof c.input?.command === 'string' && c.input.command.includes('git'))
             got({ command: c.input.command, t: Date.parse(j.timestamp), sidechain: j.isSidechain === true });
-      }
     }
   } finally { closeSync(fd); }
 }
@@ -163,9 +161,7 @@ function cached(dir) {
       if (was && was.mtime === mtime && was.size === size) r = was.r;
       else {
         changed = true;
-        const fd = openSync(join(dir, file), 'r'), head = Buffer.alloc(Math.min(size, HEAD));
-        let got = 0; try { got = readSync(fd, head, 0, head.length, 0); } finally { closeSync(fd); }
-        const text = head.toString('utf8', 0, got);
+        const text = readHead(join(dir, file), Math.min(size, HEAD));
         r = text.includes('enforce:') && front(text).tier !== 'archive' ? ruleOf(text) : null;
       }
       now[file] = { mtime, size, r: r ?? null };
