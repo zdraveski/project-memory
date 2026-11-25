@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Restore, `forget --purge` and `rescan --apply` now say "busy" instead of racing a snapshot.** If a snapshot or git's own clean-up is under way they stop, change nothing and tell you to try again in a moment. A clean-up that was killed no longer keeps them waiting.
+- **The plugin now tidies its own history store.** Git no longer starts a clean-up in the background at a random moment; the plugin runs it after a snapshot, when the store has grown enough to need it.
+
 ## 1.5.8 (2026-11-25)
 
 This release fixes three privacy holes and two places where `memory doctor` said everything was fine when it wasn't.

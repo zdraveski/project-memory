@@ -2,7 +2,7 @@
 // mapped (off, in parts, busy, failed), a damaged index rebuilt once, a note held back, the health record after a failure and after
 // a success, and a missing or a broken health file. The expected values are what snapshot() answered before it moved out of
 // memory-tier.mjs. Real git stays in memory-tier.test.mjs. Run: node snapshot.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync, utimesSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync, utimesSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome } from './harness.mjs';
@@ -226,12 +226,12 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   for (const f of ['index.lock', 'HEAD.lock']) {
     writeFileSync(join(g, f), '');
     let msg = ''; try { rewrite(() => {}); } catch (e) { msg = e.message; }
-    ok(msg === 'a snapshot is being taken; try again in a moment' && seen.length === 0 && !existsSync(join(g, 'config.lock')), `${f}: the purge gives way, runs no git, takes no lock`);
+    ok(msg === 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment' && seen.length === 0 && !existsSync(join(g, 'config.lock')), `${f}: the purge gives way, runs no git, takes no lock`);
     rmSync(join(g, f));
   }
   writeFileSync(join(g, 'config.lock'), '');
   let msg = ''; try { rewrite(() => {}); } catch (e) { msg = e.message; }
-  ok(msg === 'a snapshot is being taken; try again in a moment' && existsSync(join(g, 'config.lock')) && seen.length === 0, 'a config.lock that is there: busy, and not taken away');
+  ok(msg === 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment' && existsSync(join(g, 'config.lock')) && seen.length === 0, 'a config.lock that is there: busy, and not taken away');
   rmSync(join(g, 'config.lock'));
 
   // The health record, as every reader sees it.
@@ -246,6 +246,87 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(readHealth().read && readHealth().health.failures === 2 && readHealth().health.held[0] === 'a' && owed() === true, 'a health file: parsed as written');
   rmSync(hp);
   ok(MISSED.startsWith('it is reached through a link to a folder outside ~/.claude/projects') && HELD.startsWith('it holds what looks like a key, token or password'), 'the reasons a store is left out are said here');
+}
+
+// PR C of step 16: one busy rule for every git write (the snapshot, restore, purge, rescan), and the plugin runs git's clean-up itself.
+{
+  const { busy, rewrite } = S, { restore } = await import('../src/memory.mjs');
+  const old = new Date(Date.now() - 11 * 60000), ahead = new Date(Date.now() + 11 * 60000);
+  mkdirSync(join(g, 'refs', 'heads'), { recursive: true });
+  const files = ['index.lock', 'HEAD.lock', 'config.lock', 'packed-refs.lock', join('refs', 'heads', 'main.lock')];
+  ok(busy() === false, 'no lock: not busy');
+  for (const f of files) {
+    const p = join(g, f);
+    writeFileSync(p, '');
+    ok(busy() === true && existsSync(p), `a fresh ${f} is busy, and left alone`);
+    utimesSync(p, old, old);
+    ok(busy() === false && !existsSync(p), `a ${f} older than ten minutes is swept, not busy`);
+    writeFileSync(p, ''); utimesSync(p, ahead, ahead);
+    ok(busy() === false && !existsSync(p), `a ${f} dated ahead of the clock is as old`);
+  }
+  // gc.pid: "<pid> <host>", as git writes it. Stale when its owner here is dead; else git's own 12 hours.
+  {
+    const { hostname } = await import('node:os'), { spawnSync } = await import('node:child_process');
+    const dead = spawnSync(process.execPath, ['-e', '']).pid, gp = join(g, 'gc.pid'), ago = (ms) => { const d = new Date(Date.now() - ms); utimesSync(gp, d, d); };
+    const put = (text, ms = 0) => { writeFileSync(gp, text); if (ms) ago(ms); };
+    put(`${dead} ${hostname()}`);
+    ok(busy() === false && !existsSync(gp), 'a gc.pid whose gc died on this machine is not busy, fresh as it is');
+    put(`${process.pid} ${hostname()}`, 11 * 60000);
+    ok(busy() === true && existsSync(gp), 'a gc.pid of a live gc here is busy past ten minutes');
+    put(`${process.pid} ${hostname()}`, 13 * 3600000);
+    ok(busy() === false && !existsSync(gp), 'and stale after git\'s own twelve hours');
+    put(`${dead} some-other-host`, 11 * 60000);
+    ok(busy() === true, 'a gc.pid from another machine is busy past ten minutes (a pid there means nothing here)');
+    put(`${dead} some-other-host`, 13 * 3600000);
+    ok(busy() === false && !existsSync(gp), 'and stale after twelve hours');
+    put('', 11 * 60000);
+    ok(busy() === true, 'an unreadable or malformed gc.pid is busy');
+    put('garbage', 13 * 3600000);
+    ok(busy() === false && !existsSync(gp), 'unless older than twelve hours');
+  }
+  // A lock that cannot be removed (held open on Windows: EPERM or EBUSY) is busy, not a crash.
+  {
+    const lk = join(g, 'index.lock'); mkdirSync(lk); utimesSync(lk, old, old);
+    let r; try { r = busy(); } catch (e) { r = e.code; }
+    ok(r instanceof Error, 'an old lock that cannot be removed is busy (an Error to say why), not a throw (got ' + r + ')');
+    rmSync(lk, { recursive: true });
+  }
+  // A purge keeps its config.lock young through every git it runs, however long they take.
+  {
+    const lk = join(g, 'config.lock'), old9 = () => { const d = new Date(Date.now() - 9 * 60000); utimesSync(lk, d, d); }, ages = [];
+    useGit((cmd, args) => { ages.push(Date.now() - statSync(lk).mtimeMs); old9(); return ''; });
+    rewrite(() => { S.fastExportOf('/c.git'); S.fastImportTo('/c.git', 'x'); });
+    ok(ages.length >= 5 && ages.every((a) => a < 60000), 'each git of a purge finds its config.lock fresh, though the clock says nine minutes passed between (ages ' + ages.map((a) => Math.round(a / 1000)).join() + ')');
+    ok(!existsSync(lk), 'and the purge frees it');
+  }
+
+  // restore refuses while busy, and runs no git write.
+  const dir = store('proj-busy');
+  scripted((sub, a) => (a.includes('rev-parse') ? 'abc1234' : ''));
+  writeFileSync(join(g, 'gc.pid'), '');
+  const r = restore(dir, 'a.md', { force: true });
+  ok(r.ok === false && r.lines.join(' ').includes('git of the memory store is busy') && !calls.some((c) => /hash-object|update-ref|cat-file/.test(c)), 'restore says busy while git is busy, and writes nothing');
+  rmSync(join(g, 'gc.pid'));
+
+  // doctor's pack check: an index with no pack, not a pair, not a lone pack.
+  mkdirSync(join(g, 'objects', 'pack'), { recursive: true });
+  for (const f of ['a.idx', 'a.pack', 'b.idx', 'c.pack']) writeFileSync(join(g, 'objects', 'pack', f), '');
+  ok(S.packOrphans().orphans.join() === 'b.idx' && S.packOrphans().pack === join(g, 'objects', 'pack'), 'packOrphans names an index that has no pack, and only that');
+
+  // git's own clean-up is the plugin's: never on its own after a command, once after a commit.
+  ok(gitArgs('log').join(' ').includes('-c gc.auto=0'), 'gitArgs turns git\'s own automatic gc off');
+  ours(); writeFileSync(join(g, 'index'), '');
+  scripted(() => '');
+  ok(snapshot() === 'committed', 'fixture: a commit');
+  const at = calls.findIndex((c) => c.includes('gc ')); ok(calls[at] === '-c gc.auto=6700 gc --auto --no-detach' && calls[at - 1].includes('commit') && calls.filter((c) => c.includes('gc ')).length === 1, 'after a commit: gc --auto --no-detach with git\'s own 6700');
+  scripted((sub, a, opts) => { if (a.includes('commit')) throw fail('x', { stdout: 'nothing to commit' }); return ''; });
+  ok(snapshot() === null && !calls.some((c) => c.includes('gc ')), 'nothing to commit: no gc');
+  writeFileSync(join(g, 'index.lock'), '');
+  scripted(() => ''); ok(snapshot() === 'busy' && calls.length === 0, 'busy: no git at all, no gc'); rmSync(join(g, 'index.lock'));
+  scripted((sub, a) => { if (a.includes('gc')) throw fail('gc died', { status: 1, stderr: 'fatal: gc died' }); return ''; });
+  ok(snapshot() === 'committed', 'a gc that fails does not fail the snapshot');
+  scripted((sub, a) => { if (a.includes('gc')) throw fail('t', { code: 'ETIMEDOUT' }); return ''; });
+  ok(snapshot() === 'committed' && !existsSync(join(g, 'project-memory-parts')), 'a gc that times out does not fail it, nor start the history in parts');
 }
 
 useGit();

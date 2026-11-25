@@ -323,9 +323,15 @@ f65599f88474 src/privacy.mjs:729 `null` -> `undefined`: the caller tests `!live`
 2a15fad8deaa src/handoff-log.mjs:732 `null` -> `undefined`: the caller tests `!live`, so null and undefined are the same
 
 e1a8873728e2 src/memory.mjs:938 enforceHook's `.find(existsSync) ?? join(...)` -> `||`: find returns a path or undefined, never an empty string, so `||` and `??` take the same branch
-1b7bd6e51841 src/snapshot.mjs:517 the gc retry `catch { sleep; gc }` -> `{}`: it runs only when a detached gc --auto races the purge, which no test can start on demand; the 1.6.0 snapshot module (step 16 PR C) removes the race
 69a6b76879f6 src/memory.mjs:926 doctor's stale-lock filter `catch { return false; }` -> `{}`: undefined and false are both falsy to filter
 dedb4e067315 src/memory.mjs:926 doctor's stale-lock filter `return false` -> `return undefined`: undefined and false are both falsy to filter
 0e88165517c4 src/enforce.mjs:201 the prefilter's `non-ASCII && RE.test(norm(l))` -> `||`: norm changes only non-ASCII text, so the answer is the same and only slower
 ea47a0a8fcdb src/store.mjs:437 `let fresh = false` -> `true`: it matters only when staleLock throws on the lock we just renamed to a random name, which only a sweep racing the takeover can cause
 bc2f9fa22cb1 src/store.mjs:437 `!staleLock(dead)` -> `staleLock(dead)`: it puts every stale lock back, so the takeover loops forever and the lock test hangs; caught on 15efe90's run, TIMED OUT on df4f314's (a hang, not a survivor)
+d7f3339e3c57 src/snapshot.mjs:377 rewrite's lock-taking `catch { throw EEXIST ? wait : e }` -> `{}`: busy() has already refused a config.lock that was there, so this guard only fires when another git takes it in the gap between the two, which no test can place
+d4db2f3a28ad src/snapshot.mjs:377 rewrite's lock-taking `e.code === 'EEXIST'` -> `!==`: the same gap between busy() and the exclusive create; either way the purge stops, only the wording differs
+1a5c7dcb8c66 src/snapshot.mjs:23 exec's `stand ?? execFileSync` -> `||`: stand is a function or undefined, so the two choose alike
+bdc2aa0328de src/snapshot.mjs:105 gcDead's `process.kill(pid, 0)` signal `0` -> `1`: no test can tell them apart without ending the live process it asks about; on Linux and macOS a SIGHUP to the test's own pid would end the run, so those CI runs show it
+ab768bf7ef3a src/snapshot.mjs:106 gcDead's `age >= GC_STALE` -> `>`: they differ only for a gc.pid exactly twelve hours old to the millisecond
+801448ec97a3 src/snapshot.mjs:118 busy's `stuck ?? fresh` -> `||`: stuck is an Error or null, so the two choose alike
+e67b7b33d2a9 src/snapshot.mjs:404 rewrite's rmSync `force: true` -> `false` on its own temp copy: the copy always exists at that point, so force only matters if it was removed by hand

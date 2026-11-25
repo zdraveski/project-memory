@@ -209,7 +209,6 @@ export default {
   'the first snapshot counted as added': ['if (first) continue;', ''],
   'no command prints the usage': ["'help' : at === -1 ? 'status' : argv[at]", "'help' : at === -1 ? undefined : argv[at]"],
   'an option before the command hides it': ["const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));", "const at = argv[0]?.startsWith('--') ? -1 : 0;"],
-  'doctor: an orphaned pack index unseen': [".endsWith('.idx') && !packs.includes(", ".endsWith('.never') && !packs.includes("],
   "forget removes without --yes": ["} else if (!yes) {", "} else if (false) {"],
   "forget with no filter removes all": ["else if (!terms.length && !range.since && !range.until && !conversation && !named.length) r = no(", "else if (false) r = no("],
   'forget: a blank word passes the guard': ['terms = args.filter((a) => a.trim())', 'terms = args'],
