@@ -66,11 +66,16 @@ export function build(home, { now = Date.now(), seed = 1, scale = 1 } = {}) {
   const transcript = join(proj, `${uuid(99)}.jsonl`), target = 50e6 * scale, blobs = Array.from({ length: 64 }, () => words(4000));
   const fd = openSync(transcript, 'w', 0o600);
   let k = 0, at = now - 3600e3 * 24 * 30;
-  const rec = (type, content) => JSON.stringify({ type, uuid: `u${++k}`, sessionId: uuid(99), cwd: CWD, gitBranch: 'main', timestamp: new Date(at += 20e3).toISOString(), message: { role: type, content } }) + '\n';
+  // A reply carries its usage, as Claude Code writes it: without one the Stop nudge read the whole 50 MB for a context size
+  // it never found, 650 of its 920 ms (1.5.4), a cost no real conversation has. 80k tokens: under every window's trigger.
+  const usage = { input_tokens: 4, cache_read_input_tokens: 70_000, cache_creation_input_tokens: 10_000, output_tokens: 300 };
+  const rec = (type, content) => JSON.stringify({ type, uuid: `u${++k}`, sessionId: uuid(99), cwd: CWD, gitBranch: 'main', timestamp: new Date(at += 20e3).toISOString(), message: { role: type, content, ...(type === 'assistant' && { model: 'claude-opus-4-1', usage }) } }) + '\n';
+  // A record no hook reads (a hook's or a command's progress): about a quarter of a real tail's bytes (design 2b).
+  const progress = () => JSON.stringify({ type: 'progress', uuid: `u${++k}`, sessionId: uuid(99), timestamp: new Date(at).toISOString(), data: { type: 'bash_progress', output: pick(blobs).slice(0, 2000) } }) + '\n';
   const turn = (last) => {
     if (last) at = now - 120e3;
     const id = `toolu_${k}`;
-    return rec('user', words(150)) + (last ? '' : rec('assistant', [{ type: 'tool_use', id, name: 'Bash', input: { command: `git ${words(60)}` } }]) +
+    return rec('user', words(150)) + (last ? '' : rec('assistant', [{ type: 'tool_use', id, name: 'Bash', input: { command: `git ${words(60)}` } }]) + progress() +
       rec('user', [{ type: 'tool_result', tool_use_id: id, content: pick(blobs) }])) + rec('assistant', [{ type: 'text', text: last ? words(300) : pick(blobs).slice(0, 800) }]);
   };
   let written = 0;
