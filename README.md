@@ -251,6 +251,29 @@ triggers one. A message with a `<private>` block or the `<private-session>`
 mark triggers none and is not written down. `PROJECT_MEMORY_RECALL=0` turns
 this off too.
 
+**Sessions that see each other.** Two Claude Code sessions open on the same
+project know about each other. At your next message, Claude is told once that
+another session is working here, since when, on what request and which files
+it changed:
+
+```
+project-memory: another session [9a1c22e0] is working in this project since 14:02 on: "move the export to 02:00". Files it changed: src/closeDay.js
+```
+
+When Claude changes a file the other session changed in the last 30 minutes,
+the warning comes with the result of that change (it never blocks it):
+
+```
+project-memory: another session [9a1c22e0] changed this file at 14:02 (its request: "move the export to 02:00"). Check with the user or that session before changing it again.
+```
+
+The startup briefing and `memory status` name the other live sessions too,
+with the title you gave one (`/rename`). A session counts as live for 30
+minutes after its last message or change, and until it ends (a SessionEnd
+hook marks that). A file in another worktree is another file. A private
+conversation or turn is never shown to the other session.
+`PROJECT_MEMORY_RECALL=0` turns these lines off too.
+
 To know what it has said, each conversation keeps a small file in
 `~/.claude/projects/.sessions/`, deleted after 7 days.
 

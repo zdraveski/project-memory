@@ -59,7 +59,7 @@ import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { clip } from './text.mjs';
 import { redact, sectionOf, parse, stalled, GRACE, tag, unsay } from './handoff-log.mjs';
 import { BLOCK, transcripts, lastTurn, chunk as chunkOf } from './transcript.mjs';
-import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged, dropSessions } from './recall.mjs';
+import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged, dropSessions, others, about, ACTIVE } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -371,6 +371,10 @@ export function status(dir, sharedNames = []) {
   const { a, b } = sectionOf(doc ?? '');
   const all = a === -1 ? [] : parse(doc.slice(a, b));
   if (all.length) lines.push(`  handoff: ${all.length} exchanges from ${new Set(all.map((t) => t.s)).size} session(s), newest ${all.at(-1).at}`);
+  // 1.6.0 headline 4: one line per live session, by its conversation file (changed within ACTIVE) or its session file (another
+  // worktree's). What it does comes from its session file only; a conversation marked private is not named.
+  const files = others(dir), ids = new Set([...transcripts(dir, '').filter((t) => Date.now() - t.m < ACTIVE).map((t) => t.s), ...files.map((o) => o.s)]);
+  for (const s of ids) if (!isHushed(dir, s)) lines.push(`  live session ${about(files.find((o) => o.s === s) ?? { s, lines: [] })}`);
   const j = summary(dir);
   if (j?.broken) lines.push(`  journal: could not read journal.mjs: ${j.broken}`);
   // Failing from the first write, it has no day to show: the failure is the news.
