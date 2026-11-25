@@ -328,3 +328,5 @@ dedb4e067315 src/memory.mjs:926 doctor's stale-lock filter `return false` -> `re
 0e88165517c4 src/enforce.mjs:201 the prefilter's `non-ASCII && RE.test(norm(l))` -> `||`: norm changes only non-ASCII text, so the answer is the same and only slower
 ea47a0a8fcdb src/store.mjs:437 `let fresh = false` -> `true`: it matters only when staleLock throws on the lock we just renamed to a random name, which only a sweep racing the takeover can cause
 bc2f9fa22cb1 src/store.mjs:437 `!staleLock(dead)` -> `staleLock(dead)`: it puts every stale lock back, so the takeover loops forever and the lock test hangs; caught on 15efe90's run, TIMED OUT on df4f314's (a hang, not a survivor)
+d7f3339e3c57 src/snapshot.mjs:377 rewrite's lock-taking `catch { throw EEXIST ? wait : e }` -> `{}`: busy() has already refused a config.lock that was there, so this guard only fires when another git takes it in the gap between the two, which no test can place
+d4db2f3a28ad src/snapshot.mjs:377 rewrite's lock-taking `e.code === 'EEXIST'` -> `!==`: the same gap between busy() and the exclusive create; either way the purge stops, only the wording differs

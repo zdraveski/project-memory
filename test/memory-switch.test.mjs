@@ -416,8 +416,12 @@ See [[nonexist-${GH}]]
   writeDay(); tier(); tier();
   r = await run(['forget', word, '--yes', '--store', pd]);
   writeDay();
+  const gitOut = (...x) => spawnSync('git', ['-C', root, ...x], { encoding: 'utf8' });
+  const withWord = gitOut('rev-list', '--all', '--objects').stdout.split('\n').map((l) => l.split(' ')[0]).filter((o) => o && gitOut('cat-file', '-t', o).stdout.trim() === 'blob' && gitOut('cat-file', '-p', o).stdout.includes(word));
+  ok(withWord.length > 0, 'fixture: blobs hold the word');
   r = await run(['forget', word, '--yes', '--purge', '--store', pd]);
   ok(/removed 1/.test(r.stdout) && /purged from the snapshots/.test(r.stdout) && !held(), `forget --purge drops it from the history (got ${r.stdout})`);
+  ok(withWord.every((o) => gitOut('cat-file', '-e', o).status !== 0), 'the purge collects the old objects: no blob that held the word is left on disk');
   ok(spawnSync('git', ['-C', root, 'status', '--porcelain'], { encoding: 'utf8' }).status === 0 && !existsSync(join(root, '.git', 'refs', 'original')), 'the purge leaves a working repository and no backup refs');
   ok(!existsSync(join(root, '.git', 'config.lock')), 'the purge frees its lock when done');
   // 1.5.1 finding 6: the history copy sits inside the snapshot repo's .git (a snapshot never commits it), not in the OS temp folder.
@@ -514,6 +518,8 @@ See [[nonexist-${GH}]]
   for (const lk of ['index.lock', 'gc.pid']) {
     writeFileSync(join(root, '.git', lk), '');
     r = await run(['rescan', '--apply', '--yes']);
+    const rr = await run(['restore', 'old.md', '--force', '--store', rd]);
+    ok(/a snapshot is being taken/.test(rr.stdout) && rr.status !== 0, `restore refuses while ${lk} is there (got ${rr.stdout})`);
     ok(/a snapshot is being taken/.test(r.stdout) && held() && head() === before && readFileSync(join(rd, 'old.md'), 'utf8').includes(key) && existsSync(join(root, '.git', lk)), `rescan --apply --yes refuses while ${lk} is there, and changes nothing (got ${r.stdout})`);
     unlinkSync(join(root, '.git', lk));
   }

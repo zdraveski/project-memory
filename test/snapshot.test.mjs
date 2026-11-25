@@ -272,6 +272,11 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(r.ok === false && /a snapshot is being taken; try again in a moment/.test(r.lines.join('\n')) && !calls.some((c) => /hash-object|update-ref|cat-file/.test(c)), 'restore says busy while git is busy, and writes nothing');
   rmSync(join(g, 'gc.pid'));
 
+  // doctor's pack check: an index with no pack, not a pair, not a lone pack.
+  mkdirSync(join(g, 'objects', 'pack'), { recursive: true });
+  for (const f of ['a.idx', 'a.pack', 'b.idx', 'c.pack']) writeFileSync(join(g, 'objects', 'pack', f), '');
+  ok(S.packOrphans().orphans.join() === 'b.idx' && S.packOrphans().pack === join(g, 'objects', 'pack'), 'packOrphans names an index that has no pack, and only that');
+
   // git's own clean-up is the plugin's: never on its own after a command, once after a commit.
   ok(gitArgs('log').join(' ').includes('-c gc.auto=0'), 'gitArgs turns git\'s own automatic gc off');
   ours(); writeFileSync(join(g, 'index'), '');
