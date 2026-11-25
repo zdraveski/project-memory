@@ -237,6 +237,9 @@ export function subagent(input) {
     const { agent_type: type, agent_id: id, agent_transcript_path: ap, transcript_path: tp } = input;
     // Internal agents (prompt suggestions, /btw) come with no type.
     if (typeof type !== 'string' || !type.trim() || typeof tp !== 'string') return false;
+    // 1.6.0 headline 6: the recall helper's report is made of journal text; saving it would double every hit. Plugin agents are
+    // `project-memory:recall` (Claude Code docs, hooks reference); the bare name too, should a version drop the prefix.
+    if (/^(project-memory:)?recall$/.test(type)) return false;
     let report = '', ask = '', start = NaN, changed = [];
     if (typeof ap === 'string') { try { report = handback(ap); } catch {} try { ({ ask, ms: start } = taskLine(ap)); } catch {} try { changed = helperFiles(ap); } catch {} }
     if (!report.trim() && typeof input.last_assistant_message === 'string') report = input.last_assistant_message;

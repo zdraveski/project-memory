@@ -2025,6 +2025,16 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   ok(entries([sd]).filter((x) => /okapi/.test((x.e ?? x).answered)).length === 2, 'two reports with no agent_id are two entries');
   ok(entries([sd]).some((x) => (x.e ?? x).asked === 'Subagent a b'), 'a newline in the agent type is cleaned');
   ok(subagent({ cwd: 1 }) === false, 'a bad payload never throws');
+  // 1.6.0 headline 6: the recall helper's report is journal text, so it is not saved again, by either name Claude Code may give it.
+  const agentFile = readFileSync(new URL('../agents/recall.md', import.meta.url), 'utf8');
+  ok(/^name: recall$/m.test(agentFile) && /^tools: Bash$/m.test(agentFile) && /^maxTurns: 15$/m.test(agentFile) && /^omitClaudeMd: true$/m.test(agentFile),
+    'the helper agent is named recall, with Bash only, 15 turns and no CLAUDE.md');
+  ok(agentFile.includes('node "${CLAUDE_PLUGIN_ROOT}/src/memory.mjs" <command> --session "$CLAUDE_CODE_SESSION_ID"'), 'the helper runs the CLI with its session');
+  for (const t of ['project-memory:recall', 'recall']) {
+    ok(subagent({ ...input, agent_id: `r-${t}`, agent_type: t, agent_transcript_path: undefined, last_assistant_message: 'recalled capybara' }) === false, `the ${t} helper's report is not saved`);
+  }
+  ok(!entries([sd]).some((x) => /capybara/.test((x.e ?? x).answered)), 'no helper report reached the journal');
+  ok(subagent({ ...input, agent_id: 'r-other', agent_type: 'recall-ish', agent_transcript_path: undefined, last_assistant_message: 'kept tapir' }) === true, 'another agent whose name starts the same is saved');
   // 1.6.0 headline 1b: a helper's entry lists the files it changed, read from its own conversation file as a turn's Changed is.
   const side = (type, content) => JSON.stringify({ type, isSidechain: true, uuid: `u${Math.random()}`, timestamp: new Date().toISOString(), cwd: 'C:\\journal-subagent', message: { role: type, content } });
   const edit = (id, name, file) => ({ type: 'tool_use', id, name, input: name === 'NotebookEdit' ? { notebook_path: file } : { file_path: file } });

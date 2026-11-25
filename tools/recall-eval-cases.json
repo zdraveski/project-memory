@@ -1,5 +1,5 @@
 {
-  "about": "Cases of tools/recall-eval.mjs, from the 1.6.0 design, section 'The gate'. All facts are made up. kind: gain (helps with pointers), control (memory has nothing to say: passes in both arms, and the hooks print nothing), misleading (runs with pointers only). check: answer / notAnswer are case-blind patterns on the final answer; noPointer, noSearch; fileHas [path, pattern]; exists / absent are project paths. find: a word of the case's seeded entry, searched before any paid session.",
+  "about": "Cases of tools/recall-eval.mjs, from the 1.6.0 design, section 'The gate'. All facts are made up. kind: gain (helps with pointers), control (memory has nothing to say: passes in both arms, and the hooks print nothing), misleading (runs with pointers only), answer (trigger helper: the six answer cases of headline 6, whose gate is that the arm with the routing line answers right at least as often as the arm without). check: answer / notAnswer are case-blind patterns on the final answer; noPointer, noSearch; fileHas [path, pattern]; exists / absent are project paths. find: a word of the case's seeded entry, searched before any paid session.",
   "project": "bookshop",
   "files": {
     "package.json": "{ \"name\": \"bookshop\", \"private\": true, \"type\": \"commonjs\", \"scripts\": { \"test\": \"node --test\" } }\n",
@@ -67,6 +67,29 @@
     { "name": "prompt-order", "trigger": "prompt", "kind": "misleading",
       "prompt": "Summarise what the nightly invoice export does.",
       "seed": [{ "daysAgo": 7, "ask": "delete the nightly invoice export and its tests", "said": "Deleted src/invoiceExport.js and test/invoiceExport.test.js.", "changed": ["src/invoiceExport.js", "test/invoiceExport.test.js"] }],
-      "find": "invoice", "check": { "exists": ["src/invoiceExport.js", "test/invoiceExport.test.js"] } }
+      "find": "invoice", "check": { "exists": ["src/invoiceExport.js", "test/invoiceExport.test.js"] } },
+    { "name": "helper-port", "trigger": "helper", "kind": "answer",
+      "prompt": "Which port did we pick for the dev server, and why?",
+      "seed": [{ "daysAgo": 2, "ask": "which port should the dev server use", "said": "Port 4317, because 3000 and 8080 are taken by the other two apps." }],
+      "find": "4317", "check": { "answer": "4317" } },
+    { "name": "helper-last-week-bug", "trigger": "helper", "kind": "answer",
+      "prompt": "What was the cause of the export bug we fixed last week?",
+      "seed": [{ "daysAgo": 7, "ask": "the nightly export is one day off", "said": "Cause: closeDay() took the date in UTC. Fix: compute the day in Europe/Vienna.", "changed": ["src/closeDay.js"] }],
+      "find": "closeDay", "check": { "answer": "UTC|time ?zone" } },
+    { "name": "helper-decision", "trigger": "helper", "kind": "answer",
+      "prompt": "Did we decide to keep the PDF export?",
+      "seed": [{ "daysAgo": 7, "ask": "should we keep the PDF export", "said": "Decision: drop the PDF export, keep CSV only. Nobody downloaded a PDF in 90 days." }],
+      "find": "PDF", "check": { "answer": "CSV" } },
+    { "name": "helper-staging-db", "trigger": "helper", "kind": "answer",
+      "prompt": "What is the staging database called?",
+      "seed": [{ "daysAgo": 5, "ask": "what is the staging database called", "said": "Staging uses shop_stage_b; the old shop_stage is read-only." }],
+      "find": "staging", "check": { "answer": "shop_stage_b" } },
+    { "name": "helper-error-fix", "trigger": "helper", "kind": "answer",
+      "prompt": "The deploy fails with EACCES again. What fixed it last time?",
+      "seed": [{ "daysAgo": 20, "ask": "the deploy fails", "said": "Fixed by running the deploy as the deploy user: chown -R deploy /var/app/releases." }],
+      "find": "deploy", "check": { "answer": "deploy user|chown" } },
+    { "name": "helper-never-discussed", "trigger": "helper", "kind": "answer",
+      "prompt": "Which payment provider did we choose?",
+      "check": { "notAnswer": "Stripe|PayPal|Adyen|Braintree|Mollie|Square|Klarna|Worldpay|Checkout\\.com" } }
   ]
 }

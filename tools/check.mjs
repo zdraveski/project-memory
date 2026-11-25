@@ -130,14 +130,14 @@ assert.throws(() => baseOf(['--base', '--full']), /--base wants a ref/);
   } finally { rmSync(d, { recursive: true, force: true }); }
 }
 // The release .tar.gz/.zip leave out what .gitattributes marks export-ignore; what the plugin runs must stay in:
-// every ${CLAUDE_PLUGIN_ROOT}/ path the hooks, the skill and the commands name (in git, not ignored), everything those
+// every ${CLAUDE_PLUGIN_ROOT}/ path the hooks, the skill, the commands and the agents name (in git, not ignored), everything those
 // scripts import, and the plugin's own folders. archive.test.mjs runs the archive itself.
 {
   const lines = (...a) => git(...a).split('\n').filter(Boolean);
-  const named = ['hooks/hooks.json', 'skills/memory/SKILL.md', ...lines('ls-files', 'commands')]
+  const named = ['hooks/hooks.json', 'skills/memory/SKILL.md', ...lines('ls-files', 'commands', 'agents')]
     .flatMap((f) => [...readFileSync(join(repo, f), 'utf8').matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([\w./-]+\.\w+)/g)].map((m) => m[1]));
   const run = [...named], tracked = new Set(lines('ls-files'));
-  const need = new Set(['LICENSE', ...lines('ls-files', 'hooks', 'commands', 'skills', '.claude-plugin')]);
+  const need = new Set(['LICENSE', ...lines('ls-files', 'hooks', 'commands', 'skills', 'agents', '.claude-plugin')]);
   for (const f of run) if (!need.has(f)) {
     need.add(f);
     if (tracked.has(f)) for (const m of readFileSync(join(repo, f), 'utf8').matchAll(/['"]\.\/([\w-]+\.mjs)['"]/g)) run.push(posix.join(posix.dirname(f), m[1]));
