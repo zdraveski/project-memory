@@ -34,7 +34,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
-import { goesOn, readTail, turns, text, prompt, handoff, hushed, tag, clip, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF, redact, BARE } from './handoff-log.mjs';
+import { clip } from './text.mjs';
+import { goesOn, readTail, turns, text, prompt, handoff, hushed, tag, answer, userText, newest, sectionOf, NUDGE_TAG, PRIVATE, PRIVATE_SESSION, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, OFF, redact, BARE } from './handoff-log.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, isOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------

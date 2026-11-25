@@ -748,7 +748,7 @@ lemur lemur lemur lemur
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'recall.mjs', 'page.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
+  for (const f of ['memory.mjs', 'recall.mjs', 'page.mjs', 'store.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   const njs = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'status', '--store', jd], { env, encoding: 'utf8' });
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });

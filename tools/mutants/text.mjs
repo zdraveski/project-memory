@@ -1,0 +1,25 @@
+// The hand-written mutants of text.mjs, which text.test.mjs and handoff-log.test.mjs must catch (mutate.mjs runs them).
+// Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
+export default {
+  'a U+0085 read as part of a value': [String.raw`redact(redact(s.replace(/\u0085/g, '\n'))`, String.raw`redact(redact(s)`],
+  'a secret after two blanks redacted only before the squeeze': [String.raw`defuse(redact(redact(s.replace(/\u0085/g, '\n')).replace(/\s+/g, ' ')))`, String.raw`defuse(redact(s.replace(/\u0085/g, '\n')).replace(/\s+/g, ' '))`],
+  "a bare flag at a line's end takes the next line's keyword": [String.raw`defuse(redact(redact(s.replace(/\u0085/g, '\n')).replace(/\s+/g, ' ')))`, String.raw`defuse(redact(s.replace(/\u0085/g, '\n').replace(/\s+/g, ' ')))`],
+  'a clip cut again only after a cut': ["for (let i = 0; i < 6; i++) { const again = cut(out, n); if (again === out) break; out = again; }", "if (out.endsWith('…')) out = cut(out, n);"],
+  'a kept clip answers for a number spelt as its text': ["const k = typeof s === 'string' ?", "const k = true ?"],
+  "one private mention wipes the briefing after it": ["defuse(s.split('\\n').map(redact).join('\\n'))", "defuse(redact(s))"],
+  "the briefing prints the shared index unredacted": ["defuse(s.split('\\n').map(redact).join('\\n'))", "defuse(s)"],
+  "a long line cut whole": ["(l.length <= line ? l : ", "(true ? l : "],
+  "a startup briefing past the limit": ["return d.length <= SAY ? d : ", "return true ? d : "],
+  "a tag spelt with a space survives": ["|\\s+\\/)/g, '&lt;')", ")/g, '&lt;')"],
+  "a stray line break survives": ["  .replace(/\\r(?!\\n)|[\\u2028\\u2029\\u0085]/g, ' ')", ""],
+  "an emoji cut in half": [".replace(/[\\uD800-\\uDBFF]$/, '')", ""],
+  "a cut ask is not cut again until it is stable": [" out = again; }", " }"],
+  "secrets redacted after clipping": [String.raw`defuse(redact(redact(s.replace(/\u0085/g, '\n')).replace(/\s+/g, ' ')))`, String.raw`defuse(s.replace(/\u0085/g, '\n').replace(/\s+/g, ' '))`],
+  "a lone surrogate written": [".replace(/[\\uD800-\\uDBFF](?![\\uDC00-\\uDFFF])|(?<![\\uD800-\\uDBFF])[\\uDC00-\\uDFFF]/g, '\\uFFFD')", ""],
+  "marker text in a prompt not defused": ["export const defuse = (s) => s.replace(/[<\\uFF1C\\uFE64]", "export const defuse = (s) => s.replace(/[\\u0000]"],
+  "the startup briefing printed undefused": ["defuse(s.split('\\n').map(redact).join('\\n'))", "s.split('\\n').map(redact).join('\\n')"],
+  'table rules kept in an answer': [".filter((l) => !(l.includes('-') && /^[ \\t|:-]*$/.test(l)))", ''],
+  'every pipe in an answer dropped': ["l.trimStart().startsWith('|') ? l.replace(/\\|/g, ' ') : l", "l.replace(/\\|/g, ' ')"],
+  'every ** in an answer dropped': [".replace(/(^|[ \\t(])\\*\\*(?=[^\\s*])([^*]*?[^\\s*])\\*\\*(?=$|[\\s).,:;!?])/g, '$1$2')", ".replace(/\\*\\*/g, '')"],
+  'bold opens mid-word': ['(^|[ \\t(])\\*\\*(?=[^\\s*])', '()\\*\\*(?=[^\\s*])'],
+};

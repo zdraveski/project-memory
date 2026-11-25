@@ -53,7 +53,8 @@ import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
-import { BLOCK, redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, clip, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
+import { clip } from './text.mjs';
+import { BLOCK, redact, hushed, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, tag, unsaved, forgotten, FORGOTTEN, unsay } from './handoff-log.mjs';
 import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
