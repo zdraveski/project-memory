@@ -110,7 +110,9 @@ function measure({ runs, real, plugin, scale, only }) {
   const stop = () => spawn('memory-tier.mjs', ['--stop'], payload({ hook_event_name: 'Stop' }));
   // The first file of the newest day's first entry, as the change hook gets it: whole, under the bench project's folder.
   const newest = readdirSync(join(store, 'journal')).filter((f) => f.endsWith('.md')).sort().at(-1);
-  const changed = /^\*\*Changed:\*\* ([^,\n]+)/m.exec(readFileSync(join(store, 'journal', newest), 'utf8'))?.[1] ?? 'src/x.js';
+  const day = readFileSync(join(store, 'journal', newest), 'utf8'), changed = /^\*\*Changed:\*\* ([^,\n]+)/m.exec(day)?.[1] ?? 'src/x.js';
+  // The fresh conversation's request: that entry's, so the change hook's rare-word look-up runs too (rule 1b, 2026-11-26).
+  const request = /^\*\*Asked:\*\* (.+)/m.exec(day)?.[1] ?? 'move the export';
   let fresh = 0;
   const change = (session) => ({ session_id: session, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: `${CWD}/${changed}` }, tool_use_id: 'toolu_2' });
   const cases = {
@@ -123,7 +125,11 @@ function measure({ runs, real, plugin, scale, only }) {
     // A file of the made-up journal: one conversation has changed it already, and a fresh one each run has not, so its
     // look-up scans the journal and shows a pointer.
     [SEEN]: () => spawn('recall-hook.mjs', [], payload(change('bbbbbbbb-0000'))),
-    [FIRST]: () => spawn('recall-hook.mjs', [], payload(change(`${String(++fresh).padStart(8, 'c')}-0000`))),
+    [FIRST]: () => {
+      const s = `${String(++fresh).padStart(8, 'c')}-0000`;
+      spawn('recall-hook.mjs', [], payload({ session_id: s, hook_event_name: 'UserPromptSubmit', prompt: request }));
+      return spawn('recall-hook.mjs', [], payload(change(s)));
+    },
     // A request of words the journal may hold, none of them shared with an entry three times: the whole window is scanned.
     [PROMPT]: () => spawn('recall-hook.mjs', [], payload({ hook_event_name: 'UserPromptSubmit', prompt: 'why does the quarterly invoice export skip weekends' })),
     // The end line of the conversation the change cases wrote a session file for.
