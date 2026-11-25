@@ -17,7 +17,7 @@ searched the journal's day files for the journal's own marker.
    and compact-gate. None of them imports it.
 2. `src/` has no import loop, counting run-time `import(` as an import.
    `tools/check.mjs` enforces it. A run-time import stays allowed as a guard
-   that keeps a broken file from stopping a hook (ten of them at 1.5.8), never
+   that keeps a broken file from stopping a hook (eleven of them at 337077d), never
    as a way around a loop.
 3. Only `journal.mjs` reads or writes the journal's marker. Other modules ask it.
 

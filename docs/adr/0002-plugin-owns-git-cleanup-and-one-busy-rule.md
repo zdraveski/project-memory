@@ -26,9 +26,10 @@ covered this with a retry.
 ## Decision
 
 1. Every git call the plugin makes sets `gc.auto=0`. The snapshot runs
-   `gc --auto --no-detach` itself after it commits, so the clean-up happens
-   inside a writer the plugin knows about, and git's `gc.pid` is there while it
-   runs.
+   `gc --auto --no-detach` itself after it commits, with `-c gc.auto=6700`
+   (git's default) after the zero, because `gc.auto=0` turns `gc --auto` into a
+   no-op. The clean-up then happens inside a writer the plugin knows about, and
+   git's `gc.pid` is there while it runs.
 2. One rule in `src/snapshot.mjs` answers "is the repo busy". It covers the
    index, HEAD, config and packed-refs locks, `refs/heads/*.lock` and `gc.pid`.
    It runs before every git write: snapshot, purge, rescan and restore.

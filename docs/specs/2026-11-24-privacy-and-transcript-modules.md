@@ -1,5 +1,7 @@
 # Privacy and transcript modules (1.5.8 fixes, 1.6.0 step 15)
 
+Amended 2026-11-25 after the audit `reports/Audit of 1.6.0 plans 2026-11-25.md` (findings 1, 2, 3, 4, 5, 13).
+
 Status: approved by the maintainer, 2026-11-24, in an architecture review and
 four rounds of questions (all answered "yes" to the recommendation). Built by a
 later session from the two plans:
@@ -23,7 +25,7 @@ Measured on master at ad20f3e (v1.5.7):
   own way.
   - There are 8 hand-written byte readers: `journal.mjs:213`, `:371`, `:525` and
     `:641`, `enforce.mjs:134` and `:165`, `store.mjs:139`, and
-    `handoff-log.mjs:536`.
+    `handoff-log.mjs:535`.
   - `compact-gate`, `journal` and `memory` import 18 to 26 names each from
     `handoff-log`. `handoff-log` imports `journal` (`:1120`) and `compact-gate`
     (`:1203`) back, which makes an import loop.
@@ -61,8 +63,9 @@ each fix with a failing test first. Nothing else changes.
 
 ## Part 2: 1.6.0 step 15, a pure move
 
-Nothing a user sees changes. All existing checks pass **unchanged** after each
-pull request. The only new tests are direct tests of the two new modules.
+Nothing a user sees changes. All existing checks pass with **no assertion
+changes** after each pull request. The only new tests are direct tests of the
+three new modules.
 
 ### `src/privacy.mjs`
 
@@ -82,9 +85,14 @@ stays in `store.mjs`.
 
 **What moves into it** from the files they're in today:
 - From `handoff-log.mjs`: `PRIVATE`, `PRIVATE_SESSION`, `hushed`, `off`,
-  `offLine`, `unreadable`, `FORGOTTEN`, `forgotten`, `unsay` and its `put`.
+  `offLine`, `unreadable`, `FORGOTTEN` and `forgotten`.
 - From `store.mjs`: `QUIET`, `OFF`, `PROJECT_OFF`, `isOff`, `OFF_PERIODS` and
   `wasOff`.
+- **`unsay` and its `put` do not move.** `put` (`handoff-log.mjs:886`) writes
+  handoff.md through `build`, `parse`, `sectionOf`, `render`, `keep` and `PREV`,
+  and `handoff()` shares it. Privacy may import only `store.mjs`, so `unsay` and
+  `put` stay in `handoff-log.mjs` as the handoff writer. Callers keep importing
+  `unsay` from there.
 - `norm` (in `store.mjs` after 1.5.8) and `listOf` stay in `store.mjs` as shared
   helpers.
 
@@ -92,8 +100,8 @@ stays in `store.mjs`.
 - Today `hushed()` returns `null` for "unknown" and every caller decides. After
   the move, the module's answers treat unknown as private.
 - A caller that also records the failure, as the Stop hook does at
-  `handoff-log.mjs:827` and `:842`, still gets that the file was unreadable, so
-  it can record it.
+  `handoff-log.mjs:822`, `:827` and `:837`, still gets that the file was
+  unreadable, so it can record it.
 - No caller can ask for a fail-open answer.
 
 **Behaviour that's kept on purpose, written next to the code:**
@@ -114,6 +122,24 @@ It goes.
 **Imports.** Node built-ins and `store.mjs` only. It never imports
 `handoff-log`, `journal` or `transcript`.
 
+### `src/text.mjs`
+
+**What it does.** It prints text safely. It is a leaf, built first in PR A
+because `transcript.mjs` needs it, and so the hooks of steps 4 to 7 can print
+without loading the briefing.
+
+**What moves into it** from `handoff-log.mjs`:
+- `clip` (with its memo, `clipped` and `clippedSize`), `cut`, `plain`,
+  `defuse` and `fit`.
+- `SAY`, because `fit` caps at it and the briefing's own check (`:1209`) uses it
+  too. It is exported from here, so there is one number. `BRIEF` and `EXCHANGES`
+  stay with the briefing.
+
+**Imports.** Node built-ins and `store.mjs` only (`clip`, `cut` and `fit` call
+`redact`). Checked at 337077d: `clip` needs `cut`; `cut` needs `defuse`; `fit`
+needs `defuse` and `SAY`; `plain` and `defuse` need nothing. No name here needs
+the handoff, the journal or the transcript.
+
 ### `src/transcript.mjs`
 
 **What it does.** It reads a transcript. It offers two things and nothing more:
@@ -131,20 +157,35 @@ It goes.
 - `readTail`, `text`, `asked`, `prompt`, `own`, `unwrap`, `queuedText`,
   `toolAnswers`, `refused`, `editedFile`, `turns`, `promptBefore`, `goesOn`,
   `lastTurn` and `transcripts`.
-- The record-type filters at `:41-42`.
+- The record-reading names that `turns()` needs: `FORGETS`, `BARE`, `unquote`,
+  `userText`, `nudged`, `NUDGE_TAGS` (with `NUDGE_TAG`, which `compact-gate`
+  imports), and `TAIL`. The private helpers only these use move with them (for
+  example `stick` and the `F_*` patterns, `QUOTES`, `ASKS_SECRET`, `LEAD`,
+  `command`, `image`, `scan`).
+- `tailOf`, `joined` and `BLOCK`, with `SAID` and `SAID_KEEP`. `turns()` and
+  `handoff()` (`:794`) both use them, and `journal` and `memory` import `BLOCK`.
+  They are exported from here.
 
-**The byte readers that move into it**, all 8, with each one's limits unchanged:
-- `store.mjs:139`: 64 KB chunks up to 4 MB, with a 12,300-byte overlap.
-- `handoff-log.mjs:536`: reads backwards 1 MB at a time, up to 256 MB.
+`turns()` calls `clip` and `plain`, which it takes from `text.mjs`, and
+`PRIVATE` and `PRIVATE_SESSION`, which it takes from `privacy.mjs`.
+
+**The byte readers that move into it**, 7 of the 8, with each one's limits
+unchanged:
+- `handoff-log.mjs:535`: reads backwards 1 MB at a time, up to 256 MB.
 - `journal.mjs:213`, `:371` and `:525`, and `past` at `:641-701`.
 - `enforce.mjs:134` and `:165`: the `HEAD` read and its cache key.
 
-**Imports.** Node built-ins, `store.mjs` and `privacy.mjs` only.
+`store.mjs:139` (`startCwd`) does **not** move. `storeOf` (`store.mjs:187`) calls
+it, so moving it would make `store` import `transcript` and `transcript` import
+`store`. It stays in `store.mjs` as the one byte reader left there.
 
-**What stays in `handoff-log.mjs`.** The handoff writer, the briefing, `clip`,
-`plain`, `defuse`, `fit`, `parse`, `sectionOf`, `MISSED`, `HELD`, `stalled`,
-`edited`, `hash`, `main` and the formatting helpers. Moving those is not part of
-this step.
+**Imports.** Node built-ins, `store.mjs`, `privacy.mjs` and `text.mjs` only.
+
+**What stays in `handoff-log.mjs`.** The handoff writer (`handoff`, `put`,
+`unsay`, `build`, `render`, `keep`, `latest`, `shown`), the briefing, `parse`,
+`sectionOf`, `MISSED`, `HELD`, `stalled`, `edited`, `hash`, `main` and the
+formatting helpers. It imports `transcript.mjs`, `privacy.mjs` and `text.mjs`.
+Moving the rest is not part of this step.
 
 ### Callers import directly
 
@@ -153,8 +194,9 @@ There are no re-exports from `handoff-log.mjs` of anything that moved.
   `tools/fuzz.mjs` import from `privacy.mjs` or `transcript.mjs`.
 - The import loop ends: `handoff-log` keeps its dynamic imports of `journal`
   and `compact-gate`, and those two no longer import `handoff-log` for anything
-  that moved. If either still needs a name that stayed in `handoff-log`, the
-  builder lists it in the PR, and the loop remaining that way is acceptable.
+  that moved. `journal` and `memory` still import `unsay` from `handoff-log`
+  (and `compact-gate` takes `handoff` and others), so the loop remains until step
+  18 moves the briefing out. The builder lists every remaining name in the PR.
 - `brief.mjs` stays as it is.
 
 ### The git-rule hook (PR C, with a condition)
@@ -171,8 +213,11 @@ of 7.
 
 ## Tests
 
-- **Every existing suite passes unchanged** after each PR, on the three systems
-  in CI. Only an import path may change in a test file.
+- **Every existing suite passes with no assertion changes** after each PR, on
+  the three systems in CI. An import path may change in a test file, and four
+  tests copy hand-listed `src` files into temp trees, so each gets the new
+  modules added to its list: `test/memory-tier.test.mjs:632` and `:1557`, and
+  `test/handoff-log.test.mjs:565` and `:3062`.
 - **`test/privacy.test.mjs`, in-process.** A table over each source with three
   file states: absent, present, and unreadable. It also covers fullwidth and
   zero-width tags, the compaction note's looser check, and each list's pruning.
@@ -180,8 +225,11 @@ of 7.
   backward, across each byte reader's chunk edge. It checks that helper records
   are skipped and that the turns match today's `turns()` output on the same
   fixtures.
-- Each new test goes into `tools/suites.mjs` and the mutant tree the way the
-  others do.
+- **`test/text.test.mjs`, in-process.** `clip` is stable and keeps its memo,
+  `defuse` and `plain` on fixtures, `fit` caps at `SAY` and cuts per line.
+- Since PR #239 the tools derive their file lists from `src/`. Each new module
+  needs only a `suites` entry in `tools/mutate.mjs`, its import, and
+  `tools/mutants/<name>.mjs` (`tools/check.mjs` fails without the entry).
 - Trimming the spawned tests that these make redundant is a later step, not
   part of this one.
 
@@ -194,8 +242,9 @@ of 7.
 
 ## Not checked
 
-- Whether `turns()` (`handoff-log.mjs:281-407`) has more privacy branches than
-  `:363`. The builder reads it in full before PR B.
+- Whether `turns()` (`handoff-log.mjs:276-402`) has more privacy branches than
+  `:358`. A grep at 337077d finds `PRIVATE` at `:341`, `:344` and `:378` too. The
+  builder reads it in full before PR B.
 - Whether `memory.mjs:1305` (a local `read` of `.forgotten`) also fails open. If
   it does, it's a fourth 1.5.8 fix, with a test first.
 - The real startup cost of `privacy.mjs` with `store.mjs`. It is expected to be
