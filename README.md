@@ -230,8 +230,8 @@ To turn off only the startup briefing, set `PROJECT_MEMORY_BRIEFING` to `0`.
 Everything else keeps saving.
 
 **A file with a past.** When Claude changes a file that earlier conversations
-in this project changed too, it is told so with the result of that first
-change: the date, the conversation and the request of the newest two, and how
+in this project changed too, and one of them shares a rare word with your
+current request, it is told so with the result of that first change: the date, the conversation and the request of the newest two, and how
 to open them. Once per file and conversation, at most three such notes between
 two of your messages, never from a private or forgotten exchange. After a
 compaction, Claude is also told which files the conversation changed and up to
@@ -242,12 +242,13 @@ stays in the conversation that got it: `forget` cannot take it back. A
 helper's changes before 1.6.0 have no past (its entries listed no files then).
 
 **A request that names something old.** When your message shares three rare
-words (two, for a message of two words) with an earlier exchange of another
+words (one in five of its words, when that is more; two, for a message of two
+words) with an earlier exchange of another
 conversation in this project, Claude is told so before it answers: the
 request, up to three files it changed, the shared words, and how to open it.
 A word is rare when fewer than 1 in 20 recent exchanges hold it. At most three
 such exchanges, each once per conversation; "go" or "yes" alone never
-triggers one. A message with a `<private>` block or the `<private-session>`
+triggers one, nor a file note. A message with a `<private>` block or the `<private-session>`
 mark triggers none and is not written down. `PROJECT_MEMORY_RECALL=0` turns
 this off too.
 

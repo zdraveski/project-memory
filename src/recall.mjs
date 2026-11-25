@@ -340,8 +340,14 @@ export async function onChange(input, { journal, deadline = DEADLINE, now = Date
     const turn = cur.slice(p + 1).filter((l) => l.by === by && l.kind === 'told'), blocks = new Set(turn.filter((l) => l.rest !== 'more').map((l) => l.at)).size;
     // shortcut: the files past the third block count as seen and get no pointer later; upgrade if a missed pointer there mattered.
     if (blocks >= BLOCKS && turn.some((l) => l.rest === 'more')) return none;
-    const found = await earlier(store, file, String(input.session_id), { journal, deadline, now, since: lines[c]?.at ?? '', told: new Set(mine.filter((l) => l.kind === 'told').map((l) => l.rest)) });
+    // Rule 1b after the real-data check (2026-11-26): only an exchange that shares a rare word with this turn's request; "go" has none.
+    const last = lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet'), ask = last?.kind === 'asked' ? last.rest : '', since = lines[c]?.at ?? '', id = String(input.session_id);
+    if (!words(ask).length) return none;
+    let found = await earlier(store, file, id, { journal, deadline, now, since, told: new Set(mine.filter((l) => l.kind === 'told').map((l) => l.rest)) });
     if (!found?.length) return none;
+    const shares = await byWords(store, ask, id, { journal, deadline, since, max: PROMPT_BYTES, now, test: true });
+    found = shares ? found.filter(shares) : [];
+    if (!found.length) return none;
     const t = new Date(now).toISOString();
     if (blocks >= BLOCKS) { write(sessionLine('told', 'more', by, t)); return { say: MORE, n: 0 }; }
     const { rel } = await journal(), shown = pick(found), say = block(shown, found.length - shown.length, rel(file, cwd));
@@ -354,15 +360,17 @@ export async function onChange(input, { journal, deadline = DEADLINE, now = Date
 
 // The words matcher (headline 1c), run by the briefing after a compaction (1e) on the request in progress. The entries of the
 // newest 90 days or 4 MB of day files that share rare words with `text`: a word is rare when an entry holds it and under 5% do
-// (under 40 entries: one or two). A match shares 3 rare words, or 2 when the text has exactly 2 words. Up to SHOWN, the highest
+// (under 40 entries: one or two). A match shares max(3, ceil(words / 5)) rare words, or 2 when the text has exactly 2 words (the
+// real-data check, 2026-11-26). `test`: instead a function, whether an entry shares one rare word (the change hook). Up to SHOWN, the highest
 // sum of rarity (1 / entries holding the word) first, the newest on a tie, each with `shares`, the words as typed. Never a
 // helper's entry, a [private] one, a forgotten key, an exchange in `skip` ("<tag> <at>") or `told` (keys), a conversation marked private,
 // or this conversation's unless older than `since`. [] when the text has under 2 words; null when the forget list will not read or past
 // `deadline`. `max`: the window's bytes (the prompt hook's is smaller, PROMPT_BYTES).
 export const RECENT_DAYS = 90, RECENT_BYTES = 4 * 1024 * 1024, RARE = 0.05, YOUNG = 40, SHOWN = 3;
-export async function byWords(store, text, session, { journal, deadline = DEADLINE, since = '', skip = new Set(), told = new Set(), max = RECENT_BYTES, now = Date.now() } = {}) {
+export async function byWords(store, text, session, { journal, deadline = DEADLINE, since = '', skip = new Set(), told = new Set(), max = RECENT_BYTES, now = Date.now(), test = false } = {}) {
   const ws = words(text), cut = (w) => ws.as.get(w) !== w && ws.as.get(w);
-  if (ws.length < 2) return [];
+  if (ws.length < (test ? 1 : 2)) return test ? () => false : [];
+  const hayOf = (e) => [e.asked, e.answered, ...e.changed].join('\n').normalize('NFC').toLowerCase(), holds = (hay, w) => hay.includes(w.slice(0, -1)) && has(hay, w, cut(w));
   const { days, dayFile, parseDay } = await journal();
   const { listed, shut } = forgottenIn(store);
   if (shut) return null;
@@ -382,12 +390,13 @@ export async function byWords(store, text, session, { journal, deadline = DEADLI
       // Ran is left out: half the bytes, and mostly command noise.
       // Lower case, as search reads an entry. Every form has() finds holds the word but its last letter (library: librari-es), so a
       // cheap includes() goes first.
-      const hay = [e.asked, e.answered, ...e.changed].join('\n').normalize('NFC').toLowerCase(), in_ = ws.map((w) => hay.includes(w.slice(0, -1)) && has(hay, w, cut(w)));
+      const hay = hayOf(e), in_ = ws.map((w) => holds(hay, w));
       in_.forEach((h, i) => { if (h) df[i]++; });
       seen.push([e, in_]);
     }
   }
-  const n = seen.length, rare = df.map((k) => k > 0 && (n < YOUNG ? k <= 2 : k / n < RARE)), need = ws.length === 2 ? 2 : 3;
+  const n = seen.length, rare = df.map((k) => k > 0 && (n < YOUNG ? k <= 2 : k / n < RARE)), need = ws.length === 2 ? 2 : Math.max(3, Math.ceil(ws.length / 5));
+  if (test) return (e) => { const hay = hayOf(e); return ws.some((w, k) => rare[k] && holds(hay, w)); };
   return seen.map(([e, in_]) => { const i = ws.flatMap((_, k) => (in_[k] && rare[k] ? [k] : [])); return { ...e, shares: i.map((k) => ws.as.get(ws[k])), score: i.reduce((s, k) => s + 1 / df[k], 0) }; })
     .filter((e) => e.shares.length >= need).sort((a, b) => b.score - a.score || (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, SHOWN);
 }

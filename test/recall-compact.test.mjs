@@ -60,7 +60,7 @@ let ls = readSession(p.session);
 ok(ls.at(-3).kind === 'compact' && ls.at(-2).rest === other.key && ls.at(-1).rest === mine.key, `the compact line, then a told line per pointer (got ${JSON.stringify(ls.slice(-3))})`);
 // The change hook after it: the first change of a file counts as first again, and this conversation's older exchange is earlier.
 p.day([p.entry({ key: `${ME} ${DAY}T07:00 c0ffee`, at: `${DAY} 07:00`, s: ME, t: `${slug(p.cwd)}/${SID}`, asked: 'fix the closing day', changed: ['src/close.js'] })], new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10));
-p.lines(sessionLine('file', cleanPath(join(p.cwd, 'src/close.js')), '', new Date(Date.now() - 1000).toISOString()));
+p.lines(sessionLine('asked', 'the closing day again'), sessionLine('file', cleanPath(join(p.cwd, 'src/close.js')), '', new Date(Date.now() - 1000).toISOString()));
 const look = (input) => onChange(input, { journal, deadline: performance.now() + 10_000 });
 const edit = { session_id: SID, cwd: p.cwd, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: join(p.cwd, 'src/close.js') } };
 ok((await look(edit)).n === 0, 'before a compaction: the file was changed already, and the exchange is this conversation\'s');
