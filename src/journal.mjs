@@ -2,11 +2,12 @@
 // turn, kept apart from handoff.md so what was done last month is still
 // findable. Entries are capped and redacted here, the one place a turn's
 // files and commands (uncapped in turns()) are shortened.
-import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, readSync, closeSync } from 'node:fs';
+import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, statSync, unlinkSync, openSync, fstatSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip } from './text.mjs';
-import { text, readTail, tag, userText, FORGETS, norm, turns, unsay, ACTIVE, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './handoff-log.mjs';
+import { tag, norm, unsay, ACTIVE } from './handoff-log.mjs';
+import { text, readTail, readHead, openFile, records, chunk, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
 import { PRIVATE, PRIVATE_SESSION, hushed, isHushed, FORGOTTEN, forgotten, OFF, unreadable, wasOff } from './privacy.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, reason, sweepTemps, JOURNAL_FAILED, utf8Only, foldCase, dropPage } from './store.mjs';
 
@@ -212,13 +213,10 @@ const handback = (path) => {
 };
 // The task prompt's first line: the agent transcript's first user record.
 const taskLine = (path) => {
-  const fd = openSync(path, 'r');
-  try {
-    const b = Buffer.alloc(262144), n = readSync(fd, b, 0, b.length, 0);
-    for (const l of b.toString('utf8', 0, n).split('\n')) {
-      try { const r = JSON.parse(l); if (r.type === 'user') return { ask: text(r).split('\n').map((x) => x.trim()).find(Boolean) ?? '', ms: Date.parse(r.timestamp) }; } catch {}
-    }
-  } finally { closeSync(fd); }
+  // The agent's own records are all a subagent's: asked for.
+  for (const r of records(readHead(path, 262144), { sidechain: true })) {
+    if (r.type === 'user') return { ask: text(r).split('\n').map((x) => x.trim()).find(Boolean) ?? '', ms: Date.parse(r.timestamp) };
+  }
   return { ask: '', ms: NaN };
 };
 export function subagent(input) {
@@ -370,9 +368,8 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
       // had no entry to forget, and listing its turn said one was lost.
       if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) continue;
       try {
-        const fd = openSync(p, 'r');
+        const { fd, size, close } = openFile(p);
         try {
-          const size = fstatSync(fd).size;
           if (marked(fd, 0, IMPORT_SEGMENT, size).hit) continue;
           // By words, a turn is cut at its start (segments()), so its prompt and its reply are read together; a part cut inside a turn leaves it to the next.
           if (ts) {
@@ -384,7 +381,7 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
             const got = turns(b.buf.toString('utf8'));
             for (const t of new Set([...got, got.open])) if (t && left.has(t.id) && ours(dir, p)) { const e = entryOf(t, p); out.push({ ...e, day: day(e.at), dir, unsaid: true }); left.delete(t.id); }
           }
-        } finally { closeSync(fd); }
+        } finally { close(); }
       } catch {}
     }
   }
@@ -524,9 +521,9 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
   // Also when already swept: a private conversation that lost its tag is found again here (F6).
   const from = Number(was?.[2] ?? 0);
   if (got.whole === false && statSync(transcriptPath).size - from > TAIL) {
-    const fd = openSync(transcriptPath, 'r');
-    let size, hit;
-    try { size = fstatSync(fd).size; hit = marked(fd, from, IMPORT_SEGMENT, size).hit; } finally { closeSync(fd); }
+    const { fd, size, close } = openFile(transcriptPath);
+    let hit;
+    try { hit = marked(fd, from, IMPORT_SEGMENT, size).hit; } finally { close(); }
     if (hit) { hushed(dir, s, true); takeBack(dir, k, s, true); return true; }
     mark(dir, [`${k} ${size}`], null, CHECKED);
   }
@@ -635,29 +632,6 @@ function candidates(dir, skip) {
   return out.sort((a, b) => a.m - b.m);
 }
 const ours = (dir, p) => same(storeOf({ transcript_path: p }), dir);
-
-// Past the line that runs on at `pos`: its newline found in 1 MB reads, never decoded.
-export function past(fd, pos, size) {
-  const buf = Buffer.allocUnsafe(1 << 20);
-  for (; pos < size; pos += buf.length) {
-    const i = buf.subarray(0, readSync(fd, buf, 0, Math.min(buf.length, size - pos), pos)).indexOf(10);
-    if (i !== -1) return pos + i + 1;
-  }
-  return size;
-}
-
-// The whole lines in the `seg` bytes from `pos`, and where they start (`pos`):
-// a line longer than `seg` is passed over unread. null at the end.
-export function chunk(fd, pos, seg, size) {
-  while (pos < size) {
-    const buf = Buffer.allocUnsafe(Math.min(seg, size - pos)), n = readSync(fd, buf, 0, buf.length, pos);
-    if (!n) return null;
-    const nl = pos + n >= size ? n - 1 : buf.subarray(0, n).lastIndexOf(10);
-    if (nl !== -1) return { buf: buf.subarray(0, nl + 1), pos };
-    pos = past(fd, pos + n, size);
-  }
-  return null;
-}
 
 // A transcript's exchanges from `at` (a prompt's line), in segments of whole
 // lines, each cut where its last prompt starts, so turns() never splits an

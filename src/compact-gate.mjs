@@ -35,7 +35,8 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
 import { clip } from './text.mjs';
-import { goesOn, readTail, turns, text, prompt, handoff, tag, answer, userText, newest, sectionOf, NUDGE_TAG, norm, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, redact, BARE } from './handoff-log.mjs';
+import { handoff, tag, answer, newest, sectionOf, norm, redact } from './handoff-log.mjs';
+import { goesOn, readTail, records, turns, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, BARE } from './transcript.mjs';
 import { isHushed, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, OFF, isOff } from './privacy.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
@@ -117,10 +118,7 @@ function state(path, { ask = true } = {}) {
 function walk(raw) {
   const s = { ctx: 0, last: '', midTurn: false, ask: '', raw: '', said: '', hidden: false, forgot: false, at: '', running: new Map(), edited: new Set(), editIds: new Map(), launchers: new Set() };
   const heard = toolAnswers();
-  for (const line of raw.split('\n')) {
-    if (!line.startsWith('{')) continue;
-    let r; try { r = JSON.parse(line); } catch { continue; }
-    if (r.isSidechain === true) continue;   // a subagent's record, as turns() skips it: its size and its turn are the subagent's
+  for (const r of records(raw)) {   // not a subagent's record, as turns() skips it: its size and its turn are the subagent's
     const m = r.message, c = Array.isArray(m?.content) ? m.content : [];
     const t = text(r).trim();   // as typed; normalized only to find the private tags
     const told = heard(r);   // an answer to Claude's question, or a rejected call's words: the user's, as the handoff reads them

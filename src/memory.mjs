@@ -55,14 +55,16 @@ import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { clip } from './text.mjs';
-import { BLOCK, redact, MISSED, HELD, sectionOf, parse, transcripts, stalled, lastTurn, GRACE, edited, tag, unsaved, unsay } from './handoff-log.mjs';
+import { redact, MISSED, HELD, sectionOf, parse, stalled, GRACE, edited, tag, unsaved, unsay } from './handoff-log.mjs';
+import { BLOCK, transcripts, lastTurn, chunk as chunkOf } from './transcript.mjs';
 import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged } from './recall.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
 // (handoff-log's deploy gate test, 2026-10-28).
 let entries, forget, holds, summary, unwritten, takeBack, chunk;
-try { ({ entries, forget, holds, summary, unwritten, takeBack, chunk } = await import('./journal.mjs')); }
+// replay's reader lives in transcript.mjs now; it is still held back while journal.mjs will not load (replay says so).
+try { ({ entries, forget, holds, summary, unwritten, takeBack } = await import('./journal.mjs')); chunk = chunkOf; }
 catch (e) {
   const why = reason(e);
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: why }); return []; };
