@@ -220,13 +220,19 @@ const taskLine = (path) => {
   }
   return { ask: '', ms: NaN };
 };
+// 1.6.0 headline 1b: the files a helper changed, from every turn of its own conversation file, read as a turn's Changed is; newest last.
+// shortcut: its last 32 MB only, and a tail that cuts off its task prompt loses the edits before the next one; upgrade if a helper's file grows past it.
+const helperFiles = (path) => {
+  const all = turns(readTail(path, 32_000_000).text, { sidechain: true }).opened.flatMap((t) => t.changed);
+  return all.filter((f, i) => all.lastIndexOf(f) === i);
+};
 export function subagent(input) {
   try {
     const { agent_type: type, agent_id: id, agent_transcript_path: ap, transcript_path: tp } = input;
     // Internal agents (prompt suggestions, /btw) come with no type.
     if (typeof type !== 'string' || !type.trim() || typeof tp !== 'string') return false;
-    let report = '', ask = '', start = NaN;
-    if (typeof ap === 'string') { try { report = handback(ap); } catch {} try { ({ ask, ms: start } = taskLine(ap)); } catch {} }
+    let report = '', ask = '', start = NaN, changed = [];
+    if (typeof ap === 'string') { try { report = handback(ap); } catch {} try { ({ ask, ms: start } = taskLine(ap)); } catch {} try { changed = helperFiles(ap); } catch {} }
     if (!report.trim() && typeof input.last_assistant_message === 'string') report = input.last_assistant_message;
     if (!report.trim()) return false;
     const dir = storeOf(input), s = tag(basename(tp, '.jsonl'));
@@ -246,7 +252,7 @@ export function subagent(input) {
       // Past the cap, the start and the end stay: the end usually holds the result.
       const all = clip(report, Infinity), rep = all.length <= J_REPORT ? all : `${all.slice(0, 5000)} … (${all.length - 7900} chars cut) … ${all.slice(-2900)}`;
       return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
-        raw: rep, said: rep, did: rep, changed: [], ran: [], cwd: input.cwd }]) > 0;
+        raw: rep, said: rep, did: rep, changed, ran: [], cwd: input.cwd }]) > 0;
     });
     // The lock stayed busy (many agents ending at once): the report is lost, and the failure file says so.
     if (saved === null) fault(dir, new Error('a subagent report was not saved: the store was busy'));

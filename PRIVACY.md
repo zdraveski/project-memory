@@ -48,7 +48,7 @@ The git-rule watcher (a PreToolUse hook) reads the notes that hold an `enforce:`
 
 The command `memory enforce replay <note>` is run by hand. It reads the git commands Claude ran through Bash or PowerShell in this project's conversation records of the last 30 days (every project's with `--all`) and prints the ones that match the note's rule to your terminal, each clipped to 160 characters with secrets replaced. It skips private conversations and projects with memory off, and saves nothing.
 
-When a subagent finishes, the plugin reads the end of that subagent's own conversation record and saves its final report and the first line of its task in the journal. The report is cleaned of secrets, and `forget` removes it. A report over 8,000 characters keeps its first 5,000 and last 2,900, with a note of how many characters were cut between them.
+When a subagent finishes, the plugin reads the end of that subagent's own conversation record and saves its final report, the first line of its task and the files it changed in the journal. The report is cleaned of secrets, and `forget` removes it. A report over 8,000 characters keeps its first 5,000 and last 2,900, with a note of how many characters were cut between them.
 
 ## What it saves
 

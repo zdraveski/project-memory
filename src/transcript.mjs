@@ -318,7 +318,8 @@ export const tailOf = (s, keep = 2 * SAID_KEEP) => (s.length > keep ? clip(s, In
 // Entries written before it have none. Every reader that prints `said` or an entry's Answered strips it (memory.mjs unmark).
 export const BLOCK = '\u2063';
 export const joined = (said, t) => (said ? `${said}\n\n${BLOCK}${t}` : t);
-export function turns(tail) {
+// sidechain: a helper's own conversation file, whose records are all marked isSidechain (journal.mjs's helper entries).
+export function turns(tail, { sidechain = false } = {}) {
   const out = [];
   let pending = null;
   const opened = [];
@@ -332,7 +333,7 @@ export function turns(tail) {
   // Not a record whose first key is a type nothing here reads (api-request-blob: 7 of 32 MB), and not a subagent's record
   // (isSidechain), as a Claude Code version wrote them into its conversation's transcript: neither the user's words nor the
   // conversation's reply, and a tag it quotes marks nothing (e2e audit, 2026-11-01).
-  for (const r of records(tail, { types: ['user', 'assistant', 'attachment'] })) {
+  for (const r of records(tail, { sidechain, types: ['user', 'assistant', 'attachment'] })) {
     // A turn's edits are tool calls with no text: taken before the text test skips them.
     // Once a nudge or a private message froze the turn, what follows is the
     // memory update, or the private part: only a forget of it is kept, below.
