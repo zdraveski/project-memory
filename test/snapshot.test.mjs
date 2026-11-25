@@ -167,5 +167,86 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(gitWhy({ code: 'ENOENT', syscall: 'spawnSync git' }) === 'git is not installed', 'gitWhy says no git in words');
 }
 
+// The git half of the CLI (history, restore, forget --purge, rescan, doctor), moved here from memory.mjs with the arguments and
+// options it had. The expected values are what memory.mjs ran before the move. The history rewrite itself keeps real git (memory-switch.test.mjs).
+{
+  const { git, gitBytes, unsnapped, missing, tracked, ever, rewrite, gitInstalled, fastExport, fastExportOf, fastImportTo, hashObject, readHealth, MISSED, HELD, FAST } = S;
+  let seen = [];
+  const stand = (answer) => { seen = []; useGit((cmd, args, opts) => { seen.push({ cmd, args, opts }); return typeof answer === 'function' ? answer(args, opts) : answer; }); };
+
+  // The 60 s readers: paths literal, text or bytes, git's stderr kept.
+  stand('out');
+  ok(git('log', '-1') === 'out', 'git answers what the runner answered');
+  ok(seen[0].cmd === 'git' && seen[0].args.slice(0, 2).join() === `-C,${root}` && seen[0].args.slice(-3).join() === '--literal-pathspecs,log,-1', 'git runs in the projects root with literal pathspecs');
+  ok(seen[0].opts.encoding === 'utf8' && seen[0].opts.timeout === 60_000 && seen[0].opts.maxBuffer === 64 << 20 && seen[0].opts.stdio.join() === 'ignore,pipe,pipe', 'git: text, 60 s, 64 MiB, stderr kept');
+  gitBytes('cat-file', '-p', 'x');
+  ok(seen[1].opts.encoding === 'buffer' && seen[1].opts.timeout === 60_000, 'gitBytes asks for the bytes');
+
+  // The fixed commands of a history rewrite: 300 s and 1 GiB, the copy named with -C and no repository settings.
+  stand('');
+  fastExport(); fastExportOf('/c.git'); fastImportTo('/c.git', 'IN'); hashObject('B', { encoding: 'utf8' });
+  ok(seen[0].args.slice(0, 2).join() === `-C,${root}` && seen[0].args.slice(-3).join() === 'fast-export,--all,--signed-tags=strip' && seen[0].opts.timeout === 300_000 && seen[0].opts.maxBuffer === 1 << 30 && seen[0].opts.stdio.join() === 'ignore,pipe,ignore', 'fastExport: the root, 300 s, 1 GiB, git\'s warnings dropped');
+  ok(seen[1].args.join() === '-C,/c.git,fast-export,--all,--signed-tags=strip' && seen[1].opts.stdio.join() === 'ignore,pipe,ignore', 'fastExportOf: a copy, named with -C alone');
+  ok(seen[2].args.join() === '-C,/c.git,fast-import,--force,--quiet' && seen[2].opts.input === 'IN' && seen[2].opts.timeout === 300_000 && !('stdio' in seen[2].opts), 'fastImportTo: the stream on stdin');
+  ok(seen[3].args.slice(-3).join() === 'hash-object,-w,--stdin' && seen[3].opts.input === 'B' && seen[3].opts.encoding === 'utf8', 'hashObject writes a blob from stdin');
+  ok(FAST.timeout === 300_000 && FAST.maxBuffer === 1 << 30, 'FAST is 300 s and 1 GiB');
+
+  // doctor and unsnapped: git on the PATH, then a first commit.
+  stand('git version 2');
+  ok(gitInstalled() === 'git version 2' && seen[0].args.join() === '--version' && seen[0].opts.stdio === 'ignore', 'gitInstalled runs git --version');
+  scripted(() => { throw fail('spawnSync git ENOENT', { code: 'ENOENT' }); });
+  ok(unsnapped().startsWith('git is not installed, so there are no snapshots: everything else works. Installing Git (git-scm.com) turns them on'), 'no git: said in words');
+  stand('');
+  rmSync(g, { recursive: true, force: true });
+  ok(unsnapped() === 'no snapshots yet: project-memory takes the first at the end of a reply' && seen.length === 1, 'no repository: no commit yet, and nothing but --version was run');
+  ours();
+  stand((a) => { if (a.includes('rev-parse')) throw fail('fatal: Needed a single revision', { status: 128 }); return ''; });
+  ok(unsnapped().startsWith('no snapshots yet'), 'a repository with no commit has no snapshots yet');
+  stand((a) => (a.includes('rev-parse') ? 'abc1234\n' : ''));
+  ok(unsnapped() === '', 'a repository with a commit has snapshots');
+  ok(seen.at(-1).args.slice(-4).join() === 'rev-parse,--verify,-q,HEAD', 'the commit is looked for with rev-parse --verify -q HEAD');
+  stand((a) => (a.includes('rev-parse') ? '' : 'x'));
+  ok(unsnapped().startsWith('no snapshots yet'), 'an empty answer is no commit');
+
+  // What git says when a snapshot lacks a path.
+  for (const m of ['fatal: path x does not exist in HEAD', 'fatal: path x exists on disk, but not in HEAD', 'fatal: invalid object name', 'fatal: Not a valid object name y', 'fatal: unknown revision or path', 'fatal: bad revision z']) ok(missing({ stderr: m }), `"${m}" is a missing path or commit`);
+  ok(!missing({ stderr: 'fatal: not a git repository' }) && !missing({}) && !missing(undefined), 'anything else is a fault');
+
+  // The paths a store is held by.
+  const dir = store('proj-t');
+  ok(tracked(dir, 'a.md').join() === 'proj-t/memory/a.md' && tracked(dir, '').join() === 'proj-t/memory', 'a store in the root is tracked by its own path');
+  stand((a) => (a.includes('log') ? 'proj-t/memory/a.md\nproj-t/memory/b.md\n' : ''));
+  ok(ever(dir).join() === 'a.md,b.md,' && seen[0].args.includes('--diff-filter=A') && seen[0].args.at(-1) === 'proj-t/memory', 'ever lists the names a store ever had');
+  stand(() => { throw fail('boom'); });
+  ok(ever(dir).length === 0, 'a log that fails lists none');
+
+  // A rewrite waits for a snapshot in flight: nothing runs, and no lock is left.
+  stand('');
+  mkdirSync(g, { recursive: true });
+  for (const f of ['index.lock', 'HEAD.lock']) {
+    writeFileSync(join(g, f), '');
+    let msg = ''; try { rewrite(() => {}); } catch (e) { msg = e.message; }
+    ok(msg === 'a snapshot is being taken; try again in a moment' && seen.length === 0 && !existsSync(join(g, 'config.lock')), `${f}: the purge gives way, runs no git, takes no lock`);
+    rmSync(join(g, f));
+  }
+  writeFileSync(join(g, 'config.lock'), '');
+  let msg = ''; try { rewrite(() => {}); } catch (e) { msg = e.message; }
+  ok(msg === 'a snapshot is being taken; try again in a moment' && existsSync(join(g, 'config.lock')) && seen.length === 0, 'a config.lock that is there: busy, and not taken away');
+  rmSync(join(g, 'config.lock'));
+
+  // The health record, as every reader sees it.
+  const hp = join(root, '.snapshot-health');
+  rmSync(hp, { force: true });
+  ok(JSON.stringify(readHealth()) === '{"read":false,"health":null}', 'no health file: not read');
+  writeFileSync(hp, '{ not json');
+  ok(readHealth().read === false && readHealth().health === null, 'a broken health file: not read');
+  writeFileSync(hp, 'null');
+  ok(readHealth().read === true && readHealth().health === null, 'a null health file: read, and empty');
+  writeFileSync(hp, JSON.stringify({ lastOk: 'x', failures: 2, held: ['a'], missed: ['b'], pending: true }));
+  ok(readHealth().read && readHealth().health.failures === 2 && readHealth().health.held[0] === 'a' && owed() === true, 'a health file: parsed as written');
+  rmSync(hp);
+  ok(MISSED.startsWith('it is reached through a link to a folder outside ~/.claude/projects') && HELD.startsWith('it holds what looks like a key, token or password'), 'the reasons a store is left out are said here');
+}
+
 useGit();
 console.log(`snapshot.test.mjs: ${checks} checks passed`);
