@@ -48,7 +48,8 @@ import { join, relative, basename, dirname, resolve, isAbsolute } from 'node:pat
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { holdsSecret, sleep, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, gitWhy, reason, gitArgs, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
+import { holdsSecret, sleep, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, HANDOFF_FAILED, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
+import { gitWhy, gitArgs } from './snapshot.mjs';
 import { PROJECT_OFF, OFF_PERIODS, isOff, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';

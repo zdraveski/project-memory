@@ -11,7 +11,7 @@ import { sharedStore } from '../src/store.mjs';
 import { QUIET, OFF, PROJECT_OFF } from '../src/privacy.mjs';
 import { tag as tagOf } from '../src/handoff-log.mjs';
 import { hushed } from '../src/privacy.mjs';
-import { gitignore } from '../src/memory-tier.mjs';
+import { gitignore } from '../src/snapshot.mjs';
 
 const { home } = tempHome('enforce-hook-');
 let checks = 0;
