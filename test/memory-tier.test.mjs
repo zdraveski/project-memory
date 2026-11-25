@@ -629,7 +629,7 @@ ok(runLines().length === 20 && !readFileSync(join(root, '.stop-ran'), 'utf8').en
 }
 // A handoff-log.mjs that cannot load writes no handoff: no proof of life either.
 const broken = tempDir('broken-');
-for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs']) copyFileSync(tool(`src/${f}`), join(broken, f));
+for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'journal.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs']) copyFileSync(tool(`src/${f}`), join(broken, f));
 writeFileSync(join(broken, 'handoff-log.mjs'), 'this is not javascript (');
 const ranBroken = statSync(join(root, '.stop-ran')).mtimeMs;
 spawnSync(process.execPath, [join(broken, 'memory-tier.mjs'), '--stop'], { env, input: JSON.stringify({ transcript_path: join(root, 'proj-one', 'session.jsonl'), session_id: 'tst' }) });
@@ -1177,7 +1177,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
   let offBad;
   try { offBad = await call(['--stop'], JSON.stringify({ transcript_path: to2, session_id: 'offline2-0000' })); }
   finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
-  const offSaid = execFileSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: to2, session_id: 'other', source: 'startup' }), env }).toString();
+  const offSaid = execFileSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { input: JSON.stringify({ transcript_path: to2, session_id: 'other', source: 'startup' }), env }).toString();
   rmSync(offList, { recursive: true }); writeFileSync(offList, hadOff);
   const savedNothing = !existsSync(join(po, 'memory'));
   // In its own words, in the briefing and in status (a store kept from before memory went off): nothing was meant to be saved, and
@@ -1202,7 +1202,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
     JSON.stringify({ type: 'assistant', timestamp: '2026-10-27T10:00:05Z', message: { content: [{ type: 'text', text: 'saved' }] } })].join('\n') + '\n');
   const stopB = () => call(['--stop'], JSON.stringify({ transcript_path: tb, session_id: 'brkn' }));
   await stopB();
-  const said = execFileSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { input: JSON.stringify({ transcript_path: tb, session_id: 'other', source: 'startup' }), env }).toString();
+  const said = execFileSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { input: JSON.stringify({ transcript_path: tb, session_id: 'other', source: 'startup' }), env }).toString();
   ok(existsSync(join(root, '.handoff-failed-proj-broken')) && /needs attention[^\n]*: the record of where you left off could not be saved after the reply at /.test(said) && !said.includes('auto memory off'),
     `a handoff that cannot be saved is said at the next start (got ${said.slice(0, 200)})`);
   // The failure file keeps the error's first line, whole, for the startup line to quote.
@@ -1554,7 +1554,7 @@ ok(r.status === 0, `--stop: a transcript path that is no string still exits 0 (g
 {
   const was = [process.env.HOME, process.env.USERPROFILE];
   const hj = tempDir('memtier-nojournal-'), pj = join(hj, '.claude', 'projects', 'C--nj'), copy = tempDir('nojournal-'), tj = join(pj, 'nj.jsonl');
-  for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs']) copyFileSync(tool(`src/${f}`), join(copy, f));
+  for (const f of ['memory-tier.mjs', 'store.mjs', 'timing.mjs', 'compact-gate.mjs', 'journal.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs']) copyFileSync(tool(`src/${f}`), join(copy, f));
   writeFileSync(join(copy, 'journal.mjs'), 'this is not javascript (');
   mkdirSync(pj, { recursive: true });
   writeFileSync(tj, [{ type: 'user', timestamp: '2026-10-28T09:00:00Z', message: { content: 'asked with no journal' } },

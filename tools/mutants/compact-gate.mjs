@@ -52,7 +52,7 @@ export default {
   'no ceiling: mid-turn always deferred': ['if (s.ctx < CEILING * MODEL_WINDOW) {', 'if (true) {'],
   'a turn boundary is deferred too': ['if (!s.midTurn) return { code: 0', 'if (false) return { code: 0'],
   'in-flight note not written': ['const n = inflight(payload, s);', 'const n = true;'],
-  'gate skips the handoff': ['const h = handoff(payload);', 'const h = true;'],
+  'gate skips the handoff': ['const h = handoff(payload, null, keptUnder);', 'const h = true;'],
   'a silent handoff reads as written': ["else if (!h) failed.push('handoff: nothing written", "else if (h === 'never') failed.push('handoff: nothing written"],
   'a silent note reads as written': ['else if (!n) failed.push', "else if (n === 'never') failed.push"],
   'a held store reads as no handoff': ["if (h === 'busy') failed.push", 'if (false) failed.push', { full: true }],

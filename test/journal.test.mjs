@@ -10,9 +10,9 @@ import { createHash } from 'node:crypto';
 import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, due: isDue, IMPORT_SEGMENT } = await import('../src/journal.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, keptUnder, due: isDue, IMPORT_SEGMENT } = await import('../src/journal.mjs');
 const { ACTIVE } = await import('../src/handoff-log.mjs'), { TAIL, NUDGE_TAG } = await import('../src/transcript.mjs');
-const { local, withLock } = await import('../src/store.mjs');
+const { local, withLock, transcriptKey } = await import('../src/store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -105,6 +105,16 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   const T2 = '/x/projects/C--proj/fedcba9876543210.jsonl';
   record(dir, T2, [turn({ did: 'fork answer' })]);
   ok(parseDay(day()).entries.length === 1 && parseDay(day()).entries[0].answered === 'new answer', 'a fork copy does not replace the parent entry');
+  // keptUnder: the transcript an exchange is kept under, which the handoff asks to leave a fork's copy out.
+  ok(keptUnder(dir, '2026-10-28', 'u-1') === transcriptKey(T) && transcriptKey(T) !== transcriptKey(T2), 'keptUnder names the parent, the key the fork copy is kept under');
+  ok(keptUnder(dir, '1999-01-01', 'u-1') === null, 'keptUnder: no day file is null');
+  ok(keptUnder(dir, '2026-10-28', 'u-none') === null, 'keptUnder: an exchange not kept is null');
+  // A marker inside a line is no marker: only a line of its own is. The journal escapes the `<` of one typed in a prompt, so
+  // this is a note written by hand into the day. In a store of its own, so this file's day counts stay.
+  const dk = storeFor(home, 'C:\\journal-keptunder');
+  record(dk, T2, [turn({ id: 'u-typed2' })]);
+  appendFileSync(dayFile(dk, '2026-10-28'), '\nwhy is <!-- j:u-typed t:C--other/x d:2026-10-28 --> in there\n');
+  ok(readFileSync(dayFile(dk, '2026-10-28'), 'utf8').includes('<!-- j:u-typed t:') && keptUnder(dk, '2026-10-28', 'u-typed') === null, 'keptUnder: a marker typed inside a prompt is null');
 }
 {
   record(dir, T, [turn({ at: '2026-10-27 23:59', id: 'u-late' })]);
@@ -627,7 +637,7 @@ if (!quick) {
   rmSync(hf);   // other sessions' turns, newer than this one's
   stop(Y);
   const journal = days(sdir).map((d) => readFileSync(dayFile(sdir, d), 'utf8')).join(''), hd = existsSync(hf) ? readFileSync(hf, 'utf8') : '';
-  const brief = spawnSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+  const brief = spawnSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
     input: JSON.stringify({ cwd: scwd, session_id: sid('yb'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '';
   const leaked = ['journal', 'handoff.md', 'briefing'].filter((_, i) => /vault code|walrus/.test([journal, hd, brief][i]));
   ok(swept && was && !leaked.length && tags().includes(y),
@@ -685,7 +695,7 @@ const stopRefused = (id, names) => { const r = spawnSync(process.execPath, ['--i
   appendFileSync(list, `${r8}\n`);
   say(R, now, 'so what is the vault code', 'it is heron-8812');
   stopRefused(R, ['.private-sessions']);
-  const brief = () => spawnSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+  const brief = () => spawnSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
     input: JSON.stringify({ cwd: scwd, session_id: sid('rb'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '';
   const where = () => ['journal', 'handoff.md', 'briefing'].filter((_, i) => /heron/.test([days(sdir).map((d) => readFileSync(dayFile(sdir, d), 'utf8')).join(''), existsSync(hf) ? readFileSync(hf, 'utf8') : '', brief()][i]));
   const refused = where();
@@ -729,7 +739,7 @@ for (const [c, name, at] of [['ua', '.private-sessions', sdir], ['ub', '.memory-
   const U = sid(c), list = join(at, name), had = existsSync(list) ? readFileSync(list) : null, hf = join(sdir, 'handoff.md'), where = ['journal', 'handoff.md'];
   const failed = join(dirname(proj), `.handoff-failed-${slug(scwd)}`);
   const saved = () => where.filter((w) => (w === 'journal' ? of(U).length > 0 : existsSync(hf) && readFileSync(hf, 'utf8').includes(`asked while ${name} is a folder`)));
-  const said = () => [spawnSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
+  const said = () => [spawnSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { env, encoding: 'utf8', timeout: 60e3,
     input: JSON.stringify({ cwd: scwd, session_id: sid('uz'), hook_event_name: 'SessionStart', source: 'startup' }) }).stdout ?? '',
   spawnSync(process.execPath, [tool('src/memory.mjs'), 'status', '--store', sdir], { env, encoding: 'utf8', timeout: 60e3 }).stdout ?? ''];
   say(U, new Date(Date.now() - 60e3).toISOString(), `asked while ${name} is a folder`, 'answered');

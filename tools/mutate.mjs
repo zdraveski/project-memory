@@ -22,6 +22,7 @@ import deploy from './mutants/deploy.mjs';
 import enforce from './mutants/enforce.mjs';
 import enforceHook from './mutants/enforce-hook.mjs';
 import brief from './mutants/brief.mjs';
+import briefing from './mutants/briefing.mjs';
 import timing from './mutants/timing.mjs';
 import text from './mutants/text.mjs';
 import privacy from './mutants/privacy.mjs';
@@ -47,6 +48,7 @@ export const suites = {
   'src/recall.mjs': ['test/recall.test.mjs', recall],
   'tools/deploy.mjs': ['test/handoff-log.test.mjs', deploy],
   'src/brief.mjs': ['test/handoff-log.test.mjs', brief],
+  'src/briefing.mjs': [['test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/journal.test.mjs', 'test/memory-switch.test.mjs', 'test/memory-tier.test.mjs'], briefing],
   'src/enforce.mjs': ['test/enforce.test.mjs', enforce],
   'src/enforce-hook.mjs': ['test/enforce-hook.test.mjs', enforceHook],
   'src/timing.mjs': ['test/timing.test.mjs', timing],

@@ -88,6 +88,18 @@ export const failures = (r, known) => {
   assert.deepEqual(failures({ status: 1, stdout: '', stderr: 'boom\n' }, k), ['exit 1', 'boom']);
   assert.deepEqual(failures({ status: null, error: new Error('spawn failed'), stdout: '', stderr: '' }, k), ['spawn failed']);
 }
+// The src/ files a source imports, static or by a run-time import( with a literal path (new URL('./x.mjs', import.meta.url) too).
+export const importsOf = (text) => [...new Set([...text.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*(?:new URL\(\s*)?|^import\s+)['"]\.\/([\w.-]+\.mjs)['"]/gm)].map((m) => m[1]))];
+// Every import a → b that is part of a loop (b leads back to a), as 'a -> b'.
+export const loopsOf = (graph) => {
+  const reaches = (from, to, seen = new Set()) => from === to || (!seen.has(from) && (seen.add(from), (graph[from] ?? []).some((n) => reaches(n, to, seen))));
+  return Object.entries(graph).flatMap(([a, bs]) => bs.filter((b) => reaches(b, a)).map((b) => `${a} -> ${b}`));
+};
+// Loops known and waiting to be undone: none since the briefing moved out of handoff-log.mjs (1.6.0 step 18).
+const KNOWN_LOOPS = [];
+assert.deepEqual(importsOf("import { a } from './a.mjs';\nimport * as B from \"./b.mjs\";\nimport './c.mjs';\nawait import('./d.mjs');\nimport(new URL('./e.mjs', import.meta.url));\nimport x from 'node:fs';"), ['a.mjs', 'b.mjs', 'c.mjs', 'd.mjs', 'e.mjs']);
+assert.deepEqual(loopsOf({ 'a.mjs': ['b.mjs'], 'b.mjs': ['c.mjs'], 'c.mjs': ['a.mjs'], 'd.mjs': ['a.mjs'] }), ['a.mjs -> b.mjs', 'b.mjs -> c.mjs', 'c.mjs -> a.mjs']);
+assert.deepEqual(loopsOf({ 'a.mjs': ['b.mjs'], 'b.mjs': [] }), []);
 assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11])]])), 'a.mjs:3,4;b.mjs:11');
 // --base <ref>: the ref "changed" is measured from; HEAD (the last commit) when not given.
 export const baseOf = (argv) => {
@@ -196,6 +208,9 @@ for (const f of files) {
   }
 }
 step('no unused imports', unused);
+// 2b. No import loop in src/, a run-time import( counted as an import (ADR 0003): one is allowed as a guard, never around a loop.
+const graph = Object.fromEntries(srcFiles().map((f) => [f.slice(4), importsOf(readFileSync(join(repo, f), 'utf8'))]));
+step('no import loops in src/', loopsOf(graph).filter((l) => !KNOWN_LOOPS.includes(l)));
 
 const full = process.argv.includes('--full');
 

@@ -108,7 +108,7 @@ tier();
   ok(existsSync(join(d, 'MEMORY.md')) && /kept\.md/.test(readFileSync(join(d, 'MEMORY.md'), 'utf8')), 'a Stop in it still repairs the index, and a note written during it is indexed');
   r = await run(['search', 'seals', '--store', d]);
   ok(/seals/.test(r.stdout), 'search still finds earlier work');
-  const start = spawnSync(process.execPath, [tool('src/handoff-log.mjs'), '--print'], { env, encoding: 'utf8', input: JSON.stringify({ cwd, session_id: UID, source: 'startup' }) }).stdout;
+  const start = spawnSync(process.execPath, [tool('src/briefing.mjs'), '--print'], { env, encoding: 'utf8', input: JSON.stringify({ cwd, session_id: UID, source: 'startup' }) }).stdout;
   ok(/seals/.test(start) && !/narwhal|pelican/.test(start), 'a startup after it still briefs, without it');
 
   // memory off / on.

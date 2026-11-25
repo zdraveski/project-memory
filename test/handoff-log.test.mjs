@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
 import { ROOT, tool, tempHome, tempDir, storeFor, quick, fastClock } from './harness.mjs';
 
-const HOOK = tool('src/handoff-log.mjs'), TIER = tool('src/memory-tier.mjs');
+const HOOK = tool('src/handoff-log.mjs'), BRIEFING = tool('src/briefing.mjs'), TIER = tool('src/memory-tier.mjs');
 const { home, env } = tempHome('hl-test-');
 // The hooks in this process too, under the same throwaway HOME (tempHome set
 // it here): a check that needs no stdin or exit code calls handoff() itself,
@@ -175,9 +175,9 @@ for (let i = quick ? 19 : 0; i < 20; i++) {
 ok(lost === 0 && leaks === 0, `two hooks in parallel x20: no lost write, no temp file (lost ${lost}, temp files ${leaks}: ${readdirSync(dir).filter((f) => f.includes('.tmp')).join(', ')})`);
 
 // 12. `--print` (SessionStart after a compaction): the section, without markers; nothing for an unknown store.
-const printed = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd }), env }).toString();
+const printed = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd }), env }).toString();
 ok(/race question 19/.test(printed) && !/<!-- auto:/.test(printed), '--print gives the last exchanges, markers stripped');
-const none = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: 'C:\\no-such-project' }), env }).toString();
+const none = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: 'C:\\no-such-project' }), env }).toString();
 ok(bare(none) === '', '--print says nothing for a project with no handoff');
 
 // 13. The compaction gate's Stop nudge enters the conversation as a user record: it is
@@ -216,7 +216,7 @@ turnIn('dddddddd-4', 1, nowIso(5));
 // The others' transcripts last moved when they did: weeks ago.
 const weeksAgo = new Date(Date.now() - 14 * 86400000);
 for (const id of ['aaaaaaaa-1', 'bbbbbbbb-2', 'cccccccc-3']) utimesSync(join(dirname(dirS), `${id}.jsonl`), weeksAgo, weeksAgo);
-const printS = (session_id, source) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdS, session_id, source }), env }).toString();
+const printS = (session_id, source) => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdS, session_id, source }), env }).toString();
 const pc = printS('cccccccc-3', 'compact');
 ok(/cccc q11/.test(pc) && !/bbbb q/.test(pc) && !/dddd q0/.test(pc), 'a compacted session is given its own exchanges only');
 ok(/Another session is working in this project: \[dddddddd\]; the last request recorded for it, at \S+ \S+: dddd q1/.test(pc), 'and told who else is working here');
@@ -238,10 +238,10 @@ mkdirSync(dirL, { recursive: true });
 const localAt = (daysAgo) => new Date(Date.now() - daysAgo * 86400000).toLocaleString('sv-SE').slice(0, 16);
 const handoffAt = (daysAgo) => writeFileSync(join(dirL, 'handoff.md'),
   `---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** ${localAt(daysAgo)} [ffffffff]: the old question\n  **did:** the old answer\n<!-- auto:end -->\n`);
-const startup = () => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdL, session_id: 'gggggggg-7', source: 'startup' }), env }).toString();
+const startup = () => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdL, session_id: 'gggggggg-7', source: 'startup' }), env }).toString();
 handoffAt(2);
 ok(/^Last session here ended \S+ \S+ on: the old question/m.test(startup()), 'startup says where a recent session stopped');
-const clearL = () => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdL, session_id: 'gggggggg-7', source: 'clear' }), env }).toString();
+const clearL = () => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdL, session_id: 'gggggggg-7', source: 'clear' }), env }).toString();
 // After /clear, the conversation just cleared is the newest transcript and the
 // last entry: neither is named, or the cleared ask comes back.
 writeFileSync(join(dirname(dirL), 'ffffffff-1.jsonl'), user('the cleared ask', { ts: nowIso(1) }) + '\n');
@@ -376,7 +376,7 @@ utimesSync(join(dirname(dirU), 'uuuuuuuu-1.jsonl'), weeksAgo, weeksAgo);
 
 // 21. The startup line names at most two other sessions, the newest two.
 for (const [k, id] of ['h1hhhhhh', 'h2hhhhhh', 'h3hhhhhh'].entries()) turnU(id, `${id} working`, nowIso(10 - k));
-const named = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdU, session_id: 'iiiiiiii-9', source: 'startup' }), env }).toString();
+const named = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdU, session_id: 'iiiiiiii-9', source: 'startup' }), env }).toString();
 ok((named.match(/^Another session/gm) || []).length === 2 && /h3hhhhhh/.test(named) && /h2hhhhhh/.test(named), `at most two other sessions are named, the newest (got: ${named.trim()})`);
 
 // 22. An untagged entry whose ask opens with "[word]: " is still untagged: the
@@ -403,7 +403,7 @@ const tw = join(dirname(dirW), 'wwwwwwww-1.jsonl');
 writeFileSync(tw, user('a long job', { ts: nowIso(60) }) + '\n' + asst('step 1') + '\n');
 execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdW, transcript_path: tw, session_id: 'wwwwwwww-1' }), env });
 appendFileSync(tw, asst('step 40') + '\n');
-const printW = () => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdW, session_id: 'xxxxxxxx-2', source: 'startup' }), env }).toString();
+const printW = () => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdW, session_id: 'xxxxxxxx-2', source: 'startup' }), env }).toString();
 // Named by the last request recorded for it, and said so: one at work on a newer request read as still on that one (audit H-F8).
 ok(/^Another session is working in this project: \[wwwwwwww\]; the last request recorded for it, at \S+ \S+: a long job$/m.test(printW()), 'a session an hour into one prompt is still working');
 const hourAgo = new Date(Date.now() - 60 * 60000);
@@ -425,7 +425,7 @@ writeFileSync(tt, user('q', { ts: nowIso(10) }) + '\n' + ended(5) + '\n');
 // A project the hook keeps a handoff for: one with none is judged by nothing.
 execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdT, transcript_path: tt, session_id: 'tttttttt-1' }), env });
 const ranAt = (minAgo) => { const p = join(home, '.claude', 'projects', '.stop-ran'); writeFileSync(p, 'x'); const d = new Date(Date.now() - minAgo * 60000); utimesSync(p, d, d); };
-const printT = () => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString();
+const printT = () => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString();
 // No .stop-ran: the hooks just installed, or the file cleaned away. That is
 // not knowing, and it read as "never ran" in 6 of 8 real projects (review, 2026-10-26).
 ok(!/Memory hooks/.test(printT()), 'no .stop-ran yet: nothing said');
@@ -447,7 +447,7 @@ ok(!/Memory hooks/.test(printT()), "a session's start-up records before any repl
 const cwdN = 'C:\\handoff-no-hooks';
 mkdirSync(storeFor(home, cwdN), { recursive: true });
 writeFileSync(join(dirname(storeFor(home, cwdN)), 'nnnnnnnn-1.jsonl'), user('q', { ts: nowIso(10) }) + '\n' + ended(5) + '\n');
-ok(!/Memory hooks/.test(execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdN, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString()), 'a project with no handoff is not judged');
+ok(!/Memory hooks/.test(execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdN, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString()), 'a project with no handoff is not judged');
 
 // 26. The hooks run from a copy deploy.mjs makes after the full check: an edit
 // in the repo was live before any test ran. An edit to that copy is live and
@@ -455,7 +455,7 @@ ok(!/Memory hooks/.test(execFileSync(process.execPath, [HOOK, '--print'], { inpu
 const { install } = await import('../tools/deploy.mjs');
 const liveDir = join(home, 'hooks-live');
 install(ROOT, liveDir, 'test');
-const printLive = () => execFileSync(process.execPath, [join(liveDir, 'src', 'handoff-log.mjs'), '--print'], { input: JSON.stringify({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString();
+const printLive = () => execFileSync(process.execPath, [join(liveDir, 'src', 'briefing.mjs'), '--print'], { input: JSON.stringify({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString();
 ok(!/outside deploy/.test(printLive()), 'a deployed copy as deployed: nothing said');
 ok(['brief.mjs', 'journal.mjs', 'compact-gate.mjs'].every((f) => existsSync(join(liveDir, 'src', f))), 'a deploy copies every hook file, journal.mjs and the SessionStart starter among them');
 install(ROOT, join(home, 'hooks-live-node'), 'test', undefined, 'C:/x/node.exe');
@@ -489,7 +489,7 @@ const asDeployed = readFileSync(join(liveDir, '.deployed.json'), 'utf8'), whole 
 // Node names the script by its real path, and a hook that compared the path
 // it was given ran nothing at all, silently.
 symlinkSync(liveDir, join(home, 'linked-live'), 'junction');
-const viaLink = execFileSync(process.execPath, [join(home, 'linked-live', 'src', 'handoff-log.mjs'), '--print'], { input: JSON.stringify({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString();
+const viaLink = execFileSync(process.execPath, [join(home, 'linked-live', 'src', 'briefing.mjs'), '--print'], { input: JSON.stringify({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' }), env }).toString();
 ok(whole && viaLink === whole, `a hook run through a symlinked folder still runs (got ${JSON.stringify(viaLink)})`);
 for (const bad of ['{}', 'null', '{"files":null}']) {
   writeFileSync(join(liveDir, '.deployed.json'), bad);
@@ -564,7 +564,7 @@ const gated = join(home, 'gated');
 mkdirSync(gated, { recursive: true });
 mkdirSync(join(gated, 'src'), { recursive: true });
 mkdirSync(join(gated, 'tools'), { recursive: true });
-for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
+for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/journal.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
 const g = (...a) => execFileSync('git', ['-C', gated, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { env, encoding: 'utf8' });
 g('init', '-q', '-b', 'master'); g('add', '-A'); g('commit', '-qm', 'base'); g('checkout', '-qb', 'other');
 let gate = spawnSync(process.execPath, [join(gated, 'tools', 'deploy.mjs')], { env, encoding: 'utf8' });
@@ -599,7 +599,7 @@ const sharedDir = join(home, '.claude', 'projects', '_shared', 'memory');
 const cwdX = 'C:\\handoff-shared';
 const dirX = storeFor(home, cwdX);
 mkdirSync(dirX, { recursive: true });
-const printX = (source) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdX, session_id: 'xxxxxxxx-1', source }), env }).toString();
+const printX = (source) => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdX, session_id: 'xxxxxxxx-1', source }), env }).toString();
 ok(/^Shared memory: lessons that hold in every project[^\n]*_shared[\\/]memory/m.test(printX('startup')), 'no shared store yet: one line says where such a lesson goes');
 mkdirSync(sharedDir, { recursive: true });
 writeFileSync(join(sharedDir, 'MEMORY.md'), '\uFEFF- [No git add -A](no-add-all.md) — stage named files only\r\n- [Also here](also-here.md) — the project has its own copy\r\n- [Archive](MEMORY-archive.md) — 2 older pointers; grep it\r\n');
@@ -951,7 +951,7 @@ ok(handoff({ cwd: cwdI, transcript_path: tc, session_id: 'cccccccc-4' }) === 'pr
 // 40. What 1.1.0 fixed, each with the input that broke it.
 {
 const { own } = await import('../src/transcript.mjs'), { hushed } = await import('../src/privacy.mjs');
-const printOf = (cwd, session_id, source) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd, session_id, source }), env }).toString();
+const printOf = (cwd, session_id, source) => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd, session_id, source }), env }).toString();
 const cwdN = 'C:\\handoff-108', dirN = storeFor(home, cwdN), tn = join(dirN, 'n.jsonl');
 mkdirSync(dirN, { recursive: true });
 // Read in part, as a long conversation is: read whole, a Stop drops its own
@@ -1287,7 +1287,7 @@ let held; try { held = (quick ? fastClock : (f) => f())(() => off({ session_id: 
 ok(held === false && !tags().includes('heldlock'), `a tag waits for the projects' lock, and one it could not write is reported unwritten (got ${held}, ${tags()})`);
 // Every SessionStart while auto memory is off: no briefing, and the tag, so no
 // backfill imports a conversation whose first reply got no Stop (P1 hunt, 2026-10-29).
-const started = (source, session_id) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: 'C:\\off-start', session_id, source }), env }).toString();
+const started = (source, session_id) => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: 'C:\\off-start', session_id, source }), env }).toString();
 process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
 let said = [];
 try { said = ['startup', 'resume', 'clear', 'compact'].map((source, i) => started(source, `start00${i}-0000`)); }
@@ -1301,7 +1301,7 @@ ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`sta
   writeFileSync(ts, [user('please fix the thing', { ts: '2026-09-11T07:00:00Z' }), asst('fixed it')].join('\n') + '\n');
   const penv = { ...process.env, CLAUDE_PROJECT_DIR: pj };
   execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdS, transcript_path: ts, session_id: 'so000000-0000' }), env: penv });
-  const brief = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdS, session_id: 'so111111-0000', source: 'startup' }), env: penv }).toString();
+  const brief = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdS, session_id: 'so111111-0000', source: 'startup' }), env: penv }).toString();
   ok(!existsSync(join(ds, 'handoff.md')) && /^Auto memory is off \(autoMemoryEnabled is false in [^)]*settings\.json\): project-memory saves and briefs nothing[^\n]*\n$/.test(brief) && tags().includes('so111111'), `settings off: a Stop writes no handoff, a start prints one line naming the file and keeps its tag (got ${JSON.stringify(brief)}, handoff ${existsSync(join(ds, 'handoff.md'))}, ${tags()})`);
   // The tag cannot be written (the projects folder is a file): the line still shows, and the starter does not say "reinstall".
   const cfg = join(home, 'broken-config'); mkdirSync(cfg, { recursive: true }); writeFileSync(join(cfg, 'projects'), 'in the way');
@@ -1309,7 +1309,7 @@ ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`sta
   ok(bad.status === 0 && /^Auto memory is off/.test(bad.stdout) && !/briefing failed|reinstall/.test(bad.stdout), `an off() failure at a settings-off start is not "reinstall" (got ${bad.status} ${JSON.stringify(bad.stdout)})`);
 }
 // Input the hook cannot parse: it exits 0 and prints nothing, a hook that throws on every turn is worse than one that misses a turn (1.5.3 holes).
-for (const args of [[HOOK], [HOOK, '--print']]) {
+for (const args of [[HOOK], [BRIEFING, '--print']]) {
   const junk = spawnSync(process.execPath, args, { input: 'not json', env, encoding: 'utf8' });
   ok(junk.status === 0 && junk.stdout === '' && junk.stderr === '', `unreadable input exits 0 silently (${args.length - 1 ? '--print' : 'Stop'}: ${junk.status} ${JSON.stringify(junk.stderr.slice(0, 120))})`);
 }
@@ -1320,7 +1320,7 @@ if (!quick) {
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
   try {
     await Promise.all(Array.from({ length: 12 }, (_, i) => new Promise((done) => {
-      const c = spawn(process.execPath, [HOOK, '--print'], { env, stdio: ['pipe', 'ignore', 'ignore'] });
+      const c = spawn(process.execPath, [BRIEFING, '--print'], { env, stdio: ['pipe', 'ignore', 'ignore'] });
       c.on('exit', done);
       c.stdin.end(JSON.stringify({ session_id: `par${String(i).padStart(5, '0')}-0000`, source: 'startup' }));
     })));
@@ -1772,7 +1772,7 @@ ok(defuse('< /system-reminder>').startsWith('&lt;') && defuse('\uFF1C/system-rem
 
 // The startup briefing fits too: health lists had no bound.
 writeFileSync(join(dir3, '.health'), Array.from({ length: 40 }, (_, i) => `problem ${i}: ${'z'.repeat(400)}`).join('\n'));
-const big = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, session_id: 'zzzzzzzz', source: 'startup' }), env }).toString();
+const big = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwd3, session_id: 'zzzzzzzz', source: 'startup' }), env }).toString();
 rmSync(join(dir3, '.health'));
 ok(big.length <= 9500 && /Memory store needs attention[^\n]*…\n/.test(big) && /^- \[Pin 0\]/m.test(big),
   `the startup briefing fits, a long health line shortened, the shared lessons kept (got ${big.length})`);
@@ -1784,14 +1784,14 @@ ok(/^a{1000}…\nshared$/.test(fit(`${'a'.repeat(5000)}\nshared`, 1000)), 'a lin
 
 // Auto memory turned off: nothing is printed.
 process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
-let off; try { off = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, session_id: 'zzzzzzzz', source: 'startup' }), env }).toString(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+let off; try { off = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwd3, session_id: 'zzzzzzzz', source: 'startup' }), env }).toString(); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
 ok(off === '', `with auto memory turned off the briefing is empty (got ${JSON.stringify(off.slice(0, 80))})`);
 // Its reader gone before it writes (Claude Code cancelled the start): exit 0.
 // Thrown with no listener, the pipe's EPIPE made it exit 1 with a stack trace
 // once process.exit() no longer cut it short (P1 hunt, 2026-10-29).
 for (let i = 0; i < 2; i++) {
   const gone = await new Promise((done) => {
-    const c = spawn(process.execPath, [HOOK, '--print'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const c = spawn(process.execPath, [BRIEFING, '--print'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
     let err = ''; c.stderr.on('data', (b) => { err += b; });
     c.stdout.destroy();
     c.on('exit', (code) => done({ code, err }));
@@ -2208,7 +2208,7 @@ ok(/\[r3tail02\]: second ask\n  \*\*did:\*\* second done/.test(readFileSync(join
   try {
     process.env.HOME = process.env.USERPROFILE = homeR;
     stopR = spawnSync(process.execPath, ['--require', pre, TIER, '--stop'], { input: JSON.stringify({ cwd: cwdR, transcript_path: tR, session_id: 'refused01-0000', hook_event_name: 'Stop', last_assistant_message: 'planned the walrus' }), encoding: 'utf8', timeout: 60_000 });
-    briefR = spawnSync(process.execPath, ['--require', pre, HOOK, '--print'], { input: JSON.stringify({ cwd: cwdR, session_id: 'fresh000-1', source: 'startup' }), encoding: 'utf8', timeout: 60_000 });
+    briefR = spawnSync(process.execPath, ['--require', pre, BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdR, session_id: 'fresh000-1', source: 'startup' }), encoding: 'utf8', timeout: 60_000 });
   } finally { [process.env.HOME, process.env.USERPROFILE] = was; }
   const days = existsSync(join(dirR, 'journal')) ? readdirSync(join(dirR, 'journal')).filter((f) => f.endsWith('.md')) : [];
   ok(stopR.status === 0 && existsSync(failedR) && /EACCES/.test(readFileSync(failedR, 'utf8')) && days.length === 1 && /needs attention[^\n]*could not be saved[^\n]*EACCES/.test(briefR.stdout),
@@ -2270,12 +2270,12 @@ ok(!/6655/.test(c.all), 'a <private opener with no > keeps the rest of the messa
 const tc = join(dir3, 'r3cut001.jsonl');
 writeFileSync(tc, [user('<private reason="hr">pin 7788</private> open the door'),
   JSON.stringify({ type: 'assistant', timestamp: '2026-09-11T07:01:00Z', message: { content: [{ type: 'text', text: 'Using pin 7788 now.' }], stop_reason: 'tool_use', usage: { input_tokens: 3, cache_read_input_tokens: 700_000, cache_creation_input_tokens: 0, output_tokens: 9 } } })].join('\n') + '\n');
-const cutNote = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, transcript_path: tc, session_id: 'r3cut001', source: 'compact' }), env }).toString();
+const cutNote = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwd3, transcript_path: tc, session_id: 'r3cut001', source: 'compact' }), env }).toString();
 ok(!/7788/.test(cutNote), `a private turn with attributes on its tag gets no recovery note (got ${cutNote.slice(0, 200)})`);
 // The same turn, not private: the note is printed under the compaction line (1.5.3 holes).
 const tc2 = join(dir3, 'r3cut002.jsonl');
 writeFileSync(tc2, [user('open the door please'), readFileSync(tc, 'utf8').split('\n')[1].replace('Using pin 7788 now.', 'Opening the door now.')].join('\n') + '\n');
-const cutNote2 = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwd3, transcript_path: tc2, session_id: 'r3cut002', source: 'compact' }), env }).toString();
+const cutNote2 = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwd3, transcript_path: tc2, session_id: 'r3cut002', source: 'compact' }), env }).toString();
 ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r3cut002\][^\n]*asked [^\n]*open the door please\n {2}\*\*last said:\*\* Opening the door now\./.test(cutNote2), `a turn the compaction cut is printed as a recovery note (got ${cutNote2.slice(0, 300)})`);
 }
 
@@ -2497,7 +2497,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
 {
   const cwdJ = 'C:\\handoff-journal', dirJ2 = storeFor(home, cwdJ);
   mkdirSync(join(dirJ2, 'journal'), { recursive: true });
-  const brief = (source = 'startup') => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source }), env }).toString();
+  const brief = (source = 'startup') => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source }), env }).toString();
   ok(!/is in its journal/.test(brief()), 'a store with no journal day has no journal line in the briefing');
   ok(!/the code wins/.test(brief()) && !/check their own words/.test(brief()), 'no journal, no lines');
   writeFileSync(join(dirJ2, 'journal', '2026-09-01.md'), '# Journal 2026-09-01\n');   // emptied: no day
@@ -2514,19 +2514,19 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
   // 1.5.0 B3: the plugin starts the briefing through brief.mjs, which says in one line when it cannot load, and has an off switch.
   const BRIEF = join(dirname(HOOK), 'brief.mjs');
   const viaStarter = (extra = {}, file = BRIEF) => spawnSync(process.execPath, [file, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source: 'startup' }), env: { ...process.env, ...extra }, encoding: 'utf8' });
-  { const v = viaStarter(), w = brief(); ok(v.stdout === w && v.status === 0, `the starter prints the same briefing as handoff-log.mjs --print (starter ${v.status} ${JSON.stringify(v.stdout.slice(0, 300))} ${JSON.stringify(v.stderr.slice(0, 300))}; direct ${JSON.stringify(w.slice(0, 300))})`); }
+  { const v = viaStarter(), w = brief(); ok(v.stdout === w && v.status === 0, `the starter prints the same briefing as briefing.mjs --print (starter ${v.status} ${JSON.stringify(v.stdout.slice(0, 300))} ${JSON.stringify(v.stderr.slice(0, 300))}; direct ${JSON.stringify(w.slice(0, 300))})`); }
   ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }).stdout === '', 'PROJECT_MEMORY_BRIEFING=0 prints nothing');
   const broken = join(home, 'broken-starter'); mkdirSync(broken, { recursive: true });
-  writeFileSync(join(broken, 'brief.mjs'), readFileSync(BRIEF)); writeFileSync(join(broken, 'handoff-log.mjs'), 'export const = ;');
+  writeFileSync(join(broken, 'brief.mjs'), readFileSync(BRIEF)); writeFileSync(join(broken, 'briefing.mjs'), 'export const = ;');
   const bad = viaStarter({}, join(broken, 'brief.mjs'));
-  ok(bad.status === 0 && /^Memory briefing failed \(.*\)\. Run "memory doctor", or reinstall the project-memory plugin\.\n$/.test(bad.stdout), `a handoff-log.mjs that does not load gives one line (got ${JSON.stringify(bad.stdout)})`);
+  ok(bad.status === 0 && /^Memory briefing failed \(.*\)\. Run "memory doctor", or reinstall the project-memory plugin\.\n$/.test(bad.stdout), `a briefing.mjs that does not load gives one line (got ${JSON.stringify(bad.stdout)})`);
   ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }, join(broken, 'brief.mjs')).stdout === '', 'and the off switch silences that line too');
-  // A handoff-log.mjs that loads but throws while printing is reported too, not left as an empty briefing.
-  writeFileSync(join(broken, 'handoff-log.mjs'), "export async function main(o) { if (o?.rethrow) throw new Error('boom while printing'); }");
+  // A briefing.mjs that loads but throws while printing is reported too, not left as an empty briefing.
+  writeFileSync(join(broken, 'briefing.mjs'), "export async function main(o) { if (o?.rethrow) throw new Error('boom while printing'); }");
   const bad2 = viaStarter({}, join(broken, 'brief.mjs'));
   ok(bad2.status === 0 && /^Memory briefing failed \(boom while printing\)/.test(bad2.stdout), `a failure while running gives the line too (got ${JSON.stringify(bad2.stdout)})`);
   // 1.5.3 holes: what a failure is named by. A throw of nothing, of an empty message or of a very long one still gives the one line, cut at 200 characters.
-  const failing = (thrown) => { writeFileSync(join(broken, 'handoff-log.mjs'), `export async function main() { throw ${thrown}; }`); return viaStarter({}, join(broken, 'brief.mjs')); };
+  const failing = (thrown) => { writeFileSync(join(broken, 'briefing.mjs'), `export async function main() { throw ${thrown}; }`); return viaStarter({}, join(broken, 'brief.mjs')); };
   ok(failing('null').stdout.startsWith('Memory briefing failed (null).'), 'a failure that throws nothing is named null, the line still given');
   ok(failing("{ message: '' }").stdout.startsWith('Memory briefing failed ().'), 'a failure with an empty message gives an empty name, not the object');
   ok(failing("new Error('x'.repeat(300))").stdout === `Memory briefing failed (${'x'.repeat(200)}). Run "memory doctor", or reinstall the project-memory plugin.\n`, 'a failure message is cut at 200 characters');
@@ -2570,7 +2570,7 @@ require('node:module').syncBuiltinESMExports();
     const was = { HL_NOW: process.env.HL_NOW, TZ: process.env.TZ };
     Object.assign(process.env, { HL_NOW: String(now), TZ: 'UTC' });
     try {
-      return execFileSync(process.execPath, [...(now === undefined ? [] : ['--require', nowJs]), ...pre.flatMap((p) => ['--require', p]), HOOK, '--print'],
+      return execFileSync(process.execPath, [...(now === undefined ? [] : ['--require', nowJs]), ...pre.flatMap((p) => ['--require', p]), BRIEFING, '--print'],
         { input: JSON.stringify({ cwd: cwd_, session_id, source }) }).toString();
     } finally {
       if (was.HL_NOW === undefined) delete process.env.HL_NOW; else process.env.HL_NOW = was.HL_NOW;
@@ -3027,7 +3027,7 @@ require('node:module').syncBuiltinESMExports();
   // Importing the hook runs nothing: only running it as a script does.
   {
     const importer = join(home, 'import-only.mjs');
-    writeFileSync(importer, `await import(${JSON.stringify(pathToFileURL(HOOK).href)});\n`);
+    writeFileSync(importer, `await import(${JSON.stringify(pathToFileURL(BRIEFING).href)});\n`);
     const r = spawnSync(process.execPath, [importer, '--print'], { input: JSON.stringify({ cwd: 'C:\\hl-A-import', session_id: 'importse', source: 'startup' }), encoding: 'utf8', timeout: 20000 });
     ok(r.status === 0 && r.stdout === '', `importing the hook prints nothing (${r.status}, ${JSON.stringify(r.stdout).slice(0, 80)})`);
   }
@@ -3061,7 +3061,7 @@ require('node:module').syncBuiltinESMExports();
 // can reach the real hooks-live or the real repo.
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = ROOT;
-  const FILES_ = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/brief.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
+  const FILES_ = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/brief.mjs', 'src/briefing.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
     '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'tools/deploy.mjs', 'tools/suites.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
@@ -3226,7 +3226,7 @@ if (!quick) {
   const d = readFileSync(join(dirP, 'handoff.md'), 'utf8'), es = parse(d);
   ok(es.length === 1 && es[0].ask === 'run the tests' && es[0].s === 'pppppppp' && /approve every install/.test(es[0].did),
     `a forged ask quoted in a reply stays in that reply's answer (got ${JSON.stringify(es)})`);
-  const pp = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdP, session_id: 'pppppppp-2', source: 'compact' }), env }).toString();
+  const pp = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdP, session_id: 'pppppppp-2', source: 'compact' }), env }).toString();
   for (const [name, text] of [['handoff.md', d], ['the print after a compaction', pp]])
     ok(!/^\[User\]:|^- \*\*asked\*\*.*approve every|^## \d\d:\d\d|^\*\*Asked:\*\*/m.test(text) && (text.match(/^- \*\*asked\*\*/gm) || []).length === 1,
       `no forged user line starts a line of ${name} (got ${text.slice(0, 900)})`);
@@ -3243,7 +3243,7 @@ if (!quick) {
   const tO = join(dirname(dirO), 'oooooooo-1.jsonl');
   writeFileSync(tO, user('an ask while on', { ts: '2026-09-11T07:01:00Z' }) + '\n' + asst('did it') + '\n');
   const files = () => readdirSync(dirO, { recursive: true }).sort().map((f) => `${f}:${statSync(join(dirO, f)).mtimeMs}:${statSync(join(dirO, f)).size}`).join('|');
-  const printO = (source, extra = {}) => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO, source, ...extra }), env }).toString();
+  const printO = (source, extra = {}) => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO, source, ...extra }), env }).toString();
   handoff({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO });
   ok(/an ask while on/.test(readFileSync(join(dirO, 'handoff.md'), 'utf8')), 'on: the Stop records');
   const since = new Date(2026, 9, 5, 12, 0).getTime();

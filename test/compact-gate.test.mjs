@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import assert from 'node:assert';
 import { tool, tempHome, tempDir, storeFor, quick } from './harness.mjs';
 
-const GATE = tool('src/compact-gate.mjs'), HOOK = tool('src/handoff-log.mjs');
+const GATE = tool('src/compact-gate.mjs'), HOOK = tool('src/handoff-log.mjs'), BRIEFING = tool('src/briefing.mjs');
 const { home, env } = tempHome('cg-test-');
 const cwd = 'C:\\compact-gate-selftest';
 const dir = storeFor(home, cwd);
@@ -276,7 +276,7 @@ const boundary = JSON.stringify({ type: 'system', subtype: 'compact_boundary', t
 const summary = rec('user', 'This session is being continued from a previous conversation.', { isCompactSummary: true });
 const section7 = (notes = '') => writeFileSync(join(dir, 'handoff.md'),
   `---\nname: handoff\n---\n\n<!-- auto:start -->\n- **asked** 2026-09-13 12:00 [s1]: earlier\n  **did:** earlier answer\n${notes}<!-- auto:end -->\n`);
-const printed = () => execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd, transcript_path: transcript, session_id: 's1', source: 'compact' }), env }).toString();
+const printed = () => execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd, transcript_path: transcript, session_id: 's1', source: 'compact' }), env }).toString();
 section7();
 write(user('first turn'), asst('launching', 300_000, 'tool_use'), result(launch('bg7')), asst('launched.', 310_000, 'end_turn'),
   user('build the thing'), asst('editing', 700_000, 'tool_use', [edit('C:\\repo\\b.py')]), result('ok'), boundary, summary);
@@ -480,7 +480,7 @@ gate();
 ok(!readFileSync(join(dir, 'handoff.md'), 'utf8').includes('GATESECRET'), 'a fullwidth private block beside a plain one stays out of the compaction note');
 
 writeFileSync(tp, [user('plan it'), asst('planning', 700_000, 'tool_use')].join('\n') + '\n');
-const rp = execFileSync(process.execPath, [HOOK, '--print'], { input: JSON.stringify({ cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-1', source: 'compact' }), env }).toString();
+const rp = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdP, transcript_path: tp, session_id: 'pppppppp-1', source: 'compact' }), env }).toString();
 ok(!/cut mid-turn|plan it/.test(rp), `a private conversation cut mid-turn gets no recovery note (got ${rp.slice(0, 200)})`);
 // The nudge's state file is named by the conversation's tag, not its full id.
 writeFileSync(tp, [user('plan it'), asst('planning', T + 90_000, 'end_turn')].join('\n') + '\n');
