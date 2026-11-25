@@ -1472,10 +1472,15 @@ After the log: narwhalqq stays.
   tier();
   // The snapshots ignore the handoff, but a repository from before that rule holds it: forced in here.
   // On a crowded Windows runner the snapshot's git can pass its 30 s timeout: the kill reaches git's wrapper, and the
-  // git under it still holds index.lock for a while. Wait it out (up to 60 s) before this test's own git writes.
-  for (const t0 = Date.now(); existsSync(join(root, '.git', 'index.lock')) && Date.now() - t0 < 60_000;) await new Promise((r) => setTimeout(r, 200));
-  const forced = [['add', '-f', 'C--mem-cli/memory/handoff.md'], ['commit', '-m', 'handoff from an older version', '--', 'C--mem-cli/memory/handoff.md']]
-    .map((g) => spawnSync('git', gitArgs('-c', 'user.name=t', '-c', 'user.email=t@t', ...g), { encoding: 'utf8' }));
+  // git under it runs on, and can take index.lock after a check that found none (CI 2026-11-25: the add met it, the commit
+  // after did not). Each of this test's git writes retries on that lock, up to 60 s.
+  const forced = [];
+  for (const g of [['add', '-f', 'C--mem-cli/memory/handoff.md'], ['commit', '-m', 'handoff from an older version', '--', 'C--mem-cli/memory/handoff.md']]) {
+    let f;
+    for (const t0 = Date.now(); (f = spawnSync('git', gitArgs('-c', 'user.name=t', '-c', 'user.email=t@t', ...g), { encoding: 'utf8' })).status !== 0
+      && /index\.lock/.test(f.stderr) && Date.now() - t0 < 60_000;) await new Promise((r) => setTimeout(r, 200));
+    forced.push(f);
+  }
   ok(forced.every((f) => f.status === 0), `the handoff is forced into the history (got ${forced.map((f) => f.stderr).join('')})`);
   const week = (await cli('status')).stdout.match(/changed in the last 7 days: (.*)/)?.[1] ?? '';
   const part = (w) => week.split(' · ').find((p) => p.startsWith(`${w} `)) ?? '';
