@@ -233,7 +233,10 @@ Everything else keeps saving.
 in this project changed too, it is told so with the result of that first
 change: the date, the conversation and the request of the newest two, and how
 to open them. Once per file and conversation, at most three such notes between
-two of your messages, never from a private or forgotten exchange. Set
+two of your messages, never from a private or forgotten exchange. After a
+compaction, Claude is also told which files the conversation changed and up to
+three earlier exchanges that share rare words with the request in progress,
+its own from before the compaction included. Set
 `PROJECT_MEMORY_RECALL` to `0` to turn these notes off. A note already shown
 stays in the conversation that got it: `forget` cannot take it back. A
 helper's changes before 1.6.0 have no past (its entries listed no files then).
