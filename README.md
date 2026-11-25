@@ -169,7 +169,8 @@ notes, the journal and the history stay either way (so does the journal page, if
   part of it. The code Claude runs through context-mode's ctx_execute or ctx_batch is kept
   with the commands, the last 300 characters of an error that was never fixed
   are kept after its command, and what a subagent reports back is kept as its
-  own entry (up to 8,000 characters). All of it passes the secret filter
+  own entry (up to 8,000 characters), with the files it changed. A subagent's
+  entry saved before 1.6.0 lists no files. All of it passes the secret filter
   first. Entries saved before 1.5.0 are not rewritten, but you can rebuild
   them: once per store, delete `journal/.imported` and `journal/.looked`. The
   next replies read your transcripts again and redact under the newer rules.

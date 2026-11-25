@@ -488,7 +488,8 @@ limits at the end of this section: the journal is the detailed record, and
   saving time ending, or a clock set back, acts the same way.
 - A subagent's final report is an entry of its own, with the key
   `subagent-<id>` and `Asked:` set to the subagent's type and the first
-  line of its task. A report over 8,000 characters keeps its first 5,000 and
+  line of its task, and `Changed:` set to the files the subagent changed
+  (1.6.0; read from its own conversation file as a turn's are). A report over 8,000 characters keeps its first 5,000 and
   last 2,900, with `(N chars cut)` between them. Nothing is saved when the
   conversation's turn is private or memory is off. A subagent that is
   resumed and finishes again replaces its earlier report, since the key is

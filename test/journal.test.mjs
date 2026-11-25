@@ -2015,6 +2015,21 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   ok(entries([sd]).filter((x) => /okapi/.test((x.e ?? x).answered)).length === 2, 'two reports with no agent_id are two entries');
   ok(entries([sd]).some((x) => (x.e ?? x).asked === 'Subagent a b'), 'a newline in the agent type is cleaned');
   ok(subagent({ cwd: 1 }) === false, 'a bad payload never throws');
+  // 1.6.0 headline 1b: a helper's entry lists the files it changed, read from its own conversation file as a turn's Changed is.
+  const side = (type, content) => JSON.stringify({ type, isSidechain: true, uuid: `u${Math.random()}`, timestamp: new Date().toISOString(), cwd: 'C:\\journal-subagent', message: { role: type, content } });
+  const edit = (id, name, file) => ({ type: 'tool_use', id, name, input: name === 'NotebookEdit' ? { notebook_path: file } : { file_path: file } });
+  const result = (id, err) => ({ type: 'tool_result', tool_use_id: id, content: err ? 'String to replace not found' : 'ok', is_error: err });
+  const fx = join(dirname(sd), 'agent-fx.jsonl');
+  writeFileSync(fx, [side('user', 'Fix the gerbil parser'),
+    side('assistant', [edit('e1', 'Edit', 'C:\\journal-subagent\\src\\gerbil.js'), edit('e2', 'Write', 'C:\\elsewhere\\notes.md'), edit('e3', 'Edit', 'C:\\journal-subagent\\src\\broken.js')]),
+    side('user', [result('e1'), result('e2'), result('e3', true)]),
+    side('assistant', [edit('e4', 'NotebookEdit', 'C:\\journal-subagent\\nb.ipynb'), edit('e5', 'Edit', 'C:\\journal-subagent\\src\\gerbil.js')]),
+    side('user', [result('e4'), result('e5')]),
+    side('assistant', [{ type: 'tool_use', name: 'SubagentHandback', input: { message: 'gerbil parser fixed' } }])].join('\n') + '\n');
+  ok(subagent({ ...input, agent_id: 'fx', agent_transcript_path: fx }) === true, "a helper that changed files is saved");
+  const fe = entries([sd]).map((x) => x.e ?? x).find((x) => /gerbil parser fixed/.test(x.answered));
+  ok(fe && JSON.stringify(fe.changed) === JSON.stringify(['C:\\elsewhere\\notes.md', 'nb.ipynb', 'src\\gerbil.js']),
+    `a helper's entry lists the files it changed, newest last, relative to its folder, not an edit that failed (got ${JSON.stringify(fe?.changed)})`);
   // 1.5.1 2a: the parent's open turn is private, so its subagent's report is not saved; a later plain prompt saves again.
   const prompt = (t, uuid) => JSON.stringify({ type: 'user', uuid, timestamp: new Date().toISOString(), cwd: 'C:\\journal-subagent', message: { role: 'user', content: t } });
   const priv = join(dirname(sd), 'bbbb2222-private.jsonl');
@@ -2031,6 +2046,8 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
     ok(r === false && /busy|lock/i.test(readFileSync(join(sd, 'journal', '.failed'), 'utf8')), `a report that met a busy lock leaves a failure line (took ${Date.now() - t} ms)`);
   }
   ok(subagent(pin) === false && !entries([sd]).some((x) => /4821/.test(JSON.stringify(x))), 'a subagent report in a private turn is not saved');
+  ok(subagent({ ...pin, agent_id: 'pfx', agent_transcript_path: fx }) === false && !entries([sd]).some((x) => (x.e ?? x).key === 'subagent-pfx'),
+    "a helper started in a private turn lists no changed files: its entry is not saved");
   appendFileSync(priv, prompt('now something plain', 'p2') + '\n');
   ok(subagent({ ...pin, agent_id: 'p2', last_assistant_message: 'plain report tapir' }) === true, 'after a plain prompt the subagent report is saved again');
   // 1.5.2 finding 1: judged by the turn open when the agent STARTED, not when it ended; <private-session> anywhere since hushes it.
