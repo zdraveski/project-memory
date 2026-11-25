@@ -10,9 +10,9 @@ import { createHash } from 'node:crypto';
 import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs';
 
 const { home, env } = tempHome('jr-test-');
-const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, due: isDue, IMPORT_SEGMENT } = await import('../src/journal.mjs');
+const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, keptUnder, due: isDue, IMPORT_SEGMENT } = await import('../src/journal.mjs');
 const { ACTIVE } = await import('../src/handoff-log.mjs'), { TAIL, NUDGE_TAG } = await import('../src/transcript.mjs');
-const { local, withLock } = await import('../src/store.mjs');
+const { local, withLock, transcriptKey } = await import('../src/store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -105,6 +105,16 @@ const day = (at = '2026-10-28') => readFileSync(dayFile(dir, at), 'utf8');
   const T2 = '/x/projects/C--proj/fedcba9876543210.jsonl';
   record(dir, T2, [turn({ did: 'fork answer' })]);
   ok(parseDay(day()).entries.length === 1 && parseDay(day()).entries[0].answered === 'new answer', 'a fork copy does not replace the parent entry');
+  // keptUnder: the transcript an exchange is kept under, which the handoff asks to leave a fork's copy out.
+  ok(keptUnder(dir, '2026-10-28', 'u-1') === transcriptKey(T) && transcriptKey(T) !== transcriptKey(T2), 'keptUnder names the parent, the key the fork copy is kept under');
+  ok(keptUnder(dir, '1999-01-01', 'u-1') === null, 'keptUnder: no day file is null');
+  ok(keptUnder(dir, '2026-10-28', 'u-none') === null, 'keptUnder: an exchange not kept is null');
+  // A marker inside a line is no marker: only a line of its own is. The journal escapes the `<` of one typed in a prompt, so
+  // this is a note written by hand into the day. In a store of its own, so this file's day counts stay.
+  const dk = storeFor(home, 'C:\\journal-keptunder');
+  record(dk, T2, [turn({ id: 'u-typed2' })]);
+  appendFileSync(dayFile(dk, '2026-10-28'), '\nwhy is <!-- j:u-typed t:C--other/x d:2026-10-28 --> in there\n');
+  ok(readFileSync(dayFile(dk, '2026-10-28'), 'utf8').includes('<!-- j:u-typed t:') && keptUnder(dk, '2026-10-28', 'u-typed') === null, 'keptUnder: a marker typed inside a prompt is null');
 }
 {
   record(dir, T, [turn({ at: '2026-10-27 23:59', id: 'u-late' })]);

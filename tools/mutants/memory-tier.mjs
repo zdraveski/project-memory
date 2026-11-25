@@ -11,7 +11,7 @@ export default {
   "one run's --dry-run kept for the next": ["dry = argv.includes('--dry-run');", "dry ||= argv.includes('--dry-run');"],
   'the backfill takes the lock when nothing is due': ['if (d && due(d) && (', 'if (d && (', { full: true }],
   'journal.md waits out the grace': ["if (f !== 'handoff.md' && f !== 'journal.md') {", "if (f !== 'handoff.md') {"],
-  'a journal.mjs that cannot load stops the handoff': ["try { sink = (await import(new URL('./journal.mjs', import.meta.url))).write; } catch {}", "sink = (await import(new URL('./journal.mjs', import.meta.url))).write;"],
+  'a journal.mjs that cannot load stops the handoff': ["try { ({ write: sink, keptUnder: kept } = await import(new URL('./journal.mjs', import.meta.url))); } catch {}", "({ write: sink, keptUnder: kept } = await import(new URL('./journal.mjs', import.meta.url)));"],
   "a prose-only index divides by no lines": ["r.hot ? `${Math.round(r.after / r.hot)}B a line; shorten the text after each link rather than removing lines` : 'the text above the lines; shorten it'", "`${Math.round(r.after / r.hot)}B a line; shorten the text after each link rather than removing lines`"],
   "the front matter read from 1,200 bytes": ["Buffer.alloc(16384)", "Buffer.alloc(1200)"],
   "a returning line loses its own trailing space": ["p.line.slice(0, -OVERFLOW.length).replace(/ $/, '')", "p.line.slice(0, -OVERFLOW.length).trimEnd()"],

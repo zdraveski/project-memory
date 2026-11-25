@@ -135,6 +135,12 @@ export function parseDay(text) {
 }
 
 export const dayFile = (dir, at) => join(dir, JOURNAL, day(at) + '.md');
+// The transcript key exchange `id` is kept under on day `d`, or null: a fork's copy of its parent's turn is kept under the
+// parent's, so handoff() leaves it out. Only this module reads the marker (ADR 0003). A day that won't read throws.
+export function keptUnder(dir, d, id) {
+  for (const line of (raw(dayFile(dir, d)) ?? '').split(/\r?\n/)) { const m = MARK.exec(line); if (m && m[1] === id) return m[2]; }
+  return null;
+}
 const page = (d, prose, es) => `# Journal ${d}\n\n` + [prose, ...es.flatMap((e) => [render(e), e.after])].filter(Boolean).join('\n\n') + '\n';
 
 // Call under withLock(dir). Returns how many entries were added or changed.

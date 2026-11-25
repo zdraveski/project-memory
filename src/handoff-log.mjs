@@ -225,7 +225,7 @@ function build(before, fresh, drop = null, me = fresh[0]?.s, whole = false) {
 
 // Exported so memory-tier.mjs can run it in the same process from the Stop
 // hook: a second Node start cost a median 200 ms a turn on this box.
-export function handoff(input, sink = null) {
+export function handoff(input, sink = null, keptUnder = null) {
   const dir = storeOf(input);
   const file = join(dir, 'handoff.md');
   // What happened is returned -- true written, 'unchanged', false nothing to
@@ -322,13 +322,14 @@ export function handoff(input, sink = null) {
     const drop = quiet ? (t) => t.s === s : gone.length ? (t) => t.s === s && gone.some((g) => g.ask === t.ask && g.did === t.did) : null;
     // A fork's copy of its parent's turn (the journal, written just above, holds that uuid under the parent's transcript) is
     // listed under the parent already. shortcut: found by the journal's day of the turn only; a clock moved across midnight lists it again.
-    const mineT = transcriptKey(input.transcript_path), days = new Map();
+    // The journal answers (keptUnder, passed in by the Stop hook and the compaction gate): none passed, or a journal that failed
+    // to load, is no copy. shortcut: the day file is read once per new turn, not once per day; cache it if a Stop carries many turns.
+    const mineT = transcriptKey(input.transcript_path);
     const copy = (t) => {
-      const d = (t.at ?? '').slice(0, 10); if (!t.id || !d) return false;
+      const d = (t.at ?? '').slice(0, 10); if (!keptUnder || !t.id || !d) return false;
       // An unreadable day (the journal's own failure, kept elsewhere) is no copy: the handoff is still written.
-      if (!days.has(d)) days.set(d, (() => { try { return raw(join(dir, 'journal', `${d}.md`)) ?? ''; } catch { return ''; } })());
-      const bytes = days.get(d), i = bytes.indexOf(`<!-- j:${t.id} t:`);
-      return i !== -1 && !bytes.startsWith(`${mineT} d:`, i + `<!-- j:${t.id} t:`.length);
+      let k = null; try { k = keptUnder(dir, d, t.id); } catch {}
+      return k !== null && k !== mineT;
     };
     if (!quiet) backup(dir);
     const w = put(dir, quiet || shut ? [] : fresh.filter((t) => !forgot(t) && !copy(t)), drop, s, got.whole);
