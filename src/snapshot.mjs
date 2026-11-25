@@ -14,9 +14,10 @@ export const GIT_TIMEOUT = 30_000;  // a git that hangs (a prompt nobody sees) m
 export const BATCH = 1000;          // files a part of a first snapshot adds: ~6 s at Windows' ~6 ms a file, well inside GIT_TIMEOUT
 
 // The one seam through which this module runs git: execFileSync's own signature, so a test passes a scripted stand-in
-// (or nothing, for real git again).
-let exec = execFileSync;
-export const useGit = (f) => { exec = f ?? execFileSync; };
+// (or nothing, for real git again). execFileSync is looked up at each call, as an import is, so a test that swaps it still reaches git.
+let stand;
+export const useGit = (f) => { stand = f; };
+const exec = (...a) => (stand ?? execFileSync)(...a);
 // What main() clears at each start: the lists a snapshot fills for snapshotHealth.
 export const reset = () => { missed = []; held = []; };
 
