@@ -109,3 +109,11 @@ the briefing.
 
 `src/snapshot.mjs` (1.6.0 step 16) runs every git call against the projects
 root. See `docs/adr/0002-plugin-owns-git-cleanup-and-one-busy-rule.md`.
+
+## The memory command
+
+**Option**: a `--word` the memory command knows. `OPTIONS` in `src/memory.mjs`
+declares each once, and whether it takes the next word as its value; `TAKES`
+says which commands take it. `parseArgs` reads the words with both before any
+store is touched, and gives back the command or the refusal to print. USAGE and
+the `argument-hint` in `skills/memory/SKILL.md` are written by hand, apart.
