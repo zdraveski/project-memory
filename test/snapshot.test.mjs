@@ -108,6 +108,26 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   reset(); snapshotHealth('committed');
   ok(!('held' in health()) && !('missed' in health()), 'reset() empties held and missed');
 
+  // A project folder named pk/sk/rk reads as a key once the slug joins it to the rest of the path: only the note's own name counts.
+  {
+    const slug = 'C--Users-pk-Documents-payments-service', clean = 'plain note\n';
+    const keyName = `sk-${'a'.repeat(24)}.md`, cb = `${'b'.repeat(40)} blob ${clean.length}\n${clean}\n`;
+    store(slug, clean);
+    scripted((sub, a) => {
+      if (sub === 'diff' && a.includes('--cached')) return `${slug}/memory/a.md\0${slug}/memory/${keyName}\0`;
+      if (sub === 'cat-file') return Buffer.from(cb + cb);
+      return '';
+    });
+    reset();
+    ok(snapshot() === 'committed', 'a key-like project path: committed');
+    ok(!calls.includes(`reset -q -- :(literal)${slug}/memory/a.md`), 'a clean note of a project under a folder named pk is not held');
+    ok(calls.includes(`reset -q -- :(literal)${slug}/memory/${keyName}`), 'a note whose own name reads as a key is still held');
+    snapshotHealth('committed');
+    const h = health().held;
+    ok(h.length === 1 && h[0].startsWith(`${slug}/memory/`) && !h[0].includes(keyName), 'the held list keeps the project path and hides only the name');
+    reset(); snapshotHealth('committed');
+  }
+
   // A store linked to a folder outside the root: missed when git has none of its index.
   const out = join(home, 'Synced', 'memory'); mkdirSync(out, { recursive: true });
   writeFileSync(join(out, 'MEMORY.md'), '- [b](b.md) — b\n'); writeFileSync(join(out, 'b.md'), 'y\n');
@@ -294,8 +314,11 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   // A purge keeps its config.lock young through every git it runs, however long they take.
   {
     const lk = join(g, 'config.lock'), old9 = () => { const d = new Date(Date.now() - 9 * 60000); utimesSync(lk, d, d); }, ages = [];
-    useGit((cmd, args) => { ages.push(Date.now() - statSync(lk).mtimeMs); old9(); return ''; });
+    let clone = [];
+    useGit((cmd, args) => { if (args.includes('clone')) clone = args; ages.push(Date.now() - statSync(lk).mtimeMs); old9(); return ''; });
     rewrite(() => { S.fastExportOf('/c.git'); S.fastImportTo('/c.git', 'x'); });
+    // The copy's own config, so its fast-export, fast-import and the fetch's upload-pack read past 260 characters on Windows.
+    ok(clone.slice(clone.indexOf('clone')).join(' ').includes('-c core.longpaths=true'), 'the purge clones its copy with core.longpaths set in its config (got ' + clone.join(' ') + ')');
     ok(ages.length >= 5 && ages.every((a) => a < 60000), 'each git of a purge finds its config.lock fresh, though the clock says nine minutes passed between (ages ' + ages.map((a) => Math.round(a / 1000)).join() + ')');
     ok(!existsSync(lk), 'and the purge frees it');
   }
