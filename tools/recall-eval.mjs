@@ -365,8 +365,6 @@ async function selfCheck() {
     mkdirSync(join(plug, 'hooks'), { recursive: true });
     const hooks = JSON.parse(readFileSync(join(repo, 'hooks', 'hooks.json'), 'utf8'));
     for (const ev of [EVENT.prompt, EVENT.file]) hooks.hooks[ev] = [{ hooks: [{ type: 'command', command: 'node', args: [`\${CLAUDE_PLUGIN_ROOT}/src/${RECALL_HOOK}`] }] }];
-    // The error trigger is built (step 7); the copy leaves it out, so the "trigger not built" path below is still checked.
-    delete hooks.hooks[EVENT.error];
     writeFileSync(join(plug, 'hooks', 'hooks.json'), JSON.stringify(hooks));
     const fake = join(own, 'fake-claude.mjs');
     writeFileSync(fake, FAKE(pathToFileURL(join(repo, 'src', 'store.mjs')).href));

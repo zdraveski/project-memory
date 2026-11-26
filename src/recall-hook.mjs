@@ -1,9 +1,7 @@
 // The one entry point of the 1.6.0 recall hooks. PostToolUse for Edit, Write and NotebookEdit (headline 1b, "a file with a
 // past"): after a change that worked, it names earlier exchanges that changed the same file. UserPromptSubmit (headline 1c, "a
-// prompt that names something old"): it names earlier exchanges that share rare words with the request. Both with another live
-// session that works here (headline 4). PostToolUseFailure for Bash and PowerShell (headline 1d, "an error seen before"): it names
-// an earlier exchange whose command failed the same way. All as additionalContext. SessionEnd: the session file's `end` line,
-// nothing printed.
+// prompt that names something old"): it names earlier exchanges that share rare words with the request. Both as additionalContext,
+// with another live session that works here (headline 4). SessionEnd: the session file's `end` line, nothing printed.
 // Modelled on enforce-hook.mjs: the import sits inside the try (a missing sibling fails open), the cheapest check comes first,
 // and the exit code is always 0 with nothing printed on any failure. PROJECT_MEMORY_RECALL=0 turns every pointer off.
 // stdout is empty unless a pointer is shown (tools/recall-eval.mjs reads that).
@@ -11,17 +9,16 @@ import * as T from './timing.mjs';
 T.begin('recall');
 try {
   if (process.env.PROJECT_MEMORY_RECALL !== '0') {
-    const { onChange, onPrompt, onError, onEnd } = await import('./recall.mjs');
+    const { onChange, onPrompt, onEnd } = await import('./recall.mjs');
     T.mark('load');
     let text = '';
     process.stdin.setEncoding('utf8');
     for await (const c of process.stdin) text += c;
     const input = JSON.parse(text), event = input?.hook_event_name;
     T.tag(event);
-    const on = event === 'PostToolUse' ? onChange : event === 'UserPromptSubmit' ? onPrompt : event === 'PostToolUseFailure' ? onError : null;
+    const on = event === 'PostToolUse' ? onChange : event === 'UserPromptSubmit' ? onPrompt : null;
     if (on) {
       if (on === onPrompt) T.name('prompt');
-      if (on === onError) T.name('error');
       // The journal, loaded only when a look-up needs it: recall.mjs cannot import it (journal.mjs imports recall.mjs).
       const { say, n } = await on(input, { journal: () => import('./journal.mjs') });
       T.mark('look');

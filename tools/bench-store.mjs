@@ -51,15 +51,11 @@ export function build(home, { now = Date.now(), seed = 1, scale = 1 } = {}) {
     const start = new Date(midnight); start.setDate(start.getDate() - (DAYS - 1 - d));
     const es = Array.from({ length: per(d) }, (_, j) => {
       const at = local(+start + (9 * 60 + j * 13) * 60e3), id = n++ % 40 + 1;
-      const e = {
+      return {
         key: `bench${n}`, at, s: uuid(id).slice(0, 8), t: `${PROJECT}/${uuid(id)}`, branch: 'main',
         asked: words(200), answered: words(1900), changed: [1, 2, 3, 4].map(() => `src/${pick(WORDS)}/${pick(WORDS)}.js`),
         ran: Array.from({ length: 9 }, () => `${pick(['node', 'git', 'npm'])} ${words(290)}`),
       };
-      // A failed command in about one entry a day (real journals: 60 in 1,997 entries), so the error hook reads every day file.
-      // No rng call: every other byte of the store stays as it was.
-      if (n % 33 === 0) e.ran[8] += ` → failed: Exit code 1 test ${n} of suite ${n % 7} timed out in src/bench/${n}.js`;
-      return e;
     });
     const body = `# Journal ${local(+start).slice(0, 10)}\n\n` + es.map(render).join('\n\n') + (es.length ? '\n' : '');
     writeFileSync(join(store, 'journal', `${local(+start).slice(0, 10)}.md`), body);
