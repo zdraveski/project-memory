@@ -229,19 +229,34 @@ Four ways, from narrow to wide:
 To turn off only the startup briefing, set `PROJECT_MEMORY_BRIEFING` to `0`.
 Everything else keeps saving.
 
-**A file with a past.** When Claude changes a file that earlier conversations
+**Pointers to earlier exchanges (opt-in).** The two notes below (a file with
+a past, a request that names something old) and the briefing's line that hands
+a hard question about the past to the `recall` helper are off by default: they
+are not yet measured, and a note that does not help costs words in every
+conversation. To turn them on, set `PROJECT_MEMORY_RECALL` to `1`, for example
+in the `env` block of Claude Code's `settings.json`:
+
+```json
+{ "env": { "PROJECT_MEMORY_RECALL": "1" } }
+```
+
+Without it, sessions that see each other and the list after a compaction keep
+working, and you can still ask the helper by name (`@agent-project-memory:recall`).
+`PROJECT_MEMORY_RECALL=0` turns all of it off.
+
+**A file with a past (opt-in).** When Claude changes a file that earlier conversations
 in this project changed too, and one of them shares a rare word with your
 current request, it is told so with the result of that first change: the date, the conversation and the request of the newest two, and how
 to open them. Once per file and conversation, at most three such notes between
 two of your messages, never from a private or forgotten exchange. After a
 compaction, Claude is also told which files the conversation changed and up to
 three earlier exchanges that share rare words with the request in progress,
-its own from before the compaction included. Set
+its own from before the compaction included (on by default). Set
 `PROJECT_MEMORY_RECALL` to `0` to turn these notes off. A note already shown
 stays in the conversation that got it: `forget` cannot take it back. A
 helper's changes before 1.6.0 have no past (its entries listed no files then).
 
-**A request that names something old.** When your message shares three rare
+**A request that names something old (opt-in).** When your message shares three rare
 words (one in five of its words, when that is more; two, for a message of two
 words) with an earlier exchange of another
 conversation in this project, Claude is told so before it answers: the

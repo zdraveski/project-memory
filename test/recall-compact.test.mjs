@@ -63,10 +63,12 @@ p.day([p.entry({ key: `${ME} ${DAY}T07:00 c0ffee`, at: `${DAY} 07:00`, s: ME, t:
 p.lines(sessionLine('asked', 'the closing day again'), sessionLine('file', cleanPath(join(p.cwd, 'src/close.js')), '', new Date(Date.now() - 1000).toISOString()));
 const look = (input) => onChange(input, { journal, deadline: performance.now() + 10_000 });
 const edit = { session_id: SID, cwd: p.cwd, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: join(p.cwd, 'src/close.js') } };
+process.env.PROJECT_MEMORY_RECALL = '1';   // the change hook's pointer is opt-in; the briefing's above is on by default
 ok((await look(edit)).n === 0, 'before a compaction: the file was changed already, and the exchange is this conversation\'s');
 p.lines(sessionLine('compact'));
 let r = await look(edit);
 ok(r.n === 1 && r.say.includes('asked: "fix the closing day"'), `after it: its own older exchange is earlier (got ${JSON.stringify(r)})`);
+delete process.env.PROJECT_MEMORY_RECALL;
 
 // Over ten files: the newest ten, and how many more.
 p = project();

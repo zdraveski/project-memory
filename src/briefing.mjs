@@ -81,8 +81,8 @@ const headline = (t) => render({ ...t, did: clip(t.did, HEAD) });
 async function journalLine(dir) {
   let first = null; try { first = firstDay(dir); } catch {}
   return first ? [`Earlier work in this project since ${first} is in its journal: when asked about the past, search it with the memory skill before saying you don't know.`,
-    // 1.6.0 headline 6: the routing line. The recall switch drops it too, so the eval's arm without runs with no line.
-    ...(process.env.PROJECT_MEMORY_RECALL === '0' ? [] : ['For a question about the past that one search does not answer, hand it to the project-memory:recall agent.']),
+    // 1.6.0 headline 6: the routing line, opt-in until the eval measures it: only with PROJECT_MEMORY_RECALL=1.
+    ...(process.env.PROJECT_MEMORY_RECALL !== '1' ? [] : ['For a question about the past that one search does not answer, hand it to the project-memory:recall agent.']),
     'When a note and the code disagree about what exists, the code wins. When the user corrects how you work, save it as a feedback note before going on.',
     'A "decided", "rejected" or "parked" in a note is a session\'s summary. Before telling the user they decided it, check their own words: memory skill, search --asked KEYWORDS.'] : [];
 }

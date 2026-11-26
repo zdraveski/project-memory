@@ -13,7 +13,8 @@ import { projectsRoot } from '../src/store.mjs';
 import { read as readTimes, FILE as TIMING } from '../src/timing.mjs';
 
 const { home } = tempHome('recall-hook-');
-delete process.env.PROJECT_MEMORY_RECALL;
+// Pointers are opt-in (1.6.0 ships them off): this file pins them, so it turns them on; the spawned hooks inherit it.
+process.env.PROJECT_MEMORY_RECALL = '1';
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const HOOK = tool('src/recall-hook.mjs');
@@ -85,8 +86,16 @@ ok(!existsSync(p.session()), 'and no session file');
 turn(p, 'nightly export');
 process.env.PROJECT_MEMORY_RECALL = '0';
 ok((await look(p.payload('src/close.js'))).say === '', 'onChange honours the switch too');
+process.env.PROJECT_MEMORY_RECALL = '1';
+ok((await look(p.payload('src/close.js'))).n === 1, 'and with it on (=1) the same change gets its pointer');
+// Unset, the default: no pointer from either hook, but the session lines are still written.
+p = project(); p.day('2026-11-12', [p.entry()]); turn(p, 'nightly export');
 delete process.env.PROJECT_MEMORY_RECALL;
-ok((await look(p.payload('src/close.js'))).n === 1, 'and with it unset the same change gets its pointer');
+quiet(run(p.payload('src/close.js')), 'unset: the change hook shows no pointer');
+ok(readSession(p.session()).some((l) => l.kind === 'file'), 'and still writes the file line');
+const hearOff = await onPrompt({ session_id: SID, cwd: p.cwd, hook_event_name: 'UserPromptSubmit', prompt: 'nightly export again' }, { journal, deadline: performance.now() + 10_000 });
+ok(hearOff.say === '' && hearOff.n === 0 && readSession(p.session()).at(-1).rest === 'nightly export again', `unset: the prompt hook shows no pointer and still writes the asked line (got ${JSON.stringify(hearOff)})`);
+process.env.PROJECT_MEMORY_RECALL = '1';
 
 // Write and NotebookEdit; another tool says nothing.
 p = project(); p.day('2026-11-12', [p.entry({ changed: ['nb/a.ipynb'] }), p.entry({ changed: ['src/close.js'] })]); turn(p, 'nightly export');
