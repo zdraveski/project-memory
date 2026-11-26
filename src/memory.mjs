@@ -1061,47 +1061,63 @@ function page(stores, days, want, failed) {
   } finally { rmSync(claim, { force: true }); }
 }
 
-// The command line, its words as given; returns the exit code. Callable in
-// the same process: memory.test runs it so, where a process a call was 0.2 s
-// of its 50 s, 256 times (2026-10-30). Each call starts with no session.
-export function main(given) {
-  session = '';
+// Every option the command line knows, and whether it takes the word after it as its value. The `=` split,
+// the unknown-option refusal and where a value ends all read this one list: an option valued in one list and a flag
+// in another was how audit 5 and C-7 came about. USAGE names each one (memory-cli checks it).
+export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--session': true, '--since': true, '--until': true, '--conversation': true, '--key': true, '--file': true, '--days': true, '--project': true,
+  '--all': false, '--shared': false, '--yes': false, '--force': false, '--same': false, '--purge': false, '--apply': false, '--help': false, '--asked': false };
+const valued = new Set(Object.keys(OPTIONS).filter((o) => OPTIONS[o]));
+// Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
+// `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal in main().
+const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], page: ['--days', '--project'] };
+
+// The command line's words, read before any store is touched: { cmd, rest, args, opt } or the refusal to print.
+// rest is every word but the command, in order (--key repeats, and the first of an option wins in opt()); args
+// the words that are no option or an option's value, then every word after `--`.
+export function parseArgs(given) {
   // The command is the first word that is no option or an option's value, so
   // `--store X search foo` searches; none (the skill run with no arguments,
   // just `--session <id>`) is status.
   // `--store=X` as `--store X`: the equals form was dropped, and the command ran on the cwd's store.
   // After `--` every word is a term: `search -- --no-verify` printed the usage.
   const cut = given.includes('--') ? given.indexOf('--') : given.length;
-  const argv = given.slice(0, cut).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until|conversation|key|file|days|project))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
-  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation', '--key', '--file', '--days', '--project']);
+  const argv = given.slice(0, cut).flatMap((a) => { const e = a.indexOf('='); return e > 0 && valued.has(a.slice(0, e)) ? [a.slice(0, e), a.slice(e + 1)] : [a]; });
   // One it does not know is refused: dropped, `--from 2026-10-27` searched for
   // "2026", and `--after=2026-10-28` listed what came before it.
-  const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--purge', '--apply', '--help', '--asked'].includes(a));
-  if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); return 1; }
+  const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !Object.hasOwn(OPTIONS, a));
+  if (unknown) return `unknown option ${unknown}; help lists the options`;
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
   // An empty --conversation or --file (an unset variable in quotes) is none given: forget took it for "every conversation", search ran unfiltered.
   const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--project') && argv[i + 1] === '')));
-  if (bare) { console.log(`${bare} needs a value after it`); return 1; }
+  if (bare) return `${bare} needs a value after it`;
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
-  // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
-  // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal below.
-  const table = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], page: ['--days', '--project'] };
-  const takes = Object.hasOwn(table, cmd) ? table[cmd] : undefined; // not table[cmd]: `constructor` is on every object
+  const takes = Object.hasOwn(TAKES, cmd) ? TAKES[cmd] : undefined; // not TAKES[cmd]: `constructor` is on every object
   const extra = takes && rest.find((a, i) => a.startsWith('--') && !valued.has(rest[i - 1]) && !['--store', '--shared', '--session', ...takes].includes(a));
-  if (extra) { console.log(`${cmd} does not take ${extra}; help lists the options`); return 1; }
+  if (extra) return `${cmd} does not take ${extra}; help lists the options`;
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
   // A short id would name every conversation whose id starts with it; `forget` has its own rule for the value.
-  if (cmd === 'search' && (opt('--conversation') ?? 'abcd').length < 4) { console.log('--conversation needs at least 4 characters of the id'); return 1; }
+  if (cmd === 'search' && (opt('--conversation') ?? 'abcd').length < 4) return '--conversation needs at least 4 characters of the id';
   // A number, or refused: `--limit ten` was dropped unsaid, and the default
   // listed. One below 1 is still the default (a test holds it).
-  if (opt('--limit') !== undefined && !/^-?\d+$/.test(opt('--limit'))) { console.log(`--limit takes a number, not ${opt('--limit')}`); return 1; }
+  if (opt('--limit') !== undefined && !/^-?\d+$/.test(opt('--limit'))) return `--limit takes a number, not ${opt('--limit')}`;
   // A whole number of days, or all: `--days ten` was no number to count back from.
-  if (cmd === 'page' && opt('--days') !== undefined && opt('--days') !== 'all' && !/^[1-9]\d*$/.test(opt('--days'))) { console.log(`--days takes a number of days or all, not ${clip(opt('--days'), 100)}`); return 1; }
+  if (cmd === 'page' && opt('--days') !== undefined && opt('--days') !== 'all' && !/^[1-9]\d*$/.test(opt('--days'))) return `--days takes a number of days or all, not ${clip(opt('--days'), 100)}`;
+  const args = [...rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1])), ...given.slice(cut + 1)];
+  return { cmd, rest, args, opt };
+}
+
+// The command line, its words as given; returns the exit code. Callable in
+// the same process: memory.test runs it so, where a process a call was 0.2 s
+// of its 50 s, 256 times (2026-10-30). Each call starts with no session.
+export function main(given) {
+  session = '';
+  const p = parseArgs(given);
+  if (typeof p === 'string') { console.log(p); return 1; }
+  const { cmd, rest, args, opt } = p;
   // A session id names a file: anything but an id's characters is ignored.
   if (/^[\w-]{1,100}$/.test(opt('--session') || '')) session = opt('--session');
-  const args = [...rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1])), ...given.slice(cut + 1)];
   // Another store is a memory folder under the projects root: promote and
   // restore write where it points, and one anywhere else was written there.
   // A leading ~ is the home folder: only a POSIX shell expands it, PowerShell and cmd pass it as typed (SKILL.md writes it so).
