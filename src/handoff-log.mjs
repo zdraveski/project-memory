@@ -26,6 +26,7 @@ import { clip, plain } from './text.mjs';
 import { readTail, turns, promptBefore, TAIL, FORGETS, userText, tailOf, joined, lastTurn } from './transcript.mjs';
 import { PRIVATE, QUIET, OFF, isOff, wasOff, hushed, off, unreadable, forgottenIn } from './privacy.mjs';
 import { tag, storeOf, withLock, replaceIfUnchanged, projectsRoot, local, same, memoryOff, pathKey, transcriptKey, raw, inProjects, norm } from './store.mjs';
+import { stopRan } from './run-records.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
@@ -386,14 +387,14 @@ export function stalled(t, hint = true) {
   let end, seen, known; try { ({ end, seen, known } = lastTurn(t.p)); } catch { return []; }
   if (seen >= 50 && !known) return [`Memory hooks cannot read [${t.s}]'s transcript: none of its last ${seen} messages is a model reply they know. Has Claude Code's transcript format changed?`];
   // No file is not knowing (just installed, or cleaned away), not "never ran".
-  let ran; try { ran = statSync(join(projectsRoot(), '.stop-ran')).mtimeMs; } catch { return []; }
+  let ran; try { ran = statSync(stopRan()).mtimeMs; } catch { return []; }
   if (end - ran > GRACE && Date.now() - end > GRACE) {
     // A full disk, or a folder that takes no writes, stops the proof of life too: said as hooks stopped or turned off, the
     // failed write was never named (audit H-F5). The file opened for writing, not written: a full disk opens it all the same.
     const root = projectsRoot();
     let refused = '';
     try { const s = statfsSync(root); if (s.bavail * s.bsize < 1048576) refused = `the disk holding ${root} is full`; } catch {}
-    if (!refused) try { closeSync(openSync(join(root, '.stop-ran'), 'r+')); } catch (e) { if (e.code !== 'ENOENT') refused = `${root} refuses writes (${e.code})`; }
+    if (!refused) try { closeSync(openSync(stopRan(), 'r+')); } catch (e) { if (e.code !== 'ENOENT') refused = `${root} refuses writes (${e.code})`; }
     if (refused) return [`Memory could not be saved after [${t.s}]'s reply at ${local(end)}: ${refused}. project-memory saves again once it can write there.`];
     return [`Memory hooks look stopped: [${t.s}] finished a reply at ${local(end)}, but project-memory last saved after one at ${local(ran)}. ` +
       `If project-memory was turned off meanwhile, this clears after the next reply.` +

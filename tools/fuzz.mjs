@@ -49,7 +49,7 @@
 // note keeps its text and one index line; repeating the last Stop settles within four.
 // Under faults or a kill: a hook exits 0 (the gate 0 or 2, a command 0 or 1; not a killed
 // one), prints no stack trace (a frame line in stderr or stdout) and no private text, and
-// changes no note; after settling no .handoff-failed-* file and no journal/.failed (but a
+// changes no note; after settling no .handoff-failed-* file and no journal failure, in journal/.failed or kept aside (but a
 // store whose conversations are all private or held with auto memory off keeps its
 // live-write failure: a Stop that writes nothing clears none), and no *.tmp<digits> file is named in MEMORY.md or in
 // `status`. The nudge rules rest after a hurt Stop until the next dip under the trigger.
@@ -85,6 +85,7 @@ import { LOCK_STALE, SHARED_BUDGET, POINTER } from '../src/store.mjs';
 import { tag, parse, sectionOf } from '../src/handoff-log.mjs';
 import { ACTIVE } from '../src/sessions.mjs';
 import { NUDGE_TAG } from '../src/transcript.mjs';
+import { HANDOFF_FAILED, JOURNAL_FAILED, JOURNAL, FAILED } from '../src/run-records.mjs';
 
 const args = process.argv.slice(2);
 // A typo ("10m", "0", "--seed x") exits 1: it used to run 60 s, or no rounds, and report a pass for a run that tested nothing (audit #15).
@@ -700,12 +701,13 @@ async function execute(steps, meta) {
   // A hook exits 0 whatever happens, and says what failed in a file: none may
   // be there. Not .health: it names what is wrong with the store (a hand-written
   // line pointing at no file), which hostile notes are meant to make.
-  for (const f of readdirSync(dirname(proj)).filter((n) => n.startsWith('.handoff-failed-'))) problems.push(`${f}: ${readFileSync(join(dirname(proj), f), 'utf8').trim().slice(0, 300)}`);
+  for (const f of readdirSync(dirname(proj)).filter((n) => n.startsWith(HANDOFF_FAILED))) problems.push(`${f}: ${readFileSync(join(dirname(proj), f), 'utf8').trim().slice(0, 300)}`);
   // A store whose every conversation is private or held with auto memory off writes nothing, and a Stop that writes nothing clears no failure (a memory-off sweep returns hush=false, journal.mjs take(); seed 705302203) (journal.test.mjs:324-330, "clears no failure"), so a failure it left stays: not a rule there.
   // Only its live-write lines: a backfill's line (`"error":"backfill: `) is cleared by the look the settle phase makes due, private conversations or not.
-  const failedLines = existsSync(join(dir, 'journal', '.failed')) ? readFileSync(join(dir, 'journal', '.failed'), 'utf8').split(/\r?\n/).filter(Boolean) : [];
+  // And the one journal/.failed would not take, kept beside the projects (run-records.mjs failures() reads process.env's home, not the round's).
+  const failedLines = [join(dir, JOURNAL, FAILED), join(dirname(proj), JOURNAL_FAILED + basename(proj))].flatMap((p) => existsSync(p) ? readFileSync(p, 'utf8').split(/\r?\n/).filter(Boolean) : []);
   const stale = [...sessions.values()].every((c) => c.private || c.off) ? failedLines.filter((l) => l.includes('"error":"backfill: ')) : failedLines;
-  if (stale.length) problems.push(`journal/.failed: ${stale.join(' ').slice(0, 300)}`);
+  if (stale.length) problems.push(`journal failures: ${stale.join(' ').slice(0, 300)}`);
   const after = files();
   // A big store (meta.big, 10 % of rounds), in states the plugin writes, after the settle (a Stop would clear them): the project's
   // and the shared store's .health with one line naming 400 files (memory-tier.mjs health(); `fit`'s own example), the snapshot
@@ -717,7 +719,7 @@ async function execute(steps, meta) {
     mkdirSync(join(dir, 'journal'), { recursive: true }); mkdirSync(shared, { recursive: true });
     for (const d of [dir, shared]) writeFileSync(join(d, '.health'), `pointers with no file: ${names}\n`);
     writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ failures: 5, lastOk: Date.now(), error: 'disk full '.repeat(120), missed: names.split(', ') }));
-    writeFileSync(join(root, `.handoff-failed-${basename(proj)}`), JSON.stringify({ at: Date.now(), error: 'disk full '.repeat(120) }));
+    writeFileSync(join(root, `${HANDOFF_FAILED}${basename(proj)}`), JSON.stringify({ at: Date.now(), error: 'disk full '.repeat(120) }));
     writeFileSync(join(dir, 'journal', '.failed'), JSON.stringify({ at: new Date().toISOString(), error: 'disk full '.repeat(120) }) + '\n');
     // Filled around the lines already there, never over them: replaced, the line of a note promoted this round was gone (CI
     // seeds 2008212739, 641748427). Lines of 250 B, the last one shorter, to the ceiling the briefing holds the index to, to the byte.

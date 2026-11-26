@@ -623,8 +623,8 @@ ok(runLines().length === 20 && !readFileSync(join(root, '.stop-ran'), 'utf8').en
   const ranPath = join(root, '.stop-ran');
   writeFileSync(ranPath, Array.from({ length: 200 }, (_, i) => JSON.stringify({ at: new Date(i).toISOString(), s: 'old', from: 'x'.repeat(30) })).join('\n') + '\n');
   let reads = 0;
-  await swap('node:fs', 'readFileSync', (real) => (p, ...a) => { const t = real(p, ...a); if (String(p) === ranPath && ++reads === 2) writeFileSync(ranPath, '{"s":"parallel"}\n', { flag: 'a' }); return t; }, stop);
-  ok(reads >= 2 && runLines().some((l) => l.includes('"parallel"')), `--stop: a line appended while the log is cut back is kept (got ${runLines().length} lines)`);
+  await swap('node:fs', 'readFileSync', (real) => (p, ...a) => { const t = real(p, ...a); if (String(p) === ranPath && ++reads === 1) writeFileSync(ranPath, '{"s":"parallel"}\n', { flag: 'a' }); return t; }, stop);
+  ok(reads >= 1 && runLines().some((l) => l.includes('"parallel"')), `--stop: a line appended while the log is cut back is kept (got ${runLines().length} lines)`);
   ok(!existsSync(`${ranPath}.tmp${process.pid}`), '--stop: and no temp copy is left');
 }
 // A handoff-log.mjs that cannot load writes no handoff: no proof of life either.
@@ -2158,10 +2158,10 @@ require('node:module').syncBuiltinESMExports();
 {
   const d = join(root, 'proj-one', 'memory'), gone = spawnSync(process.execPath, ['-e', '']).pid;
   mkdirSync(join(d, 'journal'), { recursive: true });
-  const left = [join(d, `handoff.md.tmp${gone}`), join(d, 'journal', `2026-11-01.md.tmp${gone}`)];
+  const left = [join(d, `handoff.md.tmp${gone}`), join(d, 'journal', `2026-11-01.md.tmp${gone}`), join(root, `.stop-ran.tmp${gone}`), join(root, `.timing.tmp${gone}`)];
   for (const p of left) writeFileSync(p, 'what was said');
   await stop('proj-one');
-  ok(left.every((p) => !existsSync(p)), '--stop: a quiet Stop sweeps the temp copies a killed Stop left in its store and journal');
+  ok(left.every((p) => !existsSync(p)), '--stop: a quiet Stop sweeps the temp copies a killed Stop left in its store and journal, and beside the projects');
 }
 // The same rule at once, with time stepped instead of waited: a Stop sets the run's budget of 2 s in all before it takes a lock, so
 // after it two held locks cost 2 s between them, not 2 s each.

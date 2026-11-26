@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { isOff } from './privacy.mjs';
 import { projectsRoot, replaceIfUnchanged, raw, allStores, pathKey, same, local, reason, LOCK_STALE } from './store.mjs';
 import { redact, holdsSecret } from './secrets.mjs';
+import { stopRan } from './run-records.mjs';
 
 const GIT_LOCK_STALE = 10 * 60000;  // an index.lock this old outlived the git that made it
 export const GIT_TIMEOUT = 30_000;  // a git that hangs (a prompt nobody sees) must not hold the Stop hook
@@ -152,7 +153,7 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
     // An install from before the modes: its .git is still open to others, so the files are too. Tightened once, when found so.
     if (process.platform !== 'win32' && (statSync(join(root, '.git')).mode & 0o077)) {
       const to = (p, m) => { try { chmodSync(p, m); } catch {} };
-      to(join(root, '.git'), 0o700); to(join(root, '.stop-ran'), 0o600);
+      to(join(root, '.git'), 0o700); to(stopRan(), 0o600);
       for (const d of allStores()) {
         to(join(d, 'journal'), 0o700); to(join(d, 'journal.md'), 0o600); to(join(d, 'handoff.md'), 0o600);
         let days = []; try { days = readdirSync(join(d, 'journal')); } catch {}

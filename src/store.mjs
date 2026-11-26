@@ -2,7 +2,7 @@
 // way. Our hooks take the lock; Claude Code's own Edit and Write tools do not,
 // so a write the model makes during a pass can only be detected --
 // replaceIfUnchanged -- never prevented.
-import { lstatSync, mkdirSync, rmdirSync, rmSync, statSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, readdirSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
+import { lstatSync, mkdirSync, rmdirSync, rmSync, statSync, readFileSync, writeFileSync, appendFileSync, renameSync, unlinkSync, existsSync, readdirSync, realpathSync, openSync, readSync, closeSync, fstatSync } from 'node:fs';
 import { join, dirname, resolve, basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { createHmac, randomBytes } from 'node:crypto';
@@ -437,10 +437,12 @@ export function withLock(dir, fn) {
 // in a store and its journal: one whose writer is gone, or older than a held lock can be (a pid used again). One can hold
 // text forget then removed, where forget never reached (audit H-F3). The Stop and forget sweep them. Only this tool's
 // names: what it writes there is `.md` (notes, indexes, days, handoff.md) or a dotfile (.facts, .forgotten, ...).
-export function sweepTemps(dir) {
-  for (const d of [dir, join(dir, 'journal')]) {
+// `only`: the files whose copies are swept, and nothing else (the projects root, where a failure record's name can end in .tmp<n>).
+export function sweepTemps(dir, only) {
+  for (const d of only ? [dir] : [dir, join(dir, 'journal')]) {
     let names = []; try { names = readdirSync(d); } catch {}
     for (const f of names) {
+      if (only && !only.some((n) => f.startsWith(`${n}.tmp`))) continue;
       // A stale lock renamed away by withLock whose waiter died before deleting it.
       if (d === dir && f.startsWith('.lock.dead.')) { try { rmSync(join(d, f), { recursive: true, force: true }); } catch {} continue; }
       const pid = Number((/^(?:.+\.md|\.[^.]+)\.tmp(\d+)$/.exec(f) || [])[1]);
@@ -460,6 +462,25 @@ export function sweepTemps(dir) {
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 export function utf8Only(file, text) {
   if (text?.includes('�')) try { UTF8.decode(readFileSync(file)); } catch { throw Object.assign(new Error(`${file} is not UTF-8 text, so it was left as it is; save it as UTF-8`), { code: 'not UTF-8' }); }
+}
+
+// A capped log (.stop-ran, .timing, .enforce-log): `text` appended, 0600; past `max` bytes cut back to its newest `keep`
+// lines, or its newer half. The cut goes to a temp copy that replaces the log only if it is no longer than when read:
+// another run's line appended in between was lost (audit #13); the next append cuts instead. `stat` is the tests' seam.
+// shortcut: an append between the size check and the rename (well under a millisecond) is still lost; lock if that shows.
+export function appendCapped(file, text, max, keep, stat = statSync) {
+  // A last line left without its newline (a run killed mid-write; .stop-ran before 1.0.7 was one time and no newline) is
+  // ended first, not glued to this one.
+  let fd; try { fd = openSync(file, 'r'); const b = Buffer.alloc(1), { size } = fstatSync(fd); if (size && readSync(fd, b, 0, 1, size - 1) && b[0] !== 10) text = '\n' + text; } catch {} finally { if (fd !== undefined) closeSync(fd); }
+  appendFileSync(file, text, { mode: 0o600 });
+  const size = stat(file).size;
+  if (size <= max) return;
+  const tmp = `${file}.tmp${process.pid}`;
+  try {
+    const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
+    writeFileSync(tmp, lines.slice(keep ? -keep : Math.ceil(lines.length / 2)).join('\n') + '\n', { mode: 0o600 });
+    if (stat(file).size === size) renameSync(tmp, file);
+  } finally { rmSync(tmp, { force: true }); }
 }
 
 // Write `next` over `path` only while the file still holds `expected`, the text

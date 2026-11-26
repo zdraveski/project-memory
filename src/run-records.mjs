@@ -6,11 +6,11 @@
 // but cannot be read or parsed is damaged, and each screen shows it as it did
 // before (usually as none); a BOM is stripped.
 // Imports Node and store.mjs only: journal.mjs imports this, not the other way.
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync, unlinkSync, renameSync, rmSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { raw, keyed, replaceIfUnchanged, projectsRoot, configDir, sharedStore, local, reason } from './store.mjs';
+import { raw, keyed, replaceIfUnchanged, appendCapped, projectsRoot, configDir, sharedStore, local, reason } from './store.mjs';
 
 // What a Stop could not save, `<projects>/<this><project folder>`: memory-tier writes it, the briefing and status read it. One
 // name for the three: spelt in four places, a change to one would have left the warning silent (release review).
@@ -50,37 +50,33 @@ export function stopRecord(payload) {
   // reads this and never settings.json). Appended, so two copies running at
   // once both land; cut back to the newest 20 past 8 KB.
   try {
-    const ran = join(projectsRoot(), '.stop-ran');
+    const ran = stopRan();
     // The event too, and whether a block sent it back: a /compact typed
     // right after a reply, or a reply to the nudge, is a second run seconds
     // later, not a second wiring. And the reply's fingerprint, 8 hex of its
     // hash: two quick replies of one conversation read as two wirings (audit H-F10).
-    // On a line of its own: before 1.0.7 the file was one time and no newline.
-    const prev = raw(ran);
-    appendFileSync(ran, (prev && !prev.endsWith('\n') ? '\n' : '') + JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: keyed(payload?.last_assistant_message ?? '', 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n', { mode: 0o600 });
-    // The cut goes to a temp copy that replaces the log only if it is no longer than when read:
-    // another session's line appended in between was lost (audit #13).
-    // shortcut: an append between the size check and the rename (well under a millisecond) is
-    // still lost, which costs one line of the double-wiring check; lock the projects root if that shows.
-    const size = statSync(ran).size, cut = `${ran}.tmp${process.pid}`;
-    if (size > 8192) {
-      try {
-        writeFileSync(cut, readFileSync(ran, 'utf8').split('\n').filter(Boolean).slice(-20).join('\n') + '\n', { mode: 0o600 });
-        if (statSync(ran).size === size) renameSync(cut, ran);
-      } finally { rmSync(cut, { force: true }); }
-    }
+    appendCapped(ran, JSON.stringify({ at: new Date().toISOString(), s: String(payload?.session_id || '').slice(0, 8), e: payload?.hook_event_name, h: payload?.stop_hook_active ? 1 : undefined, m: keyed(payload?.last_assistant_message ?? '', 8), from: dirname(fileURLToPath(import.meta.url)) }) + '\n', 8192, 20);
   } catch {}
 }
+// Where the Stop record is: its mtime is the last save (handoff-log's stalled()), and snapshot keeps it 0600.
+export const stopRan = () => join(projectsRoot(), '.stop-ran');
 // The Stop hook's runs, oldest first, one JSON line each (stopRecord).
-export const stopRuns = () => (readText(join(projectsRoot(), '.stop-ran')) ?? '').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r?.at ? [r] : []; } catch { return []; } });
+export const stopRuns = () => (readText(stopRan()) ?? '').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r?.at ? [r] : []; } catch { return []; } });
 
 // A Stop's failure to save, in the briefing and in status: the record of where you left off, or with
 // auto memory off (`off`) the tag that keeps the conversation out of the journal, which was all a Stop then meant to write.
 export const unsaved = (f) => (f.off
   ? `a conversation held with auto memory off could not be marked after the reply at ${local(f.at)}, so the journal may take it in later: ${f.error}`
   : `the record of where you left off could not be saved after the reply at ${local(f.at)}: ${f.error}`);
-// What the Stop's record of a failure holds for a store, or null (HANDOFF_FAILED).
-export const lostHandoff = (dir) => readJson(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(dir))}`));
+// The Stop's record of a failure for a store (HANDOFF_FAILED). One per project, beside the projects, not in the store
+// that refused it: shared, another project's next save cleared this one's.
+const lost = (dir) => join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(dir))}`);
+// What it holds, or null.
+export const lostHandoff = (dir) => readJson(lost(dir));
+// Kept for the next start to read: swallowed, nothing was saved and nothing said. Throws when it cannot be written.
+export const handoffFailed = (dir, e, off) => writeFileSync(lost(dir), JSON.stringify({ at: new Date().toISOString(), error: reason(e), ...(off && { off: true }) }), { mode: 0o600 });
+// A Stop that saved clears it.
+export const handoffSaved = (dir) => { try { unlinkSync(lost(dir)); } catch {} };
 
 // A throw kept in .failed for `status` to report: swallowed, the journal would
 // stop and nothing say so. `from` names the writer when it is not the sink.
@@ -125,7 +121,7 @@ export function notes(dir) {
   // A journal write that failed after a reply (journal/.failed; not a backfill,
   // which is retried): only status said so, and every reply went unrecorded.
   // And one its folder would not take, kept beside the projects (JOURNAL_FAILED).
-  for (const p of [join(dir, 'journal', '.failed'), join(projectsRoot(), `${JOURNAL_FAILED}${basename(dirname(dir))}`)]) {
+  for (const p of [join(dir, JOURNAL, FAILED), aside(dir)]) {
     try {
       for (const l of (readText(p) ?? '').split(/\r?\n/).filter(Boolean)) {
         const f = JSON.parse(l);

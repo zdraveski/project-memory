@@ -49,7 +49,7 @@ import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
-import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRuns, deployedCommit, edited, DEPLOYED } from './run-records.mjs';
+import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, stopRuns, deployed, deployedCommit, edited, DEPLOYED } from './run-records.mjs';
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, readHealth, MISSED, HELD, isOurs, versionsOf, changedLately, dropDays, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
 import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
@@ -750,7 +750,7 @@ export function doctor(site = sessionStore()) {
   if (typeof readJson(join(configDir(), 'settings.json'))?.autoMemoryDirectory === 'string') say(false, 'the autoMemoryDirectory setting is set, and project-memory does not follow it: notes in that folder are not tiered, snapshotted or briefed (the hooks work on the default memory folder). Remove the setting to use project-memory');
   // edited() stays silent on a damaged record (the startup line's choice); doctor names it.
   if (existsSync(join(LIVE, DEPLOYED))) {
-    const e = readJson(join(LIVE, DEPLOYED))?.files ? edited(LIVE) : [`${join(LIVE, DEPLOYED)} is damaged (not JSON, or no file list), so the live hooks can't be checked against the last deploy. Run deploy.mjs again`];
+    const e = deployed(LIVE)?.files ? edited(LIVE) : [`${join(LIVE, DEPLOYED)} is damaged (not JSON, or no file list), so the live hooks can't be checked against the last deploy. Run deploy.mjs again`];
     say(!e.length, e[0] || `${LIVE} matches what deploy.mjs checked`);
   }
   // Installed from the live copy, the plugin runs it in place; from anywhere
@@ -767,9 +767,9 @@ export function doctor(site = sessionStore()) {
     else if (marketplace()?.source === 'directory' && !same(at, LIVE)) say(false, `the plugin is read from ${at}, not the live copy. The user's fix: claude plugin marketplace remove ${installedId().split('@')[1]}, then claude plugin marketplace add "${LIVE}" and claude plugin install ${PLUGIN}`);
     else if (deployedCommit(at) !== deployedCommit(LIVE)) say(false, `the plugin runs ${deployedCommit(at) || 'an undeployed copy'} from ${at}, the last deploy is ${deployedCommit(LIVE)}. The user's fix: claude plugin update ${PLUGIN}`);
     // The manifest's version ends in a deploy count, not the release: the tag names it.
-    else { const e = edited(at), tag = readJson(join(at, DEPLOYED))?.tag; say(!e.length, e[0] || `the plugin runs the last deploy, ${deployedCommit(at)}${tag ? ` (${tag})` : ''}, from ${at}`); }
+    else { const e = edited(at), tag = deployed(at)?.tag; say(!e.length, e[0] || `the plugin runs the last deploy, ${deployedCommit(at)}${tag ? ` (${tag})` : ''}, from ${at}`); }
   }
-  const ran = join(projectsRoot(), '.stop-ran');
+  const ran = stopRan();
   if (!existsSync(ran)) {
     // Nothing has saved before Claude's first reply ends: that is waiting, and
     // a new install checked at once said PROBLEM. It is one when this

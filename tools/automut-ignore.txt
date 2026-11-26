@@ -72,7 +72,6 @@ e8abd320db15 src/store.mjs:313 the takeover's `renameSync(lock, dead);` -> `void
 92bca2cac00c src/store.mjs:315 the takeover's `let fresh = false` -> `true`: the value matters only when the renamed copy cannot be stat'ed; then the put-back rename fails the same way and the copy is left for sweepTemps
 fa830e083dbe src/store.mjs:315 the takeover's freshness `<= LOCK_STALE` -> `<`: the two differ only for a lock exactly LOCK_STALE old to the millisecond
 695b9354e37f src/store.mjs:317 the takeover's cleanup `force: true` -> `false`: the copy exists (we just renamed it), so force has nothing to silence; a failure is caught either way
-f84bb09a9bad src/run-records.mjs:629 the log cut's cleanup `force: true` -> `false`: after a successful rename the temp copy is gone and rmSync then throws, into the try/catch around the whole proof-of-life block, which swallows it; nothing after it in that block
 8b85aa853fa4 tools/deploy.mjs:70 rmSync's `force: true` -> `false`: the call sits in a try that swallows every error, so the only thing force changes is a missing file, which throws ENOENT and is swallowed; a file that is there is removed either way
 70eff8199afa src/handoff-log.mjs:890 rmSync's `force: true` -> `false` for the PREV copy: the call is in a try that swallows every error, so a missing copy throws ENOENT and is swallowed, and one that is there is removed either way
 08b97b7f4943 src/enforce.mjs:115 `i < toks.length` -> `<=`: at i === length toks[i] is undefined, which the loop's `!toks[i]` takes in, it adds one to i and ends; the next line reads `toks[i++] ?? ''` and finds no git either way
@@ -110,8 +109,8 @@ f2466f95588a src/memory.mjs:773 catch `{ return ''; }` -> `{}`: the value is onl
 33501b7bc209 src/memory.mjs:773 catch `return ''` -> `undefined`: same join, an undefined element prints as the empty string
 c9b2278d4500 src/memory.mjs:858 `?? ''` -> `|| ''`: the value is null or a string, and null and '' both give ''
 baa7281256d3 src/memory.mjs:846 `: false` -> `: true`: failed(true) is false and true is not 'conflict', so both branches read the same
-60aef809f619 src/run-records.mjs:864 `?.` -> `.`: a throw is caught by the surrounding try, which gives the same result as the guard
-3d6e9304cf10 src/run-records.mjs:864 `?? ''` -> `|| ''`: null and '' both give ''
+c781c6560549 src/run-records.mjs:66 `?.` -> `.`: a throw is caught by the surrounding try, which gives the same result as the guard
+89e4c41af3f2 src/run-records.mjs:66 `?? ''` -> `|| ''`: null and '' both give ''
 f7a8c2543d42 src/memory.mjs:936 `?.` -> `.`: a throw is caught by the surrounding try, which gives the same result as the guard
 a1c97591acd3 src/memory.mjs:869 SubagentStop `?.` -> `.`: the PreToolUse check just before it already needed hooks.json to parse with a hooks object, so neither can be missing here
 3dcecb3f69df src/memory.mjs:869 SubagentStop `?.` -> `.`: the PreToolUse check just before it already needed hooks.json to parse with a hooks object, so neither can be missing here
@@ -245,9 +244,6 @@ e66692c75db6 src/enforce.mjs:81 `lines.length - 1` -> `+ 1`: the break only skip
 608dfe4c8e22 src/enforce.mjs:166 `got = 0` -> `1`: got is only read after a successful readSync, which sets it; on a throw the finally closes the fd and the error leaves the try
 ad9f63d17fc7 src/enforce.mjs:170 `r ?? null` -> `||`: r is null or an object (never a falsy non-null value), so both give the same
 808c65dd0e98 src/enforce.mjs:202 `r.message?.content` -> `r.message.content`: a user line without `message` throws, which the surrounding try catches and skips, the same as the undefined content that never matches the mark
-824f9b734503 src/enforce.mjs:217 `size = 0` -> `1`: both are far below LOG_MAX, so the trim never runs for a file that cannot be read
-3c37e02c0da7 src/enforce.mjs:218 `cut < 0` -> `<= 0`: cut is the index of a newline found from the middle of a file over LOG_MAX (256 KB), so it is never 0
-38b80c14a82e src/enforce.mjs:218 `cut < 0` -> `cut < 1`: cut is the index of a newline found from the middle of a file over LOG_MAX (256 KB), so it is never 0 and the two tests agree
 1bd39f5a003c src/memory.mjs:1043 `.filter((e) => e.isDirectory())` removed: a plain file kept in `subs` makes jsonl(join(file, "subagents")) read a path under a file, which fails with ENOTDIR and is caught as []; the same list as without the file.
 71eef501b3cb src/memory.mjs:505 `return null` -> `return undefined`: every caller of transcriptOf tests it for truth (`if (t)`, `if (p)`, `!(session && ...)`) or passes it where only a string is used (`typeof t === 'string'` in transcripts), so null and undefined act the same.
 721543402683 src/memory.mjs:1195 importing no-count 0 -> 1: importing is read only in the no-hit branch, and the first-branch no-terms and hit cases never use it, so the value is dead there.
@@ -295,7 +291,7 @@ f00341eb545e src/snapshot.mjs:695 `?.` -> `.`: missing() is called only with the
 c8a3aff63da2 src/transcript.mjs:978 `>=` -> `>`: bytes runs 512000 * 4^k (512000, 2048000, 8192000, 32768000) and 32e6 is none of them (4^k would be 62.5), so bytes >= 32e6 and bytes > 32e6 are true for the same values
 8e5433a08b55 src/handoff-log.mjs:978 `||` -> `&&` (whole || bytes >= 32e6): with whole true and bytes below the cap the loop only reads again; a whole file read at a larger window is the same text, so scan() gives the same result and it returns at 32768000 at the latest, same value
 e5a3f2eda34a src/handoff-log.mjs:1014 catch `{ return []; }` -> `{}`: lastTurn() threw, so end stays undefined and the check after it (end/seen comparison with GRACE) is NaN > GRACE, false, and returns [] the same
-61204625533b src/handoff-log.mjs:1017 catch `{ return []; }` -> `{}`: statSync threw, so ran stays undefined, and the next test on it (NaN comparison against end) is false and returns [] the same
+68359a2a6bb8 src/handoff-log.mjs:391 catch `{ return []; }` -> `{}`: statSync threw, so ran stays undefined, and the next test on it (NaN comparison against end) is false and returns [] the same
 e26e0ba9ed9c src/briefing.mjs:107 catch `{ return false; }` -> `{}`: busy() is read only as a truthy value (filter/some), undefined and false are the same
 71b7e23bd1bb src/briefing.mjs:107 `false` -> `undefined`: busy() is read only as a truthy value, undefined and false are the same
 50d5a4109d8c src/transcript.mjs:548 catch `{ continue; }` -> `{}`: r stays undefined for a line that does not parse, and the next statement reads r?.type, which is undefined for it, so the line is skipped the same
@@ -333,7 +329,7 @@ ab768bf7ef3a src/snapshot.mjs:106 gcDead's `age >= GC_STALE` -> `>`: they differ
 801448ec97a3 src/snapshot.mjs:118 busy's `stuck ?? fresh` -> `||`: stuck is an Error or null, so the two choose alike
 e67b7b33d2a9 src/snapshot.mjs:404 rewrite's rmSync `force: true` -> `false` on its own temp copy: the copy always exists at that point, so force only matters if it was removed by hand
 6042aa9b7cf0 src/run-records.mjs:130 `(readText(p) ?? '')` -> `|| ''`: readText gives a string or null, and the only falsy string is '', so both split into no lines.
-338b6d2981b1 src/memory.mjs:824 `readJson(join(at, DEPLOYED))?.tag` -> `.tag`: this branch is reached only when deployedCommit(at) is set, so the record parsed and is not null.
+7e6c43fa2526 src/memory.mjs:832 `deployed(at)?.tag` -> `.tag`: this branch is reached only when deployedCommit(at) is set, so the record parsed and is not null.
 c56de0a153ef src/memory-tier.mjs:361 `plugins(...)?.plugins` -> `.plugins`: a missing file throws into the try around reloadNotice, which gives no notice, as a null did.
 acdbee553ee2 src/page.mjs:575 clean's `s ?? ''` -> `s || ''`: the two differ only for 0, false or NaN, and every caller (pageHtml's entry fields d, t, c, b, p, q, a and data.built/today) passes a string parsed from the journal or undefined, so String() gets the same text
 d4a8643adc95 src/transcript.mjs:111 records' `includes('{"parentUuid":', 1)` / `includes(\`{"type":"${t}"\`, 1)` -> 2: the line starts with `{"type":`, so neither text can begin at index 1; the same lines are skipped

@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor, slug } from './harness.mjs';
-import { begin, tag, mark, flush, read, cut, stats, pct, FILE, MAX } from '../src/timing.mjs';
+import { begin, tag, mark, flush, read, stats, pct, FILE, MAX } from '../src/timing.mjs';
 
 const { home } = tempHome('timing-');
 let checks = 0;
@@ -63,14 +63,7 @@ ok(newest.t > 1e12, 'the newest line stays');
 ok(!readdirSync(root).some((f) => f.startsWith('.timing.tmp')), 'no temp file stays');
 ok(read(0, file).every((x, i, a) => !i || a[i - 1].t <= x.t), 'oldest first');
 
-// a cut that loses the race leaves the file as it was
-writeFileSync(file, fill(Math.ceil(MAX / 60), 1000));
-const before = readFileSync(file, 'utf8'), size = statSync(file).size;
-cut(file, size, () => ({ size: size + 100 }));
-ok(readFileSync(file, 'utf8') === before, 'another run appended: the file is kept');
-ok(!readdirSync(root).some((f) => f.startsWith('.timing.tmp')), 'a lost race leaves no temp file');
-cut(file, MAX);
-ok(readFileSync(file, 'utf8') === before, 'a file under the limit is not cut');
+// The cut's race and its limit are store.mjs appendCapped's, tested in store.test.mjs.
 
 // read(): a cut-off last line, a line of prose, a line with unknown keys, a line without numbers
 writeFileSync(file, fill(3, 5000));
