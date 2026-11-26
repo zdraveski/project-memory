@@ -850,5 +850,49 @@ for (const [name, recs] of Object.entries(FIXTURES)) {
   try { ok(past(fv, 0, 2_500_000) === 2_500_000, 'a line with no break runs to the end'); } finally { closeSync(fv); }
 }
 
+// typedMark and markFrom: the one reading of a typed <private-session> mark (the git-rule hook, the compaction gate, the journal).
+{
+  const { typedMark, markFrom } = await import('../src/transcript.mjs');
+  const P = '<private-session>', f = join(home, 'mark.jsonl'), line = (r) => (typeof r === 'string' ? r : JSON.stringify(r));
+  const put = (recs, nl = '\n') => { writeFileSync(f, recs.map(line).join(nl) + nl); return f; };
+  const ask = a([use('k1', 'AskUserQuestion', { questions: [{ question: 'Which color?' }] })], 'tool_use');
+  const answer = u([res('k1', 'answered')], { toolUseResult: { answers: { 'Which color?': `red ${P}` } } });
+  for (const [recs, want, why] of [
+    [[u('hi'), a('hello')], false, 'no mark'],
+    [[u(`go on ${P}`), a('ok')], true, 'a typed mark'],
+    [[u([txt('x'), txt('＜private-session＞')])], true, 'a full-width mark in a text block'],
+    [[u('<private​-session>')], true, 'a mark with a hidden character'],
+    [[u('work'), a('working', 'tool_use'), queued(`and ${P}`)], true, 'a mark queued while Claude worked'],
+    [[u('pick one'), ask, answer], true, "a mark in the answer to Claude's question"],
+    [[u([res('t1', `the log says ${P}`)])], false, "a tool's output that quotes it"],
+    [[u(`<task-notification>agent said ${P}</task-notification>`)], false, 'a mark only quoted by the harness'],
+    [[u(`Summary: the user typed ${P}`, { isCompactSummary: true })], false, 'a compaction summary that names it'],
+    [[u(`x ${P}`, { isSidechain: true })], false, "a helper's record"],
+    [[a(P)], false, "Claude's own words"],
+    [[`${P} not json`, u('hi')], false, 'a line that is no JSON'],
+  ]) ok(typedMark(put(recs)) === want, `typedMark: ${why} (${want})`);
+  ok(typedMark(put([u('hi'), u(`x ${P}`)], '\r\n')) === true, 'CRLF line ends');
+  ok(typedMark(join(home, 'gone.jsonl')) === true, 'an unreadable transcript counts as marked');
+  // In pieces: a line cut by a piece, a multi-byte character cut by one, a line many pieces long, and a last line without a newline.
+  writeFileSync(f, `${line(u('hi'))}\n${line(u(`${'é'.repeat(40)} ＜private-session＞`))}`);
+  ok(typedMark(f, 7) === true, 'pieces of 7 bytes: a long last line with no newline, a character cut by a piece');
+  put([a(P), 'y'.repeat(40), u('fine')]);
+  ok(typedMark(f, 7) === false, 'pieces of 7 bytes, no typed mark');
+  // The known hole (markFrom's shortcut): an answer whose question was read in an earlier piece is not read as typed.
+  const pick = u('pick one'), upTo = Buffer.byteLength(`${line(pick)}\n${line(ask)}\n`);
+  put([pick, ask, answer]);
+  ok(typedMark(f, upTo) === false && typedMark(f) === true, 'question and answer in two pieces: missed; in one: found');
+  // The look, resumed: `more()` stops it after a piece, at a line's start, and the next look from there finds the mark.
+  const one = u('one');
+  put([one, u('two'), u(`three ${P}`)]);
+  const fd = openSync(f, 'r'), size = statSync(f).size;
+  try {
+    const first = markFrom(fd, 0, 10, size, () => false);
+    ok(!first.hit && first.pos === Buffer.byteLength(line(one)) + 1, `stopped by more() at a line's start (got ${JSON.stringify(first)})`);
+    ok(markFrom(fd, first.pos, 10, size).hit === true, 'the next look goes on from there and finds the mark');
+    ok(same(markFrom(fd, size, 10, size), { hit: false, pos: size }), 'nothing left to look at: no mark, at the end');
+  } finally { closeSync(fd); }
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`transcript.test.mjs: ${checks} checks passed`);

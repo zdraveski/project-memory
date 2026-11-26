@@ -28,6 +28,12 @@ written; the journal and the handoff show `[private]`.
 `incognito` command, listed in the store's `.private-sessions`), or one whose
 typed text holds `<private-session>`. Nothing of it is saved from then on.
 
+**Typed mark**: a `<private-session>` the user typed, queued while Claude worked,
+or gave as an answer to Claude's question, in any spelling. One only quoted (a
+tool's output, a task's end) or in a compaction summary is none. Read in one
+place, `typedMark` / `markFrom` in `transcript.mjs`, by the git-rule hook, the
+compaction gate and the journal alike.
+
 **Switched off**: memory not saving at all, at one of three reaches: one
 conversation (`.memory-off` in the projects root), the project (`.project-off`
 in the store, from `memory off`), or Claude Code's own auto memory setting

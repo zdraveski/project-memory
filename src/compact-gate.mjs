@@ -36,7 +36,7 @@ import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
 import { clip } from './text.mjs';
 import { handoff, tag, answer, newest, sectionOf, norm, redact } from './handoff-log.mjs';
-import { goesOn, readTail, records, turns, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, BARE } from './transcript.mjs';
+import { goesOn, readTail, records, typedMark, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, BARE } from './transcript.mjs';
 import { isHushed, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, OFF, isOff } from './privacy.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
@@ -248,17 +248,14 @@ export function recover(input) {
 // that won't read (unknown) counts as marked: these only add (F12).
 const secret = (payload, s) => PRIVATE_SESSION.test(userText(s)) || PRIVATE.test(userText(s)) || marked(payload);
 // The conversation marked private: by its list, or, when the list does not name it, by a <private-session> typed anywhere in it,
-// read as every writer reads one (turns(): a mark only quoted is none). The list holds the marks a Stop saved, and a Stop a full or
+// read as every writer reads one (transcript.mjs typedMark). The list holds the marks a Stop saved, and a Stop a full or
 // busy disk failed saved none: a mark typed in an earlier turn went unseen, and the nudge and both notes spoke of the conversation
 // (F22, fuzz 169429269). The whole transcript, so only on a path about to print.
-// shortcut: one read of the whole file; one too big for a string throws, and the caller prints nothing; read it in segments, as the
-// journal's look does, if a transcript that size ever needs its nudge.
 // Or held with auto memory off once (OFF), as handoff() keeps it out: resumed with auto memory on, the notes and the nudge wrote
 // what it said into handoff.md (review, 2026-11-01).
 const marked = (payload) => {
   if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;
-  const all = readTail(payload.transcript_path, Infinity).text;
-  return PRIVATE_SESSION.test(norm(all)) && turns(all).hush === true;
+  return typedMark(payload.transcript_path);
 };
 
 /** PreCompact: 0 lets the compaction run, 2 defers it. */

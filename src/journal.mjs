@@ -6,9 +6,9 @@ import { mkdirSync, existsSync, readdirSync, readFileSync, statSync, unlinkSync,
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip } from './text.mjs';
-import { tag, norm, unsay, ACTIVE } from './handoff-log.mjs';
-import { text, readTail, readHead, openFile, records, chunk, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
-import { PRIVATE, PRIVATE_SESSION, hushed, isHushed, FORGOTTEN, forgotten, OFF, unreadable, wasOff } from './privacy.mjs';
+import { tag, unsay, ACTIVE } from './handoff-log.mjs';
+import { text, readTail, readHead, openFile, records, chunk, markFrom, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
+import { PRIVATE, hushed, isHushed, FORGOTTEN, forgotten, OFF, unreadable, wasOff } from './privacy.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, lockBudget, sleep, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
 import { fault, failures, clear } from './run-records.mjs';
 import { dropSessions } from './recall.mjs';
@@ -391,7 +391,7 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
       try {
         const { fd, size, close } = openFile(p);
         try {
-          if (marked(fd, 0, IMPORT_SEGMENT, size).hit) continue;
+          if (markFrom(fd, 0, IMPORT_SEGMENT, size).hit) continue;
           // By words, a turn is cut at its start (segments()), so its prompt and its reply are read together; a part cut inside a turn leaves it to the next.
           if (ts) {
             if (ours(dir, p)) for (const g of segments(fd, 0, seg, size, Infinity)) for (const t of new Set(g.next === null ? g.got.filter((x) => x !== g.got.open) : [...g.got, g.got.open])) { const e = t && entryOf(t, p); if (e && ts.every((w) => holds(e, w))) out.push({ ...e, day: day(e.at), dir, unsaid: true }); }
@@ -517,7 +517,7 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
   if (got.whole === false && statSync(transcriptPath).size - from > TAIL) {
     const { fd, size, close } = openFile(transcriptPath);
     let hit;
-    try { hit = marked(fd, from, IMPORT_SEGMENT, size).hit; } finally { close(); }
+    try { hit = markFrom(fd, from, IMPORT_SEGMENT, size).hit; } finally { close(); }
     if (hit) { hushed(dir, s, true); takeBack(dir, k, s, true); return true; }
     mark(dir, [`${k} ${size}`], null, CHECKED);
   }
@@ -664,20 +664,6 @@ function* segments(fd, at, seg, size, cap) {
   yield { got: [], next: size };
 }
 
-// Whether a typed <private-session> mark is in the bytes from `pos`, looked
-// for while `more()`: a text search, turns() only for a segment it finds one
-// in (a tag quoted in a tool's output is no mark). `pos`: where the look
-// stopped, the size when it got to the end.
-function marked(fd, pos, seg, size, more = () => true) {
-  for (let b; (b = chunk(fd, pos, seg, size)); ) {
-    const t = b.buf.toString('utf8');
-    if (PRIVATE_SESSION.test(norm(t)) && turns(t).hush) return { hit: true, pos: size };
-    pos = b.pos + b.buf.length;
-    if (pos < size && !more()) return { hit: false, pos };
-  }
-  return { hit: false, pos: size };
-}
-
 // One transcript, from where the last look left it. First the
 // <private-session> mark, looked for in every byte not looked at yet: one
 // anywhere keeps the whole conversation out, so nothing of it may be recorded
@@ -709,7 +695,7 @@ function importOne(dir, c, fd, seg, cap, more, off) {
   // A mark typed while the plugin was off is taken as its Stop takes one: the
   // conversation is marked, and what it wrote before goes, from the journal
   // and from handoff.md.
-  const look = marked(fd, c.looked, seg, size, more);
+  const look = markFrom(fd, c.looked, seg, size, more);
   if (look.hit) { hushed(dir, s, true); takeBack(dir, c.k, s, true, true); return none; }
   if (look.pos < size) return { at: c.from, size, looked: look.pos };
   const held = off(s);

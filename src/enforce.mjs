@@ -1,11 +1,11 @@
 // A note can carry a rule a computer checks on a git command (`enforce:` in its
 // front matter). This file reads the rule and matches it; it never runs, blocks
 // or writes anything. Imports store.mjs, privacy.mjs and transcript.mjs only, so a hook can load it fast.
-import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, closeSync, fstatSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, tag, norm } from './store.mjs';
-import { records, readHead } from './transcript.mjs';
-import { isOff, isHushed, QUIET, OFF, PRIVATE_SESSION } from './privacy.mjs';
+import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, tag } from './store.mjs';
+import { records, readHead, typedMark } from './transcript.mjs';
+import { isOff, isHushed, QUIET, OFF } from './privacy.mjs';
 
 const BSL = String.fromCharCode(92), KEYS = ['on', 'has', 'unless'], MAX = 8;
 
@@ -187,33 +187,9 @@ export function ruleSet(payload) {
   return { store, rules: [...rules, ...shared] };
 }
 
-// True when something the user typed carries the private-session mark (assistant text and tool results are skipped: they
-// quote it); an unreadable transcript counts as private (no path: not).
-// On typed text only. Read in pieces of `seg` bytes, a line cut by a piece carried to the next: one string of a 600 MB
-// transcript took 14 s and then threw.
-export function privateTurn(payload, seg = 8 * 1024 * 1024) {
-  if (!payload?.transcript_path) return false;
-  let fd;
-  try {
-    fd = openSync(payload.transcript_path, 'r');
-    const buf = Buffer.allocUnsafe(seg);
-    for (let rest = Buffer.alloc(0), n = 1; n;) {
-      n = readSync(fd, buf, 0, seg, null);
-      const data = Buffer.concat([rest, buf.subarray(0, n)]), cut = n ? data.lastIndexOf(10) + 1 : data.length;
-      rest = data.subarray(cut);
-      for (const l of data.subarray(0, cut).toString('utf8').split('\n')) {
-        // norm costs ~10 ms a MB: only a line with a non-ASCII character can hide the mark from the plain test.
-        if (!PRIVATE_SESSION.test(l) && !(/[^\x00-\x7f]/.test(l) && PRIVATE_SESSION.test(norm(l)))) continue;
-        try {
-          const r = JSON.parse(l), c = r.message?.content;
-          if (r.isSidechain) continue;   // a helper's record, as turns() skips it
-          if (r.type === 'user' && (Array.isArray(c) ? c.some((b) => b?.type === 'text' && PRIVATE_SESSION.test(norm(String(b.text)))) : PRIVATE_SESSION.test(norm(String(c))))) return true;
-        } catch {}
-      }
-    }
-    return false;
-  } catch { return true; } finally { if (fd !== undefined) closeSync(fd); }
-}
+// True when the user typed the private-session mark anywhere in the conversation, as the writers read one (transcript.mjs
+// typedMark); an unreadable transcript counts as private (no path: not).
+export const privateTurn = (payload, seg) => !!payload?.transcript_path && typedMark(payload.transcript_path, seg);
 
 // One line of the log (dropped if over 1 KB or the store has no folder). Over LOG_MAX, the oldest half of the log goes first.
 // shortcut: no lock, so a line can be lost under heavy parallel use (said in the docs).

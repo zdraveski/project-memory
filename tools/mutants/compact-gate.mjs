@@ -39,8 +39,7 @@ export default {
   // One check now for the gate's note, the recovery note and the nudge's last test (F22): the F12 pair is one mutant.
   "F12 a note when the private list won't read": ["if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;", "if (isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;"],
   "F12 a note when the memory-off list won't read": ["if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;", "if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), '.private-sessions')) return true;"],
-  "F22 a <private-session> typed in an earlier turn unseen": ["  return PRIVATE_SESSION.test(norm(all)) && turns(all).hush === true;", "  return false;"],
-  "F22 a <private-session> only quoted taken for a mark": ["PRIVATE_SESSION.test(norm(all)) && turns(all).hush === true", "PRIVATE_SESSION.test(norm(all))"],
+  "F22 a <private-session> typed in an earlier turn unseen": ["  return typedMark(payload.transcript_path);", "  return false;"],
   "a private answer in the note": ["answer(userText(s), s.said, 400) ||", "clip(s.said, 400) ||"],
   "a null block throws": ["if (b?.type !== 'tool_result' || !s.launchers", "if (b.type !== 'tool_result' || !s.launchers"],
   "an output path with a space cut short": ["([^\\n]+?\\.output)", "(\\S+?\\.output)"],
