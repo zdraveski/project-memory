@@ -2697,10 +2697,10 @@ require('node:module').syncBuiltinESMExports();
     ok(unsay(dU, () => true) === false && !existsSync(join(dU, 'handoff.md')), 'unsay on a store with no handoff.md writes nothing and says false');
     writeFileSync(join(dU, 'handoff.md'), docOf(entry('2026-09-12 07:01', 'unsayses', 'an ask', 'an answer')));
     ok(unsay(dU, () => false) === 'unchanged', 'unsay that takes nothing out says unchanged');
-    // Three tries against a file that keeps changing, and then false. reads() counts
+    // Three tries against a file that keeps changing, and then 'changed'. reads() counts
     // put()'s raw() read plus store.mjs replaceIfUnchanged's two reads: three per try, 3 x 3 = 9, the only way to see the retry count.
     const [r, reads] = conflicting(join(dU, 'handoff.md'), () => unsay(dU, () => true));
-    ok(r === false && reads() === 9, `unsay tries three times against a file that keeps changing, then gives up (${r}, ${reads()} reads)`);
+    ok(r === 'changed' && reads() === 9, `unsay tries three times against a file that keeps changing, then gives up (${r}, ${reads()} reads)`);
     const [h, hreads] = conflicting(join(dU, '.private-sessions'), () => { writeFileSync(join(dU, '.private-sessions'), 'old00001\n'); return hushed(dU, 'new00002', true); });
     ok(h === false && hreads() === 9, `a private mark is tried three times against a list that keeps changing, then not made (${h}, ${hreads()} reads)`);
   }
@@ -4242,6 +4242,36 @@ if (!quick) {
   const hd = join(home, 'hushed-none');
   mkdirSync(hd, { recursive: true });
   ok(hushed(hd, '') === false && hushed(hd, undefined, true) === false && hushed(hd, '', true) === false && !existsSync(join(hd, '.private-sessions')), 'an empty tag is never marked, and is not a hushed one');
+}
+// The in-flight note: written by handoff() with the turn's entry, after it, in one write; dropped by the next write without one;
+// never in a private conversation, and never into a file with no section to hold it.
+{
+  const { handWritten } = await import('../src/handoff-log.mjs'), { hushed } = await import('../src/privacy.mjs'), { tag } = await import('../src/store.mjs');
+  const cwdN = 'C:\\handoff-note-selftest', dirN = storeFor(home, cwdN), tn = join(dirN, 'nnnnnnnn-1.jsonl'), hf = join(dirN, 'handoff.md');
+  mkdirSync(dirN, { recursive: true });
+  const NOTE = '- **cut mid-turn** [nnnnnnnn] 2026-09-11 07:05 at 965k tokens, asked 2026-09-11 07:00: build it\n  **last said:** working';
+  const go = (note) => handoff({ cwd: cwdN, transcript_path: tn, session_id: 'nnnnnnnn-1' }, null, null, note);
+  writeFileSync(hf, 'no markers here\n');
+  writeFileSync(tn, '');
+  ok(go(NOTE) === false && readFileSync(hf, 'utf8') === 'no markers here\n', 'no turn and no section: the note is not written, and the file is left alone');
+  writeFileSync(tn, [user('build it', { ts: '2026-09-11T07:00:00Z' }), asst('working')].join('\n') + '\n');
+  ok(go(NOTE) === true, 'a turn and a note: written');
+  const d1 = readFileSync(hf, 'utf8');
+  ok(d1.includes('no markers here\n') && d1.indexOf('**asked**') < d1.indexOf(NOTE) && d1.endsWith(`${NOTE}\n<!-- auto:end -->\n`), `the note sits after the entry, inside the section (got ${d1})`);
+  ok(go(NOTE) && readFileSync(hf, 'utf8').split('cut mid-turn').length === 2, 'written again (unchanged within the minute), the old note is replaced, not kept beside the new one');
+  ok(go() === true && !readFileSync(hf, 'utf8').includes('cut mid-turn'), 'the next write without a note drops it');
+  // A section with no entries and no turn to log still takes the note.
+  writeFileSync(hf, '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n'); writeFileSync(tn, '');
+  ok(go(NOTE) === true && /\._\n- \*\*cut mid-turn\*\*[^]*working\n<!-- auto:end -->\n$/.test(readFileSync(hf, 'utf8')), 'an empty section takes the note, with no blank line before it');
+  // Private: the section is swept, the note never written.
+  writeFileSync(tn, [user('build it', { ts: '2026-09-11T07:00:00Z' }), asst('working')].join('\n') + '\n');
+  hushed(dirN, tag('nnnnnnnn-1'), true);
+  ok(go(NOTE) === 'private' && !readFileSync(hf, 'utf8').includes('cut mid-turn'), 'a private conversation gets no note');
+  // handWritten: only what a person wrote, around every section; a section with no end runs to the end of the file.
+  ok(handWritten('mine\n<!-- auto:start -->\nlog\n<!-- auto:end -->\nalso mine\n') === 'mine\n\nalso mine\n', 'handWritten keeps the text around the section');
+  ok(handWritten('mine\n<!-- auto:start -->\nlog to the end\n') === 'mine\n', 'handWritten: a start with no end cuts to the end of the file');
+  ok(handWritten('a\n<!-- auto:start -->\nx\n<!-- auto:end -->\nb\n<!-- auto:start -->\ny\n<!-- auto:end -->\nc') === 'a\n\nb\n\nc', 'handWritten cuts every section');
+  ok(handWritten('quoted <!-- auto:start --> in a sentence') === 'quoted <!-- auto:start --> in a sentence', 'handWritten: a marker inside a sentence is no section');
 }
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log: ${checks} checks passed`);

@@ -57,7 +57,7 @@ import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { clip } from './text.mjs';
-import { sectionOf, parse, stalled, GRACE, tag, unsay } from './handoff-log.mjs';
+import { sectionOf, parse, stalled, GRACE, tag, unsay, handWritten } from './handoff-log.mjs';
 import { redact, holdsSecret } from './secrets.mjs';
 import { BLOCK, transcripts, lastTurn, chunk as chunkOf } from './transcript.mjs';
 import { tame, STOP, words, count, has, termRe, isHelper, changedFile, inConversation, changers, whoChanged, about } from './recall.mjs';
@@ -276,17 +276,7 @@ export function search(dirs, query, { since, until, failed, file, asked: mine, c
     if (m.file === 'journal.md') continue;
     const hand = m.file === 'handoff.md';
     if (hand) {
-      // A start marker with no end marker (a half-written file): the log runs to the end of the file.
-      // Every block is cut, last first (sectionOf finds the last one); each cut shortens the text, and a cut that does not ends the loop.
-      let body = m.body;
-      for (;;) {
-        const { a, b } = [body, `${body}
-<!-- auto:end -->`].map(sectionOf).find((x) => x.a !== -1) ?? { a: -1 };
-        if (a === -1) break;
-        const next = body.slice(0, a) + body.slice(b).replace(/^[^\n]*/, '');
-        if (next.length >= body.length) break;
-        body = next;
-      }
+      const body = handWritten(m.body);
       if (!body.trim()) continue;
       m = { ...m, file: '', name: '', desc: '', body };   // its name is no match: only what a person wrote
     }

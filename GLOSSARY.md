@@ -166,6 +166,18 @@ builds it (1.6.0 step 18): `briefing(payload)` gives the text for one SessionSta
 the tests call; `src/brief.mjs` is only the guard that runs it. See
 `docs/adr/0003-no-import-loops-in-src.md`.
 
+**Handoff section**: the part of `handoff.md` between `<!-- auto:start -->` and
+`<!-- auto:end -->`, rewritten after every turn with each session's last
+exchanges. Everything around it is hand-written and left alone; search reads
+only that part (`handWritten()`). `src/handoff-log.mjs` is the only writer of the
+section and the only module in `src/` that names the end marker.
+
+**In-flight note**: the `**cut mid-turn**` entry the compaction gate leaves in
+the handoff section when it lets a compaction cut a turn: the ask, the last words,
+tasks still running, files edited. `src/compact-gate.mjs` builds it and decides
+whether a conversation may have one; `handoff()` writes it with the turn's entry
+in one locked write, and the next Stop drops it.
+
 **Safe printing**: cutting, clearing and fitting text so it is safe to print: `clip`,
 `cut`, `plain`, `defuse` and `fit`. `src/text.mjs` (1.6.0 step 15) holds them. It
 imports only the secret detector, so a hook can print without loading the
