@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import assert from 'node:assert';
 import { tool, tempHome, tempDir, storeFor, quick } from './harness.mjs';
 
-const GATE = tool('src/compact-gate.mjs'), HOOK = tool('src/handoff-log.mjs'), BRIEFING = tool('src/briefing.mjs');
+const GATE = tool('src/compact-gate.mjs'), STOP = [tool('src/memory-tier.mjs'), '--stop'], BRIEFING = tool('src/briefing.mjs');
 const { home, env } = tempHome('cg-test-');
 const cwd = 'C:\\compact-gate-selftest';
 const dir = storeFor(home, cwd);
@@ -159,7 +159,7 @@ ok(!/<\n- \*\*cut mid-turn/.test(doc) && /edited this turn:\*\* a\.py\n<!-- auto
   write(user('long job'), asst('working', 965_000, 'tool_use'));
   const r = gateRun();
   rmSync(hm, { recursive: true }); writeFileSync(hm, '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
-  ok(r.status === 0 && /handoff: /.test(r.stderr) && /note: /.test(r.stderr), `an unreadable handoff.md has its failures named, the compaction still runs (got ${r.status}: ${r.stderr.trim()})`);
+  ok(r.status === 0 && /handoff and note: /.test(r.stderr), `an unreadable handoff.md has its failures named, the compaction still runs (got ${r.status}: ${r.stderr.trim()})`);
 }
 
 // A password typed alone as the answer to a password question is not written into the note (1.4.1 H review).
@@ -183,7 +183,7 @@ ok(!!stop('synth')?.hookSpecificOutput?.additionalContext, 'the nudge still fire
 
 // 4. The next finished turn rebuilds the section and the note is gone.
 write(user('build it'), asst('all green', 200_000, 'end_turn'), user('next thing'), asst('next answer', 210_000, 'end_turn'));
-execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd, transcript_path: transcript }), env });
+execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd, transcript_path: transcript }), env });
 ok(!/cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'the Stop hook drops the note');
 
 // 5. The Stop nudge: once per cycle, re-armed by a compaction, never twice in a turn.
@@ -262,12 +262,12 @@ ok(viaLink.stdout.trim() !== '', `the gate run through a symlinked folder still 
 const cwd2 = 'C:\\compact-gate-broken';
 mkdirSync(join(storeFor(home, cwd2), 'handoff.md'), { recursive: true });   // a directory where the file should be
 const broken = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd: cwd2, transcript_path: transcript, trigger: 'auto', session_id: 's9' }), env, encoding: 'utf8' });
-ok(broken.status === 0 && /handoff: /.test(broken.stderr), `an unwritable handoff never defers, and the failure is named (got ${broken.status}: ${broken.stderr.trim()})`);
+ok(broken.status === 0 && /handoff and note: /.test(broken.stderr), `an unwritable handoff never defers, and the failure is named (got ${broken.status}: ${broken.stderr.trim()})`);
 
 // A cwd with no store at all: nothing is written, and the gate says so rather
 // than "written" -- an early return is not a write.
 const nowhere = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd: 'C:\\no-store-here', transcript_path: transcript, trigger: 'auto', session_id: 's9' }), env, encoding: 'utf8' });
-ok(nowhere.status === 0 && /handoff: nothing written/.test(nowhere.stderr) && /note: no handoff\.md/.test(nowhere.stderr) && !/note written/.test(nowhere.stderr),
+ok(nowhere.status === 0 && /handoff and note: nothing written/.test(nowhere.stderr) && !/note written/.test(nowhere.stderr),
   `with no store the gate reports nothing written (got ${nowhere.status}: ${nowhere.stderr.trim()})`);
 
 // 7. Claude Code compacted mid-turn without heeding the gate (a precomputed
@@ -309,7 +309,7 @@ if (!quick) {
   mkdirSync(join(dir, '.lock'));
   const heldGate = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8' });
   rmSync(join(dir, '.lock'), { recursive: true });
-  ok(heldGate.status === 0 && /handoff: another hook held the store/.test(heldGate.stderr) && /note: another hook held the store/.test(heldGate.stderr),
+  ok(heldGate.status === 0 && /handoff and note: another hook held the store/.test(heldGate.stderr),
     `a held store is reported as held, and the compaction runs (got ${heldGate.status}: ${heldGate.stderr.trim()})`);
 }
 
@@ -620,7 +620,7 @@ ok(st().hidden === false, 'an attachment of another kind with a private tag hide
 writeFileSync(join(dir, 'handoff.md'), 'no markers here\n');
 write(asst('running', 965_000, 'tool_use'));   // no turn in it: the handoff adds no section
 const gm = said();
-ok(gm.status === 0 && /note: no handoff\.md with markers/.test(gm.stderr) && readFileSync(join(dir, 'handoff.md'), 'utf8') === 'no markers here\n', `a handoff.md with no markers is left alone, and the gate says so (got ${gm.status}: ${gm.stderr})`);
+ok(gm.status === 0 && /handoff and note: nothing written[^\n]*no handoff\.md with markers/.test(gm.stderr) && readFileSync(join(dir, 'handoff.md'), 'utf8') === 'no markers here\n', `a handoff.md with no markers is left alone, and the gate says so (got ${gm.status}: ${gm.stderr})`);
 // With markers: the file keeps its start, and the gate reports the note written.
 emptyHandoff();
 write(user('build it'), asst('running', 965_000, 'tool_use'));
@@ -637,7 +637,7 @@ require('node:module').syncBuiltinESMExports();
   emptyHandoff();
   write(user('build it'), asst('running', 965_000, 'tool_use'));
   const gc = spawnSync(process.execPath, ['--require', pre, GATE], { input: JSON.stringify({ cwd, transcript_path: transcript, trigger: 'auto', session_id: 's1' }), env, encoding: 'utf8', timeout: 30_000 });
-  ok(gc.status === 0 && /note: the handoff changed meanwhile/.test(gc.stderr) && !/no handoff\.md with markers/.test(gc.stderr) && !/cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), `a handoff changed meanwhile is named as that, and the other write is kept (got ${gc.status}: ${gc.stderr})`);
+  ok(gc.status === 0 && /handoff and note: the handoff changed meanwhile/.test(gc.stderr) && !/no handoff\.md with markers/.test(gc.stderr) && !/cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), `a handoff changed meanwhile is named as that, and the other write is kept (got ${gc.status}: ${gc.stderr})`);
 }
 
 // A transcript that is gone: nothing to read, nothing deferred, said as such.

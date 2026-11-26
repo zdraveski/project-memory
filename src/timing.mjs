@@ -3,7 +3,7 @@
 // from a conversation, no path, no command. Time zero is Node's own start. It never throws into a
 // hook and never creates a folder. PROJECT_MEMORY_TIMING=0 turns it off.
 // No static import of a plugin module: store.mjs is loaded inside flush(), when the hook has it already.
-import { appendFileSync, readFileSync, writeFileSync, renameSync, rmSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const FILE = '.timing';
@@ -42,17 +42,6 @@ export function mark(phase) {
   run.last = now;
 }
 
-// The newer half stays. A copy replaces the file only if no one appended meanwhile; else the cut waits for the next run.
-export function cut(file, size, stat = statSync) {
-  if (size <= MAX) return;
-  const tmp = `${file}.tmp${process.pid}`;
-  try {
-    const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
-    writeFileSync(tmp, lines.slice(Math.ceil(lines.length / 2)).join('\n') + '\n', { mode: 0o600 });
-    if (stat(file).size === size) renameSync(tmp, file);
-  } finally { rmSync(tmp, { force: true }); }
-}
-
 // A script that serves two hooks names the one it ran as, once its input is read (recall-hook.mjs: `prompt`).
 export function name(hook) {
   if (run && HOOKS.includes(hook)) run.h = hook;
@@ -67,12 +56,11 @@ export async function flush() {
   const r = run; run = null;
   if (!r) return;
   try {
-    const { projectsRoot } = await import('./store.mjs');
-    const file = join(projectsRoot(), FILE);
+    const { projectsRoot, appendCapped } = await import('./store.mjs');
     const p = Object.fromEntries(Object.entries(r.p).map(([k, v]) => [k, Math.round(v)]));
     const { h, e, node, start, n } = r;
-    appendFileSync(file, JSON.stringify({ t: Date.now(), h, e, ...(node && { node }), start, p, ...(n && { n }), ms: Math.round(performance.now()) }) + '\n', { mode: 0o600 });
-    cut(file, statSync(file).size);
+    // Past MAX the newer half stays.
+    appendCapped(join(projectsRoot(), FILE), JSON.stringify({ t: Date.now(), h, e, ...(node && { node }), start, p, ...(n && { n }), ms: Math.round(performance.now()) }) + '\n', MAX);
   } catch {}
 }
 

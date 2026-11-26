@@ -6,12 +6,12 @@ import { mkdirSync, existsSync, readdirSync, readFileSync, statSync, unlinkSync,
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip } from './text.mjs';
-import { tag, norm, unsay, ACTIVE } from './handoff-log.mjs';
-import { text, readTail, readHead, openFile, records, chunk, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
-import { PRIVATE, PRIVATE_SESSION, hushed, isHushed, FORGOTTEN, forgotten, OFF, unreadable, wasOff } from './privacy.mjs';
+import { tag, unsay } from './handoff-log.mjs';
+import { text, readTail, readHead, openFile, records, chunk, markFrom, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
+import { PRIVATE, hushed, isHushed, isQuiet, QUIET, FORGOTTEN, forgotten, forgottenIn, listForgotten, OFF, unreadable, wasOff } from './privacy.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, lockBudget, sleep, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
 import { fault, failures, clear } from './run-records.mjs';
-import { dropSessions } from './recall.mjs';
+import { dropSessions, ACTIVE } from './sessions.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is
@@ -256,7 +256,7 @@ export function subagent(input) {
     try { const r = readTail(tp, TAIL), a = turns(r.text); t = pick(a, !r.whole); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = (p ? pick(turns(`${p}\n${r.text}`)) : null) ?? a.open; } } catch {}
     const put = () => withLock(dir, () => {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
-      if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) return false;
+      if (isQuiet(dir, s)) return false;
       // The parent's open turn is private: so is its subagent's report.
       if (hush || t && (t.frozen === true || PRIVATE.test(userText(t)))) return false;
       // Past the cap, the start and the end stay: the end usually holds the result.
@@ -308,6 +308,52 @@ export const entries = (dirs, { since, until, failed = [], strict = false } = {}
       return parseDay(text).entries.map((e) => ({ ...e, day: d, path, dir }));
     } catch (e) { failed.push({ path, code: e.code || e.message }); return []; }
   }));
+
+// The journal as a reader sees it (search, show, the page): entries() without an exchange forget listed or a conversation marked
+// private whose sweep is still owed. Forget lists the keys before it writes the days, and a day that would not be written keeps
+// the entry until forget runs again, which reads them all. A list that won't read could name any entry: none of that store's is
+// shown, and it goes in `failed`. Private turns stay: the reader shows them as [private].
+export const visible = (dirs, o = {}) => dirs.flatMap((dir) => {
+  const { listed, shut, code } = forgottenIn(dir);
+  if (shut) { o.failed?.push({ path: join(dir, FORGOTTEN), code }); return []; }
+  const gone = new Set(listed.map(([k]) => k)), hush = new Map();
+  let named = false;
+  return entries([dir], o).filter((e) => {
+    if (gone.has(e.key)) return false;
+    if (!hush.has(e.s)) {
+      const h = hushed(dir, e.s);
+      // Unknown is private (ADR 0001), and named once for the store.
+      if (h === null && !named) { named = true; o.failed?.push({ path: join(dir, QUIET), code: 'unreadable' }); }
+      hush.set(e.s, h);
+    }
+    return hush.get(e.s) === false;
+  });
+});
+
+// The newest exchanges of `dir` for the hooks, newest first: the last `days` days, at most `bytes` characters of day files (the
+// newest day is always read). Never a private turn, a forgotten key, one `keep` refuses, or a conversation marked private whose
+// sweep is still owed (asked last: one read of the list per conversation kept; unknown is private). null when the forget list
+// will not read or the walk passes `deadline` (performance.now()): the hook then says nothing.
+export function recent(dir, { days: n, bytes: max, deadline, now }, keep) {
+  const { listed, shut } = forgottenIn(dir);
+  if (shut) return null;
+  const gone = new Set(listed.map(([k]) => k)), from = new Date(now - n * 864e5).toISOString().slice(0, 10), out = [], hush = new Map();
+  let bytes = 0;
+  for (const d of days(dir).reverse()) {
+    if (d < from) break;
+    if (performance.now() > deadline) return null;
+    let text;
+    try { text = readFileSync(dayFile(dir, d), 'utf8'); } catch { continue; }
+    if (bytes && bytes + text.length > max) break;
+    bytes += text.length;
+    for (const e of parseDay(text).entries.reverse()) {
+      if (gone.has(e.key) || e.asked === '[private]' || e.answered === '[private]' || !keep(e)) continue;
+      if (!hush.has(e.s)) hush.set(e.s, isHushed(dir, e.s, QUIET, 1));
+      if (!hush.get(e.s)) out.push(e);
+    }
+  }
+  return out;
+}
 
 // Day d without the entries `keep` refuses; its prose stays. Call under
 // withLock(dir). Returns the entries that went: none when the day changed
@@ -387,11 +433,11 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
       const p = join(projectsRoot(), f, n), s = tag(basename(n, '.jsonl'));
       // Not a conversation the journal never takes (private, or held with auto memory off; a list that won't read is no answer): it
       // had no entry to forget, and listing its turn said one was lost.
-      if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) continue;
+      if (isQuiet(dir, s)) continue;
       try {
         const { fd, size, close } = openFile(p);
         try {
-          if (marked(fd, 0, IMPORT_SEGMENT, size).hit) continue;
+          if (markFrom(fd, 0, IMPORT_SEGMENT, size).hit) continue;
           // By words, a turn is cut at its start (segments()), so its prompt and its reply are read together; a part cut inside a turn leaves it to the next.
           if (ts) {
             if (ours(dir, p)) for (const g of segments(fd, 0, seg, size, Infinity)) for (const t of new Set(g.next === null ? g.got.filter((x) => x !== g.got.open) : [...g.got, g.got.open])) { const e = t && entryOf(t, p); if (e && ts.every((w) => holds(e, w))) out.push({ ...e, day: day(e.at), dir, unsaid: true }); }
@@ -430,20 +476,11 @@ export function forget(dir, terms, { since, until, conversation, keys: only, mor
   const matched = [...have, ...more.filter((e) => !held.has(e.key) && (!since || e.day >= since) && (!until || e.day <= until))].filter((e) => (!conversation || e.s === conversation) && (!want || want.has(e.key)) &&
     ts.every((t) => holds(e, t)));
   if (!apply || !matched.length) return { matched, removed: [] };
-  const keys = new Set(matched.map((e) => e.key)), f = join(dir, FORGOTTEN), seen = new Map();
-  // Listed only while its transcript is on disk: one gone is never read
-  // again, so nothing brings its entry back, and forgetting everything listed
-  // every key, read at every Stop (final review). A line with no transcript
-  // (older) stays; so does one whose stat fails but for its absence.
-  const there = (t) => { try { statSync(join(projectsRoot(), `${t}.jsonl`)); return true; } catch (e) { return e.code !== 'ENOENT'; } };
-  const live = ([, t]) => !t || (seen.has(t) ? seen.get(t) : seen.set(t, there(t)).get(t));
+  const keys = new Set(matched.map((e) => e.key));
   return withLock(dir, () => {
     // An unwritten turn's store may have no journal folder yet: a new project whose first Stop was busy.
     mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });
-    for (let i = 0; i < 3; i++) {
-      const before = raw(f), lines = new Map([...forgotten(before), ...matched.map((e) => [e.key, e.t, e.at])].filter(live).map((l) => [l[0], l.join('\t')]));
-      if (replaceIfUnchanged(f, before, [...lines.values()].map((l) => l + '\n').join('')) !== 'conflict') break;
-    }
+    listForgotten(dir, matched);
     // A day that won't be written (not UTF-8, read-only, held open) keeps its
     // entries and is named: thrown, the days after it went untried.
     const went = new Set([...new Set(matched.map((e) => e.day))].flatMap((d) => {
@@ -517,7 +554,7 @@ function take(dir, transcriptPath, got, { quiet, hush }) {
   if (got.whole === false && statSync(transcriptPath).size - from > TAIL) {
     const { fd, size, close } = openFile(transcriptPath);
     let hit;
-    try { hit = marked(fd, from, IMPORT_SEGMENT, size).hit; } finally { close(); }
+    try { hit = markFrom(fd, from, IMPORT_SEGMENT, size).hit; } finally { close(); }
     if (hit) { hushed(dir, s, true); takeBack(dir, k, s, true); return true; }
     mark(dir, [`${k} ${size}`], null, CHECKED);
   }
@@ -664,20 +701,6 @@ function* segments(fd, at, seg, size, cap) {
   yield { got: [], next: size };
 }
 
-// Whether a typed <private-session> mark is in the bytes from `pos`, looked
-// for while `more()`: a text search, turns() only for a segment it finds one
-// in (a tag quoted in a tool's output is no mark). `pos`: where the look
-// stopped, the size when it got to the end.
-function marked(fd, pos, seg, size, more = () => true) {
-  for (let b; (b = chunk(fd, pos, seg, size)); ) {
-    const t = b.buf.toString('utf8');
-    if (PRIVATE_SESSION.test(norm(t)) && turns(t).hush) return { hit: true, pos: size };
-    pos = b.pos + b.buf.length;
-    if (pos < size && !more()) return { hit: false, pos };
-  }
-  return { hit: false, pos: size };
-}
-
 // One transcript, from where the last look left it. First the
 // <private-session> mark, looked for in every byte not looked at yet: one
 // anywhere keeps the whole conversation out, so nothing of it may be recorded
@@ -709,7 +732,7 @@ function importOne(dir, c, fd, seg, cap, more, off) {
   // A mark typed while the plugin was off is taken as its Stop takes one: the
   // conversation is marked, and what it wrote before goes, from the journal
   // and from handoff.md.
-  const look = marked(fd, c.looked, seg, size, more);
+  const look = markFrom(fd, c.looked, seg, size, more);
   if (look.hit) { hushed(dir, s, true); takeBack(dir, c.k, s, true, true); return none; }
   if (look.pos < size) return { at: c.from, size, looked: look.pos };
   const held = off(s);

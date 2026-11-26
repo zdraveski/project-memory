@@ -10,7 +10,8 @@ import { openSync, readSync, closeSync, fstatSync, readdirSync, statSync } from 
 import { join, dirname } from 'node:path';
 import { clip } from './text.mjs';
 import { PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
-import { tag, same, inProjects, local, norm, FUNC } from './store.mjs';
+import { tag, same, inProjects, local, norm } from './store.mjs';
+import { BARE } from './secrets.mjs';
 
 // ---- Records ----
 export const TAIL = 512_000;     // first read; grown 4× until it reaches the latest prompt
@@ -62,6 +63,41 @@ export function chunk(fd, pos, seg, size) {
     pos = past(fd, pos + n, size);
   }
   return null;
+}
+
+// ---- The typed <private-session> mark ----
+// The one reading of "the user typed the mark" for the git-rule hook, the compaction gate and the journal: turns().hush, so a mark
+// typed, queued or given as an answer to Claude's question counts, and one only quoted, or in a compaction summary, does not.
+// A cheap text test first; turns() only on a piece that holds the mark. norm costs ~10 ms a MB: only a line with a non-ASCII
+// character can hide the mark from the plain test.
+const holdsMark = (t) => (PRIVATE_SESSION.test(t) || t.split('\n').some((l) => /[^\x00-\x7f]/.test(l) && PRIVATE_SESSION.test(norm(l)))) && turns(t).hush === true;
+
+// Whether a typed mark is in the bytes of `fd` from `pos` (a line's start), read `seg` bytes a piece while `more()`. A line is read
+// whole however many pieces it spans (one string of a 600 MB transcript took 14 s and then threw). { hit, pos }: `pos` is where the
+// look stopped, at a line's start, or `size` at the end.
+// shortcut: turns() sees one piece at a time, so an answer whose question sits in an earlier piece is not read as typed; carry the
+// asks across pieces if that is ever met.
+export function markFrom(fd, pos, seg, size, more = () => true) {
+  const buf = Buffer.allocUnsafe(Math.max(1, Math.min(seg, size - pos)));
+  for (let rest = [], at = pos; at < size;) {
+    const n = readSync(fd, buf, 0, Math.min(buf.length, size - at), at);
+    if (!n) break;
+    at += n;
+    const piece = buf.subarray(0, n), nl = at >= size ? n - 1 : piece.lastIndexOf(10);
+    if (nl === -1) { rest.push(Buffer.from(piece)); continue; }
+    if (holdsMark(Buffer.concat([...rest, piece.subarray(0, nl + 1)]).toString('utf8'))) return { hit: true, pos: size };
+    rest = [Buffer.from(piece.subarray(nl + 1))];
+    pos = at - (n - nl - 1);
+    if (pos < size && !more()) return { hit: false, pos };
+  }
+  return { hit: false, pos: size };
+}
+
+// Whether the user typed the mark anywhere in the transcript at `path`. One that won't read counts as marked: no write is safer
+// than a write of a private conversation.
+export function typedMark(path, seg = 8 * 1024 * 1024) {
+  let f;
+  try { f = openFile(path); return markFrom(f.fd, 0, seg, f.size).hit; } catch { return true; } finally { f?.close(); }
 }
 
 // The last prompt's line before a tail of `bytes` (fewer than the file has), the line the tail cut through included:
@@ -313,11 +349,6 @@ const ranOf = (b) => {
 // handoff and the compaction note alike. NotebookEdit names its file differently.
 export const editedFile = (b) => (b?.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path)) || '';
 
-// A reply that is one token with a digit or a symbol, to a question that asks for a password, token or key: the value alone, with no
-// keyword to redact it by (secret-paths-9). shortcut: a one-word answer of letters only ("hunter") is kept.
-const ASKS_SECRET = (q) => /\b(?:pass(?:word|phrase|code)|pwd|pin|tokens?|secret|api[ _-]?key|credentials?)\b/i.test(q) && /\?|\b(?:paste|enter|send|share|provide|type|give)\b/i.test(q);
-// Also a passphrase typed alone (3 to 8 plain words). Shared with compact-gate's note. shortcut: any 3-word reply to a secret question is cut too.
-export const BARE = (a, q) => (/^\S{4,200}$/.test(a) && /[^A-Za-z]/.test(a) || /^[a-z]+(?: [a-z]+){2,7}$/i.test(a) && !a.toLowerCase().split(' ').some((w) => FUNC.has(w))) && ASKS_SECRET(q.slice(-400));
 // What an assistant record asked: its AskUserQuestion questions as text.
 const questions = (r) => (Array.isArray(r.message?.content) ? r.message.content.filter((b) => b?.type === 'tool_use' && b.name === 'AskUserQuestion').map((b) => JSON.stringify(b.input?.questions ?? '')).join(' ') : '');
 

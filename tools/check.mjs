@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
 import { suites, settle, tableOf, testsOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
-import { srcFiles } from './suites.mjs';
+import { srcFiles, pluginFiles } from './suites.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
@@ -145,6 +145,9 @@ assert.throws(() => baseOf(['--base', '--full']), /--base wants a ref/);
   assert.deepEqual([...need].filter((f) => !tracked.has(f)), [], 'a path the plugin names is not in git');
   const left = lines('check-attr', 'export-ignore', '--', ...need).filter((l) => l.endsWith(': set'));
   assert.deepEqual(left, [], 'the release archive would leave out files the plugin needs');
+  // The deploy copies pluginFiles(): the same set as the release, nothing missing and nothing untracked shipped.
+  assert.deepEqual([...need].filter((f) => !pluginFiles().includes(f)), [], 'the deploy would leave out files the plugin needs');
+  assert.deepEqual(pluginFiles().filter((f) => !tracked.has(f)), [], 'the deploy would ship files not in git');
 }
 // mutate.mjs --list --auto-lines names the automatic mutants of a line, each once, running nothing.
 {

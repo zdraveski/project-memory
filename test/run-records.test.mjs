@@ -84,6 +84,7 @@ const rmFile = (p) => rmSync(p, { recursive: true, force: true });
 // The Stop record.
 {
   const ran = join(root, '.stop-ran');
+  ok(R.stopRan() === ran, 'where the Stop record is');
   ok(R.stopRuns().length === 0, 'absent: no runs');
   R.stopRecord({ session_id: 'abcdefghij', hook_event_name: 'Stop', last_assistant_message: 'hello' });
   let [r] = R.stopRuns();
@@ -138,6 +139,21 @@ const rmFile = (p) => rmSync(p, { recursive: true, force: true });
   ok(R.notes(d).length === 0, 'null: nothing said');
   rmFile(f); folder(f);
   ok(R.lostHandoff(d) === null && R.notes(d).length === 0, 'unreadable: none');
+  // The writers: one file a project, its fields as older releases wrote them (status and the briefing read those too).
+  rmFile(f);
+  R.handoffFailed(d, new Error('disk full'));
+  ok(Object.keys(JSON.parse(readFileSync(f, 'utf8'))).join() === 'at,error' && R.lostHandoff(d).error === 'disk full', 'a failure kept: at and error');
+  ok(process.platform === 'win32' || (statSync(f).mode & 0o777) === 0o600, 'kept 0600');
+  const other = fresh('lost-other');
+  R.handoffSaved(other);
+  ok(R.lostHandoff(d).error === 'disk full', "another project's save clears none of this one's");
+  R.handoffFailed(d, new Error('tag'), true);
+  ok(R.lostHandoff(d).off === true && R.notes(d)[0].includes('auto memory off'), 'with auto memory off: off, said in its own words');
+  R.handoffSaved(d); R.handoffSaved(d);
+  ok(!existsSync(f) && R.lostHandoff(d) === null, 'a save clears it, and clearing none is no error');
+  folder(join(f, 'x'));
+  assert.throws(() => R.handoffFailed(d, new Error('e'))); checks++;
+  rmFile(f);
 }
 
 // The journal's failure records.

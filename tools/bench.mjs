@@ -21,8 +21,8 @@ import { liveTimes } from './live-times.mjs';
 import { pct, stats, read, FILE } from '../src/timing.mjs';
 import { build, PROJECT, CWD } from './bench-store.mjs';
 
-const OURS = ['memory-tier.mjs', 'brief.mjs', 'enforce-hook.mjs', 'compact-gate.mjs', 'handoff-log.mjs', 'recall-hook.mjs'];
-// The name timing.mjs gives each script's lines; handoff-log.mjs writes none.
+const OURS = ['memory-tier.mjs', 'brief.mjs', 'enforce-hook.mjs', 'compact-gate.mjs', 'recall-hook.mjs'];
+// The name timing.mjs gives each script's lines.
 const HOOK = { 'memory-tier.mjs': 'save', 'brief.mjs': 'brief', 'enforce-hook.mjs': 'enforce', 'compact-gate.mjs': 'gate', 'recall-hook.mjs': 'recall' };
 const EMPTY = 'node, empty script';
 const VALUED = ['--plugin', '--json', '--scale', '--project', '--days'];

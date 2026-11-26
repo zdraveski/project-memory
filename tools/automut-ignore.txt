@@ -4,7 +4,7 @@ ef44dbfc2564 src/store.mjs:59 `!common || !back` -> `&&`: an empty commondir alo
 0e42b79e5f8f src/compact-gate.mjs:232 gate's `{ ask: false }` -> `true`: ask only decides how far back state() reads (until the prompt is found, or the whole file); ctx and midTurn come from the newest assistant record, which a longer read finds the same, so the verdict is identical and only the read cost differs
 45a440a10c4d src/compact-gate.mjs:288 nudge's early `private list || memory-off list` -> `&&`: that return only spares the reads of a conversation either list names; such a conversation still gets no nudge, since secret() -> marked() further down reads both lists and returns null, so only the read cost differs
 f32aed578ab9 src/compact-gate.mjs:272 nudge's first `state(..., { ask: false })` -> `true`: ask only sets how far back state() reads; the code after it uses s.ctx alone, which comes from the newest assistant record and is the same for any read that holds it, so only the read cost differs
-c08e7d29a55a src/memory-tier.mjs:499 main's `pauseAt === -1` -> `-2`: indexOf gives -1 or an index of 0 or more, so `=== -2` is never true and the other arm always runs; with no --pause that arm reads argv[0], the run's first argument: none, or a flag (--dir, --stop, --dry-run, --now), whose Number() is NaN, so `|| 0` gives the same PAUSE of 0 the real arm gives (a bare number first is no usage the tool has), and with --pause present both versions take the same arm
+8bae40e6dc01 src/memory-tier.mjs:563 main's `pauseAt === -1` -> `-2`: indexOf gives -1 or an index of 0 or more, so `=== -2` is never true and the other arm always runs; with no --pause that arm reads argv[0], the run's first argument: none, or a flag (--dir, --stop, --dry-run, --now), whose Number() is NaN, so `|| 0` gives the same pause of 0 the real arm gives (a bare number first is no usage the tool has), and with --pause present both versions take the same arm
 8d061f72be89 src/memory-tier.mjs:220 byAge's `a.target < b.target` -> `<=`: the two differ only for two equal targets, and sort() is only ever asked to order two different elements while place() keeps one line per target (a second pointer for the same file is dropped as a duplicate), so equal targets never meet
 90cbb78763e3 src/memory-tier.mjs:220 byAge's `a.target > b.target` -> `>=`: the two differ only for two equal targets, which never meet in one sort because place() keeps one line per target
 93ce842b8447 src/memory-tier.mjs:220 byAge's final `: 0` -> `: 1`: that 0 is the answer for equal targets, which never meet in one sort because place() keeps one line per target
@@ -14,7 +14,7 @@ c08e7d29a55a src/memory-tier.mjs:499 main's `pauseAt === -1` -> `-2`: indexOf gi
 1af11d9cd3b3 src/memory-tier.mjs:278 `let wrote = false` -> `true`: every non-dry pass assigns wrote from the three writes before it is read, and a dry pass never reads it (its only reader, r.wrote at the print gate, sits behind `!dry &&`), so the initial value is never seen
 a6deb056aac9 src/handoff-log.mjs:461 `bytes >= 32e6` -> `>`: bytes in latest() is TAIL * 4^k = 512000, 2048000, 8192000, 32768000, ..., a sequence that never equals 32e6, so `>=` and `>` give the same answer for every value it takes
 f51e9bcb1695 src/handoff-log.mjs:496 keep()'s final sort comparator `x.s > y.s ? 1 : 0` -> `>=`: for two entries of one session in one minute it returns 1 where 0 was, so the comparator disagrees with itself; the ECMAScript spec leaves the order of such a sort to the engine, and only V8's sort (which reads every comparison as < 0 or not, and the plugin runs only on Node, i.e. V8) makes the two versions order alike, so no test on Node can tell them apart
-401d58b3d29b src/handoff-log.mjs:504 build()'s default `whole = false` -> `true`: the default applies only when put() is given no `whole`, which is unsay() (handoff() always passes a boolean got.whole), and unsay has no fresh entries and no `me`: `covered` is read only inside fresh.some(), and `whole && me && t.s === me` has `me` undefined, so whole is never seen
+affe6fcf3d83 src/handoff-log.mjs:173 build()'s default `whole = false` -> `true`: the default applies only when put() is given no `whole`, which is unsay() (handoff() always passes a boolean got.whole), and unsay has no fresh entries and no `me`: `covered` is read only inside fresh.some(), and `whole && me && t.s === me` has `me` undefined, so whole is never seen
 f99fabaf9ecc src/handoff-log.mjs:668 `a !== -1` -> `-2` in the since hint: the test is false only when sectionOf finds no section, where it returns a and b both -1, so the slice d.slice(-1, -1) is empty, parse of it has no entry, and since stays null either way.
 fac2cc50af79 src/handoff-log.mjs:472 `doc.lastIndexOf(START, a - 1)` -> `a - 2`: two copies of START cannot overlap (the text starts with `<` and has no other `<!-- auto:start -->` inside it), so a copy that starts at a - 1 does not exist and the search from a - 2 finds the same previous copy.
 52b2bfa452ae src/handoff-log.mjs:474 `doc.indexOf(END, b + 1)` -> `b + 2`: two copies of END cannot overlap, so none starts at b + 1 and the search from b + 2 finds the same next copy.
@@ -23,7 +23,7 @@ fac2cc50af79 src/handoff-log.mjs:472 `doc.lastIndexOf(START, a - 1)` -> `a - 2`:
 17e6d753f42c src/handoff-log.mjs:496 keep()'s final comparator `x.s < y.s ? -1` -> `-2`: a sort comparator is read only as negative, zero or positive, so -2 and -1 order alike.
 17e6d753f42c src/handoff-log.mjs:496 keep()'s final comparator `x.s > y.s ? 1` -> `2`: a sort comparator is read only as negative, zero or positive, so 2 and 1 order alike.
 7065fff7859c src/handoff-log.mjs:496 keep()'s final comparator `: 0` -> `: 1` for equal time and session: same as the `>=` entry above: the comparator then disagrees with itself, the spec leaves that order to the engine, and only V8's sort (which reads every comparison as < 0 or not; the plugin runs only on Node) keeps the two equal entries in order, so no test on Node can kill it
-4024e073c92e src/handoff-log.mjs:504 build()'s default `me = fresh[0]?.s` -> `fresh[1]?.s`: put() always passes a string for me (tag() returns one, '' for no session), so the default applies only from unsay(), which passes no fresh entries: fresh[0] and fresh[1] are both undefined there.
+c6d04ca688fe src/handoff-log.mjs:173 build()'s default `me = fresh[0]?.s` -> `fresh[1]?.s`: put() always passes a string for me (tag() returns one, '' for no session), so the default applies only from unsay(), which passes no fresh entries: fresh[0] and fresh[1] are both undefined there.
 d28e8f3cb768 src/journal.mjs:169 record()'s sort comparator `a.key < b.key` -> `<=`: the keys compared are the keys of a Map, so no two entries have the same key and the equal case that tells `<` from `<=` never reaches this test; the order of entries of one minute is checked by the other comparisons on that line
 7436afcf32ea src/journal.mjs:169 record()'s sort comparator `a.key > b.key` -> `>=`: the keys compared are the keys of a Map, so no two entries have the same key and the equal case that tells `>` from `>=` never reaches this test (the a.at comparisons before it are killed by the key-order test)
 f9b48bbf2ae0 src/transcript.mjs:495 past()'s `pos < size` -> `<=`: the two differ only at pos === size, where the mutant reads 0 bytes (readSync with length 0 returns 0, checked on this Node), finds no newline in an empty buffer and leaves the loop at once, returning size as the real code does after its loop
@@ -41,7 +41,7 @@ a3ca0ecabe57 src/journal.mjs:169 record()'s sort comparator final `: 0` -> `: 1`
 7447180361a8 src/journal.mjs:532 segments()'s `over` not-found value `-1` -> `-2`: `over` is only compared as `over > 0` afterwards, and both values fail it
 270960b527e0 src/journal.mjs:535 segments()'s `cut = i === -1 ? -1 : ...` -> `-2`: `cut` is only compared as `cut > 0` and `cut === 0` afterwards, and both values fail both
 d9674fc2312d src/memory.mjs:48 the fallback `holds = () => false` -> `true`: holds is called only inside `all.some(...)` in forget's miss message, where `all` is forget(...).matched, and the fallback forget returns matched: entries([dir], o), which the fallback entries makes [] for every input; the callback never runs, so the return value is never read
-d8f25b07624f src/memory.mjs:272 recent()'s `let first = false` -> `true`: git log with `--format=@%s` writes a line starting with `@` before any name-status line (or nothing, whose one empty line `!f` skips with either value), and the loop assigns `first` on that line before any other line is read, so the initial value is never read
+1781f524cf25 src/snapshot.mjs:454 changedLately()'s `let first = false` -> `true`: git log with `--format=@%s` writes a line starting with `@` before any name-status line (or nothing, whose one empty line `!f` skips with either value), and the loop assigns `first` on that line before any other line is read, so the initial value is never read
 19cd6310ce4e src/memory.mjs:160 memories()'s body `indexOf('\n', end + 1)` -> `end + 2`: end is where `\n---` starts, so end + 1 and end + 2 are both `-` characters of the closing fence, never a newline; the search finds the same newline from either
 4ff3fee782d4 src/text.mjs:393 clip()'s bound `6` -> `7`: one more cut than the 7 allowed. At every width a writer clips to (2,000 at most) every input is stable by the 7th cut: the hardest, a `-u` run at 2,000, needs exactly 7, and a test pins that (it kills `0` -> `1`). Only a `-u` value longer than about 2,300 characters clipped at Infinity reaches the bound, where an 8th cut redacts about 380 more of its characters, and no rule pins where a clip at Infinity stops
 00e0650dde94 src/text.mjs:393 clip()'s bound `i < 6` -> `<=`: as `6` -> `7` above: one more cut, which only a `-u` run clipped at Infinity past the bound can reach
@@ -52,7 +52,7 @@ c096dba8b6d9 src/text.mjs:404 clip's cap `> 8e6` -> `>=`: they differ only at ex
 84accffa4ab0 src/text.mjs:404 clip's cap `(clippedSize += k.length) > 8e6` -> `!(...)`: the cache is emptied at every keep under the cap, so it holds only the newest clip; any cache however it empties answers with the clip cut() computes, since clip is pure, so the output is the same
 ec3f5eefa472 src/memory-tier.mjs main's `lockBudget(stop);` -> `void 0;`: the hand-written mutant "the Stop's locks wait 2 s each" ({ full: true }) is this one and is killed; the check that kills it waits 2 s of real time with two locks held, so it is skipped under --mutant
 269e5b5489be src/snapshot.mjs stage's `todo.length > batch` -> `>=`: with exactly `batch` files left, they are added as a part and the parts end at the next run, not this one; the same files are committed, a reply later
-52a4f5c23e0f src/snapshot.mjs snapshotHealth's busy `> GIT_LOCK_STALE` -> `>=`: they differ only for a busy streak exactly ten minutes old to the millisecond, which counts one reply sooner
+cc53a35352df src/snapshot.mjs record's busy `> GIT_LOCK_STALE` -> `>=`: they differ only for a busy streak exactly ten minutes old to the millisecond, which counts one reply sooner
 b017a0c6e546 src/store.mjs withLock's `Math.max(0, ...)` -> `Math.max(1, ...)`: a spent wait leaves 1 ms instead of none, so the next held lock may get one more 25 ms look; a run's wait stays about 2 s, and a free lock is taken either way
 1a342128e413 src/store.mjs sweepTemps' `process.kill(pid, 0)` -> `process.kill(pid, 1)`: not to be run, not harmless: signal 1 is SIGHUP, sent for real to whatever process holds that pid off Windows (Windows refuses it, ENOSYS, and the copy is kept); the hand-written mutant "a dead writer's temp copy kept" takes the whole ask out and is killed
 17a02d64cb2b src/store.mjs sweepTemps' age `> LOCK_STALE` -> `>=`: they differ only for a temp copy exactly 30 s old to the millisecond, swept one look sooner
@@ -72,7 +72,6 @@ e8abd320db15 src/store.mjs:313 the takeover's `renameSync(lock, dead);` -> `void
 92bca2cac00c src/store.mjs:315 the takeover's `let fresh = false` -> `true`: the value matters only when the renamed copy cannot be stat'ed; then the put-back rename fails the same way and the copy is left for sweepTemps
 fa830e083dbe src/store.mjs:315 the takeover's freshness `<= LOCK_STALE` -> `<`: the two differ only for a lock exactly LOCK_STALE old to the millisecond
 695b9354e37f src/store.mjs:317 the takeover's cleanup `force: true` -> `false`: the copy exists (we just renamed it), so force has nothing to silence; a failure is caught either way
-f84bb09a9bad src/run-records.mjs:629 the log cut's cleanup `force: true` -> `false`: after a successful rename the temp copy is gone and rmSync then throws, into the try/catch around the whole proof-of-life block, which swallows it; nothing after it in that block
 8b85aa853fa4 tools/deploy.mjs:70 rmSync's `force: true` -> `false`: the call sits in a try that swallows every error, so the only thing force changes is a missing file, which throws ENOENT and is swallowed; a file that is there is removed either way
 70eff8199afa src/handoff-log.mjs:890 rmSync's `force: true` -> `false` for the PREV copy: the call is in a try that swallows every error, so a missing copy throws ENOENT and is swallowed, and one that is there is removed either way
 08b97b7f4943 src/enforce.mjs:115 `i < toks.length` -> `<=`: at i === length toks[i] is undefined, which the loop's `!toks[i]` takes in, it adds one to i and ends; the next line reads `toks[i++] ?? ''` and finds no git either way
@@ -80,15 +79,14 @@ a813c8ac41d0 src/enforce.mjs:149 `CACHE_V = 3` -> 4: the number is only compared
 3d0b57670eb2 src/memory-tier.mjs:729 `s === 'busy' && stop` -> `||`: this sits inside `if (stop)`, so stop is always true and `s === 'busy' || stop` is always true; a Stop that is not busy would only handoff a second time (the same turn, already written: nothing changes) after a 0.2-0.8 s pause
 e08950158239 src/memory-tier.mjs:729 the retry's `lockBudget(true)` -> `false`: the retry takes one lock, and one lock waits LOCK_WAIT with a budget of LOCK_WAIT or with none, so the retry waits the same 2 s either way
 83bb2bd6cee3 src/journal.mjs:240 `!t && !r.whole` -> `||`: with a turn found, the look back re-picks the same turn (the latest one opened by the start); with the whole file read, promptBefore finds no earlier prompt and `a.open` is the turn pick() gave; only a `<private-session>` before the tail would differ, and the Stop that read it has listed the conversation as private, which hushed() reads first
-8d873696dfe1 src/memory.mjs:586 dropPaths `e < 0` -> `e < 1`: e is an absolute index and the stream starts with "blob" or "commit", so no line ends at index 0; e < 0 is only the no-newline-at-all case, which fast-export never gives
-aa8291d1a60a src/memory.mjs:584 `e < 0` -> `e <= 0`: indexOf(10, at) is 0 only for a stream that starts with a newline, and git fast-export's never does
-7472e4deefd1 src/memory.mjs:584 `buf.length - 1` -> `- 2`: the fallback is only taken by a last line with no newline, and git fast-export's stream ends in one
+33ac711c8c98 src/snapshot.mjs:470 dropPaths `e < 0` -> `e < 1`: e is an absolute index and the stream starts with "blob" or "commit", so no line ends at index 0; e < 0 is only the no-newline-at-all case, which fast-export never gives
+53666367d728 src/snapshot.mjs:470 `e < 0` -> `e <= 0`: indexOf(10, at) is 0 only for a stream that starts with a newline, and git fast-export's never does
+c6ca76da22a3 src/snapshot.mjs:470 `buf.length - 1` -> `- 2`: the fallback is only taken by a last line with no newline, and git fast-export's stream ends in one
 7ec16a06f1e1 src/memory.mjs:1208 show's `args.length > 1` -> `>= 1`: with one word, `[args.join(' ')]` is `args`, the same key
-2c0eda3adf56 src/memory.mjs:588 the D line's `exec(t)?.[1]` -> `[2]`: the D line of a path the purge drops is then kept, which deletes a file the stream never made (its M lines are dropped), and fast-import takes that without a word; the M line's group is the one the purge tests watch
+c1086dc7dbaf src/snapshot.mjs:474 the D line's `exec(t)?.[1]` -> `[2]`: the D line of a path the purge drops is then kept, which deletes a file the stream never made (its M lines are dropped), and fast-import takes that without a word; the M line's group is the one the purge tests watch
 155c141f657e src/enforce.mjs:115 `&&` -> `||` in the lead-word loop: it never ends (every token satisfies `i < length || ...` once past the end), so the suite hangs until the 120 s clock cuts it off and it is reported TIMED OUT; a hang is a kill that no assertion can state
 426ebfcbdd72 src/memory.mjs:174 take()'s initial `first = false` -> `true`: `first` is read only in a branch that needs `own`, and `own` becomes true only on the line that assigns `first`, so the initial value is never read
-981528005deb src/memory.mjs:316 told()'s filter `return false` -> `return undefined`: Array.filter reads only truthiness, undefined and false are both falsy
-c9c7fb2da9ac src/memory.mjs:384 `w.length || 1` -> `|| 2`: terms is never empty here (told() is asked for only when terms.length), so w.length is at least 1 and the fallback is never taken
+c9c7fb2da9ac src/memory.mjs:384 `w.length || 1` -> `|| 2`: terms is never empty here (visible() is asked for only when terms.length), so w.length is at least 1 and the fallback is never taken
 bfab7e06c696 src/memory.mjs:404 handoffBig()'s `catch { return null; }` -> `catch {}`: n is still 0 after a failed stat, and 0 > HANDOFF_WARN returns null on the next line anyway
 582430182799 src/memory.mjs:404 handoffBig()'s initial `n = 0` -> `1`: n is read only after the stat sets it, or after a failed stat returns; either way 1 > HANDOFF_WARN is as false as 0 > HANDOFF_WARN
 4c0dfb16d4d3 src/memory.mjs:433 `parse(doc.slice(a, b))` -> `slice(a, b + 1)`: the extra character is the `<` of the end marker, which parse takes as a continuation line of the last exchange; status prints only the count, the session ids and the last `at`, none of which it changes
@@ -100,18 +98,18 @@ fa0960a75fd3 src/memory.mjs:438 `j?.first` -> `j.first`: summary() always return
 fa0960a75fd3 src/memory.mjs:438 `j?.failed` -> `j.failed`: summary() always returns an object, never null
 4d118630c3a3 src/memory.mjs:440 `j?.unread` -> `j.unread`: summary() always returns an object, never null
 e3eb09700949 src/memory.mjs:440 `j?.unread ?? []` -> `|| []`: an absent unread is undefined and an array is truthy even when empty, so `??` and `||` give the same array
-262c9dc6e6fd src/memory.mjs:347 `next.length >= body.length` -> `>`: a cut always removes at least the start marker, so next is always shorter; the equal case that tells >= from > never arises
-80f701ac1919 src/memory.mjs:345 `a === -1` -> `a === -2`: with a = -1 b is undefined, next is the body plus all but its last character, longer than the body, and the length guard on the next line breaks out exactly as `a === -1` would
-9618b1b561c1 src/memory.mjs:344 `?? { a: -1 }` -> `|| { a: -1 }`: find() returns an object or undefined, and an object is never falsy, so both give the same
-ee80272cb2f4 src/memory.mjs:586 dropPaths `buf.length - 1` -> `buf.length + 1`: the line that has no final newline; fast-export output always ends with one, so no input reaches it
-f6a6f8a3376b src/memory.mjs:583 `({ n: '\n', t: '\t' })[c] ?? c` -> `|| c`: the mapped values are '\n' and '\t', never falsy, so both give the same
-ec1ae37de0ce src/memory.mjs:590 dropPaths `?.[1] ?? /^D` -> `|| /^D`: the M line's path is never the empty string, so `??` and `||` give the same
+994eb06c0ecd src/handoff-log.mjs:142 handWritten's `next.length >= body.length` -> `>`: a cut always removes at least the start marker, so next is always shorter; the equal case that tells >= from > never arises
+00f9802b09d2 src/handoff-log.mjs:140 handWritten's `a === -1` -> `a === -2`: with a = -1 b is undefined, next is the body plus all but its last character, longer than the body, and the length guard on the next line breaks out exactly as `a === -1` would
+0f531d10327c src/handoff-log.mjs:139 handWritten's `?? { a: -1 }` -> `|| { a: -1 }`: find() returns an object or undefined, and an object is never falsy, so both give the same
+c692bd3f1bb0 src/snapshot.mjs:470 dropPaths `buf.length - 1` -> `buf.length + 1`: the line that has no final newline; fast-export output always ends with one, so no input reaches it
+d65ccde4a578 src/snapshot.mjs:467 `({ n: '\n', t: '\t' })[c] ?? c` -> `|| c`: the mapped values are '\n' and '\t', never falsy, so both give the same
+8c356e13b240 src/snapshot.mjs:474 dropPaths `?.[1] ?? /^D` -> `|| /^D`: the M line's path is never the empty string, so `??` and `||` give the same
 f2466f95588a src/memory.mjs:773 catch `{ return ''; }` -> `{}`: the value is only joined into text, and [undefined].join gives the same empty string as ''
 33501b7bc209 src/memory.mjs:773 catch `return ''` -> `undefined`: same join, an undefined element prints as the empty string
 c9b2278d4500 src/memory.mjs:858 `?? ''` -> `|| ''`: the value is null or a string, and null and '' both give ''
 baa7281256d3 src/memory.mjs:846 `: false` -> `: true`: failed(true) is false and true is not 'conflict', so both branches read the same
-60aef809f619 src/run-records.mjs:864 `?.` -> `.`: a throw is caught by the surrounding try, which gives the same result as the guard
-3d6e9304cf10 src/run-records.mjs:864 `?? ''` -> `|| ''`: null and '' both give ''
+c781c6560549 src/run-records.mjs:66 `?.` -> `.`: a throw is caught by the surrounding try, which gives the same result as the guard
+89e4c41af3f2 src/run-records.mjs:66 `?? ''` -> `|| ''`: null and '' both give ''
 f7a8c2543d42 src/memory.mjs:936 `?.` -> `.`: a throw is caught by the surrounding try, which gives the same result as the guard
 a1c97591acd3 src/memory.mjs:869 SubagentStop `?.` -> `.`: the PreToolUse check just before it already needed hooks.json to parse with a hooks object, so neither can be missing here
 3dcecb3f69df src/memory.mjs:869 SubagentStop `?.` -> `.`: the PreToolUse check just before it already needed hooks.json to parse with a hooks object, so neither can be missing here
@@ -121,20 +119,19 @@ e4e594310916 src/memory.mjs:948 `return false` -> `undefined`: the result goes t
 afd16d34272a src/memory.mjs:1019 `was.since ?? statSync` -> `||`: since is a time in ms, never 0 (the epoch), so ?? and || agree
 899d8e811c87 src/memory.mjs:577 rmSync force on a tmp file that always exists at that point: force only matters for a missing file
 2980b7f8b34f src/memory.mjs:567 rmSync force on a tmp file that always exists at that point: force only matters for a missing file
-99c9a7bf8d5f src/memory.mjs:612 flag false -> true: fast-export input has no case where the flag changes the output
-b26f3db8b811 src/memory.mjs:614 `<` -> `<=`: fast-export streams end with a newline, so the boundary position is never reached
-1a477ee2d288 src/memory.mjs:614 `-` -> `+`: fast-export streams end with a newline, so the boundary position is never reached
-148b3a0ebc46 src/memory.mjs:614 `0` -> `1`: fast-export streams end with a newline, so the boundary position is never reached
-e9ab70a9dc5b src/memory.mjs:614 `1` -> `2`: fast-export streams end with a newline, so the boundary position is never reached
+4a5052938ad8 src/snapshot.mjs:490 flag false -> true: fast-export input has no case where the flag changes the output
+4d1da218836c src/snapshot.mjs:492 `<` -> `<=`: fast-export streams end with a newline, so the boundary position is never reached
+0a92d889527d src/snapshot.mjs:492 `-` -> `+`: fast-export streams end with a newline, so the boundary position is never reached
+7bd510acf62f src/snapshot.mjs:492 `0` -> `1`: fast-export streams end with a newline, so the boundary position is never reached
+eab881a0b30a src/snapshot.mjs:492 `1` -> `2`: fast-export streams end with a newline, so the boundary position is never reached
 b3c73717b3ce src/memory.mjs:606 `>` -> `>=`: the two lengths are never equal for any stream git writes
-1a63f88983ee src/memory.mjs:636 catch `{ return []; }` -> `{}`: the caller spreads or filters the result and undefined acts as empty
-e9aa0973d64c src/memory.mjs:636 `[]` -> `undefined`: the caller spreads or filters the result and undefined acts as empty
-c247f7496e1b src/memory.mjs:635 dropping the `blob` filter: the lines it removes are not blobs in any history git writes here, so every line passes either way
+7d5c352394a2 src/snapshot.mjs:516 catch `{ return []; }` -> `{}`: the caller spreads or filters the result and undefined acts as empty
+d931481efc68 src/snapshot.mjs:516 `[]` -> `undefined`: the caller spreads or filters the result and undefined acts as empty
+f14329910cc0 src/snapshot.mjs:515 dropping the `blob` filter: the lines it removes are not blobs in any history git writes here, so every line passes either way
 8eeb753e1dd7 src/memory.mjs:652 `?? ''` -> `|| ''`: null and '' both give ''
 331f142ec238 src/memory.mjs:674 dropping the `x.dir === dir` filter: the list holds one dir at that point, so the filter keeps everything
 67cb705e446e src/compact-gate.mjs:237 recover's `{ ask: false }` -> `{ ask: true }`: the two reads end on the same last events (the tail's own, which the longer read only precedes), so both give the same midTurn; `ask` only sets how far back the read goes
 e082de2ab000 src/compact-gate.mjs:67 `PCT < 96` -> `PCT <= 96`: at PCT = 96 the cut is 96 / 96 = 1, the value the other branch gives
-15d688a4492f src/compact-gate.mjs:213 inflight's `return false` -> `return undefined`: the gate reads the result as `!n` (nothing written) and both are falsy
 9ac3a6cd71c6 src/compact-gate.mjs:333 arm's `catch { return false; }` -> `undefined`: its callers read only the truthiness of the result (`!arm(...)`, or ignore it), and both are falsy
 ba7fcf20d302 src/compact-gate.mjs:391 isOff's `catch { return false; }` -> `{}`: the catch then yields undefined, read as `else if (payload && undefined)`, falsy as false is
 dc0bec9fd1e7 src/compact-gate.mjs:391 isOff's catch `return false` -> `return undefined`: read as `else if (payload && undefined)`, falsy as false is
@@ -172,19 +169,14 @@ ad86a9689a44 src/journal.mjs:736 `return false` -> `undefined`: the backfill loo
 7eb2e375928a src/memory-tier.mjs:127 `return false` -> `undefined`: isHot's callers use the result in a ternary or `&&`, where undefined is false.
 a5daf90bfe2a src/memory-tier.mjs:218 `memo?.was` -> `memo.was`: memo is the object built a few lines above and is never null here.
 157b1cfc747c src/memory-tier.mjs:238 `catch {...}` -> `catch {}`: a note that cannot be stat'ed leaves `at` undefined, the grace test is NaN < ORPHAN_GRACE (false), and factsFor then stats the same file: it returns null for a missing one and throws the same BUSY error for a held one.
-08103cf9ea54 src/snapshot.mjs:419 `?? ''` -> `|| ''`: raw() gives a string or null, and the only falsy string is '' itself, which `|| ''` leaves as ''.
 141e8dd48609 src/snapshot.mjs:438 `catch { continue; }` -> `catch {}`: a lock that cannot be stat'ed is gone (or unreadable); age stays undefined, `undefined < GIT_LOCK_STALE` is false, and the unlink that follows ignores ENOENT, so the loop goes on the same way.
 4d0b778faa14 src/snapshot.mjs:514 `catch { return false; }` -> `catch {}`: allStores() already drops every store whose realpathSync fails, so the catch cannot be reached.
 53f4a0bb551e src/memory-tier.mjs:514 `return false` -> `undefined`: the filter callback is read for truthiness only.
 53f4a0bb551e src/memory-tier.mjs:514 `return false` -> `undefined`: the filter callback is read for truthiness only (and the catch it sits in cannot be reached, see the line above).
 667df081315c src/memory-tier.mjs:527 `let at = 0` -> `1`: the first reply line then starts one character later, which is still `<oid> blob <bytes>` (three words) or `<path> missing`, and `at` is set from the line end, so every later read is unchanged.
 62c4e4d323a5 src/memory-tier.mjs:487 `return 0` -> `undefined`: the caller reads `rest` for truthiness only (`if (!rest)`, `rest ?` in the result).
-a9fa05eebb80 src/snapshot.mjs:555 `return null` -> `undefined`: snapshot's result is read as `s === 'busy'`, `if (s)` and by snapshotHealth's `typeof s === 'string'` checks, so undefined and null mean the same.
-dfe519a4ddde src/snapshot.mjs:560 `let n = 1` -> `2`: n is only read as `!n`, and both values are truthy.
-3c24463f392c src/snapshot.mjs:560 `return null` -> `undefined`: snapshot's result is read as `s === 'busy'`, `if (s)` and by snapshotHealth's `typeof s === 'string'` checks, so undefined and null mean the same.
+64d236a55dc5 src/snapshot.mjs:295 `let n = 1` -> `2`: n is only read as `!n`, and both values are truthy.
 9209b6cf3bc9 src/snapshot.mjs:609 `?? {}` -> `|| {}`: JSON.parse gives null or a value; the values `||` would replace (0, false, '') have no fields and spread to nothing, exactly as {} does.
-d11c6c42ecda src/memory-tier.mjs:627 `catch { return false; }` -> `catch {}`: owed() is only read for truthiness, and undefined is false.
-7b9f6cea0cff src/memory-tier.mjs:627 `return false` -> `undefined`: owed() is only read for truthiness, and undefined is false.
 d5b5772aa067 src/transcript.mjs:163 stick()'s miss value -1 -> -2: every caller tests only whether the result is below 0, and the one equality (=== v) is guarded by v >= 0, so -2 and -1 behave alike
 6ac148ba046b src/transcript.mjs:171 stick(F_END) >= 0 -> > 0: a hit is a lastIndex of at least 1 (F_END starts with s+, so it consumes a character), never 0; no input tells them apart
 ab6e4a1566e2 src/handoff-log.mjs:171 stick(F_END) >= 0 -> >= 1: a hit is a lastIndex of at least 1, a miss is -1; no input tells them apart
@@ -220,16 +212,16 @@ c02665dfb596 src/store.mjs:202 `low.get(...) ?? []` -> `|| []` in opener's loop:
 5b53940851c6 src/store.mjs:257 `t.slice(0, end)` -> `slice(0, end + 1)`: the frontmatter then ends with the newline that precedes the closing `---`, and every pattern in front() treats a newline as the end of a line (`$` with the m flag, `\n|$`, a block that needs one more indented line), so no value, key or block changes
 ea424e33a2fd src/store.mjs:269 `...?.[1] ?? ''` -> `|| ''` in block(): group 1 is one or more indented lines, never an empty string, so both pick the same side
 64114bf60162 src/store.mjs:334 `(text ?? '')` -> `(text || '')` in listOf: the text is a string or null, an empty string splits to the same nothing as '', so both give the same lines
-6cbb03dc5b04 src/store.mjs:719 `(a ?? b)` -> `(a || b)`: group 1 is undefined (the base64 -d branch matched) or holds at least `echo ` or `printf `, never an empty string, so both pick the same side
-81f9094fd063 src/store.mjs:860 `d ?? h` -> `d || h`: d is undefined or the digits of `&#NN;`, a string that is truthy even when it is "0", so both pick the same side
-7bf780150d8f src/store.mjs:891 `let open = -1` -> `-2`: open is only ever compared with `< 0` and `>= 0`
-afb3157d7ba9 src/store.mjs:894 `open < 0` -> `open <= 0`: open is -1 or the end of a match of at least `<private`, so at least 8, never 0
-1c82b75e1d14 src/store.mjs:894 `open < 0` -> `open < 1`: open is -1 or at least 8, never 0
-cbf0714993e0 src/store.mjs:895 `open >= 0` -> `open > 0`: open is -1 or at least 8, never 0
-37f0165b36b6 src/store.mjs:895 `open >= 0` -> `open >= 1`: open is -1 or at least 8, so no value tells 0 from 1
-1297d1e32168 src/store.mjs:895 `open = -1` -> `open = -2`: open is only ever compared with `< 0` and `>= 0`
-bc8d2c85aef8 src/store.mjs:897 `open >= 0` -> `open > 0`: open is -1 or at least 8, never 0
-6bb034ea7c2d src/store.mjs:897 `open >= 0` -> `open >= 1`: open is -1 or at least 8, so no value tells 0 from 1
+b79beaf1d341 src/secrets.mjs:246 `(a ?? b)` -> `(a || b)`: group 1 is undefined (the base64 -d branch matched) or holds at least `echo ` or `printf `, never an empty string, so both pick the same side
+0df19c8cacf6 src/secrets.mjs:387 `d ?? h` -> `d || h`: d is undefined or the digits of `&#NN;`, a string that is truthy even when it is "0", so both pick the same side
+69719bd7910e src/secrets.mjs:419 `let open = -1` -> `-2`: open is only ever compared with `< 0` and `>= 0`
+af38a45a8ec6 src/secrets.mjs:422 `open < 0` -> `open <= 0`: open is -1 or the end of a match of at least `<private`, so at least 8, never 0
+f1d7b14f5c45 src/secrets.mjs:422 `open < 0` -> `open < 1`: open is -1 or at least 8, never 0
+d8f075b3b535 src/secrets.mjs:423 `open >= 0` -> `open > 0`: open is -1 or at least 8, never 0
+3e361931a167 src/secrets.mjs:423 `open >= 0` -> `open >= 1`: open is -1 or at least 8, so no value tells 0 from 1
+db5953ef71ae src/secrets.mjs:423 `open = -1` -> `open = -2`: open is only ever compared with `< 0` and `>= 0`
+da68c3c4f577 src/secrets.mjs:425 `open >= 0` -> `open > 0`: open is -1 or at least 8, never 0
+46ab54e2ce3b src/secrets.mjs:425 `open >= 0` -> `open >= 1`: open is -1 or at least 8, so no value tells 0 from 1
 dce76c8ce464 src/enforce.mjs:15 `slice(0, end)` start `0` -> `1`: it drops only the first `-` of the opening `---` line, and no `enforce:` line or indented line is ever that one
 2454352ac194 src/enforce.mjs:15 `slice(0, end)` -> `end + 1`: it adds the newline that ends the last front-matter line, so `split` gains one empty last line, and the loop skips a line with no non-blank character
 9f94d32e054d src/enforce.mjs:40 `got.on ?? ''` -> `||`: got.on is a string or undefined; an empty string and undefined both split to no words
@@ -246,9 +238,6 @@ e66692c75db6 src/enforce.mjs:81 `lines.length - 1` -> `+ 1`: the break only skip
 608dfe4c8e22 src/enforce.mjs:166 `got = 0` -> `1`: got is only read after a successful readSync, which sets it; on a throw the finally closes the fd and the error leaves the try
 ad9f63d17fc7 src/enforce.mjs:170 `r ?? null` -> `||`: r is null or an object (never a falsy non-null value), so both give the same
 808c65dd0e98 src/enforce.mjs:202 `r.message?.content` -> `r.message.content`: a user line without `message` throws, which the surrounding try catches and skips, the same as the undefined content that never matches the mark
-824f9b734503 src/enforce.mjs:217 `size = 0` -> `1`: both are far below LOG_MAX, so the trim never runs for a file that cannot be read
-3c37e02c0da7 src/enforce.mjs:218 `cut < 0` -> `<= 0`: cut is the index of a newline found from the middle of a file over LOG_MAX (256 KB), so it is never 0
-38b80c14a82e src/enforce.mjs:218 `cut < 0` -> `cut < 1`: cut is the index of a newline found from the middle of a file over LOG_MAX (256 KB), so it is never 0 and the two tests agree
 1bd39f5a003c src/memory.mjs:1043 `.filter((e) => e.isDirectory())` removed: a plain file kept in `subs` makes jsonl(join(file, "subagents")) read a path under a file, which fails with ENOTDIR and is caught as []; the same list as without the file.
 71eef501b3cb src/memory.mjs:505 `return null` -> `return undefined`: every caller of transcriptOf tests it for truth (`if (t)`, `if (p)`, `!(session && ...)`) or passes it where only a string is used (`typeof t === 'string'` in transcripts), so null and undefined act the same.
 721543402683 src/memory.mjs:1195 importing no-count 0 -> 1: importing is read only in the no-hit branch, and the first-branch no-terms and hit cases never use it, so the value is dead there.
@@ -280,8 +269,8 @@ e37308b76fdc src/memory-tier.mjs:660 `return false` -> `return undefined`: newer
 c136003ce685 src/memory-tier.mjs:659 `i < x.length` -> `i <= x.length`: at i = x.length, x[i] is undefined and y[i] ?? -1 is a number, so `!==` holds and the line returns `undefined > n`, false, the value the loop's exit returns on line 660
 83ad9d0303c8 src/memory-tier.mjs:659 `x[i] > y'` -> `x[i] >= y'`: the return is reached only when x[i] !== y', where > and >= give the same answer
 4b172ddef91a src/memory-tier.mjs:659 the second `-1` -> `-2` (in the returned compare): the line is reached only when x[i] !== (y[i] ?? -1) with the first -1 intact, so for a missing y[i] x[i] is an integer other than -1: -1 and -2 give the same x[i] > n for every integer x[i] except -1, which cannot get there
-e72df8a35e3e src/memory-tier.mjs:783 `return 0` -> `return undefined`: the entry assigns it to process.exitCode, and undefined leaves the exit code at 0
-4474007a4879 src/memory-tier.mjs:783 `await` removed from the write: main returns at once but the entry only sets process.exitCode, never process.exit(), so the process lives until the pending stdout write has finished
+de82d2f7f1f9 src/memory-tier.mjs:451 save()'s `return null` after the nudge -> `return undefined`: main reads it only as `!saved`, and undefined is as falsy as null, so main returns 0 either way
+09b74eb7fd63 src/memory-tier.mjs:451 `await` removed from the write: main returns at once but the entry only sets process.exitCode, never process.exit(), so the process lives until the pending stdout write has finished
 c9d76deba744 src/snapshot.mjs:422 the POSIX-only chmod condition negated: on Windows, the only OS the mutate workflow runs on, the first operand is false so the whole line is, and its negation tightens modes Windows does not have; no Windows-observable effect. The POSIX test (An install from before the modes, in memory-tier.test.mjs) kills it on the Linux and macOS test runs
 abd878c1198f src/snapshot.mjs:422 `!==` -> `===` on the platform: the chmod block is a no-op on Windows (the mutate run's only OS) either way; the POSIX test (An install from before the modes) kills it on the Linux and macOS test runs
 23defa6ae428 src/snapshot.mjs:422 `&&` -> `||`: on Windows (the mutate run's only OS) the chmod block that runs then changes nothing observable; the POSIX test (An install from before the modes) kills it on the Linux and macOS test runs
@@ -290,13 +279,12 @@ d92366e2ea3b src/memory.mjs:105 `??` -> `||`: the left side is the parsed `plugi
 6bda6eb1a291 src/memory.mjs:134 `{ return false; }` -> `{}`: the catch sits in a find() predicate, which reads only truthiness; undefined and false are the same
 a57763f63926 src/memory.mjs:134 `false` -> `undefined`: the catch sits in a find() predicate, which reads only truthiness; undefined and false are the same
 8d095c58da16 src/memory.mjs:151 `false` -> `undefined`: caseless()'s result reaches only fold()'s `folds` parameter through pick(), where it is read as `folds ? ... : n`, truthiness alone
-2a91b80f4111 src/memory.mjs:456 `''` -> `undefined`: recent()'s only caller (line 441) reads it as `if (ch)`, so '' and undefined both add no line
+71a2357de8a6 src/memory.mjs:401 `''` -> `undefined`: recent()'s only caller (line 441) reads it as `if (ch)`, so '' and undefined both add no line
 f00341eb545e src/snapshot.mjs:695 `?.` -> `.`: missing() is called only with the error caught from execFileSync (line 765), always an Error object and never null or undefined, so `e?.stderr` and `e.stderr` are the same
-0dc1f04af18f src/handoff-log.mjs:1240 `await main()` -> `main()`: main() catches every error itself unless rethrow is set (the tests' only caller path), and process.exitCode is already 0, so the process exits with the same output whether the promise is awaited or left pending
 c8a3aff63da2 src/transcript.mjs:978 `>=` -> `>`: bytes runs 512000 * 4^k (512000, 2048000, 8192000, 32768000) and 32e6 is none of them (4^k would be 62.5), so bytes >= 32e6 and bytes > 32e6 are true for the same values
 8e5433a08b55 src/handoff-log.mjs:978 `||` -> `&&` (whole || bytes >= 32e6): with whole true and bytes below the cap the loop only reads again; a whole file read at a larger window is the same text, so scan() gives the same result and it returns at 32768000 at the latest, same value
 e5a3f2eda34a src/handoff-log.mjs:1014 catch `{ return []; }` -> `{}`: lastTurn() threw, so end stays undefined and the check after it (end/seen comparison with GRACE) is NaN > GRACE, false, and returns [] the same
-61204625533b src/handoff-log.mjs:1017 catch `{ return []; }` -> `{}`: statSync threw, so ran stays undefined, and the next test on it (NaN comparison against end) is false and returns [] the same
+68359a2a6bb8 src/handoff-log.mjs:391 catch `{ return []; }` -> `{}`: statSync threw, so ran stays undefined, and the next test on it (NaN comparison against end) is false and returns [] the same
 e26e0ba9ed9c src/briefing.mjs:107 catch `{ return false; }` -> `{}`: busy() is read only as a truthy value (filter/some), undefined and false are the same
 71b7e23bd1bb src/briefing.mjs:107 `false` -> `undefined`: busy() is read only as a truthy value, undefined and false are the same
 50d5a4109d8c src/transcript.mjs:548 catch `{ continue; }` -> `{}`: r stays undefined for a line that does not parse, and the next statement reads r?.type, which is undefined for it, so the line is skipped the same
@@ -310,7 +298,7 @@ fc236685e23e src/handoff-log.mjs:786 `??` -> `||`: the left side is a parsed tur
 b5fd63bb98a8 src/handoff-log.mjs:588 `-` -> `+` (i - 1): lastIndexOf('\n', i + 1) from the start of START/END, which hold no newline, finds the same last newline before i as from i - 1; the character at i and i + 1 are '<' and '!'
 2be361d9c382 src/handoff-log.mjs:876 `0` -> `1`: at is only compared with the time now, and 1 ms and 0 ms after 1970 are both long past the same cut-off
 20ec88064b3c src/briefing.mjs:114 `??` -> `||`: hid holds booleans; when it holds false the mutant calls hushed(dir, s) again, which gives the same answer inside one run, so quiet(s) is the same
-2ac1b0c3164c src/briefing.mjs:195 `?.` -> `.`: am.why is always set when auto memory is off (autoMemory() in store.mjs sets it with off), and this line runs only then
+cacb1ceb26c9 src/briefing.mjs:236 `?.` -> `.`: am.why is always set when auto memory is off (autoMemory() in store.mjs sets it with off), and this line runs only then
 577bef76e96b src/handoff-log.mjs:624 `??` -> `||`: before is a string or null/undefined; '' and null both give '' here
 d803ea391123 src/handoff-log.mjs:662 `??` -> `||`: left.get() is a count of at least 1 or undefined, never 0, so both give the same
 ae5c1fa7bbd8 src/handoff-log.mjs:674 `??` -> `||`: shown.get(t) is a rendered string or undefined; for an empty string the mutant renders again, to the same string
@@ -334,9 +322,8 @@ ab768bf7ef3a src/snapshot.mjs:106 gcDead's `age >= GC_STALE` -> `>`: they differ
 801448ec97a3 src/snapshot.mjs:118 busy's `stuck ?? fresh` -> `||`: stuck is an Error or null, so the two choose alike
 e67b7b33d2a9 src/snapshot.mjs:404 rewrite's rmSync `force: true` -> `false` on its own temp copy: the copy always exists at that point, so force only matters if it was removed by hand
 6042aa9b7cf0 src/run-records.mjs:130 `(readText(p) ?? '')` -> `|| ''`: readText gives a string or null, and the only falsy string is '', so both split into no lines.
-338b6d2981b1 src/memory.mjs:824 `readJson(join(at, DEPLOYED))?.tag` -> `.tag`: this branch is reached only when deployedCommit(at) is set, so the record parsed and is not null.
+7e6c43fa2526 src/memory.mjs:832 `deployed(at)?.tag` -> `.tag`: this branch is reached only when deployedCommit(at) is set, so the record parsed and is not null.
 c56de0a153ef src/memory-tier.mjs:361 `plugins(...)?.plugins` -> `.plugins`: a missing file throws into the try around reloadNotice, which gives no notice, as a null did.
-bc1d40c097ea src/memory.mjs:1310 `readText(...) ?? ''` -> `|| ''`: readText gives a string or null, and the only falsy string is '', so both give ''.
 acdbee553ee2 src/page.mjs:575 clean's `s ?? ''` -> `s || ''`: the two differ only for 0, false or NaN, and every caller (pageHtml's entry fields d, t, c, b, p, q, a and data.built/today) passes a string parsed from the journal or undefined, so String() gets the same text
 d4a8643adc95 src/transcript.mjs:111 records' `includes('{"parentUuid":', 1)` / `includes(\`{"type":"${t}"\`, 1)` -> 2: the line starts with `{"type":`, so neither text can begin at index 1; the same lines are skipped
 bbcd7dbc23da src/transcript.mjs:111 records' `includes('{"parentUuid":', 1)` / `includes(\`{"type":"${t}"\`, 1)` -> 2: the line starts with `{"type":`, so neither text can begin at index 1; the same lines are skipped

@@ -271,6 +271,11 @@ for (const [i, c] of ['[1,2]', '{"v":3,"files":"abc"}', '{"v":3,"files":null}', 
   ok(pt({ type: 'user', message: { content: 'x ＜private-session＞' } }) === true, 'a full-width mark: private');
   ok(pt({ type: 'user', message: { content: [{ type: 'text', text: '<private​-session>' }] } }) === true, 'a mark with a hidden character: private');
   ok(pt({ type: 'user', isSidechain: true, message: { content: `x ${P}` } }) === false, 'the mark only in a helper record: not private');
+  // The writers' reading (transcript.mjs typedMark): a mark queued while Claude worked counts, one only quoted by the harness or
+  // in a compaction summary does not; the hook kept its own rule before, and logged a queued private conversation's commands.
+  ok(pt({ type: 'attachment', attachment: { type: 'queued_command', prompt: `and ${P}` } }) === true, 'a mark queued while Claude worked: private');
+  ok(pt({ type: 'user', message: { content: `<task-notification>${P}</task-notification>` } }) === false, 'a mark only quoted by the harness: not private');
+  ok(pt({ type: 'user', isCompactSummary: true, message: { content: `the user typed ${P}` } }) === false, 'a compaction summary that names it: not private');
   ok(privateTurn({ transcript_path: join(home, 'gone.jsonl') }) === true, 'an unreadable transcript: private');
   // 1.6.1: read in pieces (one string of a 600 MB transcript took 14 s); a line cut by a piece, a multi-byte character cut by one,
   // and a last line without a newline are read whole.
@@ -286,7 +291,7 @@ ${'y'.repeat(40)}
 { const rec = (st, e) => { record(st, e); return existsSync(join(st, LOG)) ? readFileSync(join(st, LOG), 'utf8') : null; }, mkst = (n) => { const d = join(home, `rec${n}`); mkdirSync(d); return d; };
   ok(rec(mkst(1), { note: 'x'.repeat(1012) }).length === 1024, 'a line of 1024 characters is kept');
   ok(rec(mkst(2), { note: 'x'.repeat(1013) }) === null, 'a line of 1025 characters is dropped');
-  const d = mkst(3), f = join(d, LOG); writeFileSync(f, 'y'.repeat(LOG_MAX - 1) + '\n'); record(d, { note: 'z' }); ok(statSync(f).size > LOG_MAX && readFileSync(f, 'utf8').startsWith('yyyy'), 'a log of exactly LOG_MAX bytes is not cut');
+  const d = mkst(3), f = join(d, LOG); writeFileSync(f, 'y'.repeat(LOG_MAX - 14) + '\n'); record(d, { note: 'z' }); ok(statSync(f).size === LOG_MAX && readFileSync(f, 'utf8').startsWith('yyyy'), 'a log that reaches exactly LOG_MAX bytes is not cut');
   const d2 = mkst(4), f2 = join(d2, LOG); let big = ''; for (let k = 0; k < 2700; k++) big += String(k).padStart(5, '0') + 'x'.repeat(94) + '\n'; writeFileSync(f2, big);
   record(d2, { note: 'new' }); const got = readFileSync(f2, 'utf8').split('\n');
   ok(got[0].startsWith('01351') && got.length === 1349 + 2 && got.at(-2) === '{"note":"new"}', `an over-long log loses its oldest half at a line start (first ${got[0].slice(0, 5)}, ${got.length} lines)`);

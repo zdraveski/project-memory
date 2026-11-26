@@ -28,6 +28,12 @@ written; the journal and the handoff show `[private]`.
 `incognito` command, listed in the store's `.private-sessions`), or one whose
 typed text holds `<private-session>`. Nothing of it is saved from then on.
 
+**Typed mark**: a `<private-session>` the user typed, queued while Claude worked,
+or gave as an answer to Claude's question, in any spelling. One only quoted (a
+tool's output, a task's end) or in a compaction summary is none. Read in one
+place, `typedMark` / `markFrom` in `transcript.mjs`, by the git-rule hook, the
+compaction gate and the journal alike.
+
 **Switched off**: memory not saving at all, at one of three reaches: one
 conversation (`.memory-off` in the projects root), the project (`.project-off`
 in the store, from `memory off`), or Claude Code's own auto memory setting
@@ -40,8 +46,52 @@ inside one is never written, even when its Stop comes later.
 **Forgotten exchange**: an exchange the user removed with `forget`. Listed in
 `journal/.forgotten` so a later Stop or import does not bring it back.
 
-The privacy module (`src/privacy.mjs`, 1.6.0 step 15) decides all of these, and
-a file it cannot read counts as private. See `docs/adr/0001-privacy-decided-in-one-module.md`.
+**Visible exchange**: an exchange a reader may be shown: not forgotten, and not
+of a private conversation whose sweep is still owed. Decided in one place,
+`src/journal.mjs`: `visible()` hands them to search, `show` and the page (a
+private turn stays, shown as `[private]`); `recent()` hands the hooks the newest
+ones, without private turns. A list that will not read hides its store.
+
+**Quiet conversation**: a private conversation or one switched off on its own
+(`.private-sessions` in its store or `.memory-off` in the projects root):
+`isQuiet()`.
+
+**Gate**: the question a hook asks before it does anything for a conversation,
+`gate()`: auto memory off, then the project switched off, then a quiet
+conversation. It answers why to do nothing, or nothing, and the store.
+
+The privacy module (`src/privacy.mjs`, 1.6.0 step 15) decides all of these,
+writes their marker files (`memory off` and `on`, the forget list), and a file
+it cannot read counts as private. See `docs/adr/0001-privacy-decided-in-one-module.md`.
+
+**Secret detector**: `src/secrets.mjs`, the one place that knows what a key, token
+or password looks like. `redact()` replaces one with `[redacted]` and a
+`<private>` span with `[private]`; `holdsSecret()` says whether a note holds one;
+`BARE()` says whether a typed answer to a question that asks for one is one. It
+imports nothing, so `store.mjs` and every writer can use it.
+
+## The index
+
+**Index**: `MEMORY.md` and its archive, `MEMORY-archive.md`: one pointer line
+(`- [Title](file.md) — hook`) per memory, a hook maybe wrapped onto indented
+lines under it. `src/store.mjs` holds the format once: `POINTER`,
+`pointerLine`, `indexLines` (BOM off), `eolOf` (each file keeps its own line
+endings), `wraps`, the archive line (`archiveLine`, `emptyArchive`) and the
+overflow mark. Tiering, restore, promote and the briefing read and write
+through these, never their own copies.
+
+**Overflow mark**: what tiering's byte ceiling adds to a line it evicts
+(`mark`), so the line comes back when there is room; `unmark` takes it off with
+only the one space it was added with.
+
+**Save**: what a Stop does first, `save()` in `src/memory-tier.mjs`, in one
+order: the switched-off checks, the handoff with the journal, its records, the
+sweeps, the backfill and the nudge. `memory-tier.mjs --stop` is the one way a
+Stop runs; `handoff-log.mjs` is the `handoff.md` writer only.
+
+**Tidy-up**: what follows a save, `tidy()` in `src/memory-tier.mjs`: tiering
+each changed store, the snapshot, and the stamps. After a Stop it runs in a
+`--tidy` process of its own; a manual run calls it directly.
 
 ## Snapshots
 
@@ -53,7 +103,14 @@ background after a Stop. It leaves out `handoff.md` and the journal.
 
 **Snapshot health**: `.snapshot-health` in the projects root. It records the
 last good snapshot, failures in a row, whether a snapshot is owed, and the held
-notes and missed stores. Doctor, status and the startup line report it.
+notes and missed stores. Each `snapshot()` writes it as it goes; nothing else
+does. Doctor, status and the startup line report it.
+
+**Snapshot verdict**: what the snapshot health means, as doctor and status say
+it: a level (ok, note or failing) and the line, both from `verdict()` in
+`src/snapshot.mjs`, so the words and the level change together. The startup
+line reads the record's fields itself, with its own quieter rule (three
+failures in a row).
 
 **Held note**: a note left out of the snapshots because it, or its name, looks
 like it holds a key, token or password. Once the secret is removed, the next
@@ -66,16 +123,37 @@ through a link to a folder outside the projects root.
 it (`forget --purge`), or so that secrets are replaced with `[redacted]`
 (`rescan --apply`).
 
+**Kept copy**: the text a `restore --force` replaced, kept in the snapshot repo
+under `refs/project-memory/replaced/<id>` so no restore loses it. `rescan`
+scrubs kept copies too.
+
+**History questions**: what the CLI asks of the snapshots, in note terms:
+`versionsOf` (the snapshots that changed a note), `changedLately` (the week's
+changes for status), `dropDays` (forget --purge), `daysHolding` (the days
+forget --purge drops for words the journal no longer holds), `scanHistory` and
+`scrubHistory` (rescan, with the CLI's own scrub function), `keptCopies` and
+`keepReplaced`, `leftoverPurges` (doctor) and `isOurs`. `src/snapshot.mjs`
+answers them, so git's log and fast-export formats, the first snapshot's
+message and the purge's temporary copy are known there alone.
+
 ## Run records
 
 **Run record**: a small status file the hooks write and doctor, status and the
 startup line read. `src/run-records.mjs` (1.6.0 step 17) reads and writes all of
-them. A missing record is "none"; one that exists but cannot be read or parsed
-is "damaged".
+them, and no other module spells their names or formats: others ask it
+(`stopRan()`, `handoffFailed()`, `lostHandoff()`, `deployed()`). A missing
+record is "none"; one that exists but cannot be read or parsed is "damaged".
 
 **Stop record**: `.stop-ran` in the projects root. It holds one line per Stop
 hook run, which is how doctor and the startup line tell whether saving still
-runs.
+runs. A capped log of the newest 20 lines past 8 KB.
+
+**Capped log**: a file that grows by one appended line a run and is cut back
+past a size limit: the Stop record, `.timing` and a store's `.enforce-log`.
+`appendCapped()` in `src/store.mjs` is the one append and cut for all three:
+0600, a last line left without its newline is ended first, and a cut never
+replaces a line another run appended meanwhile. The Stop sweeps the temp
+copies a killed cut left beside the projects (`sweepTemps` with the logs' names).
 
 **Failure record**: a note that a handoff or journal write failed:
 `.handoff-failed-<project folder>` and `.journal-failed-<project folder>` in the
@@ -88,18 +166,58 @@ pass found, one per line, and is deleted when there are none.
 holds the commit, the tag and each file's size and time, so a file changed
 after the deploy is named.
 
+**Shipped files**: what the plugin is made of: every `src/*.mjs`, every file
+under `.claude-plugin`, `hooks`, `commands`, `skills` and `agents`, and
+`LICENSE`. `pluginFiles()` in `tools/suites.mjs` reads them from the folders;
+the deploy copies them, `tools/mutate.mjs` copies them beside a mutant, and
+`tools/check.mjs` checks they are what the release archive keeps.
+
 ## Starting a conversation
 
 **Briefing**: the text the plugin prints when a conversation starts, resumes,
 is cleared or compacts: the handoff's last exchanges, the journal line, the
 health notes and the compaction note, cut to the size limits. `src/briefing.mjs`
-builds it (1.6.0 step 18); `src/brief.mjs` is only the guard that runs it. See
+builds it (1.6.0 step 18): `briefing(payload)` gives the text for one SessionStart payload, and is what
+the tests call; `src/brief.mjs` is only the guard that runs it. See
 `docs/adr/0003-no-import-loops-in-src.md`.
+
+**Handoff section**: the part of `handoff.md` between `<!-- auto:start -->` and
+`<!-- auto:end -->`, rewritten after every turn with each session's last
+exchanges. Everything around it is hand-written and left alone; search reads
+only that part (`handWritten()`). `src/handoff-log.mjs` is the only writer of the
+section and the only module in `src/` that names the end marker.
+
+**In-flight note**: the `**cut mid-turn**` entry the compaction gate leaves in
+the handoff section when it lets a compaction cut a turn: the ask, the last words,
+tasks still running, files edited. `src/compact-gate.mjs` builds it and decides
+whether a conversation may have one; `handoff()` writes it with the turn's entry
+in one locked write, and the next Stop drops it.
 
 **Safe printing**: cutting, clearing and fitting text so it is safe to print: `clip`,
 `cut`, `plain`, `defuse` and `fit`. `src/text.mjs` (1.6.0 step 15) holds them. It
-imports only Node built-ins and `store.mjs`, so a hook can print without loading
-the briefing.
+imports only the secret detector, so a hook can print without loading the
+briefing.
 
 `src/snapshot.mjs` (1.6.0 step 16) runs every git call against the projects
 root. See `docs/adr/0002-plugin-owns-git-cleanup-and-one-busy-rule.md`.
+
+**Session file**: `.sessions/<project>/<tag>` in the projects root, one per
+conversation, append-only, `<kind> <time> [agent:<id>] <rest>` a line: the files
+it changed, the pointers it was shown, its requests, its title, its end.
+`src/sessions.mjs` owns the format, the sweep, every deletion, and the **live
+session** rule (newest line within ACTIVE, 30 minutes, and not `end`); ACTIVE is
+the plugin's one "still working" window. It imports only the store and the
+privacy module, so the recall hooks and the journal both stand on it.
+
+**Term rule**: where one search word hits a text, `termRe` in `src/recall.mjs`:
+a version whole, a cut or short English word by its forms, a long word as text,
+a two-letter word standing alone. Search scoring (`has`, `count`), search's
+highlight and the hooks' words matcher all use it.
+
+## The memory command
+
+**Option**: a `--word` the memory command knows. `OPTIONS` in `src/memory.mjs`
+declares each once, and whether it takes the next word as its value; `TAKES`
+says which commands take it. `parseArgs` reads the words with both before any
+store is touched, and gives back the command or the refusal to print. USAGE and
+the `argument-hint` in `skills/memory/SKILL.md` are written by hand, apart.

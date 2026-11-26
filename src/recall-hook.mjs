@@ -21,8 +21,7 @@ try {
     const on = event === 'PostToolUse' ? onChange : event === 'UserPromptSubmit' ? onPrompt : null;
     if (on) {
       if (on === onPrompt) T.name('prompt');
-      // The journal, loaded only when a look-up needs it: recall.mjs cannot import it (journal.mjs imports recall.mjs).
-      const { say, n } = await on(input, { journal: () => import('./journal.mjs') });
+      const { say, n } = await on(input);
       T.mark('look');
       T.shown(n);
       // Written whole before the exit: on macOS a pipe is written asynchronously.

@@ -35,10 +35,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
 import { clip } from './text.mjs';
-import { handoff, tag, answer, newest, sectionOf, norm, redact } from './handoff-log.mjs';
-import { goesOn, readTail, records, turns, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, BARE } from './transcript.mjs';
-import { isHushed, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, OFF, isOff } from './privacy.mjs';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
+import { handoff, tag, answer, newest, norm } from './handoff-log.mjs';
+import { goesOn, readTail, records, typedMark, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers } from './transcript.mjs';
+import { redact, BARE } from './secrets.mjs';
+import { isQuiet, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, isOff } from './privacy.mjs';
+import { storeOf, projectsRoot, memoryOff, local, envOn, tagOf } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
 // A token count as Claude Code takes one: `800000`, `800k`, `1M`. NaN: none.
@@ -208,23 +209,6 @@ function note(payload, s) {
     `  **last said:** ${s.hidden || s.forgot ? '[private]' : answer(userText(s), s.said, 400) || '(nothing yet: the turn was running tools)'}\n  **still running (each output file holds its result; a rerun repeats the work):** ${running}\n  **edited this turn:** ${edited}`;
 }
 
-function inflight(payload, s) {
-  const dir = storeOf(payload);
-  const file = join(dir, 'handoff.md');
-  if (!existsSync(file)) return false;
-  // Unknown (the list won't read) is private here: a note only adds (F12).
-  if (marked(payload)) return 'private';
-  const r = withLock(dir, () => {
-    const doc = readFileSync(file, 'utf8');
-    const { a, b } = sectionOf(doc);
-    if (a === -1) return false;
-    const out = doc.slice(0, b).trimEnd() + '\n' + note(payload, s) + '\n' + doc.slice(b);
-    // 'changed': another write landed first and is kept (false from it: the note is already there).
-    return replaceIfUnchanged(file, doc, out) === 'conflict' ? 'changed' : true;
-  });
-  return r ?? 'busy';
-}
-
 /** SessionStart after a compaction: the note for a turn the compaction cut,
  *  whether or not the gate was asked. SessionStart runs before any new
  *  assistant message, so the last one is the turn that was cut. A note the
@@ -248,17 +232,14 @@ export function recover(input) {
 // that won't read (unknown) counts as marked: these only add (F12).
 const secret = (payload, s) => PRIVATE_SESSION.test(userText(s)) || PRIVATE.test(userText(s)) || marked(payload);
 // The conversation marked private: by its list, or, when the list does not name it, by a <private-session> typed anywhere in it,
-// read as every writer reads one (turns(): a mark only quoted is none). The list holds the marks a Stop saved, and a Stop a full or
+// read as every writer reads one (transcript.mjs typedMark). The list holds the marks a Stop saved, and a Stop a full or
 // busy disk failed saved none: a mark typed in an earlier turn went unseen, and the nudge and both notes spoke of the conversation
 // (F22, fuzz 169429269). The whole transcript, so only on a path about to print.
-// shortcut: one read of the whole file; one too big for a string throws, and the caller prints nothing; read it in segments, as the
-// journal's look does, if a transcript that size ever needs its nudge.
 // Or held with auto memory off once (OFF), as handoff() keeps it out: resumed with auto memory on, the notes and the nudge wrote
 // what it said into handoff.md (review, 2026-11-01).
 const marked = (payload) => {
-  if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;
-  const all = readTail(payload.transcript_path, Infinity).text;
-  return PRIVATE_SESSION.test(norm(all)) && turns(all).hush === true;
+  if (isQuiet(storeOf(payload), tag(payload.session_id))) return true;
+  return typedMark(payload.transcript_path);
 };
 
 /** PreCompact: 0 lets the compaction run, 2 defers it. */
@@ -274,7 +255,7 @@ export function gate(payload, keptUnder = null) {
   if (s.ctx < CEILING * MODEL_WINDOW) {
     // Put off once per last assistant record: a turn that never moves on is not held until the ceiling. The uuid sits in a .defer file beside
     // the nudge's file (a second file per session, in the directory arm() prunes weekly).
-    const mark = join(NUDGES(), `${tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''))}.defer`);
+    const mark = join(NUDGES(), `${tagOf(payload.session_id)}.defer`);
     let again = false;
     if (s.last) {
       let was = ''; try { was = readFileSync(mark, 'utf8'); } catch {}
@@ -285,28 +266,23 @@ export function gate(payload, keptUnder = null) {
     if (!again) return { code: 2, why: `deferred: mid-turn at ${pct}% of the model window; it runs when this turn ends` };
   }
   s = state(payload.transcript_path);
-  // One writer, in order: the handoff first (the turn's ask and last words as
-  // an entry), then the note inside it. As two hooks on the same event they
-  // ran in parallel and raced their renames over handoff.md; the note lost.
-  // Neither may decide the compaction: it runs, and the failure is named.
-  // Their return values are read: an early return (no store for this cwd, no
+  // One write: the handoff's entry (the turn's ask and last words) with the
+  // note after it, under one lock. As two hooks, then as two writes, another
+  // write could land between them and the note was lost.
+  // It may not decide the compaction: it runs, and the failure is named.
+  // The return value is read: an early return (no store for this cwd, no
   // markers in the file) is not a write, and once reported as one; nor is a
   // store another hook held past the lock wait, once reported as no file.
-  const failed = [];
-  const held = 'another hook held the store past the lock wait';
-  try {
-    const h = handoff(payload, null, keptUnder);
-    if (h === 'busy') failed.push(`handoff: ${held}`);
-    else if (!h) failed.push('handoff: nothing written (no store for this cwd, no transcript, or no turn in it)');
-  } catch (e) { failed.push(`handoff: ${e.message}`); }
-  try {
-    const n = inflight(payload, s);
-    if (n === 'private') return { code: 0, why: `mid-turn at ${pct}%, over the ceiling: a private conversation, nothing written` };
-    if (n === 'busy') failed.push(`note: ${held}`);
-    else if (n === 'changed') failed.push('note: the handoff changed meanwhile, so the note was not written');
-    else if (!n) failed.push('note: no handoff.md with markers in the store');
-  } catch (e) { failed.push(`note: ${e.message}`); }
-  return { code: 0, why: `mid-turn at ${pct}%, over the ceiling: ` + (failed.length ? failed.join('; ') : 'handoff and in-flight note written') };
+  // Unknown (the list won't read) is private here: a note only adds (F12).
+  const hidden = marked(payload);
+  let h;
+  try { h = handoff(payload, null, keptUnder, hidden ? null : note(payload, s)); } catch (e) { h = e; }
+  if (hidden || h === 'private') return { code: 0, why: `mid-turn at ${pct}%, over the ceiling: a private conversation, nothing written` };
+  const failed = h instanceof Error ? h.message
+    : h === 'busy' ? 'another hook held the store past the lock wait'
+    : h === 'changed' ? 'the handoff changed meanwhile, so neither was written'
+    : !h ? 'nothing written (no store for this cwd, no transcript, no turn in it, or no handoff.md with markers)' : '';
+  return { code: 0, why: `mid-turn at ${pct}%, over the ceiling: ` + (failed ? `handoff and note: ${failed}` : 'handoff and in-flight note written') };
 }
 
 /** Stop: the one nudge per compaction cycle that gets memory written first. */
@@ -319,10 +295,10 @@ export function nudge(payload) {
   if (payload.hook_event_name !== 'Stop' || payload.stop_hook_active || !payload.transcript_path || !existsSync(payload.transcript_path)) return null;
   // A conversation marked private, before any read: past the trigger, its
   // whole turn was read again at every Stop, for no nudge. Or held with auto memory off once (OFF), as marked() reads it.
-  if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return null;
+  if (isQuiet(storeOf(payload), tag(payload.session_id))) return null;
   const s = state(payload.transcript_path, { ask: false });
   // The conversation's tag, as everywhere else: its full id named a file.
-  const id = tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''));
+  const id = tagOf(payload.session_id);
   const mine = join(NUDGES(), id);
   let given = 0; try { given = Number(readFileSync(mine, 'utf8')) || 0; } catch {}
   // Whether the nudge is on record: one that could not be (`.nudge` a file, or

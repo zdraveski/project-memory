@@ -43,33 +43,36 @@ The store is this session's own (outside a session: the cwd's project, or the ne
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
 reads its transcript. After --, every word is a term, one that starts with -- too.`;
-import { appendFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, rmSync, unlinkSync, realpathSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, rmSync, unlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
-import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRuns, deployedCommit, edited, DEPLOYED } from './run-records.mjs';
-import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, rewrite, unsnapped, missing, gitInstalled, fastExport, fastExportOf, fastImportTo, hashObject, readHealth, MISSED, HELD } from './snapshot.mjs';
-import { PROJECT_OFF, OFF_PERIODS, isOff, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
+import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, stopRuns, deployed, deployedCommit, edited, DEPLOYED } from './run-records.mjs';
+import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, verdict, isOurs, versionsOf, changedLately, dropDays, daysHolding, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
+import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
 import { clip } from './text.mjs';
-import { redact, sectionOf, parse, stalled, GRACE, tag, unsay } from './handoff-log.mjs';
+import { sectionOf, parse, stalled, GRACE, tag, unsay, handWritten } from './handoff-log.mjs';
+import { redact, holdsSecret } from './secrets.mjs';
 import { BLOCK, transcripts, lastTurn, chunk as chunkOf } from './transcript.mjs';
-import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged, dropSessions, others, about, ACTIVE } from './recall.mjs';
+import { tame, STOP, words, count, has, termRe, isHelper, changedFile, inConversation, changers, whoChanged, about } from './recall.mjs';
+import { dropSessions, others, ACTIVE } from './sessions.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
 // (handoff-log's deploy gate test, 2026-10-28).
-let entries, forget, holds, summary, unwritten, takeBack, chunk;
+let entries, visible, forget, holds, summary, unwritten, takeBack, chunk;
 // replay's reader lives in transcript.mjs now; it is still held back while journal.mjs will not load (replay says so).
-try { ({ entries, forget, holds, summary, unwritten, takeBack } = await import('./journal.mjs')); chunk = chunkOf; }
+try { ({ entries, visible, forget, holds, summary, unwritten, takeBack } = await import('./journal.mjs')); chunk = chunkOf; }
 catch (e) {
   const why = reason(e);
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: why }); return []; };
+  visible = entries;
   // Said by status too: silent, it read as a store with no journal.
   summary = () => ({ broken: why });
   forget = (dir, terms, o) => ({ matched: entries([dir], o), removed: [] });
@@ -78,7 +81,6 @@ catch (e) {
   takeBack = () => { throw new Error(`journal.mjs could not be loaded: ${why}`); };
 }
 
-const OVERFLOW = /\s*<!-- overflow -->$/;
 // The most entries a forget's look lists, and so the most one --yes removes:
 // it showed 20 of 35, and --yes removed all 35.
 const LOOK = 200;
@@ -171,22 +173,22 @@ const named = (dir, file) => { const d = onDisk(dir, file); return d !== file ||
 const put = (p, read, next) => { try { return replaceIfUnchanged(p, read, next); } catch (e) { return `failed: ${e.code || e.message}`; } };
 const failed = (w) => typeof w === 'string' && w.startsWith('failed: ');
 // A line added to an index goes before the archive's own line, which tiering
-// keeps last and leaves where it is when nothing else changed.
+// keeps last and leaves where it is when nothing else changed. In the index's own line endings, a wrapped hook's too.
 const withLine = (text, line) => {
-  const ls = text.replace(/\n*$/, '').split('\n'), at = ls.findIndex((l) => target(l) === ARCHIVE);
+  const eol = eolOf(text), ls = text.replace(/[\r\n]*$/, '').split(/\r?\n/), at = ls.findIndex((l) => target(l) === ARCHIVE);
   if (at === -1) ls.push(line); else ls.splice(at, 0, line);
-  return ls.join('\n') + '\n';
+  return ls.join(eol).replace(/\r?\n/g, eol) + eol;
 };
 
 // The first pointer `match` takes, with the indented lines a long hook wraps onto, and the text without every such pointer and its wrap.
 const take = (text, match) => {
   const kept = []; let line = null, own = false, first = false;
   for (const l of text.split(/\r?\n/)) {
-    if (match(l)) { own = true; first = line === null; if (first) line = l.replace(OVERFLOW, ''); }
-    else if (own && /^[ \t]+\S/.test(l)) { if (first) line += '\n' + l; }
+    if (match(l)) { own = true; first = line === null; if (first) line = l; }
+    else if (own && wraps(l)) { if (first) line += '\n' + l; }
     else { own = false; kept.push(l); }
   }
-  return { line, rest: kept.join('\n') };
+  return { line: line && unmark(line), rest: kept.join(eolOf(text)) };
 };
 
 // Every memory in a store: what its frontmatter says, its [[links]], and which
@@ -239,19 +241,6 @@ function around(text, find, room) {
   return s.length > room ? s.slice(0, room - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : s;
 }
 
-// The journal as a reader sees it: never an entry forget listed. It lists the
-// keys before it writes the days, and a day that would not be written keeps
-// the entry until forget runs again, which reads them all. A list that won't
-// read could name any entry: none of that store's is shown, and it is named.
-const told = (dirs, o) => {
-  const gone = new Set(), open = dirs.filter((d) => {
-    const p = join(d, FORGOTTEN);
-    try { for (const [k] of forgotten(readFileSync(p, 'utf8'))) gone.add(k); return true; }
-    catch (e) { if (e.code === 'ENOENT') return true; o.failed?.push({ path: p, code: e.code || e.message }); return false; }
-  });
-  return entries(open, o).filter((e) => !gone.has(e.key));
-};
-
 // Ranked, not grepped: a name says more than a description, a description more
 // than a passing mention. Every term in the name or description is the strong
 // match; every term somewhere in the body is a weak one, or a month-long log
@@ -275,17 +264,7 @@ export function search(dirs, query, { since, until, failed, file, asked: mine, c
     if (m.file === 'journal.md') continue;
     const hand = m.file === 'handoff.md';
     if (hand) {
-      // A start marker with no end marker (a half-written file): the log runs to the end of the file.
-      // Every block is cut, last first (sectionOf finds the last one); each cut shortens the text, and a cut that does not ends the loop.
-      let body = m.body;
-      for (;;) {
-        const { a, b } = [body, `${body}
-<!-- auto:end -->`].map(sectionOf).find((x) => x.a !== -1) ?? { a: -1 };
-        if (a === -1) break;
-        const next = body.slice(0, a) + body.slice(b).replace(/^[^\n]*/, '');
-        if (next.length >= body.length) break;
-        body = next;
-      }
+      const body = handWritten(m.body);
       if (!body.trim()) continue;
       m = { ...m, file: '', name: '', desc: '', body };   // its name is no match: only what a person wrote
     }
@@ -309,7 +288,7 @@ export function search(dirs, query, { since, until, failed, file, asked: mine, c
   }
   // An entry by what was asked, then what it changed and ran (and its branch),
   // then the reply: a reply that names everything must not outrank the request.
-  for (const e of terms.length ? told(dirs, { since, until, failed }).filter(kept({ file, asked: mine, conversation })) : []) {
+  for (const e of terms.length ? visible(dirs, { since, until, failed }).filter(kept({ file, asked: mine, conversation })) : []) {
     docs++;
     const asked = e.asked.toLowerCase(), did = [...e.changed, ...e.ran].join('\n').toLowerCase(), branch = e.branch.toLowerCase(), answered = e.answered.toLowerCase();
     let strong = true, every = true;
@@ -396,14 +375,10 @@ const more = (xs, n) => xs.slice(0, n).join(', ') + (xs.length > n ? `, and ${xs
 // second's untracking then read as every note deleted (review).
 const RECENT_DAYS = 7;
 function recent(dir) {
-  let out; try { out = git('-c', 'core.quotepath=off', 'log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=@%s', '--', tracked(dir, '')[0]); } catch { return ''; }
+  // Without the first snapshot's lines: it took in what was already there, not added this week.
+  let ch; try { ch = changedLately([tracked(dir, '')[0]], RECENT_DAYS); } catch { return ''; }
   const last = new Map(), born = new Set();
-  let first = false;
-  for (const l of out.split('\n')) {
-    // The first snapshot took in what was already there: not added this week.
-    if (l.startsWith('@')) { first = l === '@memory: first snapshot'; continue; }
-    if (first) continue;
-    const [st, p] = l.trim().split('\t');
+  for (const [st, p] of ch) {
     const f = p && p.split('/').pop();
     // Nor a journal day: every finished one was listed as a memory added.
     if (!f || !f.endsWith('.md') || f === 'handoff.md' || isIndex(f) || p.includes('/journal/')) continue;
@@ -413,22 +388,6 @@ function recent(dir) {
   const of = (want) => [...last].filter(([f, st]) => want(f, st)).map(([f]) => f.replace(/\.md$/, ''));
   return [['added', of((f, st) => st !== 'D' && born.has(f))], ['edited', of((f, st) => st !== 'D' && !born.has(f))], ['deleted', of((f, st) => st === 'D')]]
     .filter(([, xs]) => xs.length).map(([w, xs]) => `${w} ${more(xs, 6)}`).join(' · ');
-}
-
-function snapshots() {
-  const { health: h } = readHealth();
-  if (!h) return 'snapshots: none recorded yet';
-  if (h.off) return `snapshots: off, ${h.off}: everything else works, but an old version of a note cannot be brought back`;
-  // A first snapshot in parts, or one waiting on another git, as it is: "none recorded yet" hid a history that never
-  // started, and "ok, last <now>" was said of none (audit H-F1).
-  const waiting = h.busySince ? `; waiting since ${local(h.busySince)} for another git to let go of the repository` : '';
-  return h.failures ? `snapshots: failing, ${h.failures} in a row (${h.error}); last ok ${h.lastOk ? local(h.lastOk) : 'never'}. ` +
-    `The user's fix: run git -C "${projectsRoot()}" status in a terminal to see git's own message; if git says the repository is damaged, rename its .git folder and the next reply starts a new history`
-    : h.partial ? `snapshots: the first is being taken in parts, ${h.partial} file(s) still to add; each reply adds more${waiting}`
-    : !h.lastOk ? `snapshots: none taken yet${waiting}`
-    : h.held?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they skip ${h.held.join(', ')}: ${HELD}`
-    : h.missed?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they leave out ${h.missed.join(', ')}: ${MISSED}`
-    : `snapshots: ok, last ${local(h.lastOk)}${waiting}`;
 }
 
 // The store the hooks give this session: Claude Code names the transcript by
@@ -457,27 +416,6 @@ function sessionStore() {
 }
 
 
-// A fast-export stream without the M and D lines of `paths`; data blocks are skipped by their length, so their text is never read as a line.
-const dropPaths = (buf, paths) => {
-  const out = [], gone = new Set(paths);
-  // git quotes a path with odd bytes: "..." with \ooo octal escapes.
-  const plain = (s) => s[0] !== '"' ? s : Buffer.from(s.slice(1, -1).replace(/\\(?:([0-7]{3})|(.))/g, (_, o, c) => o ? String.fromCharCode(parseInt(o, 8)) : ({ n: '\n', t: '\t' })[c] ?? c), 'latin1').toString();
-  let at = 0;
-  while (at < buf.length) {
-    let e = buf.indexOf(10, at); if (e < 0) e = buf.length - 1;
-    const line = buf.subarray(at, e + 1), t = line.toString().slice(0, -1), d = /^data (\d+)$/.exec(t);
-    at = e + 1;
-    if (d) { out.push(line, buf.subarray(at, at + +d[1])); at += +d[1]; continue; }
-    const p = /^M \d+ \S+ (.*)$/.exec(t)?.[1] ?? /^D (.*)$/.exec(t)?.[1];
-    if (p === undefined || !gone.has(plain(p))) out.push(line);
-  }
-  return Buffer.concat(out);
-};
-const purge = (dir, days) => {
-  const paths = days.flatMap((d) => tracked(dir, `journal/${d}.md`));
-  rewrite((copy) => fastImportTo(copy, dropPaths(fastExportOf(copy), paths)));
-};
-
 // rescan: today's redaction rules over what is already saved (notes, journal, handoff, every snapshot): counts and places, never a
 // value. --apply --yes backs up first, then writes [redacted] over each hit and rewrites the history. Markers already in the
 // text are set aside, so a second run finds nothing new.
@@ -486,34 +424,6 @@ const scrub = (s) => {
   const p = s.replaceAll(REMOVED, '[redacted]'), t = redact(p), n = t.split('[redacted]').length - p.split('[redacted]').length;
   return n > 0 ? [t, n] : [s, 0];
 };
-// A git fast-export stream with every text blob, commit and tag message scrubbed and its length prefix recomputed; a blob that is
-// not UTF-8 stays as it is. shortcut: file names in the stream are not scanned; a secret in a file name stays.
-const walk = (buf) => {
-  const out = [], dec = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }), changed = new Set(), files = new Set();
-  let at = 0, hits = 0, blobs = 0, commits = 0, hit = false, blob = false, mark = null;
-  while (at < buf.length) {
-    let e = buf.indexOf(10, at); if (e < 0) e = buf.length - 1;
-    const line = buf.subarray(at, e + 1), t = line.toString(), d = /^data (\d+)\n$/.exec(t);
-    at = e + 1;
-    if (!d) {
-      if (/^(?:blob\n|commit |tag |reset )/.test(t)) { if (t.startsWith('commit')) { commits += hit; hit = false; } blob = t === 'blob\n'; mark = null; }
-      const m = /^mark :(\d+)\n$/.exec(t), mm = /^M \d+ :(\d+) (.*)\n$/.exec(t);
-      if (m && blob) mark = m[1];
-      if (mm && changed.has(mm[1])) { hit = true; files.add(mm[2]); }
-      out.push(line); continue;
-    }
-    const body = buf.subarray(at, at + +d[1]); at += +d[1];
-    let to = body, n = 0;
-    try { const [s, c] = scrub(dec.decode(body)); if (c) { to = Buffer.from(s); n = c; } } catch {}
-    if (n) { hits += n; if (blob) { blobs++; changed.add(mark); } else hit = true; }
-    out.push(Buffer.from(`data ${to.length}\n`), to);
-  }
-  return { out: Buffer.concat(out), hits, blobs, commits: commits + hit, files };
-};
-// restore keeps the note it replaces under a ref that names a blob, which fast-export skips.
-const blobRefs = () => git('for-each-ref', '--format=%(objecttype) %(objectname) %(refname)').split('\n').map((l) => l.split(' ')).filter((p) => p[0] === 'blob').flatMap(([, sha, ref]) => {
-  try { const text = git('cat-file', 'blob', sha), [to, c] = scrub(text); return c ? [{ ref, text, to, c }] : []; } catch { return []; }
-});
 const rescan = (stores, apply, yes) => {
   const root = projectsRoot(), found = [];
   for (const dir of stores) for (const sub of ['', 'journal']) {
@@ -526,7 +436,7 @@ const rescan = (stores, apply, yes) => {
     }
   }
   let hist = null, kept = [];
-  if (!unsnapped()) try { hist = walk(fastExport()); kept = blobRefs(); }
+  if (!unsnapped()) try { hist = scanHistory(scrub); kept = keptCopies(scrub); }
   catch (e) { return no(`the snapshots could not be read (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); nothing changed`); }
   const nf = found.reduce((a, x) => a + x.c, 0), nh = (hist?.hits ?? 0) + kept.reduce((a, x) => a + x.c, 0), s = (n) => (n === 1 ? '' : 's');
   const lines = [`files now: ${nf} secret${s(nf)} in ${found.length} file${s(found.length)}${found.length ? `: ${more(found.map((x) => `${relative(root, x.f).replace(/\\/g, '/')} (${x.c})`), 20)}` : ''}`,
@@ -553,10 +463,10 @@ const rescan = (stores, apply, yes) => {
     if (!r) { out.push(`${dir} is busy; its files were not changed, run again`); left++; } else if (r.includes('conflict')) { out.push(`a file in ${dir} changed while this ran; run again for it`); left++; }
   }
   try {
-    for (const x of kept) git('update-ref', x.ref, hashObject(x.to, { encoding: 'utf8' }).trim());
-    if (nh) rewrite((copy) => fastImportTo(copy, walk(fastExportOf(copy)).out));
+    for (const x of kept) keepReplaced(x.to, x.ref);
+    if (nh) scrubHistory(scrub);
   } catch (e) { return { ok: false, lines: [...out, `the snapshots could not be rewritten (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); backup: ${backup}`] }; }
-  const after = nh && walk(fastExport()).hits + blobRefs().length;
+  const after = nh && scanHistory(scrub).hits + keptCopies(scrub).length;
   out.push(`redacted ${nf} in files and ${nh} in the snapshots; ${after ? `${after} still found in the snapshots` : 'the snapshots hold none now'}`, `backup: ${backup}`);
   return { ok: !left && !after, lines: out };
 };
@@ -569,25 +479,17 @@ const byLine = (e, label = 'by') => e === 'shared' ? 'by: not looked up for the 
 // A note's journal entries, oldest first, by its full path as the session saw it. A journal that will not read is none: history still prints.
 // `since`: a day 'YYYY-MM-DD'; the journal days before it are not opened.
 const changersOf = (dir, f, failed, since) => {
-  try { return changers(told([dir], { failed, since }), [join(dir, f), join(real(dir), f)]).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); } catch { return []; }
+  try { return changers(visible([dir], { failed, since }), [join(dir, f), join(real(dir), f)]).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); } catch { return []; }
 };
 export function history(dirs, file, everywhere = false, max = 30, failed = []) {
-  const verb = { A: 'added', M: 'changed', D: 'deleted' };
+  const verb = { A: 'added', M: 'changed', D: 'deleted', first: 'in the first snapshot' };
   const why = unsnapped();
   if (why) return no(why);
   const blocks = [];
   try {
     for (const dir of dirs) {
       const f = named(dir, file);
-      // No renames: a link that sorts first moves every path to it, and an R line was no change.
-      const out = git('log', '--no-renames', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', ...tracked(dir, f));
-      const snaps = [];
-      let head = null;
-      for (const l of out.split('\n')) {
-        if (l.startsWith('@')) head = l.slice(1).split('\t');
-        // The first snapshot took in what was already there: not when it was written.
-        else if (head && verb[l[0]]) { snaps.push([head[0], head[1] === 'memory: first snapshot' ? 'in the first snapshot' : verb[l[0]]]); head = null; }
-      }
+      const snaps = versionsOf(tracked(dir, f)).map(([h, v]) => [h, verb[v]]);
       // Newest first, as git prints them; paired oldest first, before `max` cuts the list.
       // Only the ones shown, and the one below them: its minute is the lower limit of the oldest shown. None below: the oldest has no lower limit, all of the journal is read.
       const used = snaps.slice(0, max + 1), since = snaps.length > max ? used.at(-1)[0].split(' ')[1] : undefined;
@@ -666,8 +568,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
     // What --force replaces is kept in the repo, not lost: no snapshot may hold it yet.
     let kept = '';
     // No copy, no replace: the text it would overwrite was gone for good (1.3.1 audit D-8).
-    // Under a ref: a blob nothing refers to is dangling, and gc deletes it.
-    if (cur !== null) { try { const sha = hashObject(curB, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim(); git('update-ref', `refs/project-memory/replaced/${sha}`, sha); kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${sha}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
+    if (cur !== null) { try { const sha = keepReplaced(curB); kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${sha}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
     // Or one the disk refuses (a name Windows cannot hold, from a store synced from Linux).
     const w = put(path, cur, bytes);
     if (failed(w)) return `${path} could not be written (${w.slice(8)}); nothing restored`;
@@ -811,7 +712,7 @@ export function doctor(site = sessionStore()) {
   if (typeof readJson(join(configDir(), 'settings.json'))?.autoMemoryDirectory === 'string') say(false, 'the autoMemoryDirectory setting is set, and project-memory does not follow it: notes in that folder are not tiered, snapshotted or briefed (the hooks work on the default memory folder). Remove the setting to use project-memory');
   // edited() stays silent on a damaged record (the startup line's choice); doctor names it.
   if (existsSync(join(LIVE, DEPLOYED))) {
-    const e = readJson(join(LIVE, DEPLOYED))?.files ? edited(LIVE) : [`${join(LIVE, DEPLOYED)} is damaged (not JSON, or no file list), so the live hooks can't be checked against the last deploy. Run deploy.mjs again`];
+    const e = deployed(LIVE)?.files ? edited(LIVE) : [`${join(LIVE, DEPLOYED)} is damaged (not JSON, or no file list), so the live hooks can't be checked against the last deploy. Run deploy.mjs again`];
     say(!e.length, e[0] || `${LIVE} matches what deploy.mjs checked`);
   }
   // Installed from the live copy, the plugin runs it in place; from anywhere
@@ -828,9 +729,9 @@ export function doctor(site = sessionStore()) {
     else if (marketplace()?.source === 'directory' && !same(at, LIVE)) say(false, `the plugin is read from ${at}, not the live copy. The user's fix: claude plugin marketplace remove ${installedId().split('@')[1]}, then claude plugin marketplace add "${LIVE}" and claude plugin install ${PLUGIN}`);
     else if (deployedCommit(at) !== deployedCommit(LIVE)) say(false, `the plugin runs ${deployedCommit(at) || 'an undeployed copy'} from ${at}, the last deploy is ${deployedCommit(LIVE)}. The user's fix: claude plugin update ${PLUGIN}`);
     // The manifest's version ends in a deploy count, not the release: the tag names it.
-    else { const e = edited(at), tag = readJson(join(at, DEPLOYED))?.tag; say(!e.length, e[0] || `the plugin runs the last deploy, ${deployedCommit(at)}${tag ? ` (${tag})` : ''}, from ${at}`); }
+    else { const e = edited(at), tag = deployed(at)?.tag; say(!e.length, e[0] || `the plugin runs the last deploy, ${deployedCommit(at)}${tag ? ` (${tag})` : ''}, from ${at}`); }
   }
-  const ran = join(projectsRoot(), '.stop-ran');
+  const ran = stopRan();
   if (!existsSync(ran)) {
     // Nothing has saved before Claude's first reply ends: that is waiting, and
     // a new install checked at once said PROBLEM. It is one when this
@@ -861,9 +762,9 @@ export function doctor(site = sessionStore()) {
   const { pack, orphans } = packOrphans();
   if (orphans.length) say(true, `${orphans.length} pack index file(s) in ${pack} have no pack (a repack that could not finish): harmless, but git warns of each on every command; the user can delete them: ${orphans.join(', ')}`);
   // A killed forget --purge leaves a full copy of the history, forgotten text included, in .git.
-  try { for (const n of readdirSync(join(projectsRoot(), '.git'))) if (n.startsWith('pm-purge-') && Date.now() - statSync(join(projectsRoot(), '.git', n)).mtimeMs > LOCK_STALE) say(false, `${join(projectsRoot(), '.git', n)} is a copy of the snapshot history, with text you may have forgotten, left by a killed purge. The user's fix: run forget <word> --purge again (it removes the copy first), or delete that folder`); } catch {}
-  const snap = snapshots();
-  say(snap.startsWith('snapshots: failing') || snap.includes('but they leave out') ? false : /^snapshots: (off|none recorded yet)|but they skip/.test(snap) ? 'note' : true, snap);
+  for (const p of leftoverPurges()) say(false, `${p} is a copy of the snapshot history, with text you may have forgotten, left by a killed purge. The user's fix: run forget <word> --purge again (it removes the copy first), or delete that folder`);
+  const snap = verdict();
+  say(snap.level, snap.say);
   return { ok: !bad, lines };
 }
 
@@ -913,17 +814,15 @@ function incognito(opt) {
 // What was said while it was off must not be written once it is on: the period is kept (store wasOff) before the marker goes.
 // By time, not by conversation: one that runs across off and on keeps what it said before and after.
 function projectSwitch(dir, off) {
-  const marker = join(dir, PROJECT_OFF), was = isOff(dir);
+  const was = isOff(dir);
   try {
     if (off) {
       if (was && !was.unread) return { ok: true, lines: [`memory is already off in this project since ${offSince(was)}`] };
-      mkdirSync(dir, { recursive: true, mode: 0o700 });
-      if (replaceIfUnchanged(marker, raw(marker), JSON.stringify({ t: Date.now() })) === 'conflict') return no('memory off NOT applied: the marker was changed meanwhile; try again');
+      if (!switchOff(dir)) return no('memory off NOT applied: the marker was changed meanwhile; try again');
       return { ok: true, lines: [`memory is off in this project (${dir}): nothing is saved, tiered or snapshotted here until memory on. Off stops adding; it doesn't hide: search and show still answer. ${STILL}`] };
     }
     if (!was) return { ok: true, lines: ['memory is already on in this project'] };
-    if (!was.unread) appendFileSync(join(dir, OFF_PERIODS), `${was.since ?? statSync(marker).mtimeMs} ${Date.now()}\n`);
-    unlinkSync(marker);
+    switchOn(dir, was);
     return { ok: true, lines: [`memory is on in this project again (${dir}). What was said while it was off stays out of the journal and the handoff.`] };
   } catch (e) { return no(`memory ${off ? 'off' : 'on'} NOT applied: ${reason(e)}${off ? '' : "; memory stays off"}`); }
 }
@@ -985,7 +884,7 @@ function enforceStatus(here) {
 
 // `memory page`: the journal of every project as one local HTML file. page.mjs builds the HTML from plain data; this reads and
 // filters the journal, writes the file (0600, in Claude Code's folder) and says where it is. Left out, and counted: helper
-// entries, and projects that are switched off. An entry the user had forgotten is not in told(), so not in the page either.
+// entries, and projects that are switched off. An entry the user had forgotten is not in visible(), so not in the page either.
 const PAGE_DAYS = 30, PAGE_MAX = 36500, PAGE_ASK = 2000, PAGE_ANSWER = 4000;
 // A browser opens a page of tens of MB slowly (20,000 entries made 129 MB): past this it is not written. An object, so a test can lower it.
 // built: a test's hook, run once the page is built, before the size check and the write.
@@ -1023,7 +922,7 @@ function page(stores, days, want, failed) {
   const over = (n) => ({ ok: false, lines: [`the page would be ${sizeOf(n)}, over the limit of ${sizeOf(PAGE_LIMIT.bytes)}; nothing written. Use --days N for fewer days${want ? '' : ' or --project NAME for one project'}`] });
   const read = lockAll(keys, () => {
     const out = []; let helpers = 0;
-    for (const e of told(live, { since, failed })) {
+    for (const e of visible(live, { since, failed })) {
       if (isHelper(e)) { helpers++; continue; }
       const priv = e.asked === '[private]' || e.answered === '[private]';
       out.push({ d: e.day, t: e.at.slice(11, 16), c: e.s, b: e.branch, p: name.get(e.dir), q: priv ? '' : clip(e.asked, PAGE_ASK), a: priv ? '' : clip(e.answered, PAGE_ANSWER),
@@ -1061,47 +960,63 @@ function page(stores, days, want, failed) {
   } finally { rmSync(claim, { force: true }); }
 }
 
-// The command line, its words as given; returns the exit code. Callable in
-// the same process: memory.test runs it so, where a process a call was 0.2 s
-// of its 50 s, 256 times (2026-10-30). Each call starts with no session.
-export function main(given) {
-  session = '';
+// Every option the command line knows, and whether it takes the word after it as its value. The `=` split,
+// the unknown-option refusal and where a value ends all read this one list: an option valued in one list and a flag
+// in another was how audit 5 and C-7 came about. USAGE names each one (memory-cli checks it).
+export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--session': true, '--since': true, '--until': true, '--conversation': true, '--key': true, '--file': true, '--days': true, '--project': true,
+  '--all': false, '--shared': false, '--yes': false, '--force': false, '--same': false, '--purge': false, '--apply': false, '--help': false, '--asked': false };
+const valued = new Set(Object.keys(OPTIONS).filter((o) => OPTIONS[o]));
+// Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
+// `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal in main().
+const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], page: ['--days', '--project'] };
+
+// The command line's words, read before any store is touched: { cmd, rest, args, opt } or the refusal to print.
+// rest is every word but the command, in order (--key repeats, and the first of an option wins in opt()); args
+// the words that are no option or an option's value, then every word after `--`.
+export function parseArgs(given) {
   // The command is the first word that is no option or an option's value, so
   // `--store X search foo` searches; none (the skill run with no arguments,
   // just `--session <id>`) is status.
   // `--store=X` as `--store X`: the equals form was dropped, and the command ran on the cwd's store.
   // After `--` every word is a term: `search -- --no-verify` printed the usage.
   const cut = given.includes('--') ? given.indexOf('--') : given.length;
-  const argv = given.slice(0, cut).flatMap((a) => { const m = a.match(/^(--(?:store|rev|limit|session|since|until|conversation|key|file|days|project))=([\s\S]*)$/); return m ? [m[1], m[2]] : [a]; });
-  const valued = new Set(['--store', '--rev', '--limit', '--session', '--since', '--until', '--conversation', '--key', '--file', '--days', '--project']);
+  const argv = given.slice(0, cut).flatMap((a) => { const e = a.indexOf('='); return e > 0 && valued.has(a.slice(0, e)) ? [a.slice(0, e), a.slice(e + 1)] : [a]; });
   // One it does not know is refused: dropped, `--from 2026-10-27` searched for
   // "2026", and `--after=2026-10-28` listed what came before it.
-  const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !valued.has(a) && !['--all', '--shared', '--yes', '--force', '--same', '--purge', '--apply', '--help', '--asked'].includes(a));
-  if (unknown) { console.log(`unknown option ${unknown}; help lists the options`); return 1; }
+  const unknown = argv.find((a, i) => a.startsWith('--') && !valued.has(argv[i - 1]) && !Object.hasOwn(OPTIONS, a));
+  if (unknown) return `unknown option ${unknown}; help lists the options`;
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
   // An empty --conversation or --file (an unset variable in quotes) is none given: forget took it for "every conversation", search ran unfiltered.
   const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--project') && argv[i + 1] === '')));
-  if (bare) { console.log(`${bare} needs a value after it`); return 1; }
+  if (bare) return `${bare} needs a value after it`;
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
-  // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
-  // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal below.
-  const table = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], page: ['--days', '--project'] };
-  const takes = Object.hasOwn(table, cmd) ? table[cmd] : undefined; // not table[cmd]: `constructor` is on every object
+  const takes = Object.hasOwn(TAKES, cmd) ? TAKES[cmd] : undefined; // not TAKES[cmd]: `constructor` is on every object
   const extra = takes && rest.find((a, i) => a.startsWith('--') && !valued.has(rest[i - 1]) && !['--store', '--shared', '--session', ...takes].includes(a));
-  if (extra) { console.log(`${cmd} does not take ${extra}; help lists the options`); return 1; }
+  if (extra) return `${cmd} does not take ${extra}; help lists the options`;
   const opt = (n) => { const i = rest.indexOf(n); return i === -1 ? undefined : rest[i + 1]; };
   // A short id would name every conversation whose id starts with it; `forget` has its own rule for the value.
-  if (cmd === 'search' && (opt('--conversation') ?? 'abcd').length < 4) { console.log('--conversation needs at least 4 characters of the id'); return 1; }
+  if (cmd === 'search' && (opt('--conversation') ?? 'abcd').length < 4) return '--conversation needs at least 4 characters of the id';
   // A number, or refused: `--limit ten` was dropped unsaid, and the default
   // listed. One below 1 is still the default (a test holds it).
-  if (opt('--limit') !== undefined && !/^-?\d+$/.test(opt('--limit'))) { console.log(`--limit takes a number, not ${opt('--limit')}`); return 1; }
+  if (opt('--limit') !== undefined && !/^-?\d+$/.test(opt('--limit'))) return `--limit takes a number, not ${opt('--limit')}`;
   // A whole number of days, or all: `--days ten` was no number to count back from.
-  if (cmd === 'page' && opt('--days') !== undefined && opt('--days') !== 'all' && !/^[1-9]\d*$/.test(opt('--days'))) { console.log(`--days takes a number of days or all, not ${clip(opt('--days'), 100)}`); return 1; }
+  if (cmd === 'page' && opt('--days') !== undefined && opt('--days') !== 'all' && !/^[1-9]\d*$/.test(opt('--days'))) return `--days takes a number of days or all, not ${clip(opt('--days'), 100)}`;
+  const args = [...rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1])), ...given.slice(cut + 1)];
+  return { cmd, rest, args, opt };
+}
+
+// The command line, its words as given; returns the exit code. Callable in
+// the same process: memory.test runs it so, where a process a call was 0.2 s
+// of its 50 s, 256 times (2026-10-30). Each call starts with no session.
+export function main(given) {
+  session = '';
+  const p = parseArgs(given);
+  if (typeof p === 'string') { console.log(p); return 1; }
+  const { cmd, rest, args, opt } = p;
   // A session id names a file: anything but an id's characters is ignored.
   if (/^[\w-]{1,100}$/.test(opt('--session') || '')) session = opt('--session');
-  const args = [...rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1])), ...given.slice(cut + 1)];
   // Another store is a memory folder under the projects root: promote and
   // restore write where it points, and one anywhere else was written there.
   // A leading ~ is the home folder: only a POSIX shell expands it, PowerShell and cmd pass it as typed (SKILL.md writes it so).
@@ -1165,7 +1080,7 @@ export function main(given) {
       if (k !== null && like.has(k)) like.get(k).push(h);
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
-    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (isVer(t) ? verRe(t).source : plain(t) ? (forms(t, terms.as.get(t) !== t && terms.as.get(t)) ? starts(t, terms.as.get(t)).source : t) : alone(t).source)).join('|'), 'giu');
+    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => termRe(t, terms.as.get(t) !== t && terms.as.get(t)).source).join('|'), 'giu');
     // NFC, as the scoring reads it: a decomposed "é" scored the entry, and its stretch must show too.
     const nfc = (v) => clip(v, Infinity).normalize('NFC');
     const unmark = (a) => a.split(BLOCK).join('');
@@ -1195,7 +1110,7 @@ export function main(given) {
   } else if (cmd === 'show' && args.length) {
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).
-    const es = told(scope, { failed }), seen = new Set();
+    const es = visible(scope, { failed }), seen = new Set();
     // A key holds spaces: typed without quotes it is several words, none a key; then they are one key joined by one space.
     const ks = args.length > 1 && !args.some((k) => es.some((e) => e.key === k)) ? [args.join(" ")] : args, got = ks.map((k) => es.find((e) => e.key === k));
     const whole = (e) => [head(e), `     key: ${clip(e.key, Infinity)}`, ...replyTo(es, e),
@@ -1220,126 +1135,20 @@ export function main(given) {
     r = { ok: found.every(Boolean), lines: found.flatMap((e, i) => Array.isArray(e) ? e : e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${ks[i]} and no note has that name in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
   } else if (cmd === 'search' && (range.since || range.until || filtered)) {
     // What was asked on those days, newest first: "what did we do last week".
-    const es = told(scope, { ...range, failed }).filter(kept(filters)).filter((e) => !isHelper(e) || filters.file || filters.conversation).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
-    const all = shown.some(short) ? told(scope, { failed }) : [];   // the reply before a short request may be on an earlier day
+    const es = visible(scope, { ...range, failed }).filter(kept(filters)).filter((e) => !isHelper(e) || filters.file || filters.conversation).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
+    const all = shown.some(short) ? visible(scope, { failed }) : [];   // the reply before a short request may be on an earlier day
     const dropped = [...new Set(args.join(' ').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => STOP.has(t)))];
     r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [filters.file ? missFile : `no journal entry${span && ` ${span}`} in ${where}`]] };
-  } else if (cmd === 'forget' && readText(join(here, FORGOTTEN)) === null && existsSync(join(here, FORGOTTEN))) {
-    // A forget list that won't read can't say what was forgotten: the look found a forgotten exchange in its conversation again.
-    r = { ok: false, lines: [`the forget list ${join(here, FORGOTTEN)} could not be read; nothing was looked up or removed`] };
-  } else if (cmd === 'forget') {
-    // A blank term is in every entry: `forget "" --yes` would empty the journal.
-    const conversation = opt('--conversation'), yes = rest.includes('--yes'), terms = args.filter((a) => a.trim());
-    const named = rest.flatMap((a, i) => (a === '--key' ? [rest[i + 1]] : []));
-    // A key no entry here has is named, never skipped: a confirmed key of another
-    // project's entry went unsaid, with exit 0 (review, 2026-10-29).
-    const unread = [], stored = named.length ? entries([here], { failed: unread }) : [];
-    // Nor one of a turn no day holds yet, in this store's conversations: a Stop that met the lock writes it after the next
-    // reply, and named as another project's, it was kept out by no key and came back (fuzz seed 1729835215).
-    // Not one forgotten before: in no day, and still in its conversation, it was found again and said removed (review).
-    // Nor while a day won't read: a key of that day, found in its conversation, was said removed while the day still held it (R73).
-    const listed = forgotten(readText(join(here, FORGOTTEN))), already = new Set(listed.map(([k]) => k)), none = (k) => !stored.some((e) => e.key === k);
-    // By words alone, every such turn holding them: a look by words missed one, and the next reply wrote it (1.2.5).
-    const late = unread.length ? [] : terms.length && !named.length ? unwritten(here, [], terms).filter((e) => !already.has(e.key)) : unwritten(here, named.filter((k) => none(k) && !already.has(k)));
-    stored.push(...late);
-    const before = named.filter((k) => none(k) && already.has(k));
-    let again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
-    const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => (unread.length ? `no day of ${here} that could be read has the key ${k}: it may be in one that could not, so nothing was removed for it`
-      : `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`));
-    // --same: every entry asking what a keyed one asked, the copies a hit counts.
-    const asks = new Set(stored.filter((e) => named.includes(e.key)).map((e) => sameKey(e.asked)));
-    const keys = rest.includes('--same') ? stored.filter((e) => asks.has(sameKey(e.asked))).map((e) => e.key) : named;
-    // By the tag, from the full session id too: the skill has the id, an entry the tag.
-    // Keys given filter even when none is left: no key is never "every entry".
-    const o = { ...range, conversation: conversation && tag(conversation), keys: named.length ? keys : undefined, more: late, failed };
-    // With its key: the look is how the user's entries are found, and --key removes them. Not an unwritten turn's words: its
-    // conversation may be one the journal never takes (private, or held with auto memory off).
-    const line = (e) => `${e.at}  conversation ${e.s}  ${e.unsaid ? '[not in the journal yet]' : clip(e.asked, 120)}  (key ${clip(e.key, Infinity)})`;
-    // One store: under --all it ran on this one alone, and said "removed 0" of
-    // an entry search had just shown in another.
-    if (rest.includes('--all')) r = no(`forget works on one store: --store <folder>, the memory folder of the project a search hit names (${join(projectsRoot(), '<project>', 'memory')})`);
-    // Not "delete the journal folder": the backfill's lists live in it, and
-    // without them it rebuilds the journal from the transcripts, forgotten entries too.
-    else if (!terms.length && !range.since && !range.until && !conversation && !named.length) r = no('forget needs words, a date range, --conversation or --key; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)');
-    // forget() lists the journal strictly: one that will not list read as empty, "nothing matches" with exit 0, and the entry stayed
-    // (F20, R45). Named, as a refused restore is, and alone: the --key lookup above read the same failure as "no entry has the key".
-    else try {
-      // A retry after a handoff.md that would not be written finds the keys listed and no day holding them: their exchanges
-      // still go from handoff.md, by the conversation and minute the list keeps. Said "already forgotten" alone, they stayed (R73).
-      if (yes && before.length) {
-        const at = new Set(listed.filter(([k, t, m]) => t && m && before.includes(k)).map(([, t, m]) => `${tag(basename(t))} ${m}`));
-        try {
-          const w = withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`)));
-          if (w === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true });
-          // The retry did something: said, not "nothing to remove" alone.
-          // Said once: which of several keys still had an exchange there is not known here.
-          else if (w === true) again = [...before.map((k) => `key ${k} is already forgotten; nothing to remove from the journal`), 'handoff.md holds none of these exchanges now'];
-        }
-        catch (e) { failed.push({ path: join(here, 'handoff.md'), code: e.code || e.message, write: true }); }
-      }
-      const m = forget(here, terms, o).matched, byRange = !terms.length && !named.length && !conversation;
-      const ds = m.map((e) => e.day).sort(), shown = byRange ? m.slice(0, RANGE_SHOWN) : m;
-      if (m.length > LOOK && !byRange) r = { ok: !yes, lines: [`${m.length} entries in ${here} match; narrow it: a look lists ${LOOK} at most${yes ? ', and --yes removes only what a look can list: nothing removed' : ''}`] };
-      else if (!m.length) {
-        // The words of a sentence ("the password I pasted yesterday"): the ones no entry holds are why nothing matched.
-        // Not when the keys left no entry to hold them: the words were blamed for a key of another store.
-        // One read, each word tried on it: a look per word read the journal once a word.
-        const all = forget(here, [], { ...o, failed: [] }).matched, left = !named.length || all.length > 0;
-        const none = left ? terms.filter((t) => !all.some((e) => holds(e, t.toLowerCase()))) : [];
-        const why = !terms.length || !left ? '' : `: no entry holds ${none.length ? none.map((t) => `"${t}"`).join(', ') : 'every word'}`;
-        r = { ok: true, lines: [`nothing in ${here} matches${why}`] };
-        // The journal no longer holds it (forgotten before) but the snapshots may: the days whose versions held every word go.
-        // Plain words only: a key, conversation or date range that matched nothing must not widen into every day holding the words.
-        // shortcut: words are looked up as plain text in any case (git folds ASCII letters only), per day; a day holding them in different entries is purged too.
-        if (yes && terms.length && !named.length && !conversation && !range.since && !range.until && rest.includes('--purge') && /^\[project-memory\]/m.test(readText(join(projectsRoot(), '.git', 'config')) ?? '')) {
-          try {
-            const days = terms.map((t) => new Set(tracked(here, 'journal').flatMap((at) => git('log', '--all', '-i', '--format=', '--name-only', '-S' + t, '--', at).split('\n')).map((p) => p.split('/').pop().replace(/\.md$/, '')).filter((d) => /^\d{4}-\d\d-\d\d$/.test(d))));
-            const hit = [...days[0]].filter((d) => days.every((s) => s.has(d)));
-            if (hit.length) { purge(here, hit); r.lines = [`the journal of ${here} no longer holds it; purged the journal of ${more(hit, 6)} from the snapshots`]; }
-          } catch (e) { r = no(`the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)})`); }
-        }
-      } else if (!yes) {
-        r = { ok: true, lines: [...shown.map(line), ...(m.length > shown.length ? [`and ${m.length - shown.length} more`] : []),
-          `${m.length} entr${m.length === 1 ? 'y' : 'ies'} in ${here}${byRange ? ` from ${ds[0]} to ${ds.at(-1)}` : ''} would go; run again with --yes to remove them`] };
-      }
-      else {
-        // What this look found and nothing since: --yes removes only what a look lists.
-        let got;
-        try { got = forget(here, terms, { ...o, keys: m.map((e) => e.key), apply: true }); }
-        catch (e) { failed.push({ path: String(e.dest || e.path || here).replace(/\.tmp\d+$/, ''), code: e.code || e.message, write: true }); got = { matched: m, removed: [] }; }
-        // Under --yes, what went: a day that kept changing under the write, or
-        // one the disk refused, keeps its entries, and listed they read as gone.
-        const tried = got?.matched ?? [], gone = got?.removed ?? [];
-        // A day before today is in the snapshots already (memory-tier commits a
-        // day once it closes), when they are the plugin's: a repository the user
-        // made there holds no journal, and deleting it would lose their history.
-        const ours = /^\[project-memory\]/m.test(readText(join(projectsRoot(), '.git', 'config')) ?? '');
-        // Not an unwritten turn's day: no snapshot holds what no day did.
-        const old = ours ? [...new Set(gone.filter((e) => !e.unsaid && e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
-        let purged = null;
-        if (ours && got && rest.includes('--purge')) {
-          try { purge(here, [...new Set(tried.map((e) => e.day))]); purged = 'purged from the snapshots too'; }
-          catch (e) { purged = `the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); the old snapshots still hold the text: run the same forget command again with --purge`; }
-        }
-        r = !got ? no(`${here} is busy (another hook holds it); try again`)
-          // Past LOOK (a range's), the count, not every line.
-          : { ok: true, lines: [...(gone.length > LOOK ? [] : gone.map(line)), ...(old.length && purged === null ? [`the snapshots still hold the journal of ${more(old, 6)}: forget --purge removes it from them, or deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : []),
-            // As PRIVACY.md says it: forget empties project-memory's files, and said nothing of Claude Code's own (audit C-6).
-            ...(gone.length ? [`Claude Code still keeps these exchanges in its own conversation files (the .jsonl files in ${projectsRoot()}): forget does not change them`] : []),
-            `removed ${gone.length}${gone.length === tried.length ? '' : ` of ${tried.length}`} from ${here}${purged ? `; ${purged}` : ''}`] };
-      }
-      r.lines.splice(-1, 0, ...again);
-      if (lost.length) { r.lines.splice(-1, 0, ...lost); r.ok = false; }
-    } catch (e) { if (!e.code) throw e; r = no(`${join(here, 'journal')} could not be listed (${e.code}); nothing removed`); }
-  } else if (cmd === 'enforce') r = args[0] === 'status' ? enforceStatus(here) : replay(here, args, rest.includes('--all'), project, failed);
+  } else if (cmd === 'forget') r = forgetting(here, args, rest, range, opt('--conversation'), failed);
+  else if (cmd === 'enforce') r = args[0] === 'status' ? enforceStatus(here) : replay(here, args, rest.includes('--all'), project, failed);
   else if (cmd === 'rescan') r = rescan(every(), rest.includes('--apply'), rest.includes('--yes'));
   else if (cmd === 'incognito') r = incognito(opt('--session'));
   else if (cmd === 'off' || cmd === 'on') r = projectSwitch(here, cmd === 'off');
   else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
     const am = autoMemory();
-    r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
+    r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames)), verdict().say] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined, failed);
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
@@ -1352,15 +1161,17 @@ export function main(given) {
   // still in, the lines above. Before the last line of a search or a forget,
   // which is its count, as the skill says. Once: a forget reads a day twice.
   r.lines.splice(r.lines.at(-1) === AGAIN ? -2 : cmd === 'search' || cmd === 'forget' || cmd === 'page' ? -1 : r.lines.length, 0, ...new Set(failed.map((f) => `could not ${f.write ? 'write' : 'read'} ${f.path}: ${f.code}`)));
-  // The page holds journal text: where the journal is forgotten, or the project or conversation stops being kept, it goes too.
+  // The copies of journal text outside the journal, and the commands that remove them. The page goes where the journal is forgotten,
+  // or the project or conversation stops being kept. The session files (sessions.mjs) hold paths and keys of exchanges: forget and off
+  // drop the project's, rescan every project's; incognito drops its conversation's through the journal's takeBack.
   // rescan only when it rewrites (--apply --yes): without --yes it changes nothing.
-  if (cmd === 'forget' || cmd === 'incognito' || cmd === 'off' || (cmd === 'rescan' && rest.includes('--apply') && rest.includes('--yes'))) {
+  const rewrites = cmd === 'rescan' && rest.includes('--apply') && rest.includes('--yes');
+  const copies = cmd === 'incognito' ? ['page'] : cmd === 'forget' || cmd === 'off' || rewrites ? ['page', 'sessions'] : [];
+  if (copies.includes('page')) {
     const bad = dropPage();
     if (bad instanceof Error) { r.lines.push(`could not delete the page: ${reason(bad)}; it still holds journal text`); r.ok = false; }
   }
-  // The session files (recall.mjs) hold paths and keys of exchanges: forget and off drop the project's, rescan every project's.
-  // incognito drops its conversation's through the journal's takeBack.
-  if (cmd === 'forget' || cmd === 'off' || (cmd === 'rescan' && rest.includes('--apply') && rest.includes('--yes'))) {
+  if (copies.includes('sessions')) {
     const bad = dropSessions(cmd === 'rescan' ? null : here);
     if (bad instanceof Error) { r.lines.push(`could not delete the session files: ${reason(bad)}`); r.ok = false; }
   }
@@ -1370,6 +1181,116 @@ export function main(given) {
   console.log(r.lines.map(redact).join('\n'));
   // A forget that failed anywhere fails: exit 0 read as all gone.
   return r.ok && !((cmd === 'forget' || cmd === 'page') && failed.length) ? 0 : 1;
+}
+
+// forget: the look, or under --yes the removal, of the exchanges in the store `here` that words, keys (--key, --same), `conversation` or
+// `range` select; --purge also drops their days from the snapshots. The page and the session files go in main(), after the failure lines.
+function forgetting(here, args, rest, range, conversation, failed) {
+  // A forget list that won't read can't say what was forgotten: the look found a forgotten exchange in its conversation again.
+  if (readText(join(here, FORGOTTEN)) === null && existsSync(join(here, FORGOTTEN))) return { ok: false, lines: [`the forget list ${join(here, FORGOTTEN)} could not be read; nothing was looked up or removed`] };
+  let r;
+  // A blank term is in every entry: `forget "" --yes` would empty the journal.
+  const yes = rest.includes('--yes'), terms = args.filter((a) => a.trim());
+  const named = rest.flatMap((a, i) => (a === '--key' ? [rest[i + 1]] : []));
+  // A key no entry here has is named, never skipped: a confirmed key of another
+  // project's entry went unsaid, with exit 0 (review, 2026-10-29).
+  const unread = [], stored = named.length ? entries([here], { failed: unread }) : [];
+  // Nor one of a turn no day holds yet, in this store's conversations: a Stop that met the lock writes it after the next
+  // reply, and named as another project's, it was kept out by no key and came back (fuzz seed 1729835215).
+  // Not one forgotten before: in no day, and still in its conversation, it was found again and said removed (review).
+  // Nor while a day won't read: a key of that day, found in its conversation, was said removed while the day still held it (R73).
+  const listed = forgotten(readText(join(here, FORGOTTEN))), already = new Set(listed.map(([k]) => k)), none = (k) => !stored.some((e) => e.key === k);
+  // By words alone, every such turn holding them: a look by words missed one, and the next reply wrote it (1.2.5).
+  const late = unread.length ? [] : terms.length && !named.length ? unwritten(here, [], terms).filter((e) => !already.has(e.key)) : unwritten(here, named.filter((k) => none(k) && !already.has(k)));
+  stored.push(...late);
+  const before = named.filter((k) => none(k) && already.has(k));
+  let again = before.map((k) => `key ${k} is already forgotten; nothing to remove`);
+  const lost = named.filter((k) => none(k) && !already.has(k)).map((k) => (unread.length ? `no day of ${here} that could be read has the key ${k}: it may be in one that could not, so nothing was removed for it`
+    : `no entry in ${here} has the key ${k}; is it another project's? use --store with its memory folder`));
+  // --same: every entry asking what a keyed one asked, the copies a hit counts.
+  const asks = new Set(stored.filter((e) => named.includes(e.key)).map((e) => sameKey(e.asked)));
+  const keys = rest.includes('--same') ? stored.filter((e) => asks.has(sameKey(e.asked))).map((e) => e.key) : named;
+  // By the tag, from the full session id too: the skill has the id, an entry the tag.
+  // Keys given filter even when none is left: no key is never "every entry".
+  const o = { ...range, conversation: conversation && tag(conversation), keys: named.length ? keys : undefined, more: late, failed };
+  // With its key: the look is how the user's entries are found, and --key removes them. Not an unwritten turn's words: its
+  // conversation may be one the journal never takes (private, or held with auto memory off).
+  const line = (e) => `${e.at}  conversation ${e.s}  ${e.unsaid ? '[not in the journal yet]' : clip(e.asked, 120)}  (key ${clip(e.key, Infinity)})`;
+  // One store: under --all it ran on this one alone, and said "removed 0" of
+  // an entry search had just shown in another.
+  if (rest.includes('--all')) r = no(`forget works on one store: --store <folder>, the memory folder of the project a search hit names (${join(projectsRoot(), '<project>', 'memory')})`);
+  // Not "delete the journal folder": the backfill's lists live in it, and
+  // without them it rebuilds the journal from the transcripts, forgotten entries too.
+  else if (!terms.length && !range.since && !range.until && !conversation && !named.length) r = no('forget needs words, a date range, --conversation or --key; to forget the whole journal, use --since 1970-01-01 --yes (deleting the journal folder rebuilds it from the conversations still on disk)');
+  // forget() lists the journal strictly: one that will not list read as empty, "nothing matches" with exit 0, and the entry stayed
+  // (F20, R45). Named, as a refused restore is, and alone: the --key lookup above read the same failure as "no entry has the key".
+  else try {
+    // A retry after a handoff.md that would not be written finds the keys listed and no day holding them: their exchanges
+    // still go from handoff.md, by the conversation and minute the list keeps. Said "already forgotten" alone, they stayed (R73).
+    if (yes && before.length) {
+      const at = new Set(listed.filter(([k, t, m]) => t && m && before.includes(k)).map(([, t, m]) => `${tag(basename(t))} ${m}`));
+      try {
+        const w = withLock(here, () => unsay(here, (t) => at.has(`${t.s} ${t.at}`)));
+        if (w === null) failed.push({ path: join(here, 'handoff.md'), code: 'busy', write: true });
+        // The retry did something: said, not "nothing to remove" alone.
+        // Said once: which of several keys still had an exchange there is not known here.
+        else if (w === true) again = [...before.map((k) => `key ${k} is already forgotten; nothing to remove from the journal`), 'handoff.md holds none of these exchanges now'];
+      }
+      catch (e) { failed.push({ path: join(here, 'handoff.md'), code: e.code || e.message, write: true }); }
+    }
+    const m = forget(here, terms, o).matched, byRange = !terms.length && !named.length && !conversation;
+    const ds = m.map((e) => e.day).sort(), shown = byRange ? m.slice(0, RANGE_SHOWN) : m;
+    if (m.length > LOOK && !byRange) r = { ok: !yes, lines: [`${m.length} entries in ${here} match; narrow it: a look lists ${LOOK} at most${yes ? ', and --yes removes only what a look can list: nothing removed' : ''}`] };
+    else if (!m.length) {
+      // The words of a sentence ("the password I pasted yesterday"): the ones no entry holds are why nothing matched.
+      // Not when the keys left no entry to hold them: the words were blamed for a key of another store.
+      // One read, each word tried on it: a look per word read the journal once a word.
+      const all = forget(here, [], { ...o, failed: [] }).matched, left = !named.length || all.length > 0;
+      const none = left ? terms.filter((t) => !all.some((e) => holds(e, t.toLowerCase()))) : [];
+      const why = !terms.length || !left ? '' : `: no entry holds ${none.length ? none.map((t) => `"${t}"`).join(', ') : 'every word'}`;
+      r = { ok: true, lines: [`nothing in ${here} matches${why}`] };
+      // The journal no longer holds it (forgotten before) but the snapshots may: the days whose versions held every word go.
+      // Plain words only: a key, conversation or date range that matched nothing must not widen into every day holding the words.
+      if (yes && terms.length && !named.length && !conversation && !range.since && !range.until && rest.includes('--purge') && isOurs()) {
+        try {
+          const hit = daysHolding(here, terms);
+          if (hit.length) { dropDays(here, hit); r.lines = [`the journal of ${here} no longer holds it; purged the journal of ${more(hit, 6)} from the snapshots`]; }
+        } catch (e) { r = no(`the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)})`); }
+      }
+    } else if (!yes) {
+      r = { ok: true, lines: [...shown.map(line), ...(m.length > shown.length ? [`and ${m.length - shown.length} more`] : []),
+        `${m.length} entr${m.length === 1 ? 'y' : 'ies'} in ${here}${byRange ? ` from ${ds[0]} to ${ds.at(-1)}` : ''} would go; run again with --yes to remove them`] };
+    }
+    else {
+      // What this look found and nothing since: --yes removes only what a look lists.
+      let got;
+      try { got = forget(here, terms, { ...o, keys: m.map((e) => e.key), apply: true }); }
+      catch (e) { failed.push({ path: String(e.dest || e.path || here).replace(/\.tmp\d+$/, ''), code: e.code || e.message, write: true }); got = { matched: m, removed: [] }; }
+      // Under --yes, what went: a day that kept changing under the write, or
+      // one the disk refused, keeps its entries, and listed they read as gone.
+      const tried = got?.matched ?? [], gone = got?.removed ?? [];
+      // A day before today is in the snapshots already (memory-tier commits a
+      // day once it closes), when they are the plugin's: a repository the user
+      // made there holds no journal, and deleting it would lose their history.
+      const ours = isOurs();
+      // Not an unwritten turn's day: no snapshot holds what no day did.
+      const old = ours ? [...new Set(gone.filter((e) => !e.unsaid && e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
+      let purged = null;
+      if (ours && got && rest.includes('--purge')) {
+        try { dropDays(here, [...new Set(tried.map((e) => e.day))]); purged = 'purged from the snapshots too'; }
+        catch (e) { purged = `the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); the old snapshots still hold the text: run the same forget command again with --purge`; }
+      }
+      r = !got ? no(`${here} is busy (another hook holds it); try again`)
+        // Past LOOK (a range's), the count, not every line.
+        : { ok: true, lines: [...(gone.length > LOOK ? [] : gone.map(line)), ...(old.length && purged === null ? [`the snapshots still hold the journal of ${more(old, 6)}: forget --purge removes it from them, or deleting ${join(projectsRoot(), '.git')} removes them, and every older version of every memory with them`] : []),
+          // As PRIVACY.md says it: forget empties project-memory's files, and said nothing of Claude Code's own (audit C-6).
+          ...(gone.length ? [`Claude Code still keeps these exchanges in its own conversation files (the .jsonl files in ${projectsRoot()}): forget does not change them`] : []),
+          `removed ${gone.length}${gone.length === tried.length ? '' : ` of ${tried.length}`} from ${here}${purged ? `; ${purged}` : ''}`] };
+    }
+    r.lines.splice(-1, 0, ...again);
+    if (lost.length) { r.lines.splice(-1, 0, ...lost); r.ok = false; }
+  } catch (e) { if (!e.code) throw e; r = no(`${join(here, 'journal')} could not be listed (${e.code}); nothing removed`); }
+  return r;
 }
 
 // Node names the script by its real path: compared with the path it was

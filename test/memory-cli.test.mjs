@@ -28,7 +28,7 @@ const meanwhile = (kind, match, act) => {
 // not load) still spawns one. Imported after tempHome: it names the live copy
 // from HOME as it loads. Its output through harness.mjs's capture(), which
 // sends it through UTF-8 as a process's reaches the reader.
-const { main } = await import(pathToFileURL(CLI).href);
+const { main, parseArgs, OPTIONS } = await import(pathToFileURL(CLI).href);
 const run = async (args) => {
   try { const { out, value } = await capture(() => main(args)); return { status: value, stdout: out, stderr: '' }; }
   catch (e) { return { status: 1, stdout: '', stderr: String(e?.stack ?? e) }; }
@@ -378,6 +378,22 @@ ok(r.status === 0 && /^- \[draft okapi\]\(\[draft\] okapi\.md\) — an okapi sti
   ok(readFileSync(join(shared, 'MEMORY.md'), 'utf8').includes('- [Wrap](wrap-note.md) — a hook that is long and\n  wrapped onto a second line\n'), `and the shared index gets all of it (got ${readFileSync(join(shared, 'MEMORY.md'), 'utf8')})`);
   writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace('- [After](after-wrap.md) — next\n', ''));
 }
+// Promote keeps each index in its own line endings: a CRLF one was written back LF, and tiering then kept it LF (audit I-F4).
+{
+  const dirIdx = join(dir, 'MEMORY.md'), sharedIdx = join(shared, 'MEMORY.md');
+  const dirWas = readFileSync(dirIdx, 'utf8'), sharedWas = existsSync(sharedIdx) ? readFileSync(sharedIdx, 'utf8') : null;
+  const crlf = (t) => t.replace(/\r?\n/g, '\r\n'), allCrlf = (t) => !/(^|[^\r])\n/.test(t) && t.endsWith('\r\n');
+  memory(dir, 'eol-note', 'c');
+  writeFileSync(dirIdx, crlf(dirWas.replace(/\n*$/, '\n') + '- [Eol](eol-note.md) — a hook that is long and\n  wrapped onto a second line\n'));
+  writeFileSync(sharedIdx, crlf(sharedWas ?? '# Shared memory\n'));
+  r = await cli('promote', 'eol-note');
+  const home = readFileSync(dirIdx, 'utf8'), there = readFileSync(sharedIdx, 'utf8');
+  ok(r.status === 0 && !home.includes('eol-note') && allCrlf(home), `promote writes a CRLF project index back CRLF (got ${JSON.stringify(home)})`);
+  ok(there.includes('- [Eol](eol-note.md) — a hook that is long and\r\n  wrapped onto a second line\r\n') && allCrlf(there), `and adds its line to a CRLF shared index in CRLF, wrap and all (got ${JSON.stringify(there)})`);
+  writeFileSync(dirIdx, dirWas);
+  if (sharedWas === null) rmSync(sharedIdx, { force: true }); else writeFileSync(sharedIdx, sharedWas);
+  rmSync(join(shared, 'eol-note.md'), { force: true });
+}
 // A copy that cannot be written moves nothing: the note stays in its project.
 {
   const { promote } = await import(pathToFileURL(CLI).href);
@@ -551,6 +567,42 @@ rmSync(join(root, '.stop-ran'), { force: true });
   const d = (await cli('doctor')).stdout;
   ok(/^PROBLEM the autoMemoryDirectory setting is set/m.test(d) && !/secret-helper/.test(d), `doctor warns that autoMemoryDirectory is not followed (got ${d})`);
   rmSync(sf, { force: true });
+}
+
+// The command line read before any store is touched: each word as given -> the command, its words and
+// options, or the refusal main() prints. The exceptions here are each a bug once.
+{
+  const parsed = (...w) => { const p = parseArgs(w); return typeof p === 'string' ? p : { cmd: p.cmd, rest: p.rest, args: p.args }; };
+  const table = [
+    [['--store=x', 'search', 'a'], { cmd: 'search', rest: ['--store', 'x', 'a'], args: ['a'] }],
+    [['--store', 'x', 'search', 'a'], { cmd: 'search', rest: ['--store', 'x', 'a'], args: ['a'] }],
+    [['forget', '--key', 'a', '--key=b'], { cmd: 'forget', rest: ['--key', 'a', '--key', 'b'], args: [] }],
+    [['search', '--', '--no-verify', 'x'], { cmd: 'search', rest: [], args: ['--no-verify', 'x'] }],
+    [[], { cmd: 'status', rest: [], args: [] }],
+    [['--session', 'abc'], { cmd: 'status', rest: ['--session', 'abc'], args: [] }],
+    [['--session'], { cmd: 'status', rest: ['--session'], args: [] }],
+    [['restore', 'f', '--rev'], { cmd: 'restore', rest: ['f', '--rev'], args: ['f'] }],
+    [['search', 'x', '-h'], { cmd: 'help', rest: ['x', '-h'], args: ['x', '-h'] }],
+    [['search', '--file', '-h'], { cmd: 'search', rest: ['--file', '-h'], args: [] }],
+    [['constructor'], { cmd: 'constructor', rest: [], args: [] }],
+    [['search', 'x', '--limit', '-3'], { cmd: 'search', rest: ['x', '--limit', '-3'], args: ['x'] }],
+    [['forget', '--conversation', 'abc'], { cmd: 'forget', rest: ['--conversation', 'abc'], args: [] }],
+    [['--from', '2026-10-27'], 'unknown option --from; help lists the options'],
+    [['--after=2026-10-28'], 'unknown option --after=2026-10-28; help lists the options'],
+    [['--constructor'], 'unknown option --constructor; help lists the options'],
+    [['forget', '--key', '--store', 'x'], '--key needs a value after it'],
+    [['forget', '--key'], '--key needs a value after it'],
+    [['search', 'x', '--file', ''], '--file needs a value after it'],
+    [['page', '--project='], '--project needs a value after it'],
+    [['search', 'x', '--rev', 'R'], 'search does not take --rev; help lists the options'],
+    [['search', 'x', '--conversation', 'abc'], '--conversation needs at least 4 characters of the id'],
+    [['search', 'x', '--limit', 'ten'], '--limit takes a number, not ten'],
+    [['page', '--days', '0'], '--days takes a number of days or all, not 0'],
+  ];
+  for (const [w, want] of table) { assert.deepEqual(parsed(...w), want, JSON.stringify(w)); checks++; }
+  ok(parseArgs(['search', 'x', '--limit', '2', '--limit', '3']).opt('--limit') === '2', 'the first of a repeated option wins');
+  const help = (await run(['help'])).stdout;
+  for (const o of Object.keys(OPTIONS)) ok(help.includes(o), `help names ${o}`);
 }
 
 console.log(`memory-cli: ${checks} checks passed`);

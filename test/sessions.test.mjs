@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor } from './harness.mjs';
-import { onChange, onPrompt, sessionsOf, readSession, sessionLine, dropSessions, cleanPath, others, titleOf, ACTIVE } from '../src/recall.mjs';
+import { onChange, onPrompt, cleanPath, titleOf } from '../src/recall.mjs';
+import { sessionsOf, readSession, sessionLine, dropSessions, others, ACTIVE } from '../src/sessions.mjs';
 import { readTail } from '../src/transcript.mjs';
 import { hushed } from '../src/privacy.mjs';
 import { local, projectsRoot } from '../src/store.mjs';
@@ -18,7 +19,6 @@ let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const HOOK = tool('src/recall-hook.mjs');
 const A = 'aaaaaaaa-0000-4000-8000-000000000000', B = 'bbbbbbbb-0000-4000-8000-000000000000';
-const journal = () => import('../src/journal.mjs');
 // The lines and the expected texts each take Date.now() as minutes (HH:MM): a minute that turned in between failed a check
 // now and then ("at 11:17" against 11:18). The file runs in about 1.5 s, so it starts outside a minute's last 10 s.
 if (new Date().getSeconds() >= 50) await new Promise((done) => setTimeout(done, (61 - new Date().getSeconds()) * 1000));
@@ -31,8 +31,8 @@ function project() {
   const full = (f) => cleanPath(join(cwd, f));
   const file = (s) => join(sessionsOf(store), s.slice(0, 8));
   const b = (...lines) => { mkdirSync(sessionsOf(store), { recursive: true }); appendFileSync(file(B), lines.map(([k, rest, ago]) => sessionLine(k, rest, '', iso(ago))).join('')); };
-  const change = (f, s = A) => onChange({ session_id: s, cwd, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: join(cwd, f) } }, { journal, deadline: performance.now() + 10_000 });
-  const prompt = (text, extra = {}) => onPrompt({ session_id: A, cwd, hook_event_name: 'UserPromptSubmit', prompt: text, ...extra }, { journal, deadline: performance.now() + 10_000 });
+  const change = (f, s = A) => onChange({ session_id: s, cwd, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: join(cwd, f) } }, { deadline: performance.now() + 10_000 });
+  const prompt = (text, extra = {}) => onPrompt({ session_id: A, cwd, hook_event_name: 'UserPromptSubmit', prompt: text, ...extra }, { deadline: performance.now() + 10_000 });
   return { cwd, store, full, file, b, change, prompt };
 }
 const run = (input) => spawnSync(process.execPath, [HOOK], { input: typeof input === 'string' ? input : JSON.stringify(input), encoding: 'utf8' });

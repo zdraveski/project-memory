@@ -11,7 +11,7 @@ import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs'
 
 const { home, env } = tempHome('jr-test-');
 const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, keptUnder, due: isDue, IMPORT_SEGMENT } = await import('../src/journal.mjs');
-const { ACTIVE } = await import('../src/handoff-log.mjs'), { TAIL, NUDGE_TAG } = await import('../src/transcript.mjs');
+const { ACTIVE } = await import('../src/sessions.mjs'), { TAIL, NUDGE_TAG } = await import('../src/transcript.mjs');
 const { local, withLock, transcriptKey } = await import('../src/store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
@@ -2327,6 +2327,41 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
     const c = chunk(fd, 3, 100, 5);
     ok(c && c.pos === 3 && c.buf.toString() === 'cd', `chunk() reads only the bytes up to the size it is given (got ${JSON.stringify(c && c.buf.toString())})`);
   } finally { fs.closeSync(fd); }
+}
+
+// visible() and recent(): the exchanges a reader and the hooks may see. Never a forgotten key or a conversation marked private
+// whose sweep is still owed; a list that will not read hides its store. A private turn stays for a reader (shown as [private]),
+// not for a hook.
+{
+  const { visible, recent } = await import('../src/journal.mjs');
+  const ent = (key, s, at, over = {}) => ({ key, at, s, t: `C--v/${s}0000`, branch: '', asked: `ask ${key}`, answered: `reply ${key}`, changed: ['a.js'], ran: [], ...over });
+  const put = (v, d, es) => { mkdirSync(join(v, 'journal'), { recursive: true }); writeFileSync(dayFile(v, d), `# Journal ${d}\n\n${es.map(render).join('\n\n')}\n`); };
+  const fill = (v) => {
+    put(v, '2026-11-19', [ent('k1', 'aaaa1111', '2026-11-19 09:00'), ent('k2', 'bbbb2222', '2026-11-19 10:00')]);
+    put(v, '2026-11-20', [ent('k3', 'aaaa1111', '2026-11-20 09:00'), ent('k4', 'cccc3333', '2026-11-20 10:00', { asked: '[private]', answered: '[private]', changed: [] }), ent('k5', 'dddd4444', '2026-11-20 11:00')]);
+    return v;
+  };
+  const v = fill(storeFor(home, 'C:\\visible-selftest')), bare = fill(storeFor(home, 'C:\\visible-bare')), shut = fill(storeFor(home, 'C:\\visible-shut')), mute = fill(storeFor(home, 'C:\\visible-mute'));
+  writeFileSync(join(v, 'journal', '.forgotten'), 'k2\n');
+  writeFileSync(join(v, '.private-sessions'), 'dddd4444\n');
+  mkdirSync(join(shut, 'journal', '.forgotten'));
+  mkdirSync(join(mute, '.private-sessions'));
+  const keys = (es) => es && es.map((e) => e.key).join(' ');
+  ok(keys(visible([v])) === 'k1 k3 k4', `a reader sees neither a forgotten key nor an owed sweep, and keeps a private turn (got ${keys(visible([v]))})`);
+  ok(keys(visible([bare])) === 'k1 k2 k3 k4 k5', 'a store with no forget list and no private list shows every exchange');
+  let failed = [];
+  ok(keys(visible([shut, v], { failed })) === 'k1 k3 k4' && failed.length === 1 && failed[0].path.endsWith('.forgotten') && failed[0].code, `a forget list that will not read hides its store and is named (got ${JSON.stringify(failed)})`);
+  failed = [];
+  ok(keys(visible([mute], { failed })) === '' && failed.length === 1 && failed[0].path.endsWith('.private-sessions'), `a private list that will not read hides its store and is named once (got ${JSON.stringify(failed)})`);
+
+  const now = Date.parse('2026-11-21T12:00:00Z'), w = (o = {}, keep = () => true) => recent(v, { days: 30, bytes: 1e6, deadline: performance.now() + 1e4, now, ...o }, keep);
+  ok(keys(w()) === 'k3 k1', `a hook sees the newest first, without a forgotten key, a private turn or an owed sweep (got ${keys(w())})`);
+  ok(keys(w({}, (e) => e.key !== 'k3')) === 'k1', 'and without what its caller refuses');
+  ok(keys(w({ bytes: 1 })) === 'k3', 'the newest day is read whole, and the bytes cap stops at the next');
+  ok(keys(w({ days: 1 })) === 'k3', 'the days cap stops at the window');
+  ok(w({ deadline: performance.now() - 1 }) === null, 'past the deadline the walk gives up');
+  ok(recent(shut, { days: 30, bytes: 1e6, deadline: performance.now() + 1e4, now }, () => true) === null, 'a forget list that will not read gives up');
+  ok(keys(recent(mute, { days: 30, bytes: 1e6, deadline: performance.now() + 1e4, now }, () => true)) === '', 'a private list that will not read shows nothing');
 }
 
 console.log(`journal: ${checks} checks passed`);

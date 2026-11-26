@@ -44,3 +44,7 @@ The copies had drifted apart:
 - Do not suggest splitting the rule back into its callers, inlining it into a
   hook for speed, or letting a caller fail open. If a hook is too slow with the
   module, make the module lighter.
+- Whether a transcript holds a typed `<private-session>` is read from the
+  transcript, so it lives in `transcript.mjs` (`typedMark`, `markFrom`), not
+  here: rule 3 keeps this module off the transcript reader. The git-rule hook,
+  the compaction gate and the journal all call it; none keeps its own copy.

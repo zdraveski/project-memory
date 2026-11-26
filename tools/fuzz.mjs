@@ -49,7 +49,7 @@
 // note keeps its text and one index line; repeating the last Stop settles within four.
 // Under faults or a kill: a hook exits 0 (the gate 0 or 2, a command 0 or 1; not a killed
 // one), prints no stack trace (a frame line in stderr or stdout) and no private text, and
-// changes no note; after settling no .handoff-failed-* file and no journal/.failed (but a
+// changes no note; after settling no .handoff-failed-* file and no journal failure, in journal/.failed or kept aside (but a
 // store whose conversations are all private or held with auto memory off keeps its
 // live-write failure: a Stop that writes nothing clears none), and no *.tmp<digits> file is named in MEMORY.md or in
 // `status`. The nudge rules rest after a hurt Stop until the next dip under the trigger.
@@ -82,8 +82,10 @@ import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tool, tempHome, storeFor } from '../test/harness.mjs';
 import { LOCK_STALE, SHARED_BUDGET, POINTER } from '../src/store.mjs';
-import { ACTIVE, tag, parse, sectionOf } from '../src/handoff-log.mjs';
+import { tag, parse, sectionOf } from '../src/handoff-log.mjs';
+import { ACTIVE } from '../src/sessions.mjs';
 import { NUDGE_TAG } from '../src/transcript.mjs';
+import { HANDOFF_FAILED, JOURNAL_FAILED, JOURNAL, FAILED } from '../src/run-records.mjs';
 
 const args = process.argv.slice(2);
 // A typo ("10m", "0", "--seed x") exits 1: it used to run 60 s, or no rounds, and report a pass for a run that tested nothing (audit #15).
@@ -101,7 +103,7 @@ for (const v of ['CLAUDE_CODE_MAX_CONTEXT_TOKENS', 'CLAUDE_CODE_DISABLE_1M_CONTE
 const { MODEL_WINDOW, WINDOW, TRIGGER } = await import('../src/compact-gate.mjs');
 // Reply sizes, in tokens: a small start, two under the trigger, one just past it, one past the ceiling.
 const SIZES = [1_000, 199_000, 500_000, Math.ceil(TRIGGER * WINDOW) + 1_000, Math.ceil(0.95 * MODEL_WINDOW)];
-const TIER = tool('src/memory-tier.mjs'), LOG = tool('src/handoff-log.mjs'), BRIEFING = tool('src/briefing.mjs'), GATE = tool('src/compact-gate.mjs'), CLI = tool('src/memory.mjs');
+const TIER = tool('src/memory-tier.mjs'), BRIEFING = tool('src/briefing.mjs'), GATE = tool('src/compact-gate.mjs'), CLI = tool('src/memory.mjs');
 
 // mulberry32: a seed replays its round exactly.
 const rng = (seed) => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -133,7 +135,7 @@ for (const { at, zone } of INSTANTS) {
   if (zone && offsetAt(zone, t + 39 * 60_000) === offsetAt(zone, t + 41 * 60_000)) { console.error(`fuzz: ${at} is no daylight-saving change in ${zone}: the instant list is wrong`); process.exit(1); }
 }
 
-// Secrets of every shape handoff-log.mjs's redact() knows, built here from pieces (no source line is one) with
+// Secrets of every shape secrets.mjs's redact() knows, built here from pieces (no source line is one) with
 // a stream x. Each is [the text, the part that must never be written], or [the text] for a near-miss, which
 // redact may keep or cut and no rule follows. A token holds a letter and a digit (several patterns want both).
 const AL = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', SAFE = `${AL}_-`, HEX = '0123456789abcdef', UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -518,9 +520,6 @@ async function execute(steps, meta) {
       if (p.status !== 0) problems.push(`the Stop hook with auto memory off (${s}) exited ${p.status ?? p.signal}: ${p.err.trim().split('\n').slice(-2).join(' | ')}`);
       else if (p.out.trim() || STACK.test(p.err)) problems.push(`the Stop hook with auto memory off (${s}) printed: ${(p.out + p.err).trim().slice(0, 200)}`);
       for (const sec of secrets) if ((p.out + p.err).includes(sec)) problems.push(`the Stop with auto memory off printed private text ${sec}`);
-      // And at its start: handoff-log.mjs without --print tags the conversation the same way.
-      const b = await run(LOG, [], JSON.stringify({ cwd, transcript_path: c.t, session_id: s, source: 'startup', hook_event_name: 'SessionStart' }), tz, { off: true });
-      if (b.status !== 0 || b.out.trim() || STACK.test(b.err)) problems.push(`the start hook with auto memory off (${s}) exited ${b.status ?? b.signal} and printed: ${(b.out + b.err).trim().slice(0, 200)}`);
       c.off = true;
     },
     session: ({ id, big }) => {
@@ -699,12 +698,13 @@ async function execute(steps, meta) {
   // A hook exits 0 whatever happens, and says what failed in a file: none may
   // be there. Not .health: it names what is wrong with the store (a hand-written
   // line pointing at no file), which hostile notes are meant to make.
-  for (const f of readdirSync(dirname(proj)).filter((n) => n.startsWith('.handoff-failed-'))) problems.push(`${f}: ${readFileSync(join(dirname(proj), f), 'utf8').trim().slice(0, 300)}`);
+  for (const f of readdirSync(dirname(proj)).filter((n) => n.startsWith(HANDOFF_FAILED))) problems.push(`${f}: ${readFileSync(join(dirname(proj), f), 'utf8').trim().slice(0, 300)}`);
   // A store whose every conversation is private or held with auto memory off writes nothing, and a Stop that writes nothing clears no failure (a memory-off sweep returns hush=false, journal.mjs take(); seed 705302203) (journal.test.mjs:324-330, "clears no failure"), so a failure it left stays: not a rule there.
   // Only its live-write lines: a backfill's line (`"error":"backfill: `) is cleared by the look the settle phase makes due, private conversations or not.
-  const failedLines = existsSync(join(dir, 'journal', '.failed')) ? readFileSync(join(dir, 'journal', '.failed'), 'utf8').split(/\r?\n/).filter(Boolean) : [];
+  // And the one journal/.failed would not take, kept beside the projects (run-records.mjs failures() reads process.env's home, not the round's).
+  const failedLines = [join(dir, JOURNAL, FAILED), join(dirname(proj), JOURNAL_FAILED + basename(proj))].flatMap((p) => existsSync(p) ? readFileSync(p, 'utf8').split(/\r?\n/).filter(Boolean) : []);
   const stale = [...sessions.values()].every((c) => c.private || c.off) ? failedLines.filter((l) => l.includes('"error":"backfill: ')) : failedLines;
-  if (stale.length) problems.push(`journal/.failed: ${stale.join(' ').slice(0, 300)}`);
+  if (stale.length) problems.push(`journal failures: ${stale.join(' ').slice(0, 300)}`);
   const after = files();
   // A big store (meta.big, 10 % of rounds), in states the plugin writes, after the settle (a Stop would clear them): the project's
   // and the shared store's .health with one line naming 400 files (memory-tier.mjs health(); `fit`'s own example), the snapshot
@@ -716,7 +716,7 @@ async function execute(steps, meta) {
     mkdirSync(join(dir, 'journal'), { recursive: true }); mkdirSync(shared, { recursive: true });
     for (const d of [dir, shared]) writeFileSync(join(d, '.health'), `pointers with no file: ${names}\n`);
     writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ failures: 5, lastOk: Date.now(), error: 'disk full '.repeat(120), missed: names.split(', ') }));
-    writeFileSync(join(root, `.handoff-failed-${basename(proj)}`), JSON.stringify({ at: Date.now(), error: 'disk full '.repeat(120) }));
+    writeFileSync(join(root, `${HANDOFF_FAILED}${basename(proj)}`), JSON.stringify({ at: Date.now(), error: 'disk full '.repeat(120) }));
     writeFileSync(join(dir, 'journal', '.failed'), JSON.stringify({ at: new Date().toISOString(), error: 'disk full '.repeat(120) }) + '\n');
     // Filled around the lines already there, never over them: replaced, the line of a note promoted this round was gone (CI
     // seeds 2008212739, 641748427). Lines of 250 B, the last one shorter, to the ceiling the briefing holds the index to, to the byte.

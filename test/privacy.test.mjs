@@ -11,7 +11,7 @@ import { tempHome, tempDir, quick } from './harness.mjs';
 const { home } = tempHome('privacy-test-');
 const { norm, projectsRoot, tag } = await import('../src/store.mjs');
 const P = await import('../src/privacy.mjs');
-const { PRIVATE, PRIVATE_SESSION, NOTE_HIDES, QUIET, OFF, PROJECT_OFF, OFF_PERIODS, FORGOTTEN, hushed, isHushed, isOff, wasOff, off, offLine, unreadable, forgotten, forgottenIn } = P;
+const { PRIVATE, PRIVATE_SESSION, NOTE_HIDES, QUIET, OFF, PROJECT_OFF, OFF_PERIODS, FORGOTTEN, hushed, isHushed, isQuiet, gate, isOff, wasOff, off, offLine, unreadable, forgotten, forgottenIn, listForgotten, switchOff, switchOn } = P;
 
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
@@ -137,7 +137,7 @@ for (const [what, list, dirOf] of [['private conversation', QUIET, () => store('
   writeFileSync(join(on, FORGOTTEN), 'k1\tC--p/abc\t2026-11-01 10:00\r\nk2\n');
   assert.deepStrictEqual(forgottenIn(none), { listed: [], shut: false }); checks++;
   assert.deepStrictEqual(forgottenIn(on), { listed: [['k1', 'C--p/abc', '2026-11-01 10:00'], ['k2']], shut: false }); checks++;
-  assert.deepStrictEqual(forgottenIn(bad), { listed: [], shut: true }); checks++;
+  { const { code, ...r } = forgottenIn(bad); assert.deepStrictEqual(r, { listed: [], shut: true }); ok(typeof code === 'string' && code, 'a list that will not read says why'); }
   assert.deepStrictEqual(forgotten('a\tb\tc\n\n k \n'), [['a', 'b', 'c'], ['k']]); checks++;
   ok(unreadable('/d', '.x').message.endsWith('.x could not be read') && unreadable('/d', '.x') instanceof Error, 'the error a writer throws names the list');
 }
@@ -160,6 +160,65 @@ for (const [what, list, dirOf] of [['private conversation', QUIET, () => store('
   for (const t of ['<private-session>', '<privately>', '<Private', '< private', '<privates and more', '<private>']) ok(NOTE_HIDES.test(t), `the note hides ${JSON.stringify(t)}`);
   ok(!PRIVATE.test('<privately>') && !PRIVATE.test('<private-session>'), 'the private-turn rule is narrower than the note\'s');
   for (const t of ['private', 'a < b', '<priv', '</private>']) ok(!NOTE_HIDES.test(t), `the note shows ${JSON.stringify(t)}`);
+}
+
+// A quiet conversation: private in its store, or switched off in the projects root; a list of either that won't read is quiet.
+{
+  const root = projectsRoot(), none = store('q-none'), mine = store('q-mine'), bad = store('q-bad');
+  writeFileSync(join(mine, QUIET), `${S}\n`); mkdirSync(join(bad, QUIET));
+  ok(!isQuiet(none, S) && isQuiet(mine, S) && isQuiet(bad, S) && !isQuiet(mine, 'zzz00000'), 'quiet: by the store\'s private list, unreadable included');
+  mkdirSync(root, { recursive: true });
+  const was = existsSync(join(root, OFF)) ? readFileSync(join(root, OFF), 'utf8') : null;
+  try {
+    writeFileSync(join(root, OFF), 'offtag00\n');
+    ok(isQuiet(none, 'offtag00', 1) && !isQuiet(none, S, 1), 'quiet: by the projects root\'s switched-off list');
+    fs.rmSync(join(root, OFF)); mkdirSync(join(root, OFF));
+    ok(isQuiet(none, S), 'quiet: a switched-off list that won\'t read');
+  } finally { fs.rmSync(join(root, OFF), { recursive: true, force: true }); if (was != null) writeFileSync(join(root, OFF), was); }
+}
+// The gate a hook asks first: auto memory, then the project, then the conversation, and the store it worked out.
+{
+  const t = join(projectsRoot(), 'C--gate', 'gate0000-aaaa.jsonl'), d = join(projectsRoot(), 'C--gate', 'memory'), env = process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY;
+  mkdirSync(d, { recursive: true });
+  try {
+    process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+    assert.deepStrictEqual(gate({ transcript_path: t }, 'gate0000'), { why: 'auto memory off' }); checks++;
+    process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '0';
+    assert.deepStrictEqual(gate({ transcript_path: t }, 'gate0000'), { store: d }); checks++;
+    writeFileSync(join(d, QUIET), 'gate0000\n');
+    assert.deepStrictEqual(gate({ transcript_path: t }, 'gate0000', 1), { store: d, why: 'quiet' }); checks++;
+    writeFileSync(join(d, PROJECT_OFF), '{"t":1}');
+    assert.deepStrictEqual(gate({ transcript_path: t }, 'gate0000'), { store: d, why: 'project off' }); checks++;
+  } finally { if (env === undefined) delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; else process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = env; }
+}
+// memory off and on: the marker by rename, and on, the off period before the marker goes; a marker that won't read writes none.
+{
+  const d = join(home, 'switch', 'new');
+  ok(switchOff(d) && isOff(d)?.since > 0, 'memory off makes the store and writes the marker');
+  switchOn(d, { since: 1000 });
+  ok(!existsSync(join(d, PROJECT_OFF)) && /^1000 \d+\n$/.test(readFileSync(join(d, OFF_PERIODS), 'utf8')), 'memory on keeps the period and removes the marker');
+  const was = store('switch-nodate'); writeFileSync(join(was, PROJECT_OFF), 'not json');
+  switchOn(was, isOff(was));
+  ok(Number(readFileSync(join(was, OFF_PERIODS), 'utf8').split(' ')[0]) > 0, 'a marker with no time: the period starts at its mtime');
+  const un = store('switch-unread'); writeFileSync(join(un, PROJECT_OFF), '{"t":5}');
+  switchOn(un, { since: null, unread: 'EACCES' });
+  ok(!existsSync(join(un, OFF_PERIODS)) && !existsSync(join(un, PROJECT_OFF)), 'a marker that would not read writes no period');
+}
+// The forget list's writer: added by key, a key once, and a line whose transcript is gone dropped; an older key-alone line kept.
+{
+  const d = store('fg-write'), proj = join(projectsRoot(), 'C--fg');
+  mkdirSync(join(d, 'journal'), { recursive: true }); mkdirSync(proj, { recursive: true });
+  writeFileSync(join(proj, 'here0000.jsonl'), '');
+  writeFileSync(join(d, FORGOTTEN), 'old\nk0\tC--fg/gone0000\t2026-11-01 09:00\r\n');
+  listForgotten(d, [{ key: 'k1', t: 'C--fg/here0000', at: '2026-11-01 10:00' }, { key: 'k2', t: 'C--fg/gone0001', at: '2026-11-01 10:01' }]);
+  listForgotten(d, [{ key: 'k1', t: 'C--fg/here0000', at: '2026-11-01 10:00' }]);
+  ok(readFileSync(join(d, FORGOTTEN), 'utf8') === 'old\nk1\tC--fg/here0000\t2026-11-01 10:00\n', `forget lists live keys once (got ${JSON.stringify(readFileSync(join(d, FORGOTTEN), 'utf8'))})`);
+  // A transcript that won't stat, but for its absence, may still be there: its key stays.
+  const stat = fs.statSync;
+  fs.statSync = (p, ...a) => { if (String(p).includes('locked00')) throw Object.assign(new Error('EACCES: denied'), { code: 'EACCES' }); return stat(p, ...a); };
+  syncBuiltinESMExports();
+  try { listForgotten(d, [{ key: 'k3', t: 'C--fg/locked00', at: '2026-11-01 10:02' }]); } finally { fs.statSync = stat; syncBuiltinESMExports(); }
+  ok(readFileSync(join(d, FORGOTTEN), 'utf8').endsWith('k3\tC--fg/locked00\t2026-11-01 10:02\n'), 'forget keeps the key of a transcript that will not stat');
 }
 
 console.log(`privacy.test.mjs: ${checks} checks passed`);

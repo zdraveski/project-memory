@@ -10,13 +10,14 @@ import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
 import { clip, fit, SAY } from './text.mjs';
 import { lastTurn, transcripts, readTail, records, text, asked, own, TAIL } from './transcript.mjs';
-import { OFF, QUIET, PRIVATE, PRIVATE_SESSION, isOff, isHushed, hushed, off, offLine, forgottenIn } from './privacy.mjs';
+import { OFF, PRIVATE, PRIVATE_SESSION, isOff, isQuiet, hushed, off, offLine, forgottenIn } from './privacy.mjs';
 import { readHealth, MISSED, HELD } from './snapshot.mjs';
-import { tag, storeOf, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, memoryOff, autoMemory } from './store.mjs';
+import { tag, storeOf, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, indexLines, emptyArchive, memoryOff, autoMemory } from './store.mjs';
 import { notes, edited } from './run-records.mjs';
-import { ACTIVE, START, render, parse, sectionOf, stalled } from './handoff-log.mjs';
+import { START, render, parse, sectionOf, stalled } from './handoff-log.mjs';
 import { firstDay, rel } from './journal.mjs';
-import { readSession, sessionLine, sessionsOf, byWords, sharesBlock, DEADLINE, others as liveOthers, doing, about, near } from './recall.mjs';
+import { byWords, sharesBlock, DEADLINE, doing, about, near } from './recall.mjs';
+import { readSession, sessionLine, sessionsOf, others as liveOthers, ACTIVE } from './sessions.mjs';
 import { recover } from './compact-gate.mjs';
 
 const RECENT = 30 * 86400000;  // older than this, the startup line has nothing to say
@@ -49,15 +50,14 @@ function shared() {
   // whose file is gone: the ceiling is held here too, since this prints everywhere.
   const lines = [];
   let bytes = 0, cut = 0;
-  for (const l of index.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+  for (const l of indexLines(index)) {
     if (!POINTER.test(l)) continue;
     if (bytes + Buffer.byteLength(l) + 1 > SHARED_BUDGET) { cut++; continue; }
     bytes += Buffer.byteLength(l) + 1;
     lines.push(l);
   }
   if (cut) lines.push(`(${cut} more shared line(s) over the ${SHARED_BUDGET} B ceiling, in ${join(at, 'MEMORY.md')})`);
-  // An empty archive's line says nothing, in every session.
-  const said = lines.filter((l) => !(l.includes(`](${ARCHIVE})`) && / — 0 older/.test(l)));
+  const said = lines.filter((l) => !emptyArchive(l));
   // Once the user agrees: a lesson there reaches every project, the ones a
   // conversation here should not speak for too.
   const head = said.some((l) => !l.includes(`](${ARCHIVE})`))
@@ -101,7 +101,7 @@ const FILES = 10;
 // change hook's first-change and `told` lists start empty. Nothing at all with the recall switch off, in a conversation marked
 // private or held with memory off, or when the session file will not read. A private request gets no pointers.
 async function afterCompact(input, dir, me, skip) {
-  if (process.env.PROJECT_MEMORY_RECALL === '0' || !/^[\w-]+$/.test(me) || isHushed(dir, me, QUIET, 1) || isHushed(projectsRoot(), me, OFF, 1)) return [];
+  if (process.env.PROJECT_MEMORY_RECALL === '0' || !/^[\w-]+$/.test(me) || isQuiet(dir, me, 1)) return [];
   const at = join(sessionsOf(dir), me), lines = readSession(at);
   if (!lines) return [];
   const cwd = typeof input.cwd === 'string' ? input.cwd.replaceAll('\\', '/') : '';
@@ -110,7 +110,7 @@ async function afterCompact(input, dir, me, skip) {
   const now = new Date().toISOString(), ask = lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet')?.kind === 'quiet' ? '' : lastAsk(input.transcript_path);
   let found = [];
   if (ask && !PRIVATE.test(ask) && !PRIVATE_SESSION.test(ask)) {
-    try { found = (await byWords(dir, own(ask), String(input.session_id), { journal: () => import('./journal.mjs'), deadline: performance.now() + DEADLINE, since: now, skip })) ?? []; } catch {}
+    try { found = (await byWords(dir, own(ask), String(input.session_id), { deadline: performance.now() + DEADLINE, since: now, skip })) ?? []; } catch {}
   }
   const block = found.length ? sharesBlock(found, 'the request in progress') : '', shown = block ? found : [];
   // One append, the compact line first: the change hook reads the `told` lines after it. A write that fails costs pointers only.
@@ -220,8 +220,26 @@ async function print(input) {
   return out;
 }
 
+// The SessionStart briefing for one payload: the text to print, '' for none
+// (sources "startup", "clear" and "compact"; a resumed conversation has its history).
+// Auto memory off: no record, no briefing; the tag at every start, so no
+// backfill imports a conversation whose first reply got no Stop (P1 hunt,
+// 2026-10-29). A project turned off (memory off): one line at a startup, nothing at any other start, nothing written.
+export async function briefing(input) {
+  const gone = isOff(storeOf(input));
+  if (gone) return input.source === 'startup' ? `${offLine(gone)}\n` : '';
+  if (memoryOff()) {
+    // Settings turned it off, which no one is told otherwise: said at a startup (the environment variable is the user's own).
+    const am = autoMemory();
+    // A tag that could not be written is the next start's to write: thrown, brief.mjs advised a reinstall.
+    try { off(input); } catch {}
+    return am.why?.startsWith('autoMemoryEnabled') && input.source === 'startup' ? `Auto memory is off (${am.why}): project-memory saves and briefs nothing in this project until it is on.\n` : '';
+  }
+  return input.source === 'resume' ? '' : print(input);
+}
+
 // Run directly (the harnesses do): payload on stdin, always exit 0.
-// `--print` is the SessionStart hook, for sources "startup", "clear" and "compact".
+// `--print` is the SessionStart hook; without it a run only tags a conversation held with auto memory off.
 // Node names the script by its real path: compared with the path it was
 // given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
 // The hook's whole run: called by brief.mjs, the plugin's SessionStart starter, with the same `--print`.
@@ -229,21 +247,8 @@ export async function main({ rethrow = false } = {}) {
   try {
     const input = JSON.parse(readFileSync(0, 'utf8'));
     T.tag(input.hook_event_name, input.source);
-    // Auto memory off: no record, no briefing; the tag at every start, so no
-    // backfill imports a conversation whose first reply got no Stop (P1 hunt,
-    // 2026-10-29). A resumed conversation has its history: no briefing.
-    // A project turned off (memory off): one line at a startup, nothing at any other start, nothing written.
-    const gone = isOff(storeOf(input));
-    if (gone) { if (input.source === 'startup' && process.argv.includes('--print')) process.stdout.write(`${offLine(gone)}
-`); }
-    else if (memoryOff()) {
-      // Settings turned it off, which no one is told otherwise: said at a startup (the environment variable is the user's own).
-      const am = autoMemory();
-      if (am.why?.startsWith('autoMemoryEnabled') && input.source === 'startup' && process.argv.includes('--print')) process.stdout.write(`Auto memory is off (${am.why}): project-memory saves and briefs nothing in this project until it is on.\n`);
-      // A tag that could not be written is the next start's to write: thrown, brief.mjs advised a reinstall.
-      try { off(input); } catch {}
-    }
-    else if (process.argv.includes('--print')) { if (input.source !== 'resume') process.stdout.write(await print(input)); }
+    if (process.argv.includes('--print')) process.stdout.write(await briefing(input));
+    else if (!isOff(storeOf(input)) && memoryOff()) try { off(input); } catch {}
   } catch (e) {
     if (rethrow) throw e;
     // A hook that throws on every turn is worse than one that misses a turn.

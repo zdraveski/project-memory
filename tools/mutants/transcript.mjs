@@ -81,4 +81,13 @@ export default {
   "past a line gives up after one read": ["for (; pos < size; pos += buf.length) {", "for (; pos < size; pos = size) {"],
   "a head read from the middle": ["readSync(fd, buf, 0, bytes, 0)", "readSync(fd, buf, 0, bytes, 1)"],
   "a tail that is the whole file not told": ["whole: from === 0", "whole: false"],
+  // typedMark / markFrom (moved from journal.mjs's marked() and compact-gate.mjs's marked(); enforce.mjs's privateTurn reads it too).
+  'the typed mark looked for past the budget': ['    if (pos < size && !more()) return { hit: false, pos };\n', ''],
+  'F22 / journal: a quoted tag taken for a mark': ['&& turns(t).hush === true;', ';'],
+  'a full-width or split mark missed': ['&& PRIVATE_SESSION.test(norm(l))', '&& PRIVATE_SESSION.test(l)'],
+  'the look ends before the whole transcript is looked at': ['    pos = at - (n - nl - 1);\n    if (pos < size', '    pos = size;\n    if (pos < size'],
+  'a conversation marked private in its transcript imported': ['if (holdsMark(', 'if (false && holdsMark('],
+  "a line longer than a piece passed over": ['if (nl === -1) { rest.push(Buffer.from(piece)); continue; }', 'if (nl === -1) continue;'],
+  "a line cut by a piece loses its start": ['rest = [Buffer.from(piece.subarray(nl + 1))];', 'rest = [];'],
+  "an unreadable transcript not marked": ['} catch { return true; } finally { f?.close(); }', '} catch { return false; } finally { f?.close(); }'],
 };

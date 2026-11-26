@@ -1,6 +1,6 @@
 // Self-check for recall.mjs: the word splitter and the tests on a journal entry. Run: node recall.test.mjs
 import assert from 'node:assert';
-import { tame, words, changedFile, isHelper, inConversation, changers, whoChanged } from '../src/recall.mjs';
+import { tame, words, has, count, termRe, changedFile, isHelper, inConversation, changers, whoChanged } from '../src/recall.mjs';
 
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
@@ -27,6 +27,13 @@ ok(inConversation(e({ t: '' }), '0123456789') && inConversation(e({ t: '' }), '0
 ok(!inConversation(e({ t: '', s: '' }), '0123') && !inConversation(e({ t: 'C--shop/', s: '' }), '0123'), 'an entry with no id and no tag is in no conversation');
 // the splitter did not change
 ok(words('The Carts v1.2.3').join(' ') === '1.2.3 cart', 'same stems');
+// the term rule: has() and count() hit where termRe() does, so search's highlight shows what scored
+const hits = (hay, q) => { const ws = words(q); return ws.map((t) => { const cut = ws.as.get(t) !== t && ws.as.get(t); return [has(hay, t, cut), count(hay, t, cut), (hay.normalize('NFC').match(termRe(t, cut)) ?? []).join()]; }); };
+assert.deepStrictEqual(hits('library and libraries, not librarian', 'library'), [[true, 2, 'library,libraries']]);
+assert.deepStrictEqual(hits('v1.2.3 then 1.2.30', '1.2.3'), [[true, 1, 'v1.2.3']]);
+assert.deepStrictEqual(hits('a decision on ci', 'ci'), [[true, 1, 'ci']]);
+assert.deepStrictEqual(hits('café and café', 'café'), [[true, 2, 'café,café']]);
+checks += 4;
 // who said it: a note's snapshots paired with the entries that changed it
 const at = (t, over) => ({ key: `k ${t}`, at: `2026-11-12 ${t}`, s: '3f07bb43', t: 'C--shop/3f07bb43-aaaa',
   asked: 'save that as a rule', changed: ['/home/u/.claude/projects/C--shop/memory/rules.md'], ...over });

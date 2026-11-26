@@ -10,6 +10,7 @@ import { tool, tempDir } from '../test/harness.mjs';
 import { mutants, ignored } from './automut.mjs';
 import { pluginFiles } from './suites.mjs';
 import store from './mutants/store.mjs';
+import secrets from './mutants/secrets.mjs';
 import compactGate from './mutants/compact-gate.mjs';
 import handoffLog from './mutants/handoff-log.mjs';
 import memoryTier from './mutants/memory-tier.mjs';
@@ -17,6 +18,7 @@ import memory from './mutants/memory.mjs';
 import hooks from './mutants/hooks.mjs';
 import journal from './mutants/journal.mjs';
 import recall from './mutants/recall.mjs';
+import sessions from './mutants/sessions.mjs';
 import page from './mutants/page.mjs';
 import deploy from './mutants/deploy.mjs';
 import enforce from './mutants/enforce.mjs';
@@ -32,8 +34,8 @@ import snapshot from './mutants/snapshot.mjs';
 import runRecords from './mutants/run-records.mjs';
 
 // Every file a suite may import, copied beside the mutant.
-// agents/recall.md: journal.test.mjs reads it (1.6.0); without it every --mutant run of that suite failed unmutated.
-const FILES = ['test/harness.mjs', 'tools/deploy.mjs', 'tools/suites.mjs', 'agents/recall.md', ...pluginFiles()];
+// pluginFiles() holds agents/recall.md, which journal.test.mjs reads (1.6.0): without it every --mutant run of that suite failed unmutated.
+const FILES = ['test/harness.mjs', 'tools/deploy.mjs', 'tools/suites.mjs', ...pluginFiles()];
 
 // A suite is a test file, or a list of them: memory.mjs is checked by three.
 export const testsOf = (t) => [].concat(t);
@@ -41,6 +43,8 @@ const MEMORY = ['test/memory-cli.test.mjs', 'test/memory-doctor.test.mjs', 'test
 
 export const suites = {
   'src/store.mjs': ['test/store.test.mjs', store],
+  // Most of the detector's corpus still lives in handoff-log.test.mjs.
+  'src/secrets.mjs': [['test/secrets.test.mjs', 'test/handoff-log.test.mjs'], secrets],
   'src/compact-gate.mjs': ['test/compact-gate.test.mjs', compactGate],
   'src/handoff-log.mjs': ['test/handoff-log.test.mjs', handoffLog],
   'src/memory-tier.mjs': ['test/memory-tier.test.mjs', memoryTier],
@@ -48,6 +52,7 @@ export const suites = {
   'hooks/hooks.json': [MEMORY, hooks],
   'src/journal.mjs': ['test/journal.test.mjs', journal],
   'src/recall.mjs': [['test/recall.test.mjs', 'test/recall-hook.test.mjs', 'test/recall-compact.test.mjs', 'test/sessions.test.mjs'], recall],
+  'src/sessions.mjs': [['test/recall-hook.test.mjs', 'test/sessions.test.mjs'], sessions],
   'tools/deploy.mjs': ['test/handoff-log.test.mjs', deploy],
   'src/brief.mjs': ['test/handoff-log.test.mjs', brief],
   'src/briefing.mjs': [['test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/recall-compact.test.mjs', 'test/journal.test.mjs', 'test/memory-switch.test.mjs', 'test/memory-tier.test.mjs', 'test/sessions.test.mjs'], briefing],
@@ -58,7 +63,7 @@ export const suites = {
   'src/page.mjs': ['test/page.test.mjs', page],
   'src/text.mjs': [['test/text.test.mjs', 'test/handoff-log.test.mjs'], text],
   'src/privacy.mjs': [['test/privacy.test.mjs', 'test/store.test.mjs', 'test/handoff-log.test.mjs'], privacy],
-  'src/transcript.mjs': [['test/transcript.test.mjs', 'test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/journal.test.mjs'], transcript],
+  'src/transcript.mjs': [['test/transcript.test.mjs', 'test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/journal.test.mjs', 'test/enforce.test.mjs'], transcript],
   'src/snapshot.mjs': [['test/snapshot.test.mjs', 'test/memory-tier.test.mjs', 'test/store.test.mjs', 'test/enforce-hook.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-cli.test.mjs', 'test/memory-switch.test.mjs', 'test/handoff-log.test.mjs'], snapshot],
   'src/run-records.mjs': [['test/run-records.test.mjs', 'test/handoff-log.test.mjs', 'test/journal.test.mjs', 'test/memory-tier.test.mjs', 'test/memory-cli.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-switch.test.mjs'], runRecords],
 };
