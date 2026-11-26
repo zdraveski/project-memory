@@ -381,7 +381,7 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
 // The history in the CLI's words (moved from memory.mjs with ADR 0002's rest): what git's log and fast-export streams say, read
 // here and nowhere else. A scripted git; the rewrites against real git stay in memory-switch.test.mjs.
 {
-  const { versionsOf, changedLately, dropDays, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges, isOurs } = S;
+  const { versionsOf, changedLately, dropDays, daysHolding, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges, isOurs } = S;
   let seen = [];
   const stand = (answer) => { seen = []; useGit((cmd, args, opts) => { seen.push({ args, opts }); return answer(args, opts) ?? ''; }); };
   const dir = store('proj-h');
@@ -409,6 +409,12 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   const left = fed.toString();
   ok(left.includes(`data ${day.length + 13}\nM 100644 :1 ${day}\n`) && !left.includes(`\nD ${day}`) && !left.includes(`:1 ${day}\nM 100644 :1 proj-h`) && !left.includes('caf\\303'), 'dropDays: the days\' M and D lines go, a quoted name too, a data block stays whole (got ' + JSON.stringify(left) + ')');
   ok(left.includes('M 100644 :1 proj-h/memory/a.md') && left.includes('D proj-h/memory/journal/2026-01-02.md'), 'dropDays: every other path stays');
+
+  // forget --purge of words already forgotten: the days some snapshot held every word in, by a case-blind git log -S per word.
+  stand((a) => (a.includes('-Sred') ? 'proj-h/memory/journal/2026-01-01.md\n\nproj-h/memory/journal/2026-01-02.md\nproj-h/memory/journal/.forgotten\n'
+    : a.includes('-Sfox') ? 'proj-h/memory/journal/2026-01-02.md\n' : ''));
+  ok(JSON.stringify(daysHolding(dir, ['red', 'fox'])) === '["2026-01-02"]' && seen.every((c) => c.args.includes('-i') && c.args.at(-1) === 'proj-h/memory/journal'), `daysHolding: only the days every word was in, no list file (got ${JSON.stringify(daysHolding(dir, ['red', 'fox']))})`);
+  ok(daysHolding(dir, ['red', 'owl']).length === 0 && daysHolding(dir, []).length === 0, 'daysHolding: a word no snapshot held, or none, holds no day');
 
   // A scrub over every blob and message: hits counted, the length prefix recomputed, a blob that is not UTF-8 as it was.
   const scrub = (t) => (t.includes('SECRET') ? [t.replaceAll('SECRET', '[redacted]'), 1] : [t, 0]);

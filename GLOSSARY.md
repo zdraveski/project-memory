@@ -114,7 +114,8 @@ scrubs kept copies too.
 
 **History questions**: what the CLI asks of the snapshots, in note terms:
 `versionsOf` (the snapshots that changed a note), `changedLately` (the week's
-changes for status), `dropDays` (forget --purge), `scanHistory` and
+changes for status), `dropDays` (forget --purge), `daysHolding` (the days
+forget --purge drops for words the journal no longer holds), `scanHistory` and
 `scrubHistory` (rescan, with the CLI's own scrub function), `keptCopies` and
 `keepReplaced`, `leftoverPurges` (doctor) and `isOurs`. `src/snapshot.mjs`
 answers them, so git's log and fast-export formats, the first snapshot's
