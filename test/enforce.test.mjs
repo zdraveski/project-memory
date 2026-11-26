@@ -271,7 +271,17 @@ for (const [i, c] of ['[1,2]', '{"v":3,"files":"abc"}', '{"v":3,"files":null}', 
   ok(pt({ type: 'user', message: { content: 'x ＜private-session＞' } }) === true, 'a full-width mark: private');
   ok(pt({ type: 'user', message: { content: [{ type: 'text', text: '<private​-session>' }] } }) === true, 'a mark with a hidden character: private');
   ok(pt({ type: 'user', isSidechain: true, message: { content: `x ${P}` } }) === false, 'the mark only in a helper record: not private');
-  ok(privateTurn({ transcript_path: join(home, 'gone.jsonl') }) === true, 'an unreadable transcript: private'); }
+  ok(privateTurn({ transcript_path: join(home, 'gone.jsonl') }) === true, 'an unreadable transcript: private');
+  // 1.6.1: read in pieces (one string of a 600 MB transcript took 14 s); a line cut by a piece, a multi-byte character cut by one,
+  // and a last line without a newline are read whole.
+  const tiny = (s) => { writeFileSync(tf2, s); return privateTurn({ transcript_path: tf2 }, 7); };
+  ok(tiny(`${JSON.stringify({ type: 'user', message: { content: 'hi' } })}
+${JSON.stringify({ type: 'user', message: { content: `${'x'.repeat(50)} ${P}` } })}`) === true, 'in pieces of 7 bytes: the mark in a last line without a newline');
+  ok(tiny(`${JSON.stringify({ type: 'user', message: { content: 'éé ＜private-session＞' } })}
+`) === true, 'a full-width mark cut by a piece: private');
+  ok(tiny(`${JSON.stringify({ type: 'assistant', message: { content: P } })}
+${'y'.repeat(40)}
+`) === false, 'in pieces, no typed mark: not private'); }
 
 { const rec = (st, e) => { record(st, e); return existsSync(join(st, LOG)) ? readFileSync(join(st, LOG), 'utf8') : null; }, mkst = (n) => { const d = join(home, `rec${n}`); mkdirSync(d); return d; };
   ok(rec(mkst(1), { note: 'x'.repeat(1012) }).length === 1024, 'a line of 1024 characters is kept');
