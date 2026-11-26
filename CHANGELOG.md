@@ -2,17 +2,7 @@
 
 ## 1.6.0 (2026-11-26)
 
-This release makes memory speak up. Until now Claude had to think of searching the journal. Now project-memory tells Claude on its own when the past matters: when it changes a file that earlier work changed, when your message names something you did before, and after a compaction. Two sessions open on one project now know about each other, and a helper answers questions about the past. The plugin also got lighter. Nothing changes in how you use it, and your existing memory works as it is.
-
-TODO (eval results): which pointers passed their gate in the paid eval, with the numbers. Filled in after the paid eval.
-
-### Memory that speaks up
-
-- **When Claude changes a file that earlier conversations changed too, it is told so.** With the result of the first change it sees the date, the conversation and the request of the newest two, and how to open them. Only when one of them shares a rare word with what you are asking now, once per file and conversation, and at most three such notes between two of your messages.
-- **When your message names something old, Claude is told before it answers.** If your message shares a few rare words with an earlier exchange of another conversation in this project, Claude sees that request, up to three files it changed and the shared words. "go" or "yes" alone never triggers one.
-- **After a compaction, Claude is told which files the conversation changed** and up to three earlier exchanges like the request in progress, its own from before the compaction included.
-- **Nothing private or forgotten is ever named.** A message with a `<private>` block or the `<private-session>` mark triggers nothing and is not written down. A note already shown stays in the conversation that got it: `forget` cannot take it back.
-- **`PROJECT_MEMORY_RECALL=0` turns all of these notes off.**
+This release lets two sessions on one project see each other. After a compaction, Claude is now told what the conversation already changed. A helper answers questions about the past, and the plugin got lighter. Pointers to earlier exchanges, given while Claude works, are in this release but switched off until they are measured: turn them on with one setting. Nothing changes in how you use it, and your existing memory works as it is.
 
 ### Sessions that see each other
 
@@ -20,9 +10,23 @@ TODO (eval results): which pointers passed their gate in the paid eval, with the
 - **When Claude changes a file the other session changed in the last 30 minutes, it is warned** with the result of that change. It never blocks the change.
 - **The startup briefing and `memory status` name the other live sessions**, with the title you gave one with `/rename`. A private conversation or turn is never shown to the other session.
 
+### After a compaction
+
+- **After a compaction, Claude is told which files the conversation changed** and up to three earlier exchanges like the request in progress, its own from before the compaction included.
+
+### Pointers to earlier exchanges (opt-in)
+
+Off by default: they have not yet been measured on real sessions. To try them, add `"PROJECT_MEMORY_RECALL": "1"` to the `env` block of your Claude Code `settings.json` and restart Claude Code.
+
+- **When Claude changes a file that earlier conversations changed too, it is told so.** With the result of the first change it sees the date, the conversation and the request of the newest two, and how to open them. Only when one of them shares a rare word with what you are asking now, once per file and conversation, and at most three such notes between two of your messages.
+- **When your message names something old, Claude is told before it answers.** If your message shares a few rare words with an earlier exchange of another conversation in this project, Claude sees that request, up to three files it changed and the shared words. "go" or "yes" alone never triggers one.
+- **With the setting on, the briefing also tells Claude to hand a hard question about the past to the `recall` helper.**
+- **Nothing private or forgotten is ever named.** A message with a `<private>` block or the `<private-session>` mark triggers nothing and is not written down. A note already shown stays in the conversation that got it: `forget` cannot take it back.
+- **`PROJECT_MEMORY_RECALL=0` turns all of these notes off, the other-session notes and the compaction lines included.**
+
 ### Ask memory a question
 
-- **A question one search doesn't settle goes to the `recall` helper.** It searches several ways, opens what it finds and reports back with dates and your own words. You can also ask it directly with `@agent-project-memory:recall`. It only reads, and its report is not saved to the journal again.
+- **A new `recall` helper answers a question one search doesn't settle.** Ask it with `@agent-project-memory:recall`. It searches several ways, opens what it finds and reports back with dates and your own words. It only reads, and its report is not saved to the journal again.
 - **A helper's journal entry now lists the files it changed**, so a file's past includes a helper's work. Entries saved before 1.6.0 list no files.
 
 ### Lighter
