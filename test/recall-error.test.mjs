@@ -63,7 +63,14 @@ let p = project();
 const old = p.entry({ key: '3f07bb43 2026-11-12T14:02 a1b2c3d4e5f6' });
 p.day([old]);
 let r;
-for (let i = 0; i < 5; i++) { r = run(p.payload()); if (r.stdout || r.status !== 0) break; dropSessions(p.store, SID.slice(0, 8)); }
+// The hook gives up 400 ms after Node's start, which a CI machine running every suite at once can pass on a cold start (CI,
+// macOS and Windows, 2026-11-26): then it said nothing and wrote nothing, so it runs again after a pause, up to 10 times.
+for (let i = 0; i < 10; i++) {
+  r = run(p.payload());
+  if (r.stdout || r.status !== 0) break;
+  dropSessions(p.store, SID.slice(0, 8));
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+}
 ok(r.status === 0 && r.stderr === '', `the hook exits 0 (got ${r.status} ${r.stderr})`);
 const said = JSON.parse(r.stdout).hookSpecificOutput;
 ok(said.hookEventName === 'PostToolUseFailure', 'a PostToolUseFailure answer');
