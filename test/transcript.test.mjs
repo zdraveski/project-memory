@@ -784,8 +784,10 @@ const { turns, readTail, promptBefore, chunk, past, records } = await import('..
   ok([...records(JSON.stringify({ type: 'api-request-blob', data: { messages: [{ type: 'user', content: 'nested' }] } }), { types: ['user'] })].length === 0, 'a whole unread record that nests a read type is left out');
   // A cut line of many small objects stops trying after a bounded number of starts, so every later read stays cheap.
   const many = '{"a":[' + '{"b":1},'.repeat(200_000);
-  const t0 = performance.now(); [...records(many)];
-  ok(performance.now() - t0 < 300, `a cut line of 200,000 objects is given up quickly (${Math.round(performance.now() - t0)} ms)`);
+  // Counted, not timed: a busy CI machine took 698 ms where this one takes 30.
+  const parse = JSON.parse; let calls = 0; JSON.parse = (...x) => (calls++, parse(...x));
+  try { [...records(many)]; } finally { JSON.parse = parse; }
+  ok(calls <= 1001, `a cut line of 200,000 objects is given up after 1000 starts (${calls} parses)`);
 }
 
 // turns(): each fixture, behind a line the tail cut through, a type nothing reads, a line that is no JSON, and a last line cut.
