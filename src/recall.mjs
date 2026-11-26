@@ -1,10 +1,10 @@
 // How a query is read and matched: the word splitter and the tests on a journal entry that search and the hooks share.
 // Also the recall hooks' look-ups and handlers (1.6.0 headlines 1b, 1c and 4), over the session file (sessions.mjs). The
 // journal is loaded inside the look-ups that read it, so memory.mjs and the hook's "already seen" path never pay for it.
-import { readFileSync, appendFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { appendFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { foldCase, projectsRoot, tag, norm, local } from './store.mjs';
-import { gate, isHushed, forgottenIn, QUIET, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
+import { gate, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
 import { clip, fit } from './text.mjs';
 import { sessionsOf, readSession, sessionLine, tidy, others, ACTIVE } from './sessions.mjs';
 
@@ -208,34 +208,19 @@ const whole = (p, cwd) => { const f = p.replaceAll('\\', '/'); return /^(?:[a-z]
 // shortcut: a turn that ran after a `cd` saved its paths relative to that folder and is missed; upgrade when the eval or a user
 // shows it matters (the journal would have to record the working folder).
 export async function earlier(store, file, session, { deadline = DEADLINE, told = new Set(), now = Date.now(), since = '' } = {}) {
-  const { days, dayFile, parseDay, rel } = await import('./journal.mjs');
-  const { listed, shut } = forgottenIn(store);
-  if (shut) return null;
-  const gone = new Set(listed.map(([k]) => k)), key = cleanPath(file), parts = file.split('/'), under = new Map();
+  const { recent, rel } = await import('./journal.mjs');
+  const key = cleanPath(file), parts = file.split('/'), under = new Map();
   // Every folder above the file, named as the t: field names it, with the file relative to it, by the journal's rel(). Text only.
   for (let i = parts.length - 1; i > 0; i--) {
     const dir = parts.slice(0, i).join('/') + (i === 1 ? '/' : '');
     under.set(foldCase(slug(dir)), cleanPath(rel(file, dir)));
   }
-  const oldest = new Date(now - WINDOW_DAYS * 864e5).toISOString().slice(0, 10), out = [], hush = new Map();
-  let bytes = 0;
-  for (const d of days(store).reverse()) {
-    if (d < oldest) break;
-    if (performance.now() > deadline) return null;
-    let text;
-    try { text = readFileSync(dayFile(store, d), 'utf8'); } catch { continue; }
-    if (bytes && bytes + text.length > WINDOW_BYTES) break;
-    bytes += text.length;
-    for (const e of parseDay(text).entries.reverse()) {
-      if (told.has(e.key) || gone.has(e.key) || e.asked === '[private]' || e.answered === '[private]' || held(e, session, since)) continue;
-      const home = e.t.includes('/') ? under.get(foldCase(e.t.slice(0, e.t.lastIndexOf('/')))) : undefined;
-      if (!e.changed.some((c) => { const p = cleanPath(c); return p === key || p === home; })) continue;
-      // A conversation marked private whose sweep is still owed: one read of the list per conversation, unknown is private.
-      if (!hush.has(e.s)) hush.set(e.s, isHushed(store, e.s, QUIET, 1));
-      if (!hush.get(e.s)) out.push(e);
-    }
-  }
-  return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  const out = recent(store, { days: WINDOW_DAYS, bytes: WINDOW_BYTES, deadline, now }, (e) => {
+    if (told.has(e.key) || held(e, session, since)) return false;
+    const home = e.t.includes('/') ? under.get(foldCase(e.t.slice(0, e.t.lastIndexOf('/')))) : undefined;
+    return e.changed.some((c) => { const p = cleanPath(c); return p === key || p === home; });
+  });
+  return out && out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 }
 
 // The newest, and the newest of another conversation when there is one, else the next.
@@ -337,29 +322,17 @@ export async function byWords(store, text, session, { deadline = DEADLINE, since
   const ws = words(text), cut = (w) => ws.as.get(w) !== w && ws.as.get(w);
   if (ws.length < (test ? 1 : 2)) return test ? () => false : [];
   const hayOf = (e) => [e.asked, e.answered, ...e.changed].join('\n').normalize('NFC').toLowerCase(), holds = (hay, w) => hay.includes(w.slice(0, -1)) && has(hay, w, cut(w));
-  const { days, dayFile, parseDay } = await import('./journal.mjs');
-  const { listed, shut } = forgottenIn(store);
-  if (shut) return null;
-  const gone = new Set(listed.map(([k]) => k)), from = new Date(now - RECENT_DAYS * 864e5).toISOString().slice(0, 10), seen = [], df = ws.map(() => 0), hush = new Map();
-  let bytes = 0;
-  for (const d of days(store).reverse()) {
-    if (d < from) break;
-    if (performance.now() > deadline) return null;
-    let t;
-    try { t = readFileSync(dayFile(store, d), 'utf8'); } catch { continue; }
-    if (bytes && bytes + t.length > max) break;
-    bytes += t.length;
-    for (const e of parseDay(t).entries.reverse()) {
-      if (isHelper(e) || told.has(e.key) || skip.has(`${e.s} ${e.at}`) || gone.has(e.key) || e.asked === '[private]' || e.answered === '[private]' || held(e, session, since)) continue;
-      if (!hush.has(e.s)) hush.set(e.s, isHushed(store, e.s, QUIET, 1));
-      if (hush.get(e.s)) continue;
-      // Ran is left out: half the bytes, and mostly command noise.
-      // Lower case, as search reads an entry. Every form has() finds holds the word but its last letter (library: librari-es), so a
-      // cheap includes() goes first.
-      const hay = hayOf(e), in_ = ws.map((w) => holds(hay, w));
-      in_.forEach((h, i) => { if (h) df[i]++; });
-      seen.push([e, in_]);
-    }
+  const { recent } = await import('./journal.mjs');
+  const found = recent(store, { days: RECENT_DAYS, bytes: max, deadline, now }, (e) => !isHelper(e) && !told.has(e.key) && !skip.has(`${e.s} ${e.at}`) && !held(e, session, since));
+  if (!found) return null;
+  const seen = [], df = ws.map(() => 0);
+  for (const e of found) {
+    // Ran is left out: half the bytes, and mostly command noise.
+    // Lower case, as search reads an entry. Every form has() finds holds the word but its last letter (library: librari-es), so a
+    // cheap includes() goes first.
+    const hay = hayOf(e), in_ = ws.map((w) => holds(hay, w));
+    in_.forEach((h, i) => { if (h) df[i]++; });
+    seen.push([e, in_]);
   }
   const n = seen.length, rare = df.map((k) => k > 0 && (n < YOUNG ? k <= 2 : k / n < RARE)), need = ws.length === 2 ? 2 : Math.max(3, Math.ceil(ws.length / 5));
   if (test) return (e) => { const hay = hayOf(e); return ws.some((w, k) => rare[k] && holds(hay, w)); };

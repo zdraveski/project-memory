@@ -66,12 +66,13 @@ import { dropSessions, others, ACTIVE } from './sessions.mjs';
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
 // (handoff-log's deploy gate test, 2026-10-28).
-let entries, forget, holds, summary, unwritten, takeBack, chunk;
+let entries, visible, forget, holds, summary, unwritten, takeBack, chunk;
 // replay's reader lives in transcript.mjs now; it is still held back while journal.mjs will not load (replay says so).
-try { ({ entries, forget, holds, summary, unwritten, takeBack } = await import('./journal.mjs')); chunk = chunkOf; }
+try { ({ entries, visible, forget, holds, summary, unwritten, takeBack } = await import('./journal.mjs')); chunk = chunkOf; }
 catch (e) {
   const why = reason(e);
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: why }); return []; };
+  visible = entries;
   // Said by status too: silent, it read as a store with no journal.
   summary = () => ({ broken: why });
   forget = (dir, terms, o) => ({ matched: entries([dir], o), removed: [] });
@@ -240,19 +241,6 @@ function around(text, find, room) {
   return s.length > room ? s.slice(0, room - 1).replace(/[\uD800-\uDBFF]$/, '') + '…' : s;
 }
 
-// The journal as a reader sees it: never an entry forget listed. It lists the
-// keys before it writes the days, and a day that would not be written keeps
-// the entry until forget runs again, which reads them all. A list that won't
-// read could name any entry: none of that store's is shown, and it is named.
-const told = (dirs, o) => {
-  const gone = new Set(), open = dirs.filter((d) => {
-    const p = join(d, FORGOTTEN);
-    try { for (const [k] of forgotten(readFileSync(p, 'utf8'))) gone.add(k); return true; }
-    catch (e) { if (e.code === 'ENOENT') return true; o.failed?.push({ path: p, code: e.code || e.message }); return false; }
-  });
-  return entries(open, o).filter((e) => !gone.has(e.key));
-};
-
 // Ranked, not grepped: a name says more than a description, a description more
 // than a passing mention. Every term in the name or description is the strong
 // match; every term somewhere in the body is a weak one, or a month-long log
@@ -300,7 +288,7 @@ export function search(dirs, query, { since, until, failed, file, asked: mine, c
   }
   // An entry by what was asked, then what it changed and ran (and its branch),
   // then the reply: a reply that names everything must not outrank the request.
-  for (const e of terms.length ? told(dirs, { since, until, failed }).filter(kept({ file, asked: mine, conversation })) : []) {
+  for (const e of terms.length ? visible(dirs, { since, until, failed }).filter(kept({ file, asked: mine, conversation })) : []) {
     docs++;
     const asked = e.asked.toLowerCase(), did = [...e.changed, ...e.ran].join('\n').toLowerCase(), branch = e.branch.toLowerCase(), answered = e.answered.toLowerCase();
     let strong = true, every = true;
@@ -491,7 +479,7 @@ const byLine = (e, label = 'by') => e === 'shared' ? 'by: not looked up for the 
 // A note's journal entries, oldest first, by its full path as the session saw it. A journal that will not read is none: history still prints.
 // `since`: a day 'YYYY-MM-DD'; the journal days before it are not opened.
 const changersOf = (dir, f, failed, since) => {
-  try { return changers(told([dir], { failed, since }), [join(dir, f), join(real(dir), f)]).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); } catch { return []; }
+  try { return changers(visible([dir], { failed, since }), [join(dir, f), join(real(dir), f)]).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); } catch { return []; }
 };
 export function history(dirs, file, everywhere = false, max = 30, failed = []) {
   const verb = { A: 'added', M: 'changed', D: 'deleted', first: 'in the first snapshot' };
@@ -896,7 +884,7 @@ function enforceStatus(here) {
 
 // `memory page`: the journal of every project as one local HTML file. page.mjs builds the HTML from plain data; this reads and
 // filters the journal, writes the file (0600, in Claude Code's folder) and says where it is. Left out, and counted: helper
-// entries, and projects that are switched off. An entry the user had forgotten is not in told(), so not in the page either.
+// entries, and projects that are switched off. An entry the user had forgotten is not in visible(), so not in the page either.
 const PAGE_DAYS = 30, PAGE_MAX = 36500, PAGE_ASK = 2000, PAGE_ANSWER = 4000;
 // A browser opens a page of tens of MB slowly (20,000 entries made 129 MB): past this it is not written. An object, so a test can lower it.
 // built: a test's hook, run once the page is built, before the size check and the write.
@@ -934,7 +922,7 @@ function page(stores, days, want, failed) {
   const over = (n) => ({ ok: false, lines: [`the page would be ${sizeOf(n)}, over the limit of ${sizeOf(PAGE_LIMIT.bytes)}; nothing written. Use --days N for fewer days${want ? '' : ' or --project NAME for one project'}`] });
   const read = lockAll(keys, () => {
     const out = []; let helpers = 0;
-    for (const e of told(live, { since, failed })) {
+    for (const e of visible(live, { since, failed })) {
       if (isHelper(e)) { helpers++; continue; }
       const priv = e.asked === '[private]' || e.answered === '[private]';
       out.push({ d: e.day, t: e.at.slice(11, 16), c: e.s, b: e.branch, p: name.get(e.dir), q: priv ? '' : clip(e.asked, PAGE_ASK), a: priv ? '' : clip(e.answered, PAGE_ANSWER),
@@ -1122,7 +1110,7 @@ export function main(given) {
   } else if (cmd === 'show' && args.length) {
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).
-    const es = told(scope, { failed }), seen = new Set();
+    const es = visible(scope, { failed }), seen = new Set();
     // A key holds spaces: typed without quotes it is several words, none a key; then they are one key joined by one space.
     const ks = args.length > 1 && !args.some((k) => es.some((e) => e.key === k)) ? [args.join(" ")] : args, got = ks.map((k) => es.find((e) => e.key === k));
     const whole = (e) => [head(e), `     key: ${clip(e.key, Infinity)}`, ...replyTo(es, e),
@@ -1147,8 +1135,8 @@ export function main(given) {
     r = { ok: found.every(Boolean), lines: found.flatMap((e, i) => Array.isArray(e) ? e : e ? alike(e).flatMap((x) => whole(x)) : [`no journal entry has the key ${ks[i]} and no note has that name in ${where}${rest.includes('--all') ? '' : '; --all looks in every project'}`]) };
   } else if (cmd === 'search' && (range.since || range.until || filtered)) {
     // What was asked on those days, newest first: "what did we do last week".
-    const es = told(scope, { ...range, failed }).filter(kept(filters)).filter((e) => !isHelper(e) || filters.file || filters.conversation).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
-    const all = shown.some(short) ? told(scope, { failed }) : [];   // the reply before a short request may be on an earlier day
+    const es = visible(scope, { ...range, failed }).filter(kept(filters)).filter((e) => !isHelper(e) || filters.file || filters.conversation).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
+    const all = shown.some(short) ? visible(scope, { failed }) : [];   // the reply before a short request may be on an earlier day
     const dropped = [...new Set(args.join(' ').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => STOP.has(t)))];
     r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [filters.file ? missFile : `no journal entry${span && ` ${span}`} in ${where}`]] };

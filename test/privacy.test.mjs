@@ -137,7 +137,7 @@ for (const [what, list, dirOf] of [['private conversation', QUIET, () => store('
   writeFileSync(join(on, FORGOTTEN), 'k1\tC--p/abc\t2026-11-01 10:00\r\nk2\n');
   assert.deepStrictEqual(forgottenIn(none), { listed: [], shut: false }); checks++;
   assert.deepStrictEqual(forgottenIn(on), { listed: [['k1', 'C--p/abc', '2026-11-01 10:00'], ['k2']], shut: false }); checks++;
-  assert.deepStrictEqual(forgottenIn(bad), { listed: [], shut: true }); checks++;
+  { const { code, ...r } = forgottenIn(bad); assert.deepStrictEqual(r, { listed: [], shut: true }); ok(typeof code === 'string' && code, 'a list that will not read says why'); }
   assert.deepStrictEqual(forgotten('a\tb\tc\n\n k \n'), [['a', 'b', 'c'], ['k']]); checks++;
   ok(unreadable('/d', '.x').message.endsWith('.x could not be read') && unreadable('/d', '.x') instanceof Error, 'the error a writer throws names the list');
 }

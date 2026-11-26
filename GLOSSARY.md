@@ -46,6 +46,12 @@ inside one is never written, even when its Stop comes later.
 **Forgotten exchange**: an exchange the user removed with `forget`. Listed in
 `journal/.forgotten` so a later Stop or import does not bring it back.
 
+**Visible exchange**: an exchange a reader may be shown: not forgotten, and not
+of a private conversation whose sweep is still owed. Decided in one place,
+`src/journal.mjs`: `visible()` hands them to search, `show` and the page (a
+private turn stays, shown as `[private]`); `recent()` hands the hooks the newest
+ones, without private turns. A list that will not read hides its store.
+
 **Quiet conversation**: a private conversation or one switched off on its own
 (`.private-sessions` in its store or `.memory-off` in the projects root):
 `isQuiet()`.
