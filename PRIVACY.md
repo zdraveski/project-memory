@@ -48,6 +48,8 @@ The git-rule watcher (a PreToolUse hook) reads the notes that hold an `enforce:`
 
 The command `memory enforce replay <note>` is run by hand. It reads the git commands Claude ran through Bash or PowerShell in this project's conversation records of the last 30 days (every project's with `--all`) and prints the ones that match the note's rule to your terminal, each clipped to 160 characters with secrets replaced. It skips private conversations and projects with memory off, and saves nothing.
 
+Pointers to earlier exchanges are off by default: unless `PROJECT_MEMORY_RECALL` is `1`, neither hook below reads the journal, and they only keep the session file and the other-session lines.
+
 The file-change hook (a PostToolUse hook, after Edit, Write and NotebookEdit) reads the path of the file just changed, this project's journal (the newest 365 days or 6 MB of it), its forget list and its private-conversation list, to name earlier exchanges that changed the same file. It sends nothing anywhere. `PROJECT_MEMORY_RECALL=0` turns it off.
 
 The prompt hook (a UserPromptSubmit hook, at each message you send) reads your message, this project's journal (the newest 90 days or 2 MB of it), its forget list and its private-conversation list, to name earlier exchanges that share rare words with the message. It writes your message, secrets replaced and cut to 120 characters, as the conversation's `asked` line in its session file (below). A message with a `<private>` block or the `<private-session>` mark writes only a `quiet` line, with no text, and the mark cuts the file down to that line. It sends nothing anywhere, and does nothing inside a subagent. `PROJECT_MEMORY_RECALL=0` turns it off.

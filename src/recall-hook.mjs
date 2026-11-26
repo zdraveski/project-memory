@@ -3,7 +3,8 @@
 // prompt that names something old"): it names earlier exchanges that share rare words with the request. Both as additionalContext,
 // with another live session that works here (headline 4). SessionEnd: the session file's `end` line, nothing printed.
 // Modelled on enforce-hook.mjs: the import sits inside the try (a missing sibling fails open), the cheapest check comes first,
-// and the exit code is always 0 with nothing printed on any failure. PROJECT_MEMORY_RECALL=0 turns every pointer off.
+// and the exit code is always 0 with nothing printed on any failure. Pointers are opt-in (PROJECT_MEMORY_RECALL=1);
+// unset, only the session lines and the other-session warnings; PROJECT_MEMORY_RECALL=0 turns everything off.
 // stdout is empty unless a pointer is shown (tools/recall-eval.mjs reads that).
 import * as T from './timing.mjs';
 T.begin('recall');

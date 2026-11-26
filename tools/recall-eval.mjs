@@ -2,7 +2,7 @@
 // The eval harness of 1.6.0 (design, section "The gate"): does a pointer that arrives by itself
 // make Claude's answers better, and does it mislead? Headless `claude -p` sessions in throwaway
 // projects whose journals hold made-up facts (tools/recall-eval-cases.json), each case with the
-// pointers and, with --without, with PROJECT_MEMORY_RECALL=0. A developer tool like bench.mjs:
+// pointers (PROJECT_MEMORY_RECALL=1) and, with --without, with PROJECT_MEMORY_RECALL=0. A developer tool like bench.mjs:
 // it spends plan usage, so it never runs in CI; CI runs --self-check, which drives a fake claude.
 //
 //   node tools/recall-eval.mjs --plugin <dir> [--set file|prompt|error] [--without] [--runs N]
@@ -240,7 +240,7 @@ export async function main(argv) {
     const session = (j) => new Promise((done) => {
       const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg, CLAUDE_CODE_OAUTH_TOKEN: token };
       for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_PROJECT_DIR_NAME', 'CLAUDE_PROJECT_DIR', 'PROJECT_MEMORY_RECALL']) delete env[k];
-      if (j.arm === 'without') env.PROJECT_MEMORY_RECALL = '0';
+      env.PROJECT_MEMORY_RECALL = j.arm === 'without' ? '0' : '1';
       const [cmd, pre] = claudeCommand();
       const ch = spawn(cmd, [...pre, '-p', j.r.c.prompt, '--output-format', 'stream-json', '--verbose', '--model', o.model, '--plugin-dir', plugin,
         '--settings', settings, '--permission-mode', 'acceptEdits', '--permission-prompts', 'none', '--max-budget-usd', String(Math.max(0.01, o.maxUsd - spent))],
@@ -318,7 +318,7 @@ const wrong = [!env.CLAUDE_CONFIG_DIR?.includes(${JSON.stringify(PREFIX)}) && 'c
 if (wrong.length) { console.error('fake claude: wrong ' + wrong.join(', ')); process.exit(3); }
 const prompt = val('-p'), store = storeOf({ cwd: process.cwd() }), sid = randomUUID();
 let seeded = ''; try { seeded = readdirSync(join(store, 'journal')).filter((f) => f.endsWith('.md')).map((f) => readFileSync(join(store, 'journal', f), 'utf8')).join(''); } catch {}
-const pointer = env.PROJECT_MEMORY_RECALL !== '0' && /j:eval-(?!filler)/.test(seeded);
+const pointer = env.PROJECT_MEMORY_RECALL === '1' && /j:eval-(?!filler)/.test(seeded);
 const edit = (f, from, to) => writeFileSync(f, readFileSync(f, 'utf8').replace(from, to));
 const table = [
   [/port should/, () => (pointer ? 'Use port 4317.' : 'Use port 3000.')], [/PDF/, () => (pointer ? 'No: keep CSV only.' : 'Yes, keep it.')],

@@ -42,10 +42,6 @@ you quote or rely on a detail. A hit's date is its last change. `no note or entr
 holds: <words>` names words nothing holds; other words, a file's or a tool's
 name, or `--all` may find it.
 
-For a question about the past that one search does not answer, hand it to the
-`project-memory:recall` agent: it searches several ways and reports dates, keys
-and the user's own words.
-
 Read a file of this skill's folder when its subject comes up:
 
 - [search.md](search.md): every search, show, history and page option, and the CLI's options (`--store`, `--shared`, `--`).
