@@ -531,9 +531,10 @@ const after = (pre, flags = 'gi', need = false) => [new RegExp(`(${pre})["']?${V
 export const FUNC = new Set('a an the and or but so if then than that this those these which who what when where why how because since as at by for from in into of off on onto to too with without not no now is are was were be been being am it its you your i my we our they them he she has have had do does did can could will would shall should may might must also only just still always never very more most less than there here incorrect required encrypted different unchanged mandatory important expired stored invalid available confidential sensitive hashed salted'.split(' '));
 // A k8s secret's name after a colon (`secret: my-app-secret`; with `=` it stays cut). A lowercase word that a sentence goes on about (`password: required`, `secret: scanning is on`): a function word, or one right after it.
 // An IPv6 address (`89dd:6359:e614:3541:4530:f20e:dc94:5ca5/64`) reads like a .pgpass line; a pgpass has 4 colons, an address 6 or more.
-const v6 = (s) => /^[0-9a-f:]+(?:[/%]\S*)?$/i.test(s) && s.split(':').length > 6;
+// A short form with `::` (`2a02:4780:75:aec3::1`) has fewer, and may end in prose's `)`, `` ` `` or `,`.
+const v6 = (s) => /^[0-9a-f:]+(?:[/%]\S*)?[)`'",.;]*$/i.test(s) && (s.split(':').length > 6 || s.includes('::'));
 // `pass` the noun after a word that makes it a sentence (`same pass: worked`, `ALL PASS = healthy`), with a value of letters only.
-const passNoun = (b, v) => /^[A-Za-z]+$/.test(v) && /\b(?:same|audit|all|full|final|first|second|last|green|clean|each|every|this|that|next|another)\s+pass\s*[:=]\s*["']?$/i.test(b);
+const passNoun = (b, v) => /^(?:[A-Za-z]+|`[A-Za-z_]+`)$/.test(v) && /\b(?:same|audit|all|full|final|first|second|last|green|clean|each|every|this|that|next|another)\s+pass\s*[:=]\s*["']?$/i.test(b);
 const prose = (v, rest) => /^[a-z]{4,}$/.test(v) && (FUNC.has(v) || (/(?:ed|ing)$/.test(v) && FUNC.has((/^ ([a-z]+)\b/.exec(rest) ?? [])[1])));
 const SECRETS = [
   // From the first opener to the last closer: nested, the text after the inner
@@ -562,7 +563,8 @@ const SECRETS = [
   // With a digit in it, or 32 characters or more: "Basic implementation/approach" and "Bearer authentication-header" were prose,
   // and were cut; a long one with no digit (1 in 400 random ones) was kept (audit #7). A hidden character after the word, as
   // redact() sees the raw text, does not hide the value. The long one has no . or /, so "basic tests/integration/x.rb" is kept.
-  [/\b(Bearer|Basic|Token)[\s\p{Default_Ignorable_Code_Point}]+(?=[A-Za-z0-9._~+/=-]{0,200}\d|[A-Za-z0-9_~+=-]{32})[A-Za-z0-9._~+/=-]{20,}/giu, '$1 [redacted]'],
+  // Not after a hyphen: `per-token is_open/x_4k` is prose.
+  [/(?<!-)\b(Bearer|Basic|Token)[\s\p{Default_Ignorable_Code_Point}]+(?=[A-Za-z0-9._~+/=-]{0,200}\d|[A-Za-z0-9_~+=-]{32})[A-Za-z0-9._~+/=-]{20,}/giu, '$1 [redacted]'],
   // GitLab, npm and Hugging Face tokens; a Slack webhook is its own secret.
   [/\bglpat-[A-Za-z0-9_-]{20,}|\bnpm_[A-Za-z0-9]{36}\b|\bhf_[A-Za-z0-9]{30,}/g, '[redacted]'],
   // PyPI, Stripe webhooks, SendGrid, Google OAuth, Groq, xAI, Shopify,
@@ -613,7 +615,8 @@ const SECRETS = [
   // command's own; nor "the --token flag", in prose.
   // Quoted, as a value with symbols or blanks must be, to its closing quote: the opening quote refused, each was kept (e2e audit,
   // 2026-11-01). A quoted one may start with `-`; a bare one that does is the next option (review, 2026-11-01).
-  [/(--(?!no-|ask-)(?:[a-z0-9]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|account-key|secret-access-key|secret-string|token-code|creds|oauth2-bearer|requirepass|masterauth|pass|private-key|mnemonic)[ =]["']?|\b(?:(?:docker|podman|az|oc|helm|crane|oras|skopeo|buildah|nerdctl)\b(?:\s+-{1,2}[\w-]+(?:[ =][^\s-]\S*)?|\s+[a-z]+){0,3}\s+login|sshpass|twine\s+upload|mycli|cqlsh|cypher-shell|rabbitmqadmin|(?<![\w.*])7za?|mongo(?:sh|dump|restore|export|import)?)\b[^\n|;&]{0,200}?\s-p\s+["']?|\b(?:sqlcmd|bcp|unzip|zip)\b[^\n|;&]{0,200}?\s-P\s*["']?|\b(?:plink|pscp|psftp|putty)\b[^\n|;&]{0,200}?\s-pw\s+["']?|\bccrypt\b[^\n|;&]{0,200}?\s-K\s+["']?|\b(?:zip|mosquitto_(?:pub|sub|rr)|ldap(?:search|modify|add|delete|compare))\b[^\n|;&]{0,200}?\s-[Pw]\s+["']?|\b(?:requirepass|masterauth)[ \t]+["']?(?=[^\s"']{4}))(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")(?:[^"\n\\]|\\.){1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) || /\.(?:7z|zip|rar)$/i.test(v) ? m : `${pre}[redacted]`)],
+  // sshpass with no \b before it: glued to a word, its -p value was kept (fuzz 1059386132).
+  [/(--(?!no-|ask-)(?:[a-z0-9]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|account-key|secret-access-key|secret-string|token-code|creds|oauth2-bearer|requirepass|masterauth|pass|private-key|mnemonic)[ =]["']?|\b(?:(?:docker|podman|az|oc|helm|crane|oras|skopeo|buildah|nerdctl)\b(?:\s+-{1,2}[\w-]+(?:[ =][^\s-]\S*)?|\s+[a-z]+){0,3}\s+login|twine\s+upload|mycli|cqlsh|cypher-shell|rabbitmqadmin|(?<![\w.*])7za?|mongo(?:sh|dump|restore|export|import)?)\b[^\n|;&]{0,200}?\s-p\s+["']?|sshpass\b[^\n|;&]{0,200}?\s-p\s+["']?|\b(?:sqlcmd|bcp|unzip|zip)\b[^\n|;&]{0,200}?\s-P\s*["']?|\b(?:plink|pscp|psftp|putty)\b[^\n|;&]{0,200}?\s-pw\s+["']?|\bccrypt\b[^\n|;&]{0,200}?\s-K\s+["']?|\b(?:zip|mosquitto_(?:pub|sub|rr)|ldap(?:search|modify|add|delete|compare))\b[^\n|;&]{0,200}?\s-[Pw]\s+["']?|\b(?:requirepass|masterauth)[ \t]+["']?(?=[^\s"']{4}))(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")(?:[^"\n\\]|\\.){1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) || /\.(?:7z|zip|rar)$/i.test(v) ? m : `${pre}[redacted]`)],
   // 1.4.1 E: ssh-keygen's -N new and -P old passphrase (both in one command, so one rule reads the whole command).
   [/\bssh-keygen\b[^\n|;&]{0,300}/g, (m) => m.replace(/(\s-[NP]\s*["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,200})/g, (x, p, v) => (arg(v) ? x : p + '[redacted]'))],
   // mysql, mariadb and mycli: the glued -pPASS (a spaced -p is a prompt).
@@ -745,9 +748,9 @@ const SECRETS = [
   [/(\b(?:creds?|credentials?)[ \t]{0,3}[:=][ \t]{0,3}["']?)(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/gi, (m, pre, v) => (arg(v) || code(v) || /^[\w./-]+\.[A-Za-z]{1,5}(?::\d+)*$/.test(v) ? m : pre + '[redacted]')],
   // A list of one-time codes: the rest of the sentence, when it holds a digit.
   [/(\b(?:recovery|backup|unlock|reset|verification|2fa|mfa|otp)[ -]?(?:codes?|keys?)\b[ \t]{0,3}(?:are|is|[:=])[ \t]{0,3})(?=[^\n.;]{0,300}\d)([^\n.;]{4,300})/gi, (m, pre, v) => (v.toLowerCase().split(/\s+/).some((x) => FUNC.has(x)) ? m : pre + '[redacted]')],
-  // "the password is correct horse battery staple, remember it" or "...is sunshine": a clause-ending run of three to six lowercase words, or one word of 8 or more letters, with no function word or adjective in it ("the password is not stored in it", "is hashed").
+  // "the password is correct horse battery staple, remember it" or "...is sunshine": a clause-ending run of three to six lowercase words, or one word of 8 or more letters not ending in -ed ("was replaced"), with no function word or adjective in it ("the password is not stored in it", "is hashed").
   [/(\b(?:password|passwd|passphrase|passcode|pw)(?:\s{1,5}(?:for|of)\s{1,5}[^.,;:\n]{1,40}?)?\s{1,5}(?:is|was)\s{1,5}["']?)([a-z]{2,40}(?: [a-z]{2,20}){0,5})(?=["']?[ \t]*(?:[,.;:!?]|$))/gim,
-    (m, pre, v) => { const w = v.split(' '); return (w.length === 2 || (w.length === 1 && w[0].length < 8) || w.some((x) => FUNC.has(x))) ? m : pre + '[redacted]'; }],
+    (m, pre, v) => { const w = v.split(' '); return (w.length === 2 || (w.length === 1 && (w[0].length < 8 || w[0].endsWith('ed'))) || w.some((x) => FUNC.has(x))) ? m : pre + '[redacted]'; }],
   // Other languages in prose: "Passwort ist X", "mot de passe est X", "пароль X".
   [/((?<![\p{L}\d])(?:passwort|kennwort|mot de passe|contrase[nñ]a|senha|wachtwoord|l[öo]senord|adgangskode|kodeord|heslo|salasana|jelsz[oó]|[sş]ifre|has[lł]o|пароль)(?:[ \t]{1,5}(?:ist|lautet|est|es|[eé]|is|[äa]r|er|je|on))?[ \t]{1,5}["']?)(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/giu, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
   // SQL: `WITH PASSWORD 'x'`, `PASSWORD('x')`, `IDENTIFIED [WITH plugin] BY 'x'`; the value quoted, to its closing quote (1.3.2).
@@ -788,7 +791,7 @@ const SECRETS = [
   // Not a note's `originSessionId: <uuid>`: Claude Code's own front matter, and cut it held every edited note out of the snapshots.
   [/((?:password|passwd|passphrase|secret|(?:access|auth|refresh|api|session)[_-]?token|(?<!origin)(?:j|php|asp\.net_)?sess(?:ion)?[_-]?id|connect\.sid|(?:api|account|private|secret|preshared)[ _-]?key|identitytoken|registrytoken|access[ _-]key|(?:access|auth|subscription)key(?!name)|(?:auth|subscription)[ _-]key|sharedaccesskey(?!name)|key-data|(?<![A-Za-z0-9])pwd|(?<![A-Za-z0-9])(?:psw|salt)(?![a-z])|pw(?![a-z])|passwort|kennwort|mot[ _]de[ _]passe|contrase[nñ]a|wachtwoord|senha|has[lł]o|heslo|salasana|jelsz[oó]|[sş]ifre|пароль|l[öo]senord|adgangskode|kodeord|パスワード|密码|密碼|비밀번호|(?<![A-Za-z0-9])pass(?![a-z]))[A-Za-z0-9_]{0,40}(?:\[[\w.-]{0,40}\])*\\*["']?\]?\s{0,20}(?::=|[:=\uFF1A])\s{0,20}(?:[|>][+-]?[ \t]*\r?\n[ \t]*|&\w{1,40}[ \t]+|\[[ \t]*(?=["']))?(?:(?:\\*["']){1,2}|\$'|\{)?)((?<=\\")(?:(?!\\")[^\n]){6,2000}(?=\\")|(?<=")(?![\r\n])(?:[^"\\]|\\.){6,2000}(?:"[ \t]*\+[ \t]*"(?:[^"\\]|\\.){0,2000})*(?=")|(?<=')[^'\n]{6,2000}(?=')|(?<=\{)[^}\n"':{]{6,500}(?=\})|(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?:[^\s"',;]|[,;](?=[^\s"',;])){6,})/gi, (m, pre, v, at, all) => (code(v, /["']\s*:\s*["']$/.test(pre) || /\b(?:self|this)\.$/.test(all.slice(Math.max(0, at - 5), at))) || prose(v, all.slice(at + m.length)) || passNoun(all.slice(Math.max(0, at - 40), at + pre.length), v) || ((/:\s*["']*$/.test(pre) || /(?:name|ref)["']?\]?\s*[:=]/i.test(pre)) && /^[a-z]+(?:-[a-z]+)*-(?:secret|credentials?|token|key)s?$/.test(v)) ? m : `${pre}[redacted]`)],
   // A bare `token=` or `token:` whose value has a letter: a key, not a count.
-  [/((?<![A-Za-z0-9])tokens?["']?[ \t]{0,20}[:=\uFF1A]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) ? m : `${pre}[redacted]`)],
+  [/((?<![A-Za-z0-9])tokens?["']?[ \t]{0,20}[:=\uFF1A]\s{0,20}["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=[^\s"',;]{0,200}[A-Za-z])([^\s"',;]{6,})/gi, (m, pre, v) => (code(v) || (/tokens\W*$/i.test(pre) && /^[a-z]+$/.test(v)) ? m : `${pre}[redacted]`)],   // "the login tokens: restore": prose
   // 1.4.1 F: databases, brokers, mail and file protocols, Windows tools, Wi-Fi and VPN, config files, password hashes (redaction-corpus-24, -25, -27, -28, -29, -32, -33, -37).
   // A hash first, whole (`$6$salt$hash`, with a `\$` as a shell escape shows it): 25 characters or more, so `$1$2$3` stays.
   [/(?<![\w$])\$(?:apr1|2[abxy]|argon2(?:id|i|d)|[156y])(?:\\?\$[\w./,=+-]{1,100}){2,6}/g, (m) => (m.length >= 25 ? '[redacted]' : m)],
@@ -806,9 +809,9 @@ const SECRETS = [
   [/(\bapi-key\s+store\s+)["']?[\w+/=-]{8,}["']?(?:\s+["']?[\w+/=-]{8,}["']?)?/g, '$1[redacted]'],
   // Mail and file transfer: postfix's sasl_passwd (`[host]:587 user:pass`), IMAP LOGIN, POP3 and FTP PASS (6 or more characters, a digit or symbol, no path or file name), lftp -u user,pass, curl's -K file `user = "me:pass"`.
   // A clock time, ratio, score or file:line (digits only, or a source file name) before a label is not a host. shortcut: a host name over 253 characters is not matched whole (not a valid host), upgrade if one is seen.
-  [/(?<![\w.-])(?!\d+:)(?![\w.-]{0,253}\.(?:m?js|cjs|[jt]sx?|py|go|rs|java|rb|c|h|cpp|cs|php|md|json|ya?ml|txt|sh):)(\[?[\w.-]{1,253}\]?:\d{1,5}[ \t]+[^\s:@[]{1,100}:)(?!\[redacted\])([^\s]{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
+  [/(?<![\w.-])(?!\d+:)(?![\w.-]{0,253}\.(?:m?js|cjs|[jt]sx?|py|go|rs|java|rb|c|h|cpp|cs|php|md|json|ya?ml|txt|sh):)(\[?[\w.-]{1,253}\]?:\d{1,5}[ \t]+[^\s:@[]{1,100}:)(?!\[redacted\])([^\s]{3,200})/g, (m, p, v) => (arg(v) || (/\.(?:m?js|cjs|[jt]sx?|py|go|rs|java|rb|c|h|cpp|cs|php|md|json|ya?ml|txt|sh|s?css|html?):$/.test(p) && /^\d+(?!\w)/.test(v)) ? m : `${p}[redacted]`)],   // a file:line as the user ("1.85:1 (`office.css:309`")
   after(String.raw`\b[A-Za-z]{0,3}\d{1,5}[ \t]+LOGIN[ \t]+(?:"[^"\n]{1,100}"|[^\s"']{1,100})[ \t]+`, 'g', true),
-  [/((?<![\w.-])PASS[ \t]+)([^\s"'/\\]{6,200})(?=\s|$)/g, (m, p, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) && !code(v) && !/\.[A-Za-z]\w{0,6}$/.test(v) ? `${p}[redacted]` : m)],
+  [/((?<![\w.-])PASS[ \t]+)([^\s"'/\\]{6,200})(?=\s|$)/g, (m, p, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) && !code(v) && !/\.[A-Za-z]\w{0,6}$/.test(v) && !/^\(?\d{4}-\d\d-\d\d\b/.test(v) ? `${p}[redacted]` : m)],   // a date: "tests PASS (2026-07-16, ...)"
   [/(\b(?:lftp|open)\b[^\n|;&]{0,200}?\s-u[ \t]*["']?[^\s,"']{1,100},)([^\s"']{3,200})/g, (m, p, v) => (arg(v) ? m : `${p}[redacted]`)],
   [/((?<![\w.?&-])user[ \t]*=[ \t]*["']?[^\s:"']{1,100}:)([^\s"']{3,200})/g, (m, p, v) => (/[\d!@#$%^&*]/.test(v) && !arg(v) ? `${p}[redacted]` : m)],
   // Windows: rdesktop -p, net user NAME PASS, net use ... /user:NAME PASS, psexec -p, a Wi-Fi profile's Key Content and netsh's key=.
@@ -866,7 +869,8 @@ export const redact = (s) => {
   return out;
 };
 const redactOnce = (s) => {
-  const u = s.replace(/\\\r?\n[ \t]*/g, ''), r = redactRaw(u), f = fold(r), g = f === r ? r : redactRaw(f);
+  // Not before a bare `key:` line: no shell command goes on with one, and a markdown line break (`\`) glued a YAML head onto prose (fuzz 1059385974).
+  const u = s.replace(/\\\r?\n(?![ \t]*[\w.-]{1,40}:[ \t]*(?:\r?\n|$))[ \t]*/g, ''), r = redactRaw(u), f = fold(r), g = f === r ? r : redactRaw(f);
   return g === f ? (r === u ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
 };
 // Does a note's own text hold a secret? Anything inside the <private> tag does, closed or not ("<private/>" opens one too): the
