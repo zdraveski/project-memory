@@ -213,6 +213,9 @@ r = spawnSync(process.execPath, [tool('src/memory-tier.mjs'), '--stop'], { input
 utimesSync(fb, (Date.now() - 8 * 864e5) / 1000, (Date.now() - 8 * 864e5) / 1000);
 spawnSync(process.execPath, [tool('src/memory-tier.mjs'), '--stop'], { input: JSON.stringify({ session_id: SID, cwd: b.cwd, hook_event_name: 'Stop' }), encoding: 'utf8' });
 ok(!existsSync(fb), 'the save after a reply sweeps them');
+fb = touch(b, 'dddddddd', Date.now() - 8 * 864e5);
+spawnSync(process.execPath, [tool('src/memory-tier.mjs'), '--stop'], { input: JSON.stringify({ session_id: 'eeeeeeee-0000-4000-8000-000000000000', cwd: b.cwd, hook_event_name: 'Stop' }), encoding: 'utf8', env: { ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' } });
+ok(!existsSync(fb), 'and with auto memory off too');
 
 // The prompt hook (headline 1c, "a prompt that names something old"): UserPromptSubmit names earlier exchanges that share
 // rare words with the request. A young store (10 entries) gets a pointer, and the wording is pinned here.

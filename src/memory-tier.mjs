@@ -412,6 +412,8 @@ export async function main(argv, input) {
       // own words (`off`): nothing was to be saved, and the journal may take the conversation in later (release review).
       if (p) try { writeFileSync(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(storeOf(p)))}`), JSON.stringify({ at: new Date().toISOString(), error: reason(e), off: true }), { mode: 0o600 }); } catch {}
     }
+    // The 7-day rule on session files holds with memory off too (recall.mjs).
+    try { (await import(new URL('./recall.mjs', import.meta.url))).sweepSessions(); } catch {}
     return 0;
   }
   let payload = null;
