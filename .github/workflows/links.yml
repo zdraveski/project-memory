@@ -1,0 +1,33 @@
+name: links
+
+# Every link in the repo's Markdown still works: on a pull request that changes a .md file, and weekly,
+# since a page elsewhere can die without a change here.
+on:
+  pull_request:
+    paths: ['**.md', '.github/workflows/links.yml']
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lychee:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # A pinned release, checked against its published sha256 (as actionlint, zizmor and agnix in test.yml), unpacked
+      # outside the checkout. The token keeps GitHub's links from hitting its rate limit; test/ holds fixtures, not docs.
+      - env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP"
+          gh release download lychee-v0.24.2 -R lycheeverse/lychee -p lychee-x86_64-unknown-linux-gnu.tar.gz
+          echo "1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a  lychee-x86_64-unknown-linux-gnu.tar.gz" | sha256sum -c -
+          tar xzf lychee-x86_64-unknown-linux-gnu.tar.gz
+          cd "$GITHUB_WORKSPACE"
+          git ls-files '*.md' ':!:test/' | xargs -d '\n' "$(find "$RUNNER_TEMP" -name lychee -type f | head -1)" --no-progress --max-concurrency 8 --format markdown
