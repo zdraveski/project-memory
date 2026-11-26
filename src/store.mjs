@@ -216,6 +216,24 @@ export const isIndex = (f) => f === 'MEMORY.md' || f === ARCHIVE;
 export const pointerLine = (file, desc) =>
   `- [${redact(file).replace(/\.md$/, '').replace(/-/g, ' ').replace(/[[\]]/g, '')}](${file}) — ${redact(desc).slice(0, 140).replace(/[\uD800-\uDBFF]$/, '')}`;
 
+// The rest of the index format, for tiering, restore, promote and the briefing alike: two copies had drifted, and
+// promote wrote a CRLF index back LF for good.
+// An index's lines. A BOM binds to the first line and stops it matching POINTER, which quietly
+// demotes the top memory to prose and orphans it.
+export const indexLines = (text) => text.replace(/^\uFEFF/, '').split(/\r?\n/);
+// A file's line ending, as its first line has it: a CRLF index was written back LF (audit I-F4).
+export const eolOf = (text) => (/^[^\n]*\r\n/.test(text) ? '\r\n' : '\n');
+// An indented line right under a pointer is its hook, wrapped: it goes where the pointer goes (1.3.1 audit D-1).
+export const wraps = (line) => /^[ \t]+\S/.test(line);
+// The archive's own line in MEMORY.md, regenerated with a live count. An empty archive's says nothing, in every session.
+export const archiveLine = (n) => `- [Archive](${ARCHIVE}) — ${n} older pointers; grep it before assuming something was never learned`;
+export const emptyArchive = (line) => line.includes(`](${ARCHIVE})`) && / — 0 older/.test(line);
+// What the byte ceiling marks a line it evicted with, so the archive knows it may come back.
+const OVERFLOW = '<!-- overflow -->';
+export const mark = (line) => line + ' ' + OVERFLOW;
+// The one space the mark was added with: a trailing one the line had is its own.
+export const unmark = (line) => (line.endsWith(OVERFLOW) ? line.slice(0, -OVERFLOW.length).replace(/ $/, '') : line);
+
 // The listed name an index line's file opens, from one listing of the store,
 // for tiering and the CLI alike: on Windows (Kase.md) is kase.md's. A name the
 // folder lists is itself; another is the listed name it folds to only when it

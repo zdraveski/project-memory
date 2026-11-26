@@ -378,6 +378,22 @@ ok(r.status === 0 && /^- \[draft okapi\]\(\[draft\] okapi\.md\) — an okapi sti
   ok(readFileSync(join(shared, 'MEMORY.md'), 'utf8').includes('- [Wrap](wrap-note.md) — a hook that is long and\n  wrapped onto a second line\n'), `and the shared index gets all of it (got ${readFileSync(join(shared, 'MEMORY.md'), 'utf8')})`);
   writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace('- [After](after-wrap.md) — next\n', ''));
 }
+// Promote keeps each index in its own line endings: a CRLF one was written back LF, and tiering then kept it LF (audit I-F4).
+{
+  const dirIdx = join(dir, 'MEMORY.md'), sharedIdx = join(shared, 'MEMORY.md');
+  const dirWas = readFileSync(dirIdx, 'utf8'), sharedWas = existsSync(sharedIdx) ? readFileSync(sharedIdx, 'utf8') : null;
+  const crlf = (t) => t.replace(/\r?\n/g, '\r\n'), allCrlf = (t) => !/(^|[^\r])\n/.test(t) && t.endsWith('\r\n');
+  memory(dir, 'eol-note', 'c');
+  writeFileSync(dirIdx, crlf(dirWas.replace(/\n*$/, '\n') + '- [Eol](eol-note.md) — a hook that is long and\n  wrapped onto a second line\n'));
+  writeFileSync(sharedIdx, crlf(sharedWas ?? '# Shared memory\n'));
+  r = await cli('promote', 'eol-note');
+  const home = readFileSync(dirIdx, 'utf8'), there = readFileSync(sharedIdx, 'utf8');
+  ok(r.status === 0 && !home.includes('eol-note') && allCrlf(home), `promote writes a CRLF project index back CRLF (got ${JSON.stringify(home)})`);
+  ok(there.includes('- [Eol](eol-note.md) — a hook that is long and\r\n  wrapped onto a second line\r\n') && allCrlf(there), `and adds its line to a CRLF shared index in CRLF, wrap and all (got ${JSON.stringify(there)})`);
+  writeFileSync(dirIdx, dirWas);
+  if (sharedWas === null) rmSync(sharedIdx, { force: true }); else writeFileSync(sharedIdx, sharedWas);
+  rmSync(join(shared, 'eol-note.md'), { force: true });
+}
 // A copy that cannot be written moves nothing: the note stays in its project.
 {
   const { promote } = await import(pathToFileURL(CLI).href);

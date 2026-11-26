@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import * as T from './timing.mjs';
 import { isOff } from './privacy.mjs';
 import { snapshot, snapshotHealth, owed, reset, GIT_TIMEOUT, BATCH } from './snapshot.mjs';
-import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, allStores, front, raw, memoryOff, reason, tag } from './store.mjs';
+import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, indexLines, eolOf, wraps, archiveLine, mark, unmark, allStores, front, raw, memoryOff, reason, tag } from './store.mjs';
 import { redact } from './secrets.mjs';
 import { HANDOFF_FAILED, health, stopRecord, plugins } from './run-records.mjs';
 
@@ -28,8 +28,7 @@ const STALE_DAYS = 7;    // anything not touched this long stops earning its lin
 // is a one-way door: a pointer already there stays there unless `tier: hot`,
 // because moving it was a decision and a date is not grounds to overturn it.
 // The one exception is a line the byte ceiling evicted: it is marked, and it
-// returns when there is room, because nobody decided it should go.
-const OVERFLOW = '<!-- overflow -->';
+// returns when there is room, because nobody decided it should go (store.mjs mark).
 // A memory file this young with no pointer is not lost: its writer is about to
 // add one (the model writes the file, then edits the index, seconds apart).
 const ORPHAN_GRACE = 2 * 60000;
@@ -137,24 +136,19 @@ function split(text) {
   // `gap`: a blank line between the prose and the first pointer, kept: dropped, a `# Memory Index` heading lost the line
   // under it at the first pass (audit I-F4).
   let gap = false, last = null;
-  // A BOM binds to the first line and stops it matching POINTER, which quietly
-  // demotes the top memory to prose and orphans it.
-  for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+  for (const line of indexLines(text)) {
     const m = line.match(POINTER);
     // The Archive line counts for the gap too: with every pointer cold it is the only line after the blank one.
     if (m) gap ||= !pointers.length && preamble.at(-1)?.trim() === '';
     if (m && m[1] === ARCHIVE) { last = null; continue; }   // by its target, not its title: regenerated with a live count
-    // An indented line right under a pointer is its hook, wrapped: it goes where the pointer goes (1.3.1 audit D-1).
-    // Held with \n inside; the writes below turn it into the file's own line ending.
+    // A wrapped hook is held with \n inside; the writes below turn it into the file's own line ending.
     if (m) pointers.push(last = { line, target: m[1] });
-    else if (last && /^[ \t]+\S/.test(line)) last.line += '\n' + line;
+    else if (last && wraps(line)) last.line += '\n' + line;
     else { last = null; if (line.trim() || preamble[preamble.length - 1]?.trim()) preamble.push(line); }
   }
   while (preamble.length && preamble[preamble.length - 1].trim() === '') preamble.pop();
   return { preamble, pointers, gap };
 }
-// A file's line ending, as its first line has it: a CRLF index was written back LF (audit I-F4).
-const eolOf = (text) => (/^[^\n]*\r\n/.test(text) ? '\r\n' : '\n');
 
 // `seen`: the Stop's stat of each note, by name (main()); none, each is stat'ed here.
 function tier(dir, now, seen = null) {
@@ -215,10 +209,9 @@ function tier(dir, now, seen = null) {
     const old = memo?.was[p.target];
     p.f = factsFor(dir, p.target, memo);
     const misread = Array.isArray(old) && !String(old[0]).startsWith('2 ') && old[2] === 'archive';
-    const overflow = p.line.endsWith(OVERFLOW);
     p.was = p.line;   // as the archive holds it, mark and all
-    // The one space the mark was added with: a trailing one the line had is its own.
-    if (overflow) p.line = p.line.slice(0, -OVERFLOW.length).replace(/ $/, '');
+    p.line = unmark(p.line);
+    const overflow = p.line !== p.was;
     place(p, p.f && (p.f.tier === 'hot' || ((overflow || misread) && isHot(p.f, now, shared))) ? hot : cold);
   }
 
@@ -247,7 +240,6 @@ function tier(dir, now, seen = null) {
     recovered.push(f);
   }
 
-  const archiveLine = (n) => `- [Archive](${ARCHIVE}) — ${n} older pointers; grep it before assuming something was never learned`;
   // Each file in its own line endings (a new archive in the index's), the blank under the prose kept.
   const eol = eolOf(mainText), arcEol = arcText !== null ? eolOf(arcText) : eol;
   const render = () => [...main.preamble, ...(main.gap ? [''] : []), ...hot.map((p) => p.line), archiveLine(cold.length)].join(eol).replace(/\r?\n/g, eol) + eol;
@@ -299,7 +291,7 @@ function tier(dir, now, seen = null) {
     count -= lines(victim);
     size -= bytes(victim.line) + eol.length + bytes(archiveLine(cold.length)) - bytes(archiveLine(cold.length + 1));
     evicted.add(victim);
-    victim.line += ' ' + OVERFLOW;        // so the archive loop knows it may come back
+    victim.line = mark(victim.line);
     cold.push(victim);
   }
   if (evicted.size) hot.splice(0, hot.length, ...hot.filter((p) => !evicted.has(p)));

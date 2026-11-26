@@ -12,7 +12,7 @@ import { clip, fit, SAY } from './text.mjs';
 import { lastTurn, transcripts, readTail, records, text, asked, own, TAIL } from './transcript.mjs';
 import { OFF, PRIVATE, PRIVATE_SESSION, isOff, isQuiet, hushed, off, offLine, forgottenIn } from './privacy.mjs';
 import { readHealth, MISSED, HELD } from './snapshot.mjs';
-import { tag, storeOf, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, memoryOff, autoMemory } from './store.mjs';
+import { tag, storeOf, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, indexLines, emptyArchive, memoryOff, autoMemory } from './store.mjs';
 import { notes, edited } from './run-records.mjs';
 import { ACTIVE, START, render, parse, sectionOf, stalled } from './handoff-log.mjs';
 import { firstDay, rel } from './journal.mjs';
@@ -49,15 +49,14 @@ function shared() {
   // whose file is gone: the ceiling is held here too, since this prints everywhere.
   const lines = [];
   let bytes = 0, cut = 0;
-  for (const l of index.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+  for (const l of indexLines(index)) {
     if (!POINTER.test(l)) continue;
     if (bytes + Buffer.byteLength(l) + 1 > SHARED_BUDGET) { cut++; continue; }
     bytes += Buffer.byteLength(l) + 1;
     lines.push(l);
   }
   if (cut) lines.push(`(${cut} more shared line(s) over the ${SHARED_BUDGET} B ceiling, in ${join(at, 'MEMORY.md')})`);
-  // An empty archive's line says nothing, in every session.
-  const said = lines.filter((l) => !(l.includes(`](${ARCHIVE})`) && / — 0 older/.test(l)));
+  const said = lines.filter((l) => !emptyArchive(l));
   // Once the user agrees: a lesson there reaches every project, the ones a
   // conversation here should not speak for too.
   const head = said.some((l) => !l.includes(`](${ARCHIVE})`))

@@ -64,6 +64,20 @@ or password looks like. `redact()` replaces one with `[redacted]` and a
 `BARE()` says whether a typed answer to a question that asks for one is one. It
 imports nothing, so `store.mjs` and every writer can use it.
 
+## The index
+
+**Index**: `MEMORY.md` and its archive, `MEMORY-archive.md`: one pointer line
+(`- [Title](file.md) — hook`) per memory, a hook maybe wrapped onto indented
+lines under it. `src/store.mjs` holds the format once: `POINTER`,
+`pointerLine`, `indexLines` (BOM off), `eolOf` (each file keeps its own line
+endings), `wraps`, the archive line (`archiveLine`, `emptyArchive`) and the
+overflow mark. Tiering, restore, promote and the briefing read and write
+through these, never their own copies.
+
+**Overflow mark**: what tiering's byte ceiling adds to a line it evicts
+(`mark`), so the line comes back when there is room; `unmark` takes it off with
+only the one space it was added with.
+
 ## Snapshots
 
 **Projects root**: `~/.claude/projects` (or under `CLAUDE_CONFIG_DIR`), the

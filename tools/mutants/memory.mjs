@@ -62,7 +62,7 @@ export default {
   'promote leaves the project copy': ['try { unlinkSync(src); } catch (e) {', 'try { } catch (e) {'],
   'promote without the lock': ['const r = withLock(dir, () => withLock(to, () => {', 'const r = ((f) => f())(() => ((f) => f())(() => {', { full: true }],
   'restore without the lock': ['const r = withLock(dir, () => {\n    const cur = raw(path), curB', 'const r = ((f) => f())(() => {\n    const cur = raw(path), curB', { full: true }],
-  'restore keeps the overflow mark': ['if (first) line = l.replace(OVERFLOW, \'\');', 'if (first) line = l;'],
+  'restore keeps the overflow mark': ['return { line: line && unmark(line),', 'return { line,'],
   'restore ignores the archive': ["for (const idx of ['MEMORY.md', ARCHIVE])", "for (const idx of ['MEMORY.md'])"],
   'a shared memory promoted again': ['if (isShared(dir)) return no(', 'if (false) return no('],
   "the session's own store ignored": ['if (id) {', 'if (false) {'],

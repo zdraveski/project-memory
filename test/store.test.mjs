@@ -11,7 +11,7 @@ import { createHmac } from 'node:crypto';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, keyed, offSince, tag } = await import('../src/store.mjs'), { gitWhy } = await import('../src/snapshot.mjs'), { wasOff, OFF_PERIODS } = await import('../src/privacy.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, keyed, offSince, tag, indexLines, eolOf, wraps, archiveLine, emptyArchive, mark, unmark } = await import('../src/store.mjs'), { gitWhy } = await import('../src/snapshot.mjs'), { wasOff, OFF_PERIODS } = await import('../src/privacy.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -346,6 +346,16 @@ const made = pointerLine('[draft] plan.md', 'a'.repeat(139) + '\u{1F600} and mor
 ok(made.match(POINTER)?.[1] === '[draft] plan.md' && !/[\uD800-\uDFFF]$/.test(made), `a made line reads back and is cut whole (got ${made})`);
 // POINTER reads one level of brackets in a title; the made title has none, so two levels in a name read back too.
 ok(pointerLine('[[a]] b.md', 'x').match(POINTER)?.[1] === '[[a]] b.md', 'a made line for a name with nested [brackets] reads back');
+
+// The index format's other parts, one definition each.
+ok(indexLines('\uFEFF- [a](a.md) — x\r\n- [b](b.md) — y\n')[0].match(POINTER)?.[1] === 'a.md', 'a BOM does not hide the first index line');
+ok(indexLines('a\r\nb\nc').join() === 'a,b,c', 'index lines split on either line ending');
+ok(eolOf('# x\r\n- [a](a.md) — y\n') === '\r\n' && eolOf('# x\n- [a](a.md) — y\r\n') === '\n' && eolOf('one line') === '\n', 'a file\'s line ending is its first line\'s');
+ok(wraps('  wrapped on') && wraps('\tmore') && !wraps('   ') && !wraps('- [a](a.md) — y'), 'an indented line with text is a wrapped hook; a blank one is not');
+ok(archiveLine(3).match(POINTER)?.[1] === 'MEMORY-archive.md', 'the archive line points at the archive');
+ok(emptyArchive(archiveLine(0)) && !emptyArchive(archiveLine(1)) && !emptyArchive(archiveLine(10)) && !emptyArchive('- [a](a.md) — 0 older ones'), 'only an empty archive\'s line reads as empty, by the words archiveLine writes');
+for (const l of ['- [a](a.md) — y', '- [a](a.md) — ends in a space ', '- [a](a.md) — y\n  wrapped']) ok(unmark(mark(l)) === l && mark(l) !== l, `mark then unmark gives the line back (got ${JSON.stringify(unmark(mark(l)))})`);
+ok(unmark('- [a](a.md) — y') === '- [a](a.md) — y', 'an unmarked line is left as it is');
 
 // A value stays on its line, the body is no frontmatter, and CRLF keeps quotes off.
 const emptied = front('---\nname: a\nsuperseded-by:\nmetadata:\n  type: project\n---\nbody');
