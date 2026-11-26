@@ -271,6 +271,11 @@ for (const [i, c] of ['[1,2]', '{"v":3,"files":"abc"}', '{"v":3,"files":null}', 
   ok(pt({ type: 'user', message: { content: 'x ＜private-session＞' } }) === true, 'a full-width mark: private');
   ok(pt({ type: 'user', message: { content: [{ type: 'text', text: '<private​-session>' }] } }) === true, 'a mark with a hidden character: private');
   ok(pt({ type: 'user', isSidechain: true, message: { content: `x ${P}` } }) === false, 'the mark only in a helper record: not private');
+  // The writers' reading (transcript.mjs typedMark): a mark queued while Claude worked counts, one only quoted by the harness or
+  // in a compaction summary does not; the hook kept its own rule before, and logged a queued private conversation's commands.
+  ok(pt({ type: 'attachment', attachment: { type: 'queued_command', prompt: `and ${P}` } }) === true, 'a mark queued while Claude worked: private');
+  ok(pt({ type: 'user', message: { content: `<task-notification>${P}</task-notification>` } }) === false, 'a mark only quoted by the harness: not private');
+  ok(pt({ type: 'user', isCompactSummary: true, message: { content: `the user typed ${P}` } }) === false, 'a compaction summary that names it: not private');
   ok(privateTurn({ transcript_path: join(home, 'gone.jsonl') }) === true, 'an unreadable transcript: private');
   // 1.6.1: read in pieces (one string of a 600 MB transcript took 14 s); a line cut by a piece, a multi-byte character cut by one,
   // and a last line without a newline are read whole.
