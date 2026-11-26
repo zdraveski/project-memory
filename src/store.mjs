@@ -375,7 +375,9 @@ export function withLock(dir, fn) {
       // for 30 s (1.6.1). The owner read may be of a lock being released (1.3.3), so the takeover below checks it again. A pid
       // used again reads as alive: LOCK_STALE stays the fallback. shortcut: a pid is this machine's; a store shared with a
       // container or WSL could take a live lock there, upgrade if such a setup is supported.
-      if (!stale) { let o = ''; try { o = readFileSync(owner, 'utf8'); const pid = parseInt(o, 10); if (pid > 0) process.kill(pid, 0); } catch (e) { if (e.code === 'ESRCH') gone = o; } }
+      // Dead only if its token is still there after the check: a holder that let go and exited between our read and the
+      // check reads as dead too, and the next holder's live lock was taken (two inside at once, 5 runs in 24 under load).
+      if (!stale) { let o = ''; try { o = readFileSync(owner, 'utf8'); const pid = parseInt(o, 10); if (pid > 0) process.kill(pid, 0); } catch (e) { if (e.code === 'ESRCH') try { if (readFileSync(owner, 'utf8') === o) gone = o; } catch {} } }
       // A killed hook's lock, whatever it left: a file, a folder with something
       // in it. One still there when the wait is up throws, so the pass that
       // fails says so in .health: busy every turn was silence.
