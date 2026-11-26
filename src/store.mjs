@@ -373,8 +373,11 @@ export function withLock(dir, fn) {
       try { stale = staleLock(lock); } catch {}
       // A killed hook's lock is taken at once, not after LOCK_STALE: waiting cost every Stop in the project 5 s and its turn
       // for 30 s (1.6.1). The owner read may be of a lock being released (1.3.3), so the takeover below checks it again. A pid
-      // used again reads as alive: LOCK_STALE stays the fallback.
-      if (!stale) { let o = ''; try { o = readFileSync(owner, 'utf8'); const pid = parseInt(o, 10); if (pid > 0) process.kill(pid, 0); } catch (e) { if (e.code === 'ESRCH') gone = o; } }
+      // used again reads as alive: LOCK_STALE stays the fallback. shortcut: a pid is this machine's; a store shared with a
+      // container or WSL could take a live lock there, upgrade if such a setup is supported.
+      // Dead only if its token is still there after the check: a holder that let go and exited between our read and the
+      // check reads as dead too, and the next holder's live lock was taken (two inside at once, 5 runs in 24 under load).
+      if (!stale) { let o = ''; try { o = readFileSync(owner, 'utf8'); const pid = parseInt(o, 10); if (pid > 0) process.kill(pid, 0); } catch (e) { if (e.code === 'ESRCH') try { if (readFileSync(owner, 'utf8') === o) gone = o; } catch {} } }
       // A killed hook's lock, whatever it left: a file, a folder with something
       // in it. One still there when the wait is up throws, so the pass that
       // fails says so in .health: busy every turn was silence.
@@ -566,8 +569,8 @@ const SECRETS = [
   // With a digit in it, or 32 characters or more: "Basic implementation/approach" and "Bearer authentication-header" were prose,
   // and were cut; a long one with no digit (1 in 400 random ones) was kept (audit #7). A hidden character after the word, as
   // redact() sees the raw text, does not hide the value. The long one has no . or /, so "basic tests/integration/x.rb" is kept.
-  // Not after a hyphen: `per-token is_open/x_4k` is prose.
-  [/(?<!-)\b(Bearer|Basic|Token)[\s\p{Default_Ignorable_Code_Point}]+(?=[A-Za-z0-9._~+/=-]{0,200}\d|[A-Za-z0-9_~+=-]{32})[A-Za-z0-9._~+/=-]{20,}/giu, '$1 [redacted]'],
+  // Not after `per-`: `per-token is_open/x_4k` is prose (an `access-token` or `X-Auth-Token` value is still one).
+  [/(?<!\bper-)\b(Bearer|Basic|Token)[\s\p{Default_Ignorable_Code_Point}]+(?=[A-Za-z0-9._~+/=-]{0,200}\d|[A-Za-z0-9_~+=-]{32})[A-Za-z0-9._~+/=-]{20,}/giu, '$1 [redacted]'],
   // GitLab, npm and Hugging Face tokens; a Slack webhook is its own secret.
   [/\bglpat-[A-Za-z0-9_-]{20,}|\bnpm_[A-Za-z0-9]{36}\b|\bhf_[A-Za-z0-9]{30,}/g, '[redacted]'],
   // PyPI, Stripe webhooks, SendGrid, Google OAuth, Groq, xAI, Shopify,

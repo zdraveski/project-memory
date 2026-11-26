@@ -118,6 +118,10 @@ const root = join(home, '.claude', 'projects');
     ["`2a02:4780:75:aec3::/64` host 1", "`2a02:4780:75:aec3::/64` host 1"],
     ["E2E verification PASS (2026-07-16, later session): headless", "E2E verification PASS (2026-07-16, later session): headless"],
     ["created-tokens (incl. per-token is_open/liquidity_less_4k/logo", "created-tokens (incl. per-token is_open/liquidity_less_4k/logo"],
+    // ...but a token after any other hyphen is one (review of 1.6.1).
+    ["use the access-token abcd1234efgh5678ijkl9012 for it", "use the access-token [redacted] for it"],
+    ["X-Vault-Token s.Zx9yW8vU7tS6rQ5pO4nM3lK2", "X-Vault-Token [redacted]"],
+    ['curl -H "X-Auth-Token abcd1234efgh5678ijkl9012"', 'curl -H "X-Auth-Token [redacted]"'],
     ["vhost, the password was replaced, and only then", "vhost, the password was replaced, and only then"],
     ["It signs the login tokens: restore", "It signs the login tokens: restore"],
     ["Also from that pass: `CORE_JS_BUDGET` (16 KB)", "Also from that pass: `CORE_JS_BUDGET` (16 KB)"],
