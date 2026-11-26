@@ -19,6 +19,9 @@ const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const HOOK = tool('src/recall-hook.mjs');
 const A = 'aaaaaaaa-0000-4000-8000-000000000000', B = 'bbbbbbbb-0000-4000-8000-000000000000';
 const journal = () => import('../src/journal.mjs');
+// The lines and the expected texts each take Date.now() as minutes (HH:MM): a minute that turned in between failed a check
+// now and then ("at 11:17" against 11:18). The file runs in about 1.5 s, so it starts outside a minute's last 10 s.
+if (new Date().getSeconds() >= 50) await new Promise((done) => setTimeout(done, (61 - new Date().getSeconds()) * 1000));
 const iso = (ago) => new Date(Date.now() - ago).toISOString(), hhmm = (t) => local(t).slice(11);
 let n = 0;
 // A project with its store and journal folder (no entries: the pointers stay out of the way), and B's session file writer.
