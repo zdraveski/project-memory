@@ -4,7 +4,7 @@
 // suite's seconds, and the last lines of each one that fails. CI's test workflow and
 // deploy.mjs --local-tests both run it.
 // Run: node tools/suites.mjs
-import { readdirSync, realpathSync } from 'node:fs';
+import { readdirSync, realpathSync, existsSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -13,10 +13,12 @@ const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 export const suiteFiles = () => readdirSync(join(repo, 'test')).filter((f) => f.endsWith('.test.mjs')).sort();
 // The plugin as it ships: every src/*.mjs, read from the folder so a new module needs no list, and the files around it.
 export const srcFiles = () => readdirSync(join(repo, 'src')).filter((f) => f.endsWith('.mjs')).sort().map((f) => `src/${f}`);
-// The skill's core and its reference files, read from the folder too (a copy with no skill folder still names the core).
-const skillFiles = () => { try { return readdirSync(join(repo, 'skills', 'memory')).filter((f) => f.endsWith('.md')).sort().map((f) => `skills/memory/${f}`); } catch { return ['skills/memory/SKILL.md']; } };
-export const pluginFiles = () => [...srcFiles(), '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json',
-  ...skillFiles(), 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md'];
+// Every file under the plugin's own folders, and LICENSE: read from disk, not git, so a copy (mutate.mjs's) works too.
+// A hand list here left agents/recall.md and the icon out of the deploy while the release had them.
+const PLUGIN_DIRS = ['.claude-plugin', 'hooks', 'commands', 'skills', 'agents'];
+const filesUnder = (dir) => (existsSync(join(repo, dir)) ? readdirSync(join(repo, dir), { recursive: true, withFileTypes: true })
+  .filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name).slice(repo.length + 1).replace(/\\/g, '/')) : []);
+export const pluginFiles = () => [...srcFiles(), ...PLUGIN_DIRS.flatMap(filesUnder).sort(), ...(existsSync(join(repo, 'LICENSE')) ? ['LICENSE'] : [])];
 
 // Resolves to [{ file, seconds, failure }], failure being the end of a failing suite's output.
 export const runSuites = () => Promise.all(suiteFiles().map((file) => new Promise((done) => {
