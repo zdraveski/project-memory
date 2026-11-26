@@ -156,7 +156,8 @@ async function print(input) {
   // (another worktree's, whose conversation file lies in another folder) when that file says what it does.
   const files = liveOthers(dir, me), cwd = typeof input.cwd === 'string' ? input.cwd.replaceAll('\\', '/') : '';
   const extra = (s) => { const o = files.find((x) => x.s === s); if (!o) return ''; const { title, files: fs } = doing(o.lines); return `${title ? `; titled "${title}"` : ''}${fs.length ? `; files it changed: ${fs.slice(0, 3).map((f) => near(f, cwd)).join(', ')}` : ''}`; };
-  const elsewhere = files.filter((o) => !live.some((t) => t.s === o.s) && Object.values(doing(o.lines)).some((x) => x.length));
+  // Not by `live`: one live by its session file but waiting for its user is in neither list, and read as ended (audit start#0).
+  const elsewhere = files.filter((o) => !working.some((t) => t.s === o.s) && Object.values(doing(o.lines)).some((x) => x.length));
   const others = [...working.map((t) => {
     const e = all.filter((x) => x.s === t.s && !quiet(x.s)).at(-1);
     return `Another session is working in this project: [${t.s}]${e ? `; the last request recorded for it, at ${e.at}: ${clip(e.ask, 120)}` : `, active at ${local(t.m)} (no handoff entry)`}${quiet(t.s) ? '' : extra(t.s)}`;
