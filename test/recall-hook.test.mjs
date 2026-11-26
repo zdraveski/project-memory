@@ -262,6 +262,10 @@ ok(readSession(p.session()).map((l) => l.kind).join() === 'quiet', 'and no file 
 quiet(run(ask(p, 'tidy the build')), 'the next prompt');
 quiet(run(ask(p, 'nightly export cron <private-session>')), 'the <private-session> mark: nothing');
 ok(readSession(p.session()).map((l) => l.kind).join() === 'quiet', 'the file cut to one quiet line');
+// A session file that will not read at the prompt (EBUSY, EPERM): a <private> block still leaves its quiet line.
+p = project(); p.day('2026-11-17', [other(p, 1, { asked: 'nightly export cron', changed: ['src/close.js'] })]); turn(p, 'tidy the build');
+ok((await hear(ask(p, 'nightly export cron <private>x</private>'), { read: () => null })).say === '', 'an unreadable file, a <private> block: nothing');
+ok((await look(p.payload('src/close.js'))).say === '' && readSession(p.session()).map((l) => l.kind).join() === 'asked,quiet', `then no file line and no pointer (got ${readSession(p.session()).map((l) => l.kind)})`);
 // Redact, then cut: a secret that starts before character 120 and ends after it leaves no readable half.
 p = project();
 await hear(ask(p, `${'word '.repeat(22)}api_key=sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 and more`));
