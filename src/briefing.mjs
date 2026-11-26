@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
 import { clip, fit, SAY } from './text.mjs';
 import { lastTurn, transcripts, readTail, records, text, asked, own, TAIL } from './transcript.mjs';
-import { OFF, QUIET, PRIVATE, PRIVATE_SESSION, isOff, isHushed, hushed, off, offLine, forgottenIn } from './privacy.mjs';
+import { OFF, PRIVATE, PRIVATE_SESSION, isOff, isQuiet, hushed, off, offLine, forgottenIn } from './privacy.mjs';
 import { readHealth, MISSED, HELD } from './snapshot.mjs';
 import { tag, storeOf, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, memoryOff, autoMemory } from './store.mjs';
 import { notes, edited } from './run-records.mjs';
@@ -101,7 +101,7 @@ const FILES = 10;
 // change hook's first-change and `told` lists start empty. Nothing at all with the recall switch off, in a conversation marked
 // private or held with memory off, or when the session file will not read. A private request gets no pointers.
 async function afterCompact(input, dir, me, skip) {
-  if (process.env.PROJECT_MEMORY_RECALL === '0' || !/^[\w-]+$/.test(me) || isHushed(dir, me, QUIET, 1) || isHushed(projectsRoot(), me, OFF, 1)) return [];
+  if (process.env.PROJECT_MEMORY_RECALL === '0' || !/^[\w-]+$/.test(me) || isQuiet(dir, me, 1)) return [];
   const at = join(sessionsOf(dir), me), lines = readSession(at);
   if (!lines) return [];
   const cwd = typeof input.cwd === 'string' ? input.cwd.replaceAll('\\', '/') : '';

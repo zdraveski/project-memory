@@ -4,8 +4,8 @@
 // caller: the hook loads it only when a look-up needs it, and the "already seen" path never pays for it.
 import { readFileSync, appendFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
-import { foldCase, projectsRoot, storeOf, memoryOff, tag, norm, local } from './store.mjs';
-import { isOff, isHushed, forgottenIn, QUIET, OFF, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
+import { foldCase, projectsRoot, tag, norm, local } from './store.mjs';
+import { gate, isHushed, forgottenIn, QUIET, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
 import { clip, fit } from './text.mjs';
 
 // Words that say nothing about which memory: in a model's natural-language
@@ -226,9 +226,11 @@ export function newOthers(store, me, mine, cwd = '', now = Date.now()) {
 // a conversation that wrote none (private, switched off, nothing changed) gets none. True when written.
 export function onEnd(input) {
   const s = tag(input?.session_id);
-  if (!/^[\w-]+$/.test(s) || memoryOff()) return false;
-  const store = storeOf(input), at = join(sessionsOf(store), s);
-  if (isOff(store) || isHushed(store, s, QUIET, 1) || isHushed(projectsRoot(), s, OFF, 1) || !readSession(at)?.length) return false;
+  if (!/^[\w-]+$/.test(s)) return false;
+  const g = gate(input, s, 1);
+  if (g.why) return false;
+  const at = join(sessionsOf(g.store), s);
+  if (!readSession(at)?.length) return false;
   const why = /^[\w-]{1,40}$/.test(input.reason) ? input.reason : 'other';
   appendFileSync(at, sessionLine('end', why), { mode: 0o600 });
   return true;
@@ -314,10 +316,10 @@ export async function onChange(input, { journal, deadline = DEADLINE, now = Date
   const none = { say: '', n: 0 };
   if (process.env.PROJECT_MEMORY_RECALL === '0' || !/^(?:Edit|Write|NotebookEdit)$/.test(input?.tool_name)) return none;
   const given = input.tool_input?.file_path ?? input.tool_input?.notebook_path, s = tag(input.session_id);
-  if (typeof given !== 'string' || !given.trim() || !/^[\w-]+$/.test(s) || memoryOff()) return none;
-  const store = storeOf(input);
+  if (typeof given !== 'string' || !given.trim() || !/^[\w-]+$/.test(s)) return none;
   // One try each, as the git-rule hook: the hook has 5 s, and a list that will not read is private (privacy.mjs).
-  if (isOff(store) || isHushed(store, s, QUIET, 1) || isHushed(projectsRoot(), s, OFF, 1)) return none;
+  const { why, store } = gate(input, s, 1);
+  if (why) return none;
   const cwd = typeof input.cwd === 'string' ? input.cwd.replaceAll('\\', '/') : '', file = whole(given, cwd), key = cleanPath(file), root = cleanPath(projectsRoot());
   // The plugin's own data: the stores, handoff.md, the projects root.
   if (key === root || key.startsWith(`${root}/`)) return none;
@@ -440,9 +442,9 @@ export const tidy = (lines) => {
 // its blocks from the newest prompt line on, so a prompt's pointer uses up none of them.
 export async function onPrompt(input, { journal, deadline = DEADLINE, now = Date.now(), read = readSession } = {}) {
   const none = { say: '', n: 0 }, s = tag(input?.session_id);
-  if (process.env.PROJECT_MEMORY_RECALL === '0' || input?.agent_id != null || typeof input?.prompt !== 'string' || !/^[\w-]+$/.test(s) || memoryOff()) return none;
-  const store = storeOf(input);
-  if (isOff(store) || isHushed(store, s, QUIET, 1) || isHushed(projectsRoot(), s, OFF, 1)) return none;
+  if (process.env.PROJECT_MEMORY_RECALL === '0' || input?.agent_id != null || typeof input?.prompt !== 'string' || !/^[\w-]+$/.test(s)) return none;
+  const { why, store } = gate(input, s, 1);
+  if (why) return none;
   const { asked, own, readTail } = await import('./transcript.mjs');
   if (!asked({}, input.prompt)) return none;
   const at = join(sessionsOf(store), s), lines = read(at), t = new Date(now).toISOString();

@@ -1,10 +1,7 @@
 // The hand-written mutants of journal.mjs, which journal.test.mjs must catch (mutate.mjs runs them).
 // Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
 export default {
-  "a word search lists a turn of a private-listed conversation": ["if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) continue;", "if (isHushed(projectsRoot(), s, OFF)) continue;"],
-  "a word search lists a turn of a memory-off conversation": ["if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) continue;", "if (isHushed(dir, s)) continue;"],
   'a word search lists a turn of a conversation with a typed private mark': ['          if (markFrom(fd, 0, IMPORT_SEGMENT, size).hit) continue;\n', ''],
-  "a word search lists a turn when a private list will not read": ["if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) continue;", "if (hushed(dir, s) || hushed(projectsRoot(), s, false, OFF)) continue;"],
   'forget leaves the temp copies a killed Stop left': ['    sweepTemps(dir);\n    return { matched', '    return { matched'],
   "a subagent's own transcript imported as a conversation": [" && !n.startsWith('agent-'))", ")"],
   'R70 a look reads a list it cannot read once per conversation': ['if (r === null) break;', 'if (r === null) continue;'],
@@ -93,7 +90,7 @@ export default {
   'forget of an unwritten turn keeps no key (fuzz 1729835215)': ['[...have, ...more.filter(', '[...have, ...[].filter('],
   'forget takes an unwritten turn twice once a day holds it': ['more.filter((e) => !held.has(e.key) && ', 'more.filter((e) => '],
   'forget takes an unwritten turn outside the range': [' && (!since || e.day >= since) && (!until || e.day <= until))]', ')]'],
-  "forget of an unwritten turn fails in a store with no journal folder": ["    mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });\n    for (let i = 0; i < 3; i++) {\n      const before = raw(f), lines", "    for (let i = 0; i < 3; i++) {\n      const before = raw(f), lines"],
+  "forget of an unwritten turn fails in a store with no journal folder": ["    mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });\n    listForgotten(dir, matched);", "    listForgotten(dir, matched);"],
   'unwritten finds no turn': ['out.push({ ...e, day: day(e.at), dir, unsaid: true }); left.delete(t.id);', 'left.delete(t.id);'],
   "unwritten takes another store's conversation": [' && ours(dir, p)) {', ') {'],
   "unwritten takes a reply's id for a turn's": ['if (t && left.has(t.id) && ours', 'if (t && ours'],
@@ -107,10 +104,6 @@ export default {
   'a look by words cuts a part anywhere, not at a turn': ['segments(fd, 0, seg, size, Infinity)', '[{ got: turns(chunk(fd, 0, seg, size).buf.toString("utf8")), next: size }]'],
   'unwritten reads the conversations once a key': ['const out = [], left = new Set(keys);', 'const out = [], left = new Set(keys.slice(0, 1));\n  if (keys.length > 1) out.push(...unwritten(dir, keys.slice(1)));'],
   'forget removes without the lock': ['return withLock(dir, () => {', 'return ((f) => f())(() => {'],
-  'forget lists no key': ['...forgotten(before), ...matched.map((e) => [e.key, e.t, e.at])]', '...forgotten(before)]'],
-  'forget lists a key whose transcript is gone': ['].filter(live).map(', '].map('],
-  "forget drops an older line, its key alone": ['const live = ([, t]) => !t || ', 'const live = ([, t]) => '],
-  'forget drops the keys of a transcript that will not stat': ["return e.code !== 'ENOENT'; } };", 'return false; } };'],
   'forget leaves handoff.md': ['try { unsay(dir, (t) => at.has(`${t.s} ${t.at}`)); }', 'try { }'],
   "forget takes another conversation's exchange of that minute out of handoff.md": ['at.has(`${t.s} ${t.at}`)', '[...at].some((x) => x.endsWith(t.at))'],
   'forget: a handoff.md the disk refuses unsaid': ["catch (e) { failed.push({ path: join(dir, 'handoff.md'), code: e.code || e.message, write: true }); }", 'catch {}'],
@@ -202,4 +195,5 @@ export default {
   'journal backfill retries a failure every Stop': ['left && !err ? ', 'left ? '],
   'journal backfill never forgets a deleted transcript': ['(!keep || keep.has(k))', 'true'],
   "journal backfill prunes a folder that won't list": ["startsWith('agent-')); } catch { out.seen = null; }", "startsWith('agent-')); } catch {}"],
+  "a word search lists a turn of a quiet conversation": ["if (isQuiet(dir, s)) continue;", ""],
 };

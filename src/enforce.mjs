@@ -3,9 +3,9 @@
 // or writes anything. Imports store.mjs, privacy.mjs and transcript.mjs only, so a hook can load it fast.
 import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, closeSync, fstatSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { frontEnd, front, isIndex, storeOf, sharedStore, projectsRoot, memoryOff, tag } from './store.mjs';
+import { frontEnd, front, isIndex, sharedStore, tag } from './store.mjs';
 import { records, readHead, typedMark } from './transcript.mjs';
-import { isOff, isHushed, QUIET, OFF } from './privacy.mjs';
+import { gate } from './privacy.mjs';
 
 const BSL = String.fromCharCode(92), KEYS = ['on', 'has', 'unless'], MAX = 8;
 
@@ -176,12 +176,9 @@ function cached(dir) {
 // (a shared one is named `_shared/<file>`), or { store, off } when memory is off or the conversation is private.
 // An unreadable marker or tag list counts as private: no log is safer than a log of a private conversation.
 export function ruleSet(payload) {
-  if (memoryOff()) return { off: true, rules: [] };
-  const store = storeOf(payload);
-  if (isOff(store)) return { store, off: true, rules: [] };
   // One try each: this hook has 5 s. A list that cannot be read is private (privacy.mjs).
-  const s = tag(payload.session_id);
-  if (s && (isHushed(store, s, QUIET, 1) || isHushed(projectsRoot(), s, OFF, 1))) return { store, off: true, rules: [] };
+  const { why, ...at } = gate(payload, tag(payload?.session_id), 1), { store } = at;
+  if (why) return { ...at, off: true, rules: [] };
   const rules = cached(store).filter((x) => x.rule);
   const shared = sharedStore() === store ? [] : cached(sharedStore()).filter((x) => x.rule).map((x) => ({ ...x, file: `_shared/${x.file}` }));
   return { store, rules: [...rules, ...shared] };

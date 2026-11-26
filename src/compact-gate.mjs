@@ -37,7 +37,7 @@ import * as T from './timing.mjs';
 import { clip } from './text.mjs';
 import { handoff, tag, answer, newest, sectionOf, norm, redact } from './handoff-log.mjs';
 import { goesOn, readTail, records, typedMark, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, BARE } from './transcript.mjs';
-import { isHushed, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, OFF, isOff } from './privacy.mjs';
+import { isQuiet, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, isOff } from './privacy.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
@@ -254,7 +254,7 @@ const secret = (payload, s) => PRIVATE_SESSION.test(userText(s)) || PRIVATE.test
 // Or held with auto memory off once (OFF), as handoff() keeps it out: resumed with auto memory on, the notes and the nudge wrote
 // what it said into handoff.md (review, 2026-11-01).
 const marked = (payload) => {
-  if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return true;
+  if (isQuiet(storeOf(payload), tag(payload.session_id))) return true;
   return typedMark(payload.transcript_path);
 };
 
@@ -316,7 +316,7 @@ export function nudge(payload) {
   if (payload.hook_event_name !== 'Stop' || payload.stop_hook_active || !payload.transcript_path || !existsSync(payload.transcript_path)) return null;
   // A conversation marked private, before any read: past the trigger, its
   // whole turn was read again at every Stop, for no nudge. Or held with auto memory off once (OFF), as marked() reads it.
-  if (isHushed(storeOf(payload), tag(payload.session_id)) || isHushed(projectsRoot(), tag(payload.session_id), OFF)) return null;
+  if (isQuiet(storeOf(payload), tag(payload.session_id))) return null;
   const s = state(payload.transcript_path, { ask: false });
   // The conversation's tag, as everywhere else: its full id named a file.
   const id = tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''));

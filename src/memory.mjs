@@ -43,7 +43,7 @@ The store is this session's own (outside a session: the cwd's project, or the ne
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
 reads its transcript. After --, every word is a term, one that starts with -- too.`;
-import { appendFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, rmSync, unlinkSync, realpathSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, rmSync, unlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -51,7 +51,7 @@ import { pathToFileURL } from 'node:url';
 import { holdsSecret, storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
 import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRuns, deployedCommit, edited, DEPLOYED } from './run-records.mjs';
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, rewrite, unsnapped, missing, gitInstalled, fastExport, fastExportOf, fastImportTo, hashObject, readHealth, MISSED, HELD } from './snapshot.mjs';
-import { PROJECT_OFF, OFF_PERIODS, isOff, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
+import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
@@ -913,17 +913,15 @@ function incognito(opt) {
 // What was said while it was off must not be written once it is on: the period is kept (store wasOff) before the marker goes.
 // By time, not by conversation: one that runs across off and on keeps what it said before and after.
 function projectSwitch(dir, off) {
-  const marker = join(dir, PROJECT_OFF), was = isOff(dir);
+  const was = isOff(dir);
   try {
     if (off) {
       if (was && !was.unread) return { ok: true, lines: [`memory is already off in this project since ${offSince(was)}`] };
-      mkdirSync(dir, { recursive: true, mode: 0o700 });
-      if (replaceIfUnchanged(marker, raw(marker), JSON.stringify({ t: Date.now() })) === 'conflict') return no('memory off NOT applied: the marker was changed meanwhile; try again');
+      if (!switchOff(dir)) return no('memory off NOT applied: the marker was changed meanwhile; try again');
       return { ok: true, lines: [`memory is off in this project (${dir}): nothing is saved, tiered or snapshotted here until memory on. Off stops adding; it doesn't hide: search and show still answer. ${STILL}`] };
     }
     if (!was) return { ok: true, lines: ['memory is already on in this project'] };
-    if (!was.unread) appendFileSync(join(dir, OFF_PERIODS), `${was.since ?? statSync(marker).mtimeMs} ${Date.now()}\n`);
-    unlinkSync(marker);
+    switchOn(dir, was);
     return { ok: true, lines: [`memory is on in this project again (${dir}). What was said while it was off stays out of the journal and the handoff.`] };
   } catch (e) { return no(`memory ${off ? 'off' : 'on'} NOT applied: ${reason(e)}${off ? '' : "; memory stays off"}`); }
 }
