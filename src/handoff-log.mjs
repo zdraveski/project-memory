@@ -131,6 +131,18 @@ export const sectionOf = (doc) => {
   }
   return { a: -1, b: -1 };
 };
+// handoff.md without its automatic log: only what a person wrote, for search.
+// A start marker with no end marker (a half-written file): the log runs to the end of the file.
+// Every block is cut, last first (sectionOf finds the last one); each cut shortens the text, and a cut that does not ends the loop.
+export function handWritten(body) {
+  for (;;) {
+    const { a, b } = [body, `${body}\n${END}`].map(sectionOf).find((x) => x.a !== -1) ?? { a: -1 };
+    if (a === -1) return body;
+    const next = body.slice(0, a) + body.slice(b).replace(/^[^\n]*/, '');
+    if (next.length >= body.length) return body;
+    body = next;
+  }
+}
 
 // The newest SESSIONS sessions, the last TURNS of each, in time order. `at` is
 // a fixed-width `2026-10-27 01:07`, so code-unit order is time order;
@@ -156,8 +168,9 @@ const FRONT = `---\nname: handoff\ndescription: "The rolling handoff"\nmetadata:
 
 // What handoff.md should say, from what it says now and this turn's entries:
 // the new text, 'unchanged', or null when there is nothing to write. `drop`:
-// which of its entries go.
-function build(before, fresh, drop = null, me = fresh[0]?.s, whole = false) {
+// which of its entries go. `note`: the compaction gate's in-flight note, put
+// after the entries in the same write, so no other write lands between them.
+function build(before, fresh, drop = null, me = fresh[0]?.s, whole = false, note = null) {
   let doc = (before ?? '').replace(/^\uFEFF/, '');
   // A file emptied by a failed edit has no `tier: hot`, so tiering would age
   // the handoff out of the index a week later.
@@ -205,7 +218,7 @@ function build(before, fresh, drop = null, me = fresh[0]?.s, whole = false) {
   // with no session id is not every entry written before tags.
   const kept = uniq.filter((t) => !(whole && me && t.s === me) && !gone.has(t) && !(t.s === '' && seenBare.has(bare(t))) && !drop?.(t) && !fresh.some((f) => twin(f, t)));
   const merged = keep([...kept, ...fresh], me);
-  if (!merged.length && !(drop && has)) return null;
+  if (!merged.length && !((drop || note) && has)) return null;
   // An entry kept from the file is rendered once, for the comparison and the
   // write: each render runs every secret pattern over it.
   const shown = new Map(), show = (t) => shown.get(t) ?? shown.set(t, render(t)).get(t);
@@ -214,21 +227,27 @@ function build(before, fresh, drop = null, me = fresh[0]?.s, whole = false) {
   // the compaction gate left lives until the next write: with one there, this
   // is a write.
   const notes = has && doc.slice(a, b).includes('**cut mid-turn**');
-  if (!notes && have.map(show).join('\n') === core) return 'unchanged';
-  const body = [START,
+  if (!note && !notes && have.map(show).join('\n') === core) return 'unchanged';
+  const head = [START,
     `_Written after every turn by \`handoff-log.mjs\`, so an interrupted session still leaves this. Last: ${local()}._`,
-    '', core, END].join('\n');
+    '', core].join('\n');
+  const body = note ? `${head.trimEnd()}\n${note}\n${END}` : `${head}\n${END}`;
   return has ? doc.slice(0, a) + body + doc.slice(b + END.length)
     : doc.trimEnd() + `\n\n## Last ${TURNS} exchanges\n\n` + body + '\n';
 }
 
 // Exported so memory-tier.mjs can run it in the same process from the Stop
 // hook: a second Node start cost a median 200 ms a turn on this box.
-export function handoff(input, sink = null, keptUnder = null) {
+// `note`: the compaction gate's in-flight note (compact-gate.mjs decides whether
+// one may be written), placed in the section with this turn's entries, under
+// one lock and one replace; never in a private conversation. With a note, true
+// is both written and anything else is neither.
+export function handoff(input, sink = null, keptUnder = null, note = null) {
   const dir = storeOf(input);
   const file = join(dir, 'handoff.md');
   // What happened is returned -- true written, 'unchanged', false nothing to
-  // write, 'busy' another hook held the store -- because a caller that reads
+  // write, 'busy' another hook held the store, 'changed' another write kept
+  // landing first (theirs is kept) -- because a caller that reads
   // silence as success reports "handoff written" over a store that does not
   // exist (the compaction gate did).
   if (typeof input.transcript_path !== 'string' || !existsSync(input.transcript_path)) return false;
@@ -331,7 +350,7 @@ export function handoff(input, sink = null, keptUnder = null) {
       return k !== null && k !== mineT;
     };
     if (!quiet) backup(dir);
-    const w = put(dir, quiet || shut ? [] : fresh.filter((t) => !forgot(t) && !copy(t)), drop, s, got.whole);
+    const w = put(dir, quiet || shut ? [] : fresh.filter((t) => !forgot(t) && !copy(t)), drop, s, got.whole, quiet ? null : note);
     return quiet ? 'private' : w;
   });
   return r ?? 'busy';
@@ -352,8 +371,9 @@ function backup(dir) {
 
 // handoff.md with these entries merged in, and without those `drop` takes (a
 // private conversation's). Call under withLock(dir). True written,
-// 'unchanged', false nothing to write.
-function put(dir, fresh, drop, me, whole) {
+// 'unchanged', false nothing to write, 'changed' another write landed first
+// three times.
+function put(dir, fresh, drop, me, whole, note = null) {
   const file = join(dir, 'handoff.md');
   // The copy holds what a sweep takes out of the file, so it goes with it, even when the file has nothing left to drop (the
   // exchange rolled out of it); the next Stop of a day makes a clean one.
@@ -361,12 +381,12 @@ function put(dir, fresh, drop, me, whole) {
   if (drop) for (const f of [PREV, `${PREV}.tmp`]) try { rmSync(join(dir, f), { force: true }); } catch {}
   for (let i = 0; i < 3; i++) {
     const before = raw(file);
-    const next = build(before, fresh, drop, me, whole);
+    const next = build(before, fresh, drop, me, whole, note);
     if (next === null || next === 'unchanged') return next ?? false;
     const w = replaceIfUnchanged(file, before, next);
     if (w !== 'conflict') return w || 'unchanged';
   }
-  return false;
+  return 'changed';
 }
 // The entries `gone` takes go from handoff.md: a conversation the journal's
 // import found marked private, as its own Stop's would have, or the exchanges

@@ -48,7 +48,7 @@ export default {
   "a private answer kept": ["(PRIVATE.test(ask) ? '[private]' : clip(plain(did), n))", "clip(plain(did), n)"],
   "an old marker entry listed twice": [".replace(/<!- -/g, '<!--')", ""],
   "a marked conversation keeps its entries": [" && !drop?.(t) && ", " && "],
-  "the only marked conversation keeps its entries": ["if (!merged.length && !(drop && has)) return null;", "if (!merged.length) return null;"],
+  "the only marked conversation keeps its entries": ["if (!merged.length && !((drop || note) && has)) return null;", "if (!merged.length && !(note && has)) return null;"],
   "a marked turn written when its mark could not be kept": ["let quiet = was || hushed(dir, s, hush) || hush ||", "let quiet = was || hushed(dir, s, hush) ||"],
   "P-F2 a conversation held with auto memory off written to handoff.md": [" || hush || hushed(projectsRoot(), s, false, OFF);", " || hush;"],
   "P-F2 a memory-off list that won't read: handoff.md written": ["    if (quiet === null) throw unreadable(projectsRoot(), OFF);\n", ""],
@@ -66,7 +66,7 @@ export default {
   'first start marker, not last': ['for (let a = doc.lastIndexOf(START);', 'for (let a = doc.indexOf(START);'],
   "the last end marker, not the first after the start": ["for (let b = doc.indexOf(END, a); b !== -1; b = doc.indexOf(END, b + 1))", "for (let b = doc.lastIndexOf(END); b !== -1; b = -1)"],
   'no cap at TURNS': ['.slice(-TURNS)', ''],
-  "rewrite even when unchanged": ["if (!notes && have.map(show).join('\\n') === core) return 'unchanged';", ""],
+  "rewrite even when unchanged": ["if (!note && !notes && have.map(show).join('\\n') === core) return 'unchanged';", ""],
   'no frontmatter on an empty file': ["if (!doc.startsWith('---')) doc = FRONT + doc;", ''],
   'no cap at SESSIONS': ['.slice(0, SESSIONS)', ''],
   'the newest session kept last': ['|| byAt(y[y.length - 1], x[x.length - 1]))', '|| byAt(x[x.length - 1], y[y.length - 1]))'],
@@ -95,4 +95,11 @@ export default {
   "a forgotten exchange read again goes back into handoff.md": ["fresh.filter((t) => !forgot(t) && !copy(t))", "fresh.filter((t) => !copy(t))"],
   "no memory folder, no handoff": ["    mkdirSync(dir, { recursive: true, mode: 0o700 });\n  }", "    return false;\n  }"],
   'CRLF entries unparseable':['(.*?)\\r?\\n  \\*\\*did:\\*\\* (.*?)\\r?$', '(.*)\\n  \\*\\*did:\\*\\* (.*)$'],
+  // The in-flight note, written with the entries (moved here from compact-gate.mjs's inflight()).
+  "the in-flight note never written": ["const body = note ? `${head.trimEnd()}\\n${note}\\n${END}` : `${head}\\n${END}`;", "const body = `${head}\\n${END}`;"],
+  "a private conversation's note written": ["got.whole, quiet ? null : note);", "got.whole, note);"],
+  "an empty section takes no note": ["!((drop || note) && has)", "!(drop && has)"],
+  "a handoff that kept changing reported as nothing to write": ["  return 'changed';\n}", "  return false;\n}", { test: 'test/compact-gate.test.mjs' }],
+  // handWritten() (moved here from memory.mjs's search).
+  "search reads the automatic log": ["if (a === -1) return body;", "return body;"],
 };
