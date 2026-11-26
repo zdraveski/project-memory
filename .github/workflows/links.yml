@@ -22,6 +22,7 @@ jobs:
           persist-credentials: false
       # A pinned release, checked against its published sha256 (as actionlint, zizmor and agnix in test.yml), unpacked
       # outside the checkout. The token keeps GitHub's links from hitting its rate limit; test/ holds fixtures, not docs.
+      # Retries, and 429 counted as alive: github.com answered a busy runner with 503 once (PR #298), while a dead link is a 404.
       - env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -30,4 +31,4 @@ jobs:
           echo "1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a  lychee-x86_64-unknown-linux-gnu.tar.gz" | sha256sum -c -
           tar xzf lychee-x86_64-unknown-linux-gnu.tar.gz
           cd "$GITHUB_WORKSPACE"
-          git ls-files '*.md' ':!:test/' | xargs -d '\n' "$(find "$RUNNER_TEMP" -name lychee -type f | head -1)" --no-progress --max-concurrency 8 --format markdown
+          git ls-files '*.md' ':!:test/' | xargs -d '\n' "$(find "$RUNNER_TEMP" -name lychee -type f | head -1)" --no-progress --max-concurrency 8 --max-retries 4 --retry-wait-time 10 --accept '200..=299,429' --format markdown
