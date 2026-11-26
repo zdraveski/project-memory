@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.6.1 (2026-11-26)
+
+This release fixes two ways a secret could reach the journal, a session that was called ended while it was still open, and a stuck lock that cost every save 30 seconds. It also stops notes from being left out of the history for no reason. Nothing changes in how you use it.
+
+### Secrets and private conversations
+
+- **Two secret shapes are now kept out of the journal:** a `tokens:` block written right after a line that ends in `\`, and `sshpass -p` glued to the word before it.
+- **Ordinary text is no longer taken for a secret.** Words such as "pass:", "password was replaced", "tokens: restore", an IPv6 address, a `file:line` or a date after "PASS" kept whole notes out of the history.
+- **A note is no longer held out of the history because of its folder's name.** A project under a folder named `pk`, `sk` or `rk` read as a key, and none of its notes were ever snapshotted.
+- **A private turn stays private after a compaction in the middle of it.** Before, the files it changed could be shown to another session.
+
+### Sessions and saving
+
+- **The startup briefing no longer calls a session "ended" while it is still open** and waiting for its user. It names it as working here, as `memory status` does.
+- **A save killed while it held the lock no longer blocks the project for 30 seconds.** The next save takes the lock at once.
+- **A helper's report is no longer lost when many helpers finish at once.** It waits for the lock a second time.
+- **A prompt written right after a crash is now saved.** Before, a line cut by the crash took the next prompt with it, and its reply was filed under the ask before.
+- **A note deleted soon after it was written now shows in `memory history`.**
+
+### Commands and the journal page
+
+- **`memory forget --purge` works when the Claude folder's path is long** on Windows (about 166 characters or more).
+- **The journal page shows `<` again** in code such as `List<String>`, where it showed `&lt;`.
+- **`memory doctor` no longer counts runs while pointers are off** (`PROJECT_MEMORY_RECALL=0`).
+
+### Pointers (opt-in)
+
+- **A reply such as "go" or "yes" no longer brings up a pointer.**
+- **A pointer that ran out of time is tried again** at the next change of that file, instead of the file being marked as seen.
+- **The git rule check reads a very large conversation in pieces.** A 600 MB one took 14 seconds and then failed.
+
+PRIVACY.md now lists the `PROJECT_MEMORY_RECALL` and `PROJECT_MEMORY_TIDY` settings and the `tidy` timing name.
+
+Update with `claude plugin update project-memory@project-memory`, then restart Claude Code.
+
 ## 1.6.0 (2026-11-26)
 
 This release lets two sessions on one project see each other. After a compaction, Claude is now told what the conversation already changed. A helper answers questions about the past, and the plugin got lighter. Pointers to earlier exchanges, given while Claude works, are in this release but switched off until they are measured: turn them on with one setting. Nothing changes in how you use it, and your existing memory works as it is.
