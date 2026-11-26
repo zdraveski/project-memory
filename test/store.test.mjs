@@ -109,6 +109,18 @@ const root = join(home, '.claude', 'projects');
     ["htpasswd -nb admin 2>/dev/null", "htpasswd -nb admin 2>/dev/null"],
     ["true&&STRIPE_KEY=rk9abcdefghij", "true&&STRIPE_KEY=[redacted]"],
     ["6379> AUTH Zq99xPlmN0aQ ./check.sh", "6379> AUTH [redacted]"],
+    // 1.6.1: two fuzz leaks (a markdown line break before a YAML block, sshpass glued to a word), then seven false alarms from real notes.
+    ["the logo \\\ntokens:\n  github: J4srMH9bHwtqKj3MYC6Eg4qo", "the logo \\\ntokens:\n  github: [redacted]"],
+    ["okplantestssshpass -p Z58Oxw0sAG9lmQ ssh host key", "okplantestssshpass -p [redacted] ssh host key"],
+    ["contrast of 1.85:1 (`office.css:309`, opacity .35).", "contrast of 1.85:1 (`office.css:309`, opacity .35)."],
+    ["A 2.24.82.159 + AAAA 2a02:4780:75:aec3::1) is served", "A 2.24.82.159 + AAAA 2a02:4780:75:aec3::1) is served"],
+    ["`2a02:4780:75:aec3::1`, created 2026-08-11.", "`2a02:4780:75:aec3::1`, created 2026-08-11."],
+    ["`2a02:4780:75:aec3::/64` host 1", "`2a02:4780:75:aec3::/64` host 1"],
+    ["E2E verification PASS (2026-07-16, later session): headless", "E2E verification PASS (2026-07-16, later session): headless"],
+    ["created-tokens (incl. per-token is_open/liquidity_less_4k/logo", "created-tokens (incl. per-token is_open/liquidity_less_4k/logo"],
+    ["vhost, the password was replaced, and only then", "vhost, the password was replaced, and only then"],
+    ["It signs the login tokens: restore", "It signs the login tokens: restore"],
+    ["Also from that pass: `CORE_JS_BUDGET` (16 KB)", "Also from that pass: `CORE_JS_BUDGET` (16 KB)"],
   ];
   for (const [text, stored] of cases) { const got = redact(text); ok(got === stored, `redact(${JSON.stringify(text)}) is ${JSON.stringify(stored)} (got ${JSON.stringify(got)})`); }
   // holdsSecret: a <private> span with anything real in it (a text, a number), and not one that holds nothing or only a word for one.
