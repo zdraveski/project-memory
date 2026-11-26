@@ -2,7 +2,7 @@
 
 What could go wrong with project-memory, how likely and how bad it would be,
 and what in the code and the tests guards against it. It covers version
-1.5.2 and the project around it, and was written in November 2026. A change
+1.6.0 and the project around it, and was written in November 2026. A change
 that reads, saves or sends anything new updates this page, as
 [CONTRIBUTING.md](../CONTRIBUTING.md#sending-a-change) says. The facts here
 come from [PRIVACY.md](../PRIVACY.md) and [How it works](how-it-works.md),
@@ -10,8 +10,9 @@ which have the details.
 
 ## What it is
 
-A Claude Code plugin: four hook scripts that Claude Code runs on its own
-events, and a command-line tool that its skill runs. It is plain JavaScript
+A Claude Code plugin: five hook scripts that Claude Code runs on its own
+events, a command-line tool that its skill runs, and a helper agent that
+runs the same tool. It is plain JavaScript
 run by Node.js, with no dependencies. It runs with the rights of the user
 who runs Claude Code, on their computer. It has no server, no account and
 no network code.
@@ -27,6 +28,8 @@ no network code.
 | The SessionStart hook (`brief.mjs --print`) | Prints the startup briefing. |
 | The compaction gate (`compact-gate.mjs`) | Before an automatic compaction: may ask Claude Code to wait for the turn to end, or writes a note of the work in progress. |
 | The git-rule watcher (`enforce-hook.mjs`) | Before a git command: logs which note's `enforce:` rule matched. Blocks nothing, prints nothing. |
+| The recall hook (`recall-hook.mjs`) | After Claude changes a file, and at each message the user sends: names earlier exchanges of this project (date, conversation tag, request, up to three files) and other open sessions, and writes the conversation's session file. At SessionEnd: writes one `end` line. Blocks nothing. |
+| The recall helper (`agents/recall.md`) | A Claude Code agent with Bash only, told to run `search`, `show`, `history` and `status`; reports what it found. Its report is not saved again. |
 | The memory tool (`memory.mjs`) | `search`, `show`, `forget`, `status`, `history`, `restore`, `promote`, `doctor`, `enforce` (`status`, `replay`), `rescan` (`--apply --yes` rewrites saved text and the snapshot history, using a temporary working copy of it), `forget --purge`, and `off`, `on` and `incognito` ([commands](how-it-works.md#the-memory-tool-from-a-terminal)). |
 | git | Run by the hooks and the tool, as a program, for the snapshot repository. |
 | Other processes | Another Claude Code window on the same project, Claude's own edits, a virus scanner or a sync tool holding a file. |
@@ -36,19 +39,21 @@ no network code.
 
 - **Hook events**, declared in [`hooks/hooks.json`](../hooks/hooks.json):
   `Stop`, `StopFailure`, `SubagentStop`, `SessionStart` (`startup`, `resume`, `clear`, `compact`) and
-  `PreCompact` (`manual`, `auto`), and `PreToolUse` (`Bash|PowerShell`, filtered to `git *`; the git-rule watcher). Input: Claude Code's JSON payload on
+  `PreCompact` (`manual`, `auto`), `PreToolUse` (`Bash|PowerShell`, filtered to `git *`; the git-rule watcher), and `PostToolUse` (`Edit|Write|NotebookEdit`), `UserPromptSubmit` and `SessionEnd` (the recall hook). Input: Claude Code's JSON payload on
   stdin. The fields read are `session_id`, `transcript_path`, `cwd`,
   `hook_event_name`, `stop_hook_active`, `last_assistant_message`, `source`
   and `trigger`; for a finished subagent also `agent_type`, `agent_id` and
   `agent_transcript_path`; for the git-rule watcher `tool_input.command` and
-  `tool_use_id`. Output: the briefing as text (SessionStart, up to 9,500
-  characters), a reminder as `additionalContext` JSON (Stop), and the gate's
+  `tool_use_id`; for the recall hook `tool_name`, `tool_input.file_path` or
+  `notebook_path`, `prompt`, `reason` and `agent_id`. Output: the briefing as text (SessionStart, up to 9,500
+  characters), a reminder as `additionalContext` JSON (Stop), the recall hook's notes as
+  `additionalContext` JSON (PostToolUse, UserPromptSubmit), and the gate's
   request to wait (PreCompact, exit status 2). Any other failure exits 0.
 - **Transcripts**: Claude Code's JSONL files in `~/.claude/projects`, read
   only ([What it reads](../PRIVACY.md#what-it-reads)).
 - **Notes and bookkeeping files**: read and written in `~/.claude/projects`
   only ([Where things live](how-it-works.md#where-things-live)).
-- **Environment**: twelve variables, by name: `PROJECT_MEMORY_BRIEFING` and `PROJECT_MEMORY_TIMING` (the plugin's own)
+- **Environment**: thirteen variables, by name: `PROJECT_MEMORY_BRIEFING`, `PROJECT_MEMORY_TIMING` and `PROJECT_MEMORY_RECALL` (the plugin's own)
   and ten that Claude Code reads too, plus `HOME` or `USERPROFILE` to find
   `~/.claude`. `DISABLE_COMPACT` and `ANTHROPIC_MODEL` are read only to
   decide whether the context-size setting counts, and are never saved
@@ -70,6 +75,12 @@ no network code.
   are `'none'` too. The sweeps and `forget`, `incognito`, `off` and
   `rescan --apply` delete it (and any temporary file a killed write left),
   and say so when they cannot.
+- **The session files**: one per conversation in
+  `~/.claude/projects/.sessions/<project folder>/`, written by the recall hook
+  and read by it and the briefing: changed file paths, the keys of exchanges
+  already named, the user's message (secrets replaced, 120 characters) or a
+  `quiet` line for a private one, a title, `saw` and `end` lines
+  ([What it saves](../PRIVACY.md#what-it-saves)).
 - **Claude Code's plugin lists**, in `~/.claude/plugins`, read only by
   `doctor`.
 - **Switches**: `.project-off` (a marker in one project's `memory` folder),
@@ -90,7 +101,8 @@ no network code.
 2. **The hooks to the disk.** Everything is written in `~/.claude/projects`,
    which other processes write too.
 3. **The hooks to Claude.** The briefing puts saved text back into a new
-   conversation, where Claude reads it like anything else.
+   conversation, and the recall hook into the current one, where Claude
+   reads it like anything else.
 4. **GitHub to the user's computer.** The plugin's code runs in every
    conversation of everyone who installs it.
 
@@ -155,6 +167,34 @@ the journal, the handoff, a briefing, a search hit or the history.
 What remains: Claude still sees private text, Claude Code keeps it in its
 own transcripts, and a finished day already in the history stays there
 until the user deletes the history.
+
+### Notes about the past and other sessions
+
+Likely: the recall hook shows saved text in a conversation on its own, and
+one session's words in another. Impact: a private or forgotten exchange
+shown again, or text from a transcript read as an instruction.
+
+- The hook asks `privacy.mjs` the same questions the journal does: it never
+  names a `[private]` entry, a forgotten one or a private conversation's,
+  and a list it cannot read counts as private. A `<private>` block or the
+  `<private-session>` mark writes only a `quiet` line, with no text, and
+  nothing is shown to another session from a private conversation or turn.
+- A note carries an exchange's request (and for a request of under three
+  words, the start of its answer), each clipped to 100 characters, file
+  names and a key, all passed through the secret filter; never a command.
+  At most three per message or between two messages, each once per
+  conversation.
+- Every look-up has a 400 ms budget and a 5-second limit; any failure exits
+  0 with nothing printed. `PROJECT_MEMORY_RECALL=0` turns it all off.
+- The session files are deleted after 7 days and by `forget`, `off`,
+  `incognito` and `rescan --apply --yes`.
+- The recall helper's instruction lists four read-only commands. That is an
+  instruction, not a lock: a plugin's agent cannot limit Bash to one
+  command.
+
+What remains: a note already shown stays in that conversation, and `forget`
+cannot take it back. A request line is text from a past conversation and can
+hold words written to steer Claude, as the briefing can.
 
 ### Saving what the user turned off
 

@@ -64,6 +64,7 @@ All of it stays in `~/.claude/projects` on your computer:
 
 - `.timing`, one line for each run of a hook: the time, which hook (`save`, `brief`, `enforce`, `gate`, `recall`, `prompt` or `end`), which event (`Stop`, `PreToolUse` and the like, letters only) and how many milliseconds each step took, and for `recall` and `prompt` how many earlier exchanges they named. Numbers and those fixed names only: no text from a conversation, no file name, no command. It is cut to its newer half at 256 KB. `memory doctor` shows the times. They count from the start of Node, so what Claude Code spends starting a hook comes on top. Set `PROJECT_MEMORY_TIMING=0` to turn it off.
 - `.sessions/<project folder>/<conversation tag>`, one small file per conversation: the full path of each file it changed (lower case on Windows and macOS) the keys of the earlier exchanges it was told about, a line for each compaction, each message you sent (an `asked` line: secrets replaced, cut to 120 characters) or a `quiet` line for a private one, the title you gave the conversation (a `title` line, secrets replaced, cut to 80 characters), a `saw` line with another session's tag (and a file path) once Claude was told about it, an `end` line with the reason when the conversation ended, each with the time (and a helper's id when a helper wrote it). No other text of a conversation. Over 64 KB it is rewritten with the newest line of each kind and file. Nothing is written for a private conversation or turn, or while memory is off. Each reply's save deletes those older than 7 days; `forget` and `memory off` delete the project's, `rescan --apply --yes` every project's, and `incognito` (or a `<private-session>` mark) the conversation's.
+- The journal page, `project-memory/journal.html` in `~/.claude`, only when you run `memory page`: the journal text of the days you asked for, secrets already replaced, private turns without text, helper entries and switched-off projects left out. Only you can read it, and it loads nothing from the network.
 - `.enforce-log` and `.enforce.json` in a store: which note's rule a git command matched (note name, session tag, sub-agent type, tool-call id; never the command) and a cache of the rules. Nothing is written for a private conversation or while memory is off.
 - A record of where you left off (`handoff.md`): the start of your latest
   messages (up to 500 characters each) and of Claude's replies (up to 900),
@@ -318,9 +319,25 @@ conversation, so they go to Anthropic with it, as Claude Code's built-in
 memory does. Journal entries reach Anthropic only when Claude reads them in
 a conversation.
 
+The file-change and prompt hooks add short notes to the conversation in the
+same way: the date, conversation tag and request of an earlier exchange
+(for a request of under three words, the start of its answer too), up to
+three files it changed, and what another open session asked and changed.
+The text passes the secret filter first.
+They go to Anthropic with the rest of the conversation. A note already shown
+stays in that conversation: `forget` removes the exchange from the journal,
+but cannot take back a note Claude was already given.
+
+The `recall` helper is a Claude Code agent that runs on its own model call.
+It reads the journal and notes with the memory tool, and what it reads goes
+to Anthropic as part of that call, as when Claude searches itself. Its
+report is not saved to the journal again.
+
 ## How long it keeps it
 
 - The session files (`.sessions`): 7 days after their last change.
+- The journal page: until you delete it, or until `forget`, `incognito`,
+  `memory off` or `rescan --apply` deletes it.
 - The hook times (`.timing`): the newest part of 256 KB, a few days of use. Deleting the file loses nothing but the times.
 - The record of where you left off: until newer exchanges replace it. Lines
   Claude writes in `handoff.md` outside the record: until Claude or you

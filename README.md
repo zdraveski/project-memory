@@ -104,7 +104,9 @@ command is in [How it works](docs/how-it-works.md#using-it).
 
 You need:
 
-- **Claude Code** with its built-in memory on. It is, unless you turned it off.
+- **Claude Code 2.1.78 or newer**, with its built-in memory on. It is, unless
+  you turned it off. The `recall` helper needs 2.1.271 or newer to start
+  without your CLAUDE.md files; older versions run it with CLAUDE.md loaded.
 - **[Node.js](https://nodejs.org) 22 or newer.** Choose the LTS version.
 - **[Git](https://git-scm.com), optional.** Without it, everything works except
   bringing back old versions of notes.
@@ -328,6 +330,31 @@ tokens or more and under 90% of the model's window: a compaction window of
 about 233,000 to 933,000 tokens on a 1M model. Outside that range the
 compaction goes ahead, and the note afterwards does the work. The rest of
 the tuning is in [Compaction](docs/how-it-works.md#compaction).
+
+## What runs, and when
+
+project-memory is a set of hooks: small programs Claude Code starts on its
+own events. Each one gives up quietly if something goes wrong, so it never
+blocks your work.
+
+| When | What it does |
+|---|---|
+| Claude finishes a reply (or stops on an error) | Saves the exchange to the journal and the handoff, tidies `MEMORY.md`, takes a snapshot of your notes. |
+| A helper agent finishes | Saves its report and the files it changed as its own journal entry. |
+| A conversation starts, is cleared or is compacted | Prints the startup briefing. After a compaction it also names the files the conversation changed and earlier exchanges like the request in progress. |
+| You send a message | Names an earlier exchange your message points to, and another session working here. |
+| Claude changes a file | Names an earlier exchange that changed the same file, and warns when another session just changed it. |
+| A conversation ends | Marks it ended, so other sessions stop counting it as live. |
+| Claude runs a `git` command | Logs which checked lesson it matched. Blocks nothing. |
+| Before a compaction | Saves first, and may ask Claude Code to wait for the turn to end. |
+
+**It stays light.** The save after a reply takes about a quarter of a second
+of the plugin's own time, and the briefing under two tenths. Most of the time
+a hook takes is spent outside the plugin's own code. In 1.6.0 the `memory`
+skill Claude loads is 68% smaller, and the briefing 3 to 12% smaller (the
+shared notebook's index and the rules stay whole on purpose).
+
+Every hook and its limits: [When it runs](docs/how-it-works.md#when-it-runs).
 
 ## Compared with other tools
 
