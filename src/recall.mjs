@@ -1,12 +1,12 @@
 // How a query is read and matched: the word splitter and the tests on a journal entry that search and the hooks share.
-// Also the session file and the change hook's look-up (1.6.0 headline 1b). Imports store.mjs, privacy.mjs and text.mjs
-// only. The journal imports this file (dropSessions), so the look-up is handed a loader of the journal (`journal`) by its
-// caller: the hook loads it only when a look-up needs it, and the "already seen" path never pays for it.
-import { readFileSync, appendFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync } from 'node:fs';
-import { join, dirname, basename } from 'node:path';
+// Also the recall hooks' look-ups and handlers (1.6.0 headlines 1b, 1c and 4), over the session file (sessions.mjs). The
+// journal is loaded inside the look-ups that read it, so memory.mjs and the hook's "already seen" path never pay for it.
+import { readFileSync, appendFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { foldCase, projectsRoot, tag, norm, local } from './store.mjs';
 import { gate, isHushed, forgottenIn, QUIET, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
 import { clip, fit } from './text.mjs';
+import { sessionsOf, readSession, sessionLine, tidy, others, ACTIVE } from './sessions.mjs';
 
 // Words that say nothing about which memory: in a model's natural-language
 // query they scored like content -- "the" in a file name took the name bonus,
@@ -81,8 +81,13 @@ export const starts = (t, w = t) => {
 };
 // A term is matched as word forms when it was cut, is a 3-letter English word, or ends in a consonant and y (library: libraries).
 export const forms = (t, cut) => (cut || /^[a-z]{3}$/.test(t) || /^[a-z]*[^aeiou]y$/.test(t)) && plain(t);
-export const count = (hay, t, cut) => (isVer(t) ? (hay.match(verRe(t)) ?? []).length : forms(t, cut) ? (hay.normalize('NFC').match(starts(t, cut || t)) ?? []).length : plain(t) ? hay.normalize('NFC').split(t).length - 1 : (hay.normalize('NFC').match(alone(t)) ?? []).length);
-export const has = (hay, t, cut) => (isVer(t) ? verRe(t).test(hay) : forms(t, cut) ? starts(t, cut || t).test(hay.normalize('NFC')) : plain(t) ? hay.normalize('NFC').includes(t) : alone(t).test(hay.normalize('NFC')));
+// The one rule of where a term hits a text: has(), count() and search's highlight all use it, so a term that scores shows its stretch.
+// A plain term is literal text: words() keeps only letters, marks and digits.
+export const termRe = (t, cut) => (isVer(t) ? verRe(t) : forms(t, cut) ? starts(t, cut || t) : plain(t) ? new RegExp(t, 'gu') : alone(t));
+// NFC as words() reads the query; a version is matched as written.
+const nfc = (hay, t) => (isVer(t) ? hay : hay.normalize('NFC'));
+export const count = (hay, t, cut) => (nfc(hay, t).match(termRe(t, cut)) ?? []).length;
+export const has = (hay, t, cut) => termRe(t, cut).test(nfc(hay, t));
 
 // The tests on a journal entry (as parseDay returns it) that a filter or a hook asks.
 // A path as the journal compares it: forward slashes, no leading ./ or trailing /, case as the journal folds it.
@@ -131,61 +136,10 @@ export const whoChanged = (snaps, es, deleted = []) => {
   });
 };
 
-// The session file (1.6.0 spec, "The session file"): one per conversation, outside the store, so no fingerprint, snapshot or
-// status sees it. Append-only, `<kind> <ISO time> [agent:<helper id>] <rest>` a line. Kinds: `file` (a path the
-// conversation changed, as cleanPath has it), `told` (an entry key it was shown), `compact`, `asked`, `quiet`, `title`, `saw`, `end`, `late` (a path whose pointer look-up gave up).
-export const SESSIONS = '.sessions';
-export const sessionsOf = (store) => join(projectsRoot(), SESSIONS, basename(dirname(store)));
-const LINE = /^(\S+) (\S+)(?: agent:([\w-]{1,64}))?(?: (.*))?$/;
-// The lines, oldest first; [] when there is no file, null when one is there and will not read: it may hold a private turn's mark.
-export function readSession(file) {
-  let text;
-  try { text = readFileSync(file, 'utf8'); } catch (e) { return e.code === 'ENOENT' ? [] : null; }
-  return text.split('\n').flatMap((l) => { const m = LINE.exec(l); return m ? [{ kind: m[1], at: m[2], by: m[3] ?? '', rest: m[4] ?? '' }] : []; });
-}
-export const sessionLine = (kind, rest = '', by = '', at = new Date().toISOString()) => `${kind} ${at}${by ? ` agent:${by}` : ''}${rest ? ` ${rest}` : ''}\n`;
-// Every deletion goes through here: one conversation's file (`s`), a project's (`store`), or every project's (neither). forget,
-// off and rescan take a project's or all, incognito and a private-session mark (journal.takeBack) one. Never throws: true, or the Error.
-export function dropSessions(store, s) {
-  const p = !store ? join(projectsRoot(), SESSIONS) : s ? join(sessionsOf(store), s) : sessionsOf(store);
-  try { rmSync(p, { recursive: true, force: true }); return true; } catch (e) { return e; }
-}
-// The save after a reply: session files untouched for 7 days go, in every project (a project never opened again keeps none).
-export const WEEK = 7 * 864e5;
-export function sweepSessions(now = Date.now()) {
-  const root = join(projectsRoot(), SESSIONS);
-  let n = 0;
-  try {
-    for (const d of readdirSync(root)) for (const f of readdirSync(join(root, d))) try {
-      if (statSync(join(root, d, f)).mtimeMs < now - WEEK) { rmSync(join(root, d, f), { force: true }); n++; }
-    } catch {}
-  } catch {}
-  return n;
-}
-
-// Headline 4, sessions that see each other. A session is live when its newest line is younger than ACTIVE (handoff-log's 30
-// minutes, not imported: the hooks keep their imports small) and is not `end`. The hooks decide by the session file alone.
-export const ACTIVE = 30 * 60e3;
+// Headline 4, sessions that see each other: the hooks decide by the session file alone (sessions.mjs's others()).
 const hhmm = (iso) => local(iso).slice(11);
 // A full path as the user reads it: under `cwd`, relative to it.
 export const near = (f, cwd) => { const c = cleanPath(cwd || ''); return c && f.startsWith(`${c}/`) ? f.slice(c.length + 1) : f; };
-// The other live sessions of `store`, but `me`: { s, lines, since }, `since` the first line of its live run (no gap over ACTIVE,
-// no `end`). Only files changed within ACTIVE are opened. Never a conversation marked private (one try; unknown is private).
-export function others(store, me = '', now = Date.now()) {
-  const dir = sessionsOf(store), out = [];
-  let names = [];
-  try { names = readdirSync(dir); } catch { return out; }
-  for (const s of names) {
-    if (s === me || !/^[\w-]+$/.test(s)) continue;
-    try { if (now - statSync(join(dir, s)).mtimeMs > ACTIVE) continue; } catch { continue; }
-    const lines = readSession(join(dir, s)), last = lines?.at(-1);
-    if (!last || last.kind === 'end' || now - Date.parse(last.at) > ACTIVE || isHushed(store, s, QUIET, 1)) continue;
-    let i = lines.length - 1;
-    while (i > 0 && lines[i - 1].kind !== 'end' && Date.parse(lines[i].at) - Date.parse(lines[i - 1].at) <= ACTIVE) i--;
-    out.push({ s, lines, since: lines[i].at });
-  }
-  return out;
-}
 // What a session's file says it does: its newest request ('' when its newest prompt line is `quiet`), its title, the files it
 // changed, newest first. Only these three kinds are ever shown to another session.
 export function doing(lines) {
@@ -253,8 +207,8 @@ const whole = (p, cwd) => { const f = p.replaceAll('\\', '/'); return /^(?:[a-z]
 // null when the forget list will not read or the scan passes `deadline` (performance.now()): the caller says nothing.
 // shortcut: a turn that ran after a `cd` saved its paths relative to that folder and is missed; upgrade when the eval or a user
 // shows it matters (the journal would have to record the working folder).
-export async function earlier(store, file, session, { journal, deadline = DEADLINE, told = new Set(), now = Date.now(), since = '' } = {}) {
-  const { days, dayFile, parseDay, rel } = await journal();
+export async function earlier(store, file, session, { deadline = DEADLINE, told = new Set(), now = Date.now(), since = '' } = {}) {
+  const { days, dayFile, parseDay, rel } = await import('./journal.mjs');
   const { listed, shut } = forgottenIn(store);
   if (shut) return null;
   const gone = new Set(listed.map(([k]) => k)), key = cleanPath(file), parts = file.split('/'), under = new Map();
@@ -312,7 +266,7 @@ export const MORE = 'project-memory: more files changed in this turn have earlie
 // Pointers only with PROJECT_MEMORY_RECALL=1. Stops, writing nothing, when recall is off (PROJECT_MEMORY_RECALL=0), memory or the project is off, the conversation is
 // private, or this turn is (the newest prompt line is `quiet`). Inside a helper (agent_id) its lines carry its id, and the
 // first-change and never-twice checks count only the lines of the same writer.
-export async function onChange(input, { journal, deadline = DEADLINE, now = Date.now() } = {}) {
+export async function onChange(input, { deadline = DEADLINE, now = Date.now() } = {}) {
   const none = { say: '', n: 0 };
   if (process.env.PROJECT_MEMORY_RECALL === '0' || !/^(?:Edit|Write|NotebookEdit)$/.test(input?.tool_name)) return none;
   const given = input.tool_input?.file_path ?? input.tool_input?.notebook_path, s = tag(input.session_id);
@@ -353,16 +307,16 @@ export async function onChange(input, { journal, deadline = DEADLINE, now = Date
     // A reply alone ("go", "yes") is no request: in a young journal it is rare, and here one rare word is enough.
     if (!words(ask).length || REPLY.test(ask)) return none;
     const gaveUp = () => { write(sessionLine('late', key, by, new Date(now).toISOString())); return none; };
-    let found = await earlier(store, file, id, { journal, deadline, now, since, told: new Set(mine.filter((l) => l.kind === 'told').map((l) => l.rest)) });
+    let found = await earlier(store, file, id, { deadline, now, since, told: new Set(mine.filter((l) => l.kind === 'told').map((l) => l.rest)) });
     if (found === null) return gaveUp();
     if (!found.length) return none;
-    const shares = await byWords(store, ask, id, { journal, deadline, since, max: PROMPT_BYTES, now, test: true });
+    const shares = await byWords(store, ask, id, { deadline, since, max: PROMPT_BYTES, now, test: true });
     if (shares === null) return gaveUp();
     found = found.filter(shares);
     if (!found.length) return none;
     const t = new Date(now).toISOString();
     if (blocks >= BLOCKS) { write(sessionLine('told', 'more', by, t)); return { say: MORE, n: 0 }; }
-    const { rel } = await journal(), shown = pick(found), say = block(shown, found.length - shown.length, rel(file, cwd));
+    const { rel } = await import('./journal.mjs'), shown = pick(found), say = block(shown, found.length - shown.length, rel(file, cwd));
     if (!say) return none;
     // One time for the block's lines: rule 11 counts blocks by it.
     write(shown.map((e) => sessionLine('told', e.key, by, t)).join(''));
@@ -379,11 +333,11 @@ export async function onChange(input, { journal, deadline = DEADLINE, now = Date
 // or this conversation's unless older than `since`. [] when the text has under 2 words; null when the forget list will not read or past
 // `deadline`. `max`: the window's bytes (the prompt hook's is smaller, PROMPT_BYTES).
 export const RECENT_DAYS = 90, RECENT_BYTES = 4 * 1024 * 1024, RARE = 0.05, YOUNG = 40, SHOWN = 3;
-export async function byWords(store, text, session, { journal, deadline = DEADLINE, since = '', skip = new Set(), told = new Set(), max = RECENT_BYTES, now = Date.now(), test = false } = {}) {
+export async function byWords(store, text, session, { deadline = DEADLINE, since = '', skip = new Set(), told = new Set(), max = RECENT_BYTES, now = Date.now(), test = false } = {}) {
   const ws = words(text), cut = (w) => ws.as.get(w) !== w && ws.as.get(w);
   if (ws.length < (test ? 1 : 2)) return test ? () => false : [];
   const hayOf = (e) => [e.asked, e.answered, ...e.changed].join('\n').normalize('NFC').toLowerCase(), holds = (hay, w) => hay.includes(w.slice(0, -1)) && has(hay, w, cut(w));
-  const { days, dayFile, parseDay } = await journal();
+  const { days, dayFile, parseDay } = await import('./journal.mjs');
   const { listed, shut } = forgottenIn(store);
   if (shut) return null;
   const gone = new Set(listed.map(([k]) => k)), from = new Date(now - RECENT_DAYS * 864e5).toISOString().slice(0, 10), seen = [], df = ws.map(() => 0), hush = new Map();
@@ -427,20 +381,13 @@ export function sharesBlock(shown, what = 'this request') {
 // an `asked` line. Over SESSION_MAX the prompt hook rewrites the session file.
 export const PROMPT_BYTES = 2 * 1024 * 1024, ASKED = 120, SESSION_MAX = 64 * 1024;
 
-// Over SESSION_MAX the newest line of each kind and path (or key) stays, in order. Only the prompt hook rewrites: a line another
-// hook appends in that instant can be lost, and the cost is one repeated pointer.
-const ONE = new Set(['asked', 'quiet', 'title', 'compact', 'end']);
-export const tidy = (lines) => {
-  const id = (l) => `${l.kind} ${l.by} ${ONE.has(l.kind) ? '' : l.rest}`, last = new Map(lines.map((l, i) => [id(l), i]));
-  return lines.filter((l, i) => last.get(id(l)) === i).map((l) => sessionLine(l.kind, l.rest, l.by, l.at)).join('');
-};
 
 // UserPromptSubmit: { say, n } as onChange. Stops, writing nothing, when pointers are off, memory or the project is off, the
 // conversation is private, or the prompt is a helper's (agent_id) or no ask. A private turn writes one `quiet` line and stops: a
 // <private> block appends it, the <private-session> mark cuts the file down to it (the save after the reply then deletes the
 // file). Otherwise the `asked` line (redacted, then cut) goes last, after the `told` lines of the pointer: the change hook counts
 // its blocks from the newest prompt line on, so a prompt's pointer uses up none of them.
-export async function onPrompt(input, { journal, deadline = DEADLINE, now = Date.now(), read = readSession } = {}) {
+export async function onPrompt(input, { deadline = DEADLINE, now = Date.now(), read = readSession } = {}) {
   const none = { say: '', n: 0 }, s = tag(input?.session_id);
   if (process.env.PROJECT_MEMORY_RECALL === '0' || input?.agent_id != null || typeof input?.prompt !== 'string' || !/^[\w-]+$/.test(s)) return none;
   const { why, store } = gate(input, s, 1);
@@ -460,7 +407,7 @@ export async function onPrompt(input, { journal, deadline = DEADLINE, now = Date
   const text = own(input.prompt), c = lines.findLastIndex((l) => l.kind === 'compact');
   const told = new Set(lines.slice(c + 1).filter((l) => l.by === '' && l.kind === 'told').map((l) => l.rest));
   // "go" and "yes" end inside byWords, before any day file is read.
-  const found = process.env.PROJECT_MEMORY_RECALL !== '1' ? null : await byWords(store, text, String(input.session_id), { journal, deadline, since: lines[c]?.at ?? '', told, max: PROMPT_BYTES, now }).catch(() => null);
+  const found = process.env.PROJECT_MEMORY_RECALL !== '1' ? null : await byWords(store, text, String(input.session_id), { deadline, since: lines[c]?.at ?? '', told, max: PROMPT_BYTES, now }).catch(() => null);
   let say = '', shown = [];
   for (let k = found?.length ?? 0; k && !say; k--) say = sharesBlock(shown = found.slice(0, k));
   if (!say) shown = [];

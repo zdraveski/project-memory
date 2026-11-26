@@ -60,7 +60,8 @@ import { clip } from './text.mjs';
 import { sectionOf, parse, stalled, GRACE, tag, unsay } from './handoff-log.mjs';
 import { redact, holdsSecret } from './secrets.mjs';
 import { BLOCK, transcripts, lastTurn, chunk as chunkOf } from './transcript.mjs';
-import { tame, STOP, isVer, verRe, words, plain, forms, starts, alone, count, has, isHelper, changedFile, inConversation, changers, whoChanged, dropSessions, others, about, ACTIVE } from './recall.mjs';
+import { tame, STOP, words, count, has, termRe, isHelper, changedFile, inConversation, changers, whoChanged, about } from './recall.mjs';
+import { dropSessions, others, ACTIVE } from './sessions.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -1117,7 +1118,7 @@ export function main(given) {
       if (k !== null && like.has(k)) like.get(k).push(h);
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
-    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => (isVer(t) ? verRe(t).source : plain(t) ? (forms(t, terms.as.get(t) !== t && terms.as.get(t)) ? starts(t, terms.as.get(t)).source : t) : alone(t).source)).join('|'), 'giu');
+    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => termRe(t, terms.as.get(t) !== t && terms.as.get(t)).source).join('|'), 'giu');
     // NFC, as the scoring reads it: a decomposed "é" scored the entry, and its stretch must show too.
     const nfc = (v) => clip(v, Infinity).normalize('NFC');
     const unmark = (a) => a.split(BLOCK).join('');
@@ -1310,7 +1311,7 @@ export function main(given) {
     const bad = dropPage();
     if (bad instanceof Error) { r.lines.push(`could not delete the page: ${reason(bad)}; it still holds journal text`); r.ok = false; }
   }
-  // The session files (recall.mjs) hold paths and keys of exchanges: forget and off drop the project's, rescan every project's.
+  // The session files (sessions.mjs) hold paths and keys of exchanges: forget and off drop the project's, rescan every project's.
   // incognito drops its conversation's through the journal's takeBack.
   if (cmd === 'forget' || cmd === 'off' || (cmd === 'rescan' && rest.includes('--apply') && rest.includes('--yes'))) {
     const bad = dropSessions(cmd === 'rescan' ? null : here);

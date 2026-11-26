@@ -5,7 +5,7 @@ export default {
   'a helper is not told by its key': ["e.key.startsWith('subagent-')", "e.key.startsWith('subagent_')"],
   'a conversation id matches anywhere inside': ['id.startsWith(g)', 'id.includes(g)'],
   "a combining mark splits a word": ["n.replace(VERSION, ' ').split(/[^\\p{L}\\p{M}\\p{N}]+/u)", "n.replace(VERSION, ' ').split(/[^\\p{L}\\p{N}]+/u)", { test: 'test/memory-doctor.test.mjs' }],
-  "a decomposed accent in a note is not the typed one": ["plain(t) ? hay.normalize('NFC').includes(t)", "plain(t) ? hay.includes(t)", { test: 'test/memory-doctor.test.mjs' }],
+  "a decomposed accent in a note is not the typed one": ["(isVer(t) ? hay : hay.normalize('NFC'))", "hay", { test: 'test/memory-doctor.test.mjs' }],
   "a decomposed accent in the query is not the noted one": ["q.normalize('NFC').toLowerCase()", "q.toLowerCase()", { test: 'test/memory-doctor.test.mjs' }],
   "stop words searched": ["const kept = all.filter((t) => !STOP.has(t)), as = new Map();", "const kept = all.filter((t) => true), as = new Map();"],
   "two-letter words dropped": ["filter((t) => t.length >= 2 || CJK.test(t))", "filter((t) => t.length >= 3 || CJK.test(t))", { test: 'test/memory-doctor.test.mjs' }],

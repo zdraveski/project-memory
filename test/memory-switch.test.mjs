@@ -227,7 +227,7 @@ tier();
   // A journal.mjs that will not load: replay says so on one line and exits 1 (it threw a TypeError).
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'recall.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
+  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'enforce', 'replay', 'stage-by-name', '--store', pm], { env, encoding: 'utf8' });
   ok(r.status === 1 && /replay needs journal\.mjs/.test(r.stdout) && !/TypeError/.test(r.stderr), `replay with a journal.mjs that will not load says so (got ${r.status} ${r.stdout}${r.stderr})`);
@@ -1479,9 +1479,9 @@ again ${key2}
 
     // Where the journal is forgotten, the page goes.
     const drops = [['forget', '--key', 'bs4', '--yes', '--store', shop], ['off', '--store', shop], ['rescan', '--apply', '--yes'], ['incognito']];
-    // And the session files (recall.mjs): forget and off a project's, rescan --apply --yes every project's; incognito its own
+    // And the session files (sessions.mjs): forget and off a project's, rescan --apply --yes every project's; incognito its own
     // conversation's, through the journal's takeBack (recall-hook.test.mjs).
-    const { sessionsOf, sessionLine } = await import('../src/recall.mjs'), sess = join(sessionsOf(shop), 'abcd1234');
+    const { sessionsOf, sessionLine } = await import('../src/sessions.mjs'), sess = join(sessionsOf(shop), 'abcd1234');
     for (const args of drops) {
       await write();
       mkdirSync(sessionsOf(shop), { recursive: true }); writeFileSync(sess, sessionLine('file', '/x'));

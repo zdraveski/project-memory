@@ -6,12 +6,12 @@ import { mkdirSync, existsSync, readdirSync, readFileSync, statSync, unlinkSync,
 import { join, basename, dirname } from 'node:path';
 import { isUtf8 } from 'node:buffer';
 import { clip } from './text.mjs';
-import { tag, unsay, ACTIVE } from './handoff-log.mjs';
+import { tag, unsay } from './handoff-log.mjs';
 import { text, readTail, readHead, openFile, records, chunk, markFrom, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
 import { PRIVATE, hushed, isQuiet, FORGOTTEN, forgotten, listForgotten, OFF, unreadable, wasOff } from './privacy.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, lockBudget, sleep, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
 import { fault, failures, clear } from './run-records.mjs';
-import { dropSessions } from './recall.mjs';
+import { dropSessions, ACTIVE } from './sessions.mjs';
 
 export const JOURNAL = 'journal';
 // An entry keeps its request, reply, files and commands whole: the detail is

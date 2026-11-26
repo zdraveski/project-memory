@@ -20,7 +20,7 @@ export default {
   "an output path not redacted": ["${clip(p, 200)}", "${p}"],
   "a private conversation nudged": ["  if (full.hidden || secret(payload, full)) return null;\n", ""],
   "a private conversation gets a recovery note": ["if (!s.midTurn || secret(input, s)) return '';", "if (!s.midTurn) return '';"],
-  "the nudge file named by the full id": ["const id = tag(String(", "const id = (String("],
+  "the nudge file named by the full id": ["const id = tagOf(payload.session_id);", "const id = String(payload.session_id || 'none').replace(/[^\\w-]/g, '');"],
   "a note lost to a changed handoff reported as no markers": ["=== 'conflict' ? 'changed' : true;", "=== true;"],
   "a note lost to a changed handoff reported written": ["    else if (n === 'changed') failed.push('note: the handoff changed meanwhile, so the note was not written');\n", ""],
   "a synthetic error entry read as the size": ["if (m?.usage && m.model !== '<synthetic>') {", "if (m?.usage) {"],

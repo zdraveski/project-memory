@@ -157,6 +157,19 @@ briefing.
 `src/snapshot.mjs` (1.6.0 step 16) runs every git call against the projects
 root. See `docs/adr/0002-plugin-owns-git-cleanup-and-one-busy-rule.md`.
 
+**Session file**: `.sessions/<project>/<tag>` in the projects root, one per
+conversation, append-only, `<kind> <time> [agent:<id>] <rest>` a line: the files
+it changed, the pointers it was shown, its requests, its title, its end.
+`src/sessions.mjs` owns the format, the sweep, every deletion, and the **live
+session** rule (newest line within ACTIVE, 30 minutes, and not `end`); ACTIVE is
+the plugin's one "still working" window. It imports only the store and the
+privacy module, so the recall hooks and the journal both stand on it.
+
+**Term rule**: where one search word hits a text, `termRe` in `src/recall.mjs`:
+a version whole, a cut or short English word by its forms, a long word as text,
+a two-letter word standing alone. Search scoring (`has`, `count`), search's
+highlight and the hooks' words matcher all use it.
+
 ## The memory command
 
 **Option**: a `--word` the memory command knows. `OPTIONS` in `src/memory.mjs`

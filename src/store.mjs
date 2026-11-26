@@ -492,3 +492,5 @@ export function replaceIfUnchanged(path, expected, next) {
 
 // A session's short tag: enough to tell parallel sessions apart in one file.
 export const tag = (id) => String(id || '').slice(0, 8);
+// A conversation's tag as a file name: only letters, digits, _ and -; 'none' for no id.
+export const tagOf = (id) => tag(String(id || 'none').replace(/[^\w-]/g, ''));

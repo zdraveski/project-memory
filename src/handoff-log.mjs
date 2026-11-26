@@ -34,7 +34,6 @@ const SESSIONS = 3;       // how many sessions: parallel work keeps the depth on
 const ASK = 500;          // chars kept of what was asked
 const DID = 900;          // chars kept of the answer
 const CHANGED = 8;        // files an entry names: the turn's last
-export const ACTIVE = 30 * 60000;    // a transcript this recently changed: its session is still working
 export const GRACE = 60000;   // the Stop hook runs seconds after a turn ends
 export const START = '<!-- auto:start -->';
 const END = '<!-- auto:end -->';
