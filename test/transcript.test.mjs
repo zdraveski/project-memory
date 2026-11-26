@@ -763,6 +763,16 @@ const { turns, readTail, promptBefore, chunk, past, records } = await import('..
   }
   const all = turns(text), got = [...all, all.open].filter(Boolean).map((t) => [t.ask, t.did]);
   ok(got.some(([q, d]) => q === 'second ask kumquat' && d === 'second reply') && !got.some(([q, d]) => q === 'first ask' && d === 'second reply'), `and its reply is filed under it (got ${JSON.stringify(got)})`);
+  // A whole record of a type not asked for is left out (and not parsed).
+  ok([...records([JSON.stringify({ type: 'api-request', body: 'x' }), JSON.stringify(u('fourth ask'))].join('\n'), { types: ['user'] })].map((r) => r.type).join() === 'user', 'a record of a type not asked for is left out');
+  // The likeliest cut: a big record of a type nothing reads (api-request), with the next prompt glued on.
+  const big = '{"type":"api-request","body":"' + 'x'.repeat(200);
+  const t2 = [JSON.stringify(u('first ask')), big + JSON.stringify(u('third ask quince'))].join('\n');
+  ok([...records(t2, { types: ['user', 'assistant', 'attachment'] })].some((r) => /third ask quince/.test(JSON.stringify(r.message.content))), 'a prompt glued onto a cut record of an unread type is read');
+  // A cut line of many small objects stops trying after a bounded number of starts, so every later read stays cheap.
+  const many = '{"a":[' + '{"b":1},'.repeat(200_000);
+  const t0 = performance.now(); [...records(many)];
+  ok(performance.now() - t0 < 300, `a cut line of 200,000 objects is given up quickly (${Math.round(performance.now() - t0)} ms)`);
 }
 
 // turns(): each fixture, behind a line the tail cut through, a type nothing reads, a line that is no JSON, and a last line cut.
