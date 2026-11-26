@@ -529,7 +529,7 @@
   .search .box .pi { width: 1.15rem; height: 1.15rem; }
   .search ul { list-style: none; margin: 0.8rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
   .search li { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.75rem; padding: 0.6rem 0.75rem; border-radius: 0.55rem; background: rgb(80 125 255 / .08); border: 1px solid rgb(130 170 255 / .14); font-size: 0.85rem; }
-  .search li time { font: 600 0.8125rem/1.6 var(--mono); font-variant-numeric: tabular-nums; color: var(--cyan); }
+  .search li :is(time, .t) { font: 600 0.8125rem/1.6 var(--mono); font-variant-numeric: tabular-nums; color: var(--cyan); }
   .search li span { color: #DBE7FF; }
   .search li:first-child { border-color: rgb(34 211 238 / .45); background: rgb(34 211 238 / .08); }
   .search .found { margin: 1rem 0 0.2rem; font-size: 0.9rem; line-height: 1.55; }
@@ -992,7 +992,7 @@
           <li class="chip">Free, MIT license</li><li class="chip">No account</li><li class="chip">No servers of its own</li><li class="chip">About 900&nbsp;tokens at start</li>
         </ul>
         <p class="proof"><span class="nw" translate="no">project-memory</span> makes no network connections of its own. Keys and passwords it recognizes are replaced with <span class="nw" translate="no">[redacted]</span> before anything is saved.</p>
-        <p class="proof">v1.5.8, 25 Nov 2026, MIT license, tested on Windows, macOS and Linux with every change.</p>
+        <p class="proof">v1.6.0, 26 Nov 2026, MIT license, tested on Windows, macOS and Linux with every change.</p>
       </div>
     </div>
   </div>
@@ -1059,7 +1059,7 @@
           <div>
             <span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-magnifying-glass"/></svg></span>
             <h3>A journal you can ask</h3>
-            <p>Every exchange is kept in full, up to a size limit, one file per day. Ask about earlier work and Claude searches the journal and your notes, then tells you when it happened. The journal is not loaded into the conversation. It is searched only when you ask, by words, not meaning. Type <code translate="no">/project-memory:memory page</code> to read it as one page in your browser, a week at a time, with a search box. The page is a file on your computer and loads nothing from the internet.</p>
+            <p>Every exchange is kept in full, up to a size limit, one file per day. Ask about earlier work and Claude searches the journal and your notes, then tells you when it happened. The journal is not loaded into the conversation. It is searched only when you ask, by words, not meaning. Type <code translate="no">/project-memory:memory page</code> to read it as one page in your browser, a week at a time, with a search box. The page is a file on your computer and loads nothing from the internet. For a harder question, ask the recall helper: <code translate="no">@agent-project-memory:recall</code> searches several ways and answers with dates and your own words.</p>
           </div>
           <figure class="search" aria-label="An example search">
             <div class="box"><svg class="pi" aria-hidden="true"><use href="#p-magnifying-glass"/></svg>logo colors</div>
@@ -1080,6 +1080,21 @@
             <span class="v gone"><i></i>Thu<small>deleted</small></span>
             <span class="back"><svg class="pi"><use href="#p-clock-counter-clockwise"/></svg>Wed's version is back</span>
           </div>
+        </div>
+        <div class="glass tile big">
+          <div>
+            <span class="ico" aria-hidden="true"><svg class="pi"><use href="#p-browsers"/></svg></span>
+            <h3>Two sessions, one project</h3>
+            <p>Open two Claude Code sessions on one project and each knows about the other: what it&rsquo;s working on, since when, and which files it changed. If Claude changes a file the other session just changed, it is told so, and nothing is blocked. A private conversation is never shown.</p>
+          </div>
+          <figure class="search" aria-label="An example note about another session">
+            <div class="box"><svg class="pi" aria-hidden="true"><use href="#p-browsers"/></svg>another session is working here</div>
+            <ul>
+              <li><time datetime="14:02">14:02</time><span>&ldquo;export fix&rdquo;: move the export to 02:00</span></li>
+              <li><b class="t">files</b><span translate="no">src/close.js, test/close.test.js</span></li>
+            </ul>
+            <p class="cl found">This session changed <code translate="no">src/close.js</code> too. <b>Check with the other session before changing it again.</b></p>
+          </figure>
         </div>
       </div>
       <figure class="shot">
@@ -1163,10 +1178,10 @@
   <section class="band" aria-labelledby="care-h">
     <div class="wrap">
       <div class="tested">
-        <span class="big grad" aria-hidden="true">~2,500</span>
+        <span class="big grad" aria-hidden="true">~4,300</span>
         <div>
           <h2 id="care-h">Tested before every release</h2>
-          <p>About 2,500 checks run on Windows, macOS and Linux with every change, all passing. The code is scanned for problems every week, and each release gets one review. Every step has a time limit of 5 to 120&nbsp;seconds, so a stuck step can't hold Claude up.</p>
+          <p>About 4,300 checks run on Windows, macOS and Linux with every change, all passing. The code is scanned for problems every week, and each release gets one review. Every step has a time limit of 5 to 120&nbsp;seconds, so a stuck step can't hold Claude up.</p>
           <p class="more">The <a href="https://github.com/zdraveski/project-memory/actions/workflows/test.yml">test runs</a> and the <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#when-it-runs">time limits</a> are on GitHub.</p>
         </div>
       </div>
@@ -1325,7 +1340,7 @@ claude plugin update project-memory@project-memory</code></pre></div>
           <details class="glass"><summary>My model holds 200,000&nbsp;tokens. Do I need to change anything?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes, for long conversations. It assumes a window of 1,000,000&nbsp;tokens, so the reminder to save notes never comes. Ask Claude: “Is my context window 200,000&nbsp;tokens?” If it is, ask: “Add CLAUDE_CODE_AUTO_COMPACT_WINDOW set to 200k under env in my Claude Code settings,” then restart Claude Code.</p><p>On a bigger model, setting it lower than the model's window (such as 800k on a 1,000,000-token model) also asks Claude Code to let a step finish before it shortens the conversation, and even then it doesn't always wait. The note Claude gets after a summary needs no setting. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#compaction">The details</a>.</p></div></details>
           <details class="glass" id="control"><summary>How do I stop it saving something?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>4 ways, from narrow to wide.</p><ol><li><strong>One conversation:</strong> <span class="tok" translate="no">/project-memory:incognito</span> stops saving this conversation and removes what it already saved. Snapshots of earlier days keep their copy. Typing <span class="tok" translate="no">&lt;private-session&gt;</span> does the same. If it says NOT applied, it did not work.</li><li><strong>One project:</strong> <span class="tok" translate="no">/project-memory:memory-off</span> saves nothing for this project. Search still finds what was saved before. Resume with <span class="tok" translate="no">memory-on</span>.</li><li><strong>All projects on this computer:</strong> set the environment variable <span class="tok" translate="no">CLAUDE_CODE_<wbr>DISABLE_<wbr>AUTO_MEMORY=1</span>, or disable the plugin.</li><li><strong>Claude Code itself:</strong> Claude Code's own settings. project-memory does not read or change them, so Claude Code's own memory switch does not stop it.</li></ol><p>None of these reaches Claude Code's own files. It keeps its own transcript of every conversation, for 30&nbsp;days unless you change that. <a href="https://github.com/zdraveski/project-memory/blob/master/docs/how-it-works.md#turning-it-off">Turning it off, in detail</a>.</p></div></details>
           <details class="glass"><summary>Does Claude Code already have memory?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Yes: CLAUDE.md files you write and auto memory notes Claude writes. Neither keeps a journal of every exchange, a note of where you stopped, or old versions of notes; <span class="nw" translate="no">project-memory</span> adds those.</p></div></details>
-          <details class="glass"><summary>Why does Claude Code forget after compaction?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Claude can only see so much at once: your messages, its replies and the files it reads. When that fills up, Claude Code replaces the conversation with a summary, and details of a task in progress can get lost. <span class="nw" translate="no">project-memory</span> acts at three moments.</p><ol><li><strong>Before it gets full:</strong> Claude saves its notes.</li><li><strong>When it is nearly full:</strong> Claude Code is asked to let the step finish. With no room to wait, the step is written down.</li><li><strong>After the summary:</strong> Claude is told what you asked, what it last said, tasks still running and files it edited.</li></ol></div></details>
+          <details class="glass"><summary>Why does Claude Code forget after compaction?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>Claude can only see so much at once: your messages, its replies and the files it reads. When that fills up, Claude Code replaces the conversation with a summary, and details of a task in progress can get lost. <span class="nw" translate="no">project-memory</span> acts at three moments.</p><ol><li><strong>Before it gets full:</strong> Claude saves its notes.</li><li><strong>When it is nearly full:</strong> Claude Code is asked to let the step finish. With no room to wait, the step is written down.</li><li><strong>After the summary:</strong> Claude is told what you asked, what it last said, tasks still running, every file the conversation changed, and earlier exchanges like the task in progress.</li></ol></div></details>
           <details class="glass"><summary>Does it search by meaning?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No, by words. Ask with words that were used.</p></div></details>
           <details class="glass"><summary>Does it work with Cursor or Codex?<svg class="pi" aria-hidden="true"><use href="#p-plus"/></svg></summary><div class="answer"><p>No, only with Claude Code.</p></div></details>
         </div>
