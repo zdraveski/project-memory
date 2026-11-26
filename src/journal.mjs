@@ -9,7 +9,7 @@ import { clip } from './text.mjs';
 import { tag, norm, unsay, ACTIVE } from './handoff-log.mjs';
 import { text, readTail, readHead, openFile, records, chunk, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
 import { PRIVATE, PRIVATE_SESSION, hushed, isHushed, FORGOTTEN, forgotten, OFF, unreadable, wasOff } from './privacy.mjs';
-import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
+import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, lockBudget, sleep, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
 import { fault, failures, clear } from './run-records.mjs';
 import { dropSessions } from './recall.mjs';
 
@@ -254,7 +254,7 @@ export function subagent(input) {
     // scrolled out of the tail is still found; only when the look back finds nothing does the open turn stand.
     const pick = (all, cut) => { hush ||= all.hush === true; return (Number.isFinite(start) && all.opened.filter((x) => x.ms <= start).pop()) || (cut && Number.isFinite(start) ? null : all.open); };
     try { const r = readTail(tp, TAIL), a = turns(r.text); t = pick(a, !r.whole); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = (p ? pick(turns(`${p}\n${r.text}`)) : null) ?? a.open; } } catch {}
-    const saved = withLock(dir, () => {
+    const put = () => withLock(dir, () => {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
       if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) return false;
       // The parent's open turn is private: so is its subagent's report.
@@ -264,7 +264,11 @@ export function subagent(input) {
       return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
         raw: rep, said: rep, did: rep, changed, ran: [], cwd: input.cwd }]) > 0;
     });
-    // The lock stayed busy (many agents ending at once): the report is lost, and the failure file says so.
+    // A store still held after one wait gets one more, after a pause and with a fresh wait, as a Stop's does: backfill skips
+    // agent transcripts, so a report not saved here is lost for good (1.6.1).
+    let saved = put();
+    if (saved === null) { sleep(200 + Math.random() * 600); lockBudget(true); saved = put(); }
+    // Still busy: the report is lost, and the failure file says so.
     if (saved === null) fault(dir, new Error('a subagent report was not saved: the store was busy'));
     return saved ?? false;
   } catch { return false; }
