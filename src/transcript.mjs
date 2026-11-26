@@ -94,12 +94,19 @@ export function promptBefore(path, bytes) {
 // through or a half-written one passed over. A subagent's record (isSidechain) only when `sidechain`. `types`: a line whose
 // first key is a type not listed is not parsed at all (a record the reader never uses can be megabytes: api-request-blob,
 // 7 of 32 MB). `has`: a line without that text is not parsed either, a cheap filter on the raw line.
-export function* records(text, { sidechain = false, types = null, has = null } = {}) {
+// A record a crash cut mid-write gets the next one appended onto its line: that whole one is the line's end, from a later
+// `{"` on. Skipping the line lost a prompt, and its reply was filed under the ask before (1.6.1). Only lines that fail to parse
+// pay; an inner `{"` fails at its own end, so a long line costs about its length times its nesting, not its length squared.
+const rejoined = (line) => {
+  for (let i = line.indexOf('{"', 1); i > 0; i = line.indexOf('{"', i + 1)) { try { return JSON.parse(line.slice(i)); } catch {} }
+  return null;
+};
+export function* records(text,{ sidechain = false, types = null, has = null } = {}) {
   for (const line of text.split('\n')) {
     if (!line.startsWith('{') || (has && !line.includes(has))) continue;   // a tail starts mid-line
     const ty = types && /^{"type":"([^"]*)"/.exec(line.slice(0, 40))?.[1];
     if (ty && !types.includes(ty)) continue;
-    let r; try { r = JSON.parse(line); } catch { continue; }
+    let r; try { r = JSON.parse(line); } catch { r = rejoined(line); if (!r || types && !types.includes(r.type)) continue; }
     if (r.isSidechain === true && !sidechain) continue;
     yield r;
   }

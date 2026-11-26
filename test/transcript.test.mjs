@@ -750,7 +750,20 @@ const EXPECTED = {
 ;
 
 // The code under test, from where it is.
-const { turns, readTail, promptBefore, chunk, past } = await import('../src/transcript.mjs');
+const { turns, readTail, promptBefore, chunk, past, records } = await import('../src/transcript.mjs');
+
+// A record a crash cut mid-write, and the next record appended onto the same line: the whole one is still read, and only
+// the cut one is lost. Skipping the line lost the prompt after it, and its reply was filed under the ask before (1.6.1).
+{
+  const cut = JSON.stringify(a('half a reply about the zanzibar')).slice(0, 70);
+  const text = [JSON.stringify(u('first ask')), cut + JSON.stringify(u('second ask kumquat')), JSON.stringify(a('second reply'))].join('\n');
+  for (const types of [null, ['user', 'assistant']]) {
+    const said = [...records(text, { types })].map((r) => JSON.stringify(r.message.content));
+    ok(said.length === 3 && /second ask kumquat/.test(said[1]), `the record after a cut one on the same line is read (got ${said})`);
+  }
+  const all = turns(text), got = [...all, all.open].filter(Boolean).map((t) => [t.ask, t.did]);
+  ok(got.some(([q, d]) => q === 'second ask kumquat' && d === 'second reply') && !got.some(([q, d]) => q === 'first ask' && d === 'second reply'), `and its reply is filed under it (got ${JSON.stringify(got)})`);
+}
 
 // turns(): each fixture, behind a line the tail cut through, a type nothing reads, a line that is no JSON, and a last line cut.
 const flat = (t) => ({ ...t, edits: [...t.edits] });
