@@ -396,7 +396,9 @@ const rewrite = (work) => {
   const tmp = mkdtempSync(join(g, 'pm-purge-')), copy = join(tmp, 'copy.git');
   held_ = lock;
   try {
-    git('clone', '-q', '--mirror', '--no-hardlinks', projectsRoot(), copy);
+    // -c writes it into the copy's config: its plain `git -C copy` runs and the fetch's upload-pack never see gitArgs' -c, and the
+    // copy, deeper in .git, passed Windows' 260 characters first.
+    git('clone', '-q', '--mirror', '--no-hardlinks', '-c', 'core.longpaths=true', projectsRoot(), copy);
     work(copy);
     git('fetch', '-q', '--update-head-ok', '--force', copy, '+refs/heads/*:refs/heads/*');
     git('reset', '-q');

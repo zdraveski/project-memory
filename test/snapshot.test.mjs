@@ -314,8 +314,11 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   // A purge keeps its config.lock young through every git it runs, however long they take.
   {
     const lk = join(g, 'config.lock'), old9 = () => { const d = new Date(Date.now() - 9 * 60000); utimesSync(lk, d, d); }, ages = [];
-    useGit((cmd, args) => { ages.push(Date.now() - statSync(lk).mtimeMs); old9(); return ''; });
+    let clone = [];
+    useGit((cmd, args) => { if (args.includes('clone')) clone = args; ages.push(Date.now() - statSync(lk).mtimeMs); old9(); return ''; });
     rewrite(() => { S.fastExportOf('/c.git'); S.fastImportTo('/c.git', 'x'); });
+    // The copy's own config, so its fast-export, fast-import and the fetch's upload-pack read past 260 characters on Windows.
+    ok(clone.slice(clone.indexOf('clone')).join(' ').includes('-c core.longpaths=true'), 'the purge clones its copy with core.longpaths set in its config (got ' + clone.join(' ') + ')');
     ok(ages.length >= 5 && ages.every((a) => a < 60000), 'each git of a purge finds its config.lock fresh, though the clock says nine minutes passed between (ages ' + ages.map((a) => Math.round(a / 1000)).join() + ')');
     ok(!existsSync(lk), 'and the purge frees it');
   }
