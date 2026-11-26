@@ -8,7 +8,7 @@ import { hostname } from 'node:os';
 import { join, relative, isAbsolute, basename, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { isOff } from './privacy.mjs';
-import { projectsRoot, replaceIfUnchanged, raw, allStores, pathKey, same, local, reason } from './store.mjs';
+import { projectsRoot, replaceIfUnchanged, raw, allStores, pathKey, same, local, reason, LOCK_STALE } from './store.mjs';
 import { redact, holdsSecret } from './secrets.mjs';
 
 const GIT_LOCK_STALE = 10 * 60000;  // an index.lock this old outlived the git that made it
@@ -92,6 +92,10 @@ export function gitignore() {
 // What this tool's .gitignore starts with: a repository that has it is one
 // this tool made before it marked them.
 const IGNORE_HEAD = '*\n!*/\n!*/memory/*.md\n';
+// A repository this tool made: snapshot() marks its config when it makes or adopts one. One the user made there is theirs.
+export const isOurs = () => { try { return /^\[project-memory\]/m.test(readFileSync(join(projectsRoot(), '.git', 'config'), 'utf8')); } catch { return false; } };
+// The message of a history's first commit (snapshot(), below), which took in what was already there.
+const FIRST = 'memory: first snapshot';
 
 // The one busy rule, asked before every git write (the snapshot, restore, purge, rescan). git's lock files a commit takes (the index,
 // HEAD, the branch's, packed-refs, config) and gc.pid, which a git clean-up holds: a fresh one is another git's work in flight, so
@@ -143,7 +147,7 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
     if (fresh) { replaceIfUnchanged(ignorePath, raw(ignorePath), gitignore()); git('init', '-q'); try { chmodSync(join(root, '.git'), 0o700); } catch {} }
     // Only a repository this tool made: one the user made there is theirs, and
     // its .gitignore, its lock, its index and its history are not this tool's.
-    const ours = /^\[project-memory\]/m.test(raw(join(root, '.git', 'config')) ?? '');
+    const ours = isOurs();
     if (!ours && !(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)) return `off: ${root} is a git repository project-memory did not make, so it commits nothing there`;
     // An install from before the modes: its .git is still open to others, so the files are too. Tightened once, when found so.
     if (process.platform !== 'win32' && (statSync(join(root, '.git')).mode & 0o077)) {
@@ -272,7 +276,7 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
       git('-c', 'user.email=memory@local', '-c', 'user.name=memory-tier',
         // Local time, not UTC: a snapshot stamped two hours behind the clock that
         // made it is a number that misleads whoever reads the log later.
-        'commit', '-qm', `memory: ${fresh ? 'first snapshot' : local()}`);
+        'commit', '-qm', fresh ? FIRST : `memory: ${local()}`);
     } catch (e) {
       if (/nothing (added )?to commit/.test(String(e.stdout))) return null;   // nothing changed
       // Another session's commit took what this one staged, and a file changed
@@ -348,7 +352,7 @@ export const owed = () => { try { return JSON.parse(readFileSync(join(projectsRo
 // reason: `git show rev:a*.md` took the argument for a pattern, printed
 // nothing and succeeded, and restore wrote an empty note.
 const gitAs = (encoding, a) => exec('git', gitArgs('--literal-pathspecs', ...a), { encoding, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20, timeout: 60_000 });
-export { git, gitBytes, real, tracked, ever, rewrite, FAST, unsnapped, missing };   // the CLI's way in; the lines above stay as they were in memory.mjs
+export { git, gitBytes, real, tracked, ever, FAST, unsnapped, missing };   // the CLI's way in, with the history's own questions further down
 const git = (...a) => gitAs('utf8', a);
 // A blob's own bytes: through a string, a note that is not UTF-8 lost its letters.
 const gitBytes = (...a) => gitAs('buffer', a);
@@ -392,9 +396,9 @@ const rewrite = (work) => {
   if (busy()) throw wait;
   try { writeFileSync(lock, '', { flag: 'wx', mode: 0o600 }); } catch (e) { throw e.code === 'EEXIST' ? wait : e; }
   // A run that was killed left its copy, the full unscrubbed history, behind; holding the lock, no other run is using one.
-  try { for (const n of readdirSync(g)) if (n.startsWith('pm-purge-')) rmSync(join(g, n), { recursive: true, force: true }); } catch {}
+  try { for (const n of readdirSync(g)) if (n.startsWith(PURGE)) rmSync(join(g, n), { recursive: true, force: true }); } catch {}
   // The copy sits in the repository's own .git, which no snapshot commits; the OS temp folder was outside the store.
-  const tmp = mkdtempSync(join(g, 'pm-purge-')), copy = join(tmp, 'copy.git');
+  const tmp = mkdtempSync(join(g, PURGE)), copy = join(tmp, 'copy.git');
   held_ = lock;
   try {
     // -c writes it into the copy's config: its plain `git -C copy` runs and the fetch's upload-pack never see gitArgs' -c, and the
@@ -424,10 +428,107 @@ const missing = (e) => /does not exist in|exists on disk, but not in|invalid obj
 // The git commands the CLI (memory.mjs: history, restore, forget --purge, rescan, doctor) runs, each with the arguments and options it
 // had there. The 60 s `git` and `gitBytes` read the snapshots; the fast-export and fast-import of a history rewrite take 300 s.
 export const gitInstalled = () => exec('git', ['--version'], { stdio: 'ignore' });   // throws when git is not there
-export const fastExport = () => exec('git', gitArgs('fast-export', '--all', '--signed-tags=strip'), QUIET_FAST);
-export const fastExportOf = (copy) => exec('git', ['-C', copy, 'fast-export', '--all', '--signed-tags=strip'], QUIET_FAST);
-export const fastImportTo = (copy, input) => exec('git', ['-C', copy, 'fast-import', '--force', '--quiet'], { ...FAST, input });
-export const hashObject = (input, opts) => exec('git', gitArgs('hash-object', '-w', '--stdin'), { input, ...opts });
+const fastExport = () => exec('git', gitArgs('fast-export', '--all', '--signed-tags=strip'), QUIET_FAST);
+const fastExportOf = (copy) => exec('git', ['-C', copy, 'fast-export', '--all', '--signed-tags=strip'], QUIET_FAST);
+const fastImportTo = (copy, input) => exec('git', ['-C', copy, 'fast-import', '--force', '--quiet'], { ...FAST, input });
+const hashObject = (input, opts) => exec('git', gitArgs('hash-object', '-w', '--stdin'), { input, ...opts });
+
+// ---- the history in the CLI's words: versions of a note, the week's changes, days dropped, secrets scrubbed (moved from memory.mjs) ----
+// Each snapshot that added, changed or deleted one of `paths`, newest first: [`<commit> <date>`, 'A' | 'M' | 'D' | 'first'].
+// No renames: a link that sorts first moves every path to it, and an R line was no change.
+export const versionsOf = (paths) => {
+  const out = git('log', '--no-renames', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', ...paths);
+  const snaps = [];
+  let head = null;
+  for (const l of out.split('\n')) {
+    if (l.startsWith('@')) head = l.slice(1).split('\t');
+    // The first snapshot took in what was already there: not when it was written.
+    else if (head && /^[AMD]/.test(l)) { snaps.push([head[0], head[1] === FIRST ? 'first' : l[0]]); head = null; }
+  }
+  return snaps;
+};
+// What the snapshots of the last `days` days changed under `paths`, newest first, as [status, path].
+// The first snapshot took in what was already there: none of its lines.
+export const changedLately = (paths, days) => {
+  const out = git('-c', 'core.quotepath=off', 'log', `--since=${days}.days`, '--no-renames', '--name-status', '--format=@%s', '--', ...paths), lines = [];
+  let first = false;
+  for (const l of out.split('\n')) {
+    if (l.startsWith('@')) { first = l === `@${FIRST}`; continue; }
+    if (first) continue;
+    lines.push(l.trim().split('\t'));
+  }
+  return lines;
+};
+
+// A fast-export stream without the M and D lines of `paths`; data blocks are skipped by their length, so their text is never read as a line.
+const dropPaths = (buf, paths) => {
+  const out = [], gone = new Set(paths);
+  // git quotes a path with odd bytes: "..." with \ooo octal escapes.
+  const plain = (s) => s[0] !== '"' ? s : Buffer.from(s.slice(1, -1).replace(/\\(?:([0-7]{3})|(.))/g, (_, o, c) => o ? String.fromCharCode(parseInt(o, 8)) : ({ n: '\n', t: '\t' })[c] ?? c), 'latin1').toString();
+  let at = 0;
+  while (at < buf.length) {
+    let e = buf.indexOf(10, at); if (e < 0) e = buf.length - 1;
+    const line = buf.subarray(at, e + 1), t = line.toString().slice(0, -1), d = /^data (\d+)$/.exec(t);
+    at = e + 1;
+    if (d) { out.push(line, buf.subarray(at, at + +d[1])); at += +d[1]; continue; }
+    const p = /^M \d+ \S+ (.*)$/.exec(t)?.[1] ?? /^D (.*)$/.exec(t)?.[1];
+    if (p === undefined || !gone.has(plain(p))) out.push(line);
+  }
+  return Buffer.concat(out);
+};
+// forget --purge: the journal `days` ('YYYY-MM-DD') of the store in `dir` dropped from every snapshot (rewrite(), above).
+export const dropDays = (dir, days) => {
+  const paths = days.flatMap((d) => tracked(dir, `journal/${d}.md`));
+  rewrite((copy) => fastImportTo(copy, dropPaths(fastExportOf(copy), paths)));
+};
+
+// A git fast-export stream with every text blob, commit and tag message put through `scrub` (text -> [text, hits]) and its length
+// prefix recomputed; a blob that is not UTF-8 stays as it is. The scrub is the CLI's: what counts as a secret is not this module's.
+// shortcut: file names in the stream are not scanned; a secret in a file name stays.
+const walk = (buf, scrub) => {
+  const out = [], dec = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }), changed = new Set(), files = new Set();
+  let at = 0, hits = 0, blobs = 0, commits = 0, hit = false, blob = false, mark = null;
+  while (at < buf.length) {
+    let e = buf.indexOf(10, at); if (e < 0) e = buf.length - 1;
+    const line = buf.subarray(at, e + 1), t = line.toString(), d = /^data (\d+)\n$/.exec(t);
+    at = e + 1;
+    if (!d) {
+      if (/^(?:blob\n|commit |tag |reset )/.test(t)) { if (t.startsWith('commit')) { commits += hit; hit = false; } blob = t === 'blob\n'; mark = null; }
+      const m = /^mark :(\d+)\n$/.exec(t), mm = /^M \d+ :(\d+) (.*)\n$/.exec(t);
+      if (m && blob) mark = m[1];
+      if (mm && changed.has(mm[1])) { hit = true; files.add(mm[2]); }
+      out.push(line); continue;
+    }
+    const body = buf.subarray(at, at + +d[1]); at += +d[1];
+    let to = body, n = 0;
+    try { const [s, c] = scrub(dec.decode(body)); if (c) { to = Buffer.from(s); n = c; } } catch {}
+    if (n) { hits += n; if (blob) { blobs++; changed.add(mark); } else hit = true; }
+    out.push(Buffer.from(`data ${to.length}\n`), to);
+  }
+  return { out: Buffer.concat(out), hits, blobs, commits: commits + hit, files };
+};
+// rescan: what `scrub` finds in every snapshot, { hits, blobs, commits, files }, and the history rewritten with it.
+export const scanHistory = (scrub) => walk(fastExport(), scrub);
+export const scrubHistory = (scrub) => rewrite((copy) => fastImportTo(copy, walk(fastExportOf(copy), scrub).out));
+
+// restore keeps the note it replaces under a ref that names a blob, which fast-export skips: the copies `scrub` finds a hit in, with their text.
+export const keptCopies = (scrub) => git('for-each-ref', '--format=%(objecttype) %(objectname) %(refname)').split('\n').map((l) => l.split(' ')).filter((p) => p[0] === 'blob').flatMap(([, sha, ref]) => {
+  try { const text = git('cat-file', 'blob', sha), [to, c] = scrub(text); return c ? [{ ref, text, to, c }] : []; } catch { return []; }
+});
+// `text` written as a blob and kept under `ref` (by default a new one for it): a blob nothing refers to is dangling, and gc deletes it.
+// Returns the blob's id.
+export const keepReplaced = (text, ref) => {
+  const sha = hashObject(text, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  git('update-ref', ref ?? `refs/project-memory/replaced/${sha}`, sha);
+  return sha;
+};
+// The copies a killed purge left in .git (the full history, forgotten text included), older than LOCK_STALE: a younger one may be a purge still running.
+const PURGE = 'pm-purge-';
+export const leftoverPurges = () => {
+  const g = join(projectsRoot(), '.git'), out = [];
+  try { for (const n of readdirSync(g)) if (n.startsWith(PURGE) && Date.now() - statSync(join(g, n)).mtimeMs > LOCK_STALE) out.push(join(g, n)); } catch {}
+  return out;
+};
 
 // The record snapshotHealth writes, as every reader sees it: `health` is the parsed file, `read` is whether the file could be read.
 export const readHealth = () => { try { return { read: true, health: JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8')) }; } catch { return { read: false, health: null }; } };

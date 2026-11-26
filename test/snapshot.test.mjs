@@ -190,7 +190,7 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
 // The git half of the CLI (history, restore, forget --purge, rescan, doctor), moved here from memory.mjs with the arguments and
 // options it had. The expected values are what memory.mjs ran before the move. The history rewrite itself keeps real git (memory-switch.test.mjs).
 {
-  const { git, gitBytes, unsnapped, missing, tracked, ever, rewrite, gitInstalled, fastExport, fastExportOf, fastImportTo, hashObject, readHealth, MISSED, HELD, FAST } = S;
+  const { git, gitBytes, unsnapped, missing, tracked, ever, gitInstalled, readHealth, MISSED, HELD, FAST, dropDays, scanHistory, scrubHistory } = S;
   let seen = [];
   const stand = (answer) => { seen = []; useGit((cmd, args, opts) => { seen.push({ cmd, args, opts }); return typeof answer === 'function' ? answer(args, opts) : answer; }); };
 
@@ -203,12 +203,16 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(seen[1].opts.encoding === 'buffer' && seen[1].opts.timeout === 60_000, 'gitBytes asks for the bytes');
 
   // The fixed commands of a history rewrite: 300 s and 1 GiB, the copy named with -C and no repository settings.
-  stand('');
-  fastExport(); fastExportOf('/c.git'); fastImportTo('/c.git', 'IN'); hashObject('B', { encoding: 'utf8' });
-  ok(seen[0].args.slice(0, 2).join() === `-C,${root}` && seen[0].args.slice(-3).join() === 'fast-export,--all,--signed-tags=strip' && seen[0].opts.timeout === 300_000 && seen[0].opts.maxBuffer === 1 << 30 && seen[0].opts.stdio.join() === 'ignore,pipe,ignore', 'fastExport: the root, 300 s, 1 GiB, git\'s warnings dropped');
-  ok(seen[1].args.join() === '-C,/c.git,fast-export,--all,--signed-tags=strip' && seen[1].opts.stdio.join() === 'ignore,pipe,ignore', 'fastExportOf: a copy, named with -C alone');
-  ok(seen[2].args.join() === '-C,/c.git,fast-import,--force,--quiet' && seen[2].opts.input === 'IN' && seen[2].opts.timeout === 300_000 && !('stdio' in seen[2].opts), 'fastImportTo: the stream on stdin');
-  ok(seen[3].args.slice(-3).join() === 'hash-object,-w,--stdin' && seen[3].opts.input === 'B' && seen[3].opts.encoding === 'utf8', 'hashObject writes a blob from stdin');
+  const none = (t) => [t, 0];
+  stand(Buffer.from(''));
+  scanHistory(none);
+  ok(seen[0].args.slice(0, 2).join() === `-C,${root}` && seen[0].args.slice(-3).join() === 'fast-export,--all,--signed-tags=strip' && seen[0].opts.timeout === 300_000 && seen[0].opts.maxBuffer === 1 << 30 && seen[0].opts.stdio.join() === 'ignore,pipe,ignore', 'scanHistory exports the root: 300 s, 1 GiB, git warnings dropped');
+  ours();
+  stand((a) => (a.includes('fast-export') ? Buffer.from('') : ''));
+  scrubHistory(none);
+  const ex = seen.find((x) => x.args.includes('fast-export')), im = seen.find((x) => x.args.includes('fast-import'));
+  ok(ex.args.join() === `-C,${ex.args[1]},fast-export,--all,--signed-tags=strip` && ex.args[1].endsWith('copy.git') && ex.opts.stdio.join() === 'ignore,pipe,ignore', 'a rewrite exports its copy, named with -C alone');
+  ok(im.args.join() === `-C,${ex.args[1]},fast-import,--force,--quiet` && im.opts.timeout === 300_000 && !('stdio' in im.opts), 'and imports the stream back into it on stdin');
   ok(FAST.timeout === 300_000 && FAST.maxBuffer === 1 << 30, 'FAST is 300 s and 1 GiB');
 
   // doctor and unsnapped: git on the PATH, then a first commit.
@@ -245,12 +249,12 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   mkdirSync(g, { recursive: true });
   for (const f of ['index.lock', 'HEAD.lock']) {
     writeFileSync(join(g, f), '');
-    let msg = ''; try { rewrite(() => {}); } catch (e) { msg = e.message; }
+    let msg = ''; try { dropDays(dir, ['2026-01-01']); } catch (e) { msg = e.message; }
     ok(msg === 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment' && seen.length === 0 && !existsSync(join(g, 'config.lock')), `${f}: the purge gives way, runs no git, takes no lock`);
     rmSync(join(g, f));
   }
   writeFileSync(join(g, 'config.lock'), '');
-  let msg = ''; try { rewrite(() => {}); } catch (e) { msg = e.message; }
+  let msg = ''; try { scrubHistory((t) => [t, 0]); } catch (e) { msg = e.message; }
   ok(msg === 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment' && existsSync(join(g, 'config.lock')) && seen.length === 0, 'a config.lock that is there: busy, and not taken away');
   rmSync(join(g, 'config.lock'));
 
@@ -270,7 +274,7 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
 
 // PR C of step 16: one busy rule for every git write (the snapshot, restore, purge, rescan), and the plugin runs git's clean-up itself.
 {
-  const { busy, rewrite } = S, { restore } = await import('../src/memory.mjs');
+  const { busy, dropDays } = S, { restore } = await import('../src/memory.mjs');
   const old = new Date(Date.now() - 11 * 60000), ahead = new Date(Date.now() + 11 * 60000);
   mkdirSync(join(g, 'refs', 'heads'), { recursive: true });
   const files = ['index.lock', 'HEAD.lock', 'config.lock', 'packed-refs.lock', join('refs', 'heads', 'main.lock')];
@@ -316,7 +320,7 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
     const lk = join(g, 'config.lock'), old9 = () => { const d = new Date(Date.now() - 9 * 60000); utimesSync(lk, d, d); }, ages = [];
     let clone = [];
     useGit((cmd, args) => { if (args.includes('clone')) clone = args; ages.push(Date.now() - statSync(lk).mtimeMs); old9(); return ''; });
-    rewrite(() => { S.fastExportOf('/c.git'); S.fastImportTo('/c.git', 'x'); });
+    dropDays(store('proj-purge'), ['2026-01-01']);
     // The copy's own config, so its fast-export, fast-import and the fetch's upload-pack read past 260 characters on Windows.
     ok(clone.slice(clone.indexOf('clone')).join(' ').includes('-c core.longpaths=true'), 'the purge clones its copy with core.longpaths set in its config (got ' + clone.join(' ') + ')');
     ok(ages.length >= 5 && ages.every((a) => a < 60000), 'each git of a purge finds its config.lock fresh, though the clock says nine minutes passed between (ages ' + ages.map((a) => Math.round(a / 1000)).join() + ')');
@@ -350,6 +354,70 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(snapshot() === 'committed', 'a gc that fails does not fail the snapshot');
   scripted((sub, a) => { if (a.includes('gc')) throw fail('t', { code: 'ETIMEDOUT' }); return ''; });
   ok(snapshot() === 'committed' && !existsSync(join(g, 'project-memory-parts')), 'a gc that times out does not fail it, nor start the history in parts');
+}
+
+// The history in the CLI's words (moved from memory.mjs with ADR 0002's rest): what git's log and fast-export streams say, read
+// here and nowhere else. A scripted git; the rewrites against real git stay in memory-switch.test.mjs.
+{
+  const { versionsOf, changedLately, dropDays, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges, isOurs } = S;
+  let seen = [];
+  const stand = (answer) => { seen = []; useGit((cmd, args, opts) => { seen.push({ args, opts }); return answer(args, opts) ?? ''; }); };
+  const dir = store('proj-h');
+  ours();
+
+  // A note's versions, newest first; the first snapshot's own, by its message.
+  stand(() => '@abc1234 2026-11-20 10:00\tmemory: 2026-11-20 10:00\n\nM\tproj-h/memory/a.md\n@bcd2345 2026-11-19 09:00\tmemory: 2026-11-19 09:00\n\nD\tproj-h/memory/a.md\n'
+    + '@cde3456 2026-11-18 08:00\tmemory: first snapshot\n\nA\tproj-h/memory/a.md\n');
+  ok(JSON.stringify(versionsOf(['proj-h/memory/a.md'])) === '[["abc1234 2026-11-20 10:00","M"],["bcd2345 2026-11-19 09:00","D"],["cde3456 2026-11-18 08:00","first"]]', 'versionsOf: each snapshot, its change, the first one named');
+  ok(seen[0].args.includes('--no-renames') && seen[0].args.at(-1) === 'proj-h/memory/a.md', 'versionsOf: no renames, the paths literal at the end');
+  // The week's changes, without what the first snapshot took in.
+  stand(() => '@memory: 2026-11-20 10:00\n\nM\tproj-h/memory/a.md\nD\tproj-h/memory/b.md\n@memory: first snapshot\n\nA\tproj-h/memory/c.md\n');
+  const ch = changedLately(['proj-h/memory'], 7).filter(([, p]) => p);
+  ok(JSON.stringify(ch) === '[["M","proj-h/memory/a.md"],["D","proj-h/memory/b.md"]]' && seen[0].args.includes('--since=7.days'), 'changedLately: the last days, the first snapshot left out');
+
+  // A stream as fast-export writes it: data blocks by length, a quoted path with octal escapes.
+  const stream = (body, name) => Buffer.concat([Buffer.from(`blob\nmark :1\ndata ${Buffer.byteLength(body)}\n`), Buffer.from(body),
+    Buffer.from(`\ncommit refs/heads/master\nmark :2\ncommitter m <m> 1 +0000\ndata 4\nmsg\nM 100644 :1 ${name}\nM 100644 :1 proj-h/memory/a.md\n`)]);
+  let fed = null;
+  const rewriting = (buf) => stand((a, o) => { if (a.includes('fast-export')) return buf; if (a.includes('fast-import')) fed = o.input; });
+  // A data block that reads like the M line of a dropped day stays: it is text, skipped by its length.
+  const day = 'proj-h/memory/journal/2026-01-01.md', cafe = '"proj-h/memory/journal/caf\\303\\251.md"';
+  rewriting(Buffer.concat([stream(`M 100644 :1 ${day}\n`, day), Buffer.from(`D ${day}\nM 100644 :1 ${cafe}\nD proj-h/memory/journal/2026-01-02.md\n`)]));
+  dropDays(dir, ['2026-01-01', 'café']);
+  const left = fed.toString();
+  ok(left.includes(`data ${day.length + 13}\nM 100644 :1 ${day}\n`) && !left.includes(`\nD ${day}`) && !left.includes(`:1 ${day}\nM 100644 :1 proj-h`) && !left.includes('caf\\303'), 'dropDays: the days\' M and D lines go, a quoted name too, a data block stays whole (got ' + JSON.stringify(left) + ')');
+  ok(left.includes('M 100644 :1 proj-h/memory/a.md') && left.includes('D proj-h/memory/journal/2026-01-02.md'), 'dropDays: every other path stays');
+
+  // A scrub over every blob and message: hits counted, the length prefix recomputed, a blob that is not UTF-8 as it was.
+  const scrub = (t) => (t.includes('SECRET') ? [t.replaceAll('SECRET', '[redacted]'), 1] : [t, 0]);
+  const odd = Buffer.from([0xff, 0xfe, 0x53, 0x45, 0x43, 0x52, 0x45, 0x54]);   // "SECRET" after two bytes that are not UTF-8
+  const hist = Buffer.concat([stream('key=SECRET\n', 'proj-h/memory/k.md'), Buffer.from(`blob\nmark :3\ndata ${odd.length}\n`), odd, Buffer.from('\n')]);
+  rewriting(hist);
+  const sc = scanHistory(scrub);
+  ok(sc.hits === 1 && sc.blobs === 1 && sc.commits === 1 && [...sc.files].join() === 'proj-h/memory/k.md,proj-h/memory/a.md', `scanHistory: one hit, in one saved version (two paths hold it), in one snapshot (got ${JSON.stringify({ ...sc, out: undefined, files: [...sc.files] })})`);
+  scrubHistory(scrub);
+  ok(fed.includes(Buffer.from('data 15\nkey=[redacted]\n')) && fed.includes(Buffer.concat([Buffer.from(`data ${odd.length}\n`), odd])) && !fed.toString().includes('key=SECRET'), 'scrubHistory: the text scrubbed with its new length, the non-UTF-8 blob untouched');
+
+  // The copies restore keeps: only blob refs, only those with a hit.
+  stand((a) => a.includes('for-each-ref') ? 'blob aaa refs/project-memory/replaced/aaa\nblob bbb refs/project-memory/replaced/bbb\ncommit ccc refs/heads/master\n' : a.includes('cat-file') ? (a.at(-1) === 'aaa' ? 'x SECRET' : 'clean') : '');
+  ok(JSON.stringify(keptCopies(scrub)) === '[{"ref":"refs/project-memory/replaced/aaa","text":"x SECRET","to":"x [redacted]","c":1}]', 'keptCopies: the kept blobs a scrub finds a hit in');
+  stand((a) => (a.includes('hash-object') ? 'sha1\n' : ''));
+  ok(keepReplaced('B') === 'sha1' && seen[0].opts.input === 'B' && seen[1].args.slice(-3).join() === 'update-ref,refs/project-memory/replaced/sha1,sha1', 'keepReplaced: the blob written, kept under a ref of its own');
+  keepReplaced('C', 'refs/x');
+  ok(seen.at(-1).args.slice(-3).join() === 'update-ref,refs/x,sha1', 'keepReplaced: or under the ref it is given');
+
+  // A killed purge's copy: named once it is older than LOCK_STALE.
+  const old = join(g, 'pm-purge-old'), young = join(g, 'pm-purge-young'), ago = new Date(Date.now() - 60000);
+  mkdirSync(old, { recursive: true }); mkdirSync(young, { recursive: true }); utimesSync(old, ago, ago);
+  ok(leftoverPurges().join() === old, 'leftoverPurges: only a copy older than LOCK_STALE');
+  rmSync(old, { recursive: true }); rmSync(young, { recursive: true });
+
+  ok(isOurs(), 'isOurs: a config with the mark');
+  writeFileSync(join(g, 'config'), '[core]\n\tbare = false\n# [project-memory]\n');
+  ok(!isOurs(), 'isOurs: not without the mark at the start of a line');
+  rmSync(join(g, 'config'));
+  ok(!isOurs(), 'isOurs: no config, not ours');
+  ours();
 }
 
 useGit();

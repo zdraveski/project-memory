@@ -65,4 +65,10 @@ export default {
   'a store path in another case misses its snapshots': ['realpathSync.native(p)', 'realpathSync(p)'],
   'C-3 a repository above the projects folder taken for the snapshots': ["head = existsSync(join(projectsRoot(), '.git')) && ", 'head = '],
   'C-3 a repository with no commit taken for snapshots': [" && !!git('rev-parse', '--verify', '-q', 'HEAD');", ';'],
+  // The history in the CLI's words, moved here from memory.mjs with their mutants.
+  "a link's move read as a rename in history": ["git('log', '--no-renames', '--format=@%h %ad", "git('log', '--format=@%h %ad"],
+  "non-ASCII names quoted away": ["git('-c', 'core.quotepath=off', 'log', `--since", "git('log', `--since"],
+  'the first snapshot called its writing': ["head[1] === FIRST ? 'first' : l[0]", 'l[0]'],
+  'the first snapshot counted as added': ['if (first) continue;', ''],
+  'forget: the history note said of a repository the user made': ["try { return /^\\[project-memory\\]/m.test(", "try { return existsSync(join(projectsRoot(), '.git')) || /^\\[project-memory\\]/m.test("],
 };
