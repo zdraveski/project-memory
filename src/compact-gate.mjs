@@ -39,7 +39,7 @@ import { handoff, tag, answer, newest, sectionOf, norm } from './handoff-log.mjs
 import { goesOn, readTail, records, typedMark, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers } from './transcript.mjs';
 import { redact, BARE } from './secrets.mjs';
 import { isQuiet, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, isOff } from './privacy.mjs';
-import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
+import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn, tagOf } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
 // A token count as Claude Code takes one: `800000`, `800k`, `1M`. NaN: none.
@@ -272,7 +272,7 @@ export function gate(payload, keptUnder = null) {
   if (s.ctx < CEILING * MODEL_WINDOW) {
     // Put off once per last assistant record: a turn that never moves on is not held until the ceiling. The uuid sits in a .defer file beside
     // the nudge's file (a second file per session, in the directory arm() prunes weekly).
-    const mark = join(NUDGES(), `${tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''))}.defer`);
+    const mark = join(NUDGES(), `${tagOf(payload.session_id)}.defer`);
     let again = false;
     if (s.last) {
       let was = ''; try { was = readFileSync(mark, 'utf8'); } catch {}
@@ -320,7 +320,7 @@ export function nudge(payload) {
   if (isQuiet(storeOf(payload), tag(payload.session_id))) return null;
   const s = state(payload.transcript_path, { ask: false });
   // The conversation's tag, as everywhere else: its full id named a file.
-  const id = tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''));
+  const id = tagOf(payload.session_id);
   const mine = join(NUDGES(), id);
   let given = 0; try { given = Number(readFileSync(mine, 'utf8')) || 0; } catch {}
   // Whether the nudge is on record: one that could not be (`.nudge` a file, or

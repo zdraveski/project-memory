@@ -8,7 +8,8 @@ import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor, slug } from './harness.mjs';
 import { render } from '../src/journal.mjs';
-import { byWords, sharesBlock, onChange, cleanPath, sessionsOf, readSession, sessionLine, BLOCK_MAX } from '../src/recall.mjs';
+import { byWords, sharesBlock, onChange, cleanPath, BLOCK_MAX } from '../src/recall.mjs';
+import { sessionsOf, readSession, sessionLine } from '../src/sessions.mjs';
 import { QUIET } from '../src/privacy.mjs';
 
 const { home } = tempHome('recall-compact-');
@@ -18,7 +19,6 @@ const ok = (cond, msg) => { assert(cond, msg); checks++; };
 const BRIEFING = tool('src/briefing.mjs');
 const SID = 'abcd1234-0000-4000-8000-000000000000', ME = SID.slice(0, 8);
 const DAY = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
-const journal = () => import('../src/journal.mjs');
 let n = 0;
 function project() {
   const cwd = join(home, `shop${++n}`), store = storeFor(home, cwd);
@@ -61,7 +61,7 @@ ok(ls.at(-3).kind === 'compact' && ls.at(-2).rest === other.key && ls.at(-1).res
 // The change hook after it: the first change of a file counts as first again, and this conversation's older exchange is earlier.
 p.day([p.entry({ key: `${ME} ${DAY}T07:00 c0ffee`, at: `${DAY} 07:00`, s: ME, t: `${slug(p.cwd)}/${SID}`, asked: 'fix the closing day', changed: ['src/close.js'] })], new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10));
 p.lines(sessionLine('asked', 'the closing day again'), sessionLine('file', cleanPath(join(p.cwd, 'src/close.js')), '', new Date(Date.now() - 1000).toISOString()));
-const look = (input) => onChange(input, { journal, deadline: performance.now() + 10_000 });
+const look = (input) => onChange(input, { deadline: performance.now() + 10_000 });
 const edit = { session_id: SID, cwd: p.cwd, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: join(p.cwd, 'src/close.js') } };
 process.env.PROJECT_MEMORY_RECALL = '1';   // the change hook's pointer is opt-in; the briefing's above is on by default
 ok((await look(edit)).n === 0, 'before a compaction: the file was changed already, and the exchange is this conversation\'s');
@@ -102,7 +102,7 @@ ok(existsSync(p.session), 'its file is left for the sweep');
 p = project();
 const es = [...filler(p), other];
 p.day(es);
-const find = (text, o = {}) => byWords(p.store, text, SID, { journal, deadline: performance.now() + 10_000, ...o });
+const find = (text, o = {}) => byWords(p.store, text, SID, { deadline: performance.now() + 10_000, ...o });
 ok((await find(ASK)).map((e) => e.key).join() === other.key, 'three rare words match');
 ok((await find('nightly warehouse')).length === 1, 'a text of exactly two words: two rare words match');
 ok((await find('nightly warehouse readme')).length === 0, 'three words: two rare ones are not enough');

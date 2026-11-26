@@ -7,7 +7,8 @@ import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor, slug } from './harness.mjs';
 import { render, takeBack } from '../src/journal.mjs';
-import { onChange, onPrompt, sessionsOf, readSession, sessionLine, dropSessions, sweepSessions, earlier, MORE, BLOCK_MAX } from '../src/recall.mjs';
+import { onChange, onPrompt, earlier, MORE, BLOCK_MAX } from '../src/recall.mjs';
+import { sessionsOf, readSession, sessionLine, dropSessions, sweepSessions } from '../src/sessions.mjs';
 import { QUIET, OFF, PROJECT_OFF, FORGOTTEN } from '../src/privacy.mjs';
 import { projectsRoot } from '../src/store.mjs';
 import { read as readTimes, FILE as TIMING } from '../src/timing.mjs';
@@ -34,8 +35,7 @@ const run = (input, env = process.env) => spawnSync(process.execPath, [HOOK], { 
 const quiet = (r, msg) => ok(r.status === 0 && r.stdout === '' && r.stderr === '', `${msg} (status ${r.status}, out ${JSON.stringify(r.stdout)}, err ${JSON.stringify(r.stderr)})`);
 const said = (r) => JSON.parse(r.stdout).hookSpecificOutput;
 // In this process: the deadline counts from the process's start, long past here.
-const journal = () => import('../src/journal.mjs');
-const look = (input, o) => onChange(input, { journal, deadline: performance.now() + 10_000, ...o });
+const look = (input, o) => onChange(input, { deadline: performance.now() + 10_000, ...o });
 // This turn's request, as the prompt hook writes it: the change hook shows only exchanges that share a rare word with it.
 const turn = (q, text, sid = SID) => { mkdirSync(sessionsOf(q.store), { recursive: true }); writeFileSync(join(sessionsOf(q.store), sid.slice(0, 8)), sessionLine('asked', text), { flag: 'a' }); };
 
@@ -98,7 +98,7 @@ p = project(); p.day('2026-11-12', [p.entry()]); turn(p, 'nightly export');
 delete process.env.PROJECT_MEMORY_RECALL;
 quiet(run(p.payload('src/close.js')), 'unset: the change hook shows no pointer');
 ok(readSession(p.session()).some((l) => l.kind === 'file'), 'and still writes the file line');
-const hearOff = await onPrompt({ session_id: SID, cwd: p.cwd, hook_event_name: 'UserPromptSubmit', prompt: 'nightly export again' }, { journal, deadline: performance.now() + 10_000 });
+const hearOff = await onPrompt({ session_id: SID, cwd: p.cwd, hook_event_name: 'UserPromptSubmit', prompt: 'nightly export again' }, { deadline: performance.now() + 10_000 });
 ok(hearOff.say === '' && hearOff.n === 0 && readSession(p.session()).at(-1).rest === 'nightly export again', `unset: the prompt hook shows no pointer and still writes the asked line (got ${JSON.stringify(hearOff)})`);
 process.env.PROJECT_MEMORY_RECALL = '1';
 
@@ -210,7 +210,7 @@ quiet(run({ ...project().payload('src/close.js'), cwd: join(home, 'nowhere') }),
 p = project(); mkdirSync(join(p.store, 'journal', '2026-11-12.md'));
 quiet(run(p.payload('src/close.js')), 'an unreadable day file (a folder by its name)');
 p = project(); p.day('2026-11-12', [p.entry()]);
-ok(await earlier(p.store, join(p.cwd, 'src/close.js').replaceAll('\\', '/'), 'zz', { journal, deadline: performance.now() - 1 }) === null, 'past the deadline the scan gives up');
+ok(await earlier(p.store, join(p.cwd, 'src/close.js').replaceAll('\\', '/'), 'zz', { deadline: performance.now() - 1 }) === null, 'past the deadline the scan gives up');
 ok((await look(p.payload('src/close.js'), { deadline: performance.now() - 1 })).say === '', 'and the hook says nothing');
 // A look-up that gave up leaves the file unseen: the next change of it looks again, and once it looked the file is seen (1.6.1).
 p = project(); p.day('2026-11-12', [p.entry()]); turn(p, 'nightly export');
@@ -244,7 +244,7 @@ ok(!existsSync(fb), 'and with auto memory off too');
 // The prompt hook (headline 1c, "a prompt that names something old"): UserPromptSubmit names earlier exchanges that share
 // rare words with the request. A young store (10 entries) gets a pointer, and the wording is pinned here.
 const ask = (q, prompt, extra = {}) => ({ session_id: SID, cwd: q.cwd, hook_event_name: 'UserPromptSubmit', prompt, ...extra });
-const hear = (input, o) => onPrompt(input, { journal, deadline: performance.now() + 10_000, ...o });
+const hear = (input, o) => onPrompt(input, { deadline: performance.now() + 10_000, ...o });
 const other = (q, i, over) => q.entry({ key: `o${i}`, t: `${slug(q.cwd)}/9a1c22e0-cccc`, s: '9a1c22e0', asked: `tidy the build script ${i}`, answered: 'Done, we use npm for it.', changed: ['package.json'], ...over });
 p = project();
 p.day('2026-11-17', [

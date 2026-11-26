@@ -14,9 +14,10 @@ import { OFF, PRIVATE, PRIVATE_SESSION, isOff, isQuiet, hushed, off, offLine, fo
 import { readHealth, MISSED, HELD } from './snapshot.mjs';
 import { tag, storeOf, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, indexLines, emptyArchive, memoryOff, autoMemory } from './store.mjs';
 import { notes, edited } from './run-records.mjs';
-import { ACTIVE, START, render, parse, sectionOf, stalled } from './handoff-log.mjs';
+import { START, render, parse, sectionOf, stalled } from './handoff-log.mjs';
 import { firstDay, rel } from './journal.mjs';
-import { readSession, sessionLine, sessionsOf, byWords, sharesBlock, DEADLINE, others as liveOthers, doing, about, near } from './recall.mjs';
+import { byWords, sharesBlock, DEADLINE, doing, about, near } from './recall.mjs';
+import { readSession, sessionLine, sessionsOf, others as liveOthers, ACTIVE } from './sessions.mjs';
 import { recover } from './compact-gate.mjs';
 
 const RECENT = 30 * 86400000;  // older than this, the startup line has nothing to say
@@ -109,7 +110,7 @@ async function afterCompact(input, dir, me, skip) {
   const now = new Date().toISOString(), ask = lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet')?.kind === 'quiet' ? '' : lastAsk(input.transcript_path);
   let found = [];
   if (ask && !PRIVATE.test(ask) && !PRIVATE_SESSION.test(ask)) {
-    try { found = (await byWords(dir, own(ask), String(input.session_id), { journal: () => import('./journal.mjs'), deadline: performance.now() + DEADLINE, since: now, skip })) ?? []; } catch {}
+    try { found = (await byWords(dir, own(ask), String(input.session_id), { deadline: performance.now() + DEADLINE, since: now, skip })) ?? []; } catch {}
   }
   const block = found.length ? sharesBlock(found, 'the request in progress') : '', shown = block ? found : [];
   // One append, the compact line first: the change hook reads the `told` lines after it. A write that fails costs pointers only.

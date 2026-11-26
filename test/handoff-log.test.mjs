@@ -564,7 +564,7 @@ const gated = join(home, 'gated');
 mkdirSync(gated, { recursive: true });
 mkdirSync(join(gated, 'src'), { recursive: true });
 mkdirSync(join(gated, 'tools'), { recursive: true });
-for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/secrets.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/journal.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
+for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/secrets.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/sessions.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/journal.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
 const g = (...a) => execFileSync('git', ['-C', gated, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { env, encoding: 'utf8' });
 g('init', '-q', '-b', 'master'); g('add', '-A'); g('commit', '-qm', 'base'); g('checkout', '-qb', 'other');
 let gate = spawnSync(process.execPath, [join(gated, 'tools', 'deploy.mjs')], { env, encoding: 'utf8' });
@@ -2554,7 +2554,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
 // Edge rules of turns(), the section markers, the write loops, the briefing
 // and the entry point, each stated at its check.
 {
-  const { newest, sectionOf, unsay, stalled, ACTIVE, GRACE } = await import('../src/handoff-log.mjs'), { turns, unwrap, unquote, asked, lastTurn, transcripts, NUDGE_TAG } = await import('../src/transcript.mjs'), { hushed, off, OFF, FORGOTTEN } = await import('../src/privacy.mjs'), { fit } = await import('../src/text.mjs');
+  const { newest, sectionOf, unsay, stalled, GRACE } = await import('../src/handoff-log.mjs'), { ACTIVE } = await import('../src/sessions.mjs'), { turns, unwrap, unquote, asked, lastTurn, transcripts, NUDGE_TAG } = await import('../src/transcript.mjs'), { hushed, off, OFF, FORGOTTEN } = await import('../src/privacy.mjs'), { fit } = await import('../src/text.mjs');
   const T0 = '2026-09-11T07:00:00Z';
   const store = (cwd_) => { const d = storeFor(home, cwd_); mkdirSync(d, { recursive: true }); return d; };
   const lines = (...l) => l.join('\n') + '\n';
@@ -3070,7 +3070,7 @@ require('node:module').syncBuiltinESMExports();
 // can reach the real hooks-live or the real repo.
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = ROOT;
-  const FILES_ = ['src/store.mjs', 'src/secrets.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/brief.mjs', 'src/briefing.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
+  const FILES_ = ['src/store.mjs', 'src/secrets.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/brief.mjs', 'src/briefing.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/sessions.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
     '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'tools/deploy.mjs', 'tools/suites.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';

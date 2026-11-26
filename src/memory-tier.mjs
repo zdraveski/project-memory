@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import * as T from './timing.mjs';
 import { isOff } from './privacy.mjs';
 import { snapshot, snapshotHealth, owed, reset, GIT_TIMEOUT, BATCH } from './snapshot.mjs';
-import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, indexLines, eolOf, wraps, archiveLine, mark, unmark, allStores, front, raw, memoryOff, reason, tag } from './store.mjs';
+import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, indexLines, eolOf, wraps, archiveLine, mark, unmark, allStores, front, raw, memoryOff, reason, tagOf } from './store.mjs';
 import { redact } from './secrets.mjs';
 import { HANDOFF_FAILED, health, stopRecord, plugins } from './run-records.mjs';
 
@@ -356,7 +356,7 @@ const reloadNotice = (payload) => {
   const have = entry && (entry.version ?? (entry.installPath && ver(join(entry.installPath, '.claude-plugin', 'plugin.json'))));
   const runs = ver(fileURLToPath(new URL('../.claude-plugin/plugin.json', import.meta.url)));
   if (typeof have !== 'string' || typeof runs !== 'string' || !newer(have, runs)) return null;
-  const mark = join(projectsRoot(), '.nudge', `${tag(String(payload.session_id || 'none').replace(/[^\w-]/g, ''))}.reload`);
+  const mark = join(projectsRoot(), '.nudge', `${tagOf(payload.session_id)}.reload`);
   let was = null; try { was = readFileSync(mark, 'utf8'); } catch {}
   if (was === have) return null;
   // Unwritable: quiet, or it would be said at every Stop.
@@ -405,8 +405,8 @@ export async function main(argv, input) {
       // own words (`off`): nothing was to be saved, and the journal may take the conversation in later (release review).
       if (p) try { writeFileSync(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(storeOf(p)))}`), JSON.stringify({ at: new Date().toISOString(), error: reason(e), off: true }), { mode: 0o600 }); } catch {}
     }
-    // The 7-day rule on session files holds with memory off too (recall.mjs).
-    try { (await import(new URL('./recall.mjs', import.meta.url))).sweepSessions(); } catch {}
+    // The 7-day rule on session files holds with memory off too (sessions.mjs).
+    try { (await import(new URL('./sessions.mjs', import.meta.url))).sweepSessions(); } catch {}
     return 0;
   }
   let payload = null;
@@ -454,8 +454,8 @@ export async function main(argv, input) {
       if (payload && !dry) ensureIndex(storeOf(payload));
       // The temp copies a killed Stop left here (store.mjs).
       if (payload) try { sweepTemps(storeOf(payload)); } catch {}
-      // Session files older than 7 days, in every project (recall.mjs).
-      try { (await import(new URL('./recall.mjs', import.meta.url))).sweepSessions(); } catch {}
+      // Session files older than 7 days, in every project (sessions.mjs).
+      try { (await import(new URL('./sessions.mjs', import.meta.url))).sweepSessions(); } catch {}
       T.mark('index');
       // Then a few of the conversations still on disk, into the journal, without
       // a word; in a try of its own, so a failed import costs only the import.

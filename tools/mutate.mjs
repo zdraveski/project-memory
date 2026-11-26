@@ -18,6 +18,7 @@ import memory from './mutants/memory.mjs';
 import hooks from './mutants/hooks.mjs';
 import journal from './mutants/journal.mjs';
 import recall from './mutants/recall.mjs';
+import sessions from './mutants/sessions.mjs';
 import page from './mutants/page.mjs';
 import deploy from './mutants/deploy.mjs';
 import enforce from './mutants/enforce.mjs';
@@ -51,6 +52,7 @@ export const suites = {
   'hooks/hooks.json': [MEMORY, hooks],
   'src/journal.mjs': ['test/journal.test.mjs', journal],
   'src/recall.mjs': [['test/recall.test.mjs', 'test/recall-hook.test.mjs', 'test/recall-compact.test.mjs', 'test/sessions.test.mjs'], recall],
+  'src/sessions.mjs': [['test/recall-hook.test.mjs', 'test/sessions.test.mjs'], sessions],
   'tools/deploy.mjs': ['test/handoff-log.test.mjs', deploy],
   'src/brief.mjs': ['test/handoff-log.test.mjs', brief],
   'src/briefing.mjs': [['test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/recall-compact.test.mjs', 'test/journal.test.mjs', 'test/memory-switch.test.mjs', 'test/memory-tier.test.mjs', 'test/sessions.test.mjs'], briefing],

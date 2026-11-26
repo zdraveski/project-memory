@@ -11,7 +11,7 @@ import { tempHome, storeFor, tool, slug, quick, fastClock } from './harness.mjs'
 
 const { home, env } = tempHome('jr-test-');
 const { entryOf, render, parseDay, record, dayFile, days, write, sweep, backfill, entries, forget, unwritten, holds, summary, subagent, firstDay, keptUnder, due: isDue, IMPORT_SEGMENT } = await import('../src/journal.mjs');
-const { ACTIVE } = await import('../src/handoff-log.mjs'), { TAIL, NUDGE_TAG } = await import('../src/transcript.mjs');
+const { ACTIVE } = await import('../src/sessions.mjs'), { TAIL, NUDGE_TAG } = await import('../src/transcript.mjs');
 const { local, withLock, transcriptKey } = await import('../src/store.mjs');
 const dir = storeFor(home, 'C:\\journal-selftest');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).

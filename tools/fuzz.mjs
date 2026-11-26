@@ -82,7 +82,8 @@ import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tool, tempHome, storeFor } from '../test/harness.mjs';
 import { LOCK_STALE, SHARED_BUDGET, POINTER } from '../src/store.mjs';
-import { ACTIVE, tag, parse, sectionOf } from '../src/handoff-log.mjs';
+import { tag, parse, sectionOf } from '../src/handoff-log.mjs';
+import { ACTIVE } from '../src/sessions.mjs';
 import { NUDGE_TAG } from '../src/transcript.mjs';
 
 const args = process.argv.slice(2);
