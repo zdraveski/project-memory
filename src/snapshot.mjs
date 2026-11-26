@@ -465,6 +465,12 @@ export const changedLately = (paths, days) => {
   }
   return lines;
 };
+// forget --purge of words the journal no longer holds: the journal days ('YYYY-MM-DD') of the store in `dir` that some snapshot held every one of `terms` in.
+// shortcut: words are looked up as plain text in any case (git folds ASCII letters only), per day; a day holding them in different entries is purged too.
+export const daysHolding = (dir, terms) => {
+  const days = terms.map((t) => new Set(tracked(dir, 'journal').flatMap((at) => git('log', '--all', '-i', '--format=', '--name-only', '-S' + t, '--', at).split('\n')).map((p) => p.split('/').pop().replace(/\.md$/, '')).filter((d) => /^\d{4}-\d\d-\d\d$/.test(d))));
+  return [...(days[0] ?? [])].filter((d) => days.every((s) => s.has(d)));
+};
 
 // A fast-export stream without the M and D lines of `paths`; data blocks are skipped by their length, so their text is never read as a line.
 const dropPaths = (buf, paths) => {
