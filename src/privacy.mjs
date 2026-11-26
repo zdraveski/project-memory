@@ -5,9 +5,9 @@
 // not be read, to record the failure (the Stop hook does, and throws unreadable()); none can ask for the other answer.
 // Imports: Node built-ins and store.mjs only, so a hook that must start fast (the git rule) can load it. Never handoff-log,
 // journal or transcript. memoryOff() (Claude Code's auto memory switch) stays in store.mjs.
-import { readFileSync, readdirSync, lstatSync } from 'node:fs';
+import { readFileSync, readdirSync, lstatSync, statSync, mkdirSync, appendFileSync, unlinkSync } from 'node:fs';
 import { join, basename } from 'node:path';
-import { tag, projectsRoot, withLock, replaceIfUnchanged, listOf, raw, offSince, BUSY, sleep, STEP } from './store.mjs';
+import { tag, projectsRoot, withLock, replaceIfUnchanged, listOf, raw, offSince, BUSY, sleep, STEP, memoryOff, storeOf } from './store.mjs';
 
 // A <private> block's opener, and the <private-session> mark: in any case,
 // with spaces or attributes, self-closed, or as private_session. Only the
@@ -34,6 +34,19 @@ export function isOff(dir) {
   const f = join(dir, PROJECT_OFF);
   try { lstatSync(f); } catch (e) { return e.code === 'ENOENT' || e.code === 'ENOTDIR' ? null : { since: null, unread: e.code || 'error' }; }
   try { const t = JSON.parse(readFileSync(f, 'utf8')).t; return { since: Number.isFinite(t) ? t : null }; } catch { return { since: null }; }
+}
+// memory off: the marker, written by rename. False when another changed it meanwhile, and nothing was written.
+export function switchOff(dir) {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const marker = join(dir, PROJECT_OFF);
+  return replaceIfUnchanged(marker, raw(marker), JSON.stringify({ t: Date.now() })) !== 'conflict';
+}
+// memory on: the period is kept (wasOff) before the marker goes. `was` is isOff(dir): a marker that won't read has no start, so
+// no period is written for it.
+export function switchOn(dir, was) {
+  const marker = join(dir, PROJECT_OFF);
+  if (!was.unread) appendFileSync(join(dir, OFF_PERIODS), `${was.since ?? statSync(marker).mtimeMs} ${Date.now()}\n`);
+  unlinkSync(marker);
 }
 // When a project was off, one `<from ms> <to ms>` a line (memory on adds it). A transcript runs on while the marker is there, and
 // its Stops and the import come later: a turn asked inside a period is never written. Tested on what a turn's own time says.
@@ -83,6 +96,17 @@ export function hushed(dir, s, mark = false, list = QUIET, prune = (have) => hav
 // Whether a conversation is private, by the list `list` of the store or the projects root. A list that exists and cannot be read means
 // private: nothing here answers "not private" for a file it could not read.
 export const isHushed = (dir, s, list = QUIET, tries = 3) => hushed(dir, s, false, list, undefined, tries) !== false;
+// Whether a conversation is quiet: private (QUIET in its store) or switched off (OFF in the projects root). Unreadable is quiet.
+export const isQuiet = (dir, s, tries = 3) => isHushed(dir, s, QUIET, tries) || isHushed(projectsRoot(), s, OFF, tries);
+// What a hook asks before it does anything for conversation `s`: `why` it must do nothing, or no `why`; and the payload's `store`.
+// Auto memory first: it costs no git call, and with it off the store is never worked out (no `store`). Then the project, then
+// the conversation. `tries` as hushed()'s: one in a hook with a 5 s timeout.
+export function gate(payload, s, tries = 3) {
+  if (memoryOff()) return { why: 'auto memory off' };
+  const store = storeOf(payload);
+  if (isOff(store)) return { store, why: 'project off' };
+  return isQuiet(store, s, tries) ? { store, why: 'quiet' } : { store };
+}
 // What a writer throws when hushed() answers unknown, after changing nothing.
 export const unreadable = (dir, list) => new Error(`${join(dir, list)} could not be read`);
 
@@ -120,7 +144,7 @@ export function off(input) {
 }
 
 // The exchanges forget took out, `<key>\t<folder>/<session>\t<time>` a line
-// (journal.mjs writes it; an older line is its key alone). Trimmed: an
+// (listForgotten() writes it; an older line is its key alone). Trimmed: an
 // editor's CRLF, or a space left after a line, is still the line.
 export const FORGOTTEN = join('journal', '.forgotten');
 export const forgotten = (text) => listOf(text).map((l) => l.split('\t'));
@@ -128,4 +152,16 @@ export const forgotten = (text) => listOf(text).map((l) => l.split('\t'));
 // caller keeps every one of its exchanges out and records the failure, as the Stop does. A list that is not there names none.
 export function forgottenIn(dir) {
   try { return { listed: forgotten(readFileSync(join(dir, FORGOTTEN), 'utf8')), shut: false }; } catch (e) { return { listed: [], shut: e.code !== 'ENOENT' }; }
+}
+// Adds the exchanges ({key, t, at}) to the forget list, under the store's lock, which the caller holds. Listed only while its
+// transcript is on disk: one gone is never read again, so nothing brings its entry back, and forgetting everything listed every
+// key, read at every Stop (final review). A line with no transcript (older) stays; so does one whose stat fails but for its absence.
+export function listForgotten(dir, exchanges) {
+  const f = join(dir, FORGOTTEN), seen = new Map();
+  const there = (t) => { try { statSync(join(projectsRoot(), `${t}.jsonl`)); return true; } catch (e) { return e.code !== 'ENOENT'; } };
+  const live = ([, t]) => !t || (seen.has(t) ? seen.get(t) : seen.set(t, there(t)).get(t));
+  for (let i = 0; i < 3; i++) {
+    const before = raw(f), lines = new Map([...forgotten(before), ...exchanges.map((e) => [e.key, e.t, e.at])].filter(live).map((l) => [l[0], l.join('\t')]));
+    if (replaceIfUnchanged(f, before, [...lines.values()].map((l) => l + '\n').join('')) !== 'conflict') break;
+  }
 }

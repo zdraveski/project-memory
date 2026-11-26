@@ -46,8 +46,17 @@ inside one is never written, even when its Stop comes later.
 **Forgotten exchange**: an exchange the user removed with `forget`. Listed in
 `journal/.forgotten` so a later Stop or import does not bring it back.
 
-The privacy module (`src/privacy.mjs`, 1.6.0 step 15) decides all of these, and
-a file it cannot read counts as private. See `docs/adr/0001-privacy-decided-in-one-module.md`.
+**Quiet conversation**: a private conversation or one switched off on its own
+(`.private-sessions` in its store or `.memory-off` in the projects root):
+`isQuiet()`.
+
+**Gate**: the question a hook asks before it does anything for a conversation,
+`gate()`: auto memory off, then the project switched off, then a quiet
+conversation. It answers why to do nothing, or nothing, and the store.
+
+The privacy module (`src/privacy.mjs`, 1.6.0 step 15) decides all of these,
+writes their marker files (`memory off` and `on`, the forget list), and a file
+it cannot read counts as private. See `docs/adr/0001-privacy-decided-in-one-module.md`.
 
 ## Snapshots
 

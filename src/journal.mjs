@@ -8,7 +8,7 @@ import { isUtf8 } from 'node:buffer';
 import { clip } from './text.mjs';
 import { tag, unsay, ACTIVE } from './handoff-log.mjs';
 import { text, readTail, readHead, openFile, records, chunk, markFrom, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
-import { PRIVATE, hushed, isHushed, FORGOTTEN, forgotten, OFF, unreadable, wasOff } from './privacy.mjs';
+import { PRIVATE, hushed, isQuiet, FORGOTTEN, forgotten, listForgotten, OFF, unreadable, wasOff } from './privacy.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, lockBudget, sleep, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
 import { fault, failures, clear } from './run-records.mjs';
 import { dropSessions } from './recall.mjs';
@@ -256,7 +256,7 @@ export function subagent(input) {
     try { const r = readTail(tp, TAIL), a = turns(r.text); t = pick(a, !r.whole); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = (p ? pick(turns(`${p}\n${r.text}`)) : null) ?? a.open; } } catch {}
     const put = () => withLock(dir, () => {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
-      if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) return false;
+      if (isQuiet(dir, s)) return false;
       // The parent's open turn is private: so is its subagent's report.
       if (hush || t && (t.frozen === true || PRIVATE.test(userText(t)))) return false;
       // Past the cap, the start and the end stay: the end usually holds the result.
@@ -387,7 +387,7 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
       const p = join(projectsRoot(), f, n), s = tag(basename(n, '.jsonl'));
       // Not a conversation the journal never takes (private, or held with auto memory off; a list that won't read is no answer): it
       // had no entry to forget, and listing its turn said one was lost.
-      if (isHushed(dir, s) || isHushed(projectsRoot(), s, OFF)) continue;
+      if (isQuiet(dir, s)) continue;
       try {
         const { fd, size, close } = openFile(p);
         try {
@@ -430,20 +430,11 @@ export function forget(dir, terms, { since, until, conversation, keys: only, mor
   const matched = [...have, ...more.filter((e) => !held.has(e.key) && (!since || e.day >= since) && (!until || e.day <= until))].filter((e) => (!conversation || e.s === conversation) && (!want || want.has(e.key)) &&
     ts.every((t) => holds(e, t)));
   if (!apply || !matched.length) return { matched, removed: [] };
-  const keys = new Set(matched.map((e) => e.key)), f = join(dir, FORGOTTEN), seen = new Map();
-  // Listed only while its transcript is on disk: one gone is never read
-  // again, so nothing brings its entry back, and forgetting everything listed
-  // every key, read at every Stop (final review). A line with no transcript
-  // (older) stays; so does one whose stat fails but for its absence.
-  const there = (t) => { try { statSync(join(projectsRoot(), `${t}.jsonl`)); return true; } catch (e) { return e.code !== 'ENOENT'; } };
-  const live = ([, t]) => !t || (seen.has(t) ? seen.get(t) : seen.set(t, there(t)).get(t));
+  const keys = new Set(matched.map((e) => e.key));
   return withLock(dir, () => {
     // An unwritten turn's store may have no journal folder yet: a new project whose first Stop was busy.
     mkdirSync(join(dir, JOURNAL), { recursive: true, mode: 0o700 });
-    for (let i = 0; i < 3; i++) {
-      const before = raw(f), lines = new Map([...forgotten(before), ...matched.map((e) => [e.key, e.t, e.at])].filter(live).map((l) => [l[0], l.join('\t')]));
-      if (replaceIfUnchanged(f, before, [...lines.values()].map((l) => l + '\n').join('')) !== 'conflict') break;
-    }
+    listForgotten(dir, matched);
     // A day that won't be written (not UTF-8, read-only, held open) keeps its
     // entries and is named: thrown, the days after it went untried.
     const went = new Set([...new Set(matched.map((e) => e.day))].flatMap((d) => {
