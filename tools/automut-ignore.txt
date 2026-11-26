@@ -305,7 +305,7 @@ fc236685e23e src/handoff-log.mjs:786 `??` -> `||`: the left side is a parsed tur
 b5fd63bb98a8 src/handoff-log.mjs:588 `-` -> `+` (i - 1): lastIndexOf('\n', i + 1) from the start of START/END, which hold no newline, finds the same last newline before i as from i - 1; the character at i and i + 1 are '<' and '!'
 2be361d9c382 src/handoff-log.mjs:876 `0` -> `1`: at is only compared with the time now, and 1 ms and 0 ms after 1970 are both long past the same cut-off
 20ec88064b3c src/briefing.mjs:114 `??` -> `||`: hid holds booleans; when it holds false the mutant calls hushed(dir, s) again, which gives the same answer inside one run, so quiet(s) is the same
-2ac1b0c3164c src/briefing.mjs:195 `?.` -> `.`: am.why is always set when auto memory is off (autoMemory() in store.mjs sets it with off), and this line runs only then
+cacb1ceb26c9 src/briefing.mjs:236 `?.` -> `.`: am.why is always set when auto memory is off (autoMemory() in store.mjs sets it with off), and this line runs only then
 577bef76e96b src/handoff-log.mjs:624 `??` -> `||`: before is a string or null/undefined; '' and null both give '' here
 d803ea391123 src/handoff-log.mjs:662 `??` -> `||`: left.get() is a count of at least 1 or undefined, never 0, so both give the same
 ae5c1fa7bbd8 src/handoff-log.mjs:674 `??` -> `||`: shown.get(t) is a rendered string or undefined; for an empty string the mutant renders again, to the same string

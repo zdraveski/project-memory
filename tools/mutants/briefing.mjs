@@ -1,11 +1,11 @@
-// The hand-written mutants of briefing.mjs, which handoff-log.test.mjs (its --print runs) must catch (mutate.mjs runs them).
+// The hand-written mutants of briefing.mjs, which handoff-log.test.mjs (its briefing() calls and --print runs) must catch (mutate.mjs runs them).
 // Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
 export default {
   'a briefing with no reader exits 1': ["process.stdout.on('error', () => {}); ", ''],
   'snapshot health dated in UTC': ["last ok ${s.lastOk ? local(s.lastOk) : 'never'}", "last ok ${s.lastOk || 'never'}"],
   "the startup is silent on a store the snapshots leave out": ["    if (s.missed?.length) out.push(`Memory snapshots leave out ${s.missed.join(', ')}: ${MISSED}`);\n", ""],
   "a long startup line takes the rest with it": [".join('\\n') + '\\n', 1000);", ".join('\\n') + '\\n');"],
-  "a resumed conversation briefed as a compaction": ["{ if (input.source !== 'resume') process.stdout.write(await print(input)); }", "process.stdout.write(await print(input));"],
+  "a resumed conversation briefed as a compaction": ["return input.source === 'resume' ? '' : print(input);", "return print(input);"],
   'a /clear names the conversation it cleared': ["input.source === 'clear' ? [] : others.length", 'others.length'],
   'compaction shows every session': ['const mine = all.filter((t) => t.s === me).map(render)', 'const mine = all.map(render)'],
   'a quiet session called working': ['|| Date.now() - t.m >= ACTIVE) break;', ') break;'],
@@ -47,5 +47,5 @@ export default {
   "startup exchanges past the budget kept": ["theirs.findIndex((_, i) => say(theirs.slice(i)).length <= room)", "theirs.findIndex((_, i) => say(theirs.slice(i)).length <= room + 1)"],
   "startup budget of exactly room cut": ["say(theirs.slice(i)).length <= room)", "say(theirs.slice(i)).length < room)"],
   'a run through a symlink does nothing': ['pathToFileURL(realpathSync(process.argv[1])).href', 'pathToFileURL(process.argv[1]).href'],
-  "a SessionStart with memory off keeps no tag": ["else if (memoryOff()) {", "else if (false) {"],
+  "a SessionStart with memory off keeps no tag": ["if (memoryOff()) {", "if (false) {"],
 };

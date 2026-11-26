@@ -220,8 +220,26 @@ async function print(input) {
   return out;
 }
 
+// The SessionStart briefing for one payload: the text to print, '' for none
+// (sources "startup", "clear" and "compact"; a resumed conversation has its history).
+// Auto memory off: no record, no briefing; the tag at every start, so no
+// backfill imports a conversation whose first reply got no Stop (P1 hunt,
+// 2026-10-29). A project turned off (memory off): one line at a startup, nothing at any other start, nothing written.
+export async function briefing(input) {
+  const gone = isOff(storeOf(input));
+  if (gone) return input.source === 'startup' ? `${offLine(gone)}\n` : '';
+  if (memoryOff()) {
+    // Settings turned it off, which no one is told otherwise: said at a startup (the environment variable is the user's own).
+    const am = autoMemory();
+    // A tag that could not be written is the next start's to write: thrown, brief.mjs advised a reinstall.
+    try { off(input); } catch {}
+    return am.why?.startsWith('autoMemoryEnabled') && input.source === 'startup' ? `Auto memory is off (${am.why}): project-memory saves and briefs nothing in this project until it is on.\n` : '';
+  }
+  return input.source === 'resume' ? '' : print(input);
+}
+
 // Run directly (the harnesses do): payload on stdin, always exit 0.
-// `--print` is the SessionStart hook, for sources "startup", "clear" and "compact".
+// `--print` is the SessionStart hook; without it a run only tags a conversation held with auto memory off.
 // Node names the script by its real path: compared with the path it was
 // given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
 // The hook's whole run: called by brief.mjs, the plugin's SessionStart starter, with the same `--print`.
@@ -229,21 +247,8 @@ export async function main({ rethrow = false } = {}) {
   try {
     const input = JSON.parse(readFileSync(0, 'utf8'));
     T.tag(input.hook_event_name, input.source);
-    // Auto memory off: no record, no briefing; the tag at every start, so no
-    // backfill imports a conversation whose first reply got no Stop (P1 hunt,
-    // 2026-10-29). A resumed conversation has its history: no briefing.
-    // A project turned off (memory off): one line at a startup, nothing at any other start, nothing written.
-    const gone = isOff(storeOf(input));
-    if (gone) { if (input.source === 'startup' && process.argv.includes('--print')) process.stdout.write(`${offLine(gone)}
-`); }
-    else if (memoryOff()) {
-      // Settings turned it off, which no one is told otherwise: said at a startup (the environment variable is the user's own).
-      const am = autoMemory();
-      if (am.why?.startsWith('autoMemoryEnabled') && input.source === 'startup' && process.argv.includes('--print')) process.stdout.write(`Auto memory is off (${am.why}): project-memory saves and briefs nothing in this project until it is on.\n`);
-      // A tag that could not be written is the next start's to write: thrown, brief.mjs advised a reinstall.
-      try { off(input); } catch {}
-    }
-    else if (process.argv.includes('--print')) { if (input.source !== 'resume') process.stdout.write(await print(input)); }
+    if (process.argv.includes('--print')) process.stdout.write(await briefing(input));
+    else if (!isOff(storeOf(input)) && memoryOff()) try { off(input); } catch {}
   } catch (e) {
     if (rethrow) throw e;
     // A hook that throws on every turn is worse than one that misses a turn.
