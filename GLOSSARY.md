@@ -88,6 +88,12 @@ pass found, one per line, and is deleted when there are none.
 holds the commit, the tag and each file's size and time, so a file changed
 after the deploy is named.
 
+**Shipped files**: what the plugin is made of: every `src/*.mjs`, every file
+under `.claude-plugin`, `hooks`, `commands`, `skills` and `agents`, and
+`LICENSE`. `pluginFiles()` in `tools/suites.mjs` reads them from the folders;
+the deploy copies them, `tools/mutate.mjs` copies them beside a mutant, and
+`tools/check.mjs` checks they are what the release archive keeps.
+
 ## Starting a conversation
 
 **Briefing**: the text the plugin prints when a conversation starts, resumes,

@@ -32,8 +32,8 @@ import snapshot from './mutants/snapshot.mjs';
 import runRecords from './mutants/run-records.mjs';
 
 // Every file a suite may import, copied beside the mutant.
-// agents/recall.md: journal.test.mjs reads it (1.6.0); without it every --mutant run of that suite failed unmutated.
-const FILES = ['test/harness.mjs', 'tools/deploy.mjs', 'tools/suites.mjs', 'agents/recall.md', ...pluginFiles()];
+// pluginFiles() holds agents/recall.md, which journal.test.mjs reads (1.6.0): without it every --mutant run of that suite failed unmutated.
+const FILES = ['test/harness.mjs', 'tools/deploy.mjs', 'tools/suites.mjs', ...pluginFiles()];
 
 // A suite is a test file, or a list of them: memory.mjs is checked by three.
 export const testsOf = (t) => [].concat(t);
