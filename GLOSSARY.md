@@ -154,7 +154,8 @@ the deploy copies them, `tools/mutate.mjs` copies them beside a mutant, and
 **Briefing**: the text the plugin prints when a conversation starts, resumes,
 is cleared or compacts: the handoff's last exchanges, the journal line, the
 health notes and the compaction note, cut to the size limits. `src/briefing.mjs`
-builds it (1.6.0 step 18); `src/brief.mjs` is only the guard that runs it. See
+builds it (1.6.0 step 18): `briefing(payload)` gives the text for one SessionStart payload, and is what
+the tests call; `src/brief.mjs` is only the guard that runs it. See
 `docs/adr/0003-no-import-loops-in-src.md`.
 
 **Safe printing**: cutting, clearing and fitting text so it is safe to print: `clip`,
