@@ -80,6 +80,24 @@ endings), `wraps`, the archive line (`archiveLine`, `emptyArchive`) and the
 overflow mark. Tiering, restore, promote and the briefing read and write
 through these, never their own copies.
 
+**Tiering**: deciding, at each tidy-up, which pointer lines stay hot and which
+are archived. `src/memory-tier.mjs` holds the rules at its top; a line is moved
+word for word, never rewritten.
+
+**Hot**: a pointer line kept in `MEMORY.md`, which every session loads: a
+feedback or user note, a note touched in the last 7 days (3 when its file name
+carries a date), or one marked `tier: hot`.
+
+**Archived**: a pointer line in `MEMORY-archive.md`, read only on demand. The
+archive is a one-way door: a line comes back only by `tier: hot`, or, when the
+byte ceiling evicted it, once there is room again.
+_Avoid_: cold (the code's word for the same list).
+
+**Byte ceiling**: the most an index may hold, 7000 bytes for a project and 3000
+for the shared store (`BUDGET`, `SHARED_BUDGET` in `src/store.mjs`). Past it,
+tiering evicts hot lines with an overflow mark, and feedback and user notes may
+keep at most half of the room left after pinned lines.
+
 **Overflow mark**: what tiering's byte ceiling adds to a line it evicts
 (`mark`), so the line comes back when there is room; `unmark` takes it off with
 only the one space it was added with.
@@ -214,7 +232,44 @@ a version whole, a cut or short English word by its forms, a long word as text,
 a two-letter word standing alone. Search scoring (`has`, `count`), search's
 highlight and the hooks' words matcher all use it.
 
+## Speaking up
+
+**Look-up**: a recall hook's search of the journal at one moment: after a
+change to a file (PostToolUse on Edit, Write and NotebookEdit), for exchanges
+that changed the same file, or at a prompt (UserPromptSubmit), for exchanges
+that share rare words with it. `src/recall.mjs` runs both and gives up at
+`DEADLINE` (400 ms); `src/recall-hook.mjs` is the one entry point.
+
+**Recall pointer**: the line a look-up adds to Claude's context, naming an
+earlier exchange. Opt-in: shown only with `PROJECT_MEMORY_RECALL=1`, because
+they have not been measured on real sessions (`docs/adr/0004-recall-pointers-are-opt-in.md`).
+Doctor counts them as "pointers shown".
+_Avoid_: pointer alone, which is a line of the index.
+
+**Other-session note**: what a recall hook says when another live session works
+in the same project (1.6.0 headline 4). Shown without the opt-in;
+`PROJECT_MEMORY_RECALL=0` turns it off with everything else.
+
+## Checked lessons
+
+**Enforce rule**: an `enforce:` block in a note's front matter that names a git
+command (`on`, `has`, `unless`). `src/enforce.mjs` reads and matches it, and
+the PreToolUse hook (`src/enforce-hook.mjs`) logs which note matched. It
+watches only: it blocks nothing and prints nothing (a trial).
+_Avoid_: enforced, blocked (it does neither).
+
 ## The memory command
+
+**Doctor**: the `doctor` command, the check that the plugin runs as it should:
+the install, the hooks, the compaction window, the snapshots and the hook
+times, each line ok, note or PROBLEM.
+
+**Page**: the journal as one HTML file on this machine (`page`), a week at a
+time unless `--days` says otherwise. `src/page.mjs` builds it from plain data
+and touches no disk.
+
+**Asked-only search**: `search --asked`, which matches only the user's own
+words in the journal (1.6.0 headline 5, "who said it").
 
 **Option**: a `--word` the memory command knows. `OPTIONS` in `src/memory.mjs`
 declares each once, and whether it takes the next word as its value; `TAKES`
