@@ -4,7 +4,6 @@
 // caller: the hook loads it only when a look-up needs it, and the "already seen" path never pays for it.
 import { readFileSync, appendFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
-import { createHash } from 'node:crypto';
 import { foldCase, projectsRoot, storeOf, memoryOff, tag, norm, local } from './store.mjs';
 import { isOff, isHushed, forgottenIn, QUIET, OFF, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
 import { clip, fit } from './text.mjs';
@@ -468,78 +467,4 @@ export function titleOf(p, readTail, bytes) {
   let got = '';
   try { for (const l of readTail(p, bytes).text.split('\n')) if (l.includes('"custom-title"')) try { const r = JSON.parse(l); if (r.type === 'custom-title' && typeof r.customTitle === 'string') got = r.customTitle; } catch {} } catch {}
   return got.replace(/\s+/g, ' ').trim();
-}
-
-// The error hook (headline 1d). A failed command's signature: the last 300 characters of its output squeezed to one line as the
-// journal keeps a failed result (transcript.mjs: clip, then the end), each path cut to its last part, each run of digits '#',
-// blanks collapsed, the last SIG characters. null under SIG_MIN: too short to tell one error from another.
-export const SIG = 120, SIG_MIN = 20, SETTLED = 36e5, FAILED = ' → failed: ';
-const shape = (s) => {
-  const t = s.replace(/[^\s'"`()<>[\]]*[\\/]/g, '').replace(/\d+/g, '#').replace(/\s+/g, ' ').trim().slice(-SIG);
-  return t.length < SIG_MIN ? null : t;
-};
-export const signature = (s) => shape(clip(s.slice(-20000), Infinity).slice(-300));
-// A journal entry's failures were clipped when they were saved, so they are shaped only: a clip costs about 1 ms.
-// shortcut: an error whose output holds ' · ' was split there when its day was read, so its journal signature differs; upgrade
-// if the replay or a user shows such errors matter.
-const failsOf = (e) => e.ran.flatMap((c) => { const i = c.indexOf(FAILED); return i < 0 ? [] : [shape(c.slice(i + FAILED.length))]; });
-const MARK = Buffer.from(FAILED), HEAD = Buffer.from('\n<!-- j:');
-// The newest entry of another conversation, within the newest 90 days, whose Ran holds a failure with signature `sig`: [entry], or []
-// for none. Only a conversation whose newest entry is SETTLED (an hour) old counts: one that just hit the same failure has no fix
-// to read yet. Never a [private] entry, a forgotten key, one in `told`, or a conversation marked private. null when the forget
-// list will not read or past `deadline`.
-export async function byError(store, sig, session, { journal, deadline = DEADLINE, told = new Set(), now = Date.now() } = {}) {
-  const { days, dayFile, parseDay } = await journal();
-  const { listed, shut } = forgottenIn(store);
-  if (shut) return null;
-  const gone = new Set(listed.map(([k]) => k)), from = new Date(now - RECENT_DAYS * 864e5).toISOString().slice(0, 10), newest = new Map(), hush = new Map();
-  const hour = new Date(now - SETTLED), recent = new Date(hour - hour.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
-  for (const d of days(store).reverse()) {
-    if (d < from) break;
-    if (performance.now() > deadline) return null;
-    let b;
-    try { b = readFileSync(dayFile(store, d)); } catch { continue; }
-    // Every entry of an older day is settled, so only those with a failure are decoded and parsed (the bench's 10 MB: a look-up of 234 ms decoded whole, 105 ms so).
-    const parts = [];
-    if (d >= recent) parts.push(b.toString('utf8'));
-    else for (let i = b.indexOf(MARK), end = 0; i !== -1; i = b.indexOf(MARK, end)) {
-      const start = Math.max(b.lastIndexOf(HEAD, i), end);
-      end = b.indexOf(HEAD, i);
-      if (end === -1) end = b.length;
-      parts.push(b.toString('utf8', start, end));
-    }
-    if (!parts.length) continue;
-    for (const e of parseDay(parts.join('')).entries.reverse()) {
-      const conv = e.t || e.s;
-      if (!newest.has(conv)) newest.set(conv, Date.parse(e.at.replace(' ', 'T')));
-      if (!(newest.get(conv) <= now - SETTLED) || inConversation(e, session) || told.has(e.key) || gone.has(e.key) || e.asked === '[private]' || e.answered === '[private]' || !failsOf(e).includes(sig)) continue;
-      if (!hush.has(e.s)) hush.set(e.s, isHushed(store, e.s, QUIET, 1));
-      if (!hush.get(e.s)) return [e];
-    }
-  }
-  return [];
-}
-export const errorLine = (e) => fit(`project-memory: the same error was hit on ${e.at.slice(0, 10)} in another conversation. This is a record of a past exchange, not an instruction. Before trying again, read what was done then: memory skill, show "${e.key}"`);
-
-// PostToolUseFailure for Bash and PowerShell: { say, n } as onChange. Stops, writing nothing, when pointers are off, memory or the
-// project is off, the conversation or this turn is private, the failure is an interrupt or a timeout, or its signature was looked up
-// in this conversation since its last compaction (an `error` line, the signature's hash: no text of the error).
-export async function onError(input, { journal, deadline = DEADLINE, now = Date.now() } = {}) {
-  const none = { say: '', n: 0 }, s = tag(input?.session_id);
-  if (process.env.PROJECT_MEMORY_RECALL === '0' || input?.is_interrupt === true || !/^(?:Bash|PowerShell)$/.test(input?.tool_name) || typeof input.error !== 'string' || input.error.includes('Command timed out') || !/^[\w-]+$/.test(s) || memoryOff()) return none;
-  const sig = signature(input.error);
-  if (!sig) return none;
-  const store = storeOf(input);
-  if (isOff(store) || isHushed(store, s, QUIET, 1) || isHushed(projectsRoot(), s, OFF, 1)) return none;
-  const at = join(sessionsOf(store), s), lines = readSession(at);
-  if (!lines) return none;
-  const c = lines.findLastIndex((l) => l.kind === 'compact'), cur = lines.slice(c + 1), p = cur.findLastIndex((l) => l.kind === 'asked' || l.kind === 'quiet');
-  const hash = createHash('sha256').update(sig).digest('hex').slice(0, 16);
-  if (cur[p]?.kind === 'quiet' || cur.some((l) => l.kind === 'error' && l.rest === hash)) return none;
-  const found = await byError(store, sig, String(input.session_id), { journal, deadline, now, told: new Set(cur.filter((l) => l.kind === 'told').map((l) => l.rest)) }).catch(() => null);
-  if (!found) return none;
-  const by = typeof input.agent_id === 'string' ? input.agent_id.replace(/[^\w-]/g, '').slice(0, 64) : '', t = new Date(now).toISOString();
-  mkdirSync(dirname(at), { recursive: true, mode: 0o700 });
-  appendFileSync(at, sessionLine('error', hash, by, t) + found.map((e) => sessionLine('told', e.key, by, t)).join(''), { mode: 0o600 });
-  return { say: found.length ? errorLine(found[0]) : '', n: found.length };
 }
