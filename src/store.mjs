@@ -368,15 +368,17 @@ export function withLock(dir, fn) {
       // nothing, unseen.
       refused = e.code !== 'EEXIST' && !existsSync(lock) ? refused + 1 : 0;
       if (refused > 8) throw e;
-      let stale = false;
+      let stale = false, gone = null;
       // Either way: a lock dated in the future (a clock set back) was never stale.
-      // Age only, not a dead owner's pid: a waiter can read the owner of a lock being released, and took the next
-      // holder's live lock (1.3.3).
       try { stale = staleLock(lock); } catch {}
+      // A killed hook's lock is taken at once, not after LOCK_STALE: waiting cost every Stop in the project 5 s and its turn
+      // for 30 s (1.6.1). The owner read may be of a lock being released (1.3.3), so the takeover below checks it again. A pid
+      // used again reads as alive: LOCK_STALE stays the fallback.
+      if (!stale) { let o = ''; try { o = readFileSync(owner, 'utf8'); const pid = parseInt(o, 10); if (pid > 0) process.kill(pid, 0); } catch (e) { if (e.code === 'ESRCH') gone = o; } }
       // A killed hook's lock, whatever it left: a file, a folder with something
       // in it. One still there when the wait is up throws, so the pass that
       // fails says so in .health: busy every turn was silence.
-      if (stale) {
+      if (stale || gone) {
         // Taken by renaming it away, which only one waiter's rename wins: two that both saw it stale
         // used to both delete it, the second deleting the first's new lock (audit #4).
         // shortcut: while a late waiter has a fresh lock renamed away, a third waiter can mkdir one (two holders),
@@ -385,8 +387,9 @@ export function withLock(dir, fn) {
         const dead = `${lock}.dead.${process.pid}.${Math.random().toString(36).slice(2)}`;   // not Date.now: a test steps the clock
         try {
           renameSync(lock, dead);
-          // What we renamed may be a lock another waiter made in between: put it back.
-          let fresh = false; try { fresh = !staleLock(dead); } catch {}
+          // What we renamed may be a lock another waiter made in between: put it back. A dead owner's lock is ours to
+          // remove only while it still holds the token judged dead: no owner yet, or another one, is a new holder's.
+          let fresh = !!gone; try { fresh = gone ? readFileSync(join(dead, 'owner'), 'utf8') !== gone : !staleLock(dead); } catch {}
           if (fresh) { try { renameSync(dead, lock); } catch {} }
           else try { rmSync(dead, { recursive: true, force: true }); } catch {}   // left over: sweepTemps takes it
           continue;

@@ -267,14 +267,20 @@ ok(threw && !existsSync(join(dir, '.lock')), 'a throw inside still releases the 
   rmSync(lk, { recursive: true });
 }
 
-// A fresh lock is waited on even when its owner file names a process that is gone. 1.3.2 took such a lock over at once,
-// but a waiter can read the owner of a lock that is being released, and its takeover then renamed the next holder's live
-// lock away: two hooks inside at once when six ran on a busy 4-CPU PC (1.3.3). A killed hook's lock waits LOCK_STALE.
+// A fresh lock whose owner process is gone (a killed Stop) is taken over at once: waited on until LOCK_STALE, every Stop in
+// the project for 30 s waited 5 s, saved nothing and blamed another session (1.6.1). A waiter can read the owner of a lock
+// being released and then rename the next holder's live lock away (1.3.3): one whose owner changed meanwhile is put back.
 {
   const lk = join(dir, '.lock'), gone = spawnSync(process.execPath, ['-e', '0']).pid;
   const plant = (token) => { mkdirSync(lk); if (token) writeFileSync(join(lk, 'owner'), token); };
   plant(`${gone}.abc`);
-  ok(fastClock(() => withLock(dir, () => 'got')) === null && existsSync(lk), 'a fresh lock of a dead process is waited on');
+  ok(withLock(dir, () => 'got') === 'got' && !existsSync(lk), 'a fresh lock of a dead process is taken over');
+  ok(!readdirSync(dir).some((f) => f.startsWith('.lock.dead')), 'and leaves no renamed copy behind');
+  plant(`${gone}.abc`);
+  const real = fs.renameSync;
+  fs.renameSync = function (a, b, ...r) { if (String(a) === lk) writeFileSync(join(lk, 'owner'), `${process.pid}.next`); return real.call(this, a, b, ...r); }; syncBuiltinESMExports();
+  let got; try { got = fastClock(() => withLock(dir, () => 'got')); } finally { fs.renameSync = real; syncBuiltinESMExports(); }
+  ok(got === null && readFileSync(join(lk, 'owner'), 'utf8') === `${process.pid}.next`, `a lock whose owner changed before the takeover is put back (got ${got})`);
   rmSync(lk, { recursive: true });
   plant(`${process.pid}.abc`);
   ok(fastClock(() => withLock(dir, () => 'got')) === null && existsSync(lk), 'a fresh lock of a live process is waited on');
