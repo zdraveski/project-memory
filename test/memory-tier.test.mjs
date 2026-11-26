@@ -838,7 +838,7 @@ const stampNow = () => (existsSync(stamp('proj-two')) ? readFileSync(stamp('proj
 writeFileSync(join(memTwo, 'MEMORY.md'), readFileSync(join(memTwo, 'MEMORY.md'), 'utf8') + '- [soon](soon.md) — written next\n');
 let s0 = stampNow();
 await stop('proj-two');
-ok(stampNow() === s0, 'a pointer whose file is still to come leaves the store unstamped');
+ok(stampNow() === '', 'a pointer whose file is still to come leaves the store unstamped');
 const longAgo = new Date(Date.now() - 10 * 60000);
 utimesSync(join(memTwo, 'MEMORY.md'), longAgo, longAgo);
 await stop('proj-two');
@@ -847,7 +847,12 @@ note('proj-two', 'pointless');
 utimesSync(join(memTwo, 'pointless.md'), new Date(), new Date());   // written just now
 s0 = stampNow();
 await stop('proj-two');
-ok(stampNow() === s0, 'a memory whose pointer is still to come leaves the store unstamped too');
+ok(stampNow() === '', 'a memory whose pointer is still to come leaves the store unstamped too');
+// Deleted before its grace ran out, the folder matched the stamp from before it was written again: the deletion was never snapshotted.
+ok(tracked().includes('proj-two/memory/pointless.md'), 'the young memory is in the snapshot');
+rmSync(join(memTwo, 'pointless.md'));
+await stop('proj-two');
+ok(!tracked().includes('proj-two/memory/pointless.md'), 'a memory deleted while its store waited: the next Stop snapshots the deletion');
 ok(!tracked().some((f) => /\.tiered|\.health|\.lock|\.snapshot-health|\.stop-ran/.test(f)), 'stamps, health files and locks are never tracked');
 // The hook's own handoff.md is rewritten by this same Stop, so it is always
 // young: under the orphan grace, a store whose index lacks its pointer was

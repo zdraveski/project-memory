@@ -572,7 +572,9 @@ export async function main(argv, input) {
     // The stamp is what this pass saw, taken before the snapshot: a memory
     // another session writes while git runs differs from it, and the next turn
     // takes it up. Taken after the snapshot, it skipped that memory for a day.
-    if (!r.waiting && gated) try { clean.push([dir, stampAfter(dir)]); } catch {}
+    // A waiting store drops its old stamp: a young note deleted before the grace ran out leaves the folder matching it again,
+    // and the gate skipped the deletion's snapshot.
+    if (gated) try { if (r.waiting) unlinkSync(stampOf(dir)); else clean.push([dir, stampAfter(dir)]); } catch {}
     if (!dry && !r.wrote && !r.recovered.length && !r.dupes.length && !r.missing.length) continue;
     const saved = Math.round((r.before - r.after) / 4);
     say(`${dry ? '[dry] ' : ''}${r.dir}: ${r.hot} hot / ${r.cold} archived, ` +
