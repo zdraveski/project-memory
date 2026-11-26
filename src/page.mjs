@@ -571,7 +571,8 @@ const sha = (text) => `'sha256-${createHash('sha256').update(text).digest('base6
 // JSON inside a script: no `<` (so no `</script>` or `<!--`) and no line separator that ends a string in older engines.
 const inScript = (v) => JSON.stringify(v).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 // Cleaned of control characters, then of secrets: the page is a copy of the journal, and a copy must not hold more than it.
-const clean = (s) => redact(tame(String(s ?? '')));
+// The journal writes `<` as `&lt;` (defuse); the page sets text, not HTML, so it shows the `<` again, after redaction so it holds no more.
+const clean = (s) => redact(tame(String(s ?? ''))).replaceAll('&lt;', '<');
 const HELPERS = [addDays, weekOf, matches, level, daysAgo].map(String).join('\n');
 
 // data: { built: 'YYYY-MM-DD HH:MM', today: 'YYYY-MM-DD', days: a number or 'all', entries: newest first }
