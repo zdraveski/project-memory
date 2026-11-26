@@ -7,9 +7,10 @@
 // unset, only the session lines and the other-session warnings; PROJECT_MEMORY_RECALL=0 turns everything off.
 // stdout is empty unless a pointer is shown (tools/recall-eval.mjs reads that).
 import * as T from './timing.mjs';
-T.begin('recall');
 try {
   if (process.env.PROJECT_MEMORY_RECALL !== '0') {
+    // Inside the switch: a run that does nothing must not count in the doctor as a look-up.
+    T.begin('recall');
     const { onChange, onPrompt, onEnd } = await import('./recall.mjs');
     T.mark('load');
     let text = '';

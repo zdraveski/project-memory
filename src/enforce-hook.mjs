@@ -14,7 +14,8 @@ try {
   // The `if` filter in hooks.json is a speed-up; this is the check. Most calls end here, before any file is read.
   if (typeof command === 'string' && command.includes('git')) {
     const { store, rules, off } = ruleSet(input);
-    if (!off) for (const { file, rule } of rules) if (hits(rule, command).hit && !privateTurn(input))
+    let priv; // the transcript is read once a run, not once a rule
+    if (!off) for (const { file, rule } of rules) if (hits(rule, command).hit && !(priv ??= privateTurn(input)))
       record(store, { t: new Date().toISOString(), note: file, s: String(input.session_id || '').slice(0, 8), agent: typeof input.agent_type === 'string' ? input.agent_type.slice(0, 64) : '', id: String(input.tool_use_id || '').slice(0, 64) });
   }
   T.mark('rules');

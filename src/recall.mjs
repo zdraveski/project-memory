@@ -133,7 +133,7 @@ export const whoChanged = (snaps, es, deleted = []) => {
 
 // The session file (1.6.0 spec, "The session file"): one per conversation, outside the store, so no fingerprint, snapshot or
 // status sees it. Append-only, `<kind> <ISO time> [agent:<helper id>] <rest>` a line. Kinds: `file` (a path the
-// conversation changed, as cleanPath has it), `told` (an entry key it was shown), `compact`, `asked`, `quiet`, `title`, `saw`, `end`.
+// conversation changed, as cleanPath has it), `told` (an entry key it was shown), `compact`, `asked`, `quiet`, `title`, `saw`, `end`, `late` (a path whose pointer look-up gave up).
 export const SESSIONS = '.sessions';
 export const sessionsOf = (store) => join(projectsRoot(), SESSIONS, basename(dirname(store)));
 const LINE = /^(\S+) (\S+)(?: agent:([\w-]{1,64}))?(?: (.*))?$/;
@@ -238,6 +238,7 @@ export function onEnd(input) {
 // window: the newest 365 days or 6 MB of day files (the spec's 16 MB took the bench's first change to 299 ms, over its 250 ms
 // budget; 6 MB: 239 ms, 2026-11-25); AGAIN: a `file` line is repeated for a path only after 5 minutes.
 export const DEADLINE = 400, WINDOW_DAYS = 365, WINDOW_BYTES = 6 * 1024 * 1024, AGAIN = 5 * 60e3, BLOCKS = 3, BLOCK_MAX = 800;
+const REPLY = /^\W*(?:go|yes|yep|ok|okay|sure|continue|proceed)\W*$/i;
 // The folder name Claude Code gives a session's start folder, the first half of an entry's t: field (store.mjs's slugOf).
 // shortcut: a name past 200 characters is shortened by Claude Code and is missed; upgrade if the eval or a user shows it matters.
 const slug = (p) => p.replace(/[^A-Za-z0-9]/g, '-');
@@ -323,12 +324,16 @@ export async function onChange(input, { journal, deadline = DEADLINE, now = Date
   const by = typeof input.agent_id === 'string' ? input.agent_id.replace(/[^\w-]/g, '').slice(0, 64) : '';
   const at = join(sessionsOf(store), s), lines = readSession(at);
   if (!lines) return none;
-  // Since the last compaction; the newest prompt line says whether this turn is private, and where it began.
+  // Since the last compaction; the newest prompt line says where this turn began, and the newest of all whether it is private:
+  // a compaction can come in the middle of a turn, after its quiet line.
   const c = lines.findLastIndex((l) => l.kind === 'compact'), cur = lines.slice(c + 1), p = cur.findLastIndex((l) => l.kind === 'asked' || l.kind === 'quiet');
-  if (cur[p]?.kind === 'quiet') return none;
+  const last = lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet');
+  if (last?.kind === 'quiet') return none;
   const mine = cur.filter((l) => l.by === by), seen = mine.filter((l) => l.kind === 'file' && l.rest === key);
+  // `late`: the last look-up for this file gave up, so the file is not yet seen and this change looks again.
+  const late = mine.findLast((l) => (l.kind === 'file' || l.kind === 'late') && l.rest === key)?.kind === 'late';
   const write = (text) => { mkdirSync(dirname(at), { recursive: true, mode: 0o700 }); appendFileSync(at, text, { mode: 0o600 }); };
-  if (!seen.length || now - Date.parse(seen.at(-1).at) > AGAIN) write(sessionLine('file', key, by, new Date(now).toISOString()));
+  if (!seen.length || late || now - Date.parse(seen.at(-1).at) > AGAIN) write(sessionLine('file', key, by, new Date(now).toISOString()));
   // Headline 4: another live session changed this file too. Said with whatever else this change gets, and before it.
   const w = sameFile(store, s, cur, key, now);
   if (w.saw.length) write(w.saw.map((o) => sessionLine('saw', `${o} ${key}`, by, new Date(now).toISOString())).join(''));
@@ -337,17 +342,21 @@ export async function onChange(input, { journal, deadline = DEADLINE, now = Date
   return w.say ? { say: [w.say, r.say].filter(Boolean).join('\n\n'), n: r.n } : r;
   async function pointers() {
     // The common case: this conversation changed the file already. It ends here, before the journal is loaded.
-    if (seen.length) return none;
+    if (seen.length && !late) return none;
     const turn = cur.slice(p + 1).filter((l) => l.by === by && l.kind === 'told'), blocks = new Set(turn.filter((l) => l.rest !== 'more').map((l) => l.at)).size;
     // shortcut: the files past the third block count as seen and get no pointer later; upgrade if a missed pointer there mattered.
     if (blocks >= BLOCKS && turn.some((l) => l.rest === 'more')) return none;
     // Rule 1b after the real-data check (2026-11-26): only an exchange that shares a rare word with this turn's request; "go" has none.
-    const last = lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet'), ask = last?.kind === 'asked' ? last.rest : '', since = lines[c]?.at ?? '', id = String(input.session_id);
-    if (!words(ask).length) return none;
+    const ask = last?.kind === 'asked' ? last.rest : '', since = lines[c]?.at ?? '', id = String(input.session_id);
+    // A reply alone ("go", "yes") is no request: in a young journal it is rare, and here one rare word is enough.
+    if (!words(ask).length || REPLY.test(ask)) return none;
+    const gaveUp = () => { write(sessionLine('late', key, by, new Date(now).toISOString())); return none; };
     let found = await earlier(store, file, id, { journal, deadline, now, since, told: new Set(mine.filter((l) => l.kind === 'told').map((l) => l.rest)) });
-    if (!found?.length) return none;
+    if (found === null) return gaveUp();
+    if (!found.length) return none;
     const shares = await byWords(store, ask, id, { journal, deadline, since, max: PROMPT_BYTES, now, test: true });
-    found = shares ? found.filter(shares) : [];
+    if (shares === null) return gaveUp();
+    found = found.filter(shares);
     if (!found.length) return none;
     const t = new Date(now).toISOString();
     if (blocks >= BLOCKS) { write(sessionLine('told', 'more', by, t)); return { say: MORE, n: 0 }; }

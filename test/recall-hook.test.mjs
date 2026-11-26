@@ -79,11 +79,15 @@ turn(p, 'go');
 ok((await look(p.payload('src/a.js'))).say === '' && (await look(p.payload('src/close.js'))).say === '', '"go" shares no rare word: no pointer');
 p = project(); p.day('2026-11-12', [p.entry()]); turn(p, 'go on with the nightly job');
 ok((await look(p.payload('src/close.js'))).n === 1, 'a request that shares a rare word: the pointer');
+// A one-word reply has no rare word to share, even in a young journal where "go" is rare (1.6.1).
+p = project(); p.day('2026-11-12', [p.entry({ asked: 'yes go ahead' })]);
+for (const w of ['go', 'yes']) { turn(p, w); ok((await look(p.payload('src/close.js'))).say === '', `"${w}" alone: no pointer`); rmSync(p.session()); }
 
 // The kill switch: nothing shown, nothing written.
 p = project(); p.day('2026-11-12', [p.entry()]);
 quiet(run(p.payload('src/close.js'), { ...process.env, PROJECT_MEMORY_RECALL: '0' }), 'PROJECT_MEMORY_RECALL=0: nothing');
 ok(!existsSync(p.session()), 'and no session file');
+ok(!readTimes(0, join(projectsRoot(), TIMING)).some((l) => l.e === '?'), 'and no timing line counted as a look-up (1.6.1)');
 turn(p, 'nightly export');
 process.env.PROJECT_MEMORY_RECALL = '0';
 ok((await look(p.payload('src/close.js'))).say === '', 'onChange honours the switch too');
@@ -156,6 +160,9 @@ mkdirSync(sessionsOf(p.store), { recursive: true });
 writeFileSync(p.session(), sessionLine('asked', 'fix it') + sessionLine('quiet'));
 quiet(run(p.payload('src/close.js')), 'a private turn: nothing');
 ok(readSession(p.session()).length === 2, 'and no file line');
+// Compacted in the middle of a private turn: the quiet line is before the compact line, and the turn is still private (1.6.1).
+writeFileSync(p.session(), sessionLine('asked', 'fix it') + sessionLine('quiet') + sessionLine('compact'));
+ok((await look(p.payload('src/close.js'))).say === '' && readSession(p.session()).length === 3, 'a private turn compacted mid-way: nothing, and no file line');
 writeFileSync(p.session(), sessionLine('quiet') + sessionLine('asked', 'the nightly export next'));
 ok((await look(p.payload('src/close.js'))).n === 1, 'the next prompt ends it');
 // The plugin's own data says nothing.
@@ -205,6 +212,11 @@ quiet(run(p.payload('src/close.js')), 'an unreadable day file (a folder by its n
 p = project(); p.day('2026-11-12', [p.entry()]);
 ok(await earlier(p.store, join(p.cwd, 'src/close.js').replaceAll('\\', '/'), 'zz', { journal, deadline: performance.now() - 1 }) === null, 'past the deadline the scan gives up');
 ok((await look(p.payload('src/close.js'), { deadline: performance.now() - 1 })).say === '', 'and the hook says nothing');
+// A look-up that gave up leaves the file unseen: the next change of it looks again, and once it looked the file is seen (1.6.1).
+p = project(); p.day('2026-11-12', [p.entry()]); turn(p, 'nightly export');
+ok((await look(p.payload('src/close.js'), { deadline: performance.now() - 1 })).say === '', 'past the deadline: nothing');
+ok((await look(p.payload('src/close.js'))).n === 1, 'the next change of the file gets its pointer');
+ok((await look(p.payload('src/close.js'))).say === '', 'and the one after says nothing');
 // A session file that will not read may hold a private turn: nothing.
 p = project(); p.day('2026-11-12', [p.entry()]); mkdirSync(p.session(), { recursive: true });
 ok((await look(p.payload('src/close.js'))).say === '', 'a session file that will not read: nothing');
