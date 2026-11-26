@@ -259,7 +259,9 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
     for (const f of staged) {
       // the staged blob is what a commit keeps, not the working file a session may have cleaned since the add
       const t = blobs.has(f) ? blobs.get(f) : raw(join(root, f));
-      if (redact(f) !== f || (t !== null && holdsSecret(t))) { git('reset', '-q', '--', `:(literal)${f}`); held.push(redact(f)); heldRaw.add(f); }
+      // Only the note's own name: the slug joins a folder named pk/sk/rk to the rest of the path into a key-like run.
+      const cut = f.lastIndexOf('/') + 1, name = f.slice(cut);
+      if (redact(name) !== name || (t !== null && holdsSecret(t))) { git('reset', '-q', '--', `:(literal)${f}`); held.push(f.slice(0, cut) + redact(name)); heldRaw.add(f); }
     }
     // Tracked files changed and not added, a held note (it stays modified, for good) not counted: what is still owed.
     const owed = () => git('diff', '--name-only', '-z', ...(offs.length ? ['--', '.', ...offs] : [])).split(' ').filter((x) => x && !heldRaw.has(x)).length;
