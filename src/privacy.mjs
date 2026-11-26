@@ -149,9 +149,9 @@ export function off(input) {
 export const FORGOTTEN = join('journal', '.forgotten');
 export const forgotten = (text) => listOf(text).map((l) => l.split('\t'));
 // The list as a store has it: `listed` its lines, and `shut` when it exists but cannot be read, which could name any exchange: the
-// caller keeps every one of its exchanges out and records the failure, as the Stop does. A list that is not there names none.
+// caller keeps every one of its exchanges out and records the failure (`code`), as the Stop does. A list that is not there names none.
 export function forgottenIn(dir) {
-  try { return { listed: forgotten(readFileSync(join(dir, FORGOTTEN), 'utf8')), shut: false }; } catch (e) { return { listed: [], shut: e.code !== 'ENOENT' }; }
+  try { return { listed: forgotten(readFileSync(join(dir, FORGOTTEN), 'utf8')), shut: false }; } catch (e) { return e.code === 'ENOENT' ? { listed: [], shut: false } : { listed: [], shut: true, code: e.code || e.message }; }
 }
 // Adds the exchanges ({key, t, at}) to the forget list, under the store's lock, which the caller holds. Listed only while its
 // transcript is on disk: one gone is never read again, so nothing brings its entry back, and forgetting everything listed every

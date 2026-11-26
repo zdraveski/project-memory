@@ -8,7 +8,7 @@ import { isUtf8 } from 'node:buffer';
 import { clip } from './text.mjs';
 import { tag, unsay } from './handoff-log.mjs';
 import { text, readTail, readHead, openFile, records, chunk, markFrom, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
-import { PRIVATE, hushed, isQuiet, FORGOTTEN, forgotten, listForgotten, OFF, unreadable, wasOff } from './privacy.mjs';
+import { PRIVATE, hushed, isHushed, isQuiet, QUIET, FORGOTTEN, forgotten, forgottenIn, listForgotten, OFF, unreadable, wasOff } from './privacy.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, lockBudget, sleep, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
 import { fault, failures, clear } from './run-records.mjs';
 import { dropSessions, ACTIVE } from './sessions.mjs';
@@ -308,6 +308,52 @@ export const entries = (dirs, { since, until, failed = [], strict = false } = {}
       return parseDay(text).entries.map((e) => ({ ...e, day: d, path, dir }));
     } catch (e) { failed.push({ path, code: e.code || e.message }); return []; }
   }));
+
+// The journal as a reader sees it (search, show, the page): entries() without an exchange forget listed or a conversation marked
+// private whose sweep is still owed. Forget lists the keys before it writes the days, and a day that would not be written keeps
+// the entry until forget runs again, which reads them all. A list that won't read could name any entry: none of that store's is
+// shown, and it goes in `failed`. Private turns stay: the reader shows them as [private].
+export const visible = (dirs, o = {}) => dirs.flatMap((dir) => {
+  const { listed, shut, code } = forgottenIn(dir);
+  if (shut) { o.failed?.push({ path: join(dir, FORGOTTEN), code }); return []; }
+  const gone = new Set(listed.map(([k]) => k)), hush = new Map();
+  let named = false;
+  return entries([dir], o).filter((e) => {
+    if (gone.has(e.key)) return false;
+    if (!hush.has(e.s)) {
+      const h = hushed(dir, e.s);
+      // Unknown is private (ADR 0001), and named once for the store.
+      if (h === null && !named) { named = true; o.failed?.push({ path: join(dir, QUIET), code: 'unreadable' }); }
+      hush.set(e.s, h);
+    }
+    return hush.get(e.s) === false;
+  });
+});
+
+// The newest exchanges of `dir` for the hooks, newest first: the last `days` days, at most `bytes` characters of day files (the
+// newest day is always read). Never a private turn, a forgotten key, one `keep` refuses, or a conversation marked private whose
+// sweep is still owed (asked last: one read of the list per conversation kept; unknown is private). null when the forget list
+// will not read or the walk passes `deadline` (performance.now()): the hook then says nothing.
+export function recent(dir, { days: n, bytes: max, deadline, now }, keep) {
+  const { listed, shut } = forgottenIn(dir);
+  if (shut) return null;
+  const gone = new Set(listed.map(([k]) => k)), from = new Date(now - n * 864e5).toISOString().slice(0, 10), out = [], hush = new Map();
+  let bytes = 0;
+  for (const d of days(dir).reverse()) {
+    if (d < from) break;
+    if (performance.now() > deadline) return null;
+    let text;
+    try { text = readFileSync(dayFile(dir, d), 'utf8'); } catch { continue; }
+    if (bytes && bytes + text.length > max) break;
+    bytes += text.length;
+    for (const e of parseDay(text).entries.reverse()) {
+      if (gone.has(e.key) || e.asked === '[private]' || e.answered === '[private]' || !keep(e)) continue;
+      if (!hush.has(e.s)) hush.set(e.s, isHushed(dir, e.s, QUIET, 1));
+      if (!hush.get(e.s)) out.push(e);
+    }
+  }
+  return out;
+}
 
 // Day d without the entries `keep` refuses; its prose stays. Call under
 // withLock(dir). Returns the entries that went: none when the day changed
