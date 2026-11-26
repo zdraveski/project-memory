@@ -1,9 +1,9 @@
 // A note can carry a rule a computer checks on a git command (`enforce:` in its
 // front matter). This file reads the rule and matches it; it never runs, blocks
 // or writes anything. Imports store.mjs, privacy.mjs and transcript.mjs only, so a hook can load it fast.
-import { readFileSync, writeFileSync, appendFileSync, readdirSync, openSync, closeSync, fstatSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, openSync, closeSync, fstatSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { frontEnd, front, isIndex, sharedStore, tag } from './store.mjs';
+import { frontEnd, front, isIndex, sharedStore, tag, appendCapped } from './store.mjs';
 import { records, readHead, typedMark } from './transcript.mjs';
 import { gate } from './privacy.mjs';
 
@@ -188,16 +188,13 @@ export function ruleSet(payload) {
 // typedMark); an unreadable transcript counts as private (no path: not).
 export const privateTurn = (payload, seg) => !!payload?.transcript_path && typedMark(payload.transcript_path, seg);
 
-// One line of the log (dropped if over 1 KB or the store has no folder). Over LOG_MAX, the oldest half of the log goes first.
+// One line of the log (dropped if over 1 KB or the store has no folder). Over LOG_MAX, the oldest half of the log goes.
 // shortcut: no lock, so a line can be lost under heavy parallel use (said in the docs).
 export function record(store, entry) {
   try {
-    const f = join(store, LOG);
     const line = JSON.stringify(entry) + '\n';
     if (line.length > 1024) return;
-    let size = 0; try { size = statSync(f).size; } catch {}
-    if (size > LOG_MAX) { const t = readFileSync(f, 'utf8'), cut = t.indexOf('\n', t.length >> 1); writeFileSync(f, cut < 0 ? '' : t.slice(cut + 1)); }
-    appendFileSync(f, line);
+    appendCapped(join(store, LOG), line, LOG_MAX);
   } catch {}
 }
 

@@ -291,7 +291,7 @@ ${'y'.repeat(40)}
 { const rec = (st, e) => { record(st, e); return existsSync(join(st, LOG)) ? readFileSync(join(st, LOG), 'utf8') : null; }, mkst = (n) => { const d = join(home, `rec${n}`); mkdirSync(d); return d; };
   ok(rec(mkst(1), { note: 'x'.repeat(1012) }).length === 1024, 'a line of 1024 characters is kept');
   ok(rec(mkst(2), { note: 'x'.repeat(1013) }) === null, 'a line of 1025 characters is dropped');
-  const d = mkst(3), f = join(d, LOG); writeFileSync(f, 'y'.repeat(LOG_MAX - 1) + '\n'); record(d, { note: 'z' }); ok(statSync(f).size > LOG_MAX && readFileSync(f, 'utf8').startsWith('yyyy'), 'a log of exactly LOG_MAX bytes is not cut');
+  const d = mkst(3), f = join(d, LOG); writeFileSync(f, 'y'.repeat(LOG_MAX - 14) + '\n'); record(d, { note: 'z' }); ok(statSync(f).size === LOG_MAX && readFileSync(f, 'utf8').startsWith('yyyy'), 'a log that reaches exactly LOG_MAX bytes is not cut');
   const d2 = mkst(4), f2 = join(d2, LOG); let big = ''; for (let k = 0; k < 2700; k++) big += String(k).padStart(5, '0') + 'x'.repeat(94) + '\n'; writeFileSync(f2, big);
   record(d2, { note: 'new' }); const got = readFileSync(f2, 'utf8').split('\n');
   ok(got[0].startsWith('01351') && got.length === 1349 + 2 && got.at(-2) === '{"note":"new"}', `an over-long log loses its oldest half at a line start (first ${got[0].slice(0, 5)}, ${got.length} lines)`);

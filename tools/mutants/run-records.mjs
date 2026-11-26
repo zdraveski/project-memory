@@ -1,7 +1,7 @@
 // The hand-written mutants of run-records.mjs, which run-records.test.mjs and the suites that use it must catch (mutate.mjs runs them).
 // Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
 export default {
-  'the briefing reads no journal failure kept aside': [", join(projectsRoot(), `${JOURNAL_FAILED}${basename(dirname(dir))}`)]) {", ']) {'],
+  'the briefing reads no journal failure kept aside': ['for (const p of [join(dir, JOURNAL, FAILED), aside(dir)]) {', 'for (const p of [join(dir, JOURNAL, FAILED)]) {'],
   'a failed journal write unseen at startup': ["if (!String(f.error).startsWith('backfill: ')) out.push(", 'if (false) out.push('],
   'a memory-off tag not written said as a lost handoff': ['export const unsaved = (f) => (f.off', 'export const unsaved = (f) => (false'],
   'a lost handoff said as a memory-off tag not written': ['export const unsaved = (f) => (f.off', 'export const unsaved = (f) => (true'],
@@ -11,9 +11,7 @@ export default {
   'a moved stat taken as an edit': ['return hash(readFileSync(join(here, f))) !== m.files[f];', 'return true;'],
   'a file gone from the live copy unseen': ['} catch { return true; }', '} catch { return false; }'],
   "the shared store's problems unsaid": ['for (const d of [dir, sharedStore()]) {', 'for (const d of [dir]) {'],
-  'a log cut back over a line appended meanwhile': ["if (statSync(ran).size === size) renameSync(cut, ran);", "renameSync(cut, ran);"],
-  "the old run log glued": ["(prev && !prev.endsWith('\\n') ? '\\n' : '') + ", ""],
-  'the Stop log grows forever': ['if (size > 8192)', 'if (false)'],
+  'the Stop log grows forever': [', 8192, 20);', ', Infinity, 20);'],
   "H-F10 a run logged without its reply's fingerprint": [" m: keyed(payload?.last_assistant_message ?? '', 8),", ''],
   'the run log names no event': ['e: payload?.hook_event_name, ', ''],
   "health never cleared": ["if (want === null) unlinkSync(p); else replaceIfUnchanged(p, have, want);", "if (want !== null) replaceIfUnchanged(p, have, want);"],
@@ -26,8 +24,12 @@ export default {
   'journal failures kept oldest first': ['[line, ...own(before, !from)]', '[...own(before, !from), line]'],
   'journal failure not kept': ['replaceIfUnchanged(f, before, [line, ', 'void ([line, '],
   'a damaged manifest takes the startup line with it': ['  } catch { return []; }\n}\n', '  } catch (e) { throw e; }\n}\n'],
-  "the Stop hook leaves no proof of life": ["    appendFileSync(ran, (prev && ", "    (() => {})(ran, (prev && "],
+  "the Stop hook leaves no proof of life": ["    appendCapped(ran, JSON", "    (() => {})(ran, JSON"],
   "a BOM hides the frontmatter": ["readFileSync(p, 'utf8').replace(/^\\uFEFF/, '')", "readFileSync(p, 'utf8')"],
-  'the Stop cut keeps a different number of lines': ['.slice(-20).join(', '.slice(-19).join('],
+  'the Stop cut keeps a different number of lines': [', 8192, 20);', ', 8192, 19);'],
   'the startup line names the problems with no separator': ["h.split('\\n').join('; ')", "h.split('\\n').join('')"],
+  'a lost handoff kept in a file every project shares': ["const lost = (dir) => join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(dir))}`);", "const lost = (dir) => join(projectsRoot(), HANDOFF_FAILED);"],
+  'a lost handoff with auto memory off said as a lost handoff': ['...(off && { off: true })', ''],
+  "a handoff failure names its temp file": ['error: reason(e), ...(off', "error: String(e.message).split('\\n')[0], ...(off"],
+  'a saved handoff clears no failure':['export const handoffSaved = (dir) => { try { unlinkSync(lost(dir)); } catch {} };', 'export const handoffSaved = (dir) => {};'],
 };

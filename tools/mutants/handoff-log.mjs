@@ -78,7 +78,7 @@ export default {
   'handoff keeps the old 400 of an answer': ['const DID = 900;', 'const DID = 400;'],
   'handoff keeps the old 240 of a request': ['const ASK = 500;', 'const ASK = 240;'],
   'a stall judged without the last run': ['end - ran > GRACE', 'end > GRACE'],
-  'no .stop-ran read as never ran': [".stop-ran')).mtimeMs; } catch { return []; }", ".stop-ran')).mtimeMs; } catch { ran = 0; }"],
+  'no .stop-ran read as never ran': ["statSync(stopRan()).mtimeMs; } catch { return []; }", "statSync(stopRan()).mtimeMs; } catch { ran = 0; }"],
   'a turn just ended called stalled': [' && Date.now() - end > GRACE', ''],
   'a transcript format drift unseen': ['if (seen >= 50 && !known)', 'if (false)'],
   'an untagged [word]: ask reads as tagged': ['(\\S+ \\S+?)', '(\\S+ \\S+)'],

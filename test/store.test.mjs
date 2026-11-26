@@ -11,7 +11,7 @@ import { createHmac } from 'node:crypto';
 import { tool, tempHome, quick, fastClock, slug } from './harness.mjs';
 
 const { home, env } = tempHome('store-test-');
-const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, keyed, offSince, tag, indexLines, eolOf, wraps, archiveLine, emptyArchive, mark, unmark } = await import('../src/store.mjs'), { gitWhy } = await import('../src/snapshot.mjs'), { wasOff, OFF_PERIODS } = await import('../src/privacy.mjs');
+const { storeOf, withLock, replaceIfUnchanged, sharedStore, isShared, budgetOf, local, front, frontEnd, isIndex, reason, allStores, pointerLine, POINTER, inProjects, transcriptKey, listOf, opener, same, sleep, lockBudget, sweepTemps, appendCapped, keyed, offSince, tag, indexLines, eolOf, wraps, archiveLine, emptyArchive, mark, unmark } = await import('../src/store.mjs'), { gitWhy } = await import('../src/snapshot.mjs'), { wasOff, OFF_PERIODS } = await import('../src/privacy.mjs');
 // A test that sets TZ puts back this: assigning, because deleting TZ leaves the zone on the last one set (Node 24 on Windows).
 const TZ0 = process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 let checks = 0;
@@ -206,6 +206,12 @@ ok(withLock(dir, () => 'got') === 'got', 'and one that is a folder with somethin
   mkdirSync(`${lock}.dead.1.2`);
   sweepTemps(dir);
   ok(!existsSync(`${lock}.dead.1.2`), 'a renamed copy a killed waiter left is swept');
+  // Asked for some files only (the projects root): their copies go, a name that only looks like a copy stays.
+  const gone = spawnSync(process.execPath, ['-e', '']).pid, mine = join(dir, `.log.tmp${gone}`), theirs = join(dir, `.failed-x.tmp${gone}`);
+  writeFileSync(mine, 'a'); writeFileSync(theirs, 'b');
+  sweepTemps(dir, ['.log']);
+  ok(!existsSync(mine) && existsSync(theirs), 'swept for some files: only their temp copies go');
+  rmSync(theirs);
 }
 // One that cannot be removed -- on Windows another process's working folder,
 // elsewhere one in a read-only folder -- throws once the wait is up, so the
@@ -257,6 +263,35 @@ const alias = join(root, 'C--some-project-alias');
 mkdirSync(alias);
 symlinkSync(dir, join(alias, 'memory'), 'junction');
 ok((quick ? fastClock : (f) => f())(() => withLock(join(alias, 'memory'), () => withLock(dir, () => 'inner'))) === null, 'a lock taken through a junction holds the real path too');
+
+// A capped log (.stop-ran, .timing, .enforce-log): appended, cut back past its limit, never over a line appended meanwhile.
+{
+  const log = join(proj, '.capped'), temps = () => readdirSync(proj).filter((n) => n.startsWith('.capped.tmp'));
+  appendCapped(log, 'a\n', 10);
+  ok(readFileSync(log, 'utf8') === 'a\n', 'appended, the file made');
+  ok(process.platform === 'win32' || (statSync(log).mode & 0o777) === 0o600, 'made 0600');
+  writeFileSync(log, 'abcdefgh\n');
+  appendCapped(log, 'i\n', 11);
+  ok(readFileSync(log, 'utf8') === 'abcdefgh\ni\n', 'a log that ends at exactly its limit is not cut');
+  writeFileSync(log, 'l1\nl2\nl3\nl4\n');
+  appendCapped(log, 'l5\n', 14);
+  ok(readFileSync(log, 'utf8') === 'l4\nl5\n', 'past its limit the newer half stays, the new line with it');
+  writeFileSync(log, 'l1\nl2\nl3\nl4\n');
+  appendCapped(log, 'l5\n', 14, 3);
+  ok(readFileSync(log, 'utf8') === 'l3\nl4\nl5\n', 'or the newest lines asked for');
+  ok(temps().length === 0, 'no temp copy stays');
+  writeFileSync(log, 'cut off');
+  appendCapped(log, 'next\n', 100);
+  ok(readFileSync(log, 'utf8') === 'cut off\nnext\n', 'a last line left without its newline is ended, not glued to the next');
+  // Another run appends between the size check and the rename: its line would be lost, so the cut waits for the next append.
+  writeFileSync(log, 'l1\nl2\nl3\nl4\n');
+  let n = 0;
+  appendCapped(log, 'l5\n', 14, undefined, (p) => ({ size: statSync(p).size + (n++ ? 3 : 0) }));
+  ok(readFileSync(log, 'utf8') === 'l1\nl2\nl3\nl4\nl5\n', 'a cut that lost the race leaves the file as it was');
+  ok(temps().length === 0, 'and leaves no temp copy');
+  rmSync(log);
+  assert.throws(() => appendCapped(join(proj, 'no-such-folder', 'log'), 'a\n', 10)); checks++;
+}
 
 // 5. Replace only what was read.
 const f = join(dir, 'x.md');

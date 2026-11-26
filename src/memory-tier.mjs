@@ -17,7 +17,7 @@ import { isOff } from './privacy.mjs';
 import { snapshot, snapshotHealth, owed, reset, GIT_TIMEOUT, BATCH } from './snapshot.mjs';
 import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, indexLines, eolOf, wraps, archiveLine, mark, unmark, allStores, front, raw, memoryOff, reason, tagOf } from './store.mjs';
 import { redact } from './secrets.mjs';
-import { HANDOFF_FAILED, health, stopRecord, plugins } from './run-records.mjs';
+import { handoffFailed, handoffSaved, health, stopRecord, stopRan, plugins } from './run-records.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------
 const KEEP_TYPES = new Set(['feedback', 'user']); // how-to-work rules: always hot
@@ -403,7 +403,7 @@ export async function main(argv, input) {
     } catch (e) {
       // A tag that could not be kept is said at the next start with memory on, as a handoff that could not be saved is (R67), in its
       // own words (`off`): nothing was to be saved, and the journal may take the conversation in later (release review).
-      if (p) try { writeFileSync(join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(storeOf(p)))}`), JSON.stringify({ at: new Date().toISOString(), error: reason(e), off: true }), { mode: 0o600 }); } catch {}
+      if (p) try { handoffFailed(storeOf(p), e, true); } catch {}
     }
     // The 7-day rule on session files holds with memory off too (sessions.mjs).
     try { (await import(new URL('./sessions.mjs', import.meta.url))).sweepSessions(); } catch {}
@@ -430,10 +430,8 @@ export async function main(argv, input) {
       // running was silence.
       stopRecord(payload);
       // One that throws (a store folder that takes no new files) is kept in a
-      // file the next start reads: swallowed, nothing was saved, and nothing said.
-      // One per project, beside the projects, not in the store that refused it:
-      // shared, another project's next save cleared this one's.
-      const failed = join(projectsRoot(), `${HANDOFF_FAILED}${basename(dirname(storeOf(payload || {})))}`);
+      // file the next start reads (handoffFailed).
+      const store = storeOf(payload || {});
       // The journal in a try of its own: a journal.mjs that cannot load costs
       // the journal, never the handoff.
       let sink = null, kept = null;
@@ -446,14 +444,16 @@ export async function main(argv, input) {
         if (s === 'busy' && stop) { sleep(200 + Math.random() * 600); lockBudget(true); s = handoff(payload, sink, kept); }
         // Still held: the reply is unsaved, so say so, and keep any earlier record.
         if (s === 'busy' && stop) throw new Error('the store stayed busy: another session held it through two tries, so this reply was not saved');
-        try { unlinkSync(failed); } catch {}
+        handoffSaved(store);
       }
-      catch (e) { writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: reason(e) }), { mode: 0o600 }); }
+      catch (e) { handoffFailed(store, e); }
       T.mark('handoff');
       // The index of a store the plugin writes to, in the same Stop that wrote its handoff; the nudge below must not skip it.
       if (payload && !dry) ensureIndex(storeOf(payload));
       // The temp copies a killed Stop left here (store.mjs).
       if (payload) try { sweepTemps(storeOf(payload)); } catch {}
+      // And beside the projects: the capped logs' cuts (.stop-ran, .timing).
+      try { sweepTemps(projectsRoot(), [basename(stopRan()), T.FILE]); } catch {}
       // Session files older than 7 days, in every project (sessions.mjs).
       try { (await import(new URL('./sessions.mjs', import.meta.url))).sweepSessions(); } catch {}
       T.mark('index');

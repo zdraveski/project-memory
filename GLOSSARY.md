@@ -117,12 +117,20 @@ message and the purge's temporary copy are known there alone.
 
 **Run record**: a small status file the hooks write and doctor, status and the
 startup line read. `src/run-records.mjs` (1.6.0 step 17) reads and writes all of
-them. A missing record is "none"; one that exists but cannot be read or parsed
-is "damaged".
+them, and no other module spells their names or formats: others ask it
+(`stopRan()`, `handoffFailed()`, `lostHandoff()`, `deployed()`). A missing
+record is "none"; one that exists but cannot be read or parsed is "damaged".
 
 **Stop record**: `.stop-ran` in the projects root. It holds one line per Stop
 hook run, which is how doctor and the startup line tell whether saving still
-runs.
+runs. A capped log of the newest 20 lines past 8 KB.
+
+**Capped log**: a file that grows by one appended line a run and is cut back
+past a size limit: the Stop record, `.timing` and a store's `.enforce-log`.
+`appendCapped()` in `src/store.mjs` is the one append and cut for all three:
+0600, a last line left without its newline is ended first, and a cut never
+replaces a line another run appended meanwhile. The Stop sweeps the temp
+copies a killed cut left beside the projects (`sweepTemps` with the logs' names).
 
 **Failure record**: a note that a handoff or journal write failed:
 `.handoff-failed-<project folder>` and `.journal-failed-<project folder>` in the

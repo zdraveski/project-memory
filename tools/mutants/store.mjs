@@ -67,7 +67,7 @@ export default {
   "a live writer's temp copy swept": ['if (gone || Math.abs(Date.now()', 'if (true || Math.abs(Date.now()'],
   "a user's file named like a temp copy swept": ['/^(?:.+\\.md|\\.[^.]+)\\.tmp(\\d+)$/', '/\\.tmp(\\d+)$/'],
   "a list's temp copy kept": ['/^(?:.+\\.md|\\.[^.]+)\\.tmp(\\d+)$/', '/^(?:.+\\.md)\\.tmp(\\d+)$/'],
-  "the journal's temp copies left": ["for (const d of [dir, join(dir, 'journal')]) {", 'for (const d of [dir]) {'],
+  "the journal's temp copies left": ["for (const d of only ? [dir] : [dir, join(dir, 'journal')]) {", 'for (const d of only ? [dir] : [dir]) {'],
   "lock kept after a throw": ["try { return fn(); } finally {", "const out = fn(); try { return out; } finally {"],
   'nothing-to-write rewrites': ['if (read() === next) return false;', ''],
   'a write it did not see is overwritten': ["if (read() !== expected) return 'conflict';", ''],
@@ -94,4 +94,13 @@ export default {
   'a wrapped hook taken for prose': ["export const wraps = (line) => /^[ \\t]+\\S/.test(line);", "export const wraps = () => false;"],
   'an empty archive read by its link alone': ["line.includes(`](${ARCHIVE})`) && / — 0 older/.test(line)", "line.includes(`](${ARCHIVE})`)"],
   'an overflow mark never comes off': ["line.endsWith(OVERFLOW) ? line.slice", "false ? line.slice"],
+  // appendCapped: the capped logs (.stop-ran, .timing, .enforce-log), moved here from timing.mjs and run-records.mjs.
+  'a cut-off last line glued to the next': ['b[0] !== 10) text = ', 'false) text = '],
+  'a sweep for some files takes any copy': ['if (only && !only.some', 'if (false && !only.some'],
+  'a capped log cut at its limit': ['if (size <= max) return;', 'if (size < max) return;'],
+  'a capped log never cut': ['if (size <= max) return;', 'return;'],
+  'the cut keeps most of the file': ['lines.length / 2', 'lines.length / 10'],
+  'the newest lines asked for ignored': ['lines.slice(keep ? -keep : ', 'lines.slice(false ? -keep : '],
+  'a cut that lost the race still replaces the file': ['stat(file).size === size', 'true'],
+  'the temp copy of a lost cut stays': ['} finally { rmSync(tmp, { force: true }); }', '} finally { 0; }'],
 };
