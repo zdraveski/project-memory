@@ -23,8 +23,6 @@ export const useGit = (f) => { stand = f; };
 // The lock a purge holds is touched before each git it runs, so a live purge never reads as a stale lock to busy().
 let held_ = null;
 const exec = (...a) => { if (held_) try { const d = new Date(); utimesSync(held_, d, d); } catch {} return (stand ?? execFileSync)(...a); };
-// What main() clears at each start: the lists a snapshot fills for snapshotHealth.
-export const reset = () => { missed = []; held = []; };
 
 // git for the snapshot repo, whatever the user's own git config says: a global
 // commit.gpgsign failed every snapshot, a global hooks path ran the user's
@@ -124,10 +122,21 @@ export function busy() {
   return stuck ?? fresh;
 }
 
-let held = [];     // notes left out of the commit for holding a secret: set by snapshot(), kept by snapshotHealth()
-let missed = [];   // stores the snapshot cannot reach: set by snapshot(), kept by snapshotHealth(), emptied by main()
-export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
+// A snapshot, recorded in .snapshot-health (record, below), and the line it prints: null when nothing changed. Unrecorded
+// (`record: false`) only for the first one, taken before the tidy-up: the one after it in the same run records, and both
+// recording counted a failure twice.
+export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH, record: keep = true } = {}) {
+  const r = take(gitWait, batch);
+  if (keep) try { record(r); } catch {}   // a record the disk will not read or write is skipped (a fault), never a crash
+  return r.busy ? 'busy' : 'off' in r ? `off: ${r.off}` : 'failed' in r ? `snapshot failed: ${r.failed}`
+    : r.rest ? `in parts: ${r.rest} file(s) still to add; each reply adds more` : r.made ?? null;
+}
+// What one snapshot did: `busy`, `off` or `failed` (each with why), `rest` (files a first snapshot in parts still has to add),
+// `made` ('initialised' or 'committed'), none of them when nothing changed; and the notes it `held` and the stores it `missed`.
+function take(gitWait, batch) {
   const root = projectsRoot();
+  let held = [], missed = [];
+  const said = (r) => ({ ...r, held, missed });
   // The C locale: "nothing to commit" is matched below, in git's English. (Git
   // for Windows here prints English whatever LC_ALL says, so no check sees it.)
   // Set on this process, which git inherits: no copy of the environment is
@@ -149,7 +158,7 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
     // Only a repository this tool made: one the user made there is theirs, and
     // its .gitignore, its lock, its index and its history are not this tool's.
     const ours = isOurs();
-    if (!ours && !(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)) return `off: ${root} is a git repository project-memory did not make, so it commits nothing there`;
+    if (!ours && !(raw(ignorePath) ?? '').startsWith(IGNORE_HEAD)) return said({ off: `${root} is a git repository project-memory did not make, so it commits nothing there` });
     // An install from before the modes: its .git is still open to others, so the files are too. Tightened once, when found so.
     if (process.platform !== 'win32' && (statSync(join(root, '.git')).mode & 0o077)) {
       const to = (p, m) => { try { chmodSync(p, m); } catch {} };
@@ -163,7 +172,7 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
     // Another git's work in flight is busy, not a failure -- the next turn retries (busy(), below).
     const b = busy();
     if (b instanceof Error) throw b;
-    if (b) return 'busy';
+    if (b) return said({ busy: true });
     // Adopted after the sweep: a stale config.lock refused `git config`, and read
     // as busy, the history never started.
     if (!ours) git('config', 'project-memory.snapshots', 'true');
@@ -241,7 +250,6 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
     });
     // The history is never rewritten, and the model's own Write tool saves a note no hook scrubs: one that holds a key, token or
     // password stays out of it (unstaged, so its last clean version stays) until the secret is gone. Told in .snapshot-health.
-    held = [];
     const heldRaw = new Set();
     const staged = git('diff', '--cached', '--name-only', '-z').split('\0').filter((x) => /^[^/]+\/memory\/(?!handoff\.md$|journal\.md$)[^/]+\.md$/.test(x));   // not the journal or handoff: scrubbed as written
     // One git process for every staged blob (one per note took 14 s for 80 notes): the output is "<oid> blob <bytes>", the bytes, a newline, per
@@ -279,12 +287,12 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
         // made it is a number that misleads whoever reads the log later.
         'commit', '-qm', fresh ? FIRST : `memory: ${local()}`);
     } catch (e) {
-      if (/nothing (added )?to commit/.test(String(e.stdout))) return null;   // nothing changed
+      if (/nothing (added )?to commit/.test(String(e.stdout))) return said({});   // nothing changed
       // Another session's commit took what this one staged, and a file changed
       // again since: busy, and the next turn commits it. Read as a failure, it
       // counted against the history's health.
       // A held note alone is nothing to commit, not another session's commit.
-      if (/no changes added to commit/.test(String(e.stdout))) { if (held.length) { let n = 1; try { n = owed(); } catch {} if (!n) return null; } return 'busy'; }
+      if (/no changes added to commit/.test(String(e.stdout))) { if (held.length) { let n = 1; try { n = owed(); } catch {} if (!n) return said({}); } return said({ busy: true }); }
       throw e;
     }
     // git's clean-up, once a commit is made, in this process and waited for: with gc.auto=0 above it never runs on its own. 6700 loose
@@ -294,15 +302,15 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
     // cleared by this success and the file stays out of every snapshot until it changes again.
     // `diff --name-only`, not `status`: tracked files only, no scan of untracked ones (80-300 ms), and a path `add -A` can never add (nul.md) never shows.
     if (!rest) { try { rest = owed(); } catch {} }
-    return rest ? `in parts: ${rest} file(s) still to add; each reply adds more` : fresh ? 'initialised' : 'committed';
+    return said({ rest, made: fresh ? 'initialised' : 'committed' });
   } catch (e) {
     // No git is a setup, not a failure: everything but the history works.
     // Only git's own start: a lock that vanished between two calls is ENOENT
     // too, and was recorded as "git is not installed".
-    if (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn')) return 'off: git is not installed';
+    if (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn')) return said({ off: 'git is not installed' });
     // Killed at its timeout: from the next run the history is taken in parts. Its lock stays, for GIT_LOCK_STALE: a git
     // that outlived the kill (a wrapper's child) may still hold it. No note is touched: git only reads them.
-    if (e.code === 'ETIMEDOUT') { try { writeFileSync(parts, '', { mode: 0o600 }); } catch {} return `snapshot failed: git took longer than ${gitWait / 1000} s; the next replies take the history in parts`; }
+    if (e.code === 'ETIMEDOUT') { try { writeFileSync(parts, '', { mode: 0o600 }); } catch {} return said({ failed: `git took longer than ${gitWait / 1000} s; the next replies take the history in parts` }); }
     const why = gitWhy(e);   // git's reason, not a warning before it, nor 'Command failed'
     // This session runs two or three git commands, and another session's commit can
     // take a lock in a gap between them, or move HEAD under this one's: busy,
@@ -313,8 +321,8 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
     // Two sessions starting the history at once race `git init` too.
     // Only a lock another git holds, or a ref it moved: the same words with
     // "Permission denied" are a history that can never commit, and busy hid it.
-    if (/\.lock'?: File exists|cannot lock ref '[^']*': is at |reference already exists|could not lock config file .*: File exists|cannot copy .* File exists/.test(why)) return 'busy';
-    return `snapshot failed: ${why}`;
+    if (/\.lock'?: File exists|cannot lock ref '[^']*': is at |reference already exists|could not lock config file .*: File exists|cannot copy .* File exists/.test(why)) return said({ busy: true });
+    return said({ failed: why });
   } finally { if (lc === undefined) delete process.env.LC_ALL; else process.env.LC_ALL = lc; }
 }
 
@@ -322,28 +330,25 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH } = {}) {
 // it only decides whether a warning shows.
 // `pending`: a snapshot still owed (busy, failed, or in parts), which the next Stop retries though no note changed: the
 // tidy-up is stamped whatever the snapshot did, or one that never went through redid the whole pass every Stop.
-export function snapshotHealth(s) {
+function record(r) {
   const p = join(projectsRoot(), '.snapshot-health');
   const text = raw(p);
   let h = {}; try { h = JSON.parse(text) ?? {}; } catch {}
-  const failed = typeof s === 'string' && s.startsWith('snapshot failed');
-  const off = typeof s === 'string' && s.startsWith('off: ');
-  const rest = typeof s === 'string' && s.startsWith('in parts: ') ? parseInt(s.slice('in parts: '.length), 10) : 0;
   // Busy is another commit in flight, until it lasts longer than any commit takes (GIT_LOCK_STALE): then it is counted.
   // Never counted, a lock renewed again and again (a git killed at its timeout each time) stopped every snapshot, unsaid.
-  const since = h.busySince || new Date().toISOString(), stuck = s === 'busy' && Date.now() - Date.parse(since) > GIT_LOCK_STALE;
-  const next = s === 'busy'
+  const since = h.busySince || new Date().toISOString(), stuck = r.busy && Date.now() - Date.parse(since) > GIT_LOCK_STALE;
+  const next = r.busy
     ? { ...h, busySince: since, pending: true, ...(stuck && { failures: (h.failures ?? 0) + 1, error: `busy since ${local(since)}: another git holds the repository's lock` }) }
-    : failed
-    ? { lastOk: h.lastOk || null, failures: (h.failures || 0) + 1, error: s.slice('snapshot failed: '.length), pending: true }
-    : off ? { lastOk: h.lastOk || null, failures: 0, off: s.slice('off: '.length) }
-    : { lastOk: new Date().toISOString(), failures: 0, ...(rest && { partial: rest, pending: true }) };
-  if (missed.length) next.missed = missed;
-  if (held.length) next.held = held;
+    : 'failed' in r
+    ? { lastOk: h.lastOk || null, failures: (h.failures || 0) + 1, error: r.failed, pending: true }
+    : 'off' in r ? { lastOk: h.lastOk || null, failures: 0, off: r.off }
+    : { lastOk: new Date().toISOString(), failures: 0, ...(r.rest && { partial: r.rest, pending: true }) };
+  if (r.missed.length) next.missed = r.missed;
+  if (r.held.length) next.held = r.held;
   // Through a temp file: one torn by a parallel Stop parsed as {}, and the owed snapshot and failure count were lost (audit D-5).
   try { replaceIfUnchanged(p, text, JSON.stringify(next)); } catch {}
 }
-export const owed = () => { try { return JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8')).pending === true; } catch { return false; } };
+export const owed = () => readHealth().health?.pending === true;
 
 // ---- the git half of the CLI, moved from memory.mjs as it was ----
 // The snapshot repo is ~/.claude/projects and tracks each store by its real
@@ -531,13 +536,32 @@ export const leftoverPurges = () => {
   return out;
 };
 
-// The record snapshotHealth writes, as every reader sees it: `health` is the parsed file, `read` is whether the file could be read.
+// The record snapshot() writes, as every reader sees it: `health` is the parsed file, `read` is whether the file could be read.
 export const readHealth = () => { try { return { read: true, health: JSON.parse(readFileSync(join(projectsRoot(), '.snapshot-health'), 'utf8')) }; } catch { return { read: false, health: null }; } };
 
 // Why a store is not in the snapshots, and the user's fix: moved from handoff-log.mjs.
 export const MISSED = 'it is reached through a link to a folder outside ~/.claude/projects, and git does not follow that link, so no old version of a note there can be brought back. The fix: keep the folder in ~/.claude/projects and make the link the other way round';
 // A held note is checked again at every snapshot, so removing the secret is all it takes.
 export const HELD = 'it holds what looks like a key, token or password, so it stays out of the history. To release it: remove the secret from the note (or its file name, or delete the note); the next reply snapshots it';
+
+// What the record means, as doctor and status say it: `level` is doctor's (true ok, 'note', false failing), `say` the line.
+// Decided here with the words, so a change of wording cannot change the level. The startup line reads the record itself,
+// with its own quieter rule (three failures in a row).
+export function verdict() {
+  const { health: h } = readHealth();
+  if (!h) return { level: 'note', say: 'snapshots: none recorded yet' };
+  if (h.off) return { level: 'note', say: `snapshots: off, ${h.off}: everything else works, but an old version of a note cannot be brought back` };
+  // A first snapshot in parts, or one waiting on another git, as it is: "none recorded yet" hid a history that never
+  // started, and "ok, last <now>" was said of none (audit H-F1).
+  const waiting = h.busySince ? `; waiting since ${local(h.busySince)} for another git to let go of the repository` : '';
+  return h.failures ? { level: false, say: `snapshots: failing, ${h.failures} in a row (${h.error}); last ok ${h.lastOk ? local(h.lastOk) : 'never'}. ` +
+    `The user's fix: run git -C "${projectsRoot()}" status in a terminal to see git's own message; if git says the repository is damaged, rename its .git folder and the next reply starts a new history` }
+    : h.partial ? { level: true, say: `snapshots: the first is being taken in parts, ${h.partial} file(s) still to add; each reply adds more${waiting}` }
+    : !h.lastOk ? { level: true, say: `snapshots: none taken yet${waiting}` }
+    : h.held?.length ? { level: 'note', say: `snapshots: ok, last ${local(h.lastOk)}, but they skip ${h.held.join(', ')}: ${HELD}` }
+    : h.missed?.length ? { level: false, say: `snapshots: ok, last ${local(h.lastOk)}, but they leave out ${h.missed.join(', ')}: ${MISSED}` }
+    : { level: true, say: `snapshots: ok, last ${local(h.lastOk)}${waiting}` };
+}
 
 // Pack index files with no pack, which a repack Windows could not finish leaves: harmless, but git warns of each on every command.
 export const packOrphans = () => {

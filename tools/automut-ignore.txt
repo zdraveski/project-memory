@@ -52,7 +52,7 @@ c096dba8b6d9 src/text.mjs:404 clip's cap `> 8e6` -> `>=`: they differ only at ex
 84accffa4ab0 src/text.mjs:404 clip's cap `(clippedSize += k.length) > 8e6` -> `!(...)`: the cache is emptied at every keep under the cap, so it holds only the newest clip; any cache however it empties answers with the clip cut() computes, since clip is pure, so the output is the same
 ec3f5eefa472 src/memory-tier.mjs main's `lockBudget(stop);` -> `void 0;`: the hand-written mutant "the Stop's locks wait 2 s each" ({ full: true }) is this one and is killed; the check that kills it waits 2 s of real time with two locks held, so it is skipped under --mutant
 269e5b5489be src/snapshot.mjs stage's `todo.length > batch` -> `>=`: with exactly `batch` files left, they are added as a part and the parts end at the next run, not this one; the same files are committed, a reply later
-52a4f5c23e0f src/snapshot.mjs snapshotHealth's busy `> GIT_LOCK_STALE` -> `>=`: they differ only for a busy streak exactly ten minutes old to the millisecond, which counts one reply sooner
+cc53a35352df src/snapshot.mjs record's busy `> GIT_LOCK_STALE` -> `>=`: they differ only for a busy streak exactly ten minutes old to the millisecond, which counts one reply sooner
 b017a0c6e546 src/store.mjs withLock's `Math.max(0, ...)` -> `Math.max(1, ...)`: a spent wait leaves 1 ms instead of none, so the next held lock may get one more 25 ms look; a run's wait stays about 2 s, and a free lock is taken either way
 1a342128e413 src/store.mjs sweepTemps' `process.kill(pid, 0)` -> `process.kill(pid, 1)`: not to be run, not harmless: signal 1 is SIGHUP, sent for real to whatever process holds that pid off Windows (Windows refuses it, ENOSYS, and the copy is kept); the hand-written mutant "a dead writer's temp copy kept" takes the whole ask out and is killed
 17a02d64cb2b src/store.mjs sweepTemps' age `> LOCK_STALE` -> `>=`: they differ only for a temp copy exactly 30 s old to the millisecond, swept one look sooner
@@ -177,12 +177,8 @@ a5daf90bfe2a src/memory-tier.mjs:218 `memo?.was` -> `memo.was`: memo is the obje
 53f4a0bb551e src/memory-tier.mjs:514 `return false` -> `undefined`: the filter callback is read for truthiness only (and the catch it sits in cannot be reached, see the line above).
 667df081315c src/memory-tier.mjs:527 `let at = 0` -> `1`: the first reply line then starts one character later, which is still `<oid> blob <bytes>` (three words) or `<path> missing`, and `at` is set from the line end, so every later read is unchanged.
 62c4e4d323a5 src/memory-tier.mjs:487 `return 0` -> `undefined`: the caller reads `rest` for truthiness only (`if (!rest)`, `rest ?` in the result).
-a9fa05eebb80 src/snapshot.mjs:555 `return null` -> `undefined`: snapshot's result is read as `s === 'busy'`, `if (s)` and by snapshotHealth's `typeof s === 'string'` checks, so undefined and null mean the same.
-dfe519a4ddde src/snapshot.mjs:560 `let n = 1` -> `2`: n is only read as `!n`, and both values are truthy.
-3c24463f392c src/snapshot.mjs:560 `return null` -> `undefined`: snapshot's result is read as `s === 'busy'`, `if (s)` and by snapshotHealth's `typeof s === 'string'` checks, so undefined and null mean the same.
+64d236a55dc5 src/snapshot.mjs:295 `let n = 1` -> `2`: n is only read as `!n`, and both values are truthy.
 9209b6cf3bc9 src/snapshot.mjs:609 `?? {}` -> `|| {}`: JSON.parse gives null or a value; the values `||` would replace (0, false, '') have no fields and spread to nothing, exactly as {} does.
-d11c6c42ecda src/memory-tier.mjs:627 `catch { return false; }` -> `catch {}`: owed() is only read for truthiness, and undefined is false.
-7b9f6cea0cff src/memory-tier.mjs:627 `return false` -> `undefined`: owed() is only read for truthiness, and undefined is false.
 d5b5772aa067 src/transcript.mjs:163 stick()'s miss value -1 -> -2: every caller tests only whether the result is below 0, and the one equality (=== v) is guarded by v >= 0, so -2 and -1 behave alike
 6ac148ba046b src/transcript.mjs:171 stick(F_END) >= 0 -> > 0: a hit is a lastIndex of at least 1 (F_END starts with s+, so it consumes a character), never 0; no input tells them apart
 ab6e4a1566e2 src/handoff-log.mjs:171 stick(F_END) >= 0 -> >= 1: a hit is a lastIndex of at least 1, a miss is -1; no input tells them apart

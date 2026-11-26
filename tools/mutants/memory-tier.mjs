@@ -14,7 +14,7 @@ export default {
   "a prose-only index divides by no lines": ["r.hot ? `${Math.round(r.after / r.hot)}B a line; shorten the text after each link rather than removing lines` : 'the text above the lines; shorten it'", "`${Math.round(r.after / r.hot)}B a line; shorten the text after each link rather than removing lines`"],
   "the front matter read from 1,200 bytes": ["Buffer.alloc(16384)", "Buffer.alloc(1200)"],
   "no line ceiling": ["(size > budget || count > LINES) && q < queue.length", "size > budget && q < queue.length"],
-  "the tidy-up before the first snapshot": ["if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot({ gitWait, batch });\n", ""],
+  "the tidy-up before the first snapshot": ["if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot({ gitWait, batch, record: false });\n", ""],
   "the first of two lines kept": ["if (inIndex && was.inIndex) was.p.line = p.line;", ""],
   "a 7-= heading taken for a conflict": ["merged: /^<{7}(?:[ \\t].*)?\\r?$/m.test(mainText) && /^>{7}", "merged: /^(?:<{7}|={7})(?:[ \\t].*)?\\r?$/m.test(mainText) || /^>{7}"],
   "a failed handoff said nowhere": ["catch (e) { handoffFailed(store, e); }", "catch (e) {}"],

@@ -50,7 +50,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
 import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, stopRuns, deployed, deployedCommit, edited, DEPLOYED } from './run-records.mjs';
-import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, readHealth, MISSED, HELD, isOurs, versionsOf, changedLately, dropDays, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
+import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, verdict, isOurs, versionsOf, changedLately, dropDays, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
 import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
@@ -410,22 +410,6 @@ function recent(dir) {
   const of = (want) => [...last].filter(([f, st]) => want(f, st)).map(([f]) => f.replace(/\.md$/, ''));
   return [['added', of((f, st) => st !== 'D' && born.has(f))], ['edited', of((f, st) => st !== 'D' && !born.has(f))], ['deleted', of((f, st) => st === 'D')]]
     .filter(([, xs]) => xs.length).map(([w, xs]) => `${w} ${more(xs, 6)}`).join(' · ');
-}
-
-function snapshots() {
-  const { health: h } = readHealth();
-  if (!h) return 'snapshots: none recorded yet';
-  if (h.off) return `snapshots: off, ${h.off}: everything else works, but an old version of a note cannot be brought back`;
-  // A first snapshot in parts, or one waiting on another git, as it is: "none recorded yet" hid a history that never
-  // started, and "ok, last <now>" was said of none (audit H-F1).
-  const waiting = h.busySince ? `; waiting since ${local(h.busySince)} for another git to let go of the repository` : '';
-  return h.failures ? `snapshots: failing, ${h.failures} in a row (${h.error}); last ok ${h.lastOk ? local(h.lastOk) : 'never'}. ` +
-    `The user's fix: run git -C "${projectsRoot()}" status in a terminal to see git's own message; if git says the repository is damaged, rename its .git folder and the next reply starts a new history`
-    : h.partial ? `snapshots: the first is being taken in parts, ${h.partial} file(s) still to add; each reply adds more${waiting}`
-    : !h.lastOk ? `snapshots: none taken yet${waiting}`
-    : h.held?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they skip ${h.held.join(', ')}: ${HELD}`
-    : h.missed?.length ? `snapshots: ok, last ${local(h.lastOk)}, but they leave out ${h.missed.join(', ')}: ${MISSED}`
-    : `snapshots: ok, last ${local(h.lastOk)}${waiting}`;
 }
 
 // The store the hooks give this session: Claude Code names the transcript by
@@ -801,8 +785,8 @@ export function doctor(site = sessionStore()) {
   if (orphans.length) say(true, `${orphans.length} pack index file(s) in ${pack} have no pack (a repack that could not finish): harmless, but git warns of each on every command; the user can delete them: ${orphans.join(', ')}`);
   // A killed forget --purge leaves a full copy of the history, forgotten text included, in .git.
   for (const p of leftoverPurges()) say(false, `${p} is a copy of the snapshot history, with text you may have forgotten, left by a killed purge. The user's fix: run forget <word> --purge again (it removes the copy first), or delete that folder`);
-  const snap = snapshots();
-  say(snap.startsWith('snapshots: failing') || snap.includes('but they leave out') ? false : /^snapshots: (off|none recorded yet)|but they skip/.test(snap) ? 'note' : true, snap);
+  const snap = verdict();
+  say(snap.level, snap.say);
   return { ok: !bad, lines };
 }
 
@@ -1292,7 +1276,7 @@ export function main(given) {
   else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
     const am = autoMemory();
-    r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames)), snapshots()] };
+    r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames)), verdict().say] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined, failed);
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
