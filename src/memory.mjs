@@ -48,9 +48,9 @@ import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
 import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRuns, deployedCommit, edited, DEPLOYED } from './run-records.mjs';
-import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, rewrite, unsnapped, missing, gitInstalled, fastExport, fastExportOf, fastImportTo, hashObject, readHealth, MISSED, HELD } from './snapshot.mjs';
+import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, readHealth, MISSED, HELD, isOurs, versionsOf, changedLately, dropDays, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
 import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
@@ -396,14 +396,10 @@ const more = (xs, n) => xs.slice(0, n).join(', ') + (xs.length > n ? `, and ${xs
 // second's untracking then read as every note deleted (review).
 const RECENT_DAYS = 7;
 function recent(dir) {
-  let out; try { out = git('-c', 'core.quotepath=off', 'log', `--since=${RECENT_DAYS}.days`, '--no-renames', '--name-status', '--format=@%s', '--', tracked(dir, '')[0]); } catch { return ''; }
+  // Without the first snapshot's lines: it took in what was already there, not added this week.
+  let ch; try { ch = changedLately([tracked(dir, '')[0]], RECENT_DAYS); } catch { return ''; }
   const last = new Map(), born = new Set();
-  let first = false;
-  for (const l of out.split('\n')) {
-    // The first snapshot took in what was already there: not added this week.
-    if (l.startsWith('@')) { first = l === '@memory: first snapshot'; continue; }
-    if (first) continue;
-    const [st, p] = l.trim().split('\t');
+  for (const [st, p] of ch) {
     const f = p && p.split('/').pop();
     // Nor a journal day: every finished one was listed as a memory added.
     if (!f || !f.endsWith('.md') || f === 'handoff.md' || isIndex(f) || p.includes('/journal/')) continue;
@@ -457,27 +453,6 @@ function sessionStore() {
 }
 
 
-// A fast-export stream without the M and D lines of `paths`; data blocks are skipped by their length, so their text is never read as a line.
-const dropPaths = (buf, paths) => {
-  const out = [], gone = new Set(paths);
-  // git quotes a path with odd bytes: "..." with \ooo octal escapes.
-  const plain = (s) => s[0] !== '"' ? s : Buffer.from(s.slice(1, -1).replace(/\\(?:([0-7]{3})|(.))/g, (_, o, c) => o ? String.fromCharCode(parseInt(o, 8)) : ({ n: '\n', t: '\t' })[c] ?? c), 'latin1').toString();
-  let at = 0;
-  while (at < buf.length) {
-    let e = buf.indexOf(10, at); if (e < 0) e = buf.length - 1;
-    const line = buf.subarray(at, e + 1), t = line.toString().slice(0, -1), d = /^data (\d+)$/.exec(t);
-    at = e + 1;
-    if (d) { out.push(line, buf.subarray(at, at + +d[1])); at += +d[1]; continue; }
-    const p = /^M \d+ \S+ (.*)$/.exec(t)?.[1] ?? /^D (.*)$/.exec(t)?.[1];
-    if (p === undefined || !gone.has(plain(p))) out.push(line);
-  }
-  return Buffer.concat(out);
-};
-const purge = (dir, days) => {
-  const paths = days.flatMap((d) => tracked(dir, `journal/${d}.md`));
-  rewrite((copy) => fastImportTo(copy, dropPaths(fastExportOf(copy), paths)));
-};
-
 // rescan: today's redaction rules over what is already saved (notes, journal, handoff, every snapshot): counts and places, never a
 // value. --apply --yes backs up first, then writes [redacted] over each hit and rewrites the history. Markers already in the
 // text are set aside, so a second run finds nothing new.
@@ -486,34 +461,6 @@ const scrub = (s) => {
   const p = s.replaceAll(REMOVED, '[redacted]'), t = redact(p), n = t.split('[redacted]').length - p.split('[redacted]').length;
   return n > 0 ? [t, n] : [s, 0];
 };
-// A git fast-export stream with every text blob, commit and tag message scrubbed and its length prefix recomputed; a blob that is
-// not UTF-8 stays as it is. shortcut: file names in the stream are not scanned; a secret in a file name stays.
-const walk = (buf) => {
-  const out = [], dec = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }), changed = new Set(), files = new Set();
-  let at = 0, hits = 0, blobs = 0, commits = 0, hit = false, blob = false, mark = null;
-  while (at < buf.length) {
-    let e = buf.indexOf(10, at); if (e < 0) e = buf.length - 1;
-    const line = buf.subarray(at, e + 1), t = line.toString(), d = /^data (\d+)\n$/.exec(t);
-    at = e + 1;
-    if (!d) {
-      if (/^(?:blob\n|commit |tag |reset )/.test(t)) { if (t.startsWith('commit')) { commits += hit; hit = false; } blob = t === 'blob\n'; mark = null; }
-      const m = /^mark :(\d+)\n$/.exec(t), mm = /^M \d+ :(\d+) (.*)\n$/.exec(t);
-      if (m && blob) mark = m[1];
-      if (mm && changed.has(mm[1])) { hit = true; files.add(mm[2]); }
-      out.push(line); continue;
-    }
-    const body = buf.subarray(at, at + +d[1]); at += +d[1];
-    let to = body, n = 0;
-    try { const [s, c] = scrub(dec.decode(body)); if (c) { to = Buffer.from(s); n = c; } } catch {}
-    if (n) { hits += n; if (blob) { blobs++; changed.add(mark); } else hit = true; }
-    out.push(Buffer.from(`data ${to.length}\n`), to);
-  }
-  return { out: Buffer.concat(out), hits, blobs, commits: commits + hit, files };
-};
-// restore keeps the note it replaces under a ref that names a blob, which fast-export skips.
-const blobRefs = () => git('for-each-ref', '--format=%(objecttype) %(objectname) %(refname)').split('\n').map((l) => l.split(' ')).filter((p) => p[0] === 'blob').flatMap(([, sha, ref]) => {
-  try { const text = git('cat-file', 'blob', sha), [to, c] = scrub(text); return c ? [{ ref, text, to, c }] : []; } catch { return []; }
-});
 const rescan = (stores, apply, yes) => {
   const root = projectsRoot(), found = [];
   for (const dir of stores) for (const sub of ['', 'journal']) {
@@ -526,7 +473,7 @@ const rescan = (stores, apply, yes) => {
     }
   }
   let hist = null, kept = [];
-  if (!unsnapped()) try { hist = walk(fastExport()); kept = blobRefs(); }
+  if (!unsnapped()) try { hist = scanHistory(scrub); kept = keptCopies(scrub); }
   catch (e) { return no(`the snapshots could not be read (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); nothing changed`); }
   const nf = found.reduce((a, x) => a + x.c, 0), nh = (hist?.hits ?? 0) + kept.reduce((a, x) => a + x.c, 0), s = (n) => (n === 1 ? '' : 's');
   const lines = [`files now: ${nf} secret${s(nf)} in ${found.length} file${s(found.length)}${found.length ? `: ${more(found.map((x) => `${relative(root, x.f).replace(/\\/g, '/')} (${x.c})`), 20)}` : ''}`,
@@ -553,10 +500,10 @@ const rescan = (stores, apply, yes) => {
     if (!r) { out.push(`${dir} is busy; its files were not changed, run again`); left++; } else if (r.includes('conflict')) { out.push(`a file in ${dir} changed while this ran; run again for it`); left++; }
   }
   try {
-    for (const x of kept) git('update-ref', x.ref, hashObject(x.to, { encoding: 'utf8' }).trim());
-    if (nh) rewrite((copy) => fastImportTo(copy, walk(fastExportOf(copy)).out));
+    for (const x of kept) keepReplaced(x.to, x.ref);
+    if (nh) scrubHistory(scrub);
   } catch (e) { return { ok: false, lines: [...out, `the snapshots could not be rewritten (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); backup: ${backup}`] }; }
-  const after = nh && walk(fastExport()).hits + blobRefs().length;
+  const after = nh && scanHistory(scrub).hits + keptCopies(scrub).length;
   out.push(`redacted ${nf} in files and ${nh} in the snapshots; ${after ? `${after} still found in the snapshots` : 'the snapshots hold none now'}`, `backup: ${backup}`);
   return { ok: !left && !after, lines: out };
 };
@@ -572,22 +519,14 @@ const changersOf = (dir, f, failed, since) => {
   try { return changers(told([dir], { failed, since }), [join(dir, f), join(real(dir), f)]).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)); } catch { return []; }
 };
 export function history(dirs, file, everywhere = false, max = 30, failed = []) {
-  const verb = { A: 'added', M: 'changed', D: 'deleted' };
+  const verb = { A: 'added', M: 'changed', D: 'deleted', first: 'in the first snapshot' };
   const why = unsnapped();
   if (why) return no(why);
   const blocks = [];
   try {
     for (const dir of dirs) {
       const f = named(dir, file);
-      // No renames: a link that sorts first moves every path to it, and an R line was no change.
-      const out = git('log', '--no-renames', '--format=@%h %ad%x09%s', '--date=format:%Y-%m-%d %H:%M', '--name-status', '--', ...tracked(dir, f));
-      const snaps = [];
-      let head = null;
-      for (const l of out.split('\n')) {
-        if (l.startsWith('@')) head = l.slice(1).split('\t');
-        // The first snapshot took in what was already there: not when it was written.
-        else if (head && verb[l[0]]) { snaps.push([head[0], head[1] === 'memory: first snapshot' ? 'in the first snapshot' : verb[l[0]]]); head = null; }
-      }
+      const snaps = versionsOf(tracked(dir, f)).map(([h, v]) => [h, verb[v]]);
       // Newest first, as git prints them; paired oldest first, before `max` cuts the list.
       // Only the ones shown, and the one below them: its minute is the lower limit of the oldest shown. None below: the oldest has no lower limit, all of the journal is read.
       const used = snaps.slice(0, max + 1), since = snaps.length > max ? used.at(-1)[0].split(' ')[1] : undefined;
@@ -666,8 +605,7 @@ export function restore(dir, file, { rev, force = false } = {}) {
     // What --force replaces is kept in the repo, not lost: no snapshot may hold it yet.
     let kept = '';
     // No copy, no replace: the text it would overwrite was gone for good (1.3.1 audit D-8).
-    // Under a ref: a blob nothing refers to is dangling, and gc deletes it.
-    if (cur !== null) { try { const sha = hashObject(curB, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim(); git('update-ref', `refs/project-memory/replaced/${sha}`, sha); kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${sha}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
+    if (cur !== null) { try { const sha = keepReplaced(curB); kept = `; what it replaced is kept: git -C "${real(projectsRoot())}" cat-file -p ${sha}`; } catch { return `${path} could not be copied into the snapshots first; nothing restored`; } }
     // Or one the disk refuses (a name Windows cannot hold, from a store synced from Linux).
     const w = put(path, cur, bytes);
     if (failed(w)) return `${path} could not be written (${w.slice(8)}); nothing restored`;
@@ -861,7 +799,7 @@ export function doctor(site = sessionStore()) {
   const { pack, orphans } = packOrphans();
   if (orphans.length) say(true, `${orphans.length} pack index file(s) in ${pack} have no pack (a repack that could not finish): harmless, but git warns of each on every command; the user can delete them: ${orphans.join(', ')}`);
   // A killed forget --purge leaves a full copy of the history, forgotten text included, in .git.
-  try { for (const n of readdirSync(join(projectsRoot(), '.git'))) if (n.startsWith('pm-purge-') && Date.now() - statSync(join(projectsRoot(), '.git', n)).mtimeMs > LOCK_STALE) say(false, `${join(projectsRoot(), '.git', n)} is a copy of the snapshot history, with text you may have forgotten, left by a killed purge. The user's fix: run forget <word> --purge again (it removes the copy first), or delete that folder`); } catch {}
+  for (const p of leftoverPurges()) say(false, `${p} is a copy of the snapshot history, with text you may have forgotten, left by a killed purge. The user's fix: run forget <word> --purge again (it removes the copy first), or delete that folder`);
   const snap = snapshots();
   say(snap.startsWith('snapshots: failing') || snap.includes('but they leave out') ? false : /^snapshots: (off|none recorded yet)|but they skip/.test(snap) ? 'note' : true, snap);
   return { ok: !bad, lines };
@@ -1306,11 +1244,11 @@ export function main(given) {
         // The journal no longer holds it (forgotten before) but the snapshots may: the days whose versions held every word go.
         // Plain words only: a key, conversation or date range that matched nothing must not widen into every day holding the words.
         // shortcut: words are looked up as plain text in any case (git folds ASCII letters only), per day; a day holding them in different entries is purged too.
-        if (yes && terms.length && !named.length && !conversation && !range.since && !range.until && rest.includes('--purge') && /^\[project-memory\]/m.test(readText(join(projectsRoot(), '.git', 'config')) ?? '')) {
+        if (yes && terms.length && !named.length && !conversation && !range.since && !range.until && rest.includes('--purge') && isOurs()) {
           try {
             const days = terms.map((t) => new Set(tracked(here, 'journal').flatMap((at) => git('log', '--all', '-i', '--format=', '--name-only', '-S' + t, '--', at).split('\n')).map((p) => p.split('/').pop().replace(/\.md$/, '')).filter((d) => /^\d{4}-\d\d-\d\d$/.test(d))));
             const hit = [...days[0]].filter((d) => days.every((s) => s.has(d)));
-            if (hit.length) { purge(here, hit); r.lines = [`the journal of ${here} no longer holds it; purged the journal of ${more(hit, 6)} from the snapshots`]; }
+            if (hit.length) { dropDays(here, hit); r.lines = [`the journal of ${here} no longer holds it; purged the journal of ${more(hit, 6)} from the snapshots`]; }
           } catch (e) { r = no(`the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)})`); }
         }
       } else if (!yes) {
@@ -1328,12 +1266,12 @@ export function main(given) {
         // A day before today is in the snapshots already (memory-tier commits a
         // day once it closes), when they are the plugin's: a repository the user
         // made there holds no journal, and deleting it would lose their history.
-        const ours = /^\[project-memory\]/m.test(readText(join(projectsRoot(), '.git', 'config')) ?? '');
+        const ours = isOurs();
         // Not an unwritten turn's day: no snapshot holds what no day did.
         const old = ours ? [...new Set(gone.filter((e) => !e.unsaid && e.day !== local().slice(0, 10)).map((e) => e.day))] : [];
         let purged = null;
         if (ours && got && rest.includes('--purge')) {
-          try { purge(here, [...new Set(tried.map((e) => e.day))]); purged = 'purged from the snapshots too'; }
+          try { dropDays(here, [...new Set(tried.map((e) => e.day))]); purged = 'purged from the snapshots too'; }
           catch (e) { purged = `the snapshots could not be purged (${reason(e.stderr ? { message: String(e.stderr).trim() } : e)}); the old snapshots still hold the text: run the same forget command again with --purge`; }
         }
         r = !got ? no(`${here} is busy (another hook holds it); try again`)

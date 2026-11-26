@@ -101,6 +101,18 @@ through a link to a folder outside the projects root.
 it (`forget --purge`), or so that secrets are replaced with `[redacted]`
 (`rescan --apply`).
 
+**Kept copy**: the text a `restore --force` replaced, kept in the snapshot repo
+under `refs/project-memory/replaced/<id>` so no restore loses it. `rescan`
+scrubs kept copies too.
+
+**History questions**: what the CLI asks of the snapshots, in note terms:
+`versionsOf` (the snapshots that changed a note), `changedLately` (the week's
+changes for status), `dropDays` (forget --purge), `scanHistory` and
+`scrubHistory` (rescan, with the CLI's own scrub function), `keptCopies` and
+`keepReplaced`, `leftoverPurges` (doctor) and `isOurs`. `src/snapshot.mjs`
+answers them, so git's log and fast-export formats, the first snapshot's
+message and the purge's temporary copy are known there alone.
+
 ## Run records
 
 **Run record**: a small status file the hooks write and doctor, status and the
