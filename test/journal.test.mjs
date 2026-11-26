@@ -2065,6 +2065,15 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
     rmSync(lock, { recursive: true, force: true });
     ok(r === false && /busy|lock/i.test(readFileSync(join(sd, 'journal', '.failed'), 'utf8')), `a report that met a busy lock leaves a failure line (took ${Date.now() - t} ms)`);
   }
+  // 1.6.1: a lock freed after the first wait is taken on a second try, as a Stop's is: with 30 agents ending at once, some
+  // reports were lost for good (backfill skips agent transcripts).
+  {
+    const lock = join(sd, '.lock'); mkdirSync(lock, { recursive: true });
+    const real = fs.mkdirSync, t0 = performance.now();
+    fs.mkdirSync = function (p, ...r) { if (String(p) === lock && performance.now() - t0 > 2300) rmSync(lock, { recursive: true, force: true }); return real.call(this, p, ...r); }; syncBuiltinESMExports();
+    let r; try { r = subagent({ ...input, agent_id: 'retry', agent_transcript_path: undefined, last_assistant_message: 'second try report okapi' }); } finally { fs.mkdirSync = real; syncBuiltinESMExports(); rmSync(lock, { recursive: true, force: true }); }
+    ok(r === true && entries([sd]).some((x) => /second try report okapi/.test((x.e ?? x).answered)), `a report whose lock frees after the first wait is saved (got ${r})`);
+  }
   ok(subagent(pin) === false && !entries([sd]).some((x) => /4821/.test(JSON.stringify(x))), 'a subagent report in a private turn is not saved');
   ok(subagent({ ...pin, agent_id: 'pfx', agent_transcript_path: fx }) === false && !entries([sd]).some((x) => (x.e ?? x).key === 'subagent-pfx'),
     "a helper started in a private turn lists no changed files: its entry is not saved");
