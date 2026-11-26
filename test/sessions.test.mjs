@@ -89,6 +89,26 @@ const brief = spawnSync(process.execPath, [tool('src/brief.mjs'), '--print'], { 
 ok(brief.stdout.includes('Another session is working in this project: [bbbbbbbb] "export fix", on: "move the export to 02:00"; files it changed: src/close.js'), `the briefing names it (got ${brief.stdout})`);
 const status = spawnSync(process.execPath, [tool('src/memory.mjs'), 'status', '--store', p.store], { encoding: 'utf8' });
 ok(status.stdout.includes(`  live session [bbbbbbbb] "export fix", on: "move the export to 02:00"; files it changed: ${p.full('src/close.js')}`), `status names it (got ${status.stdout})`);
+// Live by its session file, its conversation file here with its turn finished (waiting for its user): still named (audit start#0).
+{
+  const q = project();
+  q.b(['asked', 'move the export to 02:00', 3 * 60e3]);
+  writeFileSync(join(q.store, '..', `${B}.jsonl`), [{ type: 'user', timestamp: iso(3 * 60e3), message: { role: 'user', content: 'move the export to 02:00' } }, { type: 'assistant', timestamp: iso(2 * 60e3), message: { role: 'assistant', content: [{ type: 'text', text: 'Moved it; waiting for your ok.' }], stop_reason: 'end_turn', usage: { input_tokens: 1 } } }].map((x) => JSON.stringify(x)).join('\n') + '\n');
+  const out = spawnSync(process.execPath, [tool('src/brief.mjs'), '--print'], { input: JSON.stringify({ session_id: A, cwd: q.cwd, hook_event_name: 'SessionStart', source: 'startup' }), encoding: 'utf8' }).stdout;
+  ok(out.includes('Another session is working in this project: [bbbbbbbb], on: "move the export to 02:00"') && !out.includes('Last session here ended'), `a live session waiting for its user is named, not ended (got ${out})`);
+}
+// With a third session mid-turn (its conversation file ends on a prompt): each of the two is named once, the waiting one too.
+{
+  const q = project(), C = 'cccccccc-0000-4000-8000-000000000000';
+  q.b(['asked', 'move the export to 02:00', 3 * 60e3]);
+  appendFileSync(q.file(C), sessionLine('asked', 'tidy the readme', '', iso(60e3)));
+  const rec = (x) => x.map((y) => JSON.stringify(y)).join('\n') + '\n';
+  writeFileSync(join(q.store, '..', `${B}.jsonl`), rec([{ type: 'user', timestamp: iso(3 * 60e3), message: { role: 'user', content: 'move the export to 02:00' } }, { type: 'assistant', timestamp: iso(2 * 60e3), message: { role: 'assistant', content: [{ type: 'text', text: 'Moved it; waiting for your ok.' }], stop_reason: 'end_turn', usage: { input_tokens: 1 } } }]));
+  writeFileSync(join(q.store, '..', `${C}.jsonl`), rec([{ type: 'user', timestamp: iso(60e3), message: { role: 'user', content: 'tidy the readme' } }]));
+  const out = spawnSync(process.execPath, [tool('src/brief.mjs'), '--print'], { input: JSON.stringify({ session_id: A, cwd: q.cwd, hook_event_name: 'SessionStart', source: 'startup' }), encoding: 'utf8' }).stdout;
+  const times = (w) => out.split(w).length - 1;
+  ok(times('[bbbbbbbb]') === 1 && times('[cccccccc]') === 1 && !out.includes('Last session here ended'), `one session working and one waiting: each named once (got ${out})`);
+}
 hushed(p.store, 'bbbbbbbb', true);
 ok(!spawnSync(process.execPath, [tool('src/memory.mjs'), 'status', '--store', p.store], { encoding: 'utf8' }).stdout.includes('bbbbbbbb'), 'status: not a conversation marked private');
 
