@@ -87,4 +87,11 @@ export default {
   "a file not in UTF-8 read as one": ["if (text?.includes('�')) try", "if (false) try"],
   "journal paths folded in case on Linux": ["foldCase = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);", "foldCase = (p) => p.toLowerCase();", { test: 'test/journal.test.mjs' }],
   "journal paths not folded in case on macOS": ["foldCase = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);", "foldCase = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);", { test: 'test/journal.test.mjs' }],
+  // The index format (moved from memory-tier.mjs, memory.mjs and briefing.mjs).
+  "a returning line loses its own trailing space": ["line.slice(0, -OVERFLOW.length).replace(/ $/, '')", "line.slice(0, -OVERFLOW.length).trimEnd()"],
+  "BOM not stripped": ["export const indexLines = (text) => text.replace(/^\\uFEFF/, '')", "export const indexLines = (text) => text"],
+  'a CRLF index written back LF': ["export const eolOf = (text) => (/^[^\\n]*\\r\\n/.test(text) ? '\\r\\n' : '\\n');", "export const eolOf = () => '\\n';"],
+  'a wrapped hook taken for prose': ["export const wraps = (line) => /^[ \\t]+\\S/.test(line);", "export const wraps = () => false;"],
+  'an empty archive read by its link alone': ["line.includes(`](${ARCHIVE})`) && / — 0 older/.test(line)", "line.includes(`](${ARCHIVE})`)"],
+  'an overflow mark never comes off': ["line.endsWith(OVERFLOW) ? line.slice", "false ? line.slice"],
 };

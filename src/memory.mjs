@@ -48,7 +48,7 @@ import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, LOCK_STALE, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
 import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRuns, deployedCommit, edited, DEPLOYED } from './run-records.mjs';
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, rewrite, unsnapped, missing, gitInstalled, fastExport, fastExportOf, fastImportTo, hashObject, readHealth, MISSED, HELD } from './snapshot.mjs';
 import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
@@ -79,7 +79,6 @@ catch (e) {
   takeBack = () => { throw new Error(`journal.mjs could not be loaded: ${why}`); };
 }
 
-const OVERFLOW = /\s*<!-- overflow -->$/;
 // The most entries a forget's look lists, and so the most one --yes removes:
 // it showed 20 of 35, and --yes removed all 35.
 const LOOK = 200;
@@ -172,22 +171,22 @@ const named = (dir, file) => { const d = onDisk(dir, file); return d !== file ||
 const put = (p, read, next) => { try { return replaceIfUnchanged(p, read, next); } catch (e) { return `failed: ${e.code || e.message}`; } };
 const failed = (w) => typeof w === 'string' && w.startsWith('failed: ');
 // A line added to an index goes before the archive's own line, which tiering
-// keeps last and leaves where it is when nothing else changed.
+// keeps last and leaves where it is when nothing else changed. In the index's own line endings, a wrapped hook's too.
 const withLine = (text, line) => {
-  const ls = text.replace(/\n*$/, '').split('\n'), at = ls.findIndex((l) => target(l) === ARCHIVE);
+  const eol = eolOf(text), ls = text.replace(/[\r\n]*$/, '').split(/\r?\n/), at = ls.findIndex((l) => target(l) === ARCHIVE);
   if (at === -1) ls.push(line); else ls.splice(at, 0, line);
-  return ls.join('\n') + '\n';
+  return ls.join(eol).replace(/\r?\n/g, eol) + eol;
 };
 
 // The first pointer `match` takes, with the indented lines a long hook wraps onto, and the text without every such pointer and its wrap.
 const take = (text, match) => {
   const kept = []; let line = null, own = false, first = false;
   for (const l of text.split(/\r?\n/)) {
-    if (match(l)) { own = true; first = line === null; if (first) line = l.replace(OVERFLOW, ''); }
-    else if (own && /^[ \t]+\S/.test(l)) { if (first) line += '\n' + l; }
+    if (match(l)) { own = true; first = line === null; if (first) line = l; }
+    else if (own && wraps(l)) { if (first) line += '\n' + l; }
     else { own = false; kept.push(l); }
   }
-  return { line, rest: kept.join('\n') };
+  return { line: line && unmark(line), rest: kept.join(eolOf(text)) };
 };
 
 // Every memory in a store: what its frontmatter says, its [[links]], and which
