@@ -213,6 +213,9 @@ r = spawnSync(process.execPath, [tool('src/memory-tier.mjs'), '--stop'], { input
 utimesSync(fb, (Date.now() - 8 * 864e5) / 1000, (Date.now() - 8 * 864e5) / 1000);
 spawnSync(process.execPath, [tool('src/memory-tier.mjs'), '--stop'], { input: JSON.stringify({ session_id: SID, cwd: b.cwd, hook_event_name: 'Stop' }), encoding: 'utf8' });
 ok(!existsSync(fb), 'the save after a reply sweeps them');
+fb = touch(b, 'dddddddd', Date.now() - 8 * 864e5);
+spawnSync(process.execPath, [tool('src/memory-tier.mjs'), '--stop'], { input: JSON.stringify({ session_id: 'eeeeeeee-0000-4000-8000-000000000000', cwd: b.cwd, hook_event_name: 'Stop' }), encoding: 'utf8', env: { ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' } });
+ok(!existsSync(fb), 'and with auto memory off too');
 
 // The prompt hook (headline 1c, "a prompt that names something old"): UserPromptSubmit names earlier exchanges that share
 // rare words with the request. A young store (10 entries) gets a pointer, and the wording is pinned here.
@@ -262,6 +265,10 @@ ok(readSession(p.session()).map((l) => l.kind).join() === 'quiet', 'and no file 
 quiet(run(ask(p, 'tidy the build')), 'the next prompt');
 quiet(run(ask(p, 'nightly export cron <private-session>')), 'the <private-session> mark: nothing');
 ok(readSession(p.session()).map((l) => l.kind).join() === 'quiet', 'the file cut to one quiet line');
+// A session file that will not read at the prompt (EBUSY, EPERM): a <private> block still leaves its quiet line.
+p = project(); p.day('2026-11-17', [other(p, 1, { asked: 'nightly export cron', changed: ['src/close.js'] })]); turn(p, 'tidy the build');
+ok((await hear(ask(p, 'nightly export cron <private>x</private>'), { read: () => null })).say === '', 'an unreadable file, a <private> block: nothing');
+ok((await look(p.payload('src/close.js'))).say === '' && readSession(p.session()).map((l) => l.kind).join() === 'asked,quiet', `then no file line and no pointer (got ${readSession(p.session()).map((l) => l.kind)})`);
 // Redact, then cut: a secret that starts before character 120 and ends after it leaves no readable half.
 p = project();
 await hear(ask(p, `${'word '.repeat(22)}api_key=sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 and more`));

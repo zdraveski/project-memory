@@ -429,19 +429,20 @@ export const tidy = (lines) => {
 // <private> block appends it, the <private-session> mark cuts the file down to it (the save after the reply then deletes the
 // file). Otherwise the `asked` line (redacted, then cut) goes last, after the `told` lines of the pointer: the change hook counts
 // its blocks from the newest prompt line on, so a prompt's pointer uses up none of them.
-export async function onPrompt(input, { journal, deadline = DEADLINE, now = Date.now() } = {}) {
+export async function onPrompt(input, { journal, deadline = DEADLINE, now = Date.now(), read = readSession } = {}) {
   const none = { say: '', n: 0 }, s = tag(input?.session_id);
   if (process.env.PROJECT_MEMORY_RECALL === '0' || input?.agent_id != null || typeof input?.prompt !== 'string' || !/^[\w-]+$/.test(s) || memoryOff()) return none;
   const store = storeOf(input);
   if (isOff(store) || isHushed(store, s, QUIET, 1) || isHushed(projectsRoot(), s, OFF, 1)) return none;
   const { asked, own, readTail } = await import('./transcript.mjs');
   if (!asked({}, input.prompt)) return none;
-  const at = join(sessionsOf(store), s), lines = readSession(at), t = new Date(now).toISOString();
-  if (!lines) return none;
+  const at = join(sessionsOf(store), s), lines = read(at), t = new Date(now).toISOString();
   const write = (text, whole = false) => { mkdirSync(dirname(at), { recursive: true, mode: 0o700 }); (whole ? writeFileSync : appendFileSync)(at, text, { mode: 0o600 }); };
   const typed = norm(input.prompt);
+  // Before the read check: a file busy at the read must still get the quiet line, or the change hook takes the turn as public.
   if (PRIVATE_SESSION.test(typed)) { write(sessionLine('quiet', '', '', t), true); return none; }
   if (PRIVATE.test(typed)) { write(sessionLine('quiet', '', '', t)); return none; }
+  if (!lines) return none;
   let size = 0;
   try { size = statSync(at).size; } catch {}
   if (size > SESSION_MAX) write(tidy(lines), true);
