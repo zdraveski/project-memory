@@ -35,8 +35,9 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as T from './timing.mjs';
 import { clip } from './text.mjs';
-import { handoff, tag, answer, newest, sectionOf, norm, redact } from './handoff-log.mjs';
-import { goesOn, readTail, records, typedMark, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers, BARE } from './transcript.mjs';
+import { handoff, tag, answer, newest, sectionOf, norm } from './handoff-log.mjs';
+import { goesOn, readTail, records, typedMark, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers } from './transcript.mjs';
+import { redact, BARE } from './secrets.mjs';
 import { isQuiet, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, isOff } from './privacy.mjs';
 import { storeOf, withLock, replaceIfUnchanged, projectsRoot, memoryOff, local, envOn } from './store.mjs';
 

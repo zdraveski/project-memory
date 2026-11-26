@@ -15,7 +15,8 @@ import { spawn } from 'node:child_process';
 import * as T from './timing.mjs';
 import { isOff } from './privacy.mjs';
 import { snapshot, snapshotHealth, owed, reset, GIT_TIMEOUT, BATCH } from './snapshot.mjs';
-import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, allStores, front, raw, memoryOff, reason, redact, tag } from './store.mjs';
+import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, allStores, front, raw, memoryOff, reason, tag } from './store.mjs';
+import { redact } from './secrets.mjs';
 import { HANDOFF_FAILED, health, stopRecord, plugins } from './run-records.mjs';
 
 // --- the rules. Change these, not the code below. ---------------------------

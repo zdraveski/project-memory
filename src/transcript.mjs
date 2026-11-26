@@ -10,7 +10,8 @@ import { openSync, readSync, closeSync, fstatSync, readdirSync, statSync } from 
 import { join, dirname } from 'node:path';
 import { clip } from './text.mjs';
 import { PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
-import { tag, same, inProjects, local, norm, FUNC } from './store.mjs';
+import { tag, same, inProjects, local, norm } from './store.mjs';
+import { BARE } from './secrets.mjs';
 
 // ---- Records ----
 export const TAIL = 512_000;     // first read; grown 4× until it reaches the latest prompt
@@ -348,11 +349,6 @@ const ranOf = (b) => {
 // handoff and the compaction note alike. NotebookEdit names its file differently.
 export const editedFile = (b) => (b?.type === 'tool_use' && /^(Edit|Write|NotebookEdit)$/.test(b.name) && (b.input?.file_path || b.input?.notebook_path)) || '';
 
-// A reply that is one token with a digit or a symbol, to a question that asks for a password, token or key: the value alone, with no
-// keyword to redact it by (secret-paths-9). shortcut: a one-word answer of letters only ("hunter") is kept.
-const ASKS_SECRET = (q) => /\b(?:pass(?:word|phrase|code)|pwd|pin|tokens?|secret|api[ _-]?key|credentials?)\b/i.test(q) && /\?|\b(?:paste|enter|send|share|provide|type|give)\b/i.test(q);
-// Also a passphrase typed alone (3 to 8 plain words). Shared with compact-gate's note. shortcut: any 3-word reply to a secret question is cut too.
-export const BARE = (a, q) => (/^\S{4,200}$/.test(a) && /[^A-Za-z]/.test(a) || /^[a-z]+(?: [a-z]+){2,7}$/i.test(a) && !a.toLowerCase().split(' ').some((w) => FUNC.has(w))) && ASKS_SECRET(q.slice(-400));
 // What an assistant record asked: its AskUserQuestion questions as text.
 const questions = (r) => (Array.isArray(r.message?.content) ? r.message.content.filter((b) => b?.type === 'tool_use' && b.name === 'AskUserQuestion').map((b) => JSON.stringify(b.input?.questions ?? '')).join(' ') : '');
 

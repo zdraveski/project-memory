@@ -1,7 +1,7 @@
 // How text is printed safely: redacted, defused, cut where a person would, held to what Claude Code will show.
 // A leaf: Node built-ins and store.mjs (redact) only. It knows nothing of the handoff, the journal or the transcript,
 // so a hook can print without loading the briefing (1.6.0 step 15, docs/specs/2026-11-24-privacy-and-transcript-modules.md).
-import { redact } from './store.mjs';
+import { redact } from './secrets.mjs';
 
 // Marker text inside an ask or an answer would become the section boundary on
 // the next run and strand every entry before it as prose, and a tag printed at

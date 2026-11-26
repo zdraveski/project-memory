@@ -8,7 +8,8 @@ import { hostname } from 'node:os';
 import { join, relative, isAbsolute, basename, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { isOff } from './privacy.mjs';
-import { holdsSecret, projectsRoot, replaceIfUnchanged, raw, allStores, pathKey, same, local, redact, reason } from './store.mjs';
+import { projectsRoot, replaceIfUnchanged, raw, allStores, pathKey, same, local, reason } from './store.mjs';
+import { redact, holdsSecret } from './secrets.mjs';
 
 const GIT_LOCK_STALE = 10 * 60000;  // an index.lock this old outlived the git that made it
 export const GIT_TIMEOUT = 30_000;  // a git that hangs (a prompt nobody sees) must not hold the Stop hook

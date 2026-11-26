@@ -25,8 +25,7 @@ import * as T from './timing.mjs';
 import { clip, plain } from './text.mjs';
 import { readTail, turns, promptBefore, TAIL, FORGETS, userText, tailOf, joined, lastTurn } from './transcript.mjs';
 import { PRIVATE, QUIET, OFF, isOff, wasOff, hushed, off, unreadable, forgottenIn } from './privacy.mjs';
-import { holdsSecret, tag, storeOf, withLock, replaceIfUnchanged, projectsRoot, local, same, memoryOff, pathKey, transcriptKey, raw, inProjects, redact, norm } from './store.mjs';
-export { redact, holdsSecret };
+import { tag, storeOf, withLock, replaceIfUnchanged, projectsRoot, local, same, memoryOff, pathKey, transcriptKey, raw, inProjects, norm } from './store.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
 const SESSIONS = 3;       // how many sessions: parallel work keeps the depth one session had alone
