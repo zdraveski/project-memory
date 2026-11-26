@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.6.2 (2026-11-26)
+
+This release mostly reorganises the code inside the plugin, so it is easier to keep safe and correct. It also fixes two small things you may notice. Nothing changes in how you use it, and your memory files keep their format.
+
+### Privacy
+
+- **A conversation whose private sweep has not run yet stays hidden.** Search, `memory show`, `memory history` and the journal page now leave it out until the sweep is done. Before, they could show it. If the list of private conversations cannot be read, they say so instead of showing everything.
+
+### Notes and logs
+
+- **Restoring or promoting a note keeps its index's line endings.** An index with Windows line endings no longer comes back with mixed ones.
+- **The plugin's small logs are trimmed the same way.** The stop record, the timing log and the git-rule log are all cut by one routine, and a temporary copy left by a cut is cleared at the next save.
+
+### Under the hood
+
+The secret detector, privacy rules, transcript reading, journal reading, snapshots, the handoff, the run records, the session file and the Stop each moved into one module with a small interface and their own tests.
+
 ## 1.6.1 (2026-11-26)
 
 This release fixes two ways a secret could reach the journal, a session that was called ended while it was still open, and a stuck lock that cost every save 30 seconds. It also stops notes from being left out of the history for no reason. Nothing changes in how you use it.
