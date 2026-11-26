@@ -1,10 +1,10 @@
 // How a query is read and matched: the word splitter and the tests on a journal entry that search and the hooks share.
 // Also the recall hooks' look-ups and handlers (1.6.0 headlines 1b, 1c and 4), over the session file (sessions.mjs). The
 // journal is loaded inside the look-ups that read it, so memory.mjs and the hook's "already seen" path never pay for it.
-import { readFileSync, appendFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { appendFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { foldCase, projectsRoot, tag, norm, local } from './store.mjs';
-import { gate, isHushed, QUIET, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
+import { gate, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
 import { clip, fit } from './text.mjs';
 import { sessionsOf, readSession, sessionLine, tidy, others, ACTIVE } from './sessions.mjs';
 
