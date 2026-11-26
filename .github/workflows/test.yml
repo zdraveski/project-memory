@@ -106,3 +106,23 @@ jobs:
           echo "bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b  zizmor-x86_64-unknown-linux-gnu.tar.gz" | sha256sum -c -
           tar xzf zizmor-x86_64-unknown-linux-gnu.tar.gz zizmor
           ./zizmor --format=github .github/workflows
+
+  # The files Claude Code reads from the plugin (the skill, the agent, hooks.json, plugin.json): one wrong field fails
+  # silently. On pull requests too, so a broken one never reaches a release.
+  agnix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Pinned the same way, unpacked outside the checkout so it lints only the repo.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP"
+          gh release download v0.61.0 -R agent-sh/agnix -p agnix-x86_64-unknown-linux-gnu.tar.gz
+          echo "cfc8f4c5a51d023bbc8742fb84f420b12d3d49b621c8ccfb7382c5f73944ad09  agnix-x86_64-unknown-linux-gnu.tar.gz" | sha256sum -c -
+          tar xzf agnix-x86_64-unknown-linux-gnu.tar.gz agnix
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/agnix" --target claude-code --format github .
