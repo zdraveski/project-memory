@@ -133,7 +133,7 @@ for (const { at, zone } of INSTANTS) {
   if (zone && offsetAt(zone, t + 39 * 60_000) === offsetAt(zone, t + 41 * 60_000)) { console.error(`fuzz: ${at} is no daylight-saving change in ${zone}: the instant list is wrong`); process.exit(1); }
 }
 
-// Secrets of every shape handoff-log.mjs's redact() knows, built here from pieces (no source line is one) with
+// Secrets of every shape secrets.mjs's redact() knows, built here from pieces (no source line is one) with
 // a stream x. Each is [the text, the part that must never be written], or [the text] for a near-miss, which
 // redact may keep or cut and no rule follows. A token holds a letter and a digit (several patterns want both).
 const AL = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', SAFE = `${AL}_-`, HEX = '0123456789abcdef', UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';

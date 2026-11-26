@@ -220,16 +220,16 @@ c02665dfb596 src/store.mjs:202 `low.get(...) ?? []` -> `|| []` in opener's loop:
 5b53940851c6 src/store.mjs:257 `t.slice(0, end)` -> `slice(0, end + 1)`: the frontmatter then ends with the newline that precedes the closing `---`, and every pattern in front() treats a newline as the end of a line (`$` with the m flag, `\n|$`, a block that needs one more indented line), so no value, key or block changes
 ea424e33a2fd src/store.mjs:269 `...?.[1] ?? ''` -> `|| ''` in block(): group 1 is one or more indented lines, never an empty string, so both pick the same side
 64114bf60162 src/store.mjs:334 `(text ?? '')` -> `(text || '')` in listOf: the text is a string or null, an empty string splits to the same nothing as '', so both give the same lines
-6cbb03dc5b04 src/store.mjs:719 `(a ?? b)` -> `(a || b)`: group 1 is undefined (the base64 -d branch matched) or holds at least `echo ` or `printf `, never an empty string, so both pick the same side
-81f9094fd063 src/store.mjs:860 `d ?? h` -> `d || h`: d is undefined or the digits of `&#NN;`, a string that is truthy even when it is "0", so both pick the same side
-7bf780150d8f src/store.mjs:891 `let open = -1` -> `-2`: open is only ever compared with `< 0` and `>= 0`
-afb3157d7ba9 src/store.mjs:894 `open < 0` -> `open <= 0`: open is -1 or the end of a match of at least `<private`, so at least 8, never 0
-1c82b75e1d14 src/store.mjs:894 `open < 0` -> `open < 1`: open is -1 or at least 8, never 0
-cbf0714993e0 src/store.mjs:895 `open >= 0` -> `open > 0`: open is -1 or at least 8, never 0
-37f0165b36b6 src/store.mjs:895 `open >= 0` -> `open >= 1`: open is -1 or at least 8, so no value tells 0 from 1
-1297d1e32168 src/store.mjs:895 `open = -1` -> `open = -2`: open is only ever compared with `< 0` and `>= 0`
-bc8d2c85aef8 src/store.mjs:897 `open >= 0` -> `open > 0`: open is -1 or at least 8, never 0
-6bb034ea7c2d src/store.mjs:897 `open >= 0` -> `open >= 1`: open is -1 or at least 8, so no value tells 0 from 1
+b79beaf1d341 src/secrets.mjs:246 `(a ?? b)` -> `(a || b)`: group 1 is undefined (the base64 -d branch matched) or holds at least `echo ` or `printf `, never an empty string, so both pick the same side
+0df19c8cacf6 src/secrets.mjs:387 `d ?? h` -> `d || h`: d is undefined or the digits of `&#NN;`, a string that is truthy even when it is "0", so both pick the same side
+69719bd7910e src/secrets.mjs:419 `let open = -1` -> `-2`: open is only ever compared with `< 0` and `>= 0`
+af38a45a8ec6 src/secrets.mjs:422 `open < 0` -> `open <= 0`: open is -1 or the end of a match of at least `<private`, so at least 8, never 0
+f1d7b14f5c45 src/secrets.mjs:422 `open < 0` -> `open < 1`: open is -1 or at least 8, never 0
+d8f075b3b535 src/secrets.mjs:423 `open >= 0` -> `open > 0`: open is -1 or at least 8, never 0
+3e361931a167 src/secrets.mjs:423 `open >= 0` -> `open >= 1`: open is -1 or at least 8, so no value tells 0 from 1
+db5953ef71ae src/secrets.mjs:423 `open = -1` -> `open = -2`: open is only ever compared with `< 0` and `>= 0`
+da68c3c4f577 src/secrets.mjs:425 `open >= 0` -> `open > 0`: open is -1 or at least 8, never 0
+46ab54e2ce3b src/secrets.mjs:425 `open >= 0` -> `open >= 1`: open is -1 or at least 8, so no value tells 0 from 1
 dce76c8ce464 src/enforce.mjs:15 `slice(0, end)` start `0` -> `1`: it drops only the first `-` of the opening `---` line, and no `enforce:` line or indented line is ever that one
 2454352ac194 src/enforce.mjs:15 `slice(0, end)` -> `end + 1`: it adds the newline that ends the last front-matter line, so `split` gains one empty last line, and the loop skips a line with no non-blank character
 9f94d32e054d src/enforce.mjs:40 `got.on ?? ''` -> `||`: got.on is a string or undefined; an empty string and undefined both split to no words

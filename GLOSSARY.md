@@ -58,6 +58,12 @@ The privacy module (`src/privacy.mjs`, 1.6.0 step 15) decides all of these,
 writes their marker files (`memory off` and `on`, the forget list), and a file
 it cannot read counts as private. See `docs/adr/0001-privacy-decided-in-one-module.md`.
 
+**Secret detector**: `src/secrets.mjs`, the one place that knows what a key, token
+or password looks like. `redact()` replaces one with `[redacted]` and a
+`<private>` span with `[private]`; `holdsSecret()` says whether a note holds one;
+`BARE()` says whether a typed answer to a question that asks for one is one. It
+imports nothing, so `store.mjs` and every writer can use it.
+
 ## Snapshots
 
 **Projects root**: `~/.claude/projects` (or under `CLAUDE_CONFIG_DIR`), the
@@ -119,8 +125,8 @@ builds it (1.6.0 step 18); `src/brief.mjs` is only the guard that runs it. See
 
 **Safe printing**: cutting, clearing and fitting text so it is safe to print: `clip`,
 `cut`, `plain`, `defuse` and `fit`. `src/text.mjs` (1.6.0 step 15) holds them. It
-imports only Node built-ins and `store.mjs`, so a hook can print without loading
-the briefing.
+imports only the secret detector, so a hook can print without loading the
+briefing.
 
 `src/snapshot.mjs` (1.6.0 step 16) runs every git call against the projects
 root. See `docs/adr/0002-plugin-owns-git-cleanup-and-one-busy-rule.md`.

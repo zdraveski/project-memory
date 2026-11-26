@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { redact } from './store.mjs';
+import { redact } from './secrets.mjs';
 import { tame } from './recall.mjs';
 
 // The page of the journal: one local HTML file built from plain data. This file

@@ -15,7 +15,7 @@ const { home, env } = tempHome('hl-test-');
 // The hooks in this process too, under the same throwaway HOME (tempHome set
 // it here): a check that needs no stdin or exit code calls handoff() itself,
 // not a node start per turn.
-const { handoff, redact, holdsSecret } = await import('../src/handoff-log.mjs');
+const { handoff } = await import('../src/handoff-log.mjs'), { redact, holdsSecret } = await import('../src/secrets.mjs');
 const { edited } = await import('../src/run-records.mjs');
 const { plain, clip } = await import('../src/text.mjs');
 const cwd = 'C:\\handoff-log-selftest';
@@ -564,7 +564,7 @@ const gated = join(home, 'gated');
 mkdirSync(gated, { recursive: true });
 mkdirSync(join(gated, 'src'), { recursive: true });
 mkdirSync(join(gated, 'tools'), { recursive: true });
-for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/journal.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
+for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/secrets.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/memory.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/journal.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
 const g = (...a) => execFileSync('git', ['-C', gated, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { env, encoding: 'utf8' });
 g('init', '-q', '-b', 'master'); g('add', '-A'); g('commit', '-qm', 'base'); g('checkout', '-qb', 'other');
 let gate = spawnSync(process.execPath, [join(gated, 'tools', 'deploy.mjs')], { env, encoding: 'utf8' });
@@ -1681,7 +1681,7 @@ if (process.platform === 'win32') {
 
 // Round 3 (2026-10-27): what four reviewers found in 1.1.0's first fixes.
 {
-const { redact: red } = await import('../src/handoff-log.mjs'), { own } = await import('../src/transcript.mjs'), { hushed } = await import('../src/privacy.mjs'), { defuse } = await import('../src/text.mjs');
+const { redact: red } = await import('../src/secrets.mjs'), { own } = await import('../src/transcript.mjs'), { hushed } = await import('../src/privacy.mjs'), { defuse } = await import('../src/text.mjs');
 const { local } = await import('../src/store.mjs');
 const cwd3 = 'C:\\handoff-round3', dir3 = storeFor(home, cwd3);
 mkdirSync(dir3, { recursive: true });
@@ -2458,7 +2458,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
 // Round 6. `pass` before a colon is a credential in every form a person writes
 // it; narrowed to spare "tests pass: all green", these were printed as typed.
 {
-  const { redact: red6 } = await import('../src/handoff-log.mjs');
+  const { redact: red6 } = await import('../src/secrets.mjs');
   const v6 = 'hunt' + 'er22!';
   for (const s of [`user: admin, pass: ${v6}`, `wifi pass: ${v6}`, `ssh root@box, pass:${v6}`, `- pass: ${v6}`, `> pass: ${v6}`, '`pass: ' + v6 + '`', `DB_PASS=${v6}`, `{"pass": "${v6}"}`])
     ok(!red6(s).includes(v6), `a pass credential is redacted: ${JSON.stringify(s.replace(v6, 'V'))} (got ${JSON.stringify(red6(s).replace(v6, 'V'))})`);
@@ -3070,7 +3070,7 @@ require('node:module').syncBuiltinESMExports();
 // can reach the real hooks-live or the real repo.
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = ROOT;
-  const FILES_ = ['src/store.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/brief.mjs', 'src/briefing.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
+  const FILES_ = ['src/store.mjs', 'src/secrets.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/brief.mjs', 'src/briefing.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
     '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'tools/deploy.mjs', 'tools/suites.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
