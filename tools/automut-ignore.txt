@@ -338,11 +338,9 @@ e67b7b33d2a9 src/snapshot.mjs:404 rewrite's rmSync `force: true` -> `false` on i
 c56de0a153ef src/memory-tier.mjs:361 `plugins(...)?.plugins` -> `.plugins`: a missing file throws into the try around reloadNotice, which gives no notice, as a null did.
 bc1d40c097ea src/memory.mjs:1310 `readText(...) ?? ''` -> `|| ''`: readText gives a string or null, and the only falsy string is '', so both give ''.
 acdbee553ee2 src/page.mjs:575 clean's `s ?? ''` -> `s || ''`: the two differ only for 0, false or NaN, and every caller (pageHtml's entry fields d, t, c, b, p, q, a and data.built/today) passes a string parsed from the journal or undefined, so String() gets the same text
-46cfcce488ee src/transcript.mjs:102 rejoined's `indexOf('{"', 1)` / `i + 1` -> 2: a line that reaches rejoined starts with `{`, and a record's `{"` is two characters, so no later `{"` can begin at index 1 or at i + 1; the same starts are tried
-e39615d4c4f7 src/transcript.mjs:102 rejoined's `k = 0` or `i > 0` -> 1: the cap becomes 999 tries instead of 1000, or a start at index 1 is skipped, which a line beginning `{` followed by a record's `"` never has; the glued record is found either way
-4aa4dd70e282 src/transcript.mjs:102 rejoined's `k = 0` or `i > 0` -> 1: the cap becomes 999 tries instead of 1000, or a start at index 1 is skipped, which a line beginning `{` followed by a record's `"` never has; the glued record is found either way
-d7e1c9382f03 src/transcript.mjs:102 rejoined's `k < 1000` -> `<=`: 1001 tries instead of 1000, the same bound on a cut line's cost
-a8b22f53703c src/transcript.mjs:102 rejoined's `i > 0` -> `>= 0`: indexOf from 1 never returns 0, so the loop ends on -1 either way
 d4a8643adc95 src/transcript.mjs:111 records' `includes('{"parentUuid":', 1)` / `includes(\`{"type":"${t}"\`, 1)` -> 2: the line starts with `{"type":`, so neither text can begin at index 1; the same lines are skipped
 bbcd7dbc23da src/transcript.mjs:111 records' `includes('{"parentUuid":', 1)` / `includes(\`{"type":"${t}"\`, 1)` -> 2: the line starts with `{"type":`, so neither text can begin at index 1; the same lines are skipped
-a9e875938fdc src/transcript.mjs:102 rejoined's `indexOf('{"', 1)` / `i + 1` -> 2: a line that reaches rejoined starts with `{`, and a record's `{"` is two characters, so no later `{"` can begin at index 1 or at i + 1; the same starts are tried
+296e726b498f src/transcript.mjs:104 rejoined's `i > 0` -> `>= 0`: index 0 is the whole line, which reaches rejoined only after failing to parse; it fails again (lastIndexOf from -1 returns 0 again until the 1000 cap), so null comes back as before
+88265cb8fc3c src/transcript.mjs:104 rejoined's `k = 0` -> 1: the cap becomes 999 starts instead of 1000, the same bound; the tests' glued records are found within a few starts from the right
+3bc709bea0ed src/transcript.mjs:104 rejoined's `lastIndexOf('{"', i - 1)` -> `i - 2`: a `{"` at i - 1 would need line[i] to be `"`, but line[i] is the `{` just tried, so the same starts are tried
+84620e036cc5 src/transcript.mjs:104 rejoined's `k < 1000` -> `<=`: 1001 starts instead of 1000, the same bound on a cut line's cost

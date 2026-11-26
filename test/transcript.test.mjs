@@ -764,11 +764,24 @@ const { turns, readTail, promptBefore, chunk, past, records } = await import('..
   const all = turns(text), got = [...all, all.open].filter(Boolean).map((t) => [t.ask, t.did]);
   ok(got.some(([q, d]) => q === 'second ask kumquat' && d === 'second reply') && !got.some(([q, d]) => q === 'first ask' && d === 'second reply'), `and its reply is filed under it (got ${JSON.stringify(got)})`);
   // A whole record of a type not asked for is left out (and not parsed).
+  {
+    // Not parsed: such records can be megabytes (api-request-blob). Counted on JSON.parse itself.
+    const parse = JSON.parse; let calls = 0; JSON.parse = (...x) => (calls++, parse(...x));
+    try { [...records([JSON.stringify({ type: 'api-request', body: 'x' }), JSON.stringify(u('a counted ask'))].join('\n'), { types: ['user'] })]; } finally { JSON.parse = parse; }
+    ok(calls === 1, `a record of a type not asked for is not parsed (${calls} parses for 2 lines)`);
+  }
   ok([...records([JSON.stringify({ type: 'api-request', body: 'x' }), JSON.stringify(u('fourth ask'))].join('\n'), { types: ['user'] })].map((r) => r.type).join() === 'user', 'a record of a type not asked for is left out');
   // The likeliest cut: a big record of a type nothing reads (api-request), with the next prompt glued on.
   const big = '{"type":"api-request","body":"' + 'x'.repeat(200);
   const t2 = [JSON.stringify(u('first ask')), big + JSON.stringify(u('third ask quince'))].join('\n');
   ok([...records(t2, { types: ['user', 'assistant', 'attachment'] })].some((r) => /third ask quince/.test(JSON.stringify(r.message.content))), 'a prompt glued onto a cut record of an unread type is read');
+  // A cut record holding thousands of objects: the glued prompt after it is still found (starts are tried from the right).
+  const t3 = '{"type":"api-request","b":[' + '{"a":1,'.repeat(5000) + JSON.stringify(u('fifth ask after a big cut'));
+  ok([...records(t3, { types: ['user'] })].some((r) => /fifth ask/.test(JSON.stringify(r.message.content))), 'a prompt glued after a cut record of 5000 objects is read');
+  // A cut after the first byte: the glued record starts at index 1.
+  ok([...records('{' + JSON.stringify(u('ask after a 1-byte cut')), { types: ['user'] })].length === 1, 'a prompt glued after a 1-byte cut is read');
+  // A whole record of an unread type that nests a read one is still left out.
+  ok([...records(JSON.stringify({ type: 'api-request-blob', data: { messages: [{ type: 'user', content: 'nested' }] } }), { types: ['user'] })].length === 0, 'a whole unread record that nests a read type is left out');
   // A cut line of many small objects stops trying after a bounded number of starts, so every later read stays cheap.
   const many = '{"a":[' + '{"b":1},'.repeat(200_000);
   const t0 = performance.now(); [...records(many)];

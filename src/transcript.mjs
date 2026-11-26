@@ -98,8 +98,10 @@ export function promptBefore(path, bytes) {
 // `{"` on. Skipping the line lost a prompt, and its reply was filed under the ask before (1.6.1). Only lines that fail to parse
 // pay; an inner `{"` fails at its own end, so a long line costs about its length times its nesting, not its length squared.
 const rejoined = (line) => {
-  // At most 1000 starts: a cut line stays in the transcript, and a line of many small objects cost ~0.7 s on every read.
-  for (let i = line.indexOf('{"', 1), k = 0; i > 0 && k < 1000; i = line.indexOf('{"', i + 1), k++) { try { return JSON.parse(line.slice(i)); } catch {} }
+  // From the right: a start inside the glued record leaves its closing `}` after it and fails, so the first that parses is
+  // the glued record, however many objects the cut one held. At most 1000 starts: a cut line stays in the transcript, and a
+  // line of many small objects cost ~0.9 s on every read.
+  for (let i = line.lastIndexOf('{"'), k = 0; i > 0 && k < 1000; i = line.lastIndexOf('{"', i - 1), k++) { try { return JSON.parse(line.slice(i)); } catch {} }
   return null;
 };
 export function* records(text,{ sidechain = false, types = null, has = null } = {}) {
@@ -109,7 +111,7 @@ export function* records(text,{ sidechain = false, types = null, has = null } = 
     // A record of an unread type is skipped unparsed, unless a crash cut it and a record it reads starts later on its line
     // (not any `{"type":`: a content block inside would parse every big unread record again).
     if (ty && !types.includes(ty) && !line.includes('{"parentUuid":', 1) && !types.some((t) => line.includes(`{"type":"${t}"`, 1))) continue;
-    let r; try { r = JSON.parse(line); } catch { r = rejoined(line); if (!r || types && !types.includes(r.type)) continue; }
+    let r; try { r = JSON.parse(line); if (ty && !types.includes(ty)) continue; } catch { r = rejoined(line); if (!r || types && !types.includes(r.type)) continue; }
     if (r.isSidechain === true && !sidechain) continue;
     yield r;
   }

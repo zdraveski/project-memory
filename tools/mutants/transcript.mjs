@@ -72,6 +72,8 @@ export default {
   "a record of a type nothing reads parsed": ["if (ty && !types.includes(ty) && !line.includes('{\"parentUuid\":', 1) && !types.some((t) => line.includes(`{\"type\":\"${t}\"`, 1))) continue;", ""],
   "a glued record behind an unread type skipped": [" && !line.includes('{\"parentUuid\":', 1) && !types.some((t) => line.includes(`{\"type\":\"${t}\"`, 1))) continue;", ") continue;"],
   "rejoin tries every start": ["i > 0 && k < 1000;", "i > 0;"],
+  "rejoin tried from the left": ["line.lastIndexOf('{\"'), k = 0", "line.indexOf('{\"', 1), k = 0"],
+  "a whole unread record handed out": ["if (ty && !types.includes(ty)) continue; } catch", "} catch"],
   "a line without the asked-for text parsed": ["(has && !line.includes(has))", "false"],
   "a last line with no line break lost": ["const nl = pos + n >= size ? n - 1 : buf.subarray(0, n).lastIndexOf(10);", "const nl = buf.subarray(0, n).lastIndexOf(10);"],
   "a line longer than a segment cuts the next": ["pos = past(fd, pos + n, size);", "pos += n;"],
