@@ -1,9 +1,58 @@
 # Changelog
 
-## Unreleased
+## 1.6.0 (2026-11-26)
+
+This release lets two sessions on one project see each other. After a compaction, Claude is now told what the conversation already changed. A helper answers questions about the past, and the plugin got lighter. Pointers to earlier exchanges, given while Claude works, are in this release but switched off until they are measured: turn them on with one setting. Nothing changes in how you use it, and your existing memory works as it is.
+
+### Sessions that see each other
+
+- **Two sessions open on the same project now know about each other.** At your next message Claude is told once that another session is working here, since when, on what request and which files it changed.
+- **When Claude changes a file the other session changed in the last 30 minutes, it is warned** with the result of that change. It never blocks the change.
+- **The startup briefing and `memory status` name the other live sessions**, with the title you gave one with `/rename`. A private conversation or turn is never shown to the other session.
+
+### After a compaction
+
+- **After a compaction, Claude is told which files the conversation changed** and up to three earlier exchanges like the request in progress, its own from before the compaction included.
+
+### Pointers to earlier exchanges (opt-in)
+
+Off by default: they have not yet been measured on real sessions. To try them, add `"PROJECT_MEMORY_RECALL": "1"` to the `env` block of your Claude Code `settings.json` and restart Claude Code.
+
+- **When Claude changes a file that earlier conversations changed too, it is told so.** With the result of the first change it sees the date, the conversation and the request of the newest two, and how to open them. Only when one of them shares a rare word with what you are asking now, once per file and conversation, and at most three such notes between two of your messages.
+- **When your message names something old, Claude is told before it answers.** If your message shares a few rare words with an earlier exchange of another conversation in this project, Claude sees that request, up to three files it changed and the shared words. "go" or "yes" alone never triggers one.
+- **With the setting on, the briefing also tells Claude to hand a hard question about the past to the `recall` helper.**
+- **Nothing private or forgotten is ever named.** A message with a `<private>` block or the `<private-session>` mark triggers nothing and is not written down. A note already shown stays in the conversation that got it: `forget` cannot take it back.
+- **`PROJECT_MEMORY_RECALL=0` turns all of these notes off, the other-session notes and the compaction lines included.**
+
+### Ask memory a question
+
+- **A new `recall` helper answers a question one search doesn't settle.** Ask it with `@agent-project-memory:recall`. It searches several ways, opens what it finds and reports back with dates and your own words. It only reads, and its report is not saved to the journal again.
+- **A helper's journal entry now lists the files it changed**, so a file's past includes a helper's work. Entries saved before 1.6.0 list no files.
+
+### Lighter
+
+- **The `memory` skill Claude loads is 68% smaller**, and the startup briefing 3 to 12% smaller. The shared notebook's index and the rules stay whole on purpose.
+- **The plugin's own share of a hook stays small:** about a quarter of a second for the save after a reply, and under two tenths for the briefing. Most of the time a hook takes is spent outside the plugin's own code.
+
+### The history store
 
 - **Restore, `forget --purge` and `rescan --apply` now say "busy" instead of racing a snapshot.** If a snapshot or git's own clean-up is under way they stop, change nothing and tell you to try again in a moment. A clean-up that was killed no longer keeps them waiting.
 - **The plugin now tidies its own history store.** Git no longer starts a clean-up in the background at a random moment; the plugin runs it after a snapshot, when the store has grown enough to need it.
+
+### Also part of 1.6.0
+
+The journal page (`memory page`) and "who said it" (`history`, `show` and the `search` filters) shipped early, in 1.5.4.
+
+### Requirements
+
+- **Claude Code 2.1.78 or newer**, as before. The `recall` helper needs 2.1.271 or newer to start without your CLAUDE.md files; older versions run it with CLAUDE.md loaded.
+
+Update with these two commands, then restart Claude Code:
+
+```
+claude plugin marketplace update project-memory
+claude plugin update project-memory@project-memory
+```
 
 ## 1.5.8 (2026-11-25)
 

@@ -41,15 +41,16 @@ memory folder. The journal is its `journal` folder, one file per day.
 
 ## When it runs
 
-Claude Code runs project-memory on six of its events, declared in
-`hooks/hooks.json`. It gives Claude one skill, `skills/memory/SKILL.md`, and
+Claude Code runs project-memory on nine of its events, declared in
+`hooks/hooks.json`. It gives Claude one skill, `skills/memory/SKILL.md`, one
+helper agent, `agents/recall.md` ([below](#the-recall-helper)), and
 three slash commands in `commands/`: `/project-memory:incognito`,
 `/project-memory:memory-off` and `/project-memory:memory-on`.
 
 | Moment | Claude Code event | What runs |
 |---|---|---|
 | Claude finishes a reply | `Stop` | `memory-tier.mjs --stop`: tidies this project's notebook and the shared one, updates the handoff, writes the journal and imports a few other conversations into it, takes a snapshot, and reminds Claude to save notes when a compaction is close. When a newer version is installed than the one this conversation runs, it says once per version: `project-memory X is installed, run /reload-plugins to use it` |
-| A subagent finishes | `SubagentStop` | `memory-tier.mjs --stop`, which saves the subagent's final report, with the first line of its task, as its own journal entry |
+| A subagent finishes | `SubagentStop` | `memory-tier.mjs --stop`, which saves the subagent's final report, with the first line of its task and the files it changed, as its own journal entry |
 | Claude stops because of an error (an API error, for example) | `StopFailure` | `memory-tier.mjs --stop`, the same as `Stop`, so the turn is saved at once and not at the next reply |
 | A conversation starts, is resumed, is cleared with `/clear`, or goes on after a compaction | `SessionStart` | `brief.mjs --print`: the startup briefing (none for a resumed conversation) |
 | Claude is about to run a `git` command in Bash or PowerShell | `PreToolUse` | `enforce-hook.mjs`: logs which note's rule matched, if a note holds one (see [Checked lessons](#checked-lessons-experimental)). It blocks nothing and prints nothing |
@@ -64,7 +65,7 @@ command-line tool described [below](#the-memory-tool-from-a-terminal).
 
 Each hook has a time limit, which Claude Code enforces by stopping the hook:
 120 seconds for Stop, StopFailure and `/compact`, 60 for the automatic compaction check,
-30 for SubagentStop and for the startup briefing and 5 seconds for the git-rule watcher. Without a limit Claude Code waits 10 minutes.
+30 for SubagentStop and for the startup briefing, 5 seconds for the git-rule watcher and the change and prompt hooks, and 3 for SessionEnd. Without a limit Claude Code waits 10 minutes.
 A real Stop took up to 46 seconds. A hook stopped at its limit has its output
 thrown away, so a startup briefing that runs past 30 seconds is lost without a
 word. A Stop stopped while git runs has already written the journal and the
@@ -1413,7 +1414,9 @@ catch up on conversations Claude Code has not yet deleted.
 
 - Node.js 22 or newer. No other dependencies.
 - Git, for snapshots (optional: without it everything else works).
-- Claude Code only, on Windows, macOS or Linux.
+- Claude Code 2.1.78 or newer, on Windows, macOS or Linux. The `StopFailure`
+  hook needs 2.1.78. The recall helper's `omitClaudeMd` needs 2.1.271 or
+  newer; older versions run it with CLAUDE.md loaded.
 - Paths follow `CLAUDE_CONFIG_DIR`, and `CLAUDE_CODE_PROJECT_DIR_NAME` only
   when `CLAUDE_CONFIG_DIR` is set too (see [Where things live](#where-things-live)).
   The `autoMemoryDirectory` setting is not followed: `doctor` only warns when
@@ -1422,7 +1425,7 @@ catch up on conversations Claude Code has not yet deleted.
 - Tested on Linux with Node 22, Windows with Node 22 and 24, and macOS with
   Node 26.
 - The snapshot repository only grows.
-- The suite is 8 test files and about 2,500 checks. Each pull request runs
+- The suite is 24 test files and about 3,500 checks. Each pull request runs
   them on all three systems, with a sign-off check; the mutation tests and
   the long fuzz run by hand.
 
