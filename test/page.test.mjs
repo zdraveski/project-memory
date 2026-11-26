@@ -60,6 +60,12 @@ ok(!/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2028\u2029]/.test(h.
 ok(d.entries[2].priv === 1 && d.entries[2].q === '' && d.entries[2].cut === 0, 'a private turn keeps no text');
 ok(d.entries[1].n === 1 && d.entries[1].cut === 1 && d.today === '2026-11-12' && d.days === 30, 'the flags and the range come through');
 ok(script.startsWith('const DATA='), 'the script starts with its data');
+{ // The journal stores `<` before a letter as `&lt;`; the page writes text as text, so it must show the `<` the turn had.
+  const lt = pageHtml(data([entry({ q: 'why does List&lt;String> fail', a: 'Because &lt;T> erasure', f: ['src/&lt;x>.js'] })]));
+  const e0 = dataOf(parts(lt).script).entries[0];
+  ok(e0.q === 'why does List<String> fail' && e0.a === 'Because <T> erasure' && e0.f[0] === 'src/<x>.js', 'the page shows < where the journal wrote &lt;');
+  ok(lt.split('</script>').length === 2, 'and still has one script');
+}
 ok(dataOf(parts(pageHtml(data([], { days: 'all' }))).script).days === 'all' && dataOf(parts(pageHtml(data([], { days: '7' }))).script).days === 7, 'the range is a number of days or all');
 
 // The script runs to its end against a document that accepts everything: a mistake in it (a name that is not there) throws here, not in a browser.

@@ -337,3 +337,4 @@ e67b7b33d2a9 src/snapshot.mjs:404 rewrite's rmSync `force: true` -> `false` on i
 338b6d2981b1 src/memory.mjs:824 `readJson(join(at, DEPLOYED))?.tag` -> `.tag`: this branch is reached only when deployedCommit(at) is set, so the record parsed and is not null.
 c56de0a153ef src/memory-tier.mjs:361 `plugins(...)?.plugins` -> `.plugins`: a missing file throws into the try around reloadNotice, which gives no notice, as a null did.
 bc1d40c097ea src/memory.mjs:1310 `readText(...) ?? ''` -> `|| ''`: readText gives a string or null, and the only falsy string is '', so both give ''.
+acdbee553ee2 src/page.mjs:575 clean's `s ?? ''` -> `s || ''`: the two differ only for 0, false or NaN, and every caller (pageHtml's entry fields d, t, c, b, p, q, a and data.built/today) passes a string parsed from the journal or undefined, so String() gets the same text

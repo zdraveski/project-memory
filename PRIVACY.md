@@ -23,9 +23,10 @@ This page says what it reads, what it saves, and how to remove it.
 - The git information of the folder a conversation starts in (its `.git`
   folder or file, and those of the folders above it), to find the repository
   whose notebook Claude Code uses, as Claude Code does.
-- Twelve settings from the environment, by name: `PROJECT_MEMORY_BRIEFING`
+- Thirteen settings from the environment, by name: `PROJECT_MEMORY_BRIEFING`
   (set to `0`, the startup briefing is not shown), `PROJECT_MEMORY_TIMING`
-  (set to `0`, the hook times are not recorded), and ten that Claude Code
+  (set to `0`, the hook times are not recorded), `PROJECT_MEMORY_RECALL`
+  (set to `1`, pointers to earlier exchanges are on; set to `0`, the recall hooks do nothing), and ten that Claude Code
   reads too: `CLAUDE_PROJECT_DIR` (the project folder), `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME` and
   `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (where the notes are, and whether they're
   on), and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, `CLAUDE_CODE_DISABLE_1M_CONTEXT`,
@@ -33,7 +34,8 @@ This page says what it reads, what it saves, and how to remove it.
   (how big a conversation can get). `DISABLE_COMPACT` (on or off) and
   `ANTHROPIC_MODEL` (tested against a pattern, never saved) are read only to
   decide whether `CLAUDE_CODE_MAX_CONTEXT_TOKENS` counts. The home folder (`HOME` or `USERPROFILE`)
-  is read to find `~/.claude`. Nothing else in the environment.
+  is read to find `~/.claude`. Nothing else in the environment, apart from
+  `PROJECT_MEMORY_TIDY`, a switch the tests set to `inline` so the tidy step runs inside the hook.
 - Claude Code's lists of installed plugins and marketplaces, and the plugin's
   own manifest, in `~/.claude/plugins`, only when you run the `doctor` check,
   to see where the plugin is installed and whether its auto-update is on.
@@ -62,7 +64,7 @@ When a subagent finishes, the plugin reads the end of that subagent's own conver
 
 All of it stays in `~/.claude/projects` on your computer:
 
-- `.timing`, one line for each run of a hook: the time, which hook (`save`, `brief`, `enforce`, `gate`, `recall`, `prompt` or `end`), which event (`Stop`, `PreToolUse` and the like, letters only) and how many milliseconds each step took, and for `recall` and `prompt` how many earlier exchanges they named. Numbers and those fixed names only: no text from a conversation, no file name, no command. It is cut to its newer half at 256 KB. `memory doctor` shows the times. They count from the start of Node, so what Claude Code spends starting a hook comes on top. Set `PROJECT_MEMORY_TIMING=0` to turn it off.
+- `.timing`, one line for each run of a hook: the time, which hook (`save`, `tidy`, `brief`, `enforce`, `gate`, `recall`, `prompt` or `end`), which event (`Stop`, `PreToolUse` and the like, letters only) and how many milliseconds each step took, and for `recall` and `prompt` how many earlier exchanges they named. Numbers and those fixed names only: no text from a conversation, no file name, no command. It is cut to its newer half at 256 KB. `memory doctor` shows the times. They count from the start of Node, so what Claude Code spends starting a hook comes on top. Set `PROJECT_MEMORY_TIMING=0` to turn it off.
 - `.sessions/<project folder>/<conversation tag>`, one small file per conversation: the full path of each file it changed (lower case on Windows and macOS) the keys of the earlier exchanges it was told about, a line for each compaction, each message you sent (an `asked` line: secrets replaced, cut to 120 characters) or a `quiet` line for a private one, the title you gave the conversation (a `title` line, secrets replaced, cut to 80 characters), a `saw` line with another session's tag (and a file path) once Claude was told about it, an `end` line with the reason when the conversation ended, each with the time (and a helper's id when a helper wrote it). No other text of a conversation. Over 64 KB it is rewritten with the newest line of each kind and file. Nothing is written for a private conversation or turn, or while memory is off. Each reply's save deletes those older than 7 days; `forget` and `memory off` delete the project's, `rescan --apply --yes` every project's, and `incognito` (or a `<private-session>` mark) the conversation's.
 - The journal page, `project-memory/journal.html` in `~/.claude`, only when you run `memory page`: the journal text of the days you asked for, secrets already replaced, private turns without text, helper entries and switched-off projects left out. Only you can read it, and it loads nothing from the network.
 - `.enforce-log` and `.enforce.json` in a store: which note's rule a git command matched (note name, session tag, sub-agent type, tool-call id; never the command) and a cache of the rules. Nothing is written for a private conversation or while memory is off.
