@@ -1,6 +1,6 @@
 // Self-check for snapshot.mjs, called in this process with a scripted git in place of the real one (useGit): how a failure of git is
 // mapped (off, in parts, busy, failed), a damaged index rebuilt once, a note held back, the health record after a failure and after
-// a success, and a missing or a broken health file. The expected values are what snapshot() answered before it moved out of
+// a success, what a record means (verdict), and a missing or a broken health file. The expected values are what snapshot() answered before it moved out of
 // memory-tier.mjs. Real git stays in memory-tier.test.mjs. Run: node snapshot.test.mjs
 import { mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync, utimesSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,7 +10,7 @@ import { tempHome } from './harness.mjs';
 const { home } = tempHome('snapshot-test-');
 const { projectsRoot } = await import('../src/store.mjs');
 const S = await import('../src/snapshot.mjs');
-const { snapshot, snapshotHealth, owed, reset, useGit, gitWhy, gitArgs } = S;
+const { snapshot, owed, useGit, gitWhy, gitArgs } = S;
 
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
@@ -100,13 +100,15 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
     if (sub === 'cat-file') return Buffer.from(blob);
     return '';
   });
-  reset();
   ok(snapshot() === 'committed', 'a held note alone does not stop the commit');
   ok(calls.includes('reset -q -- :(literal)p/memory/a.md'), 'the note that holds a secret is unstaged');
-  snapshotHealth('committed');
-  ok(JSON.stringify(health().held) === '["p/memory/a.md"]' && health().failures === 0, 'the health record names the held note');
-  reset(); snapshotHealth('committed');
-  ok(!('held' in health()) && !('missed' in health()), 'reset() empties held and missed');
+  ok(JSON.stringify(health().held) === '["p/memory/a.md"]' && health().failures === 0, 'the snapshot records the held note');
+  scripted(() => '');
+  ok(snapshot() === 'committed' && !('held' in health()) && !('missed' in health()), 'the next snapshot that holds nothing records none');
+  scripted(() => { throw fail('Command failed: git', { code: 'ETIMEDOUT' }); });
+  snapshot({ record: false });
+  ok(health().failures === 0, 'a snapshot taken with record: false leaves the record as it was');
+  rmSync(join(g, 'project-memory-parts'), { force: true });
 
   // A project folder named pk/sk/rk reads as a key once the slug joins it to the rest of the path: only the note's own name counts.
   {
@@ -118,14 +120,11 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
       if (sub === 'cat-file') return Buffer.from(cb + cb);
       return '';
     });
-    reset();
     ok(snapshot() === 'committed', 'a key-like project path: committed');
     ok(!calls.includes(`reset -q -- :(literal)${slug}/memory/a.md`), 'a clean note of a project under a folder named pk is not held');
     ok(calls.includes(`reset -q -- :(literal)${slug}/memory/${keyName}`), 'a note whose own name reads as a key is still held');
-    snapshotHealth('committed');
     const h = health().held;
     ok(h.length === 1 && h[0].startsWith(`${slug}/memory/`) && !h[0].includes(keyName), 'the held list keeps the project path and hides only the name');
-    reset(); snapshotHealth('committed');
   }
 
   // A store linked to a folder outside the root: missed when git has none of its index.
@@ -134,47 +133,52 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   mkdirSync(join(root, 'C--ext'), { recursive: true });
   symlinkSync(out, join(root, 'C--ext', 'memory'), process.platform === 'win32' ? 'junction' : 'dir');
   scripted(() => '');
-  snapshot(); snapshotHealth('committed');
+  snapshot();
   ok(health().missed?.length === 1 && /C--ext/.test(health().missed[0]), 'a linked store git has no index of is missed');
   scripted((sub, a) => (sub === 'ls-files' && a.includes('--') && /C--ext/.test(a.join(' ')) ? 'C--ext/memory/MEMORY.md\n' : ''));
-  reset(); snapshot(); snapshotHealth('committed');
+  snapshot();
   ok(!('missed' in health()), 'a linked store git does hold is not missed');
 }
 
-// The health record: counts after failures and after a success, then the other answers.
+// The health record each snapshot writes: counts after failures and after a success, then the other answers.
 {
-  reset();
   const p = join(root, '.snapshot-health'); rmSync(p, { force: true });
+  const failing = () => scripted(() => { throw fail('Command failed: git rm', { stderr: 'fatal: boom\n', status: 128 }); });
   ok(owed() === false, 'no health file: nothing owed');
-  snapshotHealth('snapshot failed: boom');
+  failing(); snapshot();
   let h = health();
-  ok(h.failures === 1 && h.error === 'boom' && h.pending === true && h.lastOk === null, 'one failure is counted, with its reason, and the snapshot is owed');
+  ok(h.failures === 1 && h.error === 'fatal: boom' && h.pending === true && h.lastOk === null, 'one failure is counted, with its reason, and the snapshot is owed');
   ok(owed() === true, 'a failed snapshot is owed');
-  snapshotHealth('snapshot failed: boom');
+  failing(); snapshot();
   ok(health().failures === 2, 'the failures in a row add up');
-  snapshotHealth('committed');
+  scripted(() => ''); snapshot();
   h = health();
   ok(h.failures === 0 && !('pending' in h) && !('error' in h) && typeof h.lastOk === 'string', 'a success clears the failures and what is owed');
   ok(owed() === false, 'a committed snapshot owes nothing');
   const lastOk = h.lastOk;
-  snapshotHealth('in parts: 7 file(s) still to add; each reply adds more');
-  ok(health().partial === 7 && health().pending === true && health().failures === 0, 'a snapshot in parts says how many files are left, and is owed');
-  snapshotHealth('off: git is not installed');
+  writeFileSync(join(g, 'project-memory-parts'), '');
+  scripted((sub, a) => (sub === 'ls-files' && a.includes('-o') ? 'a\0b\0c\0d\0e\0f\0g\0h\0' : ''));
+  ok(snapshot({ batch: 1 }) === 'in parts: 7 file(s) still to add; each reply adds more', 'a snapshot in parts says what is left');
+  ok(health().partial === 7 && health().pending === true && health().failures === 0, 'a snapshot in parts records how many files are left, and is owed');
+  rmSync(join(g, 'project-memory-parts'), { force: true });
+  scripted(() => { throw fail('spawnSync git ENOENT', { code: 'ENOENT', syscall: 'spawnSync git' }); }); snapshot();
   h = health();
   ok(h.off === 'git is not installed' && h.failures === 0 && typeof h.lastOk === 'string' && !('pending' in h), 'off is recorded with no failure');
-  snapshotHealth('busy');
+  writeFileSync(join(g, 'index.lock'), '');
+  scripted(() => ''); snapshot();
   h = health();
   ok(h.pending === true && typeof h.busySince === 'string' && !('failures' in h && h.failures > 0) && h.lastOk !== undefined, 'busy is owed, and not counted at first');
   writeFileSync(p, JSON.stringify({ lastOk, failures: 0, pending: true, busySince: new Date(Date.now() - 11 * 60000).toISOString() }));
-  snapshotHealth('busy');
+  snapshot();
   ok(health().failures === 1 && /^busy since .*: another git holds the repository's lock$/.test(health().error), 'busy for longer than ten minutes is counted as a failure');
+  rmSync(join(g, 'index.lock'));
 
   writeFileSync(p, '{ not json');
   ok(owed() === false, 'a broken health file owes nothing');
-  snapshotHealth('snapshot failed: again');
+  failing(); snapshot();
   ok(health().failures === 1, 'a broken health file starts the counts again');
   writeFileSync(p, 'null');
-  snapshotHealth('snapshot failed: again');
+  failing(); snapshot();
   ok(health().failures === 1, 'a null health file reads as empty');
 }
 
@@ -190,7 +194,7 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
 // The git half of the CLI (history, restore, forget --purge, rescan, doctor), moved here from memory.mjs with the arguments and
 // options it had. The expected values are what memory.mjs ran before the move. The history rewrite itself keeps real git (memory-switch.test.mjs).
 {
-  const { git, gitBytes, unsnapped, missing, tracked, ever, gitInstalled, readHealth, MISSED, HELD, FAST, dropDays, scanHistory, scrubHistory } = S;
+  const { git, gitBytes, unsnapped, missing, tracked, ever, gitInstalled, readHealth, verdict, MISSED, HELD, FAST, dropDays, scanHistory, scrubHistory } = S;
   let seen = [];
   const stand = (answer) => { seen = []; useGit((cmd, args, opts) => { seen.push({ cmd, args, opts }); return typeof answer === 'function' ? answer(args, opts) : answer; }); };
 
@@ -268,7 +272,25 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(readHealth().read === true && readHealth().health === null, 'a null health file: read, and empty');
   writeFileSync(hp, JSON.stringify({ lastOk: 'x', failures: 2, held: ['a'], missed: ['b'], pending: true }));
   ok(readHealth().read && readHealth().health.failures === 2 && readHealth().health.held[0] === 'a' && owed() === true, 'a health file: parsed as written');
+  // What it means: doctor's level decided with its line, never read back from the words.
+  const said = (rec) => { writeFileSync(hp, JSON.stringify(rec)); return verdict(); };
+  const ok1 = '2026-01-01T00:00:00.000Z';
+  for (const [rec, level, starts] of [
+    [null, 'note', 'snapshots: none recorded yet'],
+    [{ off: 'git is not installed', failures: 0 }, 'note', 'snapshots: off, git is not installed'],
+    [{ failures: 2, error: 'fatal: boom', lastOk: ok1, held: ['h'], missed: ['m'] }, false, 'snapshots: failing, 2 in a row (fatal: boom)'],
+    [{ failures: 0, partial: 4, lastOk: ok1 }, true, 'snapshots: the first is being taken in parts, 4 file(s)'],
+    [{ failures: 0, busySince: ok1 }, true, 'snapshots: none taken yet; waiting since'],
+    [{ failures: 0, lastOk: ok1, held: ['p/memory/a.md'], missed: ['m'] }, 'note', 'snapshots: ok, last'],
+    [{ failures: 0, lastOk: ok1, missed: ['C--ext/memory'] }, false, 'snapshots: ok, last'],
+    [{ failures: 0, lastOk: ok1 }, true, 'snapshots: ok, last'],
+  ]) {
+    const v = said(rec);
+    ok(v.level === level && v.say.startsWith(starts), `${JSON.stringify(rec)}: ${level}, "${starts}" (got ${v.level}, "${v.say}")`);
+  }
+  ok(said({ lastOk: ok1, held: ['p/memory/a.md'] }).say.includes('but they skip p/memory/a.md: ' + HELD) && said({ lastOk: ok1, missed: ['C--ext/memory'] }).say.includes('but they leave out C--ext/memory: ' + MISSED), 'held and missed are named, with the fix');
   rmSync(hp);
+  ok(verdict().level === 'note' && verdict().say === 'snapshots: none recorded yet', 'no health file: none recorded yet');
   ok(MISSED.startsWith('it is reached through a link to a folder outside ~/.claude/projects') && HELD.startsWith('it holds what looks like a key, token or password'), 'the reasons a store is left out are said here');
 }
 

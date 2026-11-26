@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import * as T from './timing.mjs';
 import { isOff } from './privacy.mjs';
-import { snapshot, snapshotHealth, owed, reset, GIT_TIMEOUT, BATCH } from './snapshot.mjs';
+import { snapshot, owed, GIT_TIMEOUT, BATCH } from './snapshot.mjs';
 import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, indexLines, eolOf, wraps, archiveLine, mark, unmark, allStores, front, raw, memoryOff, reason, tagOf } from './store.mjs';
 import { redact } from './secrets.mjs';
 import { handoffFailed, handoffSaved, health, stopRecord, stopRan, plugins } from './run-records.mjs';
@@ -380,7 +380,6 @@ export async function main(argv, input) {
   PAUSE = pauseAt === -1 ? 0 : Number(argv[pauseAt + 1]) || 0;
   const arg = (flag, or) => (argv.includes(flag) ? Number(argv[argv.indexOf(flag) + 1]) || or : or);
   batch = arg('--batch', BATCH); gitWait = arg('--git-timeout', GIT_TIMEOUT);
-  reset();
   // `--now <ms>` exists so a month of use can be simulated in one run
   // (memory-tier.soak.mjs). Nothing else sets it.
   const nowAt = argv.indexOf('--now');
@@ -541,7 +540,7 @@ export async function main(argv, input) {
   // The first time, the notebook is kept as it was found before the tidy-up
   // changes it: snapshotted after, the table of contents as the user had
   // written it could never come back (docs review, 2026-10-28).
-  if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot({ gitWait, batch });
+  if (!dry && dirAt === -1 && todo.length && !existsSync(join(projectsRoot(), '.git'))) snapshot({ gitWait, batch, record: false });
   T.mark('snapshot');
 
   const clean = [];
@@ -585,13 +584,12 @@ export async function main(argv, input) {
     const s = snapshot({ gitWait, batch });
     if (s === 'busy') say('memory snapshot: busy — another session is committing; the next turn retries');
     else if (s) say(`memory snapshot: ${s}`);
-    try { snapshotHealth(s); } catch {}   // a record the disk will not read or write is skipped (a fault), never a crash
     T.mark('snapshot');
   }
   // The tool's own writes are part of the stamp, so the next turn is quiet
   // unless something else changed. None for a store that was skipped, busy,
   // edited mid-pass or waiting on a writer: without a stamp the next turn
-  // retries. A snapshot that did not go through is owed (snapshotHealth), and
+  // retries. A snapshot that did not go through is owed (its record), and
   // retried alone: left unstamped for it, every Stop redid the whole pass.
   if (gated) for (const [d, seen] of clean) try { writeFileSync(stampOf(d), seen, { mode: 0o600 }); } catch {}
   return 0;

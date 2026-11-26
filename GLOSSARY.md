@@ -88,7 +88,14 @@ background after a Stop. It leaves out `handoff.md` and the journal.
 
 **Snapshot health**: `.snapshot-health` in the projects root. It records the
 last good snapshot, failures in a row, whether a snapshot is owed, and the held
-notes and missed stores. Doctor, status and the startup line report it.
+notes and missed stores. Each `snapshot()` writes it as it goes; nothing else
+does. Doctor, status and the startup line report it.
+
+**Snapshot verdict**: what the snapshot health means, as doctor and status say
+it: a level (ok, note or failing) and the line, both from `verdict()` in
+`src/snapshot.mjs`, so the words and the level change together. The startup
+line reads the record's fields itself, with its own quieter rule (three
+failures in a row).
 
 **Held note**: a note left out of the snapshots because it, or its name, looks
 like it holds a key, token or password. Once the secret is removed, the next
