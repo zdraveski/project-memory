@@ -10,7 +10,8 @@ import { pathToFileURL } from 'node:url';
 import assert from 'node:assert';
 import { ROOT, tool, tempHome, tempDir, storeFor, quick, fastClock } from './harness.mjs';
 
-const HOOK = tool('src/handoff-log.mjs'), BRIEFING = tool('src/briefing.mjs'), TIER = tool('src/memory-tier.mjs');
+// A Stop is run as the hook runs it, memory-tier.mjs --stop (its tidy-up inline: harness.mjs); LOG is the module, for its exports.
+const LOG = tool('src/handoff-log.mjs'), BRIEFING = tool('src/briefing.mjs'), TIER = tool('src/memory-tier.mjs'), STOP = [TIER, '--stop'];
 const { home, env } = tempHome('hl-test-');
 // The hooks in this process too, under the same throwaway HOME (tempHome set
 // it here): a check that needs no stdin or exit code calls handoff() itself,
@@ -68,7 +69,7 @@ const asst = (s, extra) => rec('assistant', [{ type: 'text', text: s }], extra);
 const tool_ = (n) => rec('user', [{ type: 'tool_result', tool_use_id: 'x', content: 'y'.repeat(n) }]);
 const append = (...lines) => writeFileSync(transcript, lines.join('\n') + '\n', { flag: 'a' });
 
-const run = () => execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd, transcript_path: transcript }), env });
+const run = () => execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd, transcript_path: transcript }), env });
 const doc = () => readFileSync(join(dir, 'handoff.md'), 'utf8');
 const section = () => { const d = doc(); return d.slice(d.lastIndexOf('<!-- auto:start -->'), d.lastIndexOf('<!-- auto:end -->')); };
 // What --print says apart from the shared store's one line, which every
@@ -83,7 +84,7 @@ const entries = () => (section().match(/\*\*asked\*\*/g) || []).length;
   // Text with no section: no marker, no START, a START (at the start, or later) with no END, a START or an END not alone on its line.
   const S = '<!-- auto:start -->', E = '<!-- auto:end -->';
   const docs = ['prose with no marker', '', ['x', E, ''].join('\n'), [S, 'no end'].join('\n'), ['x', S, 'no end', ''].join('\n'), ['x' + S, 'body', E, ''].join('\n'), [S, 'body', E + 'x'].join('\n')];
-  const probe = `import { sectionOf } from ${JSON.stringify(pathToFileURL(HOOK).href)};\nprocess.stdout.write(JSON.stringify(${JSON.stringify(docs)}.map(sectionOf)));`;
+  const probe = `import { sectionOf } from ${JSON.stringify(pathToFileURL(LOG).href)};\nprocess.stdout.write(JSON.stringify(${JSON.stringify(docs)}.map(sectionOf)));`;
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8', timeout: 10000 });
   ok(r.status === 0 && r.stdout === JSON.stringify(docs.map(() => ({ a: -1, b: -1 }))), `sectionOf of text with no section finds none${r.error?.code === 'ETIMEDOUT' || r.signal ? ' (timed out after 10 s)' : ''}, and returns (${r.status}${r.signal ? ', ' + r.signal : ''}${r.error ? ', ' + r.error.code : ''}, ${r.stdout}, ${String(r.stderr).slice(0, 300)})`);
 }
@@ -170,7 +171,7 @@ let lost = 0, leaks = 0;
 for (let i = quick ? 19 : 0; i < 20; i++) {
   append(user(`race question ${i}`, { ts: `2026-09-11T09:${String(i).padStart(2, '0')}:00Z` }), asst(`race answer ${i}`));
   const input = JSON.stringify({ cwd, transcript_path: transcript });
-  const procs = [spawn(process.execPath, [HOOK], { env }), spawn(process.execPath, [TIER, '--dir', dir], { env })];
+  const procs = [spawn(process.execPath, STOP, { env }), spawn(process.execPath, [TIER, '--dir', dir], { env })];
   for (const p of procs) p.stdin.end(input);
   await Promise.all(procs.map((p) => new Promise((res) => p.on('close', res))));
   if (!doc().includes(`race question ${i}`)) lost++;
@@ -292,7 +293,7 @@ if (!quick) {
   const cwdP = 'C:\\handoff-parallel';
   const dirP = storeFor(home, cwdP);
   mkdirSync(dirP, { recursive: true });
-  const hookAt = (payload) => new Promise((res) => { const t0 = Date.now(), c = spawn(process.execPath, [HOOK], { env }); c.on('close', () => res(Date.now() - t0)); c.stdin.end(JSON.stringify(payload)); });
+  const hookAt = (payload) => new Promise((res) => { const t0 = Date.now(), c = spawn(process.execPath, STOP, { env }); c.on('close', () => res(Date.now() - t0)); c.stdin.end(JSON.stringify(payload)); });
   let missed = 0;
   for (let round = 0; round < 5; round++) {
     const payloads = Array.from({ length: 8 }, (_, k) => {
@@ -352,7 +353,7 @@ mkdirSync(dirK, { recursive: true });
 const sameAsk = (id) => {
   const t = join(dirK, `${id}.jsonl`);
   writeFileSync(t, user('continue', { ts: '2026-09-14T10:00:00Z' }) + '\n' + asst(`${id} went on`) + '\n');
-  execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdK, transcript_path: t, session_id: id }), env });
+  execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd: cwdK, transcript_path: t, session_id: id }), env });
 };
 const kd = () => readFileSync(join(dirK, 'handoff.md'), 'utf8');
 sameAsk('aaaaaaaa-1'); sameAsk('bbbbbbbb-2'); sameAsk('aaaaaaaa-1');
@@ -372,7 +373,7 @@ mkdirSync(dirU, { recursive: true });
 const turnU = (id, ask, ts) => {
   const t = join(dirname(dirU), `${id}.jsonl`);
   writeFileSync(t, user(ask, { ts }) + '\n' + asst('ok') + '\n');
-  execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdU, transcript_path: t, session_id: id }), env });
+  execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd: cwdU, transcript_path: t, session_id: id }), env });
 };
 turnU('uuuuuuuu-1', 'why does a tool_use_id repeat?', '2026-09-15T10:00:00Z');
 ok(/why does a tool_use_id repeat\?/.test(readFileSync(join(dirU, 'handoff.md'), 'utf8')), 'a prompt that mentions tool_use_id is an ask');
@@ -391,7 +392,7 @@ const dirB = storeFor(home, cwdB);
 mkdirSync(dirB, { recursive: true });
 const tb = join(dirB, 'b.jsonl');
 writeFileSync(tb, user('[URGENT]: fix the build', { ts: '2026-09-16T10:00:00Z' }) + '\n' + asst('ok') + '\n');
-const bracket = () => execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdB, transcript_path: tb, session_id: 'jjjjjjjj-1' }), env });
+const bracket = () => execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd: cwdB, transcript_path: tb, session_id: 'jjjjjjjj-1' }), env });
 bracket();
 writeFileSync(join(dirB, 'handoff.md'), readFileSync(join(dirB, 'handoff.md'), 'utf8').replace(' [jjjjjjjj]: [URGENT]', ': [URGENT]'));
 bracket();
@@ -405,7 +406,7 @@ const dirW = storeFor(home, cwdW);
 mkdirSync(dirW, { recursive: true });
 const tw = join(dirname(dirW), 'wwwwwwww-1.jsonl');
 writeFileSync(tw, user('a long job', { ts: nowIso(60) }) + '\n' + asst('step 1') + '\n');
-execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdW, transcript_path: tw, session_id: 'wwwwwwww-1' }), env });
+execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd: cwdW, transcript_path: tw, session_id: 'wwwwwwww-1' }), env });
 appendFileSync(tw, asst('step 40') + '\n');
 const printW = () => briefIn({ cwd: cwdW, session_id: 'xxxxxxxx-2', source: 'startup' });
 // Named by the last request recorded for it, and said so: one at work on a newer request read as still on that one (audit H-F8).
@@ -427,7 +428,7 @@ const ended = (minAgo) => JSON.stringify({ type: 'assistant', timestamp: nowIso(
   message: { content: [{ type: 'text', text: 'done' }], stop_reason: 'end_turn', usage: { input_tokens: 1 } } });
 writeFileSync(tt, user('q', { ts: nowIso(10) }) + '\n' + ended(5) + '\n');
 // A project the hook keeps a handoff for: one with none is judged by nothing.
-execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdT, transcript_path: tt, session_id: 'tttttttt-1' }), env });
+execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd: cwdT, transcript_path: tt, session_id: 'tttttttt-1' }), env });
 const ranAt = (minAgo) => { const p = join(home, '.claude', 'projects', '.stop-ran'); writeFileSync(p, 'x'); const d = new Date(Date.now() - minAgo * 60000); utimesSync(p, d, d); };
 const printT = () => briefIn({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' });
 // No .stop-ran: the hooks just installed, or the file cleaned away. That is
@@ -584,7 +585,7 @@ const dirM = storeFor(home, cwdM);
 mkdirSync(dirM, { recursive: true });
 const tM = join(dirname(dirM), 'mmmmmmmm-1.jsonl');
 writeFileSync(tM, user('## a question with **marks** | kept', { ts: nowIso(1) }) + '\n' + asst('## Head\n**bold** text\n\n| a | b |\n|---|:-:|\n| 1 | 2 |\n\n- item - one') + '\n');
-execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdM, transcript_path: tM, session_id: 'mmmmmmmm-1' }), env });
+execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd: cwdM, transcript_path: tM, session_id: 'mmmmmmmm-1' }), env });
 const docM = readFileSync(join(dirM, 'handoff.md'), 'utf8');
 ok(/\*\*did:\*\* Head bold text a b 1 2 - item - one$/m.test(docM), `an answer's heading marks, bold and table rules are dropped (got ${docM.match(/\*\*did:\*\*.*$/m)})`);
 ok(/: ## a question with \*\*marks\*\* \| kept$/m.test(docM), 'an ask is the user\'s words, kept as typed');
@@ -1304,7 +1305,7 @@ ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`sta
   writeFileSync(join(pj, '.claude', 'settings.json'), JSON.stringify({ autoMemoryEnabled: false }));
   writeFileSync(ts, [user('please fix the thing', { ts: '2026-09-11T07:00:00Z' }), asst('fixed it')].join('\n') + '\n');
   const penv = { ...process.env, CLAUDE_PROJECT_DIR: pj };
-  execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdS, transcript_path: ts, session_id: 'so000000-0000' }), env: penv });
+  execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd: cwdS, transcript_path: ts, session_id: 'so000000-0000' }), env: penv });
   const brief = execFileSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: cwdS, session_id: 'so111111-0000', source: 'startup' }), env: penv }).toString();
   ok(!existsSync(join(ds, 'handoff.md')) && /^Auto memory is off \(autoMemoryEnabled is false in [^)]*settings\.json\): project-memory saves and briefs nothing[^\n]*\n$/.test(brief) && tags().includes('so111111'), `settings off: a Stop writes no handoff, a start prints one line naming the file and keeps its tag (got ${JSON.stringify(brief)}, handoff ${existsSync(join(ds, 'handoff.md'))}, ${tags()})`);
   // The tag cannot be written (the projects folder is a file): the line still shows, and the starter does not say "reinstall".
@@ -1313,9 +1314,11 @@ ok(said.every((x) => x === '') && [0, 1, 2, 3].every((i) => tags().includes(`sta
   ok(bad.status === 0 && /^Auto memory is off/.test(bad.stdout) && !/briefing failed|reinstall/.test(bad.stdout), `an off() failure at a settings-off start is not "reinstall" (got ${bad.status} ${JSON.stringify(bad.stdout)})`);
 }
 // Input the hook cannot parse: it exits 0 and prints nothing, a hook that throws on every turn is worse than one that misses a turn (1.5.3 holes).
-for (const args of [[HOOK], [BRIEFING, '--print']]) {
+for (const args of [STOP, [BRIEFING, '--print']]) {
   const junk = spawnSync(process.execPath, args, { input: 'not json', env, encoding: 'utf8' });
-  ok(junk.status === 0 && junk.stdout === '' && junk.stderr === '', `unreadable input exits 0 silently (${args.length - 1 ? '--print' : 'Stop'}: ${junk.status} ${JSON.stringify(junk.stderr.slice(0, 120))})`);
+  // The Stop's save says nothing; its tidy-up (no payload: the shared store only) may report the store it tiered, never hook JSON.
+  const said = args === STOP ? junk.stdout.split('\n').filter((l) => /^\s*[{[]/.test(l)).join('\n') : junk.stdout;
+  ok(junk.status === 0 && said === '' && junk.stderr === '', `unreadable input exits 0 silently (${args[1] === '--print' ? '--print' : 'Stop'}: ${junk.status} ${JSON.stringify(junk.stdout.slice(0, 200))} ${JSON.stringify(junk.stderr.slice(0, 120))})`);
 }
 // A resumed conversation, auto memory on: nothing printed (it was read as a compaction).
 ok(await started('resume', 'nnnnnnnn-1') === '', 'a resumed conversation gets no briefing');
@@ -2290,7 +2293,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
   writeFileSync(t4, [user('build the release', { ts: '2026-10-28T09:00:00Z' }), asst('Started the build.', { ts: '2026-10-28T09:00:10Z' }),
     user('This session is being continued from a previous conversation. The user asked how <private> blocks are kept out.', { ts: '2026-10-28T09:30:00Z', isCompactSummary: true }),
     asst('The build finished and all tests pass.', { ts: '2026-10-28T09:40:00Z' })].join('\n') + '\n');
-  execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: 'r4sum-0001', transcript_path: t4, cwd }), env });
+  execFileSync(process.execPath, STOP, { input: JSON.stringify({ session_id: 'r4sum-0001', transcript_path: t4, cwd }), env });
   ok(/build the release\n  \*\*did:\*\* The build finished and all tests pass\./.test(doc()), `a compaction summary naming <private> does not freeze the turn (got ${section()})`);
 }
 
@@ -2302,7 +2305,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
   const done5 = JSON.stringify({ type: 'attachment', timestamp: '2026-10-28T10:30:00Z', attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: '<task-notification><task-id>b1</task-id><status>completed</status></task-notification>' } });
   const end5 = (s, ts) => asst(s, { ts, message: { content: [{ type: 'text', text: s }], stop_reason: 'end_turn' } });
   const mid5 = (s, ts) => asst(s, { ts, message: { content: [{ type: 'text', text: s }], stop_reason: 'tool_use' } });
-  const stop5 = (lines, id) => { writeFileSync(t5, lines.join('\n') + '\n'); execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: id, transcript_path: t5, cwd }), env }); return doc(); };
+  const stop5 = (lines, id) => { writeFileSync(t5, lines.join('\n') + '\n'); execFileSync(process.execPath, STOP, { input: JSON.stringify({ session_id: id, transcript_path: t5, cwd }), env }); return doc(); };
   let d5 = stop5([user('run the long job', { ts: '2026-10-28T10:00:00Z' }), end5('Started the job.', '2026-10-28T10:01:00Z'), nudge5,
     end5('I saved where things stand.', '2026-10-28T10:06:00Z'), done5, end5('The job finished: 42 files converted.', '2026-10-28T10:31:00Z')], 'r4ndg-0001');
   ok(/run the long job\n  \*\*did:\*\* The job finished: 42 files converted\./.test(d5), `after the memory update, a task's end is recorded again (got ${section()})`);
@@ -2330,7 +2333,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
   const done6 = (ts, id = 'b6') => JSON.stringify({ type: 'attachment', timestamp: ts, attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: `<task-notification><task-id>${id}</task-id><status>completed</status></task-notification>` } });
   const end6 = (s, ts) => asst(s, { ts, message: { content: [{ type: 'text', text: s }], stop_reason: 'end_turn' } });
   const mid6 = (s, ts) => asst(s, { ts, message: { content: [{ type: 'text', text: s }], stop_reason: 'tool_use' } });
-  const stop6 = (lines, id, extra = {}) => { writeFileSync(t6, lines.join('\n') + '\n'); execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: id, transcript_path: t6, cwd, ...extra }), env }); return doc(); };
+  const stop6 = (lines, id, extra = {}) => { writeFileSync(t6, lines.join('\n') + '\n'); execFileSync(process.execPath, STOP, { input: JSON.stringify({ session_id: id, transcript_path: t6, cwd, ...extra }), env }); return doc(); };
   let d6 = stop6([user('build A', { ts: '2026-10-28T15:00:00Z' }), end6('Started A.', '2026-10-28T15:01:00Z'), nudge6('2026-10-28T15:05:00Z'), end6('Saved.', '2026-10-28T15:06:00Z'),
     user('<task-notification><task-id>b7</task-id><status>completed</status></task-notification>', { ts: '2026-10-28T15:30:00Z' }), end6('A finished.', '2026-10-28T15:31:00Z')], 'r4ps2-0001');
   ok(/build A\n  \*\*did:\*\* A finished\./.test(d6), `a task's end as a user record ends the hold (got ${section()})`);
@@ -2523,7 +2526,7 @@ ok(/^The last exchanges before this compaction[^\n]*\n- \*\*cut mid-turn\*\* \[r
   // 1.5.0 B2: after a compaction too, not only at startup.
   ok(/^Earlier work in this project since 2026-09-03 is in its journal/m.test(await brief('compact')), `the briefing after a compaction names the journal too (got ${await brief('compact')})`);
   // 1.5.0 B3: the plugin starts the briefing through brief.mjs, which says in one line when it cannot load, and has an off switch.
-  const BRIEF = join(dirname(HOOK), 'brief.mjs');
+  const BRIEF = join(dirname(LOG), 'brief.mjs');
   const viaStarter = (extra = {}, file = BRIEF) => spawnSync(process.execPath, [file, '--print'], { input: JSON.stringify({ cwd: cwdJ, session_id: 'jjjjjjjj-1', source: 'startup' }), env: { ...process.env, ...extra }, encoding: 'utf8' });
   { const v = viaStarter(), w = await brief(); ok(v.stdout === w && v.status === 0, `the starter prints the same briefing as briefing.mjs --print (starter ${v.status} ${JSON.stringify(v.stdout.slice(0, 300))} ${JSON.stringify(v.stderr.slice(0, 300))}; direct ${JSON.stringify(w.slice(0, 300))})`); }
   ok(viaStarter({ PROJECT_MEMORY_BRIEFING: '0' }).stdout === '', 'PROJECT_MEMORY_BRIEFING=0 prints nothing');
@@ -3265,10 +3268,10 @@ if (!quick) {
   ok(await printO('startup') === 'project-memory is off in this project since 2026-10-05 (the user turned it off). Mention it if the user asks about memory; memory on turns it back on.\n',
     `off, a startup prints exactly the one line (got ${JSON.stringify(await printO('startup'))})`);
   ok((await Promise.all(['resume', 'clear', 'compact'].map((s) => printO(s)))).every((x) => x === ''), 'and resume, clear and compact print nothing');
-  ok(execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO }), env }).toString() === '', 'the Stop hook prints nothing');
+  ok(execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO }), env }).toString() === '', 'the Stop hook prints nothing');
   appendFileSync(tO, user('an ask while off', { ts: '2026-09-11T07:05:00Z' }) + '\n' + asst('did that') + '\n');
   const before2 = files();
-  execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO }), env });
+  execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd: cwdO, session_id: 'oooooooo-1', transcript_path: tO }), env });
   ok(files() === before2 && before === before2 && !/an ask while off/.test(readFileSync(join(dirO, 'handoff.md'), 'utf8')), 'off: starts and Stops change no file, no mtime, and record nothing');
   writeFileSync(join(dirO, '.project-off'), 'garbage');
   ok(/since an unknown date \(the user turned it off\)/.test(await printO('startup')), 'a marker that does not read: since an unknown date');

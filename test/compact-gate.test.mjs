@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import assert from 'node:assert';
 import { tool, tempHome, tempDir, storeFor, quick } from './harness.mjs';
 
-const GATE = tool('src/compact-gate.mjs'), HOOK = tool('src/handoff-log.mjs'), BRIEFING = tool('src/briefing.mjs');
+const GATE = tool('src/compact-gate.mjs'), STOP = [tool('src/memory-tier.mjs'), '--stop'], BRIEFING = tool('src/briefing.mjs');
 const { home, env } = tempHome('cg-test-');
 const cwd = 'C:\\compact-gate-selftest';
 const dir = storeFor(home, cwd);
@@ -183,7 +183,7 @@ ok(!!stop('synth')?.hookSpecificOutput?.additionalContext, 'the nudge still fire
 
 // 4. The next finished turn rebuilds the section and the note is gone.
 write(user('build it'), asst('all green', 200_000, 'end_turn'), user('next thing'), asst('next answer', 210_000, 'end_turn'));
-execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd, transcript_path: transcript }), env });
+execFileSync(process.execPath, STOP, { input: JSON.stringify({ cwd, transcript_path: transcript }), env });
 ok(!/cut mid-turn/.test(readFileSync(join(dir, 'handoff.md'), 'utf8')), 'the Stop hook drops the note');
 
 // 5. The Stop nudge: once per cycle, re-armed by a compaction, never twice in a turn.

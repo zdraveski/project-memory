@@ -78,6 +78,15 @@ through these, never their own copies.
 (`mark`), so the line comes back when there is room; `unmark` takes it off with
 only the one space it was added with.
 
+**Save**: what a Stop does first, `save()` in `src/memory-tier.mjs`, in one
+order: the switched-off checks, the handoff with the journal, its records, the
+sweeps, the backfill and the nudge. `memory-tier.mjs --stop` is the one way a
+Stop runs; `handoff-log.mjs` is the `handoff.md` writer only.
+
+**Tidy-up**: what follows a save, `tidy()` in `src/memory-tier.mjs`: tiering
+each changed store, the snapshot, and the stamps. After a Stop it runs in a
+`--tidy` process of its own; a manual run calls it directly.
+
 ## Snapshots
 
 **Projects root**: `~/.claude/projects` (or under `CLAUDE_CONFIG_DIR`), the

@@ -103,7 +103,7 @@ for (const v of ['CLAUDE_CODE_MAX_CONTEXT_TOKENS', 'CLAUDE_CODE_DISABLE_1M_CONTE
 const { MODEL_WINDOW, WINDOW, TRIGGER } = await import('../src/compact-gate.mjs');
 // Reply sizes, in tokens: a small start, two under the trigger, one just past it, one past the ceiling.
 const SIZES = [1_000, 199_000, 500_000, Math.ceil(TRIGGER * WINDOW) + 1_000, Math.ceil(0.95 * MODEL_WINDOW)];
-const TIER = tool('src/memory-tier.mjs'), LOG = tool('src/handoff-log.mjs'), BRIEFING = tool('src/briefing.mjs'), GATE = tool('src/compact-gate.mjs'), CLI = tool('src/memory.mjs');
+const TIER = tool('src/memory-tier.mjs'), BRIEFING = tool('src/briefing.mjs'), GATE = tool('src/compact-gate.mjs'), CLI = tool('src/memory.mjs');
 
 // mulberry32: a seed replays its round exactly.
 const rng = (seed) => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -520,9 +520,6 @@ async function execute(steps, meta) {
       if (p.status !== 0) problems.push(`the Stop hook with auto memory off (${s}) exited ${p.status ?? p.signal}: ${p.err.trim().split('\n').slice(-2).join(' | ')}`);
       else if (p.out.trim() || STACK.test(p.err)) problems.push(`the Stop hook with auto memory off (${s}) printed: ${(p.out + p.err).trim().slice(0, 200)}`);
       for (const sec of secrets) if ((p.out + p.err).includes(sec)) problems.push(`the Stop with auto memory off printed private text ${sec}`);
-      // And at its start: handoff-log.mjs without --print tags the conversation the same way.
-      const b = await run(LOG, [], JSON.stringify({ cwd, transcript_path: c.t, session_id: s, source: 'startup', hook_event_name: 'SessionStart' }), tz, { off: true });
-      if (b.status !== 0 || b.out.trim() || STACK.test(b.err)) problems.push(`the start hook with auto memory off (${s}) exited ${b.status ?? b.signal} and printed: ${(b.out + b.err).trim().slice(0, 200)}`);
       c.off = true;
     },
     session: ({ id, big }) => {

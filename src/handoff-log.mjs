@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Run by the Stop hook (memory-tier.mjs, in-process): after EVERY assistant
 // turn, refresh the auto section of the project's handoff.md from the
 // transcript. SessionEnd is not enough -- a crash, a closed window or a
@@ -18,14 +17,14 @@
 // secrets (SECRETS), the answer to a <private> message and the files its turn
 // changed (answer()), and every entry of a conversation marked
 // <private-session> (hushed(), in privacy.mjs).
-import { readFileSync, existsSync, openSync, closeSync, statSync, statfsSync, realpathSync, mkdirSync, copyFileSync, renameSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, openSync, closeSync, statSync, statfsSync, mkdirSync, copyFileSync, renameSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import * as T from './timing.mjs';
 import { clip, plain } from './text.mjs';
 import { readTail, turns, promptBefore, TAIL, FORGETS, userText, tailOf, joined, lastTurn } from './transcript.mjs';
-import { PRIVATE, QUIET, OFF, isOff, wasOff, hushed, off, unreadable, forgottenIn } from './privacy.mjs';
-import { tag, storeOf, withLock, replaceIfUnchanged, projectsRoot, local, same, memoryOff, pathKey, transcriptKey, raw, inProjects, norm } from './store.mjs';
+import { PRIVATE, QUIET, OFF, wasOff, hushed, unreadable, forgottenIn } from './privacy.mjs';
+import { tag, storeOf, withLock, replaceIfUnchanged, projectsRoot, local, same, pathKey, transcriptKey, raw, inProjects, norm } from './store.mjs';
 import { stopRan } from './run-records.mjs';
 
 const TURNS = 10;         // how many exchanges to keep, per session
@@ -421,36 +420,4 @@ export function stalled(t, hint = true) {
       (hint ? ` If not: node "${join(dirname(fileURLToPath(import.meta.url)), 'memory.mjs')}" doctor` : '')];
   }
   return [];
-}
-
-// Run directly (the tests and fuzz.mjs do): payload on stdin, always exit 0. The briefing (--print) is briefing.mjs's.
-// Node names the script by its real path: compared with the path it was
-// given, a run through a symlink (a dotfiles ~/.claude, macOS's /var) did nothing.
-export async function main() {
-  try {
-    const input = JSON.parse(readFileSync(0, 'utf8'));
-    T.tag(input.hook_event_name, input.source);
-    // Auto memory off: no record; the tag at every Stop, so no
-    // backfill imports a conversation whose first reply got no Stop (P1 hunt,
-    // 2026-10-29). A project turned off (memory off): nothing written.
-    if (isOff(storeOf(input))) {}
-    // A tag that could not be written is the next start's to write.
-    else if (memoryOff()) { try { off(input); } catch {} }
-    else handoff(input);
-  } catch {
-    // A hook that throws on every turn is worse than one that misses a turn.
-  }
-}
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
-  // A reader gone before the write (Claude Code ended the hook): its EPIPE,
-  // thrown with no listener, exited 1 with a stack trace once process.exit()
-  // no longer came first (P1 hunt, 2026-10-29).
-  process.stdout.on('error', () => {}); process.stderr.on('error', () => {});
-  (async () => {
-    await main();
-    // Not process.exit(): on macOS a pipe is written asynchronously, and
-    // exiting cut a briefing of up to 9,500 characters at 8 KB (as memory.mjs's
-    // search, CI 2026-10-29).
-    process.exitCode = 0;
-  })();
 }
