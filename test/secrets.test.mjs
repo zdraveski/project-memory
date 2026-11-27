@@ -245,6 +245,17 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     ['pwd: /s3cr3t/p4ss', 'pwd: [redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
 }
 
+// 1.6.6 item 31: after `password:`, `passphrase:` or `password =`, the whole run of plain words to the end of the line is cut, not the first word only.
+{
+  for (const [t, w] of [['password: correct horse battery staple', 'password: [redacted]'], ['passphrase: correct horse battery staple', 'passphrase: [redacted]'],
+    ['password = correct horse battery staple', 'password = [redacted]'], ['Notes: password: correct horse battery staple', 'Notes: password: [redacted]'],
+    ['The password: hunter2 correct horse', 'The password: [redacted]'], ['password: correct horse battery staple.', 'password: [redacted].'],
+    ['password: correct horse\nnext line stays', 'password: [redacted]\nnext line stays']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
+  // A function word in the run makes it a sentence: only the first word goes. Prose after the word stays.
+  for (const [t, w] of [['password: hunter2 is wrong', 'password: [redacted] is wrong'], ['password: hunter2, then restart', 'password: [redacted], then restart'],
+    ['password: required', 'password: required'], ['Password: Required field', 'Password: Required field'], ['password: changeme is the default', 'password: [redacted] is the default']]) ok(redact(t) === w, `kept: ${t} -> ${redact(t)}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';
