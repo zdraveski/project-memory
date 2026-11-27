@@ -6,9 +6,9 @@
 //   2. no file imports a name it never uses;
 //   3. the suites of the changed files, --mutant mode, in UTC and in New
 //      York: GitHub's machines run in UTC, where a test of local midnight
-//      once checked nothing.
+//      once checked nothing;
+//   4. every mutant's find-text is in its file exactly once, no label twice.
 // With --full, by hand, also:
-//   4. every mutant's find-text is in its file exactly once, no label twice;
 //   5. the hand-written mutants on the changed lines;
 //   6. the automatic mutants on the changed lines (--no-auto skips them);
 //   7. changed code lines no mutant covers: a reminder, not a failure;
@@ -101,6 +101,20 @@ assert.deepEqual(importsOf("import { a } from './a.mjs';\nimport * as B from \".
 assert.deepEqual(loopsOf({ 'a.mjs': ['b.mjs'], 'b.mjs': ['c.mjs'], 'c.mjs': ['a.mjs'], 'd.mjs': ['a.mjs'] }), ['a.mjs -> b.mjs', 'b.mjs -> c.mjs', 'c.mjs -> a.mjs']);
 assert.deepEqual(loopsOf({ 'a.mjs': ['b.mjs'], 'b.mjs': [] }), []);
 assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11])]])), 'a.mjs:3,4;b.mjs:11');
+// Every mutant's find-text is in its file exactly once, no label twice. A label given twice is one key in an object literal:
+// counted in the table's text, per file. read(path) gives a file's text.
+export const tableProblems = (tables, read) => Object.entries(tables).flatMap(([file, [, mutants]]) => {
+  const text = read(file);
+  const keys = [...read(tableOf(file)).matchAll(/^ {2}(['"])((?:(?!\1)[^\\]|\\.)*)\1: ?\[/gm)].map((m) => m[2]);
+  return [...Object.entries(mutants).flatMap(([label, [from]]) => { const n = text.split(from).length - 1; return n === 1 ? [] : [`${file} :: ${label}: find-text found ${n} times`]; }),
+    ...[...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))].map((k) => `${file} :: ${k}: label given twice`)];
+});
+{
+  const files = { 'src/a.mjs': 'x === y;\nz;\n', 'tools/mutants/a.mjs': "  'ok': [\n  'gone': [\n  'gone': [\n" };
+  assert.deepEqual(tableProblems({ 'src/a.mjs': [null, { ok: ['==='], gone: ['!=='] }] }, (f) => files[f]),
+    ['src/a.mjs :: gone: find-text found 0 times', 'src/a.mjs :: gone: label given twice']);
+  assert.deepEqual(tableProblems({ 'src/a.mjs': [null, { ok: ['==='] }] }, (f) => (f.startsWith('tools') ? "  'ok': [\n" : files[f])), []);
+}
 // --base <ref>: the ref "changed" is measured from; HEAD (the last commit) when not given.
 export const baseOf = (argv) => {
   const eq = argv.find((a) => a.startsWith('--base='));
@@ -230,18 +244,10 @@ step(`the changed files' suites (${runs.length ? [...new Set(runs.map(([t]) => t
 }))).filter(Boolean));
 if (tz0 === undefined) delete process.env.TZ; else process.env.TZ = tz0;
 
-if (!full) finish();
+// 4. The mutant tables, a text scan of seconds, so CI runs it on every PR (1.6.4's master went red on one).
+step('every mutant applies once', tableProblems(suites, (f) => readFileSync(join(repo, f), 'utf8')));
 
-// 4. The mutant tables. A label given twice is one key in an object literal:
-// counted in the text, per file.
-const bad = [];
-for (const [file, [, mutants]] of Object.entries(suites)) {
-  const text = readFileSync(join(repo, file), 'utf8');
-  for (const [label, [from]] of Object.entries(mutants)) { const n = text.split(from).length - 1; if (n !== 1) bad.push(`${file} :: ${label}: find-text found ${n} times`); }
-  const keys = [...readFileSync(join(repo, tableOf(file)), 'utf8').matchAll(/^ {2}(['"])((?:(?!\1)[^\\]|\\.)*)\1: ?\[/gm)].map((m) => m[2]);
-  for (const k of new Set(keys.filter((k, i) => keys.indexOf(k) !== i))) bad.push(`${file} :: ${k}: label given twice`);
-}
-step('every mutant applies once', bad);
+if (!full) finish();
 
 // 5 and 6. The mutants on the changed lines; the changed code lines none covers.
 const on = [], bare = [], autoLines = new Map();
