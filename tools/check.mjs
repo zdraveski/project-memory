@@ -26,6 +26,7 @@ import { suites, settle, tableOf, testsOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
 import { srcFiles, pluginFiles, plan, pool, isTimed } from './suites.mjs';
 import { decide } from './pretested.mjs';
+import { bump, heading, section, isPatch, missingAssets } from './release.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
@@ -91,6 +92,25 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
   // The latest run counts: green then red is no; red then green (a rerun of a flake as a new run) is yes.
   assert.equal(decide({ ...yes, runs: [run({ id: 2, conclusion: 'failure', created_at: '2026-11-27T11:00:00Z' }), run()] }).ok, false);
   assert.equal(decide({ ...yes, runs: [run({ conclusion: 'failure' }), run({ id: 2, created_at: '2026-11-27T11:00:00Z' })] }).ok, true);
+}
+// release.mjs: the version set, the heading made once, an empty section refused, the release's three files.
+{
+  assert.equal(bump('{\n  "name": "p",\n  "version": "1.6.5",\n  "x": 1\n}\n', '1.6.6'), '{\n  "name": "p",\n  "version": "1.6.6",\n  "x": 1\n}\n');
+  assert.throws(() => bump('{ "name": "p" }', '1.6.6'), /no "version"/);
+  const cl = '# Changelog\n\n## Unreleased\n\n- a fix\n\n## 1.6.5 (2026-11-27)\n\nold\n';
+  assert.equal(heading(cl, '1.6.6', '2026-11-28'), '# Changelog\n\n## 1.6.6 (2026-11-28)\n\n- a fix\n\n## 1.6.5 (2026-11-27)\n\nold\n');
+  assert.equal(heading(heading(cl, '1.6.6', '2026-11-28'), '1.6.6', '2026-11-29'), heading(cl, '1.6.6', '2026-11-28'));
+  const bare = heading('# Changelog\n\n## 1.6.5 (2026-11-27)\n\nold\n', '1.6.6', '2026-11-28');
+  assert.equal(bare, '# Changelog\n\n## 1.6.6 (2026-11-28)\n\n## 1.6.5 (2026-11-27)\n\nold\n');
+  assert.equal(section(bare, '1.6.6'), '');
+  assert.equal(section(heading(cl, '1.6.6', '2026-11-28'), '1.6.6'), '- a fix');
+  assert.equal(section(cl, '1.6.5'), 'old');
+  assert.equal(section(cl, '1.6.50'), '');
+  assert.equal(heading(cl.replace(/\n/g, '\r\n'), '1.6.6', '2026-11-28'), heading(cl, '1.6.6', '2026-11-28').replace(/\n/g, '\r\n'));
+  assert.equal(section(heading(cl, '1.6.6', '2026-11-28').replace(/\n/g, '\r\n'), '1.6.6'), '- a fix');
+  assert.ok(isPatch('1.6.6') && !isPatch('1.7.0') && !isPatch('1.6'));
+  assert.deepEqual(missingAssets(['project-memory-v1.6.6.zip', 'SHA256SUMS'], 'v1.6.6'), ['project-memory-v1.6.6.tar.gz']);
+  assert.deepEqual(missingAssets(['project-memory-v1.6.6.tar.gz', 'project-memory-v1.6.6.zip', 'SHA256SUMS'], 'v1.6.6'), []);
 }
 // The suites' order: biggest first in a pool a core narrower than the machine, the timed files after, alone; never no pool at all.
 assert.deepEqual(plan([{ file: 'a.test.mjs', size: 1 }, { file: 'b-timed.test.mjs', size: 9 }, { file: 'c.test.mjs', size: 5 }, { file: 'd-timed.test.mjs', size: 2 }], 4),
