@@ -1,7 +1,7 @@
 // Self-check for recall-hook.mjs and the change hook in recall.mjs (1.6.0 headline 1b, "a file with a past"): after an Edit,
 // Write or NotebookEdit it names earlier exchanges that changed the same file. Made-up fixtures only.
 // Run: node test/recall-hook.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, statSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
@@ -369,9 +369,11 @@ ok((await hear(ask(p, 'nightly export cron'))).say === '', 'a session file that 
 // Over 64 KB the prompt hook keeps the newest line of each kind and path, in order.
 p = project(); mkdirSync(sessionsOf(p.store), { recursive: true });
 writeFileSync(p.session(), Array.from({ length: 1200 }, (_, i) => sessionLine('file', `/repo/f${i % 3}.js`) + sessionLine('asked', `request ${i}`)).join('') + sessionLine('told', 'k1'));
+const ino = statSync(p.session()).ino;
 await hear(ask(p, 'go'));
 lines = readSession(p.session());
 ok(lines.map((l) => `${l.kind} ${l.rest}`).join() === 'file /repo/f0.js,file /repo/f1.js,file /repo/f2.js,asked request 1199,told k1,asked go', `rewritten small (got ${JSON.stringify(lines.slice(0, 8))})`);
+ok(statSync(p.session()).ino !== ino && readdirSync(sessionsOf(p.store)).length === 1, 'the rewrite is a rename over the file (never an empty moment), no temp file left');
 
 // doctor counts the pointers shown, from the timing lines.
 {

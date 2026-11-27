@@ -1,7 +1,7 @@
 // How a query is read and matched: the word splitter and the tests on a journal entry that search and the hooks share.
 // Also the recall hooks' look-ups and handlers (1.6.0 headlines 1b, 1c and 4), over the session file (sessions.mjs). The
 // journal is loaded inside the look-ups that read it, so memory.mjs and the hook's "already seen" path never pay for it.
-import { appendFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { appendFileSync, writeFileSync, renameSync, mkdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { foldCase, projectsRoot, tag, norm, local } from './store.mjs';
 import { gate, PRIVATE, PRIVATE_SESSION } from './privacy.mjs';
@@ -373,7 +373,9 @@ export async function onPrompt(input, { deadline = performance.now() + DEADLINE,
   const { asked, own, readTail } = await import('./transcript.mjs');
   if (!asked({}, input.prompt)) return none;
   const at = join(sessionsOf(store), s), lines = read(at), t = new Date(now).toISOString();
-  const write = (text, whole = false) => { mkdirSync(dirname(at), { recursive: true, mode: 0o700 }); (whole ? writeFileSync : appendFileSync)(at, text, { mode: 0o600 }); };
+  const write = (text, whole = false) => { mkdirSync(dirname(at), { recursive: true, mode: 0o700 }); if (!whole) return appendFileSync(at, text, { mode: 0o600 });
+    // Temp file, then rename: a reader never meets the file empty.
+    const tmp = `${at}.${process.pid}.tmp`; writeFileSync(tmp, text, { mode: 0o600 }); renameSync(tmp, at); };
   const typed = norm(input.prompt);
   // Before the read check: a file busy at the read must still get the quiet line, or the change hook takes the turn as public.
   if (PRIVATE_SESSION.test(typed)) { write(sessionLine('quiet', '', '', t), true); return none; }
