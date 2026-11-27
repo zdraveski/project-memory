@@ -1,7 +1,7 @@
 // Mutation check for the seven suites: break one rule of a tool at a time in a
 // copy and confirm its test fails. A mutant that survives is a rule the test
 // does not watch. Run: node tools/mutate.mjs
-import { rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
+import { rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, realpathSync, appendFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { availableParallelism } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -211,7 +211,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   // The id is what automut-ignore.txt needs; a label can name two mutants.
   const tag = (j) => `${j.label}${j.id ? ` [${j.id}]` : ''}`;
   for (const j of jobs) if (ignore.has(j.id)) console.log(`${j.name.padEnd(17)} ${tag(j).padEnd(48)} IGNORED: ${ignore.get(j.id)}`);
+  // MUTATE_RESULTS: one JSON line per verdict as it comes, after the planned list, so a machine cut off at its time limit
+  // still leaves what it found and what it never ran (tools/mutate-results.mjs reads them).
+  const out = process.env.MUTATE_RESULTS;
+  if (out) writeFileSync(out, JSON.stringify({ planned: live.map((j) => `${j.name} :: ${tag(j)}`) }) + '\n');
   const report = (job, verdict, t0) => {
+    if (out) appendFileSync(out, JSON.stringify({ mutant: `${job.name} :: ${tag(job)}`, verdict }) + '\n');
     if (verdict.startsWith('STILLBORN')) count.STILLBORN++;
     else if (verdict !== 'killed' && verdict !== 'killed on retry') survived.push(`${job.name} :: ${tag(job)} (${verdict})`);
     console.log(`${job.name.padEnd(17)} ${tag(job).padEnd(48)} ${verdict} ${Math.round((Date.now() - t0) / 1000)} s`);

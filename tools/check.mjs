@@ -25,6 +25,7 @@ import { suites, settle, tableOf, testsOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
 import { srcFiles, pluginFiles, plan, pool, isTimed } from './suites.mjs';
 import { decide } from './pretested.mjs';
+import { summarize } from './mutate-results.mjs';
 import { bump, heading, section, unedited, isPatch, missingAssets, toRerun } from './release.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -117,6 +118,10 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
   assert.deepEqual(unedited(section(real, '1.6.5')), []);
   assert.deepEqual(unedited('- a fix\n- b\n- c\n- d'), ['an intro line before the first fix', 'a **bold lead** on every fix', '### groups (more than 3 fixes)']);
   assert.deepEqual(unedited('A bug-fix release.\n\n- **One fix.** It works now.'), []);
+  // A machine cut off after two of four: one survivor, two never run; a torn last line is skipped.
+  assert.deepEqual(summarize('{"planned":["a","b","c","d"]}\n{"mutant":"a","verdict":"killed"}\n{"mutant":"b","verdict":"SURVIVED"}\n{"mutant":"c","ver'),
+    { survived: ['b (SURVIVED)'], notRun: ['c', 'd'] });
+  assert.deepEqual(summarize('{"planned":["a"]}\n{"mutant":"a","verdict":"STILLBORN: no change"}\n'), { survived: [], notRun: [] });
   assert.ok(isPatch('1.6.6') && !isPatch('1.7.0') && !isPatch('1.6'));
   assert.deepEqual(missingAssets(['project-memory-v1.6.6.zip', 'SHA256SUMS'], 'v1.6.6'), ['project-memory-v1.6.6.tar.gz']);
   assert.deepEqual(missingAssets(['project-memory-v1.6.6.tar.gz', 'project-memory-v1.6.6.zip', 'SHA256SUMS'], 'v1.6.6'), []);
