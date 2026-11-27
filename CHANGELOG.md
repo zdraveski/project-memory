@@ -1,5 +1,7 @@
 # Changelog
 
+## 1.6.6 (2026-11-27)
+
 ## 1.6.5 (2026-11-27)
 
 A bug-fix release. The secret detector catches more secrets and cuts less ordinary text, the reminder before a compaction now follows the window you set, and the recall pointers show on slow machines. Nothing changes in how you use it.
