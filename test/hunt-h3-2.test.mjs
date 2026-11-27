@@ -23,10 +23,12 @@ test('a note with a non-UTF-8 name and a secret is held, not committed (real fil
   writeFileSync(join(mem, 'MEMORY.md'), '- [a](a.md) — a\n');
   writeFileSync(join(mem, 'a.md'), 'plain\n');
   // name "b\xff.md": a lone 0xff byte is never valid UTF-8
-  writeFileSync(Buffer.concat([Buffer.from(mem + '/b'), Buffer.from([0xff]), Buffer.from('.md')]), SECRET);
-
-  assert.strictEqual(snapshot(), 'committed');
-  assert.ok(!inHead(root), 'the secret is in the snapshot commit (git grep found it in HEAD)');
+  const odd = Buffer.concat([Buffer.from(mem + '/b'), Buffer.from([0xff]), Buffer.from('.md')]);
+  writeFileSync(odd, SECRET);
+  try {
+    assert.strictEqual(snapshot(), 'committed');
+    assert.ok(!inHead(root), 'the secret is in the snapshot commit (git grep found it in HEAD)');
+  } finally { unlinkSync(odd); }   // else the later tests, in the same store, see it held again
 });
 
 // The same on every platform: git is made to stage the odd name (update-index takes its bytes from stdin) just before the check.
