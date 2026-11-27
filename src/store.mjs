@@ -53,7 +53,12 @@ export function dropPage() {
 export const keyed = (text, n) => {
   const f = join(projectsRoot(), '.hash-salt');
   let salt = ''; try { salt = readFileSync(f, 'utf8'); } catch {}
-  if (salt.length < 32) { salt = randomBytes(32).toString('hex'); try { mkdirSync(projectsRoot(), { recursive: true, mode: 0o700 }); writeFileSync(f, salt, { mode: 0o600, flag: 'wx' }); } catch { try { salt = readFileSync(f, 'utf8') || salt; } catch {} } }
+  if (salt.length < 32) { salt = randomBytes(32).toString('hex'); try { mkdirSync(projectsRoot(), { recursive: true, mode: 0o700 }); writeFileSync(f, salt, { mode: 0o600, flag: 'wx' }); } catch {
+    let there = ''; try { there = readFileSync(f, 'utf8'); } catch {}
+    // 'wx' never repairs an empty or cut-short file (a crash between create and write): replace it, atomically.
+    if (there.length >= 32) salt = there;
+    else try { const tmp = `${f}.tmp${process.pid}`; writeFileSync(tmp, salt, { mode: 0o600 }); renameSync(tmp, f); } catch {}
+  } }
   return createHmac('sha256', salt).update(String(text)).digest('hex').slice(0, n);
 };
 // A transcript where Claude Code keeps them, `<projects>/<folder>/<id>.jsonl`.
