@@ -68,7 +68,7 @@ that fails stops at the first failed check, prints that check's message
 CI ([`test.yml`](.github/workflows/test.yml)) runs `node tools/check.mjs`,
 every suite (`node tools/suites.mjs`, in parallel) and `node tools/survive.mjs` (which facts of a session the briefing after
 a compaction still carries; it exits 1 if one is lost) on every pull request
-and every push to `master`, in four test jobs (a pull request also gets one job that runs the mutants and fuzz on its changed lines):
+and every push to `master`, in four test jobs (after a merge, one more job runs the mutants and fuzz on the merged lines; it blocks nothing, and a survivor is fixed in the next patch):
 Linux with Node 22, Windows with Node 22 and 24, and macOS with Node 26. A pull request
 can't merge until the Linux 22, Windows 24 and macOS 26 jobs and the dco check pass (Windows 22, the oldest Node the README promises, is not required). Each job's log on GitHub shows the same lines as a run here.
 
@@ -290,21 +290,30 @@ reviews them instead.
 
 ## Releasing
 
-The maintainer's steps:
+A patch (X.Y.Z with Z above 0) is one pull request, and merging it is the release:
 
-1. Bump `version` in `.claude-plugin/plugin.json`, and turn `## Unreleased`
-   in `CHANGELOG.md` into the version's heading.
+1. One branch, `patch-X.Y.Z`, with one commit per fix (each bug fix with a
+   test that failed first). The same pull request bumps `version` in
+   `.claude-plugin/plugin.json` and turns `## Unreleased` in `CHANGELOG.md`
+   into `## X.Y.Z (date)`, written for the people who use the plugin.
 2. Run `claude plugin validate . --strict`. It should exit 0.
-3. Have one reviewer who did not write the code review every change since the
-   last tag, fix what it finds, and review only the fixes again.
-4. Nothing to rerun before tagging: each pull request's CI already ran the
-   suites, and the mutants and a short fuzz of its changed lines. Look at the
-   last scheduled `fuzz` and `mutate` runs; a failure there is fixed first.
-5. Merge through a pull request once its CI passes.
-6. Tag the commit `vX.Y.Z`, push the tag, and publish a GitHub release with
-   the version's changelog. The `release` workflow then attaches the
-   `.tar.gz`, the `.zip` and `SHA256SUMS`, and signs their attestation:
-   check that it passed and the three files are on the release.
+3. While CI runs, one reviewer who did not write the code reviews the whole
+   pull request. Its findings become more commits on the same pull request,
+   and only those commits are reviewed again.
+4. Merge once the required checks pass. The `publish` job in `test.yml` then
+   waits for every test job on `master`, publishes the release as
+   "project-memory X.Y.Z (bug fix)" with the version's changelog section as
+   its notes, has `release.yml` attach the `.tar.gz`, the `.zip` and
+   `SHA256SUMS` with their signed attestation, and updates the version line on
+   the GitHub Pages site. A red job on `master` publishes nothing: fix it in
+   a new pull request, and the release follows that merge.
+5. Check the release has its three files.
+
+A minor or major release takes the same steps up to the merge, then is
+published by hand: tag the merge commit `vX.Y.Z` and publish a GitHub release
+with a title naming its headline and the version's changelog section; the
+`release` workflow attaches the files. Before either kind, look at the last
+scheduled `fuzz` and `mutate` runs; a failure there is fixed first.
 
 ## The author's setup
 
