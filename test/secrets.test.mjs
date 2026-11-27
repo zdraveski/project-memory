@@ -240,7 +240,8 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
 {
   for (const t of ['PWD=/c/Users/x1', 'pwd: /home/u/x1', 'pwd=/home/user/dir1', 'PWD=/c/Users/x1/app', 'PWD=/home/user/project2', 'PWD=/home/user/project', 'pwd: /home/user', 'OLDPWD=/home/user/work2']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
   for (const [t, w] of [['pwd=Tr0ub4dor3', 'pwd=[redacted]'], ['pwd: abc123def', 'pwd: [redacted]'], ['password: Tr0ub4dor3', 'password: [redacted]'], ['password=/Xk9mQ2#zz', 'password=[redacted]'],
-    ['PWD=/Xk9mQ2#zz', 'PWD=[redacted]'], ['pwd=/Tr0ub4dor3x', 'pwd=[redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
+    ['PWD=/Xk9mQ2#zz', 'PWD=[redacted]'], ['pwd=/Tr0ub4dor3x', 'pwd=[redacted]'], ['DB_PWD=/Xk9/pq7Z', 'DB_PWD=[redacted]'], ['mysqladmin --pwd=/H4ck/me2', 'mysqladmin --pwd=[redacted]'],
+    ['pwd: /s3cr3t/p4ss', 'pwd: [redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
 }
 
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
