@@ -134,10 +134,11 @@ export function notes(dir) {
 
 // A project that moved gets a new folder (the key is its path): another project folder under the same projects folder whose slug ends in
 // the same last name and holds notes (by file name) this one lacks. [{ at, notes }]; none when the slugs have no such sibling.
-// shortcut: the last name is the slug's last "-" part, so `my-app` meets every `-app`; the notes' names filter the rest.
+// "Same last name" is the slug's last two "-" parts, so a folder whose own name holds a dash (`my-app`) is matched as `-my-app`.
 export function moved(dir) {
-  const slug = basename(dirname(dir)), root = dirname(dirname(dir)), tail = '-' + slug.split('-').pop().toLowerCase();
-  if (tail === '-') return [];
+  const slug = basename(dirname(dir)), root = dirname(dirname(dir)), parts = slug.toLowerCase().split('-');
+  if (parts.length < 2) return [];
+  const tail = '-' + parts.slice(-2).join('-');
   const out = [];
   try {
     const mine = new Set(readdirSync(dir).map((f) => f.toLowerCase()).filter((f) => f.endsWith('.md')));

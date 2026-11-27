@@ -4278,17 +4278,17 @@ if (!quick) {
 }
 // A moved project folder: the startup briefing names the old memory folder once, never twice, and only when it holds notes this one lacks.
 {
-  const cwdM = 'C:\\moved-selftest\\wombat', dirM = storeFor(home, cwdM), oldM = storeFor(home, 'D:\\old\\wombat'), otherM = storeFor(home, 'D:\\old\\koala');
+  const cwdM = 'C:\\moved-selftest\\wombat', dirM = storeFor(home, cwdM), oldM = storeFor(home, 'D:\\old\\moved-selftest\\wombat'), otherM = storeFor(home, 'D:\\old\\koala');
   for (const d of [dirM, oldM, otherM]) mkdirSync(d, { recursive: true });
   writeFileSync(join(oldM, 'MEMORY.md'), '# Index\n'); writeFileSync(join(oldM, 'pelican-notes.md'), 'x'); writeFileSync(join(otherM, 'koala-notes.md'), 'x');
   const go = () => briefIn({ cwd: cwdM, session_id: 'hhhhhhhh-8', source: 'startup' });
   const first = await go();
-  ok(/D--old-wombat[^\n]*pelican-notes\.md[^\n]*by hand/.test(first) && !/koala/.test(first), `the briefing names the old folder (got ${first.slice(0, 400)})`);
-  ok(!/D--old-wombat/.test(await go()), 'and does not name it at the next start');
+  ok(/D--old-moved-selftest-wombat[^\n]*pelican-notes\.md[^\n]*by hand/.test(first) && !/koala/.test(first), `the briefing names the old folder (got ${first.slice(0, 400)})`);
+  ok(!/D--old-moved-selftest-wombat/.test(await go()), 'and does not name it at the next start');
   writeFileSync(join(oldM, 'new-note.md'), 'x');
   ok(/new-note\.md/.test(await go()), 'a note that came later is said once more');
   rmSync(dirM, { recursive: true }); mkdirSync(dirM, { recursive: true }); writeFileSync(join(dirM, 'pelican-notes.md'), 'x'); writeFileSync(join(dirM, 'new-note.md'), 'x');
-  ok(!/D--old-wombat/.test(await go()), 'nothing when this folder has every note the old one has');
+  ok(!/D--old-moved-selftest-wombat/.test(await go()), 'nothing when this folder has every note the old one has');
 }
 rmSync(home, { recursive: true, force: true });
 console.log(`handoff-log:${checks} checks passed`);
