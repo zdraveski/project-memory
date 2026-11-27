@@ -20,7 +20,8 @@ export const GATE_A = [
   { id: 'A-you-didnt', re: W(`you didn${AP}?t`) },
   { id: 'A-you-forgot', re: W('you forgot') },
   { id: 'A-stop-ing', re: W('stop\\s+\\p{L}+ing') },
-  { id: 'A-dont', re: W(`don${AP}?t`) },
+  // Only an order (sentence start, or after please), never the speaker's own "I don't"; "don't worry" is comfort.
+  { id: 'A-dont', re: new RegExp(`^\\s*(?:please[,\\s]+)?don${AP}?t(?![\\p{L}\\p{N}])(?!\\s+worry)`, 'iu') },
   { id: 'A-mk-ne', re: /^\s*не[,.]/iu },
   { id: 'A-mk-pogresno', re: W('погрешно') },
   { id: 'A-mk-ne-toa-sto', re: W('не\\s+тоа\\s+што') },
@@ -71,7 +72,7 @@ const REPORTED = W('(?:he|she)\\s+said|they\\s+told|the\\s+client\\s+said');
 
 // shortcut: only the first 100,000 characters are read and a longer prompt counts as long (F3), so a 10 MB paste costs the same as a small one; upgrade if a typed prompt ever gets that long.
 const CAP = 100_000;
-const strip = (t) => t.replace(/```[\s\S]*?```/g, ' ').split('\n').filter((l) => !/^(?:\s*>|\t| {4})/.test(l)).join('\n').replace(/`[^`\n]*`/g, ' ');
+const strip = (t) => t.replace(/```[\s\S]*?```/g, ' ').split('\n').filter((l) => !/^(?:\s*>|\t| {4})/.test(l)).join('\n').replace(/`[^`\n]*`/g, ' ').replace(/["“][^"”\n]*["”]/g, ' ');
 
 // ctx = { helper, first, marker: () => boolean, lastEndsWithQuestion: () => boolean }; the two functions run only when the verdict needs them.
 // Returns { fire, ids (pattern ids, never prompt text), drop (the first filter that dropped a match, else '') }.
@@ -98,7 +99,8 @@ export function correction(text, ctx) {
   if (POLITE_NO.test(first) || (BARE_NO.test(first) && c.lastEndsWithQuestion?.())) return stop('F5-polite-no');
   const praise = PRAISE.exec(first);
   if (praise && !a.some(({ at }) => at > praise.index)) return stop('F6-praise');
-  if (SELF_BLAME.test(first)) return stop('F6-self-blame');
+  const blame = SELF_BLAME.exec(first);
+  if (blame && !a.some(({ at }) => at > blame.index)) return stop('F6-self-blame');
   if (REPORTED.test(first)) return stop('F6-reported');
   return { fire: true, ids, drop: '' };
 }
