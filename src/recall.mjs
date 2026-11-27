@@ -272,7 +272,8 @@ export async function onChange(input, { deadline = DEADLINE, now = Date.now() } 
   if (last?.kind === 'quiet') return none;
   const mine = cur.filter((l) => l.by === by), seen = mine.filter((l) => l.kind === 'file' && l.rest === key);
   // `late`: the last look-up for this file gave up, so the file is not yet seen and this change looks again.
-  const late = mine.findLast((l) => (l.kind === 'file' || l.kind === 'late') && l.rest === key)?.kind === 'late';
+  // At most 2 `late` lines per key: a look-up that always gives up (slow machine, forget list unreadable) stops after that.
+  const late = mine.findLast((l) => (l.kind === 'file' || l.kind === 'late') && l.rest === key)?.kind === 'late' && mine.filter((l) => l.kind === 'late' && l.rest === key).length < 2;
   const write = (text) => { mkdirSync(dirname(at), { recursive: true, mode: 0o700 }); appendFileSync(at, text, { mode: 0o600 }); };
   if (!seen.length || late || now - Date.parse(seen.at(-1).at) > AGAIN) write(sessionLine('file', key, by, new Date(now).toISOString()));
   // Headline 4: another live session changed this file too. Said with whatever else this change gets, and before it.
