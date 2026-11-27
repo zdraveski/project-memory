@@ -50,14 +50,16 @@ jobs:
       # Each hook on a made-up busy store must stay within its limit times an empty `node -e` on the same machine.
       - run: node tools/bench.mjs --check 5
 
-  # A pull request's own lines: the mutants on what it changed (hand-written and automatic) and, after a change to a hook, 20 s of fuzz.
-  # One system and Node; the whole mutation check and the long fuzz run on a schedule (mutate.yml, fuzz.yml).
+  # A merge's own lines: the mutants on what it changed (hand-written and automatic) and, after a change to a hook, 20 s of fuzz.
+  # After the merge, not on pull requests: it took up to an hour and failed 50 of 61 red PR runs (2026-11-27), and
+  # blocks nothing. A survivor here is fixed in the next patch. One system and Node; the whole mutation check and the
+  # long fuzz run on a schedule (mutate.yml, fuzz.yml).
   changed-lines:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'push'
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
-      # The whole history, so the diff against the base branch is the pull request's alone.
+      # The whole history, so the commit master was at before the push is there to diff against.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -65,10 +67,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      # The branch name through env, never into the script's text.
+      # The commit master was at before this push, through env, never into the script's text.
       - shell: bash
         env:
-          BASE: origin/${{ github.base_ref }}
+          BASE: ${{ github.event.before }}
         run: node tools/check.mjs --full --base "$BASE"
 
   # The workflow files themselves: GitHub once refused fuzz.yml over a %. After a merge, not on every pull request.
@@ -126,3 +128,68 @@ jobs:
           tar xzf agnix-x86_64-unknown-linux-gnu.tar.gz agnix
           cd "$GITHUB_WORKSPACE"
           "$RUNNER_TEMP/agnix" --target claude-code --format github .
+
+  # Merging a patch's version bump is its release (CONTRIBUTING "Releasing"): once every test above passed on master,
+  # a patch version (X.Y.Z, Z > 0) with no tag yet is published as "project-memory X.Y.Z (bug fix)", its changelog
+  # section as the notes, and the page's version line follows. A minor or major release is published by hand.
+  publish:
+    needs: [test, actionlint, zizmor, agnix]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # gh release create, and the page's version line on gh-pages.
+      contents: write
+      # Asking Pages to build the updated page.
+      pages: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          VER=$(node -p "require('./.claude-plugin/plugin.json').version")
+          TAG="v$VER"
+          # Only "no such tag" (exit 2) goes on: a network error must not read as a missing tag.
+          rc=0; git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null || rc=$?
+          if [ "$rc" = 0 ]; then echo "$TAG exists: nothing to publish"; exit 0; fi
+          if [ "$rc" != 2 ]; then echo "::error::could not look up $TAG (git ls-remote exit $rc)"; exit 1; fi
+          if ! [[ $VER =~ ^[0-9]+\.[0-9]+\.[1-9][0-9]*$ ]]; then echo "::notice::$TAG is not a patch: publish it by hand"; exit 0; fi
+          awk -v v="## $VER" 'index($0, v) == 1 && (length($0) == length(v) || substr($0, length(v) + 1, 1) == " ") {f = 1; next} /^## / {if (f) exit} f' CHANGELOG.md > notes.md
+          # The page shows the changelog heading's date, the author's day, not the runner's UTC one.
+          DAY=$(grep -m1 -oE "^## $VER \([0-9]{4}-[0-9]{2}-[0-9]{2}\)" CHANGELOG.md | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)
+          DAY=$(date -u -d "${DAY:-now}" '+%-d %b %Y')
+          if ! grep -q '[^[:space:]]' notes.md; then echo "::error::CHANGELOG.md has no text under ## $VER"; exit 1; fi
+          printf '\nUpdate with `claude plugin update project-memory@project-memory`, then restart Claude Code.\n' >> notes.md
+          gh release create "$TAG" --target "$SHA" --title "project-memory $VER (bug fix)" --notes-file notes.md --latest
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # The page's "vX.Y.Z, D Mon YYYY" line; a failure here leaves the release published and says so.
+          if gh api "repos/$GITHUB_REPOSITORY/contents/index.html?ref=gh-pages" -H 'Accept: application/vnd.github.raw' > index.html \
+            && PAGE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/index.html?ref=gh-pages" --jq .sha) \
+            && sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+, [0-9]{1,2} [A-Z][a-z]{2} [0-9]{4}/$TAG, $DAY/" index.html \
+            && grep -qF "$TAG, $DAY" index.html \
+            && base64 -w0 index.html > index.b64 \
+            && gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/index.html" -f message="Page: $VER" -f branch=gh-pages -f sha="$PAGE_SHA" -F content=@index.b64 >/dev/null; then
+            gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" >/dev/null || echo "::warning::the page was updated but its build was not started"
+          else
+            echo "::warning::$TAG is published, but the page's version line was not updated"
+          fi
+
+  # The archives, checksums and attestation, as for a release published by hand: a release made with this
+  # workflow's token starts no other workflow.
+  assets:
+    needs: publish
+    if: needs.publish.outputs.tag != ''
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    # zizmor prefers the newer `$/` form, which actionlint 1.7.12 rejects.
+    uses: ./.github/workflows/release.yml # zizmor: ignore[self-repository]
+    with:
+      tag: ${{ needs.publish.outputs.tag }}

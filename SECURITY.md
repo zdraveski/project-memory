@@ -66,18 +66,23 @@ To check a release, download its files into one folder and run:
 
 ```
 sha256sum -c SHA256SUMS
-gh attestation verify project-memory-<tag>.tar.gz --repo zdraveski/project-memory --signer-workflow zdraveski/project-memory/.github/workflows/release.yml --source-ref refs/tags/<tag>
+gh attestation verify project-memory-<tag>.tar.gz --repo zdraveski/project-memory --signer-workflow zdraveski/project-memory/.github/workflows/release.yml --source-digest <commit>
 ```
+
+where `<commit>` is the full commit the tag names (`git rev-list -n 1 <tag>`
+in a clone, or the commit shown on the release page).
 
 On macOS, the first line is `shasum -a 256 -c SHA256SUMS`. It should print
 `OK` after each file name. The second needs the
 [GitHub CLI](https://cli.github.com), signed in (`gh auth login`); run it
 for the `.zip` and for `SHA256SUMS` too. It should print
 `Verification succeeded!`. The expected signer is this repository's release
-workflow, running for the tag:
+workflow, running for the tag, or, for a patch released from 1.6.4 on, for
+`master` when the merge was released:
 
 - certificate identity:
   `https://github.com/zdraveski/project-memory/.github/workflows/release.yml@refs/tags/<tag>`
+  or `https://github.com/zdraveski/project-memory/.github/workflows/release.yml@refs/heads/master`
 - certificate issuer: `https://token.actions.githubusercontent.com`
 
 Any other identity, or a failed check, means the file did not come from

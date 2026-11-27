@@ -8,6 +8,12 @@ name: release
 on:
   release:
     types: [published]
+  # test.yml's publish job, which releases a merged patch: its token's release starts no workflow itself.
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
 
 # Read the code, nothing more; only the job below may write.
 permissions:
@@ -32,7 +38,7 @@ jobs:
           persist-credentials: false
       # The tag comes in through env, and must be a version.
       - env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: |
           if ! [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
             echo "::error::the release's tag is not a version such as v1.2.4"
@@ -49,6 +55,6 @@ jobs:
           subject-path: dist/*
       # --clobber: a rerun replaces the files, attested again above.
       - env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
