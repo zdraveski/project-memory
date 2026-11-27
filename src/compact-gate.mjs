@@ -62,7 +62,7 @@ const MODEL = process.env.ANTHROPIC_MODEL || setting('model', (x) => typeof x ==
 const small = (m) => {
   if (/\[1m\]/i.test(m)) return false;
   if (/claude-3/i.test(m)) return true;
-  const v = /(?:opus|sonnet|haiku)-(\d+)(?:-(\d)(?!\d))?/i.exec(m);
+  const v = /(?:opus|sonnet|haiku)-(\d+)(?:[-.](\d)(?!\d))?/i.exec(m);
   return !!v && Number(v[1]) + Number(v[2] ?? 0) / 10 < 4.6;
 };
 export const MODEL_WINDOW = (MAX_CONTEXT_USED && tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS)) || (envOn(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) || small(MODEL) ? 200_000 : 1_000_000);

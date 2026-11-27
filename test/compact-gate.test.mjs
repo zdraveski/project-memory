@@ -569,6 +569,7 @@ ok(windowWith({}).WINDOW === 200_000 && windowWith({ CLAUDE_CODE_AUTO_COMPACT_WI
   const mw = (vars) => windowWith(vars).MODEL_WINDOW;
   ok(mw({ ANTHROPIC_MODEL: 'claude-haiku-4-5' }) === 200_000 && mw({ ANTHROPIC_MODEL: 'claude-sonnet-4-5-20250929' }) === 200_000 && mw({ ANTHROPIC_MODEL: 'claude-opus-4-20250514' }) === 200_000 && mw({ ANTHROPIC_MODEL: 'claude-3-5-haiku-20241022' }) === 200_000, 'a model before 4.6 has a 200k window');
   ok(mw({ ANTHROPIC_MODEL: 'claude-sonnet-4-5[1m]' }) === 1_000_000 && mw({ ANTHROPIC_MODEL: 'claude-opus-4-6' }) === 1_000_000 && mw({ ANTHROPIC_MODEL: 'claude-haiku-5-5' }) === 1_000_000 && mw({ ANTHROPIC_MODEL: 'haiku' }) === 1_000_000 && mw({ ANTHROPIC_MODEL: 'claude-fable-5-2' }) === 1_000_000, 'a [1m] model, 4.6 or later, and an alias keep 1M');
+  ok(mw({ ANTHROPIC_MODEL: 'claude-opus-4.6' }) === 1_000_000 && mw({ ANTHROPIC_MODEL: 'anthropic/claude-sonnet-4.6' }) === 1_000_000 && mw({ ANTHROPIC_MODEL: 'claude-sonnet-4.5' }) === 200_000, 'a dotted gateway name reads its minor version');
   writeFileSync(settingsFile, JSON.stringify({ model: 'claude-haiku-4-5' }));
   ok(mw({}) === 200_000 && mw({ ANTHROPIC_MODEL: 'claude-opus-5-5' }) === 1_000_000, 'the settings `model` is read, and ANTHROPIC_MODEL wins');
   writeFileSync(settingsFile, JSON.stringify({ autoCompactWindow: '200k' }));
