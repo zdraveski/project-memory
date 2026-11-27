@@ -167,7 +167,7 @@ function walk(raw) {
         if (b?.type !== 'tool_result' || !s.launchers.has(b.tool_use_id)) continue;
         const body = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x) => x?.text || '').join(' ') : '';
         for (const hit of body.matchAll(LAUNCH)) {
-          if (!/^(?:[A-Za-z]:[\\/]|\/)/.test(hit[2])) continue;   // an output file is an absolute path
+          if (!/^(?:[A-Za-z]:[\\/]|\/)/.test(hit[2]) || hit[2].split(/[\\/]/).pop() !== `${hit[1]}.output`) continue;   // an absolute path to <id>.output: any other line in a Bash result is planted text
           s.running.set(hit[1], hit[2]);
           if (s.running.size > LIST_MAX) s.running.delete(s.running.keys().next().value);
         }
