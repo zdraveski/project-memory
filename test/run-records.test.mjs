@@ -230,4 +230,22 @@ const rmFile = (p) => rmSync(p, { recursive: true, force: true });
   ok(R.deployed(e) === null && R.deployedCommit(e) === null && R.edited(e).length === 0, 'unreadable: none, and silent');
 }
 
+// A sibling folder with memory off (.project-off) is not offered as the old home.
+{
+  const a = join(root, 'C--mv-off-selftest-wombat', 'memory'), b = join(root, 'D--mv-off2-selftest-wombat', 'memory');
+  mkdirSync(a, { recursive: true }); mkdirSync(b, { recursive: true });
+  writeFileSync(join(b, 'only-there.md'), 'x');
+  ok(R.moved(a).some((m) => m.at === b), 'on: the old folder is found');
+  writeFileSync(join(b, '.project-off'), JSON.stringify({ t: 1 }));
+  ok(!R.moved(a).length, 'the other folder has memory off: not reported');
+}
+// Long note names: the warning stays under the startup line cap (1000) with its advice at the end.
+{
+  const d = join(root, 'C--mv-long-selftest-koala', 'memory'), o = join(root, 'D--mv-long2-selftest-koala', 'memory');
+  mkdirSync(d, { recursive: true }); mkdirSync(o, { recursive: true });
+  for (let i = 0; i < 6; i++) writeFileSync(join(o, `${i}-${'n'.repeat(200)}.md`), 'x');
+  const w = R.movedText(d, R.moved(d)[0]);
+  ok(w.length < 1000 && w.endsWith('MEMORY.md.') && /and \d+ more/.test(w), `a long moved warning keeps its advice under 1000 (${w.length})`);
+}
+
 console.log(`run-records.test.mjs: ${checks} checks passed`);
