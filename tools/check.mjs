@@ -25,7 +25,7 @@ import { suites, settle, tableOf, testsOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
 import { srcFiles, pluginFiles, plan, pool, isTimed } from './suites.mjs';
 import { decide } from './pretested.mjs';
-import { bump, heading, section, isPatch, missingAssets, toRerun } from './release.mjs';
+import { bump, heading, section, unedited, isPatch, missingAssets, toRerun } from './release.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
@@ -112,6 +112,11 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
   assert.equal(section(cl, '1.6.50'), '');
   assert.equal(heading(cl.replace(/\n/g, '\r\n'), '1.6.6', '2026-11-28'), heading(cl, '1.6.6', '2026-11-28').replace(/\n/g, '\r\n'));
   assert.equal(section(heading(cl, '1.6.6', '2026-11-28').replace(/\n/g, '\r\n'), '1.6.6'), '- a fix');
+  const real = readFileSync(join(repo, 'CHANGELOG.md'), 'utf8');
+  assert.deepEqual(unedited(section(real, '1.6.6')), []);
+  assert.deepEqual(unedited(section(real, '1.6.5')), []);
+  assert.deepEqual(unedited('- a fix\n- b\n- c\n- d'), ['an intro line before the first fix', 'a **bold lead** on every fix', '### groups (more than 3 fixes)']);
+  assert.deepEqual(unedited('A bug-fix release.\n\n- **One fix.** It works now.'), []);
   assert.ok(isPatch('1.6.6') && !isPatch('1.7.0') && !isPatch('1.6'));
   assert.deepEqual(missingAssets(['project-memory-v1.6.6.zip', 'SHA256SUMS'], 'v1.6.6'), ['project-memory-v1.6.6.tar.gz']);
   assert.deepEqual(missingAssets(['project-memory-v1.6.6.tar.gz', 'project-memory-v1.6.6.zip', 'SHA256SUMS'], 'v1.6.6'), []);
