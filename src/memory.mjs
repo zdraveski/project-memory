@@ -4,7 +4,7 @@
 // every project, check the hooks are wired. The hooks write on their own; this
 // writes only when told to, under the same lock.
 const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <id>]
-  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N]
+  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N] [--words]
                                           memories (name, description, then body; archive included)
                                           and the journal (asked, then changed and ran, then answered),
                                           ranked, a long request asked many times once; a flag, path, dotted name, error code
@@ -258,7 +258,7 @@ const kept = ({ file, asked, conversation }) => (e) => (!file || changedFile(e, 
 // The tokens of a query that are matched as typed, not as word forms (E5): a path, a flag, a dotted name, an error code, or the whole
 // query when it is in quotes. A version (1.6.7) has its own match.
 export const literalsOf = (query) => {
-  const q = query.trim(), quoted = /^"(.+)"$/s.exec(q);
+  const q = query.trim(), quoted = /^"([^"]+)"$/.exec(q);
   if (quoted) return [quoted[1]];
   return q.split(/\s+/).filter((t) => /[\\/]/.test(t) || /^-.*\p{L}/u.test(t) || (/^[\p{L}\w-]+(?:\.[\p{L}\w-]+)+$/u.test(t) && /\p{L}/u.test(t)) || /^(?:E[A-Z]{2,}|TS\d{3,5}|E\d{2,})$/.test(t));
 };
@@ -296,7 +296,7 @@ export function search(dirs, query, { since, until, failed, file, asked: mine, c
     // a September search left it out, and the miss read as no record.
     if ((since && d < since) || (until && d > until)) { outside++; continue; }
     got.forEach((t) => held.add(t));
-    add({ ...m, kind: 'note', ...(ex.length && { exact: ex }), ...(hand && { file: 'handoff.md', desc: 'the hand-written part of the handoff' }) }, parts, strong ? 5 : every ? 2 : 0);
+    add({ ...m, kind: 'note', ...(ex.length && { exact: ex }), ...(hand && { file: 'handoff.md', desc: 'the hand-written part of the handoff' }) }, parts, !terms.length ? 0 : strong ? 5 : every ? 2 : 0);
   }
   // An entry by what was asked, then what it changed and ran (and its branch),
   // then the reply: a reply that names everything must not outrank the request.
@@ -311,8 +311,8 @@ export function search(dirs, query, { since, until, failed, file, asked: mine, c
       if (!s) every = false; else { held.add(t); df[i]++; }
       return s;
     });
-    const ex = exactIn([asked, did, answered].join('\n'));
-    if (parts.some((p) => p) || ex.length) add({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')), ...(ex.length && { exact: ex }) }, parts, strong ? 5 : every ? 2 : 0);
+    const ex = exactIn(mine ? asked : [asked, did, answered].join('\n'));
+    if (parts.some((p) => p) || ex.length) add({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')), ...(ex.length && { exact: ex }) }, parts, !terms.length ? 0 : strong ? 5 : every ? 2 : 0);
   }
   const w = df.map((n) => 1 + Math.log((docs + 1) / (n + 1))), avg = w.reduce((a, x) => a + x, 0) / (w.length || 1);
   // A long entry or note says more of everything: its rank falls with its length (a pasted request, the big handoff). A phrase

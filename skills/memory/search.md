@@ -18,7 +18,7 @@ are found with `search --asked <words>`, and `history <note>` shows the exchange
 behind a note's change.
 
 A flag (`-A`), a path (`src/hooks/pre.js`), a dotted name (`a.b`), an error code (`ENOENT`, `TS2345`) or a
-whole query in quotes (`"exit code 137"`) is also matched as typed, in any case: those hits come first and carry an
+whole query in quotes (`'"exit code 137"'`: the shell strips plain quotes) is also matched as typed, in any case: those hits come first and carry an
 `exact:` line naming what matched. Add `--words` for the plain word ranking alone. A word that starts with `--`
 is an option: put it after `--` (`search -- --force-with-lease`).
 
