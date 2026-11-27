@@ -92,7 +92,9 @@ export function setting(key, ok, managed = MANAGED, cwd = process.env.CLAUDE_PRO
 }
 export const memoryOff = (o) => autoMemory(o).off;
 
-const slugOf = (p) => String(p).replace(/[^A-Za-z0-9]/g, '-');
+// NFC first, as Claude Code: a decomposed accent (macOS) was two characters, `cafe-` for its `caf-` (item 52).
+// shortcut: a slug over 200 characters is not cut as Claude Code cuts it (its scheme unknown here); only reached with no transcript_path.
+const slugOf = (p) => String(p).normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
 
 // The git repository a folder is in, as Claude Code finds it for memory: the
 // nearest folder up with a `.git`, and for a worktree (whose `.git` is a file)
