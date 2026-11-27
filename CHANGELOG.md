@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.6.4 (2026-11-27)
+
+A bug-fix release, mostly about secrets. Three ways a password or key could reach the journal or the note history are closed, and the clean-up command no longer stops halfway. Nothing changes in how you use it.
+
+### Secrets
+
+- **A secret inside escaped quotes is now cut whole.** Commands such as `ssh host "export TOKEN=\"…\""`, `docker login -p \"…\"` or `mysql --password \"…\"` kept the value in the journal's record of what ran. Now it is replaced like any other secret.
+- **A line ending in a backslash no longer hides a secret on the next line.** A note with, for example, a Windows folder path ending in `\` followed by a `NAME_KEY=…` line could be copied into the note history with the key in it.
+- **Two snapshots taken at the same moment can no longer let a secret into the history.** When several conversations end a reply at once, their snapshots now take turns, so each one checks exactly what it saves.
+- **A note whose file name is not valid text is no longer saved unchecked.** On Linux such a note could skip the secret check; it is now held out of the snapshot.
+- **"log in" followed by a file path is no longer taken for a password.** Ordinary text like that kept a note out of the history for no reason.
+
+### Memory commands
+
+- **`memory rescan --apply` goes on past a note it cannot rewrite.** A note saved in an old text encoding stopped the whole clean-up, so later notes kept their secrets. That note is now reported and left as it is, and the rest is cleaned.
+- **`memory restore <note> --rev` with no revision is refused.** It restored the newest version instead.
+- **An empty salt file is repaired.** If the file that makes the journal's keys was left empty by a crash, keys changed on every reply; it is now rewritten once.
+- **The moved-project notice skips a folder whose memory is turned off, and a long notice keeps its advice.** It lists up to five note names, then how many more.
+- **A snapshot that saw a note change while it ran no longer says the first snapshot is being taken in parts.**
+
+### Tests
+
+- **Several speed and timing tests no longer fail at random on busy test machines.** They now wait for the real condition or take the best of a few runs, and still catch a slow version of the code.
+
 ## 1.6.3 (2026-11-27)
 
 A bug-fix release. On Windows, console windows no longer flash after a reply, and a project you moved to a new place now tells you where its old notes are.
