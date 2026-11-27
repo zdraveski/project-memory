@@ -411,9 +411,11 @@ async function save(input, dry) {
     // last Stop has no later one to redo the turn (defect hunt 1.3.2, C5).
     try {
       let s = payload && handoff(payload, sink, kept);
-      if (s === 'busy') { sleep(200 + Math.random() * 600); lockBudget(true); s = handoff(payload, sink, kept); }
+      // 'changed' too: three replaces lost to a concurrent write wrote nothing.
+      const lost = (v) => v === 'busy' || v === 'changed';
+      if (lost(s)) { sleep(200 + Math.random() * 600); lockBudget(true); s = handoff(payload, sink, kept); }
       // Still held: the reply is unsaved, so say so, and keep any earlier record.
-      if (s === 'busy') throw new Error('the store stayed busy: another session held it through two tries, so this reply was not saved');
+      if (lost(s)) throw new Error('the store stayed busy: another session held it through two tries, so this reply was not saved');
       handoffSaved(store);
     }
     catch (e) { handoffFailed(store, e); }
