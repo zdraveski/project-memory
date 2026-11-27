@@ -459,7 +459,10 @@ const rescan = (stores, apply, yes) => {
   let left = 0;
   // Files first: a snapshot taken while the history is rewritten then commits redacted text.
   for (const dir of new Set(found.map((x) => x.dir))) {
-    const r = withLock(dir, () => found.filter((x) => x.dir === dir).map((x) => replaceIfUnchanged(x.f, x.text, x.to)));
+    // A note that will not read back as UTF-8 throws: report it as left, go on, so the other notes and the history are still redacted.
+    const r = withLock(dir, () => found.filter((x) => x.dir === dir).map((x) => {
+      try { return replaceIfUnchanged(x.f, x.text, x.to); } catch { out.push(`${relative(root, x.f).replace(/\\/g, '/')} could not be rewritten and is left as it is`); left++; return false; }
+    }));
     if (!r) { out.push(`${dir} is busy; its files were not changed, run again`); left++; } else if (r.includes('conflict')) { out.push(`a file in ${dir} changed while this ran; run again for it`); left++; }
   }
   try {
