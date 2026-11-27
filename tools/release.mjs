@@ -38,6 +38,16 @@ export const section = (text, v) => {
   const end = lines.findIndex((l, k) => k > i && l.startsWith('## '));
   return lines.slice(i + 1, end === -1 ? undefined : end).join('\n').trim();
 };
+// What a section lacks to read as release notes, not the builders' raw lines (1.6.6 shipped 19 flat lines): an intro line,
+// a bold lead on every fix, and ### groups once there are more than 3 fixes.
+export const unedited = (sec) => {
+  const lines = sec.split('\n').map((l) => l.trim()).filter(Boolean), fixes = lines.filter((l) => l.startsWith('- '));
+  return [
+    ...(lines[0] && !/^[-#]/.test(lines[0]) ? [] : ['an intro line before the first fix']),
+    ...(fixes.every((l) => l.startsWith('- **')) ? [] : ['a **bold lead** on every fix']),
+    ...(fixes.length <= 3 || lines.some((l) => l.startsWith('### ')) ? [] : ['### groups (more than 3 fixes)']),
+  ];
+};
 // The files release.yml attaches that a release lacks.
 export const missingAssets = (names, tag) => [`project-memory-${tag}.tar.gz`, `project-memory-${tag}.zip`, 'SHA256SUMS'].filter((n) => !names.includes(n));
 // A red master run's failed jobs: the publish and assets ones may be re-run (re-running finds the tag and skips it);
@@ -73,7 +83,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     show('git', 'push', '-u', 'origin', branch);
     show('gh', 'pr', 'create', '--draft', '--base', 'master', '--head', branch, '--title', `project-memory ${v} (bug fix)`, '--body', `Patch ${v}: the fixes are listed under ## ${v} in CHANGELOG.md.`);
   } else if (cmd === 'ready') {
-    if (!section(readFileSync(join(repo, 'CHANGELOG.md'), 'utf8'), v)) { console.error(`CHANGELOG.md has no text under ## ${v}`); process.exit(1); }
+    const notes = section(readFileSync(join(repo, 'CHANGELOG.md'), 'utf8'), v);
+    if (!notes) { console.error(`CHANGELOG.md has no text under ## ${v}`); process.exit(1); }
+    const lacks = unedited(notes);
+    if (lacks.length) { console.error(`CHANGELOG.md ## ${v} is not edited for users yet (see ## 1.6.5): it lacks ${lacks.join(', ')}`); process.exit(1); }
     if (!process.argv.includes('--validated')) { console.error('run `claude plugin validate . --strict` (it should exit 0), then: node tools/release.mjs ready ' + v + ' --validated'); process.exit(1); }
     // Every check, not only the required ones (auto-merge waits for those alone), before the PR leaves draft: a red one
     // stops here with nothing half done.
