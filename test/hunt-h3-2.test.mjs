@@ -22,6 +22,8 @@ test('a note with a non-UTF-8 name and a secret is held, not committed (real fil
   mkdirSync(mem, { recursive: true });
   writeFileSync(join(mem, 'MEMORY.md'), '- [a](a.md) — a\n');
   writeFileSync(join(mem, 'a.md'), 'plain\n');
+  snapshot();   // the first one says initialised; this test is about a later one
+  writeFileSync(join(mem, 'a.md'), 'plain, edited\n');   // so that the commit has something to take
   // name "b\xff.md": a lone 0xff byte is never valid UTF-8
   const odd = Buffer.concat([Buffer.from(mem + '/b'), Buffer.from([0xff]), Buffer.from('.md')]);
   writeFileSync(odd, SECRET);
