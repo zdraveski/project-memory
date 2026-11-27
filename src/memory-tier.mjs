@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import * as T from './timing.mjs';
 import { isOff } from './privacy.mjs';
 import { snapshot, owed, GIT_TIMEOUT, BATCH } from './snapshot.mjs';
-import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, indexLines, eolOf, wraps, archiveLine, mark, unmark, allStores, front, raw, memoryOff, reason, tagOf } from './store.mjs';
+import { storeOf, withLock, lockBudget, sweepTemps, replaceIfUnchanged, projectsRoot, opener, sleep, same, BUSY, sharedStore, isShared, budgetOf, POINTER, ARCHIVE, isIndex, pointerLine, indexLines, eolOf, wraps, archiveLine, mark, unmark, allStores, front, raw, memoryOff, reason, tagOf, mistakesOwed } from './store.mjs';
 import { redact } from './secrets.mjs';
 import { handoffFailed, handoffSaved, health, stopRecord, stopRan, plugins } from './run-records.mjs';
 
@@ -607,10 +607,11 @@ export async function main(argv, input) {
   // A manual /compact (PreCompact) waits for the tidy-up: the index it compacts with should be tidy.
   // PROJECT_MEMORY_TIDY=inline keeps it in the hook: the suites assert what a Stop did once it returns.
   const handTo = stop && ['Stop', 'StopFailure'].includes(payload?.hook_event_name) && process.env.PROJECT_MEMORY_TIDY !== 'inline' ? own || sharedStore() : null;
-  // The mistakes cache (mistakes.mjs, 1.7.0) is built by the --tidy child, once a day. The Stop never builds it: it only sees that one is
-  // owed, which keeps the child from being skipped when nothing else changed. Loaded here, not at the top: the other runs do not need it.
-  const m = !dry && own && dirs.includes(own) && (handTo === own || tidyAt !== -1) ? await import('./mistakes.mjs') : null;
-  const owes = !!(m && handTo && m.mistakesOwed(handTo, now));
+  // The mistakes cache (mistakes.mjs, 1.7.0) is built by the --tidy child, once a day. The Stop never builds it, and never loads mistakes.mjs:
+  // it only sees (one small file read) that today is not yet tried, which keeps the child from being skipped when nothing else changed.
+  const mine = !dry && own && dirs.includes(own);
+  const m = mine && tidyAt !== -1 ? await import('./mistakes.mjs') : null;
+  const owes = !!(mine && handTo === own && mistakesOwed(handTo, now));
   try {
     const code = tidy(dirs, { now, dry, pause, batch, gitWait, gated, handTo, owes, snap: dirAt === -1, say });
     if (m && tidyAt !== -1 && !dry) await m.buildMistakes(own, now);

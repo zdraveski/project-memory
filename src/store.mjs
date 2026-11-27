@@ -60,6 +60,13 @@ export function dropMistakes(store) {
   }
   return bad ?? there;
 }
+// The day the cache was last tried, whether the build went through or not (`.mistakes.json.tried`, a date, so dropMistakes takes it
+// too): a build that fails leaves no cache, and without it every Stop would start the tidy child again, all day. One small read at
+// each Stop, no JSON; it lives here so the Stop need not load mistakes.mjs.
+export const MISTAKES_TRIED = `${MISTAKES}.tried`;
+export function mistakesOwed(store, now) {
+  try { return (raw(join(store, MISTAKES_TRIED)) ?? '').trim() < local(now).slice(0, 10); } catch { return false; }   // unreadable: not tried every Stop
+}
 // A keyed fingerprint of raw text for dedup keys and proof-of-life lines: an unsalted hash of a short prompt that is just a
 // password falls to a dictionary run. The salt is a random per-machine file in the projects folder (never snapshotted, 0600);
 // when it cannot be kept, a one-off salt: keys then differ between runs, and nothing else breaks.

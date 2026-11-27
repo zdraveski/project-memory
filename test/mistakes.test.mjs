@@ -44,6 +44,17 @@ eq(targetOf('bash -c "ls"'), null, 'bash -c gives none');
 eq(targetOf('python - <<EOF\nprint(1)\nEOF'), null, 'a heredoc gives none');
 eq(targetOf('cat <<EOF\nx\nEOF'), null, 'a heredoc to any program gives none');
 eq(targetOf(''), null, 'an empty command gives none');
+// Inline code with the flags joined or spelled out (review of step 4).
+for (const c of ['bash -lc "echo hi"', 'sh -ec "ls"', 'pwsh -Command Get-X', 'powershell -c Get-X', 'pwsh -NoProfile -Command "Get-X"']) eq(targetOf(c), null, `inline code gives none: ${c}`);
+eq(targetOf('bash -x run.sh'), 'bash run.sh', 'a shell flag that is no -c keeps the script');
+eq(targetOf('pwsh -File a.ps1'), 'pwsh a.ps1', 'pwsh -File keeps the script');
+// npx and pnpm dlx run a package: the package is the target.
+eq(targetOf('npx vitest run'), 'npx vitest', 'npx: the package');
+eq(targetOf('npx -y eslint .'), 'npx eslint', 'npx: after its flags');
+eq(targetOf('pnpm dlx vitest'), 'pnpm dlx vitest', 'pnpm dlx: the package');
+eq(targetOf('npx'), 'npx', 'npx alone is itself');
+ok(targetOf('npx vitest') !== targetOf('npx eslint'), 'two npx packages are two targets');
+eq(claimed('All tests pass.', [bad('npx vitest run', 'Error: x')]), { cmd: 'npx vitest run', target: 'npx vitest', kind: 'test' }, 'npx vitest is a test command');
 
 // --- errorLine ---
 eq(errorLine('all fine, nothing wrong here'), '', 'no marker: no error line');
@@ -76,7 +87,9 @@ for (const t of [
   'Permission to use Bash with command rm nothing-here.txt has been denied.',
   'Claude requested permissions to write to C:\\x, which contains a suspicious Windows path pattern that requires manual approval.',
 ]) ok(NOT_FAILURE.test(t), `a timeout, an interrupt or a refusal is no failure: ${t.slice(0, 50)}`);
-ok(NOT_FAILURE.test('rm nothing-here.txt\nhas been denied.'), 'a denial whose start was cut off (a failure keeps the last 300 characters) still matches');
+ok(NOT_FAILURE.test('...a long command that is cut, with command rm nothing-here.txt has been denied.'), 'a denial whose start was cut off, but "with command" kept, still matches');
+ok(!NOT_FAILURE.test('Error: EACCES: access has been denied'), 'a real failure that ends in "has been denied" is not skipped');
+ok(!NOT_FAILURE.test('rm nothing-here.txt\nhas been denied.'), 'nor is a bare "has been denied." with no command named');
 ok(NOT_FAILURE.test('...it. The instruction to stop and wait still stands.'), 'so does the end of the interrupt text');
 for (const t of ['Error: Cannot find module x', 'npm ERR! code ELIFECYCLE', 'exit 1', 'Error: the user denied nothing']) ok(!NOT_FAILURE.test(t), `a real failure is not skipped: ${t}`);
 
@@ -263,7 +276,7 @@ eq(dropMistakes(store), false, 'false when none was');
 await buildMistakes(store, NOW);
 eq(readFileSync(file, 'utf8'), first, 'build, delete, rebuild gives the same bytes');
 writeFileSync(file, '{not json');
-ok(readMistakes(store) === null && mistakesOwed(store, NOW), 'a broken file reads as none');
+ok(readMistakes(store) === null, 'a broken file reads as none');
 writeFileSync(file, '\uFEFF' + first);
 eq(readMistakes(store), built, 'a BOM is stripped');
 writeFileSync(file, JSON.stringify({ ...built, v: 2 }));
@@ -272,6 +285,14 @@ ok(readMistakes(store) === null, 'another version reads as none');
 writeFileSync(`${file}.tmp4242`, first);
 eq(dropMistakes(store), true, 'a temp copy of a killed build goes with it');
 ok(!existsSync(`${file}.tmp4242`), 'the temp copy is gone');
+// A build that fails still stamps the day (.mistakes.json.tried), or every Stop would start a child again, all day (review of step 4).
+{ const f = storeFor(home, 'C:\\mist-failed'), tried = join(f, `${MISTAKES}.tried`);
+  mkdirSync(join(f, 'journal', '.forgotten'), { recursive: true });   // a forget list that will not read
+  ok(mistakesOwed(f, NOW), 'fixture: owed before any attempt');
+  ok(await buildMistakes(f, NOW) === false && !existsSync(join(f, MISTAKES)), 'a build whose forget list will not read writes no cache');
+  ok(existsSync(tried) && !mistakesOwed(f, NOW) && !mistakesOwed(f, NOW + 3600e3), 'but it is not owed again that day');
+  ok(mistakesOwed(f, NOW + 36 * 3600e3), 'and is owed the next');
+  eq(dropMistakes(f), true, 'dropMistakes takes the stamp too'); ok(!existsSync(tried) && mistakesOwed(f, NOW), 'and it is owed again'); }
 // A forget list that will not read, or a store with no journal: no file is written, nothing throws.
 { const empty = storeFor(home, 'C:\\mist-empty'); mkdirSync(empty, { recursive: true });
   ok(await buildMistakes(empty, NOW) === true && readMistakes(empty).window.entries === 0, 'a store with no journal: an empty file');

@@ -3,7 +3,8 @@
 // "tests pass" over a last run that failed. All pure functions over the journal's entries, plus <store>/.mistakes.json, the cache
 // the hooks read (F4 of the plan). Statically it imports store, text and enforce only (ADR 0003); journal is loaded inside buildMistakes.
 import { join } from 'node:path';
-import { keyed, local, withLock, replaceIfUnchanged, raw, foldCase, MISTAKES } from './store.mjs';
+import { writeFileSync } from 'node:fs';
+import { keyed, local, withLock, replaceIfUnchanged, raw, foldCase, MISTAKES, MISTAKES_TRIED, mistakesOwed } from './store.mjs';
 import { clip } from './text.mjs';
 import { segments, tokens } from './enforce.mjs';
 
@@ -18,7 +19,7 @@ export const NOT_FAILURE = new RegExp([
   'Permission to use \\S+ with command',
   'Permission for this (?:tool use|action|command)',
   'Claude requested permissions to',
-  'has been denied\\.?\\s*$',
+  'with command [\\s\\S]*has been denied\\.?\\s*$',
 ].join('|'));
 
 const FAILED = ' → failed: ';
@@ -27,6 +28,8 @@ const LEAD = new Set(['env', 'command', 'sudo', 'time', 'rtk', 'exec', 'nohup'])
 const WITH_SUB = new Set(['git', 'npm', 'pnpm', 'yarn', 'gh', 'docker', 'cargo', 'go', 'pip', 'kubectl', 'dotnet']);
 const INTERPRETERS = new Set(['node', 'python', 'bash', 'sh', 'pwsh', 'powershell', 'ruby', 'deno', 'bun']);
 const INLINE = new Set(['-c', '-e', '--eval']);
+// Inline code: the flag of any interpreter above, a shell's joined flags (`-lc`), and pwsh's `-Command`.
+const inline = (prog, w) => INLINE.has(w) || (/^(?:ba|z|da|k)?sh$/.test(prog) && /^-[a-z]*c$/.test(w)) || (/^(?:pwsh|powershell)$/.test(prog) && /^-(?:c|command|encodedcommand)$/i.test(w));
 
 // The command a line ran, as a key: its first segment that is no setup, with `VAR=` and lead words dropped. null: none, or inline code.
 export function targetOf(command) {
@@ -44,9 +47,11 @@ export function targetOf(command) {
     const rest = t.slice(i + 1);
     if (INTERPRETERS.has(prog)) {
       const lead = rest.findIndex((w) => !w.startsWith('-'));
-      if ((lead === -1 ? rest : rest.slice(0, lead)).some((w) => INLINE.has(w))) return null;
+      if ((lead === -1 ? rest : rest.slice(0, lead)).some((w) => inline(prog, w))) return null;
       return lead === -1 ? prog : `${prog} ${rest[lead].replaceAll('\\', '/').replace(/^(\.\/)+/, '')}`;
     }
+    const runs = prog === 'npx' ? 'npx' : prog === 'pnpm' && rest[0] === 'dlx' ? 'pnpm dlx' : null;   // a package runner: the package is the target
+    if (runs) { const pkg = rest.slice(runs === 'npx' ? 0 : 1).find((w) => !w.startsWith('-')); return pkg ? `${runs} ${pkg}` : runs; }
     if (!WITH_SUB.has(prog)) return prog;
     let j = 0;
     while (rest[j]?.startsWith('-')) j += prog === 'git' && ['-C', '-c'].includes(rest[j]) ? 2 : 1;
@@ -155,8 +160,8 @@ export function recurring(m, now, resolved = new Set()) {
 const CLAIMS = [[/\btests? (?:all )?pass(?:es|ing)?/gi, 'test'], [/\ball green\b/gi, 'any'], [/\bbuild succeeds\b/gi, 'build'], [/\blint is clean\b/gi, 'lint'], [/\bno errors\b/gi, 'any'], [/\bno failures\b/gi, 'any']];
 const HEDGE = /\b(?:but|if|will|once|should|still|expected|except)\b|fail|not yet|\?/i;
 const KINDS = {
-  test: (t, cmd) => (/^node\b/.test(t) && /(?:^|\s)--test(?:\s|$)/.test(cmd)) || /^(?:npm|pnpm|yarn|bun) (?:run )?test$/.test(t) || /^(?:go|cargo|dotnet) test$/.test(t) || /^(?:pytest|vitest|jest)$/.test(t) || /^(?:node|python|deno|ruby|bun) \S*(?:test|spec)/i.test(t),
-  lint: (t) => /^(?:eslint|tsc|ruff|mypy)$/.test(t) || (t.includes(' ') && /^(?:check|lint|verify)$/.test(t.split(' ').pop().split('/').pop().replace(/\.\w+$/, ''))),
+  test: (t, cmd) => (/^node\b/.test(t) && /(?:^|\s)--test(?:\s|$)/.test(cmd)) || /^(?:npm|pnpm|yarn|bun) (?:run )?test$/.test(t) || /^(?:go|cargo|dotnet) test$/.test(t) || /^(?:(?:npx|pnpm dlx) )?(?:pytest|vitest|jest|mocha)$/.test(t) || /^(?:node|python|deno|ruby|bun) \S*(?:test|spec)/i.test(t),
+  lint: (t) => /^(?:(?:npx|pnpm dlx) )?(?:eslint|tsc|ruff|mypy)$/.test(t) || (t.includes(' ') && /^(?:check|lint|verify)$/.test(t.split(' ').pop().split('/').pop().replace(/\.\w+$/, ''))),
   build: (t) => /^(?:npm|pnpm|yarn|bun) (?:run )?build$/.test(t) || /^(?:cargo|go) build$/.test(t) || t === 'make',
 };
 export function claimed(said, ran) {
@@ -187,14 +192,16 @@ export function cochangeFor(rules, turnChanged, contextChanged) {
 export function readMistakes(store) {
   try { const m = JSON.parse((raw(join(store, MISTAKES)) ?? '').replace(/^﻿/, '')); return m?.v === 1 ? m : null; } catch { return null; }
 }
-export const mistakesOwed = (store, now) => (readMistakes(store)?.built ?? '') < local(now).slice(0, 10);
+export { mistakesOwed };
 
 // Built by the Stop's tidy child (memory-tier.mjs), once a day, from the last 90 days of the journal (recent() leaves out what is private
 // or forgotten). Never throws: true when it wrote the file, false when it did not (nothing new, a busy lock, an unreadable journal).
+// The day is stamped first, so a build that fails is not tried again until tomorrow (see mistakesOwed in store.mjs).
 export async function buildMistakes(store, now) {
   try {
     const { recent } = await import('./journal.mjs');
     return withLock(store, () => {
+      writeFileSync(join(store, MISTAKES_TRIED), `${local(now).slice(0, 10)}\n`, { mode: 0o600 });
       const es = recent(store, { days: 90, bytes: 6 * 1024 * 1024, deadline: performance.now() + 20_000, now }, () => true);
       if (!es) return false;
       const file = join(store, MISTAKES);

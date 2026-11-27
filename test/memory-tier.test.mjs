@@ -474,17 +474,22 @@ ok(sh().failures === 0 && sh().lastOk, 'and a good one resets the count');
     const cache = readFileSync(mist, 'utf8'), cachedAt = statSync(mist).mtimeMs;
     r = await swap('node:child_process', 'spawn', fake, () => stopAs('Stop'));
     ok(r.status === 0 && !spawned.length && readFileSync(mist, 'utf8') === cache && statSync(mist).mtimeMs === cachedAt, 'a Stop the same day with the cache there starts no process and does not rebuild it');
+    // A build that failed leaves no cache but today's stamp: no child at every Stop, all day (review of step 4).
+    const tried = `${mist}.tried`;
     rmSync(mist);
     r = await swap('node:child_process', 'spawn', fake, () => stopAs('Stop'));
-    ok(r.status === 0 && spawned.length === 1 && spawned[0][1][1] === '--tidy' && !existsSync(mist), 'a Stop with the cache missing starts the tidy child, though nothing else changed, and builds nothing itself');
+    ok(r.status === 0 && !spawned.length && !existsSync(mist), 'a day that was tried, with no cache to show for it, starts no child');
+    rmSync(tried);
+    r = await swap('node:child_process', 'spawn', fake, () => stopAs('Stop'));
+    ok(r.status === 0 && spawned.length === 1 && spawned[0][1][1] === '--tidy' && !existsSync(mist) && !existsSync(tried), 'a Stop with no stamp (nothing tried today) starts the tidy child, though nothing else changed, and builds nothing itself');
     r = await call(['--tidy', mem]);
     ok(r.status === 0 && readFileSync(mist, 'utf8') === cache && !existsSync(join(mem, '.tidy-running')), 'the child builds it (the same bytes, the same day)');
     spawned.length = 0;
-    writeFileSync(mist, JSON.stringify({ ...JSON.parse(cache), built: '2000-01-01' }));
+    writeFileSync(tried, '2000-01-01');
     r = await swap('node:child_process', 'spawn', fake, () => stopAs('Stop'));
-    ok(r.status === 0 && spawned.length === 1, 'a cache built on an earlier day is owed again');
+    ok(r.status === 0 && spawned.length === 1, 'a cache tried on an earlier day is owed again');
     r = await call(['--tidy', mem]);
-    ok(JSON.parse(readFileSync(mist, 'utf8')).built !== '2000-01-01' && !existsSync(join(mem, '.tidy-running')), 'and the child rebuilds it');
+    ok(readFileSync(tried, 'utf8').trim() !== '2000-01-01' && !existsSync(join(mem, '.tidy-running')), 'and the child tries it again, and stamps today');
     spawned.length = 0;
     // A dry run builds nothing.
     rmSync(mist); await call(['--tidy', mem, '--dry-run']);
