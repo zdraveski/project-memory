@@ -128,6 +128,12 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     'curl -u bob:' + Q + 'abcd1234efgh5678' + Q + ' https://x.io', 'curl -u ' + Q + 'bob:abcd1234efgh5678' + Q + ' https://x.io', 'mytool --password ' + Q + 'abcd1234efgh5678' + Q + ' go',
     'docker login -p ' + Q + 'abcd1234efgh5678' + Q + ' reg', 'bash -c "export API_KEY=' + Q + 'abcd1234efgh5678' + Q + ' && run"', 'MYAPP_SECRET=' + Q + 'abcd1234efgh5678' + Q,
     'setx TOKEN ' + Q + 'abcd1234efgh5678' + Q]) ok(!redact(cmd).includes('abcd1234efgh5678'), `redact kept the secret in ${cmd}: ${redact(cmd)}`);
+  // A line ending in a backslash does not hide the NAME_KEY= line below it (bug list item 13; hunt h5-2).
+  const val = 'Zq8xKp3Lm9Rt2Wv7Hn4Bc6Ys1Df5Gj0A';
+  for (const eol of ['\n', '\r\n']) for (const [a, b] of [['Install dir: C:\\Program Files\\App\\', `OPENAI_KEY=${val}`], ['line one\\', `SUPABASE_KEY=${val}`], ['line one\\', `AUTH=${val}`]]) {
+    const note = `${a}${eol}${b}${eol}`;
+    ok(holdsSecret(note) && !redact(note).includes(val), `a backslash line end hides the secret in ${JSON.stringify(note)}: ${JSON.stringify(redact(note))}`);
+  }
   // holdsSecret: a <private> span with anything real in it (a text, a number), and not one that holds nothing or only a word for one.
   const holds = [
     ['<private>' + ' '.repeat(39) + 'x</private>', true],   // a span of 40 characters is too long to be a placeholder

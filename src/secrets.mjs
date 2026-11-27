@@ -378,7 +378,7 @@ const SECRETS = [
   after(String.raw`\bmkpasswd\b(?:\s+-{1,2}[\w-]+(?:=\S+|\s+[A-Za-z0-9][A-Za-z0-9-]{1,11}(?=\s+[^\s-]))?){0,6}\s+`, 'g'),
 ];
 const redactRaw = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
-// A backslash line wrap is joined first (it cuts a secret in two), then the raw rules run, then the same rules on a folded copy of that:
+// A backslash line wrap is joined first (it cuts a secret in two), then the raw rules run (on the original when the join finds none: it can glue a NAME_KEY= line onto the one above), then the same rules on a folded copy of that:
 // look-alike letters, marks and hidden characters gone (NFKD, no marks, no Default_Ignorable), and an entity, a \u00XX or a %XX that
 // spells printable ASCII decoded. Text with no secret is returned as written.
 // shortcut: homoglyphs from another script (Cyrillic o for Latin o) are not folded; there is no safe map, add one if one is ever seen used.
@@ -401,8 +401,8 @@ export const redact = (s) => {
 };
 const redactOnce = (s) => {
   // Not before a bare `key:` line: no shell command goes on with one, and a markdown line break (`\`) glued a YAML head onto prose (fuzz 1059385974).
-  const u = s.replace(/\\\r?\n(?![ \t]*[\w.-]{1,40}:[ \t]*(?:\r?\n|$))[ \t]*/g, ''), r = redactRaw(u), f = fold(r), g = f === r ? r : redactRaw(f);
-  return g === f ? (r === u ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
+  const u = s.replace(/\\\r?\n(?![ \t]*[\w.-]{1,40}:[ \t]*(?:\r?\n|$))[ \t]*/g, ''), r0 = redactRaw(u), r = r0 === u && u !== s ? redactRaw(s) : r0, f = fold(r), g = f === r ? r : redactRaw(f);
+  return g === f ? (r === s ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
 };
 // Does a note's own text hold a secret? Anything inside the <private> tag does, closed or not ("<private/>" opens one too): the
 // tag is where a user puts what no rule names, such as a PIN (1.4.3 review). A note that only explains the tag holds none (defect
