@@ -256,6 +256,14 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     ['password: required', 'password: required'], ['Password: Required field', 'Password: Required field'], ['password: changeme is the default', 'password: [redacted] is the default']]) ok(redact(t) === w, `kept: ${t} -> ${redact(t)}`);
 }
 
+// 1.6.6 item 34: a letters-only password after `password is` is cut; a state word (wrong, empty, valid...) and a function word are prose and stay.
+{
+  for (const [t, w] of [['my password is letmein', 'my password is [redacted]'], ['password is dragon', 'password is [redacted]'], ['the password is letmein', 'the password is [redacted]'],
+    ['password was monkey', 'password was [redacted]'], ['the passphrase is trustno1x', 'the passphrase is [redacted]'], ['my pw is qwerty.', 'my pw is [redacted].']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
+  for (const t of ['password is wrong', 'the password is empty', 'password is valid', 'the password is stuck', 'the password is missing', 'password is correct', 'password is blank', 'password is ready',
+    'the password is secure.', 'password is short', 'password is required', 'password is ok', 'the password is hashed', 'our password is weak, fix it', 'password is working now']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';

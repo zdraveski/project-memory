@@ -60,6 +60,8 @@ const after = (pre, flags = 'gi', need = false) => [new RegExp(`(${pre})["']?${V
   (m, p, v) => (arg(v) || /^[(@]|^\/[\w:]+$/.test(v) || (need && !/[\d!@#$%^&*]/.test(v)) ? m : `${p}[redacted]`)];
 // Words that make a run of lowercase words a sentence, not a passphrase.
 const FUNC = new Set('a an the and or but so if then than that this those these which who what when where why how because since as at by for from in into of off on onto to too with without not no now is are was were be been being am it its you your i my we our they them he she has have had do does did can could will would shall should may might must also only just still always never very more most less than there here incorrect required encrypted different unchanged mandatory important expired stored invalid available confidential sensitive hashed salted'.split(' '));
+// A state word after `password is` ("the password is wrong"): prose, not a password. Any other letters-only word of 5 or more is cut (item 34); shortcut: one of 4 letters or fewer is kept.
+const STATE = /^(?:wrong|short|empty|valid|blank|missing|correct|strong|simple|stuck|ready|secure|safe|hidden|masked|stale|public|private|random|enough|current|plain|plaintext|cleartext|default|unknown|working|failing|pending|nothing|something|anything|visible|broken)$/i;
 // A k8s secret's name after a colon (`secret: my-app-secret`; with `=` it stays cut). A lowercase word that a sentence goes on about (`password: required`, `secret: scanning is on`): a function word, or one right after it.
 // An IPv6 address (`89dd:6359:e614:3541:4530:f20e:dc94:5ca5/64`) reads like a .pgpass line; a pgpass has 4 colons, an address 6 or more.
 // A short form with `::` (`2a02:4780:75:aec3::1`) has fewer, and may end in prose's `)`, `` ` `` or `,`.
@@ -288,7 +290,7 @@ const SECRETS = [
   [/(\b(?:recovery|backup|unlock|reset|verification|2fa|mfa|otp)[ -]?(?:codes?|keys?)\b[ \t]{0,3}(?:are|is|[:=])[ \t]{0,3})(?=[^\n.;]{0,300}\d)([^\n.;]{4,300})/gi, (m, pre, v) => (v.toLowerCase().split(/\s+/).some((x) => FUNC.has(x)) ? m : pre + '[redacted]')],
   // "the password is correct horse battery staple, remember it" or "...is sunshine": a clause-ending run of three to six lowercase words, or one word of 8 or more letters not ending in -ed ("was replaced"), with no function word or adjective in it ("the password is not stored in it", "is hashed").
   [/(\b(?:password|passwd|passphrase|passcode|pw)(?:\s{1,5}(?:for|of)\s{1,5}[^.,;:\n]{1,40}?)?\s{1,5}(?:is|was):?\s{1,5}["']?)([a-z]{2,40}(?: [a-z]{2,20}){0,5})(?=["']?[ \t]*(?:[,.;:!?]|$))/gim,
-    (m, pre, v) => { const w = v.split(' '); return (w.length === 2 || (w.length === 1 && (w[0].length < 8 || w[0].endsWith('ed'))) || w.some((x) => FUNC.has(x))) ? m : pre + '[redacted]'; }],
+    (m, pre, v) => { const w = v.split(' '); return (w.length === 2 || (w.length === 1 && (w[0].length < 5 || w[0].endsWith('ed') || STATE.test(w[0]))) || w.some((x) => FUNC.has(x))) ? m : pre + '[redacted]'; }],
   // Other languages in prose: "Passwort ist X", "mot de passe est X", "пароль X".
   [/((?<![\p{L}\d])(?:passwort|kennwort|mot de passe|contrase[nñ]a|senha|wachtwoord|l[öo]senord|adgangskode|kodeord|heslo|salasana|jelsz[oó]|[sş]ifre|has[lł]o|пароль)(?:[ \t]{1,5}(?:ist|lautet|est|es|[eé]|is|[äa]r|er|je|on))?[ \t]{1,5}["']?)(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/giu, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
   // SQL: `WITH PASSWORD 'x'`, `PASSWORD('x')`, `IDENTIFIED [WITH plugin] BY 'x'`; the value quoted, to its closing quote (1.3.2).
