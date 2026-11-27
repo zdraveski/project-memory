@@ -4,10 +4,11 @@
 // every project, check the hooks are wired. The hooks write on their own; this
 // writes only when told to, under the same lock.
 const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <id>]
-  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N]
+  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N] [--words]
                                           memories (name, description, then body; archive included)
                                           and the journal (asked, then changed and ran, then answered),
-                                          ranked, a long request asked many times once. D is YYYY-MM-DD;
+                                          ranked, a long request asked many times once; a flag, path, dotted name, error code
+                                          or "quoted phrase" is matched as typed and listed first (exact:); --words: words only. D is YYYY-MM-DD;
                                           dates with no terms list those days' requests. --file: entries that changed it;
                                           --asked: your own words only; --conversation: one session; notes are left out
   show <key...|note> [--same] [--all]     journal entries whole, by the key a search hit prints, or a note's
@@ -254,12 +255,22 @@ const kept = ({ file, asked, conversation }) => (e) => (!file || changedFile(e, 
   && (!asked || !isHelper(e) && e.asked !== '[private]' && e.answered !== '[private]');
 // `file`, `asked`, `conversation`: only the journal entries that changed that file, are the user's own words (no helper, no private
 // turn; only the request is scored) and belong to that conversation. A note has none of these, so any of them leaves the notes out.
-export function search(dirs, query, { since, until, failed, file, asked: mine, conversation } = {}) {
+// The tokens of a query that are matched as typed, not as word forms (E5): a path, a flag, a dotted name, an error code, or the whole
+// query when it is in quotes. A version (1.6.7) has its own match.
+export const literalsOf = (query) => {
+  const q = query.trim(), quoted = /^"([^"]+)"$/.exec(q);
+  if (quoted) return [quoted[1]];
+  return q.split(/\s+/).filter((t) => /[\\/]/.test(t) || /^-.*\p{L}/u.test(t) || (/^[\p{L}\w-]+(?:\.[\p{L}\w-]+)+$/u.test(t) && /\p{L}/u.test(t)) || /^(?:E[A-Z]{2,}|TS\d{3,5}|E\d{2,})$/.test(t));
+};
+// `exact: false` (--words) turns the literal lane off.
+export function search(dirs, query, { since, until, failed, file, asked: mine, conversation, exact = true } = {}) {
   const terms = words(query, true), cut = (t) => terms.as.get(t) !== t && terms.as.get(t), hits = [], held = new Set(), df = terms.map(() => 0);
+  // A hit holding a literal as typed (any case) carries it in `exact`, sorts above the others, and is a hit even with no word match.
+  const lits = exact ? literalsOf(query) : [], low = lits.map((t) => t.toLowerCase()), exactIn = (hay) => lits.filter((_, i) => hay.includes(low[i]));
   let outside = 0, docs = 0;
   // `parts`: what each term scored, in terms' order; `bonus`: the +5 or +2 for every term.
   const add = (h, parts, bonus) => hits.push({ ...h, score: parts.reduce((a, p) => a + p, 0) + bonus, parts, bonus });
-  for (const dir of terms.length && !(file || mine || conversation) ? dirs : []) for (let m of memories(dir)) {
+  for (const dir of (terms.length || lits.length) && !(file || mine || conversation) ? dirs : []) for (let m of memories(dir)) {
     // The journal's pointer is no memory; handoff.md is searched in its hand-written part, not its automatic log (which repeats the journal).
     if (m.file === 'journal.md') continue;
     const hand = m.file === 'handoff.md';
@@ -278,17 +289,18 @@ export function search(dirs, query, { since, until, failed, file, asked: mine, c
       if (!s && !b) every = false; else { got.push(t); df[i]++; }
       return s + b;
     });
-    if (!parts.some((p) => p)) continue;
+    const ex = exactIn(`${name}\n${desc}\n${body}`);
+    if (!parts.some((p) => p) && !ex.length) continue;
     const d = local(m.modified).slice(0, 10);   // the date its hit line shows
     // A note's date is its last change: written in September and edited since,
     // a September search left it out, and the miss read as no record.
     if ((since && d < since) || (until && d > until)) { outside++; continue; }
     got.forEach((t) => held.add(t));
-    add({ ...m, kind: 'note', ...(hand && { file: 'handoff.md', desc: 'the hand-written part of the handoff' }) }, parts, strong ? 5 : every ? 2 : 0);
+    add({ ...m, kind: 'note', ...(ex.length && { exact: ex }), ...(hand && { file: 'handoff.md', desc: 'the hand-written part of the handoff' }) }, parts, !terms.length ? 0 : strong ? 5 : every ? 2 : 0);
   }
   // An entry by what was asked, then what it changed and ran (and its branch),
   // then the reply: a reply that names everything must not outrank the request.
-  for (const e of terms.length ? visible(dirs, { since, until, failed }).filter(kept({ file, asked: mine, conversation })) : []) {
+  for (const e of terms.length || lits.length ? visible(dirs, { since, until, failed }).filter(kept({ file, asked: mine, conversation })) : []) {
     docs++;
     const asked = e.asked.toLowerCase(), did = [...e.changed, ...e.ran].join('\n').toLowerCase(), branch = e.branch.toLowerCase(), answered = e.answered.toLowerCase();
     let strong = true, every = true;
@@ -299,7 +311,8 @@ export function search(dirs, query, { since, until, failed, file, asked: mine, c
       if (!s) every = false; else { held.add(t); df[i]++; }
       return s;
     });
-    if (parts.some((p) => p)) add({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')) }, parts, strong ? 5 : every ? 2 : 0);
+    const ex = exactIn(mine ? asked : [asked, did, answered].join('\n'));
+    if (parts.some((p) => p) || ex.length) add({ ...e, kind: 'journal', modified: Date.parse(e.at.replace(' ', 'T')), ...(ex.length && { exact: ex }) }, parts, !terms.length ? 0 : strong ? 5 : every ? 2 : 0);
   }
   const w = df.map((n) => 1 + Math.log((docs + 1) / (n + 1))), avg = w.reduce((a, x) => a + x, 0) / (w.length || 1);
   // A long entry or note says more of everything: its rank falls with its length (a pasted request, the big handoff). A phrase
@@ -310,7 +323,7 @@ export function search(dirs, query, { since, until, failed, file, asked: mine, c
     h.rank = (h.parts.reduce((a, p, i) => a + p * w[i], 0) + h.bonus * avg) / (1 + 0.5 * Math.log(Math.max(1, long)));
     if (phrase && flat((h.kind === 'journal' ? [h.asked, h.answered, ...h.changed, ...h.ran] : [h.name, h.desc, h.body]).join('\n')).includes(phrase)) h.rank += 4 * avg;
   }
-  return Object.assign(hits.sort((a, b) => b.rank - a.rank || b.modified - a.modified), { outside, missing: terms.filter((t) => !held.has(t)).map((t) => terms.as.get(t)) });
+  return Object.assign(hits.sort((a, b) => !!b.exact - !!a.exact || b.rank - a.rank || b.modified - a.modified), { outside, missing: terms.filter((t) => !held.has(t)).map((t) => terms.as.get(t)) });
 }
 
 // What a [[link]] may name: a memory's file name without `.md`, or its `name:`.
@@ -972,11 +985,11 @@ function page(stores, days, want, failed) {
 // the unknown-option refusal and where a value ends all read this one list: an option valued in one list and a flag
 // in another was how audit 5 and C-7 came about. USAGE names each one (memory-cli checks it).
 export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--session': true, '--since': true, '--until': true, '--conversation': true, '--key': true, '--file': true, '--days': true, '--project': true,
-  '--all': false, '--shared': false, '--yes': false, '--force': false, '--same': false, '--purge': false, '--apply': false, '--help': false, '--asked': false };
+  '--all': false, '--shared': false, '--yes': false, '--force': false, '--same': false, '--purge': false, '--apply': false, '--help': false, '--asked': false, '--words': false };
 const valued = new Set(Object.keys(OPTIONS).filter((o) => OPTIONS[o]));
 // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
 // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal in main().
-const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], page: ['--days', '--project'] };
+const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], page: ['--days', '--project'] };
 
 // The command line's words, read before any store is touched: { cmd, rest, args, opt } or the refusal to print.
 // rest is every word but the command, in order (--key repeats, and the first of an option wins in opt()); args
@@ -1077,8 +1090,9 @@ export function main(given) {
   };
   const full = (e, conv = join(projectsRoot(), `${e.t}.jsonl`)) => (e.answered !== '[private]' && existsSync(conv) ? [`     Full conversation: ${conv}`] : []);
   // Words that say nothing of which memory ("what did I do") with a range: the range's listing.
-  if (cmd === 'search' && args.length && (words(args.join(' ')).length || !(range.since || range.until || filtered))) {
-    const q = args.join(' '), terms = words(q, true), found = search(scope, q, { ...range, failed, ...filters });
+  const lits = cmd === 'search' && !rest.includes('--words') ? literalsOf(args.join(' ')) : [];
+  if (cmd === 'search' && args.length && (words(args.join(' ')).length || lits.length || !(range.since || range.until || filtered))) {
+    const q = args.join(' '), terms = words(q, true), found = search(scope, q, { ...range, failed, ...filters, exact: !rest.includes('--words') }), none = !terms.length && !lits.length;
     const out = found.outside ? [`${found.outside} note${found.outside === 1 ? ' matches' : 's match'} outside the range (a note's date is its last change); search without --since/--until`] : [];
     // One long request asked again and again (a prompt a script sends, a retry)
     // is one hit with a count: its copies filled the list (recall test, 2026-10-29).
@@ -1088,28 +1102,29 @@ export function main(given) {
       if (k !== null && like.has(k)) like.get(k).push(h);
       else { groups.push([h]); if (k !== null) like.set(k, groups.at(-1)); }
     }
-    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp(terms.map((t) => termRe(t, terms.as.get(t) !== t && terms.as.get(t)).source).join('|'), 'giu');
+    const shown = groups.slice(0, n > 0 ? n : 10), find = new RegExp([...terms.map((t) => termRe(t, terms.as.get(t) !== t && terms.as.get(t)).source), ...lits.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))].join('|'), 'giu');
     // NFC, as the scoring reads it: a decomposed "é" scored the entry, and its stretch must show too.
     const nfc = (v) => clip(v, Infinity).normalize('NFC');
     const unmark = (a) => a.split(BLOCK).join('');
+    const exactLine = (h) => (h.exact ? [`     exact: ${h.exact.join(' ')}`] : []);
     const entry = (h, also, low) => {
       const hold = low ? [] : [['Answered', unmark(h.answered)], ['Changed', h.changed.join(', ')], ['Ran', h.ran.join(' · ')]].filter(([, v]) => nfc(v).search(find) !== -1);
       const ds = [h, ...also].map((x) => x.day).sort(), at = nfc(unmark(h.answered)).search(find);
       // Redacted before it is cut: a stretch must not cut a secret in two. The
       // copies' keys are named: a forget of the one shown left them (review).
       // No Result when the reply's stretch already starts at its start.
-      return [`${String(h.score).padStart(3)}  journal   ${head(h)}`, `     key: ${clip(h.key, Infinity)}`, `     Asked: ${clip(h.asked, HIT_ASK)}`,
+      return [`${String(h.score).padStart(3)}  journal   ${head(h)}`, ...exactLine(h), `     key: ${clip(h.key, Infinity)}`, `     Asked: ${clip(h.asked, HIT_ASK)}`,
         ...(h.answered && (low || !(at !== -1 && at <= HIT_SPAN)) ? [`     Result: ${result(h.answered)}`] : []),
         ...hold.map(([k, v]) => `     ${k}: ${around(nfc(v), find, Math.floor(HIT_MORE / hold.length))}`),
         ...(also.length ? [`     ${also.length} more like this, ${ds[0]}..${ds.at(-1)}: ${more(also.map((x) => clip(x.key, Infinity)), 5)}; --same takes them all`] : [])];
     };
     const wider = rest.includes('--all') ? '' : '; --all searches every project';
     // A miss while the first import runs is not yet a miss: what is left to import is counted only then (summary() reads every day file).
-    const importing = shown.length || !terms.length ? 0 : scope.reduce((t, d) => { try { return t + (summary(d).left || 0); } catch { return t; } }, 0);
+    const importing = shown.length || none ? 0 : scope.reduce((t, d) => { try { return t + (summary(d).left || 0); } catch { return t; } }, 0);
     let journals = 0;   // the short form counts journal hits only, not the notes above them
-    r = { ok: true, lines: !terms.length ? [`nothing to search for: "${q}" has no word that says which memory`]
+    r = { ok: true, lines: none ? [`nothing to search for: "${q}" has no word that says which memory`]
       : shown.length ? [...shown.flatMap(([h, ...also]) => h.kind === 'journal' ? entry(h, also, journals++ >= LOW_FROM) : [`${String(h.score).padStart(3)}  ${isShared(h.dir) ? 'shared ' : ''}${h.where.padEnd(9)} ${local(h.modified).slice(0, 10)}  ${h.path}`,
-        `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
+        ...exactLine(h), `     ${clip(h.desc || '(no description)', 200)}`, ...(h.superseded ? [`     replaced by ${h.superseded}: read that one`] : []),
         ...(h.links.length ? [`     links: ${more(h.links, 5)}`] : [])]), ...(found.missing.length ? [`no note or entry holds: ${found.missing.join(', ')}`] : []), ...out,
         // A hit's date, and what was not shown or not searched.
         `${shown.length} of ${groups.length} match(es) in ${where}${groups.length > shown.length ? '; --limit N shows more' : ''}${wider}${shown.some(([h]) => h.kind === 'journal') ? "; show '<key>' prints an entry whole" : ''}${filtered ? '; notes are left out with --file, --asked and --conversation' : ''}`, AGAIN]

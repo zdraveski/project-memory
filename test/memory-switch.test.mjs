@@ -1321,7 +1321,7 @@ again ${key2}
   }
   ok(!(await fcli('search', 'cart', '--conversation', 'beef')).stdout.includes('at least 4'), 'four characters are enough');
   ok(!(await fcli('forget', 'cart', '--conversation', 'abc')).stdout.includes('at least 4'), 'forget keeps its own rule');
-  ok((await run(['help'])).stdout.includes('  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N]\n'), 'the help lists the three filters');
+  ok((await run(['help'])).stdout.includes('  search [terms...] [--file <path>] [--asked] [--conversation <id>] [--since D] [--until D] [--all] [--limit N] [--words]\n'), 'the help lists the three filters');
 }
 // who said it: history and show name the exchange behind a note.
 {

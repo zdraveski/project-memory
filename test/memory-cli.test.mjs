@@ -28,7 +28,7 @@ const meanwhile = (kind, match, act) => {
 // not load) still spawns one. Imported after tempHome: it names the live copy
 // from HOME as it loads. Its output through harness.mjs's capture(), which
 // sends it through UTF-8 as a process's reaches the reader.
-const { main, parseArgs, OPTIONS } = await import(pathToFileURL(CLI).href);
+const { main, parseArgs, OPTIONS, literalsOf } = await import(pathToFileURL(CLI).href);
 const run = async (args) => {
   try { const { out, value } = await capture(() => main(args)); return { status: value, stdout: out, stderr: '' }; }
   catch (e) { return { status: 1, stdout: '', stderr: String(e?.stack ?? e) }; }
@@ -603,6 +603,45 @@ rmSync(join(root, '.stop-ran'), { force: true });
   ok(parseArgs(['search', 'x', '--limit', '2', '--limit', '3']).opt('--limit') === '2', 'the first of a repeated option wins');
   const help = (await run(['help'])).stdout;
   for (const o of Object.keys(OPTIONS)) ok(help.includes(o), `help names ${o}`);
+}
+
+// E5 (1.7.0): a literal in the query (a flag, a path, a dotted name, an error code, a quoted phrase) is matched as typed and listed first.
+{
+  const { render } = await import('../src/journal.mjs');
+  const ed = join(root, 'C--exact', 'memory');
+  mkdirSync(join(ed, 'journal'), { recursive: true });
+  const es = Array.from({ length: 60 }, (_, i) => ({ key: `x${String(i).padStart(2, '0')}`, at: `2026-10-21 ${String(8 + Math.floor(i / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}`, s: 'c0ffee12', t: 'C--exact/c0ffee12-full', branch: '',
+    asked: `polish widget number ${i}`, answered: 'done', changed: [], ran: [] }));
+  es[7] = { ...es[7], asked: 'why did the staging job stall', ran: ['git add -A'] };
+  es[8] = { ...es[8], asked: 'tidy the loader', changed: ['src/hooks/pre.js'] };
+  es[9] = { ...es[9], asked: 'src hooks pre js notes' };   // shares every word of the path query, but is not the path
+  es[10] = { ...es[10], asked: 'check the memory limit', ran: ['npm test (exit code 137)'] };
+  es[11] = { ...es[11], asked: 'code review, exit plan, 137 items' };
+  writeFileSync(join(ed, 'journal', '2026-10-21.md'), `# Journal 2026-10-21\n\n${es.map(render).join('\n\n')}\n`);
+  const q = (...a) => run(['search', ...a, '--store', ed]);
+  const keys = (out) => [...out.matchAll(/^ +key: (\S+)$/gm)].map((m) => m[1]);
+  r = await q('-A');
+  ok(keys(r.stdout).join() === 'x07' && /^     exact: -A$/m.test(r.stdout), `1: search -A finds git add -A (got ${r.stdout})`);
+  ok(/^  0  journal /m.test(r.stdout) && /^  0  shared /m.test(r.stdout), `1: a literal-only hit scores 0, not the word bonus (got ${r.stdout})`);
+  ok(!keys((await q('-A', '--asked')).stdout).length, '1: --asked reads only the request: a -A that was only run is no hit');
+  ok(/shared-rule\.md\n     exact: -A\n/.test(r.stdout), `1: and a note whose body holds it, with no word match (got ${r.stdout})`);
+  r = await q('src/hooks/pre.js');
+  const withLane = keys(r.stdout);
+  ok(withLane[0] === 'x08' && withLane.includes('x09') && /^     exact: src\/hooks\/pre\.js$/m.test(r.stdout), `2: the entry that changed the path is first (got ${withLane})`);
+  r = await q('src/hooks/pre.js', '--words');
+  ok(keys(r.stdout)[0] === 'x09' && !/exact:/.test(r.stdout), `4: --words gives the word order, no exact line (got ${keys(r.stdout)})`);
+  r = await q('"exit code 137"');
+  ok(keys(r.stdout)[0] === 'x10' && /^     exact: exit code 137$/m.test(r.stdout), `3: the quoted phrase is first (got ${keys(r.stdout)})`);
+  ok(keys((await q('"exit code 137"', '--words')).stdout)[0] === 'x11', '4: and with --words the words rank it as before');
+  ok((await q('-A', '--words')).stdout.startsWith('nothing to search for'), '4: -A with --words is as in 1.6.7');
+  r = await q('staging', 'job', 'stall');
+  ok(keys(r.stdout)[0] === 'x07' && !/exact:/.test(r.stdout) && r.stdout === (await q('staging', 'job', 'stall', '--words')).stdout, `5: a plain-words query is unchanged (got ${r.stdout})`);
+  const lit = (x) => literalsOf(x);
+  for (const x of ['-A', 'src/a.js', 'a\\b', 'a.b', 'ENOENT', 'TS2345', 'E11']) ok(lit(x).join('|') === x, `6: ${x} is literal`);
+  ok(lit('"x y"').join('|') === 'x y' && lit('  "x y"  ').join('|') === 'x y' && lit('why git add -A fails').join('|') === '-A' && lit('"a" "b"').length === 0, '6: a quoted query is one token; words around a flag are not');
+  for (const x of ['1.6.7', 'push', '-', '--', '-1', 'E1', 'TS12', '']) ok(lit(x).length === 0, `6: ${JSON.stringify(x)} is not literal`);
+  ok(typeof parseArgs(['search', 'x', '--words']) === 'object' && parseArgs(['search', 'x', '--wordz']) === 'unknown option --wordz; help lists the options' && parseArgs(['show', 'x', '--words']) === 'show does not take --words; help lists the options', '7: --words is accepted by search only, --wordz is refused');
+  rmSync(join(ed, 'journal'), { recursive: true });
 }
 
 console.log(`memory-cli: ${checks} checks passed`);
