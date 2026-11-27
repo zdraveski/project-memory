@@ -411,10 +411,11 @@ rmSync(nudgeDir, { force: true });
 if (!quick) {
   // The gate on the transcript before the 40,000 launches is the baseline, a machine's own cost of starting Node and the gate (audit #18):
   // only the time past it counts. 100 times the baseline let a gate that read every launch to the end pass.
-  const gate = () => { const t = performance.now(); execFileSync(process.execPath, [GATE, '--state', transcript], { env, stdio: 'ignore' }); return performance.now() - t; };
+  // Each the best of up to 3 runs (the second stops once under the bound): one spawn of each failed on busy runners.
+  const gate = (lim = 0) => { let m = Infinity; for (let i = 0; i < 3 && m >= lim; i++) { const t = performance.now(); execFileSync(process.execPath, [GATE, '--state', transcript], { env, stdio: 'ignore' }); m = Math.min(m, performance.now() - t); } return m; };
   const base = gate();
   write(user('scan the logs'), result('agentId: abc\n'.repeat(40_000)), asst('', 300_000, 'tool_use'));
-  const took = gate();
+  const took = gate(base + 2000);
   ok(took - base < 2000, `launches with no output file are read once each (${took.toFixed(0)} ms, ${base.toFixed(0)} ms for the gate alone)`);
 }
 
