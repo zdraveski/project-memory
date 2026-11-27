@@ -204,6 +204,14 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
   for (const t of ['vault login -method=userpass username=bob', 'const n = s.toLowerCase();', 'see s.ConfigurationManager now', 'vault status', 'ms.Ab12Cd34Ef56Gh78Ij90Kl12Mn34']) ok(redact(t) === t, `kept: ${t}`);
 }
 
+// 1.6.5 item 20: secret names the keyword list missed (signing_key, signingKey, githubToken, dbPass, GITHUB_PAT) are cut; ordinary names stay.
+{
+  for (const t of ['signing_key = Xk9mQ2zz7Lp', 'jwt_signing_key=Xk9mQ2zz7Lp', 'signingKey: Xk9mQ2zz7Lp', 'githubToken = ghx12345abcdef', 'githubToken: "abc123def456"',
+    'dbPass = Xk9mQ2zz7Lp', 'dbPass: Xk9mQ2zz7Lp', 'client_secret_value = Xk9mQ2zz7Lp', 'GITHUB_PAT=abcdef123456xyz']) ok(redact(t).endsWith('[redacted]') || redact(t).endsWith('[redacted]"'), `cut: ${t} -> ${redact(t)}`);
+  for (const t of ['keyboard: Xk9mQ2zz7Lp', 'monkey: Xk9mQ2zz7Lp', 'passage: Xk9mQ2zz7Lp', 'compass: Xk9mQ2zz7Lp', 'bypass: Xk9mQ2zz7Lp', 'dbPassage: Xk9mQ2zz7Lp',
+    'sort_key: created_at_desc', 'cache_key: user_profile_page', 'primary_key: user_account_id', 'key_file: Xk9mQ2zz7Lp', 'tokenizer: Xk9mQ2zz7Lp']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';
