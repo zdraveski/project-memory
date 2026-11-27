@@ -2,25 +2,38 @@
 
 ## 1.6.6 (2026-11-27)
 
-- A passphrase of plain words after "password:" or "password =" is now cut whole; before, only its first word was cut and the rest was saved.
-- A letters-only password after "password is" (such as "my password is letmein") is now cut instead of saved.
-- `forget --purge` now also deletes the copies `restore --force` keeps, so forgotten text no longer survives the purge.
-- A big first snapshot taken in several parts labels every part as the first snapshot, so history and "changed lately" no longer report later parts as files added just now.
-- A purge holds the snapshot lock for its whole run, so a snapshot made during it can no longer be overwritten by the purge's older copy.
-- A helper's report is no longer saved when the main conversation's file exists but cannot be read (unknown now means private).
-- Long turns with many shell commands are read in linear time instead of slowing down sharply.
-- A prompt longer than 64 KB that the tail cut through is now found whole, so the right turn's privacy is judged.
-- "Forget by words" reads only the part of each transcript not yet imported, so it is fast on large stores.
-- The helper-report save records read, lock and write times, so `memory doctor` can show where a slow save went.
-- A line planted in a Bash result (curl output, a cat of an untrusted file) can no longer appear in the post-compaction note as a running task; only a real `<id>.output` file counts.
-- A reply whose handoff entry lost three writes to another session is now recorded as failed and retried once, instead of being marked saved.
-- A Stop no longer starts another background tidy-up while one is still running.
-- A very long pasted prompt no longer makes the word matcher run for seconds: only its first 50 distinct words are matched, and it gives up at its deadline.
-- The pointers after a compaction no longer vanish when your last prompt is more than 512 KB back in the transcript.
-- Rewriting a big session file is now a temp file and a rename, so a reader never sees it empty.
-- A quote or apostrophe in a shell comment no longer hides the later git commands from the rules.
-- `memory doctor` waits 15 s for the enforce hook, and says "did not answer in time" as a note rather than a PROBLEM.
-- `show` reads only the day in the key, and a dated search reads one day before its range for a short request's reply, not the whole journal.
+A bug-fix release. Two kinds of password reached the journal and are now cut, forgotten text no longer survives in old copies, private conversations stay private when a file cannot be read, and several slow paths are fast again. Nothing changes in how you use it.
+
+### Secrets and privacy
+
+- **Passphrases are cut whole.** After `password:` or `password =`, only the first word of a passphrase such as `correct horse battery staple` was cut, and the rest was saved. Now the whole passphrase is cut.
+- **A plain password after "is" is cut.** "my password is letmein" was saved as it was. Words like "wrong", "empty" or "required" after "password is" are still kept.
+- **Forgotten text is really gone.** `forget --purge` left the copies that `restore --force` keeps, so the forgotten text could still be read from them. The purge now deletes those copies too.
+- **A helper's report stays private when the conversation can't be read.** If the main conversation's file was busy or unreadable, a helper's report was saved even in a private conversation. Unknown now counts as private.
+- **A long pasted prompt no longer hides a private mark.** A prompt over 64 KB that the read cut through was skipped, so the wrong turn's privacy was judged. It is now read whole.
+- **Command output can't plant lines in the note after a compaction.** A line in `curl` output or an untrusted file could show up there as a running task. Only a real task file counts now.
+
+### Snapshots
+
+- **A purge no longer loses a snapshot.** A snapshot made while `forget --purge` ran could be overwritten by the purge. The purge now holds the snapshot lock for its whole run.
+- **The first snapshot is labelled right.** A big first snapshot taken in parts showed its later parts as files added just now.
+
+### Speed
+
+- **Long turns are read fast.** A turn with many shell commands slowed down sharply (60,000 calls took 18 s). It is now read in linear time.
+- **`forget <words>` is fast on large stores.** It read every transcript whole each time. It now reads only what is not yet saved.
+- **A very long pasted prompt no longer stalls the look-up.** The matcher now uses the first 50 distinct words and stops at its time limit.
+- **`show` and dated searches read less.** They read the whole journal; now they read only the days they need.
+
+### Smaller fixes
+
+- **Pointers after a compaction stay** when your last prompt is more than 512 KB back in the conversation.
+- **A failed handoff save is retried** instead of being marked saved.
+- **Only one background tidy-up runs at a time.**
+- **A big session file is rewritten safely**, so a reader never sees it empty.
+- **A quote in a shell comment no longer hides later git commands** from your enforce rules.
+- **`memory doctor` gives a slow enforce hook 15 s** and reports it as a note, not a problem.
+- **`memory doctor` shows where a slow helper-report save went** (read, lock or write).
 
 ## 1.6.5 (2026-11-27)
 
