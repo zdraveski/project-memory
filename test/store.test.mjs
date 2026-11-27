@@ -399,6 +399,11 @@ const emptied = front('---\nname: a\nsuperseded-by:\nmetadata:\n  type: project\
 ok(emptied.superseded === '' && emptied.tier === '' && emptied.type === 'project', `an empty superseded-by: is empty (got ${JSON.stringify(emptied)})`);
 // Archiving is a one-way door: a value that says "none" in YAML's or a person's words is no replacement (1.3.1 audit E-3).
 for (const v of ['[]', '[ ]', 'none', 'None', 'false', 'no', '""']) ok(front(`---\nsuperseded-by: ${v}\n---\n`).tier === '', `superseded-by: ${v} does not archive the note`);
+// 1.7.0: resolved-by: archives a dead end the way superseded-by: archives a note, and the same words mean no value.
+{ const g = front('---\nname: a\nresolved-by: abc12345\n---\n'); ok(g.resolved === 'abc12345' && g.tier === 'archive', `resolved-by: a value archives the note (got ${JSON.stringify(g)})`);
+  ok(front('---\nresolved-by: "fix.md" # done\n---\n').resolved === 'fix.md' && front('---\nresolved-by:\n  - fix.md\n---\n').tier === 'archive', 'resolved-by: a quoted value with a comment, and a block list, archive too'); }
+for (const v of ['null', '~', 'none', 'None', 'no', 'false', '[]', '[ ]', '']) { const g = front(`---\nname: a\nresolved-by: ${v}\n---\n`); ok(g.resolved === '' && g.tier === '', `resolved-by: ${JSON.stringify(v)} does not archive the note (got ${JSON.stringify(g)})`); }
+ok(front('---\nname: fmt\n---\nresolved-by: x.md\n').tier === '' && front('---\nname: a\n---\n').resolved === '', 'a body that quotes resolved-by: does not archive; no key gives an empty resolved');
 ok(front('---\ntier: hot-ish\n---\n').tier === '' && front('---\ntier: hot # pinned\n---\n').tier === 'hot', 'only a whole tier word pins a note');
 ok(front('---\nname: fmt\n---\nHow to retire a note:\n  superseded-by: new.md\n  tier: archive\n').tier === '', 'a body that quotes the format does not archive its note');
 ok(front('---\r\nname: crlf\r\ndescription: "quoted"\r\n---\r\n').desc === 'quoted' && front('\uFEFF---\nname: bom\n---\n').name === 'bom', 'CRLF and a BOM read the same');

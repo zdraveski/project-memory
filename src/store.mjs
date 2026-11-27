@@ -332,18 +332,21 @@ export function front(text) {
   };
   // An empty list or a "none" names no replacement; read as one, it archived the note for good (1.3.1 audit E-3).
   const superseded = (scalar(get(/^[ \t]*superseded-by:[ \t]*(.*)$/m), true) || block('superseded-by')[0] || '').replace(/^(?:\[[ \t]*\]|none|false|no)$/i, '');
+  // resolved-by: a dead end whose fix has landed (1.7.0): read as superseded-by is, and archives the note the same way.
+  const resolved = (scalar(get(/^[ \t]*resolved-by:[ \t]*(.*)$/m), true) || block('resolved-by')[0] || '').replace(/^(?:\[[ \t]*\]|none|false|no)$/i, '');
   const desc = get(/^description:[ \t]*(.*)$/m);
-  return {
+  const out = {
     name: scalar(get(/^name:[ \t]*(.*)$/m)),
     desc: /^[>|][-+]?$/.test(desc) ? block('description').join(' ') : scalar(desc),
     type: get(/^[ \t]*type:[ \t]*["']?(\w+)/m, keys).toLowerCase(),
     // The whole word: `tier: hot-ish` read as hot.
     tier: superseded ? 'archive' : get(/^[ \t]*tier:[ \t]*["']?(\w+)(?=["']?[ \t]*(?:#|$))/m, keys).toLowerCase(),
-    superseded,
+    superseded, resolved,
     // A date alone is that day here: read as UTC midnight, it printed as the
     // day before anywhere west of Greenwich. A date, a space and a time is that time: cut at the space, it was midnight.
     modified: Date.parse(get(/^[ \t]*modified:[ \t]*(\d{4}-\d\d-\d\d \d\d:\d\d\S*|\S+)/m).replace(' ', 'T').replace(/^(\d{4}-\d\d-\d\d)$/, '$1T00:00')),
   };
+  return resolved ? { ...out, tier: 'archive' } : out;
 }
 
 // A failure's reason, as stored for status and the briefing: the message's first line, with a refused write's `<path>.tmp<pid>` cut from

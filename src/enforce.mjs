@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, readdirSync, openSync, closeSync, fstatSyn
 import { join } from 'node:path';
 import { frontEnd, front, isIndex, sharedStore, tag, appendCapped } from './store.mjs';
 import { records, readHead, typedMark } from './transcript.mjs';
-import { gate } from './privacy.mjs';
+import { gate, PRIVATE } from './privacy.mjs';
 
 const BSL = String.fromCharCode(92), KEYS = ['on', 'has', 'unless'], MAX = 8;
 
@@ -131,6 +131,121 @@ export function hits(rule, command) {
   return { on, hit: hit && !rule.unless.some((u) => all.includes(u)) };
 }
 
+// The command families a lesson can be about (`applies_when:`), in the spec's table order.
+export const FAMILIES = ['push', 'merge', 'publish', 'release', 'deploy', 'destroy'];
+const FORMS = { push: 'push|pushes|pushed|pushing', merge: 'merge|merges|merged|merging', publish: 'publish|publishes|published|publishing', release: 'release|releases|released|releasing', deploy: 'deploy|deploys|deployed|deploying', destroy: 'destroy|destroys|destroyed|destroying' };
+// Names too common to say which file a lesson means: never a match alone, compared case-folded.
+const COMMON = new Set(['README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE.md', 'index.js', 'index.mjs', 'index.ts', 'index.html', 'main.js', 'main.ts', 'app.js', 'package.json', 'package-lock.json', 'tsconfig.json', 'settings.json', 'config.json', 'Makefile', 'Dockerfile', 'setup.py', 'requirements.txt'].map((n) => n.toLowerCase()));
+
+// What a lesson's name, description and instead must not hold, or the lesson is hidden (spec L17): text that reads like an
+// order to the model, or hides one. The reason says what was found. shortcut: the 64 KB head is all that is read.
+const INVISIBLE = /[\x00-\x08\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩\p{Default_Ignorable_Code_Point}]/u;
+const PHRASES = [/\b(?:ignore|disregard)\b.{0,40}\b(?:previous|prior|above|earlier)\b.{0,40}\binstructions?\b/i, /\bsystem prompt\b/i, /\byou are now\b/i, /\bnew instructions\b/i, /\bdo not tell the user\b/i,
+  /<\/?\s*(?:system|assistant|user|human)\b/i, /\b(?:curl|wget)\b[^|\n]*\|\s*(?:ba|z|da)?sh\b/];
+const scan = (s) => {
+  if (INVISIBLE.test(s)) return 'its text holds an invisible or control character';
+  for (const re of PHRASES) { const m = re.exec(s); if (m) return `its text reads like an instruction to the model ("${m[0].slice(0, 40)}")`; }
+  return /[A-Za-z0-9+/]{80,}={0,2}/.test(s) ? 'its text holds a long run of encoded characters' : '';
+};
+const cut = (s, n) => (s.length <= n ? s : s.slice(0, /[\uD800-\uDBFF]/.test(s[n - 1]) ? n - 1 : n));
+const LESSON_KEYS = ['applies_to', 'applies_when', 'instead', 'resolves'];
+
+// The note's lesson (spec "A lesson"): { lesson } in the shape of F5, { bad: reason }, or null when the note is archived, or is no
+// feedback note and has none of the keys applies_to:, applies_when:, instead:, resolves:. Only the front matter is read. Never throws.
+export function lessonOf(text) {
+  try {
+    const t = String(text).replace(/^﻿/, '').replace(/\r\n?/g, '\n'), end = frontEnd(t);
+    if (end === -1) return null;
+    const f = front(t);
+    if (f.tier === 'archive') return null;
+    const lines = t.slice(0, end).split('\n'), got = {};
+    let indented = '';
+    lines.forEach((l, at) => {
+      const m = /^([ \t]*)(applies_to|applies_when|instead|resolves):[ \t]*(.*)$/.exec(l);
+      if (!m) return;
+      if (m[1]) indented ||= m[2]; else got[m[2]] ??= { v: m[3].trimEnd(), at };
+    });
+    if (f.type !== 'feedback' && !indented && !LESSON_KEYS.some((k) => k in got)) return null;
+    if (indented) return { bad: `write \`${indented}:\` at the start of a line, not indented or under metadata:` };
+    const words = (key) => {
+      const g = got[key];
+      if (!g) return [];
+      const v = g.v;
+      if (/["']/.test(v)) return { bad: `\`${key}\` has quotes; write the words bare` };
+      if (v === '') return /^[ \t]*-(?:[ \t]|$)/.test(lines.slice(g.at + 1).find((l) => /\S/.test(l)) ?? '') ? { bad: `\`${key}\` is a block list, which is not read; write a flow list like [a, b]` } : [];
+      if (v.startsWith('[') && !v.endsWith(']')) return { bad: `\`${key}\` list is not closed with ]` };
+      const w = /^\[.*\]$/.test(v) ? v.slice(1, -1).split(',').map((x) => x.trim()) : [v];
+      if (w.length === 1 && w[0] === '' && v.startsWith('[')) return [];
+      if (w.some((x) => !x || /\s/.test(x))) return { bad: `\`${key}\` holds an empty word or a word with a space` };
+      return w.length > MAX ? { bad: `\`${key}\` holds more than ${MAX} words` } : w;
+    };
+    const to = words('applies_to'), when = words('applies_when'), resolves = words('resolves');
+    for (const w of [to, when, resolves]) if (w.bad) return w;
+    const odd = when.find((w) => !FAMILIES.includes(w));
+    if (odd) return { bad: `\`applies_when\` word "${odd}" is not one of ${FAMILIES.join(', ')}` };
+    if (to.some((p) => /^(?:[A-Za-z]:|[\\/])/.test(p) || p.split(/[\\/]/).includes('..'))) return { bad: '`applies_to` must hold paths relative to the project, not an absolute path, a drive letter or ..' };
+    if (resolves.some((w) => !/^[0-9a-f]{8}$/.test(w))) return { bad: '`resolves` must hold error ids of 8 hex characters' };
+    const v = got.instead?.v ?? '', instead = v.match(/^(["'])(.*)\1$/)?.[2] ?? v;
+    if (instead !== '' && (instead.length < 10 || instead.length > 200)) return { bad: '`instead` must be 10 to 200 characters' };
+    if (/^(?:don['’]t|never|avoid|stop)\b/i.test(instead)) return { bad: '`instead` must say what to do, not what to avoid: it cannot start with don\'t, never, avoid or stop' };
+    const name = cut(f.name, 120), desc = cut(f.desc, 300), seen = `${name} ${desc}`;
+    // Named in the name and description only, never the body: what an untagged lesson is matched on.
+    const toks = seen.split(/\s+/).map((w) => w.replace(/^[`'"(]+/, '').replace(/[`'".,;:)]+$/, '')).filter(Boolean);
+    const files = toks.filter((w) => /^[\w.-]+\.[A-Za-z0-9]{1,5}$/.test(w) && w.length >= 5 && !COMMON.has(w.toLowerCase()));
+    const named = { paths: [...new Set(toks.filter((w) => w.includes('/')))], files: [...new Set(files)], families: FAMILIES.filter((fam) => new RegExp(`\\b(?:${FORMS[fam]})\\b`, 'i').test(seen)) };
+    const hidden = PRIVATE.test(t) ? 'holds <private>' : scan(name) || scan(desc) || scan(instead);
+    return { lesson: { type: f.type, name, desc, to, when, instead, resolves, named, hidden } };
+  } catch { return null; }
+}
+
+// The command's words after the lead words (env, sudo, VAR=x ...), as hits() skips them; hits() keeps its own copy of this loop.
+function afterLead(toks) {
+  let i = 0;
+  while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || LEAD.includes(toks[i]) || !toks[i])) {
+    const lead = toks[i++];
+    if (!LEAD.includes(lead)) continue;
+    while (/^-|^\/[ck]$/i.test(toks[i] ?? '')) i += LEAD_VALUE[lead]?.includes(toks[i]) ? 2 : 1;
+    if (lead === 'rtk' && ['bypass', 'proxy'].includes(toks[i])) i++;
+  }
+  return i;
+}
+const flag = (args, short, long) => args.some((a) => a === `--${long}` || new RegExp(`^-[A-Za-z]*${short}[A-Za-z]*$`).test(a));
+const INTERPRETER = /^(?:node(?:js)?|(?:ba|z|da)?sh|python3?|pwsh|powershell|ruby|perl|bun|deno)$/;
+
+// Which of FAMILIES a command is about (spec H2), in that order. Command words only: a heredoc body or a word in an argument is
+// no command. A command in a shell's quotes is read on its own, as hits() reads it. shortcut: `$(...)`, aliases and
+// `npm run deploy` are not seen; upgrade if a user shows it matters.
+export function familyOf(command) {
+  const out = new Set();
+  try {
+    for (const toks of segments(command).map(tokens)) {
+      const i = afterLead(toks), word = toks[i] ?? '', cmd = word.replace(/^.*[\\/]/, '').replace(/\.exe$/i, '').toLowerCase();
+      const q = /\s/.test(word) ? word : SHELL.test(word) ? toks.slice(i + 1).find((t) => /\s/.test(t)) : '';
+      if (q) { familyOf(q).forEach((x) => out.add(x)); continue; }
+      let args = toks.slice(i + 1); const stop = args.indexOf('--'); if (stop !== -1) args = args.slice(0, stop);
+      let a = 0; if (cmd === 'git') while (args[a]?.startsWith('-')) a += OPTS_WITH_VALUE.includes(args[a]) ? 2 : 1;
+      const rest = args.slice(a), plain = args.filter((x) => !x.startsWith('-')), sub = cmd === 'git' ? rest[0] : plain[0];
+      if (cmd === 'git' && sub === 'push') { out.add('push'); if (flag(rest, 'f', 'force')) out.add('destroy'); }
+      if (cmd === 'git' && sub === 'merge') out.add('merge');
+      if (cmd === 'git' && sub === 'reset' && rest.includes('--hard')) out.add('destroy');
+      if (cmd === 'git' && sub === 'clean' && flag(rest, 'f', 'force')) out.add('destroy');
+      if (cmd === 'docker' && sub === 'push') out.add('push');
+      if (cmd === 'gh' && plain[0] === 'pr' && plain[1] === 'merge') out.add('merge');
+      if (cmd === 'gh' && plain[0] === 'release') out.add('release');
+      if (['npm', 'pnpm', 'yarn', 'cargo'].includes(cmd) && sub === 'publish') out.add('publish');
+      if (cmd === 'twine' && sub === 'upload') out.add('publish');
+      if (/^node(?:js)?$/.test(cmd) && /(?:^|[\\/])tools[\\/]release\.mjs$/.test(plain[0] ?? '')) out.add('release');
+      if ((cmd === 'terraform' || cmd === 'kubectl') && sub === 'apply') out.add('deploy');
+      if ((cmd === 'terraform' && sub === 'destroy') || (cmd === 'kubectl' && sub === 'delete')) out.add('destroy');
+      if (cmd === 'rm' && flag(args, '[rR]', 'recursive') && flag(args, 'f', 'force')) out.add('destroy');
+      if (cmd === 'remove-item' && args.some((x) => /^-(?:r|rec|recurse)$/i.test(x))) out.add('destroy');
+      const script = INTERPRETER.test(cmd) && plain[0] && !/\s/.test(plain[0]) ? plain[0] : '';
+      if ([word, script].some((n) => n.replace(/^.*[\\/]/, '').toLowerCase().split(/[-_.]/).includes('deploy'))) out.add('deploy');
+    }
+  } catch {}
+  return FAMILIES.filter((f) => out.has(f));
+}
+
 // Each git Bash or PowerShell command in a transcript, `got({ command, t, sidechain })`, read with transcript.mjs's `chunk`
 // in pieces of `seg` bytes (a line longer than that, a tool result, is passed over). Lines without `git` are not parsed.
 export function commandsOf(file, chunk, seg, got) {
@@ -146,11 +261,13 @@ export function commandsOf(file, chunk, seg, got) {
   } finally { closeSync(fd); }
 }
 
-export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024, CACHE_V = 3, HEAD = 64 * 1024;
+export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024, CACHE_V = 4, HEAD = 64 * 1024;
 
-// A store's rules through its cache `.enforce.json` ({ v, files: { file: { mtime, size, r } } }; another v is rebuilt, as ruleOf may read differently): only a note that is new or changed since
-// is read, and then only its first 64 KB, and ruleOf only if that holds `enforce:`. A cache that does not read is rebuilt. Never throws.
-function cached(dir) {
+// A store's notes through its cache `.enforce.json` ({ v, files: { file: { mtime, size, r, l } } }; another v is rebuilt, as ruleOf and
+// lessonOf may read differently): only a note that is new or changed since is read, and then only its first 64 KB, ruleOf only if that
+// holds `enforce:`. Gives [{ file, r, l, mtime }]: r is ruleOf's answer, l lessonOf's, each null for none. A cache that does not read is
+// rebuilt, and with `write: false` it is not written (a reader that must leave no file). Never throws.
+export function notesOf(dir, { write = true } = {}) {
   let old = {}, names = [], changed = false;
   try { const j = JSON.parse(readFileSync(join(dir, CACHE), 'utf8')); if (j?.v === CACHE_V && j.files && typeof j.files === 'object' && !Array.isArray(j.files)) old = j.files; } catch {}
   try { names = readdirSync(dir).filter((n) => n.endsWith('.md') && !isIndex(n)).sort(); } catch { return []; }
@@ -158,20 +275,22 @@ function cached(dir) {
   for (const file of names) {
     try {
       const { mtimeMs: mtime, size } = statSync(join(dir, file)), was = old[file];
-      let r;
-      if (was && was.mtime === mtime && was.size === size) r = was.r;
+      let r, l;
+      if (was && was.mtime === mtime && was.size === size) { r = was.r; l = was.l; }
       else {
         changed = true;
         const text = readHead(join(dir, file), Math.min(size, HEAD));
         r = text.includes('enforce:') && front(text).tier !== 'archive' ? ruleOf(text) : null;
+        l = lessonOf(text);
       }
-      now[file] = { mtime, size, r: r ?? null };
-      if (r) out.push({ file, ...r });
+      now[file] = { mtime, size, r: r ?? null, l: l ?? null };
+      out.push({ file, r: r ?? null, l: l ?? null, mtime });
     } catch {}
   }
-  if (changed || Object.keys(old).length !== Object.keys(now).length) try { writeFileSync(join(dir, CACHE), JSON.stringify({ v: CACHE_V, files: now })); } catch {}
+  if (write && (changed || Object.keys(old).length !== Object.keys(now).length)) try { writeFileSync(join(dir, CACHE), JSON.stringify({ v: CACHE_V, files: now })); } catch {}
   return out;
 }
+const rulesIn = (dir) => notesOf(dir).filter((x) => x.r).map(({ file, r }) => ({ file, ...r }));
 
 // What the hook needs for a payload: { store, rules } with the project's and the shared store's rules that read
 // (a shared one is named `_shared/<file>`), or { store, off } when memory is off or the conversation is private.
@@ -180,8 +299,8 @@ export function ruleSet(payload) {
   // One try each: this hook has 5 s. A list that cannot be read is private (privacy.mjs).
   const { why, ...at } = gate(payload, tag(payload?.session_id), 1), { store } = at;
   if (why) return { ...at, off: true, rules: [] };
-  const rules = cached(store).filter((x) => x.rule);
-  const shared = sharedStore() === store ? [] : cached(sharedStore()).filter((x) => x.rule).map((x) => ({ ...x, file: `_shared/${x.file}` }));
+  const rules = rulesIn(store).filter((x) => x.rule);
+  const shared = sharedStore() === store ? [] : rulesIn(sharedStore()).filter((x) => x.rule).map((x) => ({ ...x, file: `_shared/${x.file}` }));
   return { store, rules: [...rules, ...shared] };
 }
 
