@@ -49,7 +49,7 @@ import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
-import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, stopRuns, deployed, deployedCommit, edited, DEPLOYED } from './run-records.mjs';
+import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, stopRuns, deployed, deployedCommit, edited, DEPLOYED, moved, movedText } from './run-records.mjs';
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, verdict, isOurs, versionsOf, changedLately, dropDays, daysHolding, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
 import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
@@ -752,6 +752,7 @@ export function doctor(site = sessionStore()) {
     let when; try { when = `last ran ${local(statSync(ran).mtime)}`; } catch (e) { when = `has run, but ${ran} could not be read (${e.code || e.message}), so not when`; }
     say(!s.length, s[0] || `the Stop hook ${when}${runs.length ? ` (from ${runs.at(-1).from})` : ''}`);
   }
+  for (const m of moved(site)) say('note', movedText(site, m));
   for (const t of timingLines()) say('note', t);
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return staleLock(l); } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);

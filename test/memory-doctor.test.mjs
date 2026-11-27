@@ -2020,4 +2020,26 @@ After the log: narwhalqq stays.
     'not for one that has, nor when --store names the store');
 }
 
+// A project folder that moved leaves its notes under the old path's slug: doctor names that folder and says how to merge by hand.
+{
+  const old = join(root, 'D--elsewhere-mem-cli', 'memory'), other = join(root, 'D--elsewhere-mem-other', 'memory');
+  for (const d of [old, other]) mkdirSync(d, { recursive: true });
+  writeFileSync(join(old, 'MEMORY.md'), '# Index\n'); writeFileSync(join(other, 'MEMORY.md'), '# Index\n');
+  writeFileSync(join(old, 'moved-note.md'), 'x'); writeFileSync(join(other, 'unrelated-note.md'), 'x');
+  const said = (await cli('doctor')).stdout;
+  ok(/^note +.*D--elsewhere-mem-cli[^\n]*moved-note\.md[^\n]*by hand/m.test(said), `doctor names the old folder and its notes (got ${said.slice(0, 600)})`);
+  ok(!/unrelated-note|D--elsewhere-mem-other/.test(said), 'a folder whose last segment differs is not named');
+  // The last TWO segments must agree: `x-todo-cli` ends in `-cli` but is another project; `C--old-mem-cli` is this one, moved.
+  const todo = join(root, 'C--x-todo-cli', 'memory'), oldSame = join(root, 'C--old-mem-cli', 'memory');
+  for (const d of [todo, oldSame]) { mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'MEMORY.md'), '# Index\n'); }
+  writeFileSync(join(todo, 'todo-only.md'), 'x'); writeFileSync(join(oldSame, 'same-name-note.md'), 'x');
+  const two = (await cli('doctor')).stdout;
+  ok(!/C--x-todo-cli|todo-only/.test(two), 'a slug that shares only the last segment is not named');
+  ok(/C--old-mem-cli[^\n]*same-name-note\.md/.test(two), 'a slug that shares the last two segments is named');
+  rmSync(join(root, 'C--x-todo-cli'), { recursive: true }); rmSync(join(root, 'C--old-mem-cli'), { recursive: true });
+  writeFileSync(join(dir, 'moved-note.md'), 'x');
+  ok(!/D--elsewhere-mem-cli/.test((await cli('doctor')).stdout), 'no warning when this folder has every note the other has');
+  rmSync(join(dir, 'moved-note.md')); rmSync(join(root, 'D--elsewhere-mem-cli'), { recursive: true }); rmSync(join(root, 'D--elsewhere-mem-other'), { recursive: true });
+}
+
 console.log(`memory-doctor: ${checks} checks passed`);

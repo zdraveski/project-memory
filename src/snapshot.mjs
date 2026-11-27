@@ -22,7 +22,7 @@ let stand;
 export const useGit = (f) => { stand = f; };
 // The lock a purge holds is touched before each git it runs, so a live purge never reads as a stale lock to busy().
 let held_ = null;
-const exec = (...a) => { if (held_) try { const d = new Date(); utimesSync(held_, d, d); } catch {} return (stand ?? execFileSync)(...a); };
+const exec = (...a) => { if (held_) try { const d = new Date(); utimesSync(held_, d, d); } catch {} return (stand ?? execFileSync)(a[0], a[1], { ...a[2], windowsHide: true }); };  // windowsHide: no console window flashes under the detached tidy-up
 
 // git for the snapshot repo, whatever the user's own git config says: a global
 // commit.gpgsign failed every snapshot, a global hooks path ran the user's

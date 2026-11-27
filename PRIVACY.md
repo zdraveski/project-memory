@@ -386,7 +386,7 @@ Uninstalling the plugin leaves all of this in place. To delete:
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
   `.journal-failed-…` file and the folder `.nudge`; in each project's
   `memory` folder, `.tiered`, `.facts`, `.health`, `.private-sessions`,
-  `.off-periods`, `.enforce-log`, `.enforce.json` and `.project-off` (the marker; delete it to turn that project on);
+  `.off-periods`, `.moved-said` (the names of another folder's notes the startup line told you of), `.enforce-log`, `.enforce.json` and `.project-off` (the marker; delete it to turn that project on);
   and in the shared notebook's (`_shared/memory`), `.tiered`, `.facts` and
   `.health`. Delete `.memory-off`, `.private-sessions` and `.off-periods` only
   once project-memory is removed for good: they list the conversations it

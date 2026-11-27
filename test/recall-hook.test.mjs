@@ -217,6 +217,11 @@ p = project(); p.day('2026-11-12', [p.entry()]); turn(p, 'nightly export');
 ok((await look(p.payload('src/close.js'), { deadline: performance.now() - 1 })).say === '', 'past the deadline: nothing');
 ok((await look(p.payload('src/close.js'))).n === 1, 'the next change of the file gets its pointer');
 ok((await look(p.payload('src/close.js'))).say === '', 'and the one after says nothing');
+// A look-up that always gives up runs at most twice per file: two `late` lines, and the third change does not look again.
+p = project(); p.day('2026-11-12', [p.entry()]); turn(p, 'nightly export');
+for (let i = 0; i < 3; i++) await look(p.payload('src/close.js'), { deadline: performance.now() - 1 });
+ok(readFileSync(p.session(), 'utf8').split('\n').filter((l) => l.includes('late')).length === 2, 'a third change adds no third late line');
+ok((await look(p.payload('src/close.js'))).say === '', 'and it does not look again');
 // A session file that will not read may hold a private turn: nothing.
 p = project(); p.day('2026-11-12', [p.entry()]); mkdirSync(p.session(), { recursive: true });
 ok((await look(p.payload('src/close.js'))).say === '', 'a session file that will not read: nothing');
