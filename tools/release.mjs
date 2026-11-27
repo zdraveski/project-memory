@@ -61,6 +61,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
       const [last] = JSON.parse(run('gh', 'run', 'list', '--workflow', wf, '--limit', '1', '--json', 'conclusion,status,createdAt,url') || '[]');
       console.log(`${wf.padEnd(18)} ${last ? `${last.conclusion || last.status} ${last.createdAt} ${last.url}` : 'no run'}`);
     }
+    // git switch -c carries uncommitted changes along, into the release: commit.
+    if (run('git', 'status', '--porcelain')) { console.error('the working tree has changes: commit or stash them first'); process.exit(1); }
     run('git', 'fetch', 'origin', 'master');
     run('git', 'switch', '-c', branch, 'origin/master');
     const pj = join(repo, '.claude-plugin', 'plugin.json'), cl = join(repo, 'CHANGELOG.md');
