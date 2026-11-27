@@ -70,6 +70,7 @@ metadata:
 ok(segments('a && b || c; d | e\nf').join('|') === 'a|b|c|d|e|f'.split('|').map((s) => s).join('|'), 'split at && || ; | newline');
 ok(segments('echo "a && b"; git x').length === 2, 'not inside quotes');
 ok(segments("# don't do this\ngit add -A\ngit status").join('|') === 'git add -A|git status', 'a quote in a comment opens nothing');
+ok(segments('n=${#a}; git push --force origin master').includes('git push --force origin master'), 'the # of ${#var} is no comment');
 ok(segments('echo a#b; git x').join('|') === 'echo a#b|git x' && segments('git commit -m "x # y" # z').join('|') === 'git commit -m "x # y"', 'a # inside a word or a quote is no comment');
 ok(segments("git commit -F - <<'EOF'\ngit add -A\nEOF\ngit status").join('|').includes('git status') && !segments("git commit -F - <<'EOF'\ngit add -A\nEOF\ngit status").join('|').includes('add -A'), 'a heredoc body is dropped');
 ok(tokens('git -C "C:\\my dir" add -A').join('|') === 'git|-C|C:\\my dir|add|-A', 'quotes group, a backslash is a character');
