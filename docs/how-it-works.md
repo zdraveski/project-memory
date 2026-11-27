@@ -774,10 +774,8 @@ Claude Code compacts 33,000 tokens short of its window. The reminder comes at 85
 that compaction point when that is earlier (at 850,000 tokens in a 1,000,000 window, at about 107,000 in a 200,000 one). `memory doctor` names both windows and the point.
 
 A window chosen with `/autocompact`, `autoCompactWindow` or `--autocompact`
-is kept in Claude Code's settings, which the plugin doesn't read (it reads only `autoMemoryEnabled`, and `autoMemoryDirectory` in `doctor`). With one of
-those, also put the size in `CLAUDE_CODE_AUTO_COMPACT_WINDOW` under `env` in
-your Claude Code settings, for example `"200k"`. Otherwise the reminder
-never fires.
+is kept in Claude Code's settings, and the plugin reads `autoCompactWindow` there (the user, project and local settings files; the
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` variable wins when set).
 
 With a gateway or a model that is not a Claude model, the real window is often
 between 200,000 and 900,000 tokens, and the plugin still assumes 1,000,000.
@@ -1421,8 +1419,8 @@ catch up on conversations Claude Code has not yet deleted.
 - Paths follow `CLAUDE_CONFIG_DIR`, and `CLAUDE_CODE_PROJECT_DIR_NAME` only
   when `CLAUDE_CONFIG_DIR` is set too (see [Where things live](#where-things-live)).
   The `autoMemoryDirectory` setting is not followed: `doctor` only warns when
-  it is set. The plugin reads Claude Code's settings for two values only,
-  `autoMemoryEnabled` and `autoMemoryDirectory`.
+  it is set. The plugin reads Claude Code's settings for three values only,
+  `autoMemoryEnabled`, `autoMemoryDirectory` and `autoCompactWindow`.
 - Tested on Linux with Node 22, Windows with Node 22 and 24, and macOS with
   Node 26.
 - The snapshot repository only grows.

@@ -544,6 +544,12 @@ const w4 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '50k' });
 ok(Math.abs(w4.TRIGGER - 0.25) < 1e-6, `a window under 66k nudges at a quarter of it, never below 0 (got ${JSON.stringify(w4)})`);
 const w5 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400k', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '80' });
 ok(Math.abs(w5.TRIGGER * 400_000 - ((1 - 33_000 / 400_000) * 80 / 96 * 400_000 - 60_000)) < 1, `an earlier compaction in a mid-size window keeps 60k of room (got ${JSON.stringify(w5)})`);
+const settingsFile = join(home, '.claude', 'settings.json'), globalFile = join(home, '.claude.json');
+mkdirSync(dirname(settingsFile), { recursive: true });
+// autoCompactWindow in settings.json (what /autocompact writes) sets the window; the variable still wins.
+writeFileSync(settingsFile, JSON.stringify({ autoCompactWindow: '200k' }));
+ok(windowWith({}).WINDOW === 200_000 && windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '300k' }).WINDOW === 300_000, 'autoCompactWindow from settings sets the window, and the variable wins');
+writeFileSync(settingsFile, '{}');
 // Under a 400K model window, mid-turn at 390k is not deferred: past it the API refuses the call.
 process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '400000'; process.env.DISABLE_COMPACT = '1';
 let g4;

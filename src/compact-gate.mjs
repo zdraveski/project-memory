@@ -39,7 +39,7 @@ import { handoff, tag, answer, newest, norm } from './handoff-log.mjs';
 import { goesOn, readTail, records, typedMark, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers } from './transcript.mjs';
 import { redact, BARE } from './secrets.mjs';
 import { isQuiet, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, isOff } from './privacy.mjs';
-import { storeOf, projectsRoot, memoryOff, local, envOn, tagOf } from './store.mjs';
+import { storeOf, projectsRoot, memoryOff, local, envOn, tagOf, setting } from './store.mjs';
 
 // --- the numbers. Change these, not the code below. -------------------------
 // A token count as Claude Code takes one: `800000`, `800k`, `1M`. NaN: none.
@@ -56,10 +56,9 @@ export const tokens = (v) => {
 // DISABLE_COMPACT set, or for a model it does not know. The model is ANTHROPIC_MODEL: shortcut: one chosen with /model is not seen.
 export const MAX_CONTEXT_USED = envOn(process.env.DISABLE_COMPACT) || (!!process.env.ANTHROPIC_MODEL && !/claude|sonnet|opus|haiku|fable/i.test(process.env.ANTHROPIC_MODEL));
 export const MODEL_WINDOW = (MAX_CONTEXT_USED && tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS)) || (envOn(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) ? 200_000 : 1_000_000);
-// The window Claude Code compacts against, as the environment sets it; one
-// set with /autocompact or autoCompactWindow lives in settings, which the
-// plugin does not read (how-it-works says so; it reads only autoMemoryEnabled and autoMemoryDirectory). Never past the model's.
-export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW, MODEL_WINDOW);
+// The window Claude Code compacts against: the environment's, else autoCompactWindow from its settings files (set by /autocompact).
+// Never past the model's.
+export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || tokens(setting('autoCompactWindow', (x) => tokens(x) > 0).value) || MODEL_WINDOW, MODEL_WINDOW);
 // Claude Code compacts 33,000 tokens short of its window (863,324 of 900,000; 767,072 of 800,000: ~0.959 there; 0.835 of 200k).
 // The nudge has to land a whole turn before that, and a turn above
 // 300k adds 18k tokens at the median, 46k at p75 and 148k at p90 (2026-10-26):

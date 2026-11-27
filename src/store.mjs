@@ -73,16 +73,22 @@ export const same = (a, b) => (process.platform === 'win32'
 // A switch in the environment is on as Claude Code reads one: 1, true, yes, on.
 export const envOn = (v) => /^(1|true|yes|on)$/i.test(v || '');
 const MANAGED = process.platform === 'win32' ? 'C:/Program Files/ClaudeCode' : process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode' : '/etc/claude-code';
-export function autoMemory({ managed = MANAGED, cwd = process.env.CLAUDE_PROJECT_DIR || process.cwd() } = {}) {
+export function autoMemory({ managed = MANAGED, cwd } = {}) {
   const env = process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY;
   if (envOn(env)) return { off: true, why: 'CLAUDE_CODE_DISABLE_AUTO_MEMORY' };
   if (/^(0|false|no|off)$/i.test(env || '')) return { off: false };
+  const v = setting('autoMemoryEnabled', (x) => typeof x === 'boolean', managed, cwd);
+  return v.value === undefined || v.value ? { off: false } : { off: true, why: `autoMemoryEnabled is false in ${v.file}` };
+}
+// The first value of a Claude Code setting that passes ok(), from managed, project-local, project, then user settings (the order
+// Claude Code applies them). { value: undefined } when none has one.
+export function setting(key, ok, managed = MANAGED, cwd = process.env.CLAUDE_PROJECT_DIR || process.cwd()) {
   let d = []; try { d = readdirSync(join(managed, 'managed-settings.d')).filter((f) => f.endsWith('.json')).sort().reverse().map((f) => join(managed, 'managed-settings.d', f)); } catch {}
   for (const f of [...d, join(managed, 'managed-settings.json'), join(cwd, '.claude', 'settings.local.json'), join(cwd, '.claude', 'settings.json'), join(configDir(), 'settings.json')]) {
-    let v; try { v = JSON.parse(readFileSync(f, 'utf8').replace(/^\uFEFF/, ''))?.autoMemoryEnabled; } catch { continue; }
-    if (typeof v === 'boolean') return v ? { off: false } : { off: true, why: `autoMemoryEnabled is false in ${f}` };
+    let v; try { v = JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, ''))?.[key]; } catch { continue; }
+    if (ok(v)) return { value: v, file: f };
   }
-  return { off: false };
+  return {};
 }
 export const memoryOff = (o) => autoMemory(o).off;
 
