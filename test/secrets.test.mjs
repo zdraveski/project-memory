@@ -231,7 +231,8 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
 // 1.6.5 item 21: "log in" and a backticked folder path (`reports/hunt-1.6.4`) is prose; a real password after "log in" is still cut.
 {
   for (const t of ['log in `reports/hunt-1.6.4`', 'log in `reports/hunt-1.6.4`.', 'log in `reports/RESUME-1.6.0.md` "1.5.4 build log".', 'the build log in `reports/hunt-1.6.4` is long']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
-  for (const [t, v] of [['log in bob/Xk9mQ2!zz', 'Xk9mQ2!zz'], ['log in bob / Xk9mQ2!zz', 'Xk9mQ2!zz'], ['log in with bob:Hunter2xx', 'Hunter2xx'], ['log in `bob/Xk9mQ2zz7`', 'Xk9mQ2zz7']]) ok(!redact(t).includes(v), `cut: ${t} -> ${redact(t)}`);
+  for (const [t, v] of [['log in bob/Xk9mQ2!zz', 'Xk9mQ2!zz'], ['log in bob / Xk9mQ2!zz', 'Xk9mQ2!zz'], ['log in with bob:Hunter2xx', 'Hunter2xx'], ['log in `bob/Xk9mQ2zz7`', 'Xk9mQ2zz7'],
+    ['log in with `admin/Pa55-word`', 'Pa55-word'], ['log in `deploy/xK9-qL2-mP4`', 'xK9-qL2-mP4'], ['log in `me/p4ss.w0rd`', 'p4ss.w0rd'], ['sign in `alice/Pa55-word`', 'Pa55-word']]) ok(!redact(t).includes(v), `cut: ${t} -> ${redact(t)}`);
 }
 
 // 1.6.5 item 25: `PWD=/c/Users/x1` and `pwd: /home/u/x1` (a shell's working directory) are kept; `pwd` as a password, path-like or not, is cut.
