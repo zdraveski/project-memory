@@ -247,7 +247,7 @@
   "osps_ac_04_02_status": "Met",
   "osps_ac_04_02_justification": "Every workflow reads only, and only the jobs that need more get it: CodeQL and Scorecard security-events: write (Scorecard also id-token: write, for its badge), and the release job contents: write, id-token: write and attestations: write: https://github.com/zdraveski/project-memory/tree/master/.github/workflows",
   "osps_br_01_04_status": "Met",
-  "osps_br_01_04_justification": "The hand-started workflows take their inputs through env: and turn them into a number from 1 to 256 before use (fuzz.yml, .github/plan-mutants.mjs); the mutate shard reaches its script through env:; the release tag must match vX.Y.Z: https://github.com/zdraveski/project-memory/blob/master/.github/workflows/fuzz.yml",
+  "osps_br_01_04_justification": "No workflow takes a hand-typed input; the release tag a workflow receives must match vX.Y.Z before use: https://github.com/zdraveski/project-memory/blob/master/.github/workflows/release.yml",
   "osps_br_02_02_status": "Met",
   "osps_br_02_02_justification": "From 1.2.4, each release file is named with the release's tag (project-memory-<tag>.tar.gz and .zip), SHA256SUMS lists them by name, and the attestation ties each to the tag's commit: https://github.com/zdraveski/project-memory/blob/master/SECURITY.md#verifying-a-release",
   "osps_br_07_02_status": "Met",

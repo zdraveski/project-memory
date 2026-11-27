@@ -278,4 +278,23 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
   ok(!BARE('Zq9!x7', `${asked} ${'x'.repeat(400)}`), 'only the last 400 characters of the question are read');
 }
 
+// Russian "token" and "key" before a value are cut like пароль (item 51).
+{
+  const V = ['aB3dE5fG7h', 'J9kL1mN3pQ5rS7'].join('');
+  for (const s of [`токен: ${V}`, `ключ = ${V}`, `пароль: ${V}`]) ok(redact(s) === `${s.slice(0, -V.length)}[redacted]`, `cut: ${s}`);
+  const W = ['abcdefghijklmn', 'opqrstuvwxyzABCDEFGH'].join('');
+  for (const s of [`токен: ${W}`, `Ключ = ${W}`]) ok(redact(s) === `${s.slice(0, -W.length)}[redacted]`, `cut, no digit: ${s}`);
+  // "key: value" in plain Russian, a version or a date is no secret after ключ or токен.
+  for (const s of ['ключ: значение', 'токен: истёк', 'ключ: v1.2.3', 'ключ: 2024-01-05', 'ключ: версия2']) ok(redact(s) === s, `kept: ${s}`);
+}
+
+// Rules the full mutant run of 2026-11-27 found untested (item 53), each by a name no wider rule catches.
+{
+  ok(redact('MY_TOKEN="Zq9 x7Lm 4Nv6"') === 'MY_TOKEN="[redacted]"', 'a .env quoted value is cut whole, blanks included');
+  ok(redact('$env:STRIPE_KEY = Zq8Xk2Lm4Nv6Bt1Rw3') === '$env:STRIPE_KEY = [redacted]', "PowerShell's $env: secret is cut");
+  // An option value never starts with `=`: two readings of each ` =y` made a 30-option line take about a minute.
+  const t0 = performance.now(); redact('redis-cli' + ' -x =y'.repeat(30) + ' ;');
+  ok(performance.now() - t0 < 2000, `redis-cli options read once each (${Math.round(performance.now() - t0)} ms)`);
+}
+
 console.log(`secrets.test.mjs: ${checks} checks passed`);

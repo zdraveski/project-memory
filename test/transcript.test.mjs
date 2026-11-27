@@ -771,6 +771,8 @@ const { turns, readTail, promptBefore, chunk, past, records } = await import('..
     ok(calls === 1, `a record of a type not asked for is not parsed (${calls} parses for 2 lines)`);
   }
   ok([...records([JSON.stringify({ type: 'api-request', body: 'x' }), JSON.stringify(u('fourth ask'))].join('\n'), { types: ['user'] })].map((r) => r.type).join() === 'user', 'a record of a type not asked for is left out');
+  // `has`: a line without the text is skipped unparsed (enforce reads only lines that say git; item 53).
+  ok([...records([JSON.stringify(u('git push now')), JSON.stringify(u('plain ask'))].join('\n'), { has: 'git' })].length === 1, 'a line without the asked-for text is left out');
   // The likeliest cut: a big record of a type nothing reads (api-request), with the next prompt glued on.
   const big = '{"type":"api-request","body":"' + 'x'.repeat(200);
   const t2 = [JSON.stringify(u('first ask')), big + JSON.stringify(u('third ask quince'))].join('\n');

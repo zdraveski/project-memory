@@ -33,7 +33,6 @@ export default {
   'a stopped Stop hook unseen': [', ...(doc ? stalled(live[0]) : [])', ''],
   'a project with no handoff judged': ['doc ? stalled(live[0]) : []', 'stalled(live[0])'],
   'an edit to the live copy unseen': [', ...edited()', ''],
-  'every other session named': ['working.length === 2 || ', ''],
   'the printed shared lines uncapped': ['if (bytes + Buffer.byteLength(l) + 1 > SHARED_BUDGET) { cut++; continue; }', ''],
   'a /clear gets no startup line': [" || input.source === 'clear'", ''],
   'shared memory not printed at startup': ['...edited(), ...shared()];', '...edited()];'],

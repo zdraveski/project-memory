@@ -27,6 +27,8 @@ ok(storeOf({ cwd: 'C:\\elsewhere\\other', transcript_path: join(proj, 'abc.jsonl
 if (process.platform === 'win32') ok(storeOf({ cwd: 'C:\\elsewhere\\other', transcript_path: join(proj, 'abc.jsonl').replace(/\\/g, '/').toUpperCase() }).toLowerCase() === dir.toLowerCase(),
   'forward slashes and another letter case in the transcript path still find it');
 ok(storeOf({ cwd: 'C:\\elsewhere\\other' }) === join(root, 'C--elsewhere-other', 'memory'), 'no transcript: the cwd slug');
+// A decomposed accent (macOS paths) is one character, as Claude Code slugs it: `cafe\u0301` gives `caf-`, not `cafe-` (item 52).
+ok(storeOf({ cwd: 'C:\\cafe\u0301' }) === join(root, 'C--caf-', 'memory'), 'the cwd slug is taken from the NFC form');
 ok(storeOf({ cwd: 'C:\\x', transcript_path: join(home, 'loose.jsonl') }) === join(root, 'C--x', 'memory'), 'a transcript outside the projects folder: the cwd slug');
 // No cwd can name the shared store: a slug is letters, digits and `-`.
 ok(sharedStore() === join(root, '_shared', 'memory') && isShared(join(root, '_shared', 'memory', '.')) && !isShared(storeOf({ cwd: 'C:\\_shared' })),

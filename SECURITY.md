@@ -113,9 +113,8 @@ The scans below run on their own and block nothing.
   installed or runs. No third-party code ships in a release.
 - The only third-party code is the CI's: GitHub Actions from GitHub
   (`actions/*`, `github/*`) and OpenSSF (`ossf/scorecard-action`), each
-  pinned to a full commit SHA with its version in a comment, and actionlint
-  and zizmor, each downloaded at a pinned version and checked against its
-  published SHA-256.
+  pinned to a full commit SHA with its version in a comment, and lychee,
+  downloaded at a pinned version and checked against its published SHA-256.
   Dependabot ([`dependabot.yml`](.github/dependabot.yml)) proposes new pins
   once a month, as pull requests that pass the same checks as any other,
   except the sign-off check, which Dependabot can't meet; the maintainer
