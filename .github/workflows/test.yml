@@ -27,6 +27,8 @@ jobs:
           - { os: windows-latest, node: 22 }
           - { os: windows-latest, node: 24 }
           - { os: macos-latest, node: 26 }
+          # The runners are all UTC, where a test of local midnight once checked nothing: every suite once more in New York.
+          - { os: ubuntu-latest, node: 22, tz: America/New_York }
     runs-on: ${{ matrix.os }}
     # Windows holds a file another program opened here; the memory-tier test must prove it.
     env:
@@ -41,6 +43,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
+      # TZ for the steps after this one, on the New York row only: the other rows keep it unset, as before.
+      - if: matrix.tz
+        shell: bash
+        env:
+          ZONE: ${{ matrix.tz }}
+        run: echo "TZ=$ZONE" >> "$GITHUB_ENV"
       # A fresh checkout has nothing changed: its parse (.mjs and .json) and import checks, a few seconds.
       - run: node tools/check.mjs
       # Every test/*.test.mjs side by side (the release archive unpacked among them: every hook command in hooks.json runs from it, on every OS).
