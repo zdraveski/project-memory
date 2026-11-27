@@ -781,9 +781,12 @@ function enforceHook(at) {
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.length) return [false, `hooks.json in ${at} has no PreToolUse group: the enforce hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.SubagentStop?.length) return [false, `hooks.json in ${at} has no SubagentStop group: subagent reports are not saved. The user's fix: claude plugin update ${PLUGIN}`];
   try {
-    const out = execFileSync(process.execPath, [file], { input: '{}', encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] });
+    const out = execFileSync(process.execPath, [file], { input: '{}', encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'] });
     return out ? [false, `the enforce hook printed output for an empty call (${clip(out, 80)}): it must print nothing`] : [true, 'the enforce hook runs and is wired (PreToolUse)'];
-  } catch (e) { return [false, `the enforce hook failed an empty call (exit code ${e.status ?? e.code}): ${file}`]; }
+  } catch (e) {
+    // A slow node start (a loaded or virus-scanned PC) is a note, not a broken hook.
+    if (e.code === 'ETIMEDOUT') return [true, 'the enforce hook did not answer in time (15 s): the PC may be slow; run doctor again'];
+    return [false, `the enforce hook failed an empty call (exit code ${e.status ?? e.code}): ${file}`]; }
 }
 
 // What status and doctor say of a project turned off.
@@ -1115,7 +1118,15 @@ export function main(given) {
   } else if (cmd === 'show' && args.length) {
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).
-    const es = visible(scope, { failed }), seen = new Set();
+    // A key holds its day: read only those days first. The whole journal is read for a key with no day, --same, a miss, or a short
+    // request (its reply may be on an earlier day).
+    const joined = args.join(' '), seen = new Set(), narrow = [];
+    // A uuid key has no date in it: its day is in the day files' j:KEY headers (a string search, no parse).
+    const dayOf = () => scope.flatMap((dir) => { try { return readdirSync(join(dir, 'journal')).filter((f) => /^\d{4}-\d\d-\d\d\.md$/.test(f)).filter((f) => [...args, joined].some((k) => readFileSync(join(dir, 'journal', f), 'utf8').includes('<!-- j:' + k + ' t:'))).map((f) => f.slice(0, 10)); } catch { return []; } });
+    const days = (joined.match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? (rest.includes('--same') ? [] : dayOf())).sort();
+    let es = days.length && !rest.includes('--same') ? visible(scope, { since: days[0], until: days.at(-1), failed: narrow }) : null;
+    if (!es?.some((e) => joined.includes(e.key)) || es.some((e) => short(e) && joined.includes(e.key))) es = visible(scope, { failed });
+    else failed.push(...narrow);
     // A key holds spaces: typed without quotes it is several words, none a key; then they are one key joined by one space.
     const ks = args.length > 1 && !args.some((k) => es.some((e) => e.key === k)) ? [args.join(" ")] : args, got = ks.map((k) => es.find((e) => e.key === k));
     const whole = (e) => [head(e), `     key: ${clip(e.key, Infinity)}`, ...replyTo(es, e),
@@ -1141,7 +1152,12 @@ export function main(given) {
   } else if (cmd === 'search' && (range.since || range.until || filtered)) {
     // What was asked on those days, newest first: "what did we do last week".
     const es = visible(scope, { ...range, failed }).filter(kept(filters)).filter((e) => !isHelper(e) || filters.file || filters.conversation).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
-    const all = shown.some(short) ? visible(scope, { failed }) : [];   // the reply before a short request may be on an earlier day
+    // The reply before a short request is on its day or the one before.
+    // A reply two or more days back is not in that read: then the whole journal is.
+    const first = shown.filter(short).map((e) => e.day).sort()[0], near = [];
+    let all = first ? visible(scope, { since: new Date(Date.parse(`${first}T00:00:00Z`) - 864e5).toISOString().slice(0, 10), failed: near }) : [];
+    if (shown.some((e) => short(e) && !all.some((x) => x.t === e.t && !isHelper(x) && x.at < e.at))) { near.length = 0; all = visible(scope, { failed: near }); }
+    failed.push(...near);
     const dropped = [...new Set(args.join(' ').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => STOP.has(t)))];
     r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [filters.file ? missFile : `no journal entry${span && ` ${span}`} in ${where}`]] };

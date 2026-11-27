@@ -453,7 +453,15 @@ ok(sh().failures === 0 && sh().lastOk, 'and a good one resets the count');
     ok(r.status === 0 && spawned.length === 1 && file === process.execPath && /memory-tier\.mjs$/.test(args[0]) && args[1] === '--tidy' && args[2] === mem &&
       opts.detached && opts.stdio === 'ignore', `a Stop with a changed memory starts the tidy-up as a process of its own (got ${JSON.stringify(spawned)})`);
     ok(commits() === n && stampOf() === stamped && !readFileSync(join(mem, 'MEMORY.md'), 'utf8').includes('bg-one.md'), 'and returns before it: nothing tiered, committed or stamped yet');
+    // Item 44: while that child runs (its marker is there), another Stop starts none.
+    r = await swap('node:child_process', 'spawn', fake, () => stopAs('Stop'));
+    ok(r.status === 0 && spawned.length === 1, `a second Stop while a tidy child runs starts no second one (got ${spawned.length})`);
+    // A child may run two snapshots, longer than one git timeout: a marker 40 s old (31 s loaded-PC case) still counts.
+    { const old = new Date(Date.now() - 40_000); utimesSync(join(mem, '.tidy-running'), old, old); }
+    r = await swap('node:child_process', 'spawn', fake, () => stopAs('Stop'));
+    ok(r.status === 0 && spawned.length === 1, `a child marker 40 s old still blocks a second child (got ${spawned.length})`);
     r = await call(['--tidy', mem]);
+    ok(!existsSync(join(mem, '.tidy-running')), 'the child removes its marker when it ends');
     ok(r.status === 0 && commits() === n + 1 && tracked().includes('proj-one/memory/bg-one.md') && readFileSync(join(mem, 'MEMORY.md'), 'utf8').includes('bg-one.md') &&
       stampOf() !== stamped, `--tidy tiers, snapshots and stamps what the Stop left (got ${r.stdout.trim()})`);
     ok((await call(['--tidy'])).status === 1, '--tidy with no path is refused');

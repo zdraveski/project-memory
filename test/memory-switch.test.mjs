@@ -499,7 +499,7 @@ See [[nonexist-${GH}]]
   const rd = join(root, 'C--rescan', 'memory'), key = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8';
   mkdirSync(join(rd, 'journal'), { recursive: true });
   writeFileSync(join(rd, 'MEMORY.md'), '# Memory Index\n');
-  writeFileSync(join(rd, 'old.md'), `---\nname: old\n---\nthe token was ${key} then\npassword=***REMOVED*** stays\n`);
+  writeFileSync(join(rd, 'old.md'), `---\nname: old\n---\nthe token was ${key} then\npassword=***REMOVED*** is kept\n`);
   writeFileSync(join(rd, 'journal', '2020-02-03.md'), `# Journal 2020-02-03\n\nran with ${key}\n`);
   tier(); tier();
   // restore keeps a replaced note under a ref that names a blob
@@ -530,7 +530,7 @@ See [[nonexist-${GH}]]
   const bk = readdirSync(join(home, '.claude')).find((n) => n.startsWith('project-memory-rescan-backup'));
   ok(r.status === 0 && bk && /the snapshots hold none now/.test(r.stdout) && !r.stdout.includes(key), `rescan --apply --yes redacts (got ${r.stdout}${r.stderr.slice(0, 400)})`);
   const old = readFileSync(join(rd, 'old.md'), 'utf8');
-  ok(!old.includes(key) && old.includes('[redacted]') && old.includes('password=[redacted] stays') && !held() && head() !== before && !kept().includes(key) && kept().includes('[redacted]'), 'the file, every snapshot and the kept copy lose the key; the history has new IDs');
+  ok(!old.includes(key) && old.includes('[redacted]') && old.includes('password=[redacted] is kept') && !held() && head() !== before && !kept().includes(key) && kept().includes('[redacted]'), 'the file, every snapshot and the kept copy lose the key; the history has new IDs');
   ok(readFileSync(join(home, '.claude', bk, 'files', 'C--rescan', 'memory', 'old.md'), 'utf8').includes(key) && existsSync(join(home, '.claude', bk, 'snapshots.bundle')), 'the backup holds the old file and a bundle of the old history');
   ok(spawnSync('git', ['-C', root, 'fsck', '--no-dangling'], { encoding: 'utf8' }).status === 0 && !existsSync(join(root, '.git', 'refs', 'original')) && !existsSync(join(root, '.git', 'config.lock')), 'the history is sound and the lock is freed');
   r = await run(['rescan']);
@@ -1083,6 +1083,8 @@ again ${key2}
   ok(/^PROBLEM the enforce hook printed output for an empty call \(noise\): it must print nothing$/m.test(doctor().stdout), 'a hook that prints for an empty call is a problem');
   writeFileSync(hook, 'process.exit(3);');
   ok(/^PROBLEM the enforce hook failed an empty call \(exit code 3\): /m.test(doctor().stdout), 'a hook that exits 3 is a problem, with its code');
+  writeFileSync(hook, 'setTimeout(() => {}, 6000);');
+  ok(/^ok +the enforce hook runs and is wired/m.test(doctor().stdout), 'a hook slow to start (6 s) is not a problem');
 }
 
 // 1.5.3 holes: how search, show and forget print what they find: the range in a line, the stores counted, a short request's reply, show's keys and exit.
@@ -1129,6 +1131,31 @@ again ${key2}
   const t1 = entry('2026-10-11 09:00', 'one of three at one minute', { answered: 'reply one' }), t2 = entry('2026-10-11 09:00', 'ok', { answered: 'reply two' }), t3 = entry('2026-10-11 09:00', 'yes', { answered: 'reply three' });
   day('2026-10-11', [t1, t2, t3]);
   ok((await sh(t3)).includes(`Reply to key ${t2.key}: reply two`) && (await sh(t2)).includes(`Reply to key ${t1.key}: reply one`), 'entries of one minute are ordered as the day file has them');
+  // show and a dated search read the days they need, not the whole journal: a day that will not read, far away, is not met.
+  {
+    const bad = join(jd, 'journal', '2026-09-01.md');
+    writeFileSync(bad, Buffer.from([0x23, 0x20, 0xe9, 0xe9, 0x0a]));
+    const d1 = entry('2026-10-20 09:00', 'a long first request of the day', { key: 'c0ffee12 2026-10-20 09:00 aaaaaaaaaaaa', answered: 'the reply' }), d2 = entry('2026-10-20 09:05', 'long enough to be no short ask at all', { key: 'c0ffee12 2026-10-20 09:05 bbbbbbbbbbbb' });
+    day('2026-10-20', [d1, d2]);
+    ok(!/could not read/.test((await jcli('show', d1.key)).stdout), 'show of a key reads only that key\'s day');
+    ok(!/could not read/.test((await jcli('search', '--since', '2026-10-20')).stdout), 'a dated search without a short request reads only its range');
+    const d3 = entry('2026-10-21 09:00', 'ok', { key: 'c0ffee12 2026-10-21 09:00 cccccccccccc' });
+    day('2026-10-21', [d3]);
+    r = await jcli('search', '--since', '2026-10-21');
+    ok(!/could not read/.test(r.stdout) && r.stdout.includes(`Reply to key ${d2.key}`), `the reply before a short request: one day earlier only (got ${r.stdout})`);
+    // A real key is a uuid: no date in it, its day is found in the day file's header.
+    const u = entry('2026-10-22 09:00', 'a long first request of the day, with a uuid key', { key: '3f2b8c1e-9a4d-4e7b-b1c2-0d5e6f7a8b9c', answered: 'the uuid reply' });
+    day('2026-10-22', [u]);
+    r = await jcli('show', u.key);
+    ok(r.stdout.includes('the uuid reply') && !/could not read/.test(r.stdout), `show of a uuid key reads only its day (got ${r.stdout})`);
+    // The reply two days back is still found for a short request.
+    const d5 = entry('2026-10-25 09:00', 'ok', { key: 'aaaa1111-0000-4000-8000-000000000001' });
+    day('2026-10-25', [d5]);
+    r = await jcli('search', '--since', '2026-10-25');
+    ok(r.stdout.includes(`Reply to key ${u.key}`), `the reply before a short request, three days back (got ${r.stdout})`);
+    rmSync(join(jd, 'journal', '2026-10-22.md')); rmSync(join(jd, 'journal', '2026-10-25.md'));
+    rmSync(bad); rmSync(join(jd, 'journal', '2026-10-20.md')); rmSync(join(jd, 'journal', '2026-10-21.md'));
+  }
   // The reply before a short request is the conversation's own previous entry: not another conversation's, nor a subagent's report.
   const u1 = entry('2026-10-12 10:00', 'a first question that is long enough', { answered: 'the main reply' });
   const x1 = entry('2026-10-12 10:01', 'a question in another conversation', { s: 'deadbeef', t: 'C--l2/deadbeef-full', answered: 'the other reply' });

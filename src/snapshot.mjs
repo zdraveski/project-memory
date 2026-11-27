@@ -21,8 +21,8 @@ export const BATCH = 1000;          // files a part of a first snapshot adds: ~6
 let stand;
 export const useGit = (f) => { stand = f; };
 // The lock a purge holds is touched before each git it runs, so a live purge never reads as a stale lock to busy().
-let held_ = null;
-const exec = (...a) => { if (held_) try { const d = new Date(); utimesSync(held_, d, d); } catch {} return (stand ?? execFileSync)(a[0], a[1], { ...a[2], windowsHide: true }); };  // windowsHide: no console window flashes under the detached tidy-up
+let held_ = null, held2_ = null;   // held2_: a purge's snapshot lock, kept fresh beside its config.lock
+const exec = (...a) => { for (const h of [held_, held2_]) if (h) try { const d = new Date(); utimesSync(h, d, d); } catch {} return (stand ?? execFileSync)(a[0], a[1], { ...a[2], windowsHide: true }); };  // windowsHide: no console window flashes under the detached tidy-up
 
 // git for the snapshot repo, whatever the user's own git config says: a global
 // commit.gpgsign failed every snapshot, a global hooks path ran the user's
@@ -219,7 +219,7 @@ function take(gitWait, batch) {
             .sort((a, b) => /(^|\/)MEMORY[^/]*$/.test(b) - /(^|\/)MEMORY[^/]*$/.test(a));
           if (todo.length > batch) {
             gitIn(todo.slice(0, batch).join('\0'), 'update-index', '--add', '--remove', '-z', '--stdin');
-            writeFileSync(parts, '', { mode: 0o600 });
+            writeFileSync(parts, first ? 'first' : '', { mode: 0o600 });
             return todo.length - batch;
           }
           try { unlinkSync(parts); } catch {}
@@ -233,6 +233,9 @@ function take(gitWait, batch) {
       // A note another window deleted between git's listing and its read is one
       // more try: read as busy, a cause that never goes away (a link to nothing)
       // would have hidden a history that never commits.
+      // Parts 2..n of a first snapshot are it too (versionsOf and changedLately skip its lines): asked before stage(), which drops the mark at the last part.
+      let first = fresh;
+      if (!fresh && (existsSync(parts) || !existsSync(join(root, '.git', 'index')))) { try { first = git('log', '-1', '--format=%s').trim() === FIRST && existsSync(parts) && readFileSync(parts, 'utf8') === 'first'; } catch { first = true; } }   // no HEAD: the first part
       let rest;
       try { rest = stage(); } catch (e) {
         const why = gitWhy(e);
@@ -303,7 +306,7 @@ function take(gitWait, batch) {
         git('-c', 'user.email=memory@local', '-c', 'user.name=memory-tier',
           // Local time, not UTC: a snapshot stamped two hours behind the clock that
           // made it is a number that misleads whoever reads the log later.
-          'commit', '-qm', fresh ? FIRST : `memory: ${local()}`);
+          'commit', '-qm', first ? FIRST : `memory: ${local()}`);
       } catch (e) {
         if (/nothing (added )?to commit/.test(String(e.stdout))) return said({});   // nothing changed
         // Another session's commit took what this one staged, and a file changed
@@ -331,7 +334,8 @@ function take(gitWait, batch) {
     if (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn')) return said({ off: 'git is not installed' });
     // Killed at its timeout: from the next run the history is taken in parts. Its lock stays, for GIT_LOCK_STALE: a git
     // that outlived the kill (a wrapper's child) may still hold it. No note is touched: git only reads them.
-    if (e.code === 'ETIMEDOUT') { try { writeFileSync(parts, '', { mode: 0o600 }); } catch {} return said({ failed: `git took longer than ${gitWait / 1000} s; the next replies take the history in parts` }); }
+    if (e.code === 'ETIMEDOUT') { // The marker says whether it is a first snapshot's: with no HEAD it is; a finished first snapshot's later changes are ordinary.
+    try { if (!existsSync(parts)) { let head = true; try { git('rev-parse', '-q', '--verify', 'HEAD'); } catch { head = false; } writeFileSync(parts, head ? '' : 'first', { mode: 0o600 }); } } catch {} return said({ failed: `git took longer than ${gitWait / 1000} s; the next replies take the history in parts` }); }
     const why = gitWhy(e);   // git's reason, not a warning before it, nor 'Command failed'
     // This session runs two or three git commands, and another session's commit can
     // take a lock in a gap between them, or move HEAD under this one's: busy,
@@ -413,13 +417,17 @@ const ever = (dir) => {
 // forget --purge: drop the days that held a forgotten entry from every snapshot, then expire the reflog and collect, so no
 // old commit keeps the text. The current files stay; the next snapshot adds them back without the entry.
 // shortcut: a purged day loses its older versions whole, not just the entry; upgrade to a line filter if that is missed.
-const rewrite = (work) => {
+const rewrite = (work, dropKept) => {   // dropKept: a test on a kept copy's text; the copies it names go
   // filter-branch refuses a repository with unstaged changes, and a store always has some (notes edited since the last snapshot):
   // it rewrites a bare copy, which is fetched back over the branches (the work tree and its files stay as they are), and the
   // index is reset to the new HEAD so it holds no old blob.
   // The snapshot hook takes only its .snapshot-lock (snapshots against each other) and git's own, and reads a fresh config.lock (nothing here writes config) as busy: the purge
   // holds that one for its whole run, and gives way to a commit already in flight, whose work the stale copy would overwrite.
-  const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), wait = new Error(BUSY);
+  const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), wait = new Error(BUSY), sdir = join(projectsRoot(), '.snapshot-lock');
+  // Also the snapshot lock, for the whole run: a snapshot that began after the clone committed, and the fetch below overwrote it (audit A10).
+  mkdirSync(sdir, { recursive: true });
+  if (withLock(sdir, () => { held2_ = join(sdir, '.lock'); try { purge(); return true; } finally { held2_ = null; } }) === null) throw wait;
+  function purge() {
   if (busy()) throw wait;
   try { writeFileSync(lock, '', { flag: 'wx', mode: 0o600 }); } catch (e) { throw e.code === 'EEXIST' ? wait : e; }
   // A run that was killed left its copy, the full unscrubbed history, behind; holding the lock, no other run is using one.
@@ -434,10 +442,14 @@ const rewrite = (work) => {
     work(copy);
     git('fetch', '-q', '--update-head-ok', '--force', copy, '+refs/heads/*:refs/heads/*');
     git('reset', '-q');
+    // restore's kept copies are blobs the rewrite never sees and hold the forgotten text (audit A2); a rescan scrubs its own.
     for (const ref of git('for-each-ref', '--format=%(refname)', 'refs/original/').split('\n').filter(Boolean)) git('update-ref', '-d', ref);
+    // Only the copies of the dropped days: restore's copies of other notes, in every project, are not what was forgotten.
+    if (dropKept) for (const ref of git('for-each-ref', '--format=%(refname)', 'refs/project-memory/replaced/').split('\n').filter(Boolean)) { let text = ''; try { text = git('cat-file', 'blob', ref); } catch {} if (dropKept(text)) git('update-ref', '-d', ref); }
     git('reflog', 'expire', '--expire=now', '--all');
     git('gc', '-q', '--prune=now');   // no detached gc --auto can start under it now: gc.auto=0 (gitArgs)
   } finally { held_ = null; rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
+  }
 };
 // shortcut: the whole history is read into one buffer (1 GiB cap) and only branches come back from the rewrite, so a hand-made tag keeps old text; upgrade to streaming or fetch all refs if that is hit.
 const FAST = { maxBuffer: 1 << 30, timeout: 300_000 }, QUIET_FAST = { ...FAST, stdio: ['ignore', 'pipe', 'ignore'] };   // git warns about a ref that names a blob
@@ -512,7 +524,7 @@ const dropPaths = (buf, paths) => {
 // forget --purge: the journal `days` ('YYYY-MM-DD') of the store in `dir` dropped from every snapshot (rewrite(), above).
 export const dropDays = (dir, days) => {
   const paths = days.flatMap((d) => tracked(dir, `journal/${d}.md`));
-  rewrite((copy) => fastImportTo(copy, dropPaths(fastExportOf(copy), paths)));
+  rewrite((copy) => fastImportTo(copy, dropPaths(fastExportOf(copy), paths)), (text) => days.some((d) => text.startsWith(`# Journal ${d}`)));
 };
 
 // A git fast-export stream with every text blob, commit and tag message put through `scrub` (text -> [text, hits]) and its length

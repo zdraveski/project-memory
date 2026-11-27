@@ -1438,8 +1438,8 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
     ok(clip(once, n) === once && !(gone && once.includes(gone)), `a clip clipped again is the same, and keeps no secret: ${JSON.stringify(s)} (got ${JSON.stringify(once)}, then ${JSON.stringify(clip(once, n))})`);
   }
   // A U+0085 splits a value as a line break does: read as part of a word, `abc` and `defgh` were one password of 9 characters.
-  const nel = clip(`password: abc${ch(0x85)}defgh`, 400);
-  ok(nel === 'password: abc defgh', `a U+0085 is a blank to redaction too (got ${JSON.stringify(nel)})`);
+  const nel = clip(`the password is abc${ch(0x85)}defgh`, 400);
+  ok(nel === 'the password is abc defgh', `a U+0085 is a blank to redaction too (got ${JSON.stringify(nel)})`);
   // A clip is kept for the process, by its length and text (release review): asked again, the same clip, and only for text. A number
   // spelt as a text clipped before is no text, and fails as it always did.
   const text = clip('12345', 9);
@@ -2222,6 +2222,24 @@ ok(/\[r3tail02\]: second ask\n  \*\*did:\*\* second done/.test(readFileSync(join
   const days = existsSync(join(dirR, 'journal')) ? readdirSync(join(dirR, 'journal')).filter((f) => f.endsWith('.md')) : [];
   ok(stopR.status === 0 && existsSync(failedR) && /EACCES/.test(readFileSync(failedR, 'utf8')) && days.length === 1 && /needs attention[^\n]*could not be saved[^\n]*EACCES/.test(briefR.stdout),
     `a handoff.md that never reads is reported and the journal goes on (got ${stopR.status}, record ${existsSync(failedR)}, ${days.length} day(s), ${briefR.stdout.slice(0, 300)})`);
+}
+// Item 43: a handoff.md another writer keeps changing ('changed' after three tries) is no save: the Stop keeps a failure record.
+{
+  const homeC = tempDir('hl-changed-'), cwdC = 'C:\\handoff-changed', dirC = storeFor(homeC, cwdC), projC = dirname(dirC), tC = join(projC, 'changed01-0000.jsonl');
+  mkdirSync(dirC, { recursive: true });
+  writeFileSync(join(dirC, 'handoff.md'), '---\nname: handoff\n---\n\n<!-- auto:start -->\n<!-- auto:end -->\n');
+  writeFileSync(tC, [user('plan the otter', { ts: '2026-09-12T08:00:00Z', uuid: 'otter-1' }), asst('planned the otter', { ts: '2026-09-12T08:00:30Z' })].join('\n') + '\n');
+  const pre = join(homeC, 'change-handoff.cjs'), failedC = join(dirname(projC), `.handoff-failed-${basename(projC)}`);
+  writeFileSync(pre, "const fs = require('node:fs'), read = fs.readFileSync; let n = 0;\n" +
+    "fs.readFileSync = (p, ...a) => { const r = read(p, ...a); return String(p).endsWith('handoff.md') && typeof r === 'string' ? r + '\\n<!-- ' + (++n) + ' -->' : r; };\n" +
+    "require('node:module').syncBuiltinESMExports();\n");
+  const was = [process.env.HOME, process.env.USERPROFILE];
+  let stopC;
+  try {
+    process.env.HOME = process.env.USERPROFILE = homeC;
+    stopC = spawnSync(process.execPath, ['--require', pre, TIER, '--stop'], { input: JSON.stringify({ cwd: cwdC, transcript_path: tC, session_id: 'changed01-0000', hook_event_name: 'Stop', last_assistant_message: 'planned the otter' }), encoding: 'utf8', timeout: 60_000 });
+  } finally { [process.env.HOME, process.env.USERPROFILE] = was; }
+  ok(stopC.status === 0 && existsSync(failedC), `a handoff that lost every replace is recorded as failed, not saved (got ${stopC.status}, record ${existsSync(failedC)}, ${stopC.stderr.slice(0, 200)})`);
 }
 // B9: a Stop that reads 32 MB and finds no turn in them gives up with a failure note, not in silence.
 {

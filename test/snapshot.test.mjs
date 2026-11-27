@@ -160,7 +160,18 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   scripted((sub, a) => (sub === 'ls-files' && a.includes('-o') ? 'a\0b\0c\0d\0e\0f\0g\0h\0' : ''));
   ok(snapshot({ batch: 1 }) === 'in parts: 7 file(s) still to add; each reply adds more', 'a snapshot in parts says what is left');
   ok(health().partial === 7 && health().pending === true && health().failures === 0, 'a snapshot in parts records how many files are left, and is owed');
+  // Later parts of a first snapshot are still the first snapshot (item 39); parts taken after a timeout on an old history are ordinary.
+  const msgOf = (head) => { writeFileSync(join(g, 'project-memory-parts'), head.startsWith('memory: first') ? 'first' : ''); scripted((sub, a) => (sub === 'log' ? head : '')); snapshot(); return calls.find((c) => c.includes('commit -qm')); };
+  ok(msgOf('memory: first snapshot\n').endsWith('commit -qm memory: first snapshot'), 'part 2 of a first snapshot is named as the first');
+  ok(/commit -qm memory: \d{4}-/.test(msgOf('memory: 2026-01-01 10:00\n')), 'parts of an old history are ordinary');
+  // A timeout after a finished first snapshot (HEAD exists) leaves an ordinary marker; with no HEAD, a first one.
   rmSync(join(g, 'project-memory-parts'), { force: true });
+  scripted((sub) => { if (sub === 'rev-parse') return 'abc'; throw fail('Command failed: git', { code: 'ETIMEDOUT' }); }); snapshot({ gitWait: 5000 });
+  ok(readFileSync(join(g, 'project-memory-parts'), 'utf8') === '', 'a timeout with a HEAD leaves the ordinary marker');
+  rmSync(join(g, 'project-memory-parts'), { force: true });
+  scripted(() => { throw fail('Command failed: git', { code: 'ETIMEDOUT' }); }); snapshot({ gitWait: 5000 });
+  ok(readFileSync(join(g, 'project-memory-parts'), 'utf8') === 'first', 'a timeout with no HEAD leaves the first-snapshot marker');
+ rmSync(join(g, 'project-memory-parts'), { force: true });
   scripted(() => { throw fail('spawnSync git ENOENT', { code: 'ENOENT', syscall: 'spawnSync git' }); }); snapshot();
   h = health();
   ok(h.off === 'git is not installed' && h.failures === 0 && typeof h.lastOk === 'string' && !('pending' in h), 'off is recorded with no failure');
@@ -262,6 +273,28 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   let msg = ''; try { scrubHistory((t) => [t, 0]); } catch (e) { msg = e.message; }
   ok(msg === 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment' && existsSync(join(g, 'config.lock')) && seen.length === 0, 'a config.lock that is there: busy, and not taken away');
   rmSync(join(g, 'config.lock'));
+
+  // A purge holds the snapshot lock for its whole run (item 40): a snapshot started meanwhile cannot commit, and one in flight stops the purge.
+  ours();
+  const slock = join(root, '.snapshot-lock', '.lock');
+  let heldAt = null;
+  stand((a) => { if (a.includes('clone')) heldAt = existsSync(slock); return ''; });
+  dropDays(dir, ['2026-01-01']);
+  ok(heldAt === true && !existsSync(slock), 'a purge holds .snapshot-lock while it runs and lets go after');
+  mkdirSync(slock, { recursive: true });
+  stand('');
+  msg = ''; try { dropDays(dir, ['2026-01-01']); } catch (e) { msg = e.message; }
+  ok(msg.includes('busy') && seen.length === 0 && existsSync(slock), 'a snapshot in flight (its lock held): the purge gives way, runs no git');
+  rmSync(slock, { recursive: true });
+
+  // forget --purge drops restore's kept copies too (item 32), so their text does not outlive the purge; a rescan keeps them for its own scrub.
+  const kept = 'refs/project-memory/replaced/abc', other = 'refs/project-memory/replaced/def', dels = [];
+  stand((a) => { if (a.includes('for-each-ref')) return a.at(-1) === 'refs/project-memory/replaced/' ? `${kept}\n${other}\n` : ''; if (a.includes('cat-file')) return a.at(-1) === kept ? '# Journal 2026-01-01\nx' : 'a note of another project'; if (a.includes('update-ref')) dels.push(a.at(-1)); return ''; });
+  dropDays(dir, ['2026-01-01']);
+  ok(dels.includes(kept) && !dels.includes(other), 'forget --purge deletes the kept copies of the dropped days only');
+  dels.length = 0;
+  scrubHistory((t) => [t, 0]);
+  ok(!dels.includes(kept), 'a rescan rewrite leaves them to its own scrub');
 
   // The health record, as every reader sees it.
   const hp = join(root, '.snapshot-health');

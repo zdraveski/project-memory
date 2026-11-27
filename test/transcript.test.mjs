@@ -894,5 +894,26 @@ for (const [name, recs] of Object.entries(FIXTURES)) {
   } finally { closeSync(fd); }
 }
 
+// 1.6.6 item 41: a prompt line longer than the 64 KB peek, cut through by the tail, is the prompt before it, not an earlier one.
+{
+  const { promptBefore } = await import('../src/transcript.mjs');
+  const f = join(home, 'longprompt.jsonl'), long = JSON.stringify(u(`wombat ${'x'.repeat(150000)}`)), rest = JSON.stringify(a('answer'));
+  writeFileSync(f, [JSON.stringify(u('earlier ask')), long, rest].join('\n') + '\n');
+  const got = promptBefore(f, Buffer.byteLength(rest) + 1 + 90000);   // the tail starts 90 KB before the end of the long line
+  ok(got === long, `a prompt line longer than 64 KB, cut by the tail, is returned whole (got ${got?.slice(0, 60)})`);
+}
+
+// 1.6.6 item 35: a turn with many shell calls costs time in step with their number, not its square; refused and repeated calls read as before.
+{
+  const { turns } = await import('../src/transcript.mjs');
+  const N = 20000, calls = Array.from({ length: N }, (_, i) => use(`c${i}`, 'Bash', { command: i === 7 ? 'npm test' : i === 9 ? 'npm test' : `echo ${i}` }));
+  const results = calls.map((c, i) => res(c.id, i === 5 ? 'The user doesn\'t want to proceed with this tool use' : i === 7 ? 'fail one' : 'ok', i === 5 || i === 7));
+  const lines = [u('run many'), a(calls, 'tool_use'), u(results), a('done')].map((r) => JSON.stringify(r)).join('\n');
+  const t0 = performance.now(), t = turns(lines).at(-1), ms = performance.now() - t0;
+  ok(t.ran.length === N - 1 && !t.ran.includes('echo 5') && t.ran.includes('echo 6') && t.ran.filter((c) => c === 'npm test').length === 2 && t.ran.every((c) => !c.includes('failed')),
+    `refused call gone, an earlier try's failure dropped once a later one of the same command had a result (got ${t.ran.length}; ${t.ran.filter((c) => /npm/.test(c))})`);
+  ok(ms < 1500, `20000 calls in one turn read in ${Math.round(ms)} ms`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`transcript.test.mjs: ${checks} checks passed`);

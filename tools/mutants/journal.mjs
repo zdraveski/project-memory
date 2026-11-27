@@ -1,7 +1,7 @@
 // The hand-written mutants of journal.mjs, which journal.test.mjs must catch (mutate.mjs runs them).
 // Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
 export default {
-  'a word search lists a turn of a conversation with a typed private mark': ['          if (markFrom(fd, 0, IMPORT_SEGMENT, size).hit) continue;\n', ''],
+  'a word search lists a turn of a conversation with a typed private mark': ['          if (markFrom(fd, was.looked, IMPORT_SEGMENT, size).hit) continue;\n', ''],
   'forget leaves the temp copies a killed Stop left': ['    sweepTemps(dir);\n    return { matched', '    return { matched'],
   "a subagent's own transcript imported as a conversation": [" && !n.startsWith('agent-'))", ")"],
   'R70 a look reads a list it cannot read once per conversation': ['if (r === null) break;', 'if (r === null) continue;'],
@@ -101,7 +101,7 @@ export default {
   'unwritten by words stops at once': ['if (!ts && !left.size) return out;', 'if (!left.size) return out;'],
   'R73 forget takes an unwritten turn while a day will not read': ['  if (failed.length > fails) more = [];\n', ''],
   'a look by words reads a turn cut in a part as two': ['g.next === null ? g.got.filter((x) => x !== g.got.open) : [...g.got, g.got.open]', '[...g.got, g.got.open]'],
-  'a look by words cuts a part anywhere, not at a turn': ['segments(fd, 0, seg, size, Infinity)', '[{ got: turns(chunk(fd, 0, seg, size).buf.toString("utf8")), next: size }]'],
+  'a look by words cuts a part anywhere, not at a turn': ['segments(fd, was.from, seg, size, Infinity)', '[{ got: turns(chunk(fd, was.from, seg, size).buf.toString("utf8")), next: size }]'],
   'unwritten reads the conversations once a key': ['const out = [], left = new Set(keys);', 'const out = [], left = new Set(keys.slice(0, 1));\n  if (keys.length > 1) out.push(...unwritten(dir, keys.slice(1)));'],
   'forget removes without the lock': ['return withLock(dir, () => {', 'return ((f) => f())(() => {'],
   'forget leaves handoff.md': ['try { unsay(dir, (t) => at.has(`${t.s} ${t.at}`)); }', 'try { }'],

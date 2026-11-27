@@ -1463,6 +1463,13 @@ mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(pr
       ok(keys(['narwhal']) === '', `nor while the private list won't read: it may hold the conversation (got ${keys(['narwhal'])})`);
     } finally { for (const f of [priv, off, join(own, 'pppppppp-1.jsonl'), join(own, 'oooooooo-1.jsonl'), join(own, 'nnnnnnnn-1.jsonl'), join(own, 'mmmmmmmm-1.jsonl')]) rmSync(f, { recursive: true, force: true }); }
   }
+  // 1.6.6 item 42: a look by words starts at the import's offset: what an earlier import took is in the journal, not unwritten.
+  {
+    const at = Buffer.byteLength([rec('user', 'uv-1', '2026-10-27T09:00:00Z', 'the Quokka "plan" in C:\zoo'), rec('assistant', 'uv-1a', '2026-10-27T09:00:30Z', 'drafted it')].join('\n') + '\n');
+    const f = join(d, 'journal', '.imported'); mkdirSync(join(d, 'journal'), { recursive: true });
+    writeFileSync(f, `${transcriptKey(tv)} ${statSync(tv).size} at ${at}\n`);
+    try { ok(keys(['quokka']) === 'uv-2', `a look by words reads from the import's offset (got ${keys(['quokka'])})`); } finally { rmSync(f, { force: true }); }
+  }
   // forget() takes them as a key's (`more`), from the day once a day holds one.
   record(d, tv, [turn({ at: local(Date.parse('2026-10-27T10:00:00Z')), id: 'uv-2', ask: 'another quokka' })]);
   const m = forget(d, ['quokka'], { more: unwritten(d, [], ['quokka']) }).matched;
@@ -2050,6 +2057,20 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   const fe = entries([sd]).map((x) => x.e ?? x).find((x) => /gerbil parser fixed/.test(x.answered));
   ok(fe && JSON.stringify(fe.changed) === JSON.stringify(['C:\\elsewhere\\notes.md', 'nb.ipynb', 'src\\gerbil.js']),
     `a helper's entry lists the files it changed, newest last, relative to its folder, not an edit that failed (got ${JSON.stringify(fe?.changed)})`);
+  // 1.6.6 item 30: the report's save times its steps (read, lock, write), so doctor can say where a slow one went.
+  {
+    const T = await import('../src/timing.mjs'), { projectsRoot } = await import('../src/store.mjs');
+    T.begin('end'); T.tag('SubagentStop'); subagent({ ...input, agent_id: 'timed', agent_transcript_path: undefined, last_assistant_message: 'timed report lemur' }); await T.flush();
+    const line = T.read(0, join(projectsRoot(), T.FILE)).at(-1);
+    ok(line?.e === 'SubagentStop' && ['read', 'lock', 'write'].every((k) => typeof line.p[k] === 'number'), `a SubagentStop timing line holds read, lock and write (got ${JSON.stringify(line)})`);
+  }
+  // 1.6.6 item 33: a parent transcript that exists but won't read is unknown, and unknown is private: no report saved.
+  {
+    const bad = join(dirname(sd), 'bbbb2222-main.jsonl'); writeFileSync(bad, '');
+    const real = fs.openSync; fs.openSync = function (p, ...r) { if (String(p) === bad) throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); return real.call(this, p, ...r); }; syncBuiltinESMExports();
+    let r; try { r = subagent({ ...input, agent_id: 'unread', transcript_path: bad, agent_transcript_path: undefined, last_assistant_message: 'unreadable parent hippo' }); } finally { fs.openSync = real; syncBuiltinESMExports(); }
+    ok(r === false && !entries([sd]).some((x) => /hippo/.test(JSON.stringify(x))), 'a report is not saved when the parent transcript will not read');
+  }
   // 1.5.1 2a: the parent's open turn is private, so its subagent's report is not saved; a later plain prompt saves again.
   const prompt = (t, uuid) => JSON.stringify({ type: 'user', uuid, timestamp: new Date().toISOString(), cwd: 'C:\\journal-subagent', message: { role: 'user', content: t } });
   const priv = join(dirname(sd), 'bbbb2222-private.jsonl');

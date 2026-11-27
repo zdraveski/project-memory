@@ -11,6 +11,7 @@ import { text, readTail, readHead, openFile, records, chunk, markFrom, userText,
 import { PRIVATE, hushed, isHushed, isQuiet, QUIET, FORGOTTEN, forgotten, forgottenIn, listForgotten, OFF, unreadable, wasOff } from './privacy.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, lockBudget, sleep, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
 import { fault, failures, clear } from './run-records.mjs';
+import * as T from './timing.mjs';
 import { dropSessions, ACTIVE } from './sessions.mjs';
 
 export const JOURNAL = 'journal';
@@ -253,16 +254,20 @@ export function subagent(input) {
     // typed anywhere in the tail hushes it. A start older than the tail's first turn gets the look back too (`cut`), so a private prompt
     // scrolled out of the tail is still found; only when the look back finds nothing does the open turn stand.
     const pick = (all, cut) => { hush ||= all.hush === true; return (Number.isFinite(start) && all.opened.filter((x) => x.ms <= start).pop()) || (cut && Number.isFinite(start) ? null : all.open); };
-    try { const r = readTail(tp, TAIL), a = turns(r.text); t = pick(a, !r.whole); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = (p ? pick(turns(`${p}\n${r.text}`)) : null) ?? a.open; } } catch {}
+    try { const r = readTail(tp, TAIL), a = turns(r.text); t = pick(a, !r.whole); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = (p ? pick(turns(`${p}\n${r.text}`)) : null) ?? a.open; } } catch (e) { if (e?.code !== 'ENOENT') return false; }   // unknown is private; a parent file that is not there holds no conversation
+    T.mark('read');
     const put = () => withLock(dir, () => {
+      T.mark('lock');   // from the read (or the last try) to the lock taken
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
       if (isQuiet(dir, s)) return false;
       // The parent's open turn is private: so is its subagent's report.
       if (hush || t && (t.frozen === true || PRIVATE.test(userText(t)))) return false;
       // Past the cap, the start and the end stay: the end usually holds the result.
       const all = clip(report, Infinity), rep = all.length <= J_REPORT ? all : `${all.slice(0, 5000)} … (${all.length - 7900} chars cut) … ${all.slice(-2900)}`;
-      return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
-        raw: rep, said: rep, did: rep, changed, ran: [], cwd: input.cwd }]) > 0;
+      const n = record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
+        raw: rep, said: rep, did: rep, changed, ran: [], cwd: input.cwd }]);
+      T.mark('write');
+      return n > 0;
     });
     // A store still held after one wait gets one more, after a pause and with a fresh wait, as a Stop's does: backfill skips
     // agent transcripts, so a report not saved here is lost for good (1.6.1).
@@ -420,7 +425,12 @@ function resweep(dir) {
 // (the key is then named as no entry's, and the forget fails); upgrade if that is ever slow or wrong.
 // `terms`, forget's look by words: every turn holding each word as its entry would, in any case. A look by words missed a turn
 // no day held yet, and the next reply wrote it (1.2.5).
-// shortcut: by words, every conversation of the store is read whole, at each look; read only past the import's offsets if slow.
+// By words, a conversation is read from its import's offset; one no line names (or a failed, partial or other's) is read whole.
+const importedAs = (dir, p) => {
+  const k = transcriptKey(p);
+  for (const l of (raw(join(dir, JOURNAL, IMPORTED)) ?? '').split(/\r?\n/)) { const m = LINE.exec(l); if (m?.[1] === k && !m[4]) return importOf(m); }
+  return { from: 0, looked: 0 };
+};
 export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
   const out = [], left = new Set(keys);
   const ts = terms?.map((t) => t.toLowerCase());
@@ -437,10 +447,12 @@ export function unwritten(dir, keys, terms = null, seg = IMPORT_SEGMENT) {
       try {
         const { fd, size, close } = openFile(p);
         try {
-          if (markFrom(fd, 0, IMPORT_SEGMENT, size).hit) continue;
+          // By words, only past the import's offsets: the turns before them are in the journal, and those bytes were looked at for the mark.
+          const was = ts ? importedAs(dir, p) : { from: 0, looked: 0 };
+          if (markFrom(fd, was.looked, IMPORT_SEGMENT, size).hit) continue;
           // By words, a turn is cut at its start (segments()), so its prompt and its reply are read together; a part cut inside a turn leaves it to the next.
           if (ts) {
-            if (ours(dir, p)) for (const g of segments(fd, 0, seg, size, Infinity)) for (const t of new Set(g.next === null ? g.got.filter((x) => x !== g.got.open) : [...g.got, g.got.open])) { const e = t && entryOf(t, p); if (e && ts.every((w) => holds(e, w))) out.push({ ...e, day: day(e.at), dir, unsaid: true }); }
+            if (ours(dir, p)) for (const g of segments(fd, was.from, seg, size, Infinity)) for (const t of new Set(g.next === null ? g.got.filter((x) => x !== g.got.open) : [...g.got, g.got.open])) { const e = t && entryOf(t, p); if (e && ts.every((w) => holds(e, w))) out.push({ ...e, day: day(e.at), dir, unsaid: true }); }
             continue;
           }
           for (let b, pos = 0; left.size && (b = chunk(fd, pos, seg, size)); pos = b.pos + b.buf.length) {
@@ -602,6 +614,8 @@ export function write(dir, transcriptPath, got, opts) {
 const IMPORTED = '.imported', LOOKED = '.looked';
 const LINE = /^(.+?) (\d+)(?: at (\d+)| (\w+)(?: (\d+))?)?$/;
 const FAILING = / \d+ failed\b/;
+// Where an .imported line says the import stands: `upto` (the size it covers), `from` (where it goes on), `looked` (bytes looked at for a mark).
+const importOf = (m) => (m[4] ? { upto: Number(m[2]), from: 0, looked: 0 } : { upto: Number(m[3] ?? m[2]), from: Number(m[3] ?? m[2]), looked: Number(m[2]) });
 // By pathKey, as `keep` (a look's `seen`) holds them: a Stop's line spelt the
 // folder as its payload did, a look's listing as the disk does, and the look
 // dropped the Stop's ` swept`, so every look swept that conversation again.
@@ -639,7 +653,7 @@ function candidates(dir, skip) {
   for (const m of (raw(join(dir, JOURNAL, IMPORTED)) ?? '').split(/\r?\n/).map((l) => LINE.exec(l))) {
     const retry = m?.[4] === 'failed' && !(Math.abs(Date.now() - Number(m[5])) < RETRY);
     if (m?.[4] === 'other') theirs.add(m[1]);
-    if (m && m[4] !== 'partial' && !retry) done.set(m[1], m[4] ? { upto: Number(m[2]), from: 0, looked: 0 } : { upto: Number(m[3] ?? m[2]), from: Number(m[3] ?? m[2]), looked: Number(m[2]) });
+    if (m && m[4] !== 'partial' && !retry) done.set(m[1], importOf(m));
   }
   // A listing that fails leaves `seen` null, so nothing is pruned: read as
   // empty, it would drop the lines of every transcript in it.

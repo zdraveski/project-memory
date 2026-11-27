@@ -245,6 +245,27 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     ['pwd: /s3cr3t/p4ss', 'pwd: [redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
 }
 
+// 1.6.6 item 31: after `password:`, `passphrase:` or `password =`, the whole run of plain words to the end of the line is cut, not the first word only.
+{
+  for (const [t, w] of [['password: correct horse battery staple', 'password: [redacted]'], ['passphrase: correct horse battery staple', 'passphrase: [redacted]'],
+    ['password = correct horse battery staple', 'password = [redacted]'], ['Notes: password: correct horse battery staple', 'Notes: password: [redacted]'],
+    ['The password: hunter2 correct horse', 'The password: [redacted]'], ['password: correct horse battery staple.', 'password: [redacted].'],
+    ['password: correct horse\nnext line stays', 'password: [redacted]\nnext line stays'],
+    ['password: blue horse battery staple', 'password: [redacted]'], ['password = one two three four five six seven eight nine', 'password = [redacted]'],
+    ['password: correct horse battery 42', 'password: [redacted]'], ['password: correct horse battery, remember', 'password: [redacted]'], ['passwd: correct horse battery staple', 'passwd: [redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
+  // A function word in the run makes it a sentence: only the first word goes. Prose after the word stays.
+  for (const [t, w] of [['password: hunter2 is wrong', 'password: [redacted] is wrong'], ['password: hunter2, then restart', 'password: [redacted], then restart'],
+    ['password: required', 'password: required'], ['Password: Required field', 'Password: Required field'], ['password: changeme is the default', 'password: [redacted] is the default']]) ok(redact(t) === w, `kept: ${t} -> ${redact(t)}`);
+}
+
+// 1.6.6 item 34: a letters-only password after `password is` is cut; a state word (wrong, empty, valid...) and a function word are prose and stay.
+{
+  for (const [t, w] of [['my password is letmein', 'my password is [redacted]'], ['password is dragon', 'password is [redacted]'], ['the password is letmein', 'the password is [redacted]'],
+    ['password was monkey', 'password was [redacted]'], ['the passphrase is trustno1x', 'the passphrase is [redacted]'], ['my pw is qwerty.', 'my pw is [redacted].']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
+  for (const t of ['password is wrong', 'the password is empty', 'password is valid', 'the password is stuck', 'the password is missing', 'password is correct', 'password is blank', 'password is ready',
+    'the password is secure.', 'password is short', 'password is required', 'password is ok', 'the password is hashed', 'our password is weak, fix it', 'password is working now']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';
