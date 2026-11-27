@@ -25,6 +25,7 @@ import assert from 'node:assert';
 import { suites, settle, tableOf, testsOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
 import { srcFiles, pluginFiles, plan, pool, isTimed } from './suites.mjs';
+import { decide } from './pretested.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
@@ -73,6 +74,23 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
   assert.equal(await settle('TIMED OUT', again('SURVIVED')), 'SURVIVED');
   assert.equal(await settle('SURVIVED', again('killed')), 'SURVIVED');
   assert.equal(runs, 3);
+}
+// Publish before the master run only for a merge whose tree a green pull_request run of this repo already tested.
+{
+  const run = (o) => ({ id: 1, status: 'completed', conclusion: 'success', created_at: '2026-11-27T10:00:00Z', head_repository: { full_name: 'o/r' }, ...o });
+  const yes = { parents: ['a', 'b'], ancestor: true, sameTree: true, runs: [run()], repo: 'o/r' };
+  assert.equal(decide(yes).ok, true);
+  assert.equal(decide({ ...yes, ancestor: false }).ok, false);   // master moved
+  assert.equal(decide({ ...yes, sameTree: false }).ok, false);
+  assert.equal(decide({ ...yes, parents: ['a'] }).ok, false);    // a squash
+  assert.equal(decide({ ...yes, runs: [run({ conclusion: 'failure' })] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [run({ conclusion: 'cancelled' })] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [run({ status: 'in_progress', conclusion: null })] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [run({ head_repository: { full_name: 'fork/r' } })] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [] }).ok, false);
+  // The latest run counts: green then red is no; red then green (a rerun of a flake as a new run) is yes.
+  assert.equal(decide({ ...yes, runs: [run({ id: 2, conclusion: 'failure', created_at: '2026-11-27T11:00:00Z' }), run()] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [run({ conclusion: 'failure' }), run({ id: 2, created_at: '2026-11-27T11:00:00Z' })] }).ok, true);
 }
 // The suites' order: biggest first in a pool a core narrower than the machine, the timed files after, alone; never no pool at all.
 assert.deepEqual(plan([{ file: 'a.test.mjs', size: 1 }, { file: 'b-timed.test.mjs', size: 9 }, { file: 'c.test.mjs', size: 5 }, { file: 'd-timed.test.mjs', size: 2 }], 4),

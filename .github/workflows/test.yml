@@ -113,57 +113,67 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           "$RUNNER_TEMP/agnix" --target claude-code --format github .
 
-  # Merging a patch's version bump is its release (CONTRIBUTING "Releasing"): once every test above passed on master,
-  # a patch version (X.Y.Z, Z > 0) with no tag yet is published as "project-memory X.Y.Z (bug fix)", its changelog
-  # section as the notes, and the page's version line follows. A minor or major release is published by hand.
-  publish:
-    needs: [test, actionlint, zizmor, agnix]
+  # May this push publish before its own test run? Only a merge whose tree a pull request run of this repository
+  # already passed whole (tools/pretested.mjs); a fork, a squash, a moved master or a red run: no, and the
+  # publish below, after the master run, is the path as before.
+  pretested:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      # gh release create, and the page's version line on gh-pages.
-      contents: write
-      # Asking Pages to build the updated page.
-      pages: write
+      contents: read
+      # The pull request's test runs.
+      actions: read
     outputs:
-      tag: ${{ steps.release.outputs.tag }}
+      ok: ${{ steps.decide.outputs.ok }}
     steps:
+      # The history, for HEAD^1, HEAD^2 and whether one is inside the other.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - id: release
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: decide
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.sha }}
-        run: |
-          VER=$(node -p "require('./.claude-plugin/plugin.json').version")
-          TAG="v$VER"
-          # Only "no such tag" (exit 2) goes on: a network error must not read as a missing tag.
-          rc=0; git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null || rc=$?
-          if [ "$rc" = 0 ]; then echo "$TAG exists: nothing to publish"; exit 0; fi
-          if [ "$rc" != 2 ]; then echo "::error::could not look up $TAG (git ls-remote exit $rc)"; exit 1; fi
-          if ! [[ $VER =~ ^[0-9]+\.[0-9]+\.[1-9][0-9]*$ ]]; then echo "::notice::$TAG is not a patch: publish it by hand"; exit 0; fi
-          awk -v v="## $VER" 'index($0, v) == 1 && (length($0) == length(v) || substr($0, length(v) + 1, 1) == " ") {f = 1; next} /^## / {if (f) exit} f' CHANGELOG.md > notes.md
-          # The page shows the changelog heading's date, the author's day, not the runner's UTC one.
-          DAY=$(grep -m1 -oE "^## $VER \([0-9]{4}-[0-9]{2}-[0-9]{2}\)" CHANGELOG.md | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)
-          DAY=$(date -u -d "${DAY:-now}" '+%-d %b %Y')
-          if ! grep -q '[^[:space:]]' notes.md; then echo "::error::CHANGELOG.md has no text under ## $VER"; exit 1; fi
-          # shellcheck disable=SC2016 # the backticks are Markdown for the notes, not a command
-          printf '\nUpdate with `claude plugin update project-memory@project-memory`, then restart Claude Code.\n' >> notes.md
-          gh release create "$TAG" --target "$SHA" --title "project-memory $VER (bug fix)" --notes-file notes.md --latest
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          # The page's "vX.Y.Z, D Mon YYYY" line; a failure here leaves the release published and says so.
-          if gh api "repos/$GITHUB_REPOSITORY/contents/index.html?ref=gh-pages" -H 'Accept: application/vnd.github.raw' > index.html \
-            && PAGE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/index.html?ref=gh-pages" --jq .sha) \
-            && sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+, [0-9]{1,2} [A-Z][a-z]{2} [0-9]{4}/$TAG, $DAY/" index.html \
-            && grep -qF "$TAG, $DAY" index.html \
-            && base64 -w0 index.html > index.b64 \
-            && gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/index.html" -f message="Page: $VER" -f branch=gh-pages -f sha="$PAGE_SHA" -F content=@index.b64 >/dev/null; then
-            gh api -X POST "repos/$GITHUB_REPOSITORY/pages/builds" >/dev/null || echo "::warning::the page was updated but its build was not started"
-          else
-            echo "::warning::$TAG is published, but the page's version line was not updated"
-          fi
+        run: node tools/pretested.mjs
+
+  # The release from the pretested tree: it waits for the lints of this push, not for the master matrix.
+  publish-early:
+    needs: [pretested, actionlint, zizmor, agnix]
+    if: needs.pretested.outputs.ok == 'true'
+    # One publish at a time for a commit: the later one then finds the tag.
+    concurrency:
+      group: publish-${{ github.sha }}
+    permissions:
+      contents: write
+      pages: write
+    uses: ./.github/workflows/publish.yml # zizmor: ignore[self-repository]
+
+  assets-early:
+    needs: publish-early
+    if: needs.publish-early.outputs.tag != ''
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release.yml # zizmor: ignore[self-repository]
+    with:
+      tag: ${{ needs.publish-early.outputs.tag }}
+
+  # Once every test above passed on master (publish.yml): the path for a push that was not pretested. After an
+  # early publish it finds the tag and publishes nothing.
+  publish:
+    needs: [test, actionlint, zizmor, agnix]
+    if: github.event_name == 'push'
+    concurrency:
+      group: publish-${{ github.sha }}
+    permissions:
+      contents: write
+      pages: write
+    uses: ./.github/workflows/publish.yml # zizmor: ignore[self-repository]
 
   # The archives, checksums and attestation, as for a release published by hand: a release made with this
   # workflow's token starts no other workflow.
