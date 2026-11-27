@@ -65,6 +65,8 @@ export function tempHome(prefix) {
   delete process.env.GIT_DIR; delete process.env.GIT_WORK_TREE; delete process.env.GIT_INDEX_FILE;
   delete process.env.CLAUDE_CONFIG_DIR; delete process.env.CLAUDE_CODE_PROJECT_DIR_NAME; delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY;
   delete process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS; delete process.env.ANTHROPIC_MODEL; delete process.env.DISABLE_COMPACT; delete process.env.DISABLE_AUTO_COMPACT; delete process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT; delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE; delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW; delete process.env.PROJECT_MEMORY_TIMING; delete process.env.PROJECT_MEMORY_RECALL;
+  // Set in a Claude Code shell: the hooks read a project's settings from it, not from their cwd.
+  delete process.env.CLAUDE_PROJECT_DIR;
   // A Stop's tidy-up stays in the hook (memory-tier.mjs): a suite asserts what the Stop did once it returns,
   // and a child left running would race it and hold its temp folder open.
   process.env.PROJECT_MEMORY_TIDY = 'inline';
