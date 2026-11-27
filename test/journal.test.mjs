@@ -2057,6 +2057,13 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   const fe = entries([sd]).map((x) => x.e ?? x).find((x) => /gerbil parser fixed/.test(x.answered));
   ok(fe && JSON.stringify(fe.changed) === JSON.stringify(['C:\\elsewhere\\notes.md', 'nb.ipynb', 'src\\gerbil.js']),
     `a helper's entry lists the files it changed, newest last, relative to its folder, not an edit that failed (got ${JSON.stringify(fe?.changed)})`);
+  // 1.6.6 item 30: the report's save times its steps (read, lock, write), so doctor can say where a slow one went.
+  {
+    const T = await import('../src/timing.mjs'), { projectsRoot } = await import('../src/store.mjs');
+    T.begin('end'); T.tag('SubagentStop'); subagent({ ...input, agent_id: 'timed', agent_transcript_path: undefined, last_assistant_message: 'timed report lemur' }); await T.flush();
+    const line = T.read(0, join(projectsRoot(), T.FILE)).at(-1);
+    ok(line?.e === 'SubagentStop' && ['read', 'lock', 'write'].every((k) => typeof line.p[k] === 'number'), `a SubagentStop timing line holds read, lock and write (got ${JSON.stringify(line)})`);
+  }
   // 1.6.6 item 33: a parent transcript that exists but won't read is unknown, and unknown is private: no report saved.
   {
     const bad = join(dirname(sd), 'bbbb2222-main.jsonl'); writeFileSync(bad, '');

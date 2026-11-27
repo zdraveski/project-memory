@@ -11,6 +11,7 @@ import { text, readTail, readHead, openFile, records, chunk, markFrom, userText,
 import { PRIVATE, hushed, isHushed, isQuiet, QUIET, FORGOTTEN, forgotten, forgottenIn, listForgotten, OFF, unreadable, wasOff } from './privacy.mjs';
 import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, lockBudget, sleep, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
 import { fault, failures, clear } from './run-records.mjs';
+import * as T from './timing.mjs';
 import { dropSessions, ACTIVE } from './sessions.mjs';
 
 export const JOURNAL = 'journal';
@@ -254,15 +255,19 @@ export function subagent(input) {
     // scrolled out of the tail is still found; only when the look back finds nothing does the open turn stand.
     const pick = (all, cut) => { hush ||= all.hush === true; return (Number.isFinite(start) && all.opened.filter((x) => x.ms <= start).pop()) || (cut && Number.isFinite(start) ? null : all.open); };
     try { const r = readTail(tp, TAIL), a = turns(r.text); t = pick(a, !r.whole); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = (p ? pick(turns(`${p}\n${r.text}`)) : null) ?? a.open; } } catch (e) { if (e?.code !== 'ENOENT') return false; }   // unknown is private; a parent file that is not there holds no conversation
+    T.mark('read');
     const put = () => withLock(dir, () => {
+      T.mark('lock');   // from the read (or the last try) to the lock taken
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
       if (isQuiet(dir, s)) return false;
       // The parent's open turn is private: so is its subagent's report.
       if (hush || t && (t.frozen === true || PRIVATE.test(userText(t)))) return false;
       // Past the cap, the start and the end stay: the end usually holds the result.
       const all = clip(report, Infinity), rep = all.length <= J_REPORT ? all : `${all.slice(0, 5000)} … (${all.length - 7900} chars cut) … ${all.slice(-2900)}`;
-      return record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
-        raw: rep, said: rep, did: rep, changed, ran: [], cwd: input.cwd }]) > 0;
+      const n = record(dir, tp, [{ at: local(), id: `subagent-${String(id ?? '').replace(/[^\w-]/g, '').slice(0, 64) || keyed(rep, 12)}`, ask: `Subagent ${clip(type, 80)}: ${clip(ask, 500)}`.replace(/: $/, ''),
+        raw: rep, said: rep, did: rep, changed, ran: [], cwd: input.cwd }]);
+      T.mark('write');
+      return n > 0;
     });
     // A store still held after one wait gets one more, after a pause and with a fresh wait, as a Stop's does: backfill skips
     // agent transcripts, so a report not saved here is lost for good (1.6.1).
