@@ -2,6 +2,23 @@
 
 ## 1.6.7 (2026-11-27)
 
+A bug-fix release. Two more kinds of secret are cut, the compaction reminder reaches people on 200k models, and the project checks behind each release are faster. Nothing changes in how you use it.
+
+### Secrets
+
+- **Russian `токен` and `ключ` before a value are cut**, as `пароль` already was. Plain text such as `ключ: значение` is kept.
+- **Three secret rules have their own tests now:** a quoted `.env` value with blanks, a PowerShell `$env:` secret, and a long `redis-cli` line, which stays fast.
+
+### Compaction
+
+- **The reminder before a compaction reaches 200k models.** A model picked with `/model` or the `model` setting (Haiku 4.5, or Opus and Sonnet before 4.6, without `[1m]`) was taken as a 1M window, so the reminder at 850k never came.
+
+### Smaller fixes
+
+- **A project folder path with a decomposed accent (as macOS writes it) names the same memory folder as Claude Code** when no transcript path is given.
+- **Four more rules have tests:** the 900-character answer in the handoff, a missing proof-of-life file, the newest two working sessions at startup, and the transcript reader's text filter.
+- **The project's own checks are slimmer:** pull requests run the tests on Linux, macOS and Windows only; the mutant, fuzz and workflow-lint jobs are gone from CI.
+
 ## 1.6.6 (2026-11-27)
 
 A bug-fix release. Two kinds of password reached the journal and are now cut, forgotten text no longer survives in old copies, private conversations stay private when a file cannot be read, and several slow paths are fast again. Nothing changes in how you use it.
