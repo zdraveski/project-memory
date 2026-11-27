@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.6.5 (2026-11-27)
+
+A bug-fix release. The secret detector catches more secrets and cuts less ordinary text, the reminder before a compaction now follows the window you set, and the recall pointers show on slow machines. Nothing changes in how you use it.
+
+### Secrets
+
+- **More secrets are cut.** A value after `password is:`, `password =>` or `password -`, a PIN such as `pin: 4821`, a `passcode`, an older Vault token after `vault login`, and keys and passwords named like `signing_key`, `githubToken`, `dbPass` or `GITHUB_PAT` reached the journal. Now they are replaced like any other secret.
+- **Less ordinary text is taken for a secret.** "the token is expired!", "password: Required field", "token: required", "log in `reports/folder`" and a folder path after `PWD=` were cut as passwords. They are now kept.
+
+### Compaction
+
+- **The window you set in settings.json is used.** A compaction window set with `autoCompactWindow` (or `/autocompact`) was ignored, so the reminder to save before a compaction never came and `memory doctor` named the wrong size. Both now follow your setting.
+- **Compaction switched off is seen.** With compaction off, `memory doctor` now says so, and the reminder no longer warns of a compaction that will not come.
+
+### Recall
+
+- **The recall pointers show on a machine slow to start Node.** Their time limit counted Node's start-up, so on a slow machine the look-up never answered. It now counts from when the look-up begins.
+
+### Tests
+
+- **Two more timing tests no longer fail at random on busy test machines.**
+
 ## 1.6.4 (2026-11-27)
 
 A bug-fix release, mostly about secrets. Four ways a password or key could reach the journal or the note history are closed, and the clean-up command no longer stops halfway. Nothing changes in how you use it.
