@@ -196,6 +196,14 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     'password is: required', 'the pin is stuck', 'PW is short']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
 }
 
+// 1.6.5 item 28: a legacy Vault token (s. + 24 characters) given to `vault login` is cut, as hvs. ones are; `s.` elsewhere stays.
+{
+  const LEGACY = ['s', '.', 'Ab12Cd34Ef', '56Gh78Ij90', 'Kl12', 'Mn34'].join('');
+  ok(redact(`vault login ${LEGACY}`) === 'vault login [redacted]', 'vault login <legacy token> is cut');
+  ok(!redact(`vault login -method=token token=${LEGACY}`).includes(LEGACY), 'vault login with a flag and token= is cut');
+  for (const t of ['vault login -method=userpass username=bob', 'const n = s.toLowerCase();', 'see s.ConfigurationManager now', 'vault status', 'ms.Ab12Cd34Ef56Gh78Ij90Kl12Mn34']) ok(redact(t) === t, `kept: ${t}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';
