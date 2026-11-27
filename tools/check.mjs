@@ -78,8 +78,8 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
 }
 // Publish before the master run only for a merge whose tree a green pull_request run of this repo already tested.
 {
-  const run = (o) => ({ id: 1, status: 'completed', conclusion: 'success', created_at: '2026-11-27T10:00:00Z', updated_at: '2026-11-27T10:05:00Z', head_repository: { full_name: 'o/r' }, ...o });
-  const yes = { parents: ['a', 'b'], ancestor: true, sameTree: true, runs: [run()], repo: 'o/r', now: Date.parse('2026-11-27T12:00:00Z') };
+  const run = (o) => ({ id: 1, status: 'completed', conclusion: 'success', created_at: '2026-11-27T10:00:00Z', updated_at: '2026-11-27T10:05:00Z', head_repository: { full_name: 'o/r' }, pull_requests: [{ base: { ref: 'master', sha: 'm' } }], ...o });
+  const yes = { parents: ['a', 'b'], ancestor: true, sameTree: true, runs: [run()], repo: 'o/r', inside: (sha) => sha === 'm', now: Date.parse('2026-11-27T12:00:00Z') };
   assert.equal(decide(yes).ok, true);
   assert.equal(decide({ ...yes, ancestor: false }).ok, false);   // master moved
   assert.equal(decide({ ...yes, sameTree: false }).ok, false);
@@ -91,6 +91,9 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
   assert.equal(decide({ ...yes, runs: [] }).ok, false);
   assert.equal(decide({ ...yes, now: Date.parse('2026-11-28T10:05:01Z') }).ok, false);   // a day old: stale
   assert.equal(decide({ ...yes, runs: [run({ updated_at: undefined })] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [run({ pull_requests: [{ base: { ref: 'master', sha: 'old' } }] })] }).ok, false);   // base not inside the branch
+  assert.equal(decide({ ...yes, runs: [run({ pull_requests: [{ base: { ref: 'parent', sha: 'm' } }] })] }).ok, false);   // a stacked PR's run
+  assert.equal(decide({ ...yes, runs: [run({ pull_requests: [] })] }).ok, false);
   // The latest run counts: green then red is no; red then green (a rerun of a flake as a new run) is yes.
   assert.equal(decide({ ...yes, runs: [run({ id: 2, conclusion: 'failure', created_at: '2026-11-27T11:00:00Z' }), run()] }).ok, false);
   assert.equal(decide({ ...yes, runs: [run({ conclusion: 'failure' }), run({ id: 2, created_at: '2026-11-27T11:00:00Z' })] }).ok, true);
