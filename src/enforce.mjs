@@ -114,13 +114,7 @@ export function hits(rule, command) {
   const segs = segments(command).map(tokens), all = segs.flat().flatMap((w) => [w, ...w.split(/[\\/]/)]); // `unless` also sees each part of a path; `has` stays whole words
   let on = false, hit = false;
   for (const toks of segs) {
-    let i = 0;
-    while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || LEAD.includes(toks[i]) || !toks[i])) {
-      const lead = toks[i++];
-      if (!LEAD.includes(lead)) continue;
-      while (/^-|^\/[ck]$/i.test(toks[i] ?? '')) i += LEAD_VALUE[lead]?.includes(toks[i]) ? 2 : 1;
-      if (lead === 'rtk' && ['bypass', 'proxy'].includes(toks[i])) i++;
-    }
+    let i = afterLead(toks);
     if (!/^(?:.*[\\/])?git(?:\.exe)?$/i.test(toks[i++] ?? '')) { const q = /\s/.test(toks[i - 1] ?? '') ? toks[i - 1] : SHELL.test(toks[i - 1] ?? '') ? toks.slice(i).find((t) => /\s/.test(t)) : ''; if (q) { const n = hits(rule, q); on ||= n.on; hit ||= n.hit; } continue; }
     while (toks[i]?.startsWith('-')) i += OPTS_WITH_VALUE.includes(toks[i]) ? 2 : 1;
     if (toks[i] !== rule.on) continue;
@@ -159,8 +153,12 @@ export function lessonOf(text) {
     const f = front(t);
     if (f.tier === 'archive') return null;
     const lines = t.slice(0, end).split('\n'), got = {};
-    let indented = '';
+    let indented = '', block = false;
     lines.forEach((l, at) => {
+      // The lines of a `description: |` or `>` block are text, whatever they quote.
+      if (/^description:[ \t]*[>|]/.test(l)) { block = true; return; }
+      if (block && (/^[ \t]/.test(l) || !/\S/.test(l))) return;
+      block = false;
       const m = /^([ \t]*)(applies_to|applies_when|instead|resolves):[ \t]*(.*)$/.exec(l);
       if (!m) return;
       if (m[1]) indented ||= m[2]; else got[m[2]] ??= { v: m[3].trimEnd(), at };
@@ -193,12 +191,13 @@ export function lessonOf(text) {
     const toks = seen.split(/\s+/).map((w) => w.replace(/^[`'"(]+/, '').replace(/[`'".,;:)]+$/, '')).filter(Boolean);
     const files = toks.filter((w) => /^[\w.-]+\.[A-Za-z0-9]{1,5}$/.test(w) && w.length >= 5 && !COMMON.has(w.toLowerCase()));
     const named = { paths: [...new Set(toks.filter((w) => w.includes('/')))], files: [...new Set(files)], families: FAMILIES.filter((fam) => new RegExp(`\\b(?:${FORMS[fam]})\\b`, 'i').test(seen)) };
+    // A hidden lesson keeps only its reason: its text must not reach the cache or a caller.
     const hidden = PRIVATE.test(t) ? 'holds <private>' : scan(name) || scan(desc) || scan(instead);
-    return { lesson: { type: f.type, name, desc, to, when, instead, resolves, named, hidden } };
+    return { lesson: hidden ? { hidden } : { type: f.type, name, desc, to, when, instead, resolves, named, hidden } };
   } catch { return null; }
 }
 
-// The command's words after the lead words (env, sudo, VAR=x ...), as hits() skips them; hits() keeps its own copy of this loop.
+// The index of a segment's command word, after the lead words (env, sudo, VAR=x ...) and their options. hits() and familyOf() both use it.
 function afterLead(toks) {
   let i = 0;
   while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || LEAD.includes(toks[i]) || !toks[i])) {
@@ -238,7 +237,7 @@ export function familyOf(command) {
       if ((cmd === 'terraform' || cmd === 'kubectl') && sub === 'apply') out.add('deploy');
       if ((cmd === 'terraform' && sub === 'destroy') || (cmd === 'kubectl' && sub === 'delete')) out.add('destroy');
       if (cmd === 'rm' && flag(args, '[rR]', 'recursive') && flag(args, 'f', 'force')) out.add('destroy');
-      if (cmd === 'remove-item' && args.some((x) => /^-(?:r|rec|recurse)$/i.test(x))) out.add('destroy');
+      if (cmd === 'remove-item' && args.some((x) => /^-r[a-z]*$/i.test(x) && 'recurse'.startsWith(x.slice(1).toLowerCase()))) out.add('destroy'); // any prefix of -Recurse
       const script = INTERPRETER.test(cmd) && plain[0] && !/\s/.test(plain[0]) ? plain[0] : '';
       if ([word, script].some((n) => n.replace(/^.*[\\/]/, '').toLowerCase().split(/[-_.]/).includes('deploy'))) out.add('deploy');
     }
@@ -267,6 +266,7 @@ export const LOG = '.enforce-log', CACHE = '.enforce.json', LOG_MAX = 256 * 1024
 // lessonOf may read differently): only a note that is new or changed since is read, and then only its first 64 KB, ruleOf only if that
 // holds `enforce:`. Gives [{ file, r, l, mtime }]: r is ruleOf's answer, l lessonOf's, each null for none. A cache that does not read is
 // rebuilt, and with `write: false` it is not written (a reader that must leave no file). Never throws.
+const lessonShaped = (l) => l == null || (typeof l === 'object' && (typeof l.bad === 'string' || (!!l.lesson && typeof l.lesson === 'object' && (l.lesson.hidden ? typeof l.lesson.hidden === 'string' : Array.isArray(l.lesson.to)))));
 export function notesOf(dir, { write = true } = {}) {
   let old = {}, names = [], changed = false;
   try { const j = JSON.parse(readFileSync(join(dir, CACHE), 'utf8')); if (j?.v === CACHE_V && j.files && typeof j.files === 'object' && !Array.isArray(j.files)) old = j.files; } catch {}
@@ -276,7 +276,8 @@ export function notesOf(dir, { write = true } = {}) {
     try {
       const { mtimeMs: mtime, size } = statSync(join(dir, file)), was = old[file];
       let r, l;
-      if (was && was.mtime === mtime && was.size === size) { r = was.r; l = was.l; }
+      // A cache entry whose lesson is not the shape lessonOf gives is read again.
+      if (was && was.mtime === mtime && was.size === size && lessonShaped(was.l)) { r = was.r; l = was.l; }
       else {
         changed = true;
         const text = readHead(join(dir, file), Math.min(size, HEAD));
@@ -287,7 +288,7 @@ export function notesOf(dir, { write = true } = {}) {
       out.push({ file, r: r ?? null, l: l ?? null, mtime });
     } catch {}
   }
-  if (write && (changed || Object.keys(old).length !== Object.keys(now).length)) try { writeFileSync(join(dir, CACHE), JSON.stringify({ v: CACHE_V, files: now })); } catch {}
+  if (write && (changed || Object.keys(old).length !== Object.keys(now).length)) try { writeFileSync(join(dir, CACHE), JSON.stringify({ v: CACHE_V, files: now }), { mode: 0o600 }); } catch {}
   return out;
 }
 const rulesIn = (dir) => notesOf(dir).filter((x) => x.r).map(({ file, r }) => ({ file, ...r }));

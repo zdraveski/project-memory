@@ -104,7 +104,7 @@ ok(lessonsOff('0') === true && lessonsOff(' 0 ') === true && lessonsOff('1') ===
   ok(blockText([{ lesson: lock, how: 3 }], 'push', 'cmd', 3, NOW).endsWith('\nand 3 more: memory skill, lessons'), 'H2 more line: memory skill, lessons');
   ok(blockText([{ lesson: item('n.md', '', { name: 'The name only', desc: '' }), how: 1 }], 'x.mjs', 'edit', 0, NOW).includes('] The name only (note: n.md)'), 'with no description the name is the text');
   ok(blockText([{ lesson: item('x.md', '', {}, { days: 3.9 }), how: 1 }], 'x', 'edit', 0, NOW).includes('[lesson, 3d]') && blockText([{ lesson: item('x.md', '', {}, { days: -2 }), how: 1 }], 'x', 'edit', 0, NOW).includes('[lesson, 0d]'), 'age is whole days, never negative');
-  const longLine = blockText([{ lesson: item('x.md', '', { desc: 'a'.repeat(300) }), how: 1 }], 'x', 'edit', 0, NOW).split('\n')[1];
+  const longLine = blockText([{ lesson: item('x.md', '', { desc: 'ab '.repeat(120) }), how: 1 }], 'x', 'edit', 0, NOW).split('\n')[1];
   ok(longLine.length === 300 && longLine.endsWith('… (note: x.md)') && longLine.includes('…'), `a line is clipped to 300 characters and keeps its note (got ${longLine.length})`);
   const wide = { ...lock, l: { ...lock.l, desc: 'a'.repeat(300), instead: 'b'.repeat(200) } }, wl = blockText([{ lesson: wide, how: 1 }], 'x', 'edit', 0, NOW).split('\n')[1];
   ok(wl.length <= 300 && wl.endsWith('(note: feedback-store-writes.md)') && wl.startsWith('- [dead end, 12d] aaa'), 'a dead end of the longest parts is clipped to 300 too, and keeps its note');
