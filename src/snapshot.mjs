@@ -3,12 +3,12 @@
 // command line for it (gitArgs, gitWhy). Moved here whole from memory-tier.mjs and store.mjs, as they were.
 // Imports only Node and store.mjs (and privacy.mjs's isOff); git runs through `exec`, which a test replaces with a scripted stand-in.
 
-import { chmodSync, readFileSync, writeFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, existsSync, statSync, realpathSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join, relative, isAbsolute, basename, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { isOff } from './privacy.mjs';
-import { projectsRoot, replaceIfUnchanged, raw, allStores, pathKey, same, local, reason, LOCK_STALE } from './store.mjs';
+import { projectsRoot, withLock, replaceIfUnchanged, raw, allStores, pathKey, same, local, reason, LOCK_STALE } from './store.mjs';
 import { redact, holdsSecret } from './secrets.mjs';
 import { stopRan } from './run-records.mjs';
 
@@ -134,7 +134,7 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH, record: keep = 
 // What one snapshot did: `busy`, `off` or `failed` (each with why), `rest` (files a first snapshot in parts still has to add),
 // `made` ('initialised' or 'committed'), none of them when nothing changed; and the notes it `held` and the stores it `missed`.
 function take(gitWait, batch) {
-  const root = projectsRoot();
+  const root = projectsRoot(), lockDir = join(root, '.snapshot-lock');
   let held = [], missed = [];
   const said = (r) => ({ ...r, held, missed });
   // The C locale: "nothing to commit" is matched below, in git's English. (Git
@@ -169,6 +169,13 @@ function take(gitWait, batch) {
         for (const f of days) to(join(d, 'journal', f), 0o600);
       }
     }
+    // One snapshot at a time across processes, from the stage to the commit: a run's add staged a note a second run had already
+    // checked, and that run's commit took the index as it was, so a key written in between reached the history for good. Held
+    // the way the stores' locks are (a killed run's goes stale), kept fresh by exec's touch; another run holds it: busy, the next
+    // turn retries. Its own folder: the projects root's lock is the memory-off tags'. The body below is not indented, to keep this diff small.
+    mkdirSync(lockDir, { recursive: true });
+    const done = withLock(lockDir, () => {
+    held_ = join(lockDir, '.lock');
     // Another git's work in flight is busy, not a failure -- the next turn retries (busy(), below).
     const b = busy();
     if (b instanceof Error) throw b;
@@ -303,6 +310,8 @@ function take(gitWait, batch) {
     // `diff --name-only`, not `status`: tracked files only, no scan of untracked ones (80-300 ms), and a path `add -A` can never add (nul.md) never shows.
     if (!rest) { try { rest = owed(); } catch {} }
     return said({ rest, made: fresh ? 'initialised' : 'committed' });
+    });
+    return done ?? said({ busy: true });
   } catch (e) {
     // No git is a setup, not a failure: everything but the history works.
     // Only git's own start: a lock that vanished between two calls is ENOENT
@@ -323,7 +332,7 @@ function take(gitWait, batch) {
     // "Permission denied" are a history that can never commit, and busy hid it.
     if (/\.lock'?: File exists|cannot lock ref '[^']*': is at |reference already exists|could not lock config file .*: File exists|cannot copy .* File exists/.test(why)) return said({ busy: true });
     return said({ failed: why });
-  } finally { if (lc === undefined) delete process.env.LC_ALL; else process.env.LC_ALL = lc; }
+  } finally { if (held_?.startsWith(lockDir)) held_ = null; if (lc === undefined) delete process.env.LC_ALL; else process.env.LC_ALL = lc; }
 }
 
 // ponytail: two sessions updating this counter at once can miscount by one;
