@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **No more flashing console windows on Windows after a reply.** The background tidy-up now runs its git commands without opening a window.
+- **The end-of-session hook now declares the 1.5 second limit Claude Code gives plugins there.** It said 3 seconds, which Claude Code does not honour.
 
 ## 1.6.2 (2026-11-26)
 
