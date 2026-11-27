@@ -120,6 +120,11 @@ ok((await find('readme nightly warehouse')).length === 0, 'held by 41 of 42: not
 p.day([...filler(p), p.entry({ key: 'k-two', asked: 'nightly export warehouse' }), p.entry({ key: 'k-one', at: `${DAY} 08:00`, asked: 'nightly export ledger' }), p.entry({ key: 'k-x', asked: 'warehouse tidy' })]);
 got = await find('nightly export warehouse ledger');
 ok(got.map((e) => e.key).join() === 'k-one,k-two', `rarer words rank first (got ${got.map((e) => e.key)})`);
+// A long pasted prompt: only the first 50 distinct words are matched, so the scoring loop stays short.
+const manyWords = Array.from({ length: 120 }, (_, i) => `zq${String.fromCharCode(97 + (i >> 5))}${String.fromCharCode(97 + (i & 31))}x`);
+p.day([...filler(p), p.entry({ key: 'k-long', asked: manyWords.join(' ') })]);
+got = await find(manyWords.join(' '));
+ok(got.length === 1 && got[0].shares.length === 50, `a long prompt is cut to 50 words (got ${got[0]?.shares.length})`);
 // The block: under BLOCK_MAX, without the answers when it is over.
 const lng = { ...other, asked: 'go', answered: 'x '.repeat(400), changed: ['a.js', 'b.js', 'c.js', 'd.js'], shares: ['nightly'] };
 const b = sharesBlock([lng, lng, lng]);

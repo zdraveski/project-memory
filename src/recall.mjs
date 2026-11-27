@@ -319,9 +319,11 @@ export async function onChange(input, { deadline = performance.now() + DEADLINE,
 // helper's entry, a [private] one, a forgotten key, an exchange in `skip` ("<tag> <at>") or `told` (keys), a conversation marked private,
 // or this conversation's unless older than `since`. [] when the text has under 2 words; null when the forget list will not read or past
 // `deadline`. `max`: the window's bytes (the prompt hook's is smaller, PROMPT_BYTES).
-export const RECENT_DAYS = 90, RECENT_BYTES = 4 * 1024 * 1024, RARE = 0.05, YOUNG = 40, SHOWN = 3;
+export const WORDS_MAX = 50, RECENT_DAYS = 90, RECENT_BYTES = 4 * 1024 * 1024, RARE = 0.05, YOUNG = 40, SHOWN = 3;
 export async function byWords(store, text, session, { deadline = performance.now() + DEADLINE, since = '', skip = new Set(), told = new Set(), max = RECENT_BYTES, now = Date.now(), test = false } = {}) {
-  const ws = words(text), cut = (w) => ws.as.get(w) !== w && ws.as.get(w);
+  const ws = words(text);
+  ws.length = Math.min(ws.length, WORDS_MAX);   // a pasted page would otherwise run holds() on every word for every entry
+  const cut = (w) => ws.as.get(w) !== w && ws.as.get(w);
   if (ws.length < (test ? 1 : 2)) return test ? () => false : [];
   const hayOf = (e) => [e.asked, e.answered, ...e.changed].join('\n').normalize('NFC').toLowerCase(), holds = (hay, w) => hay.includes(w.slice(0, -1)) && has(hay, w, cut(w));
   const { recent } = await import('./journal.mjs');
@@ -329,6 +331,7 @@ export async function byWords(store, text, session, { deadline = performance.now
   if (!found) return null;
   const seen = [], df = ws.map(() => 0);
   for (const e of found) {
+    if (performance.now() > deadline) return null;
     // Ran is left out: half the bytes, and mostly command noise.
     // Lower case, as search reads an entry. Every form has() finds holds the word but its last letter (library: librari-es), so a
     // cheap includes() goes first.
