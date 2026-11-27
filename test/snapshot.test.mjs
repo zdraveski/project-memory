@@ -263,6 +263,19 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(msg === 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment' && existsSync(join(g, 'config.lock')) && seen.length === 0, 'a config.lock that is there: busy, and not taken away');
   rmSync(join(g, 'config.lock'));
 
+  // A purge holds the snapshot lock for its whole run (item 40): a snapshot started meanwhile cannot commit, and one in flight stops the purge.
+  ours();
+  const slock = join(root, '.snapshot-lock', '.lock');
+  let heldAt = null;
+  stand((a) => { if (a.includes('clone')) heldAt = existsSync(slock); return ''; });
+  dropDays(dir, ['2026-01-01']);
+  ok(heldAt === true && !existsSync(slock), 'a purge holds .snapshot-lock while it runs and lets go after');
+  mkdirSync(slock, { recursive: true });
+  stand('');
+  msg = ''; try { dropDays(dir, ['2026-01-01']); } catch (e) { msg = e.message; }
+  ok(msg.includes('busy') && seen.length === 0 && existsSync(slock), 'a snapshot in flight (its lock held): the purge gives way, runs no git');
+  rmSync(slock, { recursive: true });
+
   // forget --purge drops restore's kept copies too (item 32), so their text does not outlive the purge; a rescan keeps them for its own scrub.
   const kept = 'refs/project-memory/replaced/abc', dels = [];
   stand((a) => { if (a.includes('for-each-ref')) return a.at(-1) === 'refs/project-memory/replaced/' ? `${kept}\n` : ''; if (a.includes('update-ref')) dels.push(a.at(-1)); return ''; });

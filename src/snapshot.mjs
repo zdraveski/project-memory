@@ -21,8 +21,8 @@ export const BATCH = 1000;          // files a part of a first snapshot adds: ~6
 let stand;
 export const useGit = (f) => { stand = f; };
 // The lock a purge holds is touched before each git it runs, so a live purge never reads as a stale lock to busy().
-let held_ = null;
-const exec = (...a) => { if (held_) try { const d = new Date(); utimesSync(held_, d, d); } catch {} return (stand ?? execFileSync)(a[0], a[1], { ...a[2], windowsHide: true }); };  // windowsHide: no console window flashes under the detached tidy-up
+let held_ = null, held2_ = null;   // held2_: a purge's snapshot lock, kept fresh beside its config.lock
+const exec = (...a) => { for (const h of [held_, held2_]) if (h) try { const d = new Date(); utimesSync(h, d, d); } catch {} return (stand ?? execFileSync)(a[0], a[1], { ...a[2], windowsHide: true }); };  // windowsHide: no console window flashes under the detached tidy-up
 
 // git for the snapshot repo, whatever the user's own git config says: a global
 // commit.gpgsign failed every snapshot, a global hooks path ran the user's
@@ -419,7 +419,11 @@ const rewrite = (work, dropKept) => {
   // index is reset to the new HEAD so it holds no old blob.
   // The snapshot hook takes only its .snapshot-lock (snapshots against each other) and git's own, and reads a fresh config.lock (nothing here writes config) as busy: the purge
   // holds that one for its whole run, and gives way to a commit already in flight, whose work the stale copy would overwrite.
-  const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), wait = new Error(BUSY);
+  const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), wait = new Error(BUSY), sdir = join(projectsRoot(), '.snapshot-lock');
+  // Also the snapshot lock, for the whole run: a snapshot that began after the clone committed, and the fetch below overwrote it (audit A10).
+  mkdirSync(sdir, { recursive: true });
+  if (withLock(sdir, () => { held2_ = join(sdir, '.lock'); try { purge(); return true; } finally { held2_ = null; } }) === null) throw wait;
+  function purge() {
   if (busy()) throw wait;
   try { writeFileSync(lock, '', { flag: 'wx', mode: 0o600 }); } catch (e) { throw e.code === 'EEXIST' ? wait : e; }
   // A run that was killed left its copy, the full unscrubbed history, behind; holding the lock, no other run is using one.
@@ -439,6 +443,7 @@ const rewrite = (work, dropKept) => {
     git('reflog', 'expire', '--expire=now', '--all');
     git('gc', '-q', '--prune=now');   // no detached gc --auto can start under it now: gc.auto=0 (gitArgs)
   } finally { held_ = null; rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
+  }
 };
 // shortcut: the whole history is read into one buffer (1 GiB cap) and only branches come back from the rewrite, so a hand-made tag keeps old text; upgrade to streaming or fetch all refs if that is hit.
 const FAST = { maxBuffer: 1 << 30, timeout: 300_000 }, QUIET_FAST = { ...FAST, stdio: ['ignore', 'pipe', 'ignore'] };   // git warns about a ref that names a blob
