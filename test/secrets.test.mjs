@@ -234,6 +234,13 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
   for (const [t, v] of [['log in bob/Xk9mQ2!zz', 'Xk9mQ2!zz'], ['log in bob / Xk9mQ2!zz', 'Xk9mQ2!zz'], ['log in with bob:Hunter2xx', 'Hunter2xx'], ['log in `bob/Xk9mQ2zz7`', 'Xk9mQ2zz7']]) ok(!redact(t).includes(v), `cut: ${t} -> ${redact(t)}`);
 }
 
+// 1.6.5 item 25: `PWD=/c/Users/x1` and `pwd: /home/u/x1` (a shell's working directory) are kept; `pwd` as a password, path-like or not, is cut.
+{
+  for (const t of ['PWD=/c/Users/x1', 'pwd: /home/u/x1', 'pwd=/home/user/dir1', 'PWD=/c/Users/x1/app', 'PWD=/home/user/project2', 'PWD=/home/user/project', 'pwd: /home/user', 'OLDPWD=/home/user/work2']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+  for (const [t, w] of [['pwd=Tr0ub4dor3', 'pwd=[redacted]'], ['pwd: abc123def', 'pwd: [redacted]'], ['password: Tr0ub4dor3', 'password: [redacted]'], ['password=/Xk9mQ2#zz', 'password=[redacted]'],
+    ['PWD=/Xk9mQ2#zz', 'PWD=[redacted]'], ['pwd=/Tr0ub4dor3x', 'pwd=[redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';
