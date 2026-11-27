@@ -26,7 +26,7 @@ import { suites, settle, tableOf, testsOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
 import { srcFiles, pluginFiles, plan, pool, isTimed } from './suites.mjs';
 import { decide } from './pretested.mjs';
-import { bump, heading, section, isPatch, missingAssets } from './release.mjs';
+import { bump, heading, section, isPatch, missingAssets, toRerun } from './release.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
@@ -116,6 +116,9 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
   assert.ok(isPatch('1.6.6') && !isPatch('1.7.0') && !isPatch('1.6'));
   assert.deepEqual(missingAssets(['project-memory-v1.6.6.zip', 'SHA256SUMS'], 'v1.6.6'), ['project-memory-v1.6.6.tar.gz']);
   assert.deepEqual(missingAssets(['project-memory-v1.6.6.tar.gz', 'project-memory-v1.6.6.zip', 'SHA256SUMS'], 'v1.6.6'), []);
+  const job = (name, conclusion) => ({ name, conclusion, databaseId: name.length });
+  assert.deepEqual(toRerun([job('test (ubuntu-latest, 22)', 'success'), job('assets-early / attach', 'failure')]), { rerun: [job('assets-early / attach', 'failure')], red: [] });
+  assert.deepEqual(toRerun([job('test (macos-latest, 26)', 'failure'), job('publish / publish', 'skipped')]), { rerun: [], red: ['test (macos-latest, 26)'] });
 }
 // The suites' order: biggest first in a pool a core narrower than the machine, the timed files after, alone; never no pool at all.
 assert.deepEqual(plan([{ file: 'a.test.mjs', size: 1 }, { file: 'b-timed.test.mjs', size: 9 }, { file: 'c.test.mjs', size: 5 }, { file: 'd-timed.test.mjs', size: 2 }], 4),

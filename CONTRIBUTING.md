@@ -328,9 +328,11 @@ A patch (X.Y.Z with Z above 0) is one pull request, and merging it is the releas
    `master`, or a red test job when the tree was not pretested, publishes
    nothing: fix it in a new pull request, and the release follows that merge.
    (`changed-lines.yml` blocks nothing.)
-5. `node tools/release.mjs after X.Y.Z` waits for the `master` run, checks the
-   release has its three files and, if not, re-runs the failed jobs: re-running
-   finds the tag already made and skips it.
+5. `node tools/release.mjs after X.Y.Z` waits for the `master` run. If it is
+   red, it re-runs only a failed `publish` or `assets` job (re-running finds the
+   tag already made and skips it) and names any failed test or lint job, which
+   is fixed, never re-run; either way it stops with no deploy line. If it is
+   green, it checks the release has its three files and prints the deploy command.
 
 A check bound by wall-clock time (a hook within 400 ms, code that must stay
 linear) goes in a `test/*-timed.test.mjs` file, named under its source in

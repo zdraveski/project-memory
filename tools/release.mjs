@@ -6,8 +6,8 @@
 //                 the version's changelog section has text; once every check of the pull request passed (not only the
 //                 required ones), it leaves draft and merges. `claude plugin validate . --strict` is run by hand first (--validated says so):
 //                 nothing in this repository runs the claude command (CONTRIBUTING).
-//   after X.Y.Z   waits for master's test run, checks the release has its three files (else re-runs the failed jobs)
-//                 and prints the deploy command.
+//   after X.Y.Z   waits for master's test run; red: re-runs a failed publish or assets job, names a failed test or lint,
+//                 and stops. Green: checks the release has its three files and prints the deploy command.
 // Run: node tools/release.mjs start|ready|after X.Y.Z [--validated]
 import { readFileSync, writeFileSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -40,6 +40,14 @@ export const section = (text, v) => {
 };
 // The files release.yml attaches that a release lacks.
 export const missingAssets = (names, tag) => [`project-memory-${tag}.tar.gz`, `project-memory-${tag}.zip`, 'SHA256SUMS'].filter((n) => !names.includes(n));
+// A red master run's failed jobs: the publish and assets ones may be re-run (re-running finds the tag and skips it);
+// any other is a red test or lint, named and never re-run until a flake passes.
+const FAILED = ['failure', 'cancelled', 'timed_out', 'startup_failure'];
+export const toRerun = (jobs) => {
+  const failed = jobs.filter((j) => FAILED.includes(j.conclusion));
+  const ours = (j) => /^(publish|assets)/.test(j.name);
+  return { rerun: failed.filter(ours), red: failed.filter((j) => !ours(j)).map((j) => j.name) };
+};
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
@@ -75,11 +83,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     if (!sha) { console.error(`${branch} is not merged yet`); process.exit(1); }
     const [r] = JSON.parse(run('gh', 'run', 'list', '--workflow', 'test', '--commit', sha, '--event', 'push', '--json', 'databaseId') || '[]');
     if (!r) { console.error(`no test run on master for ${sha} yet: try again in a minute`); process.exit(1); }
-    try { show('gh', 'run', 'watch', String(r.databaseId), '--exit-status'); } catch { console.error('the master run failed: see it above; no deploy while master is red'); process.exit(1); }
+    try { show('gh', 'run', 'watch', String(r.databaseId), '--exit-status'); } catch {
+      const { rerun, red } = toRerun(JSON.parse(run('gh', 'run', 'view', String(r.databaseId), '--json', 'jobs')).jobs);
+      if (red.length) console.error(`the master run failed in ${red.join(', ')}: fix it in a new pull request (never re-run a red test)`);
+      else for (const j of rerun) { console.error(`re-running ${j.name}`); show('gh', 'run', 'rerun', '--job', String(j.databaseId)); }
+      console.error('no deploy while master is red'); process.exit(1);
+    }
     let names = [];
     try { names = JSON.parse(run('gh', 'release', 'view', tag, '--json', 'assets')).assets.map((a) => a.name); } catch {}
     const missing = missingAssets(names, tag);
-    if (missing.length) { console.error(`${tag} lacks ${missing.join(', ')}: re-running the failed jobs`); show('gh', 'run', 'rerun', String(r.databaseId), '--failed'); process.exit(1); }
+    if (missing.length) { console.error(`${tag} lacks ${missing.join(', ')}, though master is green`); process.exit(1); }
     console.log(`${tag} has its three files. Deploy: claude plugin update project-memory@project-memory, then check the installed commit is ${sha.slice(0, 7)}`);
   }
 }
