@@ -275,7 +275,7 @@ const SECRETS = [
   [/(\bPW[ \t]{1,5})(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/g, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
   [/(\b(?:and|with|plus)\s{1,5}(?:pass|pwd|pw)\s{1,5}["']?)(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{4,200}[^\s"',;.])/gi, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
   // "login with me / X", "creds: bob / X", "the credentials are me:X"; then "credential=X". Not a URL (`login: http://h`).
-  [/(\b(?:creds?|credentials?|logins?|log[ -]?in|sign[ -]?in)\b(?:[ \t:]{1,3}(?:with|are|is|as|for))?[ \t:]{1,3}[^\s/:"']{1,40}[ \t]{0,3}[/:][ \t]{0,3}["']?)(?![/\\])(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/gi, (m, pre, v) => (arg(v) || code(v) || /^[\w./-]+\.[A-Za-z]{1,5}(?::\d+)*$/.test(v) ? m : pre + '[redacted]')],
+  [/(\b(?:creds?|credentials?|logins?|log[ -]?in|sign[ -]?in)\b(?:[ \t:]{1,3}(?:with|are|is|as|for))?[ \t:]{1,3}[^\s/:"']{1,40}[ \t]{0,3}[/:][ \t]{0,3}["']?)(?![/\\])(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/gi, (m, pre, v) => (arg(v) || code(v) || /^[\w./-]+\.[A-Za-z]{1,5}`?(?::\d+)*$/.test(v) ? m : pre + '[redacted]')],
   [/(\b(?:creds?|credentials?)[ \t]{0,3}[:=][ \t]{0,3}["']?)(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/gi, (m, pre, v) => (arg(v) || code(v) || /^[\w./-]+\.[A-Za-z]{1,5}(?::\d+)*$/.test(v) ? m : pre + '[redacted]')],
   // A list of one-time codes: the rest of the sentence, when it holds a digit.
   [/(\b(?:recovery|backup|unlock|reset|verification|2fa|mfa|otp)[ -]?(?:codes?|keys?)\b[ \t]{0,3}(?:are|is|[:=])[ \t]{0,3})(?=[^\n.;]{0,300}\d)([^\n.;]{4,300})/gi, (m, pre, v) => (v.toLowerCase().split(/\s+/).some((x) => FUNC.has(x)) ? m : pre + '[redacted]')],

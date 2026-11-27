@@ -115,6 +115,10 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     ['curl -H "X-Auth-Token abcd1234efgh5678ijkl9012"', 'curl -H "X-Auth-Token [redacted]"'],
     ["vhost, the password was replaced, and only then", "vhost, the password was replaced, and only then"],
     ["It signs the login tokens: restore", "It signs the login tokens: restore"],
+    // "log in <path>" is prose, not a login (bug list item 10).
+    ["log in `reports/RESUME-1.6.0.md` \"1.5.4 build log\".", "log in `reports/RESUME-1.6.0.md` \"1.5.4 build log\"."],
+    ["the build log in `reports/RESUME-1.6.0.md` says", "the build log in `reports/RESUME-1.6.0.md` says"],
+    ["login bob/Sunny2day!x", "login bob/[redacted]"],
     ["Also from that pass: `CORE_JS_BUDGET` (16 KB)", "Also from that pass: `CORE_JS_BUDGET` (16 KB)"],
   ];
   for (const [text, stored] of cases) { const got = redact(text); ok(got === stored, `redact(${JSON.stringify(text)}) is ${JSON.stringify(stored)} (got ${JSON.stringify(got)})`); }
