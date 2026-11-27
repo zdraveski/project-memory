@@ -1944,9 +1944,11 @@ for (const [s, gone] of [['aws configure set aws_secret_access_key ' + k('wJalrX
   ok(red(p) === p, `"redis-cli AUTH option" in prose is kept (got ${red(p)})`);
   // Each --option read one way only: read two ways, 24 of them took seconds and each one more doubled it (fix re-review 3).
   // Sized so the slow forms take seconds, not hours: a mutant that times out counts as survived. The fix takes under 50 ms; the quadratic one 5 s here, so a fast runner still fails it.
+  // The best of up to 3 runs under 1 s: one run under 300 ms failed on busy runners. Each run gets a text of its own (redact remembers one).
   for (const [s, n] of [[' --tls', 24], [' -x =v', 25], [' -a redis-cli', 12000]]) {
-    const t0 = Date.now(); red('redis-cli' + s.repeat(n));
-    ok(Date.now() - t0 < 300, `${n} redis-cli options like "${s}" redact fast (${Date.now() - t0} ms)`);
+    let m = Infinity;
+    for (let k = 0; k < 3 && m >= 1000; k++) { const t0 = performance.now(); red('redis-cli' + s.repeat(n) + ' ' + k); m = Math.min(m, performance.now() - t0); }
+    ok(m < 1000, `${n} redis-cli options like "${s}" redact fast (${m.toFixed(0)} ms)`);
   }
 }
 // Over-redaction costs recall: the word after a command's flag is often its
@@ -3324,12 +3326,13 @@ if (!quick) {
   // after more than 64 options is seen.
   if (!quick) {
     let nth = 0; // redact remembers a repeated text (1.5.1), so each timed call gets a text of its own
-    const perMB = (s, f) => { f(s.slice(0, 20000)); const t = performance.now(); f(`${s} ${++nth}`); return (performance.now() - t) / (s.length / 1e6); };
-    const prose = 'the quick brown fox '.repeat(5e4), base = Math.min(perMB(prose, redact), perMB(prose, redact), perMB(prose, redact)); // a pass over plain prose, the floor (best of 3)
+    // The best of up to 5 runs, stopping once one is under lim: one run past the bound failed on busy runners.
+    const perMB = (s, f, lim = 0) => { f(s.slice(0, 20000)); let m = Infinity; for (let k = 0; k < 5 && m >= lim; k++) { const t = performance.now(); f(`${s} ${++nth}`); m = Math.min(m, (performance.now() - t) / (s.length / 1e6)); } return m; };
+    const prose = 'the quick brown fox '.repeat(5e4), base = perMB(prose, redact); // a pass over plain prose, the floor (best of 5)
     for (const [name, s, f] of [['curl -u =', 'curl -u ' + '='.repeat(1e6), redact], ['redis-cli -', 'redis-cli -'.repeat(1e5), redact], ['redis-cli -a redis-cli', 'redis-cli -a '.repeat(8e4), redact],
       ['?key=;', '?key=;'.repeat(1.6e5), redact], ['curl -', 'curl -'.repeat(1.6e5), redact], ['eyJ-', 'eyJ-'.repeat(2.5e5), redact], ['htpasswd -b -', 'htpasswd -b -'.repeat(4e4), redact], ['postgres://', 'postgres://'.repeat(5e4), redact], ['key=', 'key='.repeat(1.2e5), redact], ['curl -b', 'curl -b '.repeat(1.2e5), redact],
       ['memory.mjs --a', 'memory.mjs --a '.repeat(3e4), (x) => FORGETS.test(x)], ['memory.mjs "--a"', 'memory.mjs "--a" '.repeat(25000), (x) => FORGETS.test(x)]]) {
-      const ms = perMB(s, f); ok(ms < 3 * base + 50, `${name}: ${ms.toFixed(0)} ms/MB (plain text ${base.toFixed(0)})`);
+      const ms = perMB(s, f, 3 * base + 50); ok(ms < 3 * base + 50, `${name}: ${ms.toFixed(0)} ms/MB (plain text ${base.toFixed(0)})`);
     }
   }
   ok(FORGETS.test('node memory.mjs' + ' --a'.repeat(100) + ' forget x') && FORGETS.test('node memory.mjs' + ' --a 1'.repeat(100) + ' "forget" x') && !FORGETS.test('node memory.mjs' + ' --a 1'.repeat(100) + ' search forget'), 'FORGETS reads past 64 options');
@@ -3351,8 +3354,9 @@ if (!quick) {
     'redis-cli -a $REDIS_PASS ping', 'curl -u $USER:$PASS https://x', 'curl -u admin:${API_PASS} https://x']) ok(redact(t) === t, 'kept: ' + t);
   ok(!redact(`x db.example.com:587 bob:${S}`).includes(S), 'a real host:port user:pass is still redacted');
   if (!quick) {
-    const best = (s) => { redact(s.slice(0, 20000)); let m = 1e9; for (let k = 0; k < 3; k++) { const t = performance.now(); redact(`${s} ${k}`); m = Math.min(m, performance.now() - t); } return m; };
-    const ms = best('//a:'.repeat(250000)), floor = best('the quick brown fox '.repeat(5e4));   // the floor: a pass over plain prose
+    // The best of up to 5 runs, stopping once one is under lim: the best of 3 of each still failed on busy runners.
+    const best = (s, lim = 0) => { redact(s.slice(0, 20000)); let m = 1e9; for (let k = 0; k < 5 && m >= lim; k++) { const t = performance.now(); redact(`${s} ${k}`); m = Math.min(m, performance.now() - t); } return m; };
+    const floor = best('the quick brown fox '.repeat(5e4)), ms = best('//a:'.repeat(250000), 3 * floor + 50);   // the floor: a pass over plain prose
     ok(ms < 3 * floor + 50, `repeated //x: costs ${ms.toFixed(0)} ms per MB (plain text ${floor.toFixed(0)})`);
   }
 }
