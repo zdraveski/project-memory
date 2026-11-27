@@ -228,6 +228,12 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     ['token: expired2', 'expired2'], ['secret: my-app-secret-v2', 'my-app-secret-v2'], ['password: minimum 8 characters', 'minimum'], ['Use token: ctrl-click to select', 'ctrl-click']]) ok(!redact(t).includes(v), `cut: ${t} -> ${redact(t)}`);
 }
 
+// 1.6.5 item 21: "log in" and a backticked folder path (`reports/hunt-1.6.4`) is prose; a real password after "log in" is still cut.
+{
+  for (const t of ['log in `reports/hunt-1.6.4`', 'log in `reports/hunt-1.6.4`.', 'log in `reports/RESUME-1.6.0.md` "1.5.4 build log".', 'the build log in `reports/hunt-1.6.4` is long']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+  for (const [t, v] of [['log in bob/Xk9mQ2!zz', 'Xk9mQ2!zz'], ['log in bob / Xk9mQ2!zz', 'Xk9mQ2!zz'], ['log in with bob:Hunter2xx', 'Hunter2xx'], ['log in `bob/Xk9mQ2zz7`', 'Xk9mQ2zz7']]) ok(!redact(t).includes(v), `cut: ${t} -> ${redact(t)}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';
