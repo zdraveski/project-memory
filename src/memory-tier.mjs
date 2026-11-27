@@ -459,7 +459,7 @@ async function save(input, dry) {
 // `gated` (a Stop's or --tidy's): only a store changed since its stamp, and the stamps written; `handTo`: the store a Stop
 // hands the work to, in a `--tidy` process of its own; `snap`: snapshots too (not for --dir); `say`: where its lines go.
 // `batch` and `gitWait` (test-only, as `--batch <files>` and `--git-timeout <ms>`): a part of a first snapshot, and git's timeout.
-function tidy(dirs, { now, dry, pause, batch, gitWait, gated, handTo, snap, say }) {
+function tidy(dirs, { now, dry, pause, batch, gitWait, gated, handTo, owes, snap, say }) {
   // Then only do the rest when a memory in the store changed. handoff.md changes
   // every turn and is left out; every other file's name, size and mtime is the
   // fingerprint. The pass plus git cost a median 600 ms under load, and on most
@@ -484,7 +484,7 @@ function tidy(dirs, { now, dry, pause, batch, gitWait, gated, handTo, snap, say 
   const todo = gated ? dirs.filter((d) => { try { seen.set(d, scan(d)); return readFileSync(stampOf(d), 'utf8') !== fingerprint(seen.get(d)); } catch { return true; } }) : dirs;
   // Nothing to tidy: done, unless a snapshot is owed, which runs alone.
   T.mark('scan');
-  if (gated && !todo.length && !owed()) return 0;
+  if (gated && !todo.length && !owed() && !owes) return 0;
   // The tidy-up and the snapshot after a reply run in a process of their own, which the user never waits for: git on a
   // loaded PC held the reply 31 s (.timing, 2026-11-22). The child scans again and does what is still owed then.
   // A spawn that throws runs it here, as before; one that fails later (an 'error' event) leaves it to the next Stop,
@@ -607,7 +607,15 @@ export async function main(argv, input) {
   // A manual /compact (PreCompact) waits for the tidy-up: the index it compacts with should be tidy.
   // PROJECT_MEMORY_TIDY=inline keeps it in the hook: the suites assert what a Stop did once it returns.
   const handTo = stop && ['Stop', 'StopFailure'].includes(payload?.hook_event_name) && process.env.PROJECT_MEMORY_TIDY !== 'inline' ? own || sharedStore() : null;
-  try { return tidy(dirs, { now, dry, pause, batch, gitWait, gated, handTo, snap: dirAt === -1, say }); }
+  // The mistakes cache (mistakes.mjs, 1.7.0) is built by the --tidy child, once a day. The Stop never builds it: it only sees that one is
+  // owed, which keeps the child from being skipped when nothing else changed. Loaded here, not at the top: the other runs do not need it.
+  const m = !dry && own && dirs.includes(own) && (handTo === own || tidyAt !== -1) ? await import('./mistakes.mjs') : null;
+  const owes = !!(m && handTo && m.mistakesOwed(handTo, now));
+  try {
+    const code = tidy(dirs, { now, dry, pause, batch, gitWait, gated, handTo, owes, snap: dirAt === -1, say });
+    if (m && tidyAt !== -1 && !dry) await m.buildMistakes(own, now);
+    return code;
+  }
   finally { if (tidyAt !== -1) try { unlinkSync(join(argv[tidyAt + 1], '.tidy-running')); } catch {} }
 }
 

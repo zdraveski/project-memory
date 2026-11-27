@@ -81,7 +81,7 @@ import { tmpdir, availableParallelism, homedir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tool, tempHome, storeFor } from '../test/harness.mjs';
-import { LOCK_STALE, SHARED_BUDGET, POINTER } from '../src/store.mjs';
+import { LOCK_STALE, SHARED_BUDGET, POINTER, MISTAKES } from '../src/store.mjs';
 import { tag, parse, sectionOf } from '../src/handoff-log.mjs';
 import { ACTIVE } from '../src/sessions.mjs';
 import { NUDGE_TAG } from '../src/transcript.mjs';
@@ -779,6 +779,12 @@ async function execute(steps, meta) {
   // What was written: no secret, nothing forgotten, nothing of a private conversation.
   const handoff = after.get('handoff.md') ?? '', journal = [...after].filter(([f]) => f.startsWith('journal/')).map(([, s]) => s).join('\n');
   const places = [...[...after].filter(([f]) => f === 'handoff.md' || f.startsWith('journal/') || f.startsWith('MEMORY')), ['the briefing', brief.out], ['the briefing of a new conversation', fresh.out]];
+  // 1.7.0 (E3): the files that copy journal text outside the journal hold no private or forgotten text either. The tidy child builds the
+  // mistakes cache (the suites keep the Stop's tidy-up inline, so it is run once here); a file that is not there passes.
+  await run(TIER, ['--tidy', dir], '', lastTz);
+  const sdir = join(dirname(proj), '.sessions', basename(proj));
+  for (const f of [MISTAKES, '.lessons.json', '.enforce-log', '.replay-history']) if (existsSync(join(dir, f))) places.push([f, readFileSync(join(dir, f), 'utf8')]);
+  if (existsSync(sdir)) for (const f of readdirSync(sdir)) places.push([`.sessions/${f}`, readFileSync(join(sdir, f), 'utf8')]);
   const count = (hay, w) => hay.split(w).length - 1;
   for (const sec of secrets) for (const [f, body] of places) if (body.includes(sec)) problems.push(`private text ${sec} is in ${f}`);
   for (const [mark, m] of marks) {

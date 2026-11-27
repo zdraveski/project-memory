@@ -67,6 +67,7 @@ All of it stays in `~/.claude/projects` on your computer:
 - `.timing`, one line for each run of a hook: the time, which hook (`save`, `tidy`, `brief`, `enforce`, `gate`, `recall`, `prompt` or `end`), which event (`Stop`, `PreToolUse` and the like, letters only) and how many milliseconds each step took, and for `recall` and `prompt` how many earlier exchanges they named. Numbers and those fixed names only: no text from a conversation, no file name, no command. It is cut to its newer half at 256 KB. `memory doctor` shows the times. They count from the start of Node, so what Claude Code spends starting a hook comes on top. Set `PROJECT_MEMORY_TIMING=0` to turn it off.
 - `.sessions/<project folder>/<conversation tag>`, one small file per conversation: the full path of each file it changed (lower case on Windows and macOS) the keys of the earlier exchanges it was told about, a line for each compaction, each message you sent (an `asked` line: secrets replaced, cut to 120 characters) or a `quiet` line for a private one, the title you gave the conversation (a `title` line, secrets replaced, cut to 80 characters), a `saw` line with another session's tag (and a file path) once Claude was told about it, an `end` line with the reason when the conversation ended, each with the time (and a helper's id when a helper wrote it). No other text of a conversation. Over 64 KB it is rewritten with the newest line of each kind and file. Nothing is written for a private conversation or turn, or while memory is off. Each reply's save deletes those older than 7 days; `forget` and `memory off` delete the project's, `rescan --apply --yes` every project's, and `incognito` (or a `<private-session>` mark) the conversation's.
 - The journal page, `project-memory/journal.html` in `~/.claude`, only when you run `memory page`: the journal text of the days you asked for, secrets already replaced, private turns without text, helper entries and switched-off projects left out. Only you can read it, and it loads nothing from the network.
+- `.mistakes.json` in a project's `memory` folder, built once a day by the Stop's background tidy-up from the last 90 days of that project's journal (never a private or forgotten exchange): each command that failed, cut to what names it (`npm test`, `git push`), the error line of its output (numbers, hashes, times and temp paths folded, secrets replaced, 120 characters), the command that fixed it, the key of the exchange, and counts; and pairs of files that changed together (at most 500 errors and 200 pairs). Only you can read it (mode 0600). Nothing is written while memory is off.
 - `.enforce-log` and `.enforce.json` in a store: which note's rule a git command matched (note name, session tag, sub-agent type, tool-call id; never the command) and a cache of the rules and of each lesson note (its clipped name and description, 120 and 300 characters, and the paths and words it is tagged with). Nothing is written for a private conversation or while memory is off.
 - A record of where you left off (`handoff.md`): the start of your latest
   messages (up to 500 characters each) and of Claude's replies (up to 900),
@@ -338,6 +339,7 @@ report is not saved to the journal again.
 ## How long it keeps it
 
 - The session files (`.sessions`): 7 days after their last change.
+- The mistakes cache (`.mistakes.json`): rebuilt once a day from the journal, so it holds nothing the journal no longer does; `forget`, `incognito`, `memory off` and `rescan --apply --yes` delete it (and a temporary copy a killed build left).
 - The journal page: until you delete it, or until `forget`, `incognito`,
   `memory off` or `rescan --apply` deletes it.
 - The hook times (`.timing`): the newest part of 256 KB, a few days of use. Deleting the file loses nothing but the times.
@@ -386,7 +388,7 @@ Uninstalling the plugin leaves all of this in place. To delete:
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
   `.journal-failed-…` file and the folder `.nudge`; in each project's
   `memory` folder, `.tiered`, `.facts`, `.health`, `.private-sessions`,
-  `.off-periods`, `.moved-said` (the names of another folder's notes the startup line told you of), `.enforce-log`, `.enforce.json` and `.project-off` (the marker; delete it to turn that project on);
+  `.mistakes.json`, `.off-periods`, `.moved-said` (the names of another folder's notes the startup line told you of), `.enforce-log`, `.enforce.json` and `.project-off` (the marker; delete it to turn that project on);
   and in the shared notebook's (`_shared/memory`), `.tiered`, `.facts` and
   `.health`. Delete `.memory-off`, `.private-sessions` and `.off-periods` only
   once project-memory is removed for good: they list the conversations it
