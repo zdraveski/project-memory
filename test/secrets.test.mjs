@@ -250,7 +250,9 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
   for (const [t, w] of [['password: correct horse battery staple', 'password: [redacted]'], ['passphrase: correct horse battery staple', 'passphrase: [redacted]'],
     ['password = correct horse battery staple', 'password = [redacted]'], ['Notes: password: correct horse battery staple', 'Notes: password: [redacted]'],
     ['The password: hunter2 correct horse', 'The password: [redacted]'], ['password: correct horse battery staple.', 'password: [redacted].'],
-    ['password: correct horse\nnext line stays', 'password: [redacted]\nnext line stays']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
+    ['password: correct horse\nnext line stays', 'password: [redacted]\nnext line stays'],
+    ['password: blue horse battery staple', 'password: [redacted]'], ['password = one two three four five six seven eight nine', 'password = [redacted]'],
+    ['password: correct horse battery 42', 'password: [redacted]'], ['password: correct horse battery, remember', 'password: [redacted]'], ['passwd: correct horse battery staple', 'passwd: [redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
   // A function word in the run makes it a sentence: only the first word goes. Prose after the word stays.
   for (const [t, w] of [['password: hunter2 is wrong', 'password: [redacted] is wrong'], ['password: hunter2, then restart', 'password: [redacted], then restart'],
     ['password: required', 'password: required'], ['Password: Required field', 'Password: Required field'], ['password: changeme is the default', 'password: [redacted] is the default']]) ok(redact(t) === w, `kept: ${t} -> ${redact(t)}`);
