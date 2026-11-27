@@ -642,6 +642,7 @@ rmSync(join(root, '.stop-ran'), { force: true });
   for (const x of ['1.6.7', 'push', '-', '--', '-1', 'E1', 'TS12', '']) ok(lit(x).length === 0, `6: ${JSON.stringify(x)} is not literal`);
   ok(typeof parseArgs(['search', 'x', '--words']) === 'object' && parseArgs(['search', 'x', '--wordz']) === 'unknown option --wordz; help lists the options' && parseArgs(['show', 'x', '--words']) === 'show does not take --words; help lists the options', '7: --words is accepted by search only, --wordz is refused');
   rmSync(join(ed, 'journal'), { recursive: true });
+}
 // 1.7.0: the mistakes cache (mistakes.mjs) holds commands and errors from the journal, so it goes where the page and the session files go:
 // off, incognito and rescan --apply --yes delete it; rescan without --yes (it changes nothing) does not. rescan reaches every project's.
 {
