@@ -259,7 +259,11 @@ false test here.
 Open a pull request against `master`: nobody, the maintainer included, can
 push to it directly. Sign off every commit
 ([below](#developer-certificate-of-origin)). Run `node tools/check.mjs` first; CI runs
-the suites on every platform. The pull request merges only when its required
+the suites on every platform, once more in New York time, and lints the workflow files
+(`actionlint`, `zizmor`) and the plugin's files (`agnix`). When several people (or agents)
+build at once, each runs `node tools/check.mjs --own --base <ref>`: only the suites of the
+files they changed, never every suite after a change to a shared file; CI and one full
+check before the merge run those. The pull request merges only when its required
 checks pass: the Linux 22, Windows 24 and macOS 26 test jobs and the sign-off check (`dco`). Have the
 change reviewed from its diff alone, by someone (or an agent) who has not heard why you made it. Leave the
 version number alone, and describe the change under an `## Unreleased`
@@ -292,24 +296,45 @@ reviews them instead.
 
 A patch (X.Y.Z with Z above 0) is one pull request, and merging it is the release:
 
-1. One branch, `patch-X.Y.Z`, with one commit per fix (each bug fix with a
-   test that failed first). The same pull request bumps `version` in
-   `.claude-plugin/plugin.json` and turns `## Unreleased` in `CHANGELOG.md`
-   into `## X.Y.Z (date)`, written for the people who use the plugin.
+1. `node tools/release.mjs start X.Y.Z` prints the last `fuzz`, `mutate` and
+   `changed-lines` results, makes the branch `patch-X.Y.Z` from `master` with
+   `version` bumped in `.claude-plugin/plugin.json` and `## Unreleased` in
+   `CHANGELOG.md` turned into `## X.Y.Z (date)` (or that heading added), and
+   opens it as a draft pull request, so CI runs on each push while the fixes
+   are built. One commit per fix (each bug fix with a test that failed first),
+   and the changelog written for the people who use the plugin.
 2. Run `claude plugin validate . --strict`. It should exit 0.
 3. While CI runs, one reviewer who did not write the code reviews the whole
-   pull request. Its findings become more commits on the same pull request,
+   pull request, and `node tools/check.mjs --full --no-auto --base origin/master`
+   runs beside it. Findings become more commits on the same pull request,
    and only those commits are reviewed again.
-4. Merge once the required checks pass. The `publish` job in `test.yml` then
-   waits for every test job on `master`, publishes the release as
+4. `node tools/release.mjs ready X.Y.Z --validated` once the review is clean:
+   it refuses an empty changelog section, takes the pull request out of draft
+   and has it merge itself when its required checks pass. On the push to
+   `master`, the `pretested` job asks whether the merge's tree is the tree a
+   green pull request run of this repository already tested (`tools/pretested.mjs`:
+   a merge commit, `master` inside the branch, the same tree). If so,
+   `publish-early` publishes after that push's `actionlint`, `zizmor` and
+   `agnix`, without waiting for the test jobs; if not (a fork, a squash, a
+   moved `master`, a red or cancelled run), `publish` waits for every test job
+   on `master`, as before, and after an early publish it finds the tag and
+   does nothing. Either one (`publish.yml`) publishes the release as
    "project-memory X.Y.Z (bug fix)" with the version's changelog section as
    its notes, has `release.yml` attach the `.tar.gz`, the `.zip` and
    `SHA256SUMS` with their signed attestation, and updates the version line on
-   the GitHub Pages site. A red test, `actionlint`, `zizmor` or `agnix` job on
-   `master` publishes nothing: fix it in a new pull request, and the release
-   follows that merge. (`changed-lines` blocks nothing.)
-5. Check the release has its three files. If `assets` failed, use "Re-run
-   failed jobs": re-running all of them finds the tag already made and skips it.
+   the GitHub Pages site. A red `actionlint`, `zizmor` or `agnix` job on
+   `master`, or a red test job when the tree was not pretested, publishes
+   nothing: fix it in a new pull request, and the release follows that merge.
+   (`changed-lines.yml` blocks nothing.)
+5. `node tools/release.mjs after X.Y.Z` waits for the `master` run, checks the
+   release has its three files and, if not, re-runs the failed jobs: re-running
+   finds the tag already made and skips it.
+
+A check bound by wall-clock time (a hook within 400 ms, code that must stay
+linear) goes in a `test/*-timed.test.mjs` file, named under its source in
+`tools/mutate.mjs`: the suites run side by side, a core left free, and the
+timed files after them, one at a time, so a limit measures the code and not
+the other suites. The limit is not raised for it.
 
 A minor or major release takes the same steps up to the merge, then is
 published by hand: tag the merge commit `vX.Y.Z` and publish a GitHub release
