@@ -70,6 +70,14 @@ let r = await look(edit);
 ok(r.n === 1 && r.say.includes('asked: "fix the closing day"'), `after it: its own older exchange is earlier (got ${JSON.stringify(r)})`);
 delete process.env.PROJECT_MEMORY_RECALL;
 
+// The last prompt more than 512 KB back: the session file's newest `asked` line stands in.
+p = project(); p.day([...filler(p), other]);
+p.lines(sessionLine('asked', ASK));
+const far = join(p.cwd, 'far.jsonl'); mkdirSync(p.cwd, { recursive: true });
+writeFileSync(far, [{ type: 'user', message: { content: [{ type: 'text', text: ASK }] } }, { type: 'assistant', message: { content: [{ type: 'text', text: 'x'.repeat(600 * 1024) }] } }].map((r) => JSON.stringify(r)).join('\n') + '\n');
+out = spawnSync(process.execPath, [BRIEFING, '--print'], { input: JSON.stringify({ cwd: p.cwd, session_id: SID, transcript_path: far, source: 'compact', hook_event_name: 'SessionStart' }), encoding: 'utf8' }).stdout;
+ok(out.includes('shares: nightly, export, warehouse'), `a prompt past the read window still gets its pointers (got ${out})`);
+
 // Over ten files: the newest ten, and how many more.
 p = project();
 p.lines(...Array.from({ length: 12 }, (_, i) => sessionLine('file', `f${i}.js`)));

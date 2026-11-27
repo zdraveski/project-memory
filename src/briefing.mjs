@@ -88,7 +88,7 @@ async function journalLine(dir) {
 }
 
 // The request in progress: the transcript's last prompt the user typed ('' for none). A slash command (/compact) is none.
-// shortcut: only the last 512 KB are read; upgrade if a long last turn leaves the pointers out.
+// Only the last 512 KB are read; afterCompact falls back to the session file's newest `asked` line.
 function lastAsk(p) {
   let got = '';
   try { for (const r of records(readTail(p, TAIL).text)) { const s = r.type === 'user' && !r.isMeta && !r.isCompactSummary ? text(r).trim() : ''; if (asked(r, s)) got = s; } } catch {}
@@ -107,7 +107,7 @@ async function afterCompact(input, dir, me, skip) {
   const cwd = typeof input.cwd === 'string' ? input.cwd.replaceAll('\\', '/') : '';
   const files = [...new Set(lines.filter((l) => l.kind === 'file').map((l) => l.rest).reverse())];
   const out = files.length ? [`Files this conversation changed before the compaction, newest first: ${files.slice(0, FILES).map((f) => rel(f, cwd)).join(', ')}${files.length > FILES ? ` and ${files.length - FILES} more` : ''}. Its exchanges: memory skill, search --conversation ${me}`] : [];
-  const now = new Date().toISOString(), ask = lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet')?.kind === 'quiet' ? '' : lastAsk(input.transcript_path);
+  const now = new Date().toISOString(), last = lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet'), ask = last?.kind === 'quiet' ? '' : lastAsk(input.transcript_path) || last?.rest || '';
   let found = [];
   if (ask && !PRIVATE.test(ask) && !PRIVATE_SESSION.test(ask)) {
     try { found = (await byWords(dir, own(ask), String(input.session_id), { deadline: performance.now() + DEADLINE, since: now, skip })) ?? []; } catch {}
