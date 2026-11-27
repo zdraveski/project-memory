@@ -704,16 +704,22 @@ ok(readFileSync(hpath, 'utf8') === hBefore, '--stop: an unreadable .snapshot-hea
 unlinkSync(join(root, 'proj-two', 'memory', 'unreadable-health.md'));
 rmSync(hpath);
 // Twenty Stops at once outlast one 2 s wait, and a session's last Stop has no later one to take its turn up: a Stop that finds
-// the store held waits once more, after a pause (defect hunt 1.3.2, C5). The holder here lets go at about 2.6 s.
+// the store held waits once more, after a pause (defect hunt 1.3.2, C5). The lock here is held through the whole first wait and
+// let go at the retry's first look, found by the pause before it (tries come 25 ms apart): a holder on a 2.6 s timer let go too
+// late on a loaded Windows runner, past the retry's wait too (CI, 2026-11-26).
 if (!quick) {
-  const lock = join(root, 'proj-two', 'memory', '.lock'), tp = join(root, 'proj-two', 'held.jsonl');
+  const lock = join(root, 'proj-two', 'memory', '.lock'), tp = join(root, 'proj-two', 'held.jsonl'), failed = join(root, '.handoff-failed-proj-two');
   const rec = (type, text) => JSON.stringify({ type, timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text }] } });
   writeFileSync(tp, rec('user', 'held-turn question') + '\n' + rec('assistant', 'held-turn answer') + '\n');
-  const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs'); fs.mkdirSync(${JSON.stringify(lock)}); process.stdout.write('up'); setTimeout(() => fs.rmdirSync(${JSON.stringify(lock)}), 2600)`]);
-  await new Promise((up) => holder.stdout.once('data', up));
-  r = await call(['--stop'], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: tp, session_id: 'heldsess' }));
-  ok(r.status === 0 && readFileSync(join(root, 'proj-two', 'memory', 'handoff.md'), 'utf8').includes('held-turn question'), `--stop: a store held a little longer than one wait still gets the turn (got ${r.stdout})`);
-  await new Promise((done) => holder.once('close', done));
+  mkdirSync(lock);
+  let first = 0, prev = 0;
+  r = await swap('node:fs', 'mkdirSync', (real) => (p, ...a) => {
+    if (p === lock && existsSync(lock)) { const t = Date.now(); first ||= t; if (prev && t - prev >= 150) rmdirSync(lock); prev = t; }
+    return real(p, ...a);
+  }, () => call(['--stop'], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: tp, session_id: 'heldsess' })));
+  const h = join(root, 'proj-two', 'memory', 'handoff.md');
+  ok(r.status === 0 && prev - first >= 2000 && existsSync(h) && readFileSync(h, 'utf8').includes('held-turn question'),
+    `--stop: a store held a little longer than one wait still gets the turn (held ${prev - first} ms; got ${r.stdout}${existsSync(failed) ? readFileSync(failed, 'utf8') : ''})`);
 }
 // The same retry without the 2.6 s wait (the mutants run quick): a preload refuses the first `.lock` and steps the clock past its
 // wait, so the first try is busy at once; the retry gets the lock, and the turn is saved.
