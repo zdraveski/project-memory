@@ -219,7 +219,7 @@ function take(gitWait, batch) {
             .sort((a, b) => /(^|\/)MEMORY[^/]*$/.test(b) - /(^|\/)MEMORY[^/]*$/.test(a));
           if (todo.length > batch) {
             gitIn(todo.slice(0, batch).join('\0'), 'update-index', '--add', '--remove', '-z', '--stdin');
-            writeFileSync(parts, '', { mode: 0o600 });
+            writeFileSync(parts, first ? 'first' : '', { mode: 0o600 });
             return todo.length - batch;
           }
           try { unlinkSync(parts); } catch {}
@@ -235,7 +235,7 @@ function take(gitWait, batch) {
       // would have hidden a history that never commits.
       // Parts 2..n of a first snapshot are it too (versionsOf and changedLately skip its lines): asked before stage(), which drops the mark at the last part.
       let first = fresh;
-      if (!fresh && (existsSync(parts) || !existsSync(join(root, '.git', 'index')))) { try { first = git('log', '-1', '--format=%s').trim() === FIRST && existsSync(parts); } catch { first = true; } }   // no HEAD: the first part
+      if (!fresh && (existsSync(parts) || !existsSync(join(root, '.git', 'index')))) { try { first = git('log', '-1', '--format=%s').trim() === FIRST && existsSync(parts) && readFileSync(parts, 'utf8') === 'first'; } catch { first = true; } }   // no HEAD: the first part
       let rest;
       try { rest = stage(); } catch (e) {
         const why = gitWhy(e);
@@ -334,7 +334,8 @@ function take(gitWait, batch) {
     if (e.code === 'ENOENT' && String(e.syscall).startsWith('spawn')) return said({ off: 'git is not installed' });
     // Killed at its timeout: from the next run the history is taken in parts. Its lock stays, for GIT_LOCK_STALE: a git
     // that outlived the kill (a wrapper's child) may still hold it. No note is touched: git only reads them.
-    if (e.code === 'ETIMEDOUT') { try { writeFileSync(parts, '', { mode: 0o600 }); } catch {} return said({ failed: `git took longer than ${gitWait / 1000} s; the next replies take the history in parts` }); }
+    if (e.code === 'ETIMEDOUT') { // The marker says whether it is a first snapshot's: with no HEAD it is; a finished first snapshot's later changes are ordinary.
+    try { if (!existsSync(parts)) { let head = true; try { git('rev-parse', '-q', '--verify', 'HEAD'); } catch { head = false; } writeFileSync(parts, head ? '' : 'first', { mode: 0o600 }); } } catch {} return said({ failed: `git took longer than ${gitWait / 1000} s; the next replies take the history in parts` }); }
     const why = gitWhy(e);   // git's reason, not a warning before it, nor 'Command failed'
     // This session runs two or three git commands, and another session's commit can
     // take a lock in a gap between them, or move HEAD under this one's: busy,
