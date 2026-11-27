@@ -200,7 +200,7 @@ const REPLY = /^\W*(?:go|yes|yep|ok|okay|sure|continue|proceed)\W*$/i;
 // shortcut: a name past 200 characters is shortened by Claude Code and is missed; upgrade if the eval or a user shows it matters.
 const slug = (p) => String(p).normalize('NFC').replace(/[^A-Za-z0-9]/g, '-');
 // A path with `/`; a relative one (Claude Code sends absolute ones) is taken from `cwd`.
-const whole = (p, cwd) => { const f = p.replaceAll('\\', '/'); return /^(?:[a-z]:)?\//i.test(f) || !cwd ? f : `${cwd.replace(/\/+$/, '')}/${f}`; };
+export const whole = (p, cwd) => { const f = p.replaceAll('\\', '/'); return /^(?:[a-z]:)?\//i.test(f) || !cwd ? f : `${cwd.replace(/\/+$/, '')}/${f}`; };
 
 // The entries of `store`, newest first, whose Changed holds `file` (whole, with `/`): its full path, or its path relative to an
 // entry's own start folder, so README.md of a subfolder's session is not the root's, and one worktree's file not another's.

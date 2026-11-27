@@ -10,6 +10,10 @@
 
 - **A correction detector, in English and Macedonian.** `src/correction.mjs` tells a prompt that corrects Claude and states a lasting rule from an everyday one, with filters for helpers, questions, thanks and quoted text. Nothing calls it yet.
 
+### Lessons
+
+- **Notes can say what they are about.** A note may carry `applies_to:`, `applies_when:`, `instead:` and `resolves:`, and `resolved-by:` archives a dead end once its fix has landed. Nothing speaks yet: the matching and the switch `PROJECT_MEMORY_LESSONS` come first.
+
 ## 1.6.7 (2026-11-27)
 
 A bug-fix release. Two more kinds of secret are cut, the compaction reminder reaches people on 200k models, and the project checks behind each release are faster. Nothing changes in how you use it.
