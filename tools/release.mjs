@@ -75,7 +75,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     if (!sha) { console.error(`${branch} is not merged yet`); process.exit(1); }
     const [r] = JSON.parse(run('gh', 'run', 'list', '--workflow', 'test', '--commit', sha, '--event', 'push', '--json', 'databaseId') || '[]');
     if (!r) { console.error(`no test run on master for ${sha} yet: try again in a minute`); process.exit(1); }
-    try { show('gh', 'run', 'watch', String(r.databaseId), '--exit-status'); } catch { console.error('the master run failed: see it above'); }
+    try { show('gh', 'run', 'watch', String(r.databaseId), '--exit-status'); } catch { console.error('the master run failed: see it above; no deploy while master is red'); process.exit(1); }
     let names = [];
     try { names = JSON.parse(run('gh', 'release', 'view', tag, '--json', 'assets')).assets.map((a) => a.name); } catch {}
     const missing = missingAssets(names, tag);
