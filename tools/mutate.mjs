@@ -56,7 +56,7 @@ export const suites = {
   'tools/deploy.mjs': ['test/handoff-log.test.mjs', deploy],
   'src/brief.mjs': ['test/handoff-log.test.mjs', brief],
   'src/briefing.mjs': [['test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/recall-compact.test.mjs', 'test/journal.test.mjs', 'test/memory-switch.test.mjs', 'test/memory-tier.test.mjs', 'test/sessions.test.mjs'], briefing],
-  'src/enforce.mjs': ['test/enforce.test.mjs', enforce],
+  'src/enforce.mjs': [['test/enforce.test.mjs', 'test/enforce-timed.test.mjs'], enforce],
   'src/enforce-hook.mjs': ['test/enforce-hook.test.mjs', enforceHook],
   'src/recall-hook.mjs': [['test/recall-hook.test.mjs', 'test/sessions.test.mjs'], recallHook],
   'src/timing.mjs': ['test/timing.test.mjs', timing],
