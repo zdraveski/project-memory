@@ -2,6 +2,26 @@
 
 ## 1.6.6 (2026-11-27)
 
+- A passphrase of plain words after "password:" or "password =" is now cut whole; before, only its first word was cut and the rest was saved.
+- A letters-only password after "password is" (such as "my password is letmein") is now cut instead of saved.
+- `forget --purge` now also deletes the copies `restore --force` keeps, so forgotten text no longer survives the purge.
+- A big first snapshot taken in several parts labels every part as the first snapshot, so history and "changed lately" no longer report later parts as files added just now.
+- A purge holds the snapshot lock for its whole run, so a snapshot made during it can no longer be overwritten by the purge's older copy.
+- A helper's report is no longer saved when the main conversation's file exists but cannot be read (unknown now means private).
+- Long turns with many shell commands are read in linear time instead of slowing down sharply.
+- A prompt longer than 64 KB that the tail cut through is now found whole, so the right turn's privacy is judged.
+- "Forget by words" reads only the part of each transcript not yet imported, so it is fast on large stores.
+- The helper-report save records read, lock and write times, so `memory doctor` can show where a slow save went.
+- A line planted in a Bash result (curl output, a cat of an untrusted file) can no longer appear in the post-compaction note as a running task; only a real `<id>.output` file counts.
+- A reply whose handoff entry lost three writes to another session is now recorded as failed and retried once, instead of being marked saved.
+- A Stop no longer starts another background tidy-up while one is still running.
+- A very long pasted prompt no longer makes the word matcher run for seconds: only its first 50 distinct words are matched, and it gives up at its deadline.
+- The pointers after a compaction no longer vanish when your last prompt is more than 512 KB back in the transcript.
+- Rewriting a big session file is now a temp file and a rename, so a reader never sees it empty.
+- A quote or apostrophe in a shell comment no longer hides the later git commands from the rules.
+- `memory doctor` waits 15 s for the enforce hook, and says "did not answer in time" as a note rather than a PROBLEM.
+- `show` reads only the day in the key, and a dated search reads one day before its range for a short request's reply, not the whole journal.
+
 ## 1.6.5 (2026-11-27)
 
 A bug-fix release. The secret detector catches more secrets and cuts less ordinary text, the reminder before a compaction now follows the window you set, and the recall pointers show on slow machines. Nothing changes in how you use it.
