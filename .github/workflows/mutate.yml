@@ -62,8 +62,19 @@ jobs:
         with:
           node-version: 24
       # Every value through env, none into the script's text.
+      # Its own limit, under the job's, so the upload below still runs after a cut-off.
       - shell: bash
+        timeout-minutes: 140
         env:
           AUTO: ${{ (inputs.auto || github.event_name == 'schedule') && '1' || '' }}
           SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+          MUTATE_RESULTS: ${{ runner.temp }}/mutate-results.jsonl
         run: node tools/mutate.mjs --shard "$SHARD" ${AUTO:+--auto}
+      # Every verdict so far, finished or cut off: gh run download <id> -p 'mutate-results-*', then
+      # node tools/mutate-results.mjs on that folder. A failed machine: gh run rerun <id> --failed, never the whole run.
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutate-results-${{ matrix.shard }}
+          path: ${{ runner.temp }}/mutate-results.jsonl
+          if-no-files-found: ignore
