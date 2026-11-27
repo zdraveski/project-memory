@@ -134,6 +134,15 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     const note = `${a}${eol}${b}${eol}`;
     ok(holdsSecret(note) && !redact(note).includes(val), `a backslash line end hides the secret in ${JSON.stringify(note)}: ${JSON.stringify(redact(note))}`);
   }
+  // A passphrase with spaces inside \"...\" is cut whole, not up to its first space (1.6.4 review).
+  for (const cmd of ['docker login -u me -p \\"Ab1 cd2 ef3\\" reg', 'sshpass -p \\"my pass word1\\" ssh h', 'mysql --password \\"two words9\\" db'])
+    ok(!/cd2|word1|words9/.test(redact(cmd)) && holdsSecret(cmd), `a spaced escaped-quote secret is kept in ${cmd}: ${redact(cmd)}`);
+  // A secret that needs both the line join and folding is still cut, as on 1.6.3 (1.6.4 review).
+  for (const note of ['mysql --pass\\\nwórd Zx9qLm2Rt7 db', 'export GITHUB_TO\\\nKÉN=Zx9qLm2Rt7Wv4Hn8Bc6Ys1'])
+    ok(!redact(note).includes('Zx9qLm2Rt7'), `a joined and folded secret is kept in ${JSON.stringify(note)}: ${JSON.stringify(redact(note))}`);
+  // "log in" a backticked path with a :line part is prose too (1.6.4 review of item 10).
+  const fl = 'log in \x60reports/x.md:12\x60 says';
+  ok(!holdsSecret(fl) && redact(fl) === fl, 'a backticked file:line after "log in" is cut');
   // holdsSecret: a <private> span with anything real in it (a text, a number), and not one that holds nothing or only a word for one.
   const holds = [
     ['<private>' + ' '.repeat(39) + 'x</private>', true],   // a span of 40 characters is too long to be a placeholder
