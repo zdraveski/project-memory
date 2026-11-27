@@ -220,6 +220,14 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     ['the password is hunter2!', 'the password is [redacted]'], ['the secret is my-app-secret-v2', 'the secret is [redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
 }
 
+// 1.6.5 item 26: a capitalised word after `password:` and a plain word after `token:` are prose; words that look like secrets stay cut.
+{
+  for (const t of ['password: Required field', 'password: Invalid credentials', 'Password: Required', 'password: Required.', 'token: required', 'token: Required',
+    'password: required', 'password: required field', 'password: Enter password', 'api_key: required in headers']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+  for (const [t, v] of [['password: changeme', 'changeme'], ['password: Sunshine', 'Sunshine'], ['password: Hunter2xx', 'Hunter2xx'], ['token=refreshed', 'refreshed'],
+    ['token: expired2', 'expired2'], ['secret: my-app-secret-v2', 'my-app-secret-v2'], ['password: minimum 8 characters', 'minimum'], ['Use token: ctrl-click to select', 'ctrl-click']]) ok(!redact(t).includes(v), `cut: ${t} -> ${redact(t)}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';
