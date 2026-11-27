@@ -8,7 +8,7 @@ name: mutate
 # every hand-written mutant, and with `-f auto=true` the automatic ones too.
 on:
   # Every Monday, the whole check, automatic mutants too, on the 17 machines the plan step
-  # defaults to; a pull request meanwhile runs only the mutants on its changed lines (test.yml).
+  # defaults to; a merge meanwhile runs only the mutants on its changed lines (changed-lines.yml).
   schedule:
     - cron: '17 3 * * 1'
   workflow_dispatch:

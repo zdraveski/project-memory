@@ -141,11 +141,7 @@ for (const c of ['cd ~/.claude/hooks && git add -A && git status --short', 'git 
 for (const c of ['git add src/.', 'git add ./', 'git add a/--all', `git add C:${BS}x${BS}.`, 'git add ./-A'])
   ok(!S(c), `a path is not a has word: ${c}`);
 
-// The best of up to 5 runs (runs stop once one is under the limit), so one stall on a busy runner is no failure.
-const best = (f, lim = 2500) => { let m = Infinity; for (let i = 0; i < 5 && m >= lim; i++) { const t = performance.now(); f(); m = Math.min(m, performance.now() - t); } return m; };
-// Under 1 ms on a 2026 PC; the quadratic lazy `(.*?)[ \t]*$` it replaced takes 4 s here.
-{ const m = best(() => ruleOf(note('enforce:\n  on: git add\n  has: [-A]\n  unless: x' + ' '.repeat(60000) + 'y\n')), 1000);
-  ok(m < 1000, `ruleOf is not quadratic on a long run of blanks (${m.toFixed(0)} ms)`); }
+// The time limits (ruleOf on a long run of blanks, unclosed heredocs): enforce-timed.test.mjs, run alone.
 for (const c of [`git commit -m "a ${BS}" b"; git add -A`, `git commit -m "say ${BS}"hi${BS}" now" && git add -A`, `git commit -m it${BS}'s; git add -A`, `echo "x ${BS}" y"\ngit add -A`])
   ok(A(c).hit, `escaped quote: ${c}`);
 ok(!A(`git commit -m 'C:${BS}dir${BS}' ; echo hi`).hit, 'a backslash before a closing single quote is no escape');
@@ -163,13 +159,7 @@ ok(!A('cat <<EOF\ngit add -A\nEOF').hit, 'a real heredoc body is still dropped')
 for (const c of ['env FOO=1 git add -A', 'command git add -A', '/usr/bin/git add -A', 'git.exe add -A', 'rtk git add -A', 'sudo git add -A', 'time git add -A', '& git add -A', '& "C:/Program Files/Git/cmd/git.exe" add -A'])
   ok(A(c).hit, `wrapped: ${c}`);
 ok(!A('echo git add -A').hit && !A('git-lfs add -A').hit && !A('gitk add -A').hit, 'echo, git-lfs, gitk are no hit');
-// Under 2.5 s (best, above). 500 ms failed on busy runners (best of 3 at 581 ms, macOS, 2026-11-26). On a 2026 PC
-// the linear code takes ~70 ms (hits, 30,000 lines) and ~45 ms (segments); with its O(1) closing-word check swapped for a
-// scan (quadratic) one run takes 8 s and ~30 s: 3x over the limit on a fast PC, 30x under it for the linear code.
-// (Growth ratios were tried and were noisier still: 11x for linear work on Windows CI.)
 ok(A('git add -A\n' + 'cat <<EOF\n'.repeat(30000)).hit, 'a hit before 30,000 unclosed heredocs');
-{ const h = best(() => A('git add -A\n' + 'cat <<EOF\n'.repeat(30000))), s = best(() => segments('git status\n' + 'cat <<A\nx\n'.repeat(60000)));
-  ok(h < 2500 && s < 2500, `unclosed heredocs are linear (hits ${h.toFixed(0)} ms, segments ${s.toFixed(0)} ms)`); }
 
 ok(!segments('echo "x\\').join('|').includes('undefined') && segments('git commit -m "a\\\ngit add -A"').length === 1, 'a backslash ending the last line in a quote adds no text');
 { const d = join(home, 'big'); mkdirSync(d); const rule = 'enforce:\n  on: git\n  has:\n    - x\n';

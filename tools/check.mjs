@@ -6,14 +6,15 @@
 //   2. no file imports a name it never uses;
 //   3. the suites of the changed files, --mutant mode, in UTC and in New
 //      York: GitHub's machines run in UTC, where a test of local midnight
-//      once checked nothing.
+//      once checked nothing;
+//   4. every mutant's find-text is in its file exactly once, no label twice.
 // With --full, by hand, also:
-//   4. every mutant's find-text is in its file exactly once, no label twice;
 //   5. the hand-written mutants on the changed lines;
 //   6. the automatic mutants on the changed lines (--no-auto skips them);
 //   7. changed code lines no mutant covers: a reminder, not a failure;
 //   8. after a change to a hook's code, 20 s of fuzz.mjs.
-// Run: node tools/check.mjs [--full] [--no-auto] [--base <ref>]  (from this repo)
+// Run: node tools/check.mjs [--full] [--no-auto] [--own] [--base <ref>]  (from this repo)
+// --own: only the changed files' own suites, never all after a change to a shared file (a builder's check; CI runs all).
 // --base <ref>: "changed" is everything since that ref (a tag, say; committed or not), a renamed file counting only its real edits.
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
@@ -23,7 +24,9 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
 import { suites, settle, tableOf, testsOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
-import { srcFiles, pluginFiles } from './suites.mjs';
+import { srcFiles, pluginFiles, plan, pool, isTimed } from './suites.mjs';
+import { decide } from './pretested.mjs';
+import { bump, heading, section, isPatch, missingAssets, toRerun } from './release.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
@@ -32,9 +35,9 @@ const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8'
 const ALL = [...new Set(Object.values(suites).flatMap(([t]) => testsOf(t)))];
 
 // The suites a set of changed files needs: a source's own, its mutants', a suite itself,
-// or all of them after a change to what they share.
+// or all of them after a change to what they share. own (--own, a builder's check): never all, CI and the lead's --full run those.
 const suiteOf = Object.fromEntries(Object.entries(suites).flatMap(([f, [t]]) => [[f, testsOf(t)], [tableOf(f), testsOf(t)]]));
-export const suitesFor = (changed) => (changed.some((f) => SHARED.includes(f)) ? ALL
+export const suitesFor = (changed, own = false) => (!own && changed.some((f) => SHARED.includes(f)) ? ALL
   : [...new Set(changed.flatMap((f) => (ALL.includes(f) ? [f] : suiteOf[f] ?? [])))]);
 // The lines a unified diff with no context (-U0) adds or changes, in the new file.
 export const changedLines = (diff) => {
@@ -58,6 +61,9 @@ assert.deepEqual(suitesFor(['README.md']), []);
 assert.deepEqual(suitesFor(['src/journal.mjs', 'test/memory-cli.test.mjs']), ['test/journal.test.mjs', 'test/memory-cli.test.mjs']);
 assert.equal(suitesFor(['test/harness.mjs']).length, ALL.length);
 assert.equal(suitesFor(['tools/mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
+assert.equal(suitesFor(['src/store.mjs']).length, ALL.length);
+assert.deepEqual(suitesFor(['src/store.mjs'], true), testsOf(suites['src/store.mjs'][0]));
+assert.deepEqual(suitesFor(['test/memory-cli.test.mjs', 'test/harness.mjs'], true), ['test/memory-cli.test.mjs']);
 // The one list kept by hand: a new src/ module needs its tests and mutants named in mutate.mjs's suites, or its changes run nothing.
 assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no entry in tools/mutate.mjs suites');
 // A mutant that timed out is run once more: killed then it counts as killed, otherwise the second verdict stands, any other verdict is not rerun.
@@ -69,6 +75,63 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
   assert.equal(await settle('TIMED OUT', again('SURVIVED')), 'SURVIVED');
   assert.equal(await settle('SURVIVED', again('killed')), 'SURVIVED');
   assert.equal(runs, 3);
+}
+// Publish before the master run only for a merge whose tree a green pull_request run of this repo already tested.
+{
+  const run = (o) => ({ id: 1, status: 'completed', conclusion: 'success', created_at: '2026-11-27T10:00:00Z', updated_at: '2026-11-27T10:05:00Z', head_repository: { full_name: 'o/r' }, pull_requests: [{ base: { ref: 'master', sha: 'm' } }], ...o });
+  const yes = { parents: ['a', 'b'], ancestor: true, sameTree: true, runs: [run()], repo: 'o/r', inside: (sha) => sha === 'm', now: Date.parse('2026-11-27T12:00:00Z') };
+  assert.equal(decide(yes).ok, true);
+  assert.equal(decide({ ...yes, ancestor: false }).ok, false);   // master moved
+  assert.equal(decide({ ...yes, sameTree: false }).ok, false);
+  assert.equal(decide({ ...yes, parents: ['a'] }).ok, false);    // a squash
+  assert.equal(decide({ ...yes, runs: [run({ conclusion: 'failure' })] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [run({ conclusion: 'cancelled' })] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [run({ status: 'in_progress', conclusion: null })] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [run({ head_repository: { full_name: 'fork/r' } })] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [] }).ok, false);
+  assert.equal(decide({ ...yes, now: Date.parse('2026-11-28T10:05:01Z') }).ok, false);   // a day old: stale
+  assert.equal(decide({ ...yes, runs: [run({ updated_at: undefined })] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [run({ pull_requests: [{ base: { ref: 'master', sha: 'old' } }] })] }).ok, false);   // base not inside the branch
+  assert.equal(decide({ ...yes, runs: [run({ pull_requests: [{ base: { ref: 'parent', sha: 'm' } }] })] }).ok, false);   // a stacked PR's run
+  assert.equal(decide({ ...yes, runs: [run({ pull_requests: [] })] }).ok, false);
+  // The latest run counts: green then red is no; red then green (a rerun of a flake as a new run) is yes.
+  assert.equal(decide({ ...yes, runs: [run({ id: 2, conclusion: 'failure', created_at: '2026-11-27T11:00:00Z' }), run()] }).ok, false);
+  assert.equal(decide({ ...yes, runs: [run({ conclusion: 'failure' }), run({ id: 2, created_at: '2026-11-27T11:00:00Z' })] }).ok, true);
+}
+// release.mjs: the version set, the heading made once, an empty section refused, the release's three files.
+{
+  assert.equal(bump('{\n  "name": "p",\n  "version": "1.6.5",\n  "x": 1\n}\n', '1.6.6'), '{\n  "name": "p",\n  "version": "1.6.6",\n  "x": 1\n}\n');
+  assert.throws(() => bump('{ "name": "p" }', '1.6.6'), /no "version"/);
+  const cl = '# Changelog\n\n## Unreleased\n\n- a fix\n\n## 1.6.5 (2026-11-27)\n\nold\n';
+  assert.equal(heading(cl, '1.6.6', '2026-11-28'), '# Changelog\n\n## 1.6.6 (2026-11-28)\n\n- a fix\n\n## 1.6.5 (2026-11-27)\n\nold\n');
+  assert.equal(heading(heading(cl, '1.6.6', '2026-11-28'), '1.6.6', '2026-11-29'), heading(cl, '1.6.6', '2026-11-28'));
+  const bare = heading('# Changelog\n\n## 1.6.5 (2026-11-27)\n\nold\n', '1.6.6', '2026-11-28');
+  assert.equal(bare, '# Changelog\n\n## 1.6.6 (2026-11-28)\n\n## 1.6.5 (2026-11-27)\n\nold\n');
+  assert.equal(section(bare, '1.6.6'), '');
+  assert.equal(section(heading(cl, '1.6.6', '2026-11-28'), '1.6.6'), '- a fix');
+  assert.equal(section(cl, '1.6.5'), 'old');
+  assert.equal(section(cl, '1.6.50'), '');
+  assert.equal(heading(cl.replace(/\n/g, '\r\n'), '1.6.6', '2026-11-28'), heading(cl, '1.6.6', '2026-11-28').replace(/\n/g, '\r\n'));
+  assert.equal(section(heading(cl, '1.6.6', '2026-11-28').replace(/\n/g, '\r\n'), '1.6.6'), '- a fix');
+  assert.ok(isPatch('1.6.6') && !isPatch('1.7.0') && !isPatch('1.6'));
+  assert.deepEqual(missingAssets(['project-memory-v1.6.6.zip', 'SHA256SUMS'], 'v1.6.6'), ['project-memory-v1.6.6.tar.gz']);
+  assert.deepEqual(missingAssets(['project-memory-v1.6.6.tar.gz', 'project-memory-v1.6.6.zip', 'SHA256SUMS'], 'v1.6.6'), []);
+  const job = (name, conclusion) => ({ name, conclusion, databaseId: name.length });
+  assert.deepEqual(toRerun([job('test (ubuntu-latest, 22)', 'success'), job('assets-early / attach', 'failure')]), { rerun: [job('assets-early / attach', 'failure')], red: [] });
+  assert.deepEqual(toRerun([job('test (macos-latest, 26)', 'failure'), job('publish / publish', 'skipped')]), { rerun: [], red: ['test (macos-latest, 26)'] });
+}
+// The suites' order: biggest first in a pool a core narrower than the machine, the timed files after, alone; never no pool at all.
+assert.deepEqual(plan([{ file: 'a.test.mjs', size: 1 }, { file: 'b-timed.test.mjs', size: 9 }, { file: 'c.test.mjs', size: 5 }, { file: 'd-timed.test.mjs', size: 2 }], 4),
+  { width: 3, pool: ['c.test.mjs', 'a.test.mjs'], timed: ['b-timed.test.mjs', 'd-timed.test.mjs'] });
+assert.equal(plan([], 1).width, 1);
+{
+  let now = 0, most = 0;
+  const seen = await pool([1, 2, 3, 4, 5], 2, async (x) => { most = Math.max(most, ++now); await new Promise((r) => setTimeout(r, 5)); now--; return x * 10; });
+  assert.deepEqual(seen, [10, 20, 30, 40, 50]);
+  assert.equal(most, 2);
+  most = 0;
+  await pool(['a', 'b'], 1, async () => { most = Math.max(most, ++now); await new Promise((r) => setTimeout(r, 5)); now--; });
+  assert.equal(most, 1);
 }
 assert.deepEqual([...changedLines('@@ -3 +3,2 @@\n@@ -9,0 +11 @@\n')], [3, 4, 11]);
 assert.deepEqual(span('a\nbb\nc', 'b\nc'), [2, 3]);
@@ -101,6 +164,20 @@ assert.deepEqual(importsOf("import { a } from './a.mjs';\nimport * as B from \".
 assert.deepEqual(loopsOf({ 'a.mjs': ['b.mjs'], 'b.mjs': ['c.mjs'], 'c.mjs': ['a.mjs'], 'd.mjs': ['a.mjs'] }), ['a.mjs -> b.mjs', 'b.mjs -> c.mjs', 'c.mjs -> a.mjs']);
 assert.deepEqual(loopsOf({ 'a.mjs': ['b.mjs'], 'b.mjs': [] }), []);
 assert.equal(autoArg(new Map([['a.mjs', new Set([3, 4])], ['b.mjs', new Set([11])]])), 'a.mjs:3,4;b.mjs:11');
+// Every mutant's find-text is in its file exactly once, no label twice. A label given twice is one key in an object literal:
+// counted in the table's text, per file. read(path) gives a file's text.
+export const tableProblems = (tables, read) => Object.entries(tables).flatMap(([file, [, mutants]]) => {
+  const text = read(file);
+  const keys = [...read(tableOf(file)).matchAll(/^ {2}(['"])((?:(?!\1)[^\\]|\\.)*)\1: ?\[/gm)].map((m) => m[2]);
+  return [...Object.entries(mutants).flatMap(([label, [from]]) => { const n = text.split(from).length - 1; return n === 1 ? [] : [`${file} :: ${label}: find-text found ${n} times`]; }),
+    ...[...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))].map((k) => `${file} :: ${k}: label given twice`)];
+});
+{
+  const files = { 'src/a.mjs': 'x === y;\nz;\n', 'tools/mutants/a.mjs': "  'ok': [\n  'gone': [\n  'gone': [\n" };
+  assert.deepEqual(tableProblems({ 'src/a.mjs': [null, { ok: ['==='], gone: ['!=='] }] }, (f) => files[f]),
+    ['src/a.mjs :: gone: find-text found 0 times', 'src/a.mjs :: gone: label given twice']);
+  assert.deepEqual(tableProblems({ 'src/a.mjs': [null, { ok: ['==='] }] }, (f) => (f.startsWith('tools') ? "  'ok': [\n" : files[f])), []);
+}
 // --base <ref>: the ref "changed" is measured from; HEAD (the last commit) when not given.
 export const baseOf = (argv) => {
   const eq = argv.find((a) => a.startsWith('--base='));
@@ -170,6 +247,8 @@ if (process.platform !== 'win32') {
 }
 
 const t0 = Date.now(), problems = [];
+// --own: the changed files every suite stands on, whose suites did not run (said again at the end, so a pass is not read as whole).
+let sharedSkipped = [];
 const step = (name, found) => {
   console.log(`${found.length ? 'FAIL' : 'ok  '} ${name}${found.length ? '' : ` (${((Date.now() - t0) / 1000).toFixed(1)} s)`}`);
   for (const f of found) console.log(`       ${f}`);
@@ -177,14 +256,10 @@ const step = (name, found) => {
 };
 const finish = () => {
   console.log(problems.length ? `check failed: ${problems.join(', ')}` : `check passed in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  if (sharedSkipped.length) console.log(`--own: ${sharedSkipped.join(', ')} changed and every suite stands on it; those suites did not run here. Run check.mjs without --own before the merge.`);
   process.exit(problems.length ? 1 : 0);
 };
-const pool = async (items, fn) => {
-  const out = [];
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.max(1, availableParallelism() - 1) }, async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]); } }));
-  return out;
-};
+const WIDTH = plan([], availableParallelism()).width;
 
 const files = git('ls-files', '-co', '--exclude-standard', '*.mjs').split('\n').filter(Boolean);
 const untracked = git('ls-files', '-o', '--exclude-standard').split('\n').filter(Boolean);
@@ -196,7 +271,7 @@ const changed = [...new Set([...changes.keys(), ...untracked].filter(Boolean))];
 console.log(`changed since ${base === 'HEAD' ? 'the last commit' : base}: ${changed.length ? changed.join(', ') : 'nothing'}`);
 
 // 1. Every file parses.
-step('every .mjs parses', (await pool(files, (f) => new Promise((done) => execFile(process.execPath, ['--check', join(repo, f)], (e, _o, err) => done(e ? `${f}: ${String(err).trim().split('\n').slice(0, 4).join(' | ')}` : null))))).filter(Boolean));
+step('every .mjs parses', (await pool(files, WIDTH, (f) => new Promise((done) => execFile(process.execPath, ['--check', join(repo, f)], (e, _o, err) => done(e ? `${f}: ${String(err).trim().split('\n').slice(0, 4).join(' | ')}` : null))))).filter(Boolean));
 // 1b. Every .json parses: a broken hooks.json turns the plugin off without a word.
 step('every .json parses', git('ls-files', '-co', '--exclude-standard', '*.json').split('\n').filter(Boolean).flatMap((f) => {
   try { JSON.parse(readFileSync(join(repo, f), 'utf8')); return []; } catch (e) { return [`${f}: ${e.message}`]; }
@@ -218,30 +293,26 @@ step('no import loops in src/', loopsOf(graph).filter((l) => !KNOWN_LOOPS.includ
 const full = process.argv.includes('--full');
 
 // 3. The changed files' suites, in two time zones.
-const runs = suitesFor(changed).flatMap((t) => ['UTC', 'America/New_York'].map((tz) => [t, tz]));
+sharedSkipped = process.argv.includes('--own') ? changed.filter((f) => SHARED.includes(f)) : [];
+const runs = suitesFor(changed, process.argv.includes('--own')).flatMap((t) => ['UTC', 'America/New_York'].map((tz) => [t, tz]));
 // Why a suite failed: its error line, not the stack or Node's closing version line.
 const why = (text) => { const ls = String(text).split('\n').map((l) => l.trim()).filter((l) => l && !/^at /.test(l) && !/^Node\.js v/.test(l)); return (ls.find((l) => /Error\b/.test(l)) ?? ls.at(-1) ?? '').slice(0, 300); };
 // The zone is set on this process just before each spawn, which copies it, and the child inherits: no child is handed the whole
 // environment as an object (R42, R66). Put back after, so the later steps' children run in the zone this one was given.
 const tz0 = process.env.TZ;
-step(`the changed files' suites (${runs.length ? [...new Set(runs.map(([t]) => t))].join(', ') : 'none'})`, (await pool(runs, ([t, tz]) => new Promise((done) => {
+const runSuite = ([t, tz]) => new Promise((done) => {
   process.env.TZ = tz;
   execFile(process.execPath, [join(repo, t), '--mutant'], { maxBuffer: 1 << 26 }, (e, out, err) => done(e ? `${t} (TZ=${tz}): ${why(err + out)}` : null));
-}))).filter(Boolean));
+});
+// The timed suites after the rest, one at a time: their wall-clock limits measure the code, not the load.
+step(`the changed files' suites (${runs.length ? [...new Set(runs.map(([t]) => t))].join(', ') : 'none'})`, [
+  ...await pool(runs.filter(([t]) => !isTimed(t)), WIDTH, runSuite), ...await pool(runs.filter(([t]) => isTimed(t)), 1, runSuite)].filter(Boolean));
 if (tz0 === undefined) delete process.env.TZ; else process.env.TZ = tz0;
 
-if (!full) finish();
+// 4. The mutant tables, a text scan of seconds, so CI runs it on every PR (1.6.4's master went red on one).
+step('every mutant applies once', tableProblems(suites, (f) => readFileSync(join(repo, f), 'utf8')));
 
-// 4. The mutant tables. A label given twice is one key in an object literal:
-// counted in the text, per file.
-const bad = [];
-for (const [file, [, mutants]] of Object.entries(suites)) {
-  const text = readFileSync(join(repo, file), 'utf8');
-  for (const [label, [from]] of Object.entries(mutants)) { const n = text.split(from).length - 1; if (n !== 1) bad.push(`${file} :: ${label}: find-text found ${n} times`); }
-  const keys = [...readFileSync(join(repo, tableOf(file)), 'utf8').matchAll(/^ {2}(['"])((?:(?!\1)[^\\]|\\.)*)\1: ?\[/gm)].map((m) => m[2]);
-  for (const k of new Set(keys.filter((k, i) => keys.indexOf(k) !== i))) bad.push(`${file} :: ${k}: label given twice`);
-}
-step('every mutant applies once', bad);
+if (!full) finish();
 
 // 5 and 6. The mutants on the changed lines; the changed code lines none covers.
 const on = [], bare = [], autoLines = new Map();
