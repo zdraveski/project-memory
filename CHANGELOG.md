@@ -12,7 +12,7 @@ A bug-fix release. On Windows, console windows no longer flash after a reply, an
 ### Smaller fixes
 
 - **A file whose look-up keeps running out of time is no longer looked up on every edit.** After two tries, it is left alone.
-- **The end-of-session hook now declares the 1.5 second limit Claude Code gives plugins there.** It said 3 seconds, which Claude Code does not honour.
+- **The end-of-session hook now declares a 1 second timeout, inside the 1.5 seconds Claude Code gives plugins there.** It said 3 seconds, which Claude Code does not honour. The hook takes a small fraction of that.
 - **The memory skill's description is valid YAML.** Claude Code read it anyway; other agent tools would have refused it.
 - **Two tests that failed at random on busy macOS and Windows machines are fixed.**
 
