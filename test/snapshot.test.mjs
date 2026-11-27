@@ -160,6 +160,10 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   scripted((sub, a) => (sub === 'ls-files' && a.includes('-o') ? 'a\0b\0c\0d\0e\0f\0g\0h\0' : ''));
   ok(snapshot({ batch: 1 }) === 'in parts: 7 file(s) still to add; each reply adds more', 'a snapshot in parts says what is left');
   ok(health().partial === 7 && health().pending === true && health().failures === 0, 'a snapshot in parts records how many files are left, and is owed');
+  // Later parts of a first snapshot are still the first snapshot (item 39); parts taken after a timeout on an old history are ordinary.
+  const msgOf = (head) => { writeFileSync(join(g, 'project-memory-parts'), ''); scripted((sub, a) => (sub === 'log' ? head : '')); snapshot(); return calls.find((c) => c.includes('commit -qm')); };
+  ok(msgOf('memory: first snapshot\n').endsWith('commit -qm memory: first snapshot'), 'part 2 of a first snapshot is named as the first');
+  ok(/commit -qm memory: \d{4}-/.test(msgOf('memory: 2026-01-01 10:00\n')), 'parts of an old history are ordinary');
   rmSync(join(g, 'project-memory-parts'), { force: true });
   scripted(() => { throw fail('spawnSync git ENOENT', { code: 'ENOENT', syscall: 'spawnSync git' }); }); snapshot();
   h = health();

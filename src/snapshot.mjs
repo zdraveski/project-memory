@@ -233,6 +233,9 @@ function take(gitWait, batch) {
       // A note another window deleted between git's listing and its read is one
       // more try: read as busy, a cause that never goes away (a link to nothing)
       // would have hidden a history that never commits.
+      // Parts 2..n of a first snapshot are it too (versionsOf and changedLately skip its lines): asked before stage(), which drops the mark at the last part.
+      let first = fresh;
+      if (!fresh && (existsSync(parts) || !existsSync(join(root, '.git', 'index')))) { try { first = git('log', '-1', '--format=%s').trim() === FIRST && existsSync(parts); } catch { first = true; } }   // no HEAD: the first part
       let rest;
       try { rest = stage(); } catch (e) {
         const why = gitWhy(e);
@@ -303,7 +306,7 @@ function take(gitWait, batch) {
         git('-c', 'user.email=memory@local', '-c', 'user.name=memory-tier',
           // Local time, not UTC: a snapshot stamped two hours behind the clock that
           // made it is a number that misleads whoever reads the log later.
-          'commit', '-qm', fresh ? FIRST : `memory: ${local()}`);
+          'commit', '-qm', first ? FIRST : `memory: ${local()}`);
       } catch (e) {
         if (/nothing (added )?to commit/.test(String(e.stdout))) return said({});   // nothing changed
         // Another session's commit took what this one staged, and a file changed
