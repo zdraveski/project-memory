@@ -54,9 +54,18 @@ export const tokens = (v) => {
 // held them at 200K. Taken as 1M under a 400K window, the gate deferred a
 // compaction at 390k into the context-limit error it exists to avoid.
 // Claude Code ignores that variable for a Claude model (live check, 2026-11-17: the window stayed 1M); it applies with
-// DISABLE_COMPACT set, or for a model it does not know. The model is ANTHROPIC_MODEL: shortcut: one chosen with /model is not seen.
+// DISABLE_COMPACT set, or for a model it does not know. The model is ANTHROPIC_MODEL, else settings' `model` (what /model writes).
 export const MAX_CONTEXT_USED = envOn(process.env.DISABLE_COMPACT) || (!!process.env.ANTHROPIC_MODEL && !/claude|sonnet|opus|haiku|fable/i.test(process.env.ANTHROPIC_MODEL));
-export const MODEL_WINDOW = (MAX_CONTEXT_USED && tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS)) || (envOn(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) ? 200_000 : 1_000_000);
+const MODEL = process.env.ANTHROPIC_MODEL || setting('model', (x) => typeof x === 'string' && x.length > 0).value || '';
+// 200k: Claude 3, and Opus, Sonnet or Haiku before 4.6 (Haiku 4.5 too), unless `[1m]`. An alias (`haiku`) is the current model, 1M.
+// shortcut: a model chosen with /model for this session only is not in settings; upgrade if Claude Code ever passes the model to hooks.
+const small = (m) => {
+  if (/\[1m\]/i.test(m)) return false;
+  if (/claude-3/i.test(m)) return true;
+  const v = /(?:opus|sonnet|haiku)-(\d+)(?:-(\d)(?!\d))?/i.exec(m);
+  return !!v && Number(v[1]) + Number(v[2] ?? 0) / 10 < 4.6;
+};
+export const MODEL_WINDOW = (MAX_CONTEXT_USED && tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS)) || (envOn(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) || small(MODEL) ? 200_000 : 1_000_000);
 // The window Claude Code compacts against: the environment's, else autoCompactWindow from its settings files (set by /autocompact).
 // Never past the model's.
 export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || tokens(setting('autoCompactWindow', (x) => tokens(x) > 0).value) || MODEL_WINDOW, MODEL_WINDOW);
