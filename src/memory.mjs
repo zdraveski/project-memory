@@ -992,7 +992,7 @@ export function parseArgs(given) {
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
   // An empty --conversation or --file (an unset variable in quotes) is none given: forget took it for "every conversation", search ran unfiltered.
-  const bare = argv.find((a, i) => valued.has(a) && a !== '--rev' && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--project') && argv[i + 1] === '')));
+  const bare = argv.find((a, i) => valued.has(a) && (a !== '--rev' || i + 1 >= argv.length) && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--project') && argv[i + 1] === '')));
   if (bare) return `${bare} needs a value after it`;
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);

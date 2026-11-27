@@ -581,7 +581,7 @@ rmSync(join(root, '.stop-ran'), { force: true });
     [[], { cmd: 'status', rest: [], args: [] }],
     [['--session', 'abc'], { cmd: 'status', rest: ['--session', 'abc'], args: [] }],
     [['--session'], { cmd: 'status', rest: ['--session'], args: [] }],
-    [['restore', 'f', '--rev'], { cmd: 'restore', rest: ['f', '--rev'], args: ['f'] }],
+    [['restore', 'f', '--rev'], '--rev needs a value after it'],
     [['search', 'x', '-h'], { cmd: 'help', rest: ['x', '-h'], args: ['x', '-h'] }],
     [['search', '--file', '-h'], { cmd: 'search', rest: ['--file', '-h'], args: [] }],
     [['constructor'], { cmd: 'constructor', rest: [], args: [] }],
