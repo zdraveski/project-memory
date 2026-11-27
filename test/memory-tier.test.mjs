@@ -714,7 +714,7 @@ if (!quick) {
   mkdirSync(lock);
   let first = 0, prev = 0;
   r = await swap('node:fs', 'mkdirSync', (real) => (p, ...a) => {
-    if (p === lock && existsSync(lock)) { const t = Date.now(); first ||= t; if (prev && t - prev >= 150) rmdirSync(lock); prev = t; }
+    if (p === lock && existsSync(lock)) { const t = Date.now(); first ||= t; if (prev && t - prev >= 150 && t - first >= 2000) rmdirSync(lock); prev = t; }
     return real(p, ...a);
   }, () => call(['--stop'], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: tp, session_id: 'heldsess' })));
   const h = join(root, 'proj-two', 'memory', 'handoff.md');

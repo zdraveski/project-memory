@@ -2,12 +2,12 @@
 
 ## 1.6.3 (2026-11-27)
 
-A bug-fix release. On Windows, console windows no longer flash after a reply, and a project you moved to a new folder now tells you where its old notes are.
+A bug-fix release. On Windows, console windows no longer flash after a reply, and a project you moved to a new place now tells you where its old notes are.
 
 ### What you notice
 
 - **No more flashing console windows on Windows after a reply.** The background tidy-up now runs its git commands without opening a window.
-- **A moved project points you to the notes it left behind.** Claude Code keeps memory by folder path, so a project moved to a new folder starts with an empty memory. `memory doctor`, and the startup briefing once, now name the old memory folder and the notes it holds that the new one lacks, and say how to copy them over. Nothing is moved for you.
+- **A moved project points you to the notes it left behind.** Claude Code keeps memory by folder path, so a project moved to a new folder starts with an empty memory. When the project's folder and its parent folder kept their names, `memory doctor`, and the startup briefing once, now name the old memory folder and the notes it holds that the new one lacks, and say how to copy them over. Nothing is moved for you.
 
 ### Smaller fixes
 

@@ -137,11 +137,14 @@ export function notes(dir) {
 // "Same last name" is the slug's last two "-" parts, so a folder whose own name holds a dash (`my-app`) is matched as `-my-app`.
 export function moved(dir) {
   const slug = basename(dirname(dir)), root = dirname(dirname(dir)), parts = slug.toLowerCase().split('-');
-  if (parts.length < 2) return [];
+  // An empty segment is a non-ASCII name slugged to dashes: unrelated projects would end alike.
+  if (parts.length < 2 || parts.slice(-2).some((p) => !p)) return [];
   const tail = '-' + parts.slice(-2).join('-');
   const out = [];
+  // The first session after a move has no memory folder yet: it lacks every note.
+  let mine = new Set();
+  try { mine = new Set(readdirSync(dir).map((f) => f.toLowerCase()).filter((f) => f.endsWith('.md'))); } catch {}
   try {
-    const mine = new Set(readdirSync(dir).map((f) => f.toLowerCase()).filter((f) => f.endsWith('.md')));
     for (const s of readdirSync(root)) {
       if (s === slug || s.startsWith('_') || !s.toLowerCase().endsWith(tail)) continue;
       const at = join(root, s, 'memory');

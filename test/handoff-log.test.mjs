@@ -4289,6 +4289,14 @@ if (!quick) {
   ok(/new-note\.md/.test(await go()), 'a note that came later is said once more');
   rmSync(dirM, { recursive: true }); mkdirSync(dirM, { recursive: true }); writeFileSync(join(dirM, 'pelican-notes.md'), 'x'); writeFileSync(join(dirM, 'new-note.md'), 'x');
   ok(!/D--old-moved-selftest-wombat/.test(await go()), 'nothing when this folder has every note the old one has');
+  const { moved } = await import('../src/run-records.mjs');
+  // The first session after a move has no memory folder yet: the old one is named all the same (review).
+  rmSync(dirM, { recursive: true });
+  ok(moved(dirM).some((m) => m.at === oldM), 'a moved project with no memory folder yet still finds the old one');
+  // Non-ASCII folder names all slug to dashes: two unrelated ones end alike and must not match (review).
+  const ru = storeFor(home, 'C:\\x\\проект'), other = storeFor(home, 'D:\\y\\тест');
+  mkdirSync(other, { recursive: true }); writeFileSync(join(other, 'unrelated-plan.md'), 'x');
+  ok(!moved(ru).length, 'a slug whose last two segments are empty matches nothing');
 }
 rmSync(home, { recursive: true, force: true });
-console.log(`handoff-log:${checks} checks passed`);
+console.log(`handoff-log: ${checks} checks passed`);
