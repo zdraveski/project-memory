@@ -1469,7 +1469,10 @@ After the log: narwhalqq stays.
   writeFileSync(join(dir, 'handoff.md'), `---\nname: handoff\ndescription: "h"\n---\nweek ${Date.now()}\n`);
   writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8') + '- [Fresh](zz-fresh.md) — fresh\n');
   writeFileSync(join(dir, 'journal', '2026-10-27.md'), '# Journal 2026-10-27\nedited\n');
-  tier();
+  // Until a snapshot holds the week's changes, up to 60 s: on a crowded Windows runner one pass took none (its git timed out or
+  // met an earlier git's lock), and the week showed only older adds (CI 2026-11-26). The next Stop takes them, as a user's would.
+  for (const t0 = Date.now(); tier(), spawnSync('git', gitArgs('cat-file', '-e', 'HEAD:C--mem-cli/memory/zz-fresh.md')).status !== 0 && Date.now() - t0 < 60_000;)
+    await new Promise((r) => setTimeout(r, 200));
   // The snapshots ignore the handoff, but a repository from before that rule holds it: forced in here.
   // On a crowded Windows runner the snapshot's git can pass its 30 s timeout: the kill reaches git's wrapper, and the
   // git under it runs on, and can take index.lock after a check that found none (CI 2026-11-25: the add met it, the commit
