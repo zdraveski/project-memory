@@ -286,4 +286,13 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
   for (const s of ['ключ: значение', 'токен: истёк']) ok(redact(s) === s, `kept: ${s}`);
 }
 
+// Rules the full mutant run of 2026-11-27 found untested (item 53), each by a name no wider rule catches.
+{
+  ok(redact('MY_TOKEN="Zq9 x7Lm 4Nv6"') === 'MY_TOKEN="[redacted]"', 'a .env quoted value is cut whole, blanks included');
+  ok(redact('$env:STRIPE_KEY = Zq8Xk2Lm4Nv6Bt1Rw3') === '$env:STRIPE_KEY = [redacted]', "PowerShell's $env: secret is cut");
+  // An option value never starts with `=`: two readings of each ` =y` made a 30-option line take about a minute.
+  const t0 = performance.now(); redact('redis-cli' + ' -x =y'.repeat(30) + ' ;');
+  ok(performance.now() - t0 < 2000, `redis-cli options read once each (${Math.round(performance.now() - t0)} ms)`);
+}
+
 console.log(`secrets.test.mjs: ${checks} checks passed`);
