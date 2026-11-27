@@ -8,7 +8,7 @@ import { tempHome, storeFor } from './harness.mjs';
 const { home } = tempHome('mistakes-');
 const M = await import('../src/mistakes.mjs');
 const { NOT_FAILURE, targetOf, errorLine, failuresOf, mistakes, recurring, claimed, cochangeFor, buildMistakes, readMistakes, mistakesOwed } = M;
-const { local, dropMistakes, MISTAKES, keyed } = await import('../src/store.mjs');
+const { local, dropMistakes, MISTAKES, keyed, foldCase } = await import('../src/store.mjs');
 const { render } = await import('../src/journal.mjs');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
@@ -200,7 +200,7 @@ for (const p of ['/abs/a.mjs', 'C:\\x\\a.mjs', '../up/a.mjs', 'a/../b.mjs', '.cl
   ok(mistakes(es, NOW).together.length === 0, `a path that is absolute, goes up or is under .claude/projects is left out: ${p}`);
 }
 { const es = Array.from({ length: 5 }, (_, i) => E(`p${i}`, `${day(1)} 10:0${i}`, `s${i}`, [], ['.\\src\\A.mjs', './test/a.test.mjs']));
-  ok(mistakes(es, NOW).together.some((r) => r.a === 'src/a.mjs' && r.b === 'test/a.test.mjs'), 'paths are cleaned (cleanPath): slashes, a leading ./, case'); }
+  ok(mistakes(es, NOW).together.some((r) => r.a === foldCase('src/A.mjs') && r.b === 'test/a.test.mjs'), 'paths are cleaned (cleanPath): slashes, a leading ./, and case where the file system ignores it'); }
 { const names = Array.from({ length: 120 }, (_, i) => `d${String(i).padStart(3, '0')}.mjs`);
   const es = Array.from({ length: 5 }, (_, i) => E(`t${i}`, `${day(1)} 10:0${i}`, `s${i}`, [], names.slice(0, 15)));
   ok(mistakes(es, NOW).together.length === 200, 'at most 200 rules'); }
