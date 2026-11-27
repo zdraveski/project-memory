@@ -1,5 +1,7 @@
 # Changelog
 
+## 1.6.7 (2026-11-27)
+
 ## 1.6.6 (2026-11-27)
 
 A bug-fix release. Two kinds of password reached the journal and are now cut, forgotten text no longer survives in old copies, private conversations stay private when a file cannot be read, and several slow paths are fast again. Nothing changes in how you use it.
