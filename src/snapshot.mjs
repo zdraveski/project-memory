@@ -417,7 +417,7 @@ const rewrite = (work) => {
   // filter-branch refuses a repository with unstaged changes, and a store always has some (notes edited since the last snapshot):
   // it rewrites a bare copy, which is fetched back over the branches (the work tree and its files stay as they are), and the
   // index is reset to the new HEAD so it holds no old blob.
-  // The snapshot hook takes no lock but git's own, and reads a fresh config.lock (nothing here writes config) as busy: the purge
+  // The snapshot hook takes only its .snapshot-lock (snapshots against each other) and git's own, and reads a fresh config.lock (nothing here writes config) as busy: the purge
   // holds that one for its whole run, and gives way to a commit already in flight, whose work the stale copy would overwrite.
   const g = join(projectsRoot(), '.git'), lock = join(g, 'config.lock'), wait = new Error(BUSY);
   if (busy()) throw wait;
