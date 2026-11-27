@@ -2,7 +2,7 @@
 
 ## 1.6.4 (2026-11-27)
 
-A bug-fix release, mostly about secrets. Three ways a password or key could reach the journal or the note history are closed, and the clean-up command no longer stops halfway. Nothing changes in how you use it.
+A bug-fix release, mostly about secrets. Four ways a password or key could reach the journal or the note history are closed, and the clean-up command no longer stops halfway. Nothing changes in how you use it.
 
 ### Secrets
 
