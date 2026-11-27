@@ -61,7 +61,7 @@ export default {
   "mysql asking for its password redacted": ["\\s-p)[^\\s-][^\\s]{2,}", "\\s-p)[^\\s]{0,}"],
   "mysql -P read as a password": ["[^\\s]{2,}/g, '$1[redacted]'],", "[^\\s]{2,}/gi, '$1[redacted]'],"],
   "\"password is\" saved": ["(?:password|passwd|passphrase|api[ _-]?key|token|secret)(?:\\s{1,5}", "(?:NEVER)(?:\\s{1,5}"],
-  "\"the password is hashed\" redacted": ["(?=\\S*[0-9@#$%^&_=-]|\\S*[!*+]\\S)", ""],
+  "\"the password is hashed\" redacted": ["(?=\\S*[0-9!@#$%^&*_+=-])", ""],
   "P-F3 a child key taken for a bare token's value": [String.raw`["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=`, String.raw`["']?)(?=`],
   "P-F3 any token ending in a colon taken for a key": [String.raw`["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=`, String.raw`["']?)(?![^\s"',;]{0,200}:(?![^\s"',;]))(?=`],
   "P-F3 a token ending in a colon at its line's end taken for a key": [String.raw`["']?)(?![\w.-]{1,40}:(?:[ \t]+\S|[ \t]*\r?\n[ \t]+[\w.-]))(?=`, String.raw`["']?)(?![\w.-]{1,40}:(?:[ \t]|\r?\n|$))(?=`],

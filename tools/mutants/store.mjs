@@ -44,7 +44,7 @@ export default {
   "an unlock refused is never tried again": ["try { rmdirSync(lock); break; } catch (e) { if (!(BUSY.includes(e.code) || e.code === 'ENOTEMPTY') || i === 2) break; sleep(STEP); }", "try { rmdirSync(lock); break; } catch (e) { break; }"],
   'a pause after the last try of the unlock': ["|| i === 2) break; sleep(STEP);", ") break; sleep(STEP);"],
   "lock not exclusive": ["try { mkdirSync(lock, { mode: 0o700 }); held = true;", "try { mkdirSync(lock, { recursive: true, mode: 0o700 }); held = true;"],
-  'a dead lock is never taken over': ['statSync(p).mtimeMs) > LOCK_STALE;', 'statSync(p).mtimeMs) > LOCK_STALE * 1e6;'],
+  'a dead lock is never taken over': ['statSync(p).mtimeMs) > ms;', 'statSync(p).mtimeMs) > ms * 1e6;'],
   'a lock from the future is never stale': ['Math.abs(Date.now() - statSync(p).mtimeMs)', '(Date.now() - statSync(p).mtimeMs)'],
   "P-F6 only the five zero-width characters read through": [String.raw`.replace(/\p{Default_Ignorable_Code_Point}/gu, '')`, String.raw`.replace(/[​-‍⁠﻿]/g, '')`, { test: 'test/handoff-log.test.mjs' }],
   "a fullwidth tag not folded":["export const norm = (s) => s.normalize('NFKC').replace(", "export const norm = (s) => s.replace(", { test: 'test/handoff-log.test.mjs' }],
