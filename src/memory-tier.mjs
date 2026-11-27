@@ -490,12 +490,17 @@ function tidy(dirs, { now, dry, pause, batch, gitWait, gated, handTo, snap, say 
   // A spawn that throws runs it here, as before; one that fails later (an 'error' event) leaves it to the next Stop,
   // since nothing was stamped.
   if (gated && handTo) {
+    // One child at a time: the stamp lands only after git, so every Stop meanwhile saw work owed and spawned another. The marker
+    // is the child's, removed when it ends; one older than git's timeout is a killed child's.
+    const running = join(handTo, '.tidy-running');
+    try { if (Date.now() - statSync(running).mtimeMs < gitWait) return 0; } catch {}
     try {
+      writeFileSync(running, String(process.pid));
       spawn(process.execPath, [fileURLToPath(import.meta.url), '--tidy', handTo], { detached: true, stdio: 'ignore', windowsHide: true })
         .on('error', () => {}).unref();
       T.mark('spawn');
       return 0;
-    } catch {}
+    } catch { try { unlinkSync(running); } catch {} }
   }
   // The first time, the notebook is kept as it was found before the tidy-up
   // changes it: snapshotted after, the table of contents as the user had
@@ -602,7 +607,8 @@ export async function main(argv, input) {
   // A manual /compact (PreCompact) waits for the tidy-up: the index it compacts with should be tidy.
   // PROJECT_MEMORY_TIDY=inline keeps it in the hook: the suites assert what a Stop did once it returns.
   const handTo = stop && ['Stop', 'StopFailure'].includes(payload?.hook_event_name) && process.env.PROJECT_MEMORY_TIDY !== 'inline' ? own || sharedStore() : null;
-  return tidy(dirs, { now, dry, pause, batch, gitWait, gated, handTo, snap: dirAt === -1, say });
+  try { return tidy(dirs, { now, dry, pause, batch, gitWait, gated, handTo, snap: dirAt === -1, say }); }
+  finally { if (tidyAt !== -1) try { unlinkSync(join(argv[tidyAt + 1], '.tidy-running')); } catch {} }
 }
 
 // Node names the script by its real path: compared with the path it was
