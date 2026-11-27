@@ -129,9 +129,9 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH, record: keep = 
   const r = take(gitWait, batch);
   if (keep) try { record(r); } catch {}   // a record the disk will not read or write is skipped (a fault), never a crash
   return r.busy ? 'busy' : 'off' in r ? `off: ${r.off}` : 'failed' in r ? `snapshot failed: ${r.failed}`
-    : r.rest ? `in parts: ${r.rest} file(s) still to add; each reply adds more` : r.made ?? null;
+    : r.rest || r.later ? `in parts: ${r.rest || r.later} file(s) still to add; each reply adds more` : r.made ?? null;
 }
-// What one snapshot did: `busy`, `off` or `failed` (each with why), `rest` (files a first snapshot in parts still has to add),
+// What one snapshot did: `busy`, `off` or `failed` (each with why), `rest` (files a first snapshot in parts still has to add), `later` (files changed since the add: owed, not parts),
 // `made` ('initialised' or 'committed'), none of them when nothing changed; and the notes it `held` and the stores it `missed`.
 function take(gitWait, batch) {
   const root = projectsRoot(), lockDir = join(root, '.snapshot-lock');
@@ -319,8 +319,9 @@ function take(gitWait, batch) {
     // Changed since the add (another session's write, whose own snapshot went busy): still owed, or its pending mark is
     // cleared by this success and the file stays out of every snapshot until it changes again.
     // `diff --name-only`, not `status`: tracked files only, no scan of untracked ones (80-300 ms), and a path `add -A` can never add (nul.md) never shows.
-    if (!rest) { try { rest = owed(); } catch {} }
-    return said({ rest, made: fresh ? 'initialised' : 'committed' });
+    let later = 0;   // not `rest`: that one is the first snapshot's parts, and this is any history's
+    if (!rest) { try { later = owed(); } catch {} }
+    return said({ rest, later, made: fresh ? 'initialised' : 'committed' });
     });
     return done ?? said({ busy: true });
   } catch (e) {
@@ -362,7 +363,7 @@ function record(r) {
     : 'failed' in r
     ? { lastOk: h.lastOk || null, failures: (h.failures || 0) + 1, error: r.failed, pending: true }
     : 'off' in r ? { lastOk: h.lastOk || null, failures: 0, off: r.off }
-    : { lastOk: new Date().toISOString(), failures: 0, ...(r.rest && { partial: r.rest, pending: true }) };
+    : { lastOk: new Date().toISOString(), failures: 0, ...(r.rest && { partial: r.rest }), ...((r.rest || r.later) && { pending: true }) };
   if (r.missed.length) next.missed = r.missed;
   if (r.held.length) next.held = r.held;
   // Through a temp file: one torn by a parallel Stop parsed as {}, and the owed snapshot and failure count were lost (audit D-5).
