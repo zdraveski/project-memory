@@ -212,6 +212,14 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     'sort_key: created_at_desc', 'cache_key: user_profile_page', 'primary_key: user_account_id', 'key_file: Xk9mQ2zz7Lp', 'tokenizer: Xk9mQ2zz7Lp']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
 }
 
+// 1.6.5 item 24: "<keyword> is <plain word>!" is prose (a trailing ! * + is no symbol of a password); a value with a digit or an inner symbol is cut.
+{
+  for (const t of ['the token is expired!', 'the password is wrong!', 'the secret is out!', 'password is required*', 'the token is invalid+', 'the api key is valid?',
+    'the password is hashed', 'password is wrong, retry']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+  for (const [t, w] of [['the password is hunter2', 'the password is [redacted]'], ['my password is Zq9!x7', 'my password is [redacted]'], ['the token is abc!def', 'the token is [redacted]'],
+    ['the password is hunter2!', 'the password is [redacted]'], ['the secret is my-app-secret-v2', 'the secret is [redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';
