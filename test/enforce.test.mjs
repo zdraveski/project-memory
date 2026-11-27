@@ -372,7 +372,7 @@ ok(CACHE_V === 4, 'the cache version is 4');
 { const q = proj(), cf = join(q.st, CACHE); writeFileSync(join(q.st, 'dead.md'), lnote('applies_to: [src/a.mjs]\ninstead: Use the lock helper instead.\n'));
   writeFileSync(join(q.st, 'badkey.md'), lnote('applies_when: [ship]\n')); writeFileSync(join(q.st, 'proj.md'), lnote('', { type: 'project' })); writeFileSync(join(q.st, 'arch.md'), lnote('tier: archive\n')); writeFileSync(join(q.st, 'MEMORY.md'), lnote()); mkdirSync(join(q.st, 'dir.md'));
   const n = notesOf(q.st), by = Object.fromEntries(n.map((x) => [x.file, x]));
-  ok(n.map((x) => x.file).join() === 'arch.md,badkey.md,dead.md,dir.md,proj.md,stage.md', `notesOf lists every .md that is not an index, sorted (a folder named like a note too, with r and l null) (got ${n.map((x) => x.file)})`);
+  ok(n.map((x) => x.file).join() === 'arch.md,badkey.md,dead.md,proj.md,stage.md', `notesOf lists every .md file that is not an index, sorted (a folder named like a note is skipped) (got ${n.map((x) => x.file)})`);
   ok(by['stage.md'].r.rule.on === 'add' && by['stage.md'].l.lesson.type === 'feedback' && by['dead.md'].r === null && by['dead.md'].l.lesson.to.join() === 'src/a.mjs' && by['badkey.md'].l.bad && by['proj.md'].l === null && by['arch.md'].l === null && by['arch.md'].r === null, `notesOf gives r and l for each note (got ${JSON.stringify(n.map((x) => [x.file, !!x.r, x.l && Object.keys(x.l)[0]]))})`);
   ok(by['dead.md'].mtime === statSync(join(q.st, 'dead.md')).mtimeMs, 'notesOf gives the note\'s mtime');
   const c = JSON.parse(readFileSync(cf, 'utf8')); ok(c.v === 4 && c.files['dead.md'].l.lesson.instead.startsWith('Use the lock') && c.files['stage.md'].r.rule.on === 'add' && c.files['proj.md'].l === null, 'the cache file is v4 with r and l per note');
@@ -383,7 +383,7 @@ ok(CACHE_V === 4, 'the cache version is 4');
   writeFileSync(cf, JSON.stringify({ v: 3, files: { 'stage.md': { mtime: statSync(join(q.st, 'stage.md')).mtimeMs, size: statSync(join(q.st, 'stage.md')).size, r: { rule: { on: 'ls', has: ['x'], unless: [] } } } } }));
   const s3 = ruleSet(q.payload()); ok(s3.rules.length === 1 && s3.rules[0].rule.on === 'add' && JSON.parse(readFileSync(cf, 'utf8')).v === 4, 'a v3 cache is rebuilt as v4, and ruleSet reads the note again');
   // write:false leaves no file and changes none
-  rmSync(cf); ok(notesOf(q.st, { write: false }).length === 6 && !existsSync(cf), 'notesOf({ write: false }) writes no file');
+  rmSync(cf); ok(notesOf(q.st, { write: false }).length === 5 && !existsSync(cf), 'notesOf({ write: false }) writes no file');
   const T = new Date('2026-01-01T00:00:00Z'); notesOf(q.st); utimesSync(cf, T, T); writeFileSync(join(q.st, 'later.md'), lnote('applies_to: [x/y]\n')); notesOf(q.st, { write: false }); ok(statSync(cf).mtimeMs === T.getTime(), 'notesOf({ write: false }) leaves an old cache alone');
   notesOf(q.st); ok(statSync(cf).mtimeMs !== T.getTime() && JSON.parse(readFileSync(cf, 'utf8')).files['later.md'], 'a write call adds the new note');
   ok(notesOf(join(home, 'no-such-folder')).length === 0 && notesOf(join(home, 'no-such-folder'), { write: false }).length === 0, 'a store that does not exist gives none, no throw'); }

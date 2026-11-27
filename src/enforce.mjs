@@ -274,7 +274,8 @@ export function notesOf(dir, { write = true } = {}) {
   const now = {}, out = [];
   for (const file of names) {
     try {
-      const { mtimeMs: mtime, size } = statSync(join(dir, file)), was = old[file];
+      const st = statSync(join(dir, file)), { mtimeMs: mtime, size } = st, was = old[file];
+      if (!st.isFile()) continue; // a folder named like a note: Windows reads it as empty, elsewhere the read throws
       let r, l;
       // A cache entry whose lesson is not the shape lessonOf gives is read again.
       if (was && was.mtime === mtime && was.size === size && lessonShaped(was.l)) { r = was.r; l = was.l; }
