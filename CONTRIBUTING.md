@@ -309,8 +309,9 @@ A patch (X.Y.Z with Z above 0) is one pull request, and merging it is the releas
    runs beside it. Findings become more commits on the same pull request,
    and only those commits are reviewed again.
 4. `node tools/release.mjs ready X.Y.Z --validated` once the review is clean:
-   it refuses an empty changelog section, takes the pull request out of draft
-   and has it merge itself when its required checks pass. On the push to
+   it refuses an empty changelog section, waits for every check of the pull
+   request (not only the required ones) and stops on a red one, then takes the
+   pull request out of draft and merges it. On the push to
    `master`, the `pretested` job asks whether the merge's tree is the tree a
    green pull request run of this repository already tested (`tools/pretested.mjs`:
    a merge commit, `master` inside the branch, the same tree). If so,

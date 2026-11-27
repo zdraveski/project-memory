@@ -3,8 +3,8 @@
 //   start X.Y.Z   the last fuzz, mutate and changed-lines results; then patch-X.Y.Z from origin/master with the version
 //                 bumped and the changelog heading, signed off, pushed, and a draft pull request: CI runs under the build.
 //   ready X.Y.Z --validated
-//                 the version's changelog section has text; the pull request leaves draft and merges itself once its
-//                 required checks pass. `claude plugin validate . --strict` is run by hand first (--validated says so):
+//                 the version's changelog section has text; once every check of the pull request passed (not only the
+//                 required ones), it leaves draft and merges. `claude plugin validate . --strict` is run by hand first (--validated says so):
 //                 nothing in this repository runs the claude command (CONTRIBUTING).
 //   after X.Y.Z   waits for master's test run, checks the release has its three files (else re-runs the failed jobs)
 //                 and prints the deploy command.
@@ -65,8 +65,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   } else if (cmd === 'ready') {
     if (!section(readFileSync(join(repo, 'CHANGELOG.md'), 'utf8'), v)) { console.error(`CHANGELOG.md has no text under ## ${v}`); process.exit(1); }
     if (!process.argv.includes('--validated')) { console.error('run `claude plugin validate . --strict` (it should exit 0), then: node tools/release.mjs ready ' + v + ' --validated'); process.exit(1); }
+    // Every check, not only the required ones (auto-merge waits for those alone), before the PR leaves draft: a red one
+    // stops here with nothing half done.
+    try { show('gh', 'pr', 'checks', branch, '--watch', '--fail-fast'); } catch { console.error(`${branch}: a check failed or none ran yet: see above, fix and rerun`); process.exit(1); }
     show('gh', 'pr', 'ready', branch);
-    show('gh', 'pr', 'merge', branch, '--auto', '--merge');
+    show('gh', 'pr', 'merge', branch, '--merge');
   } else {
     const sha = run('gh', 'pr', 'view', branch, '--json', 'mergeCommit', '--jq', '.mergeCommit.oid');
     if (!sha) { console.error(`${branch} is not merged yet`); process.exit(1); }
