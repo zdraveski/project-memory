@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
 import { suites, settle, tableOf, testsOf } from './mutate.mjs';
 import { SHARED } from './deploy.mjs';
-import { srcFiles, pluginFiles } from './suites.mjs';
+import { srcFiles, pluginFiles, plan, pool, isTimed } from './suites.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
@@ -73,6 +73,19 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
   assert.equal(await settle('TIMED OUT', again('SURVIVED')), 'SURVIVED');
   assert.equal(await settle('SURVIVED', again('killed')), 'SURVIVED');
   assert.equal(runs, 3);
+}
+// The suites' order: biggest first in a pool a core narrower than the machine, the timed files after, alone; never no pool at all.
+assert.deepEqual(plan([{ file: 'a.test.mjs', size: 1 }, { file: 'b-timed.test.mjs', size: 9 }, { file: 'c.test.mjs', size: 5 }, { file: 'd-timed.test.mjs', size: 2 }], 4),
+  { width: 3, pool: ['c.test.mjs', 'a.test.mjs'], timed: ['b-timed.test.mjs', 'd-timed.test.mjs'] });
+assert.equal(plan([], 1).width, 1);
+{
+  let now = 0, most = 0;
+  const seen = await pool([1, 2, 3, 4, 5], 2, async (x) => { most = Math.max(most, ++now); await new Promise((r) => setTimeout(r, 5)); now--; return x * 10; });
+  assert.deepEqual(seen, [10, 20, 30, 40, 50]);
+  assert.equal(most, 2);
+  most = 0;
+  await pool(['a', 'b'], 1, async () => { most = Math.max(most, ++now); await new Promise((r) => setTimeout(r, 5)); now--; });
+  assert.equal(most, 1);
 }
 assert.deepEqual([...changedLines('@@ -3 +3,2 @@\n@@ -9,0 +11 @@\n')], [3, 4, 11]);
 assert.deepEqual(span('a\nbb\nc', 'b\nc'), [2, 3]);
@@ -197,12 +210,7 @@ const finish = () => {
   console.log(problems.length ? `check failed: ${problems.join(', ')}` : `check passed in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   process.exit(problems.length ? 1 : 0);
 };
-const pool = async (items, fn) => {
-  const out = [];
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.max(1, availableParallelism() - 1) }, async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]); } }));
-  return out;
-};
+const WIDTH = plan([], availableParallelism()).width;
 
 const files = git('ls-files', '-co', '--exclude-standard', '*.mjs').split('\n').filter(Boolean);
 const untracked = git('ls-files', '-o', '--exclude-standard').split('\n').filter(Boolean);
@@ -214,7 +222,7 @@ const changed = [...new Set([...changes.keys(), ...untracked].filter(Boolean))];
 console.log(`changed since ${base === 'HEAD' ? 'the last commit' : base}: ${changed.length ? changed.join(', ') : 'nothing'}`);
 
 // 1. Every file parses.
-step('every .mjs parses', (await pool(files, (f) => new Promise((done) => execFile(process.execPath, ['--check', join(repo, f)], (e, _o, err) => done(e ? `${f}: ${String(err).trim().split('\n').slice(0, 4).join(' | ')}` : null))))).filter(Boolean));
+step('every .mjs parses', (await pool(files, WIDTH, (f) => new Promise((done) => execFile(process.execPath, ['--check', join(repo, f)], (e, _o, err) => done(e ? `${f}: ${String(err).trim().split('\n').slice(0, 4).join(' | ')}` : null))))).filter(Boolean));
 // 1b. Every .json parses: a broken hooks.json turns the plugin off without a word.
 step('every .json parses', git('ls-files', '-co', '--exclude-standard', '*.json').split('\n').filter(Boolean).flatMap((f) => {
   try { JSON.parse(readFileSync(join(repo, f), 'utf8')); return []; } catch (e) { return [`${f}: ${e.message}`]; }
@@ -242,10 +250,13 @@ const why = (text) => { const ls = String(text).split('\n').map((l) => l.trim())
 // The zone is set on this process just before each spawn, which copies it, and the child inherits: no child is handed the whole
 // environment as an object (R42, R66). Put back after, so the later steps' children run in the zone this one was given.
 const tz0 = process.env.TZ;
-step(`the changed files' suites (${runs.length ? [...new Set(runs.map(([t]) => t))].join(', ') : 'none'})`, (await pool(runs, ([t, tz]) => new Promise((done) => {
+const runSuite = ([t, tz]) => new Promise((done) => {
   process.env.TZ = tz;
   execFile(process.execPath, [join(repo, t), '--mutant'], { maxBuffer: 1 << 26 }, (e, out, err) => done(e ? `${t} (TZ=${tz}): ${why(err + out)}` : null));
-}))).filter(Boolean));
+});
+// The timed suites after the rest, one at a time: their wall-clock limits measure the code, not the load.
+step(`the changed files' suites (${runs.length ? [...new Set(runs.map(([t]) => t))].join(', ') : 'none'})`, [
+  ...await pool(runs.filter(([t]) => !isTimed(t)), WIDTH, runSuite), ...await pool(runs.filter(([t]) => isTimed(t)), 1, runSuite)].filter(Boolean));
 if (tz0 === undefined) delete process.env.TZ; else process.env.TZ = tz0;
 
 // 4. The mutant tables, a text scan of seconds, so CI runs it on every PR (1.6.4's master went red on one).
