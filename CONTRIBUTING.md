@@ -305,9 +305,11 @@ A patch (X.Y.Z with Z above 0) is one pull request, and merging it is the releas
    "project-memory X.Y.Z (bug fix)" with the version's changelog section as
    its notes, has `release.yml` attach the `.tar.gz`, the `.zip` and
    `SHA256SUMS` with their signed attestation, and updates the version line on
-   the GitHub Pages site. A red job on `master` publishes nothing: fix it in
-   a new pull request, and the release follows that merge.
-5. Check the release has its three files.
+   the GitHub Pages site. A red test, `actionlint`, `zizmor` or `agnix` job on
+   `master` publishes nothing: fix it in a new pull request, and the release
+   follows that merge. (`changed-lines` blocks nothing.)
+5. Check the release has its three files. If `assets` failed, use "Re-run
+   failed jobs": re-running all of them finds the tag already made and skips it.
 
 A minor or major release takes the same steps up to the merge, then is
 published by hand: tag the merge commit `vX.Y.Z` and publish a GitHub release
