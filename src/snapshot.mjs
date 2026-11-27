@@ -413,7 +413,7 @@ const ever = (dir) => {
 // forget --purge: drop the days that held a forgotten entry from every snapshot, then expire the reflog and collect, so no
 // old commit keeps the text. The current files stay; the next snapshot adds them back without the entry.
 // shortcut: a purged day loses its older versions whole, not just the entry; upgrade to a line filter if that is missed.
-const rewrite = (work) => {
+const rewrite = (work, dropKept) => {
   // filter-branch refuses a repository with unstaged changes, and a store always has some (notes edited since the last snapshot):
   // it rewrites a bare copy, which is fetched back over the branches (the work tree and its files stay as they are), and the
   // index is reset to the new HEAD so it holds no old blob.
@@ -434,7 +434,8 @@ const rewrite = (work) => {
     work(copy);
     git('fetch', '-q', '--update-head-ok', '--force', copy, '+refs/heads/*:refs/heads/*');
     git('reset', '-q');
-    for (const ref of git('for-each-ref', '--format=%(refname)', 'refs/original/').split('\n').filter(Boolean)) git('update-ref', '-d', ref);
+    // restore's kept copies are blobs the rewrite never sees and hold the forgotten text (audit A2); a rescan scrubs its own.
+    for (const p of ['refs/original/', ...(dropKept ? ['refs/project-memory/replaced/'] : [])]) for (const ref of git('for-each-ref', '--format=%(refname)', p).split('\n').filter(Boolean)) git('update-ref', '-d', ref);
     git('reflog', 'expire', '--expire=now', '--all');
     git('gc', '-q', '--prune=now');   // no detached gc --auto can start under it now: gc.auto=0 (gitArgs)
   } finally { held_ = null; rmSync(tmp, { recursive: true, force: true }); try { unlinkSync(lock); } catch {} }
@@ -512,7 +513,7 @@ const dropPaths = (buf, paths) => {
 // forget --purge: the journal `days` ('YYYY-MM-DD') of the store in `dir` dropped from every snapshot (rewrite(), above).
 export const dropDays = (dir, days) => {
   const paths = days.flatMap((d) => tracked(dir, `journal/${d}.md`));
-  rewrite((copy) => fastImportTo(copy, dropPaths(fastExportOf(copy), paths)));
+  rewrite((copy) => fastImportTo(copy, dropPaths(fastExportOf(copy), paths)), true);
 };
 
 // A git fast-export stream with every text blob, commit and tag message put through `scrub` (text -> [text, hits]) and its length

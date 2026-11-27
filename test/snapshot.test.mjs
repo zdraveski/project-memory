@@ -263,6 +263,15 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(msg === 'the git of the memory store is busy (a snapshot or clean-up); try again in a moment' && existsSync(join(g, 'config.lock')) && seen.length === 0, 'a config.lock that is there: busy, and not taken away');
   rmSync(join(g, 'config.lock'));
 
+  // forget --purge drops restore's kept copies too (item 32), so their text does not outlive the purge; a rescan keeps them for its own scrub.
+  const kept = 'refs/project-memory/replaced/abc', dels = [];
+  stand((a) => { if (a.includes('for-each-ref')) return a.at(-1) === 'refs/project-memory/replaced/' ? `${kept}\n` : ''; if (a.includes('update-ref')) dels.push(a.at(-1)); return ''; });
+  dropDays(dir, ['2026-01-01']);
+  ok(dels.includes(kept), 'forget --purge deletes the replaced/* refs');
+  dels.length = 0;
+  scrubHistory((t) => [t, 0]);
+  ok(!dels.includes(kept), 'a rescan rewrite leaves them to its own scrub');
+
   // The health record, as every reader sees it.
   const hp = join(root, '.snapshot-health');
   rmSync(hp, { force: true });
