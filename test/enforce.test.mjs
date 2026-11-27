@@ -160,12 +160,14 @@ ok(!A('cat <<EOF\ngit add -A\nEOF').hit, 'a real heredoc body is still dropped')
 for (const c of ['env FOO=1 git add -A', 'command git add -A', '/usr/bin/git add -A', 'git.exe add -A', 'rtk git add -A', 'sudo git add -A', 'time git add -A', '& git add -A', '& "C:/Program Files/Git/cmd/git.exe" add -A'])
   ok(A(c).hit, `wrapped: ${c}`);
 ok(!A('echo git add -A').hit && !A('git-lfs add -A').hit && !A('gitk add -A').hit, 'echo, git-lfs, gitk are no hit');
-// The best of 3 runs: one run over 500 ms failed on busy CI runners (3 PRs, 2026-11), while quadratic work misses every time.
+// The best of up to 5 runs under 2.5 s. 500 ms failed on busy runners (best of 3 at 581 ms, macOS, 2026-11-26). On a 2026 PC
+// the linear code takes ~70 ms (hits, 30,000 lines) and ~45 ms (segments); with its O(1) closing-word check swapped for a
+// scan (quadratic) one run takes 8 s and ~30 s: 3x over the limit on a fast PC, 30x under it for the linear code.
 // (Growth ratios were tried and were noisier still: 11x for linear work on Windows CI.)
-const best = (f) => Math.min(...[0, 1, 2].map(() => { const t = performance.now(); f(); return performance.now() - t; }));
-ok(A('git add -A\n' + 'cat <<EOF\n'.repeat(20000)).hit, 'a hit before 20,000 unclosed heredocs');
-{ const h = best(() => A('git add -A\n' + 'cat <<EOF\n'.repeat(20000))), s = best(() => segments('git status\n' + 'cat <<A\nx\n'.repeat(60000)));
-  ok(h < 500 && s < 500, `unclosed heredocs are linear (hits ${h.toFixed(0)} ms, segments ${s.toFixed(0)} ms)`); }
+const best = (f) => { let m = Infinity; for (let i = 0; i < 5 && m >= 2500; i++) { const t = performance.now(); f(); m = Math.min(m, performance.now() - t); } return m; };
+ok(A('git add -A\n' + 'cat <<EOF\n'.repeat(30000)).hit, 'a hit before 30,000 unclosed heredocs');
+{ const h = best(() => A('git add -A\n' + 'cat <<EOF\n'.repeat(30000))), s = best(() => segments('git status\n' + 'cat <<A\nx\n'.repeat(60000)));
+  ok(h < 2500 && s < 2500, `unclosed heredocs are linear (hits ${h.toFixed(0)} ms, segments ${s.toFixed(0)} ms)`); }
 
 ok(!segments('echo "x\\').join('|').includes('undefined') && segments('git commit -m "a\\\ngit add -A"').length === 1, 'a backslash ending the last line in a quote adds no text');
 { const d = join(home, 'big'); mkdirSync(d); const rule = 'enforce:\n  on: git\n  has:\n    - x\n';
