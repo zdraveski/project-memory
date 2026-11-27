@@ -165,6 +165,7 @@ jobs:
           DAY=$(grep -m1 -oE "^## $VER \([0-9]{4}-[0-9]{2}-[0-9]{2}\)" CHANGELOG.md | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)
           DAY=$(date -u -d "${DAY:-now}" '+%-d %b %Y')
           if ! grep -q '[^[:space:]]' notes.md; then echo "::error::CHANGELOG.md has no text under ## $VER"; exit 1; fi
+          # shellcheck disable=SC2016 # the backticks are Markdown for the notes, not a command
           printf '\nUpdate with `claude plugin update project-memory@project-memory`, then restart Claude Code.\n' >> notes.md
           gh release create "$TAG" --target "$SHA" --title "project-memory $VER (bug fix)" --notes-file notes.md --latest
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
