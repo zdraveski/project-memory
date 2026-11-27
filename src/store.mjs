@@ -57,7 +57,7 @@ export const keyed = (text, n) => {
     let there = ''; try { there = readFileSync(f, 'utf8'); } catch {}
     // 'wx' never repairs an empty or cut-short file (a crash between create and write): replace it, atomically.
     if (there.length >= 32) salt = there;
-    else try { const tmp = `${f}.tmp${process.pid}`; writeFileSync(tmp, salt, { mode: 0o600 }); renameSync(tmp, f); } catch {}
+    else { const tmp = `${f}.tmp${process.pid}`; try { writeFileSync(tmp, salt, { mode: 0o600 }); renameSync(tmp, f); } catch { try { unlinkSync(tmp); } catch {} } }
   } }
   return createHmac('sha256', salt).update(String(text)).digest('hex').slice(0, n);
 };
@@ -372,7 +372,7 @@ export const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4
 const LOCK_WAIT = 2000;     // a hook that waits longer skips the turn; the next one redoes it
 export const LOCK_STALE = 30_000;  // nothing held under the lock takes this long: a lock this old is a killed hook's
 // A lock past LOCK_STALE either way: one dated in the future (a clock set back) is a killed hook's too. Throws when it is gone.
-export const staleLock = (p) => Math.abs(Date.now() - statSync(p).mtimeMs) > LOCK_STALE;
+export const staleLock = (p, ms = LOCK_STALE) => Math.abs(Date.now() - statSync(p).mtimeMs) > ms;
 export const STEP = 25;    // ms between tries for a held lock: a freed one is taken within 25 ms, 80 tries in LOCK_WAIT
 // The codes Windows gives while another program holds a path or a delete is still settling.
 export const BUSY = ['EPERM', 'EBUSY', 'EACCES'];
@@ -384,7 +384,7 @@ export const lockBudget = (on) => { left = on ? LOCK_WAIT : null; };
 
 // Run fn holding the store's lock: `mkdir` either creates the folder or fails,
 // on NTFS as anywhere. Returns fn's result, or null when the lock stayed busy.
-export function withLock(dir, fn) {
+export function withLock(dir, fn, staleMs = LOCK_STALE) {
   const lock = join(dir, '.lock'), owner = join(lock, 'owner'), t0 = Date.now();
   const token = `${process.pid}.${Math.random().toString(36).slice(2)}`;
   let refused = 0, held = false, signed = false;
@@ -400,7 +400,7 @@ export function withLock(dir, fn) {
       if (refused > 8) throw e;
       let stale = false, gone = null;
       // Either way: a lock dated in the future (a clock set back) was never stale.
-      try { stale = staleLock(lock); } catch {}
+      try { stale = staleLock(lock, staleMs); } catch {}
       // A killed hook's lock is taken at once, not after LOCK_STALE: waiting cost every Stop in the project 5 s and its turn
       // for 30 s (1.6.1). The owner read may be of a lock being released (1.3.3), so the takeover below checks it again. A pid
       // used again reads as alive: LOCK_STALE stays the fallback. shortcut: a pid is this machine's; a store shared with a
@@ -422,7 +422,7 @@ export function withLock(dir, fn) {
           renameSync(lock, dead);
           // What we renamed may be a lock another waiter made in between: put it back. A dead owner's lock is ours to
           // remove only while it still holds the token judged dead: no owner yet, or another one, is a new holder's.
-          let fresh = !!gone; try { fresh = gone ? readFileSync(join(dead, 'owner'), 'utf8') !== gone : !staleLock(dead); } catch {}
+          let fresh = !!gone; try { fresh = gone ? readFileSync(join(dead, 'owner'), 'utf8') !== gone : !staleLock(dead, staleMs); } catch {}
           if (fresh) { try { renameSync(dead, lock); } catch {} }
           else try { rmSync(dead, { recursive: true, force: true }); } catch {}   // left over: sweepTemps takes it
           continue;
