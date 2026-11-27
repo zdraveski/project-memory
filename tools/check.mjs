@@ -247,6 +247,8 @@ if (process.platform !== 'win32') {
 }
 
 const t0 = Date.now(), problems = [];
+// --own: the changed files every suite stands on, whose suites did not run (said again at the end, so a pass is not read as whole).
+let sharedSkipped = [];
 const step = (name, found) => {
   console.log(`${found.length ? 'FAIL' : 'ok  '} ${name}${found.length ? '' : ` (${((Date.now() - t0) / 1000).toFixed(1)} s)`}`);
   for (const f of found) console.log(`       ${f}`);
@@ -254,6 +256,7 @@ const step = (name, found) => {
 };
 const finish = () => {
   console.log(problems.length ? `check failed: ${problems.join(', ')}` : `check passed in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  if (sharedSkipped.length) console.log(`--own: ${sharedSkipped.join(', ')} changed and every suite stands on it; those suites did not run here. Run check.mjs without --own before the merge.`);
   process.exit(problems.length ? 1 : 0);
 };
 const WIDTH = plan([], availableParallelism()).width;
@@ -290,6 +293,7 @@ step('no import loops in src/', loopsOf(graph).filter((l) => !KNOWN_LOOPS.includ
 const full = process.argv.includes('--full');
 
 // 3. The changed files' suites, in two time zones.
+sharedSkipped = process.argv.includes('--own') ? changed.filter((f) => SHARED.includes(f)) : [];
 const runs = suitesFor(changed, process.argv.includes('--own')).flatMap((t) => ['UTC', 'America/New_York'].map((tz) => [t, tz]));
 // Why a suite failed: its error line, not the stack or Node's closing version line.
 const why = (text) => { const ls = String(text).split('\n').map((l) => l.trim()).filter((l) => l && !/^at /.test(l) && !/^Node\.js v/.test(l)); return (ls.find((l) => /Error\b/.test(l)) ?? ls.at(-1) ?? '').slice(0, 300); };
