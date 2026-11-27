@@ -258,7 +258,18 @@ function take(gitWait, batch) {
     // The history is never rewritten, and the model's own Write tool saves a note no hook scrubs: one that holds a key, token or
     // password stays out of it (unstaged, so its last clean version stays) until the secret is gone. Told in .snapshot-health.
     const heldRaw = new Set();
-    const staged = git('diff', '--cached', '--name-only', '-z').split('\0').filter((x) => /^[^/]+\/memory\/(?!handoff\.md$|journal\.md$)[^/]+\.md$/.test(x));   // not the journal or handoff: scrubbed as written
+    // `--diff-filter=d`: a staged deletion has no blob and no file, and is not a note to hold.
+    const listed = git('diff', '--cached', '--name-only', '--diff-filter=d', '-z').split('\0').filter((x) => /^[^/]+\/memory\/(?!handoff\.md$|journal\.md$)[^/]+\.md$/.test(x));   // not the journal or handoff: scrubbed as written
+    // A name that is no UTF-8 (a Linux file system takes any bytes) reads here with U+FFFD, and no string names it to git: its blob
+    // would read as missing and its reset match nothing, and the note, secret and all, went into the commit. Held unread, unstaged by its bytes.
+    // shortcut: a name with a real U+FFFD in it is held too, unchecked; upgrade to a byte-exact read if one is ever seen.
+    const staged = listed.filter((x) => !x.includes('�')), odd = listed.filter((x) => x.includes('�'));
+    if (odd.length) {
+      const bytes = exec('git', gitArgs('diff', '--cached', '--name-only', '--diff-filter=d', '-z'), { stdio: ['pipe', 'pipe', 'pipe'], timeout: gitWait, maxBuffer: 256 << 20 }).toString('latin1').split('\0')
+        .filter((b) => odd.includes(Buffer.from(b, 'latin1').toString('utf8')));
+      exec('git', gitArgs('reset', '-q', '--pathspec-from-file=-', '--pathspec-file-nul'), { input: Buffer.from(bytes.map((b) => `:(literal)${b}`).join('\0'), 'latin1'), stdio: ['pipe', 'pipe', 'pipe'], timeout: gitWait });
+      for (const f of odd) { const cut = f.lastIndexOf('/') + 1; held.push(f.slice(0, cut) + redact(f.slice(cut))); heldRaw.add(f); }
+    }
     // One git process for every staged blob (one per note took 14 s for 80 notes): the output is "<oid> blob <bytes>", the bytes, a newline, per
     // path, or "<path> missing", read by byte length because a note can hold UTF-8.
     const blobs = new Map(), lined = staged.filter((f) => !/[\n\r]/.test(f));   // a name with a line break would split cat-file's input: read by itself below
@@ -282,7 +293,7 @@ function take(gitWait, batch) {
       const t = blobs.has(f) ? blobs.get(f) : raw(join(root, f));
       // Only the note's own name: the slug joins a folder named pk/sk/rk to the rest of the path into a key-like run.
       const cut = f.lastIndexOf('/') + 1, name = f.slice(cut);
-      if (redact(name) !== name || (t !== null && holdsSecret(t))) { git('reset', '-q', '--', `:(literal)${f}`); held.push(f.slice(0, cut) + redact(name)); heldRaw.add(f); }
+      if (redact(name) !== name || t === null || holdsSecret(t)) { git('reset', '-q', '--', `:(literal)${f}`); held.push(f.slice(0, cut) + redact(name)); heldRaw.add(f); }
     }
     // Tracked files changed and not added, a held note (it stays modified, for good) not counted: what is still owed.
     const owed = () => git('diff', '--name-only', '-z', ...(offs.length ? ['--', '.', ...offs] : [])).split(' ').filter((x) => x && !heldRaw.has(x)).length;
