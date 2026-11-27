@@ -433,6 +433,8 @@ const ranAt = (minAgo) => { const p = join(home, '.claude', 'projects', '.stop-r
 const printT = () => briefIn({ cwd: cwdT, session_id: 'zzzzzzzz-9', source: 'startup' });
 // No .stop-ran: the hooks just installed, or the file cleaned away. That is
 // not knowing, and it read as "never ran" in 6 of 8 real projects (review, 2026-10-26).
+// The Stop above wrote one: removed, so the check sees none (item 53).
+rmSync(join(home, '.claude', 'projects', '.stop-ran'), { force: true });
 ok(!/Memory hooks/.test(await printT()), 'no .stop-ran yet: nothing said');
 ranAt(20);
 ok(/^Memory hooks look stopped: \[tttttttt\] finished a reply at [^\n]*turned off meanwhile, this clears after the next reply\. If not: node "[^"\n]*memory\.mjs" doctor$/m.test(await printT()), 'a turn finished after the Stop hook last ran is reported, says a pause explains it, and names the check that says why');
@@ -1123,6 +1125,11 @@ handoff({ cwd: cwdM, transcript_path: tl, session_id: 'llllllll', hook_event_nam
 ok(/summarise the report\n  \*\*did:\*\* The report says sales rose 4%\./.test(ml()), 'on Stop, the reply Claude Code passes is the answer');
 handoff({ cwd: cwdM, transcript_path: tl, session_id: 'llllllll', hook_event_name: 'Stop', stop_hook_active: true, last_assistant_message: 'Memory updated.' });
 ok(!/Memory updated/.test(ml()), 'but not the reply to a blocked stop');
+// An answer keeps its first 900 characters, not the old 400 (item 53).
+const tl9 = join(projM, 'l9.jsonl');
+writeFileSync(tl9, [user('explain the report', { ts: '2026-10-28T11:15:00Z' }), asst('Reading it.')].join('\n') + '\n');
+handoff({ cwd: cwdM, transcript_path: tl9, session_id: 'l9l9l9l9', hook_event_name: 'Stop', last_assistant_message: `${'sales rose again '.repeat(45)}endmark.` });
+ok(/explain the report\n {2}\*\*did:\*\* [^\n]*endmark\./.test(ml()), 'an answer of 770 characters is kept whole');
 // Working is a turn still open: one finished minutes ago (a window closed for
 // a restart) was announced as working, in place of where it stopped.
 const cwdW = 'C:\\handoff-open-turn', dirW = storeFor(home, cwdW), projW = dirname(dirW);
@@ -1148,6 +1155,12 @@ writeFileSync(join(projW, 'iiiiiiii-5.jsonl'), [user('browse and shoot', { ts: m
   JSON.stringify({ type: 'user', timestamp: minAgo(1), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 's', content: [{ type: 'image', source: { type: 'base64', data: 'A'.repeat(900000) } }] }] } })].join('\n') + '\n');
 const pbig = await printOf(cwdW, 'gggggggg-3', 'startup');
 ok(/Another session is working in this project: [^\n]*\[iiiiiiii\]/.test(pbig) && !/Last session here ended[^\n]*browse and shoot/.test(pbig), 'a session whose last record is over 512 KB still reads as mid-turn, not ended');
+// Only the newest two working sessions are read and named: each is a 512 KB read (item 53).
+writeFileSync(join(projW, 'jjjjjjjj-6.jsonl'), [user('third job', { ts: minAgo(1) }), rec('assistant', [], { ts: minAgo(1), message: { content: [{ type: 'tool_use', id: 'j', name: 'Bash', input: {} }], stop_reason: 'tool_use', usage: { input_tokens: 1 } } })].join('\n') + '\n');
+for (const [f, m] of [['ffffffff-2', 3], ['iiiiiiii-5', 2], ['jjjjjjjj-6', 1]]) utimesSync(join(projW, `${f}.jsonl`), new Date(Date.now() - m * 60000), new Date(Date.now() - m * 60000));
+const p3 = await printOf(cwdW, 'gggggggg-3', 'startup');
+ok(/\[jjjjjjjj\]/.test(p3) && /\[iiiiiiii\]/.test(p3) && !/Another session is working[^\n]*\[ffffffff\]/.test(p3), `the newest two working sessions are named, not a third (got ${p3})`);
+rmSync(join(projW, 'jjjjjjjj-6.jsonl'));
 // After a compaction the briefing fits the 10,000 characters Claude Code passes
 // whole: the oldest exchanges go first, and the shared lessons stay.
 const cwdB = 'C:\\handoff-budget', dirB = storeFor(home, cwdB), tb = join(dirB, 'b.jsonl');
