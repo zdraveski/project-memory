@@ -216,6 +216,7 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
 {
   for (const t of ['the token is expired!', 'the password is wrong!', 'the secret is out!', 'password is required*', 'the token is invalid+', 'the api key is valid?',
     'the password is hashed', 'password is wrong, retry']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+  for (const t of ['my password is letmein!', 'the wifi password is Summer!', 'the password was dragon!', 'password is qwerty*', 'the api key is abcdefg!']) ok(!/letmein|Summer|dragon|qwerty|abcdefg/.test(redact(t)), `cut: ${t} -> ${redact(t)}`);
   for (const [t, w] of [['the password is hunter2', 'the password is [redacted]'], ['my password is Zq9!x7', 'my password is [redacted]'], ['the token is abc!def', 'the token is [redacted]'],
     ['the password is hunter2!', 'the password is [redacted]'], ['the secret is my-app-secret-v2', 'the secret is [redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
 }

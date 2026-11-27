@@ -269,7 +269,9 @@ const SECRETS = [
   // "the password is hashed" names none.
   // Also "the password for the prod db is IT", "the api key is IT", and
   // "password IT" with no verb, when IT has a letter and a digit.
-  [/\b((?:password|passwd|passphrase|api[ _-]?key|token|secret)(?:\s{1,5}(?:for|of|to)\s{1,5}[^.,;:\n]{1,40}?)?\s{1,5}(?:is|was):?\s{1,5})["']?(?=\S*[0-9@#$%^&_=-]|\S*[!*+]\S)[^\s"',;]{3,}[^\s"',;.]/gi, '$1[redacted]'],   // `!` `*` `+` count when a character follows: "is expired!" is prose
+  [/\b((?:password|passwd|passphrase|api[ _-]?key|token|secret)(?:\s{1,5}(?:for|of|to)\s{1,5}[^.,;:\n]{1,40}?)?\s{1,5}(?:is|was):?\s{1,5})["']?(?=\S*[0-9!@#$%^&*_+=-])([^\s"',;]{3,}[^\s"',;.])/gi,
+    // One word of letters and a closing `!*+` is prose only when the word is (`is expired!`, `is wrong!`); `is letmein!` is a password.
+    (m, pre, v) => (/^[A-Za-z]+[!*+]+$/.test(v) && ((w) => FUNC.has(w) || /^(?:wrong|out|valid|bad|empty|missing|weak|short|correct|ok|set|none)$/.test(w))(v.replace(/[!*+]+$/, '').toLowerCase()) ? m : `${pre}[redacted]`)],
   [/\b((?:password|passwd)\s{1,3}(?:(?:=>|-)\s{1,3}["']?)?)(?=[^\s"',;]{0,200}\d)(?=[^\s"',;]{0,200}[A-Za-z])[^\s"',;:]{6,}/gi, '$1[redacted]'],
   // 1.4.1 H: prose and chat (redaction-corpus-39, secret-paths-7). Each value has a digit or a symbol, as a password has.
   // "set the password to X", "change my pw to X", "the PIN is X".
