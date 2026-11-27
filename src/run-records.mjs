@@ -5,11 +5,12 @@
 // here too. One read rule: a file that is missing is none (null); one that exists
 // but cannot be read or parsed is damaged, and each screen shows it as it did
 // before (usually as none); a BOM is stripped.
-// Imports Node and store.mjs only: journal.mjs imports this, not the other way.
+// Imports Node, store.mjs and privacy.mjs (which imports store.mjs only): journal.mjs imports this, not the other way.
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { isOff } from './privacy.mjs';
 import { raw, keyed, replaceIfUnchanged, appendCapped, projectsRoot, configDir, sharedStore, local, reason, isIndex } from './store.mjs';
 
 // What a Stop could not save, `<projects>/<this><project folder>`: memory-tier writes it, the briefing and status read it. One
@@ -148,6 +149,7 @@ export function moved(dir) {
     for (const s of readdirSync(root)) {
       if (s === slug || s.startsWith('_') || !s.toLowerCase().endsWith(tail)) continue;
       const at = join(root, s, 'memory');
+      if (isOff(at)) continue;   // memory turned off there: its notes are not offered
       let extra = []; try { extra = readdirSync(at).filter((f) => f.endsWith('.md') && !isIndex(f) && !mine.has(f.toLowerCase())); } catch {}
       if (extra.length) out.push({ at, notes: extra.sort() });
     }
@@ -155,7 +157,13 @@ export function moved(dir) {
   return out;
 }
 // What doctor and the startup line say of one: no merge is made for the user.
-export const movedText = (dir, { at, notes: n }) => `Notes may have been left behind when this project moved: ${at} holds ${n.length} note(s) this folder (${dir}) lacks: ${n.slice(0, 5).join(', ')}${n.length > 5 ? ` and ${n.length - 5} more` : ''}. Nothing is merged for you; to merge by hand, copy the notes you want from there into this folder and add a line for each to this folder's MEMORY.md.`;
+// The names are held to 300 characters (at least one, clipped): the startup cuts a line at 1000, and the advice at its end must stay.
+export const movedText = (dir, { at, notes: n }) => {
+  let k = 0, len = 0;
+  while (k < Math.min(n.length, 5) && (k === 0 || len + n[k].length + 2 <= 300)) len += n[k++].length + 2;
+  const names = n.slice(0, k).join(', ').slice(0, 300);
+  return `Notes may have been left behind when this project moved: ${at} holds ${n.length} note(s) this folder (${dir}) lacks: ${names}${n.length > k ? ` and ${n.length - k} more` : ''}. Nothing is merged for you; to merge by hand, copy the notes you want from there into this folder and add a line for each to this folder's MEMORY.md.`;
+};
 // The startup line says it once: a marker in this folder holds the notes it named; a new note there is said again.
 export function movedOnce(dir) {
   const f = join(dir, '.moved-said'), said = (readText(f) ?? '').split('\n');

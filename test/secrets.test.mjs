@@ -115,9 +115,34 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     ['curl -H "X-Auth-Token abcd1234efgh5678ijkl9012"', 'curl -H "X-Auth-Token [redacted]"'],
     ["vhost, the password was replaced, and only then", "vhost, the password was replaced, and only then"],
     ["It signs the login tokens: restore", "It signs the login tokens: restore"],
+    // "log in <path>" is prose, not a login (bug list item 10).
+    ["log in `reports/RESUME-1.6.0.md` \"1.5.4 build log\".", "log in `reports/RESUME-1.6.0.md` \"1.5.4 build log\"."],
+    ["the build log in `reports/RESUME-1.6.0.md` says", "the build log in `reports/RESUME-1.6.0.md` says"],
+    ["login bob/Sunny2day!x", "login bob/[redacted]"],
     ["Also from that pass: `CORE_JS_BUDGET` (16 KB)", "Also from that pass: `CORE_JS_BUDGET` (16 KB)"],
   ];
   for (const [text, stored] of cases) { const got = redact(text); ok(got === stored, `redact(${JSON.stringify(text)}) is ${JSON.stringify(stored)} (got ${JSON.stringify(got)})`); }
+  // A secret behind shell-escaped quotes (a command inside a quoted string) is cut whole (bug list item 11; hunt h5-1).
+  const Q = '\\"';
+  for (const cmd of ['ssh host "export TOKEN=' + Q + 'abcd1234efgh5678' + Q + '"', 'docker run -e DB_PASSWORD=' + Q + 'abcd1234efgh5678' + Q + ' img',
+    'curl -u bob:' + Q + 'abcd1234efgh5678' + Q + ' https://x.io', 'curl -u ' + Q + 'bob:abcd1234efgh5678' + Q + ' https://x.io', 'mytool --password ' + Q + 'abcd1234efgh5678' + Q + ' go',
+    'docker login -p ' + Q + 'abcd1234efgh5678' + Q + ' reg', 'bash -c "export API_KEY=' + Q + 'abcd1234efgh5678' + Q + ' && run"', 'MYAPP_SECRET=' + Q + 'abcd1234efgh5678' + Q,
+    'setx TOKEN ' + Q + 'abcd1234efgh5678' + Q]) ok(!redact(cmd).includes('abcd1234efgh5678'), `redact kept the secret in ${cmd}: ${redact(cmd)}`);
+  // A line ending in a backslash does not hide the NAME_KEY= line below it (bug list item 13; hunt h5-2).
+  const val = 'Zq8xKp3Lm9Rt2Wv7Hn4Bc6Ys1Df5Gj0A';
+  for (const eol of ['\n', '\r\n']) for (const [a, b] of [['Install dir: C:\\Program Files\\App\\', `OPENAI_KEY=${val}`], ['line one\\', `SUPABASE_KEY=${val}`], ['line one\\', `AUTH=${val}`]]) {
+    const note = `${a}${eol}${b}${eol}`;
+    ok(holdsSecret(note) && !redact(note).includes(val), `a backslash line end hides the secret in ${JSON.stringify(note)}: ${JSON.stringify(redact(note))}`);
+  }
+  // A passphrase with spaces inside \"...\" is cut whole, not up to its first space (1.6.4 review).
+  for (const cmd of ['docker login -u me -p \\"Ab1 cd2 ef3\\" reg', 'sshpass -p \\"my pass word1\\" ssh h', 'mysql --password \\"two words9\\" db'])
+    ok(!/cd2|word1|words9/.test(redact(cmd)) && holdsSecret(cmd), `a spaced escaped-quote secret is kept in ${cmd}: ${redact(cmd)}`);
+  // A secret that needs both the line join and folding is still cut, as on 1.6.3 (1.6.4 review).
+  for (const note of ['mysql --pass\\\nwórd Zx9qLm2Rt7 db', 'export GITHUB_TO\\\nKÉN=Zx9qLm2Rt7Wv4Hn8Bc6Ys1'])
+    ok(!redact(note).includes('Zx9qLm2Rt7'), `a joined and folded secret is kept in ${JSON.stringify(note)}: ${JSON.stringify(redact(note))}`);
+  // "log in" a backticked path with a :line part is prose too (1.6.4 review of item 10).
+  const fl = 'log in \x60reports/x.md:12\x60 says';
+  ok(!holdsSecret(fl) && redact(fl) === fl, 'a backticked file:line after "log in" is cut');
   // holdsSecret: a <private> span with anything real in it (a text, a number), and not one that holds nothing or only a word for one.
   const holds = [
     ['<private>' + ' '.repeat(39) + 'x</private>', true],   // a span of 40 characters is too long to be a placeholder

@@ -140,14 +140,14 @@ const SECRETS = [
   [/\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/]{0,100}:)(?!\d{1,5}[/?#])(?:(?!:\/\/)[^\s"'<>]){1,2000}@/gi, '$1[redacted]@'],
   // curl -u user:it, --user user:it, quoted too, to the closing quote (review, 2026-11-01). Not `docker run -u 1000:1000`, a user
   // and group.
-  [/((?:^|\s)(?:-[uU]|--(?:proxy-)?user)[ =]+(?!=)["']?(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)((?<="[^\s:'"]{1,100}:)[^"\n]{1,200}(?=")|(?<='[^\s:'"]{1,100}:)[^'\n]{1,200}(?=')|(?<=:)"[^"\n]{1,200}(?=")|(?<=:)'[^'\n]{1,200}(?=')|[^\s'"]{1,200})/g, (m, pre, v) => (arg(v.replace(/^["']/, '')) ? m : pre + '[redacted]')],
+  [/((?:^|\s)(?:-[uU]|--(?:proxy-)?user)[ =]+(?!=)(?:\\?["'])?(?!\d+:\d+(?![^\s'"]))[^\s:'"]{1,100}:)((?<=:)\\"[^"\n]{1,200}(?=")|(?<="[^\s:'"]{1,100}:)[^"\n]{1,200}(?=")|(?<='[^\s:'"]{1,100}:)[^'\n]{1,200}(?=')|(?<=:)"[^"\n]{1,200}(?=")|(?<=:)'[^'\n]{1,200}(?=')|[^\s'"]{1,200})/g, (m, pre, v) => (arg(v.replace(/^["']/, '')) ? m : pre + '[redacted]')],
   // --password it (--token, --client-secret); docker login, az login, sshpass
   // and twine take it as -p it. Not --no-password, whose next word is the
   // command's own; nor "the --token flag", in prose.
   // Quoted, as a value with symbols or blanks must be, to its closing quote: the opening quote refused, each was kept (e2e audit,
   // 2026-11-01). A quoted one may start with `-`; a bare one that does is the next option (review, 2026-11-01).
   // sshpass with no \b before it: glued to a word, its -p value was kept (fuzz 1059386132).
-  [/(--(?!no-|ask-)(?:[a-z0-9]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|account-key|secret-access-key|secret-string|token-code|creds|oauth2-bearer|requirepass|masterauth|pass|private-key|mnemonic)[ =]["']?|\b(?:(?:docker|podman|az|oc|helm|crane|oras|skopeo|buildah|nerdctl)\b(?:\s+-{1,2}[\w-]+(?:[ =][^\s-]\S*)?|\s+[a-z]+){0,3}\s+login|twine\s+upload|mycli|cqlsh|cypher-shell|rabbitmqadmin|(?<![\w.*])7za?|mongo(?:sh|dump|restore|export|import)?)\b[^\n|;&]{0,200}?\s-p\s+["']?|sshpass\b[^\n|;&]{0,200}?\s-p\s+["']?|\b(?:sqlcmd|bcp|unzip|zip)\b[^\n|;&]{0,200}?\s-P\s*["']?|\b(?:plink|pscp|psftp|putty)\b[^\n|;&]{0,200}?\s-pw\s+["']?|\bccrypt\b[^\n|;&]{0,200}?\s-K\s+["']?|\b(?:zip|mosquitto_(?:pub|sub|rr)|ldap(?:search|modify|add|delete|compare))\b[^\n|;&]{0,200}?\s-[Pw]\s+["']?|\b(?:requirepass|masterauth)[ \t]+["']?(?=[^\s"']{4}))(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=")(?:[^"\n\\]|\\.){1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) || /\.(?:7z|zip|rar)$/i.test(v) ? m : `${pre}[redacted]`)],
+  [/(--(?!no-|ask-)(?:[a-z0-9]+-){0,3}(?:password|passwd|token|secret|passphrase|api-?key|access-key|account-key|secret-access-key|secret-string|token-code|creds|oauth2-bearer|requirepass|masterauth|pass|private-key|mnemonic)[ =](?:\\?["'])?|\b(?:(?:docker|podman|az|oc|helm|crane|oras|skopeo|buildah|nerdctl)\b(?:\s+-{1,2}[\w-]+(?:[ =][^\s-]\S*)?|\s+[a-z]+){0,3}\s+login|twine\s+upload|mycli|cqlsh|cypher-shell|rabbitmqadmin|(?<![\w.*])7za?|mongo(?:sh|dump|restore|export|import)?)\b[^\n|;&]{0,200}?\s-p\s+(?:\\?["'])?|sshpass\b[^\n|;&]{0,200}?\s-p\s+(?:\\?["'])?|\b(?:sqlcmd|bcp|unzip|zip)\b[^\n|;&]{0,200}?\s-P\s*(?:\\?["'])?|\b(?:plink|pscp|psftp|putty)\b[^\n|;&]{0,200}?\s-pw\s+(?:\\?["'])?|\bccrypt\b[^\n|;&]{0,200}?\s-K\s+(?:\\?["'])?|\b(?:zip|mosquitto_(?:pub|sub|rr)|ldap(?:search|modify|add|delete|compare))\b[^\n|;&]{0,200}?\s-[Pw]\s+(?:\\?["'])?|\b(?:requirepass|masterauth)[ \t]+(?:\\?["'])?(?=[^\s"']{4}))(?!(?:flag|option|argument|parameter|value|field|setting)s?\b)((?<=\\")[^"\\\n]{1,2000}(?=\\")|(?<=")(?:[^"\n\\]|\\.){1,2000}(?=")|(?<=')[^'\n]{1,2000}(?=')|(?!-)[^\s"']{3,2000})/g, (m, pre, v) => (arg(v) || /\.(?:7z|zip|rar)$/i.test(v) ? m : `${pre}[redacted]`)],
   // 1.4.1 E: ssh-keygen's -N new and -P old passphrase (both in one command, so one rule reads the whole command).
   [/\bssh-keygen\b[^\n|;&]{0,300}/g, (m) => m.replace(/(\s-[NP]\s*["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|(?!-)[^\s"']{3,200})/g, (x, p, v) => (arg(v) ? x : p + '[redacted]'))],
   // mysql, mariadb and mycli: the glued -pPASS (a spaced -p is a prompt).
@@ -220,12 +220,12 @@ const SECRETS = [
   [/(\bhtpasswd(?!(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*n)(?:\s+-[A-Za-z]+(?:\s+\d+)?)*?\s+-[A-Za-z]*b[A-Za-z]*(?:\s+\d+)?(?:\s+-[A-Za-z]+(?:\s+\d+)?)*\s+(?:[^\s<>-]\S*\s+)?[^\s<>]+\s+)(?!\d*>)[^\s;|&<>]+/g, '$1[redacted]'],
   // The name read whole, then judged: as words in one pattern, KEY_ repeated
   // took 28 s. PowerShell's `$env:NAME = …` too, in any case, as export's is (e2e audit, 2026-11-01).
-  [/((?:\b(?:export\s+([A-Za-z_]\w{0,100})=|setx[ \t]+([A-Za-z_]\w{0,100})[ \t]+)|\$env:([A-Za-z_]\w{0,100})[ \t]*=[ \t]*)["']?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]{1,2000})/gi, (m, pre, a, b, c, v) => (named(a ?? b ?? c) && !arg(v) && !code(v) && !counted(a ?? b ?? c, v) ? `${pre}[redacted]` : m)],
+  [/((?:\b(?:export\s+([A-Za-z_]\w{0,100})=|setx[ \t]+([A-Za-z_]\w{0,100})[ \t]+)|\$env:([A-Za-z_]\w{0,100})[ \t]*=[ \t]*)(?:\\?["'])?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]{1,2000})/gi, (m, pre, a, b, c, v) => (named(a ?? b ?? c) && !arg(v) && !code(v) && !counted(a ?? b ?? c, v) ? `${pre}[redacted]` : m)],
   // A .env line at a line's start (e2e audit, 2026-11-01): only its own shape, an upper-case name with no blank before `=`, whose
   // last part is the secret's word (envNamed). Any `name = value` was read as one, and Python's `key = item.name`, `CACHE_KEY =
   // "x"` and `TOKEN_URL=https://…` were cut (review, 2026-11-01). Its close relatives too: a compose list item's `- NAME=…`, cmd's
   // `set NAME=…`, and one after a shell's `&&`, `||`, `;` or `|` (an inline variable before a command).
-  [/((?:^[ \t]*(?:-[ \t]+)?|(?:&&|\|\||[;|])[ \t]*|(?<=[ \t]))(?:(?:export|set|SET)[ \t]+)?([A-Z][A-Z0-9_]{0,100})=(?:\$?["'])?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]{1,2000})/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
+  [/((?:^[ \t]*(?:-[ \t]+)?|(?:&&|\|\||[;|])[ \t]*|(?<=[ \t]))(?:(?:export|set|SET)[ \t]+)?([A-Z][A-Z0-9_]{0,100})=(?:\$?\\?["'])?)((?<=")[^"\n]{1,200}(?=")|(?<=')[^'\n]{1,200}(?=')|[^\s"';|&]{1,2000})/gm, (m, pre, n, v) => (envNamed(n) && !arg(v) && !code(v) && !counted(n, v) ? `${pre}[redacted]` : m)],
   // 1.4.1 G: a cookie or setting written as a name/value object ({name: 'session', value: '...'}, HAR, Chrome, Postman's {"key": "token", "value": ...}): the name says what the value is.
   [/(\{[^{}\n]{0,200}?["']?(?:name|key)["']?[ \t]*:[ \t]*["']([\w.-]{1,100})["'][^{}\n]{0,200}?,[ \t]*["']?value["']?[ \t]*:[ \t]*["'])([^"'\n]{4,2000})/g,
     (m, pre, n, v) => (/sess|(?:^|[_.-])(?:sid|key|secret|token|password|passwd|pass|pwd|auth|credentials?|cookie)(?:$|[_.-])|apikey|password|secret|token/i.test(n) && !/^(?:\{\{|<|%)/.test(v) && !/(?:^|[_.-])(?:policy|file|path|dir|type|url|length|label|hint)$/i.test(n) && !arg(v) && !code(v) ? pre + '[redacted]' : m)],
@@ -275,7 +275,7 @@ const SECRETS = [
   [/(\bPW[ \t]{1,5})(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/g, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
   [/(\b(?:and|with|plus)\s{1,5}(?:pass|pwd|pw)\s{1,5}["']?)(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{4,200}[^\s"',;.])/gi, (m, pre, v) => (arg(v) || code(v) ? m : pre + '[redacted]')],
   // "login with me / X", "creds: bob / X", "the credentials are me:X"; then "credential=X". Not a URL (`login: http://h`).
-  [/(\b(?:creds?|credentials?|logins?|log[ -]?in|sign[ -]?in)\b(?:[ \t:]{1,3}(?:with|are|is|as|for))?[ \t:]{1,3}[^\s/:"']{1,40}[ \t]{0,3}[/:][ \t]{0,3}["']?)(?![/\\])(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/gi, (m, pre, v) => (arg(v) || code(v) || /^[\w./-]+\.[A-Za-z]{1,5}(?::\d+)*$/.test(v) ? m : pre + '[redacted]')],
+  [/(\b(?:creds?|credentials?|logins?|log[ -]?in|sign[ -]?in)\b(?:[ \t:]{1,3}(?:with|are|is|as|for))?[ \t:]{1,3}[^\s/:"']{1,40}[ \t]{0,3}[/:][ \t]{0,3}["']?)(?![/\\])(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/gi, (m, pre, v) => (arg(v) || code(v) || /^[\w./-]+\.[A-Za-z]{1,5}(?::\d+)*`?$/.test(v) ? m : pre + '[redacted]')],
   [/(\b(?:creds?|credentials?)[ \t]{0,3}[:=][ \t]{0,3}["']?)(?=[^\s"',;]{0,200}[\d!@#$%^&*])([^\s"',;]{5,200}[^\s"',;.])/gi, (m, pre, v) => (arg(v) || code(v) || /^[\w./-]+\.[A-Za-z]{1,5}(?::\d+)*$/.test(v) ? m : pre + '[redacted]')],
   // A list of one-time codes: the rest of the sentence, when it holds a digit.
   [/(\b(?:recovery|backup|unlock|reset|verification|2fa|mfa|otp)[ -]?(?:codes?|keys?)\b[ \t]{0,3}(?:are|is|[:=])[ \t]{0,3})(?=[^\n.;]{0,300}\d)([^\n.;]{4,300})/gi, (m, pre, v) => (v.toLowerCase().split(/\s+/).some((x) => FUNC.has(x)) ? m : pre + '[redacted]')],
@@ -378,7 +378,7 @@ const SECRETS = [
   after(String.raw`\bmkpasswd\b(?:\s+-{1,2}[\w-]+(?:=\S+|\s+[A-Za-z0-9][A-Za-z0-9-]{1,11}(?=\s+[^\s-]))?){0,6}\s+`, 'g'),
 ];
 const redactRaw = (s) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s);
-// A backslash line wrap is joined first (it cuts a secret in two), then the raw rules run, then the same rules on a folded copy of that:
+// A backslash line wrap is joined first (it cuts a secret in two), then the raw rules run (on the original when the join finds none: it can glue a NAME_KEY= line onto the one above), then the same rules on a folded copy of that:
 // look-alike letters, marks and hidden characters gone (NFKD, no marks, no Default_Ignorable), and an entity, a \u00XX or a %XX that
 // spells printable ASCII decoded. Text with no secret is returned as written.
 // shortcut: homoglyphs from another script (Cyrillic o for Latin o) are not folded; there is no safe map, add one if one is ever seen used.
@@ -401,8 +401,8 @@ export const redact = (s) => {
 };
 const redactOnce = (s) => {
   // Not before a bare `key:` line: no shell command goes on with one, and a markdown line break (`\`) glued a YAML head onto prose (fuzz 1059385974).
-  const u = s.replace(/\\\r?\n(?![ \t]*[\w.-]{1,40}:[ \t]*(?:\r?\n|$))[ \t]*/g, ''), r = redactRaw(u), f = fold(r), g = f === r ? r : redactRaw(f);
-  return g === f ? (r === u ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
+  const u = s.replace(/\\\r?\n(?![ \t]*[\w.-]{1,40}:[ \t]*(?:\r?\n|$))[ \t]*/g, ''), r0 = redactRaw(u), r = r0 === u && u !== s ? redactRaw(s) : r0, base = r === s ? u : r, f = fold(base), g = f === base ? r : redactRaw(f);
+  return g === f ? (r === s ? s : r) : g;   // the folded text only when its pass found a secret the raw one missed
 };
 // Does a note's own text hold a secret? Anything inside the <private> tag does, closed or not ("<private/>" opens one too): the
 // tag is where a user puts what no rule names, such as a PIN (1.4.3 review). A note that only explains the tag holds none (defect

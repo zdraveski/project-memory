@@ -741,9 +741,11 @@ if (!quick) {
   const rec = (type, text) => JSON.stringify({ type, timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text }] } });
   writeFileSync(tp, rec('user', 'busy-twice question') + '\n' + rec('assistant', 'busy-twice answer') + '\n');
   writeFileSync(failed, JSON.stringify({ at: new Date().toISOString(), error: 'an earlier failure' }));
-  const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs'); fs.mkdirSync(${JSON.stringify(lock)}); fs.writeFileSync(${JSON.stringify(join(lock, 'owner'))}, 'other'); process.stdout.write('up'); setTimeout(() => { fs.unlinkSync(${JSON.stringify(join(lock, 'owner'))}); fs.rmdirSync(${JSON.stringify(lock)}); }, 6500)`]);
+  // The holder lets go when its stdin closes, after the Stop: a 6.5 s timer could free the lock before a slow runner's second try.
+  const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs'); fs.mkdirSync(${JSON.stringify(lock)}); fs.writeFileSync(${JSON.stringify(join(lock, 'owner'))}, 'other'); process.stdout.write('up'); process.stdin.on('end', () => { fs.unlinkSync(${JSON.stringify(join(lock, 'owner'))}); fs.rmdirSync(${JSON.stringify(lock)}); }).resume()`]);
   await new Promise((up) => holder.stdout.once('data', up));
   r = await call(['--stop'], JSON.stringify({ cwd: 'C:\\nowhere', transcript_path: tp, session_id: 'busy2sess' }));
+  holder.stdin.end();
   const left = existsSync(failed) ? readFileSync(failed, 'utf8') : '';
   ok(r.status === 0 && /busy/.test(left) && !/earlier failure/.test(left) && !readFileSync(join(root, 'proj-two', 'memory', 'handoff.md'), 'utf8').includes('busy-twice question'), `--stop: a store still held on the second try leaves a failure file saying so (got ${left})`);
   await new Promise((done) => holder.once('close', done));
@@ -2000,7 +2002,7 @@ require('node:module').syncBuiltinESMExports();
       return res;
     }, () => call([])))).stdout;
     const h = JSON.parse(readOr(join(g.r, '.snapshot-health')));
-    ok(/still to add/.test(out) && h.pending === true, `a change made after the commit is owed to the next Stop (got ${out.trim()} ${JSON.stringify(h)})`);
+    ok(/changed during the snapshot/.test(out) && !/in parts/.test(out) && h.pending === true && !h.partial, `a change made after the commit is owed to the next Stop (got ${out.trim()} ${JSON.stringify(h)})`);
   }
   {
     // A note deleted between git's listing and its read: one more try, not a failure.

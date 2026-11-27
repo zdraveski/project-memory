@@ -895,7 +895,7 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = [
     ok(a === hmac(readFileSync(f, 'utf8'), 'hello', 12) && keyed('hello', 12) === a && keyed('world', 12) !== a, 'a fingerprint is the salted HMAC of its text, the same each time');
     ok(keyed('hello', 1).length === 1 && keyed('hello', 12).length === 12 && keyed('hello', 64).length === 64, 'and as long as asked');
     writeFileSync(f, 'short');
-    ok(keyed('x', 16) === hmac('short', 'x', 16) && keyed('x', 16) === keyed('x', 16), 'a salt file under 32 characters is still the salt, and not written over');
+    ok(keyed('x', 16) === keyed('x', 16) && readFileSync(f, 'utf8').length === 64, 'a salt file under 32 characters is written over once, then kept');
     writeFileSync(f, 'k'.repeat(32));
     ok(keyed('x', 16) === hmac('k'.repeat(32), 'x', 16) && readFileSync(f, 'utf8') === 'k'.repeat(32), 'a salt file of exactly 32 characters is kept');
   } finally { if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = was; }
