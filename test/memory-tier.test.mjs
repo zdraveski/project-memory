@@ -456,6 +456,10 @@ ok(sh().failures === 0 && sh().lastOk, 'and a good one resets the count');
     // Item 44: while that child runs (its marker is there), another Stop starts none.
     r = await swap('node:child_process', 'spawn', fake, () => stopAs('Stop'));
     ok(r.status === 0 && spawned.length === 1, `a second Stop while a tidy child runs starts no second one (got ${spawned.length})`);
+    // A child may run two snapshots, longer than one git timeout: a marker 40 s old (31 s loaded-PC case) still counts.
+    { const old = new Date(Date.now() - 40_000); utimesSync(join(mem, '.tidy-running'), old, old); }
+    r = await swap('node:child_process', 'spawn', fake, () => stopAs('Stop'));
+    ok(r.status === 0 && spawned.length === 1, `a child marker 40 s old still blocks a second child (got ${spawned.length})`);
     r = await call(['--tidy', mem]);
     ok(!existsSync(join(mem, '.tidy-running')), 'the child removes its marker when it ends');
     ok(r.status === 0 && commits() === n + 1 && tracked().includes('proj-one/memory/bg-one.md') && readFileSync(join(mem, 'MEMORY.md'), 'utf8').includes('bg-one.md') &&

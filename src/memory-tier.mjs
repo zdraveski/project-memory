@@ -491,9 +491,9 @@ function tidy(dirs, { now, dry, pause, batch, gitWait, gated, handTo, snap, say 
   // since nothing was stamped.
   if (gated && handTo) {
     // One child at a time: the stamp lands only after git, so every Stop meanwhile saw work owed and spawned another. The marker
-    // is the child's, removed when it ends; one older than git's timeout is a killed child's.
+    // is the child's, removed when it ends; one older than two snapshots (twice git's timeout, and a margin for lock waits) is a killed child's.
     const running = join(handTo, '.tidy-running');
-    try { if (Date.now() - statSync(running).mtimeMs < gitWait) return 0; } catch {}
+    try { if (Date.now() - statSync(running).mtimeMs < 2 * gitWait + 10_000) return 0; } catch {}
     try {
       writeFileSync(running, String(process.pid));
       spawn(process.execPath, [fileURLToPath(import.meta.url), '--tidy', handTo], { detached: true, stdio: 'ignore', windowsHide: true })
