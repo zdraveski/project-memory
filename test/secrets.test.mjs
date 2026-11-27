@@ -282,8 +282,10 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
 {
   const V = ['aB3dE5fG7h', 'J9kL1mN3pQ5rS7'].join('');
   for (const s of [`токен: ${V}`, `ключ = ${V}`, `пароль: ${V}`]) ok(redact(s) === `${s.slice(0, -V.length)}[redacted]`, `cut: ${s}`);
-  // "key: value" in plain Russian is no secret: a value after ключ or токен needs a digit.
-  for (const s of ['ключ: значение', 'токен: истёк']) ok(redact(s) === s, `kept: ${s}`);
+  const W = ['abcdefghijklmn', 'opqrstuvwxyzABCDEFGH'].join('');
+  for (const s of [`токен: ${W}`, `Ключ = ${W}`]) ok(redact(s) === `${s.slice(0, -W.length)}[redacted]`, `cut, no digit: ${s}`);
+  // "key: value" in plain Russian, a version or a date is no secret after ключ or токен.
+  for (const s of ['ключ: значение', 'токен: истёк', 'ключ: v1.2.3', 'ключ: 2024-01-05', 'ключ: версия2']) ok(redact(s) === s, `kept: ${s}`);
 }
 
 // Rules the full mutant run of 2026-11-27 found untested (item 53), each by a name no wider rule catches.
