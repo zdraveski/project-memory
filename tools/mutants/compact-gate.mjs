@@ -25,7 +25,7 @@ export default {
   "a synthetic error entry read as the size": ["if (m?.usage && m.model !== '<synthetic>') {", "if (m?.usage) {"],
   "a 200k window read wrong": ["(m[2] ? (m[2].toLowerCase() === 'k' ? 1e3 : 1e6) : 1)", "1"],
   "the model window always 1M": ["(MAX_CONTEXT_USED && tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS)) || ", ""],
-  "the compaction window past the model's": ["export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW, MODEL_WINDOW);", "export const WINDOW = tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW;"],
+  "the compaction window past the model's": ["export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || tokens(setting('autoCompactWindow', (x) => tokens(x) > 0).value) || MODEL_WINDOW, MODEL_WINDOW);", "export const WINDOW = tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || tokens(setting('autoCompactWindow', (x) => tokens(x) > 0).value) || MODEL_WINDOW;"],
   "an earlier compaction ignored": ["CUT = PCT > 0 && PCT < 96 ? PCT / 96 : 1;", "CUT = 1;"],
   "a small window keeps no room": ["Math.min(0.85 * CUT, AT - 60_000 / WINDOW)", "Math.min(0.85 * CUT, 1)"],
   "a tiny window nudges at once": ["Math.max(AT / 2, ", "Math.max(0, "],
