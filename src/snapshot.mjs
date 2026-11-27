@@ -322,7 +322,7 @@ function take(gitWait, batch) {
       let later = 0;   // not `rest`: that one is the first snapshot's parts, and this is any history's
       if (!rest) { try { later = owed(); } catch {} }
       return said({ rest, later, made: fresh ? 'initialised' : 'committed' });
-    });
+    }, 2 * gitWait);   // a git may take gitWait, and the lock is touched only before each: stale after twice that
     return done ?? said({ busy: true });
   } catch (e) {
     // No git is a setup, not a failure: everything but the history works.

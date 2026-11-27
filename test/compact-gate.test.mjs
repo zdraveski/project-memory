@@ -200,6 +200,9 @@ ok(stop() === null, 'after a compaction: no nudge, and the stamp is re-armed');
 write(user('q2'), asst('grown again', T + 50_000, 'end_turn'));
 ok(!!stop()?.hookSpecificOutput?.additionalContext, 'the next crossing nudges again');
 ok(!!stop('s2')?.hookSpecificOutput?.additionalContext, 'another session has its own nudge');
+// Compaction switched off: no reminder before a compaction that will not come.
+process.env.DISABLE_AUTO_COMPACT = '1';
+try { ok(stop('s-off') === null, 'no nudge with DISABLE_AUTO_COMPACT set'); } finally { delete process.env.DISABLE_AUTO_COMPACT; }
 ok(stop() === null, 'and does not re-arm this one: the stamp is per session');
 
 // The same script runs as the PreCompact hook, where a printed block would
@@ -544,6 +547,20 @@ const w4 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '50k' });
 ok(Math.abs(w4.TRIGGER - 0.25) < 1e-6, `a window under 66k nudges at a quarter of it, never below 0 (got ${JSON.stringify(w4)})`);
 const w5 = windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400k', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '80' });
 ok(Math.abs(w5.TRIGGER * 400_000 - ((1 - 33_000 / 400_000) * 80 / 96 * 400_000 - 60_000)) < 1, `an earlier compaction in a mid-size window keeps 60k of room (got ${JSON.stringify(w5)})`);
+const settingsFile = join(home, '.claude', 'settings.json'), globalFile = join(home, '.claude.json');
+mkdirSync(dirname(settingsFile), { recursive: true });
+// autoCompactWindow in settings.json (what /autocompact writes) sets the window; the variable still wins.
+writeFileSync(settingsFile, JSON.stringify({ autoCompactWindow: '200k' }));
+ok(windowWith({}).WINDOW === 200_000 && windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '300k' }).WINDOW === 300_000, 'autoCompactWindow from settings sets the window, and the variable wins');
+// compactOff(): env, autoCompactEnabled in ~/.claude.json or in settings.
+const offWith = (vars) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `import { compactOff } from ${JSON.stringify(new URL('../src/compact-gate.mjs', import.meta.url).href)}; console.log(JSON.stringify(compactOff()))`], { env: { ...process.env, ...vars }, encoding: 'utf8' }));
+writeFileSync(settingsFile, '{}');
+ok(!offWith({}) && offWith({ DISABLE_AUTO_COMPACT: '1' }) && offWith({ DISABLE_COMPACT: '1' }), 'compaction is off with DISABLE_AUTO_COMPACT or DISABLE_COMPACT, on otherwise');
+writeFileSync(globalFile, JSON.stringify({ autoCompactEnabled: false }));
+ok(offWith({}), 'compaction is off with autoCompactEnabled false in ~/.claude.json');
+writeFileSync(globalFile, '{}'); writeFileSync(settingsFile, JSON.stringify({ autoCompactEnabled: false }));
+ok(offWith({}), 'compaction is off with autoCompactEnabled false in settings.json');
+writeFileSync(settingsFile, '{}');
 // Under a 400K model window, mid-turn at 390k is not deferred: past it the API refuses the call.
 process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '400000'; process.env.DISABLE_COMPACT = '1';
 let g4;

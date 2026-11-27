@@ -39,7 +39,8 @@ import { handoff, tag, answer, newest, norm } from './handoff-log.mjs';
 import { goesOn, readTail, records, typedMark, text, prompt, userText, NUDGE_TAG, unwrap, unquote, queuedText, editedFile, FORGETS, toolAnswers } from './transcript.mjs';
 import { redact, BARE } from './secrets.mjs';
 import { isQuiet, PRIVATE, PRIVATE_SESSION, NOTE_HIDES, isOff } from './privacy.mjs';
-import { storeOf, projectsRoot, memoryOff, local, envOn, tagOf } from './store.mjs';
+import { storeOf, projectsRoot, memoryOff, local, envOn, tagOf, setting, configDir } from './store.mjs';
+import { homedir } from 'node:os';
 
 // --- the numbers. Change these, not the code below. -------------------------
 // A token count as Claude Code takes one: `800000`, `800k`, `1M`. NaN: none.
@@ -56,10 +57,17 @@ export const tokens = (v) => {
 // DISABLE_COMPACT set, or for a model it does not know. The model is ANTHROPIC_MODEL: shortcut: one chosen with /model is not seen.
 export const MAX_CONTEXT_USED = envOn(process.env.DISABLE_COMPACT) || (!!process.env.ANTHROPIC_MODEL && !/claude|sonnet|opus|haiku|fable/i.test(process.env.ANTHROPIC_MODEL));
 export const MODEL_WINDOW = (MAX_CONTEXT_USED && tokens(process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS)) || (envOn(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT) ? 200_000 : 1_000_000);
-// The window Claude Code compacts against, as the environment sets it; one
-// set with /autocompact or autoCompactWindow lives in settings, which the
-// plugin does not read (how-it-works says so; it reads only autoMemoryEnabled and autoMemoryDirectory). Never past the model's.
-export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || MODEL_WINDOW, MODEL_WINDOW);
+// The window Claude Code compacts against: the environment's, else autoCompactWindow from its settings files (set by /autocompact).
+// Never past the model's.
+export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) || tokens(setting('autoCompactWindow', (x) => tokens(x) > 0).value) || MODEL_WINDOW, MODEL_WINDOW);
+// Compaction switched off: DISABLE_COMPACT, DISABLE_AUTO_COMPACT, or autoCompactEnabled false. Where autoCompactEnabled lives is not
+// verified (it is absent on the dev machine; Claude Code keeps it in the global config ~/.claude.json, older builds in settings.json), so both
+// are read. shortcut: a managed/CLI-only switch is not seen; upgrade when one is reported.
+export function compactOff() {
+  if (envOn(process.env.DISABLE_COMPACT) || envOn(process.env.DISABLE_AUTO_COMPACT)) return true;
+  let g; try { g = JSON.parse(readFileSync(process.env.CLAUDE_CONFIG_DIR ? join(configDir(), '.claude.json') : join(homedir(), '.claude.json'), 'utf8').replace(/^\uFEFF/, '')).autoCompactEnabled; } catch {}
+  return g === false || setting('autoCompactEnabled', (x) => typeof x === 'boolean').value === false;
+}
 // Claude Code compacts 33,000 tokens short of its window (863,324 of 900,000; 767,072 of 800,000: ~0.959 there; 0.835 of 200k).
 // The nudge has to land a whole turn before that, and a turn above
 // 300k adds 18k tokens at the median, 46k at p75 and 148k at p90 (2026-10-26):
@@ -323,6 +331,8 @@ export function nudge(payload) {
     if (given) arm(0);
     return null;
   }
+  // No compaction is coming, so a reminder to save before it would be noise. After the trigger check: it parses ~/.claude.json.
+  if (compactOff()) return null;
   // Same cycle, the context only grown: the nudge was already given.
   if (given && s.ctx >= given) return null;
   // Private, read whole and only now: from the tail alone, a <private> ask at

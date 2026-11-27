@@ -377,6 +377,13 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(snapshot() === 'committed', 'a gc that fails does not fail the snapshot');
   scripted((sub, a) => { if (a.includes('gc')) throw fail('t', { code: 'ETIMEDOUT' }); return ''; });
   ok(snapshot() === 'committed' && !existsSync(join(g, 'project-memory-parts')), 'a gc that times out does not fail it, nor start the history in parts');
+  // A live run's lock is touched only before each git, and one git may take GIT_TIMEOUT: it goes stale after twice that, not at it.
+  const lk = join(root, '.snapshot-lock', '.lock'), ago = (s) => { const d = new Date(Date.now() - s * 1000); utimesSync(lk, d, d); };
+  mkdirSync(lk, { recursive: true }); writeFileSync(join(lk, 'owner'), `${process.pid}.x`);
+  scripted(() => ''); ago(40);
+  ok(snapshot() === 'busy' && calls.length === 0 && existsSync(lk), 'a live run\'s snapshot lock, 40 s since its last git, is not taken');
+  ago(70);
+  ok(snapshot() === 'committed', 'one over 60 s old is a killed run\'s, and taken');
 }
 
 // The history in the CLI's words (moved from memory.mjs with ADR 0002's rest): what git's log and fast-export streams say, read

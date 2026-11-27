@@ -2194,8 +2194,11 @@ if (!quick) {
   writeFileSync(join(root, 'proj-wait', 'session.jsonl'), '');
   writeFileSync(join(shared, 'wait.md'), '---\nname: wait\ndescription: "wait"\n---\nbody\n');
   mkdirSync(join(d, '.lock')); mkdirSync(join(shared, '.lock'));
-  const t0 = Date.now();
-  let ms; try { await stop('proj-wait'); ms = Date.now() - t0; } finally { rmdirSync(join(d, '.lock')); rmdirSync(join(shared, '.lock')); }
+  // The best of up to 3 Stops (they stop once one is under 6 s): one took 6.4 s on a busy Windows runner (2026-11-24); the bug
+  // waits 8 s every time.
+  let ms = Infinity;
+  try { for (let i = 0; i < 3 && ms >= 6000; i++) { const t0 = Date.now(); await stop('proj-wait'); ms = Math.min(ms, Date.now() - t0); } }
+  finally { rmdirSync(join(d, '.lock')); rmdirSync(join(shared, '.lock')); }
   // 6 s, not 3.5: a busy Windows runner took 4.1 s (1.3.1 mutant run); the bug waited 8 s.
   ok(ms < 6000, `--stop: with its locks held it waits about 2 s in all (took ${ms} ms)`);
   rmSync(join(shared, 'wait.md'));

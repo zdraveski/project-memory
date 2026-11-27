@@ -1469,7 +1469,10 @@ After the log: narwhalqq stays.
   writeFileSync(join(dir, 'handoff.md'), `---\nname: handoff\ndescription: "h"\n---\nweek ${Date.now()}\n`);
   writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8') + '- [Fresh](zz-fresh.md) — fresh\n');
   writeFileSync(join(dir, 'journal', '2026-10-27.md'), '# Journal 2026-10-27\nedited\n');
-  tier();
+  // Until a snapshot holds the week's changes, up to 60 s: on a crowded Windows runner one pass took none (its git timed out or
+  // met an earlier git's lock), and the week showed only older adds (CI 2026-11-26). The next Stop takes them, as a user's would.
+  for (const t0 = Date.now(); tier(), spawnSync('git', gitArgs('cat-file', '-e', 'HEAD:C--mem-cli/memory/zz-fresh.md')).status !== 0 && Date.now() - t0 < 60_000;)
+    await new Promise((r) => setTimeout(r, 200));
   // The snapshots ignore the handoff, but a repository from before that rule holds it: forced in here.
   // On a crowded Windows runner the snapshot's git can pass its 30 s timeout: the kill reaches git's wrapper, and the
   // git under it runs on, and can take index.lock after a check that found none (CI 2026-11-25: the add met it, the commit
@@ -1721,6 +1724,10 @@ After the log: narwhalqq stays.
   // a process of its own: the windows are read when compact-gate loads
   try { r = spawnSync(process.execPath, [CLI, 'doctor', '--store', dir], { encoding: 'utf8' }); } finally { delete process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE; }
   ok(/Claude Code compacts at 504k, the memory reminder comes at 443k$/m.test(r.stdout), `doctor shows the point moved by CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (got ${r.stdout})`);
+  // Item 29: compaction switched off is said by doctor, and is no problem.
+  process.env.DISABLE_AUTO_COMPACT = '1';
+  try { r = spawnSync(process.execPath, [CLI, 'doctor', '--store', dir], { encoding: 'utf8' }); } finally { delete process.env.DISABLE_AUTO_COMPACT; }
+  ok(/^ok +compaction is off \(/m.test(r.stdout) && !/compaction window/.test(r.stdout), `doctor says compaction is off (got ${r.stdout})`);
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
   try { r = await cli('doctor'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   ok(r.status === 0 && /^ok +auto memory is off \(CLAUDE_CODE_DISABLE_AUTO_MEMORY\)/m.test(r.stdout), `auto memory off is said, and is no problem (got ${r.stdout})`);

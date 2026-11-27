@@ -190,7 +190,8 @@ export function onEnd(input) {
   return true;
 }
 
-// The change hook (headline 1b). DEADLINE: ms from the process's start after which the scan gives up and says nothing; the
+// The change hook (headline 1b). DEADLINE: ms from the hook's call after which the scan gives up and says nothing (from the
+// process's start, a slow Node start on a busy machine used them all, and the hook never spoke there, 2026-11-27); the
 // window: the newest 365 days or 6 MB of day files (the spec's 16 MB took the bench's first change to 299 ms, over its 250 ms
 // budget; 6 MB: 239 ms, 2026-11-25); AGAIN: a `file` line is repeated for a path only after 5 minutes.
 export const DEADLINE = 400, WINDOW_DAYS = 365, WINDOW_BYTES = 6 * 1024 * 1024, AGAIN = 5 * 60e3, BLOCKS = 3, BLOCK_MAX = 800;
@@ -207,7 +208,7 @@ const whole = (p, cwd) => { const f = p.replaceAll('\\', '/'); return /^(?:[a-z]
 // null when the forget list will not read or the scan passes `deadline` (performance.now()): the caller says nothing.
 // shortcut: a turn that ran after a `cd` saved its paths relative to that folder and is missed; upgrade when the eval or a user
 // shows it matters (the journal would have to record the working folder).
-export async function earlier(store, file, session, { deadline = DEADLINE, told = new Set(), now = Date.now(), since = '' } = {}) {
+export async function earlier(store, file, session, { deadline = performance.now() + DEADLINE, told = new Set(), now = Date.now(), since = '' } = {}) {
   const { recent, rel } = await import('./journal.mjs');
   const key = cleanPath(file), parts = file.split('/'), under = new Map();
   // Every folder above the file, named as the t: field names it, with the file relative to it, by the journal's rel(). Text only.
@@ -251,7 +252,7 @@ export const MORE = 'project-memory: more files changed in this turn have earlie
 // Pointers only with PROJECT_MEMORY_RECALL=1. Stops, writing nothing, when recall is off (PROJECT_MEMORY_RECALL=0), memory or the project is off, the conversation is
 // private, or this turn is (the newest prompt line is `quiet`). Inside a helper (agent_id) its lines carry its id, and the
 // first-change and never-twice checks count only the lines of the same writer.
-export async function onChange(input, { deadline = DEADLINE, now = Date.now() } = {}) {
+export async function onChange(input, { deadline = performance.now() + DEADLINE, now = Date.now() } = {}) {
   const none = { say: '', n: 0 };
   if (process.env.PROJECT_MEMORY_RECALL === '0' || !/^(?:Edit|Write|NotebookEdit)$/.test(input?.tool_name)) return none;
   const given = input.tool_input?.file_path ?? input.tool_input?.notebook_path, s = tag(input.session_id);
@@ -319,7 +320,7 @@ export async function onChange(input, { deadline = DEADLINE, now = Date.now() } 
 // or this conversation's unless older than `since`. [] when the text has under 2 words; null when the forget list will not read or past
 // `deadline`. `max`: the window's bytes (the prompt hook's is smaller, PROMPT_BYTES).
 export const RECENT_DAYS = 90, RECENT_BYTES = 4 * 1024 * 1024, RARE = 0.05, YOUNG = 40, SHOWN = 3;
-export async function byWords(store, text, session, { deadline = DEADLINE, since = '', skip = new Set(), told = new Set(), max = RECENT_BYTES, now = Date.now(), test = false } = {}) {
+export async function byWords(store, text, session, { deadline = performance.now() + DEADLINE, since = '', skip = new Set(), told = new Set(), max = RECENT_BYTES, now = Date.now(), test = false } = {}) {
   const ws = words(text), cut = (w) => ws.as.get(w) !== w && ws.as.get(w);
   if (ws.length < (test ? 1 : 2)) return test ? () => false : [];
   const hayOf = (e) => [e.asked, e.answered, ...e.changed].join('\n').normalize('NFC').toLowerCase(), holds = (hay, w) => hay.includes(w.slice(0, -1)) && has(hay, w, cut(w));
@@ -361,7 +362,7 @@ export const PROMPT_BYTES = 2 * 1024 * 1024, ASKED = 120, SESSION_MAX = 64 * 102
 // <private> block appends it, the <private-session> mark cuts the file down to it (the save after the reply then deletes the
 // file). Otherwise the `asked` line (redacted, then cut) goes last, after the `told` lines of the pointer: the change hook counts
 // its blocks from the newest prompt line on, so a prompt's pointer uses up none of them.
-export async function onPrompt(input, { deadline = DEADLINE, now = Date.now(), read = readSession } = {}) {
+export async function onPrompt(input, { deadline = performance.now() + DEADLINE, now = Date.now(), read = readSession } = {}) {
   const none = { say: '', n: 0 }, s = tag(input?.session_id);
   if (process.env.PROJECT_MEMORY_RECALL === '0' || input?.agent_id != null || typeof input?.prompt !== 'string' || !/^[\w-]+$/.test(s)) return none;
   const { why, store } = gate(input, s, 1);

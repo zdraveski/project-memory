@@ -34,7 +34,7 @@ function project() {
 const run = (input, env = process.env) => spawnSync(process.execPath, [HOOK], { input: typeof input === 'string' ? input : JSON.stringify(input), encoding: 'utf8', env });
 const quiet = (r, msg) => ok(r.status === 0 && r.stdout === '' && r.stderr === '', `${msg} (status ${r.status}, out ${JSON.stringify(r.stdout)}, err ${JSON.stringify(r.stderr)})`);
 const said = (r) => JSON.parse(r.stdout).hookSpecificOutput;
-// In this process: the deadline counts from the process's start, long past here.
+// In this process: 10 s, so a busy machine never cuts a check's look-up short.
 const look = (input, o) => onChange(input, { deadline: performance.now() + 10_000, ...o });
 // This turn's request, as the prompt hook writes it: the change hook shows only exchanges that share a rare word with it.
 const turn = (q, text, sid = SID) => { mkdirSync(sessionsOf(q.store), { recursive: true }); writeFileSync(join(sessionsOf(q.store), sid.slice(0, 8)), sessionLine('asked', text), { flag: 'a' }); };
@@ -46,8 +46,8 @@ p.day('2026-11-12', [
   p.entry({ key: 'old1', at: '2026-11-12 10:00', asked: 'an older exchange of the same conversation' }),
   p.entry({ key: '3f07bb43 2026-11-12T14:02 a1b2c3d4e5f6' }),
 ]);
-// The hook gives up after 400 ms from Node's start; a busy CI machine running every suite at once (macOS, Windows on Node 22)
-// can pass that on a cold start, and the hook rightly says nothing. Then its session file goes and it runs again, up to 5 times.
+// The hook's look-up gives up after 400 ms; a busy CI machine running every suite at once (macOS, Windows on Node 22)
+// can pass that, and the hook rightly says nothing. Then its session file goes and it runs again, up to 5 times.
 let r, fell = false;
 for (let i = 0; i < 5; i++) { turn(p, 'move nightly exchange'); r = run(p.payload('src/close.js')); if (r.stdout || r.status !== 0) break; dropSessions(p.store, SID.slice(0, 8)); }
 // All five past the deadline (macOS CI under load): the wording is pinned from the same look-up run in this process.
@@ -268,6 +268,20 @@ ok(lines.map((l) => l.kind).join() === 'told,asked' && lines[0].rest === '9a1c22
 ok(readTimes(0, join(projectsRoot(), TIMING)).some((l) => l.h === 'prompt' && l.e === 'UserPromptSubmit' && l.n === 1), 'its timing line has its own name and counts the pointer');
 quiet(run(ask(p, 'what port does the dev server use now')), 'never twice: the same request again says nothing');
 ok(readSession(p.session()).filter((l) => l.kind === 'asked').length === 2, 'and adds its asked line');
+// The 400 ms count from the input, not from Node's start: a slow start (a busy machine, a virus scan) used them all up, and the
+// hook never said anything there (Windows CI, all 5 tries, 2026-11-27). Here a start held for 600 ms.
+{
+  const slow = join(home, 'slow-start.cjs');
+  writeFileSync(slow, 'const t = Date.now(); while (Date.now() - t < 600);\n');
+  // Up to 5 tries, as above: the look-up's own 400 ms can still pass on a busy runner.
+  let s;
+  for (let i = 0; i < 5; i++) {
+    dropSessions(p.store, SID.slice(0, 8));
+    s = spawnSync(process.execPath, ['--require', slow, HOOK], { input: JSON.stringify(ask(p, 'what port does the dev server use now')), encoding: 'utf8' });
+    if (s.stdout || s.status !== 0) break;
+  }
+  ok(s.status === 0 && /9a1c22e0 2026-11-17T10:15/.test(s.stdout), `a slow start still leaves the look-up its 400 ms (got ${s.status} ${s.stdout} ${s.stderr})`);
+}
 // The change hook after a prompt pointer: its first block still comes (the told line sits before the prompt line).
 p.day('2026-11-18', [p.entry({ key: 'c1', asked: 'which server closes the day', changed: ['src/close.js'] })]);
 ok((await look(p.payload('src/close.js'))).n === 1, 'a prompt pointer uses up none of the change blocks');

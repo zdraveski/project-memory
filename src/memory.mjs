@@ -55,7 +55,7 @@ import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } fr
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
-import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT } from './compact-gate.mjs';
+import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT, compactOff } from './compact-gate.mjs';
 import { clip } from './text.mjs';
 import { sectionOf, parse, stalled, GRACE, tag, unsay, handWritten } from './handoff-log.mjs';
 import { redact, holdsSecret } from './secrets.mjs';
@@ -709,7 +709,8 @@ export function doctor(site = sessionStore()) {
   const am = autoMemory();
   if (am.off) { say(true, `auto memory is off (${am.why}): the hooks save and brief nothing until it is on again. Not seen by doctor: --settings, --bare, safe mode, server-managed settings`); return { ok: !bad, lines }; }
   const big = handoffBig(site); if (big) say(true, big);
-  { const k = (n) => `${Math.round(n / 1000)}k`; say(true, `compaction window ${k(WINDOW)} of the model's ${k(MODEL_WINDOW)}: Claude Code compacts at ${k(COMPACTS_AT * WINDOW)}, the memory reminder comes at ${k(TRIGGER * WINDOW)}`); }
+  if (compactOff()) say(true, 'compaction is off (DISABLE_COMPACT, DISABLE_AUTO_COMPACT or autoCompactEnabled false): the reminder before a compaction is not given');
+  else { const k = (n) => `${Math.round(n / 1000)}k`; say(true, `compaction window ${k(WINDOW)} of the model's ${k(MODEL_WINDOW)}: Claude Code compacts at ${k(COMPACTS_AT * WINDOW)}, the memory reminder comes at ${k(TRIGGER * WINDOW)}`); }
   // The one setting doctor reads (never printed but for its presence): the hooks keep the default folder, and a note in the moved one is
   // never tiered, snapshotted or briefed.
   if (typeof readJson(join(configDir(), 'settings.json'))?.autoMemoryDirectory === 'string') say(false, 'the autoMemoryDirectory setting is set, and project-memory does not follow it: notes in that folder are not tiered, snapshotted or briefed (the hooks work on the default memory folder). Remove the setting to use project-memory');

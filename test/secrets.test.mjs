@@ -187,6 +187,64 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
   } finally { String.prototype.normalize = norm; }
 }
 
+// 1.6.5 item 27: a secret after `password is:`, `password =>`, `password -`, `pin:` or `passcode:` is cut; prose with the same words stays.
+{
+  for (const [t, v] of [['password is: Hunter2xx', 'Hunter2xx'], ['the password is: Hunter2xx', 'Hunter2xx'], ['password => Hunter2xx', 'Hunter2xx'],
+    ['password => "Hunter2xx"', 'Hunter2xx'], ['password - Hunter2xx', 'Hunter2xx'], ['pin: 4821', '4821'], ['pin = 4821', '4821'],
+    ['passcode: 123456', '123456'], ['Passcode=123456', '123456']]) ok(!redact(t).includes(v), `cut: ${t} -> ${redact(t)}`);
+  for (const t of ['password is wrong, retry', 'the api key is valid?', 'password - reset flow', 'the pin: ctrl-click to select', 'passcode: none',
+    'password is: required', 'the pin is stuck', 'PW is short']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+}
+
+// 1.6.5 item 28: a legacy Vault token (s. + 24 characters) given to `vault login` is cut, as hvs. ones are; `s.` elsewhere stays.
+{
+  const LEGACY = ['s', '.', 'Ab12Cd34Ef', '56Gh78Ij90', 'Kl12', 'Mn34'].join('');
+  ok(redact(`vault login ${LEGACY}`) === 'vault login [redacted]', 'vault login <legacy token> is cut');
+  ok(!redact(`vault login -method=token token=${LEGACY}`).includes(LEGACY), 'vault login with a flag and token= is cut');
+  for (const t of ['vault login -method=userpass username=bob', 'const n = s.toLowerCase();', 'see s.ConfigurationManager now', 'vault status', 'ms.Ab12Cd34Ef56Gh78Ij90Kl12Mn34']) ok(redact(t) === t, `kept: ${t}`);
+}
+
+// 1.6.5 item 20: secret names the keyword list missed (signing_key, signingKey, githubToken, dbPass, GITHUB_PAT) are cut; ordinary names stay.
+{
+  for (const t of ['signing_key = Xk9mQ2zz7Lp', 'jwt_signing_key=Xk9mQ2zz7Lp', 'signingKey: Xk9mQ2zz7Lp', 'githubToken = ghx12345abcdef', 'githubToken: "abc123def456"',
+    'dbPass = Xk9mQ2zz7Lp', 'dbPass: Xk9mQ2zz7Lp', 'client_secret_value = Xk9mQ2zz7Lp', 'GITHUB_PAT=abcdef123456xyz']) ok(redact(t).endsWith('[redacted]') || redact(t).endsWith('[redacted]"'), `cut: ${t} -> ${redact(t)}`);
+  for (const t of ['keyboard: Xk9mQ2zz7Lp', 'monkey: Xk9mQ2zz7Lp', 'passage: Xk9mQ2zz7Lp', 'compass: Xk9mQ2zz7Lp', 'bypass: Xk9mQ2zz7Lp', 'dbPassage: Xk9mQ2zz7Lp',
+    'sort_key: created_at_desc', 'cache_key: user_profile_page', 'primary_key: user_account_id', 'key_file: Xk9mQ2zz7Lp', 'tokenizer: Xk9mQ2zz7Lp']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+}
+
+// 1.6.5 item 24: "<keyword> is <plain word>!" is prose (a trailing ! * + is no symbol of a password); a value with a digit or an inner symbol is cut.
+{
+  for (const t of ['the token is expired!', 'the password is wrong!', 'the secret is out!', 'password is required*', 'the token is invalid+', 'the api key is valid?',
+    'the password is hashed', 'password is wrong, retry']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+  for (const t of ['my password is letmein!', 'the wifi password is Summer!', 'the password was dragon!', 'password is qwerty*', 'the api key is abcdefg!']) ok(!/letmein|Summer|dragon|qwerty|abcdefg/.test(redact(t)), `cut: ${t} -> ${redact(t)}`);
+  for (const [t, w] of [['the password is hunter2', 'the password is [redacted]'], ['my password is Zq9!x7', 'my password is [redacted]'], ['the token is abc!def', 'the token is [redacted]'],
+    ['the password is hunter2!', 'the password is [redacted]'], ['the secret is my-app-secret-v2', 'the secret is [redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
+}
+
+// 1.6.5 item 26: a capitalised word after `password:` and a plain word after `token:` are prose; words that look like secrets stay cut.
+{
+  for (const t of ['password: Required field', 'password: Invalid credentials', 'Password: Required', 'password: Required.', 'token: required', 'token: Required',
+    'password: required', 'password: required field', 'password: Enter password', 'api_key: required in headers']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+  for (const [t, v] of [['password: changeme', 'changeme'], ['password: Sunshine', 'Sunshine'], ['password: Hunter2xx', 'Hunter2xx'], ['token=refreshed', 'refreshed'],
+    ['token: expired2', 'expired2'], ['secret: my-app-secret-v2', 'my-app-secret-v2'], ['password: minimum 8 characters', 'minimum'], ['Use token: ctrl-click to select', 'ctrl-click']]) ok(!redact(t).includes(v), `cut: ${t} -> ${redact(t)}`);
+}
+
+// 1.6.5 item 21: "log in" and a backticked folder path (`reports/hunt-1.6.4`) is prose; a real password after "log in" is still cut.
+{
+  for (const t of ['log in `reports/hunt-1.6.4`', 'log in `reports/hunt-1.6.4`.', 'log in `reports/RESUME-1.6.0.md` "1.5.4 build log".', 'the build log in `reports/hunt-1.6.4` is long']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+  for (const [t, v] of [['log in bob/Xk9mQ2!zz', 'Xk9mQ2!zz'], ['log in bob / Xk9mQ2!zz', 'Xk9mQ2!zz'], ['log in with bob:Hunter2xx', 'Hunter2xx'], ['log in `bob/Xk9mQ2zz7`', 'Xk9mQ2zz7'],
+    ['log in with `admin/Pa55-word`', 'Pa55-word'], ['log in `deploy/xK9-qL2-mP4`', 'xK9-qL2-mP4'], ['log in `me/p4ss.w0rd`', 'p4ss.w0rd'], ['sign in `alice/Pa55-word`', 'Pa55-word'],
+    ['log in `root/Hunter2.0`', 'Hunter2.0'], ['log in `deploy/xK9.4qL`', 'xK9.4qL'], ['log in `me/p4ss1.2x`', 'p4ss1.2x'], ['log in `bob/v1.2-Secret`', 'v1.2-Secret'], ['log in `admin/Pa55/word`', 'Pa55/word']]) ok(!redact(t).includes(v), `cut: ${t} -> ${redact(t)}`);
+}
+
+// 1.6.5 item 25: `PWD=/c/Users/x1` and `pwd: /home/u/x1` (a shell's working directory) are kept; `pwd` as a password, path-like or not, is cut.
+{
+  for (const t of ['PWD=/c/Users/x1', 'pwd: /home/u/x1', 'pwd=/home/user/dir1', 'PWD=/c/Users/x1/app', 'PWD=/home/user/project2', 'PWD=/home/user/project', 'pwd: /home/user', 'OLDPWD=/home/user/work2']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+  for (const [t, w] of [['pwd=Tr0ub4dor3', 'pwd=[redacted]'], ['pwd: abc123def', 'pwd: [redacted]'], ['password: Tr0ub4dor3', 'password: [redacted]'], ['password=/Xk9mQ2#zz', 'password=[redacted]'],
+    ['PWD=/Xk9mQ2#zz', 'PWD=[redacted]'], ['pwd=/Tr0ub4dor3x', 'pwd=[redacted]'], ['DB_PWD=/Xk9/pq7Z', 'DB_PWD=[redacted]'], ['mysqladmin --pwd=/H4ck/me2', 'mysqladmin --pwd=[redacted]'],
+    ['pwd: /s3cr3t/p4ss', 'pwd: [redacted]']]) ok(redact(t) === w, `cut: ${t} -> ${redact(t)}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';
