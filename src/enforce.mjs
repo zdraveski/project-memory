@@ -77,6 +77,7 @@ export function segments(command) {
       else if (c === '"' || c === "'") { q = c; cur += c; }
       else if (c === '`' && i + 1 === l.length) join = true;
       else if (c === '<' && l[i - 1] !== '<' && l[i + 1] === '<' && l[i + 2] !== '<' && (HD.lastIndex = i, m = HD.exec(l))) { docs.push(m[2]); cur += c; }
+      else if (c === '#' && (!cur || /\s$/.test(cur))) break; // a comment: its quotes open nothing
       else if (';|{}()&'.includes(c)) cut();
       else cur += c;
     }
