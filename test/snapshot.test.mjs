@@ -205,6 +205,7 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   ok(seen[0].opts.encoding === 'utf8' && seen[0].opts.timeout === 60_000 && seen[0].opts.maxBuffer === 64 << 20 && seen[0].opts.stdio.join() === 'ignore,pipe,pipe', 'git: text, 60 s, 64 MiB, stderr kept');
   gitBytes('cat-file', '-p', 'x');
   ok(seen[1].opts.encoding === 'buffer' && seen[1].opts.timeout === 60_000, 'gitBytes asks for the bytes');
+  ok(seen.every((s) => s.opts.windowsHide === true), 'every git call hides its console window on Windows (flashing windows after a reply)');
 
   // The fixed commands of a history rewrite: 300 s and 1 GiB, the copy named with -C and no repository settings.
   const none = (t) => [t, 0];

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **No more flashing console windows on Windows after a reply.** The background tidy-up now runs its git commands without opening a window.
+
 ## 1.6.2 (2026-11-26)
 
 This release mostly reorganises the code inside the plugin, so it is easier to keep safe and correct. It also fixes two small things you may notice. Nothing changes in how you use it, and your memory files keep their format.
