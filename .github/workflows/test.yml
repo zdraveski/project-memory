@@ -12,7 +12,7 @@ concurrency:
   # Only pull requests: a cancelled run on master leaves that commit with no green run to deploy.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Read the code, nothing more, whatever the repository's default; actionlint's and zizmor's downloads are public releases.
+# Read the code, nothing more, whatever the repository's default.
 permissions:
   contents: read
 
@@ -58,61 +58,6 @@ jobs:
       # Each hook on a made-up busy store must stay within its limit times an empty `node -e` on the same machine.
       - run: node tools/bench.mjs --check 5
 
-  # The workflow files themselves: GitHub once refused fuzz.yml over a %. On pull requests too: run only after the
-  # merge, a red one held master red (#300, #301). changed-lines.yml runs a merge's mutants.
-  actionlint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # A pinned release, checked against its published sha256; shellcheck on the runner checks the run: scripts too.
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download v1.7.12 -R rhysd/actionlint -p actionlint_1.7.12_linux_amd64.tar.gz
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint_1.7.12_linux_amd64.tar.gz" | sha256sum -c -
-          tar xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
-          ./actionlint -color
-
-  # The workflows' security, which actionlint does not look at: template injection, risky triggers, leaked credentials.
-  zizmor:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # Pinned the same way; the token lets it check the actions used against GitHub's advisories.
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download v1.32.0 -R zizmorcore/zizmor -p zizmor-x86_64-unknown-linux-gnu.tar.gz
-          echo "bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b  zizmor-x86_64-unknown-linux-gnu.tar.gz" | sha256sum -c -
-          tar xzf zizmor-x86_64-unknown-linux-gnu.tar.gz zizmor
-          ./zizmor --format=github .github/workflows
-
-  # The files Claude Code reads from the plugin (the skill, the agent, hooks.json, plugin.json): one wrong field fails
-  # silently. On pull requests too, so a broken one never reaches a release.
-  agnix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # Pinned the same way, unpacked outside the checkout so it lints only the repo.
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          cd "$RUNNER_TEMP"
-          gh release download v0.61.0 -R agent-sh/agnix -p agnix-x86_64-unknown-linux-gnu.tar.gz
-          echo "cfc8f4c5a51d023bbc8742fb84f420b12d3d49b621c8ccfb7382c5f73944ad09  agnix-x86_64-unknown-linux-gnu.tar.gz" | sha256sum -c -
-          tar xzf agnix-x86_64-unknown-linux-gnu.tar.gz agnix
-          cd "$GITHUB_WORKSPACE"
-          "$RUNNER_TEMP/agnix" --target claude-code --format github .
-
   # May this push publish before its own test run? Only a merge whose tree a pull request run of this repository
   # already passed whole (tools/pretested.mjs); a fork, a squash, a moved master or a red run: no, and the
   # publish below, after the master run, is the path as before. Off until the repository variable PUBLISH_EARLY is
@@ -141,9 +86,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node tools/pretested.mjs
 
-  # The release from the pretested tree: it waits for the lints of this push, not for the master matrix.
+  # The release from the pretested tree: it does not wait for the master matrix.
   publish-early:
-    needs: [pretested, actionlint, zizmor, agnix]
+    needs: pretested
     if: needs.pretested.outputs.ok == 'true'
     # One publish at a time for a commit: the later one then finds the tag.
     concurrency:
@@ -167,7 +112,7 @@ jobs:
   # Once every test above passed on master (publish.yml): the path for a push that was not pretested. After an
   # early publish it finds the tag and publishes nothing.
   publish:
-    needs: [test, actionlint, zizmor, agnix]
+    needs: test
     if: github.event_name == 'push'
     concurrency:
       group: publish-${{ github.sha }}

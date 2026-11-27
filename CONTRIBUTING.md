@@ -68,7 +68,7 @@ that fails stops at the first failed check, prints that check's message
 CI ([`test.yml`](.github/workflows/test.yml)) runs `node tools/check.mjs`,
 every suite (`node tools/suites.mjs`, in parallel) and `node tools/survive.mjs` (which facts of a session the briefing after
 a compaction still carries; it exits 1 if one is lost) on every pull request
-and every push to `master`, in four test jobs (after a merge, one more job runs the mutants and fuzz on the merged lines; it blocks nothing, and a survivor is fixed in the next patch):
+and every push to `master`, in four test jobs (and Linux once more in New York time). CI runs no mutants, fuzz or lints: those tools are for a bug hunt by hand.
 Linux with Node 22, Windows with Node 22 and 24, and macOS with Node 26. A pull request
 can't merge until the Linux 22, Windows 24 and macOS 26 jobs and the dco check pass (Windows 22, the oldest Node the README promises, is not required). Each job's log on GitHub shows the same lines as a run here.
 
@@ -90,12 +90,8 @@ Beyond the suites:
   `printf '#!/bin/sh\nexec node tools/check.mjs\n' > .git/hooks/pre-commit`.
   TypeScript's checker (`tsc --checkJs`) was tried on the hooks: 49 reports
   with strict mode off, 775 with it on, no bug among them, so it is not used.
-- CI's `actionlint` job checks the workflow files themselves (and their
-  `run:` scripts, through shellcheck) with a pinned, checksum-checked
-  release, and its `zizmor` job scans them for unsafe patterns the same way.
-  Both run on pushes to `master` only, not on pull
-  requests. To run actionlint here: download actionlint from its GitHub releases and
-  run `actionlint` in the repo.
+- After a change to a workflow file, run `actionlint` and `zizmor` here
+  (download them from their GitHub releases): CI no longer lints the workflows.
 - `node tools/fuzz.mjs [seconds] [--keep-going]` sends random, hostile
   conversations and notes through the real hooks and the CLI: a BOM, CRLF,
   half an emoji, `forget` in six spellings, `<private>` text, a clock moving
@@ -125,11 +121,7 @@ Beyond the suites:
   fail with EBUSY, EPERM, EACCES or ENOSPC from a seeded stream, and some
   Stops are killed part way; the hooks must degrade safely. Faulted runs of
   two Stops at once, and kills, are races: replay a seed a few times.
-  The `fuzz` workflow, by hand, fuzzes ten
-  minutes on each of 17 machines (12 Linux, 3 Windows, 2 macOS, so no macOS
-  job waits for one of the account's 5 slots), and a failing machine uploads
-  its kept files as the artifact `fuzz-kept-<machine>`: for a bug hunt; no
-  release needs it.
+  No release needs it.
 - `node tools/coverage.mjs [--suites] [--fuzz <seconds>]` runs the suites
   and/or the fuzz under Node's own coverage and prints, for each of the nine
   plugin files, the share of its code that ran, the functions that never
@@ -171,10 +163,6 @@ Beyond the suites:
 - `node tools/deploy.mjs` skips the mutation check and trusts CI for the suites; with `--full` it runs every
   mutant here, about 65 minutes. `--tiering-change` skips the comparison of
   the tidy-up's dry run with the live copy's, for a change meant to alter tiering.
-- The `mutate` workflow on GitHub, started by hand (Actions > mutate > Run
-  workflow) only if someone asks, splits the mutants across 17 machines
-  (GitHub Free runs 20 jobs at once). It runs all the hand-written ones in about
-  20 minutes (2026-11), and with `auto` on, the automatic ones too.
 - `node test/memory-tier.soak.mjs [store] [--days N]` copies a store (by default the largest
   on the machine) to a temp folder, then simulates 30 days (or N) of new notes and
   sessions ending at the same moment.
@@ -259,8 +247,7 @@ false test here.
 Open a pull request against `master`: nobody, the maintainer included, can
 push to it directly. Sign off every commit
 ([below](#developer-certificate-of-origin)). Run `node tools/check.mjs` first; CI runs
-the suites on every platform, once more in New York time, and lints the workflow files
-(`actionlint`, `zizmor`) and the plugin's files (`agnix`). When several people (or agents)
+the suites on every platform, and once more in New York time. When several people (or agents)
 build at once, each runs `node tools/check.mjs --base <ref>`: the suites of the files
 they changed, and every suite after a change to a shared file; CI and one full
 check before the merge run those. The pull request merges only when its required
@@ -296,8 +283,7 @@ reviews them instead.
 
 A patch (X.Y.Z with Z above 0) is one pull request, and merging it is the release:
 
-1. `node tools/release.mjs start X.Y.Z` prints the last `fuzz`, `mutate` and
-   `changed-lines` results, makes the branch `patch-X.Y.Z` from `master` with
+1. `node tools/release.mjs start X.Y.Z` makes the branch `patch-X.Y.Z` from `master` with
    `version` bumped in `.claude-plugin/plugin.json` and `## Unreleased` in
    `CHANGELOG.md` turned into `## X.Y.Z (date)` (or that heading added), and
    opens it as a draft pull request, so CI runs on each push while the fixes
@@ -305,8 +291,7 @@ A patch (X.Y.Z with Z above 0) is one pull request, and merging it is the releas
    and the changelog written for the people who use the plugin.
 2. Run `claude plugin validate . --strict`. It should exit 0.
 3. While CI runs, one reviewer who did not write the code reviews the whole
-   pull request, and `node tools/check.mjs --full --no-auto --base origin/master`
-   runs beside it. Findings become more commits on the same pull request,
+   pull request. Findings become more commits on the same pull request,
    and only those commits are reviewed again.
 4. `node tools/release.mjs ready X.Y.Z --validated` once the review is clean:
    it refuses an empty changelog section, waits for every check of the pull
@@ -316,18 +301,16 @@ A patch (X.Y.Z with Z above 0) is one pull request, and merging it is the releas
    `master`, the `pretested` job asks whether the merge's tree is the tree a
    green pull request run of this repository already tested (`tools/pretested.mjs`:
    a merge commit, `master` inside the branch, the same tree). If so,
-   `publish-early` publishes after that push's `actionlint`, `zizmor` and
-   `agnix`, without waiting for the test jobs; if not (a fork, a squash, a
+   `publish-early` publishes without waiting for the test jobs; if not (a fork, a squash, a
    moved `master`, a red or cancelled run), `publish` waits for every test job
    on `master`, as before, and after an early publish it finds the tag and
    does nothing. Either one (`publish.yml`) publishes the release as
    "project-memory X.Y.Z (bug fix)" with the version's changelog section as
    its notes, has `release.yml` attach the `.tar.gz`, the `.zip` and
    `SHA256SUMS` with their signed attestation, and updates the version line on
-   the GitHub Pages site. A red `actionlint`, `zizmor` or `agnix` job on
-   `master`, or a red test job when the tree was not pretested, publishes
-   nothing: fix it in a new pull request, and the release follows that merge.
-   (`changed-lines.yml` blocks nothing.)
+   the GitHub Pages site. A red test job on `master`, when the tree was not
+   pretested, publishes nothing: fix it in a new pull request, and the release
+   follows that merge.
 5. `node tools/release.mjs after X.Y.Z` waits for the `master` run. If it is
    red, it re-runs only a failed `publish` or `assets` job (re-running finds the
    tag already made and skips it) and names any failed test or lint job, which

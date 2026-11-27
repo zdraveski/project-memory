@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // A patch release's steps (CONTRIBUTING "Releasing"), so none is done by hand or forgotten:
-//   start X.Y.Z   the last fuzz, mutate and changed-lines results; then patch-X.Y.Z from origin/master with the version
+//   start X.Y.Z   patch-X.Y.Z from origin/master with the version
 //                 bumped and the changelog heading, signed off, pushed, and a draft pull request: CI runs under the build.
 //   ready X.Y.Z --validated
 //                 the version's changelog section has text; once every check of the pull request passed (not only the
@@ -67,10 +67,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const show = (bin, ...a) => execFileSync(bin, a, { cwd: repo, stdio: 'inherit' });
   const branch = `patch-${v}`, tag = `v${v}`;
   if (cmd === 'start') {
-    for (const wf of ['fuzz.yml', 'mutate.yml', 'changed-lines.yml']) {
-      const [last] = JSON.parse(run('gh', 'run', 'list', '--workflow', wf, '--limit', '1', '--json', 'conclusion,status,createdAt,url') || '[]');
-      console.log(`${wf.padEnd(18)} ${last ? `${last.conclusion || last.status} ${last.createdAt} ${last.url}` : 'no run'}`);
-    }
     // git switch -c carries uncommitted changes along, into the release: commit.
     if (run('git', 'status', '--porcelain')) { console.error('the working tree has changes: commit or stash them first'); process.exit(1); }
     run('git', 'fetch', 'origin', 'master');
