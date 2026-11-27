@@ -187,6 +187,15 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
   } finally { String.prototype.normalize = norm; }
 }
 
+// 1.6.5 item 27: a secret after `password is:`, `password =>`, `password -`, `pin:` or `passcode:` is cut; prose with the same words stays.
+{
+  for (const [t, v] of [['password is: Hunter2xx', 'Hunter2xx'], ['the password is: Hunter2xx', 'Hunter2xx'], ['password => Hunter2xx', 'Hunter2xx'],
+    ['password => "Hunter2xx"', 'Hunter2xx'], ['password - Hunter2xx', 'Hunter2xx'], ['pin: 4821', '4821'], ['pin = 4821', '4821'],
+    ['passcode: 123456', '123456'], ['Passcode=123456', '123456']]) ok(!redact(t).includes(v), `cut: ${t} -> ${redact(t)}`);
+  for (const t of ['password is wrong, retry', 'the api key is valid?', 'password - reset flow', 'the pin: ctrl-click to select', 'passcode: none',
+    'password is: required', 'the pin is stuck', 'PW is short']) ok(redact(t) === t, `kept: ${t} -> ${redact(t)}`);
+}
+
 // BARE: a typed answer that is a secret by the question it answers, not by a keyword of its own.
 {
   const asked = 'What is the password?';
