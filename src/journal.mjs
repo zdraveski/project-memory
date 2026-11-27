@@ -253,7 +253,7 @@ export function subagent(input) {
     // typed anywhere in the tail hushes it. A start older than the tail's first turn gets the look back too (`cut`), so a private prompt
     // scrolled out of the tail is still found; only when the look back finds nothing does the open turn stand.
     const pick = (all, cut) => { hush ||= all.hush === true; return (Number.isFinite(start) && all.opened.filter((x) => x.ms <= start).pop()) || (cut && Number.isFinite(start) ? null : all.open); };
-    try { const r = readTail(tp, TAIL), a = turns(r.text); t = pick(a, !r.whole); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = (p ? pick(turns(`${p}\n${r.text}`)) : null) ?? a.open; } } catch {}
+    try { const r = readTail(tp, TAIL), a = turns(r.text); t = pick(a, !r.whole); if (!t && !r.whole) { const p = promptBefore(tp, TAIL); t = (p ? pick(turns(`${p}\n${r.text}`)) : null) ?? a.open; } } catch (e) { if (e?.code !== 'ENOENT') return false; }   // unknown is private; a parent file that is not there holds no conversation
     const put = () => withLock(dir, () => {
       // Private or memory-off conversation (or a list that won't read): nothing saved; the conversation's own Stop sweeps.
       if (isQuiet(dir, s)) return false;

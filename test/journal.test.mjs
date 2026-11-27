@@ -2057,6 +2057,13 @@ for (const [name, freeze, c] of [['a queued private message', (id, r) => JSON.st
   const fe = entries([sd]).map((x) => x.e ?? x).find((x) => /gerbil parser fixed/.test(x.answered));
   ok(fe && JSON.stringify(fe.changed) === JSON.stringify(['C:\\elsewhere\\notes.md', 'nb.ipynb', 'src\\gerbil.js']),
     `a helper's entry lists the files it changed, newest last, relative to its folder, not an edit that failed (got ${JSON.stringify(fe?.changed)})`);
+  // 1.6.6 item 33: a parent transcript that exists but won't read is unknown, and unknown is private: no report saved.
+  {
+    const bad = join(dirname(sd), 'bbbb2222-main.jsonl'); writeFileSync(bad, '');
+    const real = fs.openSync; fs.openSync = function (p, ...r) { if (String(p) === bad) throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); return real.call(this, p, ...r); }; syncBuiltinESMExports();
+    let r; try { r = subagent({ ...input, agent_id: 'unread', transcript_path: bad, agent_transcript_path: undefined, last_assistant_message: 'unreadable parent hippo' }); } finally { fs.openSync = real; syncBuiltinESMExports(); }
+    ok(r === false && !entries([sd]).some((x) => /hippo/.test(JSON.stringify(x))), 'a report is not saved when the parent transcript will not read');
+  }
   // 1.5.1 2a: the parent's open turn is private, so its subagent's report is not saved; a later plain prompt saves again.
   const prompt = (t, uuid) => JSON.stringify({ type: 'user', uuid, timestamp: new Date().toISOString(), cwd: 'C:\\journal-subagent', message: { role: 'user', content: t } });
   const priv = join(dirname(sd), 'bbbb2222-private.jsonl');
