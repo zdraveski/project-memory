@@ -377,7 +377,9 @@ export function turns(tail, { sidechain = false } = {}) {
   const hold = (p) => { if (p.frozen !== true) { p.frozen = 'nudge'; p.ended = false; } };
   const heard = toolAnswers();
   // A turn with edits or commands but no reply (Escape, an API error) is still saved: what it changed is true.
-  const keep = (p) => { if (p && !p.frozen && (p.changed.length || p.ran.length) && out[out.length - 1] !== p) { p.did ||= '[stopped before a reply]'; out.push(p); } };
+  // A refused call is nulled in ran/base/ids (indexes stay put for `look`) and filtered out once at the end.
+  const look = new WeakMap(), slot = (p) => look.get(p) ?? look.set(p, { id: new Map(), cmd: new Map() }).get(p);
+  const keep = (p) => { if (p && !p.frozen && (p.changed.length || p.ran.some((c) => c !== null)) && out[out.length - 1] !== p) { p.did ||= '[stopped before a reply]'; out.push(p); } };
   // Not a record whose first key is a type nothing here reads (api-request-blob: 7 of 32 MB), and not a subagent's record
   // (isSidechain), as a Claude Code version wrote them into its conversation's transcript: neither the user's words nor the
   // conversation's reply, and a tag it quotes marks nothing (e2e audit, 2026-11-01).
@@ -389,7 +391,7 @@ export function turns(tail, { sidechain = false } = {}) {
       for (const b of r.message.content) {
         // Frozen: only a forget is kept, so a turn that ran one still says nothing (F14); a quiet turn lists no commands.
         const cmd = ranOf(b);
-        if (cmd && (!pending.frozen || FORGETS.test(cmd))) { pending.ran.push(cmd); pending.base.push(cmd); pending.ids.push(b.id); }
+        if (cmd && (!pending.frozen || FORGETS.test(cmd))) { const m = slot(pending), n = pending.ids.push(b.id) - 1; pending.ran.push(cmd); pending.base.push(cmd); if (!m.id.has(b.id)) m.id.set(b.id, n); (m.cmd.get(cmd) ?? m.cmd.set(cmd, []).get(cmd)).push(n); }
         const f = pending.frozen ? null : editedFile(b);
         if (!f) continue;
         pending.edits.set(b.id, String(f));
@@ -404,11 +406,11 @@ export function turns(tail, { sidechain = false } = {}) {
     // its output unless a later call of the same command succeeded (1.5.0). Calls are read optimistically, so one with no result stays.
     if (r.type === 'user' && pending && Array.isArray(r.message?.content)) for (const b of r.message.content) {
       if (b?.type !== 'tool_result') continue;
-      const i = pending.ids.indexOf(b.tool_use_id), err = b.is_error === true;
+      const m = slot(pending), i = m.id.get(b.tool_use_id) ?? -1, err = b.is_error === true;
       if (i !== -1) {
-        if (refused(r, b)) { pending.ids.splice(i, 1); pending.base.splice(i, 1); pending.ran.splice(i, 1); }
+        if (refused(r, b)) { m.id.delete(b.tool_use_id); pending.ids[i] = pending.base[i] = pending.ran[i] = null; }
         else {
-          pending.base.forEach((c, j) => { if (c === pending.base[i]) pending.ran[j] = c; });   // the earlier tries' tails go: only the last result counts
+          for (const j of m.cmd.get(pending.base[i])) if (pending.ran[j] !== null) pending.ran[j] = pending.base[i];   // the earlier tries' tails go: only the last result counts
           if (err) pending.ran[i] = `${pending.base[i]} → failed: ${clip(resultText(b).slice(-20000), Infinity).slice(-300)}`;
         }
       }
@@ -482,6 +484,7 @@ export function turns(tail, { sidechain = false } = {}) {
   }
   // A turn saved: the strict cut, redacted (its blocks were cut at twice this, unredacted).
   for (const p of out) if (p.said.length > SAID_KEEP) p.said = tailOf(p.said, SAID_KEEP);
+  for (const p of opened) for (const k of ['ran', 'base', 'ids']) p[k] = p[k].filter((c) => c !== null);
   out.open = pending;   // the turn the transcript ends in
   out.opened = opened;  // every turn a prompt opened, replied or not (a subagent's start turn)
   return out;
