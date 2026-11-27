@@ -50,32 +50,9 @@ jobs:
       # Each hook on a made-up busy store must stay within its limit times an empty `node -e` on the same machine.
       - run: node tools/bench.mjs --check 5
 
-  # A merge's own lines: the mutants on what it changed (hand-written and automatic) and, after a change to a hook, 20 s of fuzz.
-  # After the merge, not on pull requests: it took up to an hour and failed 50 of 61 red PR runs (2026-11-27), and
-  # blocks nothing. A survivor here is fixed in the next patch. One system and Node; the whole mutation check and the
-  # long fuzz run on a schedule (mutate.yml, fuzz.yml).
-  changed-lines:
-    if: github.event_name == 'push'
-    runs-on: windows-latest
-    timeout-minutes: 60
-    steps:
-      # The whole history, so the commit master was at before the push is there to diff against.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-      # The commit master was at before this push, through env, never into the script's text.
-      - shell: bash
-        env:
-          BASE: ${{ github.event.before }}
-        run: node tools/check.mjs --full --base "$BASE"
-
-  # The workflow files themselves: GitHub once refused fuzz.yml over a %. After a merge, not on every pull request.
+  # The workflow files themselves: GitHub once refused fuzz.yml over a %. On pull requests too: run only after the
+  # merge, a red one held master red (#300, #301). changed-lines.yml runs a merge's mutants.
   actionlint:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -93,7 +70,6 @@ jobs:
 
   # The workflows' security, which actionlint does not look at: template injection, risky triggers, leaked credentials.
   zizmor:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
