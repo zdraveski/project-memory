@@ -78,8 +78,8 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
 }
 // Publish before the master run only for a merge whose tree a green pull_request run of this repo already tested.
 {
-  const run = (o) => ({ id: 1, status: 'completed', conclusion: 'success', created_at: '2026-11-27T10:00:00Z', head_repository: { full_name: 'o/r' }, ...o });
-  const yes = { parents: ['a', 'b'], ancestor: true, sameTree: true, runs: [run()], repo: 'o/r' };
+  const run = (o) => ({ id: 1, status: 'completed', conclusion: 'success', created_at: '2026-11-27T10:00:00Z', updated_at: '2026-11-27T10:05:00Z', head_repository: { full_name: 'o/r' }, ...o });
+  const yes = { parents: ['a', 'b'], ancestor: true, sameTree: true, runs: [run()], repo: 'o/r', now: Date.parse('2026-11-27T12:00:00Z') };
   assert.equal(decide(yes).ok, true);
   assert.equal(decide({ ...yes, ancestor: false }).ok, false);   // master moved
   assert.equal(decide({ ...yes, sameTree: false }).ok, false);
@@ -89,6 +89,8 @@ assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no e
   assert.equal(decide({ ...yes, runs: [run({ status: 'in_progress', conclusion: null })] }).ok, false);
   assert.equal(decide({ ...yes, runs: [run({ head_repository: { full_name: 'fork/r' } })] }).ok, false);
   assert.equal(decide({ ...yes, runs: [] }).ok, false);
+  assert.equal(decide({ ...yes, now: Date.parse('2026-11-28T10:05:01Z') }).ok, false);   // a day old: stale
+  assert.equal(decide({ ...yes, runs: [run({ updated_at: undefined })] }).ok, false);
   // The latest run counts: green then red is no; red then green (a rerun of a flake as a new run) is yes.
   assert.equal(decide({ ...yes, runs: [run({ id: 2, conclusion: 'failure', created_at: '2026-11-27T11:00:00Z' }), run()] }).ok, false);
   assert.equal(decide({ ...yes, runs: [run({ conclusion: 'failure' }), run({ id: 2, created_at: '2026-11-27T11:00:00Z' })] }).ok, true);

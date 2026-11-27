@@ -2,15 +2,17 @@
 // May a push to master publish before its own test run? Yes only when the merge's tree is a tree a pull request run
 // already passed whole (4 systems, New York, the lints): HEAD is a merge, master before it (HEAD^1) is inside the
 // branch (HEAD^2), so the PR's test merge was that branch's tree, the tree is HEAD^2's, and the latest pull_request
-// test run on HEAD^2, from this repository (not a fork), completed with success. Anything else, or any error: no,
+// test run on HEAD^2, from this repository (not a fork), completed with success in the last 24 h. Anything else, or any error: no,
 // and test.yml's publish after the master run is the path, as before.
 // Run: node tools/pretested.mjs [sha]   (CI: writes ok=true|false to $GITHUB_OUTPUT; by hand: prints the verdict for a merge)
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+// A pull request run older than this is not trusted: the date, the runner image and the Node patches have moved since.
+export const FRESH_MS = 24 * 3600 * 1000;
 // The verdict from the facts: { ok, why }. runs: the GitHub API's workflow_runs for HEAD^2's pull_request test runs.
-export const decide = ({ parents, ancestor, sameTree, runs, repo }) => {
+export const decide = ({ parents, ancestor, sameTree, runs, repo, now = Date.now() }) => {
   if (parents.length !== 2) return { ok: false, why: `not a merge (${parents.length} parent(s))` };
   if (!ancestor) return { ok: false, why: 'master moved: HEAD^1 is not inside the merged branch' };
   if (!sameTree) return { ok: false, why: "the merge's tree is not the branch's" };
@@ -18,6 +20,7 @@ export const decide = ({ parents, ancestor, sameTree, runs, repo }) => {
   if (!own.length) return { ok: false, why: `no pull_request test run of ${repo} on the branch's last commit` };
   const [last] = own;
   if (last.status !== 'completed' || last.conclusion !== 'success') return { ok: false, why: `its last test run is ${last.status}/${last.conclusion}` };
+  if (!(now - Date.parse(last.updated_at) < FRESH_MS)) return { ok: false, why: `its last test run ${last.id} finished over 24 h ago (${last.updated_at})` };
   return { ok: true, why: `test run ${last.id} passed on the same tree` };
 };
 
