@@ -478,8 +478,9 @@ ok(sh().failures === 0 && sh().lastOk, 'and a good one resets the count');
     const p = spawnSync(process.execPath, [TOOL, '--stop'], { env: { ...process.env, NODE_OPTIONS: `--require "${pre.replace(/\\/g, '/')}"` }, encoding: 'utf8',
       input: JSON.stringify({ ...JSON.parse(stopInput('proj-one')), hook_event_name: 'Stop' }), timeout: 60000 });
     const took = Date.now() - t0;
-    ok(p.status === 0 && took < 10000 && !tracked().includes('proj-one/memory/bg-four.md'), `the Stop returns while its tidy-up is still running (took ${took} ms, status ${p.status})`);
-    rmSync(gate);
+    // A failed check still frees the child, or it holds its temp folder for 60 s and buries the failure in cleanup errors.
+    try { ok(p.status === 0 && took < 10000 && !tracked().includes('proj-one/memory/bg-four.md'), `the Stop returns while its tidy-up is still running (took ${took} ms, status ${p.status})`); }
+    finally { rmSync(gate, { force: true }); }
     while (timed() === tidies && Date.now() - t0 < 60000) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
     ok(tracked().includes('proj-one/memory/bg-four.md') && timed() === tidies + 1, `and the tidy-up commits after it, with a timing line of its own (${Date.now() - t0} ms)`);
   } finally { process.env.PROJECT_MEMORY_TIDY = 'inline'; }
