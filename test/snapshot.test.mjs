@@ -281,10 +281,10 @@ ok(root.startsWith(home), 'the projects root is under the throwaway HOME');
   rmSync(slock, { recursive: true });
 
   // forget --purge drops restore's kept copies too (item 32), so their text does not outlive the purge; a rescan keeps them for its own scrub.
-  const kept = 'refs/project-memory/replaced/abc', dels = [];
-  stand((a) => { if (a.includes('for-each-ref')) return a.at(-1) === 'refs/project-memory/replaced/' ? `${kept}\n` : ''; if (a.includes('update-ref')) dels.push(a.at(-1)); return ''; });
+  const kept = 'refs/project-memory/replaced/abc', other = 'refs/project-memory/replaced/def', dels = [];
+  stand((a) => { if (a.includes('for-each-ref')) return a.at(-1) === 'refs/project-memory/replaced/' ? `${kept}\n${other}\n` : ''; if (a.includes('cat-file')) return a.at(-1) === kept ? '# Journal 2026-01-01\nx' : 'a note of another project'; if (a.includes('update-ref')) dels.push(a.at(-1)); return ''; });
   dropDays(dir, ['2026-01-01']);
-  ok(dels.includes(kept), 'forget --purge deletes the replaced/* refs');
+  ok(dels.includes(kept) && !dels.includes(other), 'forget --purge deletes the kept copies of the dropped days only');
   dels.length = 0;
   scrubHistory((t) => [t, 0]);
   ok(!dels.includes(kept), 'a rescan rewrite leaves them to its own scrub');
