@@ -499,7 +499,7 @@ See [[nonexist-${GH}]]
   const rd = join(root, 'C--rescan', 'memory'), key = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8';
   mkdirSync(join(rd, 'journal'), { recursive: true });
   writeFileSync(join(rd, 'MEMORY.md'), '# Memory Index\n');
-  writeFileSync(join(rd, 'old.md'), `---\nname: old\n---\nthe token was ${key} then\npassword=***REMOVED*** stays\n`);
+  writeFileSync(join(rd, 'old.md'), `---\nname: old\n---\nthe token was ${key} then\npassword=***REMOVED*** is kept\n`);
   writeFileSync(join(rd, 'journal', '2020-02-03.md'), `# Journal 2020-02-03\n\nran with ${key}\n`);
   tier(); tier();
   // restore keeps a replaced note under a ref that names a blob
@@ -530,7 +530,7 @@ See [[nonexist-${GH}]]
   const bk = readdirSync(join(home, '.claude')).find((n) => n.startsWith('project-memory-rescan-backup'));
   ok(r.status === 0 && bk && /the snapshots hold none now/.test(r.stdout) && !r.stdout.includes(key), `rescan --apply --yes redacts (got ${r.stdout}${r.stderr.slice(0, 400)})`);
   const old = readFileSync(join(rd, 'old.md'), 'utf8');
-  ok(!old.includes(key) && old.includes('[redacted]') && old.includes('password=[redacted] stays') && !held() && head() !== before && !kept().includes(key) && kept().includes('[redacted]'), 'the file, every snapshot and the kept copy lose the key; the history has new IDs');
+  ok(!old.includes(key) && old.includes('[redacted]') && old.includes('password=[redacted] is kept') && !held() && head() !== before && !kept().includes(key) && kept().includes('[redacted]'), 'the file, every snapshot and the kept copy lose the key; the history has new IDs');
   ok(readFileSync(join(home, '.claude', bk, 'files', 'C--rescan', 'memory', 'old.md'), 'utf8').includes(key) && existsSync(join(home, '.claude', bk, 'snapshots.bundle')), 'the backup holds the old file and a bundle of the old history');
   ok(spawnSync('git', ['-C', root, 'fsck', '--no-dangling'], { encoding: 'utf8' }).status === 0 && !existsSync(join(root, '.git', 'refs', 'original')) && !existsSync(join(root, '.git', 'config.lock')), 'the history is sound and the lock is freed');
   r = await run(['rescan']);

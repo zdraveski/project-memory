@@ -1438,8 +1438,8 @@ for (const c of ['node memory.mjs search zebra', 'node memory.mjs search forget'
     ok(clip(once, n) === once && !(gone && once.includes(gone)), `a clip clipped again is the same, and keeps no secret: ${JSON.stringify(s)} (got ${JSON.stringify(once)}, then ${JSON.stringify(clip(once, n))})`);
   }
   // A U+0085 splits a value as a line break does: read as part of a word, `abc` and `defgh` were one password of 9 characters.
-  const nel = clip(`password: abc${ch(0x85)}defgh`, 400);
-  ok(nel === 'password: abc defgh', `a U+0085 is a blank to redaction too (got ${JSON.stringify(nel)})`);
+  const nel = clip(`the password is abc${ch(0x85)}defgh`, 400);
+  ok(nel === 'the password is abc defgh', `a U+0085 is a blank to redaction too (got ${JSON.stringify(nel)})`);
   // A clip is kept for the process, by its length and text (release review): asked again, the same clip, and only for text. A number
   // spelt as a text clipped before is no text, and fails as it always did.
   const text = clip('12345', 9);
