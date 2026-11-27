@@ -1143,6 +1143,17 @@ again ${key2}
     day('2026-10-21', [d3]);
     r = await jcli('search', '--since', '2026-10-21');
     ok(!/could not read/.test(r.stdout) && r.stdout.includes(`Reply to key ${d2.key}`), `the reply before a short request: one day earlier only (got ${r.stdout})`);
+    // A real key is a uuid: no date in it, its day is found in the day file's header.
+    const u = entry('2026-10-22 09:00', 'a long first request of the day, with a uuid key', { key: '3f2b8c1e-9a4d-4e7b-b1c2-0d5e6f7a8b9c', answered: 'the uuid reply' });
+    day('2026-10-22', [u]);
+    r = await jcli('show', u.key);
+    ok(r.stdout.includes('the uuid reply') && !/could not read/.test(r.stdout), `show of a uuid key reads only its day (got ${r.stdout})`);
+    // The reply two days back is still found for a short request.
+    const d5 = entry('2026-10-25 09:00', 'ok', { key: 'aaaa1111-0000-4000-8000-000000000001' });
+    day('2026-10-25', [d5]);
+    r = await jcli('search', '--since', '2026-10-25');
+    ok(r.stdout.includes(`Reply to key ${u.key}`), `the reply before a short request, three days back (got ${r.stdout})`);
+    rmSync(join(jd, 'journal', '2026-10-22.md')); rmSync(join(jd, 'journal', '2026-10-25.md'));
     rmSync(bad); rmSync(join(jd, 'journal', '2026-10-20.md')); rmSync(join(jd, 'journal', '2026-10-21.md'));
   }
   // The reply before a short request is the conversation's own previous entry: not another conversation's, nor a subagent's report.

@@ -1120,8 +1120,11 @@ export function main(given) {
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).
     // A key holds its day: read only those days first. The whole journal is read for a key with no day, --same, a miss, or a short
     // request (its reply may be on an earlier day).
-    const joined = args.join(' '), days = joined.match(/\b\d{4}-\d{2}-\d{2}\b/g)?.sort(), seen = new Set(), narrow = [];
-    let es = days && !rest.includes('--same') ? visible(scope, { since: days[0], until: days.at(-1), failed: narrow }) : null;
+    const joined = args.join(' '), seen = new Set(), narrow = [];
+    // A uuid key has no date in it: its day is in the day files' j:KEY headers (a string search, no parse).
+    const dayOf = () => scope.flatMap((dir) => { try { return readdirSync(join(dir, 'journal')).filter((f) => /^\d{4}-\d\d-\d\d\.md$/.test(f)).filter((f) => [...args, joined].some((k) => readFileSync(join(dir, 'journal', f), 'utf8').includes('<!-- j:' + k + ' t:'))).map((f) => f.slice(0, 10)); } catch { return []; } });
+    const days = (joined.match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? (rest.includes('--same') ? [] : dayOf())).sort();
+    let es = days.length && !rest.includes('--same') ? visible(scope, { since: days[0], until: days.at(-1), failed: narrow }) : null;
     if (!es?.some((e) => joined.includes(e.key)) || es.some((e) => short(e) && joined.includes(e.key))) es = visible(scope, { failed });
     else failed.push(...narrow);
     // A key holds spaces: typed without quotes it is several words, none a key; then they are one key joined by one space.
@@ -1150,7 +1153,11 @@ export function main(given) {
     // What was asked on those days, newest first: "what did we do last week".
     const es = visible(scope, { ...range, failed }).filter(kept(filters)).filter((e) => !isHelper(e) || filters.file || filters.conversation).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
     // The reply before a short request is on its day or the one before.
-    const first = shown.filter(short).map((e) => e.day).sort()[0], all = first ? visible(scope, { since: new Date(Date.parse(`${first}T00:00:00Z`) - 864e5).toISOString().slice(0, 10), failed }) : [];
+    // A reply two or more days back is not in that read: then the whole journal is.
+    const first = shown.filter(short).map((e) => e.day).sort()[0], near = [];
+    let all = first ? visible(scope, { since: new Date(Date.parse(`${first}T00:00:00Z`) - 864e5).toISOString().slice(0, 10), failed: near }) : [];
+    if (shown.some((e) => short(e) && !all.some((x) => x.t === e.t && !isHelper(x) && x.at < e.at))) { near.length = 0; all = visible(scope, { failed: near }); }
+    failed.push(...near);
     const dropped = [...new Set(args.join(' ').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => STOP.has(t)))];
     r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [filters.file ? missFile : `no journal entry${span && ` ${span}`} in ${where}`]] };
