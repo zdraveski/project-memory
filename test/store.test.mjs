@@ -898,6 +898,10 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join(''), PW = [
     ok(keyed('x', 16) === keyed('x', 16) && readFileSync(f, 'utf8').length === 64, 'a salt file under 32 characters is written over once, then kept');
     writeFileSync(f, 'k'.repeat(32));
     ok(keyed('x', 16) === hmac('k'.repeat(32), 'x', 16) && readFileSync(f, 'utf8') === 'k'.repeat(32), 'a salt file of exactly 32 characters is kept');
+    // A repair whose rename fails (a folder in the salt's place) leaves no .hash-salt.tmp<pid> behind.
+    rmSync(f); mkdirSync(f);
+    ok(keyed('x', 16).length === 16 && !readdirSync(dirname(f)).some((n) => n.startsWith('.hash-salt.tmp')), 'a failed salt repair leaves no temp file');
+    rmdirSync(f);
   } finally { if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = was; }
 }
 
