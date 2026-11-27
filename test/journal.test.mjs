@@ -1463,6 +1463,13 @@ mkdirSync(join(projects, 'C--proj'), { recursive: true }); writeFileSync(join(pr
       ok(keys(['narwhal']) === '', `nor while the private list won't read: it may hold the conversation (got ${keys(['narwhal'])})`);
     } finally { for (const f of [priv, off, join(own, 'pppppppp-1.jsonl'), join(own, 'oooooooo-1.jsonl'), join(own, 'nnnnnnnn-1.jsonl'), join(own, 'mmmmmmmm-1.jsonl')]) rmSync(f, { recursive: true, force: true }); }
   }
+  // 1.6.6 item 42: a look by words starts at the import's offset: what an earlier import took is in the journal, not unwritten.
+  {
+    const at = Buffer.byteLength([rec('user', 'uv-1', '2026-10-27T09:00:00Z', 'the Quokka "plan" in C:\zoo'), rec('assistant', 'uv-1a', '2026-10-27T09:00:30Z', 'drafted it')].join('\n') + '\n');
+    const f = join(d, 'journal', '.imported'); mkdirSync(join(d, 'journal'), { recursive: true });
+    writeFileSync(f, `${transcriptKey(tv)} ${statSync(tv).size} at ${at}\n`);
+    try { ok(keys(['quokka']) === 'uv-2', `a look by words reads from the import's offset (got ${keys(['quokka'])})`); } finally { rmSync(f, { force: true }); }
+  }
   // forget() takes them as a key's (`more`), from the day once a day holds one.
   record(d, tv, [turn({ at: local(Date.parse('2026-10-27T10:00:00Z')), id: 'uv-2', ask: 'another quokka' })]);
   const m = forget(d, ['quokka'], { more: unwritten(d, [], ['quokka']) }).matched;
