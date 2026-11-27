@@ -2002,7 +2002,7 @@ require('node:module').syncBuiltinESMExports();
       return res;
     }, () => call([])))).stdout;
     const h = JSON.parse(readOr(join(g.r, '.snapshot-health')));
-    ok(/still to add/.test(out) && h.pending === true, `a change made after the commit is owed to the next Stop (got ${out.trim()} ${JSON.stringify(h)})`);
+    ok(/changed during the snapshot/.test(out) && !/in parts/.test(out) && h.pending === true && !h.partial, `a change made after the commit is owed to the next Stop (got ${out.trim()} ${JSON.stringify(h)})`);
   }
   {
     // A note deleted between git's listing and its read: one more try, not a failure.

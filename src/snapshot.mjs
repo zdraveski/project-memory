@@ -129,7 +129,7 @@ export function snapshot({ gitWait = GIT_TIMEOUT, batch = BATCH, record: keep = 
   const r = take(gitWait, batch);
   if (keep) try { record(r); } catch {}   // a record the disk will not read or write is skipped (a fault), never a crash
   return r.busy ? 'busy' : 'off' in r ? `off: ${r.off}` : 'failed' in r ? `snapshot failed: ${r.failed}`
-    : r.rest || r.later ? `in parts: ${r.rest || r.later} file(s) still to add; each reply adds more` : r.made ?? null;
+    : r.rest ? `in parts: ${r.rest} file(s) still to add; each reply adds more` : r.later ? `${r.later} file(s) changed during the snapshot; the next reply adds them` : r.made ?? null;
 }
 // What one snapshot did: `busy`, `off` or `failed` (each with why), `rest` (files a first snapshot in parts still has to add), `later` (files changed since the add: owed, not parts),
 // `made` ('initialised' or 'committed'), none of them when nothing changed; and the notes it `held` and the stores it `missed`.
