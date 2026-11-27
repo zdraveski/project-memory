@@ -278,4 +278,12 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
   ok(!BARE('Zq9!x7', `${asked} ${'x'.repeat(400)}`), 'only the last 400 characters of the question are read');
 }
 
+// Russian "token" and "key" before a value are cut like пароль (item 51).
+{
+  const V = ['aB3dE5fG7h', 'J9kL1mN3pQ5rS7'].join('');
+  for (const s of [`токен: ${V}`, `ключ = ${V}`, `пароль: ${V}`]) ok(redact(s) === `${s.slice(0, -V.length)}[redacted]`, `cut: ${s}`);
+  // "key: value" in plain Russian is no secret: a value after ключ or токен needs a digit.
+  for (const s of ['ключ: значение', 'токен: истёк']) ok(redact(s) === s, `kept: ${s}`);
+}
+
 console.log(`secrets.test.mjs: ${checks} checks passed`);
