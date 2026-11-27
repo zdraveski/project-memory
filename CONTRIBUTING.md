@@ -261,8 +261,8 @@ push to it directly. Sign off every commit
 ([below](#developer-certificate-of-origin)). Run `node tools/check.mjs` first; CI runs
 the suites on every platform, once more in New York time, and lints the workflow files
 (`actionlint`, `zizmor`) and the plugin's files (`agnix`). When several people (or agents)
-build at once, each runs `node tools/check.mjs --own --base <ref>`: only the suites of the
-files they changed, never every suite after a change to a shared file; CI and one full
+build at once, each runs `node tools/check.mjs --base <ref>`: the suites of the files
+they changed, and every suite after a change to a shared file; CI and one full
 check before the merge run those. The pull request merges only when its required
 checks pass: the Linux 22, Windows 24 and macOS 26 test jobs and the sign-off check (`dco`). Have the
 change reviewed from its diff alone, by someone (or an agent) who has not heard why you made it. Leave the
