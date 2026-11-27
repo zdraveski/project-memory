@@ -1131,6 +1131,20 @@ again ${key2}
   const t1 = entry('2026-10-11 09:00', 'one of three at one minute', { answered: 'reply one' }), t2 = entry('2026-10-11 09:00', 'ok', { answered: 'reply two' }), t3 = entry('2026-10-11 09:00', 'yes', { answered: 'reply three' });
   day('2026-10-11', [t1, t2, t3]);
   ok((await sh(t3)).includes(`Reply to key ${t2.key}: reply two`) && (await sh(t2)).includes(`Reply to key ${t1.key}: reply one`), 'entries of one minute are ordered as the day file has them');
+  // show and a dated search read the days they need, not the whole journal: a day that will not read, far away, is not met.
+  {
+    const bad = join(jd, 'journal', '2026-09-01.md');
+    writeFileSync(bad, Buffer.from([0x23, 0x20, 0xe9, 0xe9, 0x0a]));
+    const d1 = entry('2026-10-20 09:00', 'a long first request of the day', { key: 'c0ffee12 2026-10-20 09:00 aaaaaaaaaaaa', answered: 'the reply' }), d2 = entry('2026-10-20 09:05', 'long enough to be no short ask at all', { key: 'c0ffee12 2026-10-20 09:05 bbbbbbbbbbbb' });
+    day('2026-10-20', [d1, d2]);
+    ok(!/could not read/.test((await jcli('show', d1.key)).stdout), 'show of a key reads only that key\'s day');
+    ok(!/could not read/.test((await jcli('search', '--since', '2026-10-20')).stdout), 'a dated search without a short request reads only its range');
+    const d3 = entry('2026-10-21 09:00', 'ok', { key: 'c0ffee12 2026-10-21 09:00 cccccccccccc' });
+    day('2026-10-21', [d3]);
+    r = await jcli('search', '--since', '2026-10-21');
+    ok(!/could not read/.test(r.stdout) && r.stdout.includes(`Reply to key ${d2.key}`), `the reply before a short request: one day earlier only (got ${r.stdout})`);
+    rmSync(bad); rmSync(join(jd, 'journal', '2026-10-20.md')); rmSync(join(jd, 'journal', '2026-10-21.md'));
+  }
   // The reply before a short request is the conversation's own previous entry: not another conversation's, nor a subagent's report.
   const u1 = entry('2026-10-12 10:00', 'a first question that is long enough', { answered: 'the main reply' });
   const x1 = entry('2026-10-12 10:01', 'a question in another conversation', { s: 'deadbeef', t: 'C--l2/deadbeef-full', answered: 'the other reply' });

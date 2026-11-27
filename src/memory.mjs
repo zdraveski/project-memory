@@ -1118,7 +1118,12 @@ export function main(given) {
   } else if (cmd === 'show' && args.length) {
     // An entry whole, by the key its hit printed: a day file is 150 KB, and read
     // for one entry, the wrong conversation's was taken (recall test, 2026-10-29).
-    const es = visible(scope, { failed }), seen = new Set();
+    // A key holds its day: read only those days first. The whole journal is read for a key with no day, --same, a miss, or a short
+    // request (its reply may be on an earlier day).
+    const joined = args.join(' '), days = joined.match(/\b\d{4}-\d{2}-\d{2}\b/g)?.sort(), seen = new Set(), narrow = [];
+    let es = days && !rest.includes('--same') ? visible(scope, { since: days[0], until: days.at(-1), failed: narrow }) : null;
+    if (!es?.some((e) => joined.includes(e.key)) || es.some((e) => short(e) && joined.includes(e.key))) es = visible(scope, { failed });
+    else failed.push(...narrow);
     // A key holds spaces: typed without quotes it is several words, none a key; then they are one key joined by one space.
     const ks = args.length > 1 && !args.some((k) => es.some((e) => e.key === k)) ? [args.join(" ")] : args, got = ks.map((k) => es.find((e) => e.key === k));
     const whole = (e) => [head(e), `     key: ${clip(e.key, Infinity)}`, ...replyTo(es, e),
@@ -1144,7 +1149,8 @@ export function main(given) {
   } else if (cmd === 'search' && (range.since || range.until || filtered)) {
     // What was asked on those days, newest first: "what did we do last week".
     const es = visible(scope, { ...range, failed }).filter(kept(filters)).filter((e) => !isHelper(e) || filters.file || filters.conversation).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)), shown = es.slice(0, n > 0 ? n : 30);
-    const all = shown.some(short) ? visible(scope, { failed }) : [];   // the reply before a short request may be on an earlier day
+    // The reply before a short request is on its day or the one before.
+    const first = shown.filter(short).map((e) => e.day).sort()[0], all = first ? visible(scope, { since: new Date(Date.parse(`${first}T00:00:00Z`) - 864e5).toISOString().slice(0, 10), failed }) : [];
     const dropped = [...new Set(args.join(' ').toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter((t) => STOP.has(t)))];
     r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [filters.file ? missFile : `no journal entry${span && ` ${span}`} in ${where}`]] };
