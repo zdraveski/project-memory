@@ -185,7 +185,7 @@ function walk(raw) {
         s.last = r.uuid || '';
       }
       for (const b of c) {
-        if (b?.type === 'tool_use' && /^(Bash|Agent|Task)$/.test(b.name)) s.launchers.add(b.id);
+        if (b?.type === 'tool_use' && (/^(Agent|Task)$/.test(b.name) || (b.name === 'Bash' && b.input?.run_in_background === true))) s.launchers.add(b.id);   // a foreground Bash result is planted text, not a launch
         // A turn that ran forget, as the handoff reads one (its Bash or PowerShell commands).
         if (b?.type === 'tool_use' && /^(Bash|PowerShell)$/.test(b.name) && FORGETS.test(String(b.input?.command ?? ''))) s.forgot = true;
         const file = editedFile(b);
