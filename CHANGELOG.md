@@ -1,9 +1,20 @@
 # Changelog
 
-## Unreleased
+## 1.6.3 (2026-11-27)
+
+A bug-fix release. On Windows, console windows no longer flash after a reply, and a project you moved to a new folder now tells you where its old notes are.
+
+### What you notice
 
 - **No more flashing console windows on Windows after a reply.** The background tidy-up now runs its git commands without opening a window.
+- **A moved project points you to the notes it left behind.** Claude Code keeps memory by folder path, so a project moved to a new folder starts with an empty memory. `memory doctor`, and the startup briefing once, now name the old memory folder and the notes it holds that the new one lacks, and say how to copy them over. Nothing is moved for you.
+
+### Smaller fixes
+
+- **A file whose look-up keeps running out of time is no longer looked up on every edit.** After two tries, it is left alone.
 - **The end-of-session hook now declares the 1.5 second limit Claude Code gives plugins there.** It said 3 seconds, which Claude Code does not honour.
+- **The memory skill's description is valid YAML.** Claude Code read it anyway; other agent tools would have refused it.
+- **Two tests that failed at random on busy macOS and Windows machines are fixed.**
 
 ## 1.6.2 (2026-11-26)
 
