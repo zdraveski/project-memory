@@ -13,7 +13,8 @@
 //   6. the automatic mutants on the changed lines (--no-auto skips them);
 //   7. changed code lines no mutant covers: a reminder, not a failure;
 //   8. after a change to a hook's code, 20 s of fuzz.mjs.
-// Run: node tools/check.mjs [--full] [--no-auto] [--base <ref>]  (from this repo)
+// Run: node tools/check.mjs [--full] [--no-auto] [--own] [--base <ref>]  (from this repo)
+// --own: only the changed files' own suites, never all after a change to a shared file (a builder's check; CI runs all).
 // --base <ref>: "changed" is everything since that ref (a tag, say; committed or not), a renamed file counting only its real edits.
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
@@ -32,9 +33,9 @@ const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8'
 const ALL = [...new Set(Object.values(suites).flatMap(([t]) => testsOf(t)))];
 
 // The suites a set of changed files needs: a source's own, its mutants', a suite itself,
-// or all of them after a change to what they share.
+// or all of them after a change to what they share. own (--own, a builder's check): never all, CI and the lead's --full run those.
 const suiteOf = Object.fromEntries(Object.entries(suites).flatMap(([f, [t]]) => [[f, testsOf(t)], [tableOf(f), testsOf(t)]]));
-export const suitesFor = (changed) => (changed.some((f) => SHARED.includes(f)) ? ALL
+export const suitesFor = (changed, own = false) => (!own && changed.some((f) => SHARED.includes(f)) ? ALL
   : [...new Set(changed.flatMap((f) => (ALL.includes(f) ? [f] : suiteOf[f] ?? [])))]);
 // The lines a unified diff with no context (-U0) adds or changes, in the new file.
 export const changedLines = (diff) => {
@@ -58,6 +59,9 @@ assert.deepEqual(suitesFor(['README.md']), []);
 assert.deepEqual(suitesFor(['src/journal.mjs', 'test/memory-cli.test.mjs']), ['test/journal.test.mjs', 'test/memory-cli.test.mjs']);
 assert.equal(suitesFor(['test/harness.mjs']).length, ALL.length);
 assert.equal(suitesFor(['tools/mutate.mjs']).length, ALL.length);   // deploy.mjs's list: a change to the mutation tool runs everything
+assert.equal(suitesFor(['src/store.mjs']).length, ALL.length);
+assert.deepEqual(suitesFor(['src/store.mjs'], true), testsOf(suites['src/store.mjs'][0]));
+assert.deepEqual(suitesFor(['test/memory-cli.test.mjs', 'test/harness.mjs'], true), ['test/memory-cli.test.mjs']);
 // The one list kept by hand: a new src/ module needs its tests and mutants named in mutate.mjs's suites, or its changes run nothing.
 assert.deepEqual(srcFiles().filter((f) => !suites[f]), [], 'src/ files with no entry in tools/mutate.mjs suites');
 // A mutant that timed out is run once more: killed then it counts as killed, otherwise the second verdict stands, any other verdict is not rerun.
@@ -232,7 +236,7 @@ step('no import loops in src/', loopsOf(graph).filter((l) => !KNOWN_LOOPS.includ
 const full = process.argv.includes('--full');
 
 // 3. The changed files' suites, in two time zones.
-const runs = suitesFor(changed).flatMap((t) => ['UTC', 'America/New_York'].map((tz) => [t, tz]));
+const runs = suitesFor(changed, process.argv.includes('--own')).flatMap((t) => ['UTC', 'America/New_York'].map((tz) => [t, tz]));
 // Why a suite failed: its error line, not the stack or Node's closing version line.
 const why = (text) => { const ls = String(text).split('\n').map((l) => l.trim()).filter((l) => l && !/^at /.test(l) && !/^Node\.js v/.test(l)); return (ls.find((l) => /Error\b/.test(l)) ?? ls.at(-1) ?? '').slice(0, 300); };
 // The zone is set on this process just before each spawn, which copies it, and the child inherits: no child is handed the whole
