@@ -894,5 +894,14 @@ for (const [name, recs] of Object.entries(FIXTURES)) {
   } finally { closeSync(fd); }
 }
 
+// 1.6.6 item 41: a prompt line longer than the 64 KB peek, cut through by the tail, is the prompt before it, not an earlier one.
+{
+  const { promptBefore } = await import('../src/transcript.mjs');
+  const f = join(home, 'longprompt.jsonl'), long = JSON.stringify(u(`wombat ${'x'.repeat(150000)}`)), rest = JSON.stringify(a('answer'));
+  writeFileSync(f, [JSON.stringify(u('earlier ask')), long, rest].join('\n') + '\n');
+  const got = promptBefore(f, Buffer.byteLength(rest) + 1 + 90000);   // the tail starts 90 KB before the end of the long line
+  ok(got === long, `a prompt line longer than 64 KB, cut by the tail, is returned whole (got ${got?.slice(0, 60)})`);
+}
+
 rmSync(home, { recursive: true, force: true });
 console.log(`transcript.test.mjs: ${checks} checks passed`);

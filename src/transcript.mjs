@@ -105,9 +105,14 @@ export function typedMark(path, seg = 8 * 1024 * 1024) {
 export function promptBefore(path, bytes) {
   const fd = openSync(path, 'r');
   try {
-    // From the end of the line the tail cut through, when it ends within 64 KB; a longer one is left out.
-    const peek = Buffer.alloc(65536), from = fstatSync(fd).size - bytes;
-    let pos = from + peek.subarray(0, readSync(fd, peek, 0, peek.length, from)).indexOf(10) + 1, carry = Buffer.alloc(0);
+    // From the end of the line the tail cut through, found 64 KB at a time (the end of the file when it has no more).
+    const peek = Buffer.alloc(65536), size = fstatSync(fd).size;
+    let pos = size - bytes, carry = Buffer.alloc(0);
+    for (let n, i; pos < size; pos += n) {
+      n = readSync(fd, peek, 0, peek.length, pos); i = peek.subarray(0, n).indexOf(10);
+      if (i !== -1) { pos += i + 1; break; }
+      if (!n) break;
+    }
     for (let k = 0; k < 256 && pos; k++) {
       const buf = Buffer.alloc(Math.min(1048576, pos));
       pos -= buf.length; readSync(fd, buf, 0, buf.length, pos);
