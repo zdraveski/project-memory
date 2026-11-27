@@ -552,6 +552,12 @@ mkdirSync(dirname(settingsFile), { recursive: true });
 // autoCompactWindow in settings.json (what /autocompact writes) sets the window; the variable still wins.
 writeFileSync(settingsFile, JSON.stringify({ autoCompactWindow: '200k' }));
 ok(windowWith({}).WINDOW === 200_000 && windowWith({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '300k' }).WINDOW === 300_000, 'autoCompactWindow from settings sets the window, and the variable wins');
+// A project's autoCompactWindow of 0 is no window: the user's still counts.
+{
+  const proj = join(home, 'proj0'); mkdirSync(join(proj, '.claude'), { recursive: true });
+  writeFileSync(join(proj, '.claude', 'settings.json'), JSON.stringify({ autoCompactWindow: 0 }));
+  ok(windowWith({ CLAUDE_PROJECT_DIR: proj }).WINDOW === 200_000, 'a project autoCompactWindow of 0 is skipped for the user one');
+}
 // compactOff(): env, autoCompactEnabled in ~/.claude.json or in settings.
 const offWith = (vars) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `import { compactOff } from ${JSON.stringify(new URL('../src/compact-gate.mjs', import.meta.url).href)}; console.log(JSON.stringify(compactOff()))`], { env: { ...process.env, ...vars }, encoding: 'utf8' }));
 writeFileSync(settingsFile, '{}');
