@@ -85,7 +85,7 @@ export function autoMemory({ managed = MANAGED, cwd } = {}) {
 export function setting(key, ok, managed = MANAGED, cwd = process.env.CLAUDE_PROJECT_DIR || process.cwd()) {
   let d = []; try { d = readdirSync(join(managed, 'managed-settings.d')).filter((f) => f.endsWith('.json')).sort().reverse().map((f) => join(managed, 'managed-settings.d', f)); } catch {}
   for (const f of [...d, join(managed, 'managed-settings.json'), join(cwd, '.claude', 'settings.local.json'), join(cwd, '.claude', 'settings.json'), join(configDir(), 'settings.json')]) {
-    let v; try { v = JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, ''))?.[key]; } catch { continue; }
+    let v; try { v = JSON.parse(readFileSync(f, 'utf8').replace(/^\uFEFF/, ''))?.[key]; } catch { continue; }
     if (ok(v)) return { value: v, file: f };
   }
   return {};

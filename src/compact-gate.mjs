@@ -65,7 +65,7 @@ export const WINDOW = Math.min(tokens(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDO
 // are read. shortcut: a managed/CLI-only switch is not seen; upgrade when one is reported.
 export function compactOff() {
   if (envOn(process.env.DISABLE_COMPACT) || envOn(process.env.DISABLE_AUTO_COMPACT)) return true;
-  let g; try { g = JSON.parse(readFileSync(process.env.CLAUDE_CONFIG_DIR ? join(configDir(), '.claude.json') : join(homedir(), '.claude.json'), 'utf8').replace(/^﻿/, '')).autoCompactEnabled; } catch {}
+  let g; try { g = JSON.parse(readFileSync(process.env.CLAUDE_CONFIG_DIR ? join(configDir(), '.claude.json') : join(homedir(), '.claude.json'), 'utf8').replace(/^\uFEFF/, '')).autoCompactEnabled; } catch {}
   return g === false || setting('autoCompactEnabled', (x) => typeof x === 'boolean').value === false;
 }
 // Claude Code compacts 33,000 tokens short of its window (863,324 of 900,000; 767,072 of 800,000: ~0.959 there; 0.835 of 200k).
@@ -301,8 +301,6 @@ export function nudge(payload) {
   // deferring a compaction the gate defers anyway, and the turn's end would
   // then have passed with no memory written (found by the second audit).
   if (payload.hook_event_name !== 'Stop' || payload.stop_hook_active || !payload.transcript_path || !existsSync(payload.transcript_path)) return null;
-  // No compaction is coming, so a reminder to save before it would be noise.
-  if (compactOff()) return null;
   // A conversation marked private, before any read: past the trigger, its
   // whole turn was read again at every Stop, for no nudge. Or held with auto memory off once (OFF), as marked() reads it.
   if (isQuiet(storeOf(payload), tag(payload.session_id))) return null;
@@ -333,6 +331,8 @@ export function nudge(payload) {
     if (given) arm(0);
     return null;
   }
+  // No compaction is coming, so a reminder to save before it would be noise. After the trigger check: it parses ~/.claude.json.
+  if (compactOff()) return null;
   // Same cycle, the context only grown: the nudge was already given.
   if (given && s.ctx >= given) return null;
   // Private, read whole and only now: from the tail alone, a <private> ask at
