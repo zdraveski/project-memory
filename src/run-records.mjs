@@ -6,11 +6,11 @@
 // but cannot be read or parsed is damaged, and each screen shows it as it did
 // before (usually as none); a BOM is stripped.
 // Imports Node and store.mjs only: journal.mjs imports this, not the other way.
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { raw, keyed, replaceIfUnchanged, appendCapped, projectsRoot, configDir, sharedStore, local, reason } from './store.mjs';
+import { raw, keyed, replaceIfUnchanged, appendCapped, projectsRoot, configDir, sharedStore, local, reason, isIndex } from './store.mjs';
 
 // What a Stop could not save, `<projects>/<this><project folder>`: memory-tier writes it, the briefing and status read it. One
 // name for the three: spelt in four places, a change to one would have left the warning silent (release review).
@@ -130,6 +130,35 @@ export function notes(dir) {
     } catch {}
   }
   return out;
+}
+
+// A project that moved gets a new folder (the key is its path): another project folder under the same projects folder whose slug ends in
+// the same last name and holds notes (by file name) this one lacks. [{ at, notes }]; none when the slugs have no such sibling.
+// shortcut: the last name is the slug's last "-" part, so `my-app` meets every `-app`; the notes' names filter the rest.
+export function moved(dir) {
+  const slug = basename(dirname(dir)), root = dirname(dirname(dir)), tail = '-' + slug.split('-').pop().toLowerCase();
+  if (tail === '-') return [];
+  const out = [];
+  try {
+    const mine = new Set(readdirSync(dir).map((f) => f.toLowerCase()).filter((f) => f.endsWith('.md')));
+    for (const s of readdirSync(root)) {
+      if (s === slug || s.startsWith('_') || !s.toLowerCase().endsWith(tail)) continue;
+      const at = join(root, s, 'memory');
+      let extra = []; try { extra = readdirSync(at).filter((f) => f.endsWith('.md') && !isIndex(f) && !mine.has(f.toLowerCase())); } catch {}
+      if (extra.length) out.push({ at, notes: extra.sort() });
+    }
+  } catch {}
+  return out;
+}
+// What doctor and the startup line say of one: no merge is made for the user.
+export const movedText = (dir, { at, notes: n }) => `Notes may have been left behind when this project moved: ${at} holds ${n.length} note(s) this folder (${dir}) lacks: ${n.slice(0, 5).join(', ')}${n.length > 5 ? ` and ${n.length - 5} more` : ''}. Nothing is merged for you; to merge by hand, copy the notes you want from there into this folder and add a line for each to this folder's MEMORY.md.`;
+// The startup line says it once: a marker in this folder holds the notes it named; a new note there is said again.
+export function movedOnce(dir) {
+  const f = join(dir, '.moved-said'), said = (readText(f) ?? '').split('\n');
+  const out = moved(dir).filter((m) => m.notes.some((n) => !said.includes(`${m.at}/${n}`)));
+  if (!out.length) return [];
+  try { mkdirSync(dir, { recursive: true, mode: 0o700 }); writeFileSync(f, moved(dir).flatMap((m) => m.notes.map((n) => `${m.at}/${n}`)).join('\n') + '\n', { mode: 0o600 }); } catch {}
+  return out.map((m) => movedText(dir, m));
 }
 
 // The deploy record: what tools/deploy.mjs copied into a folder.

@@ -13,7 +13,7 @@ import { lastTurn, transcripts, readTail, records, text, asked, own, TAIL } from
 import { OFF, PRIVATE, PRIVATE_SESSION, isOff, isQuiet, hushed, off, offLine, forgottenIn } from './privacy.mjs';
 import { readHealth, MISSED, HELD } from './snapshot.mjs';
 import { tag, storeOf, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, indexLines, emptyArchive, memoryOff, autoMemory } from './store.mjs';
-import { notes, edited } from './run-records.mjs';
+import { notes, edited, movedOnce } from './run-records.mjs';
 import { START, render, parse, sectionOf, stalled } from './handoff-log.mjs';
 import { firstDay, rel } from './journal.mjs';
 import { byWords, sharesBlock, DEADLINE, doing, about, near } from './recall.mjs';
@@ -187,7 +187,7 @@ async function print(input) {
       ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).slice(-NEWEST).map(headline) : [];
     const journal = await journalLine(dir);
     T.mark('journal');
-    const rest = [...journal, ...health(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];
+    const rest = [...journal, ...health(dir), ...movedOnce(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];
     T.mark('shared');
     const say = (ex) => fit([...lines, ...(ex.length ? ['Its last exchanges, oldest first:', ...ex] : []), ...rest].join('\n') + '\n', 1000);
     // The most that fit, from the newest back; none when not even it does.
