@@ -18,6 +18,11 @@ A bug-fix release. The secret detector catches more secrets and cuts less ordina
 
 - **The recall pointers show on a machine slow to start Node.** Their time limit counted Node's start-up, so on a slow machine the look-up never answered. It now counts from when the look-up begins.
 
+### Smaller fixes
+
+- **A snapshot that runs long keeps its lock.** Another snapshot could take the lock of one still running after 30 seconds; it now waits as long as git may take.
+- **A failed repair of the salt file no longer leaves a temporary file behind.**
+
 ### Tests
 
 - **Two more timing tests no longer fail at random on busy test machines.**
