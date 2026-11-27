@@ -115,9 +115,10 @@ jobs:
 
   # May this push publish before its own test run? Only a merge whose tree a pull request run of this repository
   # already passed whole (tools/pretested.mjs); a fork, a squash, a moved master or a red run: no, and the
-  # publish below, after the master run, is the path as before.
+  # publish below, after the master run, is the path as before. Off until the repository variable PUBLISH_EARLY is
+  # 'true' (KIRE's yes to publishing before the master matrix): skipped, publish-early is skipped too.
   pretested:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && vars.PUBLISH_EARLY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
