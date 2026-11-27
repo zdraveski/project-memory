@@ -1,7 +1,7 @@
 // The hand-written mutants of transcript.mjs, which transcript.test.mjs and the suites that read turns must catch (mutate.mjs runs them).
 // Each is a label and a pair: the text to find and what to put in its place; { full: true } runs the whole suite.
 export default {
-  'the prompt the tail cut through left out': ['.indexOf(10) + 1, carry', '.indexOf(10) * 0, carry'],
+  'the prompt the tail cut through left out': ['if (i !== -1) { pos += i + 1; break; }', 'if (i !== -1) { pos += i * 0; break; }'],
   'a line split over two reads lost': ['const all = Buffer.concat([buf, carry])', 'const all = buf'],
   'an answer taken for the prompt past 32 MB': ["if (r?.type === 'user' && prompt(r, text(r).trim())) return l;", 'if (prompt(r, text(r).trim())) return l;'],
   'an option value read as the next option': [String.raw`"(?!--)[^"]*"|'(?!--)[^']*'|-\d+`, String.raw`"[^"]*"|'[^']*'|-\d+`],
@@ -55,7 +55,7 @@ export default {
   "a forget seen in any memory.mjs command": ["export const FORGETS = { test(s) {", "export const FORGETS = { test(s) { if (/memory\\.mjs\\b.*\\bforget\\b/s.test(s)) return true;"],
   "a quoted option before forget missed": ["const F_OPT = /\\s+([\"']?)--[\\w-]+", "const F_OPT = /\\s+()--[\\w-]+"],
   "forget after an option kept": ["const o = stick(F_OPT, s, p);", "const o = -1;"],
-  "a turn commands not kept": ["{ pending.ran.push(cmd); pending.base.push(cmd); pending.ids.push(b.id); }", "{ pending.base.push(cmd); pending.ids.push(b.id); }"],
+  "a turn commands not kept": ["pending.ran.push(cmd); pending.base.push(cmd);", "pending.base.push(cmd);"],
   "P-F1 Claude question read as the user answer": ["return a ? a.map((e) => e[1]).join('\\n') : resultText(b); }", "return resultText(b); }"],
   "asks normalized": ["const t = text(r).trim(), n = r.type === 'user' ? norm(t) : ''", "const t = norm(text(r)).trim(), n = r.type === 'user' ? t : ''"],
   "P-F1 an answer with no answers record unread": ["return a ? a.map((e) => e[1]).join('\\n') : resultText(b); }", "return a ? a.map((e) => e[1]).join('\\n') : ''; }"],

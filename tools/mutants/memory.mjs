@@ -116,7 +116,7 @@ export default {
   "the removal line names no store": ['from ${here}${purged ? `; ${purged}` : \'\'}`] };', '${purged ? `; ${purged}` : \'\'}`] };'],
   "a header tag unredacted": ["conversation ${clip(e.s, 100)}", "conversation ${e.s}"],
   "a header branch unredacted": ["branch ${clip(e.branch, 100)}", "branch ${e.branch}"],
-  "show reaches only this store": ["const es = visible(scope, { failed }), seen", "const es = visible([here], { failed }), seen"],
+  "show reaches only this store": ["const joined = args.join(' '), seen = new Set(), narrow = [];", "const scope = [here], joined = args.join(' '), seen = new Set(), narrow = [];"],
   "a hit prints a field with no search word": [".filter(([, v]) => nfc(v).search(find) !== -1)", ""],
   "a hit prints a field from its start, not around its words": ["around(nfc(v), find, Math.floor(HIT_MORE / hold.length))", "clip(v, Math.floor(HIT_MORE / hold.length))"],
   "a reply's decomposed match shown as a Result": ["const nfc = (v) => clip(v, Infinity).normalize('NFC');", "const nfc = (v) => clip(v, Infinity);"],
