@@ -1083,6 +1083,8 @@ again ${key2}
   ok(/^PROBLEM the enforce hook printed output for an empty call \(noise\): it must print nothing$/m.test(doctor().stdout), 'a hook that prints for an empty call is a problem');
   writeFileSync(hook, 'process.exit(3);');
   ok(/^PROBLEM the enforce hook failed an empty call \(exit code 3\): /m.test(doctor().stdout), 'a hook that exits 3 is a problem, with its code');
+  writeFileSync(hook, 'setTimeout(() => {}, 6000);');
+  ok(/^ok +the enforce hook runs and is wired/m.test(doctor().stdout), 'a hook slow to start (6 s) is not a problem');
 }
 
 // 1.5.3 holes: how search, show and forget print what they find: the range in a line, the stores counted, a short request's reply, show's keys and exit.
