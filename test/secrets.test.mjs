@@ -122,6 +122,12 @@ const GH = ['gh', 'p_', 'Zq8Xk2Lm4Nv6Bt1Rw3Ys5Df7Gh9Jk0Pa2Cd4'].join('');
     ["Also from that pass: `CORE_JS_BUDGET` (16 KB)", "Also from that pass: `CORE_JS_BUDGET` (16 KB)"],
   ];
   for (const [text, stored] of cases) { const got = redact(text); ok(got === stored, `redact(${JSON.stringify(text)}) is ${JSON.stringify(stored)} (got ${JSON.stringify(got)})`); }
+  // A secret behind shell-escaped quotes (a command inside a quoted string) is cut whole (bug list item 11; hunt h5-1).
+  const Q = '\\"';
+  for (const cmd of ['ssh host "export TOKEN=' + Q + 'abcd1234efgh5678' + Q + '"', 'docker run -e DB_PASSWORD=' + Q + 'abcd1234efgh5678' + Q + ' img',
+    'curl -u bob:' + Q + 'abcd1234efgh5678' + Q + ' https://x.io', 'curl -u ' + Q + 'bob:abcd1234efgh5678' + Q + ' https://x.io', 'mytool --password ' + Q + 'abcd1234efgh5678' + Q + ' go',
+    'docker login -p ' + Q + 'abcd1234efgh5678' + Q + ' reg', 'bash -c "export API_KEY=' + Q + 'abcd1234efgh5678' + Q + ' && run"', 'MYAPP_SECRET=' + Q + 'abcd1234efgh5678' + Q,
+    'setx TOKEN ' + Q + 'abcd1234efgh5678' + Q]) ok(!redact(cmd).includes('abcd1234efgh5678'), `redact kept the secret in ${cmd}: ${redact(cmd)}`);
   // holdsSecret: a <private> span with anything real in it (a text, a number), and not one that holds nothing or only a word for one.
   const holds = [
     ['<private>' + ' '.repeat(39) + 'x</private>', true],   // a span of 40 characters is too long to be a placeholder
