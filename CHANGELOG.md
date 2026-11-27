@@ -6,6 +6,10 @@
 
 - **`memory search` lists exact matches first.** A flag (`-A`), a path, a dotted name, an error code or a quoted phrase is matched as typed, in notes and in the journal (request, files, commands and answer), and its hits carry an `exact:` line. `--words` gives the old word ranking alone.
 
+### Learning from mistakes
+
+- **A correction detector, in English and Macedonian.** `src/correction.mjs` tells a prompt that corrects Claude and states a lasting rule from an everyday one, with filters for helpers, questions, thanks and quoted text. Nothing calls it yet.
+
 ## 1.6.7 (2026-11-27)
 
 A bug-fix release. Two more kinds of secret are cut, the compaction reminder reaches people on 200k models, and the project checks behind each release are faster. Nothing changes in how you use it.

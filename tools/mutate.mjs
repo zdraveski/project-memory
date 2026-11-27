@@ -32,10 +32,11 @@ import privacy from './mutants/privacy.mjs';
 import transcript from './mutants/transcript.mjs';
 import snapshot from './mutants/snapshot.mjs';
 import runRecords from './mutants/run-records.mjs';
+import correction from './mutants/correction.mjs';
 
 // Every file a suite may import, copied beside the mutant.
 // pluginFiles() holds agents/recall.md, which journal.test.mjs reads (1.6.0): without it every --mutant run of that suite failed unmutated.
-const FILES = ['test/harness.mjs', 'tools/deploy.mjs', 'tools/suites.mjs', ...pluginFiles()];
+const FILES = ['test/harness.mjs', 'tools/deploy.mjs', 'tools/suites.mjs', 'test/fixtures/correction-cases.json', ...pluginFiles()];
 
 // A suite is a test file, or a list of them: memory.mjs is checked by three.
 export const testsOf = (t) => [].concat(t);
@@ -65,6 +66,7 @@ export const suites = {
   'src/privacy.mjs': [['test/privacy.test.mjs', 'test/store.test.mjs', 'test/handoff-log.test.mjs'], privacy],
   'src/transcript.mjs': [['test/transcript.test.mjs', 'test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/journal.test.mjs', 'test/enforce.test.mjs'], transcript],
   'src/snapshot.mjs': [['test/snapshot.test.mjs', 'test/memory-tier.test.mjs', 'test/store.test.mjs', 'test/enforce-hook.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-cli.test.mjs', 'test/memory-switch.test.mjs', 'test/handoff-log.test.mjs'], snapshot],
+  'src/correction.mjs': ['test/correction.test.mjs', correction],
   'src/run-records.mjs': [['test/run-records.test.mjs', 'test/handoff-log.test.mjs', 'test/journal.test.mjs', 'test/memory-tier.test.mjs', 'test/memory-cli.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-switch.test.mjs'], runRecords],
 };
 // The file that holds a group's mutants: a --changed list naming it asks for that group alone.
