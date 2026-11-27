@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # A pinned release, checked against its published sha256 (as actionlint, zizmor and agnix in test.yml), unpacked
+      # A pinned release, checked against its published sha256, unpacked
       # outside the checkout. The token keeps GitHub's links from hitting its rate limit; test/ holds fixtures, not docs.
       # Retries, and 429 and 503 counted as alive: github.com answers 503 at random (PR #298), while a dead link is a 404 or 410.
       - env:

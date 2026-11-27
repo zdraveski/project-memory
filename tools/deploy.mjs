@@ -49,8 +49,6 @@ export const requireGreenCi = (runs, commit) => {
     : `no test run for ${commit}: push it and wait for CI, or --local-tests`);
 };
 // The push runs on master only: a pull request's run tests a merge commit, not this one.
-// changed-lines is its own workflow (changed-lines.yml), not part of test: a mutant survivor no longer blocks a deploy,
-// on purpose (CONTRIBUTING "Releasing": changed-lines.yml blocks nothing).
 export const greenCiOn = (sha, commit, gh = (args) => execFileSync('gh', args, { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })) =>
   requireGreenCi(JSON.parse(gh(['run', 'list', '--commit', sha, '--workflow', 'test', '--event', 'push', '--branch', 'master', '--json', 'status,conclusion'])), commit);
 

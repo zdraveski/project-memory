@@ -1155,7 +1155,7 @@ writeFileSync(join(projW, 'iiiiiiii-5.jsonl'), [user('browse and shoot', { ts: m
   JSON.stringify({ type: 'user', timestamp: minAgo(1), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 's', content: [{ type: 'image', source: { type: 'base64', data: 'A'.repeat(900000) } }] }] } })].join('\n') + '\n');
 const pbig = await printOf(cwdW, 'gggggggg-3', 'startup');
 ok(/Another session is working in this project: [^\n]*\[iiiiiiii\]/.test(pbig) && !/Last session here ended[^\n]*browse and shoot/.test(pbig), 'a session whose last record is over 512 KB still reads as mid-turn, not ended');
-// Only the newest two working sessions are read and named: each is a 512 KB read (item 53).
+// Only the newest two working sessions are named; the read cap at briefing.mjs:147 is speed-only, not seen here.
 writeFileSync(join(projW, 'jjjjjjjj-6.jsonl'), [user('third job', { ts: minAgo(1) }), rec('assistant', [], { ts: minAgo(1), message: { content: [{ type: 'tool_use', id: 'j', name: 'Bash', input: {} }], stop_reason: 'tool_use', usage: { input_tokens: 1 } } })].join('\n') + '\n');
 for (const [f, m] of [['ffffffff-2', 3], ['iiiiiiii-5', 2], ['jjjjjjjj-6', 1]]) utimesSync(join(projW, `${f}.jsonl`), new Date(Date.now() - m * 60000), new Date(Date.now() - m * 60000));
 const p3 = await printOf(cwdW, 'gggggggg-3', 'startup');
