@@ -1057,7 +1057,7 @@ again ${key2}
 {
   const h = tempHome('doctor2-'), cd = join(h.home, '.claude'), pl = join(cd, 'plugins'), at = join(pl, 'cache', 'pm', 'project-memory', '1.0.0');
   mkdirSync(join(at, '.claude-plugin'), { recursive: true }); mkdirSync(join(at, 'hooks'), { recursive: true }); mkdirSync(join(h.home, '.claude', 'projects'), { recursive: true });
-  const doctor = (env) => spawnSync(process.execPath, [CLI, 'doctor'], { env: { ...h.env, ...env }, cwd: h.home, encoding: 'utf8' });
+  const doctor = (env) => spawnSync(process.execPath, [CLI, 'doctor'], { env: { ...process.env, ...env }, cwd: h.home, encoding: 'utf8' });
   const install = (market) => {
     writeFileSync(join(pl, 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@pm': [{ installPath: at }] } }));
     writeFileSync(join(pl, 'known_marketplaces.json'), JSON.stringify(market));
