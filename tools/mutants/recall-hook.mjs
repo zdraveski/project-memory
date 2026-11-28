@@ -2,5 +2,5 @@
 // logic is onChange() in recall.mjs, whose mutants recall-hook.test.mjs runs too.
 export default {
   'the stuck-streak event is not handled': ["} else if (event === 'PostToolUseFailure') {", "} else if (false) {"],
-  'a hook behind a switch that is off still logs a timing line': ["if (!L.lessonsOn('stuck')) T.skip();", "if (false) T.skip();"],
+  'a hook behind a switch that is off still logs a timing line': ["if (!lessonsOn('stuck')) T.skip();", "if (false) T.skip();"],
 };

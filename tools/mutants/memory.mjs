@@ -264,5 +264,14 @@ export default {
   'R73 a retry leaves the exchange in handoff.md': ['if (yes && before.length) {', 'if (false) {'],
   "what --force replaced is lost": ["keepReplaced(curB)", "keepReplaced('')"],
   'doctor does not require the PostToolUseFailure group': ['?.hooks?.PostToolUseFailure?.length)', '?.hooks?.PostToolUseFailure?.length || true)', { test: 'test/memory-switch.test.mjs' }],
-  'doctor does not run the recall hook': ["[[file, 'enforce'], [recall, 'recall']]", "[[file, 'enforce']]", { test: 'test/memory-switch.test.mjs' }],
+  'doctor does not run the recall hook': [", [recall, 'recall', '{}']]) {", "]) {", { test: 'test/memory-switch.test.mjs' }],
+  // preview --file and the doctor's edit group (1.7.0 step 8)
+  'doctor does not need the edit group of PreToolUse': ['?.some((g) => /\\bEdit\\b/.test(g?.matcher))) {', '?.some((g) => true)) {', { test: 'test/memory-switch.test.mjs' }],
+  'doctor: a missing edit group is a problem with the trigger off': ["return lessonsOn?.('edit') ? [false, text] :", 'return true ? [false, text] :', { test: 'test/memory-switch.test.mjs' }],
+  'doctor: a missing edit group is only a note with the trigger on': ["return lessonsOn?.('edit') ? [false, text] :", 'return false ? [false, text] :', { test: 'test/memory-switch.test.mjs' }],
+  'doctor: the empty call of an Edit is not run': ["[file, 'enforce', '{\"tool_name\":\"Edit\"}'], ", "", { test: 'test/memory-switch.test.mjs' }],
+  'preview --file says nothing of the trigger being off': ["...(lessonsOn('edit') ? [] : [", '...(true ? [] : [', { test: 'test/memory-cli.test.mjs' }],
+  'preview --file prints no why lines': ['...shown.map((x) => `  why: ${whyPath(x, rel)}`)', '', { test: 'test/memory-cli.test.mjs' }],
+  'preview --file words one lesson as many': ["${shown.length === 1 ? '' : 's'}, ${say.length}", "${shown.length === 1 ? 's' : ''}, ${say.length}", { test: 'test/memory-cli.test.mjs' }],
+  'preview --file counts the lessons as characters': [', ${say.length} characters.', ', ${shown.length} characters.', { test: 'test/memory-cli.test.mjs' }],
 };

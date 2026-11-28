@@ -227,7 +227,7 @@ tier();
   // A journal.mjs that will not load: replay says so on one line and exits 1 (it threw a TypeError).
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs', 'notes-health.mjs', 'lessons.mjs', 'mistakes.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
+  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs', 'notes-health.mjs', 'lessons.mjs', 'mistakes.mjs', 'switches.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'enforce', 'replay', 'stage-by-name', '--store', pm], { env, encoding: 'utf8' });
   ok(r.status === 1 && /replay needs journal\.mjs/.test(r.stdout) && !/TypeError/.test(r.stderr), `replay with a journal.mjs that will not load says so (got ${r.status} ${r.stdout}${r.stderr})`);
@@ -288,7 +288,11 @@ tier();
   const hj = join(efHome, 'hooks', 'hooks.json'), hjText = readFileSync(hj, 'utf8');
   writeFileSync(hj, JSON.stringify({ hooks: { Stop: [] } }));
   ok(/^PROBLEM [^\n]*no PreToolUse group/m.test(await doc()), 'doctor: hooks.json without the PreToolUse group is a problem');
-  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], PreToolUse: [{}] } }));
+  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], SubagentStop: [{}], PostToolUseFailure: [{}], PreToolUse: [{ matcher: 'Bash|PowerShell' }] } }));
+  ok(/^ok +[^\n]*note: [^\n]*no edit group in PreToolUse/m.test(await doc()), `doctor: hooks.json without the edit group of PreToolUse is a note while lessons before an edit are off (got ${(await doc()).split('\n').filter((l) => /enforce hook|hooks\.json in/.test(l)).join(' / ')})`);
+  process.env.PROJECT_MEMORY_LESSONS = 'edit';
+  try { ok(/^PROBLEM [^\n]*no edit group in PreToolUse/m.test(await doc()), 'doctor: hooks.json without the edit group of PreToolUse is a problem once they are on'); } finally { delete process.env.PROJECT_MEMORY_LESSONS; }
+  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], PreToolUse: [{ matcher: 'Edit|Write' }] } }));
   ok(/^PROBLEM [^\n]*no SubagentStop group/m.test(await doc()), 'doctor: hooks.json without the SubagentStop group is a problem');
   writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], PreToolUse: [{}], SubagentStop: [{}] } }));
   ok(/^PROBLEM [^\n]*no PostToolUseFailure group/m.test(await doc()), 'doctor: hooks.json without the PostToolUseFailure group is a problem');
@@ -1064,7 +1068,7 @@ again ${key2}
 {
   const h = tempHome('doctor2-'), cd = join(h.home, '.claude'), pl = join(cd, 'plugins'), at = join(pl, 'cache', 'pm', 'project-memory', '1.0.0');
   mkdirSync(join(at, '.claude-plugin'), { recursive: true }); mkdirSync(join(at, 'hooks'), { recursive: true }); mkdirSync(join(h.home, '.claude', 'projects'), { recursive: true });
-  const doctor = () => spawnSync(process.execPath, [CLI, 'doctor'], { env: h.env, cwd: h.home, encoding: 'utf8' });
+  const doctor = (env) => spawnSync(process.execPath, [CLI, 'doctor'], { env: { ...h.env, ...env }, cwd: h.home, encoding: 'utf8' });
   const install = (market) => {
     writeFileSync(join(pl, 'installed_plugins.json'), JSON.stringify({ plugins: { 'project-memory@pm': [{ installPath: at }] } }));
     writeFileSync(join(pl, 'known_marketplaces.json'), JSON.stringify(market));
@@ -1079,22 +1083,33 @@ again ${key2}
   ok(/^ok +marketplace auto-update is off: /m.test(r.stdout) && /^ok +the plugin runs version  from /m.test(r.stdout), `an empty version is printed as it is, not as "(none)" (got ${JSON.stringify(r.stdout.slice(0, 500))})`);
   // The enforce hook: its file, its two hook groups, then what it does for an empty call.
   // This fixture is flat, as a pre-1.5.6 copy is: doctor reads it as well as a src/ one (above).
-  const hooks = join(at, 'hooks', 'hooks.json'), hook = join(at, 'enforce-hook.mjs'), enf = () => doctor().stdout.split('\n').find((l) => /enforce hook|hooks\.json in/.test(l)) ?? '';
+  const hooks = join(at, 'hooks', 'hooks.json'), hook = join(at, 'enforce-hook.mjs'), enf = (env) => doctor(env).stdout.split('\n').find((l) => /enforce hook|hooks\.json in/.test(l)) ?? '';
   writeFileSync(hooks, '{}');
   ok(/^PROBLEM .*enforce-hook\.mjs is missing: the enforce hook cannot run/.test(enf()), `no enforce-hook.mjs is said (got ${enf()})`);
   writeFileSync(hook, '');
   for (const [json, what, text] of [['{ not json', 'a hooks.json that is not JSON', 'has no PreToolUse group'], ['{}', 'a hooks.json with no hooks', 'has no PreToolUse group'], ['{"hooks":{}}', 'no groups', 'has no PreToolUse group'], ['{"hooks":{"PreToolUse":[]}}', 'an empty PreToolUse', 'has no PreToolUse group'],
-    ['{"hooks":{"PreToolUse":[1]}}', 'no SubagentStop', 'has no SubagentStop group'], ['{"hooks":{"PreToolUse":[1],"SubagentStop":[]}}', 'an empty SubagentStop', 'has no SubagentStop group'],
-    ['{"hooks":{"PreToolUse":[1],"SubagentStop":[1]}}', 'no PostToolUseFailure', 'has no PostToolUseFailure group'], ['{"hooks":{"PreToolUse":[1],"SubagentStop":[1],"PostToolUseFailure":[]}}', 'an empty PostToolUseFailure', 'has no PostToolUseFailure group']]) {
+    ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}]}}', 'no SubagentStop', 'has no SubagentStop group'], ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[]}}', 'an empty SubagentStop', 'has no SubagentStop group'],
+    ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1]}}', 'no PostToolUseFailure', 'has no PostToolUseFailure group'], ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1],"PostToolUseFailure":[]}}', 'an empty PostToolUseFailure', 'has no PostToolUseFailure group']]) {
     writeFileSync(hooks, json);
     ok(enf().startsWith('PROBLEM') && enf().includes(text), `${what}: ${text} (got ${enf()})`);
   }
-  writeFileSync(hooks, '{"hooks":{"PreToolUse":[1],"SubagentStop":[1],"PostToolUseFailure":[1]}}');
+  writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1],"PostToolUseFailure":[1]}}');
   ok(/^PROBLEM .*recall-hook\.mjs is missing/m.test(doctor().stdout), 'no recall-hook.mjs is said');
   writeFileSync(join(at, 'recall-hook.mjs'), '');
+  // The edit group: missing is a note while lessons before an edit are off (the default), a problem once they are on.
+  for (const json of ['{"hooks":{"PreToolUse":[1],"SubagentStop":[1],"PostToolUseFailure":[1]}}', '{"hooks":{"PreToolUse":[{"matcher":"Bash|PowerShell"}],"SubagentStop":[1],"PostToolUseFailure":[1]}}']) {
+    writeFileSync(hooks, json);
+    ok(enf().startsWith('ok') && enf().includes('has no edit group in PreToolUse') && enf().includes('PROJECT_MEMORY_LESSONS=edit turns them on'), `no edit group, lessons off: a note (got ${enf()})`);
+    ok(enf({ PROJECT_MEMORY_LESSONS: 'edit' }).startsWith('PROBLEM') && enf({ PROJECT_MEMORY_LESSONS: 'edit' }).includes('has no edit group in PreToolUse'), `no edit group, lessons on: a problem (got ${enf({ PROJECT_MEMORY_LESSONS: 'edit' })})`);
+    ok(enf({ PROJECT_MEMORY_LESSONS: '1' }).startsWith('PROBLEM') && enf({ PROJECT_MEMORY_LESSONS: '0' }).startsWith('ok'), 'the switch is read as lessonsOn reads it (1 on, 0 off)');
+  }
+  writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1],"PostToolUseFailure":[1]}}');
   ok(/^ok +the enforce and recall hooks run and are wired \(PreToolUse\)$/m.test(doctor().stdout), 'a hook that prints nothing and exits 0 is fine');
   writeFileSync(hook, 'console.log("noise");');
   ok(/^PROBLEM the enforce hook printed output for an empty call \(noise\): it must print nothing$/m.test(doctor().stdout), 'a hook that prints for an empty call is a problem');
+  // An edit with no file is sent too: a hook that speaks only then is a problem.
+  writeFileSync(hook, "let t = ''; process.stdin.on('data', (c) => { t += c; }).on('end', () => { if (t.includes('Edit')) console.log('edit noise'); });");
+  ok(/^PROBLEM the enforce hook printed output for an empty call \(edit noise\): it must print nothing$/m.test(doctor().stdout), 'a hook that prints for an edit with no file is a problem');
   writeFileSync(hook, 'process.exit(3);');
   ok(/^PROBLEM the enforce hook failed an empty call \(exit code 3\): /m.test(doctor().stdout), 'a hook that exits 3 is a problem, with its code');
   writeFileSync(hook, 'setTimeout(() => {}, 6000);');
