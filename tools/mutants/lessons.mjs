@@ -41,7 +41,7 @@ export default {
   'edit lessons: the order ignored': ['order(hits.filter((x) => !seen.has(x.lesson.name)), readCounters(store), now)', 'hits.filter((x) => !seen.has(x.lesson.name))', HOOK],
   'edit lessons: nothing written to the session file': ['appendFileSync(at, shown.map(', 'String(at, shown.map(', HOOK],
   'edit lessons: the line has no path': ['`edit:${rel}`', "'edit:'", HOOK],
-  'edit lessons: a dry run writes its line': ['if (!dry) try {', 'try {', CLI],
+  'edit lessons: a dry run writes its line': ['\n  if (!dry) try {', '\n  try {', CLI],
   'edit lessons: a dry run reads the session file': ['dry ? [] : readSession(at)', 'readSession(at)', CLI],
   'edit lessons: a dry run writes the cache': ['dry ? { write: false } : undefined', 'undefined', CLI],
   'preview why: a listed path worded as a glob': ['if (how === 1) return', 'if (how === 9) return', SRC],
