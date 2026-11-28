@@ -790,4 +790,56 @@ rmSync(join(root, '.stop-ran'), { force: true });
   ok(parseArgs(['preview', '--file']) === '--file needs a value after it', 'preview --file needs a path');
 }
 
+// 1.7.0 `memory preview --prompt "<text>"`: what the correction nudge would add for that prompt, read-only (never a session line).
+{
+  const { NUDGE_TEXT } = await import('../src/lessons.mjs'), { sessionsOf, sessionLine } = await import('../src/sessions.mjs');
+  const proj = join(root, 'C--prev-cli'), tree = () => readdirSync(root, { recursive: true }).sort().map((f) => { const x = statSync(join(root, f)); return `${f} ${x.isFile() ? x.size : 'dir'} ${x.mtimeMs}`; }).join('\n');
+  const was = process.env.PROJECT_MEMORY_LESSONS, say = (r) => { const ls = r.stdout.split('\n'), i = ls.findIndex((l) => l.startsWith('With the prompt:')); return i < 0 ? '' : ls.slice(i, i + (ls[i].includes('would fire') ? 2 : 1)).join('\n'); };
+  process.env.PROJECT_MEMORY_LESSONS = 'nudge';
+  let r = await run(['preview', '--prompt', 'no, I said always stage by name']);
+  ok(r.status === 0 && say(r) === `With the prompt: the nudge would fire (A-no, A-i-said, B-always).\n${NUDGE_TEXT}`, `preview --prompt: the fire line and the text (got ${r.stdout.slice(-500)})`);
+  ok(r.stdout.startsWith('Startup briefing:'), 'after the briefing');
+  r = await run(['preview', '--prompt', 'please add a test for the parser']);
+  ok(say(r) === 'With the prompt: nothing would be added (no match).', `no match (got ${say(r)})`);
+  r = await run(['preview', '--prompt', 'no, great work, always like this']);
+  ok(say(r) === 'With the prompt: nothing would be added (F6-praise).', `a filter that dropped it (got ${say(r)})`);
+  r = await run(['preview', '--prompt', 'no, I said always stage by name', '--session', 'prevsess1']);
+  ok(say(r) === 'With the prompt: nothing would be added (F2-first).', `a conversation with no earlier prompt: the first-prompt filter (got ${say(r)})`);
+  mkdirSync(sessionsOf(join(proj, 'memory')), { recursive: true });
+  writeFileSync(join(sessionsOf(join(proj, 'memory')), 'prevsess'), sessionLine('asked', 'x') + sessionLine('nudge', 'fired:A-no v1 #1'));
+  r = await run(['preview', '--prompt', 'no, I said always stage by name', '--session', 'prevsess1']);
+  ok(say(r) === 'With the prompt: nothing would be added (cooldown).', `the session's cooldown (got ${say(r)})`);
+  rmSync(sessionsOf(join(proj, 'memory')), { recursive: true, force: true });
+  process.env.PROJECT_MEMORY_LESSONS = '';
+  r = await run(['preview', '--prompt', 'no, I said always stage by name']);
+  ok(say(r) === 'With the prompt: nothing would be added (nudge is off).', `off by default (got ${say(r)})`);
+  process.env.PROJECT_MEMORY_LESSONS = 'nudge';
+  // A conversation that has had a prompt, so the nudge fires: a real run would append its line.
+  mkdirSync(sessionsOf(join(proj, 'memory')), { recursive: true });
+  writeFileSync(join(sessionsOf(join(proj, 'memory')), 'prevsess'), sessionLine('asked', 'x'));
+  const before = tree();
+  await run(['preview', '--prompt', 'no, I said always stage by name', '--session', 'prevsess1']);
+  ok(tree() === before, 'a preview of a prompt changes nothing: no session file, no nudge line');
+  // The hook's own gates: a private prompt (the tag as the hook reads it, normalised), a private-session mark, an incognito conversation, a project that is off.
+  const none = (why) => `With the prompt: nothing would be added (${why}).`, FIX = 'no, I said always stage by name';
+  for (const [t, why] of [[`<PRIVATE reason="x">${FIX}</PRIVATE>`, 'private'], [`<private>${FIX}`, 'private'], [`${FIX} <private-session>`, 'private'], [`<​private>${FIX}</private>`, 'private']]) {
+    r = await run(['preview', '--prompt', t, '--session', 'prevsess1']);
+    ok(say(r) === none(why), `a private prompt would add nothing (${JSON.stringify(t)}; got ${say(r)})`);
+  }
+  const { QUIET } = await import('../src/privacy.mjs');
+  writeFileSync(join(proj, 'memory', QUIET), 'prevsess\n');
+  r = await run(['preview', '--prompt', FIX, '--session', 'prevsess1']);
+  ok(say(r) === none('quiet'), `an incognito conversation would add nothing (got ${say(r)})`);
+  rmSync(join(proj, 'memory', QUIET), { force: true });
+  await run(['off', '--session', 'prevsess1']);
+  r = await run(['preview', '--prompt', FIX, '--session', 'prevsess1']);
+  const offSay = say(r);
+  await run(['on', '--session', 'prevsess1']);
+  ok(offSay === none('project off'), `a project that is off would add nothing (got ${offSay})`);
+  ok(say(await run(['preview', '--prompt', FIX, '--session', 'prevsess1'])) === none('F2-first'), 'and once it is on again, the gate lets it through (off removed the session file: a first prompt)');
+  process.env.PROJECT_MEMORY_LESSONS = '';
+  if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was;
+  ok(parseArgs(['preview', '--prompt']) === '--prompt needs a value after it' && parseArgs(['preview', '--prompt', '']) === '--prompt needs a value after it' && parseArgs(['search', 'x', '--prompt', 'y']) === 'search does not take --prompt; help lists the options' && (await run(['help'])).stdout.includes('--prompt'), 'the option needs a value, only preview takes it, and help names it');
+}
+
 console.log(`memory-cli: ${checks} checks passed`);

@@ -11,6 +11,7 @@ import { notesOf } from './enforce.mjs';
 import { cleanPath, whole, BLOCK_MAX } from './recall.mjs';
 import { targetOf, errorLine, NOT_FAILURE, readMistakes } from './mistakes.mjs';
 import { lessonsOn } from './switches.mjs';
+import * as T from './transcript.mjs';
 
 // F1. The switches live in switches.mjs (no imports, so a hook can ask without loading this file); re-exported here.
 export { TRIGGERS, DEFAULTS, lessonsOn } from './switches.mjs';
@@ -158,6 +159,43 @@ export const lessonLine = (name, on) => `${encodeURIComponent(name)} ${on}`;
 export function parseLesson(rest) {
   const m = /^(\S+) (.+)$/.exec(String(rest ?? ''));
   try { return m ? { name: decodeURIComponent(m[1]), on: m[2] } : null; } catch { return null; }
+}
+
+// H5. The correction nudge, from the prompt hook (ctx is onPrompt's: the session file's path and the lines read before this prompt's own).
+// { say, ids, why }: `say` is the text for Claude ('' for none), `why` the reason for none ('' when it fires), for `memory preview --prompt`.
+// Writes a `nudge fired:` or `nudge dropped:` line (pattern ids and a filter id, never the prompt's words) unless `dry`. The cooldown: none
+// within 10 prompts of the last nudge, none once 3 are in the file. The previous turn's end is read from the last 64 KB of the transcript.
+export const NUDGE_TEXT = 'project-memory: this reads like a correction that should last. If it is, save it now as a feedback note: the rule, why, and applies_to (files) or applies_when (push, merge, publish, release, deploy, destroy). If it is not, ignore this.';
+// correction.mjs (~45 unicode regexes, 11 ms to load) is read only once the switch is on, so a prompt with the nudge off pays nothing:
+// nudgeFor is the hook's async entry, nudgeWith the same with the module in hand (the memory command is sync and imports it itself).
+const noNudge = (why, ids = []) => ({ say: '', ids, why });
+export async function nudgeFor(input, ctx, opts) {
+  return lessonsOn('nudge') ? nudgeWith(await import('./correction.mjs'), input, ctx, opts) : noNudge('nudge is off');
+}
+export function nudgeWith({ correction, VERSION }, input, ctx, { dry = false, readTail } = {}) {
+  const none = noNudge;
+  if (!lessonsOn('nudge')) return none('nudge is off');
+  const { lines, at } = ctx;
+  let recs;
+  const tail = () => recs ??= (() => {
+    try { return [...T.records((readTail ?? T.readTail)(input.transcript_path, 64 * 1024).text, { types: ['user', 'assistant'] })]; } catch { return []; }
+  })();
+  // The turn's last record (a record of tool calls alone has no text and is skipped by the question check, so an older reply's ? may count: accepted), leaving out the prompt itself when the transcript already holds it.
+  const last = () => { const r = tail(), i = r.length - 1; return i >= 0 && r[i].type === 'user' && T.prompt(r[i], T.text(r[i]).trim()) ? i - 1 : i; };
+  const marker = () => { const r = tail()[last()], c = r?.message?.content; return r?.type === 'user' && (/^\s*\[Request interrupted by user/.test(T.text(r)) || (Array.isArray(c) && c.some((b) => b?.type === 'tool_result' && T.refused(r, b)))); };
+  const lastEndsWithQuestion = () => { const r = tail().slice(0, last() + 1).findLast((x) => x.type === 'assistant' && T.text(x).trim()); return !!r && T.text(r).trim().endsWith('?'); };
+  const v = correction(T.own(input.prompt), { helper: input.agent_id != null, first: !lines.some((l) => l.kind === 'asked'), marker, lastEndsWithQuestion });
+  const k = 1 + lines.filter((l) => l.kind === 'nudge').length, add = (rest) => { if (!dry) try { appendFileSync(at, sessionLine('nudge', `${rest} v${VERSION} #${k}`), { mode: 0o600 }); } catch {} };
+  if (!v.fire) { if (v.drop) add(`dropped:${v.drop}`); return none(v.drop || 'no match', v.ids); }
+  // tidy (sessions.mjs) may collapse asked lines past 64 KB; that only makes the cooldown stricter.
+  const asked = lines.flatMap((l, i) => (l.kind === 'asked' ? [i] : [])), cut = asked.length >= 10 ? asked.at(-10) : -1;
+  const fired = lines.flatMap((l, i) => (l.kind === 'nudge' && l.rest.startsWith('fired:') ? [i] : []));
+  if (fired.length >= 3 || fired.some((i) => i > cut)) return none('cooldown', v.ids);
+  add(`fired:${v.ids.join(',')}`);
+  // The turn before: the lines after the newest prompt line. A co-change lesson has no note to fix.
+  const lastPrompt = lines.findLastIndex((l) => l.kind === 'asked' || l.kind === 'quiet');
+  const shown = lines.slice(lastPrompt + 1).findLast((l) => l.kind === 'lesson' && l.by === '' && !parseLesson(l.rest)?.name.startsWith('cochange:') && parseLesson(l.rest));
+  return { say: shown ? `${NUDGE_TEXT} The lesson ${parseLesson(shown.rest).name} was shown before this; if it did not hold, fix that note instead of writing a new one.` : NUDGE_TEXT, ids: v.ids, why: '' };
 }
 
 // L2. Whether a command of `target` went through between the last two failures of it in this turn, read from the transcript's last

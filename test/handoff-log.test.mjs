@@ -571,7 +571,7 @@ const gated = join(home, 'gated');
 mkdirSync(gated, { recursive: true });
 mkdirSync(join(gated, 'src'), { recursive: true });
 mkdirSync(join(gated, 'tools'), { recursive: true });
-for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/secrets.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/memory.mjs', 'src/notes-health.mjs', 'src/lessons.mjs', 'src/switches.mjs', 'src/mistakes.mjs', 'src/recall.mjs', 'src/sessions.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/journal.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
+for (const f of ['tools/deploy.mjs', 'tools/suites.mjs', 'src/store.mjs', 'src/secrets.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/memory.mjs', 'src/notes-health.mjs', 'src/lessons.mjs', 'src/switches.mjs', 'src/mistakes.mjs', 'src/correction.mjs', 'src/recall.mjs', 'src/sessions.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/journal.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs']) writeFileSync(join(gated, f), readFileSync(join(ROOT, f)));
 const g = (...a) => execFileSync('git', ['-C', gated, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { env, encoding: 'utf8' });
 g('init', '-q', '-b', 'master'); g('add', '-A'); g('commit', '-qm', 'base'); g('checkout', '-qb', 'other');
 let gate = spawnSync(process.execPath, [join(gated, 'tools', 'deploy.mjs')], { env, encoding: 'utf8' });
@@ -3110,7 +3110,7 @@ require('node:module').syncBuiltinESMExports();
 // can reach the real hooks-live or the real repo.
 {
   const dep = join(home, 'dep'), ctl = join(home, 'deploy-ctl.json'), liveD = join(home, '.claude', 'hooks-live'), src = ROOT;
-  const FILES_ = ['src/store.mjs', 'src/secrets.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/brief.mjs', 'src/briefing.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/sessions.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/notes-health.mjs', 'src/lessons.mjs', 'src/switches.mjs', 'src/mistakes.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
+  const FILES_ = ['src/store.mjs', 'src/secrets.mjs', 'src/timing.mjs', 'src/handoff-log.mjs', 'src/text.mjs', 'src/privacy.mjs', 'src/transcript.mjs', 'src/snapshot.mjs', 'src/run-records.mjs', 'src/brief.mjs', 'src/briefing.mjs', 'src/journal.mjs', 'src/recall.mjs', 'src/sessions.mjs', 'src/page.mjs', 'src/compact-gate.mjs', 'src/memory-tier.mjs', 'src/memory.mjs', 'src/notes-health.mjs', 'src/lessons.mjs', 'src/switches.mjs', 'src/mistakes.mjs', 'src/correction.mjs', 'src/enforce.mjs', 'src/enforce-hook.mjs',
     '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'hooks/hooks.json', 'skills/memory/SKILL.md', 'commands/incognito.md', 'commands/memory-off.md', 'commands/memory-on.md', 'tools/deploy.mjs', 'tools/suites.mjs'];
   for (const f of FILES_) { mkdirSync(dirname(join(dep, f)), { recursive: true }); writeFileSync(join(dep, f), readFileSync(join(src, f))); }
   const STUB = `import { readFileSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
