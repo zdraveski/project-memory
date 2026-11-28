@@ -326,7 +326,8 @@ export function handoffBig(dir) {
   let n = 0; try { n = statSync(join(dir, 'handoff.md')).size; } catch { return null; }
   return n > HANDOFF_WARN ? `handoff.md is ${Math.round(n / 1024)} KB (over ${HANDOFF_WARN / 1024} KB). To trim it: delete the finished topics from the part you wrote by hand, above the automatic log; the journal keeps every exchange, so nothing is lost from search` : null;
 }
-export function status(dir, sharedNames = [], showAll = false) {
+// `repo`: the repository the stale check reads, given only for the store of the folder status runs in (its notes name that repository's paths).
+export function status(dir, sharedNames = [], showAll = false, repo) {
   const ms = memories(dir), main = readText(join(dir, 'MEMORY.md'));
   const lines = [`${dir}${isShared(dir) ? '  (shared by every project)' : ''}`];
   const gone = isOff(dir);
@@ -344,9 +345,6 @@ export function status(dir, sharedNames = [], showAll = false) {
   // The Stop's record of what it could not save, as the briefing says it: only the briefing did (R64).
   const lost = lostHandoff(dir);
   if (lost) lines.push(`  needs attention: ${unsaved(lost)}`);
-  const known = new Set([...names(ms), ...sharedNames]);
-  const dangling = ms.flatMap((m) => m.links.filter((l) => !known.has(l)).map((l) => `${m.file} → [[${l}]]`));
-  if (dangling.length) lines.push(`  links to no memory: ${dangling.join(', ')}`);
   const bare = ms.filter((m) => !m.desc || !m.type).map((m) => m.file);
   if (bare.length) lines.push(`  frontmatter without a description or type: ${bare.join(', ')}`);
   const big = handoffBig(dir); if (big) lines.push(`  needs attention: ${big}`);
@@ -367,7 +365,7 @@ export function status(dir, sharedNames = [], showAll = false) {
   const ch = recent(dir);
   if (ch) lines.push(`  changed in the last ${RECENT_DAYS} days: ${ch}`);
   // The notes' structure (N01-N11) and stale notes (S01, S02): the shared store's notes name no project's paths, so it has no stale check.
-  for (const l of notesHealth(dir, isShared(dir) ? undefined : repoRoot(process.cwd()), { shared: sharedNames, all: showAll })) lines.push(`  ${l}`); // a loop: a spread of 300,000 lines overflows the stack
+  for (const l of notesHealth(dir, repo, { shared: sharedNames, all: showAll })) lines.push(`  ${l}`); // a loop: a spread of 300,000 lines overflows the stack
   return lines;
 }
 
@@ -1179,7 +1177,7 @@ export function main(given) {
   else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
     const am = autoMemory();
-    r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames, rest.includes('--all'))), verdict().say] };
+    r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames, rest.includes('--all'), d === here && !isShared(d) ? repoRoot(process.cwd()) : undefined)), verdict().say] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined, failed);
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });

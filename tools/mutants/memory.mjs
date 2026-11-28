@@ -38,7 +38,6 @@ export default {
   'answer hits uncapped': ['Math.min(2, count(answered, t, cut(t)))', 'count(answered, t, cut(t))'],
   'an archived memory unlabelled': ["cold.has(file) ? 'archived' : 'unindexed'", "'unindexed'"],
   'the shared store not searched': ['isShared(here) ? [here] : [here, sharedStore()]', '[here]'],
-  'the shared store resolves no link': ['new Set([...names(ms), ...sharedNames])', 'new Set(names(ms))'],
   'restore replaces a memory that exists': ['if (existsSync(path) && !force) return no(', 'if (false) return no('],
   'restore drops the hand-written line': ['line = take(t, (l) => target(l) === file).line;', 'line = null;'],
   "restore adds a second line": ["if ([main, raw(join(dir, ARCHIVE))].some((t) => targets(t).some((x) => x === file || same(join(dir, x), path)))) return", "if (false) return"],

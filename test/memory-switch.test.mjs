@@ -759,8 +759,8 @@ See [[nonexist-${GH}]]
   const { handoffBig, status: statusOf } = await import(pathToFileURL(CLI).href);
   const sd = join(root, 'C--statuspins', 'memory'); mkdirSync(sd, { recursive: true });
   writeFileSync(join(sd, 'nameless.md'), '---\ndescription: no name line\ntype: reference\n---\nsee [[ ]] and [[real-target]]\n');
-  const dangling = statusOf(sd).filter((l) => /links to no memory/.test(l)).join('\n');
-  ok(/nameless\.md → \[\[\]\]/.test(dangling) && /real-target/.test(dangling), `an empty link is dangling even when another note has no name (got ${dangling})`);
+  const dangling = statusOf(sd).filter((l) => / N06 /.test(l)).join('\n');
+  ok(/N06 nameless\.md links to \[\[\]\]/.test(dangling) && /\[\[real-target\]\]/.test(dangling), `an empty link is dangling even when another note has no name (got ${dangling})`);
   writeFileSync(join(sd, 'handoff.md'), 'x'.repeat(64 * 1024));
   ok(handoffBig(sd) === null, 'a handoff.md of exactly 64 KB is not big');
   writeFileSync(join(sd, 'handoff.md'), 'x'.repeat(64 * 1024 + 1));

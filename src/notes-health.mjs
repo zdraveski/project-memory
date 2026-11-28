@@ -70,7 +70,8 @@ export function structure(dir, { errorIds = null, shared = [], all = false } = {
       if (!has.has(opens(t))) add('N01', 'note', `${f} lists ${t}, a file that is gone: delete that line`); else indexed.add(opens(t));
     }
   }
-  const known = new Set(shared), seen = [];
+  // The plugin's own files are linkable by their names once they are there.
+  const known = new Set([...shared, ...OWN.filter((f) => has.has(f)).map((f) => f.replace(/\.md$/, ''))]), seen = [];
   for (const n of notes) {
     const t = text(join(dir, n.file)), { name, desc } = front(t);
     known.add(n.file.replace(/\.md$/, '')); if (name) known.add(name);
@@ -99,6 +100,8 @@ export function structure(dir, { errorIds = null, shared = [], all = false } = {
 
 const DAY = 864e5, GIT_WAIT = 5000;
 const defaultGit = (args, opts) => execFileSync('git', args, { timeout: GIT_WAIT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024, ...opts });
+// A name in a note that is no path of the project: home, absolute, parent, or one git would read as pathspec magic.
+const outside = (p) => /^(?:~|[A-Za-z]:|[\\/]|:)/.test(p) || p.split(/[\\/]/).includes('..');
 // A changed file against a name a note gives: a path (a folder or a glob's fixed start counts), or a bare file name.
 // shortcut: a glob is read as its text before the first `*`, so `src/*.mjs` counts every file under src/; upgrade if that is too loud.
 const touches = (file, p) => {
@@ -113,13 +116,16 @@ export function stale(dir, repo, { run = defaultGit, now = Date.now() } = {}) {
   const of = notesOf(dir, { write: false }).flatMap((n) => {
     const l = n.l?.lesson;
     const paths = !l || l.hidden ? [] : l.to.length ? l.to : [...l.named.paths, ...l.named.files];
-    return paths.length ? [{ file: n.file, mtime: n.mtime, paths }] : [];
+    const own = paths.filter((p) => !outside(p));
+    return own.length ? [{ file: n.file, mtime: n.mtime, paths: own }] : [];
   });
   if (!of.length) return found;
   if (!repo) return skip('no repository');
   const since = Math.max(Math.min(...of.map((n) => n.mtime)), now - 365 * DAY);
   let log;
-  try { log = run(['log', `--since=@${Math.floor(since / 1000)}`, '--name-only', '--format=@@%ct'], { cwd: repo }); } catch (e) {
+  // Only the notes' paths, in any case (touches() is the judge of case): a folder and a glob as written, a bare file name in any folder. shortcut: past 200 names the log is not narrowed.
+  const specs = [...new Set(of.flatMap((n) => n.paths).map((p) => `:(icase)${p.includes('/') ? p : `*${p}`}`))];
+  try { log = run(['log', `--since=@${Math.floor(since / 1000)}`, '--name-only', '--format=@@%ct', ...(specs.length <= 200 ? ['--', ...specs] : [])], { cwd: repo }); } catch (e) {
     return skip(e?.code === 'ENOENT' ? 'git was not found' : e?.code === 'ETIMEDOUT' ? `git took more than ${GIT_WAIT / 1000} seconds` : 'git could not read the history');
   }
   const commits = []; // [ct in ms, files]
@@ -129,8 +135,9 @@ export function stale(dir, repo, { run = defaultGit, now = Date.now() } = {}) {
   }
   for (const n of of) {
     for (const p of n.paths) {
-      // A file name with no folder cannot be looked up by the repo: only git's history says anything of it.
-      if (p.includes('/') && !/[*?[]/.test(p) && !existsSync(join(repo, p))) { found.push({ code: 'S02', level: 'note', text: `${n.file} names ${p}, which no longer exists` }); continue; }
+      // Gone only when the path's first folder is the repository's: `PR/run` and `navy/amber` are words, and a bare file name cannot be
+      // looked up (only git's history says anything of it).
+      if (p.includes('/') && !/[*?[]/.test(p) && existsSync(join(repo, p.split('/')[0])) && !existsSync(join(repo, p))) { found.push({ code: 'S02', level: 'note', text: `${n.file} names ${p}, which no longer exists` }); continue; }
       const k = commits.filter(([t, fs]) => t > n.mtime && fs.some((f) => touches(f, p))).length;
       if (k >= 3) found.push({ code: 'S01', level: 'note', text: `${n.file} names ${p}, which changed in ${k} commits since the note (${local(n.mtime).slice(0, 10)}): check that it still holds` });
     }
