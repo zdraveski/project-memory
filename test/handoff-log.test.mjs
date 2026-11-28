@@ -518,7 +518,7 @@ ok(loads.includes('journal.mjs') && !unshipped.length, `every file a deployed ho
 const stamped = JSON.parse(readFileSync(join(liveV, '.claude-plugin', 'plugin.json'), 'utf8')).version;
 const liveHooks = JSON.parse(readFileSync(join(liveV, 'hooks', 'hooks.json'), 'utf8')).hooks;
 ok(Object.values(liveHooks).flat().flatMap((e) => e.hooks).every((x) => x.command === 'C:/Program Files/nodejs/node.exe'), "the live plugin runs the deploying node by its path, not whatever node is on PATH");
-ok(liveHooks.PreToolUse?.[0].hooks.length === 2 && liveHooks.PreToolUse[0].hooks.every((x) => x.command === 'C:/Program Files/nodejs/node.exe') && existsSync(join(liveV, 'src', 'enforce-hook.mjs')), 'the PreToolUse group is deployed with its script and run by the deploying node too');
+ok(liveHooks.PreToolUse?.[0].hooks.length === 29 && liveHooks.PreToolUse[0].hooks.every((x) => x.command === 'C:/Program Files/nodejs/node.exe') && existsSync(join(liveV, 'src', 'enforce-hook.mjs')), 'the PreToolUse group is deployed with its script and run by the deploying node too');
 ok(/^\d+\.\d+\.42$/.test(stamped) && edited(liveV).length === 0, `the live plugin's version carries the deploy's number, and the manifest hashes what was written (got ${stamped})`);
 // The slash commands ship with the plugin: each has a description and runs the matching memory command with the session id.
 for (const [file, cmd] of [['incognito', 'incognito'], ['memory-off', 'off'], ['memory-on', 'on']]) {

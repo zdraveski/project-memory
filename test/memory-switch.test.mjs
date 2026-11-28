@@ -1090,6 +1090,12 @@ again ${key2}
   }
   writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1]}}');
   ok(/^ok +the enforce hook runs and is wired \(PreToolUse\)$/m.test(doctor().stdout), 'a hook that prints nothing and exits 0 is fine');
+  // 1.7.0 H2: a Bash group with the git filters only (a pre-1.7.0 copy) is a problem while `command` is on (the default), a note once it is off; the real file is fine.
+  writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Bash|PowerShell","hooks":[{"if":"Bash(git *)"},{"if":"PowerShell(git *)"}]},{"matcher":"Edit|Write"}],"SubagentStop":[1]}}');
+  ok(enf().startsWith('PROBLEM') && enf().includes('has only the git filters') && enf({ PROJECT_MEMORY_LESSONS: '-command' }).startsWith('ok') && enf({ PROJECT_MEMORY_LESSONS: '-command' }).includes('PROJECT_MEMORY_LESSONS=command turns them on'), `git filters only: a problem, a note with -command (got ${enf()})`);
+  writeFileSync(hooks, readFileSync(new URL('../hooks/hooks.json', import.meta.url), 'utf8'));
+  ok(/^ok +the enforce hook runs and is wired \(PreToolUse\)$/m.test(doctor().stdout), 'the real hooks.json is wired');
+  writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1]}}');
   writeFileSync(hook, 'console.log("noise");');
   ok(/^PROBLEM the enforce hook printed output for an empty call \(noise\): it must print nothing$/m.test(doctor().stdout), 'a hook that prints for an empty call is a problem');
   // An edit with no file is sent too: a hook that speaks only then is a problem.

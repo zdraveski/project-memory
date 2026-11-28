@@ -51,6 +51,7 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           but for a numbers-only line in this store's .replay-history
   preview                                 the startup briefing the next conversation here would get, with its size; read-only
   preview --file <path>                   the lessons Claude would see before an edit of that file, and why each matched; read-only
+  preview --command "<command>"            the lessons Claude would see before that command, and why each matched; read-only
 The store is this session's own (outside a session: the cwd's project, or the nearest
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
@@ -65,7 +66,7 @@ import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, s
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, verdict, isOurs, versionsOf, changedLately, dropDays, daysHolding, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
 import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
-import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
+import { ruleOf, hits, commandsOf, tally, familyOf } from './enforce.mjs';
 import { health as notesHealth, linksOf } from './notes-health.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT, compactOff } from './compact-gate.mjs';
@@ -98,9 +99,9 @@ catch (e) {
 let replayRun, lessonsList, noReplay;
 try { ({ replayRun, lessonsList } = await import('./replay.mjs')); }
 catch (e) { noReplay = reason(e); }
-// lessons.mjs loads apart for `preview --file`, as replay.mjs does for `lessons`.
-let onEdit, whyPath, lessonsOn, relPath, noEdit;
-try { ({ onEdit, whyPath, lessonsOn, relPath } = await import('./lessons.mjs')); }
+// lessons.mjs loads apart for `preview --file` and `--command`, as replay.mjs does for `lessons`.
+let onEdit, onCommand, whyPath, whyFamily, lessonsOn, relPath, noEdit;
+try { ({ onEdit, onCommand, whyPath, whyFamily, lessonsOn, relPath } = await import('./lessons.mjs')); }
 catch (e) { noEdit = reason(e); }
 
 // The most entries a forget's look lists, and so the most one --yes removes:
@@ -444,8 +445,15 @@ function sessionStore() {
 // written). A process of its own: the briefing is asynchronous and this command line is not, and the one path is the hook's own.
 const PREVIEW = fileURLToPath(new URL('./briefing.mjs', import.meta.url));
 // With --file: the lessons before an edit of that file (lessons.mjs onEdit, dry), for the conversation asking or a fresh one.
-function preview(path) {
+function preview(path, command) {
   const transcript = session && transcriptOf(session);
+  if (command !== undefined) {
+    if (noEdit) return { ok: false, lines: [`preview --command needs lessons.mjs, which did not load: ${noEdit}`] };
+    const { say, shown } = onCommand({ hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: session || 'preview', cwd: process.cwd(), tool_input: { command }, ...(transcript ? { transcript_path: transcript } : {}) }, familyOf(command), { dry: true });
+    const shortened = `Before "${clip(command, 80)}"`;
+    if (!shown.length) return { ok: true, lines: [`${shortened}: nothing would be shown.`, ...(lessonsOn('command') ? [] : ['Lessons before a command are off: PROJECT_MEMORY_LESSONS=command turns them on.'])] };
+    return { ok: true, lines: [`${shortened}: ${shown.length} lesson${shown.length === 1 ? '' : 's'}, ${say.length} characters.`, ...say.split('\n'), ...shown.map((x) => `  why: ${whyFamily(x)}`)] };
+  }
   if (path !== undefined) {
     if (noEdit) return { ok: false, lines: [`preview --file needs lessons.mjs, which did not load: ${noEdit}`] };
     const { say, shown } = onEdit({ hook_event_name: 'PreToolUse', tool_name: 'Edit', session_id: session || 'preview', cwd: process.cwd(), tool_input: { file_path: path }, ...(transcript ? { transcript_path: transcript } : {}) }, { dry: true });
@@ -837,6 +845,12 @@ function enforceHook(at) {
       const text = `hooks.json in ${at} has no edit group in PreToolUse: lessons before an edit are not wired. The user's fix: claude plugin update ${PLUGIN}`;
       return lessonsOn?.('edit') ? [false, text] : [true, `the enforce hook runs and is wired (PreToolUse); note: ${text} (lessons before an edit are off: PROJECT_MEMORY_LESSONS=edit turns them on)`];
     }
+    // 1.7.0 H2: a Bash group with only the git filters (a pre-1.7.0 copy) does not start the hook for a risky command; a problem while `command` is on (the default).
+    const bash = readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.find((g) => /\bBash\b/.test(g?.matcher));
+    if (bash?.hooks?.length && !bash.hooks.some((h) => /deploy/.test(h?.if))) {
+      const text = `hooks.json in ${at} has only the git filters in its Bash|PowerShell group: lessons before a risky command are not wired. The user's fix: claude plugin update ${PLUGIN}`;
+      return lessonsOn?.('command') ? [false, text] : [true, `the enforce hook runs and is wired (PreToolUse); note: ${text} (lessons before a command are off: PROJECT_MEMORY_LESSONS=command turns them on)`];
+    }
     return [true, 'the enforce hook runs and is wired (PreToolUse)'];
   } catch (e) {
     // A slow node start (a loaded or virus-scanned PC) is a note, not a broken hook.
@@ -1043,12 +1057,12 @@ function page(stores, days, want, failed) {
 // Every option the command line knows, and whether it takes the word after it as its value. The `=` split,
 // the unknown-option refusal and where a value ends all read this one list: an option valued in one list and a flag
 // in another was how audit 5 and C-7 came about. USAGE names each one (memory-cli checks it).
-export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--session': true, '--since': true, '--until': true, '--conversation': true, '--key': true, '--file': true, '--days': true, '--project': true, '--except': true,
+export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--session': true, '--since': true, '--until': true, '--conversation': true, '--key': true, '--file': true, '--command': true, '--days': true, '--project': true, '--except': true,
   '--all': false, '--shared': false, '--yes': false, '--force': false, '--same': false, '--purge': false, '--apply': false, '--help': false, '--asked': false, '--words': false, '--show': false };
 const valued = new Set(Object.keys(OPTIONS).filter((o) => OPTIONS[o]));
 // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
 // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal in main().
-const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], preview: ['--file'], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
+const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], preview: ['--file', '--command'], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
 
 // The command line's words, read before any store is touched: { cmd, rest, args, opt } or the refusal to print.
 // rest is every word but the command, in order (--key repeats, and the first of an option wins in opt()); args
@@ -1068,7 +1082,7 @@ export function parseArgs(given) {
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
   // An empty --conversation or --file (an unset variable in quotes) is none given: forget took it for "every conversation", search ran unfiltered.
-  const bare = argv.find((a, i) => valued.has(a) && (a !== '--rev' || i + 1 >= argv.length) && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--project' || a === '--except') && argv[i + 1] === '')));
+  const bare = argv.find((a, i) => valued.has(a) && (a !== '--rev' || i + 1 >= argv.length) && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--command' || a === '--project' || a === '--except') && argv[i + 1] === '')));
   if (bare) return `${bare} needs a value after it`;
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
@@ -1251,7 +1265,7 @@ export function main(given) {
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
   else if (cmd === 'doctor') r = doctor(here);
-  else if (cmd === 'preview') r = preview(opt('--file'));
+  else if (cmd === 'preview') r = preview(opt('--file'), opt('--command'));
   else if (cmd === 'page') r = page(every(), opt('--days') === undefined ? PAGE_DAYS : opt('--days') === 'all' ? 'all' : Math.min(Number(opt('--days')), PAGE_MAX), opt('--project'), failed);
   // The usage, after why: a misspelt command, or one with no word after it,
   // printed the usage alone.

@@ -505,12 +505,12 @@ r = spawnSync(process.execPath, [join(home, 'linked-cli', 'memory.mjs'), 'status
 ok(r.stdout.includes(dir), `the CLI run through a symlinked folder still runs (got ${JSON.stringify(r.stdout + r.stderr)})`);
 
 // The plugin's own wiring, hooks/hooks.json: the four hooks, each with its
-// matcher and its flag, run by node from the plugin's folder. PreToolUse has two handlers, one per `if` rule.
+// matcher and its flag, run by node from the plugin's folder. PreToolUse has 29 Bash|PowerShell handlers, one per `if` rule.
 const hookFile = JSON.parse(readFileSync(tool('hooks/hooks.json'), 'utf8'));
 const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((e) => e.hooks.map((x) =>
   `${ev} | ${e.matcher || ''} | ${x.command} ${(x.args || []).join(' ')}`))).sort();
 ok(JSON.stringify(wiring) === JSON.stringify(['PostToolUse | Edit|Write|NotebookEdit | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/src/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop',
-  'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs', 'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs',
+  ...Array(29).fill('PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs'), // git (2) + risky commands (27), 1.7.0 step 9
   'PreToolUse | Edit|Write|NotebookEdit|MultiEdit | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs',
   'SessionEnd |  | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/src/brief.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'SubagentStop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop',
   'UserPromptSubmit |  | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs']),
@@ -788,6 +788,36 @@ rmSync(join(root, '.stop-ran'), { force: true });
   ok(off.stdout === 'Before an edit of src/a.mjs: nothing would be shown.\nLessons before an edit are off: PROJECT_MEMORY_LESSONS=edit turns them on.\n', `with the trigger off it says why (got ${off.stdout})`);
   if (was !== undefined) process.env.PROJECT_MEMORY_LESSONS = was;
   ok(parseArgs(['preview', '--file']) === '--file needs a value after it', 'preview --file needs a path');
+}
+
+// 1.7.0 step 9, `memory preview --command "<command>"`: the lessons Claude would see before that command, the hook's block byte for byte,
+// then why each matched. Read-only like --file (no session line, no marker).
+{
+  const proj = join(root, 'C--prev-cmd'), mem = join(proj, 'memory'), t = join(proj, 'prevsess3.jsonl'), old = new Date(Date.now() - 12 * 864e5 - 36e5);
+  mkdirSync(mem, { recursive: true });
+  writeFileSync(t, JSON.stringify({ type: 'user', cwd: 'C:\\prev-cmd', timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text: 'hello' }] } }) + '\n');
+  for (const [f, desc, extra] of [['push.md', 'Check CI before pushing.', 'applies_when: [push]\n'], ['named.md', 'Never force push to main.', '']]) {
+    writeFileSync(join(mem, f), `---\nname: ${f}\ndescription: ${desc}\ntype: feedback\n${extra}---\n\nbody\n`); utimesSync(join(mem, f), old, old);
+  }
+  const tree = () => readdirSync(root, { recursive: true }).sort().map((f) => { const x = statSync(join(root, f)); return `${f} ${x.isFile() ? x.size : 'dir'} ${x.mtimeMs}`; }).join('\n');
+  const was = process.env.PROJECT_MEMORY_LESSONS; delete process.env.PROJECT_MEMORY_LESSONS;
+  const before = tree(), r = await run(['preview', '--command', 'git push', '--session', 'prevsess3']), after = tree();
+  const hook = spawnSync(process.execPath, [tool('src/enforce-hook.mjs')], { encoding: 'utf8', env: { ...process.env, ...env }, input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'prevsess3', cwd: process.cwd(), transcript_path: t, tool_name: 'Bash', tool_use_id: 'toolu_p', tool_input: { command: 'git push' } }) });
+  const block = JSON.parse(hook.stdout).hookSpecificOutput.additionalContext, out = r.stdout.split('\n');
+  ok(r.status === 0 && out[0] === `Before "git push": 2 lessons, ${block.length} characters.` && out.slice(1, 1 + block.split('\n').length).join('\n') === block, `preview --command prints the hook's block byte for byte (got ${r.stdout}${r.stderr})`);
+  ok(out.slice(1 + block.split('\n').length).join('\n') === '  why: push.md lists push in applies_when\n  why: named.md names push in its name or description\n', `then why each matched (got ${JSON.stringify(out.slice(1 + block.split('\n').length))})`);
+  ok(before === after, 'a preview of a command changes nothing');
+  ok((await run(['preview', '--command', 'git push', '--session', 'prevsess3'])).stdout === r.stdout, 'after the hook has told them, a preview is of a fresh context: the same text');
+  const none = await run(['preview', '--command', 'echo hi', '--session', 'prevsess3']);
+  ok(none.status === 0 && none.stdout === 'Before "echo hi": nothing would be shown.\n', `nothing to show says so (got ${none.stdout})`);
+  const long = await run(['preview', '--command', `echo ${'x'.repeat(100)}`, '--session', 'prevsess3']);
+  ok(/^Before "echo x+…": /.test(long.stdout) && long.stdout.indexOf('"', 8) === 8 + 80, `a long command is clipped to 80 (got ${long.stdout})`);
+  process.env.PROJECT_MEMORY_LESSONS = '-command';
+  const off = await run(['preview', '--command', 'git push', '--session', 'prevsess3']);
+  ok(off.stdout === 'Before "git push": nothing would be shown.\nLessons before a command are off: PROJECT_MEMORY_LESSONS=command turns them on.\n', `with the trigger off it says why (got ${off.stdout})`);
+  if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was;
+  ok(parseArgs(['preview', '--command']) === '--command needs a value after it' && typeof parseArgs(['preview', '--command', 'git push']) === 'object' && parseArgs(['status', '--command', 'x']) === 'status does not take --command; help lists the options', 'preview --command needs a command, and only preview takes it');
+  ok((await run(['help'])).stdout.includes('preview --command "<command>"'), 'help names it');
 }
 
 console.log(`memory-cli: ${checks} checks passed`);

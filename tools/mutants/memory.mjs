@@ -270,6 +270,11 @@ export default {
   'doctor: the empty call of an Edit is not run': ["for (const input of ['{}', '{\"tool_name\":\"Edit\"}'])", "for (const input of ['{}'])", { test: 'test/memory-switch.test.mjs' }],
   'preview --file says nothing of the trigger being off': ["...(lessonsOn('edit') ? [] : [", '...(true ? [] : [', { test: 'test/memory-cli.test.mjs' }],
   'preview --file prints no why lines': ['...shown.map((x) => `  why: ${whyPath(x, rel)}`)', '', { test: 'test/memory-cli.test.mjs' }],
-  'preview --file words one lesson as many': ["${shown.length === 1 ? '' : 's'}, ${say.length}", "${shown.length === 1 ? 's' : ''}, ${say.length}", { test: 'test/memory-cli.test.mjs' }],
-  'preview --file counts the lessons as characters': [', ${say.length} characters.', ', ${shown.length} characters.', { test: 'test/memory-cli.test.mjs' }],
+  'preview --file words one lesson as many': ["${path}: ${shown.length} lesson${shown.length === 1 ? '' : 's'}", "${path}: ${shown.length} lesson${shown.length === 1 ? 's' : ''}", { test: 'test/memory-cli.test.mjs' }],
+  'preview --file counts the lessons as characters': ["${path}: ${shown.length} lesson${shown.length === 1 ? '' : 's'}, ${say.length} characters.", "${path}: ${shown.length} lesson${shown.length === 1 ? '' : 's'}, ${shown.length} characters.", { test: 'test/memory-cli.test.mjs' }],
+  'preview --command: a long command is not clipped': ['`Before "${clip(command, 80)}"`', '`Before "${command}"`', { test: 'test/memory-cli.test.mjs' }],
+  'preview --command: no why lines': ['...shown.map((x) => `  why: ${whyFamily(x)}`)', '', { test: 'test/memory-cli.test.mjs' }],
+  'preview --command: no word that the trigger is off': ["...(lessonsOn('command') ? [] : [", '...(true ? [] : [', { test: 'test/memory-cli.test.mjs' }],
+  'doctor: a Bash group of git filters only is fine': ["!bash.hooks.some((h) => /deploy/.test(h?.if))", 'false', { test: 'test/memory-switch.test.mjs' }],
+  'doctor: git filters only is never a problem': ["return lessonsOn?.('command') ? [false, text]", "return false ? [false, text]", { test: 'test/memory-switch.test.mjs' }],
 };

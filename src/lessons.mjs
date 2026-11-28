@@ -1,7 +1,7 @@
 // Lessons (1.7.0): the switch that says which triggers speak, a note's lessons from the enforce cache, the matching of a lesson to a path
 // or a command family, their order, the block Claude would see, the counters file and the session line. No hook code here: a hook
 // calls these. Imports store, text, enforce and recall (never the other way round, ADR 0003).
-import { readFileSync, appendFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, appendFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, posix, isAbsolute, resolve } from 'node:path';
 import { foldCase, projectsRoot, sharedStore, withLock, replaceIfUnchanged, raw, tag } from './store.mjs';
 import { gate } from './privacy.mjs';
@@ -196,6 +196,38 @@ export function onEdit(input, { dry = false, now = Date.now(), deadline = perfor
   if (!dry) try {
     mkdirSync(dirname(at), { recursive: true, mode: 0o700 });
     appendFileSync(at, shown.map((x) => sessionLine('lesson', lessonLine(x.lesson.name, `edit:${rel}`), by, new Date(now).toISOString())).join(''), { mode: 0o600 });
+  } catch { return none; }
+  return { say, shown };
+}
+
+// H2. The lessons Claude sees before a risky command: `families` is familyOf(command). As onEdit, but a lesson is matched to each family
+// (matchFamily, in order; a lesson for two is told once, as the first), the block is about the first family with a match, and the line is
+// `lesson <note> cmd:<family>`. A filter in hooks.json can start the hook twice for one call (probe P5c): the first to create
+// `<session file>.pre-<tool_use_id>` speaks, the other stays silent. { say, shown }, each shown item { lesson, how, family }.
+export const whyFamily = ({ lesson: { name }, how, family }) => (how === 3 ? `${name} lists ${family} in applies_when` : `${name} names ${family} in its name or description`);
+export function onCommand(input, families, { dry = false, now = Date.now(), deadline = performance.now() + EDIT_MS } = {}) {
+  const none = { say: '', shown: [] }, s = tag(input?.session_id);
+  if (!lessonsOn('command') || !Array.isArray(families) || !/^[\w-]+$/.test(s)) return none;
+  const { why, store } = gate(input, s, 1);
+  if (why) return none;
+  const all = lessonsFor(store, dry ? { write: false } : undefined);
+  if (!all.length || performance.now() > deadline) return none;
+  const first = new Map();
+  for (const family of families) for (const h of matchFamily(all, family)) if (!first.has(h.lesson.name)) first.set(h.lesson.name, { ...h, family });
+  if (!first.size) return none;
+  const at = join(sessionsOf(store), s), lines = dry ? [] : readSession(at);
+  if (!lines || lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet')?.kind === 'quiet') return none;
+  const by = typeof input.agent_id === 'string' ? input.agent_id.replace(/[^\w-]/g, '').slice(0, 64) : '';
+  const told = lines.slice(lines.findLastIndex((l) => l.kind === 'compact') + 1).filter((l) => l.kind === 'lesson' && l.by === by);
+  const seen = new Set(told.map((l) => parseLesson(l.rest)?.name)), room = Math.min(EDIT_SHOW, EDIT_CAP - told.length);
+  const ordered = order([...first.values()].filter((x) => !seen.has(x.lesson.name)), readCounters(store), now), shown = ordered.slice(0, Math.max(0, room));
+  const say = blockText(shown, [...first.values()][0].family, 'cmd', ordered.length - shown.length, now);
+  if (!say) return none;
+  if (!dry) try {
+    mkdirSync(dirname(at), { recursive: true, mode: 0o700 });
+    const id = String(input.tool_use_id ?? '').replace(/[^\w-]/g, '').slice(0, 64);
+    if (id) try { writeFileSync(`${at}.pre-${id}`, '', { flag: 'wx', mode: 0o600 }); } catch (e) { if (e.code === 'EEXIST') return none; }
+    appendFileSync(at, shown.map((x) => sessionLine('lesson', lessonLine(x.lesson.name, `cmd:${x.family}`), by, new Date(now).toISOString())).join(''), { mode: 0o600 });
   } catch { return none; }
   return { say, shown };
 }
