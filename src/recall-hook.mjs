@@ -21,9 +21,12 @@ try {
     const on = event === 'PostToolUse' ? onChange : event === 'UserPromptSubmit' ? onPrompt : null;
     if (on) {
       if (on === onPrompt) T.name('prompt');
-      const { say, n } = await on(input);
+      const { say: found, n, ctx } = await on(input);
       T.mark('look');
       T.shown(n);
+      // H5, the correction nudge (1.7.0): after the pointer, in its own try, joined to it with a blank line.
+      let say = found;
+      if (ctx) try { say = [found, (await import('./lessons.mjs')).nudgeFor(input, ctx).say].filter(Boolean).join('\n\n'); } catch {}
       // Written whole before the exit: on macOS a pipe is written asynchronously.
       if (say) await new Promise((done) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: say } }) + '\n', done));
     } else if (event === 'SessionEnd') {

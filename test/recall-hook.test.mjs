@@ -384,4 +384,89 @@ ok(statSync(p.session()).ino !== ino && readdirSync(sessionsOf(p.store)).length 
   ok(got.some((l) => /^look-up at a prompt: \d+ runs? since/.test(l)), "doctor: the prompt look-up's times");
 }
 
+// H5, the correction nudge (1.7.0 step 11): behind PROJECT_MEMORY_LESSONS=nudge, a prompt that reads like a lasting correction gets one
+// line asking Claude to save a feedback note. The wording is pinned. The session file keeps pattern ids, never the prompt's words.
+{
+  const NUDGE = 'project-memory: this reads like a correction that should last. If it is, save it now as a feedback note: the rule, why, and applies_to (files) or applies_when (push, merge, publish, release, deploy, destroy). If it is not, ignore this.';
+  const env = { ...process.env, PROJECT_MEMORY_LESSONS: 'nudge' }, off = { ...process.env, PROJECT_MEMORY_LESSONS: '' };
+  const FIX = 'no, I said always stage by name', nl = (q) => readSession(q.session()).filter((l) => l.kind === 'nudge');
+  const seed = (q, ...ls) => { mkdirSync(sessionsOf(q.store), { recursive: true }); writeFileSync(join(sessionsOf(q.store), SID.slice(0, 8)), ls.join(''), { flag: 'a' }); };
+  const fresh = () => { const q = project(); seed(q, sessionLine('asked', 'an earlier request')); return q; };
+  const hush = (r, msg) => ok(r.status === 0 && r.stderr === '' && r.stdout === '', `${msg} (got ${r.status} ${JSON.stringify(r.stdout)} ${r.stderr})`);
+
+  let q = fresh(), r2 = run(ask(q, FIX), env);
+  ok(r2.status === 0 && said(r2).hookEventName === 'UserPromptSubmit' && said(r2).additionalContext === NUDGE, `a correction after a first prompt: the pinned text (got ${r2.stdout})`);
+  ok(nl(q).length === 1 && nl(q)[0].rest === 'fired:A-no,A-i-said,B-always v1 #1' && readSession(q.session()).map((l) => l.kind).join() === 'asked,asked,nudge', `a nudge line with pattern ids, after the asked line (got ${JSON.stringify(readSession(q.session()))})`);
+  ok(readFileSync(q.session(), 'utf8').split('\n').filter((l) => l.includes('stage')).every((l) => l.startsWith('asked ')), "no line but the asked line holds the prompt's words");
+  hush(run(ask(fresh(), FIX), off), 'the default (nudge off): nothing');
+  // The lesson shown in the turn before.
+  q = project(); seed(q, sessionLine('asked', 'an earlier request'), sessionLine('lesson', 'feedback_git.md cmd:git'));
+  r2 = run(ask(q, FIX), env);
+  ok(said(r2).additionalContext === `${NUDGE} The lesson feedback_git.md was shown before this; if it did not hold, fix that note instead of writing a new one.`, `a lesson line in the turn before: the extra sentence (got ${r2.stdout})`);
+  // A lesson of an older turn, or one with no note (a co-change), adds nothing.
+  q = project(); seed(q, sessionLine('asked', 'old'), sessionLine('lesson', 'feedback_git.md cmd:git'), sessionLine('asked', 'newer'), sessionLine('lesson', 'cochange%3Aab12cd34 pair:b.mjs'));
+  ok(said(run(ask(q, FIX), env)).additionalContext === NUDGE, "an older turn's lesson and a co-change line: no sentence");
+  // Beside a pointer: joined with a blank line.
+  q = project();
+  q.day('2026-11-17', [...Array.from({ length: 9 }, (_, i) => other(q, i)), other(q, 9, { key: '9a1c22e0 2026-11-17T10:15 5d4c3b2a1908', at: '2026-11-17 10:15', asked: 'which port should the dev server use', answered: 'Port 5173.', changed: ['vite.config.js'] })]);
+  seed(q, sessionLine('asked', 'an earlier request'));
+  r2 = run(ask(q, 'no, I said always: what port does the dev server use now'), env);
+  ok(said(r2).additionalContext.startsWith('project-memory: earlier exchanges share words') && said(r2).additionalContext.endsWith(`\n\n${NUDGE}`), `the pointer, a blank line, the nudge (got ${r2.stdout})`);
+  // Private: a <private> prompt, an incognito conversation, a helper, the first prompt, the kill switch.
+  q = fresh(); hush(run(ask(q, `${FIX} <private>x</private>`), env), 'a <private> prompt: nothing');
+  ok(nl(q).length === 0, 'and no nudge line');
+  q = fresh(); writeFileSync(join(q.store, QUIET), `${SID.slice(0, 8)}\n`); hush(run(ask(q, FIX), env), 'incognito: nothing'); ok(nl(q).length === 0, 'and no nudge line');
+  q = fresh(); hush(run(ask(q, FIX, { agent_id: 'agent-1' }), env), 'a helper: nothing'); ok(nl(q).length === 0, 'and no nudge line');
+  q = project(); hush(run(ask(q, FIX), env), 'the first prompt: nothing');
+  ok(nl(q).length === 1 && nl(q)[0].rest === 'dropped:F2-first v1 #1', `a dropped line for it (got ${JSON.stringify(nl(q))})`);
+  q = fresh(); hush(run(ask(q, FIX), { ...env, PROJECT_MEMORY_RECALL: '0' }), 'PROJECT_MEMORY_RECALL=0: nothing'); ok(nl(q).length === 0, 'and no nudge line');
+  // The tag in every spelling writes no nudge line.
+  for (const t of ['<PRIVATE>no, I said always</PRIVATE>', '<private reason="x">no, I said always</private>', '<private>no, I said always', '<private><private>x</private>no, I said always</private>', '```\n<private>\n```\nno, I said always']) {
+    q = fresh(); run(ask(q, t), env);
+    ok(nl(q).length === 0, `a private spelling writes no nudge line (${JSON.stringify(t)})`);
+  }
+  // The cooldown: 3 nudges in a file, and 10 prompts between.
+  q = fresh(); seed(q, ...[1, 2, 3].map((k) => sessionLine('nudge', `fired:A-no v1 #${k}`)), ...Array.from({ length: 12 }, (_, i) => sessionLine('asked', `filler ${i}`)));
+  hush(run(ask(q, FIX), env), 'the fourth nudge: nothing'); ok(nl(q).length === 3, 'and no line');
+  q = fresh(); seed(q, sessionLine('nudge', 'fired:A-no v1 #1'), ...Array.from({ length: 9 }, (_, i) => sessionLine('asked', `filler ${i}`)));
+  hush(run(ask(q, FIX), env), 'within 10 prompts of the last nudge: nothing'); ok(nl(q).length === 1, 'and no line');
+  q = fresh(); seed(q, sessionLine('nudge', 'fired:A-no v1 #1'), ...Array.from({ length: 10 }, (_, i) => sessionLine('asked', `filler ${i}`)));
+  ok(said(run(ask(q, FIX), env)).additionalContext === NUDGE && nl(q).length === 2 && nl(q)[1].rest === 'fired:A-no,A-i-said,B-always v1 #2', 'the 11th prompt after it: again, #2');
+  // A dropped match.
+  q = fresh(); hush(run(ask(q, 'no, great work, always like this'), env), 'a match a filter dropped: nothing');
+  ok(nl(q).length === 1 && nl(q)[0].rest === 'dropped:F6-praise v1 #1', `a dropped line holds the filter id (got ${JSON.stringify(nl(q))})`);
+  // The previous turn's end, read from the transcript's tail: an interrupt or a refused call stands in for "always".
+  const rec = (type, content) => `${JSON.stringify({ type, message: { content: [{ type: 'text', text: content }], ...(type === 'assistant' ? { stop_reason: 'end_turn' } : {}) } })}\n`;
+  const tr = (name, ...rs) => { const f = join(home, `${name}.jsonl`); writeFileSync(f, rs.join('')); return f; };
+  q = fresh();
+  hush(run(ask(q, 'no, use the other file', { transcript_path: tr('plain', rec('user', 'do x'), rec('assistant', 'Done.')) }), env), 'no marker, no rule word: nothing'); ok(nl(q).length === 0, 'and no line');
+  q = fresh();
+  ok(said(run(ask(q, 'no, use the other file', { transcript_path: tr('stopped', rec('user', 'do x'), rec('assistant', 'Working.'), rec('user', '[Request interrupted by user]')) }), env)).additionalContext === NUDGE && nl(q)[0].rest === 'fired:A-no,B-marker v1 #1', 'an interrupted turn stands in for a rule word');
+  q = fresh();
+  const refusedRec = `${JSON.stringify({ type: 'user', toolUseResult: 'User rejected tool use', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: "The user doesn't want to proceed with this tool use. The tool use was rejected" }] } })}\n`;
+  ok(said(run(ask(q, 'no, use the other file', { transcript_path: tr('refused', rec('user', 'do x'), refusedRec, rec('user', 'no, use the other file')) }), env)).additionalContext === NUDGE, 'a refused call, then the prompt (already in the transcript): the same');
+  q = fresh();
+  hush(run(ask(q, 'no.', { transcript_path: tr('asked', rec('user', 'do x'), rec('assistant', 'Shall I continue?'), rec('user', '[Request interrupted by user]')) }), env), 'a bare "no" after a question: dropped');
+  ok(nl(q)[0]?.rest === 'dropped:F5-polite-no v1 #1', `with its filter id (got ${JSON.stringify(nl(q))})`);
+  q = fresh();
+  ok(said(run(ask(q, 'no.', { transcript_path: tr('plain-no', rec('user', 'do x'), rec('assistant', 'Done.'), rec('user', '[Request interrupted by user]')) }), env)).additionalContext === NUDGE, 'a bare "no" after a statement: fires');
+  // A dropped line does not count against the cooldown; a helper's lesson line is not the conversation's.
+  q = fresh(); seed(q, sessionLine('nudge', 'dropped:F6-praise v1 #1'));
+  ok(said(run(ask(q, FIX), env)).additionalContext === NUDGE, 'a dropped line is no nudge: the cooldown ignores it');
+  q = project(); seed(q, sessionLine('asked', 'an earlier request'), sessionLine('lesson', 'feedback_git.md cmd:git', 'helper-1'));
+  ok(said(run(ask(q, FIX), env)).additionalContext === NUDGE, "a helper's lesson line adds no sentence");
+  // A helper reaches nudgeFor only by a direct call (onPrompt returns first): it is dropped there, and dry writes nothing.
+  {
+    const { nudgeFor } = await import('../src/lessons.mjs'), was = process.env.PROJECT_MEMORY_LESSONS;
+    process.env.PROJECT_MEMORY_LESSONS = 'nudge';
+    q = fresh(); const at = join(sessionsOf(q.store), SID.slice(0, 8)), lines = readSession(at), size = readFileSync(at, 'utf8').length;
+    const v = nudgeFor({ prompt: FIX, agent_id: 'a' }, { at, lines }, { dry: true });
+    ok(v.say === '' && v.why === 'F2-helper' && readFileSync(at, 'utf8').length === size, 'a helper: dropped by F2-helper, and a dry run writes nothing');
+    ok(nudgeFor({ prompt: FIX }, { at, lines }, { dry: true }).ids.join() === 'A-no,A-i-said,B-always' && readFileSync(at, 'utf8').length === size, 'a dry run that fires writes nothing either');
+    if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was;
+  }
+  // An unreadable transcript: no marker, nothing breaks.
+  q = fresh(); hush(run(ask(q, 'no, use the other file', { transcript_path: join(home, 'gone.jsonl') }), env), 'a transcript that is not there: nothing, exit 0');
+}
+
 console.log(`recall-hook.test.mjs: ${checks} checks passed`);

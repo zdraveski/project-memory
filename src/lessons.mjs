@@ -1,12 +1,15 @@
 // Lessons (1.7.0): the switch that says which triggers speak, a note's lessons from the enforce cache, the matching of a lesson to a path
 // or a command family, their order, the block Claude would see, the counters file and the session line. No hook code here: a hook
 // calls these. Imports store, text, enforce and recall (never the other way round, ADR 0003).
-import { readFileSync } from 'node:fs';
+import { readFileSync, appendFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { foldCase, projectsRoot, repoRoot, sharedStore, withLock, replaceIfUnchanged, raw } from './store.mjs';
 import { fit } from './text.mjs';
 import { notesOf } from './enforce.mjs';
 import { cleanPath, whole, BLOCK_MAX } from './recall.mjs';
+import { sessionLine } from './sessions.mjs';
+import * as T from './transcript.mjs';
+import { correction, VERSION } from './correction.mjs';
 
 // F1. PROJECT_MEMORY_LESSONS: unset or empty gives DEFAULTS, 0 turns every trigger off, 1 on, anything else is a comma list read over
 // DEFAULTS (`name` on, `-name` off, the later word wins, blanks trimmed, unknown words ignored). The replay gate (2026-11-28) turned on
@@ -157,4 +160,34 @@ export const lessonLine = (name, on) => `${encodeURIComponent(name)} ${on}`;
 export function parseLesson(rest) {
   const m = /^(\S+) (.+)$/.exec(String(rest ?? ''));
   try { return m ? { name: decodeURIComponent(m[1]), on: m[2] } : null; } catch { return null; }
+}
+
+// H5. The correction nudge, from the prompt hook (ctx is onPrompt's: the session file's path and the lines read before this prompt's own).
+// { say, ids, why }: `say` is the text for Claude ('' for none), `why` the reason for none ('' when it fires), for `memory preview --prompt`.
+// Writes a `nudge fired:` or `nudge dropped:` line (pattern ids and a filter id, never the prompt's words) unless `dry`. The cooldown: none
+// within 10 prompts of the last nudge, none once 3 are in the file. The previous turn's end is read from the last 64 KB of the transcript.
+export const NUDGE_TEXT = 'project-memory: this reads like a correction that should last. If it is, save it now as a feedback note: the rule, why, and applies_to (files) or applies_when (push, merge, publish, release, deploy, destroy). If it is not, ignore this.';
+export function nudgeFor(input, ctx, { dry = false, readTail } = {}) {
+  const none = (why, ids = []) => ({ say: '', ids, why });
+  if (!lessonsOn('nudge')) return none('nudge is off');
+  const { lines, at } = ctx;
+  let recs;
+  const tail = () => recs ??= (() => {
+    try { return [...T.records((readTail ?? T.readTail)(input.transcript_path, 64 * 1024).text, { types: ['user', 'assistant'] })]; } catch { return []; }
+  })();
+  // The turn's last record, leaving out the prompt itself when the transcript already holds it.
+  const last = () => { const r = tail(), i = r.length - 1; return i >= 0 && r[i].type === 'user' && T.prompt(r[i], T.text(r[i]).trim()) ? i - 1 : i; };
+  const marker = () => { const r = tail()[last()], c = r?.message?.content; return r?.type === 'user' && (/^\s*\[Request interrupted by user/.test(T.text(r)) || (Array.isArray(c) && c.some((b) => b?.type === 'tool_result' && T.refused(r, b)))); };
+  const lastEndsWithQuestion = () => { const r = tail().slice(0, last() + 1).findLast((x) => x.type === 'assistant' && T.text(x).trim()); return !!r && T.text(r).trim().endsWith('?'); };
+  const v = correction(T.own(input.prompt), { helper: input.agent_id != null, first: !lines.some((l) => l.kind === 'asked'), marker, lastEndsWithQuestion });
+  const k = 1 + lines.filter((l) => l.kind === 'nudge').length, add = (rest) => { if (!dry) try { appendFileSync(at, sessionLine('nudge', `${rest} v${VERSION} #${k}`), { mode: 0o600 }); } catch {} };
+  if (!v.fire) { if (v.drop) add(`dropped:${v.drop}`); return none(v.drop || 'no match', v.ids); }
+  const asked = lines.flatMap((l, i) => (l.kind === 'asked' ? [i] : [])), cut = asked.length >= 10 ? asked.at(-10) : -1;
+  const fired = lines.flatMap((l, i) => (l.kind === 'nudge' && l.rest.startsWith('fired:') ? [i] : []));
+  if (fired.length >= 3 || fired.some((i) => i > cut)) return none('cooldown', v.ids);
+  add(`fired:${v.ids.join(',')}`);
+  // The turn before: the lines after the newest prompt line. A co-change lesson has no note to fix.
+  const lastPrompt = lines.findLastIndex((l) => l.kind === 'asked' || l.kind === 'quiet');
+  const shown = lines.slice(lastPrompt + 1).findLast((l) => l.kind === 'lesson' && l.by === '' && !parseLesson(l.rest)?.name.startsWith('cochange:') && parseLesson(l.rest));
+  return { say: shown ? `${NUDGE_TEXT} The lesson ${parseLesson(shown.rest).name} was shown before this; if it did not hold, fix that note instead of writing a new one.` : NUDGE_TEXT, ids: v.ids, why: '' };
 }

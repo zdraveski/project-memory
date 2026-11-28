@@ -263,4 +263,7 @@ export default {
   "R73 a key of a day that won't read named as another project's": ['(unread.length ? `no day of ', '(false ? `no day of '],
   'R73 a retry leaves the exchange in handoff.md': ['if (yes && before.length) {', 'if (false) {'],
   "what --force replaced is lost": ["keepReplaced(curB)", "keepReplaced('')"],
+  "H5 preview --prompt writes": ["{ dry: true }", "{ dry: false }"],
+  "H5 preview --prompt without --session counts as a first prompt": ["[{ kind: 'asked', at: '', by: '', rest: '' }]", "[]"],
+  "H5 preview --prompt always shown": ["if (prompt === undefined) return", "if (false) return"],
 };

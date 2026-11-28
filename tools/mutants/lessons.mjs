@@ -1,4 +1,22 @@
 // The hand-written mutants of lessons.mjs, which lessons.test.mjs and briefing.test.mjs must catch (mutate.mjs runs them).
 export default {
   'a shared lesson listed as a dead end of the project': ['.filter((x) => !x.shared && x.l.instead)', '.filter((x) => x.l.instead)'],
+  "H5 nudge ignores its switch": ["if (!lessonsOn('nudge')) return none('nudge is off');", "if (false) return none('nudge is off');"],
+  "H5 a helper is no helper": ["helper: input.agent_id != null,", "helper: false,"],
+  "H5 the first prompt is not first": ["first: !lines.some((l) => l.kind === 'asked'),", "first: false,"],
+  "H5 a dry run writes": ["if (!dry) try { appendFileSync", "if (true) try { appendFileSync"],
+  "H5 a dropped match leaves no line": ["if (v.drop) add(`dropped:${v.drop}`);", "if (false) add(`dropped:${v.drop}`);"],
+  "H5 a match with no verdict writes a dropped line": ["if (v.drop) add(", "if (true) add("],
+  "H5 the cooldown allows a fourth nudge": ["fired.length >= 3", "fired.length >= 4"],
+  "H5 the cooldown is 9 prompts": ["asked.at(-10)", "asked.at(-9)"],
+  "H5 the cooldown is 11 prompts": ["asked.at(-10)", "asked.at(-11)"],
+  "H5 a dropped line counts for the cooldown": ["l.rest.startsWith('fired:')", "l.rest.length > 0"],
+  "H5 the count k ignores earlier nudge lines": ["1 + lines.filter((l) => l.kind === 'nudge').length", "1"],
+  "H5 an interrupt is no marker": ["/^\\s*\\[Request interrupted by user/.test(T.text(r))", "false"],
+  "H5 a refused call is no marker": ["T.refused(r, b)", "false"],
+  "H5 the prompt in the transcript is taken for the turn before": ["T.text(r[i]).trim()) ? i - 1 : i", "T.text(r[i]).trim()) ? i : i"],
+  "H5 a question is not seen": [".trim().endsWith('?')", ".trim().endsWith('!')"],
+  "H5 a helper's lesson is shown": ["l.kind === 'lesson' && l.by === ''", "l.kind === 'lesson'"],
+  "H5 a co-change lesson is named": ["!parseLesson(l.rest)?.name.startsWith('cochange:') && ", ""],
+  "H5 an older turn's lesson is named": ["lines.slice(lastPrompt + 1)", "lines"],
 };

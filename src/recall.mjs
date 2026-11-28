@@ -398,7 +398,8 @@ export async function onPrompt(input, { deadline = performance.now() + DEADLINE,
   const o = newOthers(store, s, lines, typeof input.cwd === 'string' ? input.cwd.replaceAll('\\', '/') : '', now);
   write((named ? sessionLine('title', name, '', t) : '') + shown.map((e) => sessionLine('told', e.key, '', t)).join('') + sessionLine('asked', clip(text, ASKED), '', t) +
     o.saw.map((x) => sessionLine('saw', x, '', t)).join(''));
-  return { say: [o.say, say].filter(Boolean).join('\n\n'), n: shown.length };
+  // ctx: what the correction nudge (lessons.mjs) reads; `lines` are those read before this prompt's own were written.
+  return { say: [o.say, say].filter(Boolean).join('\n\n'), n: shown.length, ctx: { store, at, lines, s } };
 }
 // The title the user gave this conversation (/rename): the newest `custom-title` record in its last TITLE_BYTES, '' for none.
 // shortcut: /rename appends its record just before the next prompt, so 64 KB holds it then; a title that only a resumed

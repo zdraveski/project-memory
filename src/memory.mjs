@@ -49,7 +49,8 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           only, --show adds each firing's request, on this PC; --all every
                                           project, --except leaves out the project of <folder>; read-only
                                           but for a numbers-only line in this store's .replay-history
-  preview                                 the startup briefing the next conversation here would get, with its size; read-only
+  preview [--prompt "<text>"]             the startup briefing the next conversation here would get, with its size; read-only;
+                                          --prompt adds what the correction nudge would say to that prompt
 The store is this session's own (outside a session: the cwd's project, or the nearest
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
@@ -73,7 +74,8 @@ import { sectionOf, parse, stalled, GRACE, tag, unsay, handWritten } from './han
 import { redact, holdsSecret } from './secrets.mjs';
 import { BLOCK, transcripts, lastTurn, chunk as chunkOf } from './transcript.mjs';
 import { tame, STOP, words, count, has, termRe, isHelper, changedFile, inConversation, changers, whoChanged, about } from './recall.mjs';
-import { dropSessions, others, ACTIVE } from './sessions.mjs';
+import { dropSessions, others, ACTIVE, readSession, sessionsOf } from './sessions.mjs';
+import { nudgeFor } from './lessons.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -438,13 +440,18 @@ function sessionStore() {
 // preview: the startup briefing as the SessionStart hook would print it for a conversation started here now, run dry (briefing.mjs --dry: nothing counted or
 // written). A process of its own: the briefing is asynchronous and this command line is not, and the one path is the hook's own.
 const PREVIEW = fileURLToPath(new URL('./briefing.mjs', import.meta.url));
-function preview() {
+function preview(here, prompt) {
   const transcript = session && transcriptOf(session);
   const payload = { hook_event_name: 'SessionStart', source: 'startup', session_id: session || 'preview', cwd: process.cwd(), ...(transcript ? { transcript_path: transcript } : {}) };
   const r = spawnSync(process.execPath, [PREVIEW, '--print', '--dry'], { input: JSON.stringify(payload), encoding: 'utf8', timeout: 30_000, windowsHide: true });
   if (r.error || r.status !== 0) return { ok: false, lines: [`the startup briefing could not be run: ${r.error ? reason(r.error) : `exit ${r.status}`}`] };
   const left = Number(/^left (\d+)$/m.exec(r.stderr)?.[1] ?? 0);
-  return { ok: true, lines: [`Startup briefing: ${r.stdout.length.toLocaleString('en-US')} of 3,500 characters; ${left} older exchange${left === 1 ? '' : 's'} left out to fit.`, ...(r.stdout ? r.stdout.replace(/\n$/, '').split('\n') : [])] };
+  const out = [`Startup briefing: ${r.stdout.length.toLocaleString('en-US')} of 3,500 characters; ${left} older exchange${left === 1 ? '' : 's'} left out to fit.`, ...(r.stdout ? r.stdout.replace(/\n$/, '').split('\n') : [])];
+  if (prompt === undefined) return { ok: true, lines: out };
+  // Dry, as a later prompt of that conversation (--session), or of one that has had a prompt already; nothing is written.
+  const at = session ? join(sessionsOf(here), tag(session)) : '', lines = session ? readSession(at) ?? [] : [{ kind: 'asked', at: '', by: '', rest: '' }];
+  const v = nudgeFor({ prompt, ...(transcript ? { transcript_path: transcript } : {}) }, { at, lines }, { dry: true });
+  return { ok: true, lines: [...out, ...(v.say ? [`With the prompt: the nudge would fire (${v.ids.join(', ')}).`, v.say] : [`With the prompt: nothing would be added (${v.why}).`])] };
 }
 
 // rescan: today's redaction rules over what is already saved (notes, journal, handoff, every snapshot): counts and places, never a
@@ -1021,12 +1028,12 @@ function page(stores, days, want, failed) {
 // Every option the command line knows, and whether it takes the word after it as its value. The `=` split,
 // the unknown-option refusal and where a value ends all read this one list: an option valued in one list and a flag
 // in another was how audit 5 and C-7 came about. USAGE names each one (memory-cli checks it).
-export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--session': true, '--since': true, '--until': true, '--conversation': true, '--key': true, '--file': true, '--days': true, '--project': true, '--except': true,
+export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--session': true, '--since': true, '--until': true, '--conversation': true, '--key': true, '--file': true, '--days': true, '--project': true, '--except': true, '--prompt': true,
   '--all': false, '--shared': false, '--yes': false, '--force': false, '--same': false, '--purge': false, '--apply': false, '--help': false, '--asked': false, '--words': false, '--show': false };
 const valued = new Set(Object.keys(OPTIONS).filter((o) => OPTIONS[o]));
 // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
 // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal in main().
-const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], preview: [], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
+const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], preview: ['--prompt'], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
 
 // The command line's words, read before any store is touched: { cmd, rest, args, opt } or the refusal to print.
 // rest is every word but the command, in order (--key repeats, and the first of an option wins in opt()); args
@@ -1046,7 +1053,7 @@ export function parseArgs(given) {
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
   // An empty --conversation or --file (an unset variable in quotes) is none given: forget took it for "every conversation", search ran unfiltered.
-  const bare = argv.find((a, i) => valued.has(a) && (a !== '--rev' || i + 1 >= argv.length) && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--project' || a === '--except') && argv[i + 1] === '')));
+  const bare = argv.find((a, i) => valued.has(a) && (a !== '--rev' || i + 1 >= argv.length) && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--project' || a === '--except' || a === '--prompt') && argv[i + 1] === '')));
   if (bare) return `${bare} needs a value after it`;
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
@@ -1229,7 +1236,7 @@ export function main(given) {
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
   else if (cmd === 'doctor') r = doctor(here);
-  else if (cmd === 'preview') r = preview();
+  else if (cmd === 'preview') r = preview(here, opt('--prompt'));
   else if (cmd === 'page') r = page(every(), opt('--days') === undefined ? PAGE_DAYS : opt('--days') === 'all' ? 'all' : Math.min(Number(opt('--days')), PAGE_MAX), opt('--project'), failed);
   // The usage, after why: a misspelt command, or one with no word after it,
   // printed the usage alone.
