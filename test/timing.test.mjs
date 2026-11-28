@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor, slug } from './harness.mjs';
-import { begin, tag, mark, flush, read, stats, pct, FILE, MAX } from '../src/timing.mjs';
+import { begin, tag, mark, skip, flush, read, stats, pct, FILE, MAX } from '../src/timing.mjs';
 
 const { home } = tempHome('timing-');
 let checks = 0;
@@ -42,6 +42,9 @@ ok(read(0, file).at(-1).e === '?', 'a letters-only name that is not a hook event
 begin('brief'); tag('SessionStart', 'mysecret'); await flush();
 ok(read(0, file).at(-1).e === 'SessionStart', 'a letters-only detail that is not a source is left out');
 
+// 1.7.0: the names the lesson hooks run as, and the event the failure hook is told by
+for (const [h, e] of [['lesson', 'PreToolUse'], ['fail', 'PostToolUseFailure']]) { begin(h); tag(e); await flush(); ok(read(0, file).at(-1).h === h && read(0, file).at(-1).e === e, `${h} and ${e} are accepted`); }
+
 // what starts nothing
 const count = read(0, file).length;
 begin('anything'); mark('x'); await flush();
@@ -50,6 +53,8 @@ process.env.PROJECT_MEMORY_TIMING = '0'; begin('save'); await flush(); delete pr
 ok(read(0, file).length === count, 'an unknown hook, no begin and the off switch wrote no line');
 begin('save'); await flush(); await flush();
 ok(read(0, file).length === count + 1, 'a second flush writes nothing');
+begin('save'); skip(); await flush();
+ok(read(0, file).length === count + 1, 'skip drops the run: no line');
 
 // the cut
 ok(MAX === 256 * 1024, 'the file is cut at 256 KB, as PRIVACY.md says');
@@ -87,12 +92,15 @@ writeFileSync(tp, [{ type: 'user', timestamp: '2026-11-01T09:00:00Z', message: {
   { type: 'assistant', timestamp: '2026-11-01T09:00:30Z', message: { content: [{ type: 'text', text: 'fed it' }] } }].map((x) => JSON.stringify(x)).join('\n') + '\n');
 writeFileSync(join(store, 'MEMORY.md'), '# Memory\n');
 const base = { session_id: 'abcd1234-aaaa', cwd, transcript_path: tp };
+process.env.PROJECT_MEMORY_LESSONS = 'edit'; // the lesson hook writes a line only with the trigger on (off, an Edit loads and times nothing)
+const editCommand = { ...base, hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: join(cwd, 'a.mjs'), old_string: 'x', new_string: 'y' } };
 const gitCommand = { ...base, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git status' } };
 const CASES = [
   ['memory-tier.mjs', ['--stop'], { ...base, hook_event_name: 'Stop', last_assistant_message: 'fed it' }, 'save', 'Stop'],
   ['memory-tier.mjs', ['--stop'], { ...base, hook_event_name: 'SubagentStop', last_assistant_message: 'done' }, 'save', 'SubagentStop'],
   ['brief.mjs', ['--print'], { ...base, hook_event_name: 'SessionStart', source: 'startup' }, 'brief', 'SessionStart:startup'],
   ['enforce-hook.mjs', [], gitCommand, 'enforce', 'PreToolUse'],
+  ['enforce-hook.mjs', [], editCommand, 'lesson', 'PreToolUse'],
   ['compact-gate.mjs', [], { ...base, hook_event_name: 'PreCompact', trigger: 'auto' }, 'gate', 'PreCompact:auto'],
 ];
 const run = (script, args, payload, env = {}) => { const r = spawnSync(process.execPath, [tool(`src/${script}`), ...args], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...env } }); return { status: r.status, stdout: r.stdout, stderr: r.stderr }; };

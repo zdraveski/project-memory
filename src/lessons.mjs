@@ -1,30 +1,20 @@
 // Lessons (1.7.0): the switch that says which triggers speak, a note's lessons from the enforce cache, the matching of a lesson to a path
 // or a command family, their order, the block Claude would see, the counters file and the session line. No hook code here: a hook
 // calls these. Imports store, text, enforce and recall (never the other way round, ADR 0003).
-import { readFileSync, appendFileSync } from 'node:fs';
-import { join, posix } from 'node:path';
-import { foldCase, projectsRoot, repoRoot, sharedStore, withLock, replaceIfUnchanged, raw } from './store.mjs';
+import { readFileSync, appendFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join, dirname, posix, isAbsolute, resolve } from 'node:path';
+import { foldCase, projectsRoot, sharedStore, withLock, replaceIfUnchanged, raw, tag, keyed } from './store.mjs';
+import { gate } from './privacy.mjs';
+import { sessionsOf, readSession, sessionLine } from './sessions.mjs';
 import { fit } from './text.mjs';
 import { notesOf } from './enforce.mjs';
 import { cleanPath, whole, BLOCK_MAX } from './recall.mjs';
-import { sessionLine } from './sessions.mjs';
+import { targetOf, errorLine, NOT_FAILURE, readMistakes } from './mistakes.mjs';
+import { lessonsOn } from './switches.mjs';
 import * as T from './transcript.mjs';
 
-// F1. PROJECT_MEMORY_LESSONS: unset or empty gives DEFAULTS, 0 turns every trigger off, 1 on, anything else is a comma list read over
-// DEFAULTS (`name` on, `-name` off, the later word wins, blanks trimmed, unknown words ignored). The replay gate (2026-11-28) turned on
-// only `command`, the one trigger that fired enough to judge (122 in 31 days, median 2 an active day); the rest wait for notes that carry
-// `applies_to:` and `instead:`.
-export const TRIGGERS = ['edit', 'command', 'deadend', 'recurring', 'nudge', 'stuck', 'claim', 'cochange'];
-export const DEFAULTS = { edit: false, command: true, deadend: false, recurring: false, nudge: false, stuck: false, claim: false, cochange: false };
-export function lessonsOn(name, env = process.env.PROJECT_MEMORY_LESSONS) {
-  if (!TRIGGERS.includes(name)) return false;
-  const v = String(env ?? '').trim();
-  if (v === '0') return false;
-  if (v === '1') return true;
-  let on = DEFAULTS[name];
-  for (const w of v.split(',').map((x) => x.trim())) { if (w === name) on = true; else if (w === `-${name}`) on = false; }
-  return on;
-}
+// F1. The switches live in switches.mjs (no imports, so a hook can ask without loading this file); re-exported here.
+export { TRIGGERS, DEFAULTS, lessonsOn } from './switches.mjs';
 // For the lines that are no trigger (E2's git line, L4's health line).
 export const lessonsOff = (env = process.env.PROJECT_MEMORY_LESSONS) => String(env ?? '').trim() === '0';
 
@@ -79,12 +69,22 @@ export function lessonsFor(store, opts) {
   return out.filter((x) => !notes[x.name]?.retired);
 }
 
-// A path as a lesson names it: relative to the repository root (the cwd when there is none), `/` only, as cleanPath has it.
+// The folder a lesson's paths are relative to: the nearest one at or above `cwd` that holds a `.git` (a folder, or the file of a worktree
+// or submodule), so a worktree is its own root, not its main repository as repoRoot would have it; the cwd when there is none.
+function topOf(cwd) {
+  if (!isAbsolute(cwd)) return cwd;
+  for (let d = resolve(cwd); ; d = dirname(d)) {
+    if (existsSync(join(d, '.git'))) return d;
+    if (dirname(d) === d) return cwd;
+  }
+}
+
+// A path as a lesson names it: relative to that folder (topOf), `/` only, as cleanPath has it.
 // null when the file is outside that folder or under the projects folder (no lesson is about a memory file).
 export function relPath(given, cwd) {
   if (!given || !cwd) return null;
   const dir = (p) => posix.normalize(p.replaceAll('\\', '/')).replace(/\/+$/, '');
-  const p = dir(whole(given, cwd)), root = dir(repoRoot(cwd) ?? cwd), inside = (d) => foldCase(p).startsWith(`${foldCase(dir(d))}/`);
+  const p = dir(whole(given, cwd)), root = dir(topOf(cwd)), inside = (d) => foldCase(p).startsWith(`${foldCase(dir(d))}/`);
   return inside(root) && !inside(projectsRoot()) ? cleanPath(p.slice(root.length + 1)) : null;
 }
 
@@ -196,4 +196,109 @@ export function nudgeWith({ correction, VERSION }, input, ctx, { dry = false, re
   const lastPrompt = lines.findLastIndex((l) => l.kind === 'asked' || l.kind === 'quiet');
   const shown = lines.slice(lastPrompt + 1).findLast((l) => l.kind === 'lesson' && l.by === '' && !parseLesson(l.rest)?.name.startsWith('cochange:') && parseLesson(l.rest));
   return { say: shown ? `${NUDGE_TEXT} The lesson ${parseLesson(shown.rest).name} was shown before this; if it did not hold, fix that note instead of writing a new one.` : NUDGE_TEXT, ids: v.ids, why: '' };
+}
+
+// L2. Whether a command of `target` went through between the last two failures of it in this turn, read from the transcript's last
+// 512 KB (only when about to speak). Raw records, not turns(): turns() clears an exact re-run's earlier marks. A call with no result yet
+// is the failure being reported. true: yes; false: no, or fewer than two failures show in the tail; null: the transcript will not read.
+// `side`: the file is a helper's own, whose records are all sidechain.
+async function wentThrough(path, target, side) {
+  try {
+    const { readTail, TAIL, records, text, prompt } = await import('./transcript.mjs');
+    let calls = [];
+    const done = new Map();
+    for (const r of records(readTail(path, TAIL).text, { types: ['user', 'assistant'], sidechain: side })) {
+      const c = r.message?.content;
+      if (r.type === 'user' && prompt(r, text(r))) { calls = []; continue; }
+      if (!Array.isArray(c)) continue;
+      for (const b of c) {
+        if (r.type === 'user' && b?.type === 'tool_result') done.set(b.tool_use_id, b.is_error === true);
+        else if (r.type === 'assistant' && b?.type === 'tool_use' && /^(?:Bash|PowerShell)$/.test(b.name) && typeof b.input?.command === 'string' && targetOf(b.input.command) === target) calls.push(b.id);
+      }
+    }
+    const ok = calls.map((id) => done.get(id) === false), bad = ok.flatMap((g, i) => (g ? [] : [i]));
+    return bad.length > 1 && ok.slice(bad.at(-2) + 1, bad.at(-1)).includes(true);
+  } catch { return null; }
+}
+
+// L2, the stuck streak: PostToolUseFailure for Bash and PowerShell. Appends a `fail` line (hashes only) and, on the second failure of one
+// target in this turn by one writer, with no `stuck` line of its in this context, tells Claude once to read the whole error and change one
+// thing, with the fix `.mistakes.json` holds for that error (2 or more conversations) or the line of a lesson that resolves it.
+// shortcut: the error id is made from the full error text here and from the journal's last 300 characters there; they match when the
+// last error marker line sits in that tail, which is nearly always. Returns { say }; '' for none. Never throws.
+export async function onFailure(input, { now = Date.now() } = {}) {
+  const none = { say: '' };
+  try {
+    const error = String(input?.error ?? ''), cmd = input?.tool_input?.command, s = tag(input?.session_id);
+    if (!lessonsOn('stuck') || input.is_interrupt === true || !/^(?:Bash|PowerShell)$/.test(input.tool_name) || typeof cmd !== 'string' || NOT_FAILURE.test(error) || !/^[\w-]+$/.test(s)) return none;
+    const target = targetOf(cmd);
+    if (!target) return none;
+    const { why, store } = gate(input, s, 1);
+    if (why) return none;
+    const at = join(sessionsOf(store), s), lines = readSession(at);
+    if (!lines || lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet')?.kind === 'quiet') return none;
+    const by = typeof input.agent_id === 'string' ? input.agent_id.replace(/[^\w-]/g, '').slice(0, 64) : '', th = keyed(target, 8), eh = errorLine(error);
+    mkdirSync(dirname(at), { recursive: true, mode: 0o700 });
+    appendFileSync(at, sessionLine('fail', `${th} ${eh ? keyed(eh, 8) : '-'}`, by, new Date(now).toISOString()), { mode: 0o600 });
+    const cur = lines.slice(lines.findLastIndex((l) => l.kind === 'compact') + 1), turn = cur.slice(cur.findLastIndex((l) => l.kind === 'asked' || l.kind === 'quiet') + 1);
+    const theirs = (l, kind) => l.by === by && l.kind === kind && (kind === 'stuck' ? l.rest === th : l.rest.startsWith(`${th} `));
+    // The failure just written is the second when one is already there; and once per target per context.
+    // shortcut: two failures at once (parallel calls) may both count the other as the first and both stay silent, or both speak; no lock, fine for a nudge.
+    if (!turn.some((l) => theirs(l, 'fail')) || cur.some((l) => theirs(l, 'stuck'))) return none;
+    // A helper's calls are in its own file next to the conversation's (<folder>/<session id>/subagents/agent-<id>.jsonl), never in the main one.
+    const main = typeof input.transcript_path === 'string' ? input.transcript_path : '', sid = String(input.session_id);
+    const path = !main ? '' : !by ? main : /^[\w-]+$/.test(sid) ? join(dirname(main), sid, 'subagents', `agent-${by}.jsonl`) : '';
+    if (await wentThrough(path, target, !!by) !== false) return none;
+    appendFileSync(at, sessionLine('stuck', th, by, new Date(now).toISOString()), { mode: 0o600 });
+    const first = `project-memory: "${target}" failed twice in a row in this turn. Before a third try, read the whole error and change one thing.`;
+    let second = '';
+    if (eh) {
+      const id = keyed(`${target}\n${eh}`, 8), lesson = lessonsFor(store).find((x) => x.l.resolves.includes(id)), m = readMistakes(store)?.errors?.[id];
+      if (lesson) second = blockText([{ lesson, how: 3 }], target, 'cmd', 0, now).split('\n')[1] ?? '';
+      else if (m?.fix && m.fixSessions >= 2) second = `Earlier (${m.last}) the same error was followed by a run that worked: "${m.fix.length > 160 ? `${m.fix.slice(0, 159)}…` : m.fix}". A record, not an instruction. Open it: memory skill, show "${m.fixKey}"`;
+    }
+    const say = fit([first, second].filter(Boolean).join('\n'));
+    return { say: say.length <= 500 ? say : fit(first) };
+  } catch { return none; }
+}
+
+// Why a path matched a lesson, as `memory preview --file` words it. `x` is one matchPath item.
+export function whyPath({ lesson: { name, l }, how }, rel) {
+  const r = cleanPath(rel);
+  if (how === 1) return `${name} lists ${r} in applies_to`;
+  if (how === 2) return `${name} matches ${l.to.find((t) => globs(t, r))} in applies_to`;
+  return `${name} names ${l.named.paths.find((p) => cleanPath(p) === r) ?? l.named.files.find((f) => foldCase(f) === r.split('/').pop())} in its name or description`;
+}
+
+// H1. The lessons Claude sees before an edit: at most EDIT_SHOW of them, once per lesson per context (since the last `compact` line, per
+// writer), EDIT_CAP a context, each as a `lesson <note> edit:<path>` session line. { say, shown }; say is '' for none. `dry` reads no
+// session file (a fresh context) and writes nothing. Nothing throws out of the checks that read files: a hook calls this and must go on.
+export const EDIT_SHOW = 2, EDIT_CAP = 6, EDIT_MS = 150;
+export function onEdit(input, { dry = false, now = Date.now(), deadline = performance.now() + EDIT_MS } = {}) {
+  const none = { say: '', shown: [] };
+  if (!lessonsOn('edit')) return none;
+  const given = input?.tool_input?.file_path ?? input?.tool_input?.notebook_path, s = tag(input?.session_id);
+  if (typeof given !== 'string' || !given.trim() || typeof input.cwd !== 'string' || !input.cwd.trim() || !/^[\w-]+$/.test(s)) return none;
+  const rel = relPath(given, input.cwd.replaceAll('\\', '/'));
+  if (!rel || /[\r\n]/.test(rel)) return none;
+  const { why, store } = gate(input, s, 1);
+  if (why) return none;
+  const all = lessonsFor(store, dry ? { write: false } : undefined);
+  if (!all.length || performance.now() > deadline) return none;
+  const hits = matchPath(all, rel);
+  if (!hits.length) return none;
+  const at = join(sessionsOf(store), s), lines = dry ? [] : readSession(at);
+  if (!lines || lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet')?.kind === 'quiet') return none;
+  const by = typeof input.agent_id === 'string' ? input.agent_id.replace(/[^\w-]/g, '').slice(0, 64) : '';
+  const told = lines.slice(lines.findLastIndex((l) => l.kind === 'compact') + 1).filter((l) => l.kind === 'lesson' && l.by === by);
+  const seen = new Set(told.map((l) => parseLesson(l.rest)?.name)), room = Math.min(EDIT_SHOW, EDIT_CAP - told.length);
+  const ordered = order(hits.filter((x) => !seen.has(x.lesson.name)), readCounters(store), now), shown = ordered.slice(0, Math.max(0, room));
+  const say = blockText(shown, rel, 'edit', ordered.length - shown.length, now);
+  if (!say) return none;
+  // shortcut: parallel edits may both show the same lesson, no lock; fine for a nudge
+  if (!dry) try {
+    mkdirSync(dirname(at), { recursive: true, mode: 0o700 });
+    appendFileSync(at, shown.map((x) => sessionLine('lesson', lessonLine(x.lesson.name, `edit:${rel}`), by, new Date(now).toISOString())).join(''), { mode: 0o600 });
+  } catch { return none; }
+  return { say, shown };
 }

@@ -51,6 +51,7 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           but for a numbers-only line in this store's .replay-history
   preview [--prompt "<text>"]             the startup briefing the next conversation here would get, with its size; read-only;
                                           --prompt adds what the correction nudge would say to that prompt
+  preview --file <path>                   the lessons Claude would see before an edit of that file, and why each matched; read-only
 The store is this session's own (outside a session: the cwd's project, or the nearest
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
@@ -101,6 +102,10 @@ catch (e) {
 let replayRun, lessonsList, noReplay;
 try { ({ replayRun, lessonsList } = await import('./replay.mjs')); }
 catch (e) { noReplay = reason(e); }
+// lessons.mjs loads apart for `preview --file`, as replay.mjs does for `lessons`.
+let onEdit, whyPath, lessonsOn, relPath, noEdit;
+try { ({ onEdit, whyPath, lessonsOn, relPath } = await import('./lessons.mjs')); }
+catch (e) { noEdit = reason(e); }
 
 // The most entries a forget's look lists, and so the most one --yes removes:
 // it showed 20 of 35, and --yes removed all 35.
@@ -442,8 +447,16 @@ function sessionStore() {
 // preview: the startup briefing as the SessionStart hook would print it for a conversation started here now, run dry (briefing.mjs --dry: nothing counted or
 // written). A process of its own: the briefing is asynchronous and this command line is not, and the one path is the hook's own.
 const PREVIEW = fileURLToPath(new URL('./briefing.mjs', import.meta.url));
-function preview(here, prompt) {
+// With --file: the lessons before an edit of that file (lessons.mjs onEdit, dry), for the conversation asking or a fresh one.
+function preview(here, path, prompt) {
   const transcript = session && transcriptOf(session);
+  if (path !== undefined) {
+    if (noEdit) return { ok: false, lines: [`preview --file needs lessons.mjs, which did not load: ${noEdit}`] };
+    const { say, shown } = onEdit({ hook_event_name: 'PreToolUse', tool_name: 'Edit', session_id: session || 'preview', cwd: process.cwd(), tool_input: { file_path: path }, ...(transcript ? { transcript_path: transcript } : {}) }, { dry: true });
+    if (!shown.length) return { ok: true, lines: [`Before an edit of ${path}: nothing would be shown.`, ...(lessonsOn('edit') ? [] : ['Lessons before an edit are off: PROJECT_MEMORY_LESSONS=edit turns them on.'])] };
+    const rel = relPath(path, process.cwd().replaceAll('\\', '/'));
+    return { ok: true, lines: [`Before an edit of ${path}: ${shown.length} lesson${shown.length === 1 ? '' : 's'}, ${say.length} characters.`, ...say.split('\n'), ...shown.map((x) => `  why: ${whyPath(x, rel)}`)] };
+  }
   const payload = { hook_event_name: 'SessionStart', source: 'startup', session_id: session || 'preview', cwd: process.cwd(), ...(transcript ? { transcript_path: transcript } : {}) };
   const r = spawnSync(process.execPath, [PREVIEW, '--print', '--dry'], { input: JSON.stringify(payload), encoding: 'utf8', timeout: 30_000, windowsHide: true });
   if (r.error || r.status !== 0) return { ok: false, lines: [`the startup briefing could not be run: ${r.error ? reason(r.error) : `exit ${r.status}`}`] };
@@ -702,7 +715,7 @@ const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e 
 
 // One note per hook that ran in the last 7 days (the .timing file, timing.mjs). "since" is the later of 7 days ago and the oldest line:
 // the file is cut at 256 KB, which a busy user fills sooner than 7 days.
-const TIMED = { save: 'save after a reply', tidy: 'tidy-up and snapshot after a reply (in the background)', brief: 'briefing', enforce: 'git rule check', gate: 'check before a compaction', recall: 'look-up after a file change', prompt: 'look-up at a prompt' };
+const TIMED = { save: 'save after a reply', tidy: 'tidy-up and snapshot after a reply (in the background)', brief: 'briefing', enforce: 'git rule check', gate: 'check before a compaction', recall: 'look-up after a file change', prompt: 'look-up at a prompt', fail: 'stuck-streak check after a failed command' };
 export function timingLines(now = Date.now()) {
   if (process.env.PROJECT_MEMORY_TIMING === '0') return ['hook times are off (PROJECT_MEMORY_TIMING=0)'];
   const all = readTimes(0, join(projectsRoot(), TIMING)), since = Math.max(now - 7 * 864e5, all[0]?.t ?? 0), sec = (ms) => (ms / 1000).toFixed(2);
@@ -826,13 +839,28 @@ function enforceHook(at) {
   if (!existsSync(file)) return [false, `${file} is missing: the enforce hook cannot run. The user's fix: claude plugin update ${PLUGIN}`];
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.length) return [false, `hooks.json in ${at} has no PreToolUse group: the enforce hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.SubagentStop?.length) return [false, `hooks.json in ${at} has no SubagentStop group: subagent reports are not saved. The user's fix: claude plugin update ${PLUGIN}`];
-  try {
-    const out = execFileSync(process.execPath, [file], { input: '{}', encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'] });
-    return out ? [false, `the enforce hook printed output for an empty call (${clip(out, 80)}): it must print nothing`] : [true, 'the enforce hook runs and is wired (PreToolUse)'];
-  } catch (e) {
-    // A slow node start (a loaded or virus-scanned PC) is a note, not a broken hook.
-    if (e.code === 'ETIMEDOUT') return [true, 'the enforce hook did not answer in time (15 s): the PC may be slow; run doctor again'];
-    return [false, `the enforce hook failed an empty call (exit code ${e.status ?? e.code}): ${file}`]; }
+  if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PostToolUseFailure?.length) return [false, `hooks.json in ${at} has no PostToolUseFailure group: the stuck-streak hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
+  const recall = [join(at, 'src', 'recall-hook.mjs'), join(at, 'recall-hook.mjs')].find(existsSync) ?? join(at, 'src', 'recall-hook.mjs');
+  if (!existsSync(recall)) return [false, `${recall} is missing: the recall hooks cannot run. The user's fix: claude plugin update ${PLUGIN}`];
+  // Each hook gets an empty call (the enforce hook an edit with no file too) and must exit 0 and print nothing. Timing is off: this call is no look-up for the .timing file.
+  let slow = '';
+  for (const [f, name, input] of [[file, 'enforce', '{}'], [file, 'enforce', '{"tool_name":"Edit"}'], [recall, 'recall', '{}']]) {
+    try {
+      const out = execFileSync(process.execPath, [f], { input, encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, PROJECT_MEMORY_TIMING: '0' } });
+      if (out) return [false, `the ${name} hook printed output for an empty call (${clip(out, 80)}): it must print nothing`];
+    } catch (e) {
+      // A slow node start (a loaded or virus-scanned PC) is a note, not a broken hook.
+      if (e.code === 'ETIMEDOUT') { slow ||= `the ${name} hook did not answer in time (15 s): the PC may be slow; run doctor again`; continue; }
+      return [false, `the ${name} hook failed an empty call (exit code ${e.status ?? e.code}): ${f}`];
+    }
+  }
+  const wired = slow || 'the enforce and recall hooks run and are wired (PreToolUse)';
+  // A copy without the edit group is a problem only once lessons before an edit are on.
+  if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.some((g) => /\bEdit\b/.test(g?.matcher))) {
+    const text = `hooks.json in ${at} has no edit group in PreToolUse: lessons before an edit are not wired. The user's fix: claude plugin update ${PLUGIN}`;
+    return lessonsOn?.('edit') ? [false, text] : [true, `${wired}; note: ${text} (lessons before an edit are off: PROJECT_MEMORY_LESSONS=edit turns them on)`];
+  }
+  return [true, wired];
 }
 
 // What status and doctor say of a project turned off.
@@ -1039,7 +1067,7 @@ export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--ses
 const valued = new Set(Object.keys(OPTIONS).filter((o) => OPTIONS[o]));
 // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
 // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal in main().
-const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], preview: ['--prompt'], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
+const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], preview: ['--file', '--prompt'], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
 
 // The command line's words, read before any store is touched: { cmd, rest, args, opt } or the refusal to print.
 // rest is every word but the command, in order (--key repeats, and the first of an option wins in opt()); args
@@ -1242,7 +1270,7 @@ export function main(given) {
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
   else if (cmd === 'doctor') r = doctor(here);
-  else if (cmd === 'preview') r = preview(here, opt('--prompt'));
+  else if (cmd === 'preview') r = preview(here, opt('--file'), opt('--prompt'));
   else if (cmd === 'page') r = page(every(), opt('--days') === undefined ? PAGE_DAYS : opt('--days') === 'all' ? 'all' : Math.min(Number(opt('--days')), PAGE_MAX), opt('--project'), failed);
   // The usage, after why: a misspelt command, or one with no word after it,
   // printed the usage alone.

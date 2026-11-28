@@ -26,9 +26,20 @@ try {
       T.shown(n);
       // H5, the correction nudge (1.7.0): after the pointer, in its own try, joined to it with a blank line.
       let say = found;
-      if (ctx) try { say = [found, (await (await import('./lessons.mjs')).nudgeFor(input, ctx)).say].filter(Boolean).join('\n\n'); } catch {}
+      // switches.mjs has no imports: with the nudge off a prompt loads nothing more.
+      if (ctx) try { if ((await import('./switches.mjs')).lessonsOn('nudge')) say = [found, (await (await import('./lessons.mjs')).nudgeFor(input, ctx)).say].filter(Boolean).join('\n\n'); } catch {}
       // Written whole before the exit: on macOS a pipe is written asynchronously.
       if (say) await new Promise((done) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: say } }) + '\n', done));
+    } else if (event === 'PostToolUseFailure') {
+      // 1.7.0 L2: only with PROJECT_MEMORY_LESSONS=stuck; onFailure loads the transcript reader only when it is about to speak.
+      T.name('fail');
+      const { lessonsOn } = await import('./switches.mjs'); // no imports: off costs almost nothing
+      if (!lessonsOn('stuck')) T.skip();
+      else {
+        const { say } = await (await import('./lessons.mjs')).onFailure(input);
+        T.mark('look');
+        if (say) await new Promise((done) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: say } }) + '\n', done));
+      }
     } else if (event === 'SessionEnd') {
       T.name('end');
       onEnd(input);
