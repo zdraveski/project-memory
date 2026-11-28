@@ -304,6 +304,10 @@ ${'y'.repeat(40)}
   ok(by['b.md'].main === 0 && by['b.md'].sub === 0 && by['b.md'].last === 0 && by['b.md'].bad, 'a bad rule: no hits, last 0, its reason');
   ok(by['_shared/s.md'].main === 0 && by['_shared/s.md'].sub === 1 && by['_shared/s.md'].last === from + 7000, 'a shared rule counts its own hits');
   ok(tally(d, from + 5001).notes[0].main === 1 && tally(d, from + 5001).notes[0].sub === 0, 'hits before from are left out');
+  // A call both a git filter and a lesson filter start twice leaves one line a start: the same note and tool-call id is one hit.
+  const ei = (t, nt, id) => JSON.stringify({ t, note: nt, agent: '', id }) + '\n';
+  writeFileSync(join(d, LOG), ei(T1, 'a.md', 'toolu_1') + ei(T1, 'a.md', 'toolu_1') + ei(iso(1), 'a.md', 'toolu_2') + ei(iso(2), 'a.md', '') + ei(iso(3), 'a.md', '') + ei(iso(4), 'b.md', 'toolu_1'));
+  ok(tally(d, from).notes.find((n) => n.file === 'a.md').main === 4 && tally(d, from).notes.find((n) => n.file === 'b.md').main === 1, 'the same note and id twice is one hit; no id, or another note or id, is counted');
   ok(tally(join(home, 'nolog'), 0).notes.length === 1 && tally(sh, 0).notes.map((n) => n.file).join() === 's.md', 'no log: no hits; the shared store is not listed twice');
   rmSync(sh, { recursive: true }); }
 

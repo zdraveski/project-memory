@@ -323,10 +323,13 @@ export function record(store, entry) {
 // What `memory enforce status` shows of a store: its rule notes (and the shared store's, as `_shared/<file>`), each with the
 // log's hits since `from` (ms) split main and sub-agent. Never throws.
 export function tally(dir, from) {
-  const lines = [];
+  const lines = [], once = new Set(); // a call a git filter and a lesson filter both start logs one line a start: the same note and id is one hit
   try {
     const f = join(dir, LOG);
-    for (const l of readFileSync(f, 'utf8').split('\n')) try { const j = JSON.parse(l), t = Date.parse(j.t); if (t >= from) lines.push({ note: String(j.note), t, sub: !!j.agent }); } catch {}
+    for (const l of readFileSync(f, 'utf8').split('\n')) try {
+      const j = JSON.parse(l), t = Date.parse(j.t), k = `${j.note}\0${j.id}`;
+      if (t >= from && !(j.id && once.has(k))) { once.add(k); lines.push({ note: String(j.note), t, sub: !!j.agent }); }
+    } catch {}
   } catch {}
   const shared = sharedStore() === dir ? [] : rulesOf(sharedStore()).map((x) => ({ ...x, file: `_shared/${x.file}` }));
   const notes = [...rulesOf(dir), ...shared].map(({ file, bad }) => {

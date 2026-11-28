@@ -1,8 +1,9 @@
 // PreToolUse hook. For Bash and PowerShell: logs which note's enforce: rule a git command matches, to <store>/.enforce-log (note,
 // session tag, agent, tool-call id; never the command). It blocks nothing and prints nothing. For Edit, Write, NotebookEdit and
 // MultiEdit (1.7.0, H1): prints the lessons for the file as additionalContext, once per lesson per context (lessons.mjs onEdit),
-// never a permission decision. Any failure lets the call go on. A shell command loads store.mjs, enforce.mjs and timing.mjs (deployed
-// with them) only. An edit asks switches.mjs (no imports) first and, with the trigger off, ends there: lessons.mjs is not loaded and no timing
+// never a permission decision. A shell command whose family (familyOf) is push, merge, publish, release, deploy or destroy gets the same
+// for its lessons (H2, onCommand), unless `-command`. Any failure lets the call go on. A shell command loads store.mjs, enforce.mjs and timing.mjs (deployed
+// with them), and lessons.mjs only for a family with its trigger on. An edit asks switches.mjs (no imports) first and, with the trigger off, ends there: lessons.mjs is not loaded and no timing
 // line is written. Each starts fast.
 import * as T from './timing.mjs';
 T.begin('enforce');
@@ -29,7 +30,7 @@ try {
     // Written whole before the exit: on macOS a pipe is written asynchronously.
     if (say) await new Promise((done) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: say } }) + '\n', done));
   } else {
-    const { ruleSet, hits, record, privateTurn } = await import('./enforce.mjs'); // inside the try: a missing sibling file fails open
+    const { ruleSet, hits, record, privateTurn, familyOf } = await import('./enforce.mjs'); // inside the try: a missing sibling file fails open
     T.mark('load');
     // The `if` filter in hooks.json is a speed-up; this is the check. Most calls end here, before any file is read.
     if (typeof command === 'string' && command.includes('git')) {
@@ -39,6 +40,16 @@ try {
         record(store, { t: new Date().toISOString(), note: file, s: String(input.session_id || '').slice(0, 8), agent: typeof input.agent_type === 'string' ? input.agent_type.slice(0, 64) : '', id: String(input.tool_use_id || '').slice(0, 64) });
     }
     T.mark('rules');
+    // H2 (1.7.0): lessons for the command's families, on unless `-command`; a command with no family or the trigger off loads nothing more.
+    const families = typeof command === 'string' ? familyOf(command) : [];
+    if (families.length && (await import('./switches.mjs')).lessonsOn('command')) {
+      T.name('lesson');
+      const { onCommand, EDIT_MS } = await import('./lessons.mjs');
+      const { say, shown } = onCommand(input, families, { deadline: t0 + EDIT_MS });
+      T.mark('look');
+      T.shown(shown.length);
+      if (say) await new Promise((done) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: say } }) + '\n', done));
+    }
     T.tag('PreToolUse');
   }
 } catch {}

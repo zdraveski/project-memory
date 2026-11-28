@@ -13,8 +13,8 @@ import { QUIET, OFF, PROJECT_OFF } from '../src/privacy.mjs';
 import { tag as tagOf } from '../src/handoff-log.mjs';
 import { hushed } from '../src/privacy.mjs';
 import { gitignore } from '../src/snapshot.mjs';
-import { sessionsOf, sessionLine } from '../src/sessions.mjs';
-import { onEdit } from '../src/lessons.mjs';
+import { sessionsOf, sessionLine, sweepSessions } from '../src/sessions.mjs';
+import { onEdit, onCommand } from '../src/lessons.mjs';
 
 const { home } = tempHome('enforce-hook-');
 let checks = 0;
@@ -142,7 +142,7 @@ record(join(home, 'no-such-store'), { note: 'x' }); ok(!existsSync(join(home, 'n
 const hookFile = JSON.parse(readFileSync(tool('hooks/hooks.json'), 'utf8')), pre = hookFile.hooks.PreToolUse;
 ok(pre.length === 2 && pre[0].matcher === 'Bash|PowerShell', 'a PreToolUse group for Bash and PowerShell, and one for the edit tools');
 ok(pre[1].matcher === 'Edit|Write|NotebookEdit|MultiEdit' && pre[1].hooks.length === 1 && pre[1].hooks[0].timeout === 5 && !('if' in pre[1].hooks[0]) && pre[1].hooks[0].command === 'node' && pre[1].hooks[0].args.join() === '${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs', 'the edit group: one entry like the others, no `if`');
-ok(pre[0].hooks.map((h) => h.if).sort().join() === 'Bash(git *),PowerShell(git *)', 'one handler per `if` rule');
+ok(pre[0].hooks.some((h) => h.if === 'Bash(git *)') && pre[0].hooks.some((h) => h.if === 'PowerShell(git *)') && pre[0].hooks.every((h) => typeof h.if === 'string'), 'one handler per `if` rule, the git ones among them (step 9 adds the rest)');
 ok(pre[0].hooks.every((h) => h.timeout === 5 && !('onFailure' in h) && !('statusMessage' in h) && h.args[0] === '${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs'), 'timeout 5, no onFailure, no statusMessage');
 
 // The snapshot's .gitignore takes neither dot file.
@@ -289,6 +289,110 @@ const HEAD = (n, what) => `project-memory: ${n} lesson${n === 1 ? '' : 's'} for 
   // A shell payload is as in 1.6.7 with the trigger on: the log line, nothing printed, no lesson line.
   p = project(); r = run(p.payload('git add -A'), EDIT); quiet(r, 'a match, edit on');
   l = lines(p.store); ok(l.length === 1 && l[0].note === 'stage.md' && Object.keys(l[0]).join() === 't,note,s,agent,id', `a shell payload's log line is unchanged (got ${JSON.stringify(l)})`);
+}
+
+// 1.7.0 step 9, H2: lessons before a risky command (on by default; `command`). A lesson says `applies_when: [<family>]`.
+{
+  const CMD = { ...process.env, PROJECT_MEMORY_LESSONS: 'command' }, W = (w) => `applies_when: [${w}]\n`;
+  const cp = (notes) => lessonProject(notes);
+  let q = cp({ 'push.md': ['Never push to main by hand.', W('push')] }), r = run(q.payload('git push origin main'), CMD);
+  ok(r.status === 0 && r.stderr === '' && JSON.stringify(Object.keys(JSON.parse(r.stdout).hookSpecificOutput)) === '["hookEventName","additionalContext"]' && JSON.parse(r.stdout).hookSpecificOutput.hookEventName === 'PreToolUse', `a push prints additionalContext for PreToolUse and no decision (got ${r.stdout}${r.stderr})`);
+  ok(said(r) === `${HEAD(1, 'push')}\n- [lesson, 12d] Never push to main by hand. (note: push.md)`, `the pinned block (got ${said(r)})`);
+  ok(q.session().length === 1 && /^lesson \d{4}-\d\d-\d\dT[\d:.]+Z push\.md cmd:push$/.test(q.session()[0]), `one lesson line with cmd:push (got ${JSON.stringify(q.session())})`);
+  r = run(q.payload('git push origin main', { tool_use_id: 'toolu_2' }), CMD); quiet(r, 'the same lesson again in the same context'); ok(q.session().length === 1, 'and no second line');
+  // The default is on: no variable at all still tells; -command and 0 do not, and load nothing.
+  q = cp({ 'push.md': ['Never push to main by hand.', W('push')] });
+  ok(said(run(q.payload('git push'), OFFENV)).includes('push.md'), 'PROJECT_MEMORY_LESSONS unset: commands are on by default');
+  for (const v of ['-command', '0']) { q = cp({ 'push.md': ['Push.', W('push')] }); quiet(run(q.payload('git push'), { ...process.env, PROJECT_MEMORY_LESSONS: v }), `PROJECT_MEMORY_LESSONS=${v}`); ok(q.session().length === 0, `${v}: no line`); }
+  // The other commands and their families.
+  q = cp({ 'publish.md': ['Run the tests before publishing.', W('publish')] }); ok(said(run(q.payload('npm publish'), CMD)).startsWith(HEAD(1, 'publish')), 'npm publish: the publish lesson');
+  q = cp({ 'release.md': ['Tag after the merge.', W('release')], 'publish.md': ['Run the tests before publishing.', W('publish')] });
+  r = run(q.payload('gh release create v1'), CMD); ok(said(r).startsWith(HEAD(1, 'release')) && said(r).includes('release.md') && !said(r).includes('publish.md'), `gh release create: the release lesson, not the publish one (got ${said(r)})`);
+  q = cp({ 'deploy.md': ['Deploy from CI.', W('deploy')] }); quiet(run(q.payload('echo deploy'), CMD), 'echo deploy is no command about deploy'); ok(q.session().length === 0, 'no line for it');
+  q = cp({ 'none.md': ['Unrelated.', 'applies_to: [src/a.mjs]\n'] }); quiet(run(q.payload('git push'), CMD), 'a lesson for a path, not a family');
+  // An untagged feedback lesson that names the family is told (how 4); the project's own come before it.
+  q = cp({ 'named.md': ['Never force push to main.', ''], 'tagged.md': ['Check CI first.', W('push')] });
+  ok(said(run(q.payload('git push'), CMD)).split('\n').filter((l) => l.startsWith('- ')).map((l) => /note: (\S+)\)$/.exec(l)[1]).join() === 'tagged.md,named.md', 'tagged before named');
+  // Two families: the block names the first with a match; a lesson for both is told once, as the first.
+  q = cp({ 'both.md': ['Check twice.', W('push, destroy')], 'des.md': ['Not that.', W('destroy')] });
+  r = run(q.payload('git push --force'), CMD); ok(said(r).startsWith(HEAD(2, 'push')) && q.session().length === 2 && q.session().some((x) => x.endsWith('both.md cmd:push')) && q.session().some((x) => x.endsWith('des.md cmd:destroy')), `two families (got ${said(r)} ${JSON.stringify(q.session())})`);
+  // The block is about a family of a lesson it shows: the push lesson was told before, so only the destroy one is, and the header says destroy.
+  q = cp({ 'p.md': ['Check twice.', W('push')], 'des.md': ['Not that.', W('destroy')] }); mkdirSync(sessionsOf(q.store), { recursive: true }); writeFileSync(join(sessionsOf(q.store), 'abcd1234'), sessionLine('lesson', 'p.md cmd:push'));
+  r = run(q.payload('git push --force'), CMD); ok(said(r).startsWith(HEAD(1, 'destroy')) && said(r).includes('des.md') && !said(r).includes('p.md'), `the header names the family of what it shows (got ${said(r)})`);
+  // The shared store's lesson is named _shared/<file>.
+  q = cp({}); mkdirSync(sharedStore(), { recursive: true }); writeFileSync(join(sharedStore(), 'sh.md'), lessonNote('sh', 'Shared push lesson.', W('push')));
+  r = run(q.payload('git push'), CMD); ok(said(r).includes('Shared push lesson. (note: _shared/sh.md)') && q.session()[0].includes('_shared%2Fsh.md cmd:push'), `a shared lesson, named _shared/<file> (got ${said(r)} ${JSON.stringify(q.session())})`);
+  rmSync(join(sharedStore(), 'sh.md'));
+  // A git rule hit logs as before while the lesson prints.
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); r = run(q.payload('git add -A && git push'), CMD);
+  ok(r.status === 0 && said(r).includes('push.md') && lines(q.store).length === 1 && lines(q.store)[0].note === 'stage.md' && Object.keys(lines(q.store)[0]).join() === 't,note,s,agent,id', `the rule is logged and the lesson printed (got ${r.stdout}${JSON.stringify(lines(q.store))})`);
+  // A call the filters start twice: the second start finds the marker of the first and is silent, whatever the session file says.
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); mkdirSync(sessionsOf(q.store), { recursive: true });
+  const marker = (id) => join(sessionsOf(q.store), `abcd1234.pre-${id}`);
+  writeFileSync(marker('toolu_9'), ''); quiet(run(q.payload('git push', { tool_use_id: 'toolu_9' }), CMD), 'the marker of this call exists'); ok(q.session().length === 0, 'and no line is written');
+  r = run(q.payload('git push', { tool_use_id: 'toolu_8' }), CMD); ok(said(r).includes('push.md') && existsSync(marker('toolu_8')), 'a call with no marker speaks and leaves one');
+  // A helper has its own list; an incognito or private turn is silent; so is a memory-off project.
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); run(q.payload('git push', { agent_id: 'a1' }), CMD);
+  ok(/^lesson \S+ agent:a1 push\.md cmd:push$/.test(q.session()[0]) && said(run(q.payload('git push', { tool_use_id: 'toolu_7' }), CMD)).includes('push.md'), 'a helper is told once and the main conversation too');
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); writeFileSync(join(q.store, QUIET), 'abcd1234\n'); quiet(run(q.payload('git push'), CMD), 'incognito');
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); quiet(run(q.payload('git push'), { ...CMD, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }), 'auto memory off');
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); mkdirSync(sessionsOf(q.store), { recursive: true }); writeFileSync(join(sessionsOf(q.store), 'abcd1234'), `${sessionLine('asked', 'x')}${sessionLine('quiet')}`);
+  quiet(run(q.payload('git push'), CMD), 'a private turn'); ok(q.session().length === 2, 'no line in a private turn');
+  // The six a context are shared with the edit lessons; onCommand in process: deadline, dry, a command with no family.
+  { const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = 'command';
+    q = cp({ 'push.md': ['Check before pushing.', W('push')] });
+    ok(onCommand(q.payload('git push'), ['push'], { deadline: -1 }).say === '' && q.session().length === 0, 'past the deadline: nothing, no line');
+    const dry = onCommand(q.payload('git push'), ['push'], { dry: true }); ok(dry.say.includes('push.md') && q.session().length === 0 && !existsSync(marker('toolu_1')), 'dry: the text, no line, no marker');
+    ok(onCommand(q.payload('git push'), [], {}).say === '' && onCommand(q.payload('git push'), undefined, {}).say === '', 'no family: nothing');
+    for (const cwd of [7, null, {}]) ok(onCommand({ ...q.payload('git push'), cwd }, ['push']).say === '', `a cwd of ${JSON.stringify(cwd)}: nothing`);
+    ok(onCommand(q.payload('git push'), ['push']).say === dry.say && onCommand(q.payload('git push', { tool_use_id: 'toolu_3' }), ['push']).say === '', 'real after dry: the same text, then once');
+    if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was; }
+  // The cap of 6 a context (shared with the edit lessons), a context already past it, a compact line, the helper id, a session id that is no tag.
+  const eight = Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((i) => [`l${i}.md`, [`Lesson ${i} for push.`, W('push')]]));
+  q = cp(eight); const outs = [1, 2, 3, 4].map((i) => run(q.payload('git push', { tool_use_id: `toolu_c${i}` }), CMD));
+  ok(said(outs[0]).startsWith(HEAD(2, 'push')) && said(outs[0]).endsWith('and 6 more: memory skill, lessons') && said(outs[1]).includes('l3.md') && said(outs[2]).includes('l5.md') && outs[3].stdout === '' && q.session().length === 6, 'two a time, 6 a context');
+  q = cp(eight); mkdirSync(sessionsOf(q.store), { recursive: true }); writeFileSync(join(sessionsOf(q.store), 'abcd1234'), [1, 2, 3, 4, 5, 6, 7, 8].map((i) => sessionLine('lesson', `other${i}.md edit:src/z.mjs`)).join(''));
+  quiet(run(q.payload('git push'), CMD), 'more than the cap already told'); ok(q.session().length === 8 && !fs.readdirSync(sessionsOf(q.store)).some((n) => n.includes('.pre-')), 'past the cap nothing more is told, and no marker is left');
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); run(q.payload('git push'), CMD); writeFileSync(join(sessionsOf(q.store), 'abcd1234'), `${q.session().join('\n')}\n${sessionLine('compact')}`);
+  ok(said(run(q.payload('git push', { tool_use_id: 'toolu_k' }), CMD)).includes('push.md'), 'after a compact line it is told again');
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); run(q.payload('git push', { agent_id: 'a1 b2!' + 'x'.repeat(100) }), CMD); ok(q.session()[0].split(' ')[2] === `agent:a1b2${'x'.repeat(60)}`, 'the helper id loses what is no word character and is cut at 64');
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); quiet(run(q.payload('git push', { session_id: '../x' }), CMD), 'a session id that is no tag'); ok(q.session().length === 0, 'no line for it');
+  // A session line that will not write: nothing told.
+  { const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = 'command'; const real = fs.appendFileSync;
+    q = cp({ 'push.md': ['Check before pushing.', W('push')] }); fs.appendFileSync = () => { throw new Error('no space left'); }; syncBuiltinESMExports();
+    try { ok(onCommand(q.payload('git push'), ['push']).say === '' && q.session().length === 0, 'a session line that will not write: nothing told, no throw'); } finally { fs.appendFileSync = real; syncBuiltinESMExports(); }
+    ok(onCommand(q.payload('git push', { tool_use_id: 'toolu_w' }), ['push']).say.includes('push.md'), 'and told once it writes again');
+    q = cp({ 'none.md': ['Unrelated.', W('deploy')] }); ok(onCommand(q.payload('git push'), ['push']).say === '', 'no lesson for the family: nothing, no throw');
+    // A session file that will not read (a folder where it should be, on every OS) may hold a private turn's mark: nothing told, no throw.
+    q = cp({ 'push.md': ['Check before pushing.', W('push')] }); mkdirSync(join(sessionsOf(q.store), 'abcd1234'), { recursive: true });
+    ok(onCommand(q.payload('git push'), ['push']).say === '' && fs.readdirSync(sessionsOf(q.store)).join() === 'abcd1234', 'a session file that will not read: nothing told, no marker, no throw');
+    if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was; }
+  // The marker's name is the tool id cleaned and cut; a call with no id leaves none; the sweep of old session files removes it.
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); run(q.payload('git push', { tool_use_id: '../zz' }), CMD); ok(existsSync(marker('zz')), 'the tool id is cleaned in the marker name');
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); run(q.payload('git push', { tool_use_id: 'a'.repeat(100) }), CMD); ok(existsSync(marker('a'.repeat(64))) && !existsSync(marker('a'.repeat(65))), 'and cut at 64');
+  q = cp({ 'push.md': ['Check before pushing.', W('push')] }); r = run({ ...q.payload('git push'), tool_use_id: undefined }, CMD); ok(said(r).includes('push.md') && !fs.readdirSync(sessionsOf(q.store)).some((n) => n.includes('.pre-')), 'no tool id: told, no marker');
+  { const old = new Date(Date.now() - 8 * 864e5); q = cp({ 'push.md': ['Check before pushing.', W('push')] }); run(q.payload('git push', { tool_use_id: 'toolu_old' }), CMD); utimesSync(marker('toolu_old'), old, old);
+    sweepSessions(); ok(!existsSync(marker('toolu_old')), 'the sweep of old session files removes a marker'); }
+  // With the trigger off a shell command loads no lessons.mjs, and a command with no family loads none either.
+  { const copy = join(home, 'src-copy-cmd'), mark = join(home, 'lessons-loaded-cmd');
+    cpSync(tool('src'), copy, { recursive: true }); renameSync(join(copy, 'lessons.mjs'), join(copy, 'lessons-real.mjs'));
+    writeFileSync(join(copy, 'lessons.mjs'), `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(mark)}, 'x');\nexport * from './lessons-real.mjs';\n`);
+    const via = (input, env) => spawnSync(process.execPath, [join(copy, 'enforce-hook.mjs')], { input: JSON.stringify(input), encoding: 'utf8', env });
+    q = cp({ 'push.md': ['Check before pushing.', W('push')] });
+    quiet(via(q.payload('git push'), { ...process.env, PROJECT_MEMORY_LESSONS: '-command' }), 'command off'); ok(!existsSync(mark), 'command off: lessons.mjs not loaded');
+    quiet(via(q.payload('git status'), CMD), 'a command with no family'); ok(!existsSync(mark), 'no family: lessons.mjs not loaded');
+    const timing = join(home, '.claude', 'projects', '.timing'), timed = () => (existsSync(timing) ? readFileSync(timing, 'utf8') : ''), was = timed();
+    ok(said(via(q.payload('git push'), CMD)).includes('push.md') && existsSync(mark), 'on, with a family: loaded and told');
+    const added = timed().slice(was.length).trim().split('\n').map((x) => JSON.parse(x));
+    ok(added.length === 1 && added[0].h === 'lesson' && added[0].e === 'PreToolUse' && added[0].n === 1, `one timing line of the lesson hook with the count (got ${JSON.stringify(added)})`);
+    // The 150 ms count from the hook's input: a load of 250 ms is past it.
+    writeFileSync(join(copy, 'lessons.mjs'), `const t = performance.now(); while (performance.now() - t < 250);\nexport * from './lessons-real.mjs';\n`);
+    q = cp({ 'push.md': ['Check before pushing.', W('push')] }); quiet(via(q.payload('git push'), CMD), 'a load of 250 ms is past the 150 ms'); ok(q.session().length === 0, 'and writes no line'); }
+  // hooks.json: the git filters, then one entry per risky command and shell, each as the git ones.
+  const FILTERS = ['npm publish*', 'pnpm publish*', 'yarn publish*', 'cargo publish*', 'twine upload*', 'gh release *', 'gh pr merge*', 'docker push*', '*deploy*', 'rm -rf *', 'rm -fr *', 'rm -Rf *', 'rm -r -f *', 'terraform apply*', 'terraform destroy*', 'kubectl apply*', 'kubectl delete*'];
+  const want = ['Bash(git *)', 'PowerShell(git *)', 'PowerShell(Remove-Item *)', 'Bash(*tools/release.mjs*)', 'PowerShell(*release.mjs*)', ...FILTERS.flatMap((f) => [`Bash(${f})`, `PowerShell(${f})`])].sort().join('\n');
+  ok(pre[0].hooks.length === 39 && pre[0].hooks.map((h) => h.if).sort().join('\n') === want, `the Bash|PowerShell group holds 39 entries: git, ${FILTERS.length} filters in both shells, release.mjs, Remove-Item (got ${pre[0].hooks.length})`);
+  ok(pre[0].hooks.every((h) => h.type === 'command' && h.command === 'node' && h.timeout === 5 && !('onFailure' in h) && !('statusMessage' in h) && h.args.join() === '${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs'), 'every entry is the same command as the git ones');
 }
 
 console.log(`enforce-hook: ${checks} checks passed`);
