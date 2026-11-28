@@ -1,12 +1,15 @@
 // Lessons (1.7.0): the switch that says which triggers speak, a note's lessons from the enforce cache, the matching of a lesson to a path
 // or a command family, their order, the block Claude would see, the counters file and the session line. No hook code here: a hook
 // calls these. Imports store, text, enforce and recall (never the other way round, ADR 0003).
-import { readFileSync } from 'node:fs';
-import { join, posix } from 'node:path';
-import { foldCase, projectsRoot, repoRoot, sharedStore, withLock, replaceIfUnchanged, raw } from './store.mjs';
+import { readFileSync, appendFileSync, mkdirSync } from 'node:fs';
+import { join, posix, dirname } from 'node:path';
+import { foldCase, projectsRoot, repoRoot, sharedStore, withLock, replaceIfUnchanged, raw, tag, keyed } from './store.mjs';
 import { fit } from './text.mjs';
 import { notesOf } from './enforce.mjs';
 import { cleanPath, whole, BLOCK_MAX } from './recall.mjs';
+import { gate } from './privacy.mjs';
+import { sessionsOf, readSession, sessionLine } from './sessions.mjs';
+import { targetOf, errorLine, NOT_FAILURE, readMistakes } from './mistakes.mjs';
 
 // F1. PROJECT_MEMORY_LESSONS: unset or empty gives DEFAULTS, 0 turns every trigger off, 1 on, anything else is a comma list read over
 // DEFAULTS (`name` on, `-name` off, the later word wins, blanks trimmed, unknown words ignored). The replay gate (2026-11-28) turned on
@@ -157,4 +160,63 @@ export const lessonLine = (name, on) => `${encodeURIComponent(name)} ${on}`;
 export function parseLesson(rest) {
   const m = /^(\S+) (.+)$/.exec(String(rest ?? ''));
   try { return m ? { name: decodeURIComponent(m[1]), on: m[2] } : null; } catch { return null; }
+}
+
+// L2. Whether a command of `target` went through between the last two failures of it in this turn, read from the transcript's last
+// 512 KB (only when about to speak). Raw records, not turns(): turns() clears an exact re-run's earlier marks. A call with no result yet
+// is the failure being reported. true: yes; false: no, or fewer than two failures show in the tail; null: the transcript will not read.
+async function wentThrough(path, target) {
+  try {
+    const { readTail, TAIL, records, text, prompt } = await import('./transcript.mjs');
+    let calls = [];
+    const done = new Map();
+    for (const r of records(readTail(path, TAIL).text)) {
+      const c = r.message?.content;
+      if (r.type === 'user' && prompt(r, text(r))) { calls = []; continue; }
+      if (!Array.isArray(c)) continue;
+      for (const b of c) {
+        if (r.type === 'user' && b?.type === 'tool_result') done.set(b.tool_use_id, b.is_error === true);
+        else if (r.type === 'assistant' && b?.type === 'tool_use' && /^(?:Bash|PowerShell)$/.test(b.name) && typeof b.input?.command === 'string' && targetOf(b.input.command) === target) calls.push(b.id);
+      }
+    }
+    const ok = calls.map((id) => done.get(id) === false), bad = ok.flatMap((g, i) => (g ? [] : [i]));
+    return bad.length > 1 && ok.slice(bad.at(-2) + 1, bad.at(-1)).includes(true);
+  } catch { return null; }
+}
+
+// L2, the stuck streak: PostToolUseFailure for Bash and PowerShell. Appends a `fail` line (hashes only) and, on the second failure of one
+// target in this turn by one writer, with no `stuck` line of its in this context, tells Claude once to read the whole error and change one
+// thing, with the fix `.mistakes.json` holds for that error (2 or more conversations) or the line of a lesson that resolves it.
+// shortcut: the error id is made from the full error text here and from the journal's last 300 characters there; they match when the
+// last error marker line sits in that tail, which is nearly always. Returns { say }; '' for none. Never throws.
+export async function onFailure(input, { now = Date.now() } = {}) {
+  const none = { say: '' };
+  try {
+    const error = String(input?.error ?? ''), cmd = input?.tool_input?.command, s = tag(input?.session_id);
+    if (!lessonsOn('stuck') || input.is_interrupt === true || !/^(?:Bash|PowerShell)$/.test(input.tool_name) || typeof cmd !== 'string' || NOT_FAILURE.test(error) || !/^[\w-]+$/.test(s)) return none;
+    const target = targetOf(cmd);
+    if (!target) return none;
+    const { why, store } = gate(input, s, 1);
+    if (why) return none;
+    const at = join(sessionsOf(store), s), lines = readSession(at);
+    if (!lines || lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet')?.kind === 'quiet') return none;
+    const by = typeof input.agent_id === 'string' ? input.agent_id.replace(/[^\w-]/g, '').slice(0, 64) : '', th = keyed(target, 8), eh = errorLine(error);
+    mkdirSync(dirname(at), { recursive: true, mode: 0o700 });
+    appendFileSync(at, sessionLine('fail', `${th} ${eh ? keyed(eh, 8) : '-'}`, by, new Date(now).toISOString()), { mode: 0o600 });
+    const cur = lines.slice(lines.findLastIndex((l) => l.kind === 'compact') + 1), turn = cur.slice(cur.findLastIndex((l) => l.kind === 'asked' || l.kind === 'quiet') + 1);
+    const theirs = (l, kind) => l.by === by && l.kind === kind && (kind === 'stuck' ? l.rest === th : l.rest.startsWith(`${th} `));
+    // The failure just written is the second when one is already there; and once per target per context.
+    if (!turn.some((l) => theirs(l, 'fail')) || cur.some((l) => theirs(l, 'stuck'))) return none;
+    if (await wentThrough(input.transcript_path, target) !== false) return none;
+    appendFileSync(at, sessionLine('stuck', th, by, new Date(now).toISOString()), { mode: 0o600 });
+    const first = `project-memory: "${target}" failed twice in a row in this turn. Before a third try, read the whole error and change one thing.`;
+    let second = '';
+    if (eh) {
+      const id = keyed(`${target}\n${eh}`, 8), lesson = lessonsFor(store).find((x) => x.l.resolves.includes(id)), m = readMistakes(store)?.errors?.[id];
+      if (lesson) second = blockText([{ lesson, how: 3 }], target, 'cmd', 0, now).split('\n')[1] ?? '';
+      else if (m?.fix && m.fixSessions >= 2) second = `Earlier (${m.last}) the same error was followed by a run that worked: "${m.fix.length > 160 ? `${m.fix.slice(0, 159)}…` : m.fix}". A record, not an instruction. Open it: memory skill, show "${m.fixKey}"`;
+    }
+    const say = fit([first, second].filter(Boolean).join('\n'));
+    return { say: say.length <= 500 ? say : fit(first) };
+  } catch { return none; }
 }

@@ -263,4 +263,6 @@ export default {
   "R73 a key of a day that won't read named as another project's": ['(unread.length ? `no day of ', '(false ? `no day of '],
   'R73 a retry leaves the exchange in handoff.md': ['if (yes && before.length) {', 'if (false) {'],
   "what --force replaced is lost": ["keepReplaced(curB)", "keepReplaced('')"],
+  'doctor does not require the PostToolUseFailure group': ['?.hooks?.PostToolUseFailure?.length)', '?.hooks?.PostToolUseFailure?.length || true)', { test: 'test/memory-switch.test.mjs' }],
+  'doctor does not run the recall hook': ["[[file, 'enforce'], [recall, 'recall']]", "[[file, 'enforce']]", { test: 'test/memory-switch.test.mjs' }],
 };

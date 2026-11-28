@@ -39,13 +39,14 @@ no network code.
 
 - **Hook events**, declared in [`hooks/hooks.json`](../hooks/hooks.json):
   `Stop`, `StopFailure`, `SubagentStop`, `SessionStart` (`startup`, `resume`, `clear`, `compact`) and
-  `PreCompact` (`manual`, `auto`), `PreToolUse` (`Bash|PowerShell`, filtered to `git *`; the git-rule watcher), and `PostToolUse` (`Edit|Write|NotebookEdit`), `UserPromptSubmit` and `SessionEnd` (the recall hook). Input: Claude Code's JSON payload on
+  `PreCompact` (`manual`, `auto`), `PreToolUse` (`Bash|PowerShell`, filtered to `git *`; the git-rule watcher), and `PostToolUse` (`Edit|Write|NotebookEdit`), `PostToolUseFailure` (`Bash|PowerShell`, the stuck-streak line, off by default), `UserPromptSubmit` and `SessionEnd` (the recall hook). Input: Claude Code's JSON payload on
   stdin. The fields read are `session_id`, `transcript_path`, `cwd`,
   `hook_event_name`, `stop_hook_active`, `last_assistant_message`, `source`
   and `trigger`; for a finished subagent also `agent_type`, `agent_id` and
   `agent_transcript_path`; for the git-rule watcher `tool_input.command` and
   `tool_use_id`; for the recall hook `tool_name`, `tool_input.file_path` or
-  `notebook_path`, `prompt`, `reason` and `agent_id`. Output: the briefing as text (SessionStart, up to 9,500
+  `notebook_path`, `prompt`, `reason` and `agent_id`; for the stuck-streak line `tool_input.command`, `error` and
+  `is_interrupt`. Output: the briefing as text (SessionStart, up to 9,500
   characters), a reminder as `additionalContext` JSON (Stop), the recall hook's notes as
   `additionalContext` JSON (PostToolUse, UserPromptSubmit), and the gate's
   request to wait (PreCompact, exit status 2). Any other failure exits 0.
@@ -85,7 +86,8 @@ no network code.
   `~/.claude/projects/.sessions/<project folder>/`, written by the recall hook
   and read by it and the briefing: changed file paths, the keys of exchanges
   already named, the user's message (secrets replaced, 120 characters) or a
-  `quiet` line for a private one, a title, `saw` and `end` lines
+  `quiet` line for a private one, a title, `saw` and `end` lines, and with the
+  stuck trigger on `fail` and `stuck` lines (hashes of a command name and an error line, no text)
   ([What it saves](../PRIVACY.md#what-it-saves)).
 - **The mistakes cache**: `.mistakes.json` in a project's `memory` folder, mode 0600, written under the
   store's lock by the Stop's background tidy-up (never by the Stop itself) once a day from the last 90

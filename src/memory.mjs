@@ -813,13 +813,21 @@ function enforceHook(at) {
   if (!existsSync(file)) return [false, `${file} is missing: the enforce hook cannot run. The user's fix: claude plugin update ${PLUGIN}`];
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.length) return [false, `hooks.json in ${at} has no PreToolUse group: the enforce hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.SubagentStop?.length) return [false, `hooks.json in ${at} has no SubagentStop group: subagent reports are not saved. The user's fix: claude plugin update ${PLUGIN}`];
-  try {
-    const out = execFileSync(process.execPath, [file], { input: '{}', encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'] });
-    return out ? [false, `the enforce hook printed output for an empty call (${clip(out, 80)}): it must print nothing`] : [true, 'the enforce hook runs and is wired (PreToolUse)'];
-  } catch (e) {
-    // A slow node start (a loaded or virus-scanned PC) is a note, not a broken hook.
-    if (e.code === 'ETIMEDOUT') return [true, 'the enforce hook did not answer in time (15 s): the PC may be slow; run doctor again'];
-    return [false, `the enforce hook failed an empty call (exit code ${e.status ?? e.code}): ${file}`]; }
+  if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PostToolUseFailure?.length) return [false, `hooks.json in ${at} has no PostToolUseFailure group: the stuck-streak hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
+  const recall = [join(at, 'src', 'recall-hook.mjs'), join(at, 'recall-hook.mjs')].find(existsSync) ?? join(at, 'src', 'recall-hook.mjs');
+  if (!existsSync(recall)) return [false, `${recall} is missing: the recall hooks cannot run. The user's fix: claude plugin update ${PLUGIN}`];
+  // Each hook gets an empty call and must exit 0 and print nothing.
+  for (const [f, name] of [[file, 'enforce'], [recall, 'recall']]) {
+    try {
+      const out = execFileSync(process.execPath, [f], { input: '{}', encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'] });
+      if (out) return [false, `the ${name} hook printed output for an empty call (${clip(out, 80)}): it must print nothing`];
+    } catch (e) {
+      // A slow node start (a loaded or virus-scanned PC) is a note, not a broken hook.
+      if (e.code === 'ETIMEDOUT') return [true, `the ${name} hook did not answer in time (15 s): the PC may be slow; run doctor again`];
+      return [false, `the ${name} hook failed an empty call (exit code ${e.status ?? e.code}): ${f}`];
+    }
+  }
+  return [true, 'the enforce hook runs and is wired (PreToolUse)'];
 }
 
 // What status and doctor say of a project turned off.

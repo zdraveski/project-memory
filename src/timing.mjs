@@ -8,9 +8,9 @@ import { join } from 'node:path';
 
 export const FILE = '.timing';
 export const MAX = 256 * 1024;
-const HOOKS = ['save', 'tidy', 'brief', 'enforce', 'gate', 'recall', 'prompt', 'end'];
+const HOOKS = ['save', 'tidy', 'brief', 'enforce', 'gate', 'recall', 'prompt', 'end', 'fail'];
 // Claude Code's own names only: whatever else a payload holds never reaches the file.
-const EVENTS = ['Stop', 'SubagentStop', 'SessionStart', 'PreCompact', 'PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Notification', 'SessionEnd'];
+const EVENTS = ['Stop', 'SubagentStop', 'SessionStart', 'PreCompact', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'UserPromptSubmit', 'Notification', 'SessionEnd'];
 const DETAILS = ['startup', 'resume', 'compact', 'clear', 'auto', 'manual'];
 
 export const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];

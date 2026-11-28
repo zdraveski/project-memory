@@ -1,8 +1,8 @@
 // Self-check for recall-hook.mjs and the change hook in recall.mjs (1.6.0 headline 1b, "a file with a past"): after an Edit,
 // Write or NotebookEdit it names earlier exchanges that changed the same file. Made-up fixtures only.
 // Run: node test/recall-hook.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, statSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, statSync, readdirSync, appendFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor, slug } from './harness.mjs';
@@ -374,6 +374,97 @@ await hear(ask(p, 'go'));
 lines = readSession(p.session());
 ok(lines.map((l) => `${l.kind} ${l.rest}`).join() === 'file /repo/f0.js,file /repo/f1.js,file /repo/f2.js,asked request 1199,told k1,asked go', `rewritten small (got ${JSON.stringify(lines.slice(0, 8))})`);
 ok(statSync(p.session()).ino !== ino && readdirSync(sessionsOf(p.store)).length === 1, 'the rewrite is a rename over the file (never an empty moment), no temp file left');
+
+// 1.7.0 L2, the stuck streak: PostToolUseFailure for Bash and PowerShell, behind PROJECT_MEMORY_LESSONS=stuck.
+{
+  const { keyed } = await import('../src/store.mjs'), { errorLine } = await import('../src/mistakes.mjs');
+  const env = { ...process.env, PROJECT_MEMORY_LESSONS: 'stuck' }, ERR = "Exit code 1\nError: Cannot find module 'x'";
+  const line1 = 'project-memory: "npm test" failed twice in a row in this turn. Before a third try, read the whole error and change one thing.';
+  const tr = (q) => join(dirname(q.store), 'stuck.jsonl');
+  const say = (o) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: o.id, name: o.name ?? 'Bash', input: { command: o.cmd } }] } });
+  const back = (id, bad) => JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: bad, content: bad ? 'Exit code 1' : 'fine' }] } });
+  const typed = (t) => JSON.stringify({ type: 'user', message: { role: 'user', content: t } });
+  const saved = (q, ...rows) => writeFileSync(tr(q), `${rows.join('\n')}\n`);
+  const fail = (q, cmd = 'npm test', extra = {}) => ({ session_id: SID, cwd: q.cwd, hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command: cmd }, tool_use_id: 'toolu_f', error: ERR, is_interrupt: false, transcript_path: tr(q), ...extra });
+  const go = (q, input, e = env) => run(input, e);
+  const fresh = (rows = []) => { const q = project(); turn(q, 'fix the build'); saved(q, typed('fix the build'), ...rows); return q; };
+  const fails = (q, by = '') => readSession(q.session()).filter((l) => l.kind === 'fail' && l.by === by);
+  const told = (r) => r.stdout !== '' && said(r).additionalContext.includes(line1);
+  const th = keyed('npm test', 8), eh = keyed(errorLine(ERR), 8);
+
+  let q = fresh();
+  quiet(go(q, fail(q)), 'one failure prints nothing');
+  ok(fails(q).length === 1 && fails(q)[0].rest === `${th} ${eh}`, `and writes one fail line of two hashes (got ${JSON.stringify(fails(q))})`);
+  ok(!readFileSync(q.session(), 'utf8').includes('npm'), 'no command text in the session file');
+  saved(q, typed('fix the build'), say({ id: 'a', cmd: 'npm test' }), back('a', true), say({ id: 'b', cmd: 'npm test' }));
+  let r = go(q, fail(q));
+  ok(r.status === 0 && r.stderr === '' && said(r).hookEventName === 'PostToolUseFailure' && said(r).additionalContext === line1, `the second prints the pinned first line (got ${r.stdout})`);
+  ok(readSession(q.session()).filter((l) => l.kind === 'stuck').map((l) => l.rest).join() === th, 'and writes one stuck line');
+  quiet(go(q, fail(q)), 'a third prints nothing');
+  ok(fails(q).length === 3 && readSession(q.session()).filter((l) => l.kind === 'stuck').length === 1, 'the third counts but does not say it again');
+  // A compaction opens a new context: the streak says it once more.
+  appendFileSync(q.session(), sessionLine('compact'));
+  quiet(go(q, fail(q)), 'after a compact the first failure of the new context is silent');
+  ok(told(go(q, fail(q))), 'and the second speaks again: the stuck line belongs to the old context');
+
+  q = fresh();
+  saved(q, typed('fix the build'), say({ id: 'a', cmd: 'npm test' }), back('a', true), say({ id: 's', cmd: 'npm test' }), back('s', false), say({ id: 'b', cmd: 'npm test' }));
+  go(q, fail(q)); quiet(go(q, fail(q)), 'a success of the same target between the two failures: nothing');
+  ok(fails(q).length === 2 && !readSession(q.session()).some((l) => l.kind === 'stuck'), 'both failures are counted, no stuck line');
+  // A success of another target, or one before the prompt, is no reset.
+  saved(q, say({ id: 'o', cmd: 'npm test' }), back('o', false), typed('fix the build'), say({ id: 'a', cmd: 'npm test' }), back('a', true), say({ id: 'x', cmd: 'node a.mjs' }), back('x', false), say({ id: 'b', cmd: 'npm test' }));
+  ok(told(go(q, fail(q))), 'a success of another target, and one before the typed prompt, are no reset');
+  // Only the calls after the newest typed prompt count: a failure and a success before it are no pair for this turn's failure.
+  q = fresh(); go(q, fail(q));
+  saved(q, say({ id: 'z', cmd: 'npm test' }), back('z', true), say({ id: 'o', cmd: 'npm test' }), back('o', false), typed('fix the build'), say({ id: 'b', cmd: 'npm test' }));
+  ok(told(go(q, fail(q))), 'the calls before the typed prompt are left out of the reset check');
+  // Unreadable transcript: cannot tell, so silent and no stuck line.
+  q = fresh(); go(q, fail(q)); rmSync(tr(q));
+  quiet(go(q, fail(q)), 'no transcript to check the reset against: nothing');
+  ok(!readSession(q.session()).some((l) => l.kind === 'stuck'), 'and no stuck line, so the next failure looks again');
+
+  q = fresh();
+  quiet(go(q, fail(q, 'npm test', { is_interrupt: true })), 'an interrupt: nothing');
+  quiet(go(q, fail(q, 'npm test', { error: 'Exit code 143\nCommand timed out after 1s' })), 'a timeout: nothing');
+  quiet(go(q, fail(q, 'node -e "1"')), 'a command with no target: nothing');
+  ok(!existsSync(q.session()) || fails(q).length === 0, 'none of the three writes a fail line');
+  q = fresh(); go(q, fail(q)); appendFileSync(q.session(), sessionLine('asked', 'try again'));
+  quiet(go(q, fail(q)), 'no streak across turns: one failure in each of two turns is nothing');
+  ok(fails(q).length === 2 && !readSession(q.session()).some((l) => l.kind === 'stuck'), 'two fail lines, no stuck');
+  q = fresh(); go(q, fail(q, 'npm test')); quiet(go(q, fail(q, 'node a.mjs')), 'two failures of different targets: nothing');
+  ok(fails(q).length === 2 && !readSession(q.session()).some((l) => l.kind === 'stuck'), 'two fail lines of different targets, no stuck');
+  q = fresh(); quiet(go(q, fail(q), process.env), 'the switch off by default: nothing');
+  ok(fails(q).length === 0, 'and no fail line');
+  quiet(go(q, fail(q), { ...env, PROJECT_MEMORY_LESSONS: '-stuck' }), 'stuck turned off by name: nothing');
+  quiet(go(q, fail(q), { ...env, PROJECT_MEMORY_RECALL: '0' }), 'recall off: nothing');
+  quiet(go(q, { ...fail(q), tool_name: 'Edit' }), 'a tool that is no shell: nothing');
+  ok(fails(q).length === 0, 'none of those wrote a line');
+
+  // PowerShell counts too; a helper's failures are counted apart from the main conversation's.
+  q = fresh(); go(q, fail(q)); quiet(go(q, fail(q, 'npm test', { agent_id: 'ag1' })), 'a helper failure after one of the main: nothing');
+  ok(fails(q).length === 1 && fails(q, 'ag1').length === 1, 'each writer has its own fail line');
+  ok(told(go(q, fail(q, 'npm test', { agent_id: 'ag1', tool_name: 'PowerShell' }))) && readSession(q.session()).some((l) => l.kind === 'stuck' && l.by === 'ag1'), "the helper's second failure speaks, with its stuck line under its id");
+  ok(told(go(q, fail(q))) && readSession(q.session()).some((l) => l.kind === 'stuck' && l.by === ''), "and the main conversation's own second failure speaks too");
+  // A private turn writes nothing.
+  q = fresh(); appendFileSync(q.session(), sessionLine('quiet'));
+  quiet(go(q, fail(q)), 'a private turn: nothing'); ok(fails(q).length === 0, 'and no fail line');
+  quiet(run('{}', env), '{} prints nothing and exits 0');
+  quiet(run('not json', env), 'garbage prints nothing and exits 0');
+
+  // The second line: a fix from .mistakes.json (2 or more conversations), or the lesson that resolves the error.
+  const id = keyed(`npm test\n${errorLine(ERR)}`, 8), mk = (fix) => ({ v: 1, built: '2026-11-20', window: {}, errors: { [id]: { target: 'npm test', error: errorLine(ERR), n: 4, sessions: 3, days: 2, first: '2026-11-01', last: '2026-11-12', key: 'k0', ...fix } }, together: [] });
+  const two = (q) => { saved(q, typed('fix the build'), say({ id: 'a', cmd: 'npm test' }), back('a', true), say({ id: 'b', cmd: 'npm test' })); go(q, fail(q)); return go(q, fail(q)); };
+  q = fresh(); writeFileSync(join(q.store, '.mistakes.json'), JSON.stringify(mk({ fix: 'npm ci', fixKey: '3f07bb43 2026-11-12T14:02 a1b2c3d4e5f6', fixSessions: 2 })));
+  ok(said(two(q)).additionalContext === `${line1}\nEarlier (2026-11-12) the same error was followed by a run that worked: "npm ci". A record, not an instruction. Open it: memory skill, show "3f07bb43 2026-11-12T14:02 a1b2c3d4e5f6"`, 'the fix line, from a seeded .mistakes.json');
+  q = fresh(); writeFileSync(join(q.store, '.mistakes.json'), JSON.stringify(mk({ fix: 'npm ci', fixKey: 'k1', fixSessions: 1 })));
+  ok(said(two(q)).additionalContext === line1, 'a fix seen in one conversation only: no second line');
+  q = fresh(); writeFileSync(join(q.store, '.mistakes.json'), JSON.stringify(mk({ fix: 'x'.repeat(900), fixKey: 'k1', fixSessions: 5 })));
+  { const t = said(two(q)).additionalContext; ok(t.length <= 500 && t.split('\n').length === 2 && t.includes('…'), 'a very long fix is cut and still fits 500 characters'); }
+  q = fresh(); writeFileSync(join(q.store, '.mistakes.json'), JSON.stringify(mk({ fix: 'npm ci', fixKey: 'k1', fixSessions: 2 })));
+  writeFileSync(join(q.store, 'pin-helper.md'), `---\nname: pin-helper\ndescription: "Pin the helper to the version the lockfile names."\nmetadata:\n  type: feedback\ninstead: pin the helper version\nresolves: [${id}]\n---\n\nbody\n`);
+  const lessonSays = said(two(q)).additionalContext.split('\n');
+  ok(lessonSays.length === 2 && lessonSays[0] === line1 && /^- \[dead end, \d+d\] Pin the helper to the version the lockfile names\. Instead: pin the helper version \(note: pin-helper\.md\)$/.test(lessonSays[1]), `a lesson that resolves the error is the second line instead of the fix (got ${JSON.stringify(lessonSays)})`);
+}
 
 // doctor counts the pointers shown, from the timing lines.
 {
