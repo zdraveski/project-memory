@@ -90,6 +90,7 @@ export default {
   "stopSays: co-change for a file gone from disk": ["!existsSync(join(topOf(cwd), r.b))", "false"],
   "stopSays: a retired pair speaks": ["?.retired) rules = rules.filter", "?.retired && false) rules = rules.filter"],
   "stopSays: a retired pair silences the next rule": ["rules = rules.filter((x) => x !== r)", "rules = []"],
+  "stopSays: rules not moved into the repo's space": ["rules = rules.map((r) => ({ ...r, a: sub + cleanPath(r.a), b: sub + cleanPath(r.b) }));", "rules = rules.map((r) => ({ ...r, a: cleanPath(r.a), b: cleanPath(r.b) }));"],
   "stopSays: co-change writes no lesson line": ["add(['apart', pair], ['lesson', lessonLine(`cochange:${pair}`, `pair:${cleanPath(r.b)}`)]);", "add(['apart', pair]);"],
   "stopSays: co-change writes no apart line": ["add(['apart', pair], ['lesson'", "add(['lesson'"],
   "atStop: three broken do not retire": ["c.broken >= 3 ||", "false ||"],

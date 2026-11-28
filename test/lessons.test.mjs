@@ -344,6 +344,11 @@ ok(wilson(0, 0).join() === '0,0' && wilson(0, 5)[0] === 0 && wilson(5, 5)[1] ===
     { const y = prep(); const z = await on('claim,cochange', () => say(y, y.turn({ ...END, ...RED }))); ok(z.say === CLAIM && !kinds(y, 'apart').length && kinds(y, 'claim').length === 1, 'cochange: with the claim feedback in the same Stop, only the claim speaks'); }
     { const x = prep([{ a: 'src/a.mjs', b: 'test/a.test.mjs', n: 6, both: 5 }, { a: 'src/a.mjs', b: 'docs/a.md', n: 6, both: 5 }]); x.counters({ [`cochange:${PAIR}`]: blank({ rev: keyed(`cochange:${PAIR}`, 8), retired: 'broken 3 of 4' }) });
       mkdirSync(join(x.cwd, 'docs'), { recursive: true }); writeFileSync(join(x.cwd, 'docs', 'a.md'), 'x'); ok((await say(x, x.turn(END))).say.includes('but not docs/a.md'), 'cochange: a retired pair lets the next rule speak'); }
+    // A conversation run from a folder of the repo: the journal's rules are relative to that folder, the verdicts to the repo's top.
+    { const q0 = proj(), sub = join(q0.cwd, 'pkg'), store = q0.store; mkdirSync(join(q0.cwd, '.git')); mkdirSync(join(sub, 'test'), { recursive: true }); mkdirSync(join(sub, 'src'), { recursive: true }); mkdirSync(sessionsOf(store), { recursive: true }); mkdirSync(store, { recursive: true });
+      writeFileSync(join(sub, 'test', 'a.test.mjs'), 'x'); writeFileSync(join(store, MISTAKES), JSON.stringify({ v: 1, together: [{ a: 'src/a.mjs', b: 'test/a.test.mjs', n: 6, both: 5 }] })); appendFileSync(join(sessionsOf(store), 'abcd1234'), ASK());
+      const r = await atStop({ ...q0.payload, cwd: sub }, { got: [{ changed: [join(sub, 'src', 'a.mjs')], ran: [], raw: 'fix it', ask: 'fix it', frozen: false, ended: true }], quiet: false }, { now: NOW, feedback: true });
+      ok(r.say.includes('changed pkg/src/a.mjs but not pkg/test/a.test.mjs') && readFileSync(join(sessionsOf(store), 'abcd1234'), 'utf8').includes(' pair:pkg/test/a.test.mjs'), `cochange: a rule from a folder of the repo is read in the repo's space (got ${r.say})`); }
     { const x = prep(); writeFileSync(join(x.store, MISTAKES), '{ broken'); ok((await say(x, x.turn(END))).say === '', 'cochange: a mistakes file that will not read'); }
   });
   { const q = proj(); q.put(ASK()); ok((await say(q, q.turn(RED))).say === '' && !kinds(q, 'claim').length, 'claim and cochange are off by default: nothing said'); }

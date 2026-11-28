@@ -337,6 +337,11 @@ function stopSays(lines, a, turn, cwd, store, at, now) {
   if (!lessonsOn('cochange') || turn.ended !== true || lines.some((l) => l.kind === 'apart')) return '';
   let rules = readMistakes(store)?.together;
   if (!Array.isArray(rules)) return '';
+  // The journal's paths are relative to the cwd of the turn, relPath's to the repo's top: the rules move into the top's space.
+  // shortcut: the cwd now stands for the cwd of the conversations the rules came from; a project worked from several folders
+  // mismatches some rules (silent, never wrong); upgrade if the journal stores the repo-relative path.
+  const sub = (relPath(join(cwd, 'x'), cwd) ?? 'x').slice(0, -1);
+  rules = rules.map((r) => ({ ...r, a: sub + cleanPath(r.a), b: sub + cleanPath(r.b) }));
   const rels = (ps) => ps.flatMap((p) => relPath(p, cwd) ?? []), changed = rels(turn.changed ?? []), context = rels(lines.filter((l) => l.kind === 'file').map((l) => l.rest)), { notes } = readCounters(store);
   let r, pair;
   while ((r = cochangeFor(rules, changed, context)) && notes[`cochange:${pair = keyed(`${r.a}\n${r.b}`, 8)}`]?.retired) rules = rules.filter((x) => x !== r);

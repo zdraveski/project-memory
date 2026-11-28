@@ -5,6 +5,7 @@
 import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, unlinkSync, utimesSync, rmdirSync, renameSync, symlinkSync, copyFileSync, readdirSync, chmodSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { sessionLine } from '../src/sessions.mjs';
+import { cleanPath } from '../src/recall.mjs';
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -891,7 +892,7 @@ cp.execFileSync = function (cmd, args, ...rest) {
     const rec = (type, content, message = {}) => JSON.stringify({ type, uuid: `fb-${n}-${Math.random()}`, sessionId: sid, cwd, timestamp: at, message: { role: type, content, ...message } });
     const usage = { input_tokens: 3, cache_read_input_tokens: Math.round(TRIGGER * WINDOW) + 20_000, cache_creation_input_tokens: 0, output_tokens: 9 };
     mkdirSync(mem, { recursive: true }); mkdirSync(dirname(sf), { recursive: true });
-    writeFileSync(sf, sessionLine('asked', 'x') + (fileLine ? sessionLine('file', join(cwd, 'test', 'b.mjs').replaceAll('\\', '/').toLowerCase()) : ''));
+    writeFileSync(sf, sessionLine('asked', 'x') + (fileLine ? sessionLine('file', cleanPath(join(cwd, 'test', 'b.mjs'))) : ''));
     if (seed) writeFileSync(join(mem, '.mistakes.json'), JSON.stringify({ v: 1, together: [{ a: 'src/a.mjs', b: 'test/b.mjs', n: 6, both: 5 }] }));
     mkdirSync(join(cwd, 'test'), { recursive: true }); if (b) writeFileSync(join(cwd, 'test', 'b.mjs'), 'x'); else rmSync(join(cwd, 'test', 'b.mjs'), { force: true });
     writeFileSync(tp, [rec('user', ask),
