@@ -206,7 +206,8 @@ for (const p of ['/abs/a.mjs', 'C:\\x\\a.mjs', '../up/a.mjs', 'a/../b.mjs', '.cl
   ok(mistakes(es, NOW).together.length === 200, 'at most 200 rules'); }
 { const t = [{ a: 'src/a.mjs', b: 'test/a.test.mjs', n: 9, both: 8 }, { a: 'src/b.mjs', b: 'test/b.test.mjs', n: 7, both: 7 }];
   eq(cochangeFor(t, ['src/a.mjs'], []), t[0], 'the rule whose a the turn changed and whose b neither list has');
-  eq(cochangeFor(t, ['SRC\\a.mjs'], []), t[0], 'paths compared with cleanPath');
+  eq(cochangeFor(t, ['src\\a.mjs'], []), t[0], 'paths compared with cleanPath (backslashes)');
+  eq(cochangeFor(t, ['SRC/a.mjs'], []), foldCase('SRC') === 'src' ? t[0] : null, 'and case, only where the file system ignores it');
   eq(cochangeFor(t, ['src/a.mjs'], ['test/a.test.mjs']), null, 'b in the context: no');
   eq(cochangeFor(t, ['src/a.mjs', 'test/a.test.mjs'], []), null, 'b in the turn: no');
   eq(cochangeFor(t, ['src/b.mjs', 'src/a.mjs'], ['test/a.test.mjs']), t[1], 'the first rule that fits');
