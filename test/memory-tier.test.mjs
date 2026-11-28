@@ -2,7 +2,9 @@
 // the tiering rules that would silently lose or duplicate a pointer. Part two
 // builds a throwaway HOME with two stores and breaks the git snapshot path and
 // the --stop gate. Run: node memory-tier.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, unlinkSync, utimesSync, rmdirSync, renameSync, symlinkSync, copyFileSync, readdirSync, chmodSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync, unlinkSync, utimesSync, rmdirSync, renameSync, symlinkSync, copyFileSync, readdirSync, chmodSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { sessionLine } from '../src/sessions.mjs';
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -853,6 +855,29 @@ cp.execFileSync = function (cmd, args, ...rest) {
   const r = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd: 'C:\nowhere', transcript_path: tp, session_id: 'sfail1234', hook_event_name: 'StopFailure' }), timeout: 60000 });
   ok(r.status === 0 && /edit the walrus file/.test(all()) && /walrus\.js/.test(all()) && /stopped before a reply/.test(all()), `a StopFailure writes the journal entry for an edit-only turn (got ${r.status} ${r.stderr})`);
   rmSync(tp);
+}
+// 1.7.0 step 12 (L13, L4): a Stop judges the lessons shown in its turn (an Edit hook showed one) and writes .lessons.json and a `judged`
+// line; a private turn writes neither, and neither costs the journal its entry.
+{
+  const cwd = mkdtempSync(join(tmpdir(), 'les-')), sess = (p) => join(root, '.sessions', p, 'les12345'), at = new Date().toISOString();
+  const rec = (type, uuid, content) => JSON.stringify({ type, uuid, sessionId: 'les12345', cwd, timestamp: at, message: { role: type, content } });
+  const turn = (p, ask) => {
+    const mem = join(root, p, 'memory'), tp = join(root, p, 'les.jsonl');
+    mkdirSync(mem, { recursive: true });
+    writeFileSync(join(mem, 'edit-a.md'), '---\nname: edit-a\ndescription: Never edit a.mjs by hand.\ntype: feedback\napplies_to: [src/a.mjs]\n---\n\nbody\n');
+    writeFileSync(tp, [rec('user', 'l-1', ask), rec('assistant', 'l-2', [{ type: 'tool_use', id: 'l-t', name: 'Edit', input: { file_path: join(cwd, 'src', 'a.mjs') } }])].join('\n') + '\n');
+    mkdirSync(dirname(sess(p)), { recursive: true }); writeFileSync(sess(p), `${sessionLine('asked', 'x')}`);
+    const hook = spawnSync(process.execPath, [tool('src/enforce-hook.mjs')], { env: { ...process.env, PROJECT_MEMORY_LESSONS: 'edit' }, encoding: 'utf8', input: JSON.stringify({ session_id: 'les12345', cwd, transcript_path: tp, hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: join(cwd, 'src', 'a.mjs'), old_string: 'x', new_string: 'y' } }) });
+    const stop = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd, transcript_path: tp, session_id: 'les12345', hook_event_name: 'Stop', last_assistant_message: 'edited a.mjs' }), timeout: 60000 });
+    return { hook, stop, mem, lines: existsSync(sess(p)) ? readFileSync(sess(p), 'utf8').split('\n').filter(Boolean) : [] };
+  };
+  const t1 = turn('proj-les', 'edit the a file');
+  ok(/edit-a\.md/.test(t1.hook.stdout) && t1.stop.status === 0 && t1.lines.some((l) => /^lesson \S+ edit-a\.md edit:src\/a\.mjs$/.test(l)), `fixture: the Edit hook showed the lesson (got ${t1.hook.stdout} ${t1.stop.stderr})`);
+  const c = JSON.parse(readFileSync(join(t1.mem, '.lessons.json'), 'utf8')).notes['edit-a.md'];
+  ok(c.shown === 1 && c.unknown === 1 && c.sessions.join() === 'les12345' && t1.lines.filter((l) => /^judged \S+ edit-a\.md:u$/.test(l)).length === 1, `a real Stop after the show writes .lessons.json and a judged line (got ${JSON.stringify(c)} ${t1.lines})`);
+  ok(/edit the a file/.test(readdirSync(join(t1.mem, 'journal')).map((f) => readFileSync(join(t1.mem, 'journal', f), 'utf8')).join('')) && !/hookSpecificOutput/.test(t1.stop.stdout), `and the turn is in the journal, the Stop adds no feedback (got ${JSON.stringify(t1.stop.stdout)} ${readdirSync(t1.mem)} ${readdirSync(join(t1.mem, 'journal'))})`);
+  const t2 = turn('proj-les-private', 'edit it <private>keep this out</private>');
+  ok(t2.stop.status === 0 && !existsSync(join(t2.mem, '.lessons.json')) && !t2.lines.some((l) => l.startsWith('judged')), `a private turn writes neither (got ${t2.lines})`);
 }
 // An index.lock a dead git left behind would refuse every commit from now on.
 note('proj-two', 'g');

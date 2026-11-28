@@ -104,11 +104,11 @@ function walk(es, lessons) {
       if (r) { st.cochange = true; fire('cochange', `${r.a} with ${r.b}`, `${r.a} changed with ${r.b} in ${r.both} of ${r.n} conversations`, { files: [r.b] }); }
       const c = claimed(e.answered, e.ran);
       if (c) fire('claim', c.target, `says the ${c.kind} checks pass, but the last "${c.target}" failed`, { targets: [c.target] });
-      // H5: the cooldown is at most 1 nudge in 10 prompts and 3 in a conversation. The journal keeps no interrupt marker.
+      // H5: the cooldown is none within 10 prompts of the last nudge (the 11th may nudge, as the hook) and 3 in a conversation. The journal keeps no interrupt marker.
       st.prompts++;
       const n = correction(e.asked, { first, helper: false, marker: () => false, lastEndsWithQuestion: () => /\?\s*$/.test(st.last) });
       if (n.fire) {
-        if (st.nudges >= 3 || st.prompts - st.nudged < 10) drop('nudge');
+        if (st.nudges >= 3 || st.prompts - st.nudged <= 10) drop('nudge');
         else { st.nudges++; st.nudged = st.prompts; fire('nudge', n.ids.join(' '), 'this reads like a correction that should last: save it as a feedback note'); }
       }
       st.last = e.answered;

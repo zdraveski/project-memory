@@ -3,13 +3,16 @@
 // calls these. Imports store, text, enforce and recall (never the other way round, ADR 0003).
 import { readFileSync, appendFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, posix, isAbsolute, resolve } from 'node:path';
-import { foldCase, projectsRoot, sharedStore, withLock, replaceIfUnchanged, raw, tag } from './store.mjs';
-import { gate } from './privacy.mjs';
+import { foldCase, projectsRoot, sharedStore, withLock, replaceIfUnchanged, raw, tag, keyed, local } from './store.mjs';
+import { gate, PRIVATE } from './privacy.mjs';
 import { sessionsOf, readSession, sessionLine } from './sessions.mjs';
 import { fit } from './text.mjs';
-import { notesOf } from './enforce.mjs';
+import { notesOf, hits, familyOf } from './enforce.mjs';
+import { own, userText } from './transcript.mjs';
 import { cleanPath, whole, BLOCK_MAX } from './recall.mjs';
+import { targetOf, errorLine, NOT_FAILURE, readMistakes } from './mistakes.mjs';
 import { lessonsOn } from './switches.mjs';
+import * as T from './transcript.mjs';
 
 // F1. The switches live in switches.mjs (no imports, so a hook can ask without loading this file); re-exported here.
 export { TRIGGERS, DEFAULTS, lessonsOn } from './switches.mjs';
@@ -52,19 +55,22 @@ export function deadEnds(store, now = Date.now(), opts) {
 export function retiredLines(store, opts) {
   const { notes } = readCounters(store), due = Object.entries(notes).filter(([, c]) => c?.retired && !c.told);
   if (!due.length) return { names: [], lines: [] };
-  const alive = new Set([[store, ''], [sharedStore(), '_shared/']].flatMap(([d, pre]) => (d === store && pre ? [] : notesOf(d, opts).filter((x) => x.l?.lesson && !x.l.lesson.hidden).map((x) => `${pre}${x.file}`))));
-  const told = due.filter(([name]) => name.startsWith('cochange:') || alive.has(name));
+  const alive = new Map([[store, ''], [sharedStore(), '_shared/']].flatMap(([d, pre]) => (d === store && pre ? [] : notesOf(d, opts).filter((x) => x.l?.lesson && !x.l.lesson.hidden).map((x) => [`${pre}${x.file}`, x.l.lesson]))));
+  const told = due.filter(([name, c]) => name.startsWith('cochange:') || (alive.has(name) && (c.rev === undefined || c.rev === revOf(alive.get(name)))));
   return { names: told.map(([name]) => name), lines: told.map(([name, c]) => `project-memory: the lesson ${name} is no longer shown (shown ${c.shown || 0}, broken ${c.broken || 0}). Fix the note or add resolved-by: to it. See: memory skill, lessons`) };
 }
 
+// F3's `rev`: what a counter was earned by. Another description, path or rule makes another lesson, with counters of its own.
+export const revOf = (l) => keyed(JSON.stringify([l.to, l.when, l.instead, l.resolves, l.desc]), 8);
+
 // The project's lessons, then the shared store's (named `_shared/<file>`, `shared: true`): [{ name, l, mtime, r }]. Left out: a note that
-// is no lesson, a bad or hidden one, and one the counters say is retired.
+// is no lesson, a bad or hidden one, and one the counters say is retired (unless the note changed since: another rev).
 export function lessonsFor(store, opts) {
   const keep = (x) => x.l?.lesson && !x.l.lesson.hidden;
   const out = notesOf(store, opts).filter(keep).map((x) => ({ name: x.file, l: x.l.lesson, mtime: x.mtime, r: x.r }));
   if (sharedStore() !== store) out.push(...notesOf(sharedStore(), opts).filter(keep).map((x) => ({ name: `_shared/${x.file}`, l: x.l.lesson, mtime: x.mtime, r: x.r, shared: true })));
   const { notes } = readCounters(store);
-  return out.filter((x) => !notes[x.name]?.retired);
+  return out.filter((x) => { const c = notes[x.name]; return !(c?.retired && (c.rev === undefined || c.rev === revOf(x.l))); });
 }
 
 // The folder a lesson's paths are relative to: the nearest one at or above `cwd` that holds a `.git` (a folder, or the file of a worktree
@@ -159,6 +165,107 @@ export function parseLesson(rest) {
   try { return m ? { name: decodeURIComponent(m[1]), on: m[2] } : null; } catch { return null; }
 }
 
+// H5. The correction nudge, from the prompt hook (ctx is onPrompt's: the session file's path and the lines read before this prompt's own).
+// { say, ids, why }: `say` is the text for Claude ('' for none), `why` the reason for none ('' when it fires), for `memory preview --prompt`.
+// Writes a `nudge fired:` or `nudge dropped:` line (pattern ids and a filter id, never the prompt's words) unless `dry`. The cooldown: none
+// within 10 prompts of the last nudge, none once 3 are in the file. The previous turn's end is read from the last 64 KB of the transcript.
+export const NUDGE_TEXT = 'project-memory: this reads like a correction that should last. If it is, save it now as a feedback note: the rule, why, and applies_to (files) or applies_when (push, merge, publish, release, deploy, destroy). If it is not, ignore this.';
+// correction.mjs (~45 unicode regexes, 11 ms to load) is read only once the switch is on, so a prompt with the nudge off pays nothing:
+// nudgeFor is the hook's async entry, nudgeWith the same with the module in hand (the memory command is sync and imports it itself).
+const noNudge = (why, ids = []) => ({ say: '', ids, why });
+export async function nudgeFor(input, ctx, opts) {
+  return lessonsOn('nudge') ? nudgeWith(await import('./correction.mjs'), input, ctx, opts) : noNudge('nudge is off');
+}
+export function nudgeWith({ correction, VERSION }, input, ctx, { dry = false, readTail } = {}) {
+  const none = noNudge;
+  if (!lessonsOn('nudge')) return none('nudge is off');
+  const { lines, at } = ctx;
+  let recs;
+  const tail = () => recs ??= (() => {
+    try { return [...T.records((readTail ?? T.readTail)(input.transcript_path, 64 * 1024).text, { types: ['user', 'assistant'] })]; } catch { return []; }
+  })();
+  // The turn's last record (a record of tool calls alone has no text and is skipped by the question check, so an older reply's ? may count: accepted), leaving out the prompt itself when the transcript already holds it.
+  const last = () => { const r = tail(), i = r.length - 1; return i >= 0 && r[i].type === 'user' && T.prompt(r[i], T.text(r[i]).trim()) ? i - 1 : i; };
+  const marker = () => { const r = tail()[last()], c = r?.message?.content; return r?.type === 'user' && (/^\s*\[Request interrupted by user/.test(T.text(r)) || (Array.isArray(c) && c.some((b) => b?.type === 'tool_result' && T.refused(r, b)))); };
+  const lastEndsWithQuestion = () => { const r = tail().slice(0, last() + 1).findLast((x) => x.type === 'assistant' && T.text(x).trim()); return !!r && T.text(r).trim().endsWith('?'); };
+  const v = correction(T.own(input.prompt), { helper: input.agent_id != null, first: !lines.some((l) => l.kind === 'asked'), marker, lastEndsWithQuestion });
+  const k = 1 + lines.filter((l) => l.kind === 'nudge').length, add = (rest) => { if (!dry) try { appendFileSync(at, sessionLine('nudge', `${rest} v${VERSION} #${k}`), { mode: 0o600 }); } catch {} };
+  if (!v.fire) { if (v.drop) add(`dropped:${v.drop}`); return none(v.drop || 'no match', v.ids); }
+  // tidy (sessions.mjs) may collapse asked lines past 64 KB; that only makes the cooldown stricter.
+  const asked = lines.flatMap((l, i) => (l.kind === 'asked' ? [i] : [])), cut = asked.length >= 10 ? asked.at(-10) : -1;
+  const fired = lines.flatMap((l, i) => (l.kind === 'nudge' && l.rest.startsWith('fired:') ? [i] : []));
+  if (fired.length >= 3 || fired.some((i) => i > cut)) return none('cooldown', v.ids);
+  add(`fired:${v.ids.join(',')}`);
+  // The turn before: the lines after the newest prompt line. A co-change lesson has no note to fix.
+  const lastPrompt = lines.findLastIndex((l) => l.kind === 'asked' || l.kind === 'quiet');
+  const shown = lines.slice(lastPrompt + 1).findLast((l) => l.kind === 'lesson' && l.by === '' && !parseLesson(l.rest)?.name.startsWith('cochange:') && parseLesson(l.rest));
+  return { say: shown ? `${NUDGE_TEXT} The lesson ${parseLesson(shown.rest).name} was shown before this; if it did not hold, fix that note instead of writing a new one.` : NUDGE_TEXT, ids: v.ids, why: '' };
+}
+
+// L2. Whether a command of `target` went through between the last two failures of it in this turn, read from the transcript's last
+// 512 KB (only when about to speak). Raw records, not turns(): turns() clears an exact re-run's earlier marks. A call with no result yet
+// is the failure being reported. true: yes; false: no, or fewer than two failures show in the tail; null: the transcript will not read.
+// `side`: the file is a helper's own, whose records are all sidechain.
+async function wentThrough(path, target, side) {
+  try {
+    const { readTail, TAIL, records, text, prompt } = await import('./transcript.mjs');
+    let calls = [];
+    const done = new Map();
+    for (const r of records(readTail(path, TAIL).text, { types: ['user', 'assistant'], sidechain: side })) {
+      const c = r.message?.content;
+      if (r.type === 'user' && prompt(r, text(r))) { calls = []; continue; }
+      if (!Array.isArray(c)) continue;
+      for (const b of c) {
+        if (r.type === 'user' && b?.type === 'tool_result') done.set(b.tool_use_id, b.is_error === true);
+        else if (r.type === 'assistant' && b?.type === 'tool_use' && /^(?:Bash|PowerShell)$/.test(b.name) && typeof b.input?.command === 'string' && targetOf(b.input.command) === target) calls.push(b.id);
+      }
+    }
+    const ok = calls.map((id) => done.get(id) === false), bad = ok.flatMap((g, i) => (g ? [] : [i]));
+    return bad.length > 1 && ok.slice(bad.at(-2) + 1, bad.at(-1)).includes(true);
+  } catch { return null; }
+}
+
+// L2, the stuck streak: PostToolUseFailure for Bash and PowerShell. Appends a `fail` line (hashes only) and, on the second failure of one
+// target in this turn by one writer, with no `stuck` line of its in this context, tells Claude once to read the whole error and change one
+// thing, with the fix `.mistakes.json` holds for that error (2 or more conversations) or the line of a lesson that resolves it.
+// shortcut: the error id is made from the full error text here and from the journal's last 300 characters there; they match when the
+// last error marker line sits in that tail, which is nearly always. Returns { say }; '' for none. Never throws.
+export async function onFailure(input, { now = Date.now() } = {}) {
+  const none = { say: '' };
+  try {
+    const error = String(input?.error ?? ''), cmd = input?.tool_input?.command, s = tag(input?.session_id);
+    if (!lessonsOn('stuck') || input.is_interrupt === true || !/^(?:Bash|PowerShell)$/.test(input.tool_name) || typeof cmd !== 'string' || NOT_FAILURE.test(error) || !/^[\w-]+$/.test(s)) return none;
+    const target = targetOf(cmd);
+    if (!target) return none;
+    const { why, store } = gate(input, s, 1);
+    if (why) return none;
+    const at = join(sessionsOf(store), s), lines = readSession(at);
+    if (!lines || lines.findLast((l) => l.kind === 'asked' || l.kind === 'quiet')?.kind === 'quiet') return none;
+    const by = typeof input.agent_id === 'string' ? input.agent_id.replace(/[^\w-]/g, '').slice(0, 64) : '', th = keyed(target, 8), eh = errorLine(error);
+    mkdirSync(dirname(at), { recursive: true, mode: 0o700 });
+    appendFileSync(at, sessionLine('fail', `${th} ${eh ? keyed(eh, 8) : '-'}`, by, new Date(now).toISOString()), { mode: 0o600 });
+    const cur = lines.slice(lines.findLastIndex((l) => l.kind === 'compact') + 1), turn = cur.slice(cur.findLastIndex((l) => l.kind === 'asked' || l.kind === 'quiet') + 1);
+    const theirs = (l, kind) => l.by === by && l.kind === kind && (kind === 'stuck' ? l.rest === th : l.rest.startsWith(`${th} `));
+    // The failure just written is the second when one is already there; and once per target per context.
+    // shortcut: two failures at once (parallel calls) may both count the other as the first and both stay silent, or both speak; no lock, fine for a nudge.
+    if (!turn.some((l) => theirs(l, 'fail')) || cur.some((l) => theirs(l, 'stuck'))) return none;
+    // A helper's calls are in its own file next to the conversation's (<folder>/<session id>/subagents/agent-<id>.jsonl), never in the main one.
+    const main = typeof input.transcript_path === 'string' ? input.transcript_path : '', sid = String(input.session_id);
+    const path = !main ? '' : !by ? main : /^[\w-]+$/.test(sid) ? join(dirname(main), sid, 'subagents', `agent-${by}.jsonl`) : '';
+    if (await wentThrough(path, target, !!by) !== false) return none;
+    appendFileSync(at, sessionLine('stuck', th, by, new Date(now).toISOString()), { mode: 0o600 });
+    const first = `project-memory: "${target}" failed twice in a row in this turn. Before a third try, read the whole error and change one thing.`;
+    let second = '';
+    if (eh) {
+      const id = keyed(`${target}\n${eh}`, 8), lesson = lessonsFor(store).find((x) => x.l.resolves.includes(id)), m = readMistakes(store)?.errors?.[id];
+      if (lesson) second = blockText([{ lesson, how: 3 }], target, 'cmd', 0, now).split('\n')[1] ?? '';
+      else if (m?.fix && m.fixSessions >= 2) second = `Earlier (${m.last}) the same error was followed by a run that worked: "${m.fix.length > 160 ? `${m.fix.slice(0, 159)}…` : m.fix}". A record, not an instruction. Open it: memory skill, show "${m.fixKey}"`;
+    }
+    const say = fit([first, second].filter(Boolean).join('\n'));
+    return { say: say.length <= 500 ? say : fit(first) };
+  } catch { return none; }
+}
+
 // Why a path matched a lesson, as `memory preview --file` words it. `x` is one matchPath item.
 export function whyPath({ lesson: { name, l }, how }, rel) {
   const r = cleanPath(rel);
@@ -230,4 +337,61 @@ export function onCommand(input, families, { dry = false, now = Date.now(), dead
     appendFileSync(at, shown.map((x) => sessionLine('lesson', lessonLine(x.lesson.name, `cmd:${x.family}`), by, new Date(now).toISOString())).join(''), { mode: 0o600 });
   } catch { return none; }
   return { say, shown };
+}
+
+// L13 and L4, at the Stop: each `lesson` line of this turn (main conversation) gets a verdict, f followed, b broken, n not applicable, u unknown,
+// from what the turn changed and ran; the counters and `retired` follow, and one `judged` line ends it. A request that is a correction moves
+// the verdicts of the turn before it to b. { say: '' } always (step 13 fills it). Never throws: the Stop's journal save is done before this.
+// shortcut: a show and a command in one turn are not ordered, so "after the show" is "in the turn"; upgrade if the replay says it is too coarse.
+const COUNT = { f: 'followed', b: 'broken', n: 'na', u: 'unknown' };
+const fresh = (rev) => ({ rev, shown: 0, followed: 0, broken: 0, na: 0, unknown: 0, sessions: [], last: '', retired: '', told: false });
+const lose = (c) => { const n = c.shown - c.na; if (n > 0 && (c.broken >= 3 || wilson(c.broken, n)[0] >= 0.25)) c.retired = `broken ${c.broken} of ${n}`; };
+function judge(on, turn, cwd, rule) {
+  const i = on.indexOf(':'), kind = on.slice(0, i), arg = on.slice(i + 1), ran = (turn.ran ?? []).map((c) => c.split(' → failed: ')[0]), changed = (turn.changed ?? []).map((p) => relPath(p, cwd));
+  if (kind === 'pair') return changed.includes(foldCase(arg)) ? 'f' : 'u';
+  if (kind === 'edit' ? !changed.includes(arg) : !ran.some((c) => familyOf(c).includes(arg))) return 'n';
+  const seen = rule ? ran.map((c) => hits(rule, c)) : [];
+  return seen.some((h) => h.hit) ? 'b' : seen.some((h) => h.on) ? 'f' : 'u';
+}
+export async function atStop(payload, seen, { now = Date.now() } = {}) {
+  const none = { say: '' }, turn = seen?.got?.at(-1), s = tag(payload?.session_id);
+  try {
+    if (!turn || seen.quiet || turn.frozen || !['edit', 'command', 'cochange'].some((t) => lessonsOn(t)) || !/^[\w-]+$/.test(s) || PRIVATE.test(userText(turn))) return none;
+    const { why, store } = gate(payload, s, 1);
+    if (why) return none;
+    const at = join(sessionsOf(store), s), lines = readSession(at), prompt = (l) => l.kind === 'asked' || l.kind === 'quiet';
+    if (!lines) return none;
+    const a = lines.findLastIndex(prompt), j = lines.findLastIndex((l) => l.kind === 'judged');
+    if (lines[a]?.kind === 'quiet') return none;
+    const mine = lines.slice(Math.max(a, j) + 1).filter((l) => l.kind === 'lesson' && !l.by).flatMap((l) => parseLesson(l.rest) ?? []);
+    // The turn before, when it was judged and this request is a correction of it: its verdicts move to b (one already b moves nowhere).
+    let moves = [];
+    if (j < a) {
+      const before = lines.slice(lines.findLastIndex((l, i) => i < a && prompt(l)) + 1, a).findLast((l) => l.kind === 'judged');
+      moves = (before?.rest ?? '').split(',').flatMap((x) => { const [n, v] = x.split(':'); try { return COUNT[v] ? [[decodeURIComponent(n), v]] : []; } catch { return []; } });
+      if (moves.length && !(await import('./correction.mjs')).correction(own(turn.raw ?? turn.ask ?? ''), { first: false, helper: false }).fire) moves = [];
+    }
+    if (!mine.length && !moves.length) return none;
+    const found = new Map(lessonsFor(store).map((x) => [x.name, x])), cwd = String(payload.cwd ?? '').replaceAll('\\', '/');
+    const revFor = (name) => (name.startsWith('cochange:') ? keyed(name, 8) : found.has(name) ? revOf(found.get(name).l) : null);
+    const done = mine.map(({ name, on }) => [name, judge(on, turn, cwd, found.get(name)?.r?.rule)]);
+    let touched = false;
+    const saved = updateCounters(store, (c) => {
+      for (const [name, v] of done) {
+        const rev = revFor(name);
+        if (!rev) continue;
+        if (c.notes[name]?.rev !== rev) c.notes[name] = fresh(rev);
+        const e = c.notes[name];
+        e.shown++; e[COUNT[v]]++; e.last = local(now).slice(0, 10); e.sessions = [...e.sessions.filter((x) => x !== s), s].slice(-20);
+        lose(e); touched = true;
+      }
+      for (const [name, v] of moves) {
+        const e = c.notes[name];
+        if (e && e.rev === revFor(name) && e[COUNT[v]] > 0) { e[COUNT[v]]--; e.broken++; lose(e); touched = true; }
+      }
+    });
+    if (touched && !saved) return none;
+    appendFileSync(join(sessionsOf(store), s), sessionLine('judged', done.map(([n, v]) => `${encodeURIComponent(n)}:${v}`).join(','), '', new Date(now).toISOString()), { mode: 0o600 });
+  } catch {}
+  return none;
 }

@@ -104,4 +104,7 @@ export default {
   'a recovered note filed by its pin only': ["isHot(facts, now, shared) ? hot : cold);", "(shared ? facts.tier !== 'archive' : facts.tier === 'hot') ? hot : cold);"],
   "a wrapped hook counted as one line": ["count -= lines(victim);", "count--;"],
   "what an older version kept in .facts trusted": ["k = `2 ${st.size}", "k = `${st.size}"],
+  "the Stop judges no lessons": ["payload?.hook_event_name === 'Stop' && !dry", "false"],
+  "the journal's turn is not handed to the lessons": ["seen.got = got;", ""],
+  "the handoff gets the journal itself, not the tap": ["let s = payload && handoff(payload, tap, kept);", "let s = payload && handoff(payload, sink, kept);"],
 };
