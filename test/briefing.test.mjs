@@ -176,7 +176,7 @@ const snapshot = (dir) => readdirSync(dir).sort().map((f) => { const s = statSyn
 {
   const p = project();
   dead(p.dir, 'old.md', 'use the new helper instead');
-  writeFileSync(join(p.dir, '.lessons.json'), JSON.stringify({ v: 1, notes: { 'old.md': { rev: 'x', shown: 7, followed: 0, broken: 3, na: 0, unknown: 0, sessions: [], last: day(), retired: 'broken 3', told: false },
+  writeFileSync(join(p.dir, '.lessons.json'), JSON.stringify({ v: 1, notes: { 'old.md': { shown: 7, followed: 0, broken: 3, na: 0, unknown: 0, sessions: [], last: day(), retired: 'broken 3', told: false },
     'gone.md': { retired: 'broken 3', told: false, shown: 1, broken: 3 }, 'done.md': { retired: 'broken 3', told: true, shown: 1, broken: 3 } }, errors: {} }));
   const line = 'project-memory: the lesson old.md is no longer shown (shown 7, broken 3). Fix the note or add resolved-by: to it. See: memory skill, lessons';
   env(undefined);

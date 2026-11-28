@@ -102,9 +102,13 @@ no network code.
   exchange is never counted for it: the cut throws instead of counting a leak.
   say so when they cannot. The startup briefing reads it for the errors that keep coming back
   (the `recurring` trigger) and prints at most two, each held to 240 characters.
-- **The lesson counters**: `.lessons.json` in a store, mode 0600, written by the startup briefing
-  under the store's lock and `replaceIfUnchanged`: note names and error ids with counts and a
-  `told` flag, no text. A dry run (`memory preview`) writes nothing.
+- **The lesson counters**: `.lessons.json` in a store, mode 0600, written by the startup briefing and
+  by the Stop (verdicts on the lessons shown in the turn) under the store's lock and `replaceIfUnchanged`:
+  note names and error ids with counts, 8-character conversation tags, a day, a rule hash and a
+  `told` flag, no text. The Stop reads the turn's changed paths and commands to judge and stores none
+  of them; a private or quiet turn, a turn with no lesson line and a project that is off are not read
+  or written. It appends one `judged` line (names and verdict letters) to the session file. A dry run
+  (`memory preview`) writes nothing.
 - **Claude Code's plugin lists**, in `~/.claude/plugins`, read only by
   `doctor`.
 - **Switches**: `.project-off` (a marker in one project's `memory` folder),
