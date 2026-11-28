@@ -48,7 +48,7 @@ const MEMORY = ['test/memory-cli.test.mjs', 'test/memory-doctor.test.mjs', 'test
 
 export const suites = {
   'src/store.mjs': [['test/store.test.mjs', 'test/lessons.test.mjs', 'test/mistakes.test.mjs'], store],
-  'src/mistakes.mjs': ['test/mistakes.test.mjs', mistakes],
+  'src/mistakes.mjs': [['test/mistakes.test.mjs', 'test/briefing.test.mjs'], mistakes],
   // Most of the detector's corpus still lives in handoff-log.test.mjs.
   'src/secrets.mjs': [['test/secrets.test.mjs', 'test/handoff-log.test.mjs'], secrets],
   'src/compact-gate.mjs': ['test/compact-gate.test.mjs', compactGate],
@@ -61,9 +61,9 @@ export const suites = {
   'src/sessions.mjs': [['test/recall-hook.test.mjs', 'test/sessions.test.mjs'], sessions],
   'tools/deploy.mjs': ['test/handoff-log.test.mjs', deploy],
   'src/brief.mjs': ['test/handoff-log.test.mjs', brief],
-  'src/briefing.mjs': [['test/handoff-log.test.mjs', 'test/compact-gate.test.mjs', 'test/recall-compact.test.mjs', 'test/journal.test.mjs', 'test/memory-switch.test.mjs', 'test/memory-tier.test.mjs', 'test/sessions.test.mjs'], briefing],
+  'src/briefing.mjs': [['test/handoff-log.test.mjs', 'test/briefing.test.mjs', 'test/compact-gate.test.mjs', 'test/recall-compact.test.mjs', 'test/journal.test.mjs', 'test/memory-switch.test.mjs', 'test/memory-tier.test.mjs', 'test/sessions.test.mjs'], briefing],
   'src/enforce.mjs': [['test/enforce.test.mjs', 'test/enforce-timed.test.mjs', 'test/lessons.test.mjs'], enforce],
-  'src/lessons.mjs': [['test/lessons.test.mjs'], lessons],
+  'src/lessons.mjs': [['test/lessons.test.mjs', 'test/briefing.test.mjs'], lessons],
   'src/enforce-hook.mjs': ['test/enforce-hook.test.mjs', enforceHook],
   'src/recall-hook.mjs': [['test/recall-hook.test.mjs', 'test/sessions.test.mjs'], recallHook],
   'src/timing.mjs': ['test/timing.test.mjs', timing],

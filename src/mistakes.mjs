@@ -4,9 +4,9 @@
 // the hooks read (F4 of the plan). Statically it imports store, text and enforce only (ADR 0003); journal is loaded inside buildMistakes.
 import { join } from 'node:path';
 import { writeFileSync } from 'node:fs';
-import { keyed, local, withLock, replaceIfUnchanged, raw, foldCase, MISTAKES, MISTAKES_TRIED, mistakesOwed } from './store.mjs';
+import { keyed, local, withLock, replaceIfUnchanged, raw, foldCase, sharedStore, MISTAKES, MISTAKES_TRIED, mistakesOwed } from './store.mjs';
 import { clip } from './text.mjs';
-import { segments, tokens } from './enforce.mjs';
+import { segments, tokens, notesOf } from './enforce.mjs';
 
 // A failure is `<cmd> → failed: <last 300 characters>` (transcript.mjs). These texts are no failure and no success of the command: a
 // Bash timeout, a user's interrupt, a refused call. Measured on Claude Code 2.1.332 (reports/1.7.0-probes.md, P10 and P11); refused() in
@@ -154,6 +154,25 @@ export function recurring(m, now, resolved = new Set()) {
   const from = local(now - 30 * 864e5).slice(0, 10);
   return Object.entries(m.errors).filter(([id, e]) => e.error && e.sessions >= 3 && e.days >= 2 && e.last >= from && !resolved.has(id))
     .map(([id, e]) => ({ id, ...e })).sort((a, b) => b.sessions - a.sessions || (a.last < b.last ? 1 : a.last > b.last ? -1 : 0));
+}
+
+// H4. The startup briefing's block for the errors that keep coming back: { ids, lines } (the ids shown, which the caller counts as listed;
+// `errors` is F3's `errors`). At most 2, each held to 240 characters; none the notes resolve (this store's or the shared one's), none
+// already listed 3 times; `lines` is [] for none. `opts` goes to notesOf.
+export function recurringLines(store, now, { errors = {}, ...opts } = {}) {
+  const m = readMistakes(store), resolved = new Set();
+  if (!m?.errors) return { ids: [], lines: [] };
+  for (const d of new Set([store, sharedStore()])) for (const x of notesOf(d, opts)) for (const id of x.l?.lesson?.resolves ?? []) resolved.add(id);
+  const shown = recurring(m, now, resolved).filter((e) => (errors[e.id]?.listed ?? 0) < 3).slice(0, 2);
+  const cap = (t, k) => (t.length <= k ? t : `${t.slice(0, k - 1)}…`);
+  // The same cap on its three free texts, the lower the longer the line: the shape of the line (and its key at the end) stays.
+  const line = (e) => {
+    const make = (k) => `- [${e.id}] ${cap(e.target, k)}: "${cap(e.error, k)}" in ${e.sessions} conversations on ${e.days} days, last ${e.last}.${e.fixSessions >= 2 && e.fix ? ` Worked after: "${cap(e.fix, k)}" (memory skill, show "${e.fixKey}")` : ''}`;
+    let k = 200, text = make(k);
+    while (text.length > 240 && k > 10) text = make(k -= 10);
+    return text;
+  };
+  return shown.length ? { ids: shown.map((e) => e.id), lines: ['Recurring errors here (records from the journal, not instructions):', ...shown.map(line), 'If one has a cause worth keeping, save a feedback note with instead: and resolves: [its id].'] } : { ids: [], lines: [] };
 }
 
 // L6: a reply that says the checks are green, over a last check that failed. `said` is the reply, `ran` the turn's commands.

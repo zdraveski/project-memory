@@ -7,20 +7,46 @@
 import { readFileSync, realpathSync, mkdirSync, appendFileSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { execFile } from 'node:child_process';
 import * as T from './timing.mjs';
 import { clip, fit, SAY } from './text.mjs';
 import { lastTurn, transcripts, readTail, records, text, asked, own, TAIL } from './transcript.mjs';
 import { OFF, PRIVATE, PRIVATE_SESSION, isOff, isQuiet, hushed, off, offLine, forgottenIn } from './privacy.mjs';
 import { readHealth, MISSED, HELD } from './snapshot.mjs';
 import { tag, storeOf, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, indexLines, emptyArchive, memoryOff, autoMemory } from './store.mjs';
-import { notes, edited, movedOnce } from './run-records.mjs';
+import { notes, edited, movedOnce, moved, movedText } from './run-records.mjs';
 import { START, render, parse, sectionOf, stalled } from './handoff-log.mjs';
 import { firstDay, rel } from './journal.mjs';
 import { byWords, sharesBlock, DEADLINE, doing, about, near } from './recall.mjs';
 import { readSession, sessionLine, sessionsOf, others as liveOthers, ACTIVE } from './sessions.mjs';
 import { recover } from './compact-gate.mjs';
+import { lessonsOn, lessonsOff, readCounters, deadEnds, retiredLines, updateCounters } from './lessons.mjs';
+import { recurringLines } from './mistakes.mjs';
 
 const RECENT = 30 * 86400000;  // older than this, the startup line has nothing to say
+
+// E2. The git line of a startup: the branch, how far it is from its remote, and the uncommitted files. The status is read first and the
+// diff's counts only when files are uncommitted, each held to 1.5 s by `run(args, { cwd, timeout })`, which gives git's output or throws.
+// No repository, no git, a timeout or any error: no line. A diff that fails costs the line's counts only (no commit yet, no HEAD).
+// GIT_OPTIONAL_LOCKS keeps the status from taking the index lock; core.fsmonitor off, so a repository's own setting runs nothing here.
+const GIT = { GIT_OPTIONAL_LOCKS: '0', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.fsmonitor', GIT_CONFIG_VALUE_0: 'false' };
+const runGit = (args, { cwd, timeout }) => new Promise((done, fail) => execFile('git', args, { cwd, timeout, windowsHide: true, encoding: 'utf8', maxBuffer: 1 << 20, env: { ...process.env, ...GIT } }, (e, out) => (e ? fail(e) : done(out))));
+const PATH = /^(?:1 (?:\S+ ){7}|2 (?:\S+ ){8}|u (?:\S+ ){9}|\? )([^\t]*)/;
+async function gitLine(cwd, sharing, run = runGit) {
+  try {
+    const o = { cwd, timeout: 1500 }, go = async (a) => String(await run(a, o));
+    const at = {}, files = [];
+    for (const l of (await go(['-c', 'core.quotePath=false', 'status', '--porcelain=v2', '--branch'])).split(/\r?\n/)) { const b = /^# branch\.(\w+) (.*)$/.exec(l), f = PATH.exec(l); if (b) at[b[1]] = b[2]; else if (f) files.push(f[1]); }
+    if (!at.head) return [];
+    const diff = files.length ? await go(['diff', '--shortstat', '--no-ext-diff', '--no-textconv', 'HEAD']).catch(() => '') : '';
+    const [ahead, behind] = /^\+(\d+) -(\d+)$/.exec(at.ab ?? '')?.slice(1).map(Number) ?? [0, 0], remote = (at.upstream ?? '').split('/')[0];
+    const sync = ahead && behind ? `, ${ahead} ahead of and ${behind} behind ${remote}` : ahead ? `, ${ahead} ahead of ${remote}` : behind ? `, ${behind} behind ${remote}` : '';
+    const stat = (w) => new RegExp(`(\\d+) ${w}`).exec(diff)?.[1] ?? 0;
+    const names = `${files.slice(0, 5).join(', ')}${files.length > 5 ? ` and ${files.length - 5} more` : ''}`;
+    const line = `Git here now: branch ${at.head}${sync}.${files.length ? ` Uncommitted: ${files.length} files (+${stat('insertion')} -${stat('deletion')}): ${names}${sharing ? " (some may be the other session's)" : ''}` : ''}`;
+    return [fit(line, 299)];
+  } catch { return []; }
+}
 
 // Warnings only: the startup line costs every session, so it says nothing
 // here when all is well. The shared store's problems are every project's.
@@ -124,7 +150,7 @@ async function afterCompact(input, dir, me, skip) {
 // here. At startup (or a /clear, a fresh context too): who is working here
 // now, or where the last session stopped, and anything failing. Either way the
 // shared store last: what the compaction summarised away, or never loaded.
-async function print(input) {
+async function print(input, { dry = false, run, info } = {}) {
   const dir = storeOf(input);
   const file = join(dir, 'handoff.md');
   // One that cannot be read (a folder, a file another program holds) is none:
@@ -155,6 +181,8 @@ async function print(input) {
   // 1.6.0 headline 4: its title and newest files from its session file, and a session only its session file shows as live
   // (another worktree's, whose conversation file lies in another folder) when that file says what it does.
   const files = liveOthers(dir, me), cwd = typeof input.cwd === 'string' ? input.cwd.replaceAll('\\', '/') : '';
+  // The git reads start now and are awaited where the lines are put together: they run beside the transcript and journal reads.
+  const gitting = input.source === 'startup' && !lessonsOff() && cwd ? gitLine(cwd, files.length > 0, run) : null;
   const extra = (s) => { const o = files.find((x) => x.s === s); if (!o) return ''; const { title, files: fs } = doing(o.lines); return `${title ? `; titled "${title}"` : ''}${fs.length ? `; files it changed: ${fs.slice(0, 3).map((f) => near(f, cwd)).join(', ')}` : ''}`; };
   // Not by `live`: one live by its session file but waiting for its user is in neither list, and read as ended (audit start#0).
   const elsewhere = files.filter((o) => !working.some((t) => t.s === o.s) && Object.values(doing(o.lines)).some((x) => x.length));
@@ -187,7 +215,13 @@ async function print(input) {
       ? told.filter((t) => t.s === last.s && !gone.has(`${t.s} ${t.at}`)).slice(-NEWEST).map(headline) : [];
     const journal = await journalLine(dir);
     T.mark('journal');
-    const rest = [...journal, ...health(dir), ...movedOnce(dir), ...(doc ? stalled(live[0]) : []), ...edited(), ...shared()];
+    // 1.7.0: at a startup only. The counters a line earns (a retired lesson told, an error listed) are written unless this is a dry run.
+    const start = input.source === 'startup', w = { write: !dry }, now = Date.now();
+    const retired = start && !lessonsOff() ? retiredLines(dir, w) : { names: [], lines: [] };
+    const ends = start && lessonsOn('deadend') ? deadEnds(dir, now, w) : [];
+    const again = start && lessonsOn('recurring') ? recurringLines(dir, now, { errors: readCounters(dir).errors, ...w }) : { ids: [], lines: [] };
+    if (!dry && (retired.names.length || again.ids.length)) updateCounters(dir, (c) => { for (const n of retired.names) if (c.notes[n]) c.notes[n].told = true; for (const id of again.ids) (c.errors[id] ??= { listed: 0 }).listed = (c.errors[id].listed || 0) + 1; });
+    const rest = [...journal, ...(gitting ? await gitting : []), ...health(dir), ...retired.lines, ...(dry ? moved(dir).map((m) => movedText(dir, m)) : movedOnce(dir)), ...(doc ? stalled(live[0]) : []), ...ends, ...again.lines, ...edited(), ...shared()];
     T.mark('shared');
     const say = (ex) => fit([...lines, ...(ex.length ? ['Its last exchanges, oldest first:', ...ex] : []), ...rest].join('\n') + '\n', 1000);
     // The most that fit, from the newest back; none when not even it does.
@@ -196,6 +230,7 @@ async function print(input) {
     // The budget is BRIEF, or what is there without them plus a reserve of their own: a full shared index left no room for any.
     const room = Math.max(BRIEF, say([]).length + EXCHANGES);
     const from = theirs.findIndex((_, i) => say(theirs.slice(i)).length <= room);
+    if (info) info.left = from === -1 ? theirs.length : from;
     const out = say(from === -1 ? [] : theirs.slice(from));
     T.mark('fit');
     return out;
@@ -225,7 +260,7 @@ async function print(input) {
 // Auto memory off: no record, no briefing; the tag at every start, so no
 // backfill imports a conversation whose first reply got no Stop (P1 hunt,
 // 2026-10-29). A project turned off (memory off): one line at a startup, nothing at any other start, nothing written.
-export async function briefing(input) {
+export async function briefing(input, opts) {
   const gone = isOff(storeOf(input));
   if (gone) return input.source === 'startup' ? `${offLine(gone)}\n` : '';
   if (memoryOff()) {
@@ -235,7 +270,7 @@ export async function briefing(input) {
     try { off(input); } catch {}
     return am.why?.startsWith('autoMemoryEnabled') && input.source === 'startup' ? `Auto memory is off (${am.why}): project-memory saves and briefs nothing in this project until it is on.\n` : '';
   }
-  return input.source === 'resume' ? '' : print(input);
+  return input.source === 'resume' ? '' : print(input, opts);
 }
 
 // Run directly (the harnesses do): payload on stdin, always exit 0.
@@ -247,7 +282,9 @@ export async function main({ rethrow = false } = {}) {
   try {
     const input = JSON.parse(readFileSync(0, 'utf8'));
     T.tag(input.hook_event_name, input.source);
-    if (process.argv.includes('--print')) process.stdout.write(await briefing(input));
+    // --dry (memory preview): nothing is counted or written, and how many older exchanges were left out goes to stderr.
+    const dry = process.argv.includes('--dry'), info = {};
+    if (process.argv.includes('--print')) { process.stdout.write(await briefing(input, { dry, info })); if (dry) process.stderr.write(`left ${info.left ?? 0}\n`); }
     else if (!isOff(storeOf(input)) && memoryOff()) try { off(input); } catch {}
   } catch (e) {
     if (rethrow) throw e;

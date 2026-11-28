@@ -61,7 +61,13 @@ no network code.
 - **git**: the `git` program, run without a shell, on the snapshot
   repository at `~/.claude/projects/.git`, which has no remote; and the
   `.git` folder or file of the folder a conversation starts in, read to
-  find its repository ([Snapshots](how-it-works.md#snapshots)).
+  find its repository ([Snapshots](how-it-works.md#snapshots)). At a startup the briefing
+  also runs `git status --porcelain=v2 --branch` and `git diff --shortstat HEAD` in that
+  folder (without a shell, side by side, 1.5 s each, `GIT_OPTIONAL_LOCKS=0` and
+  `core.fsmonitor` off so the repository's own setting starts no program). Only the branch,
+  the counts and up to five file names are kept, passed through `fit()` (tags defused, secrets
+  replaced, 300 characters); a failure or a timeout is no line. A file name is text a
+  repository's author chose, so it is as untrusted as a note's text, and bounded the same way.
 - **The memory tool**: its commands and options
   ([The memory tool from a terminal](how-it-works.md#the-memory-tool-from-a-terminal)),
   run by the skill or by hand; it exits 1 when a command is refused or
@@ -94,6 +100,11 @@ no network code.
   filter, to the terminal. The one thing it writes is a line of numbers (no name, request, file or command)
   to `.replay-history` in the project's `memory` folder, mode 0600, cut at 64 KB. A lesson newer than an
   exchange is never counted for it: the cut throws instead of counting a leak.
+  say so when they cannot. The startup briefing reads it for the errors that keep coming back
+  (the `recurring` trigger) and prints at most two, each held to 240 characters.
+- **The lesson counters**: `.lessons.json` in a store, mode 0600, written by the startup briefing
+  under the store's lock and `replaceIfUnchanged`: note names and error ids with counts and a
+  `told` flag, no text. A dry run (`memory preview`) writes nothing.
 - **Claude Code's plugin lists**, in `~/.claude/plugins`, read only by
   `doctor`.
 - **Switches**: `.project-off` (a marker in one project's `memory` folder),
