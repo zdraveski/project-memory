@@ -39,6 +39,9 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
   enforce replay <note> [--all]           what the enforce: rule in a note (or in any .md file) would have
                                           caught in the last 30 days of this project's conversations, or
                                           every project's; read-only
+  enforce block <note> [--yes]            let the rule in a note of this project block its git command, with the
+                                          note's instead: text; without --yes it only prints the replay
+  enforce unblock <note>                  take that rule off the block list again
   doctor                                  wiring, live copy, Stop hook, locks, git
   lessons                                 each lesson note with how often it was shown, followed and broken, the
                                           retired ones too, the recurring errors past their startups, and the
@@ -67,7 +70,7 @@ import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, s
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, verdict, isOurs, versionsOf, changedLately, dropDays, daysHolding, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
 import { gate, PRIVATE, PRIVATE_SESSION, isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
-import { ruleOf, hits, commandsOf, tally, familyOf } from './enforce.mjs';
+import { ruleOf, hits, commandsOf, tally, familyOf, lessonOf, ruleHash, blockList, BLOCK as ENFORCE_BLOCK } from './enforce.mjs';
 import { health as notesHealth, linksOf } from './notes-health.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT, compactOff } from './compact-gate.mjs';
@@ -928,9 +931,9 @@ function projectSwitch(dir, off) {
 const REPLAY_SEG = 8 << 20, pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 function replay(here, args, all, label, failed) {
   const w = args.slice(1).join(' ');
-  if (args[0] !== 'replay' || !w) return { ok: false, lines: ['enforce takes status, or replay <note> [--all]', USAGE] };
+  if (args[0] !== 'replay' || !w) return { ok: false, lines: ['enforce takes status, or replay <note> [--all], block <note> [--yes] or unblock <note>', USAGE] };
   if (!chunk) return { ok: false, lines: ['replay needs journal.mjs, which did not load'] };
-  const p = /\.md$/i.test(w) && existsSync(w) && statSync(w).isFile() ? w : join(here, onDisk(here, basename(w).replace(/(\.md)?$/i, '.md')));
+  const p = /\.md$/i.test(w) && existsSync(w) && statSync(w).isFile() ? w : join(here, onDisk(here, asMd(w)));
   let text; try { text = readFileSync(p, 'utf8'); } catch { return { ok: false, lines: [`no note ${w} in ${here}`] }; }
   const r = ruleOf(text);
   if (!r) return { ok: false, lines: [`${p} has no enforce: block`] };
@@ -965,7 +968,36 @@ function replay(here, args, all, label, failed) {
   return { ok: true, lines: [...found.map((f) => `${local(f.t)}  ${f.name}  ${f.s}${f.sub ? '  [subagent]' : ''}  ${clip(f.command, 160)}`),
     `checked ${pl(checked, 'git command')}, ${matched} are git ${r.rule.on}, ${pl(found.length, 'hit')} in ${pl(new Set(found.map((f) => f.s)).size, 'session')}, ${pl(Object.keys(by).length, 'project')}`,
     ...(found.length ? [`hits by project: ${Object.entries(by).map(([k, n]) => `${k} ${n}`).join(', ')}`] : []),
-    'Read each hit. A hit is a catch only if you agree the command broke the lesson.'] };
+    'Read each hit. A hit is a catch only if you agree the command broke the lesson.'], p, text, rule: r.rule };
+}
+
+const asMd = (w) => basename(w).replace(/(\.md)?$/i, '.md');
+// enforce block <note> [--yes] / unblock <note> (L11): the list `.enforce-block` (enforce.mjs) of rules that may deny their git command.
+// block prints the replay of the rule; only --yes, with a valid instead: in a note of this store, writes the line (note, rule hash) under the lock.
+function blockCommand(here, args, yes, label, failed) {
+  const w = args.slice(1).join(' '), un = args[0] === 'unblock';
+  if (!w) return no(`enforce ${args[0]} takes a note: memory enforce ${args[0]} <note>${un ? '' : ' [--yes]'}`);
+  const file = onDisk(here, asMd(w)), at = join(here, ENFORCE_BLOCK);
+  let g = null;
+  if (!un) {
+    g = replay(here, ['replay', w], false, label, failed);
+    if (!g.ok) return g;
+    if (!same(dirname(g.p), here)) return no(`${g.p} is not a note of this project's store (${here}): only one of its own notes can block`);
+    const les = lessonOf(g.text);
+    if (!les?.lesson?.instead) return no(les?.bad ? `the instead: in ${file} is bad: ${les.bad}` : les?.lesson?.hidden ? `${file} is hidden from the lessons: ${les.lesson.hidden}` : `${file} has no instead: line (10 to 200 characters saying what to do), so its rule cannot block`);
+    if (!yes) return { ok: true, lines: [...g.lines, 'Nothing changed. To let this rule block, run it again with --yes.'] };
+  }
+  const line = `${encodeURIComponent(file)} ${un ? '' : ruleHash(g.rule)}`.trimEnd(), mine = (l) => l.startsWith(`${encodeURIComponent(file)} `);
+  try {
+    const done = withLock(here, () => {
+      let old = ''; try { old = readFileSync(at, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+      const lines = old.split('\n').filter(Boolean), keep = lines.filter((l) => !mine(l));
+      writeFileSync(at, [...keep, ...(un ? [] : [line])].map((l) => `${l}\n`).join(''), { mode: 0o600 });
+      return keep.length !== lines.length;
+    });
+    if (done === null) return no(`enforce ${args[0]} NOT applied: the store is busy; try again`);
+    return { ok: true, lines: [...(g ? g.lines : []), un ? (done ? `The rule in ${file} may no longer block.` : `The rule in ${file} was not on the block list.`) : `The rule in ${file} may now block.`] };
+  } catch (e) { return no(`enforce ${args[0]} NOT applied: ${reason(e)}`); }
 }
 
 // `lessons`: the lessons with their counters. `lessons replay`: what each trigger would have done over the journal (replay.mjs reads, this
@@ -985,13 +1017,18 @@ function lessonsCommand(here, args, rest, opt, every, failed) {
   return { ok: true, lines };
 }
 
+// Whether the note's rule is on `list` at its current hash and the note still has a valid instead (conditions 1 and 2 of the hook).
+const mayBlock = (here, file, list) => { const t = readText(join(here, file)) ?? '', r = ruleOf(t)?.rule; return !!r && !!lessonOf(t)?.lesson?.instead && list.get(file) === ruleHash(r); };
 // Each rule note with the hits the live log holds for it in the last 30 local days, and what the log cannot say.
 function enforceStatus(here) {
   const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 30);
   const { notes } = tally(here, from.getTime()), n = (x) => x.main + x.sub;
   const off = autoMemory().off || isOff(here);
+  // L11: the calls by what the hook did, and the rules on the block list (with the hash they were allowed at).
+  const list = blockList(here), sum = (d) => notes.reduce((a, x) => a + x.did[d], 0), may = notes.filter((x) => !x.bad && list?.has(x.file) && mayBlock(here, x.file, list));
   return { ok: true, lines: [...(off ? ['memory is off here: watch is paused'] : []),
     ...(notes.length ? notes.map((x) => x.bad ? `${x.file}  bad rule: ${x.bad}` : n(x) ? `${x.file}  ${pl(n(x), 'hit')} in 30 days (${x.main} main, ${x.sub} subagent), last ${local(x.last)}` : `${x.file}  no hits in 30 days`) : [`no enforce: rules in ${here}`]),
+    ...(notes.length ? [`in 30 days: ${sum('blocked')} blocked, ${sum('said')} said, ${sum('watched')} watched`, ...(list === null ? [`${ENFORCE_BLOCK} cannot be read: no rule may block`] : [may.length ? `may block: ${may.map((x) => x.file).join(', ')}` : 'no rule may block']), ...(list?.size && list.size > may.length ? ['a rule on the block list whose text changed, or whose note is gone, is watch-only again; run block again with --yes'] : [])] : []),
     'To see the commands, run `memory enforce replay <note>`.'] };
 }
 
@@ -1081,7 +1118,7 @@ export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--ses
 const valued = new Set(Object.keys(OPTIONS).filter((o) => OPTIONS[o]));
 // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
 // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal in main().
-const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], preview: ['--file', '--prompt', '--command'], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
+const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all', '--yes'], incognito: [], off: [], on: [], doctor: [], preview: ['--file', '--prompt', '--command'], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
 
 // The command line's words, read before any store is touched: { cmd, rest, args, opt } or the refusal to print.
 // rest is every word but the command, in order (--key repeats, and the first of an option wins in opt()); args
@@ -1271,7 +1308,7 @@ export function main(given) {
     r = { ok: true, lines: [...(dropped.length ? [`ignored filler words: ${dropped.join(', ')}`] : []), ...es.length ? [...shown.flatMap((e) => [`${head(e)}  ${clip(e.asked, 200)}`, ...replyTo(all, e)]), `${shown.length} of ${es.length} journal entries in ${where}${es.length > shown.length ? '; --limit N shows more' : ''}`]
       : [filters.file ? missFile : `no journal entry${span && ` ${span}`} in ${where}`]] };
   } else if (cmd === 'forget') r = forgetting(here, args, rest, range, opt('--conversation'), failed);
-  else if (cmd === 'enforce') r = args[0] === 'status' ? enforceStatus(here) : replay(here, args, rest.includes('--all'), project, failed);
+  else if (cmd === 'enforce') r = args[0] === 'status' ? enforceStatus(here) : args[0] === 'block' || args[0] === 'unblock' ? blockCommand(here, args, rest.includes('--yes'), project, failed) : replay(here, args, rest.includes('--all'), project, failed);
   else if (cmd === 'lessons') r = lessonsCommand(here, args, rest, opt, every, failed);
   else if (cmd === 'rescan') r = rescan(every(), rest.includes('--apply'), rest.includes('--yes'));
   else if (cmd === 'incognito') r = incognito(opt('--session'));

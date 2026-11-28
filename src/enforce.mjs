@@ -1,9 +1,9 @@
 // A note can carry a rule a computer checks on a git command (`enforce:` in its
-// front matter). This file reads the rule and matches it; it never runs, blocks
-// or writes anything. Imports store.mjs, privacy.mjs and transcript.mjs only, so a hook can load it fast.
+// front matter). This file reads the rule and matches it, and keeps the list of rules the user
+// allowed to block (L11); it never runs or blocks a command (the hook does). Imports store.mjs, privacy.mjs and transcript.mjs only, so a hook can load it fast.
 import { readFileSync, writeFileSync, readdirSync, openSync, closeSync, fstatSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { frontEnd, front, isIndex, sharedStore, tag, appendCapped } from './store.mjs';
+import { frontEnd, front, isIndex, sharedStore, tag, appendCapped, keyed } from './store.mjs';
 import { records, readHead, typedMark } from './transcript.mjs';
 import { gate, PRIVATE } from './privacy.mjs';
 
@@ -292,7 +292,7 @@ export function notesOf(dir, { write = true } = {}) {
   if (write && (changed || Object.keys(old).length !== Object.keys(now).length)) try { writeFileSync(join(dir, CACHE), JSON.stringify({ v: CACHE_V, files: now }), { mode: 0o600 }); } catch {}
   return out;
 }
-const rulesIn = (dir) => notesOf(dir).filter((x) => x.r).map(({ file, r }) => ({ file, ...r }));
+const rulesIn = (dir) => notesOf(dir).filter((x) => x.r).map(({ file, r, l }) => ({ file, ...r, l }));
 
 // What the hook needs for a payload: { store, rules } with the project's and the shared store's rules that read
 // (a shared one is named `_shared/<file>`), or { store, off } when memory is off or the conversation is private.
@@ -320,21 +320,45 @@ export function record(store, entry) {
   } catch {}
 }
 
+// L11. `.enforce-block`: a line `<note, encoded> <ruleHash>` for each rule the user allowed to block (`memory enforce block`). The hash is
+// of the rule, so a rule whose text changes is watch-only again.
+export const BLOCK = '.enforce-block', ruleHash = (rule) => keyed(JSON.stringify(rule), 8);
+// The list as Map(note -> hash): empty when there is no file, null when it is there and will not read (then nothing may block).
+export function blockList(store) {
+  let text;
+  try { text = readFileSync(join(store, BLOCK), 'utf8'); } catch (e) { return e.code === 'ENOENT' ? new Map() : null; }
+  return new Map(text.split('\n').flatMap((l) => { const m = /^(\S+) ([0-9a-f]{8})$/.exec(l); try { return m ? [[decodeURIComponent(m[1]), m[2]]] : []; } catch { return []; } }));
+}
+// How many calls of this session, since `from` (ms), the log shows blocked by `note`, not counting the call `id` (a call a filter starts
+// twice logs a line a start: one call). A line with no id is a call of its own. Infinity when the log is there and will not read.
+// shortcut: a log cut back at LOG_MAX forgets old blocks, so a turn that long blocks more than 3 times; upgrade if seen.
+export function blockedSince(store, note, s, from, id) {
+  const calls = new Set();
+  try {
+    for (const l of readFileSync(join(store, LOG), 'utf8').split('\n')) try {
+      const j = JSON.parse(l);
+      if (j.did === 'blocked' && j.note === note && j.s === s && Date.parse(j.t) >= from && !(id && j.id === id)) calls.add(j.id || l);
+    } catch {}
+  } catch (e) { if (e.code !== 'ENOENT') return Infinity; }
+  return calls.size;
+}
+
 // What `memory enforce status` shows of a store: its rule notes (and the shared store's, as `_shared/<file>`), each with the
-// log's hits since `from` (ms) split main and sub-agent. Never throws.
+// log's hits since `from` (ms) split main and sub-agent, and by what the hook did (`did`: blocked, said, watched; a line with
+// none, or another word, is a watch). Never throws.
 export function tally(dir, from) {
   const lines = [], once = new Set(); // a call a git filter and a lesson filter both start logs one line a start: the same note and id is one hit
   try {
     const f = join(dir, LOG);
     for (const l of readFileSync(f, 'utf8').split('\n')) try {
       const j = JSON.parse(l), t = Date.parse(j.t), k = `${j.note}\0${j.id}`;
-      if (t >= from && !(j.id && once.has(k))) { once.add(k); lines.push({ note: String(j.note), t, sub: !!j.agent }); }
+      if (t >= from && !(j.id && once.has(k))) { once.add(k); lines.push({ note: String(j.note), t, sub: !!j.agent, did: j.did === 'blocked' || j.did === 'said' ? j.did : 'watched' }); }
     } catch {}
   } catch {}
   const shared = sharedStore() === dir ? [] : rulesOf(sharedStore()).map((x) => ({ ...x, file: `_shared/${x.file}` }));
   const notes = [...rulesOf(dir), ...shared].map(({ file, bad }) => {
-    const mine = lines.filter((l) => l.note === file);
-    return { file, bad, main: mine.filter((l) => !l.sub).length, sub: mine.filter((l) => l.sub).length, last: Math.max(0, ...mine.map((l) => l.t)) };
+    const mine = lines.filter((l) => l.note === file), did = (d) => mine.filter((l) => l.did === d).length;
+    return { file, bad, main: mine.filter((l) => !l.sub).length, sub: mine.filter((l) => l.sub).length, last: Math.max(0, ...mine.map((l) => l.t)), did: { blocked: did('blocked'), said: did('said'), watched: did('watched') } };
   });
   return { notes };
 }

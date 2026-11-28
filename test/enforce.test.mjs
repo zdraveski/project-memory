@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, utimesSyn
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome, storeFor } from './harness.mjs';
-import { ruleOf, rulesOf, segments, tokens, hits, commandsOf, ruleSet, privateTurn, record, tally, lessonOf, familyOf, notesOf, LOG, CACHE, CACHE_V, LOG_MAX } from '../src/enforce.mjs';
+import { ruleOf, rulesOf, segments, tokens, hits, commandsOf, ruleSet, privateTurn, record, tally, lessonOf, familyOf, notesOf, ruleHash, blockList, blockedSince, LOG, BLOCK, CACHE, CACHE_V, LOG_MAX } from '../src/enforce.mjs';
 import { front, projectsRoot, sharedStore } from '../src/store.mjs';
 import { QUIET, OFF, PROJECT_OFF } from '../src/privacy.mjs';
 import { chunk } from '../src/transcript.mjs';
@@ -310,6 +310,38 @@ ${'y'.repeat(40)}
   ok(tally(d, from).notes.find((n) => n.file === 'a.md').main === 4 && tally(d, from).notes.find((n) => n.file === 'b.md').main === 1, 'the same note and id twice is one hit; no id, or another note or id, is counted');
   ok(tally(join(home, 'nolog'), 0).notes.length === 1 && tally(sh, 0).notes.map((n) => n.file).join() === 's.md', 'no log: no hits; the shared store is not listed twice');
   rmSync(sh, { recursive: true }); }
+
+// 1.7.0 step 15, L11: the block list, the rule's hash, the blocks of a turn, and the `did` of a log line.
+{ const d = join(home, 'block'), T1 = '2026-11-10T10:00:00.000Z', from = Date.parse(T1), iso = (ms) => new Date(from + ms).toISOString();
+  mkdirSync(d); writeFileSync(join(d, 'a.md'), note(ADD)); writeFileSync(join(d, 'b.md'), note('enforce:\n  on: ls\n  has: x\n'));
+  const A1 = ruleOf(note(ADD)).rule;
+  ok(/^[0-9a-f]{8}$/.test(ruleHash(A1)) && ruleHash(A1) === ruleHash({ ...A1 }), `a rule's hash is 8 hex characters, the same for the same rule (got ${ruleHash(A1)})`);
+  ok(ruleHash(A1) !== ruleHash({ ...A1, has: ['-A'] }) && ruleHash(A1) !== ruleHash({ ...A1, unless: [] }) && ruleHash(A1) !== ruleHash({ ...A1, on: 'commit' }), 'another has, unless or on is another hash');
+  ok(ruleHash({ on: 'add', has: ['-A'], unless: [] }) !== ruleHash({ on: 'add', has: ['-B'], unless: [] }), 'rules of the same length are other hashes (the hash is of the text, not a length)');
+  ok(BLOCK === '.enforce-block', 'the list is .enforce-block');
+  ok(blockList(d) instanceof Map && blockList(d).size === 0, 'no list: nothing may block, and it reads');
+  writeFileSync(join(d, BLOCK), `a.md deadbeef\nb%20c.md 0123abcd\nnot a line\n\nshort 12\nx.md DEADBEEF\n%E0%A4%A 01234567\n`); // the last: a bad escape, skipped alone
+  ok(blockList(d).size === 2 && blockList(d).get('a.md') === 'deadbeef' && blockList(d).get('b c.md') === '0123abcd', `the list holds <note> <hash> lines, the note encoded; others are skipped (got ${JSON.stringify([...blockList(d)])})`);
+  rmSync(join(d, BLOCK)); mkdirSync(join(d, BLOCK));
+  ok(blockList(d) === null, 'a list that cannot be read is null, not empty');
+  rmSync(join(d, BLOCK), { recursive: true }); ok(blockList(join(home, 'no-such-store')) instanceof Map, 'no store folder: an empty list');
+  // blockedSince: the calls this session's log shows blocked by a note since a time, one call a line or more, not the call asked for.
+  const e = (ms, o) => JSON.stringify({ t: iso(ms), note: 'a.md', s: 'abcd1234', agent: '', id: 'c1', did: 'blocked', ...o }) + '\n';
+  writeFileSync(join(d, LOG), e(0, { id: 'c1' }) + e(1, { id: 'c1' }) + e(2, { id: 'c2' }) + e(3, { id: 'c3' }) + e(-5, { id: 'old' }) + e(4, { id: 'c4', did: 'said' }) + e(5, { id: 'c5', did: undefined }) + e(6, { id: 'c6', note: 'b.md' }) + e(7, { id: 'c7', s: 'other000' }) + 'not json\n' + e(8, { id: '' }) + e(9, { id: '' }));
+  ok(blockedSince(d, 'a.md', 'abcd1234', from, 'zz') === 5, `blocked calls of this note and session since the time: c1 (two lines), c2, c3, and two with no id (got ${blockedSince(d, 'a.md', 'abcd1234', from, 'zz')})`);
+  ok(blockedSince(d, 'a.md', 'abcd1234', from, 'c1') === 4 && blockedSince(d, 'a.md', 'abcd1234', from, '') === 5, 'the call asked about is not counted, and an empty id excludes nothing');
+  ok(blockedSince(d, 'a.md', 'abcd1234', from + 3, 'zz') === 3 && blockedSince(d, 'a.md', 'abcd1234', from - 10, 'zz') === 6, 'only blocks since the time: the time itself counts');
+  ok(blockedSince(d, 'b.md', 'abcd1234', from, 'zz') === 1 && blockedSince(d, 'a.md', 'other000', from, 'zz') === 1, 'another note, another session');
+  ok(blockedSince(join(home, 'nolog'), 'a.md', 'abcd1234', 0, 'zz') === 0, 'no log: none');
+  rmSync(join(d, LOG)); mkdirSync(join(d, LOG)); ok(blockedSince(d, 'a.md', 'abcd1234', 0, 'zz') === Infinity, 'a log that cannot be read counts as past the limit: no block on doubt');
+  rmSync(join(d, LOG), { recursive: true });
+  // tally: each rule's calls by what the hook did; a line with no `did` was a watch; one call is one count, whatever its lines.
+  const w = (ms, o) => JSON.stringify({ t: iso(ms), note: 'a.md', agent: '', id: `t${ms}`, ...o }) + '\n';
+  writeFileSync(join(d, LOG), w(0, { did: 'blocked' }) + w(0, { did: 'blocked' }) + w(1, { did: 'said' }) + w(2, { did: 'watched' }) + w(3, {}) + w(4, { did: 'blocked', id: 't0' }) + w(5, { did: 'nonsense' }) + w(6, { did: 'blocked', agent: 'x' }));
+  const got = tally(d, from).notes.find((n) => n.file === 'a.md');
+  ok(JSON.stringify(got.did) === '{"blocked":2,"said":1,"watched":3}' && got.main + got.sub === 6, `blocked, said and watched count distinct calls; a missing or odd did is watched (got ${JSON.stringify(got)})`);
+  ok(JSON.stringify(tally(d, from).notes.find((n) => n.file === 'b.md').did) === '{"blocked":0,"said":0,"watched":0}', 'a note with no log lines: zeros');
+}
 
 // 1.7.0 step 2: lessonOf, familyOf, notesOf and the v4 cache
 const lnote = (keys = '', { type = 'feedback', name = 'Write through the lock', desc = 'Write through replaceIfUnchanged under withLock.', body = 'body' } = {}) => `---\nname: ${name}\ndescription: ${desc}\ntype: ${type}\n${keys}---\n\n${body}\n`;

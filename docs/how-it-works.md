@@ -156,7 +156,7 @@ Windows device names such as `con` and `nul`.
 | `…/memory/.lock` | the store's lock, a folder that exists while a write is in progress |
 | `…/memory/.tiered`, `.health` | a fingerprint of the last tidy-up, and problems for the startup briefing |
 | `…/memory/.facts` | what the tidy-up read at the top of each note (its type, its `tier:` and its date), with the note's size and time, so a note is read again only once it changes |
-| `…/memory/.enforce-log`, `.enforce.json` | the git-rule watcher's log (note name, conversation tag, sub-agent type and tool-call id, never the command) and its cache of the rules (see [Checked lessons](#checked-lessons-experimental)) |
+| `…/memory/.enforce-log`, `.enforce.json`, `.enforce-block` | the git-rule watcher's log (note name, conversation tag, sub-agent type, tool-call id and what it did, never the command), the rules you allowed to block (note names and rule hashes) and its cache of the rules (see [Checked lessons](#checked-lessons-experimental)) |
 | `…/memory/.private-sessions` | the tags of conversations marked private (the newest 1,000) |
 | `…/memory/.project-off`, `.off-periods` | the marker while `memory off` holds, and the times it was off before, whose turns are never written |
 | `~/.claude/projects/_shared/memory/` | the shared notebook, same layout |
@@ -1226,10 +1226,15 @@ Once a rule is in a note, `enforce-hook.mjs` (the `PreToolUse` hook, 5 second
 limit) runs when Claude is about to run a Bash or PowerShell command that
 holds `git`. It compares the command with the rules and, on a match, adds one
 line to `.enforce-log` in the project's store: the note's name, the first 8
-characters of the conversation's tag, the sub-agent type and the tool-call id.
-It never logs the command.
+characters of the conversation's tag, the sub-agent type, the tool-call id and
+what it did (blocked, said or watched). It never logs the command.
 
-- It blocks nothing and prints nothing. Any failure lets the call go on.
+- It watches, and prints nothing, unless the note has an `instead:` line. Then it
+  says that line (the command runs), and a rule you allowed with `memory enforce
+  block <note> --yes` denies the command with it. It does not block when your
+  latest request names the command, in a private turn, after 3 blocked calls in
+  the turn, for a rule whose text changed since you allowed it, or with
+  `PROJECT_MEMORY_ENFORCE=watch`. Any failure lets the call go on.
 - It does nothing while memory is off or the conversation is private.
 - The log stops at 256 KB, then drops its oldest half. A line can be lost when
   many conversations write at once.
@@ -1242,8 +1247,9 @@ It never logs the command.
 ### Status and doctor
 
 `memory enforce status` shows per note the hits of the last 30 days (main and
-sub-agent), the last one, bad rules with the reason, and whether the log is
-full or memory is off. On 2026-12-18 the author reads this output and keeps
+sub-agent), the last one, bad rules with the reason, the calls of those 30 days
+by what the hook did (blocked, said, watched), the rules that may block, and
+whether the log is full or memory is off. On 2026-12-18 the author reads this output and keeps
 checked lessons or cuts them. The live log keeps no command text, so run `replay`
 to see commands. `memory doctor` has one line for the hook: it runs the copy
 the plugin runs and says what is wrong, even when memory is off in this

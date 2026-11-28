@@ -783,7 +783,7 @@ async function execute(steps, meta) {
   // mistakes cache (the suites keep the Stop's tidy-up inline, so it is run once here); a file that is not there passes.
   await run(TIER, ['--tidy', dir], '', lastTz);
   const sdir = join(dirname(proj), '.sessions', basename(proj));
-  for (const f of [MISTAKES, '.lessons.json', '.enforce-log', '.replay-history']) if (existsSync(join(dir, f))) places.push([f, readFileSync(join(dir, f), 'utf8')]);
+  for (const f of [MISTAKES, '.lessons.json', '.enforce-log', '.enforce-block', '.replay-history']) if (existsSync(join(dir, f))) places.push([f, readFileSync(join(dir, f), 'utf8')]);
   if (existsSync(sdir)) for (const f of readdirSync(sdir)) places.push([`.sessions/${f}`, readFileSync(join(sdir, f), 'utf8')]);
   const count = (hay, w) => hay.split(w).length - 1;
   for (const sec of secrets) for (const [f, body] of places) if (body.includes(sec)) problems.push(`private text ${sec} is in ${f}`);
