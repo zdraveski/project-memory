@@ -79,9 +79,9 @@ eq(plain.lines, [
   'H2 command lessons: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. Failure hits 0 of 1, cannot claim, n too small. No correction signal (1 in 16 prompts).',
   'H3 dead ends: 5 firings, 0.7 a day, median 1.5 on an active day. Probable hits 0, unclear 5. Failure hits 0 of 5, cannot claim, n too small. No correction signal (1 in 16 prompts).',
   'H4 recurring errors: 3 firings, 0.4 a day, median 1 on an active day. Probable hits 0, unclear 3. Failure hits 1 of 3, cannot claim, n too small. No correction signal (1 in 16 prompts).',
-  'L2 stuck streak: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. Failure hits 1 of 1, cannot claim, n too small. No correction signal (1 in 16 prompts). Lower bound (an exact re-run hides its earlier failure).',
+  'L2 stuck streak: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. Failure hits: no signal for this trigger. No correction signal (1 in 16 prompts). Lower bound (an exact re-run hides its earlier failure).',
   'H5 nudge: 1 firing in 16 prompts, median 0 on an active day. Cannot claim, n too small. (No interrupt markers in the journal.)',
-  'L6 claim check: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. Failure hits 1 of 1, cannot claim, n too small. No correction signal (1 in 16 prompts).',
+  'L6 claim check: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. Failure hits: no signal for this trigger. No correction signal (1 in 16 prompts).',
   'L9 co-change: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. Failure hits 0 of 1, cannot claim, n too small. No correction signal (1 in 16 prompts).',
   'L17 scan: hides 0 of 3 notes.',
   'Upper bound: a match is not proof that the lesson changes anything.',
@@ -89,7 +89,7 @@ eq(plain.lines, [
 eq(plain.history, { at: '2026-11-27 12:00', days: 7, exchanges: 16,
   firings: { edit: 1, command: 1, deadend: 5, recurring: 3, stuck: 1, nudge: 1, claim: 1, cochange: 1 },
   hits: { edit: 1, command: 0, deadend: 0, recurring: 0, stuck: 0, nudge: 0, claim: 0, cochange: 0 },
-  failHits: { edit: 0, command: 0, deadend: 0, recurring: 1, stuck: 1, nudge: 0, claim: 1, cochange: 0 } }, 'the history line holds numbers only');
+  failHits: { edit: 0, command: 0, deadend: 0, recurring: 1, stuck: 0, nudge: 0, claim: 0, cochange: 0 } }, 'the history line holds numbers only');
 ok(!/ZEBRA|k\d\d|\.mjs|\.md/.test(JSON.stringify(plain.history)), 'and no name, key or text');
 
 // Without --show no text of the journal is printed: not one request's marker word, nor a key.
@@ -164,7 +164,7 @@ const shareJournal = (name, corrected) => {
   const r = run(shareJournal('C--replay-share', 22)), [lo, hi] = wilson(22, 30);
   eq(r.lines[1], `H1 edit lessons: 30 firings, 4.3 a day, median 30 on an active day. Probable hits 22, unclear 8. Failure hits 0 of 30, 95% interval ${Math.round(wilson(0, 30)[0] * 100)}-${Math.round(wilson(0, 30)[1] * 100)}%. Share 73% (22 of 30), 95% interval ${Math.round(lo * 100)}-${Math.round(hi * 100)}%. Misses 0: no lesson 0, no match 0, filtered 0.`,
     '20 corrections or more and 20 firings or more: the share, its n and its Wilson interval');
-  ok(/^H2 command lessons: 0 firings, 0 a day, median 0 on an active day\. Probable hits 0, unclear 0\. Failure hits 0 of 0, cannot claim, n too small\. Cannot claim, n too small\. Misses 22: no lesson 22, no match 0, filtered 0\.$/.test(r.lines[2]), `a correction nothing was listed before, with no lesson of that kind: a miss with its cause (${r.lines[2]})`);
+  ok(/^H2 command lessons: 0 firings, 0 a day, median 0 on an active day\. Probable hits 0, unclear 0\. Failure hits: no firings\. Cannot claim, n too small\. Misses 22: no lesson 22, no match 0, filtered 0\.$/.test(r.lines[2]), `a correction nothing was listed before, with no lesson of that kind: a miss with its cause (${r.lines[2]})`);
   ok(/^L2 stuck streak: .* Misses 22: no lesson 0, no match 22, filtered 0\./.test(r.lines[5]), `and with a lesson that could have matched: no match (${r.lines[5]})`);
   eq(r.history.firings.edit, 30, 'the history counts the firings');
 }
@@ -172,7 +172,7 @@ const shareJournal = (name, corrected) => {
 {
   const r = run(shareJournal('C--replay-nosignal', 12));
   eq(r.lines[1], 'H1 edit lessons: 30 firings, 4.3 a day, median 30 on an active day. Probable hits 12, unclear 18. Failure hits 0 of 30, 95% interval 0-11%. No correction signal (12 in 42 prompts).', '12 corrections: no share, no interval, no miss count');
-  eq(r.lines[2], 'H2 command lessons: 0 firings, 0 a day, median 0 on an active day. Probable hits 0, unclear 0. Failure hits 0 of 0, cannot claim, n too small. No correction signal (12 in 42 prompts).', 'and for a trigger that never fired');
+  eq(r.lines[2], 'H2 command lessons: 0 firings, 0 a day, median 0 on an active day. Probable hits 0, unclear 0. Failure hits: no firings. No correction signal (12 in 42 prompts).', 'and for a trigger that never fired');
   ok(r.lines.slice(1, 9).filter((l) => !/^H5 /.test(l)).every((l) => /No correction signal \(12 in 42 prompts\)\./.test(l) && !/Misses|Share/.test(l)), 'every line has the signal and none a share or a miss (the failure interval is no share)');
   eq(r.history.hits.edit, 12, 'the history still counts the hits');
 }
@@ -228,21 +228,42 @@ const shareJournal = (name, corrected) => {
 // conversation (other conversations' entries are not counted, and a failure there is no hit). The marker of the journal's text is --show's.
 {
   const Y = store('C--replay-failure');
+  note(Y, 'push-lesson.md', 'applies_when: [push]\n', 'Check before pushing', 'Run the whole check before every push.', at(20, 8));
   const mm = (n) => `2026-11-25 ${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
   let n = 0;
   const e = (s, o = {}) => E(`y${++n}`, mm(n), s, `step ${n}`, o);
-  const two = { ran: ['npm test -- a → failed: Error: x', 'npm test -- b → failed: Error: y'] }, fail = { ran: ['npm test → failed: Error: z'] };
-  const es = [e('A', two), e('A', fail),                                       // y1, y2: a failure of the same target in the next entry
-    e('B', two), ...Array.from({ length: 4 }, () => e('X')), ...Array.from({ length: 19 }, () => e('B')), e('B', fail),   // y27: the 20th entry of B (4 of X between)
-    e('C', two), ...Array.from({ length: 20 }, () => e('C')), e('C', fail),    // y49: the 21st entry of C
-    e('D', two), e('E', fail),                                               // y51: the failure is in another conversation
-    e('F', two), e('F', { ran: ['npm test --silent'] }), e('F', { ran: ['git status → failed: fatal: x'] })];   // y54: a passing run, then another target failing
+  const push = { ran: ['git push origin main'] }, fail = { ran: ['git push origin main → failed: fatal: x'] };
+  const es = [e('A', push), e('A', fail),                                      // y1, y2: a failed push (the same family) in the next entry
+    e('B', push), ...Array.from({ length: 4 }, () => e('X')), ...Array.from({ length: 19 }, () => e('B')), e('B', fail),   // y3, y27: the 20th entry of B (4 of X between)
+    e('C', push), ...Array.from({ length: 20 }, () => e('C')), e('C', fail),   // y28, y49: the 21st entry of C
+    e('D', push), e('E', fail),                                               // y50, y51: the failure is in another conversation (E's own push fires too)
+    e('F', push), e('F', { ran: ['git status'] }), e('F', { ran: ['git status → failed: fatal: y'] })];   // y52: another command failing is no failure of the family
   journal(Y, es);
-  const r = run(Y, { show: true }), stuck = r.lines.filter((l) => /\] stuck /.test(l));
-  eq(stuck.map((l) => /\[(\w+)\]/.exec(l)[1]), ['y1', 'y3', 'y28', 'y50', 'y52'], 'five conversations start a stuck streak');
-  eq(stuck.map((l) => l.endsWith('(failure hit: npm test)')), [true, true, false, false, false], 'a failure of the target in the next entry, and at the 20th entry of its conversation, are hits; at the 21st, in another conversation, or of another target, not');
-  ok(/^L2 stuck streak: 5 firings,.* Failure hits 2 of 5, cannot claim, n too small\./.test(r.lines.find((l) => /^L2 /.test(l))), 'the line says the failure hits, and that 5 firings claim nothing');
-  eq(r.history.failHits.stuck, 2, 'the history counts them');
+  const r = run(Y, { show: true }), cmd = r.lines.filter((l) => /\] command /.test(l));
+  eq(cmd.map((l) => /\[(\w+)\]/.exec(l)[1]), ['y1', 'y3', 'y28', 'y50', 'y51', 'y52'], 'six conversations push');
+  eq(cmd.map((l) => l.endsWith('(failure hit: git push)')), [true, true, false, false, false, false], 'a failed push of the family in the next entry, and at the 20th entry of its conversation, are hits; at the 21st, in another conversation, or of another command, not');
+  ok(/^H2 command lessons: 6 firings,.* Failure hits 2 of 6, cannot claim, n too small\./.test(r.lines.find((l) => /^H2 /.test(l))), 'the line says the failure hits, and that 6 firings claim nothing');
+  eq(r.history.failHits.command, 2, 'the history counts them');
+}
+// A recurring error is listed at a conversation's start: a failure of its target in the conversation is a hit, a failure of another target not.
+{
+  const R = store('C--replay-failtarget');
+  const boom = { ran: ['npm test → failed: Error: boom'] };
+  journal(R, [E('r1', '2026-11-24 09:00', 'a1', 'one', boom), E('r2', '2026-11-24 10:00', 'a2', 'two', boom), E('r3', '2026-11-25 09:00', 'a3', 'three', boom),
+    E('r4', '2026-11-26 09:00', 'b1', 'start'), E('r5', '2026-11-26 09:10', 'b1', 'again', boom),
+    E('r6', '2026-11-26 10:00', 'b2', 'start'), E('r7', '2026-11-26 10:10', 'b2', 'again', { ran: ['git status → failed: fatal: y'] })]);
+  const rec = run(R, { show: true }).lines.filter((l) => /\] recurring /.test(l));
+  eq(rec.map((l) => /\[(\w+)\]/.exec(l)[1]), ['r4', 'r6'], 'the recurring error is listed at the two later startups');
+  eq(rec.map((l) => l.endsWith('(failure hit: npm test)')), [true, false], 'its target failing again is a hit; another target failing is not');
+}
+// L2 and L6 fire because their own target just failed: a retry failing again would count itself, so they have no failure signal.
+{
+  const T = store('C--replay-failnosignal'), t = (k, m, o) => E(k, `2026-11-25 09:${m}`, 's1', 'go', o);
+  journal(T, [t('t1', '00', { ran: ['npm test -- a → failed: Error: x', 'npm test -- b → failed: Error: y'] }), t('t2', '05', { ran: ['npm test → failed: Error: z'] })]);
+  const r = run(T, { show: true });
+  ok(/^L2 stuck streak: 1 firing,.* Failure hits: no signal for this trigger\. /.test(r.lines.find((l) => /^L2 /.test(l))) && /^L6 claim check: 0 firings,.* Failure hits: no signal for this trigger\. /.test(r.lines.find((l) => /^L6 /.test(l))), 'the lines say there is no signal');
+  ok(!/failure hit/.test(r.lines.find((l) => /\] stuck /.test(l))), 'a stuck firing is no failure hit');
+  eq([r.history.failHits.stuck, r.history.failHits.claim], [0, 0], 'and the history keeps 0 for both');
 }
 {
   const Q = store('C--replay-failfile');
@@ -254,6 +275,14 @@ const shareJournal = (name, corrected) => {
   const r = run(Q, { show: true }), edit = r.lines.filter((l) => /\] edit /.test(l));
   eq(edit.map((l) => /\[(\w+)\]/.exec(l)[1]), ['q1', 'q3', 'q5'], 'the file lesson fires once in each conversation');
   eq(edit.map((l) => /\(failure hit: (\S+)\)$/.exec(l)?.[1]), ['f.mjs', undefined, undefined], 'a failure with a change of the file is a hit; a change with no failure, and a failure with no change of the file, are not');
+}
+// A later change of the file under an absolute path (the journal keeps the path as the tool saw it) is still a change of it.
+{
+  const P = store('C--replay-failabs');
+  note(P, 'g-lesson.md', 'applies_to: [g.mjs]\n', 'Mind g', 'Mind g.mjs.', at(20, 8));
+  journal(P, [E('p1', '2026-11-25 09:00', 'K', 'edit g', { changed: ['g.mjs'] }), E('p2', '2026-11-25 09:05', 'K', 'edit g again', { changed: ['/work/app/g.mjs'], ran: ['npm test → failed: Error: x'] })]);
+  const d = run(P, { show: true }).lines.filter((l) => /\] edit /.test(l));
+  eq(d.map((l) => /\(failure hit: (\S+)\)$/.exec(l)?.[1]), ['g.mjs'], 'a failed run with a change of /work/app/g.mjs is a hit for g.mjs');
 }
 // 20 firings or more: the failure hits come with their Wilson interval, a firing in 30 conversations, a failed run in 12 of them.
 {

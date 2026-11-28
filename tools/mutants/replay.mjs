@@ -26,6 +26,8 @@ export default {
   'a failure 21 entries later in the conversation is a failure hit': ['j < es.length && seen < NEXT; j++) {', 'j < es.length && seen <= NEXT; j++) {'],
   "a failure in another conversation is a failure hit": ['if (es[j].s !== es[f.i].s) continue;', ''],
   'a failure of any other command is a failure hit of a target': ['f.targets.includes(x.target) || f.families', 'true || f.families'],
+  'a failed command of the firing family is no failure hit': ['|| f.families.some((fam) => familyOf(x.cmd).includes(fam)))?.target', '|| false)?.target'],
+  'a stuck streak or a claim is a failure hit of its own retry': ['if (NO_FAIL_SIGNAL.has(f.trigger)) continue;', ''],
   'a change of the file with no failure is a failure hit': ['?? (fl.length ? f.files.find(', '?? (true ? f.files.find('],
   'a path outside the repository is the path of a lesson': ['if (inside(p)) speak', 'if (true) speak'],
 };

@@ -11,9 +11,9 @@ import { notesOf, familyOf } from './enforce.mjs';
 import { matchPath, matchFamily, order, wilson, readCounters } from './lessons.mjs';
 import { mistakes, recurring, claimed, cochangeFor, failuresOf, targetOf, readMistakes } from './mistakes.mjs';
 import { correction } from './correction.mjs';
-import { cleanPath, isHelper } from './recall.mjs';
+import { cleanPath, isHelper, changedFile } from './recall.mjs';
 
-const FAILED = ' → failed: ', NEXT = 20, ENOUGH = 20;
+const FAILED = ' → failed: ', NEXT = 20, ENOUGH = 20, NO_FAIL_SIGNAL = new Set(['stuck', 'claim']);
 // Ordering by shown/followed/broken would use today's counts for an exchange of last month: the order is by specificity and name alone.
 // (A lesson retired today is still left out: the plan counts it among those that existed, not those that could fire.)
 const NO_COUNTERS = { v: 1, notes: {}, errors: {} };
@@ -151,11 +151,12 @@ function walk(es, lessons) {
   const fails = [], failsAt = (j) => (fails[j] ??= failuresOf(es[j]));
   for (const f of fired) {
     f.failHit = false;
+    if (NO_FAIL_SIGNAL.has(f.trigger)) continue;   // these two fire because their own target just failed: a retry failing again would count itself
     for (let j = f.i + 1, seen = 0; j < es.length && seen < NEXT; j++) {
       if (es[j].s !== es[f.i].s) continue;
       seen++;
       const fl = failsAt(j), on = fl.find((x) => f.targets.includes(x.target) || f.families.some((fam) => familyOf(x.cmd).includes(fam)))?.target
-        ?? (fl.length ? f.files.find((p) => es[j].changed.some((c) => same(c, p))) : undefined);
+        ?? (fl.length ? f.files.find((p) => changedFile(es[j], p)) : undefined);
       if (on) { f.failHit = true; f.failOn = on; break; }
     }
   }
@@ -216,7 +217,7 @@ export function replayRun(stores, { days, now, show = false, recent }) {
     const mid = num(median([...active].map((d) => fs.filter((f) => f.e.at.startsWith(d)).length))), count = plural(n, 'firing');
     lines.push(k === 'nudge'
       ? `${name}: ${count} in ${prompts} prompts, median ${mid} on an active day. ${ratio('Rate', n, prompts, n)} (No interrupt markers in the journal.)`
-      : `${name}: ${count}, ${num(n / days)} a day, median ${mid} on an active day. Probable hits ${h}, unclear ${n - h}. Failure hits ${fh} of ${n}, ${n < ENOUGH ? 'cannot claim, n too small' : `95% interval ${wilson(fh, n).map(pc).join('-')}%`}. ${corrections < ENOUGH ? `No correction signal (${corrections} in ${prompts} prompts).` : `${ratio('Share', h, n, n)} Misses ${m.none + m.nomatch + m.filtered}: no lesson ${m.none}, no match ${m.nomatch}, filtered ${m.filtered}.`}${k === 'stuck' ? ' Lower bound (an exact re-run hides its earlier failure).' : ''}`);
+      : `${name}: ${count}, ${num(n / days)} a day, median ${mid} on an active day. Probable hits ${h}, unclear ${n - h}. ${NO_FAIL_SIGNAL.has(k) ? 'Failure hits: no signal for this trigger.' : !n ? 'Failure hits: no firings.' : `Failure hits ${fh} of ${n}, ${n < ENOUGH ? 'cannot claim, n too small' : `95% interval ${wilson(fh, n).map(pc).join('-')}%`}.`} ${corrections < ENOUGH ? `No correction signal (${corrections} in ${prompts} prompts).` : `${ratio('Share', h, n, n)} Misses ${m.none + m.nomatch + m.filtered}: no lesson ${m.none}, no match ${m.nomatch}, filtered ${m.filtered}.`}${k === 'stuck' ? ' Lower bound (an exact re-run hides its earlier failure).' : ''}`);
   }
   lines.push(`L17 scan: hides ${counted.hidden} of ${counted.notes} notes.`);
   // What was asked, said back for the maintainer to read: on this PC only, through memory.mjs's redact like every listing.
