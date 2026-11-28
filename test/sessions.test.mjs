@@ -139,4 +139,11 @@ p = project();
 p.b(['title', 'x', 0], ['saw', 'aaaaaaaa', 0], ['end', 'clear', 0]);
 ok(dropSessions(p.store) === true && !existsSync(p.file(B)), 'dropSessions takes a file with title, saw and end lines');
 
+// A conversation's `.pre-<tool call id>` markers (a lesson before a command) go with its file, and only its own.
+p = project();
+p.b(['asked', 'x', 0]);
+writeFileSync(`${p.file(B)}.pre-toolu_1`, ''); writeFileSync(`${p.file(B)}.pre-toolu_2`, ''); writeFileSync(`${p.file(A)}.pre-toolu_1`, '');
+ok(dropSessions(p.store, B.slice(0, 8)) === true && !existsSync(p.file(B)) && !existsSync(`${p.file(B)}.pre-toolu_1`) && !existsSync(`${p.file(B)}.pre-toolu_2`), 'dropSessions of one conversation takes its file and its markers');
+ok(existsSync(`${p.file(A)}.pre-toolu_1`), 'and not another conversation\'s marker');
+
 console.log(`sessions.test.mjs: ${checks} checks passed`);

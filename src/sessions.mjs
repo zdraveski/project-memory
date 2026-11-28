@@ -24,7 +24,13 @@ export const sessionLine = (kind, rest = '', by = '', at = new Date().toISOStrin
 // off and rescan take a project's or all, incognito and a private-session mark (journal.takeBack) one. Never throws: true, or the Error.
 export function dropSessions(store, s) {
   const p = !store ? join(projectsRoot(), SESSIONS) : s ? join(sessionsOf(store), s) : sessionsOf(store);
-  try { rmSync(p, { recursive: true, force: true }); return true; } catch (e) { return e; }
+  try {
+    rmSync(p, { recursive: true, force: true });
+    let names = [];
+    if (s) try { names = readdirSync(dirname(p)); } catch {} // none when the project has no folder
+    for (const f of names) if (f.startsWith(`${s}.pre-`)) rmSync(join(dirname(p), f), { force: true }); // the markers of a lesson before a command
+    return true;
+  } catch (e) { return e; }
 }
 // The save after a reply: session files untouched for 7 days go, in every project (a project never opened again keeps none).
 export const WEEK = 7 * 864e5;
