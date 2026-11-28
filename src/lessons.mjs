@@ -10,7 +10,7 @@ import { fit } from './text.mjs';
 import { notesOf, hits, familyOf } from './enforce.mjs';
 import { own, userText } from './transcript.mjs';
 import { cleanPath, whole, BLOCK_MAX } from './recall.mjs';
-import { targetOf, errorLine, NOT_FAILURE, readMistakes } from './mistakes.mjs';
+import { targetOf, errorLine, NOT_FAILURE, readMistakes, claimed, cochangeFor } from './mistakes.mjs';
 import { lessonsOn } from './switches.mjs';
 import * as T from './transcript.mjs';
 
@@ -309,7 +309,8 @@ export function onEdit(input, { dry = false, now = Date.now(), deadline = perfor
 
 // L13 and L4, at the Stop: each `lesson` line of this turn (main conversation) gets a verdict, f followed, b broken, n not applicable, u unknown,
 // from what the turn changed and ran; the counters and `retired` follow, and one `judged` line ends it. A request that is a correction moves
-// the verdicts of the turn before it to b. { say: '' } always (step 13 fills it). Never throws: the Stop's journal save is done before this.
+// the verdicts of the turn before it to b. { say } is L6's or L9's feedback (stopSays) when `feedback` is true (no compaction nudge in this Stop),
+// else ''. Never throws: the Stop's journal save is done before this.
 // shortcut: a show and a command in one turn are not ordered, so "after the show" is "in the turn"; upgrade if the replay says it is too coarse.
 const COUNT = { f: 'followed', b: 'broken', n: 'na', u: 'unknown' };
 const fresh = (rev) => ({ rev, shown: 0, followed: 0, broken: 0, na: 0, unknown: 0, sessions: [], last: '', retired: '', told: false });
@@ -321,10 +322,32 @@ function judge(on, turn, cwd, rule) {
   const seen = rule ? ran.map((c) => hits(rule, c)) : [];
   return seen.some((h) => h.hit) ? 'b' : seen.some((h) => h.on) ? 'f' : 'u';
 }
-export async function atStop(payload, seen, { now = Date.now() } = {}) {
+// L6 and L9, the Stop's one piece of feedback: the claim check first, the co-change check only when it said nothing. Each writes its session
+// line before it speaks (`claim <hash>`: once a turn; `apart <hash>` and its `cochange:` lesson: once a conversation). A retired co-change pair
+// stays retired for good: its rev is its name, so nothing can change it, and a pair the user corrected 3 times is noise, not a rule to retry.
+const RUN = { test: ['the tests pass', 'test run'], lint: ['the checks pass', 'check run'], build: ['the build succeeds', 'build'] };
+function stopSays(lines, a, turn, cwd, store, at, now) {
+  const add = (...ls) => appendFileSync(at, ls.map(([k, rest]) => sessionLine(k, rest, '', new Date(now).toISOString())).join(''), { mode: 0o600 });
+  const c = lessonsOn('claim') && !lines.slice(a + 1).some((l) => l.kind === 'claim') && claimed(turn.said, turn.ran);
+  if (c) {
+    const [what, run] = RUN[c.kind];
+    add(['claim', keyed(c.target, 8)]);
+    return fit(`project-memory: the reply says ${what}, but the last ${run} in this turn failed: "${fit(c.cmd.replace(/\s+/g, ' ').trim(), 120)}". Run it again, or correct the reply.`);
+  }
+  if (!lessonsOn('cochange') || turn.ended !== true || lines.some((l) => l.kind === 'apart')) return '';
+  let rules = readMistakes(store)?.together;
+  if (!Array.isArray(rules)) return '';
+  const rels = (ps) => ps.flatMap((p) => relPath(p, cwd) ?? []), changed = rels(turn.changed ?? []), context = rels(lines.filter((l) => l.kind === 'file').map((l) => l.rest)), { notes } = readCounters(store);
+  let r, pair;
+  while ((r = cochangeFor(rules, changed, context)) && notes[`cochange:${pair = keyed(`${r.a}\n${r.b}`, 8)}`]?.retired) rules = rules.filter((x) => x !== r);
+  if (!r || !existsSync(join(topOf(cwd), r.b))) return '';
+  add(['apart', pair], ['lesson', lessonLine(`cochange:${pair}`, `pair:${cleanPath(r.b)}`)]);
+  return fit(`project-memory: this turn changed ${r.a} but not ${r.b}. They changed together in ${r.both} of ${r.n} earlier conversations. If the other file needs the matching change, make it. If not, ignore this.`);
+}
+export async function atStop(payload, seen, { now = Date.now(), feedback = false } = {}) {
   const none = { say: '' }, turn = seen?.got?.at(-1), s = tag(payload?.session_id);
   try {
-    if (!turn || seen.quiet || turn.frozen || !['edit', 'command', 'cochange'].some((t) => lessonsOn(t)) || !/^[\w-]+$/.test(s) || PRIVATE.test(userText(turn))) return none;
+    if (!turn || seen.quiet || turn.frozen || !['edit', 'command', 'cochange', 'claim'].some((t) => lessonsOn(t)) || !/^[\w-]+$/.test(s) || PRIVATE.test(userText(turn))) return none;
     const { why, store } = gate(payload, s, 1);
     if (why) return none;
     const at = join(sessionsOf(store), s), lines = readSession(at), prompt = (l) => l.kind === 'asked' || l.kind === 'quiet';
@@ -339,8 +362,9 @@ export async function atStop(payload, seen, { now = Date.now() } = {}) {
       moves = (before?.rest ?? '').split(',').flatMap((x) => { const [n, v] = x.split(':'); try { return COUNT[v] ? [[decodeURIComponent(n), v]] : []; } catch { return []; } });
       if (moves.length && !(await import('./correction.mjs')).correction(own(turn.raw ?? turn.ask ?? ''), { first: false, helper: false }).fire) moves = [];
     }
-    if (!mine.length && !moves.length) return none;
-    const found = new Map(lessonsFor(store).map((x) => [x.name, x])), cwd = String(payload.cwd ?? '').replaceAll('\\', '/');
+    const cwd = String(payload.cwd ?? '').replaceAll('\\', '/'), talk = () => (feedback && payload.stop_hook_active !== true ? { say: stopSays(lines, a, turn, cwd, store, at, now) } : none);
+    if (!mine.length && !moves.length) return talk();
+    const found = new Map(lessonsFor(store).map((x) => [x.name, x]));
     const revFor = (name) => (name.startsWith('cochange:') ? keyed(name, 8) : found.has(name) ? revOf(found.get(name).l) : null);
     const done = mine.map(({ name, on }) => [name, judge(on, turn, cwd, found.get(name)?.r?.rule)]);
     let touched = false;
@@ -360,6 +384,7 @@ export async function atStop(payload, seen, { now = Date.now() } = {}) {
     });
     if (touched && !saved) return none;
     appendFileSync(join(sessionsOf(store), s), sessionLine('judged', done.map(([n, v]) => `${encodeURIComponent(n)}:${v}`).join(','), '', new Date(now).toISOString()), { mode: 0o600 });
+    return talk();
   } catch {}
   return none;
 }

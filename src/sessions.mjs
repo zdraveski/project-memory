@@ -9,7 +9,7 @@ import { isHushed, QUIET } from './privacy.mjs';
 // One per conversation, outside the store, so no fingerprint, snapshot or status sees it. Append-only,
 // `<kind> <ISO time> [agent:<helper id>] <rest>` a line. Kinds: `file` (a path the conversation changed, as recall.mjs's
 // cleanPath has it), `told` (an entry key it was shown), `compact`, `asked`, `quiet`, `title`, `saw`, `end`, `late` (a path
-// whose pointer look-up gave up), `fail` (a failed Bash or PowerShell command: two hashes, 1.7.0 L2) and `stuck` (its streak was named, once a context).
+// whose pointer look-up gave up), `fail` (a failed Bash or PowerShell command: two hashes, 1.7.0 L2) `stuck` (its streak was named, once a context), `claim` (a reply's claim of green checks was told, once a turn: a hash of the failed command's name) and `apart` (a co-change was told, once a conversation: a hash of the two files).
 export const SESSIONS = '.sessions';
 export const sessionsOf = (store) => join(projectsRoot(), SESSIONS, basename(dirname(store)));
 const LINE = /^(\S+) (\S+)(?: agent:([\w-]{1,64}))?(?: (.*))?$/;

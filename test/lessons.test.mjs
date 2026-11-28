@@ -1,6 +1,6 @@
 // Self-check for lessons.mjs (1.7.0 step 2): the switch, a lesson's matching on a path or a command family, the order and the
 // block Claude would see, the counters file and the session line. No hook speaks yet. Run: node lessons.test.mjs
-import fs, { mkdirSync, writeFileSync, mkdtempSync, appendFileSync, readFileSync, existsSync } from 'node:fs';
+import fs, { mkdirSync, writeFileSync, mkdtempSync, appendFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -11,7 +11,7 @@ import { sessionsOf, sessionLine } from '../src/sessions.mjs';
 import { PROJECT_OFF, QUIET } from '../src/privacy.mjs';
 import { lessonOf } from '../src/enforce.mjs';
 import { cleanPath } from '../src/recall.mjs';
-import { projectsRoot, sharedStore, foldCase } from '../src/store.mjs';
+import { projectsRoot, sharedStore, foldCase, keyed, MISTAKES } from '../src/store.mjs';
 
 const { home } = tempHome('lessons-');
 let checks = 0;
@@ -292,6 +292,61 @@ ok(wilson(0, 0).join() === '0,0' && wilson(0, 5)[0] === 0 && wilson(5, 5)[1] ===
   { const q = proj(); q.counters({ 'other.md': blank({ shown: 7 }) }); q.put(ASK(), L('a.md', 'edit:src/a.mjs')); await q.stop(); ok(q.c('other.md').shown === 7 && q.c().shown === 1, 'the other notes\' counters stay');
     const w = proj(); w.put(ASK(), L('a.md', 'edit:src/a.mjs')); mkdirSync(join(w.store, '.lessons.json'));
     ok((await w.stop()).say === '' && judged(w).length === 0, 'a counter file that will not write: no judged line, no throw'); }
+  // Step 13: the Stop's feedback, L6 (a reply claims green over a failed run) and L9 (a file changed without the one it goes with).
+  const on = async (v, f) => { const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = v; try { return await f(); } finally { if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was; } };
+  const say = (q, t, o = { feedback: true }, p = q.payload) => atStop(p, { got: [t], quiet: false }, { now: NOW, ...o });
+  const kinds = (q, k) => q.file().filter((l) => l.startsWith(`${k} `));
+  const RED = { said: 'Done, the tests pass.', ran: ['npm test → failed: 1 failing'] };
+  const CLAIM = 'project-memory: the reply says the tests pass, but the last test run in this turn failed: "npm test". Run it again, or correct the reply.';
+  await on('claim', async () => {
+    const q = proj(); q.put(ASK());
+    ok((await say(q, q.turn(RED))).say === CLAIM && kinds(q, 'claim').length === 1 && new RegExp(`^claim \\S+ ${keyed('npm test', 8)}$`).test(kinds(q, 'claim')[0]), 'claim: a failed last test run under "the tests pass" says the pinned text and writes one claim line');
+    ok((await say(q, q.turn(RED))).say === '' && kinds(q, 'claim').length === 1, 'claim: the second Stop of the same turn says nothing');
+    q.put(ASK('next')); ok((await say(q, q.turn(RED))).say === CLAIM && kinds(q, 'claim').length === 2, 'claim: the next turn may say it again');
+    const v = proj(); v.put(ASK(), L('a.md', 'edit:src/a.mjs')); ok((await say(v, v.turn(RED))).say === CLAIM && judged(v).length === 1 && kinds(v, 'claim').length === 1, 'claim: with lessons to judge in the same Stop, both happen');
+    const h = proj(); h.put(ASK()); ok((await say(h, h.turn(RED), { feedback: true }, { ...h.payload, stop_hook_active: true })).say === '' && !kinds(h, 'claim').length, 'claim: nothing while stop_hook_active');
+    const n = proj(); n.put(ASK()); ok((await say(n, n.turn(RED), {})).say === '' && !kinds(n, 'claim').length, 'claim: no feedback asked (the compaction nudge fired), nothing said or written');
+    const p = proj(); p.put(ASK()); ok((await say(p, p.turn({ ...RED, raw: 'x <private>y</private>' }))).say === '' && !kinds(p, 'claim').length, 'claim: a private turn');
+    for (const [what, t, want] of [['lint', { said: 'The checks pass: lint is clean.', ran: ['node tools/check.mjs → failed: x'] }, 'the checks pass, but the last check run in this turn failed: "node tools/check.mjs"'],
+      ['build', { said: 'The build succeeds.', ran: ['npm run build → failed: x'] }, 'the build succeeds, but the last build in this turn failed: "npm run build"'],
+      ['any takes the failed command\'s kind', { said: 'All green.', ran: ['npm run build → failed: x'] }, 'the build succeeds, but the last build in this turn failed: "npm run build"'],
+      ['a long command is clipped at 120', { said: 'The tests pass.', ran: [`npm test -- ${'x'.repeat(200)} → failed: x`] }, `the tests pass, but the last test run in this turn failed: "npm test -- ${'x'.repeat(108)}…"`]]) {
+      const c = proj(); c.put(ASK()); const r = await say(c, c.turn(t)); ok(r.say === `project-memory: the reply says ${want}. Run it again, or correct the reply.`, `claim: ${what} (got ${r.say})`);
+    }
+    for (const [what, t] of [['the last run passed', { said: 'The tests pass.', ran: ['npm test'] }], ['no claim', { said: 'I fixed it.', ran: ['npm test → failed: x'] }], ['a hedged claim', { said: 'The tests pass, but only on Linux.', ran: ['npm test → failed: x'] }]]) {
+      const c = proj(); c.put(ASK()); ok((await say(c, c.turn(t))).say === '' && !kinds(c, 'claim').length, `claim: ${what}, nothing`);
+    }
+  });
+  await on('cochange', async () => {
+    const prep = (rules = [{ a: 'src/a.mjs', b: 'test/a.test.mjs', n: 6, both: 5 }]) => { const q = proj(); q.put(ASK()); mkdirSync(join(q.cwd, 'test'), { recursive: true }); writeFileSync(join(q.cwd, 'test', 'a.test.mjs'), 'x'); writeFileSync(join(q.store, MISTAKES), JSON.stringify({ v: 1, together: rules })); return q; };
+    const PAIR = keyed('src/a.mjs\ntest/a.test.mjs', 8), END = { ended: true }, TEXT = 'project-memory: this turn changed src/a.mjs but not test/a.test.mjs. They changed together in 5 of 6 earlier conversations. If the other file needs the matching change, make it. If not, ignore this.';
+    const q = prep(); const r = await say(q, q.turn(END));
+    ok(r.say === TEXT && kinds(q, 'apart').length === 1 && kinds(q, 'apart')[0].endsWith(` ${PAIR}`) && kinds(q, 'lesson').at(-1).endsWith(` cochange%3A${PAIR} pair:test/a.test.mjs`), `cochange: the pinned text, an apart line and the lesson line (got ${r.say} ${q.file()})`);
+    ok((await say(q, q.turn(END))).say === '' && kinds(q, 'apart').length === 1, 'cochange: once in the conversation (the same turn)');
+    q.put(ASK('next')); ok((await say(q, q.turn(END))).say === '', 'cochange: and in a later turn');
+    // The continuation after the feedback: B changed, the lesson is judged followed, nothing more is said.
+    const c = prep(); await say(c, c.turn(END)); const f = await say(c, c.turn({ ...END, changed: [join(c.cwd, 'src', 'a.mjs'), join(c.cwd, 'test', 'a.test.mjs')] }), { feedback: true }, { ...c.payload, stop_hook_active: true });
+    ok(f.say === '' && judged(c).length === 1 && judged(c)[0].endsWith(` cochange%3A${PAIR}:f`), `cochange: the lesson is judged at the continuation Stop (got ${judged(c)})`);
+    for (const [what, mk, t] of [
+      ['B is in the file lines', (x) => x.put(sessionLine('file', cleanPath(join(x.cwd, 'test', 'a.test.mjs')))), END],
+      ['B was changed by a helper', (x) => x.put(sessionLine('file', cleanPath(join(x.cwd, 'test', 'a.test.mjs')), 'h1')), END],
+      ['B is gone from disk', (x) => rmSync(join(x.cwd, 'test', 'a.test.mjs')), END],
+      ['the turn did not end', () => {}, { ended: false }],
+      ['an apart line is there', (x) => x.put(sessionLine('apart', 'other')), END],
+      ['B was changed in the turn', () => {}, { ...END, changed: 'both' }],
+      ['the pair is retired', (x) => x.counters({ [`cochange:${PAIR}`]: blank({ rev: keyed(`cochange:${PAIR}`, 8), shown: 4, broken: 3, retired: 'broken 3 of 4' }) }), END],
+    ]) {
+      const x = prep(); mk(x);
+      const t2 = t.changed === 'both' ? { ...t, changed: [join(x.cwd, 'src', 'a.mjs'), join(x.cwd, 'test', 'a.test.mjs')] } : t;
+      const before = kinds(x, 'apart').length, r2 = await say(x, x.turn(t2)); ok(r2.say === '' && kinds(x, 'apart').length === before, `cochange: ${what}, nothing`);
+    }
+    { const y = prep(); const z = await on('claim', () => say(y, y.turn(END))); ok(z.say === '' && !kinds(y, 'apart').length, 'cochange: off unless switched on'); }
+    { const y = prep(); const z = await on('claim,cochange', () => say(y, y.turn({ ...END, ...RED }))); ok(z.say === CLAIM && !kinds(y, 'apart').length && kinds(y, 'claim').length === 1, 'cochange: with the claim feedback in the same Stop, only the claim speaks'); }
+    { const x = prep([{ a: 'src/a.mjs', b: 'test/a.test.mjs', n: 6, both: 5 }, { a: 'src/a.mjs', b: 'docs/a.md', n: 6, both: 5 }]); x.counters({ [`cochange:${PAIR}`]: blank({ rev: keyed(`cochange:${PAIR}`, 8), retired: 'broken 3 of 4' }) });
+      mkdirSync(join(x.cwd, 'docs'), { recursive: true }); writeFileSync(join(x.cwd, 'docs', 'a.md'), 'x'); ok((await say(x, x.turn(END))).say.includes('but not docs/a.md'), 'cochange: a retired pair lets the next rule speak'); }
+    { const x = prep(); writeFileSync(join(x.store, MISTAKES), '{ broken'); ok((await say(x, x.turn(END))).say === '', 'cochange: a mistakes file that will not read'); }
+  });
+  { const q = proj(); q.put(ASK()); ok((await say(q, q.turn(RED))).say === '' && !kinds(q, 'claim').length, 'claim and cochange are off by default: nothing said'); }
 }
 
 console.log(`lessons: ${checks} checks passed`);

@@ -90,4 +90,6 @@ export default {
   "a line longer than a piece passed over": ['if (nl === -1) { rest.push(Buffer.from(piece)); continue; }', 'if (nl === -1) continue;'],
   "a line cut by a piece loses its start": ['rest = [Buffer.from(piece.subarray(nl + 1))];', 'rest = [];'],
   "an unreadable transcript not marked": ['} catch { return true; } finally { f?.close(); }', '} catch { return false; } finally { f?.close(); }'],
+  "ended: any stop reason ends the turn": ["pending.ended = r.message.stop_reason === 'end_turn';", "pending.ended = true;"],
+  "ended: a frozen turn is marked": ["r.type === 'assistant' && pending && !pending.frozen && r.message?.stop_reason) pending.ended", "r.type === 'assistant' && pending && r.message?.stop_reason) pending.ended"],
 };

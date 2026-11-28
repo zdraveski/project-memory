@@ -879,6 +879,54 @@ cp.execFileSync = function (cmd, args, ...rest) {
   const t2 = turn('proj-les-private', 'edit it <private>keep this out</private>');
   ok(t2.stop.status === 0 && !existsSync(join(t2.mem, '.lessons.json')) && !t2.lines.some((l) => l.startsWith('judged')), `a private turn writes neither (got ${t2.lines})`);
 }
+// 1.7.0 step 13 (L6, L9): a Stop that has nothing else to say gives Claude one piece of feedback, as Stop additionalContext: a reply that
+// claims green over a failed run, or a file changed without the one it goes with. Real Stops over a made-up transcript and session file.
+{
+  const { TRIGGER, WINDOW } = await import('../src/compact-gate.mjs'), cwd = mkdtempSync(join(tmpdir(), 'fb-')), at = new Date().toISOString();
+  let n = 0;
+  const CLAIM = 'project-memory: the reply says the tests pass, but the last test run in this turn failed: "npm test". Run it again, or correct the reply.';
+  const TEXT = 'project-memory: this turn changed src/a.mjs but not test/b.mjs. They changed together in 5 of 6 earlier conversations. If the other file needs the matching change, make it. If not, ignore this.';
+  const fb = ({ ask = 'run the tests', said = 'Done.', fail = false, edit = false, end = true, big = false, seed = true, b = true, fileLine = false } = {}) => {
+    const sid = `fb0000${++n}`, p = `proj-fb-${n}`, mem = join(root, p, 'memory'), tp = join(root, p, 'fb.jsonl'), sf = join(root, '.sessions', p, sid);
+    const rec = (type, content, message = {}) => JSON.stringify({ type, uuid: `fb-${n}-${Math.random()}`, sessionId: sid, cwd, timestamp: at, message: { role: type, content, ...message } });
+    const usage = { input_tokens: 3, cache_read_input_tokens: Math.round(TRIGGER * WINDOW) + 20_000, cache_creation_input_tokens: 0, output_tokens: 9 };
+    mkdirSync(mem, { recursive: true }); mkdirSync(dirname(sf), { recursive: true });
+    writeFileSync(sf, sessionLine('asked', 'x') + (fileLine ? sessionLine('file', join(cwd, 'test', 'b.mjs').replaceAll('\\', '/').toLowerCase()) : ''));
+    if (seed) writeFileSync(join(mem, '.mistakes.json'), JSON.stringify({ v: 1, together: [{ a: 'src/a.mjs', b: 'test/b.mjs', n: 6, both: 5 }] }));
+    mkdirSync(join(cwd, 'test'), { recursive: true }); if (b) writeFileSync(join(cwd, 'test', 'b.mjs'), 'x'); else rmSync(join(cwd, 'test', 'b.mjs'), { force: true });
+    writeFileSync(tp, [rec('user', ask),
+      ...(fail ? [rec('assistant', [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'npm test' } }]), rec('user', [{ type: 'tool_result', tool_use_id: 'b1', content: 'FAIL 1 failing', is_error: true }])] : []),
+      ...(edit ? [rec('assistant', [{ type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: join(cwd, 'src', 'a.mjs'), old_string: 'x', new_string: 'y' } }])] : []),
+      rec('assistant', [{ type: 'text', text: said }], { ...(end ? { stop_reason: 'end_turn' } : {}), ...(big ? { usage } : {}) })].join('\n') + '\n');
+    return { sf, stop: (o = {}) => {
+      const r = spawnSync(process.execPath, [TOOL, '--stop'], { env: { ...process.env, PROJECT_MEMORY_LESSONS: o.on ?? 'claim,cochange' }, encoding: 'utf8', timeout: 60000, input: JSON.stringify({ cwd, transcript_path: tp, session_id: sid, hook_event_name: 'Stop', ...(o.active ? { stop_hook_active: true } : {}) }) });
+      const line = r.stdout.split('\n').find((l) => l.startsWith('{'));
+      return { r, out: line ? JSON.parse(line) : null, lines: readFileSync(sf, 'utf8').split('\n').filter(Boolean) };
+    } };
+  };
+  const only = (text) => JSON.stringify({ hookSpecificOutput: { hookEventName: 'Stop', additionalContext: text } });
+  const kind = (x, k) => x.lines.filter((l) => l.startsWith(`${k} `));
+  let t = fb({ fail: true, said: 'All done, the tests pass.' }), x = t.stop();
+  ok(x.r.status === 0 && JSON.stringify(x.out) === only(CLAIM) && kind(x, 'claim').length === 1, `claim: a Stop prints the pinned feedback (got ${x.r.stdout} ${x.r.stderr})`);
+  x = t.stop(); ok(x.r.status === 0 && !/hookSpecificOutput/.test(x.r.stdout) && kind(x, 'claim').length === 1, `claim: the second Stop of the same turn prints nothing (got ${x.r.stdout})`);
+  t = fb({ fail: true, said: 'All done, the tests pass.' }); x = t.stop({ active: true });
+  ok(x.r.status === 0 && !/hookSpecificOutput/.test(x.r.stdout) && !kind(x, 'claim').length, `claim: nothing when stop_hook_active (got ${x.r.stdout})`);
+  t = fb({ fail: true, said: 'All done, the tests pass.', big: true }); x = t.stop();
+  ok(/update memory/.test(x.out?.hookSpecificOutput?.additionalContext ?? '') && !/the reply says/.test(x.r.stdout) && !kind(x, 'claim').length, `claim: only the compaction nudge prints when it fires (got ${x.r.stdout})`);
+  t = fb({ fail: true, said: 'All done, the tests pass.' }); x = t.stop({ on: 'command' });
+  ok(!/hookSpecificOutput/.test(x.r.stdout) && !kind(x, 'claim').length, `claim: off unless switched on (got ${x.r.stdout})`);
+  t = fb({ fail: true, said: 'All done, the tests pass.', ask: 'run the tests <private>x</private>', edit: true }); x = t.stop();
+  ok(x.r.status === 0 && !/hookSpecificOutput/.test(x.r.stdout) && !kind(x, 'claim').length && !kind(x, 'apart').length, `a private turn writes no claim or apart line (got ${x.r.stdout} ${x.lines})`);
+  // Co-change.
+  t = fb({ edit: true }); x = t.stop();
+  ok(x.r.status === 0 && JSON.stringify(x.out) === only(TEXT) && kind(x, 'apart').length === 1 && kind(x, 'lesson').length === 1 && / pair:test\/b\.mjs$/.test(kind(x, 'lesson')[0]), `cochange: a Stop prints the pinned feedback (got ${x.r.stdout} ${x.r.stderr} ${x.lines})`);
+  x = t.stop({ active: true }); ok(!/hookSpecificOutput/.test(x.r.stdout) && kind(x, 'apart').length === 1, `cochange: nothing the second time in the conversation (got ${x.r.stdout})`);
+  for (const [what, o] of [['B is in the session file\'s file lines', { edit: true, fileLine: true }], ['B is gone from disk', { edit: true, b: false }], ['the turn did not end', { edit: true, end: false }]]) {
+    x = fb(o).stop(); ok(x.r.status === 0 && !/hookSpecificOutput/.test(x.r.stdout) && !kind(x, 'apart').length, `cochange: nothing when ${what} (got ${x.r.stdout})`);
+  }
+  x = fb({ edit: true, fail: true, said: 'All done, the tests pass.' }).stop();
+  ok(JSON.stringify(x.out) === only(CLAIM) && !kind(x, 'apart').length, `cochange: nothing with the claim feedback in the same Stop (got ${x.r.stdout})`);
+}
 // An index.lock a dead git left behind would refuse every commit from now on.
 note('proj-two', 'g');
 writeFileSync(join(root, '.git', 'index.lock'), '');
