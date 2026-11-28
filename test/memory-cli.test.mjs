@@ -732,4 +732,29 @@ rmSync(join(root, '.stop-ran'), { force: true });
   rmSync(join(L, 'journal'), { recursive: true }); rmSync(join(G, 'journal'), { recursive: true });
 }
 
+// 1.7.0 `memory preview`: the startup briefing the SessionStart hook would print, run dry, with its size. The same text as the hook's, byte for
+// byte, and nothing in the store, the session folder or the projects folder is changed (names, sizes, times).
+{
+  const proj = join(root, 'C--prev-cli'), mem = join(proj, 'memory'), t = join(proj, 'prevsess1.jsonl'), at = (m) => new Date(Date.now() - 2 * 864e5 + m * 6e4).toLocaleString('sv-SE').slice(0, 16);
+  mkdirSync(mem, { recursive: true });
+  writeFileSync(t, JSON.stringify({ type: 'user', cwd: 'C:\\prev-cli', timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text: 'hello' }] } }) + '\n');
+  writeFileSync(join(mem, 'MEMORY.md'), '# Index\n');
+  writeFileSync(join(mem, 'handoff.md'), `---\nname: handoff\n---\n\n<!-- auto:start -->\n${[1, 2, 3, 4, 5].map((i) => `- **asked** ${at(i)} [ffffffff]: ask ${i} ${'q'.repeat(300)}\n  **did:** answer ${i} ${'a'.repeat(400)}`).join('\n')}\n<!-- auto:end -->\n`);
+  writeFileSync(join(mem, 'dead.md'), '---\nname: dead\ndescription: "a dead end"\nmetadata:\n  type: feedback\ninstead: use the helper that exists now\n---\n\nbody\n');
+  const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = 'deadend';
+  const tree = () => readdirSync(root, { recursive: true }).sort().map((f) => { const x = statSync(join(root, f)); return `${f} ${x.isFile() ? x.size : 'dir'} ${x.mtimeMs}`; }).join('\n');
+  const before = tree();
+  const r = await run(['preview', '--session', 'prevsess1']);
+  const after = tree();
+  const { briefing } = await import('../src/briefing.mjs');
+  const hook = await briefing({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'prevsess1', cwd: process.cwd(), transcript_path: t });
+  if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was;
+  const m = /^Startup briefing: ([\d,]+) of 3,500 characters; (\d+) older exchanges? left out to fit\.\n/.exec(r.stdout);
+  ok(r.status === 0 && m && r.stdout.slice(m[0].length) === hook, `preview prints the hook's briefing, byte for byte (got ${r.stdout.slice(0, 300)} / ${r.stderr})`);
+  ok(m[1] === hook.length.toLocaleString('en-US') && hook.includes('Dead ends in this project'), 'with its size, and the new lines in it');
+  ok(Number(m[2]) <= 5 && (hook.match(/\*\*asked\*\*/g) ?? []).length === 5 - Number(m[2]), 'and how many older exchanges were left out');
+  ok(before === after, 'a preview changes nothing: no file made, no size or time changed');
+  ok(parseArgs(['preview', '--file', 'x']) === 'preview does not take --file; help lists the options' && (await run(['help'])).stdout.includes('preview'), 'preview takes no option, and help names it');
+}
+
 console.log(`memory-cli: ${checks} checks passed`);

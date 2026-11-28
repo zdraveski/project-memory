@@ -49,6 +49,7 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           only, --show adds each firing's request, on this PC; --all every
                                           project, --except leaves out the project of <folder>; read-only
                                           but for a numbers-only line in this store's .replay-history
+  preview                                 the startup briefing the next conversation here would get, with its size; read-only
 The store is this session's own (outside a session: the cwd's project, or the nearest
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
@@ -56,9 +57,9 @@ reads its transcript. After --, every word is a term, one that starts with -- to
 import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, rmSync, unlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, dropMistakes, claimPage, repoRoot, appendCapped } from './store.mjs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, dropMistakes, claimPage, appendCapped, repoRoot } from './store.mjs';
 import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, stopRuns, deployed, deployedCommit, edited, DEPLOYED, moved, movedText } from './run-records.mjs';
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, verdict, isOurs, versionsOf, changedLately, dropDays, daysHolding, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
 import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
@@ -433,6 +434,18 @@ function sessionStore() {
   }
 }
 
+
+// preview: the startup briefing as the SessionStart hook would print it for a conversation started here now, run dry (briefing.mjs --dry: nothing counted or
+// written). A process of its own: the briefing is asynchronous and this command line is not, and the one path is the hook's own.
+const PREVIEW = fileURLToPath(new URL('./briefing.mjs', import.meta.url));
+function preview() {
+  const transcript = session && transcriptOf(session);
+  const payload = { hook_event_name: 'SessionStart', source: 'startup', session_id: session || 'preview', cwd: process.cwd(), ...(transcript ? { transcript_path: transcript } : {}) };
+  const r = spawnSync(process.execPath, [PREVIEW, '--print', '--dry'], { input: JSON.stringify(payload), encoding: 'utf8', timeout: 30_000, windowsHide: true });
+  if (r.error || r.status !== 0) return { ok: false, lines: [`the startup briefing could not be run: ${r.error ? reason(r.error) : `exit ${r.status}`}`] };
+  const left = Number(/^left (\d+)$/m.exec(r.stderr)?.[1] ?? 0);
+  return { ok: true, lines: [`Startup briefing: ${r.stdout.length.toLocaleString('en-US')} of 3,500 characters; ${left} older exchange${left === 1 ? '' : 's'} left out to fit.`, ...(r.stdout ? r.stdout.replace(/\n$/, '').split('\n') : [])] };
+}
 
 // rescan: today's redaction rules over what is already saved (notes, journal, handoff, every snapshot): counts and places, never a
 // value. --apply --yes backs up first, then writes [redacted] over each hit and rewrites the history. Markers already in the
@@ -1013,7 +1026,7 @@ export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--ses
 const valued = new Set(Object.keys(OPTIONS).filter((o) => OPTIONS[o]));
 // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
 // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal in main().
-const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
+const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], preview: [], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
 
 // The command line's words, read before any store is touched: { cmd, rest, args, opt } or the refusal to print.
 // rest is every word but the command, in order (--key repeats, and the first of an option wins in opt()); args
@@ -1216,6 +1229,7 @@ export function main(given) {
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
   else if (cmd === 'doctor') r = doctor(here);
+  else if (cmd === 'preview') r = preview();
   else if (cmd === 'page') r = page(every(), opt('--days') === undefined ? PAGE_DAYS : opt('--days') === 'all' ? 'all' : Math.min(Number(opt('--days')), PAGE_MAX), opt('--project'), failed);
   // The usage, after why: a misspelt command, or one with no word after it,
   // printed the usage alone.

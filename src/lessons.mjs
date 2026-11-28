@@ -3,7 +3,7 @@
 // calls these. Imports store, text, enforce and recall (never the other way round, ADR 0003).
 import { readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
-import { foldCase, projectsRoot, repoRoot, sharedStore } from './store.mjs';
+import { foldCase, projectsRoot, repoRoot, sharedStore, withLock, replaceIfUnchanged, raw } from './store.mjs';
 import { fit } from './text.mjs';
 import { notesOf } from './enforce.mjs';
 import { cleanPath, whole, BLOCK_MAX } from './recall.mjs';
@@ -32,6 +32,37 @@ export function readCounters(store) {
     const obj = (x) => x && typeof x === 'object' && !Array.isArray(x);
     return j?.v === 1 && obj(j.notes) ? { ...j, errors: obj(j.errors) ? j.errors : {} } : none;
   } catch { return none; }
+}
+
+// F3's writer for the startup briefing (`listed`, `told`): `edit` changes the counters in place, under the store's lock, written only if
+// the file is as it was read. true when written; false when nothing changed, the lock stayed busy or the write failed (the briefing says
+// the same again next time).
+export function updateCounters(store, edit) {
+  try {
+    return withLock(store, () => { const file = join(store, '.lessons.json'), c = readCounters(store); edit(c); return replaceIfUnchanged(file, raw(file), `${JSON.stringify(c)}
+`) === true; }) ?? false;
+  } catch { return false; }
+}
+
+// H3. The dead ends of this project (lessons with `instead`, none retired, resolved or hidden), as the briefing prints them: a header, at most
+// 3 lines of 200 characters, and the count of the rest; [] for none. `opts` goes to notesOf ({ write: false } leaves the cache alone).
+export function deadEnds(store, now = Date.now(), opts) {
+  const ends = lessonsFor(store, opts).filter((x) => !x.shared && x.l.instead).map((lesson) => ({ lesson, how: 0 }));
+  const shown = order(ends, readCounters(store), now).slice(0, 3).map(({ lesson: { name, l, mtime } }) => {
+    const head = `- [${Math.max(0, Math.floor((now - mtime) / 864e5))}d] `, tail = ` (note: ${name})`, body = `${l.desc || l.name}: Instead: ${l.instead}`, room = 200 - head.length - tail.length;
+    return `${head}${body.length > room ? `${body.slice(0, Math.max(0, room - 1))}…` : body}${tail}`;
+  });
+  return shown.length ? ['Dead ends in this project (records, check them against the code):', ...shown, ...(ends.length > 3 ? [`and ${ends.length - 3} more: memory skill, lessons`] : [])] : [];
+}
+
+// L4. A lesson that was retired and not yet told: { names, lines } (`told: true` is written by the caller). A note that is no longer a
+// lesson (gone, archived, hidden) is not told; a co-change lesson (`cochange:<hash>`) has no note.
+export function retiredLines(store, opts) {
+  const { notes } = readCounters(store), due = Object.entries(notes).filter(([, c]) => c?.retired && !c.told);
+  if (!due.length) return { names: [], lines: [] };
+  const alive = new Set([[store, ''], [sharedStore(), '_shared/']].flatMap(([d, pre]) => (d === store && pre ? [] : notesOf(d, opts).filter((x) => x.l?.lesson && !x.l.lesson.hidden).map((x) => `${pre}${x.file}`))));
+  const told = due.filter(([name]) => name.startsWith('cochange:') || alive.has(name));
+  return { names: told.map(([name]) => name), lines: told.map(([name, c]) => `project-memory: the lesson ${name} is no longer shown (shown ${c.shown || 0}, broken ${c.broken || 0}). Fix the note or add resolved-by: to it. See: memory skill, lessons`) };
 }
 
 // The project's lessons, then the shared store's (named `_shared/<file>`, `shared: true`): [{ name, l, mtime, r }]. Left out: a note that
