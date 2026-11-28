@@ -13,6 +13,7 @@
 ### Lessons
 
 - **Notes can say what they are about.** A note may carry `applies_to:`, `applies_when:`, `instead:` and `resolves:`, and `resolved-by:` archives a dead end once its fix has landed. Nothing speaks yet: the matching and the switch `PROJECT_MEMORY_LESSONS` come first.
+- **`memory status` and `memory doctor` check the notes.** Coded lines name a gone index line, a note in no index, alike descriptions, clashing file names, a missing or unclosed header, a link to no note, an unread lesson key, an unknown `resolves:` id, feedback notes that can never fire, a lesson not shown and an index over budget (`N01` to `N11`), and a note whose path changed in 3 or more commits since it was written, or is gone (`S01`, `S02`). Only a clashing name or a missing header (`PROBLEM`) makes `doctor` exit non-zero.
 
 ### Learns from mistakes
 

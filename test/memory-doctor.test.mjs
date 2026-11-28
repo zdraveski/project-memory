@@ -305,6 +305,9 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     r = await cli('restore', 'Alpha');
     ok(r.status === 0 && readFileSync(join(dir, 'Alpha.md'), 'utf8').includes('the upper body') && readFileSync(join(dir, 'alpha.md'), 'utf8') === 'an edit not yet snapshotted\n',
       `on a case-sensitive disk, restore Alpha brings back Alpha.md and leaves alpha.md alone (got ${r.stdout.trim()})`);
+    // Gone again, so the healthy doctor later sees no N04 (one name on Windows) or N05 (no front matter).
+    for (const f of ['Alpha.md', 'alpha.md']) rmSync(join(dir, f));
+    writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace('- [Upper](Alpha.md) — u\n- [Lower](alpha.md) — l\n', ''));
   }
   // A short 8.3 name of an index is still an index.
   for (const short of ['MEMORY~1.MD', 'MEMORY~2.MD']) {
@@ -364,7 +367,7 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
   writeFileSync(join(d10, 'MEMORY.md'), `- [Kase](${process.platform === 'win32' ? 'Kase' : 'kase'}.md) — k\n- [Linker](linker.md) — l\n`);
   const st10 = spawnSync(process.execPath, [CLI, 'status', `--store=${d10}`], { env, encoding: 'utf8', cwd: home });
   ok(st10.stdout.includes(d10), `--store=<dir> is the store (got ${st10.stdout.split('\n')[0]})`);
-  ok(!/with no pointer yet/.test(st10.stdout) && !/links to no memory/.test(st10.stdout), `a line in another case counts, and [[x.md]] or a link in code is no dangling link (got ${st10.stdout.trim()})`);
+  ok(!/with no pointer yet/.test(st10.stdout) && !/ N06 /.test(st10.stdout), `a line in another case counts, and [[x.md]] or a link in code is no dangling link (got ${st10.stdout.trim()})`);
 }
 
 // Round 6. A store whose memory folder links to a folder outside the root:
@@ -428,7 +431,7 @@ if (!quick) {
   symlinkSync(out17, at17, process.platform === 'win32' ? 'junction' : 'dir');
   tier();
   const run17 = (...a) => run([...a, '--store', join(at17, 'memory')]);
-  ok(/links to no memory: cost\.md → \[\[ghost17\]\]/.test((await run17('status')).stdout), 'a link after an inline ``` in prose is read');
+  ok(/ N06 cost\.md links to \[\[ghost17\]\]/.test((await run17('status')).stdout), 'a link after an inline ``` in prose is read');
   if (/C--p17\/memory\/cost\.md/.test(spawnSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).stdout)) {
     unlinkSync(join(out17, 'memory', 'cost.md'));
     const r17 = await run17('restore', 'cost');
@@ -457,7 +460,7 @@ if (!quick) {
   memory(d21, 'fenced', 'fences', '> ```\n> [[ghostq]]\n> ```\n- ```\n  [[ghostl]]\n  ```\n~~~\n[[ghostt]]\n~~~\n```x[[0]]``` is code, see [[ghostp]].\n```\ny = 2\n```\n');
   writeFileSync(join(d21, 'MEMORY.md'), '- [Fenced](fenced.md) — f\n');
   const s21 = (await run(['status', '--store', d21])).stdout;
-  ok(/links to no memory: fenced\.md → \[\[ghostp\]\]\s*$/m.test(s21), `fences in a quote, a list or with ~~~ hide their links; a code span in prose does not hide the next (got ${s21})`);
+  ok(/ N06 fenced\.md links to \[\[ghostp\]\], which is no note[^\n]*$/m.test(s21) && s21.split('\n').filter((l) => / N06 fenced\.md /.test(l)).length === 1, `fences in a quote, a list or with ~~~ hide their links; a code span in prose does not hide the next (got ${s21})`);
 }
 
 // Review of round 6's second review. A link that sorts first, added after the
@@ -499,7 +502,7 @@ if (!quick) {
   writeFileSync(join(d23, 'MEMORY.md'), '- [Four](four.md) — f\n- [Tilde](tilde.md) — t\n');
   const t23 = Date.now();
   const s23 = (await run(['status', '--store', d23])).stdout;
-  ok(/four\.md → \[\[ghosto\]\]/.test(s23) && /four\.md → \[\[ghostu\]\]/.test(s23) && !/ghostf/.test(s23), `a \`\`\`\` fence holding a \`\`\` one hides its links, one never closed hides none (got ${s23})`);
+  ok(/ N06 four\.md links to \[\[ghosto\]\]/.test(s23) && / N06 four\.md links to \[\[ghostu\]\]/.test(s23) && !/ghostf/.test(s23), `a \`\`\`\` fence holding a \`\`\` one hides its links, one never closed hides none (got ${s23})`);
   ok(quick || Date.now() - t23 < 3000, `a long run of tildes does not slow status down (${Date.now() - t23} ms)`);
   // The shared store has its own index: this one's, deleted, was not promoted.
   tier();
@@ -748,7 +751,7 @@ lemur lemur lemur lemur
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
+  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs', 'notes-health.mjs', 'lessons.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   const njs = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'status', '--store', jd], { env, encoding: 'utf8' });
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
@@ -1717,6 +1720,8 @@ After the log: narwhalqq stays.
   rmSync(join(live, '.deployed.json'), { force: true });
   writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: new Date().toISOString(), failures: 0 }));
   ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
+  // The restore round left locked.md with no front matter, which doctor now says (N05, a PROBLEM): give it one.
+  writeFileSync(join(dir, 'locked.md'), '---\nname: locked\ndescription: a note the restore round locked\ntype: project\n---\nv2\n');
   r = await cli('doctor');
   ok(r.status === 0 && !/^PROBLEM/m.test(r.stdout) && /^ok +installed as project-memory@project-memory$/m.test(r.stdout) && /^ok +git on PATH$/m.test(r.stdout) && !/locks a killed hook left/.test(r.stdout), `a healthy doctor says ok and exits 0 (got ${r.stdout})`);
   ok(/^ok +compaction window 1000k of the model's 1000k: Claude Code compacts at 967k, the memory reminder comes at 850k$/m.test(r.stdout), `doctor names the compaction and model windows (got ${r.stdout})`);
@@ -2047,6 +2052,44 @@ After the log: narwhalqq stays.
   writeFileSync(join(dir, 'moved-note.md'), 'x');
   ok(!/D--elsewhere-mem-cli/.test((await cli('doctor')).stdout), 'no warning when this folder has every note the other has');
   rmSync(join(dir, 'moved-note.md')); rmSync(join(root, 'D--elsewhere-mem-cli'), { recursive: true }); rmSync(join(root, 'D--elsewhere-mem-other'), { recursive: true });
+}
+
+// 1.7.0 step 3: the notes' structure checks show in doctor and status; only a PROBLEM changes doctor's exit.
+{
+  const hs = join(root, 'C--health-cli', 'memory');
+  mkdirSync(hs, { recursive: true });
+  writeFileSync(join(hs, 'MEMORY.md'), '- [good](good.md) — fine\n');
+  writeFileSync(join(hs, 'good.md'), '---\nname: good\ndescription: a note that is fine\ntype: project\n---\n\nx\n');
+  const go = (...a) => run([...a, '--store', hs]);
+  const clean = await go('doctor');
+  // Doctor exits 0 exactly when it prints no PROBLEM (an earlier test's link outside the projects folder is one, on Linux), so N05's exit proves something.
+  const problems = (o) => o.stdout.split('\n').filter((l) => l.startsWith('PROBLEM'));
+  ok(!/ N\d\d /.test(clean.stdout) && (clean.status === 0) === !problems(clean).length, `a clean store has no N line, and doctor's exit follows its PROBLEM lines (got ${clean.status}: ${problems(clean).join(' | ').slice(0, 200)})`);
+  writeFileSync(join(hs, 'loose.md'), '---\nname: loose\ndescription: a loose note here\ntype: project\n---\n\nx\n');
+  const n2 = await go('doctor'), line2 = 'note    N02 loose.md is in neither MEMORY.md nor MEMORY-archive.md: add a line for it, or let the next Stop do it';
+  ok(n2.stdout.split('\n').includes(line2) && n2.status === clean.status, `an N02 line alone keeps the exit (${clean.status} then ${n2.status})`);
+  ok((await go('status')).stdout.split('\n').includes(`  ${line2}`), 'status prints the same line');
+  writeFileSync(join(hs, 'MEMORY.md'), '- [good](good.md) — fine\n- [loose](loose.md) — x\n- [plain](plain.md) — x\n');
+  writeFileSync(join(hs, 'plain.md'), 'no front matter\n');
+  const n5 = await go('doctor'), line5 = 'PROBLEM N05 plain.md has no front matter, or it is never closed: start the file with --- and end the header with ---';
+  ok(n5.stdout.split('\n').includes(line5), `doctor prints an N05 line (got ${n5.stdout.slice(0, 600)})`);
+  ok(n5.status !== 0 && problems(n5).length === problems(clean).length + 1, `doctor exits non-zero for N05 (clean ${clean.status}, N05 ${n5.status})`);
+  ok((await go('status')).stdout.split('\n').includes(`  ${line5}`), 'status prints the N05 line too');
+  rmSync(join(root, 'C--health-cli'), { recursive: true });
+}
+
+// The stale check runs for the store of the folder status runs in, and for no other project's: its paths are this repository's.
+{
+  const mine = join(root, 'C--mine-project', 'memory'), other = join(root, 'C--other-project', 'memory');
+  for (const [d, f] of [[mine, 'mine-note'], [other, 'other-note']]) {
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'MEMORY.md'), `- [${f}](${f}.md) — x\n`);
+    writeFileSync(join(d, `${f}.md`), `---\nname: ${f}\ndescription: Edit src/zz-gone-${f}.js carefully\ntype: feedback\n---\n\nx\n`);
+  }
+  const lines = (await run(['status', '--all', '--store', mine])).stdout.split('\n');
+  ok(lines.includes(`  note    S02 mine-note.md names src/zz-gone-mine-note.js, which no longer exists`), `the current folder's store gets its stale check (got ${lines.filter((l) => /S0\d/.test(l))})`);
+  ok(!lines.some((l) => /other-note\.md names/.test(l)), "another project's store gets none");
+  rmSync(join(root, 'C--mine-project'), { recursive: true }); rmSync(join(root, 'C--other-project'), { recursive: true });
 }
 
 console.log(`memory-doctor: ${checks} checks passed`);

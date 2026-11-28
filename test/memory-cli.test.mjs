@@ -97,7 +97,7 @@ ok((await cli('search')).status === 1, 'search with no terms is a usage error');
 // 2. Status: sizes against the right budget, problems, dangling links.
 r = await cli('status');
 ok(r.status === 0 && /index \d+ \/ 7000 B · 7 hot · 1 archived/.test(r.stdout), `status counts the store against its budget (got ${r.stdout.split('\n')[1]})`);
-ok(/links to no memory: crlf-note\.md → \[\[ghost\]\]$/m.test(r.stdout), 'a link to no memory is named; one the shared store resolves is not');
+ok(/^ +note +N06 crlf-note\.md links to \[\[ghost\]\], which is no note/m.test(r.stdout) && !/\[\[shared-rule\]\]/.test(r.stdout.replace(/^.*crlf-note.*$/m, '')) && !/links to no memory/.test(r.stdout), 'a link to no note is named (N06), once; one the shared store resolves is not');
 // Item 5: a handoff.md past 64 KB is named in status, with how to trim it.
 {
   const hp = join(dir, 'handoff.md'), keep = existsSync(hp) ? readFileSync(hp) : null;

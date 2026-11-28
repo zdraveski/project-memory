@@ -227,7 +227,7 @@ tier();
   // A journal.mjs that will not load: replay says so on one line and exits 1 (it threw a TypeError).
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
+  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs', 'notes-health.mjs', 'lessons.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'enforce', 'replay', 'stage-by-name', '--store', pm], { env, encoding: 'utf8' });
   ok(r.status === 1 && /replay needs journal\.mjs/.test(r.stdout) && !/TypeError/.test(r.stderr), `replay with a journal.mjs that will not load says so (got ${r.status} ${r.stdout}${r.stderr})`);
@@ -759,8 +759,8 @@ See [[nonexist-${GH}]]
   const { handoffBig, status: statusOf } = await import(pathToFileURL(CLI).href);
   const sd = join(root, 'C--statuspins', 'memory'); mkdirSync(sd, { recursive: true });
   writeFileSync(join(sd, 'nameless.md'), '---\ndescription: no name line\ntype: reference\n---\nsee [[ ]] and [[real-target]]\n');
-  const dangling = statusOf(sd).filter((l) => /links to no memory/.test(l)).join('\n');
-  ok(/nameless\.md → \[\[\]\]/.test(dangling) && /real-target/.test(dangling), `an empty link is dangling even when another note has no name (got ${dangling})`);
+  const dangling = statusOf(sd).filter((l) => / N06 /.test(l)).join('\n');
+  ok(/N06 nameless\.md links to \[\[\]\]/.test(dangling) && /\[\[real-target\]\]/.test(dangling), `an empty link is dangling even when another note has no name (got ${dangling})`);
   writeFileSync(join(sd, 'handoff.md'), 'x'.repeat(64 * 1024));
   ok(handoffBig(sd) === null, 'a handoff.md of exactly 64 KB is not big');
   writeFileSync(join(sd, 'handoff.md'), 'x'.repeat(64 * 1024 + 1));
