@@ -1,7 +1,8 @@
 // Self-check for enforce-hook.mjs, the PreToolUse hook that watches git commands against the
 // enforce: rules in notes and logs which note matched. It prints nothing and blocks nothing.
 // Run: node enforce-hook.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, utimesSync, rmSync } from 'node:fs';
+import fs, { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, utimesSync, rmSync, cpSync, renameSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
@@ -203,10 +204,46 @@ const HEAD = (n, what) => `project-memory: ${n} lesson${n === 1 ? '' : 's'} for 
   q = lessonProject(); writeFileSync(join(q.store, CACHE), '{ not json'); r = run(q.edit(), EDIT); ok(r.status === 0 && r.stderr === '' && said(r).includes('edit-a.md'), 'a broken cache is rebuilt from the notes, as for the rules, and the hook exits 0');
   q = lessonProject(); rmSync(q.store, { recursive: true }); writeFileSync(q.store, 'x'); quiet(run(q.edit(), EDIT), 'a store that is a file');
   q = lessonProject(); quiet(run(q.edit('../elsewhere/a.mjs'), EDIT), 'a path outside the project');
-  q = lessonProject(); quiet(run(q.edit('x', { tool_input: { file_path: join(q.store, 'x.md') } }), EDIT), 'a memory file'); ok(q.session().length === 0, 'a file under the projects folder gets nothing');
+  // A memory file: the cwd holds the store, so the file is inside the root and only the projects-folder rule keeps it quiet. A listed
+  // file next to it, from the same cwd, is told (so the project is wired and a lesson on the memory file would have been told too).
+  { const store = storeFor(home, home), file = join(store, 'x.md'), up = (f) => f.slice(home.length + 1).replaceAll('\\', '/'), edit = (f, s) => ({ session_id: s, cwd: home, hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: f } });
+    mkdirSync(store, { recursive: true });
+    writeFileSync(join(store, 'mem.md'), lessonNote('mem.md', 'About a memory file.', `applies_to: [${up(file)}]\n`)); writeFileSync(join(store, 'other.md'), lessonNote('other.md', 'About a plain file.', 'applies_to: [other.mjs]\n'));
+    ok(said(run(edit(join(home, 'other.mjs'), 'mem00001'), EDIT)).includes('other.md'), 'a listed file under the home folder is told');
+    quiet(run(edit(file, 'mem00002'), EDIT), 'a memory file'); ok(!existsSync(join(sessionsOf(store), 'mem00002')), 'a file under the projects folder gets nothing'); }
   q = lessonProject(); quiet(run(q.edit('src/a.mjs', { tool_input: { file_path: 7 } }), EDIT), 'a path that is a number');
   quiet(run(q.edit('src/a.mjs', { tool_input: {} }), EDIT), 'no path'); quiet(run(q.edit('src/a.mjs', { session_id: '../x' }), EDIT), 'a session id that is no tag'); ok(q.session().length === 0, 'no line for those');
   quiet(run({}, EDIT), 'an empty payload'); quiet(run('', EDIT), 'empty stdin'); quiet(run({ tool_name: 'Edit' }, EDIT), 'an Edit with nothing else');
+  // A worktree is its own root: the lessons are the main repository's, the path is relative to the worktree (the `.git` there is a file).
+  { const main = join(home, 'wtmain'), wt = join(main, '.claude', 'wt-x'), gd = join(main, '.git', 'worktrees', 'wt-x'), store = storeFor(home, main);
+    for (const d of [gd, join(wt, 'src'), store]) mkdirSync(d, { recursive: true });
+    writeFileSync(join(gd, 'commondir'), '../..\n'); writeFileSync(join(gd, 'gitdir'), `${join(wt, '.git')}\n`); writeFileSync(join(wt, '.git'), `gitdir: ${gd}\n`);
+    writeFileSync(join(store, 'edit-a.md'), lessonNote('edit-a.md', 'Never edit a.mjs by hand.', A));
+    const edit = (cwd, file, s) => ({ session_id: s, cwd, hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: join(cwd, file) } });
+    r = run(edit(wt, 'src/a.mjs', 'wtree001'), EDIT); ok(r.status === 0 && said(r).startsWith(HEAD(1, 'src/a.mjs')) && said(r).includes('edit-a.md'), `in a worktree the path is relative to the worktree (got ${r.stdout}${r.stderr})`);
+    r = run(edit(join(wt, 'src'), 'a.mjs', 'wtree002'), EDIT); ok(r.status === 0 && said(r).startsWith(HEAD(1, 'src/a.mjs')), `from a folder of the worktree too (got ${r.stdout}${r.stderr})`);
+    quiet(run({ ...edit(wt, 'src/a.mjs', 'wtree003'), tool_input: { file_path: join(main, 'src', 'a.mjs') } }, EDIT), 'a file of the main repository, edited from its worktree'); }
+  // A cwd that is no string, or blank, is no place: nothing, and no throw (a hook calls this).
+  { const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = 'edit';
+    q = lessonProject();
+    for (const cwd of [7, null, {}, '', '   ']) { let out; try { out = onEdit({ ...q.edit(), cwd }); } catch (e) { out = e; } ok(out?.say === '' && q.session().length === 0, `a cwd of ${JSON.stringify(cwd)}: nothing, no throw (got ${out})`); }
+    // With a transcript the store is the project's whatever the cwd says, so a blank cwd is the only thing between a relative path and a lesson.
+    const t = join(q.store, '..', 'blank001.jsonl'), rel = q.edit('src/a.mjs', { tool_input: { file_path: 'src/a.mjs' }, transcript_path: t });
+    writeFileSync(t, `${JSON.stringify({ type: 'user', cwd: q.cwd, timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text: 'hello' }] } })}\n`);
+    ok(onEdit({ ...rel, cwd: q.cwd }, { dry: true }).say.includes('edit-a.md'), 'a relative path, a real cwd and a transcript: told');
+    for (const cwd of ['', '   ']) ok(onEdit({ ...rel, cwd }).say === '' && q.session().length === 0, `a relative path with a cwd of ${JSON.stringify(cwd)}: nothing`);
+    if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was; }
+  // A block over BLOCK_MAX (two long lines and a long path) is not told, and writes no line; one lesson of them fits.
+  { const long = (c) => `${c} words that make a long line`.repeat(14), deep = `src/${'d'.repeat(150)}.mjs`;
+    q = lessonProject({ 'p1.md': [long('x'), 'applies_to: [src/*.mjs]\n'], 'p2.md': [long('y'), 'applies_to: [src/*.mjs]\n'] });
+    quiet(run(q.edit(deep), EDIT), 'two lessons over 800 characters'); ok(q.session().length === 0, 'no line for a block that was not told');
+    q = lessonProject({ 'p1.md': [long('x'), 'applies_to: [src/*.mjs]\n'] }); r = run(q.edit(deep), EDIT); ok(said(r).length <= 800 && said(r).includes('p1.md') && q.session().length === 1, 'one long lesson fits'); }
+  // The sessions line is not written (the disk is full, say): nothing is told, since it could not be counted.
+  { const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = 'edit'; const real = fs.appendFileSync;
+    q = lessonProject(); fs.appendFileSync = () => { throw new Error('no space left'); }; syncBuiltinESMExports();
+    try { ok(onEdit(q.edit()).say === '' && q.session().length === 0, 'a session line that will not write: nothing told, no throw'); } finally { fs.appendFileSync = real; syncBuiltinESMExports(); }
+    ok(onEdit(q.edit()).say.includes('edit-a.md'), 'and told once it writes again');
+    if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was; }
   // A helper: its line carries its id, and its once-per-context list is its own.
   q = lessonProject(); r = run(q.edit('src/a.mjs', { agent_id: 'a1b2c3', agent_type: 'general-purpose' }), EDIT);
   ok(said(r).includes('edit-a.md') && /^lesson \S+ agent:a1b2c3 edit-a\.md edit:src\/a\.mjs$/.test(q.session()[0]), `a helper's payload writes its line with agent:<id> (got ${JSON.stringify(q.session())})`);
@@ -233,6 +270,20 @@ const HEAD = (n, what) => `project-memory: ${n} lesson${n === 1 ? '' : 's'} for 
     const dir = lessonProject(); mkdirSync(join(sessionsOf(dir.store), 'abcd1234'), { recursive: true }); ok(onEdit(dir.edit()).say === '', 'a session file that will not read: nothing, and no throw');
     const dry = onEdit(q.edit(), { dry: true }); ok(dry.say === real.say && q.session().length === 1, 'dry: the same text from a fresh context, and no line written');
     if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was; }
+  // With the trigger off an Edit asks switches.mjs and stops: lessons.mjs is not loaded and no timing line is written. A copy of src/
+  // whose lessons.mjs marks its load, and, for the deadline, takes 250 ms to load (the 150 ms count from the hook's input, not from onEdit).
+  { const copy = join(home, 'src-copy'), mark = join(home, 'lessons-loaded'), timing = join(home, '.claude', 'projects', '.timing'), timed = () => (existsSync(timing) ? readFileSync(timing, 'utf8') : '');
+    cpSync(tool('src'), copy, { recursive: true }); renameSync(join(copy, 'lessons.mjs'), join(copy, 'lessons-real.mjs'));
+    const slow = (ms) => writeFileSync(join(copy, 'lessons.mjs'), `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(mark)}, 'x'); const t = performance.now(); while (performance.now() - t < ${ms});\nexport * from './lessons-real.mjs';\n`);
+    const via = (input, env) => spawnSync(process.execPath, [join(copy, 'enforce-hook.mjs')], { input: JSON.stringify(input), encoding: 'utf8', env });
+    slow(0); q = lessonProject(); let was = timed();
+    r = via(q.edit(), OFFENV); ok(r.status === 0 && r.stdout === '' && r.stderr === '' && !existsSync(mark) && timed() === was, 'edit off: lessons.mjs not loaded, no timing line');
+    r = via(q.edit(), { ...OFFENV, PROJECT_MEMORY_LESSONS: '-edit' }); ok(r.stdout === '' && !existsSync(mark) && timed() === was, 'edit off by -edit: the same');
+    r = via(q.payload('git status'), OFFENV); ok(r.stdout === '' && !existsSync(mark) && timed() !== was, 'a shell command loads no lessons.mjs and is timed as before');
+    was = timed(); r = via(q.edit(), EDIT); const added = timed().slice(was.length).trim().split('\n').map((x) => JSON.parse(x));
+    ok(existsSync(mark) && said(r).includes('edit-a.md') && added.length === 1 && added[0].h === 'lesson' && added[0].e === 'PreToolUse' && added[0].n === 1, `edit on: loaded, told, one timing line of the lesson hook with the count (got ${JSON.stringify(added)})`);
+    rmSync(mark); slow(250); q = lessonProject(); r = via(q.edit(), EDIT); quiet(r, 'a load that takes 250 ms is past the 150 ms'); ok(q.session().length === 0, 'and writes no line');
+    rmSync(mark); slow(0); r = via(lessonProject().edit(), EDIT); ok(said(r).includes('edit-a.md'), 'the same copy with a quick load tells it'); }
   // The shared store's lessons never match a path.
   q = lessonProject({}); mkdirSync(sharedStore(), { recursive: true }); writeFileSync(join(sharedStore(), 'sh.md'), lessonNote('sh', 'Shared.', A)); quiet(run(q.edit(), EDIT), 'a shared lesson'); rmSync(join(sharedStore(), 'sh.md'));
   // A shell payload is as in 1.6.7 with the trigger on: the log line, nothing printed, no lesson line.

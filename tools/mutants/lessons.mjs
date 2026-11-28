@@ -3,7 +3,7 @@ const HOOK = { test: 'test/enforce-hook.test.mjs' }, CLI = { test: 'test/memory-
 export default {
   'a shared lesson listed as a dead end of the project': ['.filter((x) => !x.shared && x.l.instead)', '.filter((x) => x.l.instead)'],
   // H1, lessons before an edit (1.7.0 step 8)
-  'edit lessons shown with the trigger off': ["if (!lessonsOn('edit')) return none;", '', HOOK],
+  'edit lessons shown with the trigger off': ["if (!lessonsOn('edit')) return none;", '', CLI],
   'edit lessons: a path with a line break accepted': ['if (!rel || /[\\r\\n]/.test(rel)) return none;', 'if (!rel) return none;', HOOK],
   'edit lessons: a session id that is no tag accepted': ['!/^[\\w-]+$/.test(s)) return none;', 'false) return none;', HOOK],
   'edit lessons: a quiet project or conversation still told': ['  if (why) return none;\n  const all', '  const all', HOOK],
@@ -26,4 +26,13 @@ export default {
   'edit lessons: a dry run writes the cache': ['dry ? { write: false } : undefined', 'undefined', CLI],
   'preview why: a listed path worded as a glob': ['if (how === 1) return', 'if (how === 9) return', SRC],
   'preview why: a glob worded as a name': ['if (how === 2) return', 'if (how === 9) return', SRC],
+  // the root of a path: the nearest folder with a `.git` (a folder or a file), a worktree its own
+  'relPath: only a .git folder is a root': ["existsSync(join(d, '.git'))", "existsSync(join(d, '.git', 'HEAD'))", SRC],
+  'relPath: the root is never looked for above the cwd': ['if (dirname(d) === d) return cwd;', 'if (true) return cwd;', SRC],
+  'relPath: a relative cwd is resolved against the hook\'s folder': ['if (!isAbsolute(cwd)) return cwd;', '', SRC],
+  'relPath: a blank cwd is a place': ['if (!given || !cwd) return null;', 'if (!given) return null;', SRC],
+  'edit lessons: a cwd that is no string accepted': ["typeof input.cwd !== 'string' || ", '', HOOK],
+  'edit lessons: a cwd of blanks is a place': ['|| !input.cwd.trim()', '', HOOK],
+  'edit lessons: a block over the limit is told as lines': ['if (!say) return none;', '', HOOK],
+  'edit lessons: a session line that will not write is still told': ['} catch { return none; }\n  return { say, shown };', '} catch {}\n  return { say, shown };', HOOK],
 };

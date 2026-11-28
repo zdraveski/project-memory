@@ -825,11 +825,19 @@ function enforceHook(at) {
   const file = [join(at, 'src', 'enforce-hook.mjs'), join(at, 'enforce-hook.mjs')].find(existsSync) ?? join(at, 'src', 'enforce-hook.mjs');
   if (!existsSync(file)) return [false, `${file} is missing: the enforce hook cannot run. The user's fix: claude plugin update ${PLUGIN}`];
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.length) return [false, `hooks.json in ${at} has no PreToolUse group: the enforce hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
-  if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.some((g) => /\bEdit\b/.test(g?.matcher))) return [false, `hooks.json in ${at} has no edit group in PreToolUse: lessons before an edit are not wired. The user's fix: claude plugin update ${PLUGIN}`];
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.SubagentStop?.length) return [false, `hooks.json in ${at} has no SubagentStop group: subagent reports are not saved. The user's fix: claude plugin update ${PLUGIN}`];
   try {
-    const out = execFileSync(process.execPath, [file], { input: '{}', encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'] });
-    return out ? [false, `the enforce hook printed output for an empty call (${clip(out, 80)}): it must print nothing`] : [true, 'the enforce hook runs and is wired (PreToolUse)'];
+    // An empty call, and an edit with no file: neither may print anything.
+    for (const input of ['{}', '{"tool_name":"Edit"}']) {
+      const out = execFileSync(process.execPath, [file], { input, encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'] });
+      if (out) return [false, `the enforce hook printed output for an empty call (${clip(out, 80)}): it must print nothing`];
+    }
+    // A copy without the edit group is a problem only once lessons before an edit are on.
+    if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.some((g) => /\bEdit\b/.test(g?.matcher))) {
+      const text = `hooks.json in ${at} has no edit group in PreToolUse: lessons before an edit are not wired. The user's fix: claude plugin update ${PLUGIN}`;
+      return lessonsOn?.('edit') ? [false, text] : [true, `the enforce hook runs and is wired (PreToolUse); note: ${text} (lessons before an edit are off: PROJECT_MEMORY_LESSONS=edit turns them on)`];
+    }
+    return [true, 'the enforce hook runs and is wired (PreToolUse)'];
   } catch (e) {
     // A slow node start (a loaded or virus-scanned PC) is a note, not a broken hook.
     if (e.code === 'ETIMEDOUT') return [true, 'the enforce hook did not answer in time (15 s): the PC may be slow; run doctor again'];

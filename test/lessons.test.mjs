@@ -50,7 +50,17 @@ ok(lessonsOff('0') === true && lessonsOff(' 0 ') === true && lessonsOff('1') ===
   ok(relPath(home, home) === null && relPath('', home) === null && relPath('src/a.mjs', '') === null && relPath('src/a.mjs', undefined) === null, 'the repository itself, an empty path, no folder: null');
   ok(relPath('src/a.mjs', join(home, 'src', 'deeper', 'still')) === 'src/deeper/still/src/a.mjs', 'a relative path is read from the cwd');
   const bare = mkdtempSync(join(tmpdir(), 'norepo-')); mkdirSync(join(bare, 'a'));
-  ok(relPath(join(bare, 'a', 'b.mjs'), bare) === 'a/b.mjs' && relPath('a/b.mjs', bare) === 'a/b.mjs' && relPath(join(bare, '..', 'x.mjs'), bare) === null, 'with no repository the cwd is the root'); }
+  ok(relPath(join(bare, 'a', 'b.mjs'), bare) === 'a/b.mjs' && relPath('a/b.mjs', bare) === 'a/b.mjs' && relPath(join(bare, '..', 'x.mjs'), bare) === null, 'with no repository the cwd is the root');
+  ok(relPath('src/a.mjs', 'rel/dir') === 'src/a.mjs', 'a cwd that is no absolute path is the root itself, not looked up from the folder of the hook');
+  // A worktree (its `.git` is a file that leads to a main repository) is its own root, not the main repository; so is a folder with a `.git` file that leads nowhere.
+  const main = join(home, 'wt-main'), wt = join(main, '.claude', 'wt-y'), gd = join(main, '.git', 'worktrees', 'wt-y');
+  for (const d of [gd, join(wt, 'src'), join(main, 'src')]) mkdirSync(d, { recursive: true });
+  writeFileSync(join(gd, 'commondir'), '../..\n'); writeFileSync(join(gd, 'gitdir'), `${join(wt, '.git')}\n`); writeFileSync(join(wt, '.git'), `gitdir: ${gd}\n`); writeFileSync(join(main, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+  ok(relPath(join(wt, 'src', 'a.mjs'), wt) === 'src/a.mjs' && relPath('src/a.mjs', wt) === 'src/a.mjs' && relPath('a.mjs', join(wt, 'src')) === 'src/a.mjs', 'in a worktree a path is relative to the worktree');
+  ok(relPath(join(main, 'src', 'a.mjs'), wt) === null && relPath('../../../src/a.mjs', wt) === null, 'a file of the main repository, from its worktree: null');
+  ok(relPath(join(main, 'src', 'a.mjs'), main) === 'src/a.mjs', 'and from the main repository itself, relative to it');
+  const sub = join(home, 'sub-mod'); mkdirSync(join(sub, 'x'), { recursive: true }); writeFileSync(join(sub, '.git'), 'gitdir: ../nowhere\n');
+  ok(relPath(join(sub, 'x', 'b.mjs'), join(sub, 'x')) === 'x/b.mjs', 'a `.git` file that leads nowhere is a root too'); }
 
 // matchPath: how 1 (listed), 2 (glob or folder), 4 (named in an untagged lesson); a shared lesson never matches a path
 { const L1 = item('a.md', 'applies_to: [src/store.mjs]\n'), L2 = item('b.md', 'applies_to: [src/*.mjs]\n'), L3 = item('c.md', 'applies_to: [src/**/*.mjs]\n'), L4 = item('d.md', 'applies_to: [docs/]\n'), L5 = item('e.md', 'applies_to: [docs/guide.md, lib/x.mjs]\n');

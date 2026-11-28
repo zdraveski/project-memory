@@ -90,6 +90,7 @@ writeFileSync(tp, [{ type: 'user', timestamp: '2026-11-01T09:00:00Z', message: {
   { type: 'assistant', timestamp: '2026-11-01T09:00:30Z', message: { content: [{ type: 'text', text: 'fed it' }] } }].map((x) => JSON.stringify(x)).join('\n') + '\n');
 writeFileSync(join(store, 'MEMORY.md'), '# Memory\n');
 const base = { session_id: 'abcd1234-aaaa', cwd, transcript_path: tp };
+process.env.PROJECT_MEMORY_LESSONS = 'edit'; // the lesson hook writes a line only with the trigger on (off, an Edit loads and times nothing)
 const editCommand = { ...base, hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: join(cwd, 'a.mjs'), old_string: 'x', new_string: 'y' } };
 const gitCommand = { ...base, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git status' } };
 const CASES = [

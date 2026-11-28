@@ -50,7 +50,7 @@ knowing only what existed before each exchange: counts, probable hits (from corr
 journal text unless the user asks for `--show`, and writes only one line of numbers to `.replay-history`.
 
 `preview` prints the startup briefing the next conversation here would get, with its size. `preview --file <path>` prints the lessons
-Claude would see before an edit of that file (at most 2, with `PROJECT_MEMORY_LESSONS=edit`) and why each matched. Both write nothing.
+Claude would see with the result of an edit of that file (at most 2, with `PROJECT_MEMORY_LESSONS=edit`) and why each matched. Both write nothing.
 
 Read a file of this skill's folder when its subject comes up:
 

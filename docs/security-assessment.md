@@ -27,7 +27,7 @@ no network code.
 | The Stop hook (`memory-tier.mjs --stop`) | After every reply: tidies the indexes, writes the handoff and the journal, imports other conversations, takes a snapshot, and may remind Claude to save notes. |
 | The SessionStart hook (`brief.mjs --print`) | Prints the startup briefing. |
 | The compaction gate (`compact-gate.mjs`) | Before an automatic compaction: may ask Claude Code to wait for the turn to end, or writes a note of the work in progress. |
-| The git-rule watcher (`enforce-hook.mjs`) | Before a git command: logs which note's `enforce:` rule matched. Blocks nothing, prints nothing. Since 1.7.0, before Edit, Write, NotebookEdit and MultiEdit (`PROJECT_MEMORY_LESSONS=edit`) it prints up to 2 lessons for the file as `additionalContext`, never a decision, and appends a `lesson` line to the session file. |
+| The git-rule watcher (`enforce-hook.mjs`) | Before a git command: logs which note's `enforce:` rule matched. Blocks nothing, prints nothing. Since 1.7.0, on Edit, Write and NotebookEdit (`PROJECT_MEMORY_LESSONS=edit`) it prints up to 2 lessons for the file as `additionalContext`, which reaches Claude with that edit's result (the edit itself still runs), never a decision, and appends a `lesson` line to the session file. |
 | The recall hook (`recall-hook.mjs`) | After Claude changes a file, and at each message the user sends: names earlier exchanges of this project (date, conversation tag, request, up to three files) and other open sessions, and writes the conversation's session file. At SessionEnd: writes one `end` line. Blocks nothing. |
 | The recall helper (`agents/recall.md`) | A Claude Code agent with Bash only, told to run `search`, `show`, `history` and `status`; reports what it found. Its report is not saved again. |
 | The memory tool (`memory.mjs`) | `search`, `show`, `forget`, `status`, `history`, `restore`, `promote`, `doctor`, `enforce` (`status`, `replay`), `lessons` (and `lessons replay`), `rescan` (`--apply --yes` rewrites saved text and the snapshot history, using a temporary working copy of it), `forget --purge`, and `off`, `on` and `incognito` ([commands](how-it-works.md#the-memory-tool-from-a-terminal)). |
@@ -39,7 +39,7 @@ no network code.
 
 - **Hook events**, declared in [`hooks/hooks.json`](../hooks/hooks.json):
   `Stop`, `StopFailure`, `SubagentStop`, `SessionStart` (`startup`, `resume`, `clear`, `compact`) and
-  `PreCompact` (`manual`, `auto`), `PreToolUse` (`Bash|PowerShell`, filtered to `git *`; the git-rule watcher, and `Edit|Write|NotebookEdit|MultiEdit`; lessons before an edit), and `PostToolUse` (`Edit|Write|NotebookEdit`), `UserPromptSubmit` and `SessionEnd` (the recall hook). Input: Claude Code's JSON payload on
+  `PreCompact` (`manual`, `auto`), `PreToolUse` (`Bash|PowerShell`, filtered to `git *`; the git-rule watcher, and `Edit|Write|NotebookEdit`; lessons for an edit), and `PostToolUse` (`Edit|Write|NotebookEdit`), `UserPromptSubmit` and `SessionEnd` (the recall hook). Input: Claude Code's JSON payload on
   stdin. The fields read are `session_id`, `transcript_path`, `cwd`,
   `hook_event_name`, `stop_hook_active`, `last_assistant_message`, `source`
   and `trigger`; for a finished subagent also `agent_type`, `agent_id` and

@@ -772,11 +772,9 @@ rmSync(join(root, '.stop-ran'), { force: true });
     writeFileSync(join(mem, f), `---\nname: ${f}\ndescription: ${desc}\ntype: feedback\n${extra}---\n\nbody\n`); utimesSync(join(mem, f), old, old);
   }
   const tree = () => readdirSync(root, { recursive: true }).sort().map((f) => { const x = statSync(join(root, f)); return `${f} ${x.isFile() ? x.size : 'dir'} ${x.mtimeMs}`; }).join('\n');
-  // From a folder that is no repository, so the file's place in the project is the same wherever the suite runs (a worktree's repoRoot is its main repository).
-  const here = process.cwd(), work = join(home, 'work'); mkdirSync(work, { recursive: true }); process.chdir(work);
   const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = 'edit';
   const before = tree(), r = await run(['preview', '--file', 'src/a.mjs', '--session', 'prevsess2']), after = tree();
-  const hook = spawnSync(process.execPath, [tool('src/enforce-hook.mjs')], { encoding: 'utf8', env: { ...process.env, ...env }, input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'prevsess2', cwd: work, transcript_path: t, tool_name: 'Edit', tool_input: { file_path: 'src/a.mjs' } }) });
+  const hook = spawnSync(process.execPath, [tool('src/enforce-hook.mjs')], { encoding: 'utf8', env: { ...process.env, ...env }, input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'prevsess2', cwd: process.cwd(), transcript_path: t, tool_name: 'Edit', tool_input: { file_path: 'src/a.mjs' } }) });
   const block = JSON.parse(hook.stdout).hookSpecificOutput.additionalContext, out = r.stdout.split('\n');
   ok(r.status === 0 && out[0] === `Before an edit of src/a.mjs: 2 lessons, ${block.length} characters.` && out.slice(1, 1 + block.split('\n').length).join('\n') === block, `preview --file prints the hook's block byte for byte (got ${r.stdout}${r.stderr})`);
   ok(out.slice(1 + block.split('\n').length).join('\n') === '  why: a.md lists src/a.mjs in applies_to\n  why: b.md matches src/*.mjs in applies_to\n', `then why each matched (got ${JSON.stringify(out.slice(1 + block.split('\n').length))})`);
@@ -789,7 +787,6 @@ rmSync(join(root, '.stop-ran'), { force: true });
   const off = await run(['preview', '--file', 'src/a.mjs', '--session', 'prevsess2']);
   ok(off.stdout === 'Before an edit of src/a.mjs: nothing would be shown.\nLessons before an edit are off: PROJECT_MEMORY_LESSONS=edit turns them on.\n', `with the trigger off it says why (got ${off.stdout})`);
   if (was !== undefined) process.env.PROJECT_MEMORY_LESSONS = was;
-  process.chdir(here);
   ok(parseArgs(['preview', '--file']) === '--file needs a value after it', 'preview --file needs a path');
 }
 

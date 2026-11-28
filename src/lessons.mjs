@@ -1,30 +1,18 @@
 // Lessons (1.7.0): the switch that says which triggers speak, a note's lessons from the enforce cache, the matching of a lesson to a path
 // or a command family, their order, the block Claude would see, the counters file and the session line. No hook code here: a hook
 // calls these. Imports store, text, enforce and recall (never the other way round, ADR 0003).
-import { readFileSync, appendFileSync, mkdirSync } from 'node:fs';
-import { join, dirname, posix } from 'node:path';
-import { foldCase, projectsRoot, repoRoot, sharedStore, withLock, replaceIfUnchanged, raw, tag } from './store.mjs';
+import { readFileSync, appendFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join, dirname, posix, isAbsolute, resolve } from 'node:path';
+import { foldCase, projectsRoot, sharedStore, withLock, replaceIfUnchanged, raw, tag } from './store.mjs';
 import { gate } from './privacy.mjs';
 import { sessionsOf, readSession, sessionLine } from './sessions.mjs';
 import { fit } from './text.mjs';
 import { notesOf } from './enforce.mjs';
 import { cleanPath, whole, BLOCK_MAX } from './recall.mjs';
+import { lessonsOn } from './switches.mjs';
 
-// F1. PROJECT_MEMORY_LESSONS: unset or empty gives DEFAULTS, 0 turns every trigger off, 1 on, anything else is a comma list read over
-// DEFAULTS (`name` on, `-name` off, the later word wins, blanks trimmed, unknown words ignored). The replay gate (2026-11-28) turned on
-// only `command`, the one trigger that fired enough to judge (122 in 31 days, median 2 an active day); the rest wait for notes that carry
-// `applies_to:` and `instead:`.
-export const TRIGGERS = ['edit', 'command', 'deadend', 'recurring', 'nudge', 'stuck', 'claim', 'cochange'];
-export const DEFAULTS = { edit: false, command: true, deadend: false, recurring: false, nudge: false, stuck: false, claim: false, cochange: false };
-export function lessonsOn(name, env = process.env.PROJECT_MEMORY_LESSONS) {
-  if (!TRIGGERS.includes(name)) return false;
-  const v = String(env ?? '').trim();
-  if (v === '0') return false;
-  if (v === '1') return true;
-  let on = DEFAULTS[name];
-  for (const w of v.split(',').map((x) => x.trim())) { if (w === name) on = true; else if (w === `-${name}`) on = false; }
-  return on;
-}
+// F1. The switches live in switches.mjs (no imports, so a hook can ask without loading this file); re-exported here.
+export { TRIGGERS, DEFAULTS, lessonsOn } from './switches.mjs';
 // For the lines that are no trigger (E2's git line, L4's health line).
 export const lessonsOff = (env = process.env.PROJECT_MEMORY_LESSONS) => String(env ?? '').trim() === '0';
 
@@ -79,12 +67,22 @@ export function lessonsFor(store, opts) {
   return out.filter((x) => !notes[x.name]?.retired);
 }
 
-// A path as a lesson names it: relative to the repository root (the cwd when there is none), `/` only, as cleanPath has it.
+// The folder a lesson's paths are relative to: the nearest one at or above `cwd` that holds a `.git` (a folder, or the file of a worktree
+// or submodule), so a worktree is its own root, not its main repository as repoRoot would have it; the cwd when there is none.
+function topOf(cwd) {
+  if (!isAbsolute(cwd)) return cwd;
+  for (let d = resolve(cwd); ; d = dirname(d)) {
+    if (existsSync(join(d, '.git'))) return d;
+    if (dirname(d) === d) return cwd;
+  }
+}
+
+// A path as a lesson names it: relative to that folder (topOf), `/` only, as cleanPath has it.
 // null when the file is outside that folder or under the projects folder (no lesson is about a memory file).
 export function relPath(given, cwd) {
   if (!given || !cwd) return null;
   const dir = (p) => posix.normalize(p.replaceAll('\\', '/')).replace(/\/+$/, '');
-  const p = dir(whole(given, cwd)), root = dir(repoRoot(cwd) ?? cwd), inside = (d) => foldCase(p).startsWith(`${foldCase(dir(d))}/`);
+  const p = dir(whole(given, cwd)), root = dir(topOf(cwd)), inside = (d) => foldCase(p).startsWith(`${foldCase(dir(d))}/`);
   return inside(root) && !inside(projectsRoot()) ? cleanPath(p.slice(root.length + 1)) : null;
 }
 
@@ -177,7 +175,7 @@ export function onEdit(input, { dry = false, now = Date.now(), deadline = perfor
   const none = { say: '', shown: [] };
   if (!lessonsOn('edit')) return none;
   const given = input?.tool_input?.file_path ?? input?.tool_input?.notebook_path, s = tag(input?.session_id);
-  if (typeof given !== 'string' || !given.trim() || typeof input.cwd !== 'string' || !/^[\w-]+$/.test(s)) return none;
+  if (typeof given !== 'string' || !given.trim() || typeof input.cwd !== 'string' || !input.cwd.trim() || !/^[\w-]+$/.test(s)) return none;
   const rel = relPath(given, input.cwd.replaceAll('\\', '/'));
   if (!rel || /[\r\n]/.test(rel)) return none;
   const { why, store } = gate(input, s, 1);
@@ -194,6 +192,7 @@ export function onEdit(input, { dry = false, now = Date.now(), deadline = perfor
   const ordered = order(hits.filter((x) => !seen.has(x.lesson.name)), readCounters(store), now), shown = ordered.slice(0, Math.max(0, room));
   const say = blockText(shown, rel, 'edit', ordered.length - shown.length, now);
   if (!say) return none;
+  // shortcut: parallel edits may both show the same lesson, no lock; fine for a nudge
   if (!dry) try {
     mkdirSync(dirname(at), { recursive: true, mode: 0o700 });
     appendFileSync(at, shown.map((x) => sessionLine('lesson', lessonLine(x.lesson.name, `edit:${rel}`), by, new Date(now).toISOString())).join(''), { mode: 0o600 });
