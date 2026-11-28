@@ -741,6 +741,9 @@ rmSync(join(root, '.stop-ran'), { force: true });
   writeFileSync(join(mem, 'MEMORY.md'), '# Index\n');
   writeFileSync(join(mem, 'handoff.md'), `---\nname: handoff\n---\n\n<!-- auto:start -->\n${[1, 2, 3, 4, 5].map((i) => `- **asked** ${at(i)} [ffffffff]: ask ${i} ${'q'.repeat(300)}\n  **did:** answer ${i} ${'a'.repeat(400)}`).join('\n')}\n<!-- auto:end -->\n`);
   writeFileSync(join(mem, 'dead.md'), '---\nname: dead\ndescription: "a dead end"\nmetadata:\n  type: feedback\ninstead: use the helper that exists now\n---\n\nbody\n');
+  // A folder of the same project from before a move: the startup says once that its notes were left behind, and a preview must not use that up.
+  mkdirSync(join(root, 'C--moved-prev-cli', 'memory'), { recursive: true });
+  writeFileSync(join(root, 'C--moved-prev-cli', 'memory', 'left-behind.md'), '---\nname: left-behind\n---\n\nbody\n');
   const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = 'deadend';
   const tree = () => readdirSync(root, { recursive: true }).sort().map((f) => { const x = statSync(join(root, f)); return `${f} ${x.isFile() ? x.size : 'dir'} ${x.mtimeMs}`; }).join('\n');
   const before = tree();
@@ -753,7 +756,8 @@ rmSync(join(root, '.stop-ran'), { force: true });
   ok(r.status === 0 && m && r.stdout.slice(m[0].length) === hook, `preview prints the hook's briefing, byte for byte (got ${r.stdout.slice(0, 300)} / ${r.stderr})`);
   ok(m[1] === hook.length.toLocaleString('en-US') && hook.includes('Dead ends in this project'), 'with its size, and the new lines in it');
   ok(Number(m[2]) <= 5 && (hook.match(/\*\*asked\*\*/g) ?? []).length === 5 - Number(m[2]), 'and how many older exchanges were left out');
-  ok(before === after, 'a preview changes nothing: no file made, no size or time changed');
+  ok(before === after, 'a preview changes nothing: no file made (`.moved-said` included), no size or time changed');
+  ok(hook.includes('Notes may have been left behind') && r.stdout.includes('Notes may have been left behind'), 'the notice of left-behind notes is in the preview and still due at the real startup');
   ok(parseArgs(['preview', '--file', 'x']) === 'preview does not take --file; help lists the options' && (await run(['help'])).stdout.includes('preview'), 'preview takes no option, and help names it');
 }
 

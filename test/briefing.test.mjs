@@ -1,6 +1,6 @@
 // Self-check for the 1.7.0 lines of the startup briefing (step 10): H3 dead ends, H4 recurring errors, E2's git line and L4's retired-lesson
 // line, and that the briefing stays within BRIEF. The other briefing lines are held by handoff-log.test.mjs. Run: node briefing.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, readdirSync, statSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, readdirSync, statSync, rmSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
@@ -8,7 +8,7 @@ import { tempHome, tempDir, storeFor } from './harness.mjs';
 
 const { home } = tempHome('brief-');
 const { briefing } = await import('../src/briefing.mjs');
-const { storeOf, local } = await import('../src/store.mjs');
+const { storeOf, local, sharedStore } = await import('../src/store.mjs');
 const { sessionsOf, sessionLine } = await import('../src/sessions.mjs');
 let checks = 0;
 const ok = (cond, msg) => { assert(cond, msg); checks++; };
@@ -64,6 +64,10 @@ const snapshot = (dir) => readdirSync(dir).sort().map((f) => { const s = statSyn
   env('1');
   ok(/Dead ends/.test(await start(p)) && !/Dead ends/.test(await start(p, 'clear')), 'with every trigger on, a startup has the block and a clear does not');
   env(undefined);
+  // A dead end in the shared store is no dead end of this project.
+  const sh = sharedStore(); mkdirSync(sh, { recursive: true }); dead(sh, 'shared-dead.md', 'use the shared helper instead');
+  env('deadend'); ok(!(await start(project())).includes('Dead ends in this project'), 'a shared lesson with instead is not a dead end here');
+  env(undefined); rmSync(join(sh, 'shared-dead.md'));
 }
 
 // 2. H4, recurring errors.
@@ -87,6 +91,10 @@ const snapshot = (dir) => readdirSync(dir).sort().map((f) => { const s = statSyn
   // Gone after a note that resolves it, even a shared one's.
   note(p.dir, 'cause.md', { extra: 'instead: pin the version of the helper\nresolves: [aaaaaaa1]\n' });
   ok(!(await start(p)).includes('aaaaaaa1') && (await start(p)).includes('bbbbbbb2'), 'an id a lesson resolves is left out');
+  const sh = sharedStore(); mkdirSync(sh, { recursive: true }); note(sh, 'shared-cause.md', { extra: 'instead: pin the version of the helper\nresolves: [bbbbbbb2]\n' });
+  const got = await start(p);
+  ok(!got.includes('bbbbbbb2') && got.includes('ccccccc3'), 'an id a shared lesson resolves is left out too');
+  rmSync(join(sh, 'shared-cause.md'));
   // The fourth startup: an id listed three times is left out.
   const r = project();
   mistakes(r.dir, { eeeeeee5: err() });
@@ -129,7 +137,7 @@ const snapshot = (dir) => readdirSync(dir).sort().map((f) => { const s = statSyn
 
   // The runner: the two calls, in the cwd, with the 1.5 s timeout; the answers through an injected one.
   const calls = [];
-  const canned = (st, diff = ' 1 file changed, 4 insertions(+), 2 deletions(-)\n') => (args, o) => { calls.push({ args, o }); return args[0] === 'status' ? st : diff; };
+  const canned = (st, diff = ' 1 file changed, 4 insertions(+), 2 deletions(-)\n') => (args, o) => { calls.push({ args, o }); return args.includes('status') ? st : diff; };
   const head = (...l) => ['# branch.oid 1234', '# branch.head main', ...l, ''].join('\n');
   const p = project();
   const via = async (st, opts = {}) => (await briefing({ cwd: p.cwd, session_id: 'aaaaaaaa-1', source: 'startup' }, { run: canned(st), ...opts })).split('\n').find((l) => l.startsWith('Git here now'));
@@ -139,15 +147,25 @@ const snapshot = (dir) => readdirSync(dir).sort().map((f) => { const s = statSyn
   ok(await via(head('# branch.upstream origin/main', '# branch.ab +0 -0')) === 'Git here now: branch main.', 'in step');
   ok(await via(head('1 .M N... 100644 100644 100644 aaa bbb dir with space/f.txt', '2 R. N... 100644 100644 100644 aaa bbb R100 new.txt\told.txt', 'u UU N... 100644 100644 100644 100644 a b c conflict.txt', '? u.txt'))
     === 'Git here now: branch main. Uncommitted: 4 files (+4 -2): dir with space/f.txt, new.txt, conflict.txt, u.txt', 'every kind of entry, a path with a space, a rename by its new name');
-  ok(calls.slice(-2).map((c) => c.args.join(' ')).sort().join('|') === 'diff --shortstat HEAD|status --porcelain=v2 --branch' && calls.slice(-2).every((c) => c.o.cwd === p.cwd.replaceAll('\\', '/') && c.o.timeout === 1500), 'both calls, in the cwd, with 1.5 s');
+  calls.length = 0; await via(head('? u.txt'));
+  ok(calls.map((c) => c.args.join(' ')).join('|') === '-c core.quotePath=false status --porcelain=v2 --branch|diff --shortstat --no-ext-diff --no-textconv HEAD' && calls.every((c) => c.o.cwd === p.cwd.replaceAll('\\', '/') && c.o.timeout === 1500), 'both calls, in the cwd, with 1.5 s, names as typed, no diff driver run');
+  calls.length = 0; await via(head('# branch.upstream origin/main', '# branch.ab +1 -0'));
+  ok(calls.length === 1 && calls[0].args.includes('status'), 'a tree with nothing uncommitted costs no diff');
   ok(await via('') === undefined && await via('garbage\n') === undefined, 'an answer with no branch is no line');
-  ok(await via(head('1 .M N... 100644 100644 100644 aaa bbb f.txt'), { run: (a) => (a[0] === 'status' ? head('1 .M N... 100644 100644 100644 aaa bbb f.txt') : Promise.reject(new Error('no HEAD'))) }) === 'Git here now: branch main. Uncommitted: 1 files (+0 -0): f.txt', 'a diff that fails costs the counts, not the line');
+  ok(await via(head('1 .M N... 100644 100644 100644 aaa bbb f.txt'), { run: (a) => (a.includes('status') ? head('1 .M N... 100644 100644 100644 aaa bbb f.txt') : Promise.reject(new Error('no HEAD'))) }) === 'Git here now: branch main. Uncommitted: 1 files (+0 -0): f.txt', 'a diff that fails costs the counts, not the line');
   ok(await via(head(), { run: async () => { throw new Error('boom'); } }) === undefined && await via(head(), { run: () => { throw new Error('boom'); } }) === undefined, 'a runner that throws gives no line');
   // Another live session: its files may be among them.
   mkdirSync(sessionsOf(p.dir), { recursive: true });
   writeFileSync(join(sessionsOf(p.dir), 'bbbbbbbb-2'), sessionLine('asked', 'x'));
   ok(await via(head('? u.txt')) === "Git here now: branch main. Uncommitted: 1 files (+4 -2): u.txt (some may be the other session's)", 'with another live session the line says so');
   ok(await via(head()) === 'Git here now: branch main.', 'and a clean tree says nothing of it');
+  // The line is held to 300 characters.
+  const long = await via(head(...[1, 2, 3, 4, 5].map((i) => `? file${i}-${'name-'.repeat(20)}.txt`)));
+  ok(long.length === 300 && long.endsWith('…'), `the git line is held to 300 characters (got ${long.length})`);
+  // A name that is not ASCII is printed as typed, not as git's quoted escapes.
+  const odd = tempDir('brief-odd-');
+  git(odd, 'init', '-q'); writeFileSync(join(odd, 'ü-é.txt'), 'x\n'); mkdirSync(storeOf({ cwd: odd }), { recursive: true });
+  ok((await line(odd)).endsWith(': ü-é.txt'), `a non-ASCII name is printed as typed (got ${await line(odd)})`);
   // A hung git: no line, the briefing still prints. The runner is handed the timeout.
   const slow = (args, { cwd, timeout }) => { const r = spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},10000)'], { cwd, timeout }); if (r.error || r.status !== 0) throw new Error('timed out'); return ''; };
   const out = await briefing({ cwd: p.cwd, session_id: 'aaaaaaaa-1', source: 'startup' }, { run: slow });
@@ -176,6 +194,18 @@ const snapshot = (dir) => readdirSync(dir).sort().map((f) => { const s = statSyn
   writeFileSync(join(r.dir, '.lessons.json'), JSON.stringify({ v: 1, notes: { 'old.md': { retired: 'broken 3', told: false, shown: 7, broken: 3 } }, errors: {} }));
   env('0'); const off = await start(r); env(undefined);
   ok(!off.includes('no longer shown') && counters(r.dir).notes['old.md'].told === false, 'the switch at 0 turns it off and writes nothing');
+  // Only at a startup: a clear tells nothing and counts nothing.
+  const c = await start(r, 'clear');
+  ok(!c.includes('no longer shown') && counters(r.dir).notes['old.md'].told === false, 'after a clear a retired lesson is not told');
+}
+
+// A dry run says the left-behind notes but leaves the one-time notice due.
+{
+  const p = project(), old = join(p.dir, '..', '..', `D--old-${p.cwd.split('-').slice(-2).join('-')}`, 'memory');
+  mkdirSync(old, { recursive: true }); writeFileSync(join(old, 'left-behind.md'), '---\nname: left-behind\n---\n\nbody\n');
+  const before = snapshot(p.dir);
+  ok((await start(p, 'startup', { dry: true })).includes('Notes may have been left behind') && snapshot(p.dir) === before, 'a dry run says the notes left behind and writes nothing');
+  ok((await start(p)).includes('Notes may have been left behind') && !(await start(p)).includes('Notes may have been left behind'), 'and the real startup still says it, once');
 }
 
 // 5. The briefing stays within BRIEF, the older exchanges going first.

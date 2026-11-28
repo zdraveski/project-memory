@@ -14,7 +14,7 @@ import { lastTurn, transcripts, readTail, records, text, asked, own, TAIL } from
 import { OFF, PRIVATE, PRIVATE_SESSION, isOff, isQuiet, hushed, off, offLine, forgottenIn } from './privacy.mjs';
 import { readHealth, MISSED, HELD } from './snapshot.mjs';
 import { tag, storeOf, projectsRoot, sharedStore, SHARED_BUDGET, local, POINTER, ARCHIVE, indexLines, emptyArchive, memoryOff, autoMemory } from './store.mjs';
-import { notes, edited, movedOnce } from './run-records.mjs';
+import { notes, edited, movedOnce, moved, movedText } from './run-records.mjs';
 import { START, render, parse, sectionOf, stalled } from './handoff-log.mjs';
 import { firstDay, rel } from './journal.mjs';
 import { byWords, sharesBlock, DEADLINE, doing, about, near } from './recall.mjs';
@@ -25,8 +25,8 @@ import { recurringLines } from './mistakes.mjs';
 
 const RECENT = 30 * 86400000;  // older than this, the startup line has nothing to say
 
-// E2. The git line of a startup: the branch, how far it is from its remote, and the uncommitted files. The two reads run together (one
-// after the other they cost twice the time), each held to 1.5 s by `run(args, { cwd, timeout })`, which gives git's output or throws.
+// E2. The git line of a startup: the branch, how far it is from its remote, and the uncommitted files. The status is read first and the
+// diff's counts only when files are uncommitted, each held to 1.5 s by `run(args, { cwd, timeout })`, which gives git's output or throws.
 // No repository, no git, a timeout or any error: no line. A diff that fails costs the line's counts only (no commit yet, no HEAD).
 // GIT_OPTIONAL_LOCKS keeps the status from taking the index lock; core.fsmonitor off, so a repository's own setting runs nothing here.
 const GIT = { GIT_OPTIONAL_LOCKS: '0', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.fsmonitor', GIT_CONFIG_VALUE_0: 'false' };
@@ -35,10 +35,10 @@ const PATH = /^(?:1 (?:\S+ ){7}|2 (?:\S+ ){8}|u (?:\S+ ){9}|\? )([^\t]*)/;
 async function gitLine(cwd, sharing, run = runGit) {
   try {
     const o = { cwd, timeout: 1500 }, go = async (a) => String(await run(a, o));
-    const [status, diff] = await Promise.all([go(['status', '--porcelain=v2', '--branch']), go(['diff', '--shortstat', 'HEAD']).catch(() => '')]);
     const at = {}, files = [];
-    for (const l of status.split(/\r?\n/)) { const b = /^# branch\.(\w+) (.*)$/.exec(l), f = PATH.exec(l); if (b) at[b[1]] = b[2]; else if (f) files.push(f[1]); }
+    for (const l of (await go(['-c', 'core.quotePath=false', 'status', '--porcelain=v2', '--branch'])).split(/\r?\n/)) { const b = /^# branch\.(\w+) (.*)$/.exec(l), f = PATH.exec(l); if (b) at[b[1]] = b[2]; else if (f) files.push(f[1]); }
     if (!at.head) return [];
+    const diff = files.length ? await go(['diff', '--shortstat', '--no-ext-diff', '--no-textconv', 'HEAD']).catch(() => '') : '';
     const [ahead, behind] = /^\+(\d+) -(\d+)$/.exec(at.ab ?? '')?.slice(1).map(Number) ?? [0, 0], remote = (at.upstream ?? '').split('/')[0];
     const sync = ahead && behind ? `, ${ahead} ahead of and ${behind} behind ${remote}` : ahead ? `, ${ahead} ahead of ${remote}` : behind ? `, ${behind} behind ${remote}` : '';
     const stat = (w) => new RegExp(`(\\d+) ${w}`).exec(diff)?.[1] ?? 0;
@@ -221,7 +221,7 @@ async function print(input, { dry = false, run, info } = {}) {
     const ends = start && lessonsOn('deadend') ? deadEnds(dir, now, w) : [];
     const again = start && lessonsOn('recurring') ? recurringLines(dir, now, { errors: readCounters(dir).errors, ...w }) : { ids: [], lines: [] };
     if (!dry && (retired.names.length || again.ids.length)) updateCounters(dir, (c) => { for (const n of retired.names) if (c.notes[n]) c.notes[n].told = true; for (const id of again.ids) (c.errors[id] ??= { listed: 0 }).listed = (c.errors[id].listed || 0) + 1; });
-    const rest = [...journal, ...(gitting ? await gitting : []), ...health(dir), ...retired.lines, ...movedOnce(dir), ...(doc ? stalled(live[0]) : []), ...ends, ...again.lines, ...edited(), ...shared()];
+    const rest = [...journal, ...(gitting ? await gitting : []), ...health(dir), ...retired.lines, ...(dry ? moved(dir).map((m) => movedText(dir, m)) : movedOnce(dir)), ...(doc ? stalled(live[0]) : []), ...ends, ...again.lines, ...edited(), ...shared()];
     T.mark('shared');
     const say = (ex) => fit([...lines, ...(ex.length ? ['Its last exchanges, oldest first:', ...ex] : []), ...rest].join('\n') + '\n', 1000);
     // The most that fit, from the newest back; none when not even it does.
