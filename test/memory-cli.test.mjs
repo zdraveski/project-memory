@@ -791,6 +791,23 @@ rmSync(join(root, '.stop-ran'), { force: true });
   const before = tree();
   await run(['preview', '--prompt', 'no, I said always stage by name', '--session', 'prevsess1']);
   ok(tree() === before, 'a preview of a prompt changes nothing: no session file, no nudge line');
+  // The hook's own gates: a private prompt (the tag as the hook reads it, normalised), a private-session mark, an incognito conversation, a project that is off.
+  const none = (why) => `With the prompt: nothing would be added (${why}).`, FIX = 'no, I said always stage by name';
+  for (const [t, why] of [[`<PRIVATE reason="x">${FIX}</PRIVATE>`, 'private'], [`<private>${FIX}`, 'private'], [`${FIX} <private-session>`, 'private'], [`<​private>${FIX}</private>`, 'private']]) {
+    r = await run(['preview', '--prompt', t, '--session', 'prevsess1']);
+    ok(say(r) === none(why), `a private prompt would add nothing (${JSON.stringify(t)}; got ${say(r)})`);
+  }
+  const { QUIET } = await import('../src/privacy.mjs');
+  writeFileSync(join(proj, 'memory', QUIET), 'prevsess\n');
+  r = await run(['preview', '--prompt', FIX, '--session', 'prevsess1']);
+  ok(say(r) === none('quiet'), `an incognito conversation would add nothing (got ${say(r)})`);
+  rmSync(join(proj, 'memory', QUIET), { force: true });
+  await run(['off', '--session', 'prevsess1']);
+  r = await run(['preview', '--prompt', FIX, '--session', 'prevsess1']);
+  const offSay = say(r);
+  await run(['on', '--session', 'prevsess1']);
+  ok(offSay === none('project off'), `a project that is off would add nothing (got ${offSay})`);
+  ok(say(await run(['preview', '--prompt', FIX, '--session', 'prevsess1'])) === none('F2-first'), 'and once it is on again, the gate lets it through (off removed the session file: a first prompt)');
   process.env.PROJECT_MEMORY_LESSONS = '';
   if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was;
   ok(parseArgs(['preview', '--prompt']) === '--prompt needs a value after it' && parseArgs(['preview', '--prompt', '']) === '--prompt needs a value after it' && parseArgs(['search', 'x', '--prompt', 'y']) === 'search does not take --prompt; help lists the options' && (await run(['help'])).stdout.includes('--prompt'), 'the option needs a value, only preview takes it, and help names it');

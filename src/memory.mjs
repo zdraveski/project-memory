@@ -63,7 +63,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, dropMistakes, claimPage, appendCapped, repoRoot } from './store.mjs';
 import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, stopRuns, deployed, deployedCommit, edited, DEPLOYED, moved, movedText } from './run-records.mjs';
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, verdict, isOurs, versionsOf, changedLately, dropDays, daysHolding, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
-import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
+import { gate, PRIVATE, PRIVATE_SESSION, isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
 import { health as notesHealth, linksOf } from './notes-health.mjs';
@@ -75,7 +75,9 @@ import { redact, holdsSecret } from './secrets.mjs';
 import { BLOCK, transcripts, lastTurn, chunk as chunkOf } from './transcript.mjs';
 import { tame, STOP, words, count, has, termRe, isHelper, changedFile, inConversation, changers, whoChanged, about } from './recall.mjs';
 import { dropSessions, others, ACTIVE, readSession, sessionsOf } from './sessions.mjs';
-import { nudgeFor } from './lessons.mjs';
+import { nudgeWith } from './lessons.mjs';
+import * as correctionMod from './correction.mjs';
+import { norm } from './store.mjs';
 // Loaded apart, as memory-tier loads it: a journal.mjs that will not load (or
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
@@ -448,9 +450,13 @@ function preview(here, prompt) {
   const left = Number(/^left (\d+)$/m.exec(r.stderr)?.[1] ?? 0);
   const out = [`Startup briefing: ${r.stdout.length.toLocaleString('en-US')} of 3,500 characters; ${left} older exchange${left === 1 ? '' : 's'} left out to fit.`, ...(r.stdout ? r.stdout.replace(/\n$/, '').split('\n') : [])];
   if (prompt === undefined) return { ok: true, lines: out };
+  // The prompt hook's own gates, in its order: memory or the project off, an incognito conversation, then a private prompt.
+  const none = (why) => ({ ok: true, lines: [...out, `With the prompt: nothing would be added (${why}).`] }), g = gate(payload, session ? tag(session) : 'preview', 1), typed = norm(prompt);
+  if (g.why) return none(g.why);
+  if (PRIVATE_SESSION.test(typed) || PRIVATE.test(typed)) return none('private');
   // Dry, as a later prompt of that conversation (--session), or of one that has had a prompt already; nothing is written.
   const at = session ? join(sessionsOf(here), tag(session)) : '', lines = session ? readSession(at) ?? [] : [{ kind: 'asked', at: '', by: '', rest: '' }];
-  const v = nudgeFor({ prompt, ...(transcript ? { transcript_path: transcript } : {}) }, { at, lines }, { dry: true });
+  const v = nudgeWith(correctionMod, { prompt, ...(transcript ? { transcript_path: transcript } : {}) }, { at, lines }, { dry: true });
   return { ok: true, lines: [...out, ...(v.say ? [`With the prompt: the nudge would fire (${v.ids.join(', ')}).`, v.say] : [`With the prompt: nothing would be added (${v.why}).`])] };
 }
 

@@ -266,4 +266,8 @@ export default {
   "H5 preview --prompt writes": ["{ dry: true }", "{ dry: false }"],
   "H5 preview --prompt without --session counts as a first prompt": ["[{ kind: 'asked', at: '', by: '', rest: '' }]", "[]"],
   "H5 preview --prompt always shown": ["if (prompt === undefined) return", "if (false) return"],
+  "H5 preview ignores the hook's gates": ["if (g.why) return none(g.why);", "if (false) return none(g.why);"],
+  "H5 preview ignores a private-session mark": ["PRIVATE_SESSION.test(typed) || PRIVATE.test(typed)", "PRIVATE.test(typed)"],
+  "H5 preview ignores a private block": ["PRIVATE_SESSION.test(typed) || PRIVATE.test(typed)", "PRIVATE_SESSION.test(typed)"],
+  "H5 preview reads the prompt un-normalised": ["typed = norm(prompt)", "typed = prompt"],
 };

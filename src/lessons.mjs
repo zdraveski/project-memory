@@ -9,7 +9,6 @@ import { notesOf } from './enforce.mjs';
 import { cleanPath, whole, BLOCK_MAX } from './recall.mjs';
 import { sessionLine } from './sessions.mjs';
 import * as T from './transcript.mjs';
-import { correction, VERSION } from './correction.mjs';
 
 // F1. PROJECT_MEMORY_LESSONS: unset or empty gives DEFAULTS, 0 turns every trigger off, 1 on, anything else is a comma list read over
 // DEFAULTS (`name` on, `-name` off, the later word wins, blanks trimmed, unknown words ignored). The replay gate (2026-11-28) turned on
@@ -167,21 +166,28 @@ export function parseLesson(rest) {
 // Writes a `nudge fired:` or `nudge dropped:` line (pattern ids and a filter id, never the prompt's words) unless `dry`. The cooldown: none
 // within 10 prompts of the last nudge, none once 3 are in the file. The previous turn's end is read from the last 64 KB of the transcript.
 export const NUDGE_TEXT = 'project-memory: this reads like a correction that should last. If it is, save it now as a feedback note: the rule, why, and applies_to (files) or applies_when (push, merge, publish, release, deploy, destroy). If it is not, ignore this.';
-export function nudgeFor(input, ctx, { dry = false, readTail } = {}) {
-  const none = (why, ids = []) => ({ say: '', ids, why });
+// correction.mjs (~45 unicode regexes, 11 ms to load) is read only once the switch is on, so a prompt with the nudge off pays nothing:
+// nudgeFor is the hook's async entry, nudgeWith the same with the module in hand (the memory command is sync and imports it itself).
+const noNudge = (why, ids = []) => ({ say: '', ids, why });
+export async function nudgeFor(input, ctx, opts) {
+  return lessonsOn('nudge') ? nudgeWith(await import('./correction.mjs'), input, ctx, opts) : noNudge('nudge is off');
+}
+export function nudgeWith({ correction, VERSION }, input, ctx, { dry = false, readTail } = {}) {
+  const none = noNudge;
   if (!lessonsOn('nudge')) return none('nudge is off');
   const { lines, at } = ctx;
   let recs;
   const tail = () => recs ??= (() => {
     try { return [...T.records((readTail ?? T.readTail)(input.transcript_path, 64 * 1024).text, { types: ['user', 'assistant'] })]; } catch { return []; }
   })();
-  // The turn's last record, leaving out the prompt itself when the transcript already holds it.
+  // The turn's last record (a record of tool calls alone has no text and is skipped by the question check, so an older reply's ? may count: accepted), leaving out the prompt itself when the transcript already holds it.
   const last = () => { const r = tail(), i = r.length - 1; return i >= 0 && r[i].type === 'user' && T.prompt(r[i], T.text(r[i]).trim()) ? i - 1 : i; };
   const marker = () => { const r = tail()[last()], c = r?.message?.content; return r?.type === 'user' && (/^\s*\[Request interrupted by user/.test(T.text(r)) || (Array.isArray(c) && c.some((b) => b?.type === 'tool_result' && T.refused(r, b)))); };
   const lastEndsWithQuestion = () => { const r = tail().slice(0, last() + 1).findLast((x) => x.type === 'assistant' && T.text(x).trim()); return !!r && T.text(r).trim().endsWith('?'); };
   const v = correction(T.own(input.prompt), { helper: input.agent_id != null, first: !lines.some((l) => l.kind === 'asked'), marker, lastEndsWithQuestion });
   const k = 1 + lines.filter((l) => l.kind === 'nudge').length, add = (rest) => { if (!dry) try { appendFileSync(at, sessionLine('nudge', `${rest} v${VERSION} #${k}`), { mode: 0o600 }); } catch {} };
   if (!v.fire) { if (v.drop) add(`dropped:${v.drop}`); return none(v.drop || 'no match', v.ids); }
+  // tidy (sessions.mjs) may collapse asked lines past 64 KB; that only makes the cooldown stricter.
   const asked = lines.flatMap((l, i) => (l.kind === 'asked' ? [i] : [])), cut = asked.length >= 10 ? asked.at(-10) : -1;
   const fired = lines.flatMap((l, i) => (l.kind === 'nudge' && l.rest.startsWith('fired:') ? [i] : []));
   if (fired.length >= 3 || fired.some((i) => i > cut)) return none('cooldown', v.ids);

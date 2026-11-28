@@ -19,4 +19,5 @@ export default {
   "H5 a helper's lesson is shown": ["l.kind === 'lesson' && l.by === ''", "l.kind === 'lesson'"],
   "H5 a co-change lesson is named": ["!parseLesson(l.rest)?.name.startsWith('cochange:') && ", ""],
   "H5 an older turn's lesson is named": ["lines.slice(lastPrompt + 1)", "lines"],
+  "H5 the cooldown guard counts a file of fewer than 10 prompts": ["cut = asked.length >= 10 ? asked.at(-10) : -1", "cut = asked.length >= 0 ? asked.at(-10) : -1"],
 };

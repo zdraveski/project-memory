@@ -312,12 +312,12 @@ const shareJournal = (name, corrected) => {
 }
 
 // The nudge: at most 1 in 10 prompts and 3 in a conversation. 40 corrections in one conversation: the first prompt cannot be one, then
-// the 2nd, the 12th and the 22nd prompt, and the 32nd is held back by the cap.
+// the 2nd, the 13th and the 24th prompt (the hook allows the 11th after a nudge), and the 35th is held back by the cap.
 {
   const N = store('C--replay-nudge');
   journal(N, Array.from({ length: 40 }, (_, i) => E(`n${String(i + 1).padStart(2, '0')}`, `2026-11-26 ${String(8 + Math.floor(i / 12)).padStart(2, '0')}:${String(i % 12 * 5).padStart(2, '0')}`, 's1', 'no, always run the tests')));
   const r = run(N, { show: true });
-  eq(r.lines.filter((l) => /\] nudge /.test(l)).map((l) => /\[(\w+)\]/.exec(l)[1]), ['n02', 'n12', 'n22'], 'one nudge in 10 prompts, 3 in a conversation');
+  eq(r.lines.filter((l) => /\] nudge /.test(l)).map((l) => /\[(\w+)\]/.exec(l)[1]), ['n02', 'n13', 'n24'], 'none within 10 prompts of the last, 3 in a conversation');
 }
 
 // Only a path inside the repository is a path a lesson is about: an absolute one, one outside the folder and a memory file are not.

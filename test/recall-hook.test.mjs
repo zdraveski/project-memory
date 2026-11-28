@@ -432,6 +432,9 @@ ok(statSync(p.session()).ino !== ino && readdirSync(sessionsOf(p.store)).length 
   hush(run(ask(q, FIX), env), 'within 10 prompts of the last nudge: nothing'); ok(nl(q).length === 1, 'and no line');
   q = fresh(); seed(q, sessionLine('nudge', 'fired:A-no v1 #1'), ...Array.from({ length: 10 }, (_, i) => sessionLine('asked', `filler ${i}`)));
   ok(said(run(ask(q, FIX), env)).additionalContext === NUDGE && nl(q).length === 2 && nl(q)[1].rest === 'fired:A-no,A-i-said,B-always v1 #2', 'the 11th prompt after it: again, #2');
+  // Fewer than 10 prompts in the file: a nudge among them still blocks (the guard on the 10th newest asked line).
+  q = fresh(); seed(q, sessionLine('nudge', 'fired:A-no v1 #1'), ...[1, 2, 3].map((i) => sessionLine('asked', `filler ${i}`)));
+  hush(run(ask(q, FIX), env), 'a nudge and 3 prompts since: nothing'); ok(nl(q).length === 1, 'and no line');
   // A dropped match.
   q = fresh(); hush(run(ask(q, 'no, great work, always like this'), env), 'a match a filter dropped: nothing');
   ok(nl(q).length === 1 && nl(q)[0].rest === 'dropped:F6-praise v1 #1', `a dropped line holds the filter id (got ${JSON.stringify(nl(q))})`);
@@ -460,9 +463,15 @@ ok(statSync(p.session()).ino !== ino && readdirSync(sessionsOf(p.store)).length 
     const { nudgeFor } = await import('../src/lessons.mjs'), was = process.env.PROJECT_MEMORY_LESSONS;
     process.env.PROJECT_MEMORY_LESSONS = 'nudge';
     q = fresh(); const at = join(sessionsOf(q.store), SID.slice(0, 8)), lines = readSession(at), size = readFileSync(at, 'utf8').length;
-    const v = nudgeFor({ prompt: FIX, agent_id: 'a' }, { at, lines }, { dry: true });
+    const v = await nudgeFor({ prompt: FIX, agent_id: 'a' }, { at, lines }, { dry: true });
     ok(v.say === '' && v.why === 'F2-helper' && readFileSync(at, 'utf8').length === size, 'a helper: dropped by F2-helper, and a dry run writes nothing');
-    ok(nudgeFor({ prompt: FIX }, { at, lines }, { dry: true }).ids.join() === 'A-no,A-i-said,B-always' && readFileSync(at, 'utf8').length === size, 'a dry run that fires writes nothing either');
+    ok((await nudgeFor({ prompt: FIX }, { at, lines }, { dry: true })).ids.join() === 'A-no,A-i-said,B-always' && readFileSync(at, 'utf8').length === size, 'a dry run that fires writes nothing either');
+    // The sync entry (the memory command's) has the switch of its own.
+    const { nudgeWith } = await import('../src/lessons.mjs'), C = await import('../src/correction.mjs');
+    process.env.PROJECT_MEMORY_LESSONS = '';
+    ok(nudgeWith(C, { prompt: FIX }, { at, lines }, { dry: true }).why === 'nudge is off' && (await nudgeFor({ prompt: FIX }, { at, lines }, { dry: true })).why === 'nudge is off', 'switched off: both entries say so and write nothing');
+    process.env.PROJECT_MEMORY_LESSONS = 'nudge';
+    ok(nudgeWith(C, { prompt: FIX }, { at, lines }, { dry: true }).ids.length === 3, 'switched on: the sync entry fires');
     if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was;
   }
   // An unreadable transcript: no marker, nothing breaks.
