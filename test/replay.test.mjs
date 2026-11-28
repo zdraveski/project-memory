@@ -75,20 +75,21 @@ const plain = run(S), shown = run(S, { show: true });
 eq(snap(S), before, 'a replay changes nothing in the store: no history, no notes cache');
 eq(plain.lines, [
   'Replayed 16 exchanges over 7 days (3 days had no journal). 3 lessons existed at some point; 3 could fire. 1 dated by file time.',
-  'H1 edit lessons: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 1, unclear 0. No correction signal (1 in 16 prompts).',
-  'H2 command lessons: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. No correction signal (1 in 16 prompts).',
-  'H3 dead ends: 5 firings, 0.7 a day, median 1.5 on an active day. Probable hits 0, unclear 5. No correction signal (1 in 16 prompts).',
-  'H4 recurring errors: 3 firings, 0.4 a day, median 1 on an active day. Probable hits 0, unclear 3. No correction signal (1 in 16 prompts).',
-  'L2 stuck streak: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. No correction signal (1 in 16 prompts). Lower bound (an exact re-run hides its earlier failure).',
+  'H1 edit lessons: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 1, unclear 0. Failure hits 0 of 1, cannot claim, n too small. No correction signal (1 in 16 prompts).',
+  'H2 command lessons: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. Failure hits 0 of 1, cannot claim, n too small. No correction signal (1 in 16 prompts).',
+  'H3 dead ends: 5 firings, 0.7 a day, median 1.5 on an active day. Probable hits 0, unclear 5. Failure hits 0 of 5, cannot claim, n too small. No correction signal (1 in 16 prompts).',
+  'H4 recurring errors: 3 firings, 0.4 a day, median 1 on an active day. Probable hits 0, unclear 3. Failure hits 1 of 3, cannot claim, n too small. No correction signal (1 in 16 prompts).',
+  'L2 stuck streak: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. Failure hits 1 of 1, cannot claim, n too small. No correction signal (1 in 16 prompts). Lower bound (an exact re-run hides its earlier failure).',
   'H5 nudge: 1 firing in 16 prompts, median 0 on an active day. Cannot claim, n too small. (No interrupt markers in the journal.)',
-  'L6 claim check: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. No correction signal (1 in 16 prompts).',
-  'L9 co-change: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. No correction signal (1 in 16 prompts).',
+  'L6 claim check: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. Failure hits 1 of 1, cannot claim, n too small. No correction signal (1 in 16 prompts).',
+  'L9 co-change: 1 firing, 0.1 a day, median 0 on an active day. Probable hits 0, unclear 1. Failure hits 0 of 1, cannot claim, n too small. No correction signal (1 in 16 prompts).',
   'L17 scan: hides 0 of 3 notes.',
   'Upper bound: a match is not proof that the lesson changes anything.',
 ], 'the pinned report of the made-up journal');
 eq(plain.history, { at: '2026-11-27 12:00', days: 7, exchanges: 16,
   firings: { edit: 1, command: 1, deadend: 5, recurring: 3, stuck: 1, nudge: 1, claim: 1, cochange: 1 },
-  hits: { edit: 1, command: 0, deadend: 0, recurring: 0, stuck: 0, nudge: 0, claim: 0, cochange: 0 } }, 'the history line holds numbers only');
+  hits: { edit: 1, command: 0, deadend: 0, recurring: 0, stuck: 0, nudge: 0, claim: 0, cochange: 0 },
+  failHits: { edit: 0, command: 0, deadend: 0, recurring: 1, stuck: 1, nudge: 0, claim: 1, cochange: 0 } }, 'the history line holds numbers only');
 ok(!/ZEBRA|k\d\d|\.mjs|\.md/.test(JSON.stringify(plain.history)), 'and no name, key or text');
 
 // Without --show no text of the journal is printed: not one request's marker word, nor a key.
@@ -161,18 +162,18 @@ const shareJournal = (name, corrected) => {
 };
 {
   const r = run(shareJournal('C--replay-share', 22)), [lo, hi] = wilson(22, 30);
-  eq(r.lines[1], `H1 edit lessons: 30 firings, 4.3 a day, median 30 on an active day. Probable hits 22, unclear 8. Share 73% (22 of 30), 95% interval ${Math.round(lo * 100)}-${Math.round(hi * 100)}%. Misses 0: no lesson 0, no match 0, filtered 0.`,
+  eq(r.lines[1], `H1 edit lessons: 30 firings, 4.3 a day, median 30 on an active day. Probable hits 22, unclear 8. Failure hits 0 of 30, 95% interval ${Math.round(wilson(0, 30)[0] * 100)}-${Math.round(wilson(0, 30)[1] * 100)}%. Share 73% (22 of 30), 95% interval ${Math.round(lo * 100)}-${Math.round(hi * 100)}%. Misses 0: no lesson 0, no match 0, filtered 0.`,
     '20 corrections or more and 20 firings or more: the share, its n and its Wilson interval');
-  ok(/^H2 command lessons: 0 firings, 0 a day, median 0 on an active day\. Probable hits 0, unclear 0\. Cannot claim, n too small\. Misses 22: no lesson 22, no match 0, filtered 0\.$/.test(r.lines[2]), `a correction nothing was listed before, with no lesson of that kind: a miss with its cause (${r.lines[2]})`);
+  ok(/^H2 command lessons: 0 firings, 0 a day, median 0 on an active day\. Probable hits 0, unclear 0\. Failure hits 0 of 0, cannot claim, n too small\. Cannot claim, n too small\. Misses 22: no lesson 22, no match 0, filtered 0\.$/.test(r.lines[2]), `a correction nothing was listed before, with no lesson of that kind: a miss with its cause (${r.lines[2]})`);
   ok(/^L2 stuck streak: .* Misses 22: no lesson 0, no match 22, filtered 0\./.test(r.lines[5]), `and with a lesson that could have matched: no match (${r.lines[5]})`);
   eq(r.history.firings.edit, 30, 'the history counts the firings');
 }
 // Under 20 corrections a 0% share and a count of no misses are no finding, only a journal without the signal: neither is printed.
 {
   const r = run(shareJournal('C--replay-nosignal', 12));
-  eq(r.lines[1], 'H1 edit lessons: 30 firings, 4.3 a day, median 30 on an active day. Probable hits 12, unclear 18. No correction signal (12 in 42 prompts).', '12 corrections: no share, no interval, no miss count');
-  eq(r.lines[2], 'H2 command lessons: 0 firings, 0 a day, median 0 on an active day. Probable hits 0, unclear 0. No correction signal (12 in 42 prompts).', 'and for a trigger that never fired');
-  ok(r.lines.slice(1, 9).filter((l) => !/^H5 /.test(l)).every((l) => /No correction signal \(12 in 42 prompts\)\./.test(l) && !/%|Misses|Share|interval/.test(l)), 'every line has the signal and none a percentage or a miss');
+  eq(r.lines[1], 'H1 edit lessons: 30 firings, 4.3 a day, median 30 on an active day. Probable hits 12, unclear 18. Failure hits 0 of 30, 95% interval 0-11%. No correction signal (12 in 42 prompts).', '12 corrections: no share, no interval, no miss count');
+  eq(r.lines[2], 'H2 command lessons: 0 firings, 0 a day, median 0 on an active day. Probable hits 0, unclear 0. Failure hits 0 of 0, cannot claim, n too small. No correction signal (12 in 42 prompts).', 'and for a trigger that never fired');
+  ok(r.lines.slice(1, 9).filter((l) => !/^H5 /.test(l)).every((l) => /No correction signal \(12 in 42 prompts\)\./.test(l) && !/Misses|Share/.test(l)), 'every line has the signal and none a share or a miss (the failure interval is no share)');
   eq(r.history.hits.edit, 12, 'the history still counts the hits');
 }
 
@@ -223,6 +224,53 @@ const shareJournal = (name, corrected) => {
   ok(/^H1 edit lessons: 1 firing,.* Probable hits 0, unclear 1\./.test(run(D).lines[1]), 'a correction the next day is no hit');
 }
 
+// A failure hit: a failed command of the firing's target, or a failed command and a change of its file, in the next 20 entries of the same
+// conversation (other conversations' entries are not counted, and a failure there is no hit). The marker of the journal's text is --show's.
+{
+  const Y = store('C--replay-failure');
+  const mm = (n) => `2026-11-25 ${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+  let n = 0;
+  const e = (s, o = {}) => E(`y${++n}`, mm(n), s, `step ${n}`, o);
+  const two = { ran: ['npm test -- a → failed: Error: x', 'npm test -- b → failed: Error: y'] }, fail = { ran: ['npm test → failed: Error: z'] };
+  const es = [e('A', two), e('A', fail),                                       // y1, y2: a failure of the same target in the next entry
+    e('B', two), ...Array.from({ length: 4 }, () => e('X')), ...Array.from({ length: 19 }, () => e('B')), e('B', fail),   // y27: the 20th entry of B (4 of X between)
+    e('C', two), ...Array.from({ length: 20 }, () => e('C')), e('C', fail),    // y49: the 21st entry of C
+    e('D', two), e('E', fail),                                               // y51: the failure is in another conversation
+    e('F', two), e('F', { ran: ['npm test --silent'] }), e('F', { ran: ['git status → failed: fatal: x'] })];   // y54: a passing run, then another target failing
+  journal(Y, es);
+  const r = run(Y, { show: true }), stuck = r.lines.filter((l) => /\] stuck /.test(l));
+  eq(stuck.map((l) => /\[(\w+)\]/.exec(l)[1]), ['y1', 'y3', 'y28', 'y50', 'y52'], 'five conversations start a stuck streak');
+  eq(stuck.map((l) => l.endsWith('(failure hit: npm test)')), [true, true, false, false, false], 'a failure of the target in the next entry, and at the 20th entry of its conversation, are hits; at the 21st, in another conversation, or of another target, not');
+  ok(/^L2 stuck streak: 5 firings,.* Failure hits 2 of 5, cannot claim, n too small\./.test(r.lines.find((l) => /^L2 /.test(l))), 'the line says the failure hits, and that 5 firings claim nothing');
+  eq(r.history.failHits.stuck, 2, 'the history counts them');
+}
+{
+  const Q = store('C--replay-failfile');
+  note(Q, 'f-lesson.md', 'applies_to: [f.mjs]\n', 'Mind f', 'Mind f.mjs.', at(20, 8));
+  const es = [E('q1', '2026-11-25 09:00', 'G', 'edit f', { changed: ['f.mjs'] }), E('q2', '2026-11-25 09:05', 'G', 'edit f again and test', { changed: ['f.mjs'], ran: ['npm test → failed: Error: x'] }),
+    E('q3', '2026-11-25 09:10', 'H', 'edit f', { changed: ['f.mjs'] }), E('q4', '2026-11-25 09:15', 'H', 'edit f once more', { changed: ['f.mjs'] }),
+    E('q5', '2026-11-25 09:20', 'I', 'edit f', { changed: ['f.mjs'] }), E('q6', '2026-11-25 09:25', 'I', 'run the tests', { ran: ['npm test → failed: Error: x'] })];
+  journal(Q, es);
+  const r = run(Q, { show: true }), edit = r.lines.filter((l) => /\] edit /.test(l));
+  eq(edit.map((l) => /\[(\w+)\]/.exec(l)[1]), ['q1', 'q3', 'q5'], 'the file lesson fires once in each conversation');
+  eq(edit.map((l) => /\(failure hit: (\S+)\)$/.exec(l)?.[1]), ['f.mjs', undefined, undefined], 'a failure with a change of the file is a hit; a change with no failure, and a failure with no change of the file, are not');
+}
+// 20 firings or more: the failure hits come with their Wilson interval, a firing in 30 conversations, a failed run in 12 of them.
+{
+  const W = store('C--replay-failshare');
+  note(W, 'x-lesson.md', 'applies_to: [x.mjs]\n', 'Mind x', 'Mind the x module.', at(25, 7));
+  const hh = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`, es = [];
+  for (let i = 0; i < 30; i++) {
+    es.push(E(`a${i}`, `2026-11-25 ${hh(480 + i * 10)}`, `c${i}`, `edit x ${i}`, { changed: ['x.mjs'] }));
+    if (i < 12) es.push(E(`b${i}`, `2026-11-25 ${hh(485 + i * 10)}`, `c${i}`, `test x ${i}`, { changed: ['x.mjs'], ran: ['npm test → failed: Error: x'] }));
+  }
+  journal(W, es);
+  const r = run(W), [lo, hi] = wilson(12, 30);
+  ok(r.lines[1].includes(` Failure hits 12 of 30, 95% interval ${Math.round(lo * 100)}-${Math.round(hi * 100)}%. `), `the interval from 20 firings (${r.lines[1]})`);
+  ok(!/Failure/.test(r.lines.find((l) => /^H5 /.test(l))), 'the nudge line has no failure count');
+  eq(r.history.failHits.edit, 12, 'and the history');
+}
+
 // The misses, with 20 corrections to count them against: one a day, each in its own conversation and each editing the file of the lesson,
 // so a firing is in the correction's own entry and none in the 20 before it: a firing in the same entry is no firing before the correction.
 {
@@ -230,7 +278,7 @@ const shareJournal = (name, corrected) => {
   note(M, 'm-lesson.md', 'applies_to: [w.mjs]\n', 'Mind w', 'Mind w.mjs.', new Date(2026, 9, 25, 8));
   journal(M, Array.from({ length: 20 }, (_, i) => E(`w${i}`, `2026-11-${String(i + 1).padStart(2, '0')} 09:00`, `c${i}`, 'no, always run the tests', { changed: ['w.mjs'] })));
   const r = run(M, { days: 31 }), [lo, hi] = wilson(0, 20);
-  eq(r.lines[1], `H1 edit lessons: 20 firings, 0.6 a day, median 1 on an active day. Probable hits 0, unclear 20. Share 0% (0 of 20), 95% interval ${Math.round(lo * 100)}-${Math.round(hi * 100)}%. Misses 20: no lesson 0, no match 20, filtered 0.`,
+  eq(r.lines[1], `H1 edit lessons: 20 firings, 0.6 a day, median 1 on an active day. Probable hits 0, unclear 20. Failure hits 0 of 20, 95% interval ${Math.round(wilson(0, 20)[0] * 100)}-${Math.round(wilson(0, 20)[1] * 100)}%. Share 0% (0 of 20), 95% interval ${Math.round(lo * 100)}-${Math.round(hi * 100)}%. Misses 20: no lesson 0, no match 20, filtered 0.`,
     'a first prompt of a conversation that reads like a correction is counted, and its own entry is no firing before it');
 }
 

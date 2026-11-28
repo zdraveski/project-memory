@@ -23,5 +23,9 @@ export default {
   'a firing in the correction own entry is a firing before it': ['x.i < j && day', 'x.i <= j && day'],
   'a nudge follows another within 10 prompts': ['st.prompts - st.nudged < 10', 'st.prompts - st.nudged < 1'],
   'a conversation gets more than 3 nudges': ['st.nudges >= 3 || ', ''],
+  'a failure 21 entries later in the conversation is a failure hit': ['j < es.length && seen < NEXT; j++) {', 'j < es.length && seen <= NEXT; j++) {'],
+  "a failure in another conversation is a failure hit": ['if (es[j].s !== es[f.i].s) continue;', ''],
+  'a failure of any other command is a failure hit of a target': ['f.targets.includes(x.target) || f.families', 'true || f.families'],
+  'a change of the file with no failure is a failure hit': ['?? (fl.length ? f.files.find(', '?? (true ? f.files.find('],
   'a path outside the repository is the path of a lesson': ['if (inside(p)) speak', 'if (true) speak'],
 };
