@@ -49,7 +49,7 @@ import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, claimPage } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, dropMistakes, claimPage } from './store.mjs';
 import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, stopRuns, deployed, deployedCommit, edited, DEPLOYED, moved, movedText } from './run-records.mjs';
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, verdict, isOurs, versionsOf, changedLately, dropDays, daysHolding, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
 import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
@@ -1206,6 +1206,10 @@ export function main(given) {
   if (copies.includes('page')) {
     const bad = dropPage();
     if (bad instanceof Error) { r.lines.push(`could not delete the page: ${reason(bad)}; it still holds journal text`); r.ok = false; }
+  }
+  if (copies.includes('page')) {
+    const bad = dropMistakes(cmd === 'rescan' ? null : here);
+    if (bad instanceof Error) { r.lines.push(`could not delete the mistakes cache: ${reason(bad)}; it still holds journal text`); r.ok = false; }
   }
   if (copies.includes('sessions')) {
     const bad = dropSessions(cmd === 'rescan' ? null : here);

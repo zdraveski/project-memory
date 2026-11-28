@@ -9,7 +9,7 @@ import { clip } from './text.mjs';
 import { tag, unsay } from './handoff-log.mjs';
 import { text, readTail, readHead, openFile, records, chunk, markFrom, userText, FORGETS, turns, TAIL, NUDGE_TAG, promptBefore, BLOCK } from './transcript.mjs';
 import { PRIVATE, hushed, isHushed, isQuiet, QUIET, FORGOTTEN, forgotten, forgottenIn, listForgotten, OFF, unreadable, wasOff } from './privacy.mjs';
-import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, lockBudget, sleep, sweepTemps, utf8Only, foldCase, dropPage } from './store.mjs';
+import { keyed, replaceIfUnchanged, raw, listOf, local, storeOf, projectsRoot, same, pathKey, transcriptKey, inProjects, withLock, lockBudget, sleep, sweepTemps, utf8Only, foldCase, dropPage, dropMistakes } from './store.mjs';
 import { fault, failures, clear } from './run-records.mjs';
 import * as T from './timing.mjs';
 import { dropSessions, ACTIVE } from './sessions.mjs';
@@ -377,6 +377,7 @@ function drop(dir, d, keep) {
     if (kept.length === entries.length) return [];
     if (replaceIfUnchanged(file, before, page(d, prose, kept)) === 'conflict') continue;
     dropPage(); // the page of the journal holds what is gone from the day
+    dropMistakes(dir); // and so does the mistakes cache (its commands and errors)
     if (!kept.length && !prose) try { unlinkSync(file); } catch {}
     return entries.filter((e) => !keep(e));
   }
@@ -392,7 +393,7 @@ export function sweep(dir, s, ds = days(dir, true)) {
   let n = 0, bad = null;
   const left = ds.filter((d) => { try { n += drop(dir, d, (e) => e.s !== s).length; return false; } catch (e) { bad = e; return true; } });
   owe(dir, s, ds, left);
-  if (bad) { dropPage(); throw Object.assign(bad, { owed: true }); } // days still holding the conversation: the page may too
+  if (bad) { dropPage(); dropMistakes(dir); throw Object.assign(bad, { owed: true }); } // days still holding the conversation: the page may too
   return n;
 }
 

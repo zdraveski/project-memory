@@ -320,7 +320,10 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
   // conversation's own next Stop sweep every day again (review, 2026-10-29).
   const bad = dayFile(d, '2026-09-05');
   mkdirSync(bad, { recursive: true });   // a day no sweep can read
+  // A sweep that stopped short may have left the text it was after in the mistakes cache too: gone, as the page is (1.7.0).
+  const cache = join(d, '.mistakes.json'); writeFileSync(cache, '{"v":1}');
   write(d, P, [], { quiet: true, hush: false });
+  ok(!existsSync(cache), 'a sweep that stopped short of a day deletes the mistakes cache');
   write(d, Q, [turn({ at: '2026-09-02 09:01', id: 'q-0' })], { quiet: false, hush: false });
   ok(readFileSync(owed, 'utf8') === 'aaaaaaaa 2026-09-01\n', `an owed sweep reads its own day again, no other (got ${JSON.stringify(readFileSync(owed, 'utf8'))})`);
   rmSync(bad, { recursive: true });
@@ -374,6 +377,20 @@ for (const [name, mark] of [['CRLF', (t) => t.replace(/\n/g, '\r\n')], ['BOM', (
     writePage('<p>page</p>');
     ok(sweep(dir, 'cccccccc') === 0 && existsSync(pagePath()), 'a sweep that takes nothing leaves the page');
     ok(sweep(dir, 'aaaaaaaa') === 1 && !existsSync(pagePath()), 'a sweep that takes an entry deletes the page'); }
+  // So does the mistakes cache (mistakes.mjs), which holds commands and errors from the journal: a forget of an entry, a sweep of a private conversation.
+  { const { MISTAKES } = await import('../src/store.mjs'), cache = join(dir, MISTAKES);
+    record(dir, S, [turn({ at: '2026-11-09 10:00', id: 'mk-1', ask: 'the ocelot plan', raw: 'the ocelot plan' })]);
+    writeFileSync(cache, '{"v":1}');
+    ok(forget(dir, ['nothing matches this'], { apply: true }).matched.length === 0 && existsSync(cache), 'a forget that matches nothing leaves the cache');
+    ok(forget(dir, ['ocelot'], { apply: true }).matched.length === 1 && !existsSync(cache), 'after a forget of an entry, the mistakes cache is gone');
+    record(dir, S, [turn({ at: '2026-11-09 10:00', id: 'mk-2', ask: 'the lynx plan', raw: 'the lynx plan' })]);
+    writeFileSync(cache, '{"v":1}');
+    ok(sweep(dir, 'cccccccc') === 0 && existsSync(cache), 'a sweep that takes nothing leaves the cache');
+    ok(sweep(dir, 'aaaaaaaa') === 1 && !existsSync(cache), 'after a private sweep that took an entry, it is gone');
+    writeFileSync(cache, '{"v":1}'); writeFileSync(`${cache}.tmp4242`, '{"v":1}');
+    record(dir, S, [turn({ at: '2026-11-09 10:00', id: 'mk-3', ask: 'the puma plan', raw: 'the puma plan' })]);
+    sweep(dir, 'aaaaaaaa');
+    ok(!existsSync(cache) && !existsSync(`${cache}.tmp4242`), 'and a killed build\'s temp copy goes with it'); }
   // Nor is it for a forget: read as an empty journal, it found nothing to match, and memory.mjs said "nothing matches" with exit 0 while
   // the entry stayed (F20, R45). It throws; entries(), as search lists them, still finds none.
   record(dir, S, [turn({ at: '2026-11-08 10:00', id: 'f-1', ask: 'the quokka plan', raw: 'the quokka plan' })]);

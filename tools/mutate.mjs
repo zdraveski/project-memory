@@ -10,6 +10,7 @@ import { tool, tempDir } from '../test/harness.mjs';
 import { mutants, ignored } from './automut.mjs';
 import { pluginFiles } from './suites.mjs';
 import store from './mutants/store.mjs';
+import mistakes from './mutants/mistakes.mjs';
 import secrets from './mutants/secrets.mjs';
 import compactGate from './mutants/compact-gate.mjs';
 import handoffLog from './mutants/handoff-log.mjs';
@@ -44,7 +45,8 @@ export const testsOf = (t) => [].concat(t);
 const MEMORY = ['test/memory-cli.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-switch.test.mjs'];
 
 export const suites = {
-  'src/store.mjs': [['test/store.test.mjs', 'test/lessons.test.mjs'], store],
+  'src/store.mjs': [['test/store.test.mjs', 'test/lessons.test.mjs', 'test/mistakes.test.mjs'], store],
+  'src/mistakes.mjs': ['test/mistakes.test.mjs', mistakes],
   // Most of the detector's corpus still lives in handoff-log.test.mjs.
   'src/secrets.mjs': [['test/secrets.test.mjs', 'test/handoff-log.test.mjs'], secrets],
   'src/compact-gate.mjs': ['test/compact-gate.test.mjs', compactGate],

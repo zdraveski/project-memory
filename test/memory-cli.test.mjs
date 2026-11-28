@@ -643,5 +643,32 @@ rmSync(join(root, '.stop-ran'), { force: true });
   ok(typeof parseArgs(['search', 'x', '--words']) === 'object' && parseArgs(['search', 'x', '--wordz']) === 'unknown option --wordz; help lists the options' && parseArgs(['show', 'x', '--words']) === 'show does not take --words; help lists the options', '7: --words is accepted by search only, --wordz is refused');
   rmSync(join(ed, 'journal'), { recursive: true });
 }
+// 1.7.0: the mistakes cache (mistakes.mjs) holds commands and errors from the journal, so it goes where the page and the session files go:
+// off, incognito and rescan --apply --yes delete it; rescan without --yes (it changes nothing) does not. rescan reaches every project's.
+{
+  const mine = join(root, 'C--mist-cli', 'memory'), other = join(root, 'C--mist-cli-two', 'memory');
+  for (const d of [mine, other]) { mkdirSync(join(d, 'journal'), { recursive: true }); writeFileSync(join(d, 'MEMORY.md'), '# Index\n'); }
+  const cache = (d) => join(d, '.mistakes.json'), put = () => { for (const d of [mine, other]) writeFileSync(cache(d), '{"v":1}'); };
+  put();
+  await run(['rescan']); await run(['rescan', '--apply']);
+  ok(existsSync(cache(mine)) && existsSync(cache(other)), 'rescan without --apply, and --apply without --yes, leave the mistakes cache');
+  await run(['rescan', '--apply', '--yes']);
+  ok(!existsSync(cache(mine)) && !existsSync(cache(other)), 'rescan --apply --yes deletes every project\'s mistakes cache');
+  put();
+  await run(['off', '--store', mine]);
+  ok(!existsSync(cache(mine)) && existsSync(cache(other)), 'off deletes that project\'s mistakes cache, no other');
+  put();
+  await run(['incognito', '--store', other]);
+  ok(!existsSync(cache(other)) && existsSync(cache(mine)), 'incognito deletes the project\'s mistakes cache');
+  await run(['on', '--store', mine]); await run(['status', '--store', mine]);
+  ok(existsSync(cache(mine)), 'on and status leave it');
+  // A file that will not go is said, with exit 1: it still holds journal text.
+  const real = fs.rmSync;
+  fs.rmSync = (p, ...a) => { if (String(p).endsWith('.mistakes.json')) throw Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' }); return real(p, ...a); };
+  syncBuiltinESMExports();
+  let r; try { r = await run(['off', '--store', mine]); } finally { fs.rmSync = real; syncBuiltinESMExports(); }
+  ok(r.status === 1 && r.stdout.includes('could not delete the mistakes cache: EBUSY: resource busy; it still holds journal text') && existsSync(cache(mine)), `a cache that will not go is said, exit 1 (got ${r.status} ${r.stdout})`);
+  rmSync(cache(mine)); rmSync(cache(other), { force: true });
+}
 
 console.log(`memory-cli: ${checks} checks passed`);

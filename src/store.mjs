@@ -47,6 +47,26 @@ export function dropPage() {
   }
   return bad ?? there;
 }
+// <store>/.mistakes.json (mistakes.mjs): the commands and errors the journal holds, so it goes wherever journal text is deleted. Never
+// throws; true when one was there and is gone, false when none was, the Error when something would not go. A killed build's temp copy
+// (`.mistakes.json.tmp<pid>`) goes too. store null: every project's.
+export const MISTAKES = '.mistakes.json';
+export function dropMistakes(store) {
+  let bad = null, there = false;
+  let stores = [store]; if (!store) try { stores = readdirSync(projectsRoot()).map((p) => join(projectsRoot(), p, 'memory')); } catch { stores = []; }
+  for (const d of stores) {
+    let names = []; try { names = readdirSync(d); } catch {}
+    for (const n of names) if (n.startsWith(MISTAKES)) try { rmSync(join(d, n), { force: true }); there = true; } catch (e) { bad ??= e; }
+  }
+  return bad ?? there;
+}
+// The day the cache was last tried, whether the build went through or not (`.mistakes.json.tried`, a date, so dropMistakes takes it
+// too): a build that fails leaves no cache, and without it every Stop would start the tidy child again, all day. One small read at
+// each Stop, no JSON; it lives here so the Stop need not load mistakes.mjs.
+export const MISTAKES_TRIED = `${MISTAKES}.tried`;
+export function mistakesOwed(store, now) {
+  try { return (raw(join(store, MISTAKES_TRIED)) ?? '').trim() < local(now).slice(0, 10); } catch { return false; }   // unreadable: not tried every Stop
+}
 // A keyed fingerprint of raw text for dedup keys and proof-of-life lines: an unsalted hash of a short prompt that is just a
 // password falls to a dictionary run. The salt is a random per-machine file in the projects folder (never snapshotted, 0600);
 // when it cannot be kept, a one-off salt: keys then differ between runs, and nothing else breaks.

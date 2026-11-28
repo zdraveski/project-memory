@@ -81,6 +81,13 @@ no network code.
   already named, the user's message (secrets replaced, 120 characters) or a
   `quiet` line for a private one, a title, `saw` and `end` lines
   ([What it saves](../PRIVACY.md#what-it-saves)).
+- **The mistakes cache**: `.mistakes.json` in a project's `memory` folder, mode 0600, written under the
+  store's lock by the Stop's background tidy-up (never by the Stop itself) once a day from the last 90
+  days of the journal. It holds failed commands cut to a program and subcommand, error lines folded and
+  cut to 120 characters, and fixing commands, all passed through the same secret redaction as the journal,
+  and file pairs. `recent()` leaves out private and forgotten exchanges, and the sweeps and `forget`,
+  `incognito`, `memory off` and `rescan --apply --yes` delete it (and a temp copy a killed build left), and
+  say so when they cannot. Nothing reads it yet.
 - **Claude Code's plugin lists**, in `~/.claude/plugins`, read only by
   `doctor`.
 - **Switches**: `.project-off` (a marker in one project's `memory` folder),
@@ -187,7 +194,8 @@ shown again, or text from a transcript read as an instruction.
 - Every look-up has a 400 ms budget and a 5-second limit; any failure exits
   0 with nothing printed. `PROJECT_MEMORY_RECALL=0` turns it all off.
 - The session files are deleted after 7 days and by `forget`, `off`,
-  `incognito` and `rescan --apply --yes`.
+  `incognito` and `rescan --apply --yes`. So is the mistakes cache, which
+  is rebuilt from the journal once a day.
 - The recall helper's instruction lists four read-only commands. That is an
   instruction, not a lock: a plugin's agent cannot limit Bash to one
   command.
