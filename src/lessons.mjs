@@ -212,8 +212,8 @@ const COUNT = { f: 'followed', b: 'broken', n: 'na', u: 'unknown' };
 const fresh = (rev) => ({ rev, shown: 0, followed: 0, broken: 0, na: 0, unknown: 0, sessions: [], last: '', retired: '', told: false });
 const lose = (c) => { const n = c.shown - c.na; if (n > 0 && (c.broken >= 3 || wilson(c.broken, n)[0] >= 0.25)) c.retired = `broken ${c.broken} of ${n}`; };
 function judge(on, turn, cwd, rule) {
-  const i = on.indexOf(':'), kind = on.slice(0, i), arg = on.slice(i + 1), ran = turn.ran ?? [], changed = (turn.changed ?? []).map((p) => relPath(p, cwd));
-  if (kind === 'pair') return changed.includes(arg) ? 'f' : 'u';
+  const i = on.indexOf(':'), kind = on.slice(0, i), arg = on.slice(i + 1), ran = (turn.ran ?? []).map((c) => c.split(' → failed: ')[0]), changed = (turn.changed ?? []).map((p) => relPath(p, cwd));
+  if (kind === 'pair') return changed.includes(foldCase(arg)) ? 'f' : 'u';
   if (kind === 'edit' ? !changed.includes(arg) : !ran.some((c) => familyOf(c).includes(arg))) return 'n';
   const seen = rule ? ran.map((c) => hits(rule, c)) : [];
   return seen.some((h) => h.hit) ? 'b' : seen.some((h) => h.on) ? 'f' : 'u';
@@ -233,7 +233,7 @@ export async function atStop(payload, seen, { now = Date.now() } = {}) {
     let moves = [];
     if (j < a) {
       const before = lines.slice(lines.findLastIndex((l, i) => i < a && prompt(l)) + 1, a).findLast((l) => l.kind === 'judged');
-      moves = (before?.rest ?? '').split(',').flatMap((x) => { const [n, v] = x.split(':'); return COUNT[v] ? [[decodeURIComponent(n), v]] : []; });
+      moves = (before?.rest ?? '').split(',').flatMap((x) => { const [n, v] = x.split(':'); try { return COUNT[v] ? [[decodeURIComponent(n), v]] : []; } catch { return []; } });
       if (moves.length && !(await import('./correction.mjs')).correction(own(turn.raw ?? turn.ask ?? ''), { first: false, helper: false }).fire) moves = [];
     }
     if (!mine.length && !moves.length) return none;

@@ -452,6 +452,7 @@ async function save(input, dry) {
     T.mark('notice');
     // The lessons of the turn judged (L13, L4); a failure here costs only that. Its words, if any, are the Stop's feedback when nothing else is.
     let say = ''; if (payload?.hook_event_name === 'Stop' && !dry) try { say = (await (await import(new URL('./lessons.mjs', import.meta.url))).atStop(payload, seen, { feedback: !nudge })).say; } catch {}
+    T.mark('lessons');
     const out = (nudge || notice || say) && { ...(nudge || (say && { hookSpecificOutput: { hookEventName: 'Stop', additionalContext: say } })), ...(notice && { systemMessage: notice }) };
     // Done once it is written: on macOS a pipe is written asynchronously, and
     // an exit right after a write can cut it (handoff-log's --print, CI 2026-10-29).

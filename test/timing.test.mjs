@@ -82,7 +82,7 @@ ok(pct([1, 2, 3], 0.5) === 2, 'pct');
 
 // Every hook entry writes its line, and changes nothing else.
 rmSync(file, { force: true });
-const SAVE_PHASES = ['input', 'load', 'read', 'journal', 'handoff', 'index', 'backfill', 'notice', 'scan', 'snapshot', 'tier'];
+const SAVE_PHASES = ['input', 'load', 'read', 'journal', 'handoff', 'index', 'backfill', 'notice', 'lessons', 'scan', 'snapshot', 'tier'];
 const cwd = join(home, 'proj'), store = storeFor(home, cwd), projDir = join(root, slug(cwd));
 mkdirSync(store, { recursive: true });
 const tp = join(projDir, 'sess.jsonl');

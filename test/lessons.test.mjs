@@ -198,6 +198,8 @@ ok(wilson(0, 0).join() === '0,0' && wilson(0, 5)[0] === 0 && wilson(5, 5)[1] ===
     ['rule: a command hit it', RULE, 'edit:src/a.mjs', { ran: ['git add src/a.mjs', 'git add -A'] }, 'b'],
     ['rule: its subcommand never ran', RULE, 'edit:src/a.mjs', { ran: ['git status'] }, 'u'],
     ['rule: a hit on a cmd lesson', RULE, 'cmd:push', { ran: ['git push', 'git add -A'] }, 'b'],
+    ['rule: a failed command whose output names the flag is no hit', RULE, 'edit:src/a.mjs', { ran: ['git add src/a.mjs → failed: hint: run\ngit add -A'] }, 'f'],
+    ['cmd: a failed command whose output names a push is no push', AK, 'cmd:push', { ran: ['git status → failed: x\ngit push --force'] }, 'n'],
     ['rule: the edit did not go through, so not applicable whatever ran', RULE, 'edit:src/a.mjs', { changed: [], ran: ['git add -A'] }, 'n'],
   ]) {
     const q = proj({ 'a.md': keys }); q.put(ASK(), L('a.md', on));
@@ -210,6 +212,11 @@ ok(wilson(0, 0).join() === '0,0' && wilson(0, 5)[0] === 0 && wilson(5, 5)[1] ===
     await q.stop(q.turn({ changed: [join(q.cwd, 'src', 'a.mjs'), join(q.cwd, 'test', 'a.test.mjs')] }));
     ok(row(q.c('cochange:ab12cd34')).followed === 1 && judged(q)[0].endsWith(' cochange%3Aab12cd34:f') && q.c('cochange:ab12cd34').rev.length === 8, 'cochange: B changed is followed, and the line holds the encoded name');
     const w = proj(); w.put(ASK(), L('cochange:ab12cd34', 'pair:test/a.test.mjs')); await w.stop(w.turn()); ok(row(w.c('cochange:ab12cd34')).unknown === 1 && judged(w)[0].endsWith(':u'), 'cochange: B not changed is unknown'); }
+  { const q = proj(); q.put(ASK(), L('cochange:ab12cd34', 'pair:Test/A.test.mjs'));
+    await q.stop(q.turn({ changed: [join(q.cwd, 'test', 'a.test.mjs')] })); ok(row(q.c('cochange:ab12cd34')).followed === (FOLDS ? 1 : 0), 'cochange: the B path is compared as the disk compares names (case folded only where it folds)'); }
+  // A judged line that will not decode costs its own note, not the Stop.
+  { const q = proj(); q.counters({ 'a.md': blank({ shown: 3, unknown: 3 }) }); q.put(ASK('first'), sessionLine('judged', '%E0%A4%A:u,a.md:u'), ASK('no, I said always stage by name'), L('a.md', 'edit:src/a.mjs'));
+    await q.stop(q.turn({ raw: 'no, I said always stage by name' })); ok(q.c().shown === 4 && q.c().broken === 1 && q.c().unknown === 3 && judged(q).length === 2, `a malformed judged line: the readable note is still moved and this turn still judged (got ${JSON.stringify(q.c())})`); }
   // Several lines, a shared note, a note that is gone, a helper's line.
   { const q = proj({ 'a.md': AK, 'b.md': 'applies_to: [src/b.mjs]\n' }); q.put(ASK(), L('a.md', 'edit:src/a.mjs'), L('b.md', 'edit:src/b.mjs'), L('a.md', 'edit:src/a.mjs', 'h1'), L('gone.md', 'edit:src/a.mjs'));
     await q.stop(); ok(judged(q)[0].endsWith(' a.md:u,b.md:n,gone.md:u') && q.c('b.md').na === 1 && q.c('a.md').shown === 1 && q.c('gone.md') === undefined, `one verdict a line, a helper's line not judged, a note that is gone gets no counter (got ${judged(q)})`); }
