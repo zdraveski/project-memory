@@ -272,9 +272,11 @@ tier();
   writeFileSync(join(efHome, 'hooks', 'hooks.json'), readFileSync(join(ROOT, 'hooks', 'hooks.json')));
   installed('project-memory@project-memory', efHome, { source: 'github', repo: 'zdraveski/project-memory' });
   const doc = async () => (await cli('doctor')).stdout;
-  ok(/^ok +the enforce hook runs and is wired \(PreToolUse\)/m.test(await doc()), `doctor: a good copy passes (got ${await doc()})`);
+  const timing = join(home, '.claude', 'projects', '.timing'), logged = () => existsSync(timing) ? readFileSync(timing, 'utf8') : '', beforeDoc = logged();
+  ok(/^ok +the enforce and recall hooks run and are wired \(PreToolUse\)/m.test(await doc()), `doctor: a good copy passes (got ${await doc()})`);
+  ok(logged() === beforeDoc, 'doctor: its empty hook calls write no .timing line');
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
-  try { ok(/^ok +the enforce hook runs/m.test(await doc()), 'doctor: the line shows when memory is off'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  try { ok(/^ok +the enforce and recall hooks run/m.test(await doc()), 'doctor: the line shows when memory is off'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   const hookFile = join(efHome, 'src', 'enforce-hook.mjs'), good = readFileSync(hookFile);
   writeFileSync(hookFile, 'process.exitCode = 1;\n');
   ok(/^PROBLEM [^\n]*enforce hook[^\n]*exit code 1/m.test(await doc()), 'doctor: a hook that exits 1 is a problem');
@@ -1090,13 +1092,19 @@ again ${key2}
   writeFileSync(hooks, '{"hooks":{"PreToolUse":[1],"SubagentStop":[1],"PostToolUseFailure":[1]}}');
   ok(/^PROBLEM .*recall-hook\.mjs is missing/m.test(doctor().stdout), 'no recall-hook.mjs is said');
   writeFileSync(join(at, 'recall-hook.mjs'), '');
-  ok(/^ok +the enforce hook runs and is wired \(PreToolUse\)$/m.test(doctor().stdout), 'a hook that prints nothing and exits 0 is fine');
+  ok(/^ok +the enforce and recall hooks run and are wired \(PreToolUse\)$/m.test(doctor().stdout), 'a hook that prints nothing and exits 0 is fine');
   writeFileSync(hook, 'console.log("noise");');
   ok(/^PROBLEM the enforce hook printed output for an empty call \(noise\): it must print nothing$/m.test(doctor().stdout), 'a hook that prints for an empty call is a problem');
   writeFileSync(hook, 'process.exit(3);');
   ok(/^PROBLEM the enforce hook failed an empty call \(exit code 3\): /m.test(doctor().stdout), 'a hook that exits 3 is a problem, with its code');
   writeFileSync(hook, 'setTimeout(() => {}, 6000);');
-  ok(/^ok +the enforce hook runs and is wired/m.test(doctor().stdout), 'a hook slow to start (6 s) is not a problem');
+  ok(/^ok +the enforce and recall hooks run and are wired/m.test(doctor().stdout), 'a hook slow to start (6 s) is not a problem');
+  // Past the 15 s limit: a note, and the recall hook is still checked.
+  writeFileSync(hook, 'setTimeout(() => {}, 20000);');
+  writeFileSync(join(at, 'recall-hook.mjs'), 'console.log("noise");');
+  ok(/^PROBLEM the recall hook printed output for an empty call \(noise\)/m.test(doctor().stdout), 'a slow enforce hook (over 15 s) does not skip the recall check');
+  writeFileSync(join(at, 'recall-hook.mjs'), '');
+  ok(/^ok +the enforce hook did not answer in time \(15 s\)/m.test(doctor().stdout), 'and when the recall hook is fine the slow note stays');
 }
 
 // 1.5.3 holes: how search, show and forget print what they find: the range in a line, the stores counted, a short request's reply, show's keys and exit.

@@ -29,7 +29,9 @@ try {
     } else if (event === 'PostToolUseFailure') {
       // 1.7.0 L2: only with PROJECT_MEMORY_LESSONS=stuck; onFailure loads the transcript reader only when it is about to speak.
       T.name('fail');
-      const { say } = await (await import('./lessons.mjs')).onFailure(input);
+      const L = await import('./lessons.mjs');
+      if (!L.lessonsOn('stuck')) T.skip();
+      const { say } = await L.onFailure(input);
       T.mark('look');
       if (say) await new Promise((done) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: say } }) + '\n', done));
     } else if (event === 'SessionEnd') {

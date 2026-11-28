@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import assert from 'node:assert';
 import { tempHome, tool, storeFor, slug } from './harness.mjs';
-import { begin, tag, mark, flush, read, stats, pct, FILE, MAX } from '../src/timing.mjs';
+import { begin, tag, mark, skip, flush, read, stats, pct, FILE, MAX } from '../src/timing.mjs';
 
 const { home } = tempHome('timing-');
 let checks = 0;
@@ -50,6 +50,8 @@ process.env.PROJECT_MEMORY_TIMING = '0'; begin('save'); await flush(); delete pr
 ok(read(0, file).length === count, 'an unknown hook, no begin and the off switch wrote no line');
 begin('save'); await flush(); await flush();
 ok(read(0, file).length === count + 1, 'a second flush writes nothing');
+begin('save'); skip(); await flush();
+ok(read(0, file).length === count + 1, 'skip drops the run: no line');
 
 // the cut
 ok(MAX === 256 * 1024, 'the file is cut at 256 KB, as PRIVACY.md says');

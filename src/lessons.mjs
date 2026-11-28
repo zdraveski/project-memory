@@ -165,12 +165,13 @@ export function parseLesson(rest) {
 // L2. Whether a command of `target` went through between the last two failures of it in this turn, read from the transcript's last
 // 512 KB (only when about to speak). Raw records, not turns(): turns() clears an exact re-run's earlier marks. A call with no result yet
 // is the failure being reported. true: yes; false: no, or fewer than two failures show in the tail; null: the transcript will not read.
-async function wentThrough(path, target) {
+// `side`: the file is a helper's own, whose records are all sidechain.
+async function wentThrough(path, target, side) {
   try {
     const { readTail, TAIL, records, text, prompt } = await import('./transcript.mjs');
     let calls = [];
     const done = new Map();
-    for (const r of records(readTail(path, TAIL).text)) {
+    for (const r of records(readTail(path, TAIL).text, { types: ['user', 'assistant'], sidechain: side })) {
       const c = r.message?.content;
       if (r.type === 'user' && prompt(r, text(r))) { calls = []; continue; }
       if (!Array.isArray(c)) continue;
@@ -206,8 +207,12 @@ export async function onFailure(input, { now = Date.now() } = {}) {
     const cur = lines.slice(lines.findLastIndex((l) => l.kind === 'compact') + 1), turn = cur.slice(cur.findLastIndex((l) => l.kind === 'asked' || l.kind === 'quiet') + 1);
     const theirs = (l, kind) => l.by === by && l.kind === kind && (kind === 'stuck' ? l.rest === th : l.rest.startsWith(`${th} `));
     // The failure just written is the second when one is already there; and once per target per context.
+    // shortcut: two failures at once (parallel calls) may both count the other as the first and both stay silent, or both speak; no lock, fine for a nudge.
     if (!turn.some((l) => theirs(l, 'fail')) || cur.some((l) => theirs(l, 'stuck'))) return none;
-    if (await wentThrough(input.transcript_path, target) !== false) return none;
+    // A helper's calls are in its own file next to the conversation's (<folder>/<session id>/subagents/agent-<id>.jsonl), never in the main one.
+    const main = typeof input.transcript_path === 'string' ? input.transcript_path : '', sid = String(input.session_id);
+    const path = !main ? '' : !by ? main : /^[\w-]+$/.test(sid) ? join(dirname(main), sid, 'subagents', `agent-${by}.jsonl`) : '';
+    if (await wentThrough(path, target, !!by) !== false) return none;
     appendFileSync(at, sessionLine('stuck', th, by, new Date(now).toISOString()), { mode: 0o600 });
     const first = `project-memory: "${target}" failed twice in a row in this turn. Before a third try, read the whole error and change one thing.`;
     let second = '';

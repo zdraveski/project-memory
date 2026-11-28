@@ -45,7 +45,7 @@ no network code.
   and `trigger`; for a finished subagent also `agent_type`, `agent_id` and
   `agent_transcript_path`; for the git-rule watcher `tool_input.command` and
   `tool_use_id`; for the recall hook `tool_name`, `tool_input.file_path` or
-  `notebook_path`, `prompt`, `reason` and `agent_id`; for the stuck-streak line `tool_input.command`, `error` and
+  `notebook_path`, `prompt`, `reason` and `agent_id`; for the stuck-streak line `tool_name`, `tool_input.command`, `error` and
   `is_interrupt`. Output: the briefing as text (SessionStart, up to 9,500
   characters), a reminder as `additionalContext` JSON (Stop), the recall hook's notes as
   `additionalContext` JSON (PostToolUse, UserPromptSubmit), and the gate's

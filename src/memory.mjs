@@ -689,7 +689,7 @@ const twin = (r, p) => r.s && r.s === p.s && (r.e ?? 'Stop') === 'Stop' && (p.e 
 
 // One note per hook that ran in the last 7 days (the .timing file, timing.mjs). "since" is the later of 7 days ago and the oldest line:
 // the file is cut at 256 KB, which a busy user fills sooner than 7 days.
-const TIMED = { save: 'save after a reply', tidy: 'tidy-up and snapshot after a reply (in the background)', brief: 'briefing', enforce: 'git rule check', gate: 'check before a compaction', recall: 'look-up after a file change', prompt: 'look-up at a prompt' };
+const TIMED = { save: 'save after a reply', tidy: 'tidy-up and snapshot after a reply (in the background)', brief: 'briefing', enforce: 'git rule check', gate: 'check before a compaction', recall: 'look-up after a file change', prompt: 'look-up at a prompt', fail: 'stuck-streak check after a failed command' };
 export function timingLines(now = Date.now()) {
   if (process.env.PROJECT_MEMORY_TIMING === '0') return ['hook times are off (PROJECT_MEMORY_TIMING=0)'];
   const all = readTimes(0, join(projectsRoot(), TIMING)), since = Math.max(now - 7 * 864e5, all[0]?.t ?? 0), sec = (ms) => (ms / 1000).toFixed(2);
@@ -816,18 +816,19 @@ function enforceHook(at) {
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PostToolUseFailure?.length) return [false, `hooks.json in ${at} has no PostToolUseFailure group: the stuck-streak hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
   const recall = [join(at, 'src', 'recall-hook.mjs'), join(at, 'recall-hook.mjs')].find(existsSync) ?? join(at, 'src', 'recall-hook.mjs');
   if (!existsSync(recall)) return [false, `${recall} is missing: the recall hooks cannot run. The user's fix: claude plugin update ${PLUGIN}`];
-  // Each hook gets an empty call and must exit 0 and print nothing.
+  // Each hook gets an empty call and must exit 0 and print nothing. Timing is off: this call is no look-up for the .timing file.
+  let slow = '';
   for (const [f, name] of [[file, 'enforce'], [recall, 'recall']]) {
     try {
-      const out = execFileSync(process.execPath, [f], { input: '{}', encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'] });
+      const out = execFileSync(process.execPath, [f], { input: '{}', encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, PROJECT_MEMORY_TIMING: '0' } });
       if (out) return [false, `the ${name} hook printed output for an empty call (${clip(out, 80)}): it must print nothing`];
     } catch (e) {
       // A slow node start (a loaded or virus-scanned PC) is a note, not a broken hook.
-      if (e.code === 'ETIMEDOUT') return [true, `the ${name} hook did not answer in time (15 s): the PC may be slow; run doctor again`];
+      if (e.code === 'ETIMEDOUT') { slow ||= `the ${name} hook did not answer in time (15 s): the PC may be slow; run doctor again`; continue; }
       return [false, `the ${name} hook failed an empty call (exit code ${e.status ?? e.code}): ${f}`];
     }
   }
-  return [true, 'the enforce hook runs and is wired (PreToolUse)'];
+  return [true, slow || 'the enforce and recall hooks run and are wired (PreToolUse)'];
 }
 
 // What status and doctor say of a project turned off.

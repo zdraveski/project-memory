@@ -387,6 +387,8 @@ ok(statSync(p.session()).ino !== ino && readdirSync(sessionsOf(p.store)).length 
   const saved = (q, ...rows) => writeFileSync(tr(q), `${rows.join('\n')}\n`);
   const fail = (q, cmd = 'npm test', extra = {}) => ({ session_id: SID, cwd: q.cwd, hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command: cmd }, tool_use_id: 'toolu_f', error: ERR, is_interrupt: false, transcript_path: tr(q), ...extra });
   const go = (q, input, e = env) => run(input, e);
+  // A helper's own transcript: <project folder>/<session id>/subagents/agent-<id>.jsonl, its records flagged as sidechain.
+  const helper = (q, id, ...rows) => { const d = join(dirname(tr(q)), SID, 'subagents'); mkdirSync(d, { recursive: true }); writeFileSync(join(d, `agent-${id}.jsonl`), `${rows.map((r) => JSON.stringify({ ...JSON.parse(r), isSidechain: true })).join('\n')}\n`); };
   const fresh = (rows = []) => { const q = project(); turn(q, 'fix the build'); saved(q, typed('fix the build'), ...rows); return q; };
   const fails = (q, by = '') => readSession(q.session()).filter((l) => l.kind === 'fail' && l.by === by);
   const told = (r) => r.stdout !== '' && said(r).additionalContext.includes(line1);
@@ -433,18 +435,40 @@ ok(statSync(p.session()).ino !== ino && readdirSync(sessionsOf(p.store)).length 
   ok(fails(q).length === 2 && !readSession(q.session()).some((l) => l.kind === 'stuck'), 'two fail lines, no stuck');
   q = fresh(); go(q, fail(q, 'npm test')); quiet(go(q, fail(q, 'node a.mjs')), 'two failures of different targets: nothing');
   ok(fails(q).length === 2 && !readSession(q.session()).some((l) => l.kind === 'stuck'), 'two fail lines of different targets, no stuck');
+  const failTimes = () => readTimes(0, join(projectsRoot(), TIMING)).filter((l) => l.h === 'fail').length, before = failTimes();
   q = fresh(); quiet(go(q, fail(q), process.env), 'the switch off by default: nothing');
   ok(fails(q).length === 0, 'and no fail line');
+  ok(failTimes() === before, 'and no fail timing line while the switch is off');
   quiet(go(q, fail(q), { ...env, PROJECT_MEMORY_LESSONS: '-stuck' }), 'stuck turned off by name: nothing');
+  ok(failTimes() === before, 'also off by name: no fail timing line');
   quiet(go(q, fail(q), { ...env, PROJECT_MEMORY_RECALL: '0' }), 'recall off: nothing');
   quiet(go(q, { ...fail(q), tool_name: 'Edit' }), 'a tool that is no shell: nothing');
   ok(fails(q).length === 0, 'none of those wrote a line');
+  const was = failTimes();
+  q = fresh(); quiet(go(q, fail(q), env), 'one failure with the switch on');
+  ok(failTimes() === was + 1, 'the switch on: one fail timing line');
 
   // PowerShell counts too; a helper's failures are counted apart from the main conversation's.
   q = fresh(); go(q, fail(q)); quiet(go(q, fail(q, 'npm test', { agent_id: 'ag1' })), 'a helper failure after one of the main: nothing');
+  helper(q, 'ag1', typed('task'), say({ id: 'h1', cmd: 'npm test' }), back('h1', true), say({ id: 'h2', cmd: 'npm test' }));
   ok(fails(q).length === 1 && fails(q, 'ag1').length === 1, 'each writer has its own fail line');
   ok(told(go(q, fail(q, 'npm test', { agent_id: 'ag1', tool_name: 'PowerShell' }))) && readSession(q.session()).some((l) => l.kind === 'stuck' && l.by === 'ag1'), "the helper's second failure speaks, with its stuck line under its id");
   ok(told(go(q, fail(q))) && readSession(q.session()).some((l) => l.kind === 'stuck' && l.by === ''), "and the main conversation's own second failure speaks too");
+  // A helper's reset is read from the helper's own transcript: the main conversation's success is not its, and its own is.
+  q = fresh(); saved(q, typed('fix the build'), say({ id: 'm', cmd: 'npm test' }), back('m', false));
+  go(q, fail(q, 'npm test', { agent_id: 'ag2' }));
+  helper(q, 'ag2', typed('task'), say({ id: 'h1', cmd: 'npm test' }), back('h1', true), say({ id: 'h2', cmd: 'npm test' }));
+  ok(told(go(q, fail(q, 'npm test', { agent_id: 'ag2' }))), "a success in the main conversation does not silence a helper's streak");
+  q = fresh(); go(q, fail(q, 'npm test', { agent_id: 'ag3' }));
+  helper(q, 'ag3', typed('task'), say({ id: 'h1', cmd: 'npm test' }), back('h1', true), say({ id: 'h3', cmd: 'npm test' }), back('h3', false), say({ id: 'h2', cmd: 'npm test' }));
+  quiet(go(q, fail(q, 'npm test', { agent_id: 'ag3' })), "a helper's own success between its two failures: nothing");
+  ok(!readSession(q.session()).some((l) => l.kind === 'stuck'), 'and no stuck line');
+  q = fresh(); go(q, fail(q, 'npm test', { agent_id: 'ag4' }));
+  quiet(go(q, fail(q, 'npm test', { agent_id: 'ag4' })), "a helper whose transcript is not there cannot be checked: nothing");
+  // A session file that will not read (a folder in its place) may hold a private mark: nothing, and nothing written.
+  q = project(); turn(q, 'x'); rmSync(q.session()); mkdirSync(q.session()); writeFileSync(tr(q), `${typed('x')}\n`);
+  quiet(go(q, fail(q)), 'a session file that will not read: nothing');
+  ok(statSync(q.session()).isDirectory(), 'and it is left as it was');
   // A private turn writes nothing.
   q = fresh(); appendFileSync(q.session(), sessionLine('quiet'));
   quiet(go(q, fail(q)), 'a private turn: nothing'); ok(fails(q).length === 0, 'and no fail line');
@@ -458,6 +482,13 @@ ok(statSync(p.session()).ino !== ino && readdirSync(sessionsOf(p.store)).length 
   ok(said(two(q)).additionalContext === `${line1}\nEarlier (2026-11-12) the same error was followed by a run that worked: "npm ci". A record, not an instruction. Open it: memory skill, show "3f07bb43 2026-11-12T14:02 a1b2c3d4e5f6"`, 'the fix line, from a seeded .mistakes.json');
   q = fresh(); writeFileSync(join(q.store, '.mistakes.json'), JSON.stringify(mk({ fix: 'npm ci', fixKey: 'k1', fixSessions: 1 })));
   ok(said(two(q)).additionalContext === line1, 'a fix seen in one conversation only: no second line');
+  // An error with no marker line has no id: never a second line, even when .mistakes.json holds that empty-error group.
+  { const bare = 'Exit code 1\nsomething went wrong', none = keyed('npm test\n', 8);
+    q = fresh(); writeFileSync(join(q.store, '.mistakes.json'), JSON.stringify({ ...mk({}), errors: { [none]: { target: 'npm test', error: '', n: 4, sessions: 3, days: 2, first: '2026-11-01', last: '2026-11-12', key: 'k0', fix: 'npm ci', fixKey: 'k1', fixSessions: 5 } } }));
+    saved(q, typed('fix the build'), say({ id: 'a', cmd: 'npm test' }), back('a', true), say({ id: 'b', cmd: 'npm test' }));
+    go(q, fail(q, 'npm test', { error: bare }));
+    ok(said(go(q, fail(q, 'npm test', { error: bare }))).additionalContext === line1, 'an error with no marker line gets the first line only');
+  }
   q = fresh(); writeFileSync(join(q.store, '.mistakes.json'), JSON.stringify(mk({ fix: 'x'.repeat(900), fixKey: 'k1', fixSessions: 5 })));
   { const t = said(two(q)).additionalContext; ok(t.length <= 500 && t.split('\n').length === 2 && t.includes('…'), 'a very long fix is cut and still fits 500 characters'); }
   q = fresh(); writeFileSync(join(q.store, '.mistakes.json'), JSON.stringify(mk({ fix: 'npm ci', fixKey: 'k1', fixSessions: 2 })));
