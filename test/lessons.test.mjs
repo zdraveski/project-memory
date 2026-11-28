@@ -23,13 +23,14 @@ const names = (m) => m.map((x) => `${x.lesson.name}:${x.how}`).join();
 
 // The switch (F1)
 ok(TRIGGERS.join() === 'edit,command,deadend,recurring,nudge,stuck,claim,cochange', 'the eight triggers');
-ok(TRIGGERS.every((t) => DEFAULTS[t] === false) && Object.keys(DEFAULTS).join() === TRIGGERS.join(), 'every trigger is off by default until step 7');
+// Step 7's gate (KIRE, 2026-11-28): only H2 command lessons on; the rest fired 0-3 times in 31 days, so they wait behind the switch.
+ok(TRIGGERS.every((t) => DEFAULTS[t] === (t === 'command')) && Object.keys(DEFAULTS).join() === TRIGGERS.join(), 'command lessons on by default, the other triggers off');
 ok(TRIGGERS.every((t) => lessonsOn(t, undefined) === DEFAULTS[t] && lessonsOn(t, '') === DEFAULTS[t] && lessonsOn(t, '  ') === DEFAULTS[t]), 'unset or empty gives the defaults');
 ok(TRIGGERS.every((t) => lessonsOn(t, '0') === false && lessonsOn(t, ' 0 ') === false), '0 turns every trigger off');
 ok(TRIGGERS.every((t) => lessonsOn(t, '1') === true), '1 turns every trigger on');
 ok(lessonsOn('nudge', 'nudge,-claim') === true && lessonsOn('claim', 'nudge,-claim') === false && lessonsOn('edit', 'nudge,-claim') === false, 'nudge,-claim: nudge on, claim off, the rest as the defaults');
 ok(lessonsOn('nudge', 'nudge, bogus') === true && lessonsOn('edit', 'nudge, bogus') === false && lessonsOn('bogus', 'bogus') === false, 'spaces are trimmed and an unknown word is ignored');
-ok(lessonsOn('edit', ' edit , stuck ') === true && lessonsOn('stuck', ' edit , stuck ') === true && lessonsOn('command', ' edit , stuck ') === false, 'a list with spaces');
+ok(lessonsOn('edit', ' edit , stuck ') === true && lessonsOn('stuck', ' edit , stuck ') === true && lessonsOn('claim', ' edit , stuck ') === false && lessonsOn('command', ' edit , stuck ') === true && lessonsOn('command', '-command') === false, 'a list with spaces, read over the defaults; -command turns the default off');
 ok(lessonsOn('bogus', '1') === false && lessonsOn('bogus', undefined) === false && lessonsOn('', '1') === false, 'an unknown trigger is always false');
 ok(lessonsOn('edit', 'edit,-edit') === false && lessonsOn('edit', '-edit,edit') === true, 'the later word wins');
 ok(lessonsOff('0') === true && lessonsOff(' 0 ') === true && lessonsOff('1') === false && lessonsOff('') === false && lessonsOff(undefined) === false && lessonsOff('edit') === false && lessonsOff(0) === true, 'lessonsOff is only 0');
