@@ -713,6 +713,8 @@ rmSync(join(root, '.stop-ran'), { force: true });
   const all = seen((await run(['lessons', 'replay', '--all', '--days', '10', '--store', L])).stdout), apart = seen((await run(['lessons', 'replay', '--all', '--days', '10', '--except', gone, '--store', L])).stdout);
   ok(all - apart === 3 && apart >= 2, `--except leaves out that folder's store: ${all} with it, ${apart} without`);
   ok(!existsSync(join(G, '.replay-history')), "and no store's history is written but the one asked from");
+  r = await run(['lessons', 'replay', '--days', '10', '--except', gone, '--store', G]);
+  ok(r.status === 0 && /Nothing to replay/.test(r.stdout) && !existsSync(join(G, '.replay-history')), `--except the store asked from: nothing is replayed and no history line is written (got ${r.stdout})`);
   // A copy of the CLI whose journal.mjs will not load still lists the lessons and says why it cannot replay; one without replay.mjs still runs the rest.
   rmSync(join(L, '.replay-history'));
   const copy = (name, change) => {

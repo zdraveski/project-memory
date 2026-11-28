@@ -15,4 +15,13 @@ export default {
   'a recurring error is listed more than 3 times': ['(listed.get(r.id) ?? 0) < 3', 'true'],
   'every firing before a correction is a hit': ['if (isCorr(j) && shares(f, es[j]))', 'if (isCorr(j))'],
   'a ratio with under 20 firings is claimed': ['if (trials < ENOUGH)', 'if (false)'],
+  'a lesson reworded after an exchange is a lesson of it': ['entries.findLast((e) =>', 'entries.find((e) =>'],
+  'a share and its misses are printed with no correction signal': ['corrections < ENOUGH ?', 'false ?'],
+  'exactly 20 corrections are no signal': ['corrections < ENOUGH ?', 'corrections <= ENOUGH ?'],
+  'a first prompt of a conversation is no correction': ['{ first: false, helper: false, marker', '{ first: true, helper: false, marker'],
+  'a correction on the next day is a hit': [' && day(es[j]) === day(es[f.i]); j++)', '; j++)'],
+  'a firing in the correction own entry is a firing before it': ['x.i < j && day', 'x.i <= j && day'],
+  'a nudge follows another within 10 prompts': ['st.prompts - st.nudged < 10', 'st.prompts - st.nudged < 1'],
+  'a conversation gets more than 3 nudges': ['st.nudges >= 3 || ', ''],
+  'a path outside the repository is the path of a lesson': ['if (inside(p)) speak', 'if (true) speak'],
 };

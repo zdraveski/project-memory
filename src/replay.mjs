@@ -37,15 +37,16 @@ export function assertBlind(set, entry) {
   for (const x of set) if (!(x.created < entry.at)) throw new Error(`replay leak: ${x.name} is newer than ${entry.key}`);
 }
 
-// A store's lessons, each with the time it was created: the first entry that changed its file, else the file's time, which is never earlier
-// than the truth: the lesson then fires for fewer exchanges, never more. The file is `<projects>/<folder>/memory/<file>`, <folder> being this
+// A store's lessons, each with the time it was created: the last entry that changed its file (the text replayed is today's, so a lesson
+// reworded since is not the lesson of an earlier exchange), else the file's time, which is never earlier than the truth: the lesson then
+// fires for fewer exchanges, never more. The file is `<projects>/<folder>/memory/<file>`, <folder> being this
 // project's or one this machine has no store for (the same project's journal from another machine names its own folder); another project's
 // note of the same name here, or the shared store's, does not date this one. Hidden lessons are counted, not listed.
 function lessonsIn(dir, prefix, entries) {
   const out = { list: [], notes: 0, hidden: 0 }, own = foldCase(basename(dirname(dir))), others = new Set();
   try { for (const x of readdirSync(dirname(dirname(dir)), { withFileTypes: true })) if (x.isDirectory()) others.add(foldCase(x.name)); } catch { /* no folder to compare with: every folder is foreign */ }
   others.delete(own);
-  const madeBy = (file) => entries.find((e) => e.changed.some((p) => {
+  const madeBy = (file) => entries.findLast((e) => e.changed.some((p) => {
     const q = foldCase(p.replaceAll('\\', '/')).split('/'), n = q.length;
     return q[n - 1] === foldCase(file) && q[n - 2] === 'memory' && q[n - 4] === 'projects' && !others.has(q[n - 3]);
   }));
@@ -63,7 +64,7 @@ function lessonsIn(dir, prefix, entries) {
 // One store's exchanges in time order, each simulated with only the lessons, mistakes and context from before it. Gives the firings
 // ({ trigger, i, ref, said, hit }) and the misses per trigger by cause.
 function walk(es, lessons) {
-  const day = (e) => e.at.slice(0, 10), conv = new Map(), listed = new Map(), fired = [], dropped = [], exist = [], firstOf = [], corr = [];
+  const day = (e) => e.at.slice(0, 10), conv = new Map(), listed = new Map(), fired = [], dropped = [], exist = [], corr = [];
   let lo = 0;
   es.forEach((e, i) => {
     while (es[lo].at < e.at) lo++;   // es[0..lo) are strictly before this minute
@@ -71,7 +72,6 @@ function walk(es, lessons) {
     assertBlind(set, e);
     const st = conv.get(e.s) ?? conv.set(e.s, { started: false, edit: { seen: new Set(), n: 0 }, command: { seen: new Set(), n: 0 }, prompts: 0, nudged: -Infinity, nudges: 0, changed: [], last: '', rules: [], rec: false, cochange: false }).get(e.s);
     const first = !helper && !st.started;
-    firstOf[i] = first;
     const fire = (trigger, ref, say, share = {}) => fired.push({ i, trigger, ref, said: say, files: [], families: [], targets: [], ...share });
     const drop = (trigger) => dropped.push({ i, trigger });
     // H1 and H2: once per lesson per conversation, at most 2 an entry and 6 a conversation.
@@ -131,8 +131,8 @@ function walk(es, lessons) {
     exist[i] = { edit: set.some((x) => !x.shared && (x.l.to.length > 0 || x.l.named.paths.length > 0 || x.l.named.files.length > 0)), command: set.some((x) => x.l.when.length > 0 || x.l.named.families.length > 0),
       deadend: set.some((x) => !x.shared && !!x.l.instead), recurring: st.rec, cochange: st.rules.length > 0 };
   });
-  // A request that reads like a correction (the first of a conversation and a helper's cannot be one).
-  const isCorr = (i) => (corr[i] ??= !isHelper(es[i]) && !firstOf[i] && correction(es[i].asked, { first: false, helper: false, marker: () => false, lastEndsWithQuestion: () => false }).fire);
+  // A request that reads like a correction (the plan's call: no first, no helper, no interrupt marker, no question before).
+  const isCorr = (i) => (corr[i] ??= correction(es[i].asked, { first: false, helper: false, marker: () => false, lastEndsWithQuestion: () => false }).fire);
   const low = (s) => s.toLowerCase(), same = (c, p) => { const a = cleanPath(c), b = cleanPath(p); return a === b || a.endsWith(`/${b}`); };
   // Shares the firing's file or family: the entry changed the file, ran the family or target, or its request names either.
   const shares = (f, e) => {
@@ -156,7 +156,7 @@ function walk(es, lessons) {
       miss[k][dropped.some((d) => d.trigger === k && near(d)) ? 'filtered' : exist[j][k] === false ? 'none' : 'nomatch']++;
     }
   });
-  return { fired: fired.map((f) => ({ ...f, e: es[f.i] })), miss, prompts: es.filter((e) => !isHelper(e)).length };
+  return { fired: fired.map((f) => ({ ...f, e: es[f.i] })), miss, prompts: es.filter((e) => !isHelper(e)).length, corrections: es.filter((e, i) => isCorr(i)).length };
 }
 
 // A ratio with its n and its 95% interval, or why there is none: under 20 trials nothing can be claimed.
@@ -185,14 +185,14 @@ export function replayRun(stores, { days, now, show = false, recent }) {
   const seen = new Map(), counted = { notes: 0, hidden: 0 }, sharedUsed = read.some((r) => !isShared(r.store));
   if (sharedUsed) { counted.notes += shared.notes; counted.hidden += shared.hidden; }
   const total = Object.fromEntries(LINES.map(([k]) => [k, { fire: [], miss: { none: 0, nomatch: 0, filtered: 0 } }]));
-  let prompts = 0;
+  let prompts = 0, corrections = 0;
   for (const { store, es } of read) {
     const own = lessonsIn(store, '', everything), counters = readCounters(store);
     counted.notes += own.notes; counted.hidden += own.hidden;
     const mine = [...own.list, ...(isShared(store) ? [] : shared.list)];
     for (const x of mine) { const key = x.shared ? x.name : `${store}|${x.name}`; seen.set(key, { x, off: !!counters.notes[x.name]?.retired || !!seen.get(key)?.off }); }
     const w = walk(es, mine.filter((x) => !counters.notes[x.name]?.retired));
-    prompts += w.prompts;
+    prompts += w.prompts; corrections += w.corrections;
     for (const f of w.fired) total[f.trigger].fire.push(f);
     for (const [k] of LINES) for (const c of Object.keys(total[k].miss)) total[k].miss[c] += w.miss[k][c];
   }
@@ -203,7 +203,7 @@ export function replayRun(stores, { days, now, show = false, recent }) {
     const mid = num(median([...active].map((d) => fs.filter((f) => f.e.at.startsWith(d)).length))), count = plural(n, 'firing');
     lines.push(k === 'nudge'
       ? `${name}: ${count} in ${prompts} prompts, median ${mid} on an active day. ${ratio('Rate', n, prompts, n)} (No interrupt markers in the journal.)`
-      : `${name}: ${count}, ${num(n / days)} a day, median ${mid} on an active day. Probable hits ${h}, unclear ${n - h}. ${ratio('Share', h, n, n)} Misses ${m.none + m.nomatch + m.filtered}: no lesson ${m.none}, no match ${m.nomatch}, filtered ${m.filtered}.${k === 'stuck' ? ' Lower bound (an exact re-run hides its earlier failure).' : ''}`);
+      : `${name}: ${count}, ${num(n / days)} a day, median ${mid} on an active day. Probable hits ${h}, unclear ${n - h}. ${corrections < ENOUGH ? `No correction signal (${corrections} in ${prompts} prompts).` : `${ratio('Share', h, n, n)} Misses ${m.none + m.nomatch + m.filtered}: no lesson ${m.none}, no match ${m.nomatch}, filtered ${m.filtered}.`}${k === 'stuck' ? ' Lower bound (an exact re-run hides its earlier failure).' : ''}`);
   }
   lines.push(`L17 scan: hides ${counted.hidden} of ${counted.notes} notes.`);
   // What was asked, said back for the maintainer to read: on this PC only, through memory.mjs's redact like every listing.

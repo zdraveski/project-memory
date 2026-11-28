@@ -912,7 +912,8 @@ function lessonsCommand(here, args, rest, opt, every, failed) {
   const out = opt('--except') && storeOf({ cwd: resolve(opt('--except')) }), file = join(here, REPLAY_HISTORY);
   const stores = (rest.includes('--all') ? every().filter((d) => !isShared(d) && !isOff(d)) : [here]).filter((d) => !out || !same(d, out));
   const { lines, history } = replayRun(stores, { days: opt('--days') === undefined ? 31 : Number(opt('--days')), now: Date.now(), show: rest.includes('--show'), recent: recentOf });
-  try { appendCapped(file, JSON.stringify(history) + '\n', 64 * 1024); } catch (e) { failed.push({ path: file, code: e.code, write: true }); }
+  // A run that leaves this store out is no run of it: no line in its history.
+  if (!out || !same(here, out)) try { appendCapped(file, JSON.stringify(history) + '\n', 64 * 1024); } catch (e) { failed.push({ path: file, code: e.code, write: true }); }
   return { ok: true, lines };
 }
 
