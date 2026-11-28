@@ -227,7 +227,7 @@ tier();
   // A journal.mjs that will not load: replay says so on one line and exits 1 (it threw a TypeError).
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs', 'notes-health.mjs', 'lessons.mjs', 'switches.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
+  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs', 'notes-health.mjs', 'lessons.mjs', 'mistakes.mjs', 'switches.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'enforce', 'replay', 'stage-by-name', '--store', pm], { env, encoding: 'utf8' });
   ok(r.status === 1 && /replay needs journal\.mjs/.test(r.stdout) && !/TypeError/.test(r.stderr), `replay with a journal.mjs that will not load says so (got ${r.status} ${r.stdout}${r.stderr})`);
@@ -267,14 +267,16 @@ tier();
   // doctor: one line for the enforce hook of the plugin copy that runs, even when memory is off.
   const efHome = join(home, '.claude', 'plugins', 'cache', 'ef', '1.4.0');
   mkdirSync(join(efHome, 'hooks'), { recursive: true }); mkdirSync(join(efHome, 'src'));
-  const EF = ['enforce-hook.mjs', 'enforce.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'run-records.mjs'];
+  const EF = ['enforce-hook.mjs', 'enforce.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'run-records.mjs', 'recall-hook.mjs', 'recall.mjs', 'sessions.mjs'];
   for (const f of EF) writeFileSync(join(efHome, 'src', f), readFileSync(tool(`src/${f}`)));
   writeFileSync(join(efHome, 'hooks', 'hooks.json'), readFileSync(join(ROOT, 'hooks', 'hooks.json')));
   installed('project-memory@project-memory', efHome, { source: 'github', repo: 'zdraveski/project-memory' });
   const doc = async () => (await cli('doctor')).stdout;
-  ok(/^ok +the enforce hook runs and is wired \(PreToolUse\)/m.test(await doc()), `doctor: a good copy passes (got ${await doc()})`);
+  const timing = join(home, '.claude', 'projects', '.timing'), logged = () => existsSync(timing) ? readFileSync(timing, 'utf8') : '', beforeDoc = logged();
+  ok(/^ok +the enforce and recall hooks run and are wired \(PreToolUse\)/m.test(await doc()), `doctor: a good copy passes (got ${await doc()})`);
+  ok(logged() === beforeDoc, 'doctor: its empty hook calls write no .timing line');
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
-  try { ok(/^ok +the enforce hook runs/m.test(await doc()), 'doctor: the line shows when memory is off'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
+  try { ok(/^ok +the enforce and recall hooks run/m.test(await doc()), 'doctor: the line shows when memory is off'); } finally { delete process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY; }
   const hookFile = join(efHome, 'src', 'enforce-hook.mjs'), good = readFileSync(hookFile);
   writeFileSync(hookFile, 'process.exitCode = 1;\n');
   ok(/^PROBLEM [^\n]*enforce hook[^\n]*exit code 1/m.test(await doc()), 'doctor: a hook that exits 1 is a problem');
@@ -286,12 +288,21 @@ tier();
   const hj = join(efHome, 'hooks', 'hooks.json'), hjText = readFileSync(hj, 'utf8');
   writeFileSync(hj, JSON.stringify({ hooks: { Stop: [] } }));
   ok(/^PROBLEM [^\n]*no PreToolUse group/m.test(await doc()), 'doctor: hooks.json without the PreToolUse group is a problem');
-  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], SubagentStop: [{}], PreToolUse: [{ matcher: 'Bash|PowerShell' }] } }));
+  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], SubagentStop: [{}], PostToolUseFailure: [{}], PreToolUse: [{ matcher: 'Bash|PowerShell' }] } }));
   ok(/^ok +[^\n]*note: [^\n]*no edit group in PreToolUse/m.test(await doc()), `doctor: hooks.json without the edit group of PreToolUse is a note while lessons before an edit are off (got ${(await doc()).split('\n').filter((l) => /enforce hook|hooks\.json in/.test(l)).join(' / ')})`);
   process.env.PROJECT_MEMORY_LESSONS = 'edit';
   try { ok(/^PROBLEM [^\n]*no edit group in PreToolUse/m.test(await doc()), 'doctor: hooks.json without the edit group of PreToolUse is a problem once they are on'); } finally { delete process.env.PROJECT_MEMORY_LESSONS; }
   writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], PreToolUse: [{ matcher: 'Edit|Write' }] } }));
   ok(/^PROBLEM [^\n]*no SubagentStop group/m.test(await doc()), 'doctor: hooks.json without the SubagentStop group is a problem');
+  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], PreToolUse: [{}], SubagentStop: [{}] } }));
+  ok(/^PROBLEM [^\n]*no PostToolUseFailure group/m.test(await doc()), 'doctor: hooks.json without the PostToolUseFailure group is a problem');
+  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], PreToolUse: [{}], SubagentStop: [{}], PostToolUseFailure: [{}] } }));
+  const recallFile = join(efHome, 'src', 'recall-hook.mjs'), recallGood = readFileSync(recallFile);
+  writeFileSync(recallFile, "console.log('noise');\n");
+  ok(/^PROBLEM [^\n]*recall hook printed/m.test(await doc()), 'doctor: a recall hook that prints for an empty call is a problem');
+  rmSync(recallFile);
+  ok(/^PROBLEM [^\n]*recall-hook\.mjs is missing/m.test(await doc()), 'doctor: a missing recall hook is a problem');
+  writeFileSync(recallFile, recallGood);
   writeFileSync(hj, hjText);
 }
 
@@ -1077,19 +1088,23 @@ again ${key2}
   ok(/^PROBLEM .*enforce-hook\.mjs is missing: the enforce hook cannot run/.test(enf()), `no enforce-hook.mjs is said (got ${enf()})`);
   writeFileSync(hook, '');
   for (const [json, what, text] of [['{ not json', 'a hooks.json that is not JSON', 'has no PreToolUse group'], ['{}', 'a hooks.json with no hooks', 'has no PreToolUse group'], ['{"hooks":{}}', 'no groups', 'has no PreToolUse group'], ['{"hooks":{"PreToolUse":[]}}', 'an empty PreToolUse', 'has no PreToolUse group'],
-    ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}]}}', 'no SubagentStop', 'has no SubagentStop group'], ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[]}}', 'an empty SubagentStop', 'has no SubagentStop group']]) {
+    ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}]}}', 'no SubagentStop', 'has no SubagentStop group'], ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[]}}', 'an empty SubagentStop', 'has no SubagentStop group'],
+    ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1]}}', 'no PostToolUseFailure', 'has no PostToolUseFailure group'], ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1],"PostToolUseFailure":[]}}', 'an empty PostToolUseFailure', 'has no PostToolUseFailure group']]) {
     writeFileSync(hooks, json);
     ok(enf().startsWith('PROBLEM') && enf().includes(text), `${what}: ${text} (got ${enf()})`);
   }
+  writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1],"PostToolUseFailure":[1]}}');
+  ok(/^PROBLEM .*recall-hook\.mjs is missing/m.test(doctor().stdout), 'no recall-hook.mjs is said');
+  writeFileSync(join(at, 'recall-hook.mjs'), '');
   // The edit group: missing is a note while lessons before an edit are off (the default), a problem once they are on.
-  for (const json of ['{"hooks":{"PreToolUse":[1],"SubagentStop":[1]}}', '{"hooks":{"PreToolUse":[{"matcher":"Bash|PowerShell"}],"SubagentStop":[1]}}']) {
+  for (const json of ['{"hooks":{"PreToolUse":[1],"SubagentStop":[1],"PostToolUseFailure":[1]}}', '{"hooks":{"PreToolUse":[{"matcher":"Bash|PowerShell"}],"SubagentStop":[1],"PostToolUseFailure":[1]}}']) {
     writeFileSync(hooks, json);
     ok(enf().startsWith('ok') && enf().includes('has no edit group in PreToolUse') && enf().includes('PROJECT_MEMORY_LESSONS=edit turns them on'), `no edit group, lessons off: a note (got ${enf()})`);
     ok(enf({ PROJECT_MEMORY_LESSONS: 'edit' }).startsWith('PROBLEM') && enf({ PROJECT_MEMORY_LESSONS: 'edit' }).includes('has no edit group in PreToolUse'), `no edit group, lessons on: a problem (got ${enf({ PROJECT_MEMORY_LESSONS: 'edit' })})`);
     ok(enf({ PROJECT_MEMORY_LESSONS: '1' }).startsWith('PROBLEM') && enf({ PROJECT_MEMORY_LESSONS: '0' }).startsWith('ok'), 'the switch is read as lessonsOn reads it (1 on, 0 off)');
   }
-  writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1]}}');
-  ok(/^ok +the enforce hook runs and is wired \(PreToolUse\)$/m.test(doctor().stdout), 'a hook that prints nothing and exits 0 is fine');
+  writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1],"PostToolUseFailure":[1]}}');
+  ok(/^ok +the enforce and recall hooks run and are wired \(PreToolUse\)$/m.test(doctor().stdout), 'a hook that prints nothing and exits 0 is fine');
   writeFileSync(hook, 'console.log("noise");');
   ok(/^PROBLEM the enforce hook printed output for an empty call \(noise\): it must print nothing$/m.test(doctor().stdout), 'a hook that prints for an empty call is a problem');
   // An edit with no file is sent too: a hook that speaks only then is a problem.
@@ -1098,7 +1113,13 @@ again ${key2}
   writeFileSync(hook, 'process.exit(3);');
   ok(/^PROBLEM the enforce hook failed an empty call \(exit code 3\): /m.test(doctor().stdout), 'a hook that exits 3 is a problem, with its code');
   writeFileSync(hook, 'setTimeout(() => {}, 6000);');
-  ok(/^ok +the enforce hook runs and is wired/m.test(doctor().stdout), 'a hook slow to start (6 s) is not a problem');
+  ok(/^ok +the enforce and recall hooks run and are wired/m.test(doctor().stdout), 'a hook slow to start (6 s) is not a problem');
+  // Past the 15 s limit: a note, and the recall hook is still checked.
+  writeFileSync(hook, 'setTimeout(() => {}, 20000);');
+  writeFileSync(join(at, 'recall-hook.mjs'), 'console.log("noise");');
+  ok(/^PROBLEM the recall hook printed output for an empty call \(noise\)/m.test(doctor().stdout), 'a slow enforce hook (over 15 s) does not skip the recall check');
+  writeFileSync(join(at, 'recall-hook.mjs'), '');
+  ok(/^ok +the enforce hook did not answer in time \(15 s\)/m.test(doctor().stdout), 'and when the recall hook is fine the slow note stays');
 }
 
 // 1.5.3 holes: how search, show and forget print what they find: the range in a line, the stores counted, a short request's reply, show's keys and exit.
