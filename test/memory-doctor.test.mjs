@@ -305,6 +305,9 @@ ok(r.status === 0 && /late-lesson\.md[^\n]*\n[\s\S]*\]\(MEMORY-archive\.md\)/.te
     r = await cli('restore', 'Alpha');
     ok(r.status === 0 && readFileSync(join(dir, 'Alpha.md'), 'utf8').includes('the upper body') && readFileSync(join(dir, 'alpha.md'), 'utf8') === 'an edit not yet snapshotted\n',
       `on a case-sensitive disk, restore Alpha brings back Alpha.md and leaves alpha.md alone (got ${r.stdout.trim()})`);
+    // Gone again, so the healthy doctor later sees no N04 (one name on Windows) or N05 (no front matter).
+    for (const f of ['Alpha.md', 'alpha.md']) rmSync(join(dir, f));
+    writeFileSync(join(dir, 'MEMORY.md'), readFileSync(join(dir, 'MEMORY.md'), 'utf8').replace('- [Upper](Alpha.md) — u\n- [Lower](alpha.md) — l\n', ''));
   }
   // A short 8.3 name of an index is still an index.
   for (const short of ['MEMORY~1.MD', 'MEMORY~2.MD']) {
