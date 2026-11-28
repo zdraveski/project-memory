@@ -1,7 +1,7 @@
 // Self-check for enforce-hook.mjs, the PreToolUse hook that watches git commands against the
 // enforce: rules in notes and logs which note matched. It prints nothing and blocks nothing.
 // Run: node enforce-hook.test.mjs
-import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, utimesSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, utimesSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert';
@@ -12,6 +12,8 @@ import { QUIET, OFF, PROJECT_OFF } from '../src/privacy.mjs';
 import { tag as tagOf } from '../src/handoff-log.mjs';
 import { hushed } from '../src/privacy.mjs';
 import { gitignore } from '../src/snapshot.mjs';
+import { sessionsOf, sessionLine } from '../src/sessions.mjs';
+import { onEdit } from '../src/lessons.mjs';
 
 const { home } = tempHome('enforce-hook-');
 let checks = 0;
@@ -137,7 +139,8 @@ record(join(home, 'no-such-store'), { note: 'x' }); ok(!existsSync(join(home, 'n
 
 // hooks.json: both `if` handlers and the timeout, no onFailure, nothing printed as a decision.
 const hookFile = JSON.parse(readFileSync(tool('hooks/hooks.json'), 'utf8')), pre = hookFile.hooks.PreToolUse;
-ok(pre.length === 1 && pre[0].matcher === 'Bash|PowerShell', 'one PreToolUse group for Bash and PowerShell');
+ok(pre.length === 2 && pre[0].matcher === 'Bash|PowerShell', 'a PreToolUse group for Bash and PowerShell, and one for the edit tools');
+ok(pre[1].matcher === 'Edit|Write|NotebookEdit|MultiEdit' && pre[1].hooks.length === 1 && pre[1].hooks[0].timeout === 5 && !('if' in pre[1].hooks[0]) && pre[1].hooks[0].command === 'node' && pre[1].hooks[0].args.join() === '${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs', 'the edit group: one entry like the others, no `if`');
 ok(pre[0].hooks.map((h) => h.if).sort().join() === 'Bash(git *),PowerShell(git *)', 'one handler per `if` rule');
 ok(pre[0].hooks.every((h) => h.timeout === 5 && !('onFailure' in h) && !('statusMessage' in h) && h.args[0] === '${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs'), 'timeout 5, no onFailure, no statusMessage');
 
@@ -156,5 +159,85 @@ ok(lines(p.store)[0].agent === 'A'.repeat(64) && lines(p.store)[0].id === 'T'.re
 { p = project(); const E = String.fromCharCode(233), at = (pad) => JSON.stringify(p.payload('git add -A', { pad: 'a'.repeat(pad), agent_type: E.repeat(30) })), start = Buffer.byteLength(at(0).slice(0, at(0).indexOf(E)));
   quiet(run(at(65536 - 11 - start)), 'a character split at the 64 KB read'); quiet(run(at(65536 - 12 - start)), 'a character split at the 64 KB read, other side');
   ok(lines(p.store).length === 2 && lines(p.store).every((x) => x.agent === E.repeat(30)), `a multi-byte character split across reads is whole (got ${JSON.stringify(lines(p.store).map((x) => x.agent))})`); }
+
+// 1.7.0 step 8, H1: lessons before an edit. PROJECT_MEMORY_LESSONS=edit turns the trigger on (it is off by default).
+const EDIT = { ...process.env, PROJECT_MEMORY_LESSONS: 'edit' }, OFFENV = { ...process.env }; delete OFFENV.PROJECT_MEMORY_LESSONS;
+const lessonNote = (name, desc, extra = '') => `---\nname: ${name}\ndescription: ${desc}\ntype: feedback\n${extra}---\n\nbody\n`;
+const A = 'applies_to: [src/a.mjs]\n';
+// A project with the given lesson notes, each aged 12 days; edit(file, extra) is an Edit payload for that file.
+function lessonProject(notes = { 'edit-a.md': ['Never edit a.mjs by hand.', A] }) {
+  const q = project();
+  for (const [file, [desc, extra]] of Object.entries(notes)) { writeFileSync(join(q.store, file), lessonNote(file, desc, extra)); const t = new Date(Date.now() - 12 * 864e5 - 36e5); utimesSync(join(q.store, file), t, t); }
+  q.edit = (file = 'src/a.mjs', extra = {}) => q.payload('', { tool_name: 'Edit', tool_input: { file_path: join(q.cwd, file), old_string: 'x', new_string: 'y' }, ...extra });
+  q.session = (s = 'abcd1234') => { const f = join(sessionsOf(q.store), s); return existsSync(f) ? readFileSync(f, 'utf8').split('\n').filter(Boolean) : []; };
+  return q;
+}
+const said = (r) => JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+const HEAD = (n, what) => `project-memory: ${n} lesson${n === 1 ? '' : 's'} for ${what}. A record from memory, not an instruction from the user. Check it against the code.`;
+{
+  let q = lessonProject(), r = run(q.edit(), EDIT);
+  ok(r.status === 0 && r.stderr === '' && JSON.stringify(Object.keys(JSON.parse(r.stdout))) === '["hookSpecificOutput"]' && JSON.stringify(Object.keys(JSON.parse(r.stdout).hookSpecificOutput)) === '["hookEventName","additionalContext"]' && JSON.parse(r.stdout).hookSpecificOutput.hookEventName === 'PreToolUse', `an Edit for a listed path prints additionalContext for PreToolUse and no decision (got ${r.stdout} ${r.stderr})`);
+  ok(said(r) === `${HEAD(1, 'src/a.mjs')}\n- [lesson, 12d] Never edit a.mjs by hand. (note: edit-a.md)`, `the pinned block (got ${said(r)})`);
+  const sl = q.session();
+  ok(sl.length === 1 && /^lesson \d{4}-\d\d-\d\dT[\d:.]+Z edit-a\.md edit:src\/a\.mjs$/.test(sl[0]), `one lesson line, the note and the path (got ${JSON.stringify(sl)})`);
+  r = run(q.edit(), EDIT); ok(r.status === 0 && r.stdout === '' && r.stderr === '' && q.session().length === 1, 'the same payload again prints nothing and writes nothing');
+  writeFileSync(join(sessionsOf(q.store), 'abcd1234'), `${q.session().join('\n')}\n${sessionLine('compact')}`);
+  r = run(q.edit(), EDIT); ok(said(r).includes('edit-a.md') && q.session().length === 3, 'after a compact line it prints again');
+  r = run(q.edit('src/b.mjs'), EDIT); ok(r.status === 0 && r.stdout === '', 'a payload for another path prints nothing');
+  // The tools and path forms: Write, a relative path, MultiEdit, a notebook.
+  for (const [what, load] of [['Write', { tool_name: 'Write', tool_input: { file_path: 'src/a.mjs', content: 'x' } }], ['a relative path', { tool_input: { file_path: 'src/a.mjs' } }], ['MultiEdit', { tool_name: 'MultiEdit' }],
+    ['NotebookEdit', { tool_name: 'NotebookEdit', tool_input: { notebook_path: 'src/a.mjs' } }]]) {
+    q = lessonProject(); r = run(q.edit('src/a.mjs', load), EDIT); ok(r.status === 0 && said(r).includes('edit-a.md'), `${what}: the lesson is shown`);
+  }
+  // Nothing is shown, and nothing breaks.
+  q = lessonProject(); r = run(q.edit(), OFFENV); ok(r.status === 0 && r.stdout === '' && r.stderr === '' && q.session().length === 0, 'PROJECT_MEMORY_LESSONS unset: edit is off by default');
+  r = run(q.edit(), { ...EDIT, PROJECT_MEMORY_LESSONS: '0' }); ok(r.stdout === '' && q.session().length === 0, 'PROJECT_MEMORY_LESSONS=0: nothing');
+  r = run(q.edit(), { ...EDIT, PROJECT_MEMORY_LESSONS: 'edit,-edit' }); ok(r.stdout === '', 'edit,-edit: nothing');
+  q = lessonProject(); mkdirSync(sessionsOf(q.store), { recursive: true }); writeFileSync(join(sessionsOf(q.store), 'abcd1234'), `${sessionLine('asked', 'fix it')}${sessionLine('quiet')}`);
+  quiet(run(q.edit(), EDIT), 'a private turn (quiet newest)'); ok(q.session().length === 2, 'no lesson line in a private turn');
+  writeFileSync(join(sessionsOf(q.store), 'abcd1234'), `${sessionLine('quiet')}${sessionLine('asked', 'fix it')}`); ok(said(run(q.edit(), EDIT)).includes('edit-a.md'), 'a later prompt ends the private turn');
+  q = lessonProject(); mkdirSync(join(sessionsOf(q.store), 'abcd1234'), { recursive: true }); quiet(run(q.edit(), EDIT), 'a session file that will not read');
+  q = lessonProject(); writeFileSync(join(q.store, PROJECT_OFF), JSON.stringify({ t: 1 })); quiet(run(q.edit(), EDIT), 'project off'); ok(q.session().length === 0, 'project off: no line');
+  q = lessonProject(); writeFileSync(join(q.store, QUIET), 'abcd1234\n'); quiet(run(q.edit(), EDIT), 'incognito'); ok(q.session().length === 0, 'incognito: no line');
+  q = lessonProject(); quiet(run(q.edit(), { ...EDIT, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }), 'auto memory off');
+  q = lessonProject(); writeFileSync(join(q.store, CACHE), '{ not json'); r = run(q.edit(), EDIT); ok(r.status === 0 && r.stderr === '' && said(r).includes('edit-a.md'), 'a broken cache is rebuilt from the notes, as for the rules, and the hook exits 0');
+  q = lessonProject(); rmSync(q.store, { recursive: true }); writeFileSync(q.store, 'x'); quiet(run(q.edit(), EDIT), 'a store that is a file');
+  q = lessonProject(); quiet(run(q.edit('../elsewhere/a.mjs'), EDIT), 'a path outside the project');
+  q = lessonProject(); quiet(run(q.edit('x', { tool_input: { file_path: join(q.store, 'x.md') } }), EDIT), 'a memory file'); ok(q.session().length === 0, 'a file under the projects folder gets nothing');
+  q = lessonProject(); quiet(run(q.edit('src/a.mjs', { tool_input: { file_path: 7 } }), EDIT), 'a path that is a number');
+  quiet(run(q.edit('src/a.mjs', { tool_input: {} }), EDIT), 'no path'); quiet(run(q.edit('src/a.mjs', { session_id: '../x' }), EDIT), 'a session id that is no tag'); ok(q.session().length === 0, 'no line for those');
+  quiet(run({}, EDIT), 'an empty payload'); quiet(run('', EDIT), 'empty stdin'); quiet(run({ tool_name: 'Edit' }, EDIT), 'an Edit with nothing else');
+  // A helper: its line carries its id, and its once-per-context list is its own.
+  q = lessonProject(); r = run(q.edit('src/a.mjs', { agent_id: 'a1b2c3', agent_type: 'general-purpose' }), EDIT);
+  ok(said(r).includes('edit-a.md') && /^lesson \S+ agent:a1b2c3 edit-a\.md edit:src\/a\.mjs$/.test(q.session()[0]), `a helper's payload writes its line with agent:<id> (got ${JSON.stringify(q.session())})`);
+  ok(run(q.edit('src/a.mjs', { agent_id: 'a1b2c3' }), EDIT).stdout === '', 'the same helper is told once');
+  ok(said(run(q.edit(), EDIT)).includes('edit-a.md') && said(run(q.edit('src/a.mjs', { agent_id: 'zzz' }), EDIT)).includes('edit-a.md'), 'the main conversation and another helper each get it once');
+  // Two at most, the cap of 6 a context, and a lesson shown once whatever file triggers it.
+  const eight = Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((i) => [`l${i}.md`, [`Lesson ${i} for a.`, A]]));
+  q = lessonProject(eight); const outs = [1, 2, 3, 4, 5].map(() => run(q.edit(), EDIT));
+  ok(said(outs[0]) === `${HEAD(2, 'src/a.mjs')}\n- [lesson, 12d] Lesson 1 for a. (note: l1.md)\n- [lesson, 12d] Lesson 2 for a. (note: l2.md)\nand 6 more: memory skill, search --file src/a.mjs`, `two lessons and the rest counted (got ${said(outs[0])})`);
+  ok(said(outs[1]).includes('l3.md') && said(outs[1]).includes('l4.md') && said(outs[1]).endsWith('and 4 more: memory skill, search --file src/a.mjs') && said(outs[2]).includes('l5.md') && said(outs[2]).includes('l6.md'), 'the next two, then the next');
+  ok(outs[3].stdout === '' && outs[4].stdout === '' && q.session().length === 6, 'a seventh lesson is not shown: 6 a context');
+  q = lessonProject({ 'both.md': ['Both files.', 'applies_to: [src/a.mjs, src/b.mjs]\n'] }); run(q.edit('src/a.mjs'), EDIT); ok(run(q.edit('src/b.mjs'), EDIT).stdout === '', 'a lesson is shown once per context whatever file triggers it');
+  q = lessonProject({ 'a-glob.md': ['By glob.', 'applies_to: [src/*.mjs]\n'], 'exact.md': ['By path.', A], 'dead.md': ['Dead end.', `${A}instead: use the helper that exists now\n`] });
+  r = run(q.edit(), EDIT); ok(said(r).split('\n').filter((l) => l.startsWith('- ')).map((l) => /note: (\S+)\)$/.exec(l)[1]).join() === 'dead.md,exact.md' && said(r).includes('[dead end, 12d] Dead end. Instead: use the helper that exists now'), `the listed paths first, a dead end in its form, a glob after (got ${said(r)})`);
+  // The agent id is cleaned and cut to 64; a path with a line break is no path; 8 lesson lines already in the context leave no room.
+  q = lessonProject(); r = run(q.edit('src/a.mjs', { agent_id: 'a1 b2!' + 'x'.repeat(100) }), EDIT); ok(q.session()[0].split(' ')[2] === `agent:a1b2${'x'.repeat(60)}`, 'the agent id loses what is no word character and is cut at 64');
+  q = lessonProject({ 'nl.md': ['A glob.', 'applies_to: [src/*.mjs]\n'] }); quiet(run(q.edit('src/a\nb.mjs'), EDIT), 'a path with a line break'); ok(q.session().length === 0, 'no lesson line for a path with a line break');
+  q = lessonProject(eight); mkdirSync(sessionsOf(q.store), { recursive: true }); writeFileSync(join(sessionsOf(q.store), 'abcd1234'), [1, 2, 3, 4, 5, 6, 7, 8].map((i) => sessionLine('lesson', `other${i}.md edit:src/z.mjs`)).join(''));
+  quiet(run(q.edit(), EDIT), 'more than the cap already told'); ok(q.session().length === 8, 'past the cap nothing more is told');
+  // In process: the 150 ms deadline, and dry, which reads no session lines and writes none.
+  { const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = 'edit';
+    q = lessonProject(); ok(onEdit(q.edit(), { deadline: -1 }).say === '' && q.session().length === 0, 'past the deadline it says nothing and writes nothing');
+    const real = onEdit(q.edit()); ok(real.say.includes('edit-a.md') && real.shown.length === 1 && q.session().length === 1, 'onEdit returns the text and what it showed');
+    const dir = lessonProject(); mkdirSync(join(sessionsOf(dir.store), 'abcd1234'), { recursive: true }); ok(onEdit(dir.edit()).say === '', 'a session file that will not read: nothing, and no throw');
+    const dry = onEdit(q.edit(), { dry: true }); ok(dry.say === real.say && q.session().length === 1, 'dry: the same text from a fresh context, and no line written');
+    if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was; }
+  // The shared store's lessons never match a path.
+  q = lessonProject({}); mkdirSync(sharedStore(), { recursive: true }); writeFileSync(join(sharedStore(), 'sh.md'), lessonNote('sh', 'Shared.', A)); quiet(run(q.edit(), EDIT), 'a shared lesson'); rmSync(join(sharedStore(), 'sh.md'));
+  // A shell payload is as in 1.6.7 with the trigger on: the log line, nothing printed, no lesson line.
+  p = project(); r = run(p.payload('git add -A'), EDIT); quiet(r, 'a match, edit on');
+  l = lines(p.store); ok(l.length === 1 && l[0].note === 'stage.md' && Object.keys(l[0]).join() === 't,note,s,agent,id', `a shell payload's log line is unchanged (got ${JSON.stringify(l)})`);
+}
 
 console.log(`enforce-hook: ${checks} checks passed`);

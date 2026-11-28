@@ -1,7 +1,7 @@
 ---
 name: memory
 description: "Search, restore or share Claude Code's memories on this machine, and check the memory hooks. Use before answering any question this project may have discussed before, even one that reads like general advice (should I, can I, is it worth, how do I) and even one with a relative date (last week, yesterday, a while ago): the journal holds every exchange, so check it first. Use it whenever the user asks about earlier work (what was done, decided, fixed, run or said, and when). Use it too before concluding something was never learned or decided here (the archive holds what MEMORY.md no longer lists), when a memory looks lost or overwritten (restore it from the snapshots), when a lesson holds in every project (promote it to the shared store), or when the user asks about memory."
-argument-hint: "[status | search [terms] [--file <path>] [--asked] [--conversation <id>] | show <key> | forget <words> | history <memory> | restore <memory> | promote <memory> | page [--days N|all] [--project NAME] | rescan | enforce status | enforce replay <note> | lessons | lessons replay [--days N] [--all] [--show] [--except <folder>] | doctor | incognito | off | on]"
+argument-hint: "[status | search [terms] [--file <path>] [--asked] [--conversation <id>] | show <key> | forget <words> | history <memory> | restore <memory> | promote <memory> | page [--days N|all] [--project NAME] | rescan | enforce status | enforce replay <note> | lessons | lessons replay [--days N] [--all] [--show] [--except <folder>] | preview [--file <path>] | doctor | incognito | off | on]"
 ---
 
 # Memory
@@ -48,6 +48,9 @@ name, or `--all` may find it.
 lesson trigger would have done over the journal's last 31 days (`--days N`; `--all` every project, `--except <folder>` leaves one out),
 knowing only what existed before each exchange: counts, probable hits (from corrections and from failures that follow) and misses, never proof that a lesson worked (under 20 corrections it says "No correction signal" in place of a share or a miss count). It prints no
 journal text unless the user asks for `--show`, and writes only one line of numbers to `.replay-history`.
+
+`preview` prints the startup briefing the next conversation here would get, with its size. `preview --file <path>` prints the lessons
+Claude would see before an edit of that file (at most 2, with `PROJECT_MEMORY_LESSONS=edit`) and why each matched. Both write nothing.
 
 Read a file of this skill's folder when its subject comes up:
 

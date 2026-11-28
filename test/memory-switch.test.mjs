@@ -286,7 +286,9 @@ tier();
   const hj = join(efHome, 'hooks', 'hooks.json'), hjText = readFileSync(hj, 'utf8');
   writeFileSync(hj, JSON.stringify({ hooks: { Stop: [] } }));
   ok(/^PROBLEM [^\n]*no PreToolUse group/m.test(await doc()), 'doctor: hooks.json without the PreToolUse group is a problem');
-  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], PreToolUse: [{}] } }));
+  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], PreToolUse: [{ matcher: 'Bash|PowerShell' }] } }));
+  ok(/^PROBLEM [^\n]*no edit group in PreToolUse/m.test(await doc()), 'doctor: hooks.json without the edit group of PreToolUse is a problem');
+  writeFileSync(hj, JSON.stringify({ hooks: { Stop: [], PreToolUse: [{ matcher: 'Edit|Write' }] } }));
   ok(/^PROBLEM [^\n]*no SubagentStop group/m.test(await doc()), 'doctor: hooks.json without the SubagentStop group is a problem');
   writeFileSync(hj, hjText);
 }
@@ -1073,11 +1075,12 @@ again ${key2}
   ok(/^PROBLEM .*enforce-hook\.mjs is missing: the enforce hook cannot run/.test(enf()), `no enforce-hook.mjs is said (got ${enf()})`);
   writeFileSync(hook, '');
   for (const [json, what, text] of [['{ not json', 'a hooks.json that is not JSON', 'has no PreToolUse group'], ['{}', 'a hooks.json with no hooks', 'has no PreToolUse group'], ['{"hooks":{}}', 'no groups', 'has no PreToolUse group'], ['{"hooks":{"PreToolUse":[]}}', 'an empty PreToolUse', 'has no PreToolUse group'],
-    ['{"hooks":{"PreToolUse":[1]}}', 'no SubagentStop', 'has no SubagentStop group'], ['{"hooks":{"PreToolUse":[1],"SubagentStop":[]}}', 'an empty SubagentStop', 'has no SubagentStop group']]) {
+    ['{"hooks":{"PreToolUse":[1],"SubagentStop":[1]}}', 'no edit group', 'has no edit group in PreToolUse'], ['{"hooks":{"PreToolUse":[{"matcher":"Bash|PowerShell"}],"SubagentStop":[1]}}', 'only the shell group', 'has no edit group in PreToolUse'],
+    ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}]}}', 'no SubagentStop', 'has no SubagentStop group'], ['{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[]}}', 'an empty SubagentStop', 'has no SubagentStop group']]) {
     writeFileSync(hooks, json);
     ok(enf().startsWith('PROBLEM') && enf().includes(text), `${what}: ${text} (got ${enf()})`);
   }
-  writeFileSync(hooks, '{"hooks":{"PreToolUse":[1],"SubagentStop":[1]}}');
+  writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1]}}');
   ok(/^ok +the enforce hook runs and is wired \(PreToolUse\)$/m.test(doctor().stdout), 'a hook that prints nothing and exits 0 is fine');
   writeFileSync(hook, 'console.log("noise");');
   ok(/^PROBLEM the enforce hook printed output for an empty call \(noise\): it must print nothing$/m.test(doctor().stdout), 'a hook that prints for an empty call is a problem');

@@ -50,6 +50,7 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           project, --except leaves out the project of <folder>; read-only
                                           but for a numbers-only line in this store's .replay-history
   preview                                 the startup briefing the next conversation here would get, with its size; read-only
+  preview --file <path>                   the lessons Claude would see before an edit of that file, and why each matched; read-only
 The store is this session's own (outside a session: the cwd's project, or the nearest
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
@@ -97,6 +98,10 @@ catch (e) {
 let replayRun, lessonsList, noReplay;
 try { ({ replayRun, lessonsList } = await import('./replay.mjs')); }
 catch (e) { noReplay = reason(e); }
+// lessons.mjs loads apart for `preview --file`, as replay.mjs does for `lessons`.
+let onEdit, whyPath, lessonsOn, relPath, noEdit;
+try { ({ onEdit, whyPath, lessonsOn, relPath } = await import('./lessons.mjs')); }
+catch (e) { noEdit = reason(e); }
 
 // The most entries a forget's look lists, and so the most one --yes removes:
 // it showed 20 of 35, and --yes removed all 35.
@@ -438,8 +443,16 @@ function sessionStore() {
 // preview: the startup briefing as the SessionStart hook would print it for a conversation started here now, run dry (briefing.mjs --dry: nothing counted or
 // written). A process of its own: the briefing is asynchronous and this command line is not, and the one path is the hook's own.
 const PREVIEW = fileURLToPath(new URL('./briefing.mjs', import.meta.url));
-function preview() {
+// With --file: the lessons before an edit of that file (lessons.mjs onEdit, dry), for the conversation asking or a fresh one.
+function preview(path) {
   const transcript = session && transcriptOf(session);
+  if (path !== undefined) {
+    if (noEdit) return { ok: false, lines: [`preview --file needs lessons.mjs, which did not load: ${noEdit}`] };
+    const { say, shown } = onEdit({ hook_event_name: 'PreToolUse', tool_name: 'Edit', session_id: session || 'preview', cwd: process.cwd(), tool_input: { file_path: path }, ...(transcript ? { transcript_path: transcript } : {}) }, { dry: true });
+    if (!shown.length) return { ok: true, lines: [`Before an edit of ${path}: nothing would be shown.`, ...(lessonsOn('edit') ? [] : ['Lessons before an edit are off: PROJECT_MEMORY_LESSONS=edit turns them on.'])] };
+    const rel = relPath(path, process.cwd().replaceAll('\\', '/'));
+    return { ok: true, lines: [`Before an edit of ${path}: ${shown.length} lesson${shown.length === 1 ? '' : 's'}, ${say.length} characters.`, ...say.split('\n'), ...shown.map((x) => `  why: ${whyPath(x, rel)}`)] };
+  }
   const payload = { hook_event_name: 'SessionStart', source: 'startup', session_id: session || 'preview', cwd: process.cwd(), ...(transcript ? { transcript_path: transcript } : {}) };
   const r = spawnSync(process.execPath, [PREVIEW, '--print', '--dry'], { input: JSON.stringify(payload), encoding: 'utf8', timeout: 30_000, windowsHide: true });
   if (r.error || r.status !== 0) return { ok: false, lines: [`the startup briefing could not be run: ${r.error ? reason(r.error) : `exit ${r.status}`}`] };
@@ -812,6 +825,7 @@ function enforceHook(at) {
   const file = [join(at, 'src', 'enforce-hook.mjs'), join(at, 'enforce-hook.mjs')].find(existsSync) ?? join(at, 'src', 'enforce-hook.mjs');
   if (!existsSync(file)) return [false, `${file} is missing: the enforce hook cannot run. The user's fix: claude plugin update ${PLUGIN}`];
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.length) return [false, `hooks.json in ${at} has no PreToolUse group: the enforce hook is not wired. The user's fix: claude plugin update ${PLUGIN}`];
+  if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.some((g) => /\bEdit\b/.test(g?.matcher))) return [false, `hooks.json in ${at} has no edit group in PreToolUse: lessons before an edit are not wired. The user's fix: claude plugin update ${PLUGIN}`];
   if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.SubagentStop?.length) return [false, `hooks.json in ${at} has no SubagentStop group: subagent reports are not saved. The user's fix: claude plugin update ${PLUGIN}`];
   try {
     const out = execFileSync(process.execPath, [file], { input: '{}', encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'] });
@@ -1026,7 +1040,7 @@ export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--ses
 const valued = new Set(Object.keys(OPTIONS).filter((o) => OPTIONS[o]));
 // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
 // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal in main().
-const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], preview: [], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
+const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], preview: ['--file'], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
 
 // The command line's words, read before any store is touched: { cmd, rest, args, opt } or the refusal to print.
 // rest is every word but the command, in order (--key repeats, and the first of an option wins in opt()); args
@@ -1229,7 +1243,7 @@ export function main(given) {
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
   else if (cmd === 'doctor') r = doctor(here);
-  else if (cmd === 'preview') r = preview();
+  else if (cmd === 'preview') r = preview(opt('--file'));
   else if (cmd === 'page') r = page(every(), opt('--days') === undefined ? PAGE_DAYS : opt('--days') === 'all' ? 'all' : Math.min(Number(opt('--days')), PAGE_MAX), opt('--project'), failed);
   // The usage, after why: a misspelt command, or one with no word after it,
   // printed the usage alone.

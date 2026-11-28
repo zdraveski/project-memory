@@ -263,4 +263,10 @@ export default {
   "R73 a key of a day that won't read named as another project's": ['(unread.length ? `no day of ', '(false ? `no day of '],
   'R73 a retry leaves the exchange in handoff.md': ['if (yes && before.length) {', 'if (false) {'],
   "what --force replaced is lost": ["keepReplaced(curB)", "keepReplaced('')"],
+  // preview --file and the doctor's edit group (1.7.0 step 8)
+  'doctor does not need the edit group of PreToolUse': ['?.some((g) => /\\bEdit\\b/.test(g?.matcher))) return [false,', '?.some((g) => true)) return [false,', { test: 'test/memory-switch.test.mjs' }],
+  'preview --file says nothing of the trigger being off': ["...(lessonsOn('edit') ? [] : [", '...(true ? [] : [', { test: 'test/memory-cli.test.mjs' }],
+  'preview --file prints no why lines': ['...shown.map((x) => `  why: ${whyPath(x, rel)}`)', '', { test: 'test/memory-cli.test.mjs' }],
+  'preview --file words one lesson as many': ["${shown.length === 1 ? '' : 's'}, ${say.length}", "${shown.length === 1 ? 's' : ''}, ${say.length}", { test: 'test/memory-cli.test.mjs' }],
+  'preview --file counts the lessons as characters': [', ${say.length} characters.', ', ${shown.length} characters.', { test: 'test/memory-cli.test.mjs' }],
 };
