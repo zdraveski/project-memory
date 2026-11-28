@@ -52,6 +52,9 @@ export function shown(n) {
   if (run && n > 0) run.n = n;
 }
 
+// A run that did nothing (a hook behind a switch that is off) leaves no line.
+export function skip() { run = null; }
+
 export async function flush() {
   const r = run; run = null;
   if (!r) return;

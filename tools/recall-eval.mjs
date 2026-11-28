@@ -365,6 +365,7 @@ async function selfCheck() {
     mkdirSync(join(plug, 'hooks'), { recursive: true });
     const hooks = JSON.parse(readFileSync(join(repo, 'hooks', 'hooks.json'), 'utf8'));
     for (const ev of [EVENT.prompt, EVENT.file]) hooks.hooks[ev] = [{ hooks: [{ type: 'command', command: 'node', args: [`\${CLAUDE_PLUGIN_ROOT}/src/${RECALL_HOOK}`] }] }];
+    delete hooks.hooks[EVENT.error]; // the repo's own copy has it since 1.7.0 (the stuck streak)
     writeFileSync(join(plug, 'hooks', 'hooks.json'), JSON.stringify(hooks));
     const fake = join(own, 'fake-claude.mjs');
     writeFileSync(fake, FAKE(pathToFileURL(join(repo, 'src', 'store.mjs')).href));
