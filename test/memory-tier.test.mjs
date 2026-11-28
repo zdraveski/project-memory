@@ -867,7 +867,7 @@ cp.execFileSync = function (cmd, args, ...rest) {
     writeFileSync(join(mem, 'edit-a.md'), '---\nname: edit-a\ndescription: Never edit a.mjs by hand.\ntype: feedback\napplies_to: [src/a.mjs]\n---\n\nbody\n');
     writeFileSync(tp, [rec('user', 'l-1', ask), rec('assistant', 'l-2', [{ type: 'tool_use', id: 'l-t', name: 'Edit', input: { file_path: join(cwd, 'src', 'a.mjs') } }])].join('\n') + '\n');
     mkdirSync(dirname(sess(p)), { recursive: true }); writeFileSync(sess(p), `${sessionLine('asked', 'x')}`);
-    const hook = spawnSync(process.execPath, [tool('src/enforce-hook.mjs')], { env: { ...env, PROJECT_MEMORY_LESSONS: 'edit' }, encoding: 'utf8', input: JSON.stringify({ session_id: 'les12345', cwd, transcript_path: tp, hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: join(cwd, 'src', 'a.mjs'), old_string: 'x', new_string: 'y' } }) });
+    const hook = spawnSync(process.execPath, [tool('src/enforce-hook.mjs')], { env: { ...process.env, PROJECT_MEMORY_LESSONS: 'edit' }, encoding: 'utf8', input: JSON.stringify({ session_id: 'les12345', cwd, transcript_path: tp, hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: join(cwd, 'src', 'a.mjs'), old_string: 'x', new_string: 'y' } }) });
     const stop = spawnSync(process.execPath, [TOOL, '--stop'], { env, encoding: 'utf8', input: JSON.stringify({ cwd, transcript_path: tp, session_id: 'les12345', hook_event_name: 'Stop', last_assistant_message: 'edited a.mjs' }), timeout: 60000 });
     return { hook, stop, mem, lines: existsSync(sess(p)) ? readFileSync(sess(p), 'utf8').split('\n').filter(Boolean) : [] };
   };
