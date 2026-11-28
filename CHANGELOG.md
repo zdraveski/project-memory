@@ -25,6 +25,7 @@
 ### Learns from mistakes
 
 - **Commands that failed and later worked, and files that change together, are found in your journal.** The Stop's background tidy-up rebuilds a cache, `.mistakes.json` in each project's memory folder, once a day: the last 90 days' failed commands with their error lines and the command that fixed them, secrets already replaced. Nothing reads it yet. `forget`, `incognito`, `memory off` and `rescan --apply --yes` delete it.
+- **Each Stop judges the lessons shown in its turn, and retires the ones that keep failing.** A lesson shown before an edit or a command is marked followed, broken, not applicable or unknown from what the turn changed and ran (a note with an `enforce:` rule is followed when its git command ran and did not hit it, broken when it hit), the counts go to `.lessons.json` (names, tags and numbers only), and a lesson with 3 broken verdicts, or whose broken share is clearly 0.25 or more, is no longer shown. A request that is a correction turns the turn before it to broken. Editing the note starts it again with empty counters.
 
 ## 1.6.7 (2026-11-27)
 

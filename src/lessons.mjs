@@ -3,11 +3,12 @@
 // calls these. Imports store, text, enforce and recall (never the other way round, ADR 0003).
 import { readFileSync, appendFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, posix, isAbsolute, resolve } from 'node:path';
-import { foldCase, projectsRoot, sharedStore, withLock, replaceIfUnchanged, raw, tag, keyed } from './store.mjs';
-import { gate } from './privacy.mjs';
+import { foldCase, projectsRoot, sharedStore, withLock, replaceIfUnchanged, raw, tag, keyed, local } from './store.mjs';
+import { gate, PRIVATE } from './privacy.mjs';
 import { sessionsOf, readSession, sessionLine } from './sessions.mjs';
 import { fit } from './text.mjs';
-import { notesOf } from './enforce.mjs';
+import { notesOf, hits, familyOf } from './enforce.mjs';
+import { own, userText } from './transcript.mjs';
 import { cleanPath, whole, BLOCK_MAX } from './recall.mjs';
 import { targetOf, errorLine, NOT_FAILURE, readMistakes } from './mistakes.mjs';
 import { lessonsOn } from './switches.mjs';
@@ -54,19 +55,22 @@ export function deadEnds(store, now = Date.now(), opts) {
 export function retiredLines(store, opts) {
   const { notes } = readCounters(store), due = Object.entries(notes).filter(([, c]) => c?.retired && !c.told);
   if (!due.length) return { names: [], lines: [] };
-  const alive = new Set([[store, ''], [sharedStore(), '_shared/']].flatMap(([d, pre]) => (d === store && pre ? [] : notesOf(d, opts).filter((x) => x.l?.lesson && !x.l.lesson.hidden).map((x) => `${pre}${x.file}`))));
-  const told = due.filter(([name]) => name.startsWith('cochange:') || alive.has(name));
+  const alive = new Map([[store, ''], [sharedStore(), '_shared/']].flatMap(([d, pre]) => (d === store && pre ? [] : notesOf(d, opts).filter((x) => x.l?.lesson && !x.l.lesson.hidden).map((x) => [`${pre}${x.file}`, x.l.lesson]))));
+  const told = due.filter(([name, c]) => name.startsWith('cochange:') || (alive.has(name) && (c.rev === undefined || c.rev === revOf(alive.get(name)))));
   return { names: told.map(([name]) => name), lines: told.map(([name, c]) => `project-memory: the lesson ${name} is no longer shown (shown ${c.shown || 0}, broken ${c.broken || 0}). Fix the note or add resolved-by: to it. See: memory skill, lessons`) };
 }
 
+// F3's `rev`: what a counter was earned by. Another description, path or rule makes another lesson, with counters of its own.
+export const revOf = (l) => keyed(JSON.stringify([l.to, l.when, l.instead, l.resolves, l.desc]), 8);
+
 // The project's lessons, then the shared store's (named `_shared/<file>`, `shared: true`): [{ name, l, mtime, r }]. Left out: a note that
-// is no lesson, a bad or hidden one, and one the counters say is retired.
+// is no lesson, a bad or hidden one, and one the counters say is retired (unless the note changed since: another rev).
 export function lessonsFor(store, opts) {
   const keep = (x) => x.l?.lesson && !x.l.lesson.hidden;
   const out = notesOf(store, opts).filter(keep).map((x) => ({ name: x.file, l: x.l.lesson, mtime: x.mtime, r: x.r }));
   if (sharedStore() !== store) out.push(...notesOf(sharedStore(), opts).filter(keep).map((x) => ({ name: `_shared/${x.file}`, l: x.l.lesson, mtime: x.mtime, r: x.r, shared: true })));
   const { notes } = readCounters(store);
-  return out.filter((x) => !notes[x.name]?.retired);
+  return out.filter((x) => { const c = notes[x.name]; return !(c?.retired && (c.rev === undefined || c.rev === revOf(x.l))); });
 }
 
 // The folder a lesson's paths are relative to: the nearest one at or above `cwd` that holds a `.git` (a folder, or the file of a worktree
@@ -301,4 +305,61 @@ export function onEdit(input, { dry = false, now = Date.now(), deadline = perfor
     appendFileSync(at, shown.map((x) => sessionLine('lesson', lessonLine(x.lesson.name, `edit:${rel}`), by, new Date(now).toISOString())).join(''), { mode: 0o600 });
   } catch { return none; }
   return { say, shown };
+}
+
+// L13 and L4, at the Stop: each `lesson` line of this turn (main conversation) gets a verdict, f followed, b broken, n not applicable, u unknown,
+// from what the turn changed and ran; the counters and `retired` follow, and one `judged` line ends it. A request that is a correction moves
+// the verdicts of the turn before it to b. { say: '' } always (step 13 fills it). Never throws: the Stop's journal save is done before this.
+// shortcut: a show and a command in one turn are not ordered, so "after the show" is "in the turn"; upgrade if the replay says it is too coarse.
+const COUNT = { f: 'followed', b: 'broken', n: 'na', u: 'unknown' };
+const fresh = (rev) => ({ rev, shown: 0, followed: 0, broken: 0, na: 0, unknown: 0, sessions: [], last: '', retired: '', told: false });
+const lose = (c) => { const n = c.shown - c.na; if (n > 0 && (c.broken >= 3 || wilson(c.broken, n)[0] >= 0.25)) c.retired = `broken ${c.broken} of ${n}`; };
+function judge(on, turn, cwd, rule) {
+  const i = on.indexOf(':'), kind = on.slice(0, i), arg = on.slice(i + 1), ran = (turn.ran ?? []).map((c) => c.split(' → failed: ')[0]), changed = (turn.changed ?? []).map((p) => relPath(p, cwd));
+  if (kind === 'pair') return changed.includes(foldCase(arg)) ? 'f' : 'u';
+  if (kind === 'edit' ? !changed.includes(arg) : !ran.some((c) => familyOf(c).includes(arg))) return 'n';
+  const seen = rule ? ran.map((c) => hits(rule, c)) : [];
+  return seen.some((h) => h.hit) ? 'b' : seen.some((h) => h.on) ? 'f' : 'u';
+}
+export async function atStop(payload, seen, { now = Date.now() } = {}) {
+  const none = { say: '' }, turn = seen?.got?.at(-1), s = tag(payload?.session_id);
+  try {
+    if (!turn || seen.quiet || turn.frozen || !['edit', 'command', 'cochange'].some((t) => lessonsOn(t)) || !/^[\w-]+$/.test(s) || PRIVATE.test(userText(turn))) return none;
+    const { why, store } = gate(payload, s, 1);
+    if (why) return none;
+    const at = join(sessionsOf(store), s), lines = readSession(at), prompt = (l) => l.kind === 'asked' || l.kind === 'quiet';
+    if (!lines) return none;
+    const a = lines.findLastIndex(prompt), j = lines.findLastIndex((l) => l.kind === 'judged');
+    if (lines[a]?.kind === 'quiet') return none;
+    const mine = lines.slice(Math.max(a, j) + 1).filter((l) => l.kind === 'lesson' && !l.by).flatMap((l) => parseLesson(l.rest) ?? []);
+    // The turn before, when it was judged and this request is a correction of it: its verdicts move to b (one already b moves nowhere).
+    let moves = [];
+    if (j < a) {
+      const before = lines.slice(lines.findLastIndex((l, i) => i < a && prompt(l)) + 1, a).findLast((l) => l.kind === 'judged');
+      moves = (before?.rest ?? '').split(',').flatMap((x) => { const [n, v] = x.split(':'); try { return COUNT[v] ? [[decodeURIComponent(n), v]] : []; } catch { return []; } });
+      if (moves.length && !(await import('./correction.mjs')).correction(own(turn.raw ?? turn.ask ?? ''), { first: false, helper: false }).fire) moves = [];
+    }
+    if (!mine.length && !moves.length) return none;
+    const found = new Map(lessonsFor(store).map((x) => [x.name, x])), cwd = String(payload.cwd ?? '').replaceAll('\\', '/');
+    const revFor = (name) => (name.startsWith('cochange:') ? keyed(name, 8) : found.has(name) ? revOf(found.get(name).l) : null);
+    const done = mine.map(({ name, on }) => [name, judge(on, turn, cwd, found.get(name)?.r?.rule)]);
+    let touched = false;
+    const saved = updateCounters(store, (c) => {
+      for (const [name, v] of done) {
+        const rev = revFor(name);
+        if (!rev) continue;
+        if (c.notes[name]?.rev !== rev) c.notes[name] = fresh(rev);
+        const e = c.notes[name];
+        e.shown++; e[COUNT[v]]++; e.last = local(now).slice(0, 10); e.sessions = [...e.sessions.filter((x) => x !== s), s].slice(-20);
+        lose(e); touched = true;
+      }
+      for (const [name, v] of moves) {
+        const e = c.notes[name];
+        if (e && e.rev === revFor(name) && e[COUNT[v]] > 0) { e[COUNT[v]]--; e.broken++; lose(e); touched = true; }
+      }
+    });
+    if (touched && !saved) return none;
+    appendFileSync(join(sessionsOf(store), s), sessionLine('judged', done.map(([n, v]) => `${encodeURIComponent(n)}:${v}`).join(','), '', new Date(now).toISOString()), { mode: 0o600 });
+  } catch {}
+  return none;
 }

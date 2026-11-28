@@ -1,11 +1,14 @@
 // Self-check for lessons.mjs (1.7.0 step 2): the switch, a lesson's matching on a path or a command family, the order and the
 // block Claude would see, the counters file and the session line. No hook speaks yet. Run: node lessons.test.mjs
-import { mkdirSync, writeFileSync, mkdtempSync } from 'node:fs';
+import fs, { mkdirSync, writeFileSync, mkdtempSync, appendFileSync, readFileSync, existsSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert';
 import { tempHome, storeFor } from './harness.mjs';
-import { TRIGGERS, DEFAULTS, lessonsOn, lessonsOff, lessonsFor, relPath, matchPath, matchFamily, order, blockText, wilson, readCounters, lessonLine, parseLesson, whyPath } from '../src/lessons.mjs';
+import { TRIGGERS, DEFAULTS, lessonsOn, lessonsOff, lessonsFor, relPath, matchPath, matchFamily, order, blockText, wilson, readCounters, lessonLine, parseLesson, whyPath, atStop, revOf, retiredLines } from '../src/lessons.mjs';
+import { sessionsOf, sessionLine } from '../src/sessions.mjs';
+import { PROJECT_OFF, QUIET } from '../src/privacy.mjs';
 import { lessonOf } from '../src/enforce.mjs';
 import { cleanPath } from '../src/recall.mjs';
 import { projectsRoot, sharedStore, foldCase } from '../src/store.mjs';
@@ -166,5 +169,129 @@ ok(wilson(0, 0).join() === '0,0' && wilson(0, 5)[0] === 0 && wilson(5, 5)[1] ===
   ok(w('a.md', 'applies_to: [./src/a.mjs]\n', {}, 'src/a.mjs') === 'a.md lists src/a.mjs in applies_to', 'a listed path');
   ok(w('b.md', 'applies_to: [docs/, src/**/*.mjs]\n', {}, 'src/x/b.mjs') === 'b.md matches src/**/*.mjs in applies_to' && w('b.md', 'applies_to: [docs/]\n', {}, 'docs/g.md') === 'b.md matches docs/ in applies_to', 'a glob or folder');
   ok(w('c.md', '', { desc: 'In src/store.mjs always write through the lock.' }, 'src/store.mjs') === 'c.md names src/store.mjs in its name or description' && w('d.md', '', { desc: 'About store.mjs and its locking.' }, 'lib/store.mjs') === 'd.md names store.mjs in its name or description', 'a path or a file name in the description'); }
+
+// atStop (L13 verdicts, L4 earn or lose): a made-up turn and session file in, the counters and one `judged` line out.
+{ const AK = 'applies_to: [src/a.mjs]\n', RULE = `${AK}enforce:\n  on: git add\n  has: [-A]\n`, REV = revOf(lessonOf(note(AK)).lesson);
+  const proj = (notes = { 'a.md': AK }) => {
+    const cwd = mkdtempSync(join(tmpdir(), 'stop-')), store = storeFor(home, cwd), at = join(sessionsOf(store), 'abcd1234');
+    mkdirSync(cwd, { recursive: true }); mkdirSync(store, { recursive: true }); mkdirSync(sessionsOf(store), { recursive: true });
+    for (const [f, keys] of Object.entries(notes)) writeFileSync(join(store, f), note(keys));
+    const payload = { session_id: 'abcd1234-aaaa', cwd, hook_event_name: 'Stop' };
+    const turn = (o = {}) => ({ changed: [join(cwd, 'src', 'a.mjs')], ran: [], raw: 'fix it', ask: 'fix it', frozen: false, ...o });
+    return { cwd, store, at, payload, turn,
+      put: (...ls) => appendFileSync(at, ls.join('')), file: () => (existsSync(at) ? readFileSync(at, 'utf8').split('\n').filter(Boolean) : []),
+      c: (name = 'a.md') => readCounters(store).notes[name], counters: (notes) => writeFileSync(join(store, '.lessons.json'), JSON.stringify({ v: 1, notes, errors: {} })),
+      stop: (t = turn(), seen = {}, o = {}) => atStop(payload, { got: [t], quiet: false, ...seen }, { now: NOW, ...o }) };
+  };
+  const ASK = (t = 'fix it') => sessionLine('asked', t), L = (name, on, by = '') => sessionLine('lesson', lessonLine(name, on), by), judged = (q) => q.file().filter((l) => l.startsWith('judged'));
+  const KEY = { n: 'na', u: 'unknown', f: 'followed', b: 'broken' }, row = (c) => ({ shown: c.shown, followed: c.followed, broken: c.broken, na: c.na, unknown: c.unknown });
+  const blank = (o) => ({ rev: REV, shown: 0, followed: 0, broken: 0, na: 0, unknown: 0, sessions: [], last: '2026-11-01', retired: '', told: false, ...o });
+  // Each row of the verdict table, one lesson line each.
+  for (const [what, keys, on, t, want] of [
+    ['edit: the file was not changed', AK, 'edit:src/a.mjs', { changed: [] }, 'n'],
+    ['edit: another file was changed', AK, 'edit:src/a.mjs', { changed: ['src/b.mjs'] }, 'n'],
+    ['edit: changed, no rule to check', AK, 'edit:src/a.mjs', {}, 'u'],
+    ['cmd: no command of that family ran', AK, 'cmd:push', { ran: ['git status', 'ls'] }, 'n'],
+    ['cmd: no command at all', AK, 'cmd:push', { ran: [] }, 'n'],
+    ['cmd: a push ran, no rule to check', AK, 'cmd:push', { ran: ['git push origin main'] }, 'u'],
+    ['rule: its subcommand ran and none hit', RULE, 'edit:src/a.mjs', { ran: ['git add src/a.mjs'] }, 'f'],
+    ['rule: a command hit it', RULE, 'edit:src/a.mjs', { ran: ['git add src/a.mjs', 'git add -A'] }, 'b'],
+    ['rule: its subcommand never ran', RULE, 'edit:src/a.mjs', { ran: ['git status'] }, 'u'],
+    ['rule: a hit on a cmd lesson', RULE, 'cmd:push', { ran: ['git push', 'git add -A'] }, 'b'],
+    ['rule: a failed command whose output names the flag is no hit', RULE, 'edit:src/a.mjs', { ran: ['git add src/a.mjs → failed: hint: run\ngit add -A'] }, 'f'],
+    ['cmd: a failed command whose output names a push is no push', AK, 'cmd:push', { ran: ['git status → failed: x\ngit push --force'] }, 'n'],
+    ['rule: the edit did not go through, so not applicable whatever ran', RULE, 'edit:src/a.mjs', { changed: [], ran: ['git add -A'] }, 'n'],
+  ]) {
+    const q = proj({ 'a.md': keys }); q.put(ASK(), L('a.md', on));
+    const r = await q.stop(q.turn(t)), c = q.c();
+    ok(r.say === '' && c && JSON.stringify(row(c)) === JSON.stringify({ shown: 1, followed: 0, broken: 0, na: 0, unknown: 0, [KEY[want]]: 1 }, ['shown', 'followed', 'broken', 'na', 'unknown']), `${what}: verdict ${want} (got ${JSON.stringify(c)})`);
+    ok(judged(q).length === 1 && judged(q)[0].endsWith(` a.md:${want}`) && c.rev === revOf(lessonOf(note(keys)).lesson) && c.sessions.join() === 'abcd1234' && c.last === '2026-11-27' && c.retired === '' && c.told === false, `${what}: the judged line, rev, session and day (got ${judged(q)})`);
+  }
+  // A co-change lesson (L9): its B path changed, followed; else unknown. It has no note, so the pair is its name.
+  { const q = proj(); q.put(ASK(), L('cochange:ab12cd34', 'pair:test/a.test.mjs'));
+    await q.stop(q.turn({ changed: [join(q.cwd, 'src', 'a.mjs'), join(q.cwd, 'test', 'a.test.mjs')] }));
+    ok(row(q.c('cochange:ab12cd34')).followed === 1 && judged(q)[0].endsWith(' cochange%3Aab12cd34:f') && q.c('cochange:ab12cd34').rev.length === 8, 'cochange: B changed is followed, and the line holds the encoded name');
+    const w = proj(); w.put(ASK(), L('cochange:ab12cd34', 'pair:test/a.test.mjs')); await w.stop(w.turn()); ok(row(w.c('cochange:ab12cd34')).unknown === 1 && judged(w)[0].endsWith(':u'), 'cochange: B not changed is unknown'); }
+  { const q = proj(); q.put(ASK(), L('cochange:ab12cd34', 'pair:Test/A.test.mjs'));
+    await q.stop(q.turn({ changed: [join(q.cwd, 'test', 'a.test.mjs')] })); ok(row(q.c('cochange:ab12cd34')).followed === (FOLDS ? 1 : 0), 'cochange: the B path is compared as the disk compares names (case folded only where it folds)'); }
+  // A judged line that will not decode costs its own note, not the Stop.
+  { const q = proj(); q.counters({ 'a.md': blank({ shown: 3, unknown: 3 }) }); q.put(ASK('first'), sessionLine('judged', '%E0%A4%A:u,a.md:u'), ASK('no, I said always stage by name'), L('a.md', 'edit:src/a.mjs'));
+    await q.stop(q.turn({ raw: 'no, I said always stage by name' })); ok(q.c().shown === 4 && q.c().broken === 1 && q.c().unknown === 3 && judged(q).length === 2, `a malformed judged line: the readable note is still moved and this turn still judged (got ${JSON.stringify(q.c())})`); }
+  // Several lines, a shared note, a note that is gone, a helper's line.
+  { const q = proj({ 'a.md': AK, 'b.md': 'applies_to: [src/b.mjs]\n' }); q.put(ASK(), L('a.md', 'edit:src/a.mjs'), L('b.md', 'edit:src/b.mjs'), L('a.md', 'edit:src/a.mjs', 'h1'), L('gone.md', 'edit:src/a.mjs'));
+    await q.stop(); ok(judged(q)[0].endsWith(' a.md:u,b.md:n,gone.md:u') && q.c('b.md').na === 1 && q.c('a.md').shown === 1 && q.c('gone.md') === undefined, `one verdict a line, a helper's line not judged, a note that is gone gets no counter (got ${judged(q)})`); }
+  // A second Stop of the same turn changes no counter and writes no line; the next turn's lines are judged again.
+  { const q = proj(); q.put(ASK(), L('a.md', 'edit:src/a.mjs')); await q.stop(); const one = readFileSync(join(q.store, '.lessons.json'), 'utf8'), lines = q.file().length;
+    await q.stop(); await q.stop(); ok(readFileSync(join(q.store, '.lessons.json'), 'utf8') === one && q.file().length === lines, 'a second Stop of the same turn changes no counter');
+    q.put(ASK('again'), L('a.md', 'edit:src/a.mjs')); await q.stop(); ok(q.c().shown === 2 && judged(q).length === 2, 'the next turn counts again'); }
+  // A turn with no lesson line reads no counter file, and writes none. Nor does a turn that must stay private.
+  { const real = fs.readFileSync, reads = []; fs.readFileSync = function (f, ...a) { if (String(f).endsWith('.lessons.json')) reads.push(String(f)); return real.call(this, f, ...a); }; syncBuiltinESMExports();
+    const none = async (q, what, t, seen, o) => { reads.length = 0; const before = q.file().length, r = await q.stop(t ?? q.turn(), seen, o); ok(r.say === '' && reads.length === 0 && q.file().length === before && !existsSync(join(q.store, '.lessons.json')), `${what}: nothing read, nothing written (reads ${reads.length})`); };
+    try {
+      let q = proj(); q.put(ASK()); await none(q, 'no lesson line');
+      q = proj(); q.put(ASK(), L('a.md', 'edit:src/a.mjs', 'h1')); await none(q, 'a helper\'s line only');
+      q = proj(); q.put(ASK(), L('a.md', 'edit:src/a.mjs')); await none(q, 'a private request', q.turn({ raw: 'fix it <private>secret</private>' }));
+      await none(q, 'a frozen turn', q.turn({ frozen: 'nudge' })); await none(q, 'a private ask when raw is empty', q.turn({ raw: undefined, ask: '<private>' }));
+      await none(q, 'the journal said quiet', q.turn(), { quiet: true }); await none(q, 'no turn read', q.turn(), { got: undefined });
+      await none(q, 'no turns', q.turn(), { got: [] });
+      q = proj(); q.put(ASK(), L('a.md', 'edit:src/a.mjs'), sessionLine('quiet')); await none(q, 'the newest prompt line is quiet');
+      for (const [what, f, body] of [['project off', PROJECT_OFF, JSON.stringify({ t: 1 })], ['an incognito conversation', QUIET, 'abcd1234\n']]) { const p = proj(); p.put(ASK(), L('a.md', 'edit:src/a.mjs')); writeFileSync(join(p.store, f), body); await none(p, what); }
+      q = proj(); q.put(ASK(), L('a.md', 'edit:src/a.mjs')); mkdirSync(join(q.store, QUIET)); await none(q, 'a tag list that will not read');
+      for (const env of ['0', 'nudge,-command']) { const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = env;
+        try { q = proj(); q.put(ASK(), L('a.md', 'edit:src/a.mjs')); await none(q, `PROJECT_MEMORY_LESSONS=${env}`); } finally { if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was; } }
+    } finally { fs.readFileSync = real; syncBuiltinESMExports(); } }
+  // Both retire rules at their edges: 2 of 4 stays, 3 of 4 goes, 2 of 2 goes, na is not a trial, 3 broken go whatever the rest.
+  for (const [what, was, goes] of [
+    ['2 of 4', { shown: 3, broken: 1, unknown: 2 }, ''], ['3 of 4', { shown: 3, broken: 2, unknown: 1 }, 'broken 3 of 4'], ['2 of 2', { shown: 1, broken: 1 }, 'broken 2 of 2'],
+    ['2 of 3 with one not applicable', { shown: 2, broken: 1, na: 1 }, 'broken 2 of 2'], ['3 of 12', { shown: 11, broken: 2, followed: 9 }, 'broken 3 of 12'], ['1 of 1', { shown: 0 }, ''],
+  ]) {
+    const q = proj({ 'a.md': RULE }); q.counters({ 'a.md': blank(was) }); q.put(ASK(), L('a.md', 'edit:src/a.mjs'));
+    await q.stop(q.turn({ ran: ['git add -A'] })); ok(q.c().retired === goes && q.c().broken === (was.broken || 0) + 1, `${what}: retired ${JSON.stringify(goes)} (got ${JSON.stringify(q.c())})`);
+  }
+  // A retired lesson matches nothing; editing its description brings it back with empty counters, at the next show.
+  { const q = proj({ 'a.md': AK }); q.counters({ 'a.md': blank({ shown: 4, broken: 3, retired: 'broken 3 of 4', sessions: ['zzzzzzzz'] }) });
+    ok(lessonsFor(q.store).every((x) => x.name !== 'a.md') && matchPath(lessonsFor(q.store), 'src/a.mjs').length === 0, 'a retired lesson matches nothing in lessonsFor');
+    q.counters({ 'a.md': blank({ shown: 4, broken: 3, retired: 'broken 3 of 4' }) }); ok(retiredLines(q.store).names.join() === 'a.md', 'a retired lesson is told');
+    q.counters({ 'a.md': blank({ shown: 4, broken: 3, retired: 'broken 3 of 4', sessions: ['zzzzzzzz'] }) });
+    writeFileSync(join(q.store, 'a.md'), note(AK, { desc: 'A new description, the note was fixed.' }));
+    ok(lessonsFor(q.store).some((x) => x.name === 'a.md') && matchPath(lessonsFor(q.store), 'src/a.mjs').length === 1 && retiredLines(q.store).names.length === 0, 'editing the description brings it back, and it is not told as retired');
+    q.put(ASK(), L('a.md', 'edit:src/a.mjs')); await q.stop();
+    ok(JSON.stringify(row(q.c())) === JSON.stringify({ shown: 1, followed: 0, broken: 0, na: 0, unknown: 1 }) && q.c().retired === '' && q.c().told === false && q.c().sessions.join() === 'abcd1234' && q.c().rev !== REV, `a new rev starts with empty counters (got ${JSON.stringify(q.c())})`); }
+  // Another rev with the same text twice: the same rev (keyed is stable).
+  ok(revOf(lessonOf(note(AK)).lesson) === REV && revOf(lessonOf(note(AK, { desc: 'x' })).lesson) !== REV && revOf(lessonOf(note('applies_to: [src/b.mjs]\n')).lesson) !== REV && /^[0-9a-f]{8}$/.test(REV), 'rev: 8 hex, the same lesson the same rev, another description or path another');
+  // Sessions: at most 20 tags, newest last, none twice.
+  { const q = proj(); q.counters({ 'a.md': blank({ shown: 20, unknown: 20, sessions: Array.from({ length: 20 }, (_, i) => `s${String(i).padStart(7, '0')}`) }) }); q.put(ASK(), L('a.md', 'edit:src/a.mjs')); await q.stop();
+    ok(q.c().sessions.length === 20 && q.c().sessions.at(-1) === 'abcd1234' && q.c().sessions[0] === 's0000001', 'sessions: 20 at most, the newest last');
+    q.put(ASK(), L('a.md', 'edit:src/a.mjs')); await q.stop(); ok(q.c().sessions.filter((x) => x === 'abcd1234').length === 1, 'a tag is kept once'); }
+  // Broken by correction: the request of this turn is one, and the lessons of the turn before it were not already broken.
+  { const FIX = 'no, I said always stage by name';
+    const q = proj(); q.counters({ 'a.md': blank({ shown: 4, broken: 2, unknown: 2 }) });
+    q.put(ASK('first'), L('a.md', 'edit:src/a.mjs'), sessionLine('judged', 'a.md:u'), ASK(FIX));
+    await q.stop(q.turn({ raw: FIX, ask: FIX, changed: [], ran: [] }));
+    ok(row(q.c()).broken === 3 && q.c().unknown === 1 && q.c().shown === 4 && q.c().retired === 'broken 3 of 4' && judged(q).length === 2 && judged(q)[1].split(' ').length === 2, `a correction moves unknown to broken, and re-checks the retire rule (got ${JSON.stringify(q.c())} ${judged(q)})`);
+    const lines = q.file().length; await q.stop(q.turn({ raw: FIX, ask: FIX, changed: [], ran: [] })); ok(q.c().broken === 3 && q.c().unknown === 1 && q.file().length === lines, 'the same Stop again moves nothing more');
+    for (const [v, key] of [['f', 'followed'], ['n', 'na']]) { const p = proj(); p.counters({ 'a.md': blank({ shown: 3, [key]: 2, unknown: 1 }) }); p.put(ASK('first'), sessionLine('judged', `a.md:${v}`), ASK(FIX)); await p.stop(p.turn({ raw: FIX, changed: [] })); ok(p.c()[key] === 1 && p.c().broken === 1, `a correction moves ${v} to broken`); }
+    let p = proj(); p.counters({ 'a.md': blank({ shown: 3, broken: 1, unknown: 2 }) }); p.put(ASK('first'), sessionLine('judged', 'a.md:b'), ASK(FIX)); await p.stop(p.turn({ raw: FIX, changed: [] }));
+    ok(p.c().broken === 1 && p.c().unknown === 2, 'a verdict that was already broken stays one count');
+    p = proj(); p.counters({ 'a.md': blank({ shown: 3, broken: 0, unknown: 3 }) }); p.put(ASK('first'), sessionLine('judged', 'a.md:u'), ASK('thanks, that looks good')); await p.stop(p.turn({ raw: 'thanks, that looks good', changed: [] }));
+    ok(p.c().broken === 0 && judged(p).length === 1, 'a request that is no correction moves nothing');
+    p = proj(); p.counters({ 'a.md': blank({ shown: 3, broken: 0, unknown: 3 }) }); p.put(ASK('first'), sessionLine('judged', 'a.md:u'), sessionLine('quiet')); await p.stop(p.turn({ raw: FIX, changed: [] }));
+    ok(p.c().broken === 0 && judged(p).length === 1, 'a private prompt line moves nothing');
+    p = proj(); p.counters({ 'a.md': blank({ shown: 3, broken: 0, unknown: 3 }) }); p.put(ASK('first'), sessionLine('judged', 'a.md:u'), ASK('go on'), ASK(FIX)); await p.stop(p.turn({ raw: FIX, changed: [] }));
+    ok(p.c().broken === 0, 'only the judged line of the turn just before counts');
+    p = proj(); p.counters({ 'a.md': blank({ shown: 3, broken: 0, unknown: 3 }) }); p.put(ASK('first'), sessionLine('judged', 'a.md:u'), ASK(FIX)); await p.stop(p.turn({ raw: `${FIX} <private>`, changed: [] }));
+    ok(p.c().broken === 0, 'a private correction moves nothing');
+    p = proj(); p.counters({ 'a.md': blank({ shown: 3, unknown: 0, followed: 3 }) }); p.put(ASK('first'), sessionLine('judged', 'a.md:u'), ASK(FIX)); await p.stop(p.turn({ raw: FIX, changed: [] }));
+    ok(p.c().broken === 0 && p.c().unknown === 0, 'a count that is zero is not moved below zero');
+    p = proj(); p.counters({ 'a.md': blank({ rev: 'deadbeef', shown: 3, unknown: 3 }) }); p.put(ASK('first'), sessionLine('judged', 'a.md:u'), ASK(FIX)); await p.stop(p.turn({ raw: FIX, changed: [] }));
+    ok(p.c().broken === 0 && p.c().unknown === 3, 'a note changed since (another rev) is not moved');
+    // This turn's own verdicts and the correction in one Stop, with the counter file as it was.
+    p = proj({ 'a.md': AK, 'b.md': 'applies_to: [src/b.mjs]\n' }); p.counters({ 'a.md': blank({ shown: 1, unknown: 1 }) }); p.put(ASK('first'), sessionLine('judged', 'a.md:u'), ASK(FIX), L('b.md', 'edit:src/b.mjs'));
+    await p.stop(p.turn({ raw: FIX, changed: [] })); ok(p.c().broken === 1 && p.c('b.md').na === 1 && judged(p)[1].endsWith(' b.md:n'), 'the verdicts of the turn and the correction go together'); }
+  // The counters of two notes are kept when the file holds others, and one that will not write is not judged.
+  { const q = proj(); q.counters({ 'other.md': blank({ shown: 7 }) }); q.put(ASK(), L('a.md', 'edit:src/a.mjs')); await q.stop(); ok(q.c('other.md').shown === 7 && q.c().shown === 1, 'the other notes\' counters stay');
+    const w = proj(); w.put(ASK(), L('a.md', 'edit:src/a.mjs')); mkdirSync(join(w.store, '.lessons.json'));
+    ok((await w.stop()).say === '' && judged(w).length === 0, 'a counter file that will not write: no judged line, no throw'); }
+}
 
 console.log(`lessons: ${checks} checks passed`);

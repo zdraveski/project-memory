@@ -390,6 +390,8 @@ async function save(input, dry) {
   T.mark('input');
   // SubagentStop: the agent's report goes to the journal, nothing else runs (no tiering, no nudge, no handoff).
   if (payload?.hook_event_name === 'SubagentStop') { try { (await import(new URL('./journal.mjs', import.meta.url))).subagent(payload); } catch {} return null; }
+  // What the journal saw of this turn, for the lesson verdicts below (lessons.mjs atStop): the tap only observes.
+  const seen = {};
   // Two tries, not one: a handoff that fails to write (two sessions renaming
   // over the same store at once) must not also skip the nudge -- that was
   // the one Stop the nudge exists for.
@@ -406,14 +408,15 @@ async function save(input, dry) {
     // the journal, never the handoff.
     let sink = null, kept = null;
     try { ({ write: sink, keptUnder: kept } = await import(new URL('./journal.mjs', import.meta.url))); } catch {}
+    const tap = sink && ((d, t, got, o) => { seen.got = got; seen.quiet = o?.quiet; return sink(d, t, got, o); });
     T.mark('load');
     // A store still held after one wait (twenty Stops at once) gets one more, after a pause and with a fresh wait: the session's
     // last Stop has no later one to redo the turn (defect hunt 1.3.2, C5).
     try {
-      let s = payload && handoff(payload, sink, kept);
+      let s = payload && handoff(payload, tap, kept);
       // 'changed' too: three replaces lost to a concurrent write wrote nothing.
       const lost = (v) => v === 'busy' || v === 'changed';
-      if (lost(s)) { sleep(200 + Math.random() * 600); lockBudget(true); s = handoff(payload, sink, kept); }
+      if (lost(s)) { sleep(200 + Math.random() * 600); lockBudget(true); s = handoff(payload, tap, kept); }
       // Still held: the reply is unsaved, so say so, and keep any earlier record.
       if (lost(s)) throw new Error('the store stayed busy: another session held it through two tries, so this reply was not saved');
       handoffSaved(store);
@@ -447,7 +450,10 @@ async function save(input, dry) {
     let notice = null; try { notice = payload && reloadNotice(payload); } catch {}
     const nudge = payload && (await import(new URL('./compact-gate.mjs', import.meta.url))).nudge(payload);
     T.mark('notice');
-    const out = (nudge || notice) && { ...nudge, ...(notice && { systemMessage: notice }) };
+    // The lessons of the turn judged (L13, L4); a failure here costs only that. Its words, if any, are the Stop's feedback when nothing else is.
+    let say = ''; if (payload?.hook_event_name === 'Stop' && !dry) try { say = (await (await import(new URL('./lessons.mjs', import.meta.url))).atStop(payload, seen, { feedback: !nudge })).say; } catch {}
+    T.mark('lessons');
+    const out = (nudge || notice || say) && { ...(nudge || (say && { hookSpecificOutput: { hookEventName: 'Stop', additionalContext: say } })), ...(notice && { systemMessage: notice }) };
     // Done once it is written: on macOS a pipe is written asynchronously, and
     // an exit right after a write can cut it (handoff-log's --print, CI 2026-10-29).
     if (out) { await new Promise((done) => process.stdout.write(JSON.stringify(out) + '\n', done)); return null; }
