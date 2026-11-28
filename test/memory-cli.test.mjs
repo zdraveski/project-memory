@@ -511,6 +511,7 @@ const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((
   `${ev} | ${e.matcher || ''} | ${x.command} ${(x.args || []).join(' ')}`))).sort();
 ok(JSON.stringify(wiring) === JSON.stringify(['PostToolUse | Edit|Write|NotebookEdit | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/src/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop',
   'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs', 'PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs',
+  'PreToolUse | Edit|Write|NotebookEdit|MultiEdit | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs',
   'SessionEnd |  | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/src/brief.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'SubagentStop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop',
   'UserPromptSubmit |  | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs']),
   `the plugin wires its hooks, each with its matcher and flag (got ${wiring.join('; ')})`);
@@ -522,7 +523,7 @@ ok(JSON.stringify(wiring) === JSON.stringify(['PostToolUse | Edit|Write|Notebook
 // A hook with no timeout gets Claude Code's 10 minutes; a real Stop took 45.7 s. A timed-out hook's output is discarded.
 const hooksOf = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((e) => e.hooks.map((x) => ({ ev, matcher: e.matcher || '', ...x }))));
 const timeouts = Object.fromEntries(hooksOf.map((h) => [`${h.ev}|${h.matcher}`, h.timeout]));
-ok(JSON.stringify(timeouts) === JSON.stringify({ 'Stop|': 120, 'StopFailure|': 120, 'SubagentStop|': 30, 'SessionStart|startup|resume|clear|compact': 30, 'PreToolUse|Bash|PowerShell': 5, 'PostToolUse|Edit|Write|NotebookEdit': 5, 'UserPromptSubmit|': 5, 'SessionEnd|': 1, 'PreCompact|manual': 120, 'PreCompact|auto': 60 }),
+ok(JSON.stringify(timeouts) === JSON.stringify({ 'Stop|': 120, 'StopFailure|': 120, 'SubagentStop|': 30, 'SessionStart|startup|resume|clear|compact': 30, 'PreToolUse|Bash|PowerShell': 5, 'PreToolUse|Edit|Write|NotebookEdit|MultiEdit': 5, 'PostToolUse|Edit|Write|NotebookEdit': 5, 'UserPromptSubmit|': 5, 'SessionEnd|': 1, 'PreCompact|manual': 120, 'PreCompact|auto': 60 }),
   `each hook has its timeout in seconds (got ${JSON.stringify(timeouts)})`);
 // The PreToolUse, PostToolUse and UserPromptSubmit hooks have none: a status line on every git call, change or prompt is noise, and the eval harness
 // (tools/recall-eval.mjs) knows the recall hook by its command, which a statusMessage replaces in Claude Code's record.
@@ -758,7 +759,35 @@ rmSync(join(root, '.stop-ran'), { force: true });
   ok(Number(m[2]) <= 5 && (hook.match(/\*\*asked\*\*/g) ?? []).length === 5 - Number(m[2]), 'and how many older exchanges were left out');
   ok(before === after, 'a preview changes nothing: no file made (`.moved-said` included), no size or time changed');
   ok(hook.includes('Notes may have been left behind') && r.stdout.includes('Notes may have been left behind'), 'the notice of left-behind notes is in the preview and still due at the real startup');
-  ok(parseArgs(['preview', '--file', 'x']) === 'preview does not take --file; help lists the options' && (await run(['help'])).stdout.includes('preview'), 'preview takes no option, and help names it');
+  ok(parseArgs(['preview', '--days', '3']) === 'preview does not take --days; help lists the options' && typeof parseArgs(['preview', '--file', 'x']) === 'object' && (await run(['help'])).stdout.includes('preview --file <path>'), 'preview takes --file only, and help names it');
+}
+
+// 1.7.0 step 8, `memory preview --file <path>`: the lessons Claude would see before an edit of that file, the hook's block byte for byte, then
+// why each matched. Read-only: the store and the session folder are as they were (names, sizes, times).
+{
+  const proj = join(root, 'C--prev-file'), mem = join(proj, 'memory'), t = join(proj, 'prevsess2.jsonl'), old = new Date(Date.now() - 12 * 864e5 - 36e5);
+  mkdirSync(mem, { recursive: true });
+  writeFileSync(t, JSON.stringify({ type: 'user', cwd: 'C:\\prev-file', timestamp: new Date().toISOString(), message: { content: [{ type: 'text', text: 'hello' }] } }) + '\n');
+  for (const [f, desc, extra] of [['a.md', 'Never edit a.mjs by hand.', 'applies_to: [src/a.mjs]\n'], ['b.md', 'Keep the sources small.', 'applies_to: [src/*.mjs]\n']]) {
+    writeFileSync(join(mem, f), `---\nname: ${f}\ndescription: ${desc}\ntype: feedback\n${extra}---\n\nbody\n`); utimesSync(join(mem, f), old, old);
+  }
+  const tree = () => readdirSync(root, { recursive: true }).sort().map((f) => { const x = statSync(join(root, f)); return `${f} ${x.isFile() ? x.size : 'dir'} ${x.mtimeMs}`; }).join('\n');
+  const was = process.env.PROJECT_MEMORY_LESSONS; process.env.PROJECT_MEMORY_LESSONS = 'edit';
+  const before = tree(), r = await run(['preview', '--file', 'src/a.mjs', '--session', 'prevsess2']), after = tree();
+  const hook = spawnSync(process.execPath, [tool('src/enforce-hook.mjs')], { encoding: 'utf8', env: { ...process.env, ...env }, input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'prevsess2', cwd: process.cwd(), transcript_path: t, tool_name: 'Edit', tool_input: { file_path: 'src/a.mjs' } }) });
+  const block = JSON.parse(hook.stdout).hookSpecificOutput.additionalContext, out = r.stdout.split('\n');
+  ok(r.status === 0 && out[0] === `Before an edit of src/a.mjs: 2 lessons, ${block.length} characters.` && out.slice(1, 1 + block.split('\n').length).join('\n') === block, `preview --file prints the hook's block byte for byte (got ${r.stdout}${r.stderr})`);
+  ok(out.slice(1 + block.split('\n').length).join('\n') === '  why: a.md lists src/a.mjs in applies_to\n  why: b.md matches src/*.mjs in applies_to\n', `then why each matched (got ${JSON.stringify(out.slice(1 + block.split('\n').length))})`);
+  ok(before === after, 'a preview of a file changes nothing: no session line, no cache, no size or time changed');
+  const again = await run(['preview', '--file', 'src/a.mjs', '--session', 'prevsess2']);
+  ok(again.stdout === r.stdout, 'after the hook has told them, a preview is of a fresh context: the same text');
+  const none = await run(['preview', '--file', 'docs/none.md', '--session', 'prevsess2']);
+  ok(none.status === 0 && none.stdout === 'Before an edit of docs/none.md: nothing would be shown.\n', `nothing to show says so (got ${none.stdout})`);
+  delete process.env.PROJECT_MEMORY_LESSONS;
+  const off = await run(['preview', '--file', 'src/a.mjs', '--session', 'prevsess2']);
+  ok(off.stdout === 'Before an edit of src/a.mjs: nothing would be shown.\nLessons before an edit are off: PROJECT_MEMORY_LESSONS=edit turns them on.\n', `with the trigger off it says why (got ${off.stdout})`);
+  if (was !== undefined) process.env.PROJECT_MEMORY_LESSONS = was;
+  ok(parseArgs(['preview', '--file']) === '--file needs a value after it', 'preview --file needs a path');
 }
 
 console.log(`memory-cli: ${checks} checks passed`);
