@@ -273,9 +273,12 @@ export default {
   'doctor does not require the PostToolUseFailure group': ['?.hooks?.PostToolUseFailure?.length)', '?.hooks?.PostToolUseFailure?.length || true)', { test: 'test/memory-switch.test.mjs' }],
   'doctor does not run the recall hook': [", [recall, 'recall', '{}']]) {", "]) {", { test: 'test/memory-switch.test.mjs' }],
   // preview --file and the doctor's edit group (1.7.0 step 8)
-  'doctor does not need the edit group of PreToolUse': ['?.some((g) => /\\bEdit\\b/.test(g?.matcher))) {', '?.some((g) => true)) {', { test: 'test/memory-switch.test.mjs' }],
-  'doctor: a missing edit group is a problem with the trigger off': ["return lessonsOn?.('edit') ? [false, text] :", 'return true ? [false, text] :', { test: 'test/memory-switch.test.mjs' }],
-  'doctor: a missing edit group is only a note with the trigger on': ["return lessonsOn?.('edit') ? [false, text] :", 'return false ? [false, text] :', { test: 'test/memory-switch.test.mjs' }],
+  'doctor does not need the edit group of PreToolUse': ['!groups.some((g) => /\\bEdit\\b/.test(g?.matcher))) gaps', '!groups.some((g) => true)) gaps', { test: 'test/memory-switch.test.mjs' }],
+  'doctor: a missing gap is a problem with the trigger off': ['gaps.filter(([t]) => lessonsOn?.(t))', 'gaps.filter(([t]) => true)', { test: 'test/memory-switch.test.mjs' }],
+  'doctor: a missing gap is only a note with the trigger on': ['gaps.filter(([t]) => lessonsOn?.(t))', 'gaps.filter(([t]) => false)', { test: 'test/memory-switch.test.mjs' }],
+  'doctor: only the first gap is judged, a problem behind a note is lost': ['const bad = gaps.filter(', 'const bad = gaps.slice(0, 1).filter(', { test: 'test/memory-switch.test.mjs' }],
+  'doctor: a Bash group of git filters only is fine': ['bashOf(groups).length && miss.length', 'false', { test: 'test/memory-switch.test.mjs' }],
+  'doctor: only a missing deploy filter is seen': ['.filter((i) => !bashOf(groups).some((h) => h?.if === i))', ".filter((i) => /deploy/.test(i) && !bashOf(groups).some((h) => h?.if === i))", { test: 'test/memory-switch.test.mjs' }],
   'doctor: the empty call of an Edit is not run': ["[file, 'enforce', '{\"tool_name\":\"Edit\"}'], ", "", { test: 'test/memory-switch.test.mjs' }],
   'preview --file says nothing of the trigger being off': ["...(lessonsOn('edit') ? [] : [", '...(true ? [] : [', { test: 'test/memory-cli.test.mjs' }],
   'preview --file prints no why lines': ['...shown.map((x) => `  why: ${whyPath(x, rel)}`)', '', { test: 'test/memory-cli.test.mjs' }],
@@ -284,6 +287,4 @@ export default {
   'preview --command: a long command is not clipped': ['`Before "${clip(command, 80)}"`', '`Before "${command}"`', { test: 'test/memory-cli.test.mjs' }],
   'preview --command: no why lines': ['...shown.map((x) => `  why: ${whyFamily(x)}`)', '', { test: 'test/memory-cli.test.mjs' }],
   'preview --command: no word that the trigger is off': ["...(lessonsOn('command') ? [] : [", '...(true ? [] : [', { test: 'test/memory-cli.test.mjs' }],
-  'doctor: a Bash group of git filters only is fine': ["!bash.hooks.some((h) => /deploy/.test(h?.if))", 'false', { test: 'test/memory-switch.test.mjs' }],
-  'doctor: git filters only is never a problem': ["return lessonsOn?.('command') ? [false, text]", "return false ? [false, text]", { test: 'test/memory-switch.test.mjs' }],
 };

@@ -863,18 +863,18 @@ function enforceHook(at) {
     }
   }
   const wired = slow || 'the enforce and recall hooks run and are wired (PreToolUse)';
-  // A copy without the edit group is a problem only once lessons before an edit are on.
-  if (!readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.some((g) => /\bEdit\b/.test(g?.matcher))) {
-    const text = `hooks.json in ${at} has no edit group in PreToolUse: lessons before an edit are not wired. The user's fix: claude plugin update ${PLUGIN}`;
-    return lessonsOn?.('edit') ? [false, text] : [true, `${wired}; note: ${text} (lessons before an edit are off: PROJECT_MEMORY_LESSONS=edit turns them on)`];
-  }
-  // 1.7.0 H2: a Bash group with only the git filters (a pre-1.7.0 copy) does not start the hook for a risky command; a problem while `command` is on (the default).
-  const bash = readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse?.find((g) => /\bBash\b/.test(g?.matcher));
-  if (bash?.hooks?.length && !bash.hooks.some((h) => /deploy/.test(h?.if))) {
-    const text = `hooks.json in ${at} has only the git filters in its Bash|PowerShell group: lessons before a risky command are not wired. The user's fix: claude plugin update ${PLUGIN}`;
-    return lessonsOn?.('command') ? [false, text] : [true, `${wired}; note: ${text} (lessons before a command are off: PROJECT_MEMORY_LESSONS=command turns them on)`];
-  }
-  return [true, wired];
+  // What is missing for a lesson trigger is a problem once that trigger is on, a note while it is off; every gap is judged, a problem wins.
+  const groups = readJson(join(at, 'hooks', 'hooks.json'))?.hooks?.PreToolUse ?? [];
+  const bashOf = (gs) => gs.find((g) => /\bBash\b/.test(g?.matcher))?.hooks ?? [];
+  const shipped = readJson(fileURLToPath(new URL('../hooks/hooks.json', import.meta.url)))?.hooks?.PreToolUse ?? [];
+  const miss = bashOf(shipped).map((h) => h?.if).filter((i) => !bashOf(groups).some((h) => h?.if === i));
+  const gaps = [];
+  if (!groups.some((g) => /\bEdit\b/.test(g?.matcher))) gaps.push(['edit', `hooks.json in ${at} has no edit group in PreToolUse: lessons before an edit are not wired. The user's fix: claude plugin update ${PLUGIN}`, 'lessons before an edit are off: PROJECT_MEMORY_LESSONS=edit turns them on']);
+  // 1.7.0 H2: a Bash group (a pre-1.7.0 copy has the git filters only) without a filter this plugin ships does not start the hook for that risky command.
+  if (bashOf(groups).length && miss.length) gaps.push(['command', `hooks.json in ${at} is missing ${miss.length} filter(s) of its Bash|PowerShell group (${miss.slice(0, 3).join(', ')}${miss.length > 3 ? ', ...' : ''}): lessons before a risky command are not wired. The user's fix: claude plugin update ${PLUGIN}`, 'lessons before a command are off: PROJECT_MEMORY_LESSONS=command turns them on']);
+  const bad = gaps.filter(([t]) => lessonsOn?.(t));
+  if (bad.length) return [false, bad.map((g) => g[1]).join('; ')];
+  return [true, [wired, ...gaps.map((g) => `note: ${g[1]} (${g[2]})`)].join('; ')];
 }
 
 // What status and doctor say of a project turned off.

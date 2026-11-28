@@ -24,6 +24,8 @@
         { "type": "command", "if": "PowerShell(yarn publish*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
         { "type": "command", "if": "Bash(cargo publish*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
         { "type": "command", "if": "PowerShell(cargo publish*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
+        { "type": "command", "if": "Bash(twine upload*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
+        { "type": "command", "if": "PowerShell(twine upload*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
         { "type": "command", "if": "Bash(gh release *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
         { "type": "command", "if": "PowerShell(gh release *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
         { "type": "command", "if": "Bash(*tools/release.mjs*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
@@ -46,6 +48,8 @@
         { "type": "command", "if": "PowerShell(terraform apply*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
         { "type": "command", "if": "Bash(terraform destroy*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
         { "type": "command", "if": "PowerShell(terraform destroy*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
+        { "type": "command", "if": "Bash(kubectl apply*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
+        { "type": "command", "if": "PowerShell(kubectl apply*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
         { "type": "command", "if": "Bash(kubectl delete*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
         { "type": "command", "if": "PowerShell(kubectl delete*)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 },
         { "type": "command", "if": "PowerShell(Remove-Item *)", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs"], "timeout": 5 }

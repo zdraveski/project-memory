@@ -1107,7 +1107,15 @@ again ${key2}
   ok(/^ok +the enforce and recall hooks run and are wired \(PreToolUse\)$/m.test(doctor().stdout), 'a hook that prints nothing and exits 0 is fine');
   // 1.7.0 H2: a Bash group with the git filters only (a pre-1.7.0 copy) is a problem while `command` is on (the default), a note once it is off; the real file is fine.
   writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Bash|PowerShell","hooks":[{"if":"Bash(git *)"},{"if":"PowerShell(git *)"}]},{"matcher":"Edit|Write"}],"SubagentStop":[1],"PostToolUseFailure":[1]}}');
-  ok(enf().startsWith('PROBLEM') && enf().includes('has only the git filters') && enf({ PROJECT_MEMORY_LESSONS: '-command' }).startsWith('ok') && enf({ PROJECT_MEMORY_LESSONS: '-command' }).includes('PROJECT_MEMORY_LESSONS=command turns them on'), `git filters only: a problem, a note with -command (got ${enf()})`);
+  ok(enf().startsWith('PROBLEM') && enf().includes('is missing') && enf({ PROJECT_MEMORY_LESSONS: '-command' }).startsWith('ok') && enf({ PROJECT_MEMORY_LESSONS: '-command' }).includes('PROJECT_MEMORY_LESSONS=command turns them on'), `git filters only: a problem, a note with -command (got ${enf()})`);
+  // A real 1.6.x copy: the git filters and no edit group. The edit note (edit is off by default) must not hide the command problem.
+  writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Bash|PowerShell","hooks":[{"if":"Bash(git *)"},{"if":"PowerShell(git *)"}]}],"SubagentStop":[1],"PostToolUseFailure":[1]}}');
+  ok(enf().startsWith('PROBLEM') && enf().includes('lessons before a risky command are not wired') && enf({ PROJECT_MEMORY_LESSONS: '-command' }).startsWith('ok') && enf({ PROJECT_MEMORY_LESSONS: '-command' }).includes('has no edit group'), `1.6.x shape: the command problem wins over the edit note (got ${enf()})`);
+  // The shipped file less one filter (npm publish*, one shell): that filter is named, whatever else is there.
+  const shipped = JSON.parse(readFileSync(new URL('../hooks/hooks.json', import.meta.url), 'utf8'));
+  shipped.hooks.PreToolUse[0].hooks = shipped.hooks.PreToolUse[0].hooks.filter((h) => h.if !== 'PowerShell(npm publish*)');
+  writeFileSync(hooks, JSON.stringify(shipped));
+  ok(enf().startsWith('PROBLEM') && enf().includes('PowerShell(npm publish*)') && !enf().includes('Bash(npm publish*)'), `one shipped filter missing is named (got ${enf()})`);
   writeFileSync(hooks, readFileSync(new URL('../hooks/hooks.json', import.meta.url), 'utf8'));
   ok(/^ok +the enforce and recall hooks run and are wired \(PreToolUse\)$/m.test(doctor().stdout), 'the real hooks.json is wired');
   writeFileSync(hooks, '{"hooks":{"PreToolUse":[{"matcher":"Edit|Write"}],"SubagentStop":[1],"PostToolUseFailure":[1]}}');

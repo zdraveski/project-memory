@@ -505,12 +505,12 @@ r = spawnSync(process.execPath, [join(home, 'linked-cli', 'memory.mjs'), 'status
 ok(r.stdout.includes(dir), `the CLI run through a symlinked folder still runs (got ${JSON.stringify(r.stdout + r.stderr)})`);
 
 // The plugin's own wiring, hooks/hooks.json: the four hooks, each with its
-// matcher and its flag, run by node from the plugin's folder. PreToolUse has 35 Bash|PowerShell handlers, one per `if` rule.
+// matcher and its flag, run by node from the plugin's folder. PreToolUse has 39 Bash|PowerShell handlers, one per `if` rule.
 const hookFile = JSON.parse(readFileSync(tool('hooks/hooks.json'), 'utf8'));
 const wiring = Object.entries(hookFile.hooks).flatMap(([ev, es]) => es.flatMap((e) => e.hooks.map((x) =>
   `${ev} | ${e.matcher || ''} | ${x.command} ${(x.args || []).join(' ')}`))).sort();
 ok(JSON.stringify(wiring) === JSON.stringify(['PostToolUse | Edit|Write|NotebookEdit | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'PostToolUseFailure | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'PreCompact | auto | node ${CLAUDE_PLUGIN_ROOT}/src/compact-gate.mjs', 'PreCompact | manual | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop',
-  ...Array(35).fill('PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs'), // git (2) + risky commands (33), 1.7.0 step 9
+  ...Array(39).fill('PreToolUse | Bash|PowerShell | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs'), // git (2) + risky commands (37), 1.7.0 step 9
   'PreToolUse | Edit|Write|NotebookEdit|MultiEdit | node ${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs',
   'SessionEnd |  | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs', 'SessionStart | startup|resume|clear|compact | node ${CLAUDE_PLUGIN_ROOT}/src/brief.mjs --print', 'Stop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'StopFailure |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop', 'SubagentStop |  | node ${CLAUDE_PLUGIN_ROOT}/src/memory-tier.mjs --stop',
   'UserPromptSubmit |  | node ${CLAUDE_PLUGIN_ROOT}/src/recall-hook.mjs']),

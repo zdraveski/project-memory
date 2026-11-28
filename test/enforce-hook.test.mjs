@@ -389,9 +389,9 @@ const HEAD = (n, what) => `project-memory: ${n} lesson${n === 1 ? '' : 's'} for 
     writeFileSync(join(copy, 'lessons.mjs'), `const t = performance.now(); while (performance.now() - t < 250);\nexport * from './lessons-real.mjs';\n`);
     q = cp({ 'push.md': ['Check before pushing.', W('push')] }); quiet(via(q.payload('git push'), CMD), 'a load of 250 ms is past the 150 ms'); ok(q.session().length === 0, 'and writes no line'); }
   // hooks.json: the git filters, then one entry per risky command and shell, each as the git ones.
-  const FILTERS = ['npm publish*', 'pnpm publish*', 'yarn publish*', 'cargo publish*', 'gh release *', 'gh pr merge*', 'docker push*', '*deploy*', 'rm -rf *', 'rm -fr *', 'rm -Rf *', 'rm -r -f *', 'terraform apply*', 'terraform destroy*', 'kubectl delete*'];
+  const FILTERS = ['npm publish*', 'pnpm publish*', 'yarn publish*', 'cargo publish*', 'twine upload*', 'gh release *', 'gh pr merge*', 'docker push*', '*deploy*', 'rm -rf *', 'rm -fr *', 'rm -Rf *', 'rm -r -f *', 'terraform apply*', 'terraform destroy*', 'kubectl apply*', 'kubectl delete*'];
   const want = ['Bash(git *)', 'PowerShell(git *)', 'PowerShell(Remove-Item *)', 'Bash(*tools/release.mjs*)', 'PowerShell(*release.mjs*)', ...FILTERS.flatMap((f) => [`Bash(${f})`, `PowerShell(${f})`])].sort().join('\n');
-  ok(pre[0].hooks.length === 35 && pre[0].hooks.map((h) => h.if).sort().join('\n') === want, `the Bash|PowerShell group holds 35 entries: git, ${FILTERS.length} filters in both shells, release.mjs, Remove-Item (got ${pre[0].hooks.length})`);
+  ok(pre[0].hooks.length === 39 && pre[0].hooks.map((h) => h.if).sort().join('\n') === want, `the Bash|PowerShell group holds 39 entries: git, ${FILTERS.length} filters in both shells, release.mjs, Remove-Item (got ${pre[0].hooks.length})`);
   ok(pre[0].hooks.every((h) => h.type === 'command' && h.command === 'node' && h.timeout === 5 && !('onFailure' in h) && !('statusMessage' in h) && h.args.join() === '${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs'), 'every entry is the same command as the git ones');
 }
 
