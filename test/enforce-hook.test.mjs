@@ -316,6 +316,9 @@ const HEAD = (n, what) => `project-memory: ${n} lesson${n === 1 ? '' : 's'} for 
   // Two families: the block names the first with a match; a lesson for both is told once, as the first.
   q = cp({ 'both.md': ['Check twice.', W('push, destroy')], 'des.md': ['Not that.', W('destroy')] });
   r = run(q.payload('git push --force'), CMD); ok(said(r).startsWith(HEAD(2, 'push')) && q.session().length === 2 && q.session().some((x) => x.endsWith('both.md cmd:push')) && q.session().some((x) => x.endsWith('des.md cmd:destroy')), `two families (got ${said(r)} ${JSON.stringify(q.session())})`);
+  // The block is about a family of a lesson it shows: the push lesson was told before, so only the destroy one is, and the header says destroy.
+  q = cp({ 'p.md': ['Check twice.', W('push')], 'des.md': ['Not that.', W('destroy')] }); mkdirSync(sessionsOf(q.store), { recursive: true }); writeFileSync(join(sessionsOf(q.store), 'abcd1234'), sessionLine('lesson', 'p.md cmd:push'));
+  r = run(q.payload('git push --force'), CMD); ok(said(r).startsWith(HEAD(1, 'destroy')) && said(r).includes('des.md') && !said(r).includes('p.md'), `the header names the family of what it shows (got ${said(r)})`);
   // The shared store's lesson is named _shared/<file>.
   q = cp({}); mkdirSync(sharedStore(), { recursive: true }); writeFileSync(join(sharedStore(), 'sh.md'), lessonNote('sh', 'Shared push lesson.', W('push')));
   r = run(q.payload('git push'), CMD); ok(said(r).includes('Shared push lesson. (note: _shared/sh.md)') && q.session()[0].includes('_shared%2Fsh.md cmd:push'), `a shared lesson, named _shared/<file> (got ${said(r)} ${JSON.stringify(q.session())})`);
@@ -360,6 +363,9 @@ const HEAD = (n, what) => `project-memory: ${n} lesson${n === 1 ? '' : 's'} for 
     try { ok(onCommand(q.payload('git push'), ['push']).say === '' && q.session().length === 0, 'a session line that will not write: nothing told, no throw'); } finally { fs.appendFileSync = real; syncBuiltinESMExports(); }
     ok(onCommand(q.payload('git push', { tool_use_id: 'toolu_w' }), ['push']).say.includes('push.md'), 'and told once it writes again');
     q = cp({ 'none.md': ['Unrelated.', W('deploy')] }); ok(onCommand(q.payload('git push'), ['push']).say === '', 'no lesson for the family: nothing, no throw');
+    // A session file that will not read (a folder where it should be, on every OS) may hold a private turn's mark: nothing told, no throw.
+    q = cp({ 'push.md': ['Check before pushing.', W('push')] }); mkdirSync(join(sessionsOf(q.store), 'abcd1234'), { recursive: true });
+    ok(onCommand(q.payload('git push'), ['push']).say === '' && fs.readdirSync(sessionsOf(q.store)).join() === 'abcd1234', 'a session file that will not read: nothing told, no marker, no throw');
     if (was === undefined) delete process.env.PROJECT_MEMORY_LESSONS; else process.env.PROJECT_MEMORY_LESSONS = was; }
   // The marker's name is the tool id cleaned and cut; a call with no id leaves none; the sweep of old session files removes it.
   q = cp({ 'push.md': ['Check before pushing.', W('push')] }); run(q.payload('git push', { tool_use_id: '../zz' }), CMD); ok(existsSync(marker('zz')), 'the tool id is cleaned in the marker name');
@@ -383,9 +389,9 @@ const HEAD = (n, what) => `project-memory: ${n} lesson${n === 1 ? '' : 's'} for 
     writeFileSync(join(copy, 'lessons.mjs'), `const t = performance.now(); while (performance.now() - t < 250);\nexport * from './lessons-real.mjs';\n`);
     q = cp({ 'push.md': ['Check before pushing.', W('push')] }); quiet(via(q.payload('git push'), CMD), 'a load of 250 ms is past the 150 ms'); ok(q.session().length === 0, 'and writes no line'); }
   // hooks.json: the git filters, then one entry per risky command and shell, each as the git ones.
-  const FILTERS = ['npm publish*', 'pnpm publish*', 'yarn publish*', 'cargo publish*', 'gh release *', '*tools/release.mjs*', 'gh pr merge*', 'docker push*', '*deploy*', 'rm -rf *', 'terraform apply*', 'terraform destroy*', 'kubectl delete*'];
-  const want = ['Bash(git *)', 'PowerShell(git *)', 'PowerShell(Remove-Item *)', ...FILTERS.flatMap((f) => [`Bash(${f})`, `PowerShell(${f})`])].sort().join('\n');
-  ok(pre[0].hooks.length === 29 && pre[0].hooks.map((h) => h.if).sort().join('\n') === want, `the Bash|PowerShell group holds 29 entries: git, ${FILTERS.length} filters in both shells, Remove-Item (got ${pre[0].hooks.length})`);
+  const FILTERS = ['npm publish*', 'pnpm publish*', 'yarn publish*', 'cargo publish*', 'gh release *', 'gh pr merge*', 'docker push*', '*deploy*', 'rm -rf *', 'rm -fr *', 'rm -Rf *', 'rm -r -f *', 'terraform apply*', 'terraform destroy*', 'kubectl delete*'];
+  const want = ['Bash(git *)', 'PowerShell(git *)', 'PowerShell(Remove-Item *)', 'Bash(*tools/release.mjs*)', 'PowerShell(*release.mjs*)', ...FILTERS.flatMap((f) => [`Bash(${f})`, `PowerShell(${f})`])].sort().join('\n');
+  ok(pre[0].hooks.length === 35 && pre[0].hooks.map((h) => h.if).sort().join('\n') === want, `the Bash|PowerShell group holds 35 entries: git, ${FILTERS.length} filters in both shells, release.mjs, Remove-Item (got ${pre[0].hooks.length})`);
   ok(pre[0].hooks.every((h) => h.type === 'command' && h.command === 'node' && h.timeout === 5 && !('onFailure' in h) && !('statusMessage' in h) && h.args.join() === '${CLAUDE_PLUGIN_ROOT}/src/enforce-hook.mjs'), 'every entry is the same command as the git ones');
 }
 

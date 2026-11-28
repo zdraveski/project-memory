@@ -221,7 +221,7 @@ export function onCommand(input, families, { dry = false, now = Date.now(), dead
   const told = lines.slice(lines.findLastIndex((l) => l.kind === 'compact') + 1).filter((l) => l.kind === 'lesson' && l.by === by);
   const seen = new Set(told.map((l) => parseLesson(l.rest)?.name)), room = Math.min(EDIT_SHOW, EDIT_CAP - told.length);
   const ordered = order([...first.values()].filter((x) => !seen.has(x.lesson.name)), readCounters(store), now), shown = ordered.slice(0, Math.max(0, room));
-  const say = blockText(shown, [...first.values()][0].family, 'cmd', ordered.length - shown.length, now);
+  const say = blockText(shown, families.find((f) => shown.some((x) => x.family === f)), 'cmd', ordered.length - shown.length, now);
   if (!say) return none;
   if (!dry) try {
     mkdirSync(dirname(at), { recursive: true, mode: 0o700 });

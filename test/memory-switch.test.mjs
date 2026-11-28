@@ -237,7 +237,7 @@ tier();
   // status: per rule note, the hits of the last 30 days from the live log (main and sub-agent), bad rules with their reason.
   rmSync(join(pm, 'plain.md'));
   writeFileSync(join(pm, 'quiet-rule.md'), rule.replace('Stage files by name', 'Quiet'));
-  const logLine = (note, d, agent = '') => JSON.stringify({ t: at(d), note, s: 'sess1234', agent, id: 'tu' }) + '\n';
+  const logLine = (note, d, agent = '') => JSON.stringify({ t: at(d), note, s: 'sess1234', agent, id: `tu${d}${agent}` }) + '\n';
   writeFileSync(join(pm, '.enforce-log'), logLine('stage-by-name.md', 1) + logLine('stage-by-name.md', 3) + logLine('stage-by-name.md', 2, 'Explore') + logLine('stage-by-name.md', 40) + 'garbage\n' + logLine('gone.md', 1));
   r = await run(['enforce', 'status', '--store', pm]);
   const st = r.stdout.trim().split('\n');
