@@ -48,6 +48,8 @@ This page says what it reads, what it saves, and how to remove it.
 
 The git-rule watcher (a PreToolUse hook) reads the notes that hold an `enforce:` rule, the first bytes of the conversation's record to find its store, and the git command about to run, to compare it with the rules. It sends nothing anywhere.
 
+The command `memory lessons replay` is run by hand. It reads the journal of this project's last 31 days (`--days`; every project's with `--all`) and the lesson notes, and prints, for each lesson trigger, how many times it would have fired and how many corrections it would have missed. It leaves out private and forgotten exchanges and conversations marked private. It prints no journal text unless you add `--show`, which prints each firing's request clipped to 120 characters, secrets replaced, to your terminal only. It writes one numbers-only line to `.replay-history` and nothing else. `memory lessons` prints the lessons' counters and saves nothing.
+
 The command `memory enforce replay <note>` is run by hand. It reads the git commands Claude ran through Bash or PowerShell in this project's conversation records of the last 30 days (every project's with `--all`) and prints the ones that match the note's rule to your terminal, each clipped to 160 characters with secrets replaced. It skips private conversations and projects with memory off, and saves nothing.
 
 Pointers to earlier exchanges are off by default: unless `PROJECT_MEMORY_RECALL` is `1`, neither hook below reads the journal, and they only keep the session file and the other-session lines.
@@ -68,6 +70,7 @@ All of it stays in `~/.claude/projects` on your computer:
 - `.sessions/<project folder>/<conversation tag>`, one small file per conversation: the full path of each file it changed (lower case on Windows and macOS) the keys of the earlier exchanges it was told about, a line for each compaction, each message you sent (an `asked` line: secrets replaced, cut to 120 characters) or a `quiet` line for a private one, the title you gave the conversation (a `title` line, secrets replaced, cut to 80 characters), a `saw` line with another session's tag (and a file path) once Claude was told about it, an `end` line with the reason when the conversation ended, each with the time (and a helper's id when a helper wrote it). No other text of a conversation. Over 64 KB it is rewritten with the newest line of each kind and file. Nothing is written for a private conversation or turn, or while memory is off. Each reply's save deletes those older than 7 days; `forget` and `memory off` delete the project's, `rescan --apply --yes` every project's, and `incognito` (or a `<private-session>` mark) the conversation's.
 - The journal page, `project-memory/journal.html` in `~/.claude`, only when you run `memory page`: the journal text of the days you asked for, secrets already replaced, private turns without text, helper entries and switched-off projects left out. Only you can read it, and it loads nothing from the network.
 - `.mistakes.json` in a project's `memory` folder, built once a day by the Stop's background tidy-up from the last 90 days of that project's journal (never a private or forgotten exchange): each command that failed, cut to what names it (`npm test`, `git push`), the error line of its output (numbers, hashes, times and temp paths folded, secrets replaced, 120 characters), the command that fixed it, the key of the exchange, and counts; and pairs of files that changed together (at most 500 errors and 200 pairs). Only you can read it (mode 0600). A one-line file beside it, `.mistakes.json.tried`, holds the date of the last try, so a build that fails is not tried again that day. Nothing is written while memory is off.
+- `.replay-history` in a project's `memory` folder, written only when you run `memory lessons replay`: one line a run with the time, the number of days and exchanges, and for each trigger how many times it would have fired and how many of those were followed by a correction. Numbers only: no name, request, file or command. Only you can read it (mode 0600); it is cut to its newer half at 64 KB.
 - `.enforce-log` and `.enforce.json` in a store: which note's rule a git command matched (note name, session tag, sub-agent type, tool-call id; never the command) and a cache of the rules and of each lesson note (its clipped name and description, 120 and 300 characters, and the paths and words it is tagged with). Nothing is written for a private conversation or while memory is off.
 - A record of where you left off (`handoff.md`): the start of your latest
   messages (up to 500 characters each) and of Claude's replies (up to 900),
@@ -340,6 +343,7 @@ report is not saved to the journal again.
 
 - The session files (`.sessions`): 7 days after their last change.
 - The mistakes cache (`.mistakes.json`): rebuilt once a day from the journal, so it holds nothing the journal no longer does; `forget`, `incognito`, `memory off` and `rescan --apply --yes` delete it (and a temporary copy a killed build left).
+- The replay history (`.replay-history`): counts only, so nothing in it can come from a forgotten exchange; it is cut to its newer half at 64 KB, and goes with the memory folder.
 - The journal page: until you delete it, or until `forget`, `incognito`,
   `memory off` or `rescan --apply` deletes it.
 - The hook times (`.timing`): the newest part of 256 KB, a few days of use. Deleting the file loses nothing but the times.
@@ -388,7 +392,7 @@ Uninstalling the plugin leaves all of this in place. To delete:
   `.snapshot-health`, `.memory-off`, any `.handoff-failed-…` or
   `.journal-failed-…` file and the folder `.nudge`; in each project's
   `memory` folder, `.tiered`, `.facts`, `.health`, `.private-sessions`,
-  `.mistakes.json`, `.off-periods`, `.moved-said` (the names of another folder's notes the startup line told you of), `.enforce-log`, `.enforce.json` and `.project-off` (the marker; delete it to turn that project on);
+  `.mistakes.json`, `.replay-history`, `.off-periods`, `.moved-said` (the names of another folder's notes the startup line told you of), `.enforce-log`, `.enforce.json` and `.project-off` (the marker; delete it to turn that project on);
   and in the shared notebook's (`_shared/memory`), `.tiered`, `.facts` and
   `.health`. Delete `.memory-off`, `.private-sessions` and `.off-periods` only
   once project-memory is removed for good: they list the conversations it

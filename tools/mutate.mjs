@@ -36,6 +36,7 @@ import snapshot from './mutants/snapshot.mjs';
 import runRecords from './mutants/run-records.mjs';
 import correction from './mutants/correction.mjs';
 import notesHealth from './mutants/notes-health.mjs';
+import replay from './mutants/replay.mjs';
 
 // Every file a suite may import, copied beside the mutant.
 // pluginFiles() holds agents/recall.md, which journal.test.mjs reads (1.6.0): without it every --mutant run of that suite failed unmutated.
@@ -73,6 +74,7 @@ export const suites = {
   'src/snapshot.mjs': [['test/snapshot.test.mjs', 'test/memory-tier.test.mjs', 'test/store.test.mjs', 'test/enforce-hook.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-cli.test.mjs', 'test/memory-switch.test.mjs', 'test/handoff-log.test.mjs'], snapshot],
   'src/correction.mjs': ['test/correction.test.mjs', correction],
   'src/notes-health.mjs': [['test/notes-health.test.mjs', 'test/memory-doctor.test.mjs'], notesHealth],
+  'src/replay.mjs': ['test/replay.test.mjs', replay],
   'src/run-records.mjs': [['test/run-records.test.mjs', 'test/handoff-log.test.mjs', 'test/journal.test.mjs', 'test/memory-tier.test.mjs', 'test/memory-cli.test.mjs', 'test/memory-doctor.test.mjs', 'test/memory-switch.test.mjs'], runRecords],
 };
 // The file that holds a group's mutants: a --changed list naming it asks for that group alone.
