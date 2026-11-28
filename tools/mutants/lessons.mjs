@@ -60,7 +60,7 @@ export default {
   "atStop: a turn the journal called quiet judged": [" || seen.quiet", ""],
   "atStop: a private request judged": [" || PRIVATE.test(userText(turn))", ""],
   "atStop: judged with every lesson trigger off": ["!['edit', 'command', 'cochange'].some((t) => lessonsOn(t)) || ", ""],
-  "atStop: a quiet project or conversation judged": ["if (why) return none;\n    const at = join(sessionsOf(store), s)", "const at = join(sessionsOf(store), s)"],
+  "atStop: a quiet project or conversation judged": ["if (why) return none;\n    const at = join(sessionsOf(store), s), lines = readSession(at), prompt", "const at = join(sessionsOf(store), s), lines = readSession(at), prompt"],
   "atStop: a private prompt line does not stop it": ["if (lines[a]?.kind === 'quiet') return none;", ""],
   "atStop: a turn judged twice": ["Math.max(a, j) + 1", "a + 1"],
   "atStop: a helper's lesson line judged": ["l.kind === 'lesson' && !l.by", "l.kind === 'lesson'"],
