@@ -42,6 +42,8 @@ you quote or rely on a detail. A hit's date is its last change. `no note or entr
 holds: <words>` names words nothing holds; other words, a file's or a tool's
 name, or `--all` may find it.
 
+`status` and `doctor` also print coded lines about the notes. `N01` to `N11`: a gone index line, a note in no index, two notes with alike descriptions, clashing file names (`N04`) or no front matter (`N05`; both PROBLEM, the only ones that fail `doctor`), a `[[link]]` to no note, a lesson key that is not read, an unknown `resolves:` id, feedback notes that can never fire (`status --all` names them), a lesson not shown, `MEMORY.md` over its budget. `S01` and `S02`: a note names a path that changed in 3 or more commits since the note, or is gone. Each line says its fix; do it for the user only when they ask.
+
 Read a file of this skill's folder when its subject comes up:
 
 - [search.md](search.md): every search, show, history and page option, and the CLI's options (`--store`, `--shared`, `--`).

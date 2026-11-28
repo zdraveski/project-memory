@@ -748,7 +748,7 @@ lemur lemur lemur lemur
   // A journal.mjs that will not load costs search the journal, said, never the rest of the CLI.
   const nj = join(home, 'cli-nojournal');
   mkdirSync(nj, { recursive: true });
-  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
+  for (const f of ['memory.mjs', 'recall.mjs', 'sessions.mjs', 'page.mjs', 'store.mjs', 'secrets.mjs', 'timing.mjs', 'handoff-log.mjs', 'text.mjs', 'privacy.mjs', 'transcript.mjs', 'snapshot.mjs', 'run-records.mjs', 'enforce.mjs', 'compact-gate.mjs', 'notes-health.mjs', 'lessons.mjs']) writeFileSync(join(nj, f), readFileSync(tool(`src/${f}`)));
   writeFileSync(join(nj, 'journal.mjs'), 'this is not javascript (');
   const njs = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'status', '--store', jd], { env, encoding: 'utf8' });
   r = spawnSync(process.execPath, [join(nj, 'memory.mjs'), 'search', 'deploy', '--store', jd], { env, encoding: 'utf8' });
@@ -1717,6 +1717,8 @@ After the log: narwhalqq stays.
   rmSync(join(live, '.deployed.json'), { force: true });
   writeFileSync(join(root, '.snapshot-health'), JSON.stringify({ lastOk: new Date().toISOString(), failures: 0 }));
   ranLog({ at: ago(60_000), s: 'aaaaaaaa', from: 'C:/x' });
+  // The restore round left locked.md with no front matter, which doctor now says (N05, a PROBLEM): give it one.
+  writeFileSync(join(dir, 'locked.md'), '---\nname: locked\ndescription: a note the restore round locked\ntype: project\n---\nv2\n');
   r = await cli('doctor');
   ok(r.status === 0 && !/^PROBLEM/m.test(r.stdout) && /^ok +installed as project-memory@project-memory$/m.test(r.stdout) && /^ok +git on PATH$/m.test(r.stdout) && !/locks a killed hook left/.test(r.stdout), `a healthy doctor says ok and exits 0 (got ${r.stdout})`);
   ok(/^ok +compaction window 1000k of the model's 1000k: Claude Code compacts at 967k, the memory reminder comes at 850k$/m.test(r.stdout), `doctor names the compaction and model windows (got ${r.stdout})`);
@@ -2047,6 +2049,28 @@ After the log: narwhalqq stays.
   writeFileSync(join(dir, 'moved-note.md'), 'x');
   ok(!/D--elsewhere-mem-cli/.test((await cli('doctor')).stdout), 'no warning when this folder has every note the other has');
   rmSync(join(dir, 'moved-note.md')); rmSync(join(root, 'D--elsewhere-mem-cli'), { recursive: true }); rmSync(join(root, 'D--elsewhere-mem-other'), { recursive: true });
+}
+
+// 1.7.0 step 3: the notes' structure checks show in doctor and status; only a PROBLEM changes doctor's exit.
+{
+  const hs = join(root, 'C--health-cli', 'memory');
+  mkdirSync(hs, { recursive: true });
+  writeFileSync(join(hs, 'MEMORY.md'), '- [good](good.md) — fine\n');
+  writeFileSync(join(hs, 'good.md'), '---\nname: good\ndescription: a note that is fine\ntype: project\n---\n\nx\n');
+  const go = (...a) => run([...a, '--store', hs]);
+  const clean = await go('doctor');
+  ok(!/ N\d\d /.test(clean.stdout), `a clean store has no N line (got ${clean.stdout.slice(0, 400)})`);
+  writeFileSync(join(hs, 'loose.md'), '---\nname: loose\ndescription: a loose note here\ntype: project\n---\n\nx\n');
+  const n2 = await go('doctor'), line2 = 'note    N02 loose.md is in neither MEMORY.md nor MEMORY-archive.md: add a line for it, or let the next Stop do it';
+  ok(n2.stdout.split('\n').includes(line2) && n2.status === clean.status, `an N02 line alone keeps the exit (${clean.status} then ${n2.status})`);
+  ok((await go('status')).stdout.split('\n').includes(`  ${line2}`), 'status prints the same line');
+  writeFileSync(join(hs, 'MEMORY.md'), '- [good](good.md) — fine\n- [loose](loose.md) — x\n- [plain](plain.md) — x\n');
+  writeFileSync(join(hs, 'plain.md'), 'no front matter\n');
+  const n5 = await go('doctor'), line5 = 'PROBLEM N05 plain.md has no front matter, or it is never closed: start the file with --- and end the header with ---';
+  ok(n5.stdout.split('\n').includes(line5), `doctor prints an N05 line (got ${n5.stdout.slice(0, 600)})`);
+  ok(n5.status !== 0, `doctor exits non-zero for N05 (clean ${clean.status}, N05 ${n5.status})`);
+  ok((await go('status')).stdout.split('\n').includes(`  ${line5}`), 'status prints the N05 line too');
+  rmSync(join(root, 'C--health-cli'), { recursive: true });
 }
 
 console.log(`memory-doctor: ${checks} checks passed`);

@@ -49,12 +49,13 @@ import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, dropMistakes, claimPage } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, dropMistakes, claimPage, repoRoot } from './store.mjs';
 import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, stopRuns, deployed, deployedCommit, edited, DEPLOYED, moved, movedText } from './run-records.mjs';
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, verdict, isOurs, versionsOf, changedLately, dropDays, daysHolding, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
 import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
 import { pageHtml, addDays } from './page.mjs';
 import { ruleOf, hits, commandsOf, tally } from './enforce.mjs';
+import { health as notesHealth, linksOf } from './notes-health.mjs';
 import { read as readTimes, stats, FILE as TIMING } from './timing.mjs';
 import { WINDOW, MODEL_WINDOW, TRIGGER, COMPACTS_AT, compactOff } from './compact-gate.mjs';
 import { clip } from './text.mjs';
@@ -213,17 +214,7 @@ export function memories(dir) {
       file, path, dir, name, desc, type, superseded,
       // No newline after the closing --- (indexOf gives -1): the body is empty, not the whole file.
       body: end === -1 ? text : text.slice(text.indexOf('\n', end + 1) + 1 || text.length),
-      // Not in code (`grid[[0]]`, a fenced block: its fences start a line, an
-      // inline ``` in prose hid the links up to the next fence; ```` holds a
-      // ``` fence and only ```` closes it), and `[[name.md]]` is name's. A
-      // tilde run is taken whole: giving tildes back, 20,000 of them took
-      // 17 s (review). One never closed hides nothing: run to the end, a
-      // fence the regex misread hid the rest of the note.
-      // A fence starts after a newline: ^ starts a line at a lone \r or a
-      // U+2028 too, and lines of ~~~ split by them took 3 s per 100 KB.
-      // shortcut: unclosed fences of many lengths each rescan the rest (0.2 s
-      // for a hostile 300 KB note), upgrade to a line scanner if notes get that big.
-      links: [...new Set([...text.replace(/(?<![^\n])[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*(`{3,}|~{3,}(?!~))[^`\n]*\n[\s\S]*?^[ \t]*(?:(?:>|[*+-]|\d+[.)])[ \t]*)*\1/gm, '').replace(/`[^`\n]*`/g, '').matchAll(/\[\[([^\]|#]+)/g)].map((m) => m[1].trim().replace(/\.md$/i, '')))],
+      links: linksOf(text),
       modified: Number.isNaN(stamp) ? mtime : stamp,
       where: hot.has(file) ? 'hot' : cold.has(file) ? 'archived' : 'unindexed',
     }];
@@ -335,7 +326,7 @@ export function handoffBig(dir) {
   let n = 0; try { n = statSync(join(dir, 'handoff.md')).size; } catch { return null; }
   return n > HANDOFF_WARN ? `handoff.md is ${Math.round(n / 1024)} KB (over ${HANDOFF_WARN / 1024} KB). To trim it: delete the finished topics from the part you wrote by hand, above the automatic log; the journal keeps every exchange, so nothing is lost from search` : null;
 }
-export function status(dir, sharedNames = []) {
+export function status(dir, sharedNames = [], showAll = false) {
   const ms = memories(dir), main = readText(join(dir, 'MEMORY.md'));
   const lines = [`${dir}${isShared(dir) ? '  (shared by every project)' : ''}`];
   const gone = isOff(dir);
@@ -375,6 +366,8 @@ export function status(dir, sharedNames = []) {
   lines.push(...(j?.unread ?? []).map((u) => `  journal: could not read ${u}`));
   const ch = recent(dir);
   if (ch) lines.push(`  changed in the last ${RECENT_DAYS} days: ${ch}`);
+  // The notes' structure (N01-N11) and stale notes (S01, S02): the shared store's notes name no project's paths, so it has no stale check.
+  for (const l of notesHealth(dir, isShared(dir) ? undefined : repoRoot(process.cwd()), { shared: sharedNames, all: showAll })) lines.push(`  ${l}`); // a loop: a spread of 300,000 lines overflows the stack
   return lines;
 }
 
@@ -771,6 +764,8 @@ export function doctor(site = sessionStore()) {
   }
   for (const m of moved(site)) say('note', movedText(site, m));
   for (const t of timingLines()) say('note', t);
+  // The notes' structure and stale notes, as status shows them: a PROBLEM line is the only one that changes the exit.
+  for (const l of notesHealth(site, repoRoot(process.cwd()), { shared: names(memories(sharedStore())) })) { lines.push(l); if (l.startsWith('PROBLEM')) bad++; }
   const stale = allStores().map((d) => join(d, '.lock')).filter((l) => { try { return staleLock(l); } catch { return false; } });
   if (stale.length) say(true, `locks a killed hook left, taken over at the next write: ${stale.join(', ')}`);
   // No git is a setup the README allows: everything works but the history.
@@ -1184,7 +1179,7 @@ export function main(given) {
   else if (cmd === 'status') {
     const sharedNames = names(memories(sharedStore()));
     const am = autoMemory();
-    r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames)), verdict().say] };
+    r = { ok: true, lines: [...(am.off ? [`auto memory is off (${am.why}): nothing is saved or briefed`] : []), ...scope.flatMap((d) => status(d, sharedNames, rest.includes('--all'))), verdict().say] };
   } else if (cmd === 'history' && file) r = history(scope, file, rest.includes('--all'), n > 0 ? n : undefined, failed);
   else if (cmd === 'restore' && file) r = restore(here, named(here, file), { rev: opt('--rev'), force: rest.includes('--force') });
   else if (cmd === 'promote' && file) r = promote(here, onDisk(here, file), { force: rest.includes('--force') });
