@@ -457,6 +457,8 @@ export function turns(tail, { sidechain = false } = {}) {
       else if (pending.ended && ((r.type === 'attachment' && r.attachment?.type === 'queued_command') || r.isCompactSummary
         || (r.type === 'user' && /^\s*<task-notification>|<agent-message[\s>]/.test(unwrap(t))))) { pending.frozen = false; pending.reopened = true; }
     }
+    // Whether the turn's last reply ended it (the Stop's co-change check, lessons.mjs): the newest assistant record that has a stop reason says.
+    if (r.type === 'assistant' && pending && !pending.frozen && r.message?.stop_reason) pending.ended = r.message.stop_reason === 'end_turn';
     // The nudge as hook feedback: an attachment record, not a user one. Its
     // answer is the memory update, not this turn's.
     if (r.type === 'attachment' && /^hook_(?:additional_context|blocking_error)$/.test(r.attachment?.type ?? '')

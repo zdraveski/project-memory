@@ -793,11 +793,12 @@ const { turns, readTail, promptBefore, chunk, past, records } = await import('..
 }
 
 // turns(): each fixture, behind a line the tail cut through, a type nothing reads, a line that is no JSON, and a last line cut.
-const flat = (t) => ({ ...t, edits: [...t.edits] });
-const shape = (all) => ({ turns: [...all].map(flat), open: all.open ? flat(all.open) : null, opened: all.opened.map((t) => t.id), hush: all.hush ?? false });
+// `ended` (added after the golden was captured) is checked by its own block at the end.
+const flat = (t, keep) => ({ ...t, edits: [...t.edits], ...(keep ? {} : { ended: undefined }) });
+const shape = (all, keep) => ({ turns: [...all].map((t) => flat(t, keep)), open: all.open ? flat(all.open, keep) : null, opened: all.opened.map((t) => t.id), hush: all.hush ?? false });
 for (const [name, recs] of Object.entries(FIXTURES)) {
   const text = `cut mid line"}\n${NOISE[0]}\n${NOISE[1]}\n${jsonl(recs)}${NOISE[2]}\n`;
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(shape(turns(text)))), EXPECTED[name], `the turns of the ${name} fixture`);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(shape(turns(text), name === 'nudge'))), EXPECTED[name], `the turns of the ${name} fixture`);
   checks++;
 }
 
@@ -915,6 +916,15 @@ for (const [name, recs] of Object.entries(FIXTURES)) {
   ok(t.ran.length === N - 1 && !t.ran.includes('echo 5') && t.ran.includes('echo 6') && t.ran.filter((c) => c === 'npm test').length === 2 && t.ran.every((c) => !c.includes('failed')),
     `refused call gone, an earlier try's failure dropped once a later one of the same command had a result (got ${t.ran.length}; ${t.ran.filter((c) => /npm/.test(c))})`);
   ok(ms < 1500, `20000 calls in one turn read in ${Math.round(ms)} ms`);
+}
+
+// 1.7.0 step 13: `ended` says whether the newest stop reason of the turn is end_turn (the Stop's co-change check reads it).
+{
+  const text = (...rs) => rs.map((r) => JSON.stringify(r)).join('\n') + '\n', endedOf = (...rs) => { const all = turns(text(...rs)); return (all.at(-1) ?? all.open)?.ended; };
+  ok(endedOf(u('go'), a('done')) === true, 'a turn whose reply ended with end_turn has ended: true');
+  ok(endedOf(u('go'), a([use('t1', 'Bash', { command: 'ls' })], 'tool_use')) === false, 'a turn whose last record is a tool call has ended: false');
+  ok(endedOf(u('go'), a('done'), a([use('t2', 'Bash', { command: 'ls' })], 'tool_use')) === false, 'a later tool call takes it back');
+  ok(endedOf(u('go'), a('done'), queued('<private></private>'), a([use('t3', 'Bash', { command: 'ls' })], 'tool_use')) === true, 'a frozen turn keeps what it had');
 }
 
 rmSync(home, { recursive: true, force: true });
