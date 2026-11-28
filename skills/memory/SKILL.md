@@ -46,7 +46,7 @@ name, or `--all` may find it.
 
 `lessons` lists the lesson notes with how often each was shown, followed and broken. `lessons replay` shows what each
 lesson trigger would have done over the journal's last 31 days (`--days N`; `--all` every project, `--except <folder>` leaves one out),
-knowing only what existed before each exchange: counts, probable hits and misses, never proof that a lesson worked (under 20 corrections it says "No correction signal" in place of a share or a miss count). It prints no
+knowing only what existed before each exchange: counts, probable hits (from corrections and from failures that follow) and misses, never proof that a lesson worked (under 20 corrections it says "No correction signal" in place of a share or a miss count). It prints no
 journal text unless the user asks for `--show`, and writes only one line of numbers to `.replay-history`.
 
 Read a file of this skill's folder when its subject comes up:

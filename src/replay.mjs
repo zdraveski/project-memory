@@ -11,9 +11,9 @@ import { notesOf, familyOf } from './enforce.mjs';
 import { matchPath, matchFamily, order, wilson, readCounters } from './lessons.mjs';
 import { mistakes, recurring, claimed, cochangeFor, failuresOf, targetOf, readMistakes } from './mistakes.mjs';
 import { correction } from './correction.mjs';
-import { cleanPath, isHelper } from './recall.mjs';
+import { cleanPath, isHelper, changedFile } from './recall.mjs';
 
-const FAILED = ' → failed: ', NEXT = 20, ENOUGH = 20;
+const FAILED = ' → failed: ', NEXT = 20, ENOUGH = 20, NO_FAIL_SIGNAL = new Set(['stuck', 'claim']);
 // Ordering by shown/followed/broken would use today's counts for an exchange of last month: the order is by specificity and name alone.
 // (A lesson retired today is still left out: the plan counts it among those that existed, not those that could fire.)
 const NO_COUNTERS = { v: 1, notes: {}, errors: {} };
@@ -146,6 +146,20 @@ function walk(es, lessons) {
     f.hit = false;
     for (let j = f.i + 1; j < es.length && j <= f.i + NEXT && day(es[j]) === day(es[f.i]); j++) if (isCorr(j) && shares(f, es[j])) { f.hit = true; break; }
   }
+  // A failure hit: in the next 20 entries of its own conversation (other conversations' entries are skipped, not counted), a failed command of
+  // the firing's target or family, or any failed command with a change of its file. The journal records failures; it holds no corrections.
+  const fails = [], failsAt = (j) => (fails[j] ??= failuresOf(es[j]));
+  for (const f of fired) {
+    f.failHit = false;
+    if (NO_FAIL_SIGNAL.has(f.trigger)) continue;   // these two fire because their own target just failed: a retry failing again would count itself
+    for (let j = f.i + 1, seen = 0; j < es.length && seen < NEXT; j++) {
+      if (es[j].s !== es[f.i].s) continue;
+      seen++;
+      const fl = failsAt(j), on = fl.find((x) => f.targets.includes(x.target) || f.families.some((fam) => familyOf(x.cmd).includes(fam)))?.target
+        ?? (fl.length ? f.files.find((p) => changedFile(es[j], p)) : undefined);
+      if (on) { f.failHit = true; f.failOn = on; break; }
+    }
+  }
   // A miss: a correction with no firing of the trigger in the 20 exchanges before it that day (the nudge fires on the correction itself).
   const miss = Object.fromEntries(LINES.map(([k]) => [k, { none: 0, nomatch: 0, filtered: 0 }]));
   es.forEach((e, j) => {
@@ -178,7 +192,7 @@ export function replayRun(stores, { days, now, show = false, recent }) {
   }
   const everything = read.flatMap((r) => r.es).sort(byAt), active = new Set(everything.map((e) => e.at.slice(0, 10)));
   const zero = (v) => Object.fromEntries(LINES.map(([k]) => [k, v]));
-  if (!everything.length) return { lines: [...cant, `Replayed 0 exchanges over ${days} days (${days} days had no journal). Nothing to replay.`], history: { at: local(now), days, exchanges: 0, firings: zero(0), hits: zero(0) } };
+  if (!everything.length) return { lines: [...cant, `Replayed 0 exchanges over ${days} days (${days} days had no journal). Nothing to replay.`], history: { at: local(now), days, exchanges: 0, firings: zero(0), hits: zero(0), failHits: zero(0) } };
 
   // The lessons: each project store's own, and the shared store's once. A retired one existed and cannot fire.
   const sharedDir = sharedStore(), isShared = (d) => foldCase(d) === foldCase(sharedDir), shared = lessonsIn(sharedDir, '_shared/', everything);
@@ -199,18 +213,19 @@ export function replayRun(stores, { days, now, show = false, recent }) {
   const live = [...seen.values()].filter((v) => !v.off), plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
   const lines = [...cant, `Replayed ${everything.length} exchanges over ${days} days (${days - active.size} days had no journal). ${plural(seen.size, 'lesson')} existed at some point; ${live.length} could fire. ${live.filter((v) => v.x.byFile).length} dated by file time.`];
   for (const [k, name] of LINES) {
-    const fs = total[k].fire, n = fs.length, h = fs.filter((f) => f.hit).length, m = total[k].miss;
+    const fs = total[k].fire, n = fs.length, h = fs.filter((f) => f.hit).length, fh = fs.filter((f) => f.failHit).length, m = total[k].miss;
     const mid = num(median([...active].map((d) => fs.filter((f) => f.e.at.startsWith(d)).length))), count = plural(n, 'firing');
     lines.push(k === 'nudge'
       ? `${name}: ${count} in ${prompts} prompts, median ${mid} on an active day. ${ratio('Rate', n, prompts, n)} (No interrupt markers in the journal.)`
-      : `${name}: ${count}, ${num(n / days)} a day, median ${mid} on an active day. Probable hits ${h}, unclear ${n - h}. ${corrections < ENOUGH ? `No correction signal (${corrections} in ${prompts} prompts).` : `${ratio('Share', h, n, n)} Misses ${m.none + m.nomatch + m.filtered}: no lesson ${m.none}, no match ${m.nomatch}, filtered ${m.filtered}.`}${k === 'stuck' ? ' Lower bound (an exact re-run hides its earlier failure).' : ''}`);
+      : `${name}: ${count}, ${num(n / days)} a day, median ${mid} on an active day. Probable hits ${h}, unclear ${n - h}. ${NO_FAIL_SIGNAL.has(k) ? 'Failure hits: no signal for this trigger.' : !n ? 'Failure hits: no firings.' : `Failure hits ${fh} of ${n}, ${n < ENOUGH ? 'cannot claim, n too small' : `95% interval ${wilson(fh, n).map(pc).join('-')}%`}.`} ${corrections < ENOUGH ? `No correction signal (${corrections} in ${prompts} prompts).` : `${ratio('Share', h, n, n)} Misses ${m.none + m.nomatch + m.filtered}: no lesson ${m.none}, no match ${m.nomatch}, filtered ${m.filtered}.`}${k === 'stuck' ? ' Lower bound (an exact re-run hides its earlier failure).' : ''}`);
   }
   lines.push(`L17 scan: hides ${counted.hidden} of ${counted.notes} notes.`);
   // What was asked, said back for the maintainer to read: on this PC only, through memory.mjs's redact like every listing.
-  if (show) for (const f of LINES.flatMap(([k]) => total[k].fire).sort((a, b) => byAt(a.e, b.e))) lines.push(`${f.e.at} [${f.e.key}] ${f.trigger} ${f.ref}: ${clip(f.e.asked, 120)} => ${clip(f.said, 200)}`);
+  if (show) for (const f of LINES.flatMap(([k]) => total[k].fire).sort((a, b) => byAt(a.e, b.e))) lines.push(`${f.e.at} [${f.e.key}] ${f.trigger} ${f.ref}: ${clip(f.e.asked, 120)} => ${clip(f.said, 200)}${f.failHit ? ` (failure hit: ${f.failOn})` : ''}`);
   lines.push('Upper bound: a match is not proof that the lesson changes anything.');
   return { lines, history: { at: local(now), days, exchanges: everything.length,
-    firings: Object.fromEntries(LINES.map(([k]) => [k, total[k].fire.length])), hits: Object.fromEntries(LINES.map(([k]) => [k, total[k].fire.filter((f) => f.hit).length])) } };
+    firings: Object.fromEntries(LINES.map(([k]) => [k, total[k].fire.length])), hits: Object.fromEntries(LINES.map(([k]) => [k, total[k].fire.filter((f) => f.hit).length])),
+    failHits: Object.fromEntries(LINES.map(([k]) => [k, total[k].fire.filter((f) => f.failHit).length])) } };
 }
 
 // `memory lessons`: one line a lesson (retired ones too) with its counters, then the recurring errors past their 3 startups, then the
