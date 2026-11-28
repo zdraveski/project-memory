@@ -670,5 +670,64 @@ rmSync(join(root, '.stop-ran'), { force: true });
   ok(r.status === 1 && r.stdout.includes('could not delete the mistakes cache: EBUSY: resource busy; it still holds journal text') && existsSync(cache(mine)), `a cache that will not go is said, exit 1 (got ${r.status} ${r.stdout})`);
   rmSync(cache(mine)); rmSync(cache(other), { force: true });
 }
+// 1.7.0 step 6: memory lessons lists the lessons with their counters; memory lessons replay reads the journal and writes only its numbers-only history line.
+{
+  const { render } = await import('../src/journal.mjs'), { storeOf } = await import('../src/store.mjs');
+  const day = (n) => { const d = new Date(Date.now() - n * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const E = (key, at, s, asked, changed = []) => ({ key, at, s, t: `proj/${s}-full`, branch: '', asked, answered: 'done', changed, ran: [] });
+  const put = (d, es) => { mkdirSync(join(d, 'journal'), { recursive: true }); for (const x of new Set(es.map((e) => e.at.slice(0, 10)))) writeFileSync(join(d, 'journal', `${x}.md`), `# Journal ${x}\n\n${es.filter((e) => e.at.startsWith(x)).map(render).join('\n\n')}\n`); };
+  const snap = (d, rel = '') => readdirSync(join(d, rel), { withFileTypes: true }).flatMap((x) => x.isDirectory() ? snap(d, join(rel, x.name)) : [`${join(rel, x.name)} ${statSync(join(d, rel, x.name)).size} ${statSync(join(d, rel, x.name)).mtimeMs}`]).sort();
+  const L = join(root, 'C--lessons-cli', 'memory'), week = new Date(Date.now() - 5 * 864e5);
+  mkdirSync(L, { recursive: true });
+  memory(L, 'edit-note', 'Keep x with its test', 'Change x.mjs with its test.', 'applies_to: [src/x.mjs]\n');
+  utimesSync(join(L, 'edit-note.md'), week, week);
+  writeFileSync(join(L, 'MEMORY.md'), '- [Edit note](edit-note.md) — x\n');
+  put(L, [E('e1', `${day(3)} 10:00`, 'c1', 'touch WALRUS1', ['src/x.mjs']), E('e2', `${day(3)} 10:05`, 'c1', 'no, always run the tests for src/x.mjs WALRUS2')]);
+  writeFileSync(join(L, '.lessons.json'), JSON.stringify({ v: 1, notes: { 'edit-note.md': { rev: 'ab', shown: 9, followed: 6, broken: 1, na: 1, unknown: 1, sessions: [], last: '2026-11-26', retired: '', told: false } }, errors: {} }));
+
+  r = await run(['lessons', '--store', L]);
+  ok(r.status === 0 && r.stdout.trim() === 'edit-note.md   shown 9, followed 6, broken 1, not applicable 1, unknown 1; last 2026-11-26', `memory lessons prints the lesson's counters (got ${r.stdout})`);
+  const parsed = (...w) => { const p = parseArgs(w); return typeof p === 'string' ? p : 'ok'; };
+  for (const [w, want] of [[['lessons', '--days', '0'], '--days takes a number of days from 1 to 366, not 0'], [['lessons', 'replay', '--days', '400'], '--days takes a number of days from 1 to 366, not 400'], [['lessons', 'replay', '--days', 'ten'], '--days takes a number of days from 1 to 366, not ten'],
+    [['lessons', 'replay', '--except'], '--except needs a value after it'], [['lessons', 'replay', '--except', ''], '--except needs a value after it'], [['lessons', 'replay', '--rev', 'x'], 'lessons does not take --rev; help lists the options'],
+    [['search', 'x', '--show'], 'search does not take --show; help lists the options'], [['lessons', 'replay', '--days', '31', '--show', '--all'], 'ok']]) ok(parsed(...w) === want, `${w.join(' ')}: ${parsed(...w)}`);
+  for (const w of [['lessons', 'extra'], ['lessons', '--show'], ['lessons', '--days', '3'], ['lessons', 'replay', 'now']]) { r = await run([...w, '--store', L]); ok(r.status === 1 && /^lessons lists the lessons/.test(r.stdout), `${w.join(' ')} is refused with the usage line (got ${r.stdout})`); }
+
+  const before = snap(L).filter((x) => !x.startsWith('.replay-history'));
+  r = await run(['lessons', 'replay', '--days', '7', '--store', L]);
+  ok(r.status === 0 && /^Replayed 2 exchanges over 7 days \(6 days had no journal\)\. 1 lesson existed at some point; 1 could fire\. 1 dated by file time\.$/m.test(r.stdout), `the report's first line (got ${r.stdout})`);
+  ok(/^H1 edit lessons: 1 firing, 0\.1 a day, median 1 on an active day\. Probable hits 1, unclear 0\./m.test(r.stdout) && /^Upper bound: /m.test(r.stdout), `the edit lesson fired once and the correction after it shares its file (got ${r.stdout})`);
+  ok(!/WALRUS/.test(r.stdout), 'without --show no text of the journal is printed');
+  assert.deepEqual(snap(L).filter((x) => !x.startsWith('.replay-history')), before, 'a replay changes nothing but .replay-history'); checks++;
+  const lines = readFileSync(join(L, '.replay-history'), 'utf8').trim().split('\n'), h = JSON.parse(lines[0]);
+  ok(lines.length === 1 && h.days === 7 && h.exchanges === 2 && h.firings.edit === 1 && h.hits.edit === 1 && !/WALRUS|edit-note|src\/x/.test(lines[0]) && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(h.at), `the history line is numbers only (got ${lines[0]})`);
+  r = await run(['lessons', 'replay', '--days', '7', '--show', '--store', L]);
+  ok(r.stdout.includes(`${day(3)} 10:00 [e1] edit edit-note.md: touch WALRUS1 => Keep x with its test`) && r.stdout.includes("[e2] nudge "), `--show lists the firing: its request and what it would have said (got ${r.stdout})`);
+  ok(readFileSync(join(L, '.replay-history'), 'utf8').trim().split('\n').length === 2, 'each run adds one line');
+
+  // --all reads every project's journal; --except leaves out the project of that folder, the gate's way to keep this repository out.
+  const gone = join(home, 'work', 'other-app'), G = storeOf({ cwd: gone });
+  mkdirSync(G, { recursive: true });
+  put(G, [E('g1', `${day(2)} 09:00`, 'd1', 'in the other app'), E('g2', `${day(2)} 09:10`, 'd1', 'again'), E('g3', `${day(2)} 09:20`, 'd2', 'and again')]);
+  const seen = (out) => Number(/^Replayed (\d+) exchanges/m.exec(out)?.[1]);
+  const all = seen((await run(['lessons', 'replay', '--all', '--days', '10', '--store', L])).stdout), apart = seen((await run(['lessons', 'replay', '--all', '--days', '10', '--except', gone, '--store', L])).stdout);
+  ok(all - apart === 3 && apart >= 2, `--except leaves out that folder's store: ${all} with it, ${apart} without`);
+  ok(!existsSync(join(G, '.replay-history')), "and no store's history is written but the one asked from");
+  // A copy of the CLI whose journal.mjs will not load still lists the lessons and says why it cannot replay; one without replay.mjs still runs the rest.
+  rmSync(join(L, '.replay-history'));
+  const copy = (name, change) => {
+    const to = join(home, name); mkdirSync(to, { recursive: true });
+    for (const f of readdirSync(dirname(CLI)).filter((x) => x.endsWith('.mjs'))) change(to, f);
+    return (...a) => spawnSync(process.execPath, [join(to, 'memory.mjs'), ...a, '--store', L], { env, encoding: 'utf8' });
+  };
+  const noJournal = copy('cli-nojournal-lessons', (to, f) => writeFileSync(join(to, f), f === 'journal.mjs' ? 'this is not javascript (' : readFileSync(join(dirname(CLI), f))));
+  const noReplay = copy('cli-noreplay', (to, f) => { if (f !== 'replay.mjs') writeFileSync(join(to, f), readFileSync(join(dirname(CLI), f))); });
+  r = noJournal('lessons', 'replay');
+  ok(r.status === 1 && /lessons replay needs journal\.mjs/.test(r.stdout) && !existsSync(join(L, '.replay-history')), `no journal.mjs: replay says so and writes nothing (got ${r.status} ${r.stdout}${r.stderr})`);
+  ok(noJournal('lessons').status === 0 && /edit-note\.md {3}shown 9/.test(noJournal('lessons').stdout), 'and the plain listing still works');
+  r = noReplay('lessons');
+  ok(r.status === 1 && /lessons needs replay\.mjs, which did not load/.test(r.stdout) && noReplay('status').status === 0, `no replay.mjs: lessons says so, the rest runs (got ${r.status} ${r.stdout}${r.stderr})`);
+  rmSync(join(L, 'journal'), { recursive: true }); rmSync(join(G, 'journal'), { recursive: true });
+}
 
 console.log(`memory-cli: ${checks} checks passed`);

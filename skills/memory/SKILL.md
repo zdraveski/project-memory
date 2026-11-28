@@ -1,7 +1,7 @@
 ---
 name: memory
 description: "Search, restore or share Claude Code's memories on this machine, and check the memory hooks. Use before answering any question this project may have discussed before, even one that reads like general advice (should I, can I, is it worth, how do I) and even one with a relative date (last week, yesterday, a while ago): the journal holds every exchange, so check it first. Use it whenever the user asks about earlier work (what was done, decided, fixed, run or said, and when). Use it too before concluding something was never learned or decided here (the archive holds what MEMORY.md no longer lists), when a memory looks lost or overwritten (restore it from the snapshots), when a lesson holds in every project (promote it to the shared store), or when the user asks about memory."
-argument-hint: "[status | search [terms] [--file <path>] [--asked] [--conversation <id>] | show <key> | forget <words> | history <memory> | restore <memory> | promote <memory> | page [--days N|all] [--project NAME] | rescan | enforce status | enforce replay <note> | doctor | incognito | off | on]"
+argument-hint: "[status | search [terms] [--file <path>] [--asked] [--conversation <id>] | show <key> | forget <words> | history <memory> | restore <memory> | promote <memory> | page [--days N|all] [--project NAME] | rescan | enforce status | enforce replay <note> | lessons | lessons replay [--days N] [--all] [--show] [--except <folder>] | doctor | incognito | off | on]"
 ---
 
 # Memory
@@ -43,6 +43,11 @@ holds: <words>` names words nothing holds; other words, a file's or a tool's
 name, or `--all` may find it.
 
 `status` and `doctor` also print coded lines about the notes. `N01` to `N11`: a gone index line, a note in no index, two notes with alike descriptions, clashing file names (`N04`) or no front matter (`N05`; both PROBLEM, the only ones that fail `doctor`), a `[[link]]` to no note, a lesson key that is not read, an unknown `resolves:` id, feedback notes that can never fire (`status --all` names them), a lesson not shown, `MEMORY.md` over its budget. `S01` and `S02`: a note names a path that changed in 3 or more commits since the note, or is gone. Each line says its fix; do it for the user only when they ask.
+
+`lessons` lists the lesson notes with how often each was shown, followed and broken. `lessons replay` shows what each
+lesson trigger would have done over the journal's last 31 days (`--days N`; `--all` every project, `--except <folder>` leaves one out),
+knowing only what existed before each exchange: counts, probable hits and misses, never proof that a lesson worked. It prints no
+journal text unless the user asks for `--show`, and writes only one line of numbers to `.replay-history`.
 
 Read a file of this skill's folder when its subject comes up:
 

@@ -9,6 +9,7 @@
 ### Learning from mistakes
 
 - **A correction detector, in English and Macedonian.** `src/correction.mjs` tells a prompt that corrects Claude and states a lasting rule from an everyday one, with filters for helpers, questions, thanks and quoted text. Nothing calls it yet.
+- **`memory lessons` lists the lessons, `memory lessons replay` shows what they would have done.** The list gives each lesson note's counters (shown, followed, broken, not applicable, unknown), the retired ones too, the recurring errors past their startups and the lessons the scan hides. The replay runs each trigger over the last 31 days (`--days`) of the journal, knowing only what existed before each exchange: how often it fires, how many firings were probably followed by a correction on the same file or command, and how many corrections it missed and why, with a 95% interval once there are 20 firings. It prints counts only; `--show` adds each firing's request, on this PC. `--all` replays every project, `--except <folder>` leaves one out. It writes one numbers-only line to `.replay-history` and nothing else.
 
 ### Lessons
 

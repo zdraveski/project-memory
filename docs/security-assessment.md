@@ -30,7 +30,7 @@ no network code.
 | The git-rule watcher (`enforce-hook.mjs`) | Before a git command: logs which note's `enforce:` rule matched. Blocks nothing, prints nothing. |
 | The recall hook (`recall-hook.mjs`) | After Claude changes a file, and at each message the user sends: names earlier exchanges of this project (date, conversation tag, request, up to three files) and other open sessions, and writes the conversation's session file. At SessionEnd: writes one `end` line. Blocks nothing. |
 | The recall helper (`agents/recall.md`) | A Claude Code agent with Bash only, told to run `search`, `show`, `history` and `status`; reports what it found. Its report is not saved again. |
-| The memory tool (`memory.mjs`) | `search`, `show`, `forget`, `status`, `history`, `restore`, `promote`, `doctor`, `enforce` (`status`, `replay`), `rescan` (`--apply --yes` rewrites saved text and the snapshot history, using a temporary working copy of it), `forget --purge`, and `off`, `on` and `incognito` ([commands](how-it-works.md#the-memory-tool-from-a-terminal)). |
+| The memory tool (`memory.mjs`) | `search`, `show`, `forget`, `status`, `history`, `restore`, `promote`, `doctor`, `enforce` (`status`, `replay`), `lessons` (and `lessons replay`), `rescan` (`--apply --yes` rewrites saved text and the snapshot history, using a temporary working copy of it), `forget --purge`, and `off`, `on` and `incognito` ([commands](how-it-works.md#the-memory-tool-from-a-terminal)). |
 | git | Run by the hooks and the tool, as a program, for the snapshot repository. |
 | Other processes | Another Claude Code window on the same project, Claude's own edits, a virus scanner or a sync tool holding a file. |
 | The maintainer and GitHub | Write, review and release the code; GitHub hosts it, runs CI and serves it to Claude Code's `/plugin`. |
@@ -87,7 +87,13 @@ no network code.
   cut to 120 characters, and fixing commands, all passed through the same secret redaction as the journal,
   and file pairs. `recent()` leaves out private and forgotten exchanges, and the sweeps and `forget`,
   `incognito`, `memory off` and `rescan --apply --yes` delete it (and a temp copy a killed build left), and
-  say so when they cannot. Nothing reads it yet.
+  say so when they cannot. Only `memory lessons` reads it, to list the recurring errors past their startups.
+- **The replay** (`memory lessons replay`, run by hand): reads the journal through `recent()`, which leaves
+  out private and forgotten exchanges and conversations marked private, and the lesson notes with no cache
+  write. It prints counts; request text only with `--show`, clipped to 120 characters and through the secret
+  filter, to the terminal. The one thing it writes is a line of numbers (no name, request, file or command)
+  to `.replay-history` in the project's `memory` folder, mode 0600, cut at 64 KB. A lesson newer than an
+  exchange is never counted for it: the cut throws instead of counting a leak.
 - **Claude Code's plugin lists**, in `~/.claude/plugins`, read only by
   `doctor`.
 - **Switches**: `.project-off` (a marker in one project's `memory` folder),
@@ -195,7 +201,8 @@ shown again, or text from a transcript read as an instruction.
   0 with nothing printed. `PROJECT_MEMORY_RECALL=0` turns it all off.
 - The session files are deleted after 7 days and by `forget`, `off`,
   `incognito` and `rescan --apply --yes`. So is the mistakes cache, which
-  is rebuilt from the journal once a day.
+  is rebuilt from the journal once a day. `.replay-history` holds numbers
+  only, so no forget has to reach it.
 - The recall helper's instruction lists four read-only commands. That is an
   instruction, not a lock: a plugin's agent cannot limit Bash to one
   command.

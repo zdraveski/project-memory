@@ -40,6 +40,15 @@ const USAGE = `node memory.mjs <command> [--store <dir> | --shared] [--session <
                                           caught in the last 30 days of this project's conversations, or
                                           every project's; read-only
   doctor                                  wiring, live copy, Stop hook, locks, git
+  lessons                                 each lesson note with how often it was shown, followed and broken, the
+                                          retired ones too, the recurring errors past their startups, and the
+                                          lessons the scan hides
+  lessons replay [--days N] [--all] [--show] [--except <folder>]
+                                          what each lesson trigger would have done over the last 31 days (--days)
+                                          of the journal, with only what existed before each exchange; counts
+                                          only, --show adds each firing's request, on this PC; --all every
+                                          project, --except leaves out the project of <folder>; read-only
+                                          but for a numbers-only line in this store's .replay-history
 The store is this session's own (outside a session: the cwd's project, or the nearest
 folder above it with one) unless --store or --shared says otherwise. --session names
 the conversation asking (the skill passes it): its store is this session's, and doctor
@@ -49,7 +58,7 @@ import { join, relative, basename, dirname, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, dropMistakes, claimPage, repoRoot } from './store.mjs';
+import { storeOf, sharedStore, isShared, projectsRoot, opener, withLock, replaceIfUnchanged, utf8Only, budgetOf, POINTER, ARCHIVE, isIndex, frontEnd, pointerLine, eolOf, wraps, unmark, staleLock, raw, reason, front, allStores, pathKey, same, configDir, autoMemory, local, startCwd, offSince, transcriptKey, writePage, dropPage, dropMistakes, claimPage, repoRoot, appendCapped } from './store.mjs';
 import { readText, readJson, plugins, healthOf, lostHandoff, unsaved, stopRan, stopRuns, deployed, deployedCommit, edited, DEPLOYED, moved, movedText } from './run-records.mjs';
 import { busy, BUSY, packOrphans, gitWhy, git, gitBytes, real, tracked, ever, unsnapped, missing, gitInstalled, verdict, isOurs, versionsOf, changedLately, dropDays, daysHolding, scanHistory, scrubHistory, keptCopies, keepReplaced, leftoverPurges } from './snapshot.mjs';
 import { isOff, switchOff, switchOn, hushed, isHushed, forgotten, FORGOTTEN } from './privacy.mjs';
@@ -68,9 +77,9 @@ import { dropSessions, others, ACTIVE } from './sessions.mjs';
 // a copy without it) costs search the journal, said in its output, never doctor
 // or restore. Imported statically, deploy.mjs would not start without it
 // (handoff-log's deploy gate test, 2026-10-28).
-let entries, visible, forget, holds, summary, unwritten, takeBack, chunk;
-// replay's reader lives in transcript.mjs now; it is still held back while journal.mjs will not load (replay says so).
-try { ({ entries, visible, forget, holds, summary, unwritten, takeBack } = await import('./journal.mjs')); chunk = chunkOf; }
+let entries, visible, forget, holds, summary, unwritten, takeBack, chunk, recentOf;
+// replay's reader lives in transcript.mjs now; it is still held back while journal.mjs will not load (replay says so, and so does lessons replay).
+try { ({ entries, visible, forget, holds, summary, unwritten, takeBack, recent: recentOf } = await import('./journal.mjs')); chunk = chunkOf; }
 catch (e) {
   const why = reason(e);
   entries = (dirs, { failed = [] } = {}) => { failed.push({ path: 'journal.mjs', code: why }); return []; };
@@ -82,6 +91,11 @@ catch (e) {
   unwritten = () => [];
   takeBack = () => { throw new Error(`journal.mjs could not be loaded: ${why}`); };
 }
+// replay.mjs (the lessons commands) loads apart too, with the lessons, mistakes and correction files it reads: a copy of this CLI without
+// one still runs everything else, and `lessons` says which file is missing.
+let replayRun, lessonsList, noReplay;
+try { ({ replayRun, lessonsList } = await import('./replay.mjs')); }
+catch (e) { noReplay = reason(e); }
 
 // The most entries a forget's look lists, and so the most one --yes removes:
 // it showed 20 of 35, and --yes removed all 35.
@@ -886,6 +900,22 @@ function replay(here, args, all, label, failed) {
     'Read each hit. A hit is a catch only if you agree the command broke the lesson.'] };
 }
 
+// `lessons`: the lessons with their counters. `lessons replay`: what each trigger would have done over the journal (replay.mjs reads, this
+// writes one numbers-only line to this store's .replay-history). --all: every project's store but the shared one (its lessons come in
+// through each) and the switched-off ones; --except <folder>: not the store of that folder, the gate's way to keep this project out.
+const LESSON_OPTS = ['--days', '--all', '--show', '--except'], REPLAY_HISTORY = '.replay-history';
+function lessonsCommand(here, args, rest, opt, every, failed) {
+  if (args[0] !== 'replay' ? args.length || LESSON_OPTS.some((o) => rest.includes(o)) : args.length > 1) return { ok: false, lines: ['lessons lists the lessons; lessons replay [--days N] [--all] [--show] [--except <folder>] replays them'] };
+  if (noReplay) return { ok: false, lines: [`lessons needs replay.mjs, which did not load: ${noReplay}`] };
+  if (!args.length) return { ok: true, lines: lessonsList(here) };
+  if (!recentOf) return { ok: false, lines: ['lessons replay needs journal.mjs, which did not load'] };
+  const out = opt('--except') && storeOf({ cwd: resolve(opt('--except')) }), file = join(here, REPLAY_HISTORY);
+  const stores = (rest.includes('--all') ? every().filter((d) => !isShared(d) && !isOff(d)) : [here]).filter((d) => !out || !same(d, out));
+  const { lines, history } = replayRun(stores, { days: opt('--days') === undefined ? 31 : Number(opt('--days')), now: Date.now(), show: rest.includes('--show'), recent: recentOf });
+  try { appendCapped(file, JSON.stringify(history) + '\n', 64 * 1024); } catch (e) { failed.push({ path: file, code: e.code, write: true }); }
+  return { ok: true, lines };
+}
+
 // Each rule note with the hits the live log holds for it in the last 30 local days, and what the log cannot say.
 function enforceStatus(here) {
   const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - 30);
@@ -977,12 +1007,12 @@ function page(stores, days, want, failed) {
 // Every option the command line knows, and whether it takes the word after it as its value. The `=` split,
 // the unknown-option refusal and where a value ends all read this one list: an option valued in one list and a flag
 // in another was how audit 5 and C-7 came about. USAGE names each one (memory-cli checks it).
-export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--session': true, '--since': true, '--until': true, '--conversation': true, '--key': true, '--file': true, '--days': true, '--project': true,
-  '--all': false, '--shared': false, '--yes': false, '--force': false, '--same': false, '--purge': false, '--apply': false, '--help': false, '--asked': false, '--words': false };
+export const OPTIONS = { '--store': true, '--rev': true, '--limit': true, '--session': true, '--since': true, '--until': true, '--conversation': true, '--key': true, '--file': true, '--days': true, '--project': true, '--except': true,
+  '--all': false, '--shared': false, '--yes': false, '--force': false, '--same': false, '--purge': false, '--apply': false, '--help': false, '--asked': false, '--words': false, '--show': false };
 const valued = new Set(Object.keys(OPTIONS).filter((o) => OPTIONS[o]));
 // Each command takes some options; --store, --shared and --session are for all. One it does not take was ignored:
 // `search x --rev R` listed every revision's hits (audit 5). A command not listed gets its own refusal in main().
-const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], page: ['--days', '--project'] };
+const TAKES = { search: ['--since', '--until', '--all', '--limit', '--file', '--asked', '--conversation', '--words'], show: ['--same', '--all'], forget: ['--key', '--same', '--since', '--until', '--conversation', '--yes', '--purge', '--all'], rescan: ['--apply', '--yes'], status: ['--all'], history: ['--all', '--limit'], restore: ['--rev', '--force'], promote: ['--force'], enforce: ['--all'], incognito: [], off: [], on: [], doctor: [], page: ['--days', '--project'], lessons: ['--days', '--all', '--show', '--except'] };
 
 // The command line's words, read before any store is touched: { cmd, rest, args, opt } or the refusal to print.
 // rest is every word but the command, in order (--key repeats, and the first of an option wins in opt()); args
@@ -1002,7 +1032,7 @@ export function parseArgs(given) {
   // A value is never an option, nor missing: `forget --key --store X` took "--store" for the key, and a last --key was dropped,
   // so the words alone said what went (audit C-7). --rev says what it takes itself.
   // An empty --conversation or --file (an unset variable in quotes) is none given: forget took it for "every conversation", search ran unfiltered.
-  const bare = argv.find((a, i) => valued.has(a) && (a !== '--rev' || i + 1 >= argv.length) && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--project') && argv[i + 1] === '')));
+  const bare = argv.find((a, i) => valued.has(a) && (a !== '--rev' || i + 1 >= argv.length) && !(a === '--session' && i === argv.length - 1) && !valued.has(argv[i - 1]) && (i + 1 >= argv.length || argv[i + 1].startsWith('--') || ((a === '--conversation' || a === '--file' || a === '--project' || a === '--except') && argv[i + 1] === '')));
   if (bare) return `${bare} needs a value after it`;
   const at = argv.findIndex((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1]));
   const cmd = argv.some((a, i) => (a === '--help' || a === '-h') && !valued.has(argv[i - 1])) ? 'help' : at === -1 ? 'status' : argv[at], rest = argv.filter((_, i) => i !== at);
@@ -1017,6 +1047,8 @@ export function parseArgs(given) {
   if (opt('--limit') !== undefined && !/^-?\d+$/.test(opt('--limit'))) return `--limit takes a number, not ${opt('--limit')}`;
   // A whole number of days, or all: `--days ten` was no number to count back from.
   if (cmd === 'page' && opt('--days') !== undefined && opt('--days') !== 'all' && !/^[1-9]\d*$/.test(opt('--days'))) return `--days takes a number of days or all, not ${clip(opt('--days'), 100)}`;
+  // A year at most: the report walks every day of it.
+  if (cmd === 'lessons' && opt('--days') !== undefined && !(/^[1-9]\d*$/.test(opt('--days')) && Number(opt('--days')) <= 366)) return `--days takes a number of days from 1 to 366, not ${clip(opt('--days'), 100)}`;
   const args = [...rest.filter((a, i) => !a.startsWith('--') && !valued.has(rest[i - 1])), ...given.slice(cut + 1)];
   return { cmd, rest, args, opt };
 }
@@ -1171,6 +1203,7 @@ export function main(given) {
       : [filters.file ? missFile : `no journal entry${span && ` ${span}`} in ${where}`]] };
   } else if (cmd === 'forget') r = forgetting(here, args, rest, range, opt('--conversation'), failed);
   else if (cmd === 'enforce') r = args[0] === 'status' ? enforceStatus(here) : replay(here, args, rest.includes('--all'), project, failed);
+  else if (cmd === 'lessons') r = lessonsCommand(here, args, rest, opt, every, failed);
   else if (cmd === 'rescan') r = rescan(every(), rest.includes('--apply'), rest.includes('--yes'));
   else if (cmd === 'incognito') r = incognito(opt('--session'));
   else if (cmd === 'off' || cmd === 'on') r = projectSwitch(here, cmd === 'off');
